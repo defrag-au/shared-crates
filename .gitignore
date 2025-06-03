@@ -1,0 +1,12 @@
+target/
+dist/
+node_modules
+.env
+.dev.vars
+.wrangler
+.idea
+Secrets.toml
+/target
+.shuttle*
+Secrets*.toml
+database.sql
