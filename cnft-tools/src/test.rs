@@ -45,4 +45,30 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_deserialize_blackflag() {
+        match serde_json::from_str::<Vec<CnftAsset>>(test_case!("blackflag.json")) {
+            Ok(assets) => {
+                assert_eq!(assets.len(), 2000);
+
+                match assets.iter().find(|a| a.name == "Luffy") {
+                    Some(luffy) => {
+                        assert_eq!(
+                            luffy.traits,
+                            HashMap::from([("Rank".to_string(), "Legendary".to_string()),])
+                        )
+                    }
+                    None => panic!("luffy not found"),
+                }
+
+                for asset in assets {
+                    assert_eq!(asset.traits.keys().len() as u32, asset.trait_count);
+                }
+            }
+            Err(err) => {
+                panic!("failed decoding: {:?}", err);
+            }
+        }
+    }
 }
