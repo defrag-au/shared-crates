@@ -27,7 +27,7 @@ mod tests {
                 assert_eq!(asset.asset_id, "376");
                 assert_eq!(asset.name, "Pirate #376");
                 assert_eq!(
-                    asset.iconurl,
+                    asset.icon_url,
                     Some("QmSfqtMhjqeU6cncYWpMXcoQQVrzxsaap2SgRzmhkvXZC9".to_string())
                 );
                 assert_eq!(asset.trait_count, 9);
