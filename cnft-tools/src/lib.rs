@@ -49,6 +49,14 @@ pub struct CnftApi {
     client: Client,
 }
 
+impl Default for CnftApi {
+    fn default() -> Self {
+        Self {
+            client: Client::new(),
+        }
+    }
+}
+
 impl CnftApi {
     pub fn for_env(_: &worker::Env) -> worker::Result<Self> {
         Ok(Self {
