@@ -5,8 +5,10 @@ pub use error::*;
 
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
 use reqwest::{Client, Response};
+use serde::de::{MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 
 const BASE_URL: &str = "api.cnft.tools/api/external";
 
@@ -32,7 +34,7 @@ pub struct CnftAsset {
     #[serde(alias = "ownerStakeKey")]
     pub owner_stake_key: String,
 
-    #[serde(flatten)]
+    #[serde(flatten, deserialize_with = "deserialize_traits")]
     pub traits: HashMap<String, String>,
 }
 
@@ -93,4 +95,36 @@ where
 {
     let s = String::deserialize(deserializer)?;
     s.parse::<u32>().map_err(serde::de::Error::custom)
+}
+
+fn deserialize_traits<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct TraitsVisitor;
+
+    impl<'de> Visitor<'de> for TraitsVisitor {
+        type Value = HashMap<String, String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a map of trait key-value pairs")
+        }
+
+        fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let mut map = HashMap::new();
+
+            while let Some((key, value)) = access.next_entry::<String, String>()? {
+                if value != "None" {
+                    map.insert(key, value);
+                }
+            }
+
+            Ok(map)
+        }
+    }
+
+    deserializer.deserialize_map(TraitsVisitor)
 }
