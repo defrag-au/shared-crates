@@ -1,0 +1,35 @@
+{
+  "assetName": "Pirate218",
+  "Rarity Rank": "10",
+  "image": "QmXnWQgvQC5BeywTR7KtJ3d4zsTYeD36KdNXiQWUPVkGFZ",
+  " Background": {
+    "Faded Ember": 0.09215686274509804
+  },
+  " Clothes": {
+    "Wings": 0.011764705882352941
+  },
+  " Eyes": {
+    "Scar": 0.03235294117647059
+  },
+  " Headwear": {
+    "Stapled Skull": 0.043137254901960784
+  },
+  " Mouth": {
+    "Red": 0.025490196078431372
+  },
+  " Nose": {
+    "Blocky": 0.10588235294117647
+  },
+  " Rank": {
+    "Captain": 0.0058823529411764705
+  },
+  " Skin": {
+    "Scarred": 0.13431372549019607
+  },
+  " Weapon": {
+    "Ghoul Hunter": 0.013725490196078431
+  },
+  " Trait  Count": {
+    "9": 0.8411764705882353
+  }
+}
