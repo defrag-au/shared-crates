@@ -23,7 +23,7 @@ mod tests {
                     ("Background".to_string(), "Emerald Isle".to_string()),
                 ]);
                 assert_eq!(asset.on_sale, Some(false));
-                assert_eq!(asset.asset_name, "Pirate376");
+                assert_eq!(asset.asset_name, Some("Pirate376".into()));
                 assert_eq!(asset.asset_id, "376");
                 assert_eq!(asset.name, "Pirate #376");
                 assert_eq!(

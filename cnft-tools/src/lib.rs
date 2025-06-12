@@ -15,7 +15,7 @@ pub struct CnftAsset {
     #[serde(alias = "onSale")]
     pub on_sale: Option<bool>,
     #[serde(alias = "assetName")]
-    pub asset_name: String,
+    pub asset_name: Option<String>,
     #[serde(alias = "assetID")]
     pub asset_id: String,
     pub name: String,
@@ -34,6 +34,12 @@ pub struct CnftAsset {
 
     #[serde(flatten)]
     pub traits: HashMap<String, String>,
+}
+
+impl PartialEq for CnftAsset {
+    fn eq(&self, other: &Self) -> bool {
+        self.encoded_name == other.encoded_name
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
