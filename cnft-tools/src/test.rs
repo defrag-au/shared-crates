@@ -2,10 +2,11 @@
 mod tests {
     #![allow(clippy::assertions_on_constants)]
 
-    use crate::CnftAsset;
+    use crate::{CnftApi, CnftAsset};
 
     use std::collections::HashMap;
     use test_utils::test_case;
+    use tracing::Level;
 
     #[test]
     fn test_deserialize() {
@@ -32,7 +33,7 @@ mod tests {
                 );
                 assert_eq!(asset.trait_count, 9);
                 assert_eq!(asset.encoded_name, "506972617465333736");
-                assert_eq!(asset.build_type, "robot");
+                assert_eq!(asset.build_type, Some("robot".into()));
                 assert_eq!(asset.rarity_rank, 59);
                 assert_eq!(
                     asset.owner_stake_key,
@@ -69,6 +70,21 @@ mod tests {
             Err(err) => {
                 panic!("failed decoding: {:?}", err);
             }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_encounter() {
+        worker_utils::init_tracing(Some(Level::DEBUG));
+
+        match CnftApi::default()
+            .get_for_policy("43206de9e07fbd36ce6c109b3d34637727233c58a0b38f1da00a9ccf")
+            .await
+        {
+            Ok(assets) => {
+                assert_eq!(assets.len(), 3333);
+            }
+            Err(err) => panic!("failed to call microversus api: {:?}", err),
         }
     }
 }
