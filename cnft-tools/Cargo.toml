@@ -5,8 +5,16 @@ edition = "2021"
 
 [dependencies]
 chrono = { version = "0.4.39" }
-reqwest = { workspace = true, features = ["json"] }
+reqwest = { workspace = true, default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 worker = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros"] }
 test_utils = { path = "../test-utils" }
+worker_utils = { path = "../worker-utils" }

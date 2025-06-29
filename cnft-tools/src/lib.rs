@@ -23,12 +23,17 @@ pub struct CnftAsset {
     pub name: String,
     #[serde(alias = "iconurl")]
     pub icon_url: Option<String>,
-    #[serde(alias = "Trait Count", deserialize_with = "deserialize_u32_string")]
+    #[serde(
+        default,
+        alias = "Trait Count",
+        alias = "traitCount",
+        deserialize_with = "deserialize_u32_string"
+    )]
     pub trait_count: u32,
     #[serde(alias = "encodedName")]
     pub encoded_name: String,
     #[serde(alias = "buildType")]
-    pub build_type: String,
+    pub build_type: Option<String>,
     #[serde(alias = "rarityRank", deserialize_with = "deserialize_u32_string")]
     pub rarity_rank: u32,
     #[serde(alias = "ownerStakeKey")]
@@ -79,8 +84,10 @@ impl CnftApi {
     }
 
     async fn get_url(&self, path: &str) -> reqwest::Result<Response> {
+        let url = format!("https://{}{}", BASE_URL, path);
+        tracing::info!("[cnft-tools] requesting {}", url);
         self.client
-            .get(format!("https://{}{}", BASE_URL, path))
+            .get(url)
             .header(ACCEPT, "application/json")
             .header(CONTENT_TYPE, "application/json")
             .send()
