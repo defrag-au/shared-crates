@@ -2,7 +2,10 @@ use cfg_if::cfg_if;
 use wasm_bindgen::JsValue;
 use worker::{Queue, QueueContentType, RawMessageBuilder, Result, SendMessage};
 
+mod r2_notification;
+
 pub mod sleep;
+pub use r2_notification::*;
 
 pub async fn send_to_queue<M>(queue: &Queue, message: &M) -> Result<()>
 where

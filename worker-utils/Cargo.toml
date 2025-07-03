@@ -13,6 +13,7 @@ console_error_panic_hook = ["dep:console_error_panic_hook"]
 cfg-if = "1.0.0"
 console_error_panic_hook = { version = "0.1.1", optional = true }
 js-sys = { workspace = true }
+serde = { workspace = true }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-macro = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
@@ -24,3 +25,5 @@ time = { version = "0.3", features = ['wasm-bindgen'] }
 
 [dev-dependencies]
 tracing-subscriber = "0.3"
+serde_json = { workspace = true }
+test_utils = { path = "../test-utils" }

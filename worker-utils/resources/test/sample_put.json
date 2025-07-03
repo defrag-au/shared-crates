@@ -1,0 +1,11 @@
+{
+  "account": "32b222df0246cc40477b703275f6ff3f",
+  "action": "PutObject",
+  "bucket": "cnft-dev-ipfs-mirror",
+  "eventTime": "2025-01-15T08:50:43.481Z",
+  "object": {
+    "eTag": "f1d2b08c1d89415264d1b0e9a7238eb7",
+    "key": "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6/50697261746531.png",
+    "size": 3322516
+  }
+}
