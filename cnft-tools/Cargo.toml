@@ -11,8 +11,12 @@ reqwest = { workspace = true, default-features = false, features = [
 ] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-worker = { workspace = true }
+worker = { workspace = true, optional = true }
 tracing = { workspace = true }
+
+[features]
+default = []
+worker = ["dep:worker"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros"] }

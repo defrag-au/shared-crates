@@ -31,6 +31,7 @@ impl From<reqwest::Error> for CnftError {
     }
 }
 
+#[cfg(feature = "worker")]
 impl From<CnftError> for worker::Error {
     fn from(_: CnftError) -> Self {
         Self::BadEncoding
