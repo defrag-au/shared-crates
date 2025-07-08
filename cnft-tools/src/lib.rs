@@ -65,12 +65,6 @@ impl Default for CnftApi {
 }
 
 impl CnftApi {
-    pub fn for_env(_: &worker::Env) -> worker::Result<Self> {
-        Ok(Self {
-            client: Client::new(),
-        })
-    }
-
     pub fn extract_rarity(asset: &CnftAsset) -> AssetRarity {
         AssetRarity(asset.encoded_name.clone(), asset.rarity_rank)
     }
