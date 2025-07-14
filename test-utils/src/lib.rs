@@ -9,3 +9,14 @@ macro_rules! test_case {
         &buff.to_string()
     }};
 }
+
+pub fn init_test_tracing() {
+    // Use a simple formatting subscriber for local dev/test logs.
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .compact()
+        .finish();
+
+    // Set as the default global subscriber (only once!)
+    let _ = tracing::subscriber::set_global_default(subscriber);
+}
