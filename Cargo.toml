@@ -1,5 +1,5 @@
 [workspace]
-members = ["cnft-tools", "pinata", "test-utils", "worker-utils"]
+members = ["cnft-tools", "test-utils", "worker-utils"]
 resolver = "2"
 
 [workspace.package]
