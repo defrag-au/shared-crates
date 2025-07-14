@@ -20,7 +20,7 @@ wasm-bindgen-futures = { workspace = true }
 worker = { workspace = true, features = ["queue"] }
 tracing = { workspace = true }
 tracing-web = "0.1"
-tracing-subscriber = { version = "0.3", features = ['time', 'json'] }
+tracing-subscriber = { workspace = true, features = ['time', 'json'] }
 time = { version = "0.3", features = ['wasm-bindgen'] }
 
 [dev-dependencies]

@@ -777,7 +777,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1089,6 +1089,7 @@ name = "test_utils"
 version = "0.1.0"
 dependencies = [
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
