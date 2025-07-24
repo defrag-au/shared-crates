@@ -57,7 +57,7 @@ mod tests {
                 assert_eq!(notification.object.size, 3322516);
             }
             Err(err) => {
-                println!("encountered decoding error: {:?}", err);
+                println!("encountered decoding error: {err:?}");
                 panic!("failed decoding");
             }
         }

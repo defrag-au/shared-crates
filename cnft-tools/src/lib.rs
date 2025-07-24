@@ -3,8 +3,7 @@ mod test;
 
 pub use error::*;
 
-use reqwest::header::{ACCEPT, CONTENT_TYPE};
-use reqwest::{Client, Response};
+use http_client::HttpClient;
 use serde::de::{MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
@@ -53,13 +52,15 @@ impl PartialEq for CnftAsset {
 pub struct AssetRarity(pub String, pub u32);
 
 pub struct CnftApi {
-    client: Client,
+    client: HttpClient,
 }
 
 impl Default for CnftApi {
     fn default() -> Self {
         Self {
-            client: Client::new(),
+            client: HttpClient::new()
+                .with_header("Accept", "application/json")
+                .with_header("Content-Type", "application/json"),
         }
     }
 }
@@ -70,23 +71,9 @@ impl CnftApi {
     }
 
     pub async fn get_for_policy(&self, policy_id: &str) -> Result<Vec<CnftAsset>, CnftError> {
-        self.get_url(&format!("/{}", policy_id))
-            .await?
-            .json::<Vec<CnftAsset>>()
-            .await
-            .map_err(CnftError::Request)
-    }
-
-    async fn get_url(&self, path: &str) -> reqwest::Result<Response> {
-        let url = format!("https://{}{}", BASE_URL, path);
+        let url = format!("https://{BASE_URL}/{policy_id}");
         tracing::info!("[cnft-tools] requesting {}", url);
-        self.client
-            .get(url)
-            .header(ACCEPT, "application/json")
-            .header(CONTENT_TYPE, "application/json")
-            .send()
-            .await?
-            .error_for_status()
+        self.client.get(&url).await.map_err(CnftError::Request)
     }
 }
 

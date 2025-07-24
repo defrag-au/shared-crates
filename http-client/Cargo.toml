@@ -1,0 +1,23 @@
+[package]
+name = "http-client"
+version = "0.1.0"
+edition = "2021"
+authors = ["Damon Oehlman <damon.oehlman@gmail.com>"]
+description = "Unified HTTP client for both WASM and native targets"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+# Native (non-WASM) dependencies
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { version = "0.12.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+
+# WASM dependencies
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-net = { workspace = true }
+wasm-bindgen = { workspace = true }

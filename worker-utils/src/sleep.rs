@@ -16,7 +16,7 @@ pub async fn sleep(delay: i32) {
     wasm_bindgen_futures::JsFuture::from(p)
         .await
         .unwrap_or_else(|e| {
-            eprintln!("An error occurred awaiting JS future: {:?}", e);
+            eprintln!("An error occurred awaiting JS future: {e:?}");
             Default::default()
         });
 }

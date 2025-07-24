@@ -1,10 +1,11 @@
+use http_client::HttpError;
 use std::{error::Error, fmt};
 
 #[derive(Debug)]
 pub enum CnftError {
     Unknown,
     UntrackedPolicy(String),
-    Request(reqwest::Error),
+    Request(HttpError),
 }
 
 impl Default for CnftError {
@@ -19,14 +20,14 @@ impl fmt::Display for CnftError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Unknown => write!(f, "Unknown CNFT api error"),
-            Self::UntrackedPolicy(policy_id) => write!(f, "Untracked policy: {}", policy_id),
-            Self::Request(err) => write!(f, "CNFT tools request error: {:?}", err),
+            Self::UntrackedPolicy(policy_id) => write!(f, "Untracked policy: {policy_id}"),
+            Self::Request(err) => write!(f, "CNFT tools request error: {err:?}"),
         }
     }
 }
 
-impl From<reqwest::Error> for CnftError {
-    fn from(err: reqwest::Error) -> Self {
+impl From<HttpError> for CnftError {
+    fn from(err: HttpError) -> Self {
         Self::Request(err)
     }
 }
