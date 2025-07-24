@@ -1,5 +1,5 @@
-use serde::{de::DeserializeOwned, Serialize};
 use http_client::{HttpClient, HttpMethod};
+use serde::{de::DeserializeOwned, Serialize};
 
 use crate::PinataError;
 
@@ -32,12 +32,15 @@ impl PinataApi {
         }
     }
 
-    async fn request<T: Serialize, R: DeserializeOwned>(
+    pub async fn request<T: Serialize, R: DeserializeOwned>(
         &self,
         method: HttpMethod,
         url: &str,
         body: Option<&T>,
     ) -> Result<R, PinataError> {
-        self.client.request(method, url, body).await.map_err(PinataError::Request)
+        self.client
+            .request(method, url, body)
+            .await
+            .map_err(PinataError::Request)
     }
 }

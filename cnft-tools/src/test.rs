@@ -42,7 +42,7 @@ mod tests {
                 assert_eq!(asset.traits, test_traits);
             }
             Err(err) => {
-                panic!("failed decoding: {:?}", err);
+                panic!("failed decoding: {err:?}");
             }
         }
     }
@@ -68,7 +68,7 @@ mod tests {
                 }
             }
             Err(err) => {
-                panic!("failed decoding: {:?}", err);
+                panic!("failed decoding: {err:?}");
             }
         }
     }
@@ -84,7 +84,7 @@ mod tests {
             Ok(assets) => {
                 assert_eq!(assets.len(), 3333);
             }
-            Err(err) => panic!("failed to call microversus api: {:?}", err),
+            Err(err) => panic!("failed to call microversus api: {err:?}"),
         }
     }
 }

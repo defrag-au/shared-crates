@@ -38,7 +38,6 @@ impl HttpMethod {
             HttpMethod::PATCH => reqwest::Method::PATCH,
         }
     }
-
 }
 
 pub struct HttpClient {
@@ -58,18 +57,23 @@ impl HttpClient {
 
     pub fn with_bearer_token(token: String) -> Self {
         let mut client = Self::new();
-        client.default_headers.insert("Authorization".to_string(), format!("Bearer {}", token));
+        client
+            .default_headers
+            .insert("Authorization".to_string(), format!("Bearer {token}"));
         client
     }
 
     pub fn with_bot_token(token: String) -> Self {
         let mut client = Self::new();
-        client.default_headers.insert("Authorization".to_string(), format!("Bot {}", token));
+        client
+            .default_headers
+            .insert("Authorization".to_string(), format!("Bot {token}"));
         client
     }
 
     pub fn with_header(mut self, key: &str, value: &str) -> Self {
-        self.default_headers.insert(key.to_string(), value.to_string());
+        self.default_headers
+            .insert(key.to_string(), value.to_string());
         self
     }
 
@@ -150,14 +154,12 @@ impl HttpClient {
         url: &str,
         body: Option<&T>,
     ) -> Result<ResponseDetails, HttpError> {
-        debug!(
-            "{:?} request with response details to: {}",
-            method, url
-        );
+        debug!("{:?} request with response details to: {}", method, url);
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            native::make_request_with_details(&self.inner, &self.default_headers, method, url, body).await
+            native::make_request_with_details(&self.inner, &self.default_headers, method, url, body)
+                .await
         }
 
         #[cfg(target_arch = "wasm32")]

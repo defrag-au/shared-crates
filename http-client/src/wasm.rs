@@ -78,7 +78,7 @@ pub(crate) async fn make_request_with_details<T: Serialize>(
     };
 
     let status_code = response.status();
-    
+
     // Extract headers - gloo-net Response has headers() method
     let mut headers = HashMap::new();
     // Note: gloo-net doesn't expose all headers easily, we'll implement basic support

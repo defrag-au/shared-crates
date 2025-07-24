@@ -71,7 +71,7 @@ impl CnftApi {
     }
 
     pub async fn get_for_policy(&self, policy_id: &str) -> Result<Vec<CnftAsset>, CnftError> {
-        let url = format!("https://{}/{}", BASE_URL, policy_id);
+        let url = format!("https://{BASE_URL}/{policy_id}");
         tracing::info!("[cnft-tools] requesting {}", url);
         self.client.get(&url).await.map_err(CnftError::Request)
     }

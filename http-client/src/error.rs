@@ -14,11 +14,11 @@ impl fmt::Display for HttpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
-            HttpError::Reqwest(e) => write!(f, "HTTP request error: {}", e),
+            HttpError::Reqwest(e) => write!(f, "HTTP request error: {e}"),
             #[cfg(target_arch = "wasm32")]
             HttpError::Gloo(e) => write!(f, "HTTP request error: {}", e),
-            HttpError::Serialization(e) => write!(f, "JSON serialization error: {}", e),
-            HttpError::Custom(e) => write!(f, "Custom HTTP error: {}", e),
+            HttpError::Serialization(e) => write!(f, "JSON serialization error: {e}"),
+            HttpError::Custom(e) => write!(f, "Custom HTTP error: {e}"),
         }
     }
 }

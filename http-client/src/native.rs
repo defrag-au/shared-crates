@@ -56,7 +56,7 @@ pub(crate) async fn make_request_with_details<T: Serialize>(
 
     let response = builder.send().await?;
     let status_code = response.status().as_u16();
-    
+
     // Extract headers
     let mut headers = HashMap::new();
     for (key, value) in response.headers() {
