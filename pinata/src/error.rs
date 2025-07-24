@@ -19,7 +19,7 @@ impl fmt::Display for PinataError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Unknown => write!(f, "Unknown Pinata api error"),
-            Self::Request(err) => write!(f, "Pinata request fail: {:?}", err),
+            Self::Request(err) => write!(f, "Pinata request fail: {err:?}"),
         }
     }
 }

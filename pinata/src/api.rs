@@ -11,6 +11,12 @@ pub struct PinataApi {
     pub client: HttpClient,
 }
 
+impl Default for PinataApi {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PinataApi {
     pub fn new() -> Self {
         Self {
