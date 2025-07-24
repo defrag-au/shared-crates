@@ -1,10 +1,11 @@
 use std::{error::Error, fmt};
+use http_client::HttpError;
 
 #[derive(Debug)]
 pub enum CnftError {
     Unknown,
     UntrackedPolicy(String),
-    Request(reqwest::Error),
+    Request(HttpError),
 }
 
 impl Default for CnftError {
@@ -25,8 +26,8 @@ impl fmt::Display for CnftError {
     }
 }
 
-impl From<reqwest::Error> for CnftError {
-    fn from(err: reqwest::Error) -> Self {
+impl From<HttpError> for CnftError {
+    fn from(err: HttpError) -> Self {
         Self::Request(err)
     }
 }

@@ -1,0 +1,117 @@
+{
+  "data": {
+    "files": [
+      {
+        "id": "0ce78f6d-da28-4424-a195-40cf3a458722",
+        "name": "The Ancestors 18",
+        "cid": "bafybeifhreg4ug4gqkmfkayvrkn6g6i5c42hegiuxismet24bscykhunmq",
+        "size": 115004695,
+        "number_of_files": 77,
+        "mime_type": "directory",
+        "group_id": null,
+        "keyvalues": {},
+        "created_at": "2025-07-13T15:14:16.4Z"
+      },
+      {
+        "id": "6509905d-74a7-47e3-bb50-d5c05e26bd5e",
+        "name": "The Ancestors 17",
+        "cid": "bafybeic35rn5sy4ws4x2mzy6fp755zm755x6kkj4pizuqqtz64ciws6qh4",
+        "size": 162322858,
+        "number_of_files": 100,
+        "mime_type": "directory",
+        "group_id": null,
+        "keyvalues": {},
+        "created_at": "2025-07-13T15:13:03.35Z"
+      },
+      {
+        "id": "92518b24-9c9f-4b2e-99da-ff46453de336",
+        "name": "The Ancestors 16",
+        "cid": "bafybeifvfmxoj66syjfyadehngvbmysvmazhphwwx7o2k2646oh32ut36e",
+        "size": 144495530,
+        "number_of_files": 100,
+        "mime_type": "directory",
+        "group_id": null,
+        "keyvalues": {},
+        "created_at": "2025-07-13T15:11:11.271Z"
+      },
+      {
+        "id": "dd19cb4e-ba94-46c2-bd35-a922867b490e",
+        "name": "The Ancestors 15",
+        "cid": "bafybeiek5n5yfyh3222zs3h5cusz3xurg5jtmh5elchzrxbhi46xdpjjsm",
+        "size": 179123889,
+        "number_of_files": 100,
+        "mime_type": "directory",
+        "group_id": null,
+        "keyvalues": {},
+        "created_at": "2025-07-13T15:09:30.984Z"
+      },
+      {
+        "id": "3c54eb4e-6180-4c46-8acc-0dc007033e17",
+        "name": "The Ancestors 14",
+        "cid": "bafybeibbzakhukhto5c4psclde24ocfthhj4wth36m52an5evtprh6p5uu",
+        "size": 143724069,
+        "number_of_files": 100,
+        "mime_type": "directory",
+        "group_id": null,
+        "keyvalues": {},
+        "created_at": "2025-07-13T15:07:46.865Z"
+      },
+      {
+        "id": "2465275e-888f-412a-96d9-2f94a60b2764",
+        "name": "The Ancestors 13",
+        "cid": "bafybeictrumqntm56zxjpf4xzzp4qqit7jta3j246zvqjek6ohp2wh7cpe",
+        "size": 154112243,
+        "number_of_files": 100,
+        "mime_type": "directory",
+        "group_id": null,
+        "keyvalues": {},
+        "created_at": "2025-07-13T15:06:23.294Z"
+      },
+      {
+        "id": "755039bc-c4a3-4c45-9708-c9f21114b249",
+        "name": "The Ancestors 12",
+        "cid": "bafybeiduwrzz4rjsvukdcc7xqizkcxf63q5lbmr5ckz62ghvdlzciwu5um",
+        "size": 152551459,
+        "number_of_files": 100,
+        "mime_type": "directory",
+        "group_id": null,
+        "keyvalues": {},
+        "created_at": "2025-07-13T15:02:47.598Z"
+      },
+      {
+        "id": "017198ec-870c-4613-be88-ba56ade481e8",
+        "name": "The Ancestors 11",
+        "cid": "bafybeiav55q5t6rawh365jo3vrl3i7vvmkii7ydar564odvgb3ise4txdu",
+        "size": 152515533,
+        "number_of_files": 100,
+        "mime_type": "directory",
+        "group_id": null,
+        "keyvalues": {},
+        "created_at": "2025-07-13T15:01:01.226Z"
+      },
+      {
+        "id": "64cbca6e-c2ee-400e-ac73-bdfeaa536357",
+        "name": "The Ancestors 10",
+        "cid": "bafybeie5uzog54azc4epbd3oc2uanybusv3vb74m3d5hkrksgo4hmnq4sa",
+        "size": 133429506,
+        "number_of_files": 100,
+        "mime_type": "directory",
+        "group_id": null,
+        "keyvalues": {},
+        "created_at": "2025-07-13T14:59:16.894Z"
+      },
+      {
+        "id": "e3fb0b13-0b28-4c38-98a5-e9504abb5e19",
+        "name": "The Ancestors 9",
+        "cid": "bafybeib2oze2g5h423x46iqemau2t5tmjirvzpn3v243ll556zzyxujjhi",
+        "size": 165241769,
+        "number_of_files": 100,
+        "mime_type": "directory",
+        "group_id": null,
+        "keyvalues": {},
+        "created_at": "2025-07-13T14:57:24.495Z"
+      }
+    ],
+    "next_page_token": "MjAyNS0wNy0xM1QxNDo1NzoyNC40OTUrMDA6MDB8ZTNmYjBiMTMtMGIyOC00YzM4LTk4YTUtZTk1MDRhYmI1ZTE5"
+  }
+}

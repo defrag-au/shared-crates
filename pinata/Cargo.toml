@@ -1,10 +1,9 @@
 [package]
-name = "cnft_tools"
+name = "pinata"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-chrono = { version = "0.4.39" }
 http-client = { path = "../http-client" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -19,3 +18,4 @@ worker = ["dep:worker"]
 tokio = { workspace = true, features = ["macros"] }
 test_utils = { path = "../test-utils" }
 worker_utils = { path = "../worker-utils" }
+dotenv = "0.15.0"
