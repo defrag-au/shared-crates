@@ -3,6 +3,7 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use crate::PinataError;
 
+#[allow(dead_code)]
 const BASE_URL: &str = "https://api.pinata.cloud/v3";
 
 pub struct PinataApi {

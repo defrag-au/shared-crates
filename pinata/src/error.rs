@@ -33,6 +33,6 @@ impl From<HttpError> for PinataError {
 #[cfg(feature = "worker")]
 impl From<PinataError> for worker::Error {
     fn from(err: PinataError) -> Self {
-        Self::RustError(err.display())
+        Self::RustError(err.to_string())
     }
 }
