@@ -45,18 +45,103 @@ cfg_if! {
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
-        use tracing_subscriber::fmt::format::Pretty;
-        use tracing_subscriber::fmt::time::UtcTime;
-        use tracing_subscriber::prelude::*;
-        use tracing_web::{performance_layer, MakeConsoleWriter};
-
-        // For Cloudflare Worker (Wasm)
+        
+        #[cfg(feature = "simple-logging")]
         pub fn init_tracing(target_level: Option<tracing::Level>) {
+            use tracing::{Event, Metadata, Subscriber};
+            use tracing::subscriber::set_global_default;
+            
+            struct SimpleLogger {
+                max_level: tracing::Level,
+            }
+            
+            impl Subscriber for SimpleLogger {
+                fn enabled(&self, metadata: &Metadata<'_>) -> bool {
+                    metadata.level() <= &self.max_level
+                }
+                
+                fn new_span(&self, _span: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+                    tracing::span::Id::from_u64(1)
+                }
+                
+                fn record(&self, _span: &tracing::span::Id, _values: &tracing::span::Record<'_>) {}
+                
+                fn record_follows_from(&self, _span: &tracing::span::Id, _follows: &tracing::span::Id) {}
+                
+                fn enter(&self, _span: &tracing::span::Id) {}
+                
+                fn exit(&self, _span: &tracing::span::Id) {}
+                
+                fn event(&self, event: &Event<'_>) {
+                    if self.enabled(event.metadata()) {
+                        let level = event.metadata().level();
+                        let level_str = match *level {
+                            tracing::Level::ERROR => "ERROR",
+                            tracing::Level::WARN => "WARN",
+                            tracing::Level::INFO => "INFO",
+                            tracing::Level::DEBUG => "DEBUG",
+                            tracing::Level::TRACE => "TRACE",
+                        };
+                        
+                        // Format the message
+                        let mut visitor = MessageVisitor::new();
+                        event.record(&mut visitor);
+                        
+                        let log_line = format!("{} {}", level_str, visitor.message);
+                        
+                        // Use appropriate console method based on level
+                        match *level {
+                            tracing::Level::ERROR => web_sys::console::error_1(&log_line.into()),
+                            tracing::Level::WARN => web_sys::console::warn_1(&log_line.into()),
+                            _ => web_sys::console::log_1(&log_line.into()),
+                        }
+                    }
+                }
+            }
+            
+            struct MessageVisitor {
+                message: String,
+            }
+            
+            impl MessageVisitor {
+                fn new() -> Self {
+                    Self { message: String::new() }
+                }
+            }
+            
+            impl tracing::field::Visit for MessageVisitor {
+                fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                    if field.name() == "message" {
+                        self.message = format!("{:?}", value).trim_matches('"').to_string();
+                    } else {
+                        if !self.message.is_empty() {
+                            self.message.push(' ');
+                        }
+                        self.message.push_str(&format!("{}={:?}", field.name(), value));
+                    }
+                }
+            }
+            
             let level = target_level.unwrap_or(tracing::Level::INFO);
+            let logger = SimpleLogger { max_level: level };
+            
+            let _ = set_global_default(logger);
+        }
+
+        #[cfg(feature = "full-logging")]
+        pub fn init_tracing(target_level: Option<tracing::Level>) {
+            use tracing_subscriber::fmt::format::Pretty;
+            use tracing_subscriber::fmt::time::UtcTime;
+            use tracing_subscriber::prelude::*;
+            use tracing_web::{performance_layer, MakeConsoleWriter};
+
+            let level = target_level.unwrap_or(tracing::Level::INFO);
+            
+            // Use compact format instead of JSON for better readability
             let fmt_layer = tracing_subscriber::fmt::layer()
-                    .json()
-                    .with_ansi(false) // Only partially supported across JavaScript runtimes
-                    .with_timer(UtcTime::rfc_3339()) // std::time is not available in browsers
+                    .compact()
+                    .with_ansi(false)
+                    .with_timer(UtcTime::rfc_3339())
                     .with_writer(MakeConsoleWriter)
                     .with_filter(tracing_subscriber::filter::LevelFilter::from_level(level));
 
@@ -69,14 +154,18 @@ cfg_if! {
     } else {
         // For native tests (non-Wasm)
         pub fn init_tracing(level: Option<tracing::Level>) {
-            // Use a simple formatting subscriber for local dev/test logs.
-            let subscriber = tracing_subscriber::fmt()
-                .with_max_level(level.unwrap_or(tracing::Level::INFO))
-                .compact()
-                .finish();
+            #[cfg(feature = "full-logging")]
+            {
+                use tracing_subscriber;
+                // Use a simple formatting subscriber for local dev/test logs.
+                let subscriber = tracing_subscriber::fmt()
+                    .with_max_level(level.unwrap_or(tracing::Level::INFO))
+                    .compact()
+                    .finish();
 
-            // Set as the default global subscriber (only once!)
-            let _ = tracing::subscriber::set_global_default(subscriber);
+                // Set as the default global subscriber (only once!)
+                let _ = tracing::subscriber::set_global_default(subscriber);
+            }
         }
     }
 }
