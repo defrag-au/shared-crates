@@ -6,8 +6,10 @@ publish = false
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["console_error_panic_hook"]
+default = ["console_error_panic_hook", "simple-logging"]
 console_error_panic_hook = ["dep:console_error_panic_hook"]
+full-logging = ["tracing-subscriber", "tracing-web", "time"]
+simple-logging = ["web-sys"]
 
 [dependencies]
 cfg-if = "1.0.0"
@@ -19,9 +21,10 @@ wasm-bindgen-macro = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 worker = { workspace = true, features = ["queue"] }
 tracing = { workspace = true }
-tracing-web = "0.1"
-tracing-subscriber = { workspace = true, features = ['time', 'json'] }
-time = { version = "0.3", features = ['wasm-bindgen'] }
+web-sys = { workspace = true, optional = true }
+tracing-web = { version = "0.1", optional = true }
+tracing-subscriber = { workspace = true, features = ['time', 'json'], optional = true }
+time = { version = "0.3", features = ['wasm-bindgen'], optional = true }
 
 [dev-dependencies]
 tracing-subscriber = "0.3"

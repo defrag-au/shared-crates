@@ -1873,6 +1873,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-macro",
+ "web-sys",
  "worker",
 ]
 
