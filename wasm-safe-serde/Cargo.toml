@@ -1,0 +1,9 @@
+[package]
+name = "wasm_safe_serde"
+version.workspace = true
+edition = "2021"
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

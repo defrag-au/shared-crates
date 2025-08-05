@@ -1,5 +1,5 @@
 [workspace]
-members = ["cnft-tools", "http-client", "pinata", "test-utils", "worker-utils"]
+members = ["cnft-tools", "http-client", "pinata", "test-utils", "tx-insights", "wasm-safe-serde", "worker-utils"]
 resolver = "2"
 
 [workspace.package]

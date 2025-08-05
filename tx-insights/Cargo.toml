@@ -1,0 +1,13 @@
+[package]
+name = "tx_insights"
+version.workspace = true
+edition = "2021"
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+wasm_safe_serde = { path = "../wasm-safe-serde" }
+
+[dev-dependencies]
+serde_json = { workspace = true }
