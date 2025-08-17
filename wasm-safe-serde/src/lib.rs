@@ -91,6 +91,49 @@ pub mod u64_required {
     }
 }
 
+/// WASM-safe serialization for i64 values (handles negative numbers)
+/// 
+/// Use with `#[serde(with = "wasm_safe_serde::i64")]`
+pub mod i64 {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    const MAX_SAFE_JS_INTEGER: i64 = 9007199254740991;
+    const MIN_SAFE_JS_INTEGER: i64 = -9007199254740991;
+
+    pub fn serialize<S>(value: &i64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if *value > MAX_SAFE_JS_INTEGER || *value < MIN_SAFE_JS_INTEGER {
+            serializer.serialize_str(&value.to_string())
+        } else {
+            serializer.serialize_i64(*value)
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<i64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde_json::Value;
+        let value = Value::deserialize(deserializer)?;
+
+        match value {
+            Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Ok(i)
+                } else {
+                    Err(serde::de::Error::custom("Invalid number for i64"))
+                }
+            }
+            Value::String(s) => s
+                .parse::<i64>()
+                .map_err(|_| serde::de::Error::custom("Invalid string for i64")),
+            _ => Err(serde::de::Error::custom("Expected number or string")),
+        }
+    }
+}
+
 /// WASM-safe serialization for HashMap<String, u64> containing asset quantities
 /// 
 /// Use with `#[serde(with = "wasm_safe_serde::asset_map")]`
@@ -159,6 +202,8 @@ mod tests {
         required_value: u64,
         #[serde(with = "asset_map")]
         assets: HashMap<String, u64>,
+        #[serde(with = "i64")]
+        signed_value: i64,
     }
 
     #[test]
@@ -174,6 +219,7 @@ mod tests {
             optional_value: Some(large_number),
             required_value: large_number,
             assets,
+            signed_value: 9223372036854775807i64, // i64::MAX - the problematic value
         };
 
         let json = serde_json::to_string(&test_data).expect("Should serialize successfully");
@@ -203,6 +249,7 @@ mod tests {
             optional_value: Some(small_number),
             required_value: small_number,
             assets,
+            signed_value: -100_000i64, // Small negative number
         };
 
         let json = serde_json::to_string(&test_data).expect("Should serialize successfully");
