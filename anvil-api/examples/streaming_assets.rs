@@ -20,8 +20,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create client
     let client = AnvilClient::new().with_api_key(&api_key);
 
-    // Use Blackflag policy ID first to test streaming works
-    let policy_id = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
+    // Use Blackflag policy ID to test pagination with many assets
+    let policy_id = "812197d5f4cdd9ebb05d40e259c181982d4b3d8c2505b1a7ad800bdc";
 
     println!("🌊 Asset Streaming Examples");
     println!("===========================");
@@ -44,11 +44,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match result {
             Ok(asset) => {
                 count += 1;
-                println!("{}. {} - {}", 
-                    count, 
-                    asset.name, 
-                    asset.listing.as_ref()
-                        .map(|l| format!("{:.1} ADA on {}", l.price as f64 / 1_000_000.0, l.marketplace))
+                println!(
+                    "{}. {} - {}",
+                    count,
+                    asset.name,
+                    asset
+                        .listing
+                        .as_ref()
+                        .map(|l| format!(
+                            "{:.1} ADA on {}",
+                            l.price as f64 / 1_000_000.0,
+                            l.marketplace
+                        ))
                         .unwrap_or_else(|| "Not listed".to_string())
                 );
 
@@ -90,13 +97,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match result {
             Ok(asset) => {
                 all_count += 1;
-                
+
                 if asset.listing.is_some() {
                     listed_count += 1;
-                    println!("{}. {} - LISTED at {}", 
-                        all_count, 
+                    println!(
+                        "{}. {} - LISTED at {}",
+                        all_count,
                         asset.name,
-                        asset.listing.as_ref()
+                        asset
+                            .listing
+                            .as_ref()
                             .map(|l| format!("{:.1} ADA", l.price as f64 / 1_000_000.0))
                             .unwrap()
                     );
@@ -122,7 +132,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("     • Total Assets: {}", all_count);
     println!("     • Listed: {}", listed_count);
     println!("     • Unlisted: {}", unlisted_count);
-    println!("     • Listing Rate: {:.1}%", (listed_count as f64 / all_count as f64) * 100.0);
+    println!(
+        "     • Listing Rate: {:.1}%",
+        (listed_count as f64 / all_count as f64) * 100.0
+    );
     println!();
     println!("🎯 Streaming Benefits:");
     println!("   ✅ Automatic pagination handling");

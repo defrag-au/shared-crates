@@ -109,7 +109,7 @@ impl AnvilClient {
                 // Update cursor for pagination
                 request.cursor = cursor.clone();
                 
-                debug!("Fetching page with cursor: {:?}, total_yielded: {}", cursor, total_yielded);
+                debug!("Fetching page, total_yielded: {}", total_yielded);
                 
                 match self.get_collection_assets(&request).await {
                     Ok(response) => {
@@ -127,10 +127,18 @@ impl AnvilClient {
                             yield Ok(asset);
                         }
                         
-                        // Check if we have a cursor for the next page
+                        // Check if we have pagination info for the next page
                         if let Some(page_state) = response.page_state {
-                            cursor = Some(page_state.page_state);
-                            debug!("Next page cursor: {}", cursor.as_ref().unwrap());
+                            // Simply serialize the page state back to JSON and use as cursor
+                            match serde_json::to_string(&page_state.data) {
+                                Ok(cursor_json) => {
+                                    cursor = Some(cursor_json);
+                                }
+                                Err(e) => {
+                                    debug!("Failed to serialize page state: {}", e);
+                                    break;
+                                }
+                            }
                         } else {
                             debug!("No more pages available, ending stream");
                             break;
@@ -171,7 +179,7 @@ impl AnvilClient {
         let max_price_str = request.max_price.as_ref().map(|p| p.to_string());
         let min_rarity_str = request.min_rarity.as_ref().map(|r| r.to_string());
         let max_rarity_str = request.max_rarity.as_ref().map(|r| r.to_string());
-        let cursor_json = request.cursor.as_ref().map(|c| format!("{{\"pageState\":\"{}\"}}", c));
+        let cursor_json = request.cursor.clone();
         let properties_json = request
             .properties
             .as_ref()
@@ -190,62 +198,66 @@ impl AnvilClient {
         }
 
         if let Some(ref cursor_json) = cursor_json {
+            // When cursor is present, it contains the query state
+            // Only send policyId, limit, and cursor
             query_params.push(("cursor", cursor_json.as_str()));
-        }
+        } else {
+            // Only add other parameters when there's no cursor (initial request)
 
-        if let Some(ref min_price_str) = min_price_str {
-            query_params.push(("minPrice", min_price_str.as_str()));
-        }
+            if let Some(ref min_price_str) = min_price_str {
+                query_params.push(("minPrice", min_price_str.as_str()));
+            }
 
-        if let Some(ref max_price_str) = max_price_str {
-            query_params.push(("maxPrice", max_price_str.as_str()));
-        }
+            if let Some(ref max_price_str) = max_price_str {
+                query_params.push(("maxPrice", max_price_str.as_str()));
+            }
 
-        if let Some(ref min_rarity_str) = min_rarity_str {
-            query_params.push(("minRarity", min_rarity_str.as_str()));
-        }
+            if let Some(ref min_rarity_str) = min_rarity_str {
+                query_params.push(("minRarity", min_rarity_str.as_str()));
+            }
 
-        if let Some(ref max_rarity_str) = max_rarity_str {
-            query_params.push(("maxRarity", max_rarity_str.as_str()));
-        }
+            if let Some(ref max_rarity_str) = max_rarity_str {
+                query_params.push(("maxRarity", max_rarity_str.as_str()));
+            }
 
-        if let Some(order_by) = &request.order_by {
-            let order_by_str = match order_by {
-                OrderBy::PriceAsc => "priceAsc",
-                OrderBy::PriceDesc => "priceDesc",
-                OrderBy::NameAsc => "nameAsc",
-                OrderBy::IdxAsc => "idxAsc",
-                OrderBy::RecentlyListed => "recentlyListed",
-                OrderBy::RarityAsc => "rarityAsc",
-                OrderBy::RecentlyMinted => "recentlyMinted",
-            };
-            query_params.push(("orderBy", order_by_str));
-        }
+            if let Some(order_by) = &request.order_by {
+                let order_by_str = match order_by {
+                    OrderBy::PriceAsc => "priceAsc",
+                    OrderBy::PriceDesc => "priceDesc",
+                    OrderBy::NameAsc => "nameAsc",
+                    OrderBy::IdxAsc => "idxAsc",
+                    OrderBy::RecentlyListed => "recentlyListed",
+                    OrderBy::RarityAsc => "rarityAsc",
+                    OrderBy::RecentlyMinted => "recentlyMinted",
+                };
+                query_params.push(("orderBy", order_by_str));
+            }
 
-        if let Some(term) = &request.term {
-            query_params.push(("term", term.as_str()));
-        }
+            if let Some(term) = &request.term {
+                query_params.push(("term", term.as_str()));
+            }
 
-        if let Some(listing_type) = &request.listing_type {
-            let listing_type_str = match listing_type {
-                ListingType::JpgStore => "jpgstore",
-                ListingType::Wayup => "wayup",
-                ListingType::SpaceBudz => "spacebudz",
-            };
-            query_params.push(("listingType", listing_type_str));
-        }
+            if let Some(listing_type) = &request.listing_type {
+                let listing_type_str = match listing_type {
+                    ListingType::JpgStore => "jpgstore",
+                    ListingType::Wayup => "wayup",
+                    ListingType::SpaceBudz => "spacebudz",
+                };
+                query_params.push(("listingType", listing_type_str));
+            }
 
-        if let Some(sale_type) = &request.sale_type {
-            let sale_type_str = match sale_type {
-                SaleType::All => "all",
-                SaleType::ListedOnly => "listedOnly",
-                SaleType::Bundles => "bundles",
-            };
-            query_params.push(("saleType", sale_type_str));
-        }
+            if let Some(sale_type) = &request.sale_type {
+                let sale_type_str = match sale_type {
+                    SaleType::All => "all",
+                    SaleType::ListedOnly => "listedOnly",
+                    SaleType::Bundles => "bundles",
+                };
+                query_params.push(("saleType", sale_type_str));
+            }
 
-        if let Some(ref properties_json) = properties_json {
-            query_params.push(("properties", properties_json.as_str()));
+            if let Some(ref properties_json) = properties_json {
+                query_params.push(("properties", properties_json.as_str()));
+            }
         }
 
         let query_string = query_params
@@ -259,7 +271,6 @@ impl AnvilClient {
             self.base_url, query_string
         );
 
-        debug!("Making request to: {}", url);
 
         let response = self
             .http_client

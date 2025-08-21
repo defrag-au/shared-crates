@@ -1,7 +1,15 @@
 use std::collections::HashMap;
 
 use cardano_assets::{AssetId, CollectionDetails, Marketplace};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Custom deserializer for attributes that handles both null and missing values
+fn deserialize_attributes<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<HashMap<String, String>>::deserialize(deserializer).map(|opt| opt.unwrap_or_default())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectionAssetsRequest {
@@ -183,9 +191,9 @@ impl CollectionAssetsRequest {
 
     /// Convenience method to add a single trait filter
     pub fn with_trait(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        let filter = PropertyFilter { 
-            key: key.into(), 
-            value: value.into() 
+        let filter = PropertyFilter {
+            key: key.into(),
+            value: value.into(),
         };
         match self.properties {
             Some(mut props) => {
@@ -238,7 +246,8 @@ pub struct CollectionAssetsResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PageState {
-    pub page_state: String,
+    #[serde(flatten)]
+    pub data: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,11 +263,11 @@ pub struct Asset {
     pub name_idx: Option<u32>,
     pub image: Option<String>,
     pub media: Option<AssetMedia>,
-    pub label: Option<String>,
+    // pub label: Option<u32>,
     #[serde(default)]
     pub version: AssetVersion,
     pub last_update_tx_hash: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_attributes")]
     pub attributes: HashMap<String, String>,
     pub listing: Option<Listing>,
     pub collection: Option<CollectionDetails>,
@@ -288,7 +297,7 @@ pub struct Listing {
     pub script_hash: String,
     pub bundle_size: Option<u32>,
     pub is_processing: bool,
-    #[serde(alias = "type")]
+    #[serde(alias = "type", default)]
     pub marketplace: Marketplace,
     pub version: String,
 }

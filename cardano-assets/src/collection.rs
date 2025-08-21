@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 /// Marketplace enum representing different NFT marketplaces
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum Marketplace {
+    #[default]
     JpgStore,
     Wayup,
     SpaceBudz,
@@ -52,9 +53,12 @@ impl std::fmt::Display for Marketplace {
 /// Collection social media links
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectionSocials {
-    pub discord: String,
-    pub twitter: String,
-    pub website: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub discord: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub twitter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub website: Option<String>,
 }
 
 /// Collection information for a CNFT collection
@@ -63,7 +67,7 @@ pub struct CollectionSocials {
 pub struct CollectionDetails {
     pub policy_id: String,
     pub name: String,
-    pub handle: String,
+    pub handle: Option<String>,
     pub description: Option<String>,
     pub royalty_address: Option<String>,
     #[serde(alias = "royaltyPct")]
