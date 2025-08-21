@@ -9,6 +9,12 @@ pub struct AnvilClient {
     base_url: String,
 }
 
+impl Default for AnvilClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AnvilClient {
     pub fn new() -> Self {
         Self {
@@ -81,7 +87,10 @@ impl AnvilClient {
 
         debug!("Making request to: {}", url);
 
-        let response = self.http_client.get::<CollectionAssetsResponse>(&url).await?;
+        let response = self
+            .http_client
+            .get::<CollectionAssetsResponse>(&url)
+            .await?;
 
         Ok(response)
     }

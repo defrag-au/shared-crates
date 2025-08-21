@@ -21,13 +21,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Display format: {}", asset_id);
 
     println!("\n🧩 Parsing from Different Formats:");
-    
+
     // Parse from concatenated format
     let concatenated = asset_id.concatenated();
     let parsed_concat = AssetId::parse_concatenated(&concatenated)?;
     println!("From concatenated: ✅ {}", parsed_concat.asset_name());
 
-    // Parse from dot-delimited format  
+    // Parse from dot-delimited format
     let dot_delimited = asset_id.dot_delimited();
     let parsed_dot = AssetId::parse_dot_delimited(&dot_delimited)?;
     println!("From dot-delimited: ✅ {}", parsed_dot.asset_name());
@@ -40,13 +40,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n🚫 Asset Name Validation:");
     let empty_name_result = AssetId::new(policy_id.to_string(), String::new());
-    println!("Empty asset name rejected: ✅ {}", empty_name_result.is_err());
+    println!(
+        "Empty asset name rejected: ✅ {}",
+        empty_name_result.is_err()
+    );
 
     println!("\n🎭 Creating from UTF-8 Names:");
-    let nft_from_name = AssetId::from_utf8_name(
-        policy_id.to_string(),
-        "MyNFT #123".to_string()
-    )?;
+    let nft_from_name = AssetId::from_utf8_name(policy_id.to_string(), "MyNFT #123".to_string())?;
     println!("UTF-8 name: 'MyNFT #123'");
     println!("Hex encoded: {}", nft_from_name.asset_name_hex());
     println!("Back to UTF-8: {}", nft_from_name.asset_name());
@@ -75,7 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n🗂️  Usage in Collections:");
     let mut asset_quantities: HashMap<AssetId, u64> = HashMap::new();
-    
+
     // Add some assets
     asset_quantities.insert(asset_id.clone(), 1);
     asset_quantities.insert(nft_from_name.clone(), 1);
@@ -94,10 +94,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Use as HashMap key (concatenated format)
     let mut legacy_map: HashMap<String, u64> = HashMap::new();
     legacy_map.insert(asset_id.to_string(), 1);
-    println!("Legacy HashMap key: ✅ Found asset with qty {}", 
-             legacy_map.get(&asset_id.concatenated()).unwrap_or(&0));
+    println!(
+        "Legacy HashMap key: ✅ Found asset with qty {}",
+        legacy_map.get(&asset_id.concatenated()).unwrap_or(&0)
+    );
 
     println!("\n🎉 Demo completed successfully!");
-    
+
     Ok(())
 }

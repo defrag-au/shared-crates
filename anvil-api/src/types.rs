@@ -203,7 +203,7 @@ mod tests {
         let original = Marketplace::Unknown("someNewMarketplace".to_string());
         let serialized = serde_json::to_string(&original).unwrap();
         let deserialized: Marketplace = serde_json::from_str(&serialized).unwrap();
-        
+
         match deserialized {
             Marketplace::Unknown(name) => assert_eq!(name, "someNewMarketplace"),
             _ => panic!("Expected Unknown variant"),

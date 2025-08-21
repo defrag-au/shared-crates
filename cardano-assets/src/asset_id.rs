@@ -6,24 +6,24 @@ use std::str::FromStr;
 const POLICY_ID_LENGTH: usize = 56;
 
 /// A compound asset identifier representing an on-chain Cardano native token
-/// 
+///
 /// Combines policy_id and asset_name_hex into a unified type that can
 /// represent itself in multiple formats: concatenated, dot-delimited, and JSON.
-/// 
+///
 /// Note: All Cardano native tokens (both fungible and non-fungible) have asset names.
 /// ADA is a special case with no policy ID or asset name and is not represented by this type.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// use cardano_assets::AssetId;
-/// 
+///
 /// // Create from components
 /// let asset_id = AssetId::new(
 ///     "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6".to_string(),
 ///     "50697261746531303836".to_string() // "Pirate1086" in hex
 /// ).expect("Valid asset ID");
-/// 
+///
 /// // Different format representations
 /// assert_eq!(
 ///     asset_id.concatenated(),
@@ -33,15 +33,15 @@ const POLICY_ID_LENGTH: usize = 56;
 ///     asset_id.dot_delimited(),
 ///     "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6.50697261746531303836"
 /// );
-/// 
+///
 /// // Parse from various formats
 /// let from_concat: AssetId = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f650697261746531303836".parse().unwrap();
 /// let from_dotted: AssetId = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6.50697261746531303836".parse().unwrap();
 /// assert_eq!(from_concat, from_dotted);
-/// 
+///
 /// // UTF-8 decoded asset name
 /// assert_eq!(asset_id.asset_name(), "Pirate1086");
-/// 
+///
 /// // Asset names cannot be empty
 /// assert!(AssetId::new("policy_id".to_string(), "".to_string()).is_err());
 /// ```
@@ -58,11 +58,11 @@ impl AssetId {
     pub fn new(policy_id: String, asset_name_hex: String) -> Result<Self, AssetIdError> {
         Self::validate_policy_id(&policy_id)?;
         Self::validate_asset_name_hex(&asset_name_hex)?;
-        
+
         if asset_name_hex.is_empty() {
             return Err(AssetIdError::EmptyAssetName);
         }
-        
+
         Ok(Self {
             policy_id,
             asset_name_hex,
@@ -111,7 +111,6 @@ impl AssetId {
             Err(_) => self.asset_name_hex.clone(),
         }
     }
-
 
     /// Create AssetId from hex-encoded asset name
     pub fn from_hex_name(policy_id: String, asset_name_hex: String) -> Result<Self, AssetIdError> {
@@ -165,7 +164,7 @@ impl AssetId {
 
         let policy_id = input[..POLICY_ID_LENGTH].to_string();
         let asset_name_hex = input[POLICY_ID_LENGTH..].to_string();
-        
+
         Self::new(policy_id, asset_name_hex)
     }
 
@@ -178,7 +177,7 @@ impl AssetId {
 
         let policy_id = parts[0].to_string();
         let asset_name_hex = parts[1].to_string();
-        
+
         Self::new(policy_id, asset_name_hex)
     }
 
@@ -231,11 +230,22 @@ pub enum AssetIdError {
 impl fmt::Display for AssetIdError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AssetIdError::InvalidLength { expected_min, actual } => {
-                write!(f, "Invalid asset ID length: expected at least {}, got {}", expected_min, actual)
+            AssetIdError::InvalidLength {
+                expected_min,
+                actual,
+            } => {
+                write!(
+                    f,
+                    "Invalid asset ID length: expected at least {}, got {}",
+                    expected_min, actual
+                )
             }
             AssetIdError::InvalidPolicyIdLength { expected, actual } => {
-                write!(f, "Invalid policy ID length: expected {}, got {}", expected, actual)
+                write!(
+                    f,
+                    "Invalid policy ID length: expected {}, got {}",
+                    expected, actual
+                )
             }
             AssetIdError::InvalidPolicyIdFormat => {
                 write!(f, "Invalid policy ID format: must be hexadecimal")
@@ -244,10 +254,16 @@ impl fmt::Display for AssetIdError {
                 write!(f, "Invalid asset name hex format: must be hexadecimal")
             }
             AssetIdError::InvalidAssetNameHexLength => {
-                write!(f, "Invalid asset name hex length: must be even number of characters")
+                write!(
+                    f,
+                    "Invalid asset name hex length: must be even number of characters"
+                )
             }
             AssetIdError::InvalidDotDelimitedFormat => {
-                write!(f, "Invalid dot-delimited format: must contain exactly one dot")
+                write!(
+                    f,
+                    "Invalid dot-delimited format: must contain exactly one dot"
+                )
             }
             AssetIdError::EmptyAssetName => {
                 write!(f, "Asset name cannot be empty")
@@ -273,7 +289,6 @@ impl FromStr for AssetId {
         Self::parse_smart(s)
     }
 }
-
 
 /// Convert to concatenated string (backward compatibility)
 impl From<AssetId> for String {
@@ -325,16 +340,15 @@ impl<'de> Deserialize<'de> for AssetId {
         }
 
         let format = AssetIdFormat::deserialize(deserializer)?;
-        
+
         match format {
-            AssetIdFormat::Structured { policy_id, asset_name_hex } => {
-                AssetId::new(policy_id, asset_name_hex)
-                    .map_err(|e| serde::de::Error::custom(format!("Invalid AssetId: {}", e)))
-            }
-            AssetIdFormat::String(s) => {
-                AssetId::parse_smart(&s)
-                    .map_err(|e| serde::de::Error::custom(format!("Invalid AssetId string: {}", e)))
-            }
+            AssetIdFormat::Structured {
+                policy_id,
+                asset_name_hex,
+            } => AssetId::new(policy_id, asset_name_hex)
+                .map_err(|e| serde::de::Error::custom(format!("Invalid AssetId: {}", e))),
+            AssetIdFormat::String(s) => AssetId::parse_smart(&s)
+                .map_err(|e| serde::de::Error::custom(format!("Invalid AssetId string: {}", e))),
         }
     }
 }
@@ -345,14 +359,16 @@ mod tests {
 
     const TEST_POLICY_ID: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
     const TEST_ASSET_NAME_HEX: &str = "50697261746531303836"; // "Pirate1086" - real Blackflag asset
-    const TEST_CONCATENATED: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f650697261746531303836";
-    const TEST_DOT_DELIMITED: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6.50697261746531303836";
+    const TEST_CONCATENATED: &str =
+        "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f650697261746531303836";
+    const TEST_DOT_DELIMITED: &str =
+        "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6.50697261746531303836";
 
     #[test]
     fn test_new_valid() {
         let asset_id = AssetId::new(TEST_POLICY_ID.to_string(), TEST_ASSET_NAME_HEX.to_string())
             .expect("Should create valid AssetId");
-        
+
         assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
     }
@@ -361,7 +377,7 @@ mod tests {
     fn test_concatenated_format() {
         let asset_id = AssetId::new(TEST_POLICY_ID.to_string(), TEST_ASSET_NAME_HEX.to_string())
             .expect("Should create valid AssetId");
-        
+
         assert_eq!(asset_id.concatenated(), TEST_CONCATENATED);
     }
 
@@ -369,7 +385,7 @@ mod tests {
     fn test_dot_delimited_format() {
         let asset_id = AssetId::new(TEST_POLICY_ID.to_string(), TEST_ASSET_NAME_HEX.to_string())
             .expect("Should create valid AssetId");
-        
+
         assert_eq!(asset_id.dot_delimited(), TEST_DOT_DELIMITED);
     }
 
@@ -377,7 +393,7 @@ mod tests {
     fn test_parse_concatenated() {
         let asset_id = AssetId::parse_concatenated(TEST_CONCATENATED)
             .expect("Should parse concatenated format");
-        
+
         assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
     }
@@ -386,34 +402,35 @@ mod tests {
     fn test_parse_dot_delimited() {
         let asset_id = AssetId::parse_dot_delimited(TEST_DOT_DELIMITED)
             .expect("Should parse dot-delimited format");
-        
+
         assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
     }
 
     #[test]
     fn test_parse_smart_dot_delimited() {
-        let asset_id = AssetId::parse_smart(TEST_DOT_DELIMITED)
-            .expect("Should parse dot-delimited format");
-        
+        let asset_id =
+            AssetId::parse_smart(TEST_DOT_DELIMITED).expect("Should parse dot-delimited format");
+
         assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
     }
 
     #[test]
     fn test_parse_smart_concatenated() {
-        let asset_id = AssetId::parse_smart(TEST_CONCATENATED)
-            .expect("Should parse concatenated format");
-        
+        let asset_id =
+            AssetId::parse_smart(TEST_CONCATENATED).expect("Should parse concatenated format");
+
         assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
     }
 
     #[test]
     fn test_from_str() {
-        let asset_id: AssetId = TEST_DOT_DELIMITED.parse()
+        let asset_id: AssetId = TEST_DOT_DELIMITED
+            .parse()
             .expect("Should parse from string");
-        
+
         assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
     }
@@ -422,7 +439,7 @@ mod tests {
     fn test_display() {
         let asset_id = AssetId::new(TEST_POLICY_ID.to_string(), TEST_ASSET_NAME_HEX.to_string())
             .expect("Should create valid AssetId");
-        
+
         assert_eq!(asset_id.to_string(), TEST_CONCATENATED);
     }
 
@@ -430,7 +447,7 @@ mod tests {
     fn test_asset_name_utf8() {
         let asset_id = AssetId::new(TEST_POLICY_ID.to_string(), TEST_ASSET_NAME_HEX.to_string())
             .expect("Should create valid AssetId");
-        
+
         assert_eq!(asset_id.asset_name(), "Pirate1086");
     }
 
@@ -444,13 +461,13 @@ mod tests {
     fn test_json_serialization() {
         let asset_id = AssetId::new(TEST_POLICY_ID.to_string(), TEST_ASSET_NAME_HEX.to_string())
             .expect("Should create valid AssetId");
-        
+
         let json = serde_json::to_string(&asset_id).expect("Should serialize to JSON");
         let expected = format!(
             r#"{{"policy_id":"{}","asset_name_hex":"{}"}}"#,
             TEST_POLICY_ID, TEST_ASSET_NAME_HEX
         );
-        
+
         assert_eq!(json, expected);
     }
 
@@ -460,10 +477,9 @@ mod tests {
             r#"{{"policy_id":"{}","asset_name_hex":"{}"}}"#,
             TEST_POLICY_ID, TEST_ASSET_NAME_HEX
         );
-        
-        let asset_id: AssetId = serde_json::from_str(&json)
-            .expect("Should deserialize from JSON");
-        
+
+        let asset_id: AssetId = serde_json::from_str(&json).expect("Should deserialize from JSON");
+
         assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
     }
@@ -471,19 +487,20 @@ mod tests {
     #[test]
     fn test_json_deserialization_string() {
         let json = format!(r#""{}""#, TEST_DOT_DELIMITED);
-        
-        let asset_id: AssetId = serde_json::from_str(&json)
-            .expect("Should deserialize from JSON string");
-        
+
+        let asset_id: AssetId =
+            serde_json::from_str(&json).expect("Should deserialize from JSON string");
+
         assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
     }
 
     #[test]
     fn test_parsing_from_string() {
-        let asset_id: AssetId = TEST_CONCATENATED.parse()
+        let asset_id: AssetId = TEST_CONCATENATED
+            .parse()
             .expect("Should parse valid concatenated string");
-        
+
         assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
     }
@@ -492,7 +509,7 @@ mod tests {
     fn test_conversion_to_string() {
         let asset_id = AssetId::new(TEST_POLICY_ID.to_string(), TEST_ASSET_NAME_HEX.to_string())
             .expect("Should create valid AssetId");
-        
+
         let s: String = asset_id.into();
         assert_eq!(s, TEST_CONCATENATED);
     }
@@ -500,7 +517,10 @@ mod tests {
     #[test]
     fn test_invalid_policy_id_length() {
         let result = AssetId::new("short".to_string(), TEST_ASSET_NAME_HEX.to_string());
-        assert!(matches!(result, Err(AssetIdError::InvalidPolicyIdLength { .. })));
+        assert!(matches!(
+            result,
+            Err(AssetIdError::InvalidPolicyIdLength { .. })
+        ));
     }
 
     #[test]
@@ -508,28 +528,37 @@ mod tests {
         // Create a 56-character string with invalid hex characters
         let invalid_policy_id = "zzzzcf1c948109e34f2c5a9f9670445ccc85008e5b8a6e67f913b491";
         assert_eq!(invalid_policy_id.len(), 56); // Ensure correct length
-        let result = AssetId::new(invalid_policy_id.to_string(), TEST_ASSET_NAME_HEX.to_string());
+        let result = AssetId::new(
+            invalid_policy_id.to_string(),
+            TEST_ASSET_NAME_HEX.to_string(),
+        );
         assert!(matches!(result, Err(AssetIdError::InvalidPolicyIdFormat)));
     }
 
     #[test]
     fn test_invalid_asset_name_hex_format() {
         let result = AssetId::new(TEST_POLICY_ID.to_string(), "invalid_hex!".to_string());
-        assert!(matches!(result, Err(AssetIdError::InvalidAssetNameHexFormat)));
+        assert!(matches!(
+            result,
+            Err(AssetIdError::InvalidAssetNameHexFormat)
+        ));
     }
 
     #[test]
     fn test_invalid_asset_name_hex_length() {
         let result = AssetId::new(TEST_POLICY_ID.to_string(), "42F".to_string()); // Odd length
-        assert!(matches!(result, Err(AssetIdError::InvalidAssetNameHexLength)));
+        assert!(matches!(
+            result,
+            Err(AssetIdError::InvalidAssetNameHexLength)
+        ));
     }
-
 
     #[test]
     fn test_from_utf8_name() {
-        let asset_id = AssetId::from_utf8_name(TEST_POLICY_ID.to_string(), "Pirate1086".to_string())
-            .expect("Should create from UTF-8 name");
-        
+        let asset_id =
+            AssetId::from_utf8_name(TEST_POLICY_ID.to_string(), "Pirate1086".to_string())
+                .expect("Should create from UTF-8 name");
+
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
         assert_eq!(asset_id.asset_name(), "Pirate1086");
     }
@@ -538,7 +567,7 @@ mod tests {
     fn test_policy_id_bytes() {
         let asset_id = AssetId::new(TEST_POLICY_ID.to_string(), TEST_ASSET_NAME_HEX.to_string())
             .expect("Should create valid AssetId");
-        
+
         let bytes = asset_id.policy_id_bytes().expect("Should decode policy ID");
         assert_eq!(bytes.len(), 28); // 28 bytes = 56 hex chars
         assert_eq!(hex::encode(&bytes), TEST_POLICY_ID);
@@ -548,8 +577,10 @@ mod tests {
     fn test_asset_name_bytes() {
         let asset_id = AssetId::new(TEST_POLICY_ID.to_string(), TEST_ASSET_NAME_HEX.to_string())
             .expect("Should create valid AssetId");
-        
-        let bytes = asset_id.asset_name_bytes().expect("Should decode asset name");
+
+        let bytes = asset_id
+            .asset_name_bytes()
+            .expect("Should decode asset name");
         assert_eq!(String::from_utf8(bytes).unwrap(), "Pirate1086");
     }
 
@@ -557,9 +588,8 @@ mod tests {
     fn test_as_bytes() {
         let asset_id = AssetId::new(TEST_POLICY_ID.to_string(), TEST_ASSET_NAME_HEX.to_string())
             .expect("Should create valid AssetId");
-        
+
         let bytes = asset_id.as_bytes().expect("Should get full bytes");
         assert_eq!(hex::encode(&bytes), TEST_CONCATENATED);
     }
-
 }

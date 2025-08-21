@@ -6,7 +6,7 @@ use tracing::info;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
-    
+
     // Initialize tracing for debug output
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
@@ -32,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(response) => {
             info!("✅ Successfully retrieved {} assets", response.count);
             info!("📄 Page state: {:?}", response.page_state);
-            
+
             for (i, asset) in response.results.iter().enumerate() {
                 println!("{}. Asset: {} ({})", i + 1, asset.name, asset.unit);
                 if let Some(listing) = &asset.listing {
@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 println!();
             }
-        },
+        }
         Err(err) => {
             eprintln!("❌ Error: {:?}", err);
             println!("\n💡 Make sure you have ANVIL_API_KEY set in your .env file if authentication is required");

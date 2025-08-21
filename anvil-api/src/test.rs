@@ -2,7 +2,7 @@
 mod tests {
     use crate::*;
     use dotenv::dotenv;
-    use serde_json;
+
     use std::env;
     use test_utils::{self, test_case};
     use tracing::info;
