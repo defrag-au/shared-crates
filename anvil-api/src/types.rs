@@ -71,6 +71,16 @@ pub struct PropertyFilter {
     pub value: String,
 }
 
+impl PropertyFilter {
+    /// Create a new property filter
+    pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+        }
+    }
+}
+
 impl From<Marketplace> for ListingType {
     fn from(marketplace: Marketplace) -> Self {
         match marketplace {
@@ -83,9 +93,9 @@ impl From<Marketplace> for ListingType {
 
 impl CollectionAssetsRequest {
     /// Create a basic request with only policy_id
-    pub fn new(policy_id: String) -> Self {
+    pub fn new(policy_id: impl Into<String>) -> Self {
         Self {
-            policy_id,
+            policy_id: policy_id.into(),
             limit: None,
             cursor: None,
             min_price: None,
@@ -101,9 +111,9 @@ impl CollectionAssetsRequest {
     }
 
     /// Create request for listed assets only with price ordering
-    pub fn for_listed_assets(policy_id: String, limit: Option<u32>) -> Self {
+    pub fn for_listed_assets(policy_id: impl Into<String>, limit: Option<u32>) -> Self {
         Self {
-            policy_id,
+            policy_id: policy_id.into(),
             limit,
             cursor: None,
             min_price: None,
@@ -124,8 +134,8 @@ impl CollectionAssetsRequest {
         self
     }
 
-    pub fn with_cursor(mut self, cursor: String) -> Self {
-        self.cursor = Some(cursor);
+    pub fn with_cursor(mut self, cursor: impl Into<String>) -> Self {
+        self.cursor = Some(cursor.into());
         self
     }
 
@@ -146,8 +156,8 @@ impl CollectionAssetsRequest {
         self
     }
 
-    pub fn with_search_term(mut self, term: String) -> Self {
-        self.term = Some(term);
+    pub fn with_search_term(mut self, term: impl Into<String>) -> Self {
+        self.term = Some(term.into());
         self
     }
 
@@ -172,8 +182,11 @@ impl CollectionAssetsRequest {
     }
 
     /// Convenience method to add a single trait filter
-    pub fn with_trait(mut self, key: String, value: String) -> Self {
-        let filter = PropertyFilter { key, value };
+    pub fn with_trait(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        let filter = PropertyFilter { 
+            key: key.into(), 
+            value: value.into() 
+        };
         match self.properties {
             Some(mut props) => {
                 props.push(filter);

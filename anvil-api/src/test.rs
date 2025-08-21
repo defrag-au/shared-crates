@@ -44,7 +44,7 @@ mod tests {
             "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6".to_string()
         });
 
-        let request = CollectionAssetsRequest::new(policy_id)
+        let request = CollectionAssetsRequest::new(&policy_id)
             .with_limit(5)
             .with_sale_type(SaleType::All);
 
@@ -84,12 +84,9 @@ mod tests {
         });
 
         // Example: Filter for assets with Rank = Swab
-        let rank_filter = PropertyFilter {
-            key: "Rank".to_string(),
-            value: "Swab".to_string(),
-        };
+        let rank_filter = PropertyFilter::new("Rank", "Swab");
 
-        let request = CollectionAssetsRequest::for_listed_assets(policy_id, Some(10))
+        let request = CollectionAssetsRequest::for_listed_assets(&policy_id, Some(10))
             .with_properties(vec![rank_filter])
             .with_order_by(OrderBy::PriceAsc);
 
@@ -149,8 +146,8 @@ mod tests {
         });
 
         // Simpler way to filter by traits using convenience method
-        let request = CollectionAssetsRequest::for_listed_assets(policy_id, Some(5))
-            .with_trait("Rank".to_string(), "Swab".to_string())
+        let request = CollectionAssetsRequest::for_listed_assets(&policy_id, Some(5))
+            .with_trait("Rank", "Swab")
             .with_order_by(OrderBy::PriceAsc);
 
         match client.get_collection_assets(&request).await {
@@ -190,7 +187,7 @@ mod tests {
             ("Background", "Lost Reef"),
         ];
 
-        let request = CollectionAssetsRequest::for_listed_assets(policy_id, Some(5))
+        let request = CollectionAssetsRequest::for_listed_assets(&policy_id, Some(5))
             .with_traits(traits)
             .with_order_by(OrderBy::PriceAsc);
 

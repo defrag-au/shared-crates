@@ -39,7 +39,7 @@ impl MarketplaceClient {
         debug!("Fetching collection details for policy_id: {}", policy_id);
 
         // Get a small sample of assets to extract collection metadata
-        let request = CollectionAssetsRequest::for_listed_assets(policy_id.to_string(), Some(1));
+        let request = CollectionAssetsRequest::for_listed_assets(policy_id, Some(1));
 
         let response = self
             .anvil_client
@@ -66,7 +66,7 @@ impl MarketplaceClient {
     pub async fn get_floor_price(&self, policy_id: &str) -> Result<FloorPrice> {
         debug!("Fetching floor price for policy_id: {}", policy_id);
 
-        let request = CollectionAssetsRequest::for_listed_assets(policy_id.to_string(), Some(50));
+        let request = CollectionAssetsRequest::for_listed_assets(policy_id, Some(50));
 
         let response = self
             .anvil_client
@@ -128,7 +128,7 @@ impl MarketplaceClient {
         );
 
         // Start with basic request
-        let request = CollectionAssetsRequest::for_listed_assets(policy_id.to_string(), Some(100));
+        let request = CollectionAssetsRequest::for_listed_assets(policy_id, Some(100));
 
         // TODO: Implement trait filtering in anvil-api when supported
         // For now, we'll fetch assets and filter client-side
