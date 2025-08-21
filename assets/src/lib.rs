@@ -5,11 +5,11 @@ use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
+pub mod asset_id;
 pub mod traits;
 
+pub use asset_id::*;
 pub use traits::*;
-
-pub type AssetId = String;
 pub type AssetTraits = HashMap<String, String>;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

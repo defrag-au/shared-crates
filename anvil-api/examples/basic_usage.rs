@@ -39,10 +39,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("   💰 Price: {} ADA", listing.price as f64 / 1_000_000.0);
                     println!("   🏪 Marketplace: {}", listing.marketplace);
                 }
-                if let Some(rarity) = &asset.rarity {
-                    if let Some(rank) = rarity.rank {
-                        println!("   🏆 Rarity Rank: {}", rank);
-                    }
+                if let Some(rarity_rank) = asset.rarity {
+                    println!("   🏆 Rarity Rank: {}", rarity_rank);
                 }
                 println!();
             }
