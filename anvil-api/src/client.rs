@@ -184,7 +184,7 @@ impl AnvilClient {
             .properties
             .as_ref()
             .filter(|p| !p.is_empty())
-            .map(|p| serde_json::to_string(p))
+            .map(serde_json::to_string)
             .transpose()
             .map_err(|e| {
                 AnvilError::InvalidInput(format!("Failed to serialize properties: {}", e))

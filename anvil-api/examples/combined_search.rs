@@ -1,4 +1,4 @@
-use anvil_api::{AnvilClient, CollectionAssetsRequest, OrderBy, SaleType};
+use anvil_api::{AnvilClient, CollectionAssetsRequest, OrderBy};
 use dotenv::dotenv;
 use std::env;
 
