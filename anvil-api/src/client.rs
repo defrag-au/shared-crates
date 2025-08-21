@@ -88,16 +88,18 @@ impl AnvilClient {
             query_params.push(("maxRarity", max_rarity_str.as_str()));
         }
 
-        let order_by_str = match request.order_by {
-            OrderBy::PriceAsc => "priceAsc",
-            OrderBy::PriceDesc => "priceDesc",
-            OrderBy::NameAsc => "nameAsc",
-            OrderBy::IdxAsc => "idxAsc",
-            OrderBy::RecentlyListed => "recentlyListed",
-            OrderBy::RarityAsc => "rarityAsc",
-            OrderBy::RecentlyMinted => "recentlyMinted",
-        };
-        query_params.push(("orderBy", order_by_str));
+        if let Some(order_by) = &request.order_by {
+            let order_by_str = match order_by {
+                OrderBy::PriceAsc => "priceAsc",
+                OrderBy::PriceDesc => "priceDesc",
+                OrderBy::NameAsc => "nameAsc",
+                OrderBy::IdxAsc => "idxAsc",
+                OrderBy::RecentlyListed => "recentlyListed",
+                OrderBy::RarityAsc => "rarityAsc",
+                OrderBy::RecentlyMinted => "recentlyMinted",
+            };
+            query_params.push(("orderBy", order_by_str));
+        }
 
         if let Some(term) = &request.term {
             query_params.push(("term", term.as_str()));

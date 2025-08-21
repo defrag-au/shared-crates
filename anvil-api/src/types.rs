@@ -19,8 +19,8 @@ pub struct CollectionAssetsRequest {
     pub min_rarity: Option<u32>,
     #[serde(rename = "maxRarity", skip_serializing_if = "Option::is_none")]
     pub max_rarity: Option<u32>,
-    #[serde(rename = "orderBy", default)]
-    pub order_by: OrderBy,
+    #[serde(rename = "orderBy", skip_serializing_if = "Option::is_none")]
+    pub order_by: Option<OrderBy>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub term: Option<String>,
     #[serde(rename = "listingType", skip_serializing_if = "Option::is_none")]
@@ -102,7 +102,7 @@ impl CollectionAssetsRequest {
             max_price: None,
             min_rarity: None,
             max_rarity: None,
-            order_by: OrderBy::default(),
+            order_by: None,
             term: None,
             listing_type: None,
             sale_type: None,
@@ -120,7 +120,7 @@ impl CollectionAssetsRequest {
             max_price: None,
             min_rarity: None,
             max_rarity: None,
-            order_by: OrderBy::default(),
+            order_by: None,
             term: None,
             listing_type: None,
             sale_type: Some(SaleType::ListedOnly),
@@ -152,7 +152,7 @@ impl CollectionAssetsRequest {
     }
 
     pub fn with_order_by(mut self, order_by: OrderBy) -> Self {
-        self.order_by = order_by;
+        self.order_by = Some(order_by);
         self
     }
 

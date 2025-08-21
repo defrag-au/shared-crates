@@ -204,4 +204,28 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_collection_assets_request_serialization() {
+        // Test that search term is properly serialized
+        let request = CollectionAssetsRequest::for_listed_assets("test_policy", Some(5))
+            .with_search_term("Luffy");
+        
+        let serialized = serde_json::to_string(&request).expect("Should serialize");
+        assert!(serialized.contains("\"term\":\"Luffy\""), "Should contain search term");
+        
+        // Test without search term
+        let request_no_term = CollectionAssetsRequest::for_listed_assets("test_policy", Some(5));
+        let serialized_no_term = serde_json::to_string(&request_no_term).expect("Should serialize");
+        assert!(!serialized_no_term.contains("term"), "Should not contain term field when None");
+        
+        // Test without order_by (should not include orderBy in JSON)
+        assert!(!serialized_no_term.contains("orderBy"), "Should not contain orderBy when None");
+        
+        // Test with order_by
+        let request_with_order = CollectionAssetsRequest::for_listed_assets("test_policy", Some(5))
+            .with_order_by(OrderBy::PriceAsc);
+        let serialized_with_order = serde_json::to_string(&request_with_order).expect("Should serialize");
+        assert!(serialized_with_order.contains("\"orderBy\":\"priceAsc\""), "Should contain orderBy when set");
+    }
 }
