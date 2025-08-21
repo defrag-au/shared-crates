@@ -1,5 +1,5 @@
 use crate::types::*;
-use anvil_api::{AnvilClient, CollectionAssetsRequest, OrderBy, SaleType};
+use anvil_api::{AnvilClient, CollectionAssetsRequest};
 use cardano_assets::{AssetV2, CollectionDetails};
 use std::collections::HashMap;
 use tracing::debug;
@@ -39,13 +39,7 @@ impl MarketplaceClient {
         debug!("Fetching collection details for policy_id: {}", policy_id);
 
         // Get a small sample of assets to extract collection metadata
-        let request = CollectionAssetsRequest {
-            policy_id: policy_id.to_string(),
-            limit: Some(1), // We only need one asset to get collection details
-            cursor: None,
-            sale_type: Some(SaleType::ListedOnly),
-            order_by: Some(OrderBy::PriceAsc),
-        };
+        let request = CollectionAssetsRequest::for_listed_assets(policy_id.to_string(), Some(1));
 
         let response = self
             .anvil_client
@@ -72,13 +66,7 @@ impl MarketplaceClient {
     pub async fn get_floor_price(&self, policy_id: &str) -> Result<FloorPrice> {
         debug!("Fetching floor price for policy_id: {}", policy_id);
 
-        let request = CollectionAssetsRequest {
-            policy_id: policy_id.to_string(),
-            limit: Some(50), // Get enough to find floor and samples
-            cursor: None,
-            sale_type: Some(SaleType::ListedOnly),
-            order_by: Some(OrderBy::PriceAsc),
-        };
+        let request = CollectionAssetsRequest::for_listed_assets(policy_id.to_string(), Some(50));
 
         let response = self
             .anvil_client
@@ -140,13 +128,7 @@ impl MarketplaceClient {
         );
 
         // Start with basic request
-        let request = CollectionAssetsRequest {
-            policy_id: policy_id.to_string(),
-            limit: Some(100), // Get more assets to filter through
-            cursor: None,
-            sale_type: Some(SaleType::ListedOnly),
-            order_by: Some(OrderBy::PriceAsc),
-        };
+        let request = CollectionAssetsRequest::for_listed_assets(policy_id.to_string(), Some(100));
 
         // TODO: Implement trait filtering in anvil-api when supported
         // For now, we'll fetch assets and filter client-side

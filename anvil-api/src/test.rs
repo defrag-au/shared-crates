@@ -40,15 +40,13 @@ mod tests {
         test_utils::init_test_tracing();
 
         let client = AnvilClient::from_env();
-        let request = CollectionAssetsRequest {
-            policy_id: env::var("TEST_POLICY_ID").unwrap_or_else(|_| {
-                "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6".to_string()
-            }),
-            limit: Some(5),
-            cursor: None,
-            sale_type: Some(SaleType::All),
-            order_by: Some(OrderBy::PriceAsc),
-        };
+        let policy_id = env::var("TEST_POLICY_ID").unwrap_or_else(|_| {
+            "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6".to_string()
+        });
+
+        let request = CollectionAssetsRequest::new(policy_id)
+            .with_limit(5)
+            .with_sale_type(SaleType::All);
 
         match client.get_collection_assets(&request).await {
             Ok(response) => {

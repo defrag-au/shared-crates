@@ -45,16 +45,71 @@ impl AnvilClient {
             ));
         }
 
+        // Collect all string values first to avoid borrow checker issues
+        let limit_str = request.limit.as_ref().map(|l| l.to_string());
+        let min_price_str = request.min_price.as_ref().map(|p| p.to_string());
+        let max_price_str = request.max_price.as_ref().map(|p| p.to_string());
+        let min_rarity_str = request.min_rarity.as_ref().map(|r| r.to_string());
+        let max_rarity_str = request.max_rarity.as_ref().map(|r| r.to_string());
+        let properties_json = request
+            .properties
+            .as_ref()
+            .filter(|p| !p.is_empty())
+            .map(|p| serde_json::to_string(p))
+            .transpose()
+            .map_err(|e| {
+                AnvilError::InvalidInput(format!("Failed to serialize properties: {}", e))
+            })?;
+
+        // Build query parameters
         let mut query_params = vec![("policyId", request.policy_id.as_str())];
 
-        let limit_str;
-        if let Some(limit) = &request.limit {
-            limit_str = limit.to_string();
-            query_params.push(("limit", &limit_str));
+        if let Some(ref limit_str) = limit_str {
+            query_params.push(("limit", limit_str.as_str()));
         }
 
         if let Some(cursor) = &request.cursor {
             query_params.push(("cursor", cursor.as_str()));
+        }
+
+        if let Some(ref min_price_str) = min_price_str {
+            query_params.push(("minPrice", min_price_str.as_str()));
+        }
+
+        if let Some(ref max_price_str) = max_price_str {
+            query_params.push(("maxPrice", max_price_str.as_str()));
+        }
+
+        if let Some(ref min_rarity_str) = min_rarity_str {
+            query_params.push(("minRarity", min_rarity_str.as_str()));
+        }
+
+        if let Some(ref max_rarity_str) = max_rarity_str {
+            query_params.push(("maxRarity", max_rarity_str.as_str()));
+        }
+
+        let order_by_str = match request.order_by {
+            OrderBy::PriceAsc => "priceAsc",
+            OrderBy::PriceDesc => "priceDesc",
+            OrderBy::NameAsc => "nameAsc",
+            OrderBy::IdxAsc => "idxAsc",
+            OrderBy::RecentlyListed => "recentlyListed",
+            OrderBy::RarityAsc => "rarityAsc",
+            OrderBy::RecentlyMinted => "recentlyMinted",
+        };
+        query_params.push(("orderBy", order_by_str));
+
+        if let Some(term) = &request.term {
+            query_params.push(("term", term.as_str()));
+        }
+
+        if let Some(listing_type) = &request.listing_type {
+            let listing_type_str = match listing_type {
+                ListingType::JpgStore => "jpgstore",
+                ListingType::Wayup => "wayup",
+                ListingType::SpaceBudz => "spacebudz",
+            };
+            query_params.push(("listingType", listing_type_str));
         }
 
         if let Some(sale_type) = &request.sale_type {
@@ -66,12 +121,8 @@ impl AnvilClient {
             query_params.push(("saleType", sale_type_str));
         }
 
-        if let Some(order_by) = &request.order_by {
-            let order_by_str = match order_by {
-                OrderBy::PriceAsc => "priceAsc",
-                OrderBy::PriceDesc => "priceDesc",
-            };
-            query_params.push(("orderBy", order_by_str));
+        if let Some(ref properties_json) = properties_json {
+            query_params.push(("properties", properties_json.as_str()));
         }
 
         let query_string = query_params
