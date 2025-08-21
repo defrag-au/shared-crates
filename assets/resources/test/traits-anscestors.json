@@ -1,0 +1,25 @@
+{
+  "Body": "Chief Miner Vest",
+  "Face": "Sleepy Blonde",
+  "Head": "Cave Hat",
+  "Type": "Dwarf",
+  "name": "The Ancestor #1009",
+  "Beard": "Miner Blonde Beard",
+  "files": [
+    {
+      "src": [
+        "ipfs://bafybeiae5mcdxgsy5pjczl6y5iiv7zpmzwn7hbpzwgllyyo65gfpmd2a",
+        "oa"
+      ],
+      "name": "The Ancestor #1009",
+      "mediaType": "image/png"
+    }
+  ],
+  "image": "ipfs://bafybeiae5mcdxgsy5pjczl6y5iiv7zpmzwn7hbpzwgllyyo65gfpmd2aoa",
+  "Discord": "https://discord.gg/2YEeBqZf",
+  "Twitter": "https://x.com/TheAncestorsADA",
+  "project": "The Ancestors",
+  "mediaType": "image/png",
+  "Background": "Wenge",
+  "Additional Weapon": "Raw Gold Miner Cart"
+}
