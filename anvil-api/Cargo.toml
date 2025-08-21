@@ -6,6 +6,7 @@ edition = "2021"
 description = "Client library for Anvil API"
 
 [dependencies]
+cardano-assets = { path = "../cardano-assets" }
 http-client = { path = "../http-client" }
 wasm_safe_serde = { path = "../wasm-safe-serde" }
 serde = { workspace = true, features = ["derive"] }

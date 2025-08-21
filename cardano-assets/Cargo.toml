@@ -1,9 +1,9 @@
 [package]
-name = "assets"
+name = "cardano-assets"
 version.workspace = true
 authors.workspace = true
 edition = "2021"
-description = "Asset metadata handling and trait processing"
+description = "Cardano asset metadata handling and trait processing"
 
 [dependencies]
 cnft_tools = { path = "../cnft-tools" }

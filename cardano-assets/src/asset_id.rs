@@ -16,7 +16,7 @@ const POLICY_ID_LENGTH: usize = 56;
 /// # Examples
 /// 
 /// ```
-/// use assets::AssetId;
+/// use cardano_assets::AssetId;
 /// 
 /// // Create from components
 /// let asset_id = AssetId::new(

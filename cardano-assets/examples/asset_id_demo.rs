@@ -1,4 +1,4 @@
-use assets::AssetId;
+use cardano_assets::AssetId;
 use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
