@@ -239,6 +239,49 @@ mod tests {
         }
     }
 
+    #[ignore]
+    #[tokio::test]
+    async fn test_get_floor() {
+        test_utils::init_test_tracing();
+
+        let client = AnvilClient::from_env();
+        let policy_id = env::var("TEST_POLICY_ID").unwrap_or_else(|_| {
+            "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6".to_string()
+        });
+
+        match client.get_floor(&policy_id, 5).await {
+            Ok(floor_assets) => {
+                info!("Floor assets retrieved successfully");
+                info!("  Count: {}", floor_assets.len());
+                
+                // Basic validation
+                assert!(floor_assets.len() <= 5, "Should not return more than requested");
+                
+                // Verify all assets are listed and have prices
+                for (i, asset) in floor_assets.iter().enumerate() {
+                    info!("  {}. {} - {:?}", i + 1, asset.name, 
+                        asset.listing.as_ref().map(|l| format!("{} ADA", l.price as f64 / 1_000_000.0))
+                    );
+                    
+                    assert!(asset.listing.is_some(), "All floor assets should have listings");
+                }
+                
+                // Verify price ordering (ascending)
+                if floor_assets.len() > 1 {
+                    for i in 1..floor_assets.len() {
+                        let prev_price = floor_assets[i-1].listing.as_ref().unwrap().price;
+                        let curr_price = floor_assets[i].listing.as_ref().unwrap().price;
+                        assert!(curr_price >= prev_price, "Assets should be sorted by price ascending");
+                    }
+                    info!("✅ Price ordering verified");
+                }
+            }
+            Err(err) => {
+                info!("API call failed (expected if no auth): {:?}", err);
+            }
+        }
+    }
+
     #[test]
     fn test_collection_assets_request_serialization() {
         // Test that search term is properly serialized

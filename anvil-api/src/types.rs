@@ -275,8 +275,8 @@ pub enum AssetVersion {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssetMedia {
-    src: String,
-    blur: String,
+    pub src: String,
+    pub blur: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

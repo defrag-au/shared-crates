@@ -1,6 +1,8 @@
 use crate::{error::AnvilError, types::*};
 use http_client::HttpClient;
 use tracing::debug;
+use futures::Stream;
+use async_stream::stream;
 
 const BASE_URL: &str = "https://prod.api.ada-anvil.app";
 
@@ -86,6 +88,73 @@ impl AnvilClient {
         Ok(response.results)
     }
 
+    /// Stream all assets matching the request with automatic pagination
+    /// Returns a stream that yields individual assets and handles pagination internally
+    /// The stream ends when all assets have been fetched or an error occurs
+    pub fn stream_assets(
+        &self,
+        mut request: CollectionAssetsRequest,
+    ) -> impl Stream<Item = Result<Asset, AnvilError>> + '_ {
+        stream! {
+            debug!("Starting asset stream for policy_id: {}", request.policy_id);
+            
+            let mut cursor: Option<String> = None;
+            let mut total_yielded = 0u32;
+            let page_size = request.limit.unwrap_or(50); // Default to 50 per page
+            
+            // Override limit to page size for consistent pagination
+            request.limit = Some(page_size);
+            
+            loop {
+                // Update cursor for pagination
+                request.cursor = cursor.clone();
+                
+                debug!("Fetching page with cursor: {:?}, total_yielded: {}", cursor, total_yielded);
+                
+                match self.get_collection_assets(&request).await {
+                    Ok(response) => {
+                        let assets_in_page = response.results.len();
+                        debug!("Received {} assets in page", assets_in_page);
+                        
+                        if assets_in_page == 0 {
+                            debug!("No more assets available, ending stream");
+                            break;
+                        }
+                        
+                        // Yield each asset individually
+                        for asset in response.results {
+                            total_yielded += 1;
+                            yield Ok(asset);
+                        }
+                        
+                        // Check if we have a cursor for the next page
+                        if let Some(page_state) = response.page_state {
+                            cursor = Some(page_state.page_state);
+                            debug!("Next page cursor: {}", cursor.as_ref().unwrap());
+                        } else {
+                            debug!("No more pages available, ending stream");
+                            break;
+                        }
+                        
+                        // If we got fewer results than the page size, we're likely at the end
+                        if assets_in_page < page_size as usize {
+                            debug!("Received fewer assets than page size, likely at end");
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        debug!("Error in stream: {:?}", e);
+                        yield Err(e);
+                        break;
+                    }
+                }
+            }
+            
+            debug!("Asset stream completed, total assets yielded: {}", total_yielded);
+        }
+    }
+
+
     pub async fn get_collection_assets(
         &self,
         request: &CollectionAssetsRequest,
@@ -102,6 +171,7 @@ impl AnvilClient {
         let max_price_str = request.max_price.as_ref().map(|p| p.to_string());
         let min_rarity_str = request.min_rarity.as_ref().map(|r| r.to_string());
         let max_rarity_str = request.max_rarity.as_ref().map(|r| r.to_string());
+        let cursor_json = request.cursor.as_ref().map(|c| format!("{{\"pageState\":\"{}\"}}", c));
         let properties_json = request
             .properties
             .as_ref()
@@ -119,8 +189,8 @@ impl AnvilClient {
             query_params.push(("limit", limit_str.as_str()));
         }
 
-        if let Some(cursor) = &request.cursor {
-            query_params.push(("cursor", cursor.as_str()));
+        if let Some(ref cursor_json) = cursor_json {
+            query_params.push(("cursor", cursor_json.as_str()));
         }
 
         if let Some(ref min_price_str) = min_price_str {
@@ -180,7 +250,7 @@ impl AnvilClient {
 
         let query_string = query_params
             .iter()
-            .map(|(key, value)| format!("{}={}", key, urlencoding::encode(value)))
+            .map(|(key, value)| format!("{}={}", urlencoding::encode(key), urlencoding::encode(value)))
             .collect::<Vec<_>>()
             .join("&");
 
