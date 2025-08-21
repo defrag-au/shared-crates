@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum Marketplace {
     JpgStore,
     Wayup,
+    SpaceBudz,
     Unknown(String),
 }
 
@@ -14,9 +15,10 @@ impl Serialize for Marketplace {
         S: serde::Serializer,
     {
         let s = match self {
-            Marketplace::JpgStore => "jpg.store",
-            Marketplace::Wayup => "wayup",
-            Marketplace::Unknown(name) => name,
+            Self::JpgStore => "jpg.store",
+            Self::Wayup => "wayup",
+            Self::SpaceBudz => "spacebudz",
+            Self::Unknown(name) => name,
         };
         serializer.serialize_str(s)
     }
@@ -39,9 +41,10 @@ impl<'de> serde::Deserialize<'de> for Marketplace {
 impl std::fmt::Display for Marketplace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Marketplace::JpgStore => write!(f, "jpg.store"),
-            Marketplace::Wayup => write!(f, "wayup"),
-            Marketplace::Unknown(name) => write!(f, "{}", name),
+            Self::JpgStore => write!(f, "jpg.store"),
+            Self::Wayup => write!(f, "wayup"),
+            Self::SpaceBudz => write!(f, "spacebudz"),
+            Self::Unknown(name) => write!(f, "{}", name),
         }
     }
 }

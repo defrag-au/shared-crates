@@ -1,6 +1,6 @@
 use crate::types::*;
 use anvil_api::{AnvilClient, CollectionAssetsRequest, OrderBy, SaleType};
-use cardano_assets::CollectionDetails;
+use cardano_assets::{AssetV2, CollectionDetails};
 use std::collections::HashMap;
 use tracing::debug;
 
@@ -206,19 +206,26 @@ impl MarketplaceClient {
     }
 
     /// Convert anvil asset to normalized asset format
-    fn convert_to_normalized_asset(&self, anvil_asset: &anvil_api::Asset) -> Result<Asset> {
-        let asset_id = anvil_asset.unit.clone();
+    fn convert_to_normalized_asset(&self, anvil_asset: &anvil_api::Asset) -> Result<AssetV2> {
+        use cardano_assets::Traits;
+        
+        // Convert HashMap<String, String> to Traits format
+        let mut traits = Traits::new();
+        for (key, value) in &anvil_asset.attributes {
+            traits.insert_single(key.clone(), value.clone());
+        }
 
-        // Use attributes directly as they're already HashMap<String, String>
-        let traits = anvil_asset.attributes.clone();
+        // Ensure image is never None - use empty string as fallback
+        let image = anvil_asset.image.clone().unwrap_or_default();
 
-        Ok(Asset {
-            id: asset_id,
-            name: anvil_asset.name.clone(),
-            image: anvil_asset.image.clone(),
+        Ok(AssetV2::new(
+            anvil_asset.unit.clone(),
+            anvil_asset.name.clone(),
+            image,
             traits,
-            rarity_rank: anvil_asset.rarity,
-        })
+            anvil_asset.rarity,
+            vec![], // No tags from anvil API currently
+        ))
     }
 
     /// Check if an asset matches the given trait filter

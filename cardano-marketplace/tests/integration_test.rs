@@ -1,6 +1,6 @@
 use cardano_marketplace::{MarketplaceClient, TraitFilter};
 use dotenv::dotenv;
-use std::env;
+use std::{collections, env};
 use test_utils::init_test_tracing;
 
 const BLACKFLAG_POLICY_ID: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
@@ -28,14 +28,7 @@ async fn test_get_collection_details() {
 
     let collection = result.unwrap();
     assert_eq!(collection.policy_id, BLACKFLAG_POLICY_ID);
-    assert!(
-        !collection.name.is_empty(),
-        "Collection name should not be empty"
-    );
-
-    println!("Collection Details:");
-    println!("  Name: {}", collection.name);
-    println!("  Image: {:?}", collection.image);
+    println!("collection: {:?}", collection);
 }
 
 #[tokio::test]

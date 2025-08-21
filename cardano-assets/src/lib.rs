@@ -480,6 +480,70 @@ pub struct Asset {
     pub tags: Vec<AssetTag>,
 }
 
+/// Asset with explicit ID - enhanced version for marketplace and API operations
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct AssetV2 {
+    /// Unique asset identifier (policy_id + asset_name_hex)
+    pub id: AssetId,
+    /// Asset name (human readable)
+    pub name: String,
+    /// Asset image URL
+    pub image: String,
+    /// Asset traits/attributes
+    pub traits: Traits,
+    /// Rarity rank if available
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rarity_rank: Option<u32>,
+    /// Asset tags (rarity, on_sale, etc.)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<AssetTag>,
+}
+
+impl From<AssetV2> for Asset {
+    fn from(asset_v2: AssetV2) -> Self {
+        Self {
+            name: asset_v2.name,
+            image: asset_v2.image,
+            traits: asset_v2.traits,
+            rarity_rank: asset_v2.rarity_rank,
+            tags: asset_v2.tags,
+        }
+    }
+}
+
+impl AssetV2 {
+    /// Create a new AssetV2 with the given ID and asset data
+    pub fn with_id(asset: Asset, id: AssetId) -> Self {
+        Self {
+            id,
+            name: asset.name,
+            image: asset.image,
+            traits: asset.traits,
+            rarity_rank: asset.rarity_rank,
+            tags: asset.tags,
+        }
+    }
+
+    /// Create a new AssetV2 with all fields
+    pub fn new(
+        id: AssetId,
+        name: String,
+        image: String,
+        traits: crate::Traits,
+        rarity_rank: Option<u32>,
+        tags: Vec<crate::AssetTag>,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            image,
+            traits,
+            rarity_rank,
+            tags,
+        }
+    }
+}
+
 impl From<AssetMetadata> for Asset {
     fn from(value: AssetMetadata) -> Self {
         match value {

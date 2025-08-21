@@ -1,27 +1,13 @@
-use cardano_assets::AssetId;
+use cardano_assets::AssetV2;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Normalized asset representation (no redundant collection data)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Asset {
-    /// Unique asset identifier
-    pub id: AssetId,
-    /// Asset name (human readable)
-    pub name: String,
-    /// Asset image URL
-    pub image: Option<String>,
-    /// Asset traits/attributes
-    pub traits: HashMap<String, String>,
-    /// Rarity rank if available
-    pub rarity_rank: Option<u32>,
-}
 
 /// Listing information for an asset
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Listing {
     /// Asset being listed
-    pub asset: Asset,
+    pub asset: AssetV2,
     /// Price in lovelace
     pub price: u64,
     /// Marketplace where it's listed
@@ -38,7 +24,7 @@ pub struct FloorPrice {
     /// Number of assets at floor price
     pub count: u32,
     /// Sample assets at floor price (up to 5)
-    pub sample_assets: Vec<Asset>,
+    pub sample_assets: Vec<AssetV2>,
     /// Marketplace distribution at floor price
     pub marketplace_distribution: HashMap<String, u32>,
 }
@@ -81,7 +67,7 @@ impl Default for TraitFilter {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssetPage {
     /// Assets in this page
-    pub assets: Vec<Asset>,
+    pub assets: Vec<AssetV2>,
     /// Listings for assets (if requested)
     pub listings: Vec<Listing>,
     /// Pagination cursor for next page
