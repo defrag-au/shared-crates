@@ -205,6 +205,40 @@ mod tests {
         }
     }
 
+    #[ignore]
+    #[tokio::test]
+    async fn test_get_collection_details() {
+        test_utils::init_test_tracing();
+
+        let client = AnvilClient::from_env();
+        let policy_id = env::var("TEST_POLICY_ID").unwrap_or_else(|_| {
+            "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6".to_string()
+        });
+
+        match client.get_collection_details(&policy_id).await {
+            Ok(collection) => {
+                info!("Collection details retrieved successfully");
+                info!("  Name: {}", collection.name);
+                info!("  Handle: {}", collection.handle);
+                info!("  Policy ID: {}", collection.policy_id);
+                
+                // Basic validation
+                assert!(!collection.name.is_empty(), "Collection name should not be empty");
+                assert!(!collection.handle.is_empty(), "Collection handle should not be empty");
+                assert_eq!(collection.policy_id, policy_id, "Policy ID should match request");
+                
+                if let Some(socials) = &collection.socials {
+                    info!("  Website: {}", socials.website);
+                    info!("  Twitter: {}", socials.twitter);
+                    info!("  Discord: {}", socials.discord);
+                }
+            }
+            Err(err) => {
+                info!("API call failed (expected if no auth): {:?}", err);
+            }
+        }
+    }
+
     #[test]
     fn test_collection_assets_request_serialization() {
         // Test that search term is properly serialized

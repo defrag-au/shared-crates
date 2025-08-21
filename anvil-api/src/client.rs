@@ -35,6 +35,57 @@ impl AnvilClient {
         }
     }
 
+    /// Get collection details by extracting metadata from a sample asset
+    /// This is a convenience method that fetches a single asset to get collection metadata
+    pub async fn get_collection_details(
+        &self,
+        policy_id: &str,
+    ) -> Result<cardano_assets::CollectionDetails, AnvilError> {
+        debug!("Fetching collection details for policy_id: {}", policy_id);
+
+        // Get a single asset to extract collection metadata
+        let request = CollectionAssetsRequest::new(policy_id).with_limit(1);
+
+        let response = self.get_collection_assets(&request).await?;
+
+        if response.results.is_empty() {
+            return Err(AnvilError::InvalidInput(format!(
+                "No assets found for policy ID: {}",
+                policy_id
+            )));
+        }
+
+        // Extract collection details from the first asset
+        let first_asset = &response.results[0];
+
+        first_asset
+            .collection
+            .clone()
+            .ok_or_else(|| {
+                AnvilError::InvalidInput(format!(
+                    "No collection details found for policy ID: {}",
+                    policy_id
+                ))
+            })
+    }
+
+    /// Get floor assets - returns the cheapest listed assets in price ascending order
+    /// This is a convenience method for getting floor price listings
+    pub async fn get_floor(
+        &self,
+        policy_id: &str,
+        count: u32,
+    ) -> Result<Vec<Asset>, AnvilError> {
+        debug!("Fetching {} floor assets for policy_id: {}", count, policy_id);
+
+        let request = CollectionAssetsRequest::for_listed_assets(policy_id, Some(count))
+            .with_order_by(OrderBy::PriceAsc);
+
+        let response = self.get_collection_assets(&request).await?;
+        
+        Ok(response.results)
+    }
+
     pub async fn get_collection_assets(
         &self,
         request: &CollectionAssetsRequest,
