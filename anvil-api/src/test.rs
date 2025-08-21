@@ -72,4 +72,139 @@ mod tests {
             }
         }
     }
+
+    #[ignore]
+    #[tokio::test]
+    async fn test_trait_filtering_example() {
+        test_utils::init_test_tracing();
+
+        let client = AnvilClient::from_env();
+        let policy_id = env::var("TEST_POLICY_ID").unwrap_or_else(|_| {
+            "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6".to_string()
+        });
+
+        // Example: Filter for assets with Rank = Swab
+        let rank_filter = PropertyFilter {
+            key: "Rank".to_string(),
+            value: "Swab".to_string(),
+        };
+
+        let request = CollectionAssetsRequest::for_listed_assets(policy_id, Some(10))
+            .with_properties(vec![rank_filter])
+            .with_order_by(OrderBy::PriceAsc);
+
+        match client.get_collection_assets(&request).await {
+            Ok(response) => {
+                info!("Trait-filtered assets response: count={}", response.count);
+                info!("Results length: {}", response.results.len());
+
+                for (i, asset) in response.results.iter().enumerate() {
+                    info!(
+                        "Asset {}: name={}, unit={}",
+                        i + 1,
+                        asset.name,
+                        asset.unit
+                    );
+
+                    // Show the attributes to verify filtering worked
+                    if !asset.attributes.is_empty() {
+                        info!("  Attributes: {:?}", asset.attributes);
+                    }
+
+                    if let Some(listing) = &asset.listing {
+                        info!(
+                            "  Listed at: {} lovelace ({} ADA) on {}",
+                            listing.price,
+                            listing.price as f64 / 1_000_000.0,
+                            listing.marketplace
+                        );
+                    }
+                }
+
+                // Verify that all returned assets have the expected trait
+                for asset in &response.results {
+                    if let Some(rank) = asset.attributes.get("Rank") {
+                        assert_eq!(rank, "Swab", "Asset should have Rank = Swab");
+                    }
+                }
+
+                if response.results.is_empty() {
+                    info!("No assets found with Rank = Swab (this might be expected)");
+                }
+            }
+            Err(err) => {
+                info!("API call failed (expected if no auth): {:?}", err);
+            }
+        }
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn test_simple_trait_filtering() {
+        test_utils::init_test_tracing();
+
+        let client = AnvilClient::from_env();
+        let policy_id = env::var("TEST_POLICY_ID").unwrap_or_else(|_| {
+            "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6".to_string()
+        });
+
+        // Simpler way to filter by traits using convenience method
+        let request = CollectionAssetsRequest::for_listed_assets(policy_id, Some(5))
+            .with_trait("Rank".to_string(), "Swab".to_string())
+            .with_order_by(OrderBy::PriceAsc);
+
+        match client.get_collection_assets(&request).await {
+            Ok(response) => {
+                info!("Simple trait filtering: found {} assets with Rank=Swab", response.results.len());
+                
+                for asset in &response.results {
+                    if let Some(listing) = &asset.listing {
+                        info!(
+                            "{}: {} ADA on {}",
+                            asset.name,
+                            listing.price as f64 / 1_000_000.0,
+                            listing.marketplace
+                        );
+                    }
+                }
+            }
+            Err(err) => {
+                info!("API call failed (expected if no auth): {:?}", err);
+            }
+        }
+    }
+
+    #[ignore]
+    #[tokio::test]
+    async fn test_multiple_trait_filtering() {
+        test_utils::init_test_tracing();
+
+        let client = AnvilClient::from_env();
+        let policy_id = env::var("TEST_POLICY_ID").unwrap_or_else(|_| {
+            "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6".to_string()
+        });
+
+        // Example of filtering by multiple traits at once
+        let traits = vec![
+            ("Rank", "Swab"),
+            ("Background", "Lost Reef"),
+        ];
+
+        let request = CollectionAssetsRequest::for_listed_assets(policy_id, Some(5))
+            .with_traits(traits)
+            .with_order_by(OrderBy::PriceAsc);
+
+        match client.get_collection_assets(&request).await {
+            Ok(response) => {
+                info!("Multiple trait filtering: found {} assets", response.results.len());
+                
+                for asset in &response.results {
+                    info!("Asset: {} - Attributes: {:?}", asset.name, asset.attributes);
+                }
+            }
+            Err(err) => {
+                info!("API call failed (expected if no auth): {:?}", err);
+            }
+        }
+    }
 }

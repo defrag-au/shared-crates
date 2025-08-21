@@ -170,6 +170,48 @@ impl CollectionAssetsRequest {
         self.properties = Some(properties);
         self
     }
+
+    /// Convenience method to add a single trait filter
+    pub fn with_trait(mut self, key: String, value: String) -> Self {
+        let filter = PropertyFilter { key, value };
+        match self.properties {
+            Some(mut props) => {
+                props.push(filter);
+                self.properties = Some(props);
+            }
+            None => {
+                self.properties = Some(vec![filter]);
+            }
+        }
+        self
+    }
+
+    /// Convenience method to add multiple trait filters
+    pub fn with_traits<I, K, V>(mut self, traits: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        let new_filters: Vec<PropertyFilter> = traits
+            .into_iter()
+            .map(|(k, v)| PropertyFilter {
+                key: k.into(),
+                value: v.into(),
+            })
+            .collect();
+
+        match self.properties {
+            Some(mut props) => {
+                props.extend(new_filters);
+                self.properties = Some(props);
+            }
+            None => {
+                self.properties = Some(new_filters);
+            }
+        }
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
