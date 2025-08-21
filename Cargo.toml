@@ -1,5 +1,5 @@
 [workspace]
-members = ["anvil-api", "cardano-assets", "cnft-tools", "http-client", "pinata", "test-utils", "tx-insights", "wasm-safe-serde", "worker-utils"]
+members = ["anvil-api", "cardano-assets", "cardano-marketplace", "cnft-tools", "http-client", "pinata", "test-utils", "tx-insights", "wasm-safe-serde", "worker-utils"]
 resolver = "2"
 
 [workspace.package]

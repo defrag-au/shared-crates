@@ -1,0 +1,19 @@
+[package]
+name = "cardano-marketplace"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Normalized marketplace abstraction for Cardano NFT marketplaces"
+
+[dependencies]
+anvil-api = { path = "../anvil-api" }
+cardano-assets = { path = "../cardano-assets" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+test_utils = { path = "../test-utils" }
+dotenv = "0.15.0"
+tracing-subscriber = { workspace = true, features = ["fmt"] }

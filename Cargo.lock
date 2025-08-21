@@ -120,6 +120,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cardano-marketplace"
+version = "0.1.0"
+dependencies = [
+ "anvil-api",
+ "cardano-assets",
+ "dotenv",
+ "serde",
+ "serde_json",
+ "test_utils",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"

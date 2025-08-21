@@ -6,9 +6,11 @@ use std::fmt;
 use std::str::FromStr;
 
 pub mod asset_id;
+pub mod collection;
 pub mod traits;
 
 pub use asset_id::*;
+pub use collection::*;
 pub use traits::*;
 pub type AssetTraits = HashMap<String, String>;
 
