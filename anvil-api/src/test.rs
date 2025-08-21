@@ -219,18 +219,28 @@ mod tests {
             Ok(collection) => {
                 info!("Collection details retrieved successfully");
                 info!("  Name: {}", collection.name);
-                info!("  Handle: {}", collection.handle);
+                if let Some(handle) = &collection.handle {
+                    info!("  Handle: {}", handle);
+                }
                 info!("  Policy ID: {}", collection.policy_id);
                 
                 // Basic validation
                 assert!(!collection.name.is_empty(), "Collection name should not be empty");
-                assert!(!collection.handle.is_empty(), "Collection handle should not be empty");
+                if let Some(handle) = &collection.handle {
+                    assert!(!handle.is_empty(), "Collection handle should not be empty");
+                }
                 assert_eq!(collection.policy_id, policy_id, "Policy ID should match request");
                 
                 if let Some(socials) = &collection.socials {
-                    info!("  Website: {}", socials.website);
-                    info!("  Twitter: {}", socials.twitter);
-                    info!("  Discord: {}", socials.discord);
+                    if let Some(website) = &socials.website {
+                        info!("  Website: {}", website);
+                    }
+                    if let Some(twitter) = &socials.twitter {
+                        info!("  Twitter: {}", twitter);
+                    }
+                    if let Some(discord) = &socials.discord {
+                        info!("  Discord: {}", discord);
+                    }
                 }
             }
             Err(err) => {

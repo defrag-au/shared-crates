@@ -31,7 +31,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(collection) => {
             println!("✅ Collection Details Retrieved:");
             println!("   📛 Name: {}", collection.name);
-            println!("   🆔 Handle: {}", collection.handle);
+            if let Some(handle) = &collection.handle {
+                println!("   🆔 Handle: {}", handle);
+            }
             println!("   🗂️ Policy ID: {}", collection.policy_id);
 
             if let Some(description) = &collection.description {
@@ -57,9 +59,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Some(socials) = &collection.socials {
                 println!("   🌐 Social Links:");
-                println!("      🌐 Website: {}", socials.website);
-                println!("      🐦 Twitter: {}", socials.twitter);
-                println!("      💬 Discord: {}", socials.discord);
+                if let Some(website) = &socials.website {
+                    println!("      🌐 Website: {}", website);
+                }
+                if let Some(twitter) = &socials.twitter {
+                    println!("      🐦 Twitter: {}", twitter);
+                }
+                if let Some(discord) = &socials.discord {
+                    println!("      💬 Discord: {}", discord);
+                }
             }
 
             println!();
