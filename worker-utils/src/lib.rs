@@ -45,33 +45,33 @@ cfg_if! {
 
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
-        
+
         #[cfg(feature = "simple-logging")]
         pub fn init_tracing(target_level: Option<tracing::Level>) {
             use tracing::{Event, Metadata, Subscriber};
             use tracing::subscriber::set_global_default;
-            
+
             struct SimpleLogger {
                 max_level: tracing::Level,
             }
-            
+
             impl Subscriber for SimpleLogger {
                 fn enabled(&self, metadata: &Metadata<'_>) -> bool {
                     metadata.level() <= &self.max_level
                 }
-                
+
                 fn new_span(&self, _span: &tracing::span::Attributes<'_>) -> tracing::span::Id {
                     tracing::span::Id::from_u64(1)
                 }
-                
+
                 fn record(&self, _span: &tracing::span::Id, _values: &tracing::span::Record<'_>) {}
-                
+
                 fn record_follows_from(&self, _span: &tracing::span::Id, _follows: &tracing::span::Id) {}
-                
+
                 fn enter(&self, _span: &tracing::span::Id) {}
-                
+
                 fn exit(&self, _span: &tracing::span::Id) {}
-                
+
                 fn event(&self, event: &Event<'_>) {
                     if self.enabled(event.metadata()) {
                         let level = event.metadata().level();
@@ -82,13 +82,13 @@ cfg_if! {
                             tracing::Level::DEBUG => "DEBUG",
                             tracing::Level::TRACE => "TRACE",
                         };
-                        
+
                         // Format the message
                         let mut visitor = MessageVisitor::new();
                         event.record(&mut visitor);
-                        
+
                         let log_line = format!("{} {}", level_str, visitor.message);
-                        
+
                         // Use appropriate console method based on level
                         match *level {
                             tracing::Level::ERROR => web_sys::console::error_1(&log_line.into()),
@@ -98,17 +98,17 @@ cfg_if! {
                     }
                 }
             }
-            
+
             struct MessageVisitor {
                 message: String,
             }
-            
+
             impl MessageVisitor {
                 fn new() -> Self {
                     Self { message: String::new() }
                 }
             }
-            
+
             impl tracing::field::Visit for MessageVisitor {
                 fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
                     if field.name() == "message" {
@@ -121,10 +121,10 @@ cfg_if! {
                     }
                 }
             }
-            
+
             let level = target_level.unwrap_or(tracing::Level::INFO);
             let logger = SimpleLogger { max_level: level };
-            
+
             let _ = set_global_default(logger);
         }
 
@@ -136,7 +136,7 @@ cfg_if! {
             use tracing_web::{performance_layer, MakeConsoleWriter};
 
             let level = target_level.unwrap_or(tracing::Level::INFO);
-            
+
             // Use compact format instead of JSON for better readability
             let fmt_layer = tracing_subscriber::fmt::layer()
                     .compact()

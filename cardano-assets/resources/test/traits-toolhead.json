@@ -1,0 +1,21 @@
+{
+  "name": "Toolhead #0001",
+  "image": "ipfs://QmXAybY8AvnNfsEgiZFxoKre1ujff5PxzU21tUuSVBEwkD",
+  "mediaType": "image/png",
+  "attributes": {
+    "background": "SpectraCore Flare",
+    "body": "Chemical",
+    "accessory": "Contagion Canister",
+    "outfit": "Sensory Shirt",
+    "strap": "Bandolier",
+    "head": ["Stealth Stream", "Solo Sensor"],
+    "role": "Quantum Chemist"
+  },
+  "files": [
+    {
+      "mediaType": "image/png",
+      "src": "ipfs://QmXAybY8AvnNfsEgiZFxoKre1ujff5PxzU21tUuSVBEwkD"
+    }
+  ],
+  "minter": "CNFT.Tools"
+}

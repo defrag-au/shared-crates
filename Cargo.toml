@@ -1,5 +1,5 @@
 [workspace]
-members = ["cnft-tools", "http-client", "pinata", "test-utils", "tx-insights", "wasm-safe-serde", "worker-utils"]
+members = ["anvil-api", "cardano-assets", "cnft-tools", "http-client", "pinata", "test-utils", "tx-insights", "wasm-safe-serde", "worker-utils"]
 resolver = "2"
 
 [workspace.package]
@@ -8,6 +8,7 @@ authors = ["Damon Oehlman <damon@defrag.au>"]
 
 [workspace.dependencies]
 gloo-net = "0.6.0"
+indexmap = { version = "2.0", features = ["serde"] }
 js-sys = "*"
 phf = { version = "0.11", features = ["macros"] }
 reqwest = { version = "0.12.12", default-features = false }

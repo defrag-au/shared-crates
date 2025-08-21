@@ -1,12 +1,12 @@
 //! WASM-safe serialization helpers for serde
-//! 
+//!
 //! This crate provides serialization modules that handle JavaScript's
 //! Number.MAX_SAFE_INTEGER limit (2^53 - 1 = 9007199254740991) by
 //! automatically converting large u64 values to strings.
 
 /// Serializes u64 values as strings when they exceed JavaScript's safe integer limit
 /// (Number.MAX_SAFE_INTEGER = 2^53 - 1 = 9007199254740991)
-/// 
+///
 /// Use with `#[serde(with = "wasm_safe_serde::u64_option")]`
 pub mod u64_option {
     use serde::{Deserialize, Deserializer, Serializer};
@@ -50,7 +50,7 @@ pub mod u64_option {
 }
 
 /// WASM-safe serialization for non-optional large integers
-/// 
+///
 /// Use with `#[serde(with = "wasm_safe_serde::u64_required")]`
 pub mod u64_required {
     use serde::{Deserialize, Deserializer, Serializer};
@@ -92,7 +92,7 @@ pub mod u64_required {
 }
 
 /// WASM-safe serialization for i64 values (handles negative numbers)
-/// 
+///
 /// Use with `#[serde(with = "wasm_safe_serde::i64")]`
 pub mod i64 {
     use serde::{Deserialize, Deserializer, Serializer};
@@ -135,7 +135,7 @@ pub mod i64 {
 }
 
 /// WASM-safe serialization for HashMap<String, u64> containing asset quantities
-/// 
+///
 /// Use with `#[serde(with = "wasm_safe_serde::asset_map")]`
 pub mod asset_map {
     use serde::{Deserialize, Deserializer, Serializer};
@@ -256,7 +256,8 @@ mod tests {
 
         // Small numbers should remain as numbers, not strings
         assert!(
-            json.contains(&small_number.to_string()) && !json.contains(&format!("\"{}\"", small_number)),
+            json.contains(&small_number.to_string())
+                && !json.contains(&format!("\"{}\"", small_number)),
             "Small numbers should remain as numbers"
         );
     }

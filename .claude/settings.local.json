@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check:*)",
+      "WebFetch(domain:dev.ada-anvil.io)",
+      "Bash(cp:*)",
+      "Bash(cargo test)"
+    ],
+    "deny": []
+  }
+}
