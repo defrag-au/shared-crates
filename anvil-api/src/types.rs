@@ -1,7 +1,15 @@
 use std::collections::HashMap;
 
-use cardano_assets::AssetId;
-use serde::{Deserialize, Serialize};
+use cardano_assets::{AssetId, CollectionDetails, Marketplace};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Custom deserializer for attributes that handles both null and missing values
+fn deserialize_attributes<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<HashMap<String, String>>::deserialize(deserializer).map(|opt| opt.unwrap_or_default())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectionAssetsRequest {
@@ -11,10 +19,24 @@ pub struct CollectionAssetsRequest {
     pub limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
-    #[serde(rename = "saleType", skip_serializing_if = "Option::is_none")]
-    pub sale_type: Option<SaleType>,
+    #[serde(rename = "minPrice", skip_serializing_if = "Option::is_none")]
+    pub min_price: Option<u64>,
+    #[serde(rename = "maxPrice", skip_serializing_if = "Option::is_none")]
+    pub max_price: Option<u64>,
+    #[serde(rename = "minRarity", skip_serializing_if = "Option::is_none")]
+    pub min_rarity: Option<u32>,
+    #[serde(rename = "maxRarity", skip_serializing_if = "Option::is_none")]
+    pub max_rarity: Option<u32>,
     #[serde(rename = "orderBy", skip_serializing_if = "Option::is_none")]
     pub order_by: Option<OrderBy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub term: Option<String>,
+    #[serde(rename = "listingType", skip_serializing_if = "Option::is_none")]
+    pub listing_type: Option<ListingType>,
+    #[serde(rename = "saleType", skip_serializing_if = "Option::is_none")]
+    pub sale_type: Option<SaleType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub properties: Option<Vec<PropertyFilter>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,11 +47,192 @@ pub enum SaleType {
     Bundles,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum OrderBy {
+    #[default]
     PriceAsc,
     PriceDesc,
+    NameAsc,
+    IdxAsc,
+    RecentlyListed,
+    RarityAsc,
+    RecentlyMinted,
+}
+
+/// Marketplace-specific listing type filter
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ListingType {
+    #[serde(rename = "jpgstore")]
+    JpgStore,
+    #[serde(rename = "wayup")]
+    Wayup,
+    #[serde(rename = "spacebudz")]
+    SpaceBudz,
+}
+
+/// Property/attribute filter for exact matching
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PropertyFilter {
+    pub key: String,
+    pub value: String,
+}
+
+impl PropertyFilter {
+    /// Create a new property filter
+    pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+        }
+    }
+}
+
+impl From<Marketplace> for ListingType {
+    fn from(marketplace: Marketplace) -> Self {
+        match marketplace {
+            Marketplace::JpgStore => ListingType::JpgStore,
+            Marketplace::SpaceBudz => ListingType::SpaceBudz,
+            _ => ListingType::Wayup,
+        }
+    }
+}
+
+impl CollectionAssetsRequest {
+    /// Create a basic request with only policy_id
+    pub fn new(policy_id: impl Into<String>) -> Self {
+        Self {
+            policy_id: policy_id.into(),
+            limit: None,
+            cursor: None,
+            min_price: None,
+            max_price: None,
+            min_rarity: None,
+            max_rarity: None,
+            order_by: None,
+            term: None,
+            listing_type: None,
+            sale_type: None,
+            properties: None,
+        }
+    }
+
+    /// Create request for listed assets only with price ordering
+    pub fn for_listed_assets(policy_id: impl Into<String>, limit: Option<u32>) -> Self {
+        Self {
+            policy_id: policy_id.into(),
+            limit,
+            cursor: None,
+            min_price: None,
+            max_price: None,
+            min_rarity: None,
+            max_rarity: None,
+            order_by: None,
+            term: None,
+            listing_type: None,
+            sale_type: Some(SaleType::ListedOnly),
+            properties: None,
+        }
+    }
+
+    /// Builder methods for fluent API
+    pub fn with_limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    pub fn with_cursor(mut self, cursor: impl Into<String>) -> Self {
+        self.cursor = Some(cursor.into());
+        self
+    }
+
+    pub fn with_price_range(mut self, min_price: Option<u64>, max_price: Option<u64>) -> Self {
+        self.min_price = min_price;
+        self.max_price = max_price;
+        self
+    }
+
+    pub fn with_rarity_range(mut self, min_rarity: Option<u32>, max_rarity: Option<u32>) -> Self {
+        self.min_rarity = min_rarity;
+        self.max_rarity = max_rarity;
+        self
+    }
+
+    pub fn with_order_by(mut self, order_by: OrderBy) -> Self {
+        self.order_by = Some(order_by);
+        self
+    }
+
+    pub fn with_search_term(mut self, term: impl Into<String>) -> Self {
+        self.term = Some(term.into());
+        self
+    }
+
+    pub fn with_listing_type(mut self, listing_type: ListingType) -> Self {
+        self.listing_type = Some(listing_type);
+        self
+    }
+
+    pub fn with_marketplace(mut self, marketplace: Marketplace) -> Self {
+        self.listing_type = Some(ListingType::from(marketplace));
+        self
+    }
+
+    pub fn with_sale_type(mut self, sale_type: SaleType) -> Self {
+        self.sale_type = Some(sale_type);
+        self
+    }
+
+    pub fn with_properties(mut self, properties: Vec<PropertyFilter>) -> Self {
+        self.properties = Some(properties);
+        self
+    }
+
+    /// Convenience method to add a single trait filter
+    pub fn with_trait(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        let filter = PropertyFilter {
+            key: key.into(),
+            value: value.into(),
+        };
+        match self.properties {
+            Some(mut props) => {
+                props.push(filter);
+                self.properties = Some(props);
+            }
+            None => {
+                self.properties = Some(vec![filter]);
+            }
+        }
+        self
+    }
+
+    /// Convenience method to add multiple trait filters
+    pub fn with_traits<I, K, V>(mut self, traits: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        let new_filters: Vec<PropertyFilter> = traits
+            .into_iter()
+            .map(|(k, v)| PropertyFilter {
+                key: k.into(),
+                value: v.into(),
+            })
+            .collect();
+
+        match self.properties {
+            Some(mut props) => {
+                props.extend(new_filters);
+                self.properties = Some(props);
+            }
+            None => {
+                self.properties = Some(new_filters);
+            }
+        }
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,7 +246,8 @@ pub struct CollectionAssetsResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PageState {
-    pub page_state: String,
+    #[serde(flatten)]
+    pub data: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,14 +263,14 @@ pub struct Asset {
     pub name_idx: Option<u32>,
     pub image: Option<String>,
     pub media: Option<AssetMedia>,
-    pub label: Option<String>,
+    // pub label: Option<u32>,
     #[serde(default)]
     pub version: AssetVersion,
     pub last_update_tx_hash: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_attributes")]
     pub attributes: HashMap<String, String>,
     pub listing: Option<Listing>,
-    pub collection: Option<Collection>,
+    pub collection: Option<CollectionDetails>,
     pub rarity: Option<u32>,
 }
 
@@ -80,8 +284,8 @@ pub enum AssetVersion {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssetMedia {
-    src: String,
-    blur: String,
+    pub src: String,
+    pub blur: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,127 +297,7 @@ pub struct Listing {
     pub script_hash: String,
     pub bundle_size: Option<u32>,
     pub is_processing: bool,
-    #[serde(alias = "type")]
+    #[serde(alias = "type", default)]
     pub marketplace: Marketplace,
     pub version: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Collection {
-    pub name: String,
-    pub logo: Option<String>,
-    pub policy_id: String,
-    pub description: Option<String>,
-    pub supply: Option<u32>,
-    pub metadata: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Marketplace {
-    JpgStore,
-    Wayup,
-    Unknown(String),
-}
-
-impl Serialize for Marketplace {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let s = match self {
-            Marketplace::JpgStore => "jpg.store",
-            Marketplace::Wayup => "wayup",
-            Marketplace::Unknown(name) => name,
-        };
-        serializer.serialize_str(s)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Marketplace {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        Ok(match s.to_lowercase().as_str() {
-            "jpg.store" | "jpgstore" => Marketplace::JpgStore,
-            "wayup" => Marketplace::Wayup,
-            _ => Marketplace::Unknown(s),
-        })
-    }
-}
-
-impl std::fmt::Display for Marketplace {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Marketplace::JpgStore => write!(f, "jpg.store"),
-            Marketplace::Wayup => write!(f, "wayup"),
-            Marketplace::Unknown(name) => write!(f, "{}", name),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_marketplace_deserialization() {
-        // Known marketplaces
-        let jpg_store: Marketplace = serde_json::from_str("\"jpg.store\"").unwrap();
-        assert!(matches!(jpg_store, Marketplace::JpgStore));
-
-        let jpg_store_alt: Marketplace = serde_json::from_str("\"jpgstore\"").unwrap();
-        assert!(matches!(jpg_store_alt, Marketplace::JpgStore));
-
-        let wayup: Marketplace = serde_json::from_str("\"wayup\"").unwrap();
-        assert!(matches!(wayup, Marketplace::Wayup));
-
-        // Unknown marketplace
-        let unknown: Marketplace = serde_json::from_str("\"foo\"").unwrap();
-        match unknown {
-            Marketplace::Unknown(name) => assert_eq!(name, "foo"),
-            _ => panic!("Expected Unknown variant"),
-        }
-
-        // Case insensitive for known marketplaces
-        let jpg_upper: Marketplace = serde_json::from_str("\"JPG.STORE\"").unwrap();
-        assert!(matches!(jpg_upper, Marketplace::JpgStore));
-    }
-
-    #[test]
-    fn test_marketplace_serialization() {
-        let jpg_store = Marketplace::JpgStore;
-        let serialized = serde_json::to_string(&jpg_store).unwrap();
-        assert_eq!(serialized, "\"jpg.store\"");
-
-        let wayup = Marketplace::Wayup;
-        let serialized = serde_json::to_string(&wayup).unwrap();
-        assert_eq!(serialized, "\"wayup\"");
-
-        let unknown = Marketplace::Unknown("foo".to_string());
-        let serialized = serde_json::to_string(&unknown).unwrap();
-        assert_eq!(serialized, "\"foo\"");
-    }
-
-    #[test]
-    fn test_marketplace_roundtrip() {
-        // Test that unknown marketplaces roundtrip correctly
-        let original = Marketplace::Unknown("someNewMarketplace".to_string());
-        let serialized = serde_json::to_string(&original).unwrap();
-        let deserialized: Marketplace = serde_json::from_str(&serialized).unwrap();
-
-        match deserialized {
-            Marketplace::Unknown(name) => assert_eq!(name, "someNewMarketplace"),
-            _ => panic!("Expected Unknown variant"),
-        }
-    }
-
-    #[test]
-    fn test_marketplace_display() {
-        assert_eq!(Marketplace::JpgStore.to_string(), "jpg.store");
-        assert_eq!(Marketplace::Wayup.to_string(), "wayup");
-        assert_eq!(Marketplace::Unknown("foo".to_string()).to_string(), "foo");
-    }
 }

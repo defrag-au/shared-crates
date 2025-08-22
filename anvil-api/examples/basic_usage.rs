@@ -1,4 +1,4 @@
-use anvil_api::{AnvilClient, CollectionAssetsRequest, OrderBy, SaleType};
+use anvil_api::{AnvilClient, CollectionAssetsRequest, SaleType};
 use dotenv::dotenv;
 use std::env;
 use tracing::info;
@@ -20,13 +20,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let request = CollectionAssetsRequest {
-        policy_id: "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6".to_string(), // Blackflag
-        limit: Some(10),
-        cursor: None,
-        sale_type: Some(SaleType::All),
-        order_by: Some(OrderBy::PriceAsc),
-    };
+    let request = CollectionAssetsRequest::new(
+        "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6".to_string(),
+    )
+    .with_limit(20)
+    .with_sale_type(SaleType::All);
 
     match client.get_collection_assets(&request).await {
         Ok(response) => {
