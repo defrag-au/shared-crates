@@ -63,12 +63,13 @@ pub struct CollectionSocials {
 
 /// Collection information for a CNFT collection
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CollectionDetails {
+    #[serde(alias = "policyId")]
     pub policy_id: String,
     pub name: String,
     pub handle: Option<String>,
     pub description: Option<String>,
+    #[serde(alias = "royaltyAddress")]
     pub royalty_address: Option<String>,
     #[serde(alias = "royaltyPct")]
     pub royalty_percentage: f64,
