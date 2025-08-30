@@ -481,7 +481,7 @@ pub struct Asset {
 }
 
 /// Asset with explicit ID - enhanced version for marketplace and API operations
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct AssetV2 {
     /// Unique asset identifier (policy_id + asset_name_hex)
     pub id: AssetId,
