@@ -6,25 +6,25 @@ use std::env;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load environment variables
     dotenv().ok();
-    
+
     // Initialize logging with DEBUG level to see the actual URLs
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .init();
 
     // Get API key from environment
-    let api_key = env::var("ANVIL_API_KEY")
-        .expect("ANVIL_API_KEY environment variable must be set");
+    let api_key =
+        env::var("ANVIL_API_KEY").expect("ANVIL_API_KEY environment variable must be set");
 
     // Create client
     let client = AnvilClient::new().with_api_key(&api_key);
-    
+
     // Use Blackflag policy ID
     let policy_id = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
 
     println!("🔍 Debug Full Text Search");
     println!("========================");
-    
+
     // Test 1: Basic search without term (baseline)
     println!("\n📋 Test 1: No search term (get any 3 listed assets)");
     let request = CollectionAssetsRequest::for_listed_assets(policy_id, Some(3))
@@ -32,7 +32,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match client.get_collection_assets(&request).await {
         Ok(response) => {
-            println!("✅ Found {} assets without search term", response.results.len());
+            println!(
+                "✅ Found {} assets without search term",
+                response.results.len()
+            );
             for asset in &response.results {
                 println!("  - {} ({})", asset.name, asset.unit);
             }
@@ -48,7 +51,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match client.get_collection_assets(&request).await {
         Ok(response) => {
-            println!("✅ Found {} assets matching 'Pirate'", response.results.len());
+            println!(
+                "✅ Found {} assets matching 'Pirate'",
+                response.results.len()
+            );
             for asset in &response.results {
                 println!("  - {} ({})", asset.name, asset.unit);
                 if asset.name.contains("Pirate") {
@@ -92,14 +98,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match client.get_collection_assets(&request).await {
         Ok(response) => {
-            println!("✅ Found {} assets matching 'Luffy' (including unlisted)", response.results.len());
+            println!(
+                "✅ Found {} assets matching 'Luffy' (including unlisted)",
+                response.results.len()
+            );
             for asset in &response.results {
                 println!("  - {} ({})", asset.name, asset.unit);
                 if asset.name.to_lowercase().contains("luffy") {
                     println!("    ✓ Name contains 'Luffy'");
                 }
                 if let Some(listing) = &asset.listing {
-                    println!("    💰 Listed for {} ADA on {}", listing.price as f64 / 1_000_000.0, listing.marketplace);
+                    println!(
+                        "    💰 Listed for {} ADA on {}",
+                        listing.price as f64 / 1_000_000.0,
+                        listing.marketplace
+                    );
                 } else {
                     println!("    🔒 Not currently listed");
                 }
@@ -141,7 +154,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match client.get_collection_assets(&request).await {
         Ok(response) => {
-            println!("✅ Found {} assets matching 'Nonexistent12345'", response.results.len());
+            println!(
+                "✅ Found {} assets matching 'Nonexistent12345'",
+                response.results.len()
+            );
             if response.results.is_empty() {
                 println!("  (Expected - this confirms search is working)");
             }

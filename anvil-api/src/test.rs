@@ -96,12 +96,7 @@ mod tests {
                 info!("Results length: {}", response.results.len());
 
                 for (i, asset) in response.results.iter().enumerate() {
-                    info!(
-                        "Asset {}: name={}, unit={}",
-                        i + 1,
-                        asset.name,
-                        asset.unit
-                    );
+                    info!("Asset {}: name={}, unit={}", i + 1, asset.name, asset.unit);
 
                     // Show the attributes to verify filtering worked
                     if !asset.attributes.is_empty() {
@@ -152,8 +147,11 @@ mod tests {
 
         match client.get_collection_assets(&request).await {
             Ok(response) => {
-                info!("Simple trait filtering: found {} assets with Rank=Swab", response.results.len());
-                
+                info!(
+                    "Simple trait filtering: found {} assets with Rank=Swab",
+                    response.results.len()
+                );
+
                 for asset in &response.results {
                     if let Some(listing) = &asset.listing {
                         info!(
@@ -182,10 +180,7 @@ mod tests {
         });
 
         // Example of filtering by multiple traits at once
-        let traits = vec![
-            ("Rank", "Swab"),
-            ("Background", "Lost Reef"),
-        ];
+        let traits = vec![("Rank", "Swab"), ("Background", "Lost Reef")];
 
         let request = CollectionAssetsRequest::for_listed_assets(&policy_id, Some(5))
             .with_traits(traits)
@@ -193,8 +188,11 @@ mod tests {
 
         match client.get_collection_assets(&request).await {
             Ok(response) => {
-                info!("Multiple trait filtering: found {} assets", response.results.len());
-                
+                info!(
+                    "Multiple trait filtering: found {} assets",
+                    response.results.len()
+                );
+
                 for asset in &response.results {
                     info!("Asset: {} - Attributes: {:?}", asset.name, asset.attributes);
                 }
@@ -223,14 +221,20 @@ mod tests {
                     info!("  Handle: {}", handle);
                 }
                 info!("  Policy ID: {}", collection.policy_id);
-                
+
                 // Basic validation
-                assert!(!collection.name.is_empty(), "Collection name should not be empty");
+                assert!(
+                    !collection.name.is_empty(),
+                    "Collection name should not be empty"
+                );
                 if let Some(handle) = &collection.handle {
                     assert!(!handle.is_empty(), "Collection handle should not be empty");
                 }
-                assert_eq!(collection.policy_id, policy_id, "Policy ID should match request");
-                
+                assert_eq!(
+                    collection.policy_id, policy_id,
+                    "Policy ID should match request"
+                );
+
                 if let Some(socials) = &collection.socials {
                     if let Some(website) = &socials.website {
                         info!("  Website: {}", website);
@@ -263,25 +267,40 @@ mod tests {
             Ok(floor_assets) => {
                 info!("Floor assets retrieved successfully");
                 info!("  Count: {}", floor_assets.len());
-                
+
                 // Basic validation
-                assert!(floor_assets.len() <= 5, "Should not return more than requested");
-                
+                assert!(
+                    floor_assets.len() <= 5,
+                    "Should not return more than requested"
+                );
+
                 // Verify all assets are listed and have prices
                 for (i, asset) in floor_assets.iter().enumerate() {
-                    info!("  {}. {} - {:?}", i + 1, asset.name, 
-                        asset.listing.as_ref().map(|l| format!("{} ADA", l.price as f64 / 1_000_000.0))
+                    info!(
+                        "  {}. {} - {:?}",
+                        i + 1,
+                        asset.name,
+                        asset
+                            .listing
+                            .as_ref()
+                            .map(|l| format!("{} ADA", l.price as f64 / 1_000_000.0))
                     );
-                    
-                    assert!(asset.listing.is_some(), "All floor assets should have listings");
+
+                    assert!(
+                        asset.listing.is_some(),
+                        "All floor assets should have listings"
+                    );
                 }
-                
+
                 // Verify price ordering (ascending)
                 if floor_assets.len() > 1 {
                     for i in 1..floor_assets.len() {
-                        let prev_price = floor_assets[i-1].listing.as_ref().unwrap().price;
+                        let prev_price = floor_assets[i - 1].listing.as_ref().unwrap().price;
                         let curr_price = floor_assets[i].listing.as_ref().unwrap().price;
-                        assert!(curr_price >= prev_price, "Assets should be sorted by price ascending");
+                        assert!(
+                            curr_price >= prev_price,
+                            "Assets should be sorted by price ascending"
+                        );
                     }
                     info!("✅ Price ordering verified");
                 }
@@ -297,22 +316,35 @@ mod tests {
         // Test that search term is properly serialized
         let request = CollectionAssetsRequest::for_listed_assets("test_policy", Some(5))
             .with_search_term("Luffy");
-        
+
         let serialized = serde_json::to_string(&request).expect("Should serialize");
-        assert!(serialized.contains("\"term\":\"Luffy\""), "Should contain search term");
-        
+        assert!(
+            serialized.contains("\"term\":\"Luffy\""),
+            "Should contain search term"
+        );
+
         // Test without search term
         let request_no_term = CollectionAssetsRequest::for_listed_assets("test_policy", Some(5));
         let serialized_no_term = serde_json::to_string(&request_no_term).expect("Should serialize");
-        assert!(!serialized_no_term.contains("term"), "Should not contain term field when None");
-        
+        assert!(
+            !serialized_no_term.contains("term"),
+            "Should not contain term field when None"
+        );
+
         // Test without order_by (should not include orderBy in JSON)
-        assert!(!serialized_no_term.contains("orderBy"), "Should not contain orderBy when None");
-        
+        assert!(
+            !serialized_no_term.contains("orderBy"),
+            "Should not contain orderBy when None"
+        );
+
         // Test with order_by
         let request_with_order = CollectionAssetsRequest::for_listed_assets("test_policy", Some(5))
             .with_order_by(OrderBy::PriceAsc);
-        let serialized_with_order = serde_json::to_string(&request_with_order).expect("Should serialize");
-        assert!(serialized_with_order.contains("\"orderBy\":\"priceAsc\""), "Should contain orderBy when set");
+        let serialized_with_order =
+            serde_json::to_string(&request_with_order).expect("Should serialize");
+        assert!(
+            serialized_with_order.contains("\"orderBy\":\"priceAsc\""),
+            "Should contain orderBy when set"
+        );
     }
 }
