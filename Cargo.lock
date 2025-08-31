@@ -2510,6 +2510,7 @@ dependencies = [
  "console_error_panic_hook",
  "js-sys",
  "serde",
+ "serde-wasm-bindgen",
  "serde_json",
  "test_utils",
  "time",
