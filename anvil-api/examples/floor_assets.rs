@@ -37,8 +37,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("{}. {} ({})", i + 1, asset.name, asset.unit);
 
                 if let Some(listing) = &asset.listing {
-                    println!("   💰 {} ADA on {}", 
-                        listing.price as f64 / 1_000_000.0, 
+                    println!(
+                        "   💰 {} ADA on {}",
+                        listing.price as f64 / 1_000_000.0,
                         listing.marketplace
                     );
                 } else {
@@ -61,22 +62,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let cheapest = &floor_assets[0];
                 let most_expensive = &floor_assets[floor_assets.len() - 1];
 
-                if let (Some(cheapest_listing), Some(expensive_listing)) = 
-                    (&cheapest.listing, &most_expensive.listing) {
-                    
+                if let (Some(cheapest_listing), Some(expensive_listing)) =
+                    (&cheapest.listing, &most_expensive.listing)
+                {
                     println!("📊 Floor Summary:");
-                    println!("   🔥 Floor Price: {} ADA ({})", 
+                    println!(
+                        "   🔥 Floor Price: {} ADA ({})",
                         cheapest_listing.price as f64 / 1_000_000.0,
                         cheapest.name
                     );
-                    println!("   📈 Highest in Top {}: {} ADA ({})", 
+                    println!(
+                        "   📈 Highest in Top {}: {} ADA ({})",
                         floor_assets.len(),
                         expensive_listing.price as f64 / 1_000_000.0,
                         most_expensive.name
                     );
 
                     let price_range = expensive_listing.price - cheapest_listing.price;
-                    println!("   📏 Price Range: {} ADA", 
+                    println!(
+                        "   📏 Price Range: {} ADA",
                         price_range as f64 / 1_000_000.0
                     );
                 }
@@ -85,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!();
             println!("🎯 This utility makes floor price discovery simple:");
             println!("   - Get cheapest assets instantly");
-            println!("   - Perfect for marketplace interfaces"); 
+            println!("   - Perfect for marketplace interfaces");
             println!("   - Already sorted by price ascending");
         }
         Err(e) => {

@@ -1,8 +1,8 @@
 use crate::{error::AnvilError, types::*};
+use async_stream::stream;
+use futures::Stream;
 use http_client::HttpClient;
 use tracing::debug;
-use futures::Stream;
-use async_stream::stream;
 
 const BASE_URL: &str = "https://prod.api.ada-anvil.app";
 
@@ -60,31 +60,27 @@ impl AnvilClient {
         // Extract collection details from the first asset
         let first_asset = &response.results[0];
 
-        first_asset
-            .collection
-            .clone()
-            .ok_or_else(|| {
-                AnvilError::InvalidInput(format!(
-                    "No collection details found for policy ID: {}",
-                    policy_id
-                ))
-            })
+        first_asset.collection.clone().ok_or_else(|| {
+            AnvilError::InvalidInput(format!(
+                "No collection details found for policy ID: {}",
+                policy_id
+            ))
+        })
     }
 
     /// Get floor assets - returns the cheapest listed assets in price ascending order
     /// This is a convenience method for getting floor price listings
-    pub async fn get_floor(
-        &self,
-        policy_id: &str,
-        count: u32,
-    ) -> Result<Vec<Asset>, AnvilError> {
-        debug!("Fetching {} floor assets for policy_id: {}", count, policy_id);
+    pub async fn get_floor(&self, policy_id: &str, count: u32) -> Result<Vec<Asset>, AnvilError> {
+        debug!(
+            "Fetching {} floor assets for policy_id: {}",
+            count, policy_id
+        );
 
         let request = CollectionAssetsRequest::for_listed_assets(policy_id, Some(count))
             .with_order_by(OrderBy::PriceAsc);
 
         let response = self.get_collection_assets(&request).await?;
-        
+
         Ok(response.results)
     }
 
@@ -97,36 +93,36 @@ impl AnvilClient {
     ) -> impl Stream<Item = Result<Asset, AnvilError>> + '_ {
         stream! {
             debug!("Starting asset stream for policy_id: {}", request.policy_id);
-            
+
             let mut cursor: Option<String> = None;
             let mut total_yielded = 0u32;
             let page_size = request.limit.unwrap_or(50); // Default to 50 per page
-            
+
             // Override limit to page size for consistent pagination
             request.limit = Some(page_size);
-            
+
             loop {
                 // Update cursor for pagination
                 request.cursor = cursor.clone();
-                
+
                 debug!("Fetching page, total_yielded: {}", total_yielded);
-                
+
                 match self.get_collection_assets(&request).await {
                     Ok(response) => {
                         let assets_in_page = response.results.len();
                         debug!("Received {} assets in page", assets_in_page);
-                        
+
                         if assets_in_page == 0 {
                             debug!("No more assets available, ending stream");
                             break;
                         }
-                        
+
                         // Yield each asset individually
                         for asset in response.results {
                             total_yielded += 1;
                             yield Ok(asset);
                         }
-                        
+
                         // Check if we have pagination info for the next page
                         if let Some(page_state) = response.page_state {
                             // Simply serialize the page state back to JSON and use as cursor
@@ -143,7 +139,7 @@ impl AnvilClient {
                             debug!("No more pages available, ending stream");
                             break;
                         }
-                        
+
                         // If we got fewer results than the page size, we're likely at the end
                         if assets_in_page < page_size as usize {
                             debug!("Received fewer assets than page size, likely at end");
@@ -157,11 +153,10 @@ impl AnvilClient {
                     }
                 }
             }
-            
+
             debug!("Asset stream completed, total assets yielded: {}", total_yielded);
         }
     }
-
 
     pub async fn get_collection_assets(
         &self,
@@ -262,7 +257,13 @@ impl AnvilClient {
 
         let query_string = query_params
             .iter()
-            .map(|(key, value)| format!("{}={}", urlencoding::encode(key), urlencoding::encode(value)))
+            .map(|(key, value)| {
+                format!(
+                    "{}={}",
+                    urlencoding::encode(key),
+                    urlencoding::encode(value)
+                )
+            })
             .collect::<Vec<_>>()
             .join("&");
 
@@ -270,7 +271,6 @@ impl AnvilClient {
             "{}/marketplace/api/get-collection-assets?{}",
             self.base_url, query_string
         );
-
 
         let response = self
             .http_client

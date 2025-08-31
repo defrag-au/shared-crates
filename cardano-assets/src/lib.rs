@@ -9,6 +9,9 @@ pub mod asset_id;
 pub mod collection;
 pub mod traits;
 
+#[cfg(feature = "utxorpc")]
+pub mod utxorpc;
+
 pub use asset_id::*;
 pub use collection::*;
 pub use traits::*;
