@@ -10,34 +10,6 @@ pub use r2_notification::*;
 
 pub async fn send_to_queue<M>(queue: &Queue, message: &M) -> Result<()>
 where
-    M: Into<JsValue> + Clone,
-{
-    let raw_message = RawMessageBuilder::new(message.clone().into())
-        .build_with_content_type(QueueContentType::Json);
-
-    queue.send_raw(raw_message).await
-}
-
-pub async fn send_batch_to_queue<M>(queue: &Queue, messages: &[M]) -> Result<()>
-where
-    M: Into<JsValue> + Clone,
-{
-    let raw_messages: Vec<SendMessage<JsValue>> = messages
-        .iter()
-        .map(|m| {
-            let js_value = m.clone().into();
-            RawMessageBuilder::new(js_value).build_with_content_type(QueueContentType::Json)
-        })
-        .collect();
-
-    queue.send_raw_batch(raw_messages).await
-}
-
-/// Send a serializable message to a queue using serde serialization
-/// This provides the same benefits as send_to_queue but works with serde types
-/// Uses JSON-compatible serializer to properly handle HashMap types
-pub async fn send_serde_to_queue<M>(queue: &Queue, message: &M) -> Result<()>
-where
     M: Serialize + Clone,
 {
     // Use JSON-compatible serializer to handle HashMap properly (fixes HashMap<String, Vec<String>> serialization)
@@ -51,9 +23,7 @@ where
     queue.send_raw(raw_message).await
 }
 
-/// Send a batch of serializable messages to a queue using serde serialization
-/// Uses JSON-compatible serializer to properly handle HashMap types
-pub async fn send_serde_batch_to_queue<M>(queue: &Queue, messages: &[M]) -> Result<()>
+pub async fn send_batch_to_queue<M>(queue: &Queue, messages: &[M]) -> Result<()>
 where
     M: Serialize + Clone,
 {
@@ -70,6 +40,7 @@ where
 
     queue.send_raw_batch(raw_messages?).await
 }
+
 
 cfg_if! {
     // https://github.com/rustwasm/console_error_panic_hook#readme
