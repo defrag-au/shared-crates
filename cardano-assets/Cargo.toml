@@ -23,3 +23,4 @@ utxorpc = ["dep:utxorpc-spec", "dep:tracing"]
 
 [dev-dependencies]
 test_utils = { path = "../test-utils" }
+pallas-utxorpc = "0.33"
