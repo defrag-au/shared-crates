@@ -35,11 +35,14 @@ where
 
 /// Send a serializable message to a queue using serde serialization
 /// This provides the same benefits as send_to_queue but works with serde types
+/// Uses JSON-compatible serializer to properly handle HashMap types
 pub async fn send_serde_to_queue<M>(queue: &Queue, message: &M) -> Result<()>
 where
     M: Serialize + Clone,
 {
-    let js_value = serde_wasm_bindgen::to_value(message)
+    // Use JSON-compatible serializer to handle HashMap properly (fixes HashMap<String, Vec<String>> serialization)
+    let serializer = serde_wasm_bindgen::Serializer::json_compatible();
+    let js_value = message.serialize(&serializer)
         .map_err(|e| worker::Error::RustError(format!("Serialization failed: {e}")))?;
     
     let raw_message = RawMessageBuilder::new(js_value)
@@ -49,6 +52,7 @@ where
 }
 
 /// Send a batch of serializable messages to a queue using serde serialization
+/// Uses JSON-compatible serializer to properly handle HashMap types
 pub async fn send_serde_batch_to_queue<M>(queue: &Queue, messages: &[M]) -> Result<()>
 where
     M: Serialize + Clone,
@@ -56,7 +60,9 @@ where
     let raw_messages: Result<Vec<SendMessage<JsValue>>> = messages
         .iter()
         .map(|m| {
-            let js_value = serde_wasm_bindgen::to_value(m)
+            // Use JSON-compatible serializer to handle HashMap properly
+            let serializer = serde_wasm_bindgen::Serializer::json_compatible();
+            let js_value = m.serialize(&serializer)
                 .map_err(|e| worker::Error::RustError(format!("Serialization failed: {e}")))?;
             Ok(RawMessageBuilder::new(js_value).build_with_content_type(QueueContentType::Json))
         })
