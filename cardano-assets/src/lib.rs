@@ -563,7 +563,7 @@ impl From<AssetMetadata> for Asset {
                 ..
             } => Self {
                 name,
-                image: image.into(),
+                image: get_image_url(image),
                 traits,
                 rarity_rank: None,
                 tags: vec![],
@@ -583,7 +583,7 @@ impl From<AssetMetadata> for Asset {
 
                 Self {
                     name,
-                    image: image.into(),
+                    image: get_image_url(image),
                     traits,
                     rarity_rank: None,
                     tags: vec![],
@@ -602,7 +602,7 @@ impl From<AssetMetadata> for Asset {
 
                 Self {
                     name,
-                    image: image.into(),
+                    image: get_image_url(image),
                     traits,
                     rarity_rank: None,
                     tags: vec![],
@@ -662,7 +662,7 @@ impl From<AssetMetadata> for Asset {
 
                 Self {
                     name,
-                    image: image.into(),
+                    image: get_image_url(image),
                     traits,
                     rarity_rank: None,
                     tags: vec![],
@@ -871,6 +871,13 @@ pub fn get_asset_tags(asset: &CnftAsset, max_rarity: Option<u32>) -> Vec<AssetTa
     tags
 }
 
+fn get_image_url(input: PrimitiveOrList<String>) -> String {
+    match input {
+        PrimitiveOrList::Primitive(val) => val,
+        PrimitiveOrList::List(items) => items.join(""),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -968,6 +975,60 @@ mod tests {
                 }
                 _ => panic!("expected attributed format"),
             },
+            Err(err) => {
+                panic!("failed decoding: {err:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_deserialize_wiseowl_traits() {
+        match serde_json::from_str::<AssetMetadata>(test_case!("traits-wiseowl.json")) {
+            Ok(metadata) => {
+                match metadata.clone() {
+                    AssetMetadata::Flattened {
+                        name,
+                        image,
+                        media_type,
+                        traits,
+                        ..
+                    } => {
+                        assert_eq!(name, "Wise Owls #0037");
+                        assert_eq!(
+                            image,
+                            PrimitiveOrList::List(vec![
+                                "ipfs://".to_string(),
+                                "bafybeicpgl34yckqd74luyrg353n6coa2wrppmfrv4lvz27odes3ru6eii"
+                                    .to_string()
+                            ])
+                        );
+                        assert_eq!(media_type, "image/png");
+                        assert_eq!(
+                            traits,
+                            HashMap::from([
+                                ("background", "Bloodfire Peak"),
+                                ("plumage", "Neon Violet"),
+                                ("beak", "Teeth Flex"),
+                                ("head", "Knight Helmet"),
+                                ("background", "Bloodfire Peak"),
+                                ("clan", "Rimeshadow"),
+                                ("type", "Generated"),
+                                ("eyes", "Glasses"),
+                                ("outfit", "GM")
+                            ])
+                            .into_traits()
+                        )
+                    }
+                    _ => panic!("expected attributed format"),
+                }
+
+                let asset: Asset = metadata.into();
+                assert_eq!(
+                    asset.image,
+                    "ipfs://bafybeicpgl34yckqd74luyrg353n6coa2wrppmfrv4lvz27odes3ru6eii"
+                        .to_string()
+                );
+            }
             Err(err) => {
                 panic!("failed decoding: {err:?}");
             }
