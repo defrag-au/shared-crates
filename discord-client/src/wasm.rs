@@ -19,6 +19,7 @@ impl WasmDiscordClient {
 
 impl DiscordClient for WasmDiscordClient {
     type SendMessageFut<'a> = Pin<Box<dyn Future<Output = Result<DiscordMessageResponse, DiscordError>> + 'a>> where Self: 'a;
+    type EditMessageFut<'a> = Pin<Box<dyn Future<Output = Result<DiscordMessageResponse, DiscordError>> + 'a>> where Self: 'a;
 
     fn send_message<'a>(
         &'a self,
@@ -49,6 +50,35 @@ impl DiscordClient for WasmDiscordClient {
 
             let response = request.send().await
                 .map_err(|e| DiscordError::Gloo(format!("Request failed: {e:?}")))?;
+
+            self.handle_message_response(response).await
+        })
+    }
+
+    fn edit_message<'a>(
+        &'a self,
+        channel_id: &'a str,
+        message_id: &'a str,
+        edit: &'a crate::DiscordMessageEdit,
+    ) -> Self::EditMessageFut<'a> {
+        Box::pin(async move {
+            info!("✏️ Editing Discord message (WASM)");
+            let url = format!(
+                "https://discord.com/api/v10/channels/{}/messages/{}",
+                channel_id, message_id
+            );
+
+            let request = Request::patch(&url)
+                .header("Authorization", &format!("Bot {}", self.bot_token))
+                .header("User-Agent", "defrag-discord-client/1.0")
+                .header("Content-Type", "application/json")
+                .json(edit)
+                .map_err(|e| DiscordError::Gloo(format!("Edit request creation failed: {e:?}")))?;
+
+            let response = request
+                .send()
+                .await
+                .map_err(|e| DiscordError::Gloo(format!("Edit request failed: {e:?}")))?;
 
             self.handle_message_response(response).await
         })

@@ -26,6 +26,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let response = client.send_message(&channel_id, &simple_message).await?;
     println!("Message sent! ID: {}", response.id);
 
+    // Edit the first message content to demonstrate editing
+    println!("Editing the first message...");
+    let edit = discord_client::DiscordMessageEdit {
+        content: Some("Hello from discord-client (edited)!".to_string()),
+        embeds: None,
+    };
+    let edited = client.edit_message(&channel_id, &response.id, &edit).await?;
+    println!("Message edited! New content: {}", edited.content);
+
     // Example 2: Message with embed
     println!("Sending message with embed...");
     let embed = DiscordEmbed {

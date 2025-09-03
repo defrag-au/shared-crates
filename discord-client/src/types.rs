@@ -94,12 +94,25 @@ pub trait DiscordClient {
     where
         Self: 'a;
 
+    /// Future type for `edit_message`
+    type EditMessageFut<'a>: Future<Output = Result<DiscordMessageResponse, crate::DiscordError>> + 'a
+    where
+        Self: 'a;
+
     /// Send a message to a Discord channel with optional attachments
     fn send_message<'a>(
         &'a self,
         channel_id: &'a str,
         message: &'a DiscordMessage,
     ) -> Self::SendMessageFut<'a>;
+
+    /// Edit an existing message (content/embeds). Omit fields to leave unchanged.
+    fn edit_message<'a>(
+        &'a self,
+        channel_id: &'a str,
+        message_id: &'a str,
+        edit: &'a DiscordMessageEdit,
+    ) -> Self::EditMessageFut<'a>;
 
     /// Validate attachment data before sending
     fn validate_attachment(data: &[u8], filename: &str) -> Result<(), crate::DiscordError> {
@@ -142,4 +155,11 @@ pub trait DiscordClient {
             "application/octet-stream"
         }
     }
+}
+
+/// Payload for editing a message. Attachments are intentionally omitted to avoid accidental removal.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DiscordMessageEdit {
+    pub content: Option<String>,
+    pub embeds: Option<Vec<DiscordEmbed>>,
 }
