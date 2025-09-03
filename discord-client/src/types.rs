@@ -1,8 +1,7 @@
-use serde::{Deserialize, Serialize};
 use core::future::Future;
-use core::pin::Pin;
-use twilight_model::channel::Message;
+use serde::{Deserialize, Serialize};
 use twilight_model::channel::message::embed::Embed as TwEmbed;
+use twilight_model::channel::Message;
 
 /// Outbound message payload with optional attachments.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,7 +44,8 @@ pub trait DiscordClient {
         Self: 'a;
 
     /// Future type for `edit_message_with_attachments`
-    type EditMessageWithAttachmentsFut<'a>: Future<Output = Result<Message, crate::DiscordError>> + 'a
+    type EditMessageWithAttachmentsFut<'a>: Future<Output = Result<Message, crate::DiscordError>>
+        + 'a
     where
         Self: 'a;
 
@@ -75,7 +75,7 @@ pub trait DiscordClient {
 
     /// Validate attachment data before sending
     fn validate_attachment(data: &[u8], filename: &str) -> Result<(), crate::DiscordError> {
-        const MAX_FILE_SIZE: usize = 8 * 1024 * 1024; // 8MB limit
+        const MAX_FILE_SIZE: usize = 8 * 1024 * 1024; // 8MB Discord limit
 
         if data.is_empty() {
             return Err(crate::DiscordError::InvalidAttachment(

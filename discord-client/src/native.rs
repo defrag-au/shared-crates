@@ -1,8 +1,11 @@
-use crate::{DiscordError, DiscordMessage, DiscordRateLimitResponse, DiscordClient, AttachmentInput};
-use reqwest::multipart;
-use tracing::{debug, error, info, warn};
+use crate::{
+    AttachmentInput, DiscordClient, DiscordError, DiscordMessage, DiscordRateLimitResponse,
+    BASE_URL,
+};
 use core::future::Future;
 use core::pin::Pin;
+use reqwest::multipart;
+use tracing::{debug, error, info, warn};
 use twilight_model::channel::Message;
 
 /// Native Discord bot client using reqwest (for augminted-bots)
@@ -21,9 +24,18 @@ impl NativeDiscordClient {
 }
 
 impl DiscordClient for NativeDiscordClient {
-    type SendMessageFut<'a> = Pin<Box<dyn Future<Output = Result<Message, DiscordError>> + 'a>> where Self: 'a;
-    type EditMessageFut<'a> = Pin<Box<dyn Future<Output = Result<Message, DiscordError>> + 'a>> where Self: 'a;
-    type EditMessageWithAttachmentsFut<'a> = Pin<Box<dyn Future<Output = Result<Message, DiscordError>> + 'a>> where Self: 'a;
+    type SendMessageFut<'a>
+        = Pin<Box<dyn Future<Output = Result<Message, DiscordError>> + 'a>>
+    where
+        Self: 'a;
+    type EditMessageFut<'a>
+        = Pin<Box<dyn Future<Output = Result<Message, DiscordError>> + 'a>>
+    where
+        Self: 'a;
+    type EditMessageWithAttachmentsFut<'a>
+        = Pin<Box<dyn Future<Output = Result<Message, DiscordError>> + 'a>>
+    where
+        Self: 'a;
 
     fn send_message<'a>(
         &'a self,
@@ -33,13 +45,15 @@ impl DiscordClient for NativeDiscordClient {
         Box::pin(async move {
             info!("🔗 Sending Discord message with native client");
 
-            let url = format!("https://discord.com/api/v10/channels/{}/messages", channel_id);
+            let url = format!("{BASE_URL}/channels/{}/messages", channel_id);
 
             // Check if we have attachments to send
             if let Some(attachments) = &message.attachments {
                 if !attachments.is_empty() {
                     debug!("📎 Sending {} attachments via multipart", attachments.len());
-                    return self.send_multipart_message(&url, message, attachments).await;
+                    return self
+                        .send_multipart_message(&url, message, attachments)
+                        .await;
                 }
             }
 
@@ -142,7 +156,7 @@ impl NativeDiscordClient {
         // Add files
         for (index, attachment) in attachments.iter().enumerate() {
             Self::validate_attachment(&attachment.file_data, &attachment.filename)?;
-            
+
             form = form.part(
                 format!("files[{index}]"),
                 multipart::Part::bytes(attachment.file_data.clone())
@@ -168,7 +182,10 @@ impl NativeDiscordClient {
         self.handle_message_response(response).await
     }
 
-    async fn handle_message_response(&self, response: reqwest::Response) -> Result<Message, DiscordError> {
+    async fn handle_message_response(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<Message, DiscordError> {
         let status = response.status();
 
         if response.status().is_success() {

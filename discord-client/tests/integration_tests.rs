@@ -1,5 +1,5 @@
-use discord_client::{DiscordClient, DiscordMessage, NativeDiscordClient, AttachmentInput};
 use discord_client::compat::twilight::TwEmbedBuilder;
+use discord_client::{AttachmentInput, DiscordClient, DiscordMessage, NativeDiscordClient};
 use std::env;
 use tokio;
 
