@@ -1,7 +1,6 @@
 use discord_client::compat::twilight::TwEmbedBuilder;
 use discord_client::{AttachmentInput, DiscordClient, DiscordMessage, NativeDiscordClient};
 use std::env;
-use tokio;
 
 #[tokio::test]
 async fn test_native_json_message() {
