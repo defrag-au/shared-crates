@@ -14,11 +14,12 @@ where
 {
     // Use JSON-compatible serializer to handle HashMap properly (fixes HashMap<String, Vec<String>> serialization)
     let serializer = serde_wasm_bindgen::Serializer::json_compatible();
-    let js_value = message.serialize(&serializer)
+    let js_value = message
+        .serialize(&serializer)
         .map_err(|e| worker::Error::RustError(format!("Serialization failed: {e}")))?;
-    
-    let raw_message = RawMessageBuilder::new(js_value)
-        .build_with_content_type(QueueContentType::Json);
+
+    let raw_message =
+        RawMessageBuilder::new(js_value).build_with_content_type(QueueContentType::Json);
 
     queue.send_raw(raw_message).await
 }
@@ -32,7 +33,8 @@ where
         .map(|m| {
             // Use JSON-compatible serializer to handle HashMap properly
             let serializer = serde_wasm_bindgen::Serializer::json_compatible();
-            let js_value = m.serialize(&serializer)
+            let js_value = m
+                .serialize(&serializer)
                 .map_err(|e| worker::Error::RustError(format!("Serialization failed: {e}")))?;
             Ok(RawMessageBuilder::new(js_value).build_with_content_type(QueueContentType::Json))
         })
@@ -40,7 +42,6 @@ where
 
     queue.send_raw_batch(raw_messages?).await
 }
-
 
 cfg_if! {
     // https://github.com/rustwasm/console_error_panic_hook#readme
