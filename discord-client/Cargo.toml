@@ -1,0 +1,29 @@
+[package]
+name = "discord-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+thiserror = "1.0"
+
+# Native dependencies (for augminted-bots)
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "multipart"], optional = true }
+
+# WASM dependencies (for cnft.dev-workers)
+gloo-net = { version = "0.6", features = ["json"], optional = true }
+web-sys = { version = "0.3", features = ["Blob", "BlobPropertyBag", "FormData"], optional = true }
+js-sys = { version = "0.3", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+worker = { version = "0.0.18", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["full"] }
+dotenv = "0.15"
+
+[features]
+default = ["native"]
+native = ["reqwest"]
+wasm = ["gloo-net", "web-sys", "js-sys", "wasm-bindgen", "worker"]
