@@ -99,6 +99,11 @@ pub trait DiscordClient {
     where
         Self: 'a;
 
+    /// Future type for `edit_message_with_attachments`
+    type EditMessageWithAttachmentsFut<'a>: Future<Output = Result<DiscordMessageResponse, crate::DiscordError>> + 'a
+    where
+        Self: 'a;
+
     /// Send a message to a Discord channel with optional attachments
     fn send_message<'a>(
         &'a self,
@@ -113,6 +118,15 @@ pub trait DiscordClient {
         message_id: &'a str,
         edit: &'a DiscordMessageEdit,
     ) -> Self::EditMessageFut<'a>;
+
+    /// Edit a message and add new file attachments (existing attachments are preserved by default).
+    fn edit_message_with_attachments<'a>(
+        &'a self,
+        channel_id: &'a str,
+        message_id: &'a str,
+        edit: &'a DiscordMessageEdit,
+        attachments: &'a [DiscordAttachment],
+    ) -> Self::EditMessageWithAttachmentsFut<'a>;
 
     /// Validate attachment data before sending
     fn validate_attachment(data: &[u8], filename: &str) -> Result<(), crate::DiscordError> {

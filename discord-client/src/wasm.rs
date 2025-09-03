@@ -20,6 +20,7 @@ impl WasmDiscordClient {
 impl DiscordClient for WasmDiscordClient {
     type SendMessageFut<'a> = Pin<Box<dyn Future<Output = Result<DiscordMessageResponse, DiscordError>> + 'a>> where Self: 'a;
     type EditMessageFut<'a> = Pin<Box<dyn Future<Output = Result<DiscordMessageResponse, DiscordError>> + 'a>> where Self: 'a;
+    type EditMessageWithAttachmentsFut<'a> = Pin<Box<dyn Future<Output = Result<DiscordMessageResponse, DiscordError>> + 'a>> where Self: 'a;
 
     fn send_message<'a>(
         &'a self,
@@ -79,6 +80,66 @@ impl DiscordClient for WasmDiscordClient {
                 .send()
                 .await
                 .map_err(|e| DiscordError::Gloo(format!("Edit request failed: {e:?}")))?;
+
+            self.handle_message_response(response).await
+        })
+    }
+
+    fn edit_message_with_attachments<'a>(
+        &'a self,
+        channel_id: &'a str,
+        message_id: &'a str,
+        edit: &'a crate::DiscordMessageEdit,
+        attachments: &'a [crate::DiscordAttachment],
+    ) -> Self::EditMessageWithAttachmentsFut<'a> {
+        Box::pin(async move {
+            info!("✏️ Editing Discord message with new attachments (WASM)");
+            let url = format!(
+                "https://discord.com/api/v10/channels/{}/messages/{}",
+                channel_id, message_id
+            );
+
+            // Build FormData
+            let form_data = FormData::new()
+                .map_err(|_| DiscordError::Gloo("Failed to create FormData".to_string()))?;
+
+            // Add files
+            for (index, attachment) in attachments.iter().enumerate() {
+                Self::validate_attachment(&attachment.file_data, &attachment.filename)?;
+
+                let uint8_array = js_sys::Uint8Array::new_with_length(attachment.file_data.len() as u32);
+                uint8_array.copy_from(&attachment.file_data);
+
+                let mut blob_options = BlobPropertyBag::new();
+                blob_options.type_(Self::get_content_type(&attachment.filename));
+
+                let blob = Blob::new_with_u8_array_sequence_and_options(
+                    &js_sys::Array::of1(&uint8_array),
+                    &blob_options,
+                )
+                .map_err(|_| DiscordError::Gloo("Failed to create Blob".to_string()))?;
+
+                form_data
+                    .append_with_blob_and_filename(&format!("files[{index}]"), &blob, &attachment.filename)
+                    .map_err(|_| DiscordError::Gloo("Failed to append file".to_string()))?;
+            }
+
+            // Add JSON payload
+            let payload = serde_json::to_string(edit)?;
+            form_data
+                .append_with_str("payload_json", &payload)
+                .map_err(|_| DiscordError::Gloo("Failed to append payload_json".to_string()))?;
+
+            let request = Request::patch(&url)
+                .header("Authorization", &format!("Bot {}", self.bot_token))
+                .header("User-Agent", "defrag-discord-client/1.0")
+                .body(JsValue::from(form_data))
+                .map_err(|e| DiscordError::Gloo(format!("Multipart edit request creation failed: {e:?}")))?;
+
+            let response = request
+                .send()
+                .await
+                .map_err(|e| DiscordError::Gloo(format!("Multipart edit request failed: {e:?}")))?;
 
             self.handle_message_response(response).await
         })

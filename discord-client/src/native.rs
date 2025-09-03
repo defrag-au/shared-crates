@@ -22,6 +22,7 @@ impl NativeDiscordClient {
 impl DiscordClient for NativeDiscordClient {
     type SendMessageFut<'a> = Pin<Box<dyn Future<Output = Result<DiscordMessageResponse, DiscordError>> + 'a>> where Self: 'a;
     type EditMessageFut<'a> = Pin<Box<dyn Future<Output = Result<DiscordMessageResponse, DiscordError>> + 'a>> where Self: 'a;
+    type EditMessageWithAttachmentsFut<'a> = Pin<Box<dyn Future<Output = Result<DiscordMessageResponse, DiscordError>> + 'a>> where Self: 'a;
 
     fn send_message<'a>(
         &'a self,
@@ -75,6 +76,51 @@ impl DiscordClient for NativeDiscordClient {
                 .header("Authorization", format!("Bot {}", self.bot_token))
                 .header("User-Agent", "defrag-discord-client/1.0")
                 .json(edit)
+                .send()
+                .await?;
+
+            self.handle_message_response(response).await
+        })
+    }
+
+    fn edit_message_with_attachments<'a>(
+        &'a self,
+        channel_id: &'a str,
+        message_id: &'a str,
+        edit: &'a crate::DiscordMessageEdit,
+        attachments: &'a [crate::DiscordAttachment],
+    ) -> Self::EditMessageWithAttachmentsFut<'a> {
+        Box::pin(async move {
+            info!("✏️ Editing Discord message with new attachments (native)");
+            let url = format!(
+                "https://discord.com/api/v10/channels/{}/messages/{}",
+                channel_id, message_id
+            );
+
+            let mut form = multipart::Form::new();
+
+            // Add new files
+            for (index, attachment) in attachments.iter().enumerate() {
+                Self::validate_attachment(&attachment.file_data, &attachment.filename)?;
+                form = form.part(
+                    format!("files[{index}]"),
+                    multipart::Part::bytes(attachment.file_data.clone())
+                        .file_name(attachment.filename.clone())
+                        .mime_str(Self::get_content_type(&attachment.filename))
+                        .map_err(|e| DiscordError::Request(format!("Invalid mime type: {e}")))?,
+                );
+            }
+
+            // Add JSON payload for edit
+            let payload = serde_json::to_string(edit)?;
+            form = form.text("payload_json", payload);
+
+            let response = self
+                .client
+                .patch(&url)
+                .header("Authorization", format!("Bot {}", self.bot_token))
+                .header("User-Agent", "defrag-discord-client/1.0")
+                .multipart(form)
                 .send()
                 .await?;
 
