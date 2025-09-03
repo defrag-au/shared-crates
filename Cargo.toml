@@ -3,6 +3,7 @@ members = [
     "anvil-api",
     "cardano-assets",
     "cnft-tools",
+    "discord-client",
     "http-client",
     "pinata",
     "test-utils",
