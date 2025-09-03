@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use core::future::Future;
+use core::pin::Pin;
 
 /// Discord message with optional attachments
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,12 +89,17 @@ pub struct DiscordAttachmentResponse {
 
 /// Common interface for Discord bot API operations
 pub trait DiscordClient {
+    /// Future type for `send_message` (avoids async fn in traits)
+    type SendMessageFut<'a>: Future<Output = Result<DiscordMessageResponse, crate::DiscordError>> + 'a
+    where
+        Self: 'a;
+
     /// Send a message to a Discord channel with optional attachments
-    async fn send_message(
-        &self,
-        channel_id: &str,
-        message: &DiscordMessage,
-    ) -> Result<DiscordMessageResponse, crate::DiscordError>;
+    fn send_message<'a>(
+        &'a self,
+        channel_id: &'a str,
+        message: &'a DiscordMessage,
+    ) -> Self::SendMessageFut<'a>;
 
     /// Validate attachment data before sending
     fn validate_attachment(data: &[u8], filename: &str) -> Result<(), crate::DiscordError> {

@@ -1,6 +1,8 @@
 use crate::{DiscordError, DiscordMessage, DiscordMessageResponse, DiscordRateLimitResponse, DiscordClient};
 use reqwest::multipart;
 use tracing::{debug, error, info, warn};
+use core::future::Future;
+use core::pin::Pin;
 
 /// Native Discord bot client using reqwest (for augminted-bots)
 pub struct NativeDiscordClient {
@@ -18,35 +20,39 @@ impl NativeDiscordClient {
 }
 
 impl DiscordClient for NativeDiscordClient {
-    async fn send_message(
-        &self,
-        channel_id: &str,
-        message: &DiscordMessage,
-    ) -> Result<DiscordMessageResponse, DiscordError> {
-        info!("🔗 Sending Discord message with native client");
+    type SendMessageFut<'a> = Pin<Box<dyn Future<Output = Result<DiscordMessageResponse, DiscordError>> + 'a>> where Self: 'a;
 
-        let url = format!("https://discord.com/api/v10/channels/{}/messages", channel_id);
+    fn send_message<'a>(
+        &'a self,
+        channel_id: &'a str,
+        message: &'a DiscordMessage,
+    ) -> Self::SendMessageFut<'a> {
+        Box::pin(async move {
+            info!("🔗 Sending Discord message with native client");
 
-        // Check if we have attachments to send
-        if let Some(attachments) = &message.attachments {
-            if !attachments.is_empty() {
-                debug!("📎 Sending {} attachments via multipart", attachments.len());
-                return self.send_multipart_message(&url, message, attachments).await;
+            let url = format!("https://discord.com/api/v10/channels/{}/messages", channel_id);
+
+            // Check if we have attachments to send
+            if let Some(attachments) = &message.attachments {
+                if !attachments.is_empty() {
+                    debug!("📎 Sending {} attachments via multipart", attachments.len());
+                    return self.send_multipart_message(&url, message, attachments).await;
+                }
             }
-        }
 
-        // No attachments - send as JSON
-        debug!("📄 Sending JSON-only message");
-        let response = self
-            .client
-            .post(&url)
-            .header("Authorization", format!("Bot {}", self.bot_token))
-            .header("User-Agent", "defrag-discord-client/1.0")
-            .json(message)
-            .send()
-            .await?;
+            // No attachments - send as JSON
+            debug!("📄 Sending JSON-only message");
+            let response = self
+                .client
+                .post(&url)
+                .header("Authorization", format!("Bot {}", self.bot_token))
+                .header("User-Agent", "defrag-discord-client/1.0")
+                .json(message)
+                .send()
+                .await?;
 
-        self.handle_message_response(response).await
+            self.handle_message_response(response).await
+        })
     }
 }
 

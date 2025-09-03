@@ -1,5 +1,7 @@
 use discord_client::{DiscordMessage, DiscordAttachment, DiscordEmbed, DiscordEmbedField, NativeDiscordClient, DiscordClient};
 use std::env;
+use std::fs;
+use std::path::Path;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -58,21 +60,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Example 3: Message with attachment
     println!("Sending message with attachment...");
-    
-    // Create a small test PNG (1x1 transparent pixel)
-    let test_png_data = vec![
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
-        0x89, 0x00, 0x00, 0x00, 0x0B, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
-        0x42, 0x60, 0x82
-    ];
+
+    // If DISCORD_IMAGE_PATH is set, upload that file; otherwise send a tiny test PNG.
+    let (file_data, filename, description) = match env::var("DISCORD_IMAGE_PATH") {
+        Ok(path_str) => {
+            let path = Path::new(&path_str);
+            let bytes = fs::read(path)?;
+            let fname = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("upload.bin")
+                .to_string();
+            (bytes, fname, Some("Uploaded from DISCORD_IMAGE_PATH".to_string()))
+        }
+        Err(_) => {
+            // Create a small test PNG (1x1 transparent pixel)
+            let test_png_data = vec![
+                0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+                0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+                0x89, 0x00, 0x00, 0x00, 0x0B, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+                0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+                0x42, 0x60, 0x82
+            ];
+            (
+                test_png_data,
+                "example_test.png".to_string(),
+                Some("Test image from native example".to_string()),
+            )
+        }
+    };
 
     let attachment = DiscordAttachment {
         id: "0".to_string(),
-        filename: "example_test.png".to_string(),
-        description: Some("Test image from native example".to_string()),
-        file_data: test_png_data,
+        filename,
+        description,
+        file_data,
     };
 
     let attachment_message = DiscordMessage {
