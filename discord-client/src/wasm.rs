@@ -1,10 +1,11 @@
-use crate::{DiscordError, DiscordMessage, DiscordMessageResponse, DiscordRateLimitResponse, DiscordClient};
+use crate::{DiscordError, DiscordMessage, DiscordRateLimitResponse, DiscordClient, AttachmentInput};
 use gloo_net::http::Request;
 use tracing::{debug, error, info, warn};
 use wasm_bindgen::JsValue;
 use web_sys::{Blob, BlobPropertyBag, FormData};
 use core::future::Future;
 use core::pin::Pin;
+use twilight_model::channel::Message;
 
 /// WASM Discord bot client using gloo-net (for cnft.dev-workers)
 pub struct WasmDiscordClient {
@@ -18,9 +19,9 @@ impl WasmDiscordClient {
 }
 
 impl DiscordClient for WasmDiscordClient {
-    type SendMessageFut<'a> = Pin<Box<dyn Future<Output = Result<DiscordMessageResponse, DiscordError>> + 'a>> where Self: 'a;
-    type EditMessageFut<'a> = Pin<Box<dyn Future<Output = Result<DiscordMessageResponse, DiscordError>> + 'a>> where Self: 'a;
-    type EditMessageWithAttachmentsFut<'a> = Pin<Box<dyn Future<Output = Result<DiscordMessageResponse, DiscordError>> + 'a>> where Self: 'a;
+    type SendMessageFut<'a> = Pin<Box<dyn Future<Output = Result<Message, DiscordError>> + 'a>> where Self: 'a;
+    type EditMessageFut<'a> = Pin<Box<dyn Future<Output = Result<Message, DiscordError>> + 'a>> where Self: 'a;
+    type EditMessageWithAttachmentsFut<'a> = Pin<Box<dyn Future<Output = Result<Message, DiscordError>> + 'a>> where Self: 'a;
 
     fn send_message<'a>(
         &'a self,
@@ -90,7 +91,7 @@ impl DiscordClient for WasmDiscordClient {
         channel_id: &'a str,
         message_id: &'a str,
         edit: &'a crate::DiscordMessageEdit,
-        attachments: &'a [crate::DiscordAttachment],
+        attachments: &'a [AttachmentInput],
     ) -> Self::EditMessageWithAttachmentsFut<'a> {
         Box::pin(async move {
             info!("✏️ Editing Discord message with new attachments (WASM)");
@@ -151,8 +152,8 @@ impl WasmDiscordClient {
         &self,
         url: &str,
         message: &DiscordMessage,
-        attachments: &[crate::DiscordAttachment],
-    ) -> Result<DiscordMessageResponse, DiscordError> {
+        attachments: &[AttachmentInput],
+    ) -> Result<Message, DiscordError> {
         // Create FormData for multipart request
         let form_data = FormData::new()
             .map_err(|_| DiscordError::Gloo("Failed to create FormData".to_string()))?;
@@ -199,12 +200,12 @@ impl WasmDiscordClient {
         self.handle_message_response(response).await
     }
 
-    async fn handle_message_response(&self, response: gloo_net::http::Response) -> Result<DiscordMessageResponse, DiscordError> {
+    async fn handle_message_response(&self, response: gloo_net::http::Response) -> Result<Message, DiscordError> {
         let status = response.status();
 
         if response.ok() {
             info!("✅ Discord message sent successfully");
-            let message_response: DiscordMessageResponse = response.json().await
+            let message_response: Message = response.json().await
                 .map_err(|e| DiscordError::Gloo(format!("Failed to parse response: {e:?}")))?;
             Ok(message_response)
         } else if status == 429 {

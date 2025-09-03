@@ -1,4 +1,6 @@
-use discord_client::{DiscordMessage, DiscordAttachment, DiscordEmbed, DiscordEmbedField, NativeDiscordClient, DiscordClient};
+use discord_client::{DiscordMessage, AttachmentInput, NativeDiscordClient, DiscordClient};
+use discord_client::compat::twilight::TwEmbedBuilder;
+use twilight_util::builder::embed::EmbedFieldBuilder;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -32,32 +34,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         content: Some("Hello from discord-client (edited)!".to_string()),
         embeds: None,
     };
-    let edited = client.edit_message(&channel_id, &response.id, &edit).await?;
+    let response_id = response.id.to_string();
+    let edited = client.edit_message(&channel_id, &response_id, &edit).await?;
     println!("Message edited! New content: {}", edited.content);
 
-    // Example 2: Message with embed
+    // Example 2: Message with embed (Twilight builder)
     println!("Sending message with embed...");
-    let embed = DiscordEmbed {
-        title: Some("Native Client Example".to_string()),
-        description: Some("This message was sent using the native discord-client".to_string()),
-        color: Some(0x00ff00), // Green
-        thumbnail: None,
-        image: None,
-        fields: vec![
-            DiscordEmbedField {
-                name: "Platform".to_string(),
-                value: "Native Rust".to_string(),
-                inline: true,
-            },
-            DiscordEmbedField {
-                name: "HTTP Client".to_string(),
-                value: "reqwest".to_string(),
-                inline: true,
-            },
-        ],
-        footer: None,
-        timestamp: None,
-    };
+    let embed = TwEmbedBuilder::new()
+        .title("Native Client Example")
+        .description("This message was sent using the native discord-client")
+        .color(0x00ff00)
+        .field(EmbedFieldBuilder::new("Platform", "Native Rust").inline())
+        .field(EmbedFieldBuilder::new("HTTP Client", "reqwest").inline())
+        .build();
 
     let embed_message = DiscordMessage {
         content: Some("Check out this embed!".to_string()),
@@ -99,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let attachment = DiscordAttachment {
+    let attachment = AttachmentInput {
         id: "0".to_string(),
         filename,
         description,
@@ -120,8 +109,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         content: Some("Updated text; attachment should still be visible.".to_string()),
         embeds: None,
     };
+    let attachment_response_id = attachment_response.id.to_string();
     let edited_keep = client
-        .edit_message(&channel_id, &attachment_response.id, &edit_keep_attachment)
+        .edit_message(&channel_id, &attachment_response_id, &edit_keep_attachment)
         .await?;
     println!(
         "Edited message. Attachments still present: {}",
@@ -154,25 +144,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let new_attachment = DiscordAttachment {
+    let new_attachment = AttachmentInput {
         id: "0".to_string(),
         filename: filename2,
         description: Some("New attachment added via edit".to_string()),
         file_data: file_data2,
     };
 
-    let embed2 = DiscordEmbed {
-        title: Some("Edited with extra attachment".to_string()),
-        description: Some("We added another file and updated content".to_string()),
-        color: Some(0x3366ff),
-        thumbnail: None,
-        image: None,
-        fields: vec![
-            DiscordEmbedField { name: "Action".to_string(), value: "edit + attach".to_string(), inline: true },
-        ],
-        footer: None,
-        timestamp: None,
-    };
+    let embed2 = TwEmbedBuilder::new()
+        .title("Edited with extra attachment")
+        .description("We added another file and updated content")
+        .color(0x3366ff)
+        .field(EmbedFieldBuilder::new("Action", "edit + attach").inline())
+        .build();
 
     let edit_with_new = discord_client::DiscordMessageEdit {
         content: Some("Content updated during attachment add".to_string()),
@@ -182,7 +166,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let edited_with_new = client
         .edit_message_with_attachments(
             &channel_id,
-            &attachment_response.id,
+            &attachment_response_id,
             &edit_with_new,
             &[new_attachment],
         )

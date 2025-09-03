@@ -1,54 +1,25 @@
 use serde::{Deserialize, Serialize};
 use core::future::Future;
 use core::pin::Pin;
+use twilight_model::channel::Message;
+use twilight_model::channel::message::embed::Embed as TwEmbed;
 
-/// Discord message with optional attachments
+/// Outbound message payload with optional attachments.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscordMessage {
     pub content: Option<String>,
-    pub embeds: Option<Vec<DiscordEmbed>>,
-    pub attachments: Option<Vec<DiscordAttachment>>,
+    pub embeds: Option<Vec<TwEmbed>>, // Twilight embed types
+    pub attachments: Option<Vec<AttachmentInput>>, // For multipart file uploads
 }
 
-/// Discord attachment for file uploads
+/// Attachment input for file uploads (binary data is not serialized to JSON).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiscordAttachment {
+pub struct AttachmentInput {
     pub id: String,
     pub filename: String,
     pub description: Option<String>,
     #[serde(skip)]
-    pub file_data: Vec<u8>, // Binary data - not serialized in JSON
-}
-
-/// Discord embed structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiscordEmbed {
-    pub title: Option<String>,
-    pub description: Option<String>,
-    pub color: Option<u32>,
-    pub thumbnail: Option<DiscordEmbedImage>,
-    pub image: Option<DiscordEmbedImage>,
-    pub fields: Vec<DiscordEmbedField>,
-    pub footer: Option<DiscordEmbedFooter>,
-    pub timestamp: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiscordEmbedField {
-    pub name: String,
-    pub value: String,
-    pub inline: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiscordEmbedImage {
-    pub url: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiscordEmbedFooter {
-    pub text: String,
-    pub icon_url: Option<String>,
+    pub file_data: Vec<u8>,
 }
 
 /// Discord rate limit response
@@ -59,48 +30,22 @@ pub struct DiscordRateLimitResponse {
     pub global: bool,
 }
 
-/// Discord API message response
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiscordMessageResponse {
-    pub id: String,
-    pub channel_id: String,
-    pub author: DiscordUser,
-    pub content: String,
-    pub timestamp: String,
-    pub attachments: Vec<DiscordAttachmentResponse>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiscordUser {
-    pub id: String,
-    pub username: String,
-    pub discriminator: String,
-    pub bot: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DiscordAttachmentResponse {
-    pub id: String,
-    pub filename: String,
-    pub size: u64,
-    pub url: String,
-    pub proxy_url: String,
-}
+// Response type: leverage Twilight message model
 
 /// Common interface for Discord bot API operations
 pub trait DiscordClient {
     /// Future type for `send_message` (avoids async fn in traits)
-    type SendMessageFut<'a>: Future<Output = Result<DiscordMessageResponse, crate::DiscordError>> + 'a
+    type SendMessageFut<'a>: Future<Output = Result<Message, crate::DiscordError>> + 'a
     where
         Self: 'a;
 
     /// Future type for `edit_message`
-    type EditMessageFut<'a>: Future<Output = Result<DiscordMessageResponse, crate::DiscordError>> + 'a
+    type EditMessageFut<'a>: Future<Output = Result<Message, crate::DiscordError>> + 'a
     where
         Self: 'a;
 
     /// Future type for `edit_message_with_attachments`
-    type EditMessageWithAttachmentsFut<'a>: Future<Output = Result<DiscordMessageResponse, crate::DiscordError>> + 'a
+    type EditMessageWithAttachmentsFut<'a>: Future<Output = Result<Message, crate::DiscordError>> + 'a
     where
         Self: 'a;
 
@@ -125,7 +70,7 @@ pub trait DiscordClient {
         channel_id: &'a str,
         message_id: &'a str,
         edit: &'a DiscordMessageEdit,
-        attachments: &'a [DiscordAttachment],
+        attachments: &'a [AttachmentInput],
     ) -> Self::EditMessageWithAttachmentsFut<'a>;
 
     /// Validate attachment data before sending
@@ -175,5 +120,5 @@ pub trait DiscordClient {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DiscordMessageEdit {
     pub content: Option<String>,
-    pub embeds: Option<Vec<DiscordEmbed>>,
+    pub embeds: Option<Vec<TwEmbed>>,
 }
