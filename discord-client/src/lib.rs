@@ -15,6 +15,9 @@ pub use wasm::*;
 
 pub use types::*;
 
+#[cfg(feature = "twilight")]
+pub mod compat;
+
 #[derive(Error, Debug)]
 pub enum DiscordError {
     #[error("Request failed: {0}")]
