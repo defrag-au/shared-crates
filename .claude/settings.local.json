@@ -5,7 +5,9 @@
       "WebFetch(domain:dev.ada-anvil.io)",
       "Bash(cp:*)",
       "Bash(cargo test)",
-      "Bash(cargo test:*)"
+      "Bash(cargo test:*)",
+      "WebFetch(domain:discord.com)",
+      "WebFetch(domain:discord.com)"
     ],
     "deny": []
   }

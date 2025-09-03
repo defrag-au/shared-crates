@@ -57,14 +57,42 @@ pub struct DiscordRateLimitResponse {
     pub global: bool,
 }
 
-/// Common interface for Discord webhook operations
-pub trait DiscordWebhookClient {
-    /// Send a webhook message with optional attachments
-    async fn send_webhook(
+/// Discord API message response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordMessageResponse {
+    pub id: String,
+    pub channel_id: String,
+    pub author: DiscordUser,
+    pub content: String,
+    pub timestamp: String,
+    pub attachments: Vec<DiscordAttachmentResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordUser {
+    pub id: String,
+    pub username: String,
+    pub discriminator: String,
+    pub bot: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordAttachmentResponse {
+    pub id: String,
+    pub filename: String,
+    pub size: u64,
+    pub url: String,
+    pub proxy_url: String,
+}
+
+/// Common interface for Discord bot API operations
+pub trait DiscordClient {
+    /// Send a message to a Discord channel with optional attachments
+    async fn send_message(
         &self,
-        webhook_url: &str,
+        channel_id: &str,
         message: &DiscordMessage,
-    ) -> Result<(), crate::DiscordError>;
+    ) -> Result<DiscordMessageResponse, crate::DiscordError>;
 
     /// Validate attachment data before sending
     fn validate_attachment(data: &[u8], filename: &str) -> Result<(), crate::DiscordError> {

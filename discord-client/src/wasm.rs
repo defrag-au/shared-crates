@@ -1,43 +1,42 @@
-use crate::{DiscordError, DiscordMessage, DiscordRateLimitResponse, DiscordWebhookClient};
+use crate::{DiscordError, DiscordMessage, DiscordMessageResponse, DiscordRateLimitResponse, DiscordClient};
 use gloo_net::http::Request;
 use tracing::{debug, error, info, warn};
 use wasm_bindgen::JsValue;
 use web_sys::{Blob, BlobPropertyBag, FormData};
 
-/// WASM Discord client using gloo-net (for cnft.dev-workers)
-pub struct WasmDiscordClient;
+/// WASM Discord bot client using gloo-net (for cnft.dev-workers)
+pub struct WasmDiscordClient {
+    bot_token: String,
+}
 
 impl WasmDiscordClient {
-    pub fn new() -> Self {
-        Self
+    pub fn new(bot_token: String) -> Self {
+        Self { bot_token }
     }
 }
 
-impl Default for WasmDiscordClient {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl DiscordWebhookClient for WasmDiscordClient {
-    async fn send_webhook(
+impl DiscordClient for WasmDiscordClient {
+    async fn send_message(
         &self,
-        webhook_url: &str,
+        channel_id: &str,
         message: &DiscordMessage,
-    ) -> Result<(), DiscordError> {
-        info!("🔗 Sending Discord webhook with WASM client");
+    ) -> Result<DiscordMessageResponse, DiscordError> {
+        info!("🔗 Sending Discord message with WASM client");
+
+        let url = format!("https://discord.com/api/v10/channels/{}/messages", channel_id);
 
         // Check if we have attachments to send
         if let Some(attachments) = &message.attachments {
             if !attachments.is_empty() {
                 debug!("📎 Sending {} attachments via multipart", attachments.len());
-                return self.send_multipart_webhook(webhook_url, message, attachments).await;
+                return self.send_multipart_message(&url, message, attachments).await;
             }
         }
 
         // No attachments - send as JSON
-        debug!("📄 Sending JSON-only webhook");
-        let request = Request::post(webhook_url)
+        debug!("📄 Sending JSON-only message");
+        let request = Request::post(&url)
+            .header("Authorization", &format!("Bot {}", self.bot_token))
             .header("User-Agent", "defrag-discord-client/1.0")
             .header("Content-Type", "application/json")
             .json(message)
@@ -46,17 +45,17 @@ impl DiscordWebhookClient for WasmDiscordClient {
         let response = request.send().await
             .map_err(|e| DiscordError::Gloo(format!("Request failed: {e:?}")))?;
 
-        self.handle_response(response).await
+        self.handle_message_response(response).await
     }
 }
 
 impl WasmDiscordClient {
-    async fn send_multipart_webhook(
+    async fn send_multipart_message(
         &self,
-        webhook_url: &str,
+        url: &str,
         message: &DiscordMessage,
         attachments: &[crate::DiscordAttachment],
-    ) -> Result<(), DiscordError> {
+    ) -> Result<DiscordMessageResponse, DiscordError> {
         // Create FormData for multipart request
         let form_data = FormData::new()
             .map_err(|_| DiscordError::Gloo("Failed to create FormData".to_string()))?;
@@ -91,7 +90,8 @@ impl WasmDiscordClient {
             .map_err(|_| DiscordError::Gloo("Failed to append payload_json".to_string()))?;
 
         // Send multipart request
-        let request = Request::post(webhook_url)
+        let request = Request::post(url)
+            .header("Authorization", &format!("Bot {}", self.bot_token))
             .header("User-Agent", "defrag-discord-client/1.0")
             .body(JsValue::from(form_data))
             .map_err(|e| DiscordError::Gloo(format!("Multipart request creation failed: {e:?}")))?;
@@ -99,15 +99,17 @@ impl WasmDiscordClient {
         let response = request.send().await
             .map_err(|e| DiscordError::Gloo(format!("Multipart request failed: {e:?}")))?;
 
-        self.handle_response(response).await
+        self.handle_message_response(response).await
     }
 
-    async fn handle_response(&self, response: gloo_net::http::Response) -> Result<(), DiscordError> {
+    async fn handle_message_response(&self, response: gloo_net::http::Response) -> Result<DiscordMessageResponse, DiscordError> {
         let status = response.status();
 
         if response.ok() {
-            info!("✅ Discord webhook sent successfully");
-            Ok(())
+            info!("✅ Discord message sent successfully");
+            let message_response: DiscordMessageResponse = response.json().await
+                .map_err(|e| DiscordError::Gloo(format!("Failed to parse response: {e:?}")))?;
+            Ok(message_response)
         } else if status == 429 {
             match response.json::<DiscordRateLimitResponse>().await {
                 Ok(rate_limit) => {
@@ -130,9 +132,9 @@ impl WasmDiscordClient {
             }
         } else {
             let error_text = response.text().await.unwrap_or_default();
-            error!("❌ Discord webhook error {}: {}", status, error_text);
+            error!("❌ Discord API error {}: {}", status, error_text);
             Err(DiscordError::Request(format!(
-                "Discord webhook error {}: {}",
+                "Discord API error {}: {}",
                 status, error_text
             )))
         }

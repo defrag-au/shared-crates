@@ -1,63 +1,62 @@
-use crate::{DiscordError, DiscordMessage, DiscordRateLimitResponse, DiscordWebhookClient};
+use crate::{DiscordError, DiscordMessage, DiscordMessageResponse, DiscordRateLimitResponse, DiscordClient};
 use reqwest::multipart;
 use tracing::{debug, error, info, warn};
 
-/// Native Discord client using reqwest (for augminted-bots)
+/// Native Discord bot client using reqwest (for augminted-bots)
 pub struct NativeDiscordClient {
     client: reqwest::Client,
+    bot_token: String,
 }
 
 impl NativeDiscordClient {
-    pub fn new() -> Self {
+    pub fn new(bot_token: String) -> Self {
         Self {
             client: reqwest::Client::new(),
+            bot_token,
         }
     }
 }
 
-impl Default for NativeDiscordClient {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl DiscordWebhookClient for NativeDiscordClient {
-    async fn send_webhook(
+impl DiscordClient for NativeDiscordClient {
+    async fn send_message(
         &self,
-        webhook_url: &str,
+        channel_id: &str,
         message: &DiscordMessage,
-    ) -> Result<(), DiscordError> {
-        info!("🔗 Sending Discord webhook with native client");
+    ) -> Result<DiscordMessageResponse, DiscordError> {
+        info!("🔗 Sending Discord message with native client");
+
+        let url = format!("https://discord.com/api/v10/channels/{}/messages", channel_id);
 
         // Check if we have attachments to send
         if let Some(attachments) = &message.attachments {
             if !attachments.is_empty() {
                 debug!("📎 Sending {} attachments via multipart", attachments.len());
-                return self.send_multipart_webhook(webhook_url, message, attachments).await;
+                return self.send_multipart_message(&url, message, attachments).await;
             }
         }
 
         // No attachments - send as JSON
-        debug!("📄 Sending JSON-only webhook");
+        debug!("📄 Sending JSON-only message");
         let response = self
             .client
-            .post(webhook_url)
+            .post(&url)
+            .header("Authorization", format!("Bot {}", self.bot_token))
             .header("User-Agent", "defrag-discord-client/1.0")
             .json(message)
             .send()
             .await?;
 
-        self.handle_response(response).await
+        self.handle_message_response(response).await
     }
 }
 
 impl NativeDiscordClient {
-    async fn send_multipart_webhook(
+    async fn send_multipart_message(
         &self,
-        webhook_url: &str,
+        url: &str,
         message: &DiscordMessage,
         attachments: &[crate::DiscordAttachment],
-    ) -> Result<(), DiscordError> {
+    ) -> Result<DiscordMessageResponse, DiscordError> {
         let mut form = multipart::Form::new();
 
         // Add files
@@ -79,21 +78,23 @@ impl NativeDiscordClient {
 
         let response = self
             .client
-            .post(webhook_url)
+            .post(url)
+            .header("Authorization", format!("Bot {}", self.bot_token))
             .header("User-Agent", "defrag-discord-client/1.0")
             .multipart(form)
             .send()
             .await?;
 
-        self.handle_response(response).await
+        self.handle_message_response(response).await
     }
 
-    async fn handle_response(&self, response: reqwest::Response) -> Result<(), DiscordError> {
+    async fn handle_message_response(&self, response: reqwest::Response) -> Result<DiscordMessageResponse, DiscordError> {
         let status = response.status();
 
         if response.status().is_success() {
-            info!("✅ Discord webhook sent successfully");
-            Ok(())
+            info!("✅ Discord message sent successfully");
+            let message_response: DiscordMessageResponse = response.json().await?;
+            Ok(message_response)
         } else if status == 429 {
             match response.json::<DiscordRateLimitResponse>().await {
                 Ok(rate_limit) => {
@@ -116,9 +117,9 @@ impl NativeDiscordClient {
             }
         } else {
             let error_text = response.text().await.unwrap_or_default();
-            error!("❌ Discord webhook error {}: {}", status, error_text);
+            error!("❌ Discord API error {}: {}", status, error_text);
             Err(DiscordError::Request(format!(
-                "Discord webhook error {}: {}",
+                "Discord API error {}: {}",
                 status, error_text
             )))
         }
