@@ -10,18 +10,28 @@ tracing = { workspace = true }
 thiserror = "1.0"
 
 # Native dependencies (for augminted-bots)
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "multipart"], optional = true }
+reqwest = { version = "0.12", features = [
+    "json",
+    "rustls-tls",
+    "multipart",
+], optional = true }
 
 # WASM dependencies (for cnft.dev-workers)
 gloo-net = { workspace = true, features = ["json"], optional = true }
-web-sys = { workspace = true, features = ["Blob", "BlobPropertyBag", "FormData"], optional = true }
+web-sys = { workspace = true, features = [
+    "Blob",
+    "BlobPropertyBag",
+    "FormData",
+], optional = true }
 js-sys = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 worker = { workspace = true, optional = true }
 
 # Twilight types and builders (WASM-safe)
 twilight-model = { version = "0.16", default-features = false }
-twilight-util  = { version = "0.16", default-features = false, features = ["builder"] }
+twilight-util = { version = "0.16", default-features = false, features = [
+    "builder",
+] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
@@ -35,6 +45,6 @@ native = ["reqwest"]
 wasm = ["gloo-net", "web-sys", "js-sys", "wasm-bindgen", "worker"]
 
 [[example]]
-name = "twilight_embed_example"
-path = "examples/twilight_embed_example.rs"
+name = "native_example"
+path = "examples/native_example.rs"
 required-features = ["native"]
