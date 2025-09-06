@@ -337,6 +337,7 @@ pub enum AssetImageSource {
     Unknown,
 }
 
+// TODO: rename this - it's not really correct
 #[derive(Debug, Clone, PartialEq)]
 pub enum MetadataKind {
     Cip25,

@@ -2,6 +2,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::str::FromStr;
 
+use crate::{Asset, MetadataKind};
+
 /// Cardano policy ID length in hex characters (28 bytes = 56 hex chars)
 const POLICY_ID_LENGTH: usize = 56;
 
@@ -110,6 +112,15 @@ impl AssetId {
             },
             Err(_) => self.asset_name_hex.clone(),
         }
+    }
+
+    pub fn strip_cip67(&self) -> AssetId {
+        let stripped_hex = Asset::strip_metadata_prefix(
+            &self.asset_name_hex,
+            &MetadataKind::guess_id_kind(&self.asset_name_hex),
+        );
+
+        Self::new_unchecked(self.policy_id.clone(), stripped_hex)
     }
 
     /// Create AssetId from hex-encoded asset name
@@ -363,6 +374,8 @@ mod tests {
         "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f650697261746531303836";
     const TEST_DOT_DELIMITED: &str =
         "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6.50697261746531303836";
+    const CIP_68_POLICY: &str =
+        "29728939434a25e57ef6a9b94ba3215508264fee665bbb35b16a2d56000de1404d4432393230";
 
     #[test]
     fn test_new_valid() {
@@ -423,6 +436,18 @@ mod tests {
 
         assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
+    }
+
+    #[test]
+    fn test_strip_cip67_prefix() {
+        let asset_id =
+            AssetId::parse_concatenated(CIP_68_POLICY).expect("Should create valid AssetId");
+
+        assert_eq!(asset_id.concatenated(), CIP_68_POLICY);
+        assert_eq!(
+            asset_id.strip_cip67().concatenated(),
+            "29728939434a25e57ef6a9b94ba3215508264fee665bbb35b16a2d564d4432393230"
+        );
     }
 
     #[test]
