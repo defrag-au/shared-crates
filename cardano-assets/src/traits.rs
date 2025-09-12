@@ -1,6 +1,9 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{collections::HashMap, fmt::Display};
 
+#[cfg(feature = "typescript")]
+use ts_rs::TS;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum TraitValue {
@@ -53,6 +56,8 @@ impl From<String> for TraitValue {
 
 /// New consistent traits type using HashMap<String, Vec<String>>
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "typescript", derive(TS))]
+#[cfg_attr(feature = "typescript", ts(export))]
 pub struct Traits(HashMap<String, Vec<String>>);
 
 impl Display for Traits {
