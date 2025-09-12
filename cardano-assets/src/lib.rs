@@ -5,6 +5,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
+#[cfg(feature = "typescript")]
+use ts_rs::TS;
+
 pub mod asset_id;
 pub mod collection;
 pub mod traits;
@@ -403,6 +406,8 @@ impl MetadataKind {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "typescript", derive(TS))]
+#[cfg_attr(feature = "typescript", ts(export))]
 #[serde(rename_all = "snake_case")]
 pub enum AssetRarity {
     Common,
@@ -426,6 +431,8 @@ impl AssetRarity {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "typescript", derive(TS))]
+#[cfg_attr(feature = "typescript", ts(export))]
 pub enum AssetTag {
     Rarity(AssetRarity),
     OnSale,
@@ -486,6 +493,8 @@ pub struct Asset {
 
 /// Asset with explicit ID - enhanced version for marketplace and API operations
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "typescript", derive(TS))]
+#[cfg_attr(feature = "typescript", ts(export))]
 pub struct AssetV2 {
     /// Unique asset identifier (policy_id + asset_name_hex)
     pub id: AssetId,
