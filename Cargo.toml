@@ -19,6 +19,7 @@ authors = ["Damon Oehlman <damon@defrag.au>"]
 
 [workspace.dependencies]
 axum = { version = "0.8", default-features = false, features = ["json", "macros"] }
+tower-http = { version = "0.6" }
 gloo-net = "0.6.0"
 indexmap = { version = "2.0", features = ["serde"] }
 js-sys = "*"

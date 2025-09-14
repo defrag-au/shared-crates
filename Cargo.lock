@@ -3088,6 +3088,7 @@ dependencies = [
  "serde_json",
  "test_utils",
  "time",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "tracing-web",
