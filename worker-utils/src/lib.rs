@@ -170,6 +170,7 @@ cfg_if! {
         }
     } else {
         // For native tests (non-Wasm)
+        #[allow(unused_variables)]
         pub fn init_tracing(level: Option<tracing::Level>) {
             #[cfg(feature = "full-logging")]
             {

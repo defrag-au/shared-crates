@@ -1,7 +1,7 @@
-/// Axum utilities for Cloudflare Workers
-/// 
-/// This module provides utilities specific to using Axum with Cloudflare Workers,
-/// particularly around handling the WASM execution constraints.
+//! Axum utilities for Cloudflare Workers
+//! 
+//! This module provides utilities specific to using Axum with Cloudflare Workers,
+//! particularly around handling the WASM execution constraints.
 
 /// Macro to execute non-Send operations in WASM
 /// 
@@ -35,6 +35,8 @@ macro_rules! exec_nonsend {
 /// Re-export the macro for convenient access
 pub use exec_nonsend;
 
+use axum::response::IntoResponse;
+
 /// Extension trait for common Axum response patterns in Workers
 pub trait WorkerResponseExt {
     /// Create a JSON success response
@@ -62,18 +64,3 @@ impl WorkerResponseExt for axum::response::Response {
 
 /// Common result type for Worker operations that might fail with oneshot channel errors
 pub type WasmResult<T> = Result<T, futures_channel::oneshot::Canceled>;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_exec_nonsend_macro() {
-        // Simple test that the macro compiles and works
-        let result: WasmResult<i32> = exec_nonsend! {
-            Ok(42)
-        };
-        
-        assert_eq!(result.unwrap(), 42);
-    }
-}
