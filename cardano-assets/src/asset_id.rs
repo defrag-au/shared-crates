@@ -2,8 +2,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::str::FromStr;
 
-#[cfg(feature = "typescript")]
-use ts_rs::TS;
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
 
 use crate::{Asset, MetadataKind};
 
@@ -51,8 +51,7 @@ const POLICY_ID_LENGTH: usize = 56;
 /// assert!(AssetId::new("policy_id".to_string(), "".to_string()).is_err());
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "typescript", derive(TS))]
-#[cfg_attr(feature = "typescript", ts(export))]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct AssetId {
     /// Policy ID as 56-character hex string (28 bytes)
     pub policy_id: String,
