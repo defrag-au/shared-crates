@@ -8,6 +8,12 @@ mod r2_notification;
 pub mod sleep;
 pub use r2_notification::*;
 
+#[cfg(feature = "axum")]
+pub mod axum;
+
+#[cfg(feature = "axum")]
+pub use axum::*;
+
 pub async fn send_to_queue<M>(queue: &Queue, message: &M) -> Result<()>
 where
     M: Serialize + Clone,
@@ -164,6 +170,7 @@ cfg_if! {
         }
     } else {
         // For native tests (non-Wasm)
+        #[allow(unused_variables)]
         pub fn init_tracing(level: Option<tracing::Level>) {
             #[cfg(feature = "full-logging")]
             {

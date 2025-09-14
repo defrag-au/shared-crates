@@ -10,6 +10,7 @@ default = ["console_error_panic_hook", "simple-logging"]
 console_error_panic_hook = ["dep:console_error_panic_hook"]
 full-logging = ["tracing-subscriber", "tracing-web", "time"]
 simple-logging = ["web-sys"]
+axum = ["dep:axum", "dep:futures-channel", "dep:serde_json"]
 
 [dependencies]
 cfg-if = "1.0.0"
@@ -26,6 +27,9 @@ web-sys = { workspace = true, optional = true }
 tracing-web = { version = "0.1", optional = true }
 tracing-subscriber = { workspace = true, features = ['time', 'json'], optional = true }
 time = { version = "0.3", features = ['wasm-bindgen'], optional = true }
+axum = { workspace = true, optional = true }
+futures-channel = { version = "0.3.31", optional = true }
+serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
 tracing-subscriber = "0.3"
