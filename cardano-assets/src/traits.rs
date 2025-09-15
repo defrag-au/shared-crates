@@ -1,7 +1,11 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{collections::HashMap, fmt::Display};
 
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(untagged)]
 pub enum TraitValue {
     Single(String),
@@ -53,6 +57,8 @@ impl From<String> for TraitValue {
 
 /// New consistent traits type using HashMap<String, Vec<String>>
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(value_type = std::collections::HashMap<String, Vec<String>>))]
 pub struct Traits(HashMap<String, Vec<String>>);
 
 impl Display for Traits {

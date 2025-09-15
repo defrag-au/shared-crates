@@ -240,6 +240,7 @@ impl TryFrom<&str> for AssetId {
 
 /// Error types for AssetId operations
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub enum AssetIdError {
     InvalidLength { expected_min: usize, actual: usize },
     InvalidPolicyIdLength { expected: usize, actual: usize },
