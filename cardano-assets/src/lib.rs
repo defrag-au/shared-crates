@@ -827,6 +827,7 @@ impl TraitValueCount {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TraitSummarySorted {
+    #[cfg_attr(feature = "openapi", schema(value_type = std::collections::HashMap<String, Vec<TraitValueCount>>))]
     pub traits: IndexMap<String, Vec<TraitValueCount>>,
     pub count: u32,
 }
