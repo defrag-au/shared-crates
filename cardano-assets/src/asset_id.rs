@@ -230,6 +230,14 @@ impl AssetId {
     }
 }
 
+impl TryFrom<&str> for AssetId {
+    type Error = AssetIdError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::parse_smart(value)
+    }
+}
+
 /// Error types for AssetId operations
 #[derive(Debug, Clone, PartialEq)]
 pub enum AssetIdError {
@@ -437,6 +445,16 @@ mod tests {
     fn test_parse_smart_concatenated() {
         let asset_id =
             AssetId::parse_smart(TEST_CONCATENATED).expect("Should parse concatenated format");
+
+        assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
+        assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
+    }
+
+    #[test]
+    fn test_parse_smart_concatenated_try_into() {
+        let asset_id: AssetId = TEST_CONCATENATED
+            .try_into()
+            .expect("Should parse concatenated format");
 
         assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
