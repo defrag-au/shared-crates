@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
+
 /// Marketplace enum representing different NFT marketplaces
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub enum Marketplace {
     #[default]
     JpgStore,

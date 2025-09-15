@@ -5,6 +5,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
+
 pub mod asset_id;
 pub mod collection;
 pub mod traits;
@@ -18,6 +21,7 @@ pub use traits::*;
 pub type AssetTraits = HashMap<String, String>;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct FlatAsset(pub AssetId, pub String, pub AssetTraits, pub Option<u32>);
 
 impl FlatAsset {
@@ -38,6 +42,7 @@ impl FlatAsset {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(untagged)]
 pub enum PrimitiveOrList<T> {
     Primitive(T),
@@ -58,6 +63,7 @@ impl From<PrimitiveOrList<String>> for String {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct AssetFile {
     media_type: String,
@@ -89,6 +95,7 @@ impl AssetFile {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(untagged)]
 pub enum AssetMetadata {
     // known projects:
@@ -204,6 +211,7 @@ pub enum AssetMetadata {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct CodifiedTrait {
     pub name: String,
     pub value: String,
@@ -230,6 +238,7 @@ impl CodifiedTrait {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum CodifiedTraitDisplay {
     #[default]
@@ -241,6 +250,7 @@ pub enum CodifiedTraitDisplay {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct AssetMetadata68 {
     pub purpose: NftPurpose,
     pub version: u32,
@@ -248,6 +258,7 @@ pub struct AssetMetadata68 {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum NftPurpose {
     UserNft,
@@ -292,6 +303,7 @@ impl std::fmt::Display for NftPurpose {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct YeppleEmbeddedMetadata {
     name: String,
     image: String,
@@ -306,6 +318,7 @@ fn default_media_type() -> String {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ApiAsset(String, String, Traits, Option<u32>);
 
 impl ApiAsset {
@@ -331,6 +344,7 @@ impl ApiAsset {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub enum AssetImageSource {
     Ipfs,
     Https,
@@ -339,6 +353,7 @@ pub enum AssetImageSource {
 
 // TODO: rename this - it's not really correct
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub enum MetadataKind {
     Cip25,
     Cip68(NftPurpose),
@@ -403,6 +418,7 @@ impl MetadataKind {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum AssetRarity {
     Common,
@@ -426,6 +442,7 @@ impl AssetRarity {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub enum AssetTag {
     Rarity(AssetRarity),
     OnSale,
@@ -474,6 +491,7 @@ impl<'de> Deserialize<'de> for AssetTag {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Asset {
     pub name: String,
     pub image: String,
@@ -486,6 +504,7 @@ pub struct Asset {
 
 /// Asset with explicit ID - enhanced version for marketplace and API operations
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct AssetV2 {
     /// Unique asset identifier (policy_id + asset_name_hex)
     pub id: AssetId,
@@ -753,12 +772,14 @@ impl From<Asset> for Traits {
 }
 
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct AssetWithId {
     pub id: String,
     pub asset: Asset,
 }
 
 #[derive(Serialize, Default, Debug)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TraitSummary {
     /// Map of trait name → (value → occurrence count)
     traits: HashMap<String, HashMap<String, u32>>,
@@ -788,6 +809,7 @@ impl TraitSummary {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TraitValueCount {
     #[serde(rename = "v")]
     pub value: String,
@@ -803,6 +825,7 @@ impl TraitValueCount {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TraitSummarySorted {
     pub traits: IndexMap<String, Vec<TraitValueCount>>,
     pub count: u32,
@@ -851,6 +874,7 @@ impl TraitSummarySorted {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct AssetNotificationRequest {
     pub id: Option<String>,
     pub name: String,
