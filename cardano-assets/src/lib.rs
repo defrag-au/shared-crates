@@ -347,6 +347,7 @@ impl ApiAsset {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub enum AssetImageSource {
     Ipfs,
+    IpfsUnprefixed,
     Https,
     Unknown,
 }
@@ -748,8 +749,58 @@ impl Asset {
         match parts.first() {
             Some(&"https") => AssetImageSource::Https,
             Some(&"ipfs") => AssetImageSource::Ipfs,
-            _ => AssetImageSource::Unknown,
+            _ => {
+                // Check if it's an unprefixed IPFS CID
+                if Self::is_valid_cid(url) {
+                    AssetImageSource::IpfsUnprefixed
+                } else {
+                    AssetImageSource::Unknown
+                }
+            }
         }
+    }
+
+    /// Check if a string is a valid IPFS CID (Content Identifier)
+    #[must_use]
+    pub fn is_valid_cid(s: &str) -> bool {
+        // Basic CID validation
+        // CIDv0: starts with "Qm" and is 46 characters long (base58)
+        // CIDv1: typically starts with "b" and is longer (base32) or other prefixes
+
+        if s.is_empty() {
+            return false;
+        }
+
+        // CIDv0 format: Qm + 44 base58 characters = 46 total
+        if s.len() == 46 && s.starts_with("Qm") {
+            return Self::is_base58(&s[2..]);
+        }
+
+        // CIDv1 format: typically longer and starts with specific characters
+        // Common CIDv1 patterns:
+        // - "baf..." (base32, sha256)
+        // - "bag..." (base32, blake2b)
+        // - "bae..." (base32, sha1)
+        if s.len() >= 50 && (s.starts_with("baf") || s.starts_with("bag") || s.starts_with("bae")) {
+            return Self::is_base32(&s[3..]);
+        }
+
+        false
+    }
+
+    /// Check if string contains only base58 characters
+    #[must_use]
+    fn is_base58(s: &str) -> bool {
+        const BASE58_ALPHABET: &[u8] =
+            b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+        s.bytes().all(|b| BASE58_ALPHABET.contains(&b))
+    }
+
+    /// Check if string contains only base32 characters (lowercase)
+    #[must_use]
+    fn is_base32(s: &str) -> bool {
+        s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
     }
 
     #[must_use]
@@ -948,6 +999,42 @@ mod tests {
                 panic!("failed decoding");
             }
         }
+    }
+
+    #[test]
+    fn test_ipfs_unprefixed_cid() {
+        // Test CIDv0 format (jpg.store example)
+        let cid_v0 = "QmSaev5WqmTkq3iDqr4H19CEKFqXorgRAUapbSK35hCt1c";
+        assert_eq!(
+            Asset::get_image_source(cid_v0),
+            AssetImageSource::IpfsUnprefixed
+        );
+        assert!(Asset::is_valid_cid(cid_v0));
+
+        // Test CIDv1 format
+        let cid_v1 = "bafybeicpgl34yckqd74luyrg353n6coa2wrppmfrv4lvz27odes3ru6eii";
+        assert_eq!(
+            Asset::get_image_source(cid_v1),
+            AssetImageSource::IpfsUnprefixed
+        );
+        assert!(Asset::is_valid_cid(cid_v1));
+
+        // Test regular IPFS URL still works
+        let ipfs_url = "ipfs://QmSaev5WqmTkq3iDqr4H19CEKFqXorgRAUapbSK35hCt1c";
+        assert_eq!(Asset::get_image_source(ipfs_url), AssetImageSource::Ipfs);
+
+        // Test invalid CID
+        let invalid_cid = "notacid123";
+        assert_eq!(
+            Asset::get_image_source(invalid_cid),
+            AssetImageSource::Unknown
+        );
+        assert!(!Asset::is_valid_cid(invalid_cid));
+
+        // Test edge cases
+        assert!(!Asset::is_valid_cid(""));
+        assert!(!Asset::is_valid_cid("Qm")); // Too short
+        assert!(!Asset::is_valid_cid("QmTooShort")); // Wrong length
     }
 
     #[test]
