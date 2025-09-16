@@ -25,4 +25,4 @@ openapi = ["dep:utoipa"]
 
 [dev-dependencies]
 test_utils = { path = "../test-utils" }
-pallas-utxorpc = "0.33"
+pallas-utxorpc = "1.0.0-alpha.2"
