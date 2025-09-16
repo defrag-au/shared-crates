@@ -766,7 +766,7 @@ impl Asset {
         // Basic CID validation
         // CIDv0: starts with "Qm" and is 46 characters long (base58)
         // CIDv1: typically starts with "b" and is longer (base32) or other prefixes
-        
+
         if s.is_empty() {
             return false;
         }
@@ -780,7 +780,7 @@ impl Asset {
         // Common CIDv1 patterns:
         // - "baf..." (base32, sha256)
         // - "bag..." (base32, blake2b)
-        // - "bae..." (base32, sha1) 
+        // - "bae..." (base32, sha1)
         if s.len() >= 50 && (s.starts_with("baf") || s.starts_with("bag") || s.starts_with("bae")) {
             return Self::is_base32(&s[3..]);
         }
@@ -791,14 +791,16 @@ impl Asset {
     /// Check if string contains only base58 characters
     #[must_use]
     fn is_base58(s: &str) -> bool {
-        const BASE58_ALPHABET: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+        const BASE58_ALPHABET: &[u8] =
+            b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
         s.bytes().all(|b| BASE58_ALPHABET.contains(&b))
     }
 
     /// Check if string contains only base32 characters (lowercase)
     #[must_use]
     fn is_base32(s: &str) -> bool {
-        s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
     }
 
     #[must_use]
@@ -1019,10 +1021,7 @@ mod tests {
 
         // Test regular IPFS URL still works
         let ipfs_url = "ipfs://QmSaev5WqmTkq3iDqr4H19CEKFqXorgRAUapbSK35hCt1c";
-        assert_eq!(
-            Asset::get_image_source(ipfs_url),
-            AssetImageSource::Ipfs
-        );
+        assert_eq!(Asset::get_image_source(ipfs_url), AssetImageSource::Ipfs);
 
         // Test invalid CID
         let invalid_cid = "notacid123";
