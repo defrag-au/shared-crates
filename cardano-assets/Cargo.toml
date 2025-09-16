@@ -15,7 +15,7 @@ serde_plain = "1.0.2"
 worker = { workspace = true }
 utoipa = { workspace = true, optional = true }
 # UTxORPC support (optional)
-utxorpc-spec = { version = "0.17", optional = true }
+utxorpc-spec = { version = "0.16", optional = true }
 tracing = { workspace = true, optional = true }
 
 [features]

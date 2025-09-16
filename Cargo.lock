@@ -241,7 +241,7 @@ dependencies = [
  "test_utils",
  "tracing",
  "utoipa",
- "utxorpc-spec 0.17.0",
+ "utxorpc-spec",
  "worker",
 ]
 
@@ -1332,7 +1332,7 @@ dependencies = [
  "pallas-traverse",
  "pallas-validate",
  "prost-types",
- "utxorpc-spec 0.16.0",
+ "utxorpc-spec",
 ]
 
 [[package]]
@@ -2581,22 +2581,6 @@ name = "utxorpc-spec"
 version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7148c5cd211c397a41245cfbd8d4cb8371d748ed5e3cf131ebcd9cacfa794206"
-dependencies = [
- "bytes",
- "futures-core",
- "pbjson",
- "pbjson-types",
- "prost",
- "prost-types",
- "serde",
- "tonic",
-]
-
-[[package]]
-name = "utxorpc-spec"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1d984ee351b308377e118135e638a5d544fdb0855f12a3b088d9dcaf0432052"
 dependencies = [
  "bytes",
  "futures-core",
