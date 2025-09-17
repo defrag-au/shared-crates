@@ -18,11 +18,16 @@ version = "0.1.0"
 authors = ["Damon Oehlman <damon@defrag.au>"]
 
 [workspace.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-macro = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = "0.3"
+
 axum = { version = "0.8", default-features = false, features = ["json", "macros"] }
 tower-http = { version = "0.6" }
 gloo-net = "0.6.0"
 indexmap = { version = "2.0", features = ["serde"] }
-js-sys = "*"
 phf = { version = "0.11", features = ["macros"] }
 reqwest = { version = "0.12.12", default-features = false }
 serde = { version = "1.0.217" }
@@ -32,9 +37,5 @@ serde-wasm-bindgen = "0.6"
 tokio = { version = "1.43.0", default-features = false }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3" }
-web-sys = "0.3.77"
 worker = { version = "0.6" }
-wasm-bindgen = { version = "0.2" }
-wasm-bindgen-macro = { version = "0.2" }
-wasm-bindgen-futures = { version = "0.4" }
 utoipa = { version = "5" }
