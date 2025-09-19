@@ -12,6 +12,7 @@ use utxorpc_spec::utxorpc::v1alpha::cardano as u5c;
 /// Extracted metadata from UTxORPC transaction
 #[derive(Debug, Clone, Default)]
 pub struct AssetMetadata {
+    pub name: String,
     pub image: String,
     pub traits: Traits,
 }
@@ -59,25 +60,36 @@ pub fn extract_mint_assets_from_utxorpc_tx(tx: &u5c::Tx) -> Vec<AssetV2> {
             // Extract real metadata from UTxORPC transaction auxiliary data
             let metadata = extract_asset_metadata(tx, &policy_id, &asset_name_hex);
 
-            if !metadata.image.is_empty() || !metadata.traits.inner().is_empty() {
+            // Use CIP-25 metadata name if available, otherwise fall back to decoded asset name
+            let final_display_name = if !metadata.name.is_empty() {
+                metadata.name.clone()
+            } else {
+                display_name
+            };
+
+            if !metadata.image.is_empty()
+                || !metadata.traits.inner().is_empty()
+                || !metadata.name.is_empty()
+            {
                 debug!(
-                    "Found CIP-25 metadata for {}: image={}, traits={}",
-                    display_name,
+                    "Found CIP-25 metadata for {}: name={}, image={}, traits={}",
+                    final_display_name,
+                    metadata.name,
                     metadata.image,
                     metadata.traits.inner().len()
                 );
             } else {
-                debug!("No CIP-25 metadata found for {}", display_name);
+                debug!("No CIP-25 metadata found for {}", final_display_name);
             }
 
             // Create AssetV2 with extracted metadata (or empty if none found)
             let asset_v2 = AssetV2::new(
                 asset_id,
-                display_name,
-                metadata.image,  // Real metadata or empty string
-                metadata.traits, // Real traits or empty
-                None,            // No rarity rank - would need marketplace data
-                vec![],          // Empty tags - would need rarity/marketplace data
+                final_display_name, // Prioritize CIP-25 name over decoded asset name
+                metadata.image,     // Real metadata or empty string
+                metadata.traits,    // Real traits or empty
+                None,               // No rarity rank - would need marketplace data
+                vec![],             // Empty tags - would need rarity/marketplace data
             );
 
             debug!(
@@ -255,6 +267,7 @@ fn extract_metadata_via_json(
             // Convert to our AssetMetadata format
             let asset = Asset::from(cardano_metadata);
             return Some(AssetMetadata {
+                name: asset.name,
                 image: asset.image,
                 traits: asset.traits,
             });
@@ -412,28 +425,28 @@ mod integration_tests {
                         println!("          {}: {}", key, values.join(", "));
                     }
 
-                    // Check if this is the UG1897 asset we expect
-                    if asset.name == "UG1897" {
+                    // Check if this is the UG1897 asset we expect - but now we should get the CIP-25 name
+                    if asset.name == "Uglyon Wibbleplunk" {
                         found_ug_asset = true;
 
                         // Verify the asset has real metadata (not empty)
-                        assert!(!asset.image.is_empty(), "UG1897 should have an image URL");
+                        assert!(!asset.image.is_empty(), "UG asset should have an image URL");
                         assert!(
                             !asset.traits.inner().is_empty(),
-                            "UG1897 should have traits"
+                            "UG asset should have traits"
                         );
 
                         // Verify it's the expected IPFS image
                         assert!(
                             asset.image.starts_with("ipfs://"),
-                            "UG1897 image should be IPFS URL, got: {}",
+                            "UG asset image should be IPFS URL, got: {}",
                             asset.image
                         );
 
                         // Verify we have substantial traits (should be 6+ from real metadata)
                         assert!(
                             asset.traits.inner().len() >= 5,
-                            "UG1897 should have multiple traits, got: {}",
+                            "UG asset should have multiple traits, got: {}",
                             asset.traits.inner().len()
                         );
 
@@ -451,10 +464,10 @@ mod integration_tests {
 
                         assert!(
                             has_descriptive_traits,
-                            "UG1897 should have descriptive traits like Background, Skin, etc."
+                            "UG asset should have descriptive traits like Background, Skin, etc."
                         );
 
-                        println!("✅ UG1897 asset validation passed!");
+                        println!("✅ UG asset validation passed with CIP-25 name!");
                     }
                 }
             }
@@ -462,20 +475,74 @@ mod integration_tests {
 
         println!("📊 Test Summary:");
         println!("   Total assets extracted: {}", total_assets_extracted);
-        println!("   Found UG1897 asset: {}", found_ug_asset);
+        println!("   Found UG asset with CIP-25 name: {}", found_ug_asset);
 
-        // Verify we found at least one asset and specifically the UG1897 asset
+        // Verify we found at least one asset and specifically the UG asset with proper name
         assert!(
             total_assets_extracted > 0,
             "Should extract at least one asset from mint transactions"
         );
         assert!(
             found_ug_asset,
-            "Should find the UG1897 asset with real metadata"
+            "Should find the UG asset with CIP-25 metadata name 'Uglyon Wibbleplunk'"
         );
 
-        println!(
-            "🎉 Integration test passed - UTxORPC asset extraction works with real CBOR data!"
-        );
+        println!("🎉 Integration test passed - UTxORPC asset extraction works with CIP-25 names!");
+    }
+
+    #[test]
+    fn test_cip25_name_priority_over_encoded_name() {
+        // Load the real UG mint block data
+        let ug_mint_json = include_str!("../resources/test/ug_mint.json");
+        let oura_block: OuraBlock =
+            serde_json::from_str(ug_mint_json).expect("Failed to parse UG mint block JSON");
+
+        // Convert CBOR to UTxORPC using pallas-utxorpc
+        let cbor_bytes = hex::decode(&oura_block.hex).expect("Failed to decode CBOR hex");
+        let mapper = Mapper::new(NoLedger);
+        let utxorpc_block = mapper.map_block_cbor(&cbor_bytes);
+
+        let body = utxorpc_block.body.expect("Block should have body");
+
+        for tx in &body.tx {
+            if !tx.mint.is_empty() {
+                for multiasset in &tx.mint {
+                    let policy_id = hex::encode(&multiasset.policy_id);
+                    // Check if this is the UG policy
+                    if policy_id == "8972aab912aed2cf44b65916e206324c6bdcb6fbd3dc4eb634fdbd28" {
+                        let extracted_assets = extract_mint_assets_from_utxorpc_tx(tx);
+
+                        assert_eq!(
+                            extracted_assets.len(),
+                            1,
+                            "Should extract exactly one UG asset"
+                        );
+
+                        let asset = &extracted_assets[0];
+
+                        // The key test: asset name should be from CIP-25 metadata, not encoded name
+                        assert_eq!(
+                            asset.name,
+                            "Uglyon Wibbleplunk",
+                            "Asset name should be from CIP-25 'name' field, not decoded asset name 'UG1897'"
+                        );
+
+                        // Verify the asset ID still uses the original encoded name
+                        assert!(
+                            asset.id.concatenated().contains("554731383937"), // hex for "UG1897"
+                            "Asset ID should still use encoded asset name for identification"
+                        );
+
+                        println!(
+                            "✅ Verified CIP-25 name '{}' takes priority over encoded name",
+                            asset.name
+                        );
+                        return; // Test passed
+                    }
+                }
+            }
+        }
+
+        panic!("No UG policy mint transaction found in test data");
     }
 }
