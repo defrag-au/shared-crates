@@ -5,6 +5,7 @@ use worker::{Queue, QueueContentType, RawMessageBuilder, Result, SendMessage};
 
 mod r2_notification;
 
+pub mod secrets;
 pub mod sleep;
 pub use r2_notification::*;
 
