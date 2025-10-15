@@ -1,0 +1,82 @@
+{
+  "data": {
+    "asset_name": "554739393537",
+    "asset_name_ascii": "UG9957",
+    "fingerprint": "asset1pf6q9fcxf5m5wm5slcrttlxuwlmkyx33sjz2mq",
+    "total_supply": "1",
+    "unique_holders": { "by_address": 1, "by_account": 1 },
+    "first_mint_tx": {
+      "tx_hash": "2bbc287a47cc59fecab91a0850adf8b08e7dcc32f3246face27e4bc65e4aa49d",
+      "slot": 148457486,
+      "timestamp": "2025-02-20 03:56:17",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "2bbc287a47cc59fecab91a0850adf8b08e7dcc32f3246face27e4bc65e4aa49d",
+      "slot": 148457486,
+      "timestamp": "2025-02-20 03:56:17",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "collection": "UGs by Squashua 2024",
+        "files": [
+          {
+            "mediaType": "image/webp",
+            "name": "Uggler Glimmersnap",
+            "src": "ipfs://QmU4ZJeFptaphEsHCK4tia4wc7swjwo4gh38jwK7rmYgtc"
+          }
+        ],
+        "image": "ipfs://QmU4ZJeFptaphEsHCK4tia4wc7swjwo4gh38jwK7rmYgtc",
+        "mediaType": "image/webp",
+        "name": "Uggler Glimmersnap",
+        "traits": [
+          { "Background": "Greenicles" },
+          { "Skin": "Peach" },
+          { "Outfit": "Stockbroker" },
+          { "Hats": "Spiky Blue Hair" },
+          { "Mouth": "Safety Pin" },
+          { "Earring": "GM " },
+          { "Eyenose": "Lowbrow" }
+        ]
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "8972aab912aed2cf44b65916e206324c6bdcb6fbd3dc4eb634fdbd28": {
+          "UG9957": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Uggler Glimmersnap",
+                "src": "ipfs://QmU4ZJeFptaphEsHCK4tia4wc7swjwo4gh38jwK7rmYgtc"
+              }
+            ],
+            "image": "ipfs://QmU4ZJeFptaphEsHCK4tia4wc7swjwo4gh38jwK7rmYgtc",
+            "mediaType": "image/webp",
+            "name": "Uggler Glimmersnap",
+            "traits": [
+              { "Background": "Greenicles" },
+              { "Skin": "Peach" },
+              { "Outfit": "Stockbroker" },
+              { "Hats": "Spiky Blue Hair" },
+              { "Mouth": "Safety Pin" },
+              { "Earring": "GM " },
+              { "Eyenose": "Lowbrow" }
+            ]
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-02-20 04:12:00",
+    "block_hash": "967bcd9bcbb727d8641ab4cc1aeb5e9292953f1de576bded7d945e2cd243d267",
+    "block_slot": 148458429
+  }
+}

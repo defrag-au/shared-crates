@@ -1,0 +1,161 @@
+{
+  "data": {
+    "asset_name": "5669706572696f6e735f31353036",
+    "asset_name_ascii": "Viperions_1506",
+    "fingerprint": "asset1muprgwvkkjmv8852sg0yuwdemdd6dtgaujccfp",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "7d3bdf5040156f724ba1fd6aea4b1bc21a21a5a806e65ecf54a9e5552009bca6",
+      "slot": 154491083,
+      "timestamp": "2025-04-30 23:56:14",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "7d3bdf5040156f724ba1fd6aea4b1bc21a21a5a806e65ecf54a9e5552009bca6",
+      "slot": 154491083,
+      "timestamp": "2025-04-30 23:56:14",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "name": "Chaos Mamba",
+        "files": [
+          {
+            "src": "ipfs://QmUyYh3n8KpAuQX1mvAjAqpyqwQct3dVCWgAuirJNrKeDn",
+            "name": "Chaos Mamba",
+            "mediaType": "image/png"
+          }
+        ],
+        "image": "ipfs://Qmebkd8ULHggAaGf8LjmLit7VskvdhEu67MG3z5jHvxoFP",
+        "project": "Viperions",
+        "website": "https://vipercoin.co/",
+        "mediaType": "image/png",
+        "attributes": {
+          "Eyes": "Robot Pirate",
+          "Face": "Scroll",
+          "Head": "Majin Blue",
+          "Skin": "Cosmic Blaze",
+          "Type": "Army",
+          "Clothes": "Mech Commander",
+          "Background": "Royal Fang"
+        },
+        "description": [
+          "The Viperions are a collection of 4,777 NFTs built to power the",
+          "$VIPER ecosystem. More than kick-ass art & battle-tested",
+          "beasts, they fuel staking rewards, deflationary mechanics,",
+          "ViperSwap rev share, and exclusive access."
+        ],
+        "Collection Name": "Viperions"
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "45851dd847cf1e49b795f3c6c998e1eb18b9d30afa71e4ce8bff4183": {
+          "Viperions_1800": {
+            "name": "Deadly Constrictor",
+            "files": [
+              {
+                "src": "ipfs://QmQkmo7Ptn4N5kMmuGQ81BVk52w9oE6GrxeVV2hctxwr9t",
+                "name": "Deadly Constrictor",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://QmcLkhhgEAoranHJK5P13adsW7QYKucJ7ae96pAvjyD5Wc",
+            "project": "Viperions",
+            "website": "https://vipercoin.co/",
+            "mediaType": "image/png",
+            "attributes": {
+              "Eyes": "Lime Snake",
+              "Face": "Smoke Rings",
+              "Head": "Ninja Star",
+              "Skin": "Sandstone",
+              "Type": "Army",
+              "Clothes": "Vigilante Armor",
+              "Background": "Jungle Strike"
+            },
+            "description": [
+              "The Viperions are a collection of 4,777 NFTs built to power the",
+              "$VIPER ecosystem. More than kick-ass art & battle-tested",
+              "beasts, they fuel staking rewards, deflationary mechanics,",
+              "ViperSwap rev share, and exclusive access."
+            ],
+            "Collection Name": "Viperions"
+          },
+          "Viperions_1506": {
+            "name": "Chaos Mamba",
+            "files": [
+              {
+                "src": "ipfs://QmUyYh3n8KpAuQX1mvAjAqpyqwQct3dVCWgAuirJNrKeDn",
+                "name": "Chaos Mamba",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://Qmebkd8ULHggAaGf8LjmLit7VskvdhEu67MG3z5jHvxoFP",
+            "project": "Viperions",
+            "website": "https://vipercoin.co/",
+            "mediaType": "image/png",
+            "attributes": {
+              "Eyes": "Robot Pirate",
+              "Face": "Scroll",
+              "Head": "Majin Blue",
+              "Skin": "Cosmic Blaze",
+              "Type": "Army",
+              "Clothes": "Mech Commander",
+              "Background": "Royal Fang"
+            },
+            "description": [
+              "The Viperions are a collection of 4,777 NFTs built to power the",
+              "$VIPER ecosystem. More than kick-ass art & battle-tested",
+              "beasts, they fuel staking rewards, deflationary mechanics,",
+              "ViperSwap rev share, and exclusive access."
+            ],
+            "Collection Name": "Viperions"
+          },
+          "Viperions_0239": {
+            "name": "Ouroboros Coil",
+            "files": [
+              {
+                "src": "ipfs://QmUFF62oFHzJemGpmwSWgFFD8kyZzMB5nzSUmoK6krunRB",
+                "name": "Ouroboros Coil",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://QmQGcXLLCyXEVCVgm638JrutjAyZzfbKsCkRMfJZnsCm7x",
+            "project": "Viperions",
+            "website": "https://vipercoin.co/",
+            "mediaType": "image/png",
+            "attributes": {
+              "Eyes": "Solar Flare ",
+              "Face": "Viking",
+              "Head": "Prison Mikey",
+              "Skin": "Scarred Blaze",
+              "Type": "Army",
+              "Clothes": "Pirate Captain",
+              "Background": "Jungle Strike"
+            },
+            "description": [
+              "The Viperions are a collection of 4,777 NFTs built to power the",
+              "$VIPER ecosystem. More than kick-ass art & battle-tested",
+              "beasts, they fuel staking rewards, deflationary mechanics,",
+              "ViperSwap rev share, and exclusive access."
+            ],
+            "Collection Name": "Viperions"
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-08-02 07:01:01",
+    "block_hash": "fb2c7ec210cb3a764b386a772d66e90ca53af7acf2af2132f47936907d09a97d",
+    "block_slot": 162551770
+  }
+}

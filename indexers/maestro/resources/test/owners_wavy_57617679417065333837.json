@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "account": "stake1u8653j3mcjks5d304g6eexryse7ma22erw8p05fsvefem8qklu7w7",
+      "amount": 1
+    },
+    {
+      "account": "stake1uxknymst2v342kj3k5lgykffrtqupcznf3eqxqutvn3dfpg04xqw4",
+      "amount": 1
+    },
+    {
+      "account": "stake1uxwcw3rr36r8q9e5egy3e74cmazpjvx4t5ajsq50xhm568celda4g",
+      "amount": 1
+    },
+    {
+      "account": "stake1uyujh8894jlw42wfhqjdd0w69a28e37365cj8wwg2x6lnzgsjwaq9",
+      "amount": 1
+    }
+  ],
+  "last_updated": {
+    "timestamp": "2025-04-26 06:38:30",
+    "block_hash": "293ceea42d75a922cbf6485d1e22091cd51527437caf3468551d65bb31e730b1",
+    "block_slot": 154083219
+  },
+  "next_cursor": null
+}

@@ -1,0 +1,443 @@
+{
+  "data": {
+    "asset_name": "554738363536",
+    "asset_name_ascii": "UG8656",
+    "fingerprint": "asset1yj2mjaxpdvpdpplf50zhn7x00sngwynl072hhf",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "b70fcb8cc552217acc4263e122f12badddf5d3ddcfffdd03472fd2c8e827d65a",
+      "slot": 142298724,
+      "timestamp": "2024-12-10 21:10:15",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "b70fcb8cc552217acc4263e122f12badddf5d3ddcfffdd03472fd2c8e827d65a",
+      "slot": 142298724,
+      "timestamp": "2024-12-10 21:10:15",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "collection": "UGs by Squashua 2024",
+        "files": [
+          {
+            "mediaType": "image/webp",
+            "name": "Ugul Sloshbloop",
+            "src": "ipfs://QmZSCEY8gR1wtUKmW9rqG7yWDxbnYccRboc4rmU2zbdx8g"
+          }
+        ],
+        "image": "ipfs://QmZSCEY8gR1wtUKmW9rqG7yWDxbnYccRboc4rmU2zbdx8g",
+        "mediaType": "image/webp",
+        "name": "Ugul Sloshbloop",
+        "traits": [
+          {
+            "Background": "Blurple"
+          },
+          {
+            "Skin": "Green Stripes"
+          },
+          {
+            "Outfit": "Noodles"
+          },
+          {
+            "Hats": "Lethal Electric Current"
+          },
+          {
+            "Mouth": "Stumped"
+          },
+          {
+            "Eyenose": "Four-eyed"
+          }
+        ]
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "8972aab912aed2cf44b65916e206324c6bdcb6fbd3dc4eb634fdbd28": {
+          "UG8648": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugul Fizzletoppuff",
+                "src": "ipfs://QmQ2oXyGta4yeR1tzwTjSa1CoQQVBycN2ESuSU7tFu5ZuG"
+              }
+            ],
+            "image": "ipfs://QmQ2oXyGta4yeR1tzwTjSa1CoQQVBycN2ESuSU7tFu5ZuG",
+            "mediaType": "image/webp",
+            "name": "Ugul Fizzletoppuff",
+            "traits": [
+              {
+                "Background": "Purple Fever"
+              },
+              {
+                "Skin": "Grey Green"
+              },
+              {
+                "Outfit": "Popcorn"
+              },
+              {
+                "Hats": "Pink Mohawk"
+              },
+              {
+                "Mouth": "Belligerent"
+              },
+              {
+                "Earring": "Headphones"
+              },
+              {
+                "Eyenose": "Stupified"
+              }
+            ]
+          },
+          "UG8649": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugly Twibblefuzz",
+                "src": "ipfs://QmR1vAFszeoN1kwUL5RqJypRzzKsm5pHvSd3xygGUr2qYt"
+              }
+            ],
+            "image": "ipfs://QmR1vAFszeoN1kwUL5RqJypRzzKsm5pHvSd3xygGUr2qYt",
+            "mediaType": "image/webp",
+            "name": "Ugly Twibblefuzz",
+            "traits": [
+              {
+                "Background": "Blue and True"
+              },
+              {
+                "Skin": "Field Green"
+              },
+              {
+                "Outfit": "Toothbrush"
+              },
+              {
+                "Hats": "Hippie Style Hair"
+              },
+              {
+                "Mouth": "Voracious"
+              },
+              {
+                "Eyenose": "Owlish Glasses"
+              }
+            ]
+          },
+          "UG8650": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugly Flibberwham",
+                "src": "ipfs://QmYFGgKKX3xG2YZeJbEkNPH2ooMXxvidH4shbDQ8FDrdCC"
+              }
+            ],
+            "image": "ipfs://QmYFGgKKX3xG2YZeJbEkNPH2ooMXxvidH4shbDQ8FDrdCC",
+            "mediaType": "image/webp",
+            "name": "Ugly Flibberwham",
+            "traits": [
+              {
+                "Background": "Damned"
+              },
+              {
+                "Skin": "Pink Stripes"
+              },
+              {
+                "Outfit": "Chainsaw"
+              },
+              {
+                "Hats": "Sock"
+              },
+              {
+                "Mouth": "Smile with Rose"
+              },
+              {
+                "Earring": "GM "
+              },
+              {
+                "Eyenose": "Doofus"
+              }
+            ]
+          },
+          "UG8651": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugwin Wibblefuzz",
+                "src": "ipfs://QmP1LJb7N4T4zM4Qswh1jHhpUELamwjZ4PmjRDjQEjSMhX"
+              }
+            ],
+            "image": "ipfs://QmP1LJb7N4T4zM4Qswh1jHhpUELamwjZ4PmjRDjQEjSMhX",
+            "mediaType": "image/webp",
+            "name": "Ugwin Wibblefuzz",
+            "traits": [
+              {
+                "Background": "Sunshine Unwind"
+              },
+              {
+                "Skin": "Field Green"
+              },
+              {
+                "Outfit": "Dungarees and Chicken"
+              },
+              {
+                "Hats": "Winter Beanie"
+              },
+              {
+                "Mouth": "One Tooth Smile"
+              },
+              {
+                "Eyenose": "Brat"
+              }
+            ]
+          },
+          "UG8652": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Uggums Whifflethump",
+                "src": "ipfs://QmUwzkyUTM37QizbPk8whES6ERzNmEjjmohZs2jzK6G3E2"
+              }
+            ],
+            "image": "ipfs://QmUwzkyUTM37QizbPk8whES6ERzNmEjjmohZs2jzK6G3E2",
+            "mediaType": "image/webp",
+            "name": "Uggums Whifflethump",
+            "traits": [
+              {
+                "Background": "Green Envy"
+              },
+              {
+                "Skin": "Purple"
+              },
+              {
+                "Outfit": "Sports Jacket"
+              },
+              {
+                "Hats": "Pink Mohawk"
+              },
+              {
+                "Mouth": "Strawman"
+              },
+              {
+                "Earring": "Shark Tooth"
+              },
+              {
+                "Eyenose": "Piercing Gaze"
+              }
+            ]
+          },
+          "UG8653": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Wub Whirrysnap",
+                "src": "ipfs://QmeiRu6juBpSQgBhGk2gNuUi3qYdGzkbh9hzmUZUdrTjzS"
+              }
+            ],
+            "image": "ipfs://QmeiRu6juBpSQgBhGk2gNuUi3qYdGzkbh9hzmUZUdrTjzS",
+            "mediaType": "image/webp",
+            "name": "Wub Whirrysnap",
+            "traits": [
+              {
+                "Background": "Purple Fever"
+              },
+              {
+                "Skin": "Purple/Blue Stripes"
+              },
+              {
+                "Outfit": "Mutated Hands"
+              },
+              {
+                "Hats": "Robin Hood Hat"
+              },
+              {
+                "Mouth": "Gregarious"
+              },
+              {
+                "Eyenose": "Amazed"
+              }
+            ]
+          },
+          "UG8654": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Uglyon Twibblewham",
+                "src": "ipfs://QmYpq9D2tWQVpKAbRvkFfQF5PQ4cBZmFQ2Yuaa74fmQWoJ"
+              }
+            ],
+            "image": "ipfs://QmYpq9D2tWQVpKAbRvkFfQF5PQ4cBZmFQ2Yuaa74fmQWoJ",
+            "mediaType": "image/webp",
+            "name": "Uglyon Twibblewham",
+            "traits": [
+              {
+                "Background": "Blue and True"
+              },
+              {
+                "Skin": "Rainbow"
+              },
+              {
+                "Outfit": "Skater"
+              },
+              {
+                "Hats": "Apple Tree"
+              },
+              {
+                "Mouth": "Trunk"
+              },
+              {
+                "Eyenose": "Stupified"
+              }
+            ]
+          },
+          "UG8655": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugster Fizzletopflick",
+                "src": "ipfs://QmR51sCb61G9yptc6on2jhXVgnGKi5QakJfYAjAasuAAbR"
+              }
+            ],
+            "image": "ipfs://QmR51sCb61G9yptc6on2jhXVgnGKi5QakJfYAjAasuAAbR",
+            "mediaType": "image/webp",
+            "name": "Ugster Fizzletopflick",
+            "traits": [
+              {
+                "Background": "Ug a Lug a Wug Wug"
+              },
+              {
+                "Skin": "Green"
+              },
+              {
+                "Outfit": "Tight Hoodie"
+              },
+              {
+                "Eyenose": "Mr Average"
+              }
+            ]
+          },
+          "UG8656": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugul Sloshbloop",
+                "src": "ipfs://QmZSCEY8gR1wtUKmW9rqG7yWDxbnYccRboc4rmU2zbdx8g"
+              }
+            ],
+            "image": "ipfs://QmZSCEY8gR1wtUKmW9rqG7yWDxbnYccRboc4rmU2zbdx8g",
+            "mediaType": "image/webp",
+            "name": "Ugul Sloshbloop",
+            "traits": [
+              {
+                "Background": "Blurple"
+              },
+              {
+                "Skin": "Green Stripes"
+              },
+              {
+                "Outfit": "Noodles"
+              },
+              {
+                "Hats": "Lethal Electric Current"
+              },
+              {
+                "Mouth": "Stumped"
+              },
+              {
+                "Eyenose": "Four-eyed"
+              }
+            ]
+          },
+          "UG8657": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugwibble Flibberflop",
+                "src": "ipfs://QmZf6Y7qEaS4XssRPwZ4Yk1wEz1nNRBk3krEKS3F4xWvHB"
+              }
+            ],
+            "image": "ipfs://QmZf6Y7qEaS4XssRPwZ4Yk1wEz1nNRBk3krEKS3F4xWvHB",
+            "mediaType": "image/webp",
+            "name": "Ugwibble Flibberflop",
+            "traits": [
+              {
+                "Background": "Gulp"
+              },
+              {
+                "Skin": "Pink Stripes"
+              },
+              {
+                "Outfit": "Pugbug"
+              },
+              {
+                "Hats": "Corked Hat with Croc"
+              },
+              {
+                "Mouth": "Happy Dribbler"
+              },
+              {
+                "Eyenose": "Owlish Glasses"
+              }
+            ]
+          },
+          "UG8658": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Uglette Twibblefuzz",
+                "src": "ipfs://QmdyffHdFxQ7GYGATVHTDpbJLnVSJPHFLKhNShFxXeKs7B"
+              }
+            ],
+            "image": "ipfs://QmdyffHdFxQ7GYGATVHTDpbJLnVSJPHFLKhNShFxXeKs7B",
+            "mediaType": "image/webp",
+            "name": "Uglette Twibblefuzz",
+            "traits": [
+              {
+                "Background": "Starlight in Paris"
+              },
+              {
+                "Skin": "Blue"
+              },
+              {
+                "Outfit": "Noodles"
+              },
+              {
+                "Hats": "Business Hat"
+              },
+              {
+                "Mouth": "You Dont Say"
+              },
+              {
+                "Earring": "Eyeball"
+              },
+              {
+                "Eyenose": "Scatty"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-03-06 06:18:26",
+    "block_hash": "bde8c028aa07a0906e61df7eb676d88984c5e7548ef6871ef1337bab38f27d74",
+    "block_slot": 149675615
+  }
+}

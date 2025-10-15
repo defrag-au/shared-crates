@@ -1,0 +1,398 @@
+{
+  "data": {
+    "asset_name": "4d616c6c6172644f7264657234383335",
+    "asset_name_ascii": "MallardOrder4835",
+    "fingerprint": "asset1rvwsdhagm2jgj76aumq3lpyd20vx2vnzudgn54",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "2e21120b617ac51797514720ed751e1cb5610a7efa3352f6a9e6a09df957183b",
+      "slot": 67707980,
+      "timestamp": "2022-07-31 13:31:11",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "2e21120b617ac51797514720ed751e1cb5610a7efa3352f6a9e6a09df957183b",
+      "slot": 67707980,
+      "timestamp": "2022-07-31 13:31:11",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "Attributes": [
+          {
+            "Accessories": "None"
+          },
+          {
+            "Head": "None"
+          },
+          {
+            "Mask": "None"
+          },
+          {
+            "Beak": "Plain"
+          },
+          {
+            "Eyewear": "None"
+          },
+          {
+            "Eyes": "Feline"
+          },
+          {
+            "Face": "None"
+          },
+          {
+            "Neckwear": "None"
+          },
+          {
+            "Clothes": "Sailor Shirt"
+          },
+          {
+            "Skin": "None"
+          },
+          {
+            "Feathers": "Skeleton"
+          },
+          {
+            "Back": "None"
+          },
+          {
+            "Background": "Black"
+          },
+          {
+            "School of Thought": "Magicka"
+          }
+        ],
+        "Twitter": "@MallardOrder",
+        "Website": "https://mallardorder.io",
+        "image": "ipfs://QmPEysw5BQGp9QaMSYQn8ruoQhwaNNPzXkbGeV5x1Lc9v4",
+        "mediaType": "image/png",
+        "name": "The Mallard Order #4835"
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "901ba6e9831b078e131a1cc403d6139af21bda255cea6c9f770f4834": {
+          "MallardOrder1511": {
+            "Attributes": [
+              {
+                "Accessories": "None"
+              },
+              {
+                "Head": "Dapper"
+              },
+              {
+                "Mask": "None"
+              },
+              {
+                "Beak": "Bloody"
+              },
+              {
+                "Eyewear": "Aviators"
+              },
+              {
+                "Eyes": "Sewn"
+              },
+              {
+                "Face": "None"
+              },
+              {
+                "Neckwear": "None"
+              },
+              {
+                "Clothes": "Convict"
+              },
+              {
+                "Skin": "None"
+              },
+              {
+                "Feathers": "Rainbow"
+              },
+              {
+                "Back": "None"
+              },
+              {
+                "Background": "Purple"
+              },
+              {
+                "School of Thought": "Magicka"
+              }
+            ],
+            "Twitter": "@MallardOrder",
+            "Website": "https://mallardorder.io",
+            "image": "ipfs://QmT1fdNXkkYNaHzpBXxNorWN41WR5iVAuYDHvvv3igffvy",
+            "mediaType": "image/png",
+            "name": "The Mallard Order #1511"
+          },
+          "MallardOrder1581": {
+            "Attributes": [
+              {
+                "Accessories": "None"
+              },
+              {
+                "Head": "Wizard Hat"
+              },
+              {
+                "Mask": "None"
+              },
+              {
+                "Beak": "Smile"
+              },
+              {
+                "Eyewear": "Visor"
+              },
+              {
+                "Eyes": "Gold Coins"
+              },
+              {
+                "Face": "None"
+              },
+              {
+                "Neckwear": "None"
+              },
+              {
+                "Clothes": "Safari"
+              },
+              {
+                "Skin": "None"
+              },
+              {
+                "Feathers": "Dark Purple"
+              },
+              {
+                "Back": "None"
+              },
+              {
+                "Background": "Azteca"
+              },
+              {
+                "School of Thought": "Necromancy"
+              }
+            ],
+            "Twitter": "@MallardOrder",
+            "Website": "https://mallardorder.io",
+            "image": "ipfs://QmUibyDv33E44EujjxM6yU6NggZVB29HEjP7tjA1L877kf",
+            "mediaType": "image/png",
+            "name": "The Mallard Order #1581"
+          },
+          "MallardOrder4725": {
+            "Attributes": [
+              {
+                "Accessories": "None"
+              },
+              {
+                "Head": "Top Hat"
+              },
+              {
+                "Mask": "None"
+              },
+              {
+                "Beak": "Black"
+              },
+              {
+                "Eyewear": "Round Black Shades"
+              },
+              {
+                "Eyes": "Goat Eyes"
+              },
+              {
+                "Face": "None"
+              },
+              {
+                "Neckwear": "None"
+              },
+              {
+                "Clothes": "None"
+              },
+              {
+                "Skin": "None"
+              },
+              {
+                "Feathers": "Lava"
+              },
+              {
+                "Back": "None"
+              },
+              {
+                "Background": "Green"
+              },
+              {
+                "School of Thought": "Magicka"
+              }
+            ],
+            "Twitter": "@MallardOrder",
+            "Website": "https://mallardorder.io",
+            "image": "ipfs://QmaT1Vso6oCFLDEXERMDa1yHcELDsdtLJUmGCfGHiKGyTc",
+            "mediaType": "image/png",
+            "name": "The Mallard Order #4725"
+          },
+          "MallardOrder4835": {
+            "Attributes": [
+              {
+                "Accessories": "None"
+              },
+              {
+                "Head": "None"
+              },
+              {
+                "Mask": "None"
+              },
+              {
+                "Beak": "Plain"
+              },
+              {
+                "Eyewear": "None"
+              },
+              {
+                "Eyes": "Feline"
+              },
+              {
+                "Face": "None"
+              },
+              {
+                "Neckwear": "None"
+              },
+              {
+                "Clothes": "Sailor Shirt"
+              },
+              {
+                "Skin": "None"
+              },
+              {
+                "Feathers": "Skeleton"
+              },
+              {
+                "Back": "None"
+              },
+              {
+                "Background": "Black"
+              },
+              {
+                "School of Thought": "Magicka"
+              }
+            ],
+            "Twitter": "@MallardOrder",
+            "Website": "https://mallardorder.io",
+            "image": "ipfs://QmPEysw5BQGp9QaMSYQn8ruoQhwaNNPzXkbGeV5x1Lc9v4",
+            "mediaType": "image/png",
+            "name": "The Mallard Order #4835"
+          },
+          "MallardOrder5513": {
+            "Attributes": [
+              {
+                "Accessories": "None"
+              },
+              {
+                "Head": "Black Beret"
+              },
+              {
+                "Mask": "None"
+              },
+              {
+                "Beak": "Cigar"
+              },
+              {
+                "Eyewear": "None"
+              },
+              {
+                "Eyes": "Brown"
+              },
+              {
+                "Face": "None"
+              },
+              {
+                "Neckwear": "Bandana"
+              },
+              {
+                "Clothes": "None"
+              },
+              {
+                "Skin": "None"
+              },
+              {
+                "Feathers": "Redwing"
+              },
+              {
+                "Back": "None"
+              },
+              {
+                "Background": "Red"
+              },
+              {
+                "School of Thought": "Alchemy"
+              }
+            ],
+            "Twitter": "@MallardOrder",
+            "Website": "https://mallardorder.io",
+            "image": "ipfs://QmWho9xw5M1n2KRaSP9tjmTjJSdhb9QMgEW7b7Dve63SzF",
+            "mediaType": "image/png",
+            "name": "The Mallard Order #5513"
+          },
+          "MallardOrder6356": {
+            "Attributes": [
+              {
+                "Accessories": "None"
+              },
+              {
+                "Head": "Bowl Cut"
+              },
+              {
+                "Mask": "None"
+              },
+              {
+                "Beak": "Grin"
+              },
+              {
+                "Eyewear": "None"
+              },
+              {
+                "Eyes": "Closed"
+              },
+              {
+                "Face": "None"
+              },
+              {
+                "Neckwear": "None"
+              },
+              {
+                "Clothes": "Polo Shirt"
+              },
+              {
+                "Skin": "None"
+              },
+              {
+                "Feathers": "Reptile"
+              },
+              {
+                "Back": "None"
+              },
+              {
+                "Background": "Grey Brush"
+              },
+              {
+                "School of Thought": "Alchemy"
+              }
+            ],
+            "Twitter": "@MallardOrder",
+            "Website": "https://mallardorder.io",
+            "image": "ipfs://QmTqapWLA8TptejPWgPXHrL33JiUUkqhwnKszvAhXs18Rt",
+            "mediaType": "image/png",
+            "name": "The Mallard Order #6356"
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-01-21 21:11:37",
+    "block_hash": "80cfab12681d3b2905ce0783a42d841e3c94008c59ed8a6869632013b398f554",
+    "block_slot": 145927606
+  }
+}

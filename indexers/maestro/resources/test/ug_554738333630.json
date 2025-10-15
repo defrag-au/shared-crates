@@ -1,0 +1,563 @@
+{
+  "data": {
+    "asset_name": "554738333630",
+    "asset_name_ascii": "UG8360",
+    "fingerprint": "asset1vgdfq8s8lu48klrxjkkjs54n3p8pcap06afhg3",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "a7ea66c92ca0e995f16fa60e389d9dcd23812d82151b7ef42e8a175724f357fc",
+      "slot": 142234151,
+      "timestamp": "2024-12-10 03:14:02",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "a7ea66c92ca0e995f16fa60e389d9dcd23812d82151b7ef42e8a175724f357fc",
+      "slot": 142234151,
+      "timestamp": "2024-12-10 03:14:02",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "collection": "UGs by Squashua 2024",
+        "files": [
+          {
+            "mediaType": "image/webp",
+            "name": "Ugster Whirryplunk",
+            "src": "ipfs://QmVKonAkP9ikaXCtZXRjPeXeotKgdqj6VrqprfvwaSBHEs"
+          }
+        ],
+        "image": "ipfs://QmVKonAkP9ikaXCtZXRjPeXeotKgdqj6VrqprfvwaSBHEs",
+        "mediaType": "image/webp",
+        "name": "Ugster Whirryplunk",
+        "traits": [
+          {
+            "Background": "First Rays"
+          },
+          {
+            "Skin": "Blue"
+          },
+          {
+            "Outfit": "Hammock"
+          },
+          {
+            "Hats": "Pink Spidery Hair with Surprise"
+          },
+          {
+            "Mouth": "Gremlin"
+          },
+          {
+            "Eyenose": "Gnunkle"
+          }
+        ]
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "8972aab912aed2cf44b65916e206324c6bdcb6fbd3dc4eb634fdbd28": {
+          "UG8358": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Uggo Fizzlesplat",
+                "src": "ipfs://QmYqEL4ZVb6AF7vWAGtqM7QXQANpLTx6PSW53MUX36xTTT"
+              }
+            ],
+            "image": "ipfs://QmYqEL4ZVb6AF7vWAGtqM7QXQANpLTx6PSW53MUX36xTTT",
+            "mediaType": "image/webp",
+            "name": "Uggo Fizzlesplat",
+            "traits": [
+              {
+                "Background": "Dayscream"
+              },
+              {
+                "Skin": "Peach Stripes"
+              },
+              {
+                "Outfit": "Dungarees and Chicken"
+              },
+              {
+                "Hats": "Cap with Squirrel"
+              },
+              {
+                "Mouth": "Tense"
+              },
+              {
+                "Eyenose": "Hot Dog Nose"
+              }
+            ]
+          },
+          "UG8359": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Uglette Fizzlewobble",
+                "src": "ipfs://Qmdeciip6DCjAZrYz47zRNvEvkYvG3zpUubRug2oHM7AsL"
+              }
+            ],
+            "image": "ipfs://Qmdeciip6DCjAZrYz47zRNvEvkYvG3zpUubRug2oHM7AsL",
+            "mediaType": "image/webp",
+            "name": "Uglette Fizzlewobble",
+            "traits": [
+              {
+                "Background": "Nowaday"
+              },
+              {
+                "Skin": "Skeleton"
+              },
+              {
+                "Hats": "Winged Helmet"
+              }
+            ]
+          },
+          "UG8360": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugster Whirryplunk",
+                "src": "ipfs://QmVKonAkP9ikaXCtZXRjPeXeotKgdqj6VrqprfvwaSBHEs"
+              }
+            ],
+            "image": "ipfs://QmVKonAkP9ikaXCtZXRjPeXeotKgdqj6VrqprfvwaSBHEs",
+            "mediaType": "image/webp",
+            "name": "Ugster Whirryplunk",
+            "traits": [
+              {
+                "Background": "First Rays"
+              },
+              {
+                "Skin": "Blue"
+              },
+              {
+                "Outfit": "Hammock"
+              },
+              {
+                "Hats": "Pink Spidery Hair with Surprise"
+              },
+              {
+                "Mouth": "Gremlin"
+              },
+              {
+                "Eyenose": "Gnunkle"
+              }
+            ]
+          },
+          "UG8361": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugforce Twibbleflick",
+                "src": "ipfs://QmTbB32tSCT6nr26yzuUqcGPZLmkof3DUyresmrCkGbN6k"
+              }
+            ],
+            "image": "ipfs://QmTbB32tSCT6nr26yzuUqcGPZLmkof3DUyresmrCkGbN6k",
+            "mediaType": "image/webp",
+            "name": "Ugforce Twibbleflick",
+            "traits": [
+              {
+                "Background": "First Rays"
+              },
+              {
+                "Skin": "Peach"
+              },
+              {
+                "Outfit": "Chainsaw"
+              },
+              {
+                "Hats": "House"
+              },
+              {
+                "Mouth": "Smile with Rose"
+              },
+              {
+                "Earring": "Banana"
+              },
+              {
+                "Eyenose": "Showboat"
+              }
+            ]
+          },
+          "UG8362": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugster Spludgeplunk",
+                "src": "ipfs://QmWhWAMafjJZbjAzxCPxGCf7V37tqcqGrJS2oq3vzHu9it"
+              }
+            ],
+            "image": "ipfs://QmWhWAMafjJZbjAzxCPxGCf7V37tqcqGrJS2oq3vzHu9it",
+            "mediaType": "image/webp",
+            "name": "Ugster Spludgeplunk",
+            "traits": [
+              {
+                "Background": "A Particular Kind of Blue"
+              },
+              {
+                "Skin": "Amber Stripes"
+              },
+              {
+                "Outfit": "Yo-Yo on Hook"
+              },
+              {
+                "Hats": "Umbrella"
+              },
+              {
+                "Mouth": "Peon"
+              },
+              {
+                "Eyenose": "Unhinged"
+              }
+            ]
+          },
+          "UG8363": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugdribble Flibberwhomp",
+                "src": "ipfs://QmasDNrgcrdHWQmtpcXUd2ix73swzdTzgW6QhVgqppoMjF"
+              }
+            ],
+            "image": "ipfs://QmasDNrgcrdHWQmtpcXUd2ix73swzdTzgW6QhVgqppoMjF",
+            "mediaType": "image/webp",
+            "name": "Ugdribble Flibberwhomp",
+            "traits": [
+              {
+                "Background": "Life, hey"
+              },
+              {
+                "Skin": "Blue"
+              },
+              {
+                "Outfit": "Super Soaker"
+              },
+              {
+                "Hats": "Baseball Cap"
+              },
+              {
+                "Mouth": "Dorkface"
+              },
+              {
+                "Eyenose": "Four-eyed"
+              }
+            ]
+          },
+          "UG8364": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugford Spludgeplop",
+                "src": "ipfs://QmbQ94UBeYwQwuR4Z4UYpru3nk7SLY5CgJTGNkHHSRyKHh"
+              }
+            ],
+            "image": "ipfs://QmbQ94UBeYwQwuR4Z4UYpru3nk7SLY5CgJTGNkHHSRyKHh",
+            "mediaType": "image/webp",
+            "name": "Ugford Spludgeplop",
+            "traits": [
+              {
+                "Background": "Cold"
+              },
+              {
+                "Skin": "Blue"
+              },
+              {
+                "Outfit": "Mutated Hands"
+              },
+              {
+                "Hats": "Blonde and Confused"
+              },
+              {
+                "Mouth": "Jerk Moustache"
+              },
+              {
+                "Eyenose": "Cross-Eyed"
+              }
+            ]
+          },
+          "UG8365": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugloin Snurfledoof",
+                "src": "ipfs://QmTKWbjMeYG6NxRpaiHJgwWv5NhSTmypEG9VqLneFJ3g5r"
+              }
+            ],
+            "image": "ipfs://QmTKWbjMeYG6NxRpaiHJgwWv5NhSTmypEG9VqLneFJ3g5r",
+            "mediaType": "image/webp",
+            "name": "Ugloin Snurfledoof",
+            "traits": [
+              {
+                "Background": "Sunglow"
+              },
+              {
+                "Skin": "Forest Green"
+              },
+              {
+                "Outfit": "Bicycle with Duck"
+              },
+              {
+                "Hats": "Blue Poof"
+              },
+              {
+                "Mouth": "Grin"
+              },
+              {
+                "Earring": "FUD"
+              },
+              {
+                "Eyenose": "Gawp"
+              }
+            ]
+          },
+          "UG8366": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Uglop Whifflebop",
+                "src": "ipfs://QmT6VAHE2nvQ2h22hqUdXLtZBehFt8B4Xu84WvTyqgHiLk"
+              }
+            ],
+            "image": "ipfs://QmT6VAHE2nvQ2h22hqUdXLtZBehFt8B4Xu84WvTyqgHiLk",
+            "mediaType": "image/webp",
+            "name": "Uglop Whifflebop",
+            "traits": [
+              {
+                "Background": "Ooh im so clean"
+              },
+              {
+                "Skin": "Green Stripes"
+              },
+              {
+                "Outfit": "Stretchy Cat"
+              },
+              {
+                "Hats": "Cap with Squirrel"
+              },
+              {
+                "Mouth": "Safety Pin"
+              },
+              {
+                "Earring": "Headphones"
+              },
+              {
+                "Eyenose": "Fuming"
+              }
+            ]
+          },
+          "UG8367": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Wub Fizzletopflop",
+                "src": "ipfs://QmVExD5EfK7QmtEDYajTPVCPP2LHV1GktgkLGJmdXxmqdB"
+              }
+            ],
+            "image": "ipfs://QmVExD5EfK7QmtEDYajTPVCPP2LHV1GktgkLGJmdXxmqdB",
+            "mediaType": "image/webp",
+            "name": "Wub Fizzletopflop",
+            "traits": [
+              {
+                "Background": "Scenish"
+              },
+              {
+                "Skin": "Orange"
+              },
+              {
+                "Outfit": "Operating Table"
+              },
+              {
+                "Hats": "Winged Helmet"
+              },
+              {
+                "Mouth": "Simple"
+              },
+              {
+                "Eyenose": "Dead Nerdy"
+              }
+            ]
+          },
+          "UG8368": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ug Florpdrizzle",
+                "src": "ipfs://QmbDmaFaQXGwTiMQzejMkAMSje6Z9EyDEJqb5baQyQGhft"
+              }
+            ],
+            "image": "ipfs://QmbDmaFaQXGwTiMQzejMkAMSje6Z9EyDEJqb5baQyQGhft",
+            "mediaType": "image/webp",
+            "name": "Ug Florpdrizzle",
+            "traits": [
+              {
+                "Background": "Radio Light"
+              },
+              {
+                "Skin": "Pink Stripes"
+              },
+              {
+                "Outfit": "Katana"
+              },
+              {
+                "Hats": "Paper Hat"
+              },
+              {
+                "Mouth": "Beard"
+              },
+              {
+                "Eyenose": "Wonky"
+              }
+            ]
+          },
+          "UG8369": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugdribble Fizzleplop",
+                "src": "ipfs://QmbFW4GnhzcvEwkMEywp9Zfq9ajY6VXJBAhghkRs3JuXmM"
+              }
+            ],
+            "image": "ipfs://QmbFW4GnhzcvEwkMEywp9Zfq9ajY6VXJBAhghkRs3JuXmM",
+            "mediaType": "image/webp",
+            "name": "Ugdribble Fizzleplop",
+            "traits": [
+              {
+                "Background": "Rise and Shine Baby"
+              },
+              {
+                "Skin": "Amber Stripes"
+              },
+              {
+                "Outfit": "Surfer"
+              },
+              {
+                "Hats": "Peaky Hat"
+              },
+              {
+                "Mouth": "Hippo on Acid"
+              },
+              {
+                "Eyenose": "Interrupted"
+              }
+            ]
+          },
+          "UG8370": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugs Flickerglimmer",
+                "src": "ipfs://QmVt89PhQYR3NoDaZT8ieiDsjGkRxk956WmAxuMFJ6VyEx"
+              }
+            ],
+            "image": "ipfs://QmVt89PhQYR3NoDaZT8ieiDsjGkRxk956WmAxuMFJ6VyEx",
+            "mediaType": "image/webp",
+            "name": "Ugs Flickerglimmer",
+            "traits": [
+              {
+                "Background": "Damned"
+              },
+              {
+                "Skin": "Monster"
+              },
+              {
+                "Hats": "Cap with Squirrel"
+              },
+              {
+                "Mouth": "Up to No Good"
+              },
+              {
+                "Eyenose": "Loopy"
+              }
+            ]
+          },
+          "UG8371": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Ugwibble Flibberplunk",
+                "src": "ipfs://QmVkk1BFPArTptns1EP4crTLqKpu7ybaHnvp8T2RjjCiDJ"
+              }
+            ],
+            "image": "ipfs://QmVkk1BFPArTptns1EP4crTLqKpu7ybaHnvp8T2RjjCiDJ",
+            "mediaType": "image/webp",
+            "name": "Ugwibble Flibberplunk",
+            "traits": [
+              {
+                "Background": "Sunshine and Prozac"
+              },
+              {
+                "Skin": "Robot"
+              },
+              {
+                "Mouth": "Pizza Tongue"
+              },
+              {
+                "Eyenose": "Teacher"
+              }
+            ]
+          },
+          "UG8372": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/webp",
+                "name": "Uglop Wobbleslap",
+                "src": "ipfs://QmR4ZswTPCT12TJpDVTSQeqUpKd9QskJcdmKGsTu4me4kg"
+              }
+            ],
+            "image": "ipfs://QmR4ZswTPCT12TJpDVTSQeqUpKd9QskJcdmKGsTu4me4kg",
+            "mediaType": "image/webp",
+            "name": "Uglop Wobbleslap",
+            "traits": [
+              {
+                "Background": "Starlight in Paris"
+              },
+              {
+                "Skin": "Orange"
+              },
+              {
+                "Outfit": "Ghetto Blaster"
+              },
+              {
+                "Hats": "Riverman Cap"
+              },
+              {
+                "Mouth": "Gregarious"
+              },
+              {
+                "Earring": "Musical Notes"
+              },
+              {
+                "Eyenose": "Amazed"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-03-06 06:40:20",
+    "block_hash": "09f8e102079ebf854169999fa19fc42a80864efe2062de5c5a858d6d5033dd52",
+    "block_slot": 149676929
+  }
+}

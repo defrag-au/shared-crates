@@ -1,0 +1,104 @@
+{
+  "data": {
+    "asset_name": "546f6f6c6865616433333734",
+    "asset_name_ascii": "Toolhead3374",
+    "fingerprint": "asset1cplav7g26gtzvup3sf9geytagqshhncrxp0pps",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "4ecab2f57c2e529cbdbc0c5ddff2274802c0bb086f8d140205c94db7acc94d54",
+      "slot": 101856636,
+      "timestamp": "2023-08-30 19:15:27",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "4ecab2f57c2e529cbdbc0c5ddff2274802c0bb086f8d140205c94db7acc94d54",
+      "slot": 101856636,
+      "timestamp": "2023-08-30 19:15:27",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "name": "Toolhead #3374",
+        "image": "ipfs://QmZ3JHAhH9B7TFLcWsAhaJmFRjX56j7GC6Cn8wkh7xja6S",
+        "mediaType": "image/png",
+        "attributes": {
+          "background": "Cybernetic Sea",
+          "body": "Rough",
+          "accessory": "Recon Pack",
+          "outfit": "Sensory Shirt",
+          "strap": "Grenade Girdle",
+          "head": ["Cyberweave", "Necromancer Mask"],
+          "role": "Enforcer"
+        },
+        "files": [
+          {
+            "mediaType": "image/png",
+            "src": "ipfs://QmZ3JHAhH9B7TFLcWsAhaJmFRjX56j7GC6Cn8wkh7xja6S"
+          }
+        ],
+        "minter": "CNFT.Tools"
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "285c0b8e91ba323da4ca083c9db837e111dafbf3143ece4d03eba8f4": {
+          "Toolhead3271": {
+            "name": "Toolhead #3271",
+            "image": "ipfs://QmVpWuqGwDnwKqezmTzc5GzUfJN56Difz7LVnMW4ExhhLY",
+            "mediaType": "image/png",
+            "attributes": {
+              "background": "Titanium",
+              "body": "Augmented",
+              "accessory": "Necromancer Staff",
+              "outfit": "Marauder Armour",
+              "strap": "Shogun Strap",
+              "head": ["Stealth Stream", "O2 Operand"],
+              "role": "Hacker"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "src": "ipfs://QmVpWuqGwDnwKqezmTzc5GzUfJN56Difz7LVnMW4ExhhLY"
+              }
+            ],
+            "minter": "CNFT.Tools"
+          },
+          "Toolhead3374": {
+            "name": "Toolhead #3374",
+            "image": "ipfs://QmZ3JHAhH9B7TFLcWsAhaJmFRjX56j7GC6Cn8wkh7xja6S",
+            "mediaType": "image/png",
+            "attributes": {
+              "background": "Cybernetic Sea",
+              "body": "Rough",
+              "accessory": "Recon Pack",
+              "outfit": "Sensory Shirt",
+              "strap": "Grenade Girdle",
+              "head": ["Cyberweave", "Necromancer Mask"],
+              "role": "Enforcer"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "src": "ipfs://QmZ3JHAhH9B7TFLcWsAhaJmFRjX56j7GC6Cn8wkh7xja6S"
+              }
+            ],
+            "minter": "CNFT.Tools"
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-07-17 01:18:11",
+    "block_hash": "84453b86e89314cbd0d1d3425881fc94e6b6aef7d2b07273875631b2d763dae7",
+    "block_slot": 161148800
+  }
+}

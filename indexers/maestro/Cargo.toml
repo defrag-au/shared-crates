@@ -1,0 +1,24 @@
+[package]
+name = "maestro"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cardano-assets = { path = "../../cardano-assets" }
+async-stream = { workspace = true }
+chrono = { version = "0.4.39" }
+futures-core = { workspace = true }
+futures-util = { workspace = true }
+http-client = { path = "../../http-client" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+worker = { workspace = true }
+worker_utils = { path = "../../worker-utils" }
+
+[dev-dependencies]
+test_utils = { path = "../../test-utils" }
+
+[features]
+default = []
+transactions = []

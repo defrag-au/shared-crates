@@ -1,0 +1,194 @@
+{
+  "data": {
+    "asset_name": "546865576f726b696e674465616433363336",
+    "asset_name_ascii": "TheWorkingDead3636",
+    "fingerprint": "asset1p7sjwt3esjcruaplcus5u4tntzqg5px4xxap4s",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "f01d3a90b95abeea563f6e0bdd23bc1bd82a5ab8f9bf7b531093f042b446c841",
+      "slot": 81289206,
+      "timestamp": "2023-01-04 18:04:57",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "f01d3a90b95abeea563f6e0bdd23bc1bd82a5ab8f9bf7b531093f042b446c841",
+      "slot": 81289206,
+      "timestamp": "2023-01-04 18:04:57",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        " Project": "The Working Dead - Genesis",
+        "Company": "Ever After Enterprises",
+        "Role": "Intern",
+        "background": "Electric",
+        "body": "Soccer Uniform",
+        "color": "White",
+        "eyes": "Peace",
+        "files": [
+          {
+            "mediaType": "image/png",
+            "name": "The Working Dead #3636",
+            "src": "ipfs://QmaZmAzAB1mzMkkPDLpWt9QCgWvLtAYrK5L4wyzV2Chzd2"
+          }
+        ],
+        "flame": "Pink",
+        "head": "Bonehawk",
+        "image": "ipfs://QmaZmAzAB1mzMkkPDLpWt9QCgWvLtAYrK5L4wyzV2Chzd2",
+        "name": "The Working Dead #3636",
+        "skull": "Missing Tooth",
+        "utility": "Thumbs Up"
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "b06b24176f6feed7f6af241f12333b146497a43b13afad1c66699dea": {
+          "TheWorkingDead2325": {
+            " Project": "The Working Dead - Genesis",
+            "Company": "Mortal Coil Capital",
+            "Role": "Intern",
+            "background": "Orange",
+            "body": "Cowboy Duster Black",
+            "color": "White",
+            "eyes": "Peace",
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "The Working Dead #2325",
+                "src": "ipfs://QmWU2KPVonmDSiYdXW6juLCpEQfFy8nU7RjAEoPHvAUYec"
+              }
+            ],
+            "flame": "Green",
+            "image": "ipfs://QmWU2KPVonmDSiYdXW6juLCpEQfFy8nU7RjAEoPHvAUYec",
+            "name": "The Working Dead #2325",
+            "skull": "Tusks",
+            "utility": "Lever Action Rifle"
+          },
+          "TheWorkingDead3197": {
+            " Project": "The Working Dead - Genesis",
+            "Company": "Skull Tech",
+            "Role": "Specialist",
+            "background": "Banana",
+            "body": "Teacher",
+            "color": "Aqua",
+            "eyes": "Energy Red",
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "The Working Dead #3197",
+                "src": "ipfs://QmUaiGDwNS3X5ZNZHbwYbmFKbMyas61wUbzbgwUnHU91iu"
+              }
+            ],
+            "flame": "Fire",
+            "head": "Liberty Spikes Yellow",
+            "image": "ipfs://QmUaiGDwNS3X5ZNZHbwYbmFKbMyas61wUbzbgwUnHU91iu",
+            "name": "The Working Dead #3197",
+            "skull": "Skull",
+            "utility": "Coupe"
+          },
+          "TheWorkingDead3636": {
+            " Project": "The Working Dead - Genesis",
+            "Company": "Ever After Enterprises",
+            "Role": "Intern",
+            "background": "Electric",
+            "body": "Soccer Uniform",
+            "color": "White",
+            "eyes": "Peace",
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "The Working Dead #3636",
+                "src": "ipfs://QmaZmAzAB1mzMkkPDLpWt9QCgWvLtAYrK5L4wyzV2Chzd2"
+              }
+            ],
+            "flame": "Pink",
+            "head": "Bonehawk",
+            "image": "ipfs://QmaZmAzAB1mzMkkPDLpWt9QCgWvLtAYrK5L4wyzV2Chzd2",
+            "name": "The Working Dead #3636",
+            "skull": "Missing Tooth",
+            "utility": "Thumbs Up"
+          },
+          "TheWorkingDead5146": {
+            " Project": "The Working Dead - Genesis",
+            "Company": "Last Breath Bank",
+            "Role": "Intern",
+            "background": "Sky",
+            "body": "Stoner",
+            "color": "Off White",
+            "eyes": "Whu",
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "The Working Dead #5146",
+                "src": "ipfs://QmXjH4Mf7mBsXap7bw7DUo6JrpDmKKNBHNweMmJeLWZ8M8"
+              }
+            ],
+            "flame": "Fuchsia",
+            "image": "ipfs://QmXjH4Mf7mBsXap7bw7DUo6JrpDmKKNBHNweMmJeLWZ8M8",
+            "name": "The Working Dead #5146",
+            "skull": "Skull",
+            "utility": "Cell"
+          },
+          "TheWorkingDead5770": {
+            " Project": "The Working Dead - Genesis",
+            "Company": "Ever After Enterprises",
+            "Role": "Intern",
+            "background": "Taffy",
+            "body": "MotoGP Suit Teal",
+            "color": "White",
+            "eyes": "Angry",
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "The Working Dead #5770",
+                "src": "ipfs://QmcgLMrFzcCKmCQM8wrEdMpoCx6E9RLZAK8FW2rC4ABKv1"
+              }
+            ],
+            "flame": "Pink",
+            "head": "Fedora in Purple",
+            "image": "ipfs://QmcgLMrFzcCKmCQM8wrEdMpoCx6E9RLZAK8FW2rC4ABKv1",
+            "name": "The Working Dead #5770",
+            "skull": "Missing Tooth",
+            "utility": "Plunger"
+          },
+          "TheWorkingDead5964": {
+            " Project": "The Working Dead - Genesis",
+            "Company": "Skull Tech",
+            "Role": "Intern",
+            "background": "Red",
+            "body": "Princess Gown",
+            "color": "Yellow",
+            "eyes": "Eyepatch",
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "The Working Dead #5964",
+                "src": "ipfs://QmbJ41KUARPvfeWtDpqVKZNDVFKViz2dyqbMuwziu1gSmt"
+              }
+            ],
+            "flame": "Purple",
+            "head": "Buns",
+            "image": "ipfs://QmbJ41KUARPvfeWtDpqVKZNDVFKViz2dyqbMuwziu1gSmt",
+            "mouth": "Cig",
+            "name": "The Working Dead #5964",
+            "skull": "Skull",
+            "utility": "Blaster Pistol"
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-01-29 06:25:14",
+    "block_hash": "d73959d0a04f374925895afd93666e369aed96e7d3dc3b677cc27e29252a9be8",
+    "block_slot": 146565623
+  }
+}

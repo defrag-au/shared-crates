@@ -10,6 +10,7 @@ members = [
     "tx-insights",
     "wasm-safe-serde",
     "worker-utils",
+    "indexers/*"
 ]
 resolver = "2"
 
@@ -23,7 +24,9 @@ wasm-bindgen-macro = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 web-sys = "0.3"
-
+async-stream = "0.3.6"
+futures-core = "0.3.31"
+futures-util = "0.3.31"
 axum = { version = "0.8", default-features = false, features = ["json", "macros"] }
 tower-http = { version = "0.6" }
 gloo-net = "0.6.0"

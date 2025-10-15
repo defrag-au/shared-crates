@@ -1,0 +1,94 @@
+{
+  "data": {
+    "asset_name": "416461476f64393234",
+    "asset_name_ascii": "AdaGod924",
+    "fingerprint": "asset10exkz0rr7h9g955v3p85gmyuktw7c3jglralwq",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "9fae8755027a087935e483d58470361624290530963e825f9934e919d2a5f434",
+      "slot": 132185807,
+      "timestamp": "2024-08-15 20:01:38",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "9fae8755027a087935e483d58470361624290530963e825f9934e919d2a5f434",
+      "slot": 132185807,
+      "timestamp": "2024-08-15 20:01:38",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "Eyes": "Sunglasses Gold",
+        "Hats": "Hawk Hair Grey",
+        "name": "AdaGod #0924",
+        "Skins": "Black",
+        "image": "ipfs://Qmb7J1pnwQJnXhPy72QXsaeE6uFNk6FJ9xcc6QizSjLTcv",
+        "Mouths": "Beard with Cigar Grey",
+        "Clothes": "Puffer Vest White",
+        "mediaType": "image/png",
+        "Backgrounds": "Basic 10",
+        "description": "Make Cardano Great Again."
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "793aca910dc6a400ced6c94698c6f01d6479d701227fc9a7287ae2a5": {
+          "AdaGod330": {
+            "Eyes": "Oval Sunglasses White",
+            "Hats": "Curly Locks with Green Leaves Gold",
+            "Neck": "Stone Bead Necklace",
+            "name": "AdaGod #0330",
+            "Skins": "Green",
+            "image": "ipfs://QmeUjYhHYpQ4LDbQ9tVNtvPjUTYqhxgUuQDGfsKz5QCSA3",
+            "Mouths": "Beard with Cigar Gold",
+            "Clothes": "Torn T shirt Red",
+            "Special": "Scars Under Eyes",
+            "Earrings": "Double Silver Earrings 2",
+            "mediaType": "image/png",
+            "Backgrounds": "Basic 06",
+            "description": "Make Cardano Great Again."
+          },
+          "AdaGod924": {
+            "Eyes": "Sunglasses Gold",
+            "Hats": "Hawk Hair Grey",
+            "name": "AdaGod #0924",
+            "Skins": "Black",
+            "image": "ipfs://Qmb7J1pnwQJnXhPy72QXsaeE6uFNk6FJ9xcc6QizSjLTcv",
+            "Mouths": "Beard with Cigar Grey",
+            "Clothes": "Puffer Vest White",
+            "mediaType": "image/png",
+            "Backgrounds": "Basic 10",
+            "description": "Make Cardano Great Again."
+          },
+          "AdaGod261": {
+            "Eyes": "Square Sunglasses White",
+            "Hats": "Spiky Bun with Fade Brown",
+            "Neck": "Snek",
+            "name": "AdaGod #0261",
+            "Skins": "Default Skin Dark",
+            "image": "ipfs://QmeyT2VxRGdesRVCvr6buZVxvbWRQSZyD1zfXxQ9Eqkd5g",
+            "Mouths": "Moustache Brown",
+            "Clothes": "Varsity Jacket Black",
+            "Earrings": "Single Silver Earring",
+            "mediaType": "image/png",
+            "Backgrounds": "Basic 06",
+            "description": "Make Cardano Great Again."
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-01-27 22:19:31",
+    "block_hash": "e21af58a629bc439666ec5f28c9195065313d2bdd568160b34ccaf410ecf6c60",
+    "block_slot": 146450080
+  }
+}

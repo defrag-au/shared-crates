@@ -1,0 +1,167 @@
+{
+  "data": {
+    "asset_name": "57617679417065333837",
+    "asset_name_ascii": "WavyApe387",
+    "fingerprint": "asset1jhm4jv5j309l7c8hx2h9n0wgg6nt6zrjzgmjtf",
+    "total_supply": "4",
+    "unique_holders": {
+      "by_address": 4,
+      "by_account": 4
+    },
+    "first_mint_tx": {
+      "tx_hash": "b86c0342e14bb50e0ad30a658c15a110f6b03c61545d5cd3bfc3a0b587327ae5",
+      "slot": 153705850,
+      "timestamp": "2025-04-21 21:49:01",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "fe7636819f92e69d2c2613636f0a7620dd8404e805a93ab6eb4262d206ccfe9d",
+      "slot": 153719123,
+      "timestamp": "2025-04-22 01:30:14",
+      "amount": "1"
+    },
+    "mint_tx_count": 4,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "collection": "Wavy Apes by Squashua 2023",
+        "files": [
+          {
+            "mediaType": "image/png",
+            "name": "WavyApe387",
+            "src": "ipfs://QmTXJg2xbRD7mzxzasRzbmVkFL5bXpZuav4tWbey8WkPwb"
+          }
+        ],
+        "image": "ipfs://QmTXJg2xbRD7mzxzasRzbmVkFL5bXpZuav4tWbey8WkPwb",
+        "mediaType": "image/png",
+        "name": "WavyApe387",
+        "traits": [
+          {
+            "Background": "Yellow"
+          },
+          {
+            "Back": "Ganja Sack"
+          },
+          {
+            "Body": "Brown"
+          },
+          {
+            "Outfit": "Polo Stripey"
+          },
+          {
+            "Neck": "None"
+          },
+          {
+            "Mask": "None"
+          },
+          {
+            "Ears": "Elf"
+          },
+          {
+            "Earrings": "Skill"
+          },
+          {
+            "Accessory": "Copium"
+          },
+          {
+            "Mouth": "Grin"
+          },
+          {
+            "Eyes": "Small"
+          },
+          {
+            "Nose": "Smile"
+          },
+          {
+            "Glasses": "None"
+          },
+          {
+            "Head": "Quiff"
+          },
+          {
+            "Hands": "None"
+          },
+          {
+            "Collectible": "None"
+          }
+        ]
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "d458857ae7d121bfb5af64d78c0454a519133248e030a0225734452b": {
+          "WavyApe387": {
+            "collection": "Wavy Apes by Squashua 2023",
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "WavyApe387",
+                "src": "ipfs://QmTXJg2xbRD7mzxzasRzbmVkFL5bXpZuav4tWbey8WkPwb"
+              }
+            ],
+            "image": "ipfs://QmTXJg2xbRD7mzxzasRzbmVkFL5bXpZuav4tWbey8WkPwb",
+            "mediaType": "image/png",
+            "name": "WavyApe387",
+            "traits": [
+              {
+                "Background": "Yellow"
+              },
+              {
+                "Back": "Ganja Sack"
+              },
+              {
+                "Body": "Brown"
+              },
+              {
+                "Outfit": "Polo Stripey"
+              },
+              {
+                "Neck": "None"
+              },
+              {
+                "Mask": "None"
+              },
+              {
+                "Ears": "Elf"
+              },
+              {
+                "Earrings": "Skill"
+              },
+              {
+                "Accessory": "Copium"
+              },
+              {
+                "Mouth": "Grin"
+              },
+              {
+                "Eyes": "Small"
+              },
+              {
+                "Nose": "Smile"
+              },
+              {
+                "Glasses": "None"
+              },
+              {
+                "Head": "Quiff"
+              },
+              {
+                "Hands": "None"
+              },
+              {
+                "Collectible": "None"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-04-25 01:54:36",
+    "block_hash": "df48112fb1ba1c81bc4ca233181cbffb714c0600afca6308d04564756f1058d2",
+    "block_slot": 153979785
+  }
+}
