@@ -1,0 +1,2206 @@
+{
+  "data": [
+    {
+      "asset_name": "",
+      "asset_name_ascii": "",
+      "fingerprint": "asset1pnqv352yqd80kghremuhmtwuf3hv3p7yeptjtc",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": null,
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331303039",
+      "asset_name_ascii": "The Ancestor #1009",
+      "fingerprint": "asset1ymqw6stktuxsdr5k9ey43l2zzuwws3l20mxg2l",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Body": "Chief Miner Vest",
+          "Face": "Sleepy Blonde",
+          "Head": "Cave Hat",
+          "Type": "Dwarf",
+          "name": "The Ancestor #1009",
+          "Beard": "Miner Blonde Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeiae5mcdxgsy5pjczl6y5iiv7zpmzwn7hbpzwgllyyo65gfpmd2a",
+                "oa"
+              ],
+              "name": "The Ancestor #1009",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeiae5mcdxgsy5pjczl6y5iiv7zpmzwn7hbpzwgllyyo65gfpmd2aoa",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Wenge",
+          "Additional Weapon": "Raw Gold Miner Cart"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331303433",
+      "asset_name_ascii": "The Ancestor #1043",
+      "fingerprint": "asset1qs8yzqqwallezfw6adqm8x2xkwv50r9ztl8zc0",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Nosy",
+          "Body": "Dragon Bone Armor",
+          "Face": "Suspicious",
+          "Head": "Legendary Helmet",
+          "Type": "Orc",
+          "name": "The Ancestor #1043",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeieoqveulb6tbombyk23zebhbvbqucsioselrq5ffmtsjg6mvmct",
+                "iq"
+              ],
+              "name": "The Ancestor #1043",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeieoqveulb6tbombyk23zebhbvbqucsioselrq5ffmtsjg6mvmctiq",
+          "Weapon": "Cleaver",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Madder"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331303732",
+      "asset_name_ascii": "The Ancestor #1072",
+      "fingerprint": "asset1tv3w7sn2xxj3x5kpxx7m4ufck55l2qd3my8ape",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Jester Dress",
+          "Face": "Devilish Grey",
+          "Type": "Human",
+          "name": "The Ancestor #1072",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeia7pk4y6opbmh5cvwabhf2mp43gpinbpvnvvghhbv7bu7zlo7f3",
+                "2m"
+              ],
+              "name": "The Ancestor #1072",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeia7pk4y6opbmh5cvwabhf2mp43gpinbpvnvvghhbv7bu7zlo7f32m",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Light Blue",
+          "Additional Weapon": "Defender Shield"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331303835",
+      "asset_name_ascii": "The Ancestor #1085",
+      "fingerprint": "asset13dppx3u6uu6m50954dg3jen84e0aw9vakrxdjn",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Royal Dress",
+          "Face": "Curious Grey",
+          "Head": "Court Guard Helmet",
+          "Type": "Human",
+          "name": "The Ancestor #1085",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeicqcd2hexmatyrxtkz4co6ff35f7jicwyl3ketedtfpvtky7zq2",
+                "um"
+              ],
+              "name": "The Ancestor #1085",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeicqcd2hexmatyrxtkz4co6ff35f7jicwyl3ketedtfpvtky7zq2um",
+          "Weapon": "King Staff",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Rose Red",
+          "Additional Weapon": "Magic Poisoned Flame"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331313231",
+      "asset_name_ascii": "The Ancestor #1121",
+      "fingerprint": "asset1t20ttpj3fldpmsrfrghyexfemfgy7hpuyzhd2m",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Biten Ear With Hoop Earring",
+          "Body": "Rune Tattoo",
+          "Face": "Serious Blonde",
+          "Head": "Prince Crown",
+          "Type": "Human",
+          "name": "The Ancestor #1121",
+          "Beard": "Blonde Short Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeiddiakna7khi2llwphepzau2c5ptsyiyhiwq4gydxakleqyicfl",
+                "3y"
+              ],
+              "name": "The Ancestor #1121",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeiddiakna7khi2llwphepzau2c5ptsyiyhiwq4gydxakleqyicfl3y",
+          "Weapon": "Shaman Magic Staff",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Mantis"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331313633",
+      "asset_name_ascii": "The Ancestor #1163",
+      "fingerprint": "asset1frc8d5t5kf7flmkgtcae5nepgpdwunu3wcfhax",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Body": "Stones Dragger",
+          "Face": "Oh Shit",
+          "Head": "Wise Grey Hair",
+          "Type": "Dwarf",
+          "name": "The Ancestor #1163",
+          "Beard": "Chief Miner Grey Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeifzqynseb3a55hjf3vooulcuaycgya6hz4czu4dyygexzecgdlc",
+                "lq"
+              ],
+              "name": "The Ancestor #1163",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeifzqynseb3a55hjf3vooulcuaycgya6hz4czu4dyygexzecgdlclq",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "Back Gear": "Extra Shovel",
+          "mediaType": "image/png",
+          "Background": "Orange",
+          "Additional Weapon": "Beer Jug"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331313636",
+      "asset_name_ascii": "The Ancestor #1166",
+      "fingerprint": "asset18qswtqn8xxwnpc27yachxqmkey8ppkjrhma3n4",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Defender Armor",
+          "Face": "Wink Grey",
+          "Head": "Court Guard Helmet",
+          "Type": "Human",
+          "name": "The Ancestor #1166",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeigkpyl4m43hjl6durj535menyruazvhffh7d2qx7kybt55zb6jb",
+                "vm"
+              ],
+              "name": "The Ancestor #1166",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeigkpyl4m43hjl6durj535menyruazvhffh7d2qx7kybt55zb6jbvm",
+          "Weapon": "Defender Spiked Mace",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Mantis",
+          "Additional Weapon": "Shaman Seeing Sphere"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331313735",
+      "asset_name_ascii": "The Ancestor #1175",
+      "fingerprint": "asset1rp5x4efrunmcujc5f0tkn957gafznxsc4v8kgr",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Prince Suit",
+          "Face": "Critical Grey",
+          "Head": "Polar Bear",
+          "Type": "Human",
+          "name": "The Ancestor #1175",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeidiiesm73pxvfgayxlxllcrbqyspwkfwgt6gyv2wm3lnz5ljvex",
+                "34"
+              ],
+              "name": "The Ancestor #1175",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeidiiesm73pxvfgayxlxllcrbqyspwkfwgt6gyv2wm3lnz5ljvex34",
+          "Weapon": "King Sword",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Mantis"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331323033",
+      "asset_name_ascii": "The Ancestor #1203",
+      "fingerprint": "asset1h29p0t0eejk3hsglxhervt6gk92fvp4ttg5w0l",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Face": "Critical Blonde",
+          "Head": "Court Guard Helmet",
+          "Type": "Human",
+          "name": "The Ancestor #1203",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeiauars2mbyjyh2dibn3zmyx2k65dkr25taj4jcmycvfzqagd2i5",
+                "vu"
+              ],
+              "name": "The Ancestor #1203",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeiauars2mbyjyh2dibn3zmyx2k65dkr25taj4jcmycvfzqagd2i5vu",
+          "Weapon": "Jester Staff",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Hot Pink",
+          "Additional Weapon": "War Horn"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331323233",
+      "asset_name_ascii": "The Ancestor #1223",
+      "fingerprint": "asset1036y505eatkdhx0ek0xdpm2vgymvva5f7r2uz9",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Fighter Armor",
+          "Face": "Chill",
+          "Head": "Prince Crown",
+          "Type": "Human",
+          "name": "The Ancestor #1223",
+          "Beard": "Hunter Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeicfas2l6hacpmjtuidcdcsuh4tp7wxuhzgej7zqesvysfzscwoy",
+                "my"
+              ],
+              "name": "The Ancestor #1223",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeicfas2l6hacpmjtuidcdcsuh4tp7wxuhzgej7zqesvysfzscwoymy",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Mantis"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331323432",
+      "asset_name_ascii": "The Ancestor #1242",
+      "fingerprint": "asset18ya8y5dsuc43qlff4xnxpk0d484qn9y8q4hsga",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Nosy",
+          "Body": "Light Armor",
+          "Face": "Evil Laugh",
+          "Head": "Soldier Helmet",
+          "Type": "Orc",
+          "name": "The Ancestor #1242",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeidyh73cj6uzzhkqb7c4cugiy2pksn2kf2n4dotwnvmy6tgf5h7u",
+                "g4"
+              ],
+              "name": "The Ancestor #1242",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeidyh73cj6uzzhkqb7c4cugiy2pksn2kf2n4dotwnvmy6tgf5h7ug4",
+          "Weapon": "Cleaver",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Jonquil"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023313330",
+      "asset_name_ascii": "The Ancestor #130",
+      "fingerprint": "asset1dgjhchjwezwykuq80kus64ak4zntjvsxu5g7dh",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Fat Iron Earring",
+          "Face": "Wary Red",
+          "Head": "Shaved Hair",
+          "Type": "Dwarf",
+          "name": "The Ancestor #130",
+          "Beard": "Warrior Red Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeibqwwplo74j4tqntqrbkgodu6xssrwpfjgnkmxttavsdyzs2q25",
+                "da"
+              ],
+              "name": "The Ancestor #130",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeibqwwplo74j4tqntqrbkgodu6xssrwpfjgnkmxttavsdyzs2q25da",
+          "Weapon": "Wine Bottle",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "Back Gear": "Dixie",
+          "mediaType": "image/png",
+          "Background": "Russian Violet"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331333736",
+      "asset_name_ascii": "The Ancestor #1376",
+      "fingerprint": "asset13lp5fhnsunphdznu9cs89ececmxextvmrkxsfl",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Golden Earring Ear",
+          "Body": "Fighter Armor",
+          "Face": "Curious Blonde",
+          "Head": "Rune Tattoo",
+          "Type": "Human",
+          "name": "The Ancestor #1376",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeicmt6my3eeokrceju4mrtu6knxmsvyu6lpsfyykbpwndpiku7nc",
+                "n4"
+              ],
+              "name": "The Ancestor #1376",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeicmt6my3eeokrceju4mrtu6knxmsvyu6lpsfyykbpwndpiku7ncn4",
+          "Weapon": "Jester Staff",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Celeste",
+          "Additional Weapon": "Magic Pipe"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331333836",
+      "asset_name_ascii": "The Ancestor #1386",
+      "fingerprint": "asset1w28akec06pnau0jtdy2qhlea27mcus63084yx0",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Nosy",
+          "Body": "Bone Armor",
+          "Face": "Evil Laugh",
+          "Head": "Undead",
+          "Type": "Orc",
+          "name": "The Ancestor #1386",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeic3omw5ksp63gta4oc2qqzr5vtuqtkaovpegq5k4uvpovo52i7f",
+                "sa"
+              ],
+              "name": "The Ancestor #1386",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeic3omw5ksp63gta4oc2qqzr5vtuqtkaovpegq5k4uvpovo52i7fsa",
+          "Weapon": "Bone Axe",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Coffee"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331343037",
+      "asset_name_ascii": "The Ancestor #1407",
+      "fingerprint": "asset1ylutcpd808q427530key28g8wfkx5w6574nasc",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Golden Armor",
+          "Face": "Grin Red",
+          "Head": "Court Guard Helmet",
+          "Type": "Human",
+          "name": "The Ancestor #1407",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeic2fflxs6itdtjtlpt43yps6v3g562tpymtgrr5mdrd2gtxmff4",
+                "di"
+              ],
+              "name": "The Ancestor #1407",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeic2fflxs6itdtjtlpt43yps6v3g562tpymtgrr5mdrd2gtxmff4di",
+          "Weapon": "Iron Knuckle Duster",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Light Blue",
+          "Additional Weapon": "Royal Shield"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331343137",
+      "asset_name_ascii": "The Ancestor #1417",
+      "fingerprint": "asset1u67axvkd9pqcns686uzaajx9acd7xs4gwlj603",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Warrior",
+          "Face": "Peaceful",
+          "Head": "Arrow",
+          "Type": "Orc",
+          "name": "The Ancestor #1417",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeibwdnupbrs5xcogha7qokjbkhidqugy5m4w4uqr7hjome24jnoj",
+                "3a"
+              ],
+              "name": "The Ancestor #1417",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeibwdnupbrs5xcogha7qokjbkhidqugy5m4w4uqr7hjome24jnoj3a",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Coral"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331343835",
+      "asset_name_ascii": "The Ancestor #1485",
+      "fingerprint": "asset1kva582patzwkuh9pwkq5thy76hmzgdgf7nhdfz",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Biten Ear With Hoop Earring",
+          "Body": "Farmer Dress",
+          "Face": "Wise",
+          "Head": "Defender Helmet",
+          "Type": "Human",
+          "name": "The Ancestor #1485",
+          "Beard": "Blonde Short Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeibnnfnzc7hmhv3vi2nxrqkersptoehryyu67x3fu6n547sdeidf",
+                "by"
+              ],
+              "name": "The Ancestor #1485",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeibnnfnzc7hmhv3vi2nxrqkersptoehryyu67x3fu6n547sdeidfby",
+          "Weapon": "King Staff",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Rose Red",
+          "Additional Weapon": "War Horn"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331353039",
+      "asset_name_ascii": "The Ancestor #1509",
+      "fingerprint": "asset1gcqcqsr0x3yngaefztmvt4ckq0knf5llck0dn9",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Warrior",
+          "Body": "Arrows",
+          "Face": "Destroyer",
+          "Head": "Horns",
+          "Type": "Orc",
+          "name": "The Ancestor #1509",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeidxqlf5ggh34lp3umtmneervhxmbfborh267qfr6h3nmpmkj4wc",
+                "t4"
+              ],
+              "name": "The Ancestor #1509",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeidxqlf5ggh34lp3umtmneervhxmbfborh267qfr6h3nmpmkj4wct4",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Coral"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023313531",
+      "asset_name_ascii": "The Ancestor #151",
+      "fingerprint": "asset1xwfh4yq00j88qng8c3fylac9u8ltj9wnxfv0jl",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Warrior",
+          "Body": "Bone Armor",
+          "Face": "Dumb",
+          "Head": "Soldier Helmet",
+          "Type": "Orc",
+          "name": "The Ancestor #151",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeie76rbhpouzgngut66atuabwlc5a4t4p54jcmwq46mwfl6qzbbi",
+                "2i"
+              ],
+              "name": "The Ancestor #151",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeie76rbhpouzgngut66atuabwlc5a4t4p54jcmwq46mwfl6qzbbi2i",
+          "Weapon": "Bone Axe",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Sea Green"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331353333",
+      "asset_name_ascii": "The Ancestor #1533",
+      "fingerprint": "asset10gzsu45pkvnxec0zg8g0k45adkp67t8s0d4wgv",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Nosy",
+          "Face": "Dumb",
+          "Head": "Executioner Helmet",
+          "Type": "Orc",
+          "name": "The Ancestor #1533",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeibky35ydnibna44lamrfictecyhngceryirwoxejk765anwsn52",
+                "ne"
+              ],
+              "name": "The Ancestor #1533",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeibky35ydnibna44lamrfictecyhngceryirwoxejk765anwsn52ne",
+          "Weapon": "Spiked Sword",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Madder",
+          "Additional Weapon": "Sharp Sword"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023313633",
+      "asset_name_ascii": "The Ancestor #163",
+      "fingerprint": "asset1gps96wkdkqu3wdrqueyfdx5uermcsh9cmvc44g",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Golden Earring Ear",
+          "Body": "Royal Dress",
+          "Face": "Critical Blonde",
+          "Head": "Royal Hat",
+          "Type": "Human",
+          "name": "The Ancestor #163",
+          "Beard": "Blonde Short Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeiefmvn5epm6h3mgxoe5sfofndjehlnzovxzr4eokegz77scqm2w",
+                "ue"
+              ],
+              "name": "The Ancestor #163",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeiefmvn5epm6h3mgxoe5sfofndjehlnzovxzr4eokegz77scqm2wue",
+          "Weapon": "Fighter Flaming Sword",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Feldgrau"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331363432",
+      "asset_name_ascii": "The Ancestor #1642",
+      "fingerprint": "asset108s4s7u8qx00mut78q6hqn5ya8kledahlqf7zh",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Nail Earring",
+          "Body": "Stones Dragger",
+          "Face": "Sleepy Red",
+          "Head": "Precious Golden Helmet",
+          "Type": "Dwarf",
+          "name": "The Ancestor #1642",
+          "Beard": "Mountain Guard Red Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeib72v4jhhiofm5zb34kzuwbdhrssu3jdvqkgvvry2bcsrxat2sw",
+                "ni"
+              ],
+              "name": "The Ancestor #1642",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeib72v4jhhiofm5zb34kzuwbdhrssu3jdvqkgvvry2bcsrxat2swni",
+          "Weapon": "Golden Royal Sword",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Wenge",
+          "Additional Weapon": "Royal Wine Cup"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023313636",
+      "asset_name_ascii": "The Ancestor #166",
+      "fingerprint": "asset1arjr028xe22lf40apgrq70220vrcjgyjsrdry8",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Body": "Mountain Sorcerer",
+          "Face": "Oh Shit",
+          "Head": "Wise Black Hair",
+          "Type": "Dwarf",
+          "name": "The Ancestor #166",
+          "Beard": "Dwarves King Black Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeidoplfcpipghfrlnkvop77rnjklfil6ne6bgodqbi2bmknhe3bi",
+                "3m"
+              ],
+              "name": "The Ancestor #166",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeidoplfcpipghfrlnkvop77rnjklfil6ne6bgodqbi2bmknhe3bi3m",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Flax"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331363636",
+      "asset_name_ascii": "The Ancestor #1666",
+      "fingerprint": "asset1h2nr69zurtgfr05e72mpdmfq9mkflj8rtx359l",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Defender Armor",
+          "Face": "Wink Blonde",
+          "Type": "Human",
+          "name": "The Ancestor #1666",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeih7xmrlkpigsr5e6vqwo2ag52xa4wmcg5d6nl7nh6smp5asc4nb",
+                "bu"
+              ],
+              "name": "The Ancestor #1666",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeih7xmrlkpigsr5e6vqwo2ag52xa4wmcg5d6nl7nh6smp5asc4nbbu",
+          "Weapon": "Iron Sword",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Celeste",
+          "Additional Weapon": "War Horn"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331363930",
+      "asset_name_ascii": "The Ancestor #1690",
+      "fingerprint": "asset1lmt9zgdpdprryv6s37r5jj9wtkar0f7g52sfgw",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Wayfarer Suit",
+          "Face": "Chill",
+          "Head": "Red Braided Hair",
+          "Type": "Human",
+          "name": "The Ancestor #1690",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeigu53gnx23tlgxbvwbkgjrwy43hrgeve4r6fyrf2tybn6sslvwu",
+                "ki"
+              ],
+              "name": "The Ancestor #1690",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeigu53gnx23tlgxbvwbkgjrwy43hrgeve4r6fyrf2tybn6sslvwuki",
+          "Weapon": "Hunter Pilum",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Burgundy"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331373431",
+      "asset_name_ascii": "The Ancestor #1741",
+      "fingerprint": "asset1adqvpnnsh6whyg7xyxh7v8ekhxj3qrye8hf3mc",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Body": "Forest Guardian",
+          "Face": "Furious Green",
+          "Head": "Forest Royal Helmet",
+          "Type": "Elf",
+          "name": "The Ancestor #1741",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeib6ppmfocqqxqezdw3hzk4dghouillntjkqse43rrs647wwd2c3",
+                "ye"
+              ],
+              "name": "The Ancestor #1741",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeib6ppmfocqqxqezdw3hzk4dghouillntjkqse43rrs647wwd2c3ye",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Russian Violet"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331373539",
+      "asset_name_ascii": "The Ancestor #1759",
+      "fingerprint": "asset1jquh6l9jtjssurgzrvre6swynlv909630jmzxf",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Body": "Miner",
+          "Face": "Tired Blonde",
+          "Head": "Royal Guard Blonde Helmet",
+          "Type": "Dwarf",
+          "name": "The Ancestor #1759",
+          "Beard": "Warrior Blonde Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeiegckzzzaliygedzmzihptnoakarh2dyirt2n6w5krhp5q7zp4m",
+                "ui"
+              ],
+              "name": "The Ancestor #1759",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeiegckzzzaliygedzmzihptnoakarh2dyirt2n6w5krhp5q7zp4mui",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Khahi",
+          "Additional Weapon": "Beer Jug"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f72202331373737",
+      "asset_name_ascii": "The Ancestor #1777",
+      "fingerprint": "asset1h2ce8ppjzaxd9m4620ucz7xpzrfkw2hhqp9w0p",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Hunter Coat",
+          "Face": "Wink Red",
+          "Head": "King Crown",
+          "Type": "Human",
+          "name": "The Ancestor #1777",
+          "Beard": "Orange Medium Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeie2dutz72ujd654ngajqaesv7ioncsib5stjoakw5fg5kr7wxq6",
+                "x4"
+              ],
+              "name": "The Ancestor #1777",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeie2dutz72ujd654ngajqaesv7ioncsib5stjoakw5fg5kr7wxq6x4",
+          "Weapon": "Royal Magic Dagger",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Mantis",
+          "Additional Weapon": "Golden Shield"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023323032",
+      "asset_name_ascii": "The Ancestor #202",
+      "fingerprint": "asset1hzxpzudd4jrz0750zjqnu4u2krk3wh9gfnuawh",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Royal Dress",
+          "Face": "Wise",
+          "Head": "Defender Helmet",
+          "Type": "Human",
+          "name": "The Ancestor #202",
+          "Beard": "Blonde Short Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeiak7kahtwfxyspq6azh2y4bhi3u7in2daihlkljlwdinnvzeoje",
+                "2i"
+              ],
+              "name": "The Ancestor #202",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeiak7kahtwfxyspq6azh2y4bhi3u7in2daihlkljlwdinnvzeoje2i",
+          "Weapon": "Defender Spiked Mace",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Feldgrau",
+          "Additional Weapon": "Magic Pipe"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023323235",
+      "asset_name_ascii": "The Ancestor #225",
+      "fingerprint": "asset1sjd0ulszt68z5v3zpu388xj3wp8du2umwnz9yf",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Face": "Chad Brown",
+          "Head": "Forest Guardian Hood Brown",
+          "Type": "Elf",
+          "name": "The Ancestor #225",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeigw3uqt7zimjlenkdhpmtnbz2atu3m5tyjddjc2l4p6pl5y2fft",
+                "ey"
+              ],
+              "name": "The Ancestor #225",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeigw3uqt7zimjlenkdhpmtnbz2atu3m5tyjddjc2l4p6pl5y2fftey",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Khahi"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023323332",
+      "asset_name_ascii": "The Ancestor #232",
+      "fingerprint": "asset154crz9msxyj08f5vxr4ltu63wpqrjl5ztfmqgw",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Nosy",
+          "Body": "Light Armor",
+          "Face": "Suspicious",
+          "Head": "Soldier Helmet",
+          "Type": "Orc",
+          "name": "The Ancestor #232",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeifgswxgzgsylepgsimcmycypxqlzxhhhepo3fz5aroek4fvu5fj",
+                "fq"
+              ],
+              "name": "The Ancestor #232",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeifgswxgzgsylepgsimcmycypxqlzxhhhepo3fz5aroek4fvu5fjfq",
+          "Weapon": "Spiked Sword",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Jonquil"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f7220233332",
+      "asset_name_ascii": "The Ancestor #32",
+      "fingerprint": "asset1wx335y494tx7mvmr5nf0p9c63e5zf2pu7rstcm",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Body": "Forest Courtier Dress",
+          "Face": "Chad Brown",
+          "Head": "Forest Defender Helmet",
+          "Type": "Elf",
+          "name": "The Ancestor #32",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeih7xxukg4srjl7blcq6lhi2pcs2g4xqmqq6t6sykhwwyaryig4o",
+                "gy"
+              ],
+              "name": "The Ancestor #32",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeih7xxukg4srjl7blcq6lhi2pcs2g4xqmqq6t6sykhwwyaryig4ogy",
+          "Weapon": "Forest Bow",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Coral"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023333834",
+      "asset_name_ascii": "The Ancestor #384",
+      "fingerprint": "asset1n7tajl2j8x7sxgdg4n28zmw3c39qmfxnj6z44l",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Body": "Stones Dragger",
+          "Face": "Oh Shit",
+          "Head": "Miner Helmet",
+          "Type": "Dwarf",
+          "name": "The Ancestor #384",
+          "Beard": "Mountain Sorcerer Brown Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeiaazdcgsmhyqcxkv5bzonkleews4cbmfqjwbgncd5jx7sygik7v",
+                "ie"
+              ],
+              "name": "The Ancestor #384",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeiaazdcgsmhyqcxkv5bzonkleews4cbmfqjwbgncd5jx7sygik7vie",
+          "Weapon": "Chicken Leg",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Walnut Brown",
+          "Additional Weapon": "Shovel"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023343035",
+      "asset_name_ascii": "The Ancestor #405",
+      "fingerprint": "asset15c9e43szc2fgpdjwayulk9rel9mcmewsqr5gkp",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Nosy",
+          "Body": "Light Armor",
+          "Face": "Dumb",
+          "Head": "Bone Crown",
+          "Type": "Orc",
+          "name": "The Ancestor #405",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeicvwic5zipzd2imp4yj2ucmt2dlcfoyrkcsyc4e4zg4smmc3quv",
+                "4i"
+              ],
+              "name": "The Ancestor #405",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeicvwic5zipzd2imp4yj2ucmt2dlcfoyrkcsyc4e4zg4smmc3quv4i",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Madder"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f7220233431",
+      "asset_name_ascii": "The Ancestor #41",
+      "fingerprint": "asset12swrd93suvgysn27yek0g5lkusq666j6ruuwmy",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Body": "Chief Miner Vest",
+          "Face": "Sus",
+          "Type": "Dwarf",
+          "name": "The Ancestor #41",
+          "Beard": "Chief Miner Grey Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeihn2idojbxxkhmxzifn3p7uwlcsb6e7khttkptdmdrd7z6rbug4",
+                "km"
+              ],
+              "name": "The Ancestor #41",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeihn2idojbxxkhmxzifn3p7uwlcsb6e7khttkptdmdrd7z6rbug4km",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "Back Gear": "Legendary Pixies",
+          "mediaType": "image/png",
+          "Background": "Forgotten Mountain",
+          "Additional Weapon": "Precious Gold Miner Cart"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023343234",
+      "asset_name_ascii": "The Ancestor #424",
+      "fingerprint": "asset1zvfsnfyruyt6wt062epx4mcng5hwyl4hjc35cw",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Farmer Dress",
+          "Face": "Wink Blonde",
+          "Head": "Blonde Braided Hair",
+          "Type": "Human",
+          "name": "The Ancestor #424",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeidlzywfk5ban2rtqq3ultajcb37mufiiwse4sh6isbf2bxprxpw",
+                "za"
+              ],
+              "name": "The Ancestor #424",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeidlzywfk5ban2rtqq3ultajcb37mufiiwse4sh6isbf2bxprxpwza",
+          "Weapon": "Iron Sword",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Feldgrau",
+          "Additional Weapon": "Defender Shield"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023343238",
+      "asset_name_ascii": "The Ancestor #428",
+      "fingerprint": "asset1wmagdnwqd3dypwr40lc5pyvjt7vvqjcdg2hlzv",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Warrior",
+          "Body": "Arrows",
+          "Face": "Suspicious",
+          "Head": "Chainmall Hood",
+          "Type": "Orc",
+          "name": "The Ancestor #428",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeigk6cv5ig2643ozvkivridin5peoc7sjvblu3lpgeqmzrd2n5ul",
+                "ee"
+              ],
+              "name": "The Ancestor #428",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeigk6cv5ig2643ozvkivridin5peoc7sjvblu3lpgeqmzrd2n5ulee",
+          "Weapon": "Spiked Sword",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Crayola",
+          "Additional Weapon": "Sharp Sword"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023343331",
+      "asset_name_ascii": "The Ancestor #431",
+      "fingerprint": "asset1xnj67p229um2ydhay02l03g6er7rhsdd8z9s23",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Nosy",
+          "Body": "Bone Armor",
+          "Face": "Suspicious",
+          "Type": "Orc",
+          "name": "The Ancestor #431",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeifmob7ccv44rtamfty2aah25ehfxdvqpr7v2wekf4vinqk6oqom",
+                "wy"
+              ],
+              "name": "The Ancestor #431",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeifmob7ccv44rtamfty2aah25ehfxdvqpr7v2wekf4vinqk6oqomwy",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Coffee"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023343333",
+      "asset_name_ascii": "The Ancestor #433",
+      "fingerprint": "asset1qrxnkptycef8yz34sxzmjt43tkg0p4wp47ajjm",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Biten Ear With Hoop Earring",
+          "Face": "Grin Blonde",
+          "Head": "Blonde Braided Hair",
+          "Type": "Human",
+          "name": "The Ancestor #433",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeigd5qawja7pzgno6puv5o7gywm32kapzx6utn6turgg3eb5hz4r",
+                "me"
+              ],
+              "name": "The Ancestor #433",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeigd5qawja7pzgno6puv5o7gywm32kapzx6utn6turgg3eb5hz4rme",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Aero"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023343531",
+      "asset_name_ascii": "The Ancestor #451",
+      "fingerprint": "asset16ex3m6gyxhfcm74lnjcjez44h55tve6gukth6g",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Golden Armor",
+          "Face": "Critical Grey",
+          "Head": "Golden Helmet",
+          "Type": "Human",
+          "name": "The Ancestor #451",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeib5hpocbttdj7c3ilkv6wq2zd4z32adbjfzzsm75ruz2ohblemx",
+                "rq"
+              ],
+              "name": "The Ancestor #451",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeib5hpocbttdj7c3ilkv6wq2zd4z32adbjfzzsm75ruz2ohblemxrq",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Magic Ruins"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f7220233438",
+      "asset_name_ascii": "The Ancestor #48",
+      "fingerprint": "asset1a6puuqdkj9cll3qjh43xnf5d54duhyhaj6l2mz",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Royal Dress",
+          "Face": "Devilish Grey",
+          "Head": "Prince Crown",
+          "Type": "Human",
+          "name": "The Ancestor #48",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeif5agy2oaqhgobak2iesp6mvgaou3fh573kbq5fcdhw2kbjqveq",
+                "pa"
+              ],
+              "name": "The Ancestor #48",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeif5agy2oaqhgobak2iesp6mvgaou3fh573kbq5fcdhw2kbjqveqpa",
+          "Weapon": "Royal Magic Dagger",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Light Blue",
+          "Additional Weapon": "Magic Pipe"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023353232",
+      "asset_name_ascii": "The Ancestor #522",
+      "fingerprint": "asset103nj5tey356wgqvuspydqlkpy4ellwn35sjkjp",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Nosy",
+          "Body": "Bone Armor",
+          "Face": "Dumb",
+          "Head": "Heavy Helmet",
+          "Type": "Orc",
+          "name": "The Ancestor #522",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeibbe5x3zpnxbgaxr5tf3jl5dqrp43sexnbmb36mh5mfp3kgvtsj",
+                "sa"
+              ],
+              "name": "The Ancestor #522",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeibbe5x3zpnxbgaxr5tf3jl5dqrp43sexnbmb36mh5mfp3kgvtsjsa",
+          "Weapon": "Poisoned Crossbow",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Madder"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023353333",
+      "asset_name_ascii": "The Ancestor #533",
+      "fingerprint": "asset1dpzqg45lxn2p7rkhq38n9c7mhvyydz64ny5prl",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Face": "Sleepy Blonde",
+          "Head": "Mystic Armor Helmet",
+          "Type": "Dwarf",
+          "name": "The Ancestor #533",
+          "Beard": "Mountain Guard Blonde Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeiahculw7vrbgb3pm22d4rptffimktrabl3itgypny6nogljcg4z",
+                "zu"
+              ],
+              "name": "The Ancestor #533",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeiahculw7vrbgb3pm22d4rptffimktrabl3itgypny6nogljcg4zzu",
+          "Weapon": "Golden Royal Sword",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Walnut Brown",
+          "Additional Weapon": "Shovel"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023353338",
+      "asset_name_ascii": "The Ancestor #538",
+      "fingerprint": "asset1h45l6zkg48s0c995tqm8yxmen66t0w7k2hxlnn",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Body": "Sacred Golden Armor",
+          "Face": "Mindful Brown",
+          "Head": "Forest Defender Brown Hair",
+          "Type": "Elf",
+          "name": "The Ancestor #538",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeig7k7jyoytavfakzm6enznwetp4kbkc63esaksjewjdvfrs23tz",
+                "xm"
+              ],
+              "name": "The Ancestor #538",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeig7k7jyoytavfakzm6enznwetp4kbkc63esaksjewjdvfrs23tzxm",
+          "Weapon": "Forest Defender Swords",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Khahi"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f7220233534",
+      "asset_name_ascii": "The Ancestor #54",
+      "fingerprint": "asset19mq3sudhtf63k0ef5sfxws0qe6tf0cdtc05kd9",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Nosy",
+          "Body": "Tribal Vest",
+          "Face": "Peaceful",
+          "Head": "Heavy Helmet",
+          "Type": "Orc",
+          "name": "The Ancestor #54",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeifiwh3gesqbzpn5vcoreca7lvngde5woaubzjthkyq4y3gxt5oe",
+                "zq"
+              ],
+              "name": "The Ancestor #54",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeifiwh3gesqbzpn5vcoreca7lvngde5woaubzjthkyq4y3gxt5oezq",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "Back Gear": "Poisoned Arrows",
+          "mediaType": "image/png",
+          "Background": "Indian Red"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023353936",
+      "asset_name_ascii": "The Ancestor #596",
+      "fingerprint": "asset1wj74jaqztzgeh7mrzdzj6sh0kj6qryv0zf096z",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Fat Iron Earring",
+          "Body": "Mountain Sorcerer",
+          "Face": "Sleepy Red",
+          "Type": "Dwarf",
+          "name": "The Ancestor #596",
+          "Beard": "Miner Red Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeifnm2uoi3xnmpab22hdwmgevbryzxv7o26h3fpbofhjw2savjrh",
+                "24"
+              ],
+              "name": "The Ancestor #596",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeifnm2uoi3xnmpab22hdwmgevbryzxv7o26h3fpbofhjw2savjrh24",
+          "Weapon": "Wine Bottle",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Orange",
+          "Additional Weapon": "Shovel"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023363032",
+      "asset_name_ascii": "The Ancestor #602",
+      "fingerprint": "asset1qavudr7yfs2sc7543ts0f3wdd79p8ggfnl645s",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Wayfarer Suit",
+          "Face": "Muggins Grey",
+          "Type": "Human",
+          "name": "The Ancestor #602",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeiacktiom65enx2yenedexp6l7nvgflgrfz3yoprkl5jigxoa2jw",
+                "lu"
+              ],
+              "name": "The Ancestor #602",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeiacktiom65enx2yenedexp6l7nvgflgrfz3yoprkl5jigxoa2jwlu",
+          "Weapon": "Golden Sword",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Feldgrau",
+          "Additional Weapon": "Royal Shield"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023363239",
+      "asset_name_ascii": "The Ancestor #629",
+      "fingerprint": "asset1paqld0k9u4czhnjrykzcdqwxgd907ku05fddfn",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Warrior",
+          "Face": "Suspicious",
+          "Head": "Horned Skull",
+          "Type": "Orc",
+          "name": "The Ancestor #629",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeibvv4ncfcvsybu3daggrkzuounfoy54owjv7wiwfm6alc7dogqg",
+                "xy"
+              ],
+              "name": "The Ancestor #629",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeibvv4ncfcvsybu3daggrkzuounfoy54owjv7wiwfm6alc7dogqgxy",
+          "Weapon": "Spiked Sword",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Saffron"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f7220233635",
+      "asset_name_ascii": "The Ancestor #65",
+      "fingerprint": "asset1wc5ahmvpn8eez4zyw44rmtwldfsve849mcq3vz",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Nail Earring",
+          "Body": "Royal Robe",
+          "Face": "Sus",
+          "Head": "Cave Hat",
+          "Type": "Dwarf",
+          "name": "The Ancestor #65",
+          "Beard": "Miner Red Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeidvkaljvzc5clcyqbupfpxkedhw7bicll675ibjmz3cbegttcve",
+                "gm"
+              ],
+              "name": "The Ancestor #65",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeidvkaljvzc5clcyqbupfpxkedhw7bicll675ibjmz3cbegttcvegm",
+          "Weapon": "Wine Bottle",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Orange"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023363636",
+      "asset_name_ascii": "The Ancestor #666",
+      "fingerprint": "asset1mzcpelp6wdtslgd2qmcr64rzf66l9wuju9qvtu",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Fat Iron Earring",
+          "Body": "Precious King Dress",
+          "Face": "Warrior Brown",
+          "Head": "Precious Golden Helmet",
+          "Type": "Dwarf",
+          "name": "The Ancestor #666",
+          "Beard": "Warrior Brown Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeigweqbdsogkvnkf4vspwmlw4gnladnxjfxy2oeliiubgyf2k3ch",
+                "eu"
+              ],
+              "name": "The Ancestor #666",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeigweqbdsogkvnkf4vspwmlw4gnladnxjfxy2oeliiubgyf2k3cheu",
+          "Weapon": "Chicken Leg",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Burnt Sienna",
+          "Additional Weapon": "Precious Golden Shield"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023373130",
+      "asset_name_ascii": "The Ancestor #710",
+      "fingerprint": "asset1g02fmg8muqvp6lkdg3r6mzamhe2zqs0j00c0ax",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Wayfarer Suit",
+          "Face": "Grin Blonde",
+          "Head": "Blonde Braided Hair",
+          "Type": "Human",
+          "name": "The Ancestor #710",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeifoxtgrljnzz6xlm6jqr76yp2oslvu7d6epw3ob57424qgiytuh",
+                "qi"
+              ],
+              "name": "The Ancestor #710",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeifoxtgrljnzz6xlm6jqr76yp2oslvu7d6epw3ob57424qgiytuhqi",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Burgundy",
+          "Additional Weapon": "Defender Shield"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023373235",
+      "asset_name_ascii": "The Ancestor #725",
+      "fingerprint": "asset129hq0vje7ew4qxuwqppe6y68vfpljlr65x799e",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Court Guard Leather Suit",
+          "Face": "Critical Grey",
+          "Head": "Court Guard Helmet",
+          "Type": "Human",
+          "name": "The Ancestor #725",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeicmfucpi3cznht5dwrncrz7tc7tpm5zzfnrx2inbwsftrrfc44q",
+                "em"
+              ],
+              "name": "The Ancestor #725",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeicmfucpi3cznht5dwrncrz7tc7tpm5zzfnrx2inbwsftrrfc44qem",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Celeste"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023373539",
+      "asset_name_ascii": "The Ancestor #759",
+      "fingerprint": "asset1y5zc397naghese9pkqmf3v8ckv48746t5w7dxs",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Biten Ear With Hoop Earring",
+          "Body": "Royal Dress",
+          "Face": "Grin Red",
+          "Head": "Fighter Helmet",
+          "Type": "Human",
+          "name": "The Ancestor #759",
+          "Beard": "Orange Medium Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeihngiakjfmvhrkvuijke67e4ep6i5b3z2hysca2obejg4nftigh",
+                "wu"
+              ],
+              "name": "The Ancestor #759",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeihngiakjfmvhrkvuijke67e4ep6i5b3z2hysca2obejg4nftighwu",
+          "Weapon": "Hunter Pilum",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Celeste"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023373631",
+      "asset_name_ascii": "The Ancestor #761",
+      "fingerprint": "asset1uqlql5qs0nsvc0mxxhq5knfj3ahyffqmek7xxx",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Nosy",
+          "Body": "Tribal Vest",
+          "Face": "Suspicious",
+          "Head": "Dragon Skull",
+          "Type": "Orc",
+          "name": "The Ancestor #761",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeifryi5zhqi6zixvacmrab2qanor4gdanuidgyafzf232hrgxp4l",
+                "l4"
+              ],
+              "name": "The Ancestor #761",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeifryi5zhqi6zixvacmrab2qanor4gdanuidgyafzf232hrgxp4ll4",
+          "Weapon": "Chain Mace",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Indian Red"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023373931",
+      "asset_name_ascii": "The Ancestor #791",
+      "fingerprint": "asset14gjff0rrd59nxszf665hghhh7zp0eau88z5pcq",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Face": "Curious Blonde",
+          "Head": "Royal Hat",
+          "Type": "Human",
+          "name": "The Ancestor #791",
+          "Beard": "Blonde Short Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeia7ot2mmg6ofy7bc4g4yzohbcg7kwlwglewjteieshbs5ejokru",
+                "c4"
+              ],
+              "name": "The Ancestor #791",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeia7ot2mmg6ofy7bc4g4yzohbcg7kwlwglewjteieshbs5ejokruc4",
+          "Weapon": "Royal Magic Dagger",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Feldgrau",
+          "Additional Weapon": "Magic Fireball"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023383130",
+      "asset_name_ascii": "The Ancestor #810",
+      "fingerprint": "asset1euzhtlv80jwus0qa4fng5fy98kesnk86e8ye7k",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Face": "Wary Blonde",
+          "Head": "Royal Guard Blonde Helmet",
+          "Type": "Dwarf",
+          "name": "The Ancestor #810",
+          "Beard": "Miner Blonde Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeid3jogwrzp54x4j5x5pqrisd6znge32np3doaxahbya7qjua4pm",
+                "cu"
+              ],
+              "name": "The Ancestor #810",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeid3jogwrzp54x4j5x5pqrisd6znge32np3doaxahbya7qjua4pmcu",
+          "Weapon": "A piece of meat",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Russian Violet",
+          "Additional Weapon": "Miner Pickaxe"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023383131",
+      "asset_name_ascii": "The Ancestor #811",
+      "fingerprint": "asset1070zfzzz7j4v8r5lusna4807h9ju3qw5y7kq4j",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Jester Dress",
+          "Face": "Golden Pimple Blonde",
+          "Head": "Blonde Braided Hair",
+          "Type": "Human",
+          "name": "The Ancestor #811",
+          "Beard": "Blonde Long Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeifccad52g3jsd7hompifsthq7fkncehl2b52brhqhuscetf6fvb",
+                "oa"
+              ],
+              "name": "The Ancestor #811",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeifccad52g3jsd7hompifsthq7fkncehl2b52brhqhuscetf6fvboa",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Avocado"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023383833",
+      "asset_name_ascii": "The Ancestor #883",
+      "fingerprint": "asset13gmfup5yfm8zlwzy9kpn4svrzw4ujm5jc2kjzy",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Golden Earring Ear",
+          "Face": "Critical Red",
+          "Head": "Red Braided Hair",
+          "Type": "Human",
+          "name": "The Ancestor #883",
+          "Beard": "Red Long Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeia5n4uvvr446vwwsb2sexvafo6gh6rn7fhasig5epqcdhmegyjg",
+                "fy"
+              ],
+              "name": "The Ancestor #883",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeia5n4uvvr446vwwsb2sexvafo6gh6rn7fhasig5epqcdhmegyjgfy",
+          "Weapon": "Royal Magic Dagger",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Avocado"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023383934",
+      "asset_name_ascii": "The Ancestor #894",
+      "fingerprint": "asset1mlhh2qj0r5dz643u2w0zy2xlr04q63pau9kae5",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Golden Earring Ear",
+          "Body": "Court Guard Leather Suit",
+          "Face": "Curious Blonde",
+          "Head": "Rune Tattoo",
+          "Type": "Human",
+          "name": "The Ancestor #894",
+          "Beard": "Blonde Medium Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeiarbkolmkefdjoi5f2x7epyicfz674pdqr5yr2ksb4ms74j6pht",
+                "bu"
+              ],
+              "name": "The Ancestor #894",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeiarbkolmkefdjoi5f2x7epyicfz674pdqr5yr2ksb4ms74j6phtbu",
+          "Weapon": "Iron Sword",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Light Blue",
+          "Additional Weapon": "War Horn"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f7220233930",
+      "asset_name_ascii": "The Ancestor #90",
+      "fingerprint": "asset1v6kkyuhmdhz20qs0meswlpthyvza5xfyw204wn",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Warrior",
+          "Body": "Bone Armor",
+          "Face": "Evil Laugh",
+          "Head": "Bronze Helmet",
+          "Type": "Orc",
+          "name": "The Ancestor #90",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeicd2j5f2hkk752rdcz7jh46zsmptnwo5eszq32uwfrxyevagasx",
+                "6u"
+              ],
+              "name": "The Ancestor #90",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeicd2j5f2hkk752rdcz7jh46zsmptnwo5eszq32uwfrxyevagasx6u",
+          "Weapon": "Poisoned Crossbow",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Crayola"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023393439",
+      "asset_name_ascii": "The Ancestor #949",
+      "fingerprint": "asset10wycsy8kpcdrvntn0v6fw3xdjkwz7ynf4vnrr7",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Face": "Critical Red",
+          "Head": "Fighter Helmet",
+          "Type": "Human",
+          "name": "The Ancestor #949",
+          "Beard": "Orange Medium Beard",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeicuify66szofzno7ytlg254qiwtdylewyh3tgrvk2okmsdboamc",
+                "zm"
+              ],
+              "name": "The Ancestor #949",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeicuify66szofzno7ytlg254qiwtdylewyh3tgrvk2okmsdboamczm",
+          "Weapon": "Defender Spiked Mace",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Rose Red",
+          "Additional Weapon": "War Horn"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f7220233935",
+      "asset_name_ascii": "The Ancestor #95",
+      "fingerprint": "asset1thsf38wyzvmsxqeq6vgputt2leawwvper8f4rw",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "Hunter Coat",
+          "Face": "Serious Grey",
+          "Head": "Grey Braided Hair",
+          "Type": "Human",
+          "name": "The Ancestor #95",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeicynhtdu4k7zvsp7lt62iogiwdgezr4otbjewlpvgtbqidyhjge",
+                "ru"
+              ],
+              "name": "The Ancestor #95",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeicynhtdu4k7zvsp7lt62iogiwdgezr4otbjewlpvgtbqidyhjgeru",
+          "Weapon": "Jester Staff",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Avocado"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f7220233938",
+      "asset_name_ascii": "The Ancestor #98",
+      "fingerprint": "asset1uddf92yg7lcj40rncuzk2nkmaxjt0z20x4522d",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Basic Ear",
+          "Body": "King Suit",
+          "Face": "Wise",
+          "Head": "Rune Tattoo",
+          "Type": "Human",
+          "name": "The Ancestor #98",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeiacawchqmenstzszmzctvgk6nscodlupgzmtbg7d3kw2zlihz6o",
+                "4i"
+              ],
+              "name": "The Ancestor #98",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeiacawchqmenstzszmzctvgk6nscodlupgzmtbg7d3kw2zlihz6o4i",
+          "Weapon": "Forgotten Sapphire Magic Staff",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Light Blue",
+          "Additional Weapon": "Magic Poisoned Flame"
+        },
+        "cip68_metadata": null
+      }
+    },
+    {
+      "asset_name": "54686520416e636573746f722023393838",
+      "asset_name_ascii": "The Ancestor #988",
+      "fingerprint": "asset1gfah8dv70ygw6zvplp76j7v06336gg9nj9vn69",
+      "total_supply": "1",
+      "asset_standards": {
+        "cip25_metadata": {
+          "Ear": "Nosy",
+          "Body": "Light Armor",
+          "Face": "Evil Laugh",
+          "Head": "Chainmall Hood",
+          "Type": "Orc",
+          "name": "The Ancestor #988",
+          "files": [
+            {
+              "src": [
+                "ipfs://bafybeifxajyy3p37jvjpatormipbarlihegrrbvnz5o7g53q66emncru",
+                "5m"
+              ],
+              "name": "The Ancestor #988",
+              "mediaType": "image/png"
+            }
+          ],
+          "image": "ipfs://bafybeifxajyy3p37jvjpatormipbarlihegrrbvnz5o7g53q66emncru5m",
+          "Weapon": "Poisoned Crossbow",
+          "Discord": "https://discord.gg/2YEeBqZf",
+          "Twitter": "https://x.com/TheAncestorsADA",
+          "project": "The Ancestors",
+          "mediaType": "image/png",
+          "Background": "Drab Bark Brown"
+        },
+        "cip68_metadata": null
+      }
+    }
+  ],
+  "last_updated": {
+    "timestamp": "2025-07-17 15:08:58",
+    "block_hash": "caf74e08626eb09823650634a5553652518b67df2793be8231b041a880c76430",
+    "block_slot": 161198647
+  },
+  "next_cursor": null
+}

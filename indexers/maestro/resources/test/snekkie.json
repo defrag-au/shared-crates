@@ -1,0 +1,174 @@
+{
+  "data": {
+    "asset_name": "536e656b6b696530323939",
+    "asset_name_ascii": "Snekkie0299",
+    "fingerprint": "asset14lqcshx6m5jlttx03rh9vwyxhq8wakj2ke4vat",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "5a3ab4225bd3777ec35bf2cafc465e6953bd4c322e86d1e487eff56e0b94e415",
+      "slot": 121709494,
+      "timestamp": "2024-04-16 13:56:25",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "5a3ab4225bd3777ec35bf2cafc465e6953bd4c322e86d1e487eff56e0b94e415",
+      "slot": 121709494,
+      "timestamp": "2024-04-16 13:56:25",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "Website": "https://snekkies.com/",
+        "attributes": {
+          "Background": "Apricot",
+          "Dome": "Snekkie Troop",
+          "Eyes": "Laser Eyes Blue",
+          "Face": "Intense Beard",
+          "Skin": "Black",
+          "Style": "Clean",
+          "Type": "Floor"
+        },
+        "files": [
+          {
+            "mediaType": "image/png",
+            "name": "Snekkie0299.png",
+            "src": "ipfs://Qmd72yzZke1yJFRJuJp7R1coEjq12PEQbb2jMJBqqV9Ft5"
+          }
+        ],
+        "image": "ipfs://Qmd72yzZke1yJFRJuJp7R1coEjq12PEQbb2jMJBqqV9Ft5",
+        "mediaType": "image/png",
+        "name": "Snekkie #0299"
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "b558ea5ecfa2a6e9701dab150248e94104402f789c090426eb60eb60": {
+          "Snekkie0299": {
+            "Website": "https://snekkies.com/",
+            "attributes": {
+              "Background": "Apricot",
+              "Dome": "Snekkie Troop",
+              "Eyes": "Laser Eyes Blue",
+              "Face": "Intense Beard",
+              "Skin": "Black",
+              "Style": "Clean",
+              "Type": "Floor"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Snekkie0299.png",
+                "src": "ipfs://Qmd72yzZke1yJFRJuJp7R1coEjq12PEQbb2jMJBqqV9Ft5"
+              }
+            ],
+            "image": "ipfs://Qmd72yzZke1yJFRJuJp7R1coEjq12PEQbb2jMJBqqV9Ft5",
+            "mediaType": "image/png",
+            "name": "Snekkie #0299"
+          },
+          "Snekkie1981": {
+            "Website": "https://snekkies.com/",
+            "attributes": {
+              "Background": "MidKnight",
+              "Dome": "Plucked",
+              "Eyes": "Focusssed",
+              "Face": "Star",
+              "Skin": "Black",
+              "Style": "Clean",
+              "Type": "Floor"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Snekkie1981.png",
+                "src": "ipfs://QmXaZ3kxA91r2nEgnK18CQLViKfDU1mE68RWVHwEkcJP8V"
+              }
+            ],
+            "image": "ipfs://QmXaZ3kxA91r2nEgnK18CQLViKfDU1mE68RWVHwEkcJP8V",
+            "mediaType": "image/png",
+            "name": "Snekkie #1981"
+          },
+          "Snekkie3149": {
+            "Website": "https://snekkies.com/",
+            "attributes": {
+              "Background": "Snek Beige",
+              "Dome": "Snekkie Fighter",
+              "Eyes": "Evil Scientist",
+              "Face": "Drool",
+              "Skin": "Alien",
+              "Style": "Snail",
+              "Type": "Floor"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Snekkie3149.png",
+                "src": "ipfs://QmZSf9q21VC6dm72CejawenfVFV1dxejvVpnEckmRiy2gb"
+              }
+            ],
+            "image": "ipfs://QmZSf9q21VC6dm72CejawenfVFV1dxejvVpnEckmRiy2gb",
+            "mediaType": "image/png",
+            "name": "Snekkie #3149"
+          },
+          "Snekkie3195": {
+            "Website": "https://snekkies.com/",
+            "attributes": {
+              "Background": "GN",
+              "Dome": "Farmer",
+              "Eyes": "Dark Mime",
+              "Face": "Rainbow Smile",
+              "Skin": "Snek",
+              "Style": "Bagman Pink",
+              "Type": "Floor"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Snekkie3195.png",
+                "src": "ipfs://QmSsD8gbooJLXNWv9a8frSBbJLK9f2eqaf9Tec97sb33xz"
+              }
+            ],
+            "image": "ipfs://QmSsD8gbooJLXNWv9a8frSBbJLK9f2eqaf9Tec97sb33xz",
+            "mediaType": "image/png",
+            "name": "Snekkie #3195"
+          },
+          "Snekkie7459": {
+            "Website": "https://snekkies.com/",
+            "attributes": {
+              "Background": "Navy",
+              "Dome": "Plucked",
+              "Eyes": "Focusssed",
+              "Face": "Bubble Gum",
+              "Skin": "Pink",
+              "Style": "Cardano Grey",
+              "Type": "Floor"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Snekkie7459.png",
+                "src": "ipfs://Qmdup7PmNiCip2rBaeg12bNWMqJRGA4ktaqVt54xxsPiP3"
+              }
+            ],
+            "image": "ipfs://Qmdup7PmNiCip2rBaeg12bNWMqJRGA4ktaqVt54xxsPiP3",
+            "mediaType": "image/png",
+            "name": "Snekkie #7459"
+          }
+        },
+        "version": "1.0"
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-01-16 12:06:22",
+    "block_hash": "574493dc39321b56c181600dd4027afb10f4a3b11b124585e972d68f405848a3",
+    "block_slot": 145462891
+  }
+}

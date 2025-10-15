@@ -1,0 +1,100 @@
+{
+  "data": {
+    "asset_name": "617175616661726d6572343533",
+    "asset_name_ascii": "aquafarmer453",
+    "fingerprint": "asset1jrezruym3kwgw48m7ugycs978yj9lqwfc78mlz",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "eab762927ca39053f93a5705a769d0012a4fd41c0373824850f118a8507f9618",
+      "slot": 61225941,
+      "timestamp": "2022-05-17 12:57:12",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "eab762927ca39053f93a5705a769d0012a4fd41c0373824850f118a8507f9618",
+      "slot": 61225941,
+      "timestamp": "2022-05-17 12:57:12",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "Arm mechanics": "Purple mechanics",
+        "Background": "Wheat fields",
+        "Background accessories": "Windmill",
+        "Discord": ["https://discord.gg/vZzGHKGz29"],
+        "Farmer body color": "Black gold",
+        "Farmer clothing": "None",
+        "Farmer head": "Cylinder head 1 eye",
+        "Github": ["https://github.com/Liqwid-Labs"],
+        "Hat": "None",
+        "Left hand tool": "Broom",
+        "Medium": ["https://liqwid-finance.medium.com/"],
+        "Project": ["Aquafarmers"],
+        "Right hand tool": "Flower",
+        "Tier": "Rare",
+        "Twitter": ["https://twitter.com/liqwidfinance"],
+        "Website": ["https://liqwid.finance/"],
+        "description": "Liqwid Aquafarmers NFT Collection",
+        "files": [
+          {
+            "mediaType": "image/png",
+            "name": "Aquafarmer",
+            "src": "ipfs://QmPcBiYHufV66Ykq2Hk8RXtAW7jAQtNf1CHC23atHMUrcD"
+          }
+        ],
+        "image": "ipfs://QmcJoW5VxNgRxBXSCwYCfpNP8JQ8inU3jWkUqkmSfxS3be",
+        "mediaType": "image/png",
+        "name": "Aquafarmer #453"
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "86ec26a91051e4d42df00b023202e177a0027dca4294a20a0326a116": {
+          "aquafarmer453": {
+            "Arm mechanics": "Purple mechanics",
+            "Background": "Wheat fields",
+            "Background accessories": "Windmill",
+            "Discord": ["https://discord.gg/vZzGHKGz29"],
+            "Farmer body color": "Black gold",
+            "Farmer clothing": "None",
+            "Farmer head": "Cylinder head 1 eye",
+            "Github": ["https://github.com/Liqwid-Labs"],
+            "Hat": "None",
+            "Left hand tool": "Broom",
+            "Medium": ["https://liqwid-finance.medium.com/"],
+            "Project": ["Aquafarmers"],
+            "Right hand tool": "Flower",
+            "Tier": "Rare",
+            "Twitter": ["https://twitter.com/liqwidfinance"],
+            "Website": ["https://liqwid.finance/"],
+            "description": "Liqwid Aquafarmers NFT Collection",
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Aquafarmer",
+                "src": "ipfs://QmPcBiYHufV66Ykq2Hk8RXtAW7jAQtNf1CHC23atHMUrcD"
+              }
+            ],
+            "image": "ipfs://QmcJoW5VxNgRxBXSCwYCfpNP8JQ8inU3jWkUqkmSfxS3be",
+            "mediaType": "image/png",
+            "name": "Aquafarmer #453"
+          }
+        },
+        "version": "1.0"
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-08-17 12:49:39",
+    "block_hash": "3e2930985d9081e6423a6802537d5b477c05df1aa1579f095ef1f5a7b5134522",
+    "block_slot": 163868688
+  }
+}

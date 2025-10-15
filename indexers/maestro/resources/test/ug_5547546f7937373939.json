@@ -1,0 +1,83 @@
+{
+  "data": {
+    "asset_name": "5547546f7937373939",
+    "asset_name_ascii": "UGToy7799",
+    "fingerprint": "asset1nwnkne7662qv375x4e060jy3kchg8an2wgmmq5",
+    "total_supply": "0",
+    "unique_holders": {
+      "by_address": 0,
+      "by_account": 0
+    },
+    "first_mint_tx": {
+      "tx_hash": "4ced7ebba9dac385d6e0d3cdbd2e2751bb73ec254f37faa6f39a8f11fb7c926d",
+      "slot": 142408949,
+      "timestamp": "2024-12-12 03:47:20",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "bb21810c4ea566b274ea9bddda95f9970d01520799cc5d77d406a4c9afcbf75d",
+      "slot": 142409076,
+      "timestamp": "2024-12-12 03:49:27",
+      "amount": "-1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 1,
+    "asset_standards": {
+      "cip25_metadata": null,
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "8972aab912aed2cf44b65916e206324c6bdcb6fbd3dc4eb634fdbd28": {
+          "UG7799": {
+            "collection": "UGs by Squashua 2024",
+            "files": [
+              {
+                "mediaType": "image/gif",
+                "name": "Electric Blueberry",
+                "src": "ipfs://QmUNVrNfhcAm8fejpgNBBTuSpjpqAFvE7D3oSHiHhSnhvJ"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Electric Blueberry",
+                "src": "ipfs://QmNdmkLwZ5tv2NqUFcagnMZNenPg1AXv6pwpTQ5oVzSVxF"
+              }
+            ],
+            "image": "ipfs://QmNdmkLwZ5tv2NqUFcagnMZNenPg1AXv6pwpTQ5oVzSVxF",
+            "mediaType": "image/png",
+            "name": "Electric Blueberry",
+            "traits": [
+              {
+                "Background": "Electric Blueberry"
+              },
+              {
+                "Skin": "Electric Blueberry"
+              },
+              {
+                "Outfit": "Electric Blueberry"
+              },
+              {
+                "Hats": "Electric Blueberry"
+              },
+              {
+                "Mouth": "Electric Blueberry"
+              },
+              {
+                "Eyenose": "Electric Blueberry"
+              },
+              {
+                "special": "Donut"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-03-06 06:34:03",
+    "block_hash": "d154c615a90c6202f4681961ee89f5729ccba3c6fba13703534c0bf3cb4390b2",
+    "block_slot": 149676552
+  }
+}

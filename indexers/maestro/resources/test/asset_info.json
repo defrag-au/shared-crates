@@ -1,0 +1,316 @@
+{
+  "data": {
+    "asset_name": "50697261746531",
+    "asset_name_ascii": "Pirate1",
+    "fingerprint": "asset1znh3s8cruchxvvnqjv5kf8txhadhlaxft47yxq",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "bb0e388f0dc362783021a1e71a56d5d920a1de40445ff7d6a44e372bf7bb41cc",
+      "slot": 144357337,
+      "timestamp": "2025-01-03 17:00:28",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "bb0e388f0dc362783021a1e71a56d5d920a1de40445ff7d6a44e372bf7bb41cc",
+      "slot": 144357337,
+      "timestamp": "2025-01-03 17:00:28",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "Eyes": "Patch",
+        "Nose": "Blocky",
+        "Rank": "Navigator",
+        "Skin": "Pale",
+        "name": "Pirate #1",
+        "Mouth": "Dark Curl",
+        "files": [
+          {
+            "src": "ipfs://QmWhLmt9BXdxdK6VeaZHWyLkeHfszwyRqgbXeiUyPimMaR",
+            "name": "Pirate #1",
+            "mediaType": "image/png"
+          }
+        ],
+        "image": "ipfs://QmWhLmt9BXdxdK6VeaZHWyLkeHfszwyRqgbXeiUyPimMaR",
+        "Weapon": "Blackbeard's Wrath",
+        "Clothes": "Violet Buccaneer",
+        "Discord": "https://discord.gg/9KYhndrEbv",
+        "Twitter": "https://twitter.com/BlackFlag_NFT",
+        "Website": "https://blackflagnft.pro",
+        "project": "Black Flag",
+        "Headwear": "Ethereal Hat",
+        "mediaType": "image/png",
+        "Background": "Emerald Isle"
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6": {
+          "Pirate1651": {
+            "Eyes": "Intense",
+            "Nose": "Skinny",
+            "Rank": "Swab",
+            "Skin": "Scarred",
+            "name": "Pirate #1651",
+            "Mouth": "Scruff",
+            "files": [
+              {
+                "src": "ipfs://QmRWRgmciho4qW8ssrMCHtW3ALVYqdEU74XpJvGMjpt8Bg",
+                "name": "Pirate #1651",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://QmRWRgmciho4qW8ssrMCHtW3ALVYqdEU74XpJvGMjpt8Bg",
+            "Weapon": "Black Sea Blade",
+            "Clothes": "Seaworn Binding",
+            "Discord": "https://discord.gg/9KYhndrEbv",
+            "Twitter": "https://twitter.com/BlackFlag_NFT",
+            "Website": "https://blackflagnft.pro",
+            "project": "Black Flag",
+            "Headwear": "Bronze Sailor",
+            "mediaType": "image/png",
+            "Background": "Emerald Isle"
+          },
+          "Pirate1318": {
+            "Eyes": "Blue",
+            "Nose": "Button",
+            "Rank": "Carpenter",
+            "Skin": "Scarred",
+            "name": "Pirate #1318",
+            "Mouth": "Dagger",
+            "files": [
+              {
+                "src": "ipfs://QmNsEHSmd4TrbyHGCvK848EobnFZ3YxmT1THVtbXtUhsuJ",
+                "name": "Pirate #1318",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://QmNsEHSmd4TrbyHGCvK848EobnFZ3YxmT1THVtbXtUhsuJ",
+            "Weapon": "The Gunblade",
+            "Clothes": "None",
+            "Discord": "https://discord.gg/9KYhndrEbv",
+            "Twitter": "https://twitter.com/BlackFlag_NFT",
+            "Website": "https://blackflagnft.pro",
+            "project": "Black Flag",
+            "Headwear": "Parted",
+            "mediaType": "image/png",
+            "Background": "Crimson Seas"
+          },
+          "Pirate990": {
+            "Eyes": "Cut",
+            "Nose": "Button",
+            "Rank": "Swab",
+            "Skin": "Pale",
+            "name": "Pirate #990",
+            "Mouth": "Toothpick",
+            "files": [
+              {
+                "src": "ipfs://QmbS81ztQToTYDBjBqWpAgoD6dqYB2zneRmG8cu3Cp7h51",
+                "name": "Pirate #990",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://QmbS81ztQToTYDBjBqWpAgoD6dqYB2zneRmG8cu3Cp7h51",
+            "Weapon": "Black Sea Blade",
+            "Clothes": "Regal Stripe",
+            "Discord": "https://discord.gg/9KYhndrEbv",
+            "Twitter": "https://twitter.com/BlackFlag_NFT",
+            "Website": "https://blackflagnft.pro",
+            "project": "Black Flag",
+            "Headwear": "Mohawk",
+            "mediaType": "image/png",
+            "Background": "Faded Ember"
+          },
+          "Pirate125": {
+            "Eyes": "Sapphire",
+            "Nose": "Skinny",
+            "Rank": "Lookout",
+            "Skin": "Robotic",
+            "name": "Pirate #125",
+            "Mouth": "Dark Curl",
+            "files": [
+              {
+                "src": "ipfs://QmV8poj7SYKDP5nRaHHMXK58jxWP2jTkoNaAoMTbkeFkkc",
+                "name": "Pirate #125",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://QmV8poj7SYKDP5nRaHHMXK58jxWP2jTkoNaAoMTbkeFkkc",
+            "Weapon": "Tempest Blade",
+            "Clothes": "Regal Stripe",
+            "Discord": "https://discord.gg/9KYhndrEbv",
+            "Twitter": "https://twitter.com/BlackFlag_NFT",
+            "Website": "https://blackflagnft.pro",
+            "project": "Black Flag",
+            "Headwear": "Mohawk",
+            "mediaType": "image/png",
+            "Background": "Twilight Abyss"
+          },
+          "Pirate1982": {
+            "Eyes": "Brown",
+            "Nose": "Skinny",
+            "Rank": "Carpenter",
+            "Skin": "Scarred",
+            "name": "Pirate #1982",
+            "Mouth": "Toothpick",
+            "files": [
+              {
+                "src": "ipfs://QmcXprQ3EFZY9vHiVe4nmhS6SBiaCUHSXEhTJT8fscsQ4H",
+                "name": "Pirate #1982",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://QmcXprQ3EFZY9vHiVe4nmhS6SBiaCUHSXEhTJT8fscsQ4H",
+            "Weapon": "Captain's Longshot",
+            "Clothes": "Lasso",
+            "Discord": "https://discord.gg/9KYhndrEbv",
+            "Twitter": "https://twitter.com/BlackFlag_NFT",
+            "Website": "https://blackflagnft.pro",
+            "project": "Black Flag",
+            "Headwear": "Bronze Sailor",
+            "mediaType": "image/png",
+            "Background": "Golden Mirage"
+          },
+          "Pirate627": {
+            "Eyes": "Torn",
+            "Nose": "Flat",
+            "Rank": "Cook",
+            "Skin": "Frozen",
+            "name": "Pirate #627",
+            "Mouth": "Thick",
+            "files": [
+              {
+                "src": "ipfs://QmcVBUW9DV8ddJ5TBhcd2j2Z4M6e6yRpk7PMPvccFZ93dJ",
+                "name": "Pirate #627",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://QmcVBUW9DV8ddJ5TBhcd2j2Z4M6e6yRpk7PMPvccFZ93dJ",
+            "Weapon": "Hook's Hand",
+            "Clothes": "Red Tide Wraps",
+            "Discord": "https://discord.gg/9KYhndrEbv",
+            "Twitter": "https://twitter.com/BlackFlag_NFT",
+            "Website": "https://blackflagnft.pro",
+            "project": "Black Flag",
+            "Headwear": "Deckhand's Cap",
+            "mediaType": "image/png",
+            "Background": "Faded Ember"
+          },
+          "Pirate1504": {
+            "Eyes": "Scar",
+            "Nose": "Blocky",
+            "Rank": "Sailmaker",
+            "Skin": "Ebony",
+            "name": "Pirate #1504",
+            "Mouth": "Elder",
+            "files": [
+              {
+                "src": "ipfs://QmUFk5pcHJ2xv6d8WApfETUzoneho2UEeGkSkKv3yHNUTT",
+                "name": "Pirate #1504",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://QmUFk5pcHJ2xv6d8WApfETUzoneho2UEeGkSkKv3yHNUTT",
+            "Weapon": "Blackbeard's Wrath",
+            "Clothes": "Red Tide Wraps",
+            "Discord": "https://discord.gg/9KYhndrEbv",
+            "Twitter": "https://twitter.com/BlackFlag_NFT",
+            "Website": "https://blackflagnft.pro",
+            "project": "Black Flag",
+            "Headwear": "Dreads",
+            "mediaType": "image/png",
+            "Background": "Azure Horizon"
+          },
+          "Pirate396": {
+            "Eyes": "Scar",
+            "Nose": "Tall",
+            "Rank": "Swab",
+            "Skin": "Ebony",
+            "name": "Pirate #396",
+            "Mouth": "Closed",
+            "files": [
+              {
+                "src": "ipfs://Qmb1CceCMkDidzvDv6bFc9GXBzy5NDZ4th7frFNmBRmJiS",
+                "name": "Pirate #396",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://Qmb1CceCMkDidzvDv6bFc9GXBzy5NDZ4th7frFNmBRmJiS",
+            "Weapon": "Swab's Edge",
+            "Clothes": "Deckhand Tunic",
+            "Discord": "https://discord.gg/9KYhndrEbv",
+            "Twitter": "https://twitter.com/BlackFlag_NFT",
+            "Website": "https://blackflagnft.pro",
+            "project": "Black Flag",
+            "Headwear": "Parted",
+            "mediaType": "image/png",
+            "Background": "Molten Shore"
+          },
+          "Pirate1": {
+            "Eyes": "Patch",
+            "Nose": "Blocky",
+            "Rank": "Navigator",
+            "Skin": "Pale",
+            "name": "Pirate #1",
+            "Mouth": "Dark Curl",
+            "files": [
+              {
+                "src": "ipfs://QmWhLmt9BXdxdK6VeaZHWyLkeHfszwyRqgbXeiUyPimMaR",
+                "name": "Pirate #1",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://QmWhLmt9BXdxdK6VeaZHWyLkeHfszwyRqgbXeiUyPimMaR",
+            "Weapon": "Blackbeard's Wrath",
+            "Clothes": "Violet Buccaneer",
+            "Discord": "https://discord.gg/9KYhndrEbv",
+            "Twitter": "https://twitter.com/BlackFlag_NFT",
+            "Website": "https://blackflagnft.pro",
+            "project": "Black Flag",
+            "Headwear": "Ethereal Hat",
+            "mediaType": "image/png",
+            "Background": "Emerald Isle"
+          },
+          "Pirate708": {
+            "Eyes": "Focus",
+            "Nose": "Square",
+            "Rank": "Sailmaker",
+            "Skin": "Ghoul",
+            "name": "Pirate #708",
+            "Mouth": "Chops",
+            "files": [
+              {
+                "src": "ipfs://QmX9SbkMHtxSVXMgDhoVaWWsdrY2fc9dsaACvPGr4Arczx",
+                "name": "Pirate #708",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://QmX9SbkMHtxSVXMgDhoVaWWsdrY2fc9dsaACvPGr4Arczx",
+            "Weapon": "Golden Knuckles",
+            "Clothes": "Bluewater Vest",
+            "Discord": "https://discord.gg/9KYhndrEbv",
+            "Twitter": "https://twitter.com/BlackFlag_NFT",
+            "Website": "https://blackflagnft.pro",
+            "project": "Black Flag",
+            "Headwear": "Brain",
+            "mediaType": "image/png",
+            "Background": "Rosy Tide"
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-01-13 06:53:25",
+    "block_hash": "3454d8df0c008b78f00f5889d4de7cec9928e6f5e49d7d99a830657cf451d5cb",
+    "block_slot": 145184914
+  }
+}
