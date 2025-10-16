@@ -347,6 +347,26 @@ struct StakingCredential {
     pointer: Option<serde_json::Value>,
 }
 
+pub enum EpochTarget {
+    Current,
+    Specific(u32),
+}
+
+#[derive(Deserialize, Debug)]
+struct EpochResponse {
+    data: EpochDetails,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct EpochDetails {
+    pub epoch_no: u32,
+    #[serde(deserialize_with = "deserialize_u64_string")]
+    pub fees: u64,
+    pub tx_count: u32,
+    pub blk_count: u32,
+    pub start_time: u32,
+}
+
 // Comprehensive transaction data structures (transactions feature)
 #[cfg(feature = "transactions")]
 #[derive(Deserialize, Debug)]
@@ -440,6 +460,16 @@ impl MaestroApi {
         Ok(Self {
             client: HttpClient::new().with_header("api-key", &api_key),
         })
+    }
+
+    pub async fn get_epoch(&self, target: EpochTarget) -> Result<EpochDetails, MaestroError> {
+        let url = match target {
+            EpochTarget::Current => format!("https://{BASE_URL}/epoch/current"),
+            EpochTarget::Specific(epoch) => format!("https://{BASE_URL}/epoch/{epoch}"),
+        };
+
+        let response: EpochResponse = self.get_url(url).await?;
+        Ok(response.data)
     }
 
     /// Get transaction details by hash
