@@ -464,8 +464,8 @@ impl MaestroApi {
 
     pub async fn get_epoch(&self, target: EpochTarget) -> Result<EpochDetails, MaestroError> {
         let url = match target {
-            EpochTarget::Current => format!("https://{BASE_URL}/epoch/current"),
-            EpochTarget::Specific(epoch) => format!("https://{BASE_URL}/epoch/{epoch}"),
+            EpochTarget::Current => format!("https://{BASE_URL}/epochs/current"),
+            EpochTarget::Specific(epoch) => format!("https://{BASE_URL}/epochs/{epoch}"),
         };
 
         let response: EpochResponse = self.get_url(url).await?;
