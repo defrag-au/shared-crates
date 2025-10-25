@@ -365,7 +365,7 @@ mod tests {
         // Test deserializing JSON with mixed number and string formats
         let json = r#"{"role_ids":["1317858678782820400",123456,"9999999999999999999"]}"#;
         let deserialized: TestVec =
-            serde_json::from_str(&json).expect("Should deserialize successfully");
+            serde_json::from_str(json).expect("Should deserialize successfully");
 
         assert_eq!(deserialized.role_ids.len(), 3);
         assert_eq!(deserialized.role_ids[0], 1317858678782820400);
