@@ -188,6 +188,59 @@ pub mod asset_map {
     }
 }
 
+/// WASM-safe serialization for Vec<u64>
+///
+/// Use with `#[serde(with = "wasm_safe_serde::u64_vec")]`
+pub mod u64_vec {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use serde_json::Value;
+
+    const MAX_SAFE_JS_INTEGER: u64 = 9007199254740991;
+
+    pub fn serialize<S>(values: &Vec<u64>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeSeq;
+        let mut seq = serializer.serialize_seq(Some(values.len()))?;
+        for value in values {
+            if *value > MAX_SAFE_JS_INTEGER {
+                seq.serialize_element(&value.to_string())?;
+            } else {
+                seq.serialize_element(value)?;
+            }
+        }
+        seq.end()
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u64>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let values = Vec::<Value>::deserialize(deserializer)?;
+        let mut result = Vec::new();
+
+        for value in values {
+            let parsed_value = match value {
+                Value::Number(n) => {
+                    if let Some(u) = n.as_u64() {
+                        u
+                    } else {
+                        return Err(serde::de::Error::custom("Invalid number for u64"));
+                    }
+                }
+                Value::String(s) => s
+                    .parse::<u64>()
+                    .map_err(|_| serde::de::Error::custom("Invalid string for u64"))?,
+                _ => return Err(serde::de::Error::custom("Expected number or string")),
+            };
+            result.push(parsed_value);
+        }
+
+        Ok(result)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,5 +313,63 @@ mod tests {
                 && !json.contains(&format!("\"{}\"", small_number)),
             "Small numbers should remain as numbers"
         );
+    }
+
+    #[test]
+    fn test_u64_vec_serialization() {
+        #[derive(Serialize, Deserialize)]
+        struct TestVec {
+            #[serde(with = "u64_vec")]
+            role_ids: Vec<u64>,
+        }
+
+        let large_role_id = 1317858678782820400_u64; // Discord role ID > MAX_SAFE_JS_INTEGER
+        let small_role_id = 123456_u64;
+
+        let test_data = TestVec {
+            role_ids: vec![large_role_id, small_role_id, large_role_id],
+        };
+
+        let json = serde_json::to_string(&test_data).expect("Should serialize successfully");
+
+        // Large numbers should be serialized as strings
+        assert!(
+            json.contains(&format!("\"{}\"", large_role_id)),
+            "Large role IDs should be serialized as strings"
+        );
+
+        // Small numbers should remain as numbers
+        assert!(
+            json.contains(&small_role_id.to_string())
+                && !json.contains(&format!("\"{}\"", small_role_id)),
+            "Small role IDs should remain as numbers"
+        );
+
+        // Verify we can deserialize back
+        let deserialized: TestVec =
+            serde_json::from_str(&json).expect("Should deserialize successfully");
+        assert_eq!(deserialized.role_ids.len(), 3);
+        assert_eq!(deserialized.role_ids[0], large_role_id);
+        assert_eq!(deserialized.role_ids[1], small_role_id);
+        assert_eq!(deserialized.role_ids[2], large_role_id);
+    }
+
+    #[test]
+    fn test_u64_vec_deserialize_mixed_formats() {
+        #[derive(Serialize, Deserialize)]
+        struct TestVec {
+            #[serde(with = "u64_vec")]
+            role_ids: Vec<u64>,
+        }
+
+        // Test deserializing JSON with mixed number and string formats
+        let json = r#"{"role_ids":["1317858678782820400",123456,"9999999999999999999"]}"#;
+        let deserialized: TestVec =
+            serde_json::from_str(json).expect("Should deserialize successfully");
+
+        assert_eq!(deserialized.role_ids.len(), 3);
+        assert_eq!(deserialized.role_ids[0], 1317858678782820400);
+        assert_eq!(deserialized.role_ids[1], 123456);
+        assert_eq!(deserialized.role_ids[2], 9999999999999999999);
     }
 }

@@ -222,7 +222,7 @@ impl AssetId {
             return Err(AssetIdError::InvalidAssetNameHexFormat);
         }
 
-        if asset_name_hex.len() % 2 != 0 {
+        if !asset_name_hex.len().is_multiple_of(2) {
             return Err(AssetIdError::InvalidAssetNameHexLength);
         }
 
