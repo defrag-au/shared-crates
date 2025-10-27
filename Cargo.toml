@@ -19,11 +19,6 @@ version = "0.1.0"
 authors = ["Damon Oehlman <damon@defrag.au>"]
 
 [workspace.dependencies]
-wasm-bindgen = "0.2"
-wasm-bindgen-macro = "0.2"
-wasm-bindgen-futures = "0.4"
-js-sys = "0.3"
-web-sys = "0.3"
 async-stream = "0.3.6"
 futures-core = "0.3.31"
 futures-util = "0.3.31"
@@ -36,9 +31,16 @@ reqwest = { version = "0.12.12", default-features = false }
 serde = { version = "1.0.217" }
 serde_json = { version = "1.0.134" }
 serde_with = { version = "3.12.0" }
-serde-wasm-bindgen = "0.6"
 tokio = { version = "1.43.0", default-features = false }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3" }
-worker = { version = "0.6" }
 utoipa = { version = "5" }
+
+# worker and wasm-bindgen associated resources
+worker = { version = "0.6" }
+wasm-bindgen = "0.2"
+wasm-bindgen-macro = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = "0.3"
+serde-wasm-bindgen = "0.6"
