@@ -6,9 +6,6 @@ use worker_stack::worker::{
     Error, Queue, QueueContentType, RawMessageBuilder, Result, SendMessage,
 };
 
-#[cfg(all(target_arch = "wasm32", feature = "simple-logging"))]
-use worker_stack::web_sys;
-
 mod r2_notification;
 
 pub mod secrets;
@@ -74,6 +71,7 @@ cfg_if! {
         pub fn init_tracing(target_level: Option<tracing::Level>) {
             use tracing::{Event, Metadata, Subscriber};
             use tracing::subscriber::set_global_default;
+            use worker_stack::web_sys;
 
             struct SimpleLogger {
                 max_level: tracing::Level,
