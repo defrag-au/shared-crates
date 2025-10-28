@@ -3,16 +3,55 @@
 //! This crate provides a single entry point for all worker-related dependencies
 //! with pinned versions to ensure compatibility across the entire ecosystem.
 //!
-//! ## Usage
+//! ## Usage Pattern
+//!
+//! ### For Libraries (No Macros)
+//!
+//! If your crate only uses worker types but doesn't use `#[event]` or `#[durable_object]` macros:
+//!
+//! ```toml
+//! [dependencies]
+//! worker_stack = { workspace = true }
+//! ```
 //!
 //! ```rust
-//! use worker_stack::prelude::*;
+//! use worker_stack::worker::{Env, Result};
+//!
+//! pub async fn my_function(env: &Env) -> Result<String> {
+//!     // Your code here
+//! }
+//! ```
+//!
+//! ### For Workers (With Macros)
+//!
+//! If your crate uses `#[event]` or `#[durable_object]` macros, you **must** include both:
+//!
+//! ```toml
+//! [dependencies]
+//! worker_stack = { workspace = true }
+//! worker = { workspace = true }  # Required for macro expansion
+//! ```
+//!
+//! ```rust
+//! use worker_stack::worker::*;
 //!
 //! #[event(fetch)]
 //! async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
 //!     Response::ok("Hello World")
 //! }
 //! ```
+//!
+//! ### Why Both Dependencies?
+//!
+//! The `#[event]` and `#[durable_object]` macros generate code that references the `worker`
+//! crate using absolute paths like `::worker::Response`. These macros are procedural and
+//! their generated code is fixed at compile time, so the `worker` crate **must exist**
+//! in your dependency tree.
+//!
+//! - `worker_stack`: Provides re-exports and version pinning for imports
+//! - `worker`: Required for macro expansion (must match version in worker_stack)
+//!
+//! See: https://github.com/cloudflare/workers-rs/blob/main/worker-macros/src/event.rs
 //!
 //! ## Compatible Tools
 //!
@@ -28,6 +67,10 @@ pub use wasm_bindgen_futures;
 pub use wasm_bindgen_macro;
 pub use web_sys;
 pub use worker;
+
+// Re-export worker attribute macros at crate root for ergonomic use
+// This allows: #[worker_stack::event(fetch)] or use worker_stack::event; #[event(fetch)]
+pub use worker::{durable_object, event};
 
 /// Prelude module that imports commonly used items from the worker ecosystem
 pub mod prelude {
