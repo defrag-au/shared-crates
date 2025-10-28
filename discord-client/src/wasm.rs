@@ -7,8 +7,8 @@ use core::pin::Pin;
 use gloo_net::http::Request;
 use tracing::{error, info, warn};
 use twilight_model::channel::Message;
-use wasm_bindgen::JsValue;
-use web_sys::{Blob, BlobPropertyBag, FormData};
+use worker_stack::wasm_bindgen::JsValue;
+use worker_stack::web_sys::{Blob, BlobPropertyBag, FormData};
 
 /// WASM Discord bot client using gloo-net (for cnft.dev-workers)
 pub struct WasmDiscordClient {

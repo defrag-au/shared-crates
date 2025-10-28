@@ -18,14 +18,7 @@ reqwest = { version = "0.12", features = [
 
 # WASM dependencies (for cnft.dev-workers)
 gloo-net = { workspace = true, features = ["json"], optional = true }
-web-sys = { workspace = true, features = [
-    "Blob",
-    "BlobPropertyBag",
-    "FormData",
-], optional = true }
-js-sys = { workspace = true, optional = true }
-wasm-bindgen = { workspace = true, optional = true }
-worker = { workspace = true, optional = true }
+worker_stack = { workspace = true, optional = true }
 
 # Twilight types and builders (WASM-safe)
 twilight-model = { version = "0.16", default-features = false }
@@ -42,7 +35,7 @@ tracing-subscriber = { workspace = true }
 [features]
 default = ["native"]
 native = ["reqwest"]
-wasm = ["gloo-net", "web-sys", "js-sys", "wasm-bindgen", "worker"]
+wasm = ["gloo-net", "worker_stack"]
 
 [[example]]
 name = "native_example"

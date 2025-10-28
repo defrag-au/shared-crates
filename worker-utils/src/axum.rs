@@ -24,7 +24,7 @@
 macro_rules! exec_nonsend {
     ($($code:tt)*) => {{
         let (tx, rx) = futures_channel::oneshot::channel();
-        wasm_bindgen_futures::spawn_local(async move {
+        worker_stack::wasm_bindgen_futures::spawn_local(async move {
             let result = { $($code)* };
             let _ = tx.send(result);
         });
@@ -192,7 +192,10 @@ pub fn create_cors_layer(domains: Option<Vec<String>>) -> Option<CorsLayer> {
 ///     router = router.layer(cors);
 /// }
 /// ```
-pub fn create_cors_layer_from_env(env: &worker::Env, var_name: &str) -> Option<CorsLayer> {
+pub fn create_cors_layer_from_env(
+    env: &worker_stack::worker::Env,
+    var_name: &str,
+) -> Option<CorsLayer> {
     let domains = env.var(var_name).ok().map(|origins| {
         // Parse comma-separated list of origins
         origins

@@ -1,0 +1,28 @@
+[package]
+name = "worker_stack"
+version = "0.1.0"
+edition = "2021"
+authors = ["Damon Oehlman <damon.oehlman@gmail.com>"]
+description = "Facade crate for Cloudflare Workers ecosystem with pinned versions"
+
+[dependencies]
+# Core worker crate with exact version pinning
+worker = { version = "=0.6.6", features = ["queue", "d1"] }
+
+# wasm-bindgen ecosystem - all pinned to compatible versions
+# Note: Using 0.4.53 to match worker 0.6.6's requirement for ^0.4.53
+wasm-bindgen = "=0.2.103"
+wasm-bindgen-macro = "=0.2.103"
+wasm-bindgen-futures = "=0.4.53"
+
+# JavaScript interop
+js-sys = "=0.3.80"
+web-sys = { version = "=0.3.80", features = [
+    "console",
+    "Blob",
+    "BlobPropertyBag",
+    "FormData",
+] }
+
+# Serialization for WASM
+serde-wasm-bindgen = "=0.6.5"

@@ -12,7 +12,7 @@ indexmap = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_plain = "1.0.2"
-worker = { workspace = true }
+worker_stack = { workspace = true }
 utoipa = { workspace = true, optional = true }
 # UTxORPC support (optional)
 utxorpc-spec = { version = "0.16", optional = true }
