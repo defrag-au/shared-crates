@@ -8,9 +8,8 @@ extern "C" {
 }
 
 pub async fn sleep(delay: i32) {
-    let mut cb = |resolve: js_sys::Function, _reject: js_sys::Function| {
-        unsafe { set_timeout(&resolve, delay) };
-    };
+    let mut cb =
+        |resolve: js_sys::Function, _reject: js_sys::Function| set_timeout(&resolve, delay);
 
     let p = js_sys::Promise::new(&mut cb);
 
