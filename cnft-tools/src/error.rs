@@ -1,6 +1,9 @@
 use http_client::HttpError;
 use std::{error::Error, fmt};
 
+#[cfg(feature = "worker")]
+use worker_stack::worker;
+
 #[derive(Debug)]
 pub enum CnftError {
     Unknown,

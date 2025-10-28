@@ -7,6 +7,7 @@ use core::pin::Pin;
 use gloo_net::http::Request;
 use tracing::{error, info, warn};
 use twilight_model::channel::Message;
+use worker_stack::js_sys;
 use worker_stack::wasm_bindgen::JsValue;
 use worker_stack::web_sys::{Blob, BlobPropertyBag, FormData};
 

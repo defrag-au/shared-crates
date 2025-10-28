@@ -5,6 +5,9 @@ mod native;
 #[cfg(feature = "wasm")]
 mod wasm;
 
+#[cfg(feature = "wasm")]
+use worker_stack::worker;
+
 pub mod types;
 
 #[cfg(feature = "native")]

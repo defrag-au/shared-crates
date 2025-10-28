@@ -70,7 +70,7 @@ cfg_if! {
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
 
-        #[cfg(feature = "simple-logging")]
+        #[cfg(all(feature = "simple-logging", not(feature = "full-logging")))]
         pub fn init_tracing(target_level: Option<tracing::Level>) {
             use tracing::{Event, Metadata, Subscriber};
             use tracing::subscriber::set_global_default;
