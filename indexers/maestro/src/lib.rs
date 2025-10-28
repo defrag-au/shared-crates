@@ -11,6 +11,7 @@ use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::{error::Error, fmt};
 use tracing::warn;
+use worker_stack::worker;
 
 mod test;
 

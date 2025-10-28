@@ -1,7 +1,10 @@
 use cfg_if::cfg_if;
 use serde::Serialize;
-use wasm_bindgen::JsValue;
-use worker::{Queue, QueueContentType, RawMessageBuilder, Result, SendMessage};
+use worker_stack::serde_wasm_bindgen;
+use worker_stack::wasm_bindgen::JsValue;
+use worker_stack::worker::{
+    Error, Queue, QueueContentType, RawMessageBuilder, Result, SendMessage,
+};
 
 mod r2_notification;
 
@@ -23,7 +26,7 @@ where
     let serializer = serde_wasm_bindgen::Serializer::json_compatible();
     let js_value = message
         .serialize(&serializer)
-        .map_err(|e| worker::Error::RustError(format!("Serialization failed: {e}")))?;
+        .map_err(|e| Error::RustError(format!("Serialization failed: {e}")))?;
 
     let raw_message =
         RawMessageBuilder::new(js_value).build_with_content_type(QueueContentType::Json);
@@ -42,7 +45,7 @@ where
             let serializer = serde_wasm_bindgen::Serializer::json_compatible();
             let js_value = m
                 .serialize(&serializer)
-                .map_err(|e| worker::Error::RustError(format!("Serialization failed: {e}")))?;
+                .map_err(|e| Error::RustError(format!("Serialization failed: {e}")))?;
             Ok(RawMessageBuilder::new(js_value).build_with_content_type(QueueContentType::Json))
         })
         .collect();
@@ -64,10 +67,11 @@ cfg_if! {
 cfg_if! {
     if #[cfg(target_arch = "wasm32")] {
 
-        #[cfg(feature = "simple-logging")]
+        #[cfg(all(feature = "simple-logging", not(feature = "full-logging")))]
         pub fn init_tracing(target_level: Option<tracing::Level>) {
             use tracing::{Event, Metadata, Subscriber};
             use tracing::subscriber::set_global_default;
+            use worker_stack::web_sys;
 
             struct SimpleLogger {
                 max_level: tracing::Level,

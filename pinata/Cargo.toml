@@ -7,12 +7,12 @@ edition = "2021"
 http-client = { path = "../http-client" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-worker = { workspace = true, optional = true }
+worker_stack = { workspace = true, optional = true }
 tracing = { workspace = true }
 
 [features]
 default = []
-worker = ["dep:worker"]
+worker = ["dep:worker_stack"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros"] }

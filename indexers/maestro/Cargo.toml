@@ -13,7 +13,7 @@ http-client = { path = "../../http-client" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-worker = { workspace = true }
+worker_stack = { workspace = true }
 worker_utils = { path = "../../worker-utils" }
 
 [dev-dependencies]

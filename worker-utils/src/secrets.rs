@@ -1,7 +1,7 @@
-use worker::{Env, Error, RouteContext};
+use worker_stack::worker::{Env, Error, RouteContext};
 
 /// Get a secret by name, trying secrets store first, then env.secret as fallback
-pub async fn get_secret(env: &Env, name: &str) -> worker::Result<String> {
+pub async fn get_secret(env: &Env, name: &str) -> Result<String, Error> {
     tracing::debug!("🔍 Looking up secret: {}", name);
 
     // Try secrets store first
@@ -39,6 +39,6 @@ pub async fn get_secret(env: &Env, name: &str) -> worker::Result<String> {
 }
 
 /// Get a secret from RouteContext, trying secrets store first, then env.secret as fallback
-pub async fn get_secret_from_context(ctx: &RouteContext<()>, name: &str) -> worker::Result<String> {
+pub async fn get_secret_from_context(ctx: &RouteContext<()>, name: &str) -> Result<String, Error> {
     get_secret(&ctx.env, name).await
 }
