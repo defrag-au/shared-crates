@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn test_deserialize_havoc() {
         match serde_json::from_str::<AssetInfoResponse>(&test_case!("havoc_worlds.json")) {
-            Ok(snekkie) => {
+            Ok(cnft) => {
                 let test_traits = HashMap::from([
                     ("Background", "Electric White"),
                     ("Xeno Head Item", "Bandage Orange"),
@@ -202,7 +202,7 @@ mod tests {
                     ("Xeno Piercing", "Spike"),
                 ])
                 .into_traits();
-                let asset: Asset = snekkie.data.asset_standards.try_into().unwrap();
+                let asset: Asset = cnft.data.asset_standards.try_into().unwrap();
                 assert_eq!(asset.name, "Havoc Worlds #5972");
                 assert_eq!(
                     asset.image,
