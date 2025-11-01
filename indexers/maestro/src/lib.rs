@@ -651,7 +651,17 @@ impl MaestroApi {
         policy_id: &str,
         cursor: &Option<String>,
     ) -> Result<(Vec<AssetWithId>, Option<String>), MaestroError> {
-        let page = self.get_assets(policy_id, cursor.clone()).await?;
+        self.get_asset_page_with_count(policy_id, cursor, None)
+            .await
+    }
+
+    pub async fn get_asset_page_with_count(
+        &self,
+        policy_id: &str,
+        cursor: &Option<String>,
+        count: Option<u32>,
+    ) -> Result<(Vec<AssetWithId>, Option<String>), MaestroError> {
+        let page = self.get_assets(policy_id, cursor.clone(), count).await?;
         let assets: Vec<_> = page
             .get_importable_nfts()
             .iter()
@@ -713,7 +723,7 @@ impl MaestroApi {
         let mut cursor: Option<String> = None;
 
         stream! {
-            while let Ok(page) = self.get_assets(policy_id, cursor).await {
+            while let Ok(page) = self.get_assets(policy_id, cursor, None).await {
                 for data in &page.data {
                     if let Ok(result) = Asset::try_from(data.asset_standards.clone()) {
                         yield result;
@@ -733,9 +743,25 @@ impl MaestroApi {
         &self,
         policy_id: &str,
         cursor: Option<String>,
+        count: Option<u32>,
     ) -> Result<PolicyAssetsResponse, MaestroError> {
-        let querystring = cursor.map_or(String::new(), |c| format!("cursor={c}"));
-        let url = format!("https://{BASE_URL}/policy/{policy_id}/assets?{querystring}");
+        let mut query_params = Vec::new();
+
+        if let Some(c) = cursor {
+            query_params.push(format!("cursor={c}"));
+        }
+
+        if let Some(n) = count {
+            query_params.push(format!("count={n}"));
+        }
+
+        let querystring = if query_params.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", query_params.join("&"))
+        };
+
+        let url = format!("https://{BASE_URL}/policy/{policy_id}/assets{querystring}");
 
         self.get_url(url).await
     }
