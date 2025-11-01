@@ -122,6 +122,7 @@ pub enum AssetMetadata {
         image: PrimitiveOrList<String>,
         #[serde(alias = "mediaType")]
         media_type: Option<String>,
+        #[serde(alias = "Project")]
         project: Option<String>,
         files: Option<Vec<AssetFile>>,
 
@@ -133,7 +134,7 @@ pub enum AssetMetadata {
         website: Option<String>,
         minter: Option<String>,
 
-        #[serde(alias = "attributes")]
+        #[serde(alias = "attributes", alias = "Attributes")]
         traits: Traits,
 
         #[serde(flatten)]

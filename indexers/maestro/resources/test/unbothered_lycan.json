@@ -1,0 +1,95 @@
+{
+  "data": {
+    "asset_name": "556e626f7468657265644c7963616e32333331",
+    "asset_name_ascii": "UnbotheredLycan2331",
+    "fingerprint": "asset1t3dna7hfy08q5r6u7jnd76kxgcny26sa4f0hg4",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "b60c557ea4ac78111ee01b8779ed23d47c99d7ac5510fad051f545afb877a6c0",
+      "slot": 136039914,
+      "timestamp": "2024-09-29 10:36:45",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "b60c557ea4ac78111ee01b8779ed23d47c99d7ac5510fad051f545afb877a6c0",
+      "slot": 136039914,
+      "timestamp": "2024-09-29 10:36:45",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "Attributes": {
+          "Background": "Red",
+          "Clothing": "Pioneer Warrior",
+          "Corps": "Champion",
+          "Earring": "None",
+          "Eyes": "Wink",
+          "Fur": "Dalmatian",
+          "Head": "None",
+          "Mouth": "Cigarette"
+        },
+        "Collection": "Unbothered Lycans",
+        "Project": "Unbothered Wolves",
+        "Website": "https://www.unbotheredwolves.com/",
+        "image": "ipfs://QmRckaiw6QgicKWfz8xvWptFxbDNDBsFDDe9atc3m7odoN",
+        "mediaType": "image/png",
+        "name": "Unbothered Lycan #2331"
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "93a06006358177f5e619e48d5c421328fc9640699394836e6292fe6e": {
+          "UnbotheredLycan1906": {
+            "Attributes": {
+              "Background": "Red",
+              "Clothing": "Orange Jacket",
+              "Corps": "Reservist",
+              "Earring": "Sharp Bone",
+              "Eyes": "Slit",
+              "Fur": "Gray",
+              "Head": "Lycan Cap",
+              "Mouth": "Lollipop"
+            },
+            "Collection": "Unbothered Lycans",
+            "Project": "Unbothered Wolves",
+            "Website": "https://www.unbotheredwolves.com/",
+            "image": "ipfs://QmfZ1oWmAf2wystBPJzuLXfHk1SWRLV2Z9rpai2cBnKjCq",
+            "mediaType": "image/png",
+            "name": "Unbothered Lycan #1906"
+          },
+          "UnbotheredLycan2331": {
+            "Attributes": {
+              "Background": "Red",
+              "Clothing": "Pioneer Warrior",
+              "Corps": "Champion",
+              "Earring": "None",
+              "Eyes": "Wink",
+              "Fur": "Dalmatian",
+              "Head": "None",
+              "Mouth": "Cigarette"
+            },
+            "Collection": "Unbothered Lycans",
+            "Project": "Unbothered Wolves",
+            "Website": "https://www.unbotheredwolves.com/",
+            "image": "ipfs://QmRckaiw6QgicKWfz8xvWptFxbDNDBsFDDe9atc3m7odoN",
+            "mediaType": "image/png",
+            "name": "Unbothered Lycan #2331"
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-11-01 06:40:39",
+    "block_hash": "30512e578fce1b93f5c7f87b89477e0f92f5903d3ca75e154bca1e9cbf32329c",
+    "block_slot": 170412948
+  }
+}

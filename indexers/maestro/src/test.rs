@@ -252,6 +252,37 @@ mod tests {
     }
 
     #[test]
+    fn test_deserialize_lycan() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("unbothered_lycan.json")) {
+            Ok(cnft) => {
+                let test_traits = HashMap::from([
+                    ("Eyes", "Wink"),
+                    ("Fur", "Dalmatian"),
+                    ("Corps", "Champion"),
+                    ("Head", "None"),
+                    ("Mouth", "Cigarette"),
+                    ("Clothing", "Pioneer Warrior"),
+                    ("Earring", "None"),
+                    ("Background", "Red"),
+                ])
+                .into_traits();
+                let asset: Asset = cnft.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "Unbothered Lycan #2331");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://QmRckaiw6QgicKWfz8xvWptFxbDNDBsFDDe9atc3m7odoN"
+                );
+                assert_eq!(asset.media_type, Some("image/png".to_string()));
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
+
+    #[test]
     fn test_deserialize_working_dead() {
         match serde_json::from_str::<AssetInfoResponse>(&test_case!("workingdead.json")) {
             Ok(snekkie) => {
