@@ -14,6 +14,7 @@ use utxorpc_spec::utxorpc::v1alpha::cardano as u5c;
 pub struct AssetMetadata {
     pub name: String,
     pub image: String,
+    pub media_type: Option<String>,
     pub traits: Traits,
 }
 
@@ -87,6 +88,7 @@ pub fn extract_mint_assets_from_utxorpc_tx(tx: &u5c::Tx) -> Vec<AssetV2> {
                 asset_id,
                 final_display_name, // Prioritize CIP-25 name over decoded asset name
                 metadata.image,     // Real metadata or empty string
+                metadata.media_type, // Extracted from CIP-25 metadata (with files fallback)
                 metadata.traits,    // Real traits or empty
                 None,               // No rarity rank - would need marketplace data
                 vec![],             // Empty tags - would need rarity/marketplace data
@@ -269,6 +271,7 @@ fn extract_metadata_via_json(
             return Some(AssetMetadata {
                 name: asset.name,
                 image: asset.image,
+                media_type: asset.media_type,
                 traits: asset.traits,
             });
         } else {

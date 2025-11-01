@@ -103,9 +103,10 @@ pub enum AssetMetadata {
     CodifiedTraits {
         name: String,
         image: PrimitiveOrList<String>,
-        #[serde(alias = "mediaType", default = "default_media_type")]
-        media_type: String,
+        #[serde(alias = "mediaType")]
+        media_type: Option<String>,
         collection: Option<String>,
+        files: Option<Vec<AssetFile>>,
         #[serde(alias = "Discord")]
         discord: Option<String>,
         #[serde(alias = "Twitter")]
@@ -119,8 +120,8 @@ pub enum AssetMetadata {
         name: String,
         description: Option<PrimitiveOrList<String>>,
         image: PrimitiveOrList<String>,
-        #[serde(alias = "mediaType", default = "default_media_type")]
-        media_type: String,
+        #[serde(alias = "mediaType")]
+        media_type: Option<String>,
         project: Option<String>,
         files: Option<Vec<AssetFile>>,
 
@@ -143,8 +144,8 @@ pub enum AssetMetadata {
     Flattened {
         name: String,
         image: PrimitiveOrList<String>,
-        #[serde(alias = "mediaType", default = "default_media_type")]
-        media_type: String,
+        #[serde(alias = "mediaType")]
+        media_type: Option<String>,
         #[serde(alias = "Project", alias = " Project")]
         project: Option<PrimitiveOrList<String>>,
         description: Option<PrimitiveOrList<String>>,
@@ -171,9 +172,10 @@ pub enum AssetMetadata {
     AttributeArray {
         name: String,
         image: PrimitiveOrList<String>,
-        #[serde(alias = "mediaType", default = "default_media_type")]
-        media_type: String,
+        #[serde(alias = "mediaType")]
+        media_type: Option<String>,
         project: Option<String>,
+        files: Option<Vec<AssetFile>>,
         #[serde(alias = "Discord")]
         discord: Option<String>,
         #[serde(alias = "Twitter")]
@@ -189,8 +191,8 @@ pub enum AssetMetadata {
     FlattenedMixed {
         name: String,
         image: PrimitiveOrList<String>,
-        #[serde(alias = "mediaType", default = "default_media_type")]
-        media_type: String,
+        #[serde(alias = "mediaType")]
+        media_type: Option<String>,
         #[serde(alias = "Project", alias = "project")]
         project: Option<String>,
         description: Option<PrimitiveOrList<String>>,
@@ -311,10 +313,6 @@ pub struct YeppleEmbeddedMetadata {
     media_type: String,
     #[serde(flatten)]
     traits: Traits,
-}
-
-fn default_media_type() -> String {
-    "image/png".to_string()
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -496,6 +494,7 @@ impl<'de> Deserialize<'de> for AssetTag {
 pub struct Asset {
     pub name: String,
     pub image: String,
+    pub media_type: Option<String>,
     pub traits: Traits,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rarity_rank: Option<u32>,
@@ -513,6 +512,7 @@ pub struct AssetV2 {
     pub name: String,
     /// Asset image URL
     pub image: String,
+    pub media_type: Option<String>,
     /// Asset traits/attributes
     pub traits: Traits,
     /// Rarity rank if available
@@ -528,6 +528,7 @@ impl From<AssetV2> for Asset {
         Self {
             name: asset_v2.name,
             image: asset_v2.image,
+            media_type: asset_v2.media_type,
             traits: asset_v2.traits,
             rarity_rank: asset_v2.rarity_rank,
             tags: asset_v2.tags,
@@ -542,6 +543,7 @@ impl AssetV2 {
             id,
             name: asset.name,
             image: asset.image,
+            media_type: asset.media_type,
             traits: asset.traits,
             rarity_rank: asset.rarity_rank,
             tags: asset.tags,
@@ -553,6 +555,7 @@ impl AssetV2 {
         id: AssetId,
         name: String,
         image: String,
+        media_type: Option<String>,
         traits: crate::Traits,
         rarity_rank: Option<u32>,
         tags: Vec<crate::AssetTag>,
@@ -561,6 +564,7 @@ impl AssetV2 {
             id,
             name,
             image,
+            media_type,
             traits,
             rarity_rank,
             tags,
@@ -568,8 +572,66 @@ impl AssetV2 {
     }
 }
 
+impl AssetMetadata {
+    /// Extract media_type, falling back to files array if not specified at top level
+    fn extract_media_type(&self) -> Option<String> {
+        match self {
+            AssetMetadata::Attributed {
+                media_type,
+                image,
+                files,
+                ..
+            }
+            | AssetMetadata::Flattened {
+                media_type,
+                image,
+                files,
+                ..
+            }
+            | AssetMetadata::FlattenedMixed {
+                media_type,
+                image,
+                files,
+                ..
+            }
+            | AssetMetadata::CodifiedTraits {
+                media_type,
+                image,
+                files,
+                ..
+            }
+            | AssetMetadata::AttributeArray {
+                media_type,
+                image,
+                files,
+                ..
+            } => {
+                // If top-level media_type exists, use it
+                if media_type.is_some() {
+                    return media_type.clone();
+                }
+
+                // Otherwise, try to find matching file in files array
+                if let Some(file_list) = files {
+                    let image_url = get_image_url(image.clone());
+                    for file in file_list {
+                        if file.get_src() == image_url {
+                            return Some(file.media_type().to_string());
+                        }
+                    }
+                }
+
+                None
+            }
+        }
+    }
+}
+
 impl From<AssetMetadata> for Asset {
     fn from(value: AssetMetadata) -> Self {
+        // Extract media_type (with files fallback) before consuming value
+        let extracted_media_type = value.extract_media_type();
+
         match value {
             AssetMetadata::Attributed {
                 name,
@@ -585,6 +647,7 @@ impl From<AssetMetadata> for Asset {
             } => Self {
                 name,
                 image: get_image_url(image),
+                media_type: extracted_media_type,
                 traits,
                 rarity_rank: None,
                 tags: vec![],
@@ -605,6 +668,7 @@ impl From<AssetMetadata> for Asset {
                 Self {
                     name,
                     image: get_image_url(image),
+                    media_type: extracted_media_type,
                     traits,
                     rarity_rank: None,
                     tags: vec![],
@@ -624,6 +688,7 @@ impl From<AssetMetadata> for Asset {
                 Self {
                     name,
                     image: get_image_url(image),
+                    media_type: extracted_media_type,
                     traits,
                     rarity_rank: None,
                     tags: vec![],
@@ -684,6 +749,7 @@ impl From<AssetMetadata> for Asset {
                 Self {
                     name,
                     image: get_image_url(image),
+                    media_type: extracted_media_type,
                     traits,
                     rarity_rank: None,
                     tags: vec![],
@@ -1070,7 +1136,7 @@ mod tests {
                             "ipfs://QmXAybY8AvnNfsEgiZFxoKre1ujff5PxzU21tUuSVBEwkD".to_string()
                         )
                     );
-                    assert_eq!(media_type, "image/png");
+                    assert_eq!(media_type, Some("image/png".to_string()));
                     assert_eq!(minter, Some("CNFT.Tools".to_string()));
                     assert_eq!(
                         traits,
@@ -1115,7 +1181,7 @@ mod tests {
                                     .to_string()
                             ])
                         );
-                        assert_eq!(media_type, "image/png");
+                        assert_eq!(media_type, None);
                         assert_eq!(
                             traits,
                             HashMap::from([
@@ -1166,7 +1232,7 @@ mod tests {
                             "ipfs://QmPEysw5BQGp9QaMSYQn8ruoQhwaNNPzXkbGeV5x1Lc9v4".to_string()
                         )
                     );
-                    assert_eq!(media_type, "image/png");
+                    assert_eq!(media_type, Some("image/png".to_string()));
                     assert_eq!(
                         traits,
                         vec![
@@ -1206,7 +1272,7 @@ mod tests {
                     ..
                 } => {
                     assert_eq!(name, "Abacus Dawlish");
-                    assert_eq!(media_type, "image/png");
+                    assert_eq!(media_type, Some("image/png".to_string()));
                     assert_eq!(
                         traits,
                         vec![
