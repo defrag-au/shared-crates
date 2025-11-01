@@ -181,7 +181,7 @@ pub enum AssetMetadata {
         #[serde(alias = "Website")]
         website: Option<String>,
 
-        #[serde(alias = "Attributes", alias = "traits")]
+        #[serde(alias = "Attributes", alias = "traits", alias = "properties")]
         traits: Vec<Traits>,
     },
     // known projects:

@@ -1,0 +1,239 @@
+{
+  "data": {
+    "asset_name": "4861766f63576f726c647335393732",
+    "asset_name_ascii": "HavocWorlds5972",
+    "fingerprint": "asset1nxn8tnyhuexjce87eq602e840amjhafxh5kwez",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "ea05061c6e608922e43227da0e67589e3ec119db0201ff153194a83db568c4ff",
+      "slot": 58444316,
+      "timestamp": "2022-04-15 08:16:47",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "ea05061c6e608922e43227da0e67589e3ec119db0201ff153194a83db568c4ff",
+      "slot": 58444316,
+      "timestamp": "2022-04-15 08:16:47",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "name": "Havoc Worlds #5972",
+        "files": [
+          {
+            "src": "ipfs://QmZaGQemF5noCZZRda6qX4sf2n9cwvPg4H2sRb2CXeGX4k/5972.png",
+            "name": "Havoc Worlds #5972 (on IPFS)",
+            "mediaType": "image/png"
+          },
+          {
+            "src": "ar://BZfIOKjxKkpgl6xxvjy54qhDDbTmp-wL3jT5G3vn3dA",
+            "name": "Havoc Worlds #5972 (on Arweave)",
+            "mediaType": "image/png"
+          }
+        ],
+        "image": "ipfs://QmZaGQemF5noCZZRda6qX4sf2n9cwvPg4H2sRb2CXeGX4k/5972.png",
+        "publisher": [
+          "https://havocworlds.io",
+          "https://havocworlds.com",
+          "https://twitter.com/havocworlds"
+        ],
+        "properties": [
+          {
+            "Background": "Electric White"
+          },
+          {
+            "Xeno Weapon": "Plasma Rifle White"
+          },
+          {
+            "Xeno Base": "Base 1"
+          },
+          {
+            "Xeno Marking": "Scar 1"
+          },
+          {
+            "Xeno Clothes": "Advance Armour Yellow"
+          },
+          {
+            "Xeno Head Item": "Bandage Orange"
+          },
+          {
+            "Xeno Piercing": "Spike"
+          },
+          {
+            "Xeno Bonus Item": "None"
+          }
+        ],
+        "description": "The Seekers will look for you"
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "1088b361c41f49906645cedeeb7a9ef0e0b793b1a2d24f623ea74876": {
+          "HavocWorlds1230": {
+            "name": "Havoc Worlds #1230",
+            "files": [
+              {
+                "src": "ipfs://Qmdny8V2egmW86Cz9aniPZEPupamwJU1Bvv5q8v8xdGMhy/1230.png",
+                "name": "Havoc Worlds #1230 (on IPFS)",
+                "mediaType": "image/png"
+              },
+              {
+                "src": "ar://_Cmoms6ZUCFTUgsvXE0zEa8qfwM2dLf0ym4hQLFJ2jM",
+                "name": "Havoc Worlds #1230 (on Arweave)",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://Qmdny8V2egmW86Cz9aniPZEPupamwJU1Bvv5q8v8xdGMhy/1230.png",
+            "publisher": [
+              "https://havocworlds.io",
+              "https://havocworlds.com",
+              "https://twitter.com/havocworlds"
+            ],
+            "properties": [
+              {
+                "Background": "Black Smoke"
+              },
+              {
+                "Xeno Weapon": "Claymore Saber Red"
+              },
+              {
+                "Xeno Base": "Base 4"
+              },
+              {
+                "Xeno Marking": "Bruise"
+              },
+              {
+                "Xeno Clothes": "Urban Blue"
+              },
+              {
+                "Xeno Head Item": "Cosmic Goggles Orange"
+              },
+              {
+                "Xeno Piercing": "None"
+              },
+              {
+                "Xeno Bonus Item": "None"
+              }
+            ],
+            "description": "The Seekers will look for you"
+          },
+          "HavocWorlds5972": {
+            "name": "Havoc Worlds #5972",
+            "files": [
+              {
+                "src": "ipfs://QmZaGQemF5noCZZRda6qX4sf2n9cwvPg4H2sRb2CXeGX4k/5972.png",
+                "name": "Havoc Worlds #5972 (on IPFS)",
+                "mediaType": "image/png"
+              },
+              {
+                "src": "ar://BZfIOKjxKkpgl6xxvjy54qhDDbTmp-wL3jT5G3vn3dA",
+                "name": "Havoc Worlds #5972 (on Arweave)",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://QmZaGQemF5noCZZRda6qX4sf2n9cwvPg4H2sRb2CXeGX4k/5972.png",
+            "publisher": [
+              "https://havocworlds.io",
+              "https://havocworlds.com",
+              "https://twitter.com/havocworlds"
+            ],
+            "properties": [
+              {
+                "Background": "Electric White"
+              },
+              {
+                "Xeno Weapon": "Plasma Rifle White"
+              },
+              {
+                "Xeno Base": "Base 1"
+              },
+              {
+                "Xeno Marking": "Scar 1"
+              },
+              {
+                "Xeno Clothes": "Advance Armour Yellow"
+              },
+              {
+                "Xeno Head Item": "Bandage Orange"
+              },
+              {
+                "Xeno Piercing": "Spike"
+              },
+              {
+                "Xeno Bonus Item": "None"
+              }
+            ],
+            "description": "The Seekers will look for you"
+          },
+          "HavocWorlds9089": {
+            "name": "Havoc Worlds #9089",
+            "files": [
+              {
+                "src": "ipfs://Qmd6vwUrixXDY4Eudm7s5GGCWTc5sg1uAgsW7qGFvNFJHv/9089.png",
+                "name": "Havoc Worlds #9089 (on IPFS)",
+                "mediaType": "image/png"
+              },
+              {
+                "src": "ar://QGfk_YlIPur-fabWa5Zqrs925NzJqn5410XSffhepLY",
+                "name": "Havoc Worlds #9089 (on Arweave)",
+                "mediaType": "image/png"
+              }
+            ],
+            "image": "ipfs://Qmd6vwUrixXDY4Eudm7s5GGCWTc5sg1uAgsW7qGFvNFJHv/9089.png",
+            "publisher": [
+              "https://havocworlds.io",
+              "https://havocworlds.com",
+              "https://twitter.com/havocworlds"
+            ],
+            "properties": [
+              {
+                "Background": "Tech Green"
+              },
+              {
+                "Human Weapon": "Dual Blade Yellow"
+              },
+              {
+                "Female Base": "Female 2"
+              },
+              {
+                "Female Marking": "Cat eye Green"
+              },
+              {
+                "Female Face": "Angry"
+              },
+              {
+                "Female Clothes": "Tracksuit Blue"
+              },
+              {
+                "Female Hair": "Buns Black"
+              },
+              {
+                "Human Head Item": "VR Headset White"
+              },
+              {
+                "Human Piercing": "X Piercing"
+              },
+              {
+                "Human Bonus Item": "None"
+              }
+            ],
+            "description": "The Seekers will look for you"
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-11-01 01:19:54",
+    "block_hash": "d72a2c08ab1c3cc8f28a66477bafbe2286dc383b795b292c8fc29ef63b055368",
+    "block_slot": 170393703
+  }
+}

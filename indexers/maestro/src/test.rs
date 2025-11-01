@@ -188,6 +188,36 @@ mod tests {
     }
 
     #[test]
+    fn test_deserialize_havoc() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("havoc_worlds.json")) {
+            Ok(snekkie) => {
+                let test_traits = HashMap::from([
+                    ("Background", "Electric White"),
+                    ("Xeno Head Item", "Bandage Orange"),
+                    ("Xeno Weapon", "Plasma Rifle White"),
+                    ("Xeno Bonus Item", "None"),
+                    ("Xeno Base", "Base 1"),
+                    ("Xeno Clothes", "Advance Armour Yellow"),
+                    ("Xeno Marking", "Scar 1"),
+                    ("Xeno Piercing", "Spike"),
+                ])
+                .into_traits();
+                let asset: Asset = snekkie.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "Havoc Worlds #5972");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://QmZaGQemF5noCZZRda6qX4sf2n9cwvPg4H2sRb2CXeGX4k/5972.png"
+                );
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
+
+    #[test]
     fn test_deserialize_working_dead() {
         match serde_json::from_str::<AssetInfoResponse>(&test_case!("workingdead.json")) {
             Ok(snekkie) => {
