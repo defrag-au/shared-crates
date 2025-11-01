@@ -1,0 +1,231 @@
+{
+  "data": {
+    "asset_name": "4861766f63576f726c647334333239",
+    "asset_name_ascii": "HavocWorlds4329",
+    "fingerprint": "asset1ptfpzhzch37y9wshynkqhkkrakyc8ll64dv3j9",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "e63e3df1c697c7c7859fb7e5f762fb7a75e17cad6935491ec802149a9d21b21d",
+      "slot": 58729444,
+      "timestamp": "2022-04-18 15:28:55",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "7c65b752c1058d71e21666e6e1f2e1e21dfddc532dd367dcc9dfdd29e1e3276d",
+      "slot": 72995181,
+      "timestamp": "2022-09-30 18:11:12",
+      "amount": "1"
+    },
+    "mint_tx_count": 2,
+    "burn_tx_count": 1,
+    "asset_standards": {
+      "cip25_metadata": {
+        "credits": [
+          {
+            "animation": "@justinmanzo"
+          },
+          {
+            "audio track": "Greyskull"
+          },
+          {
+            "artist": "Wamza_"
+          }
+        ],
+        "description": [
+          "The Day of the Machia is here! Show off your new threads and ",
+          "armaments in the parades and festivities as we celebrate the ",
+          "elite soldiers bound to serve our people!"
+        ],
+        "files": [
+          {
+            "mediaType": "image/gif",
+            "name": "Havoc Worlds #4329 - Machia (on Arweave)",
+            "src": "ar://dO_fnpCU0Re5sjUH41q4L9-WuIDsqD06YXmwtGxZczk"
+          },
+          {
+            "mediaType": "image/png",
+            "name": "Havoc Worlds #4329 - Machia (on IPFS)",
+            "src": "ipfs://QmerLyuFowuCZgo1DKz1nkNgSztac4AJ2KvR5cD21rpiLR"
+          },
+          {
+            "mediaType": "image/png",
+            "name": "Havoc Worlds #4329 - Machia (on Arweave)",
+            "src": "ar://ACche5M44gZIVLT83ZisREKtnC3yXGy3dmC7juKIoZ4"
+          },
+          {
+            "mediaType": "video/mp4",
+            "name": "Havoc Worlds #4329 - Machia (on IPFS)",
+            "src": "ipfs://QmZLS3P7QXaxwgjVVerRAwJUSFr2HTi3uLbssudJ9S2812"
+          },
+          {
+            "mediaType": "video/mp4",
+            "name": "Havoc Worlds #4329 - Machia (on Arweave)",
+            "src": "ar://4vcKSJVqWs0_izx5NDhyCCxOWGRjO_6vjAvnK9FrVQg"
+          },
+          {
+            "mediaType": "image/png",
+            "name": "Original Havoc Worlds #4329 (on IPFS)",
+            "src": "ipfs://QmUUSN9uERBpBatsjsxLX4bqmZYReMpcFJFNee8MT1rQcr/4329.png"
+          },
+          {
+            "mediaType": "image/png",
+            "name": "Original Havoc Worlds #4329 (on Arweave)",
+            "src": "ar://K1FIeqWSczrmi4lPJ5P0TMphD9qndn4gBoKzp7mA_Ps"
+          }
+        ],
+        "image": "ipfs://QmYtDxto2fvtNXeyjiwyAwGgnFkKvH4gJ12dg5jgQo7BAU",
+        "mediaType": "image/gif",
+        "name": "Havoc Worlds #4329",
+        "properties": [
+          {
+            "Background": "Tech Green"
+          },
+          {
+            "Human Weapon": "Shotgun 1"
+          },
+          {
+            "Male Base": "Male 1"
+          },
+          {
+            "Male Marking": "Brushed Maroon"
+          },
+          {
+            "Male Face": "Bliss"
+          },
+          {
+            "Male Clothes": "Advance Vest Navy"
+          },
+          {
+            "Male Hair": "Faux Hawk Teal"
+          },
+          {
+            "Human Head Item": "Sunglasses Black"
+          },
+          {
+            "Human Piercing": "Spike"
+          },
+          {
+            "Human Bonus Item": "None"
+          }
+        ],
+        "publisher": [
+          "https://havocworlds.io",
+          "https://havocworlds.com",
+          "https://twitter.com/havocworlds"
+        ]
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "1088b361c41f49906645cedeeb7a9ef0e0b793b1a2d24f623ea74876": {
+          "HavocWorlds4329": {
+            "credits": [
+              {
+                "animation": "@justinmanzo"
+              },
+              {
+                "audio track": "Greyskull"
+              },
+              {
+                "artist": "Wamza_"
+              }
+            ],
+            "description": [
+              "The Day of the Machia is here! Show off your new threads and ",
+              "armaments in the parades and festivities as we celebrate the ",
+              "elite soldiers bound to serve our people!"
+            ],
+            "files": [
+              {
+                "mediaType": "image/gif",
+                "name": "Havoc Worlds #4329 - Machia (on Arweave)",
+                "src": "ar://dO_fnpCU0Re5sjUH41q4L9-WuIDsqD06YXmwtGxZczk"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Havoc Worlds #4329 - Machia (on IPFS)",
+                "src": "ipfs://QmerLyuFowuCZgo1DKz1nkNgSztac4AJ2KvR5cD21rpiLR"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Havoc Worlds #4329 - Machia (on Arweave)",
+                "src": "ar://ACche5M44gZIVLT83ZisREKtnC3yXGy3dmC7juKIoZ4"
+              },
+              {
+                "mediaType": "video/mp4",
+                "name": "Havoc Worlds #4329 - Machia (on IPFS)",
+                "src": "ipfs://QmZLS3P7QXaxwgjVVerRAwJUSFr2HTi3uLbssudJ9S2812"
+              },
+              {
+                "mediaType": "video/mp4",
+                "name": "Havoc Worlds #4329 - Machia (on Arweave)",
+                "src": "ar://4vcKSJVqWs0_izx5NDhyCCxOWGRjO_6vjAvnK9FrVQg"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Original Havoc Worlds #4329 (on IPFS)",
+                "src": "ipfs://QmUUSN9uERBpBatsjsxLX4bqmZYReMpcFJFNee8MT1rQcr/4329.png"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Original Havoc Worlds #4329 (on Arweave)",
+                "src": "ar://K1FIeqWSczrmi4lPJ5P0TMphD9qndn4gBoKzp7mA_Ps"
+              }
+            ],
+            "image": "ipfs://QmYtDxto2fvtNXeyjiwyAwGgnFkKvH4gJ12dg5jgQo7BAU",
+            "mediaType": "image/gif",
+            "name": "Havoc Worlds #4329",
+            "properties": [
+              {
+                "Background": "Tech Green"
+              },
+              {
+                "Human Weapon": "Shotgun 1"
+              },
+              {
+                "Male Base": "Male 1"
+              },
+              {
+                "Male Marking": "Brushed Maroon"
+              },
+              {
+                "Male Face": "Bliss"
+              },
+              {
+                "Male Clothes": "Advance Vest Navy"
+              },
+              {
+                "Male Hair": "Faux Hawk Teal"
+              },
+              {
+                "Human Head Item": "Sunglasses Black"
+              },
+              {
+                "Human Piercing": "Spike"
+              },
+              {
+                "Human Bonus Item": "None"
+              }
+            ],
+            "publisher": [
+              "https://havocworlds.io",
+              "https://havocworlds.com",
+              "https://twitter.com/havocworlds"
+            ]
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-11-01 04:13:09",
+    "block_hash": "a4d5d2200b5068ad1f6dd96054c76caf6e205bc40f742a4614073d189c68ccd9",
+    "block_slot": 170404098
+  }
+}

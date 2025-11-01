@@ -526,6 +526,7 @@ impl From<AssetV2> for Asset {
         Self {
             name: asset_v2.name,
             image: asset_v2.image,
+            media_type: asset_v2.media_type,
             traits: asset_v2.traits,
             rarity_rank: asset_v2.rarity_rank,
             tags: asset_v2.tags,
@@ -540,6 +541,7 @@ impl AssetV2 {
             id,
             name: asset.name,
             image: asset.image,
+            media_type: asset.media_type,
             traits: asset.traits,
             rarity_rank: asset.rarity_rank,
             tags: asset.tags,
@@ -551,6 +553,7 @@ impl AssetV2 {
         id: AssetId,
         name: String,
         image: String,
+        media_type: Option<String>,
         traits: crate::Traits,
         rarity_rank: Option<u32>,
         tags: Vec<crate::AssetTag>,
@@ -559,6 +562,7 @@ impl AssetV2 {
             id,
             name,
             image,
+            media_type,
             traits,
             rarity_rank,
             tags,
@@ -572,17 +576,20 @@ impl From<AssetMetadata> for Asset {
             AssetMetadata::Attributed {
                 name,
                 image,
+                media_type,
                 traits,
                 ..
             }
             | AssetMetadata::Flattened {
                 name,
                 image,
+                media_type,
                 traits,
                 ..
             } => Self {
                 name,
                 image: get_image_url(image),
+                media_type,
                 traits,
                 rarity_rank: None,
                 tags: vec![],
@@ -590,6 +597,7 @@ impl From<AssetMetadata> for Asset {
             AssetMetadata::AttributeArray {
                 name,
                 image,
+                media_type,
                 traits: trait_vector,
                 ..
             } => {
@@ -603,6 +611,7 @@ impl From<AssetMetadata> for Asset {
                 Self {
                     name,
                     image: get_image_url(image),
+                    media_type,
                     traits,
                     rarity_rank: None,
                     tags: vec![],
@@ -611,6 +620,7 @@ impl From<AssetMetadata> for Asset {
             AssetMetadata::CodifiedTraits {
                 name,
                 image,
+                media_type,
                 traits: trait_vector,
                 ..
             } => {
@@ -622,6 +632,7 @@ impl From<AssetMetadata> for Asset {
                 Self {
                     name,
                     image: get_image_url(image),
+                    media_type,
                     traits,
                     rarity_rank: None,
                     tags: vec![],
@@ -630,6 +641,7 @@ impl From<AssetMetadata> for Asset {
             AssetMetadata::FlattenedMixed {
                 name,
                 image,
+                media_type,
                 raw_traits,
                 ..
             } => {
@@ -682,6 +694,7 @@ impl From<AssetMetadata> for Asset {
                 Self {
                     name,
                     image: get_image_url(image),
+                    media_type,
                     traits,
                     rarity_rank: None,
                     tags: vec![],

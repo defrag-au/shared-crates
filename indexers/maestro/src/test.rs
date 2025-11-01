@@ -208,6 +208,40 @@ mod tests {
                     asset.image,
                     "ipfs://QmZaGQemF5noCZZRda6qX4sf2n9cwvPg4H2sRb2CXeGX4k/5972.png"
                 );
+                assert_eq!(asset.media_type, Some("image/png".to_string()));
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
+
+    #[test]
+    fn test_deserialize_havoc_gif() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("havoc_worlds_gif.json")) {
+            Ok(cnft) => {
+                let test_traits = HashMap::from([
+                    ("Background", "Tech Green"),
+                    ("Male Hair", "Faux Hawk Teal"),
+                    ("Male Face", "Bliss"),
+                    ("Human Piercing", "Spike"),
+                    ("Human Bonus Item", "None"),
+                    ("Male Clothes", "Advance Vest Navy"),
+                    ("Human Head Item", "Sunglasses Black"),
+                    ("Human Weapon", "Shotgun 1"),
+                    ("Male Marking", "Brushed Maroon"),
+                    ("Male Base", "Male 1"),
+                ])
+                .into_traits();
+                let asset: Asset = cnft.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "Havoc Worlds #4329");
+                assert_eq!(asset.media_type, Some("image/gif".to_string()));
+                assert_eq!(
+                    asset.image,
+                    "ipfs://QmYtDxto2fvtNXeyjiwyAwGgnFkKvH4gJ12dg5jgQo7BAU"
+                );
                 assert_eq!(asset.traits, test_traits);
             }
             Err(err) => {
