@@ -106,6 +106,7 @@ pub enum AssetMetadata {
         #[serde(alias = "mediaType")]
         media_type: Option<String>,
         collection: Option<String>,
+        files: Option<Vec<AssetFile>>,
         #[serde(alias = "Discord")]
         discord: Option<String>,
         #[serde(alias = "Twitter")]
@@ -174,6 +175,7 @@ pub enum AssetMetadata {
         #[serde(alias = "mediaType")]
         media_type: Option<String>,
         project: Option<String>,
+        files: Option<Vec<AssetFile>>,
         #[serde(alias = "Discord")]
         discord: Option<String>,
         #[serde(alias = "Twitter")]
@@ -591,6 +593,18 @@ impl AssetMetadata {
                 image,
                 files,
                 ..
+            }
+            | AssetMetadata::CodifiedTraits {
+                media_type,
+                image,
+                files,
+                ..
+            }
+            | AssetMetadata::AttributeArray {
+                media_type,
+                image,
+                files,
+                ..
             } => {
                 // If top-level media_type exists, use it
                 if media_type.is_some() {
@@ -609,8 +623,6 @@ impl AssetMetadata {
 
                 None
             }
-            AssetMetadata::AttributeArray { media_type, .. }
-            | AssetMetadata::CodifiedTraits { media_type, .. } => media_type.clone(),
         }
     }
 }
