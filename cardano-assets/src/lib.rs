@@ -570,26 +570,72 @@ impl AssetV2 {
     }
 }
 
+impl AssetMetadata {
+    /// Extract media_type, falling back to files array if not specified at top level
+    fn extract_media_type(&self) -> Option<String> {
+        match self {
+            AssetMetadata::Attributed {
+                media_type,
+                image,
+                files,
+                ..
+            }
+            | AssetMetadata::Flattened {
+                media_type,
+                image,
+                files,
+                ..
+            }
+            | AssetMetadata::FlattenedMixed {
+                media_type,
+                image,
+                files,
+                ..
+            } => {
+                // If top-level media_type exists, use it
+                if media_type.is_some() {
+                    return media_type.clone();
+                }
+
+                // Otherwise, try to find matching file in files array
+                if let Some(file_list) = files {
+                    let image_url = get_image_url(image.clone());
+                    for file in file_list {
+                        if file.get_src() == image_url {
+                            return Some(file.media_type().to_string());
+                        }
+                    }
+                }
+
+                None
+            }
+            AssetMetadata::AttributeArray { media_type, .. }
+            | AssetMetadata::CodifiedTraits { media_type, .. } => media_type.clone(),
+        }
+    }
+}
+
 impl From<AssetMetadata> for Asset {
     fn from(value: AssetMetadata) -> Self {
+        // Extract media_type (with files fallback) before consuming value
+        let extracted_media_type = value.extract_media_type();
+
         match value {
             AssetMetadata::Attributed {
                 name,
                 image,
-                media_type,
                 traits,
                 ..
             }
             | AssetMetadata::Flattened {
                 name,
                 image,
-                media_type,
                 traits,
                 ..
             } => Self {
                 name,
                 image: get_image_url(image),
-                media_type,
+                media_type: extracted_media_type,
                 traits,
                 rarity_rank: None,
                 tags: vec![],
@@ -597,7 +643,6 @@ impl From<AssetMetadata> for Asset {
             AssetMetadata::AttributeArray {
                 name,
                 image,
-                media_type,
                 traits: trait_vector,
                 ..
             } => {
@@ -611,7 +656,7 @@ impl From<AssetMetadata> for Asset {
                 Self {
                     name,
                     image: get_image_url(image),
-                    media_type,
+                    media_type: extracted_media_type,
                     traits,
                     rarity_rank: None,
                     tags: vec![],
@@ -620,7 +665,6 @@ impl From<AssetMetadata> for Asset {
             AssetMetadata::CodifiedTraits {
                 name,
                 image,
-                media_type,
                 traits: trait_vector,
                 ..
             } => {
@@ -632,7 +676,7 @@ impl From<AssetMetadata> for Asset {
                 Self {
                     name,
                     image: get_image_url(image),
-                    media_type,
+                    media_type: extracted_media_type,
                     traits,
                     rarity_rank: None,
                     tags: vec![],
@@ -641,7 +685,6 @@ impl From<AssetMetadata> for Asset {
             AssetMetadata::FlattenedMixed {
                 name,
                 image,
-                media_type,
                 raw_traits,
                 ..
             } => {
@@ -694,7 +737,7 @@ impl From<AssetMetadata> for Asset {
                 Self {
                     name,
                     image: get_image_url(image),
-                    media_type,
+                    media_type: extracted_media_type,
                     traits,
                     rarity_rank: None,
                     tags: vec![],
