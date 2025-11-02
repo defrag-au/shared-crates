@@ -152,6 +152,37 @@ mod tests {
     }
 
     #[test]
+    fn test_deserialize_jrnyclub() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("jrnyclub.json")) {
+            Ok(nft) => {
+                let test_traits = HashMap::from([
+                    ("Background", "Matte Gray 1"),
+                    ("Element", "Air"),
+                    ("Eyes", "Determined Eye"),
+                    ("Head", "Windbreak Technician Head"),
+                    ("Implants", "Implant Design 5"),
+                    ("Mouth", "Happy Mouth"),
+                    ("Outfit", "Corpo Nepo Outfit"),
+                    ("Skill", "None"),
+                    ("tokenId", "4471"), // Extra field included as trait
+                ])
+                .into_traits();
+                let asset: Asset = nft.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "#4471");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://QmdJZi8J4hASwFj59Dm396NtWoBFcsX2tJwXfruooo5Xas"
+                );
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
+
+    #[test]
     fn test_deserialize_mallard() {
         match serde_json::from_str::<AssetInfoResponse>(&test_case!("mallard.json")) {
             Ok(snekkie) => {
@@ -408,7 +439,7 @@ mod tests {
                     ("Outfit", "Stockbroker"),
                     ("Hats", "Spiky Blue Hair"),
                     ("Mouth", "Safety Pin"),
-                    ("Earring", "GM"),
+                    ("Earring", "GM"), // Note: actual data has trailing space but into_traits() trims it
                     ("Eyenose", "Lowbrow"),
                 ])
                 .into_traits();
@@ -605,6 +636,45 @@ mod tests {
     }
 
     #[test]
+    fn test_deserialize_zenflow() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("zenflow.json")) {
+            Ok(deserialized) => {
+                let test_traits = HashMap::from([
+                    // Properties (explicit traits)
+                    ("Agents", "Sweep"),
+                    ("Coupling", "Tight"),
+                    ("Crytaline", "Natural"),
+                    ("Draw", "Normal"),
+                    ("Filter", "Etheric"),
+                    ("Form", "Neg Spiral"),
+                    ("Palette", "P4"),
+                    ("Rows", "Narrow"),
+                    ("Waves", "W1"),
+                    // Extra metadata fields merged as traits
+                    ("artist", "Charles Machin - @CM_GenArt"),
+                    ("authNFT", "asset13as3a4t954ru7vhzy6pldse3qu8e7la2xgsr7u"),
+                    ("seed", "13719"),
+                    ("vendor", "BlockGen.art"),
+                    ("piece", "109"),
+                    ("medium", "Fully On-Chain BlockGen.Art Canvas"),
+                ])
+                .into_traits();
+                let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "Zen Flow 109");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://Qmd7CZdPpYjZe8MuRRt4McvPUWWCK7bbhBcnYg8ZkZrqjf"
+                );
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
+
+    #[test]
     fn test_deserialize_nikeverse_reference() {
         match serde_json::from_str::<AssetInfoResponse>(&test_case!("nikeverse_reference_nft.json"))
         {
@@ -725,6 +795,203 @@ mod tests {
                     deserialized.next_cursor,
                     Some("UGFuZGFTb2NpZXR5MDA5OQ".to_string())
                 );
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
+
+    #[test]
+    fn test_deserialize_spacebud() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("spacebud.json")) {
+            Ok(deserialized) => {
+                let test_traits = HashMap::from([
+                    ("type", "Cat"),
+                    ("traits", "Chestplate, Belt, X-Ray"), // Array joined as single trait
+                ])
+                .into_traits();
+                let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "SpaceBud #6023");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://bafkreig7mg6hfifafo6agma4s2nmkwbdvxdbqkjyyrzd5meqkoqsr2c5xq"
+                );
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
+
+    #[test]
+    fn test_deserialize_derpbird() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("derpbird.json")) {
+            Ok(deserialized) => {
+                let test_traits = HashMap::from([
+                    ("Back", "Stoner"),
+                    ("Background", "Red"),
+                    ("Beak", "DJ"),
+                    ("Body", "Astro"),
+                    ("Color", "Orange"),
+                    ("Ears", "Redneck"),
+                    ("Eyes", "Redneck"),
+                    ("Head", "Dave"),
+                    ("Perfect Specimen", "No"),
+                    ("Power Level", "Undetermined"),
+                    ("Rarity", "Common"),
+                    ("Tail", "Redneck"),
+                    ("series", "2"), // Extra field included as trait
+                ])
+                .into_traits();
+                let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "Derp Bird #03821");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://Qma39EUpdgYqbSEKwwdYHDgAP221yQh19nBDzBAkvxeigE"
+                );
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
+
+    #[test]
+    fn test_deserialize_claynation() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("claynation.json")) {
+            Ok(deserialized) => {
+                let test_traits = HashMap::from([
+                    ("accessories", "ClayPods"),
+                    ("background", "Lilac"),
+                    ("body", "Tan Clay"),
+                    ("brows", "Normal Eyebrows"),
+                    ("clothes", "White Vest"),
+                    ("eyes", "Love Glasses"),
+                    ("hats and hair", "Clay Nation Cap"),
+                    ("mouth", "Fly Tounge"),
+                ])
+                .into_traits();
+                let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "Clay Nation #7103");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://QmbQZWhCkyazGHENa5Tzb3SnkjyPJJ8EFhXhds7jNMWVHN"
+                );
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
+
+    #[test]
+    fn test_deserialize_unsig() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("unsig.json")) {
+            Ok(deserialized) => {
+                let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "unsig_12948");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://QmTeADGJVJSmzpa2AceMdZBDwzMf3w4BLAgqwx5ZZbw4cm"
+                );
+
+                // Check traits
+                let traits = asset.traits.inner();
+                assert_eq!(
+                    traits.get("series"),
+                    Some(&vec!["unsigned_algorithms".to_string()])
+                );
+                assert_eq!(traits.get("index"), Some(&vec!["12948".to_string()]));
+                assert_eq!(traits.get("num_props"), Some(&vec!["5".to_string()]));
+                assert_eq!(
+                    traits.get("colors"),
+                    Some(&vec![
+                        "Blue".to_string(),
+                        "Red".to_string(),
+                        "Green".to_string(),
+                        "Green".to_string(),
+                        "Red".to_string()
+                    ])
+                );
+                assert_eq!(
+                    traits.get("distributions"),
+                    Some(&vec![
+                        "CDF".to_string(),
+                        "CDF".to_string(),
+                        "CDF".to_string(),
+                        "CDF".to_string(),
+                        "CDF".to_string()
+                    ])
+                );
+                assert_eq!(
+                    traits.get("multipliers"),
+                    Some(&vec![
+                        "0.5".to_string(),
+                        "1".to_string(),
+                        "2".to_string(),
+                        "2".to_string(),
+                        "4".to_string()
+                    ])
+                );
+                assert_eq!(
+                    traits.get("rotations"),
+                    Some(&vec![
+                        "90".to_string(),
+                        "0".to_string(),
+                        "0".to_string(),
+                        "270".to_string(),
+                        "270".to_string()
+                    ])
+                );
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
+
+    #[test]
+    fn test_deserialize_blockowls() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("blockowls.json")) {
+            Ok(deserialized) => {
+                let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "BlockOwls Razz");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://QmYocqqczwZx9tA2r4YmCrzsefg7GeeUwjRWzRoN8bPcVX"
+                );
+
+                // Check parsed colon-delimited traits
+                let traits = asset.traits.inner();
+                assert_eq!(traits.get("State"), Some(&vec!["Delusional".to_string()]));
+                assert_eq!(
+                    traits.get("Body Shape"),
+                    Some(&vec!["ModifiedBlock".to_string()])
+                );
+                assert_eq!(
+                    traits.get("Main Material"),
+                    Some(&vec!["Silicone".to_string()])
+                );
+                assert_eq!(
+                    traits.get("Display Box Base"),
+                    Some(&vec!["BlackCardboard+Styrofoam".to_string()])
+                );
+                assert_eq!(
+                    traits.get("Display Box Glass"),
+                    Some(&vec!["PlainPlexi".to_string()])
+                );
+                assert_eq!(traits.get("Gender"), Some(&vec!["Female".to_string()]));
+                assert_eq!(traits.get("number"), Some(&vec!["78".to_string()]));
+                assert_eq!(traits.get("rarity"), Some(&vec!["Common".to_string()]));
             }
             Err(err) => {
                 println!("encountered decoding error: {err:?}");

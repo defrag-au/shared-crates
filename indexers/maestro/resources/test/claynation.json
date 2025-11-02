@@ -1,0 +1,67 @@
+{
+  "data": {
+    "asset_name": "436c61794e6174696f6e37313033",
+    "asset_name_ascii": "ClayNation7103",
+    "fingerprint": "asset1a32sjyhzw47akl0a954ennxjpnjcfpr7s3w9dw",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "ebdd26adc6c3a440b4802af6690b26523b0df03879a1f24db949028a45bdd9d5",
+      "slot": 39648752,
+      "timestamp": "2021-09-09 19:17:23",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "ebdd26adc6c3a440b4802af6690b26523b0df03879a1f24db949028a45bdd9d5",
+      "slot": 39648752,
+      "timestamp": "2021-09-09 19:17:23",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "Project": "Clay Nation by Clay Mates",
+        "accessories": "ClayPods",
+        "background": "Lilac",
+        "body": "Tan Clay",
+        "brows": "Normal Eyebrows",
+        "clothes": "White Vest",
+        "eyes": "Love Glasses",
+        "hats and hair": "Clay Nation Cap",
+        "image": "ipfs://QmbQZWhCkyazGHENa5Tzb3SnkjyPJJ8EFhXhds7jNMWVHN",
+        "mouth": "Fly Tounge",
+        "name": "Clay Nation #7103"
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "40fa2aa67258b4ce7b5782f74831d46a84c59a0ff0c28262fab21728": {
+          "ClayNation7103": {
+            "Project": "Clay Nation by Clay Mates",
+            "accessories": "ClayPods",
+            "background": "Lilac",
+            "body": "Tan Clay",
+            "brows": "Normal Eyebrows",
+            "clothes": "White Vest",
+            "eyes": "Love Glasses",
+            "hats and hair": "Clay Nation Cap",
+            "image": "ipfs://QmbQZWhCkyazGHENa5Tzb3SnkjyPJJ8EFhXhds7jNMWVHN",
+            "mouth": "Fly Tounge",
+            "name": "Clay Nation #7103"
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-11-02 07:27:52",
+    "block_hash": "e15f7aa31ec09cca4828331e8ce63e082394e09e2e157cc44dde8385b693c8a9",
+    "block_slot": 170502181
+  }
+}

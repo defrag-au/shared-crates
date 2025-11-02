@@ -64,8 +64,8 @@ impl From<PrimitiveOrList<String>> for String {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-#[serde(rename_all = "camelCase")]
 pub struct AssetFile {
+    #[serde(alias = "mediatype", rename = "mediaType")]
     media_type: String,
     name: Option<String>,
     src: PrimitiveOrList<String>,
@@ -114,7 +114,22 @@ pub enum AssetMetadata {
         #[serde(alias = "Website")]
         website: Option<String>,
         traits: Vec<CodifiedTrait>,
-    }, // known projects
+    },
+    // known projects:
+    // - unsigned_algorithms
+    UnsignedAlgorithms {
+        #[serde(alias = "name")]
+        title: String,
+        image: PrimitiveOrList<String>,
+        #[serde(alias = "mediaType")]
+        media_type: Option<String>,
+        files: Option<Vec<AssetFile>>,
+        series: Option<String>,
+        source_key: Vec<String>,
+        source_tx_id: Option<String>,
+        unsigs: UnsigData,
+    },
+    // known projects
     // - snekkies
     Attributed {
         name: String,
@@ -134,11 +149,12 @@ pub enum AssetMetadata {
         website: Option<String>,
         minter: Option<String>,
 
-        #[serde(alias = "attributes", alias = "Attributes")]
+        #[serde(alias = "attributes", alias = "Attributes", alias = "properties")]
         traits: Traits,
 
+        // Accept any extra fields (like tokenId, version, etc) as JSON values
         #[serde(flatten)]
-        extra: HashMap<String, String>,
+        extra: HashMap<String, serde_json::Value>,
     },
     // known projects
     // - black flag, aquafarmers
@@ -165,8 +181,36 @@ pub enum AssetMetadata {
         #[serde(alias = "Medium")]
         medium: Option<PrimitiveOrList<String>>,
 
+        // Metadata fields that aren't traits
+        sha256: Option<String>,
+        url: Option<String>,
+
         #[serde(flatten)]
         traits: Traits,
+    },
+    // known projects:
+    // - blockowls (and potentially other 3D/collectible formats)
+    ColonDelimitedAttributes {
+        name: String,
+        image: PrimitiveOrList<String>,
+        #[serde(alias = "mediaType")]
+        media_type: Option<String>,
+        #[serde(alias = "Project")]
+        project: Option<String>,
+        files: Option<Vec<AssetFile>>,
+
+        #[serde(alias = "Website")]
+        website: Option<String>,
+
+        number: Option<u32>,
+        rarity: Option<String>,
+
+        #[serde(alias = "Attributes")]
+        attributes: Vec<String>,
+
+        // Catch any other metadata fields
+        #[serde(flatten)]
+        extra: HashMap<String, serde_json::Value>,
     },
     // known projects:
     // - mallard order
@@ -211,6 +255,14 @@ pub enum AssetMetadata {
         #[serde(flatten)]
         raw_traits: HashMap<String, serde_json::Value>,
     },
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct UnsigData {
+    pub index: u32,
+    pub num_props: u32,
+    pub properties: Traits,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -601,7 +653,19 @@ impl AssetMetadata {
                 files,
                 ..
             }
+            | AssetMetadata::ColonDelimitedAttributes {
+                media_type,
+                image,
+                files,
+                ..
+            }
             | AssetMetadata::AttributeArray {
+                media_type,
+                image,
+                files,
+                ..
+            }
+            | AssetMetadata::UnsignedAlgorithms {
                 media_type,
                 image,
                 files,
@@ -638,9 +702,22 @@ impl From<AssetMetadata> for Asset {
                 name,
                 image,
                 traits,
+                extra,
                 ..
+            } => {
+                // Merge extra fields (like artist, seed, vendor, etc.) into traits
+                let merged_traits = merge_extra_fields_into_traits(traits, extra);
+
+                Self {
+                    name,
+                    image: get_image_url(image),
+                    media_type: extracted_media_type,
+                    traits: merged_traits,
+                    rarity_rank: None,
+                    tags: vec![],
+                }
             }
-            | AssetMetadata::Flattened {
+            AssetMetadata::Flattened {
                 name,
                 image,
                 traits,
@@ -653,6 +730,42 @@ impl From<AssetMetadata> for Asset {
                 rarity_rank: None,
                 tags: vec![],
             },
+            AssetMetadata::ColonDelimitedAttributes {
+                name,
+                image,
+                attributes,
+                number,
+                rarity,
+                ..
+            } => {
+                let mut traits = Traits::new();
+
+                // Parse colon-delimited strings like "State: Delusional" into key-value pairs
+                for attr in attributes {
+                    if let Some((key, value)) = attr.split_once(':') {
+                        let key = key.trim().to_string();
+                        let value = value.trim().to_string();
+                        traits.insert_single(key, value);
+                    }
+                }
+
+                // Add number and rarity if present
+                if let Some(n) = number {
+                    traits.insert_single("number".to_string(), n.to_string());
+                }
+                if let Some(r) = rarity {
+                    traits.insert_single("rarity".to_string(), r);
+                }
+
+                Self {
+                    name,
+                    image: get_image_url(image),
+                    media_type: extracted_media_type,
+                    traits,
+                    rarity_rank: None,
+                    tags: vec![],
+                }
+            }
             AssetMetadata::AttributeArray {
                 name,
                 image,
@@ -701,54 +814,51 @@ impl From<AssetMetadata> for Asset {
                 raw_traits,
                 ..
             } => {
-                let mut traits: Traits = Traits::new();
-
-                // Convert all raw_traits Values to strings
-                for (key, value) in raw_traits {
-                    // Skip metadata fields that shouldn't be traits
-                    let key_lower = key.to_lowercase();
-                    if matches!(
-                        key_lower.as_str(),
-                        "name"
-                            | "image"
-                            | "description"
-                            | "project"
-                            | "twitter"
-                            | "website"
-                            | "discord"
-                            | "github"
-                            | "medium"
-                            | "mediatype"
-                    ) {
-                        continue;
-                    }
-
-                    let string_value = match value {
-                        serde_json::Value::String(s) => s,
-                        serde_json::Value::Number(n) => n.to_string(),
-                        serde_json::Value::Bool(b) => b.to_string(),
-                        serde_json::Value::Array(arr) => {
-                            // Handle arrays by joining string elements
-                            arr.into_iter()
-                                .filter_map(|v| match v {
-                                    serde_json::Value::String(s) => Some(s),
-                                    serde_json::Value::Number(n) => Some(n.to_string()),
-                                    serde_json::Value::Bool(b) => Some(b.to_string()),
-                                    _ => None,
-                                })
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        }
-                        _ => continue, // Skip null or complex objects
-                    };
-
-                    if !string_value.is_empty() {
-                        traits.insert_single(key, string_value);
-                    }
-                }
+                // All extra fields become traits
+                let traits = merge_extra_fields_into_traits(Traits::new(), raw_traits);
 
                 Self {
                     name,
+                    image: get_image_url(image),
+                    media_type: extracted_media_type,
+                    traits,
+                    rarity_rank: None,
+                    tags: vec![],
+                }
+            }
+            AssetMetadata::UnsignedAlgorithms {
+                title,
+                image,
+                unsigs,
+                series,
+                source_key,
+                source_tx_id,
+                ..
+            } => {
+                // Convert unsigs data to traits
+                let mut traits = Traits::new();
+
+                // Add series, source_key, source_tx_id as traits
+                if let Some(s) = series {
+                    traits.insert_single("series".to_string(), s);
+                }
+
+                traits.insert_multi("source_key".to_string(), source_key);
+                if let Some(tx_id) = source_tx_id {
+                    traits.insert_single("source_tx_id".to_string(), tx_id);
+                }
+
+                // Add unsigs index and num_props
+                traits.insert_single("index".to_string(), unsigs.index.to_string());
+                traits.insert_single("num_props".to_string(), unsigs.num_props.to_string());
+
+                // Merge properties traits into main traits
+                for (key, values) in unsigs.properties.inner() {
+                    traits.insert_multi(key.clone(), values.clone());
+                }
+
+                Self {
+                    name: title,
                     image: get_image_url(image),
                     media_type: extracted_media_type,
                     traits,
@@ -1020,6 +1130,64 @@ fn get_image_url(input: PrimitiveOrList<String>) -> String {
         PrimitiveOrList::Primitive(val) => val,
         PrimitiveOrList::List(items) => items.join(""),
     }
+}
+
+/// Merge extra metadata fields into traits, filtering out known metadata fields
+fn merge_extra_fields_into_traits(
+    mut traits: Traits,
+    extra_fields: HashMap<String, serde_json::Value>,
+) -> Traits {
+    for (key, value) in extra_fields {
+        // Skip known metadata fields that shouldn't be traits
+        let key_lower = key.to_lowercase();
+        if matches!(
+            key_lower.as_str(),
+            "name"
+                | "image"
+                | "description"
+                | "project"
+                | "twitter"
+                | "website"
+                | "discord"
+                | "github"
+                | "mediatype"
+                | "files"
+                | "minter"
+                | "publisher"
+                | "collection"
+                | "collection name"
+                | "sha256"
+                | "url"
+        ) {
+            continue;
+        }
+
+        // Convert JSON value to string and add as trait
+        let string_value = match value {
+            serde_json::Value::String(s) => s,
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            serde_json::Value::Array(arr) => {
+                // Handle arrays by joining string elements
+                arr.into_iter()
+                    .filter_map(|v| match v {
+                        serde_json::Value::String(s) => Some(s),
+                        serde_json::Value::Number(n) => Some(n.to_string()),
+                        serde_json::Value::Bool(b) => Some(b.to_string()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+            _ => continue, // Skip null or complex objects
+        };
+
+        if !string_value.is_empty() {
+            traits.insert_single(key, string_value);
+        }
+    }
+
+    traits
 }
 
 #[cfg(test)]

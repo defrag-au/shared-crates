@@ -1,0 +1,95 @@
+{
+  "data": {
+    "asset_name": "426c6f636b4f776c7352617a7a303738",
+    "asset_name_ascii": "BlockOwlsRazz078",
+    "fingerprint": "asset1x3j423v6de3vwydq4ym6lplh2n34gctq9cujjk",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "fdb6bebbf2ada7d42be27f06dc396b5773ee8af76af1de5774d7fe16586a348c",
+      "slot": 55549198,
+      "timestamp": "2022-03-12 20:04:49",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "fdb6bebbf2ada7d42be27f06dc396b5773ee8af76af1de5774d7fe16586a348c",
+      "slot": 55549198,
+      "timestamp": "2022-03-12 20:04:49",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "Author/Designer": "Ctoy",
+        "Block Owls ID": "#063",
+        "Chapter": "Chapter 1. GBOiC Part 2 Plutus",
+        "Minted by": "https://tygar-pool.com",
+        "Project": "BlockOwls",
+        "Software": "AI+PS+C4D+RS+AE",
+        "Website": "https://blockowls.io",
+        "attributes": [
+          "State: Delusional",
+          "Body Shape: ModifiedBlock",
+          "Main Material: Silicone",
+          "Display Box Base: BlackCardboard+Styrofoam",
+          "Display Box Glass: PlainPlexi",
+          "Gender : Female"
+        ],
+        "files": [
+          {
+            "mediaType": "video/mp4",
+            "src": "ipfs://QmTcX7Rz89jQBGCPSaU87ffRtcTL94SkBNi1zu9H5gnWZt"
+          }
+        ],
+        "image": "ipfs://QmYocqqczwZx9tA2r4YmCrzsefg7GeeUwjRWzRoN8bPcVX",
+        "name": "BlockOwls Razz",
+        "number": 78,
+        "rarity": "Common"
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "7ea3e7719938f8acd700327d6c9dffd7523a02dce1d9891b5f3a452d": {
+          "BlockOwlsRazz078": {
+            "Author/Designer": "Ctoy",
+            "Block Owls ID": "#063",
+            "Chapter": "Chapter 1. GBOiC Part 2 Plutus",
+            "Minted by": "https://tygar-pool.com",
+            "Project": "BlockOwls",
+            "Software": "AI+PS+C4D+RS+AE",
+            "Website": "https://blockowls.io",
+            "attributes": [
+              "State: Delusional",
+              "Body Shape: ModifiedBlock",
+              "Main Material: Silicone",
+              "Display Box Base: BlackCardboard+Styrofoam",
+              "Display Box Glass: PlainPlexi",
+              "Gender : Female"
+            ],
+            "files": [
+              {
+                "mediaType": "video/mp4",
+                "src": "ipfs://QmTcX7Rz89jQBGCPSaU87ffRtcTL94SkBNi1zu9H5gnWZt"
+              }
+            ],
+            "image": "ipfs://QmYocqqczwZx9tA2r4YmCrzsefg7GeeUwjRWzRoN8bPcVX",
+            "name": "BlockOwls Razz",
+            "number": 78,
+            "rarity": "Common"
+          }
+        }
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-11-02 07:51:03",
+    "block_hash": "a6e2f6fc7ed0983defa2a3b449e0ef4834bcf3d0762954f0b0a57d89304c2fbf",
+    "block_slot": 170503572
+  }
+}

@@ -83,7 +83,10 @@ impl Serialize for Traits {
     }
 }
 
-/// Custom deserializer to handle both old TraitValue format and new Vec<String> format
+/// Custom deserializer to handle multiple formats:
+/// - HashMap<String, Vec<String>> - new canonical format
+/// - HashMap<String, TraitValue> - old format with Single/Multi enum
+/// - HashMap<String, String> - simple string map (most common onchain)
 impl<'de> Deserialize<'de> for Traits {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -92,19 +95,35 @@ impl<'de> Deserialize<'de> for Traits {
         #[derive(Deserialize)]
         #[serde(untagged)]
         enum TraitsFormat {
-            Old(HashMap<String, TraitValue>),
-            New(HashMap<String, Vec<String>>),
+            // Try Vec<String> first (most specific)
+            VecStrings(HashMap<String, Vec<String>>),
+            // Then try plain String (very common for onchain data)
+            PlainStrings(HashMap<String, String>),
+            // Finally try TraitValue (legacy format)
+            TraitValues(HashMap<String, TraitValue>),
         }
 
         let format = TraitsFormat::deserialize(deserializer)?;
 
         match format {
-            TraitsFormat::Old(old_traits) => {
-                // Convert old format to new format
-                let new_traits = old_traits.into_iter().map(|(k, v)| (k, v.into())).collect();
-                Ok(Traits(new_traits))
+            TraitsFormat::VecStrings(map) => Ok(Traits(map)),
+            TraitsFormat::PlainStrings(string_map) => {
+                // Convert HashMap<String, String> to HashMap<String, Vec<String>>
+                // Trim values to normalize data quality issues (trailing spaces, etc)
+                let vec_map = string_map
+                    .into_iter()
+                    .map(|(k, v)| (k, vec![v.trim().to_string()]))
+                    .collect();
+                Ok(Traits(vec_map))
             }
-            TraitsFormat::New(new_traits) => Ok(Traits(new_traits)),
+            TraitsFormat::TraitValues(trait_values) => {
+                // Convert old TraitValue format to new format
+                let vec_map = trait_values
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into()))
+                    .collect();
+                Ok(Traits(vec_map))
+            }
         }
     }
 }

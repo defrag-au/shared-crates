@@ -1,0 +1,460 @@
+{
+  "data": {
+    "asset_name": "44503033383231",
+    "asset_name_ascii": "DP03821",
+    "fingerprint": "asset1f5hf65wkqrrzfvpr3sms8ew3e0x5t2zgvaf652",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "70bf24b901c2be772cf892ff2cb65778c49bb765a53a8863a834e0126e60cc49",
+      "slot": 80674776,
+      "timestamp": "2022-12-28 15:24:27",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "70bf24b901c2be772cf892ff2cb65778c49bb765a53a8863a834e0126e60cc49",
+      "slot": 80674776,
+      "timestamp": "2022-12-28 15:24:27",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "attributes": {
+          "Back": "Stoner",
+          "Background": "Red",
+          "Beak": "DJ",
+          "Body": "Astro",
+          "Color": "Orange",
+          "Ears": "Redneck",
+          "Eyes": "Redneck",
+          "Head": "Dave",
+          "Perfect Specimen": "No",
+          "Power Level": "Undetermined",
+          "Rarity": "Common",
+          "Tail": "Redneck"
+        },
+        "files": [
+          {
+            "mediaType": "image/png",
+            "name": "Rebirth",
+            "src": "ipfs://Qma39EUpdgYqbSEKwwdYHDgAP221yQh19nBDzBAkvxeigE"
+          },
+          {
+            "mediaType": "image/png",
+            "name": "OG",
+            "src": "ipfs://Qmbpi8fmDxwLJcWFz1KtZD2jfEPwq9mswLgWNx9sA9Kd7L"
+          },
+          {
+            "mediaType": "image/png",
+            "name": "Head",
+            "src": "ipfs://QmRLuRQgHpCqEThpMxXTv6zjzD1E7h1Kqu6SFGwCHanjFX"
+          }
+        ],
+        "image": "ipfs://Qma39EUpdgYqbSEKwwdYHDgAP221yQh19nBDzBAkvxeigE",
+        "mediaType": "image/png",
+        "name": "Derp Bird #03821",
+        "series": 2,
+        "url": "derpbirds.io"
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "e74862a09d17a9cb03174a6bd5fa305b8684475c4c36021591c606e0": {
+          "DP02918": {
+            "attributes": {
+              "Back": "Redneck",
+              "Background": "Fushia",
+              "Beak": "Magic",
+              "Body": "Stoner",
+              "Color": "Orange",
+              "Ears": "DJ",
+              "Eyes": "Dave",
+              "Head": "Viking",
+              "Perfect Specimen": "No",
+              "Power Level": "Undetermined",
+              "Rarity": "Uncommon",
+              "Tail": "Magic"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Rebirth",
+                "src": "ipfs://QmZrH2kD7AW1hcVgg9TsSawQ9Yvrbta2d9wQBjNJ8JUxiY"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "OG",
+                "src": "ipfs://QmNjDFYMxHSYBsuTraJNU5vF7gZ92UwUJ3DyzzzBENVkna"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Head",
+                "src": "ipfs://QmauMUJdNjsHiwGNtRHhZb6ZTBKPDkqov7HsvbJ4zELpEN"
+              }
+            ],
+            "image": "ipfs://QmZrH2kD7AW1hcVgg9TsSawQ9Yvrbta2d9wQBjNJ8JUxiY",
+            "mediaType": "image/png",
+            "name": "Derp Bird #02918",
+            "series": 2,
+            "url": "derpbirds.io"
+          },
+          "DP03291": {
+            "attributes": {
+              "Back": "DJ",
+              "Background": "Red",
+              "Beak": "DJ",
+              "Body": "Dave",
+              "Color": "Orange",
+              "Ears": "Viking",
+              "Eyes": "Astro",
+              "Head": "Astro",
+              "Perfect Specimen": "No",
+              "Power Level": "Undetermined",
+              "Rarity": "Common",
+              "Tail": "Astro"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Rebirth",
+                "src": "ipfs://QmNVjQxAoRfbZN4ZsiwScf1Wo9JUPYHHZLy4DHNHJSfXRg"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "OG",
+                "src": "ipfs://QmWgN9obhWPads4xzhWmLjk5JVaH9pi6Hyv68FFGDXj5wQ"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Head",
+                "src": "ipfs://QmbbCaf6SqSYJQ1737r5mKXyAgfeWBZfjxCye6Q4YwPMRJ"
+              }
+            ],
+            "image": "ipfs://QmNVjQxAoRfbZN4ZsiwScf1Wo9JUPYHHZLy4DHNHJSfXRg",
+            "mediaType": "image/png",
+            "name": "Derp Bird #03291",
+            "series": 2,
+            "url": "derpbirds.io"
+          },
+          "DP03299": {
+            "attributes": {
+              "Back": "Redneck",
+              "Background": "Black",
+              "Beak": "DJ",
+              "Body": "Redneck",
+              "Color": "Cyan",
+              "Ears": "Stoner",
+              "Eyes": "Redneck",
+              "Head": "Magic",
+              "Perfect Specimen": "No",
+              "Power Level": "Undetermined",
+              "Rarity": "Common",
+              "Tail": "Magic"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Rebirth",
+                "src": "ipfs://QmeeHTLctGQPu9KNvVjyyLkRkS6BKFsnh6hq365DCeqgrL"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "OG",
+                "src": "ipfs://QmcW5REE4YcgE7Wby2Tyg3BvwkHDhAaKWoALoY4LixEg4B"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Head",
+                "src": "ipfs://QmdJhWJvDwyGs2ywcCENgy1Hv7VA4YprvEAgDweY7Voa67"
+              }
+            ],
+            "image": "ipfs://QmeeHTLctGQPu9KNvVjyyLkRkS6BKFsnh6hq365DCeqgrL",
+            "mediaType": "image/png",
+            "name": "Derp Bird #03299",
+            "series": 2,
+            "url": "derpbirds.io"
+          },
+          "DP03350": {
+            "attributes": {
+              "Back": "DJ",
+              "Background": "Fushia",
+              "Beak": "Astro",
+              "Body": "Redneck",
+              "Color": "Cyan",
+              "Ears": "Dave",
+              "Eyes": "Redneck",
+              "Head": "Stoner",
+              "Perfect Specimen": "No",
+              "Power Level": "Undetermined",
+              "Rarity": "Common",
+              "Tail": "Redneck"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Rebirth",
+                "src": "ipfs://QmYM4zTVsEJaFyZeXVRznUqup3gPuRJsBPy9JbgfFWRc48"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "OG",
+                "src": "ipfs://QmZN7PiS9ksQm38JHEFK9vFfV7PUvNFaZP55envrVVc3rF"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Head",
+                "src": "ipfs://Qmcsk8x31tEaJ8LCcoKrndqgUaguiudaCZp12yG2XLCEaw"
+              }
+            ],
+            "image": "ipfs://QmYM4zTVsEJaFyZeXVRznUqup3gPuRJsBPy9JbgfFWRc48",
+            "mediaType": "image/png",
+            "name": "Derp Bird #03350",
+            "series": 2,
+            "url": "derpbirds.io"
+          },
+          "DP03683": {
+            "attributes": {
+              "Back": "Ninja",
+              "Background": "Orange",
+              "Beak": "Stoner",
+              "Body": "DJ",
+              "Color": "Yellow",
+              "Ears": "DJ",
+              "Eyes": "Viking",
+              "Head": "Ninja",
+              "Perfect Specimen": "No",
+              "Power Level": "Undetermined",
+              "Rarity": "Uncommon",
+              "Tail": "Magic"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Rebirth",
+                "src": "ipfs://QmcNEZtqoAjLo5Vh4AEbdi34foLNJwhQi6CcV1MzD7QXac"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "OG",
+                "src": "ipfs://QmRJend62MovCoZ6yDM8MMLodTmHKgEs7fvmG9nsykAWCV"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Head",
+                "src": "ipfs://Qmcp3ujnGXkCXWq1rVXZupT8rXiz4zzEUP4DHgRYwcp63Z"
+              }
+            ],
+            "image": "ipfs://QmcNEZtqoAjLo5Vh4AEbdi34foLNJwhQi6CcV1MzD7QXac",
+            "mediaType": "image/png",
+            "name": "Derp Bird #03683",
+            "series": 2,
+            "url": "derpbirds.io"
+          },
+          "DP03747": {
+            "attributes": {
+              "Back": "Stoner",
+              "Background": "Black",
+              "Beak": "DJ",
+              "Body": "Magic",
+              "Color": "Lime",
+              "Ears": "Stoner",
+              "Eyes": "Redneck",
+              "Head": "Astro",
+              "Perfect Specimen": "No",
+              "Power Level": "Undetermined",
+              "Rarity": "Common",
+              "Tail": "Ninja"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Rebirth",
+                "src": "ipfs://QmRvnYz7bnZwsZJkaf2VxjfBWvTSoinCEYPLHZupiUPgrs"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "OG",
+                "src": "ipfs://QmPkd2vT8Tmch5MdHJXiZvGH4fgxPtpRefpXWsUa6h5sQ2"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Head",
+                "src": "ipfs://QmYG74As1jPSJV261u7E1TZvbXuAUC9BxM7fhptq9cAjvs"
+              }
+            ],
+            "image": "ipfs://QmRvnYz7bnZwsZJkaf2VxjfBWvTSoinCEYPLHZupiUPgrs",
+            "mediaType": "image/png",
+            "name": "Derp Bird #03747",
+            "series": 2,
+            "url": "derpbirds.io"
+          },
+          "DP03821": {
+            "attributes": {
+              "Back": "Stoner",
+              "Background": "Red",
+              "Beak": "DJ",
+              "Body": "Astro",
+              "Color": "Orange",
+              "Ears": "Redneck",
+              "Eyes": "Redneck",
+              "Head": "Dave",
+              "Perfect Specimen": "No",
+              "Power Level": "Undetermined",
+              "Rarity": "Common",
+              "Tail": "Redneck"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Rebirth",
+                "src": "ipfs://Qma39EUpdgYqbSEKwwdYHDgAP221yQh19nBDzBAkvxeigE"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "OG",
+                "src": "ipfs://Qmbpi8fmDxwLJcWFz1KtZD2jfEPwq9mswLgWNx9sA9Kd7L"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Head",
+                "src": "ipfs://QmRLuRQgHpCqEThpMxXTv6zjzD1E7h1Kqu6SFGwCHanjFX"
+              }
+            ],
+            "image": "ipfs://Qma39EUpdgYqbSEKwwdYHDgAP221yQh19nBDzBAkvxeigE",
+            "mediaType": "image/png",
+            "name": "Derp Bird #03821",
+            "series": 2,
+            "url": "derpbirds.io"
+          },
+          "DP04139": {
+            "attributes": {
+              "Back": "Magic",
+              "Background": "Fushia",
+              "Beak": "Magic",
+              "Body": "Dave",
+              "Color": "Cyan",
+              "Ears": "Dave",
+              "Eyes": "Dave",
+              "Head": "Magic",
+              "Perfect Specimen": "No",
+              "Power Level": "Undetermined",
+              "Rarity": "Common",
+              "Tail": "Magic"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Rebirth",
+                "src": "ipfs://QmTje4f9UemBwwmf3LQ1ns1p7nWvtD1DjchpHrW7FAYvNN"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "OG",
+                "src": "ipfs://QmcZC68NZ77LvZqFjqvu2E1HpWETdHzv353aBMJGb8yDXq"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Head",
+                "src": "ipfs://QmQweqZWP2mQNmz1kSiDd8MSaDQhjxt9RQbEegSqUGGRkU"
+              }
+            ],
+            "image": "ipfs://QmTje4f9UemBwwmf3LQ1ns1p7nWvtD1DjchpHrW7FAYvNN",
+            "mediaType": "image/png",
+            "name": "Derp Bird #04139",
+            "series": 2,
+            "url": "derpbirds.io"
+          },
+          "DP04316": {
+            "attributes": {
+              "Back": "Redneck",
+              "Background": "Red",
+              "Beak": "Magic",
+              "Body": "Redneck",
+              "Color": "Blue",
+              "Ears": "Redneck",
+              "Eyes": "Ninja",
+              "Head": "Astro",
+              "Perfect Specimen": "No",
+              "Power Level": "Undetermined",
+              "Rarity": "Common",
+              "Tail": "Astro"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Rebirth",
+                "src": "ipfs://QmVj6ik8M1B5E4Bstc1Xj5UTzha646h7XtJmUBGaR4yjpN"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "OG",
+                "src": "ipfs://QmYTwCwCtbbkZ1pfR2gC2gygL9bzCTaPZiQnihGXK5UwLP"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Head",
+                "src": "ipfs://QmcCuatefVAj9Y7XUzTdGbbpTrtUQeTF9LtAomEGnmRnxB"
+              }
+            ],
+            "image": "ipfs://QmVj6ik8M1B5E4Bstc1Xj5UTzha646h7XtJmUBGaR4yjpN",
+            "mediaType": "image/png",
+            "name": "Derp Bird #04316",
+            "series": 2,
+            "url": "derpbirds.io"
+          },
+          "DP04392": {
+            "attributes": {
+              "Back": "Magic",
+              "Background": "Lime",
+              "Beak": "Dave",
+              "Body": "Astro",
+              "Color": "Lime",
+              "Ears": "Redneck",
+              "Eyes": "Stoner",
+              "Head": "Dave",
+              "Perfect Specimen": "No",
+              "Power Level": "Undetermined",
+              "Rarity": "Common",
+              "Tail": "Ninja"
+            },
+            "files": [
+              {
+                "mediaType": "image/png",
+                "name": "Rebirth",
+                "src": "ipfs://QmPY8yf9M2mJFX4sXKkpCN2CF7hRysVwD89qSiNmNgSbTH"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "OG",
+                "src": "ipfs://QmRjT1tkheJkiBw8SbayDF2gvXCqb5za7gT8goxwFs9EBy"
+              },
+              {
+                "mediaType": "image/png",
+                "name": "Head",
+                "src": "ipfs://QmYisHztwxdnp1WpBqSrGDWJqdKbePdjYW1JLumpou5cUM"
+              }
+            ],
+            "image": "ipfs://QmPY8yf9M2mJFX4sXKkpCN2CF7hRysVwD89qSiNmNgSbTH",
+            "mediaType": "image/png",
+            "name": "Derp Bird #04392",
+            "series": 2,
+            "url": "derpbirds.io"
+          }
+        },
+        "version": "1.0"
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-11-02 07:22:49",
+    "block_hash": "7d54d1a30f86a890936499c2dad2a0195df62f36611223c65aa1b018927d095c",
+    "block_slot": 170501878
+  }
+}
