@@ -861,4 +861,34 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_deserialize_claynation() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("claynation.json")) {
+            Ok(deserialized) => {
+                let test_traits = HashMap::from([
+                    ("accessories", "ClayPods"),
+                    ("background", "Lilac"),
+                    ("body", "Tan Clay"),
+                    ("brows", "Normal Eyebrows"),
+                    ("clothes", "White Vest"),
+                    ("eyes", "Love Glasses"),
+                    ("hats and hair", "Clay Nation Cap"),
+                    ("mouth", "Fly Tounge"),
+                ])
+                .into_traits();
+                let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "Clay Nation #7103");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://QmbQZWhCkyazGHENa5Tzb3SnkjyPJJ8EFhXhds7jNMWVHN"
+                );
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
 }
