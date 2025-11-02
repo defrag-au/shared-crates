@@ -639,9 +639,22 @@ impl From<AssetMetadata> for Asset {
                 name,
                 image,
                 traits,
+                extra,
                 ..
+            } => {
+                // Merge extra fields (like artist, seed, vendor, etc.) into traits
+                let merged_traits = merge_extra_fields_into_traits(traits, extra);
+
+                Self {
+                    name,
+                    image: get_image_url(image),
+                    media_type: extracted_media_type,
+                    traits: merged_traits,
+                    rarity_rank: None,
+                    tags: vec![],
+                }
             }
-            | AssetMetadata::Flattened {
+            AssetMetadata::Flattened {
                 name,
                 image,
                 traits,
@@ -702,51 +715,8 @@ impl From<AssetMetadata> for Asset {
                 raw_traits,
                 ..
             } => {
-                let mut traits: Traits = Traits::new();
-
-                // Convert all raw_traits Values to strings
-                for (key, value) in raw_traits {
-                    // Skip metadata fields that shouldn't be traits
-                    let key_lower = key.to_lowercase();
-                    if matches!(
-                        key_lower.as_str(),
-                        "name"
-                            | "image"
-                            | "description"
-                            | "project"
-                            | "twitter"
-                            | "website"
-                            | "discord"
-                            | "github"
-                            | "medium"
-                            | "mediatype"
-                    ) {
-                        continue;
-                    }
-
-                    let string_value = match value {
-                        serde_json::Value::String(s) => s,
-                        serde_json::Value::Number(n) => n.to_string(),
-                        serde_json::Value::Bool(b) => b.to_string(),
-                        serde_json::Value::Array(arr) => {
-                            // Handle arrays by joining string elements
-                            arr.into_iter()
-                                .filter_map(|v| match v {
-                                    serde_json::Value::String(s) => Some(s),
-                                    serde_json::Value::Number(n) => Some(n.to_string()),
-                                    serde_json::Value::Bool(b) => Some(b.to_string()),
-                                    _ => None,
-                                })
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        }
-                        _ => continue, // Skip null or complex objects
-                    };
-
-                    if !string_value.is_empty() {
-                        traits.insert_single(key, string_value);
-                    }
-                }
+                // All extra fields become traits
+                let traits = merge_extra_fields_into_traits(Traits::new(), raw_traits);
 
                 Self {
                     name,
@@ -1021,6 +991,62 @@ fn get_image_url(input: PrimitiveOrList<String>) -> String {
         PrimitiveOrList::Primitive(val) => val,
         PrimitiveOrList::List(items) => items.join(""),
     }
+}
+
+/// Merge extra metadata fields into traits, filtering out known metadata fields
+fn merge_extra_fields_into_traits(
+    mut traits: Traits,
+    extra_fields: HashMap<String, serde_json::Value>,
+) -> Traits {
+    for (key, value) in extra_fields {
+        // Skip known metadata fields that shouldn't be traits
+        let key_lower = key.to_lowercase();
+        if matches!(
+            key_lower.as_str(),
+            "name"
+                | "image"
+                | "description"
+                | "project"
+                | "twitter"
+                | "website"
+                | "discord"
+                | "github"
+                | "mediatype"
+                | "files"
+                | "minter"
+                | "publisher"
+                | "collection"
+                | "collection name"
+        ) {
+            continue;
+        }
+
+        // Convert JSON value to string and add as trait
+        let string_value = match value {
+            serde_json::Value::String(s) => s,
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            serde_json::Value::Array(arr) => {
+                // Handle arrays by joining string elements
+                arr.into_iter()
+                    .filter_map(|v| match v {
+                        serde_json::Value::String(s) => Some(s),
+                        serde_json::Value::Number(n) => Some(n.to_string()),
+                        serde_json::Value::Bool(b) => Some(b.to_string()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+            _ => continue, // Skip null or complex objects
+        };
+
+        if !string_value.is_empty() {
+            traits.insert_single(key, string_value);
+        }
+    }
+
+    traits
 }
 
 #[cfg(test)]

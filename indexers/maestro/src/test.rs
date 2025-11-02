@@ -164,6 +164,7 @@ mod tests {
                     ("Mouth", "Happy Mouth"),
                     ("Outfit", "Corpo Nepo Outfit"),
                     ("Skill", "None"),
+                    ("tokenId", "4471"), // Extra field included as trait
                 ])
                 .into_traits();
                 let asset: Asset = nft.data.asset_standards.try_into().unwrap();
@@ -639,6 +640,7 @@ mod tests {
         match serde_json::from_str::<AssetInfoResponse>(&test_case!("zenflow.json")) {
             Ok(deserialized) => {
                 let test_traits = HashMap::from([
+                    // Properties (explicit traits)
                     ("Agents", "Sweep"),
                     ("Coupling", "Tight"),
                     ("Crytaline", "Natural"),
@@ -648,6 +650,13 @@ mod tests {
                     ("Palette", "P4"),
                     ("Rows", "Narrow"),
                     ("Waves", "W1"),
+                    // Extra metadata fields merged as traits
+                    ("artist", "Charles Machin - @CM_GenArt"),
+                    ("authNFT", "asset13as3a4t954ru7vhzy6pldse3qu8e7la2xgsr7u"),
+                    ("seed", "13719"),
+                    ("vendor", "BlockGen.art"),
+                    ("piece", "109"),
+                    ("medium", "Fully On-Chain BlockGen.Art Canvas"),
                 ])
                 .into_traits();
                 let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
