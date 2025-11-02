@@ -802,4 +802,28 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_deserialize_spacebud() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("spacebud.json")) {
+            Ok(deserialized) => {
+                let test_traits = HashMap::from([
+                    ("type", "Cat"),
+                    ("traits", "Chestplate, Belt, X-Ray"), // Array joined as single trait
+                ])
+                .into_traits();
+                let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "SpaceBud #6023");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://bafkreig7mg6hfifafo6agma4s2nmkwbdvxdbqkjyyrzd5meqkoqsr2c5xq"
+                );
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
 }

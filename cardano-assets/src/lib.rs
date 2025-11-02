@@ -166,6 +166,9 @@ pub enum AssetMetadata {
         #[serde(alias = "Medium")]
         medium: Option<PrimitiveOrList<String>>,
 
+        // Metadata fields that aren't traits
+        sha256: Option<String>,
+
         #[serde(flatten)]
         traits: Traits,
     },
@@ -1017,6 +1020,7 @@ fn merge_extra_fields_into_traits(
                 | "publisher"
                 | "collection"
                 | "collection name"
+                | "sha256"
         ) {
             continue;
         }
