@@ -1,0 +1,100 @@
+{
+  "data": {
+    "asset_name": "4a524e594552535f3266376534646236373464",
+    "asset_name_ascii": "JRNYERS_2f7e4db674d",
+    "fingerprint": "asset104pk3xulnhyekaskxcha0t64dfh4me790zut79",
+    "total_supply": "1",
+    "unique_holders": {
+      "by_address": 1,
+      "by_account": 1
+    },
+    "first_mint_tx": {
+      "tx_hash": "1683fe10524cb55a6adf72d54cb35da37a1dfe2d2000be430351dc8da1e464e4",
+      "slot": 155683631,
+      "timestamp": "2025-05-14 19:12:02",
+      "amount": "1"
+    },
+    "latest_mint_tx": {
+      "tx_hash": "1683fe10524cb55a6adf72d54cb35da37a1dfe2d2000be430351dc8da1e464e4",
+      "slot": 155683631,
+      "timestamp": "2025-05-14 19:12:02",
+      "amount": "1"
+    },
+    "mint_tx_count": 1,
+    "burn_tx_count": 0,
+    "asset_standards": {
+      "cip25_metadata": {
+        "attributes": {
+          "Background": "Matte Gray 1",
+          "Element": "Air",
+          "Eyes": "Determined Eye",
+          "Head": "Windbreak Technician Head",
+          "Implants": "Implant Design 5",
+          "Mouth": "Happy Mouth",
+          "Outfit": "Corpo Nepo Outfit",
+          "Skill": "None"
+        },
+        "description": [
+          "JRNYERS are an NFT collection of post-apocalyptic cyborgs, ",
+          "persevering in a world that once looked lost. These NFTs grant ",
+          "access to both the JRNYERS creative universe and the entire ",
+          "JRNY Club ecosystem, focusing on the metaverse, emerging tech, ",
+          "exclusive analytics, media coverage, and exceptional art."
+        ],
+        "files": [
+          {
+            "mediaType": "image/png",
+            "src": "ipfs://QmdJZi8J4hASwFj59Dm396NtWoBFcsX2tJwXfruooo5Xas"
+          }
+        ],
+        "image": "ipfs://QmdJZi8J4hASwFj59Dm396NtWoBFcsX2tJwXfruooo5Xas",
+        "name": "#4471",
+        "tokenId": 4471,
+        "website": "https://www.jrny.club/"
+      },
+      "cip68_metadata": null
+    },
+    "latest_mint_tx_metadata": {
+      "721": {
+        "85f931daac3c87d3c19cb55a4be7a4da18237f3812782fd024181185": {
+          "JRNYERS_2f7e4db674d": {
+            "attributes": {
+              "Background": "Matte Gray 1",
+              "Element": "Air",
+              "Eyes": "Determined Eye",
+              "Head": "Windbreak Technician Head",
+              "Implants": "Implant Design 5",
+              "Mouth": "Happy Mouth",
+              "Outfit": "Corpo Nepo Outfit",
+              "Skill": "None"
+            },
+            "description": [
+              "JRNYERS are an NFT collection of post-apocalyptic cyborgs, ",
+              "persevering in a world that once looked lost. These NFTs grant ",
+              "access to both the JRNYERS creative universe and the entire ",
+              "JRNY Club ecosystem, focusing on the metaverse, emerging tech, ",
+              "exclusive analytics, media coverage, and exceptional art."
+            ],
+            "files": [
+              {
+                "mediaType": "image/png",
+                "src": "ipfs://QmdJZi8J4hASwFj59Dm396NtWoBFcsX2tJwXfruooo5Xas"
+              }
+            ],
+            "image": "ipfs://QmdJZi8J4hASwFj59Dm396NtWoBFcsX2tJwXfruooo5Xas",
+            "name": "#4471",
+            "tokenId": 4471,
+            "website": "https://www.jrny.club/"
+          }
+        },
+        "nonce": "eb845395cd9cc7f2"
+      }
+    },
+    "token_registry_metadata": null
+  },
+  "last_updated": {
+    "timestamp": "2025-11-02 06:43:54",
+    "block_hash": "f18333e2d1bc572be2cd7eebdfee7ea1aac48e86fdbcb1306ddf18ea116eb76d",
+    "block_slot": 170499543
+  }
+}

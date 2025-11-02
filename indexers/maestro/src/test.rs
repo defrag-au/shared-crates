@@ -152,6 +152,38 @@ mod tests {
     }
 
     #[test]
+    fn test_deserialize_jrnyclub() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("jrnyclub.json")) {
+            Ok(nft) => {
+                let test_traits = HashMap::from([
+                    ("Arm mechanics", "Purple mechanics"),
+                    ("Background", "Wheat fields"),
+                    ("Background accessories", "Windmill"),
+                    ("Farmer body color", "Black gold"),
+                    ("Farmer clothing", "None"),
+                    ("Farmer head", "Cylinder head 1 eye"),
+                    ("Hat", "None"),
+                    ("Left hand tool", "Broom"),
+                    ("Right hand tool", "Flower"),
+                    ("Tier", "Rare"),
+                ])
+                .into_traits();
+                let asset: Asset = nft.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "#4471");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://QmdJZi8J4hASwFj59Dm396NtWoBFcsX2tJwXfruooo5Xas"
+                );
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
+
+    #[test]
     fn test_deserialize_mallard() {
         match serde_json::from_str::<AssetInfoResponse>(&test_case!("mallard.json")) {
             Ok(snekkie) => {
