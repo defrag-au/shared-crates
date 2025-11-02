@@ -168,6 +168,7 @@ pub enum AssetMetadata {
 
         // Metadata fields that aren't traits
         sha256: Option<String>,
+        url: Option<String>,
 
         #[serde(flatten)]
         traits: Traits,
@@ -1021,6 +1022,7 @@ fn merge_extra_fields_into_traits(
                 | "collection"
                 | "collection name"
                 | "sha256"
+                | "url"
         ) {
             continue;
         }

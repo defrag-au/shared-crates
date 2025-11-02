@@ -826,4 +826,39 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_deserialize_derpbird() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("derpbird.json")) {
+            Ok(deserialized) => {
+                let test_traits = HashMap::from([
+                    ("Back", "Stoner"),
+                    ("Background", "Red"),
+                    ("Beak", "DJ"),
+                    ("Body", "Astro"),
+                    ("Color", "Orange"),
+                    ("Ears", "Redneck"),
+                    ("Eyes", "Redneck"),
+                    ("Head", "Dave"),
+                    ("Perfect Specimen", "No"),
+                    ("Power Level", "Undetermined"),
+                    ("Rarity", "Common"),
+                    ("Tail", "Redneck"),
+                    ("series", "2"), // Extra field included as trait
+                ])
+                .into_traits();
+                let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "Derp Bird #03821");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://Qma39EUpdgYqbSEKwwdYHDgAP221yQh19nBDzBAkvxeigE"
+                );
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
 }
