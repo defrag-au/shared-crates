@@ -891,4 +891,71 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_deserialize_unsig() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("unsig.json")) {
+            Ok(deserialized) => {
+                let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "unsig_12948");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://QmTeADGJVJSmzpa2AceMdZBDwzMf3w4BLAgqwx5ZZbw4cm"
+                );
+
+                // Check traits
+                let traits = asset.traits.inner();
+                assert_eq!(
+                    traits.get("series"),
+                    Some(&vec!["unsigned_algorithms".to_string()])
+                );
+                assert_eq!(traits.get("index"), Some(&vec!["12948".to_string()]));
+                assert_eq!(traits.get("num_props"), Some(&vec!["5".to_string()]));
+                assert_eq!(
+                    traits.get("colors"),
+                    Some(&vec![
+                        "Blue".to_string(),
+                        "Red".to_string(),
+                        "Green".to_string(),
+                        "Green".to_string(),
+                        "Red".to_string()
+                    ])
+                );
+                assert_eq!(
+                    traits.get("distributions"),
+                    Some(&vec![
+                        "CDF".to_string(),
+                        "CDF".to_string(),
+                        "CDF".to_string(),
+                        "CDF".to_string(),
+                        "CDF".to_string()
+                    ])
+                );
+                assert_eq!(
+                    traits.get("multipliers"),
+                    Some(&vec![
+                        "0.5".to_string(),
+                        "1".to_string(),
+                        "2".to_string(),
+                        "2".to_string(),
+                        "4".to_string()
+                    ])
+                );
+                assert_eq!(
+                    traits.get("rotations"),
+                    Some(&vec![
+                        "90".to_string(),
+                        "0".to_string(),
+                        "0".to_string(),
+                        "270".to_string(),
+                        "270".to_string()
+                    ])
+                );
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
 }

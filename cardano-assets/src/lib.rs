@@ -64,8 +64,8 @@ impl From<PrimitiveOrList<String>> for String {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-#[serde(rename_all = "camelCase")]
 pub struct AssetFile {
+    #[serde(alias = "mediatype", rename = "mediaType")]
     media_type: String,
     name: Option<String>,
     src: PrimitiveOrList<String>,
@@ -114,7 +114,22 @@ pub enum AssetMetadata {
         #[serde(alias = "Website")]
         website: Option<String>,
         traits: Vec<CodifiedTrait>,
-    }, // known projects
+    },
+    // known projects:
+    // - unsigned_algorithms
+    UnsignedAlgorithms {
+        #[serde(alias = "name")]
+        title: String,
+        image: PrimitiveOrList<String>,
+        #[serde(alias = "mediaType")]
+        media_type: Option<String>,
+        files: Option<Vec<AssetFile>>,
+        series: Option<String>,
+        source_key: Vec<String>,
+        source_tx_id: Option<String>,
+        unsigs: UnsigData,
+    },
+    // known projects
     // - snekkies
     Attributed {
         name: String,
@@ -216,6 +231,13 @@ pub enum AssetMetadata {
         #[serde(flatten)]
         raw_traits: HashMap<String, serde_json::Value>,
     },
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct UnsigData {
+    pub index: u32,
+    pub num_props: u32,
+    pub properties: Traits,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -611,6 +633,12 @@ impl AssetMetadata {
                 image,
                 files,
                 ..
+            }
+            | AssetMetadata::UnsignedAlgorithms {
+                media_type,
+                image,
+                files,
+                ..
             } => {
                 // If top-level media_type exists, use it
                 if media_type.is_some() {
@@ -724,6 +752,46 @@ impl From<AssetMetadata> for Asset {
 
                 Self {
                     name,
+                    image: get_image_url(image),
+                    media_type: extracted_media_type,
+                    traits,
+                    rarity_rank: None,
+                    tags: vec![],
+                }
+            }
+            AssetMetadata::UnsignedAlgorithms {
+                title,
+                image,
+                unsigs,
+                series,
+                source_key,
+                source_tx_id,
+                ..
+            } => {
+                // Convert unsigs data to traits
+                let mut traits = Traits::new();
+
+                // Add series, source_key, source_tx_id as traits
+                if let Some(s) = series {
+                    traits.insert_single("series".to_string(), s);
+                }
+
+                traits.insert_multi("source_key".to_string(), source_key);
+                if let Some(tx_id) = source_tx_id {
+                    traits.insert_single("source_tx_id".to_string(), tx_id);
+                }
+
+                // Add unsigs index and num_props
+                traits.insert_single("index".to_string(), unsigs.index.to_string());
+                traits.insert_single("num_props".to_string(), unsigs.num_props.to_string());
+
+                // Merge properties traits into main traits
+                for (key, values) in unsigs.properties.inner() {
+                    traits.insert_multi(key.clone(), values.clone());
+                }
+
+                Self {
+                    name: title,
                     image: get_image_url(image),
                     media_type: extracted_media_type,
                     traits,
