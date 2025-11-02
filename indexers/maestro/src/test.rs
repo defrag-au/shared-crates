@@ -958,4 +958,45 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_deserialize_blockowls() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("blockowls.json")) {
+            Ok(deserialized) => {
+                let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "BlockOwls Razz");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://QmYocqqczwZx9tA2r4YmCrzsefg7GeeUwjRWzRoN8bPcVX"
+                );
+
+                // Check parsed colon-delimited traits
+                let traits = asset.traits.inner();
+                assert_eq!(traits.get("State"), Some(&vec!["Delusional".to_string()]));
+                assert_eq!(
+                    traits.get("Body Shape"),
+                    Some(&vec!["ModifiedBlock".to_string()])
+                );
+                assert_eq!(
+                    traits.get("Main Material"),
+                    Some(&vec!["Silicone".to_string()])
+                );
+                assert_eq!(
+                    traits.get("Display Box Base"),
+                    Some(&vec!["BlackCardboard+Styrofoam".to_string()])
+                );
+                assert_eq!(
+                    traits.get("Display Box Glass"),
+                    Some(&vec!["PlainPlexi".to_string()])
+                );
+                assert_eq!(traits.get("Gender"), Some(&vec!["Female".to_string()]));
+                assert_eq!(traits.get("number"), Some(&vec!["78".to_string()]));
+                assert_eq!(traits.get("rarity"), Some(&vec!["Common".to_string()]));
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
 }

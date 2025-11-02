@@ -189,6 +189,30 @@ pub enum AssetMetadata {
         traits: Traits,
     },
     // known projects:
+    // - blockowls (and potentially other 3D/collectible formats)
+    ColonDelimitedAttributes {
+        name: String,
+        image: PrimitiveOrList<String>,
+        #[serde(alias = "mediaType")]
+        media_type: Option<String>,
+        #[serde(alias = "Project")]
+        project: Option<String>,
+        files: Option<Vec<AssetFile>>,
+
+        #[serde(alias = "Website")]
+        website: Option<String>,
+
+        number: Option<u32>,
+        rarity: Option<String>,
+
+        #[serde(alias = "Attributes")]
+        attributes: Vec<String>,
+
+        // Catch any other metadata fields
+        #[serde(flatten)]
+        extra: HashMap<String, serde_json::Value>,
+    },
+    // known projects:
     // - mallard order
     AttributeArray {
         name: String,
@@ -628,6 +652,12 @@ impl AssetMetadata {
                 files,
                 ..
             }
+            | AssetMetadata::ColonDelimitedAttributes {
+                media_type,
+                image,
+                files,
+                ..
+            }
             | AssetMetadata::AttributeArray {
                 media_type,
                 image,
@@ -699,6 +729,42 @@ impl From<AssetMetadata> for Asset {
                 rarity_rank: None,
                 tags: vec![],
             },
+            AssetMetadata::ColonDelimitedAttributes {
+                name,
+                image,
+                attributes,
+                number,
+                rarity,
+                ..
+            } => {
+                let mut traits = Traits::new();
+
+                // Parse colon-delimited strings like "State: Delusional" into key-value pairs
+                for attr in attributes {
+                    if let Some((key, value)) = attr.split_once(':') {
+                        let key = key.trim().to_string();
+                        let value = value.trim().to_string();
+                        traits.insert_single(key, value);
+                    }
+                }
+
+                // Add number and rarity if present
+                if let Some(n) = number {
+                    traits.insert_single("number".to_string(), n.to_string());
+                }
+                if let Some(r) = rarity {
+                    traits.insert_single("rarity".to_string(), r);
+                }
+
+                Self {
+                    name,
+                    image: get_image_url(image),
+                    media_type: extracted_media_type,
+                    traits,
+                    rarity_rank: None,
+                    tags: vec![],
+                }
+            }
             AssetMetadata::AttributeArray {
                 name,
                 image,
