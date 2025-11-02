@@ -258,6 +258,7 @@ pub enum AssetMetadata {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct UnsigData {
     pub index: u32,
     pub num_props: u32,
