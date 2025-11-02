@@ -156,16 +156,14 @@ mod tests {
         match serde_json::from_str::<AssetInfoResponse>(&test_case!("jrnyclub.json")) {
             Ok(nft) => {
                 let test_traits = HashMap::from([
-                    ("Arm mechanics", "Purple mechanics"),
-                    ("Background", "Wheat fields"),
-                    ("Background accessories", "Windmill"),
-                    ("Farmer body color", "Black gold"),
-                    ("Farmer clothing", "None"),
-                    ("Farmer head", "Cylinder head 1 eye"),
-                    ("Hat", "None"),
-                    ("Left hand tool", "Broom"),
-                    ("Right hand tool", "Flower"),
-                    ("Tier", "Rare"),
+                    ("Background", "Matte Gray 1"),
+                    ("Element", "Air"),
+                    ("Eyes", "Determined Eye"),
+                    ("Head", "Windbreak Technician Head"),
+                    ("Implants", "Implant Design 5"),
+                    ("Mouth", "Happy Mouth"),
+                    ("Outfit", "Corpo Nepo Outfit"),
+                    ("Skill", "None"),
                 ])
                 .into_traits();
                 let asset: Asset = nft.data.asset_standards.try_into().unwrap();
@@ -440,7 +438,7 @@ mod tests {
                     ("Outfit", "Stockbroker"),
                     ("Hats", "Spiky Blue Hair"),
                     ("Mouth", "Safety Pin"),
-                    ("Earring", "GM"),
+                    ("Earring", "GM"), // Note: actual data has trailing space but into_traits() trims it
                     ("Eyenose", "Lowbrow"),
                 ])
                 .into_traits();

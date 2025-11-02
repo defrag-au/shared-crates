@@ -137,8 +137,9 @@ pub enum AssetMetadata {
         #[serde(alias = "attributes", alias = "Attributes")]
         traits: Traits,
 
+        // Accept any extra fields (like tokenId, version, etc) as JSON values
         #[serde(flatten)]
-        extra: HashMap<String, String>,
+        extra: HashMap<String, serde_json::Value>,
     },
     // known projects
     // - black flag, aquafarmers
