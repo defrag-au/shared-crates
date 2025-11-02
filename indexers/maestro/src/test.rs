@@ -635,6 +635,37 @@ mod tests {
     }
 
     #[test]
+    fn test_deserialize_zenflow() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("zenflow.json")) {
+            Ok(deserialized) => {
+                let test_traits = HashMap::from([
+                    ("Agents", "Sweep"),
+                    ("Coupling", "Tight"),
+                    ("Crytaline", "Natural"),
+                    ("Draw", "Normal"),
+                    ("Filter", "Etheric"),
+                    ("Form", "Neg Spiral"),
+                    ("Palette", "P4"),
+                    ("Rows", "Narrow"),
+                    ("Waves", "W1"),
+                ])
+                .into_traits();
+                let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "Zen Flow 109");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://Qmd7CZdPpYjZe8MuRRt4McvPUWWCK7bbhBcnYg8ZkZrqjf"
+                );
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
+
+    #[test]
     fn test_deserialize_nikeverse_reference() {
         match serde_json::from_str::<AssetInfoResponse>(&test_case!("nikeverse_reference_nft.json"))
         {

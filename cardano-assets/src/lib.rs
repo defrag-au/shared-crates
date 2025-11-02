@@ -134,7 +134,7 @@ pub enum AssetMetadata {
         website: Option<String>,
         minter: Option<String>,
 
-        #[serde(alias = "attributes", alias = "Attributes")]
+        #[serde(alias = "attributes", alias = "Attributes", alias = "properties")]
         traits: Traits,
 
         // Accept any extra fields (like tokenId, version, etc) as JSON values
