@@ -88,9 +88,13 @@ impl AssetId {
         format!("{}{}", self.policy_id, self.asset_name_hex)
     }
 
+    pub fn delimited(&self, delimiter: &str) -> String {
+        format!("{}{delimiter}{}", self.policy_id, self.asset_name_hex)
+    }
+
     /// Get the dot-delimited format: policy_id.asset_name_hex
     pub fn dot_delimited(&self) -> String {
-        format!("{}.{}", self.policy_id, self.asset_name_hex)
+        self.delimited(".")
     }
 
     /// Get the policy ID
@@ -156,11 +160,17 @@ impl AssetId {
     }
 
     /// Parse from concatenated format with smart format detection
+    /// Parse from delimited format with smart format detection
+    ///
+    /// Supports multiple delimiters: `:` and `.`
+    /// Falls back to concatenated format if no delimiter is found.
     pub fn parse_smart(input: &str) -> Result<Self, AssetIdError> {
-        // Try dot-delimited format first
-        if let Some(dot_pos) = input.find('.') {
-            let policy_id = input[..dot_pos].to_string();
-            let asset_name_hex = input[dot_pos + 1..].to_string();
+        const DELIMITERS: &[char] = &[':', '.'];
+
+        // Try to find any supported delimiter
+        if let Some(delim_pos) = input.find(DELIMITERS) {
+            let policy_id = input[..delim_pos].to_string();
+            let asset_name_hex = input[delim_pos + 1..].to_string();
             return Self::new(policy_id, asset_name_hex);
         }
 
@@ -387,6 +397,8 @@ mod tests {
         "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f650697261746531303836";
     const TEST_DOT_DELIMITED: &str =
         "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6.50697261746531303836";
+    const TEST_COLON_DELIMITED: &str =
+        "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6:50697261746531303836";
     const CIP_68_POLICY: &str =
         "29728939434a25e57ef6a9b94ba3215508264fee665bbb35b16a2d56000de1404d4432393230";
 
@@ -416,6 +428,14 @@ mod tests {
     }
 
     #[test]
+    fn test_delimited_format() {
+        let asset_id = AssetId::new(TEST_POLICY_ID.to_string(), TEST_ASSET_NAME_HEX.to_string())
+            .expect("Should create valid AssetId");
+
+        assert_eq!(asset_id.delimited(":"), TEST_COLON_DELIMITED);
+    }
+
+    #[test]
     fn test_parse_concatenated() {
         let asset_id = AssetId::parse_concatenated(TEST_CONCATENATED)
             .expect("Should parse concatenated format");
@@ -437,6 +457,15 @@ mod tests {
     fn test_parse_smart_dot_delimited() {
         let asset_id =
             AssetId::parse_smart(TEST_DOT_DELIMITED).expect("Should parse dot-delimited format");
+
+        assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
+        assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
+    }
+
+    #[test]
+    fn test_parse_smart_colon_delimited() {
+        let asset_id = AssetId::parse_smart(TEST_COLON_DELIMITED)
+            .expect("Should parse colon-delimited format");
 
         assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
