@@ -3086,6 +3086,7 @@ dependencies = [
  "cfg-if",
  "console_error_panic_hook",
  "futures-channel",
+ "js-sys",
  "serde",
  "serde_json",
  "test_utils",
