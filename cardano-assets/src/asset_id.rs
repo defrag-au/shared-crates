@@ -88,9 +88,13 @@ impl AssetId {
         format!("{}{}", self.policy_id, self.asset_name_hex)
     }
 
+    pub fn delimited(&self, delimiter: &str) -> String {
+        format!("{}{delimiter}{}", self.policy_id, self.asset_name_hex)
+    }
+
     /// Get the dot-delimited format: policy_id.asset_name_hex
     pub fn dot_delimited(&self) -> String {
-        format!("{}.{}", self.policy_id, self.asset_name_hex)
+        self.delimited(".")
     }
 
     /// Get the policy ID
@@ -387,6 +391,8 @@ mod tests {
         "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f650697261746531303836";
     const TEST_DOT_DELIMITED: &str =
         "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6.50697261746531303836";
+    const TEST_COLON_DELIMITED: &str =
+        "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6:50697261746531303836";
     const CIP_68_POLICY: &str =
         "29728939434a25e57ef6a9b94ba3215508264fee665bbb35b16a2d56000de1404d4432393230";
 
@@ -413,6 +419,14 @@ mod tests {
             .expect("Should create valid AssetId");
 
         assert_eq!(asset_id.dot_delimited(), TEST_DOT_DELIMITED);
+    }
+
+    #[test]
+    fn test_delimited_format() {
+        let asset_id = AssetId::new(TEST_POLICY_ID.to_string(), TEST_ASSET_NAME_HEX.to_string())
+            .expect("Should create valid AssetId");
+
+        assert_eq!(asset_id.delimited(":"), TEST_COLON_DELIMITED);
     }
 
     #[test]
