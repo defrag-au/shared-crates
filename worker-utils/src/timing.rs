@@ -7,7 +7,7 @@
 //! # Examples
 //!
 //! ```
-//! use worker_utils::timing::{timer_start, timer_elapsed_ms};
+//! use worker_utils::{timer_start, timer_elapsed_ms};
 //!
 //! let start = timer_start!();
 //! // ... do some work ...
@@ -21,7 +21,7 @@
 ///
 /// # Example
 /// ```
-/// use worker_utils::timing::timer_start;
+/// use worker_utils::timer_start;
 ///
 /// let start = timer_start!();
 /// // ... do work ...
@@ -46,7 +46,7 @@ macro_rules! timer_start {
 ///
 /// # Example
 /// ```
-/// use worker_utils::timing::{timer_start, timer_elapsed_ms};
+/// use worker_utils::{timer_start, timer_elapsed_ms};
 ///
 /// let start = timer_start!();
 /// // ... do work ...
