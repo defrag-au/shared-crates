@@ -160,11 +160,17 @@ impl AssetId {
     }
 
     /// Parse from concatenated format with smart format detection
+    /// Parse from delimited format with smart format detection
+    ///
+    /// Supports multiple delimiters: `:` and `.`
+    /// Falls back to concatenated format if no delimiter is found.
     pub fn parse_smart(input: &str) -> Result<Self, AssetIdError> {
-        // Try dot-delimited format first
-        if let Some(dot_pos) = input.find('.') {
-            let policy_id = input[..dot_pos].to_string();
-            let asset_name_hex = input[dot_pos + 1..].to_string();
+        const DELIMITERS: &[char] = &[':', '.'];
+
+        // Try to find any supported delimiter
+        if let Some(delim_pos) = input.find(DELIMITERS) {
+            let policy_id = input[..delim_pos].to_string();
+            let asset_name_hex = input[delim_pos + 1..].to_string();
             return Self::new(policy_id, asset_name_hex);
         }
 
@@ -451,6 +457,15 @@ mod tests {
     fn test_parse_smart_dot_delimited() {
         let asset_id =
             AssetId::parse_smart(TEST_DOT_DELIMITED).expect("Should parse dot-delimited format");
+
+        assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
+        assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
+    }
+
+    #[test]
+    fn test_parse_smart_colon_delimited() {
+        let asset_id = AssetId::parse_smart(TEST_COLON_DELIMITED)
+            .expect("Should parse colon-delimited format");
 
         assert_eq!(asset_id.policy_id(), TEST_POLICY_ID);
         assert_eq!(asset_id.asset_name_hex(), TEST_ASSET_NAME_HEX);
