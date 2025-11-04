@@ -1,4 +1,4 @@
-use crate::{HttpError, HttpMethod, ResponseDetails};
+use crate::{HttpError, HttpMethod, ResponseDetails, ResponseWithHeaders};
 use gloo_net::http::Request;
 use serde::{de::DeserializeOwned, Serialize};
 use std::collections::HashMap;
@@ -79,11 +79,30 @@ pub(crate) async fn make_request_with_details<T: Serialize>(
 
     let status_code = response.status();
 
-    // Extract headers - gloo-net Response has headers() method
+    // Extract headers from gloo-net Response
     let mut headers = HashMap::new();
-    // Note: gloo-net doesn't expose all headers easily, we'll implement basic support
-    if let Some(retry_after) = response.headers().get("retry-after") {
-        headers.insert("retry-after".to_string(), retry_after);
+    let response_headers = response.headers();
+
+    // Common headers to extract
+    let header_names = vec![
+        "retry-after",
+        "x-ratelimit-limit",
+        "x-ratelimit-remaining",
+        "x-ratelimit-reset",
+        "x-ratelimit-limit-requests",
+        "x-ratelimit-remaining-requests",
+        "x-ratelimit-reset-requests",
+        "x-ratelimit-limit-tokens",
+        "x-ratelimit-remaining-tokens",
+        "x-ratelimit-reset-tokens",
+        "content-type",
+        "date",
+    ];
+
+    for header_name in header_names {
+        if let Some(value) = response_headers.get(header_name) {
+            headers.insert(header_name.to_string(), value);
+        }
     }
 
     let body = response.text().await?;
@@ -92,6 +111,84 @@ pub(crate) async fn make_request_with_details<T: Serialize>(
     Ok(ResponseDetails {
         status_code,
         body,
+        headers,
+    })
+}
+
+pub(crate) async fn make_request_with_headers<T: Serialize, R: DeserializeOwned>(
+    default_headers: &HashMap<String, String>,
+    method: HttpMethod,
+    url: &str,
+    body: Option<&T>,
+) -> Result<ResponseWithHeaders<R>, HttpError> {
+    // Create request using the appropriate static method
+    let mut request = match method {
+        HttpMethod::GET => Request::get(url),
+        HttpMethod::POST => Request::post(url),
+        HttpMethod::PUT => Request::put(url),
+        HttpMethod::DELETE => Request::delete(url),
+        HttpMethod::PATCH => Request::patch(url),
+    };
+
+    // Add default headers
+    for (key, value) in default_headers {
+        request = request.header(key, value);
+    }
+
+    // Set content type for JSON
+    request = request.header("Content-Type", "application/json");
+    request = request.header("Accept", "application/json");
+
+    // Add body if present and send request
+    let response = if let Some(body_data) = body {
+        request.json(body_data)?.send().await?
+    } else {
+        request.send().await?
+    };
+
+    let status_code = response.status();
+
+    // Extract headers from gloo-net Response
+    let mut headers = HashMap::new();
+    let response_headers = response.headers();
+
+    // Common headers to extract
+    let header_names = vec![
+        "retry-after",
+        "x-ratelimit-limit",
+        "x-ratelimit-remaining",
+        "x-ratelimit-reset",
+        "x-ratelimit-limit-requests",
+        "x-ratelimit-remaining-requests",
+        "x-ratelimit-reset-requests",
+        "x-ratelimit-limit-tokens",
+        "x-ratelimit-remaining-tokens",
+        "x-ratelimit-reset-tokens",
+        "content-type",
+        "date",
+    ];
+
+    for header_name in header_names {
+        if let Some(value) = response_headers.get(header_name) {
+            headers.insert(header_name.to_string(), value);
+        }
+    }
+
+    // Check status before parsing
+    if !response.ok() {
+        return Err(HttpError::Custom(format!(
+            "HTTP request failed with status: {}",
+            status_code
+        )));
+    }
+
+    // Parse JSON body
+    let data = response.json::<R>().await?;
+    debug!("Got response from API: status {}", status_code);
+
+    Ok(ResponseWithHeaders {
+        data,
+        status_code,
         headers,
     })
 }
