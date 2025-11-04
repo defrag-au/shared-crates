@@ -5,22 +5,15 @@ use tracing::debug;
 mod error;
 pub use error::*;
 
+/// Response with parsed data and metadata (headers, status)
 #[derive(Debug)]
-pub struct ResponseDetails {
-    pub status_code: u16,
-    pub body: String,
-    pub headers: std::collections::HashMap<String, String>,
-}
-
-/// Response with both parsed data and metadata (headers, status)
-#[derive(Debug)]
-pub struct ResponseWithHeaders<T> {
+pub struct ResponseDetails<T> {
     pub data: T,
     pub status_code: u16,
     pub headers: std::collections::HashMap<String, String>,
 }
 
-impl<T> ResponseWithHeaders<T> {
+impl<T> ResponseDetails<T> {
     /// Get a specific header value (case-insensitive)
     pub fn get_header(&self, name: &str) -> Option<&String> {
         let name_lower = name.to_lowercase();
@@ -184,14 +177,15 @@ impl HttpClient {
         self.request(HttpMethod::PATCH, url, Some(body)).await
     }
 
-    /// Advanced request method that returns response details for custom handling (retry logic, etc.)
-    pub async fn request_with_response_details<T: Serialize>(
+    /// Request that returns both parsed response data AND metadata (headers, status)
+    /// Useful for APIs that include important metadata in headers (rate limits, pagination, etc.)
+    pub async fn request_with_details<T: Serialize, R: DeserializeOwned>(
         &self,
         method: HttpMethod,
         url: &str,
         body: Option<&T>,
-    ) -> Result<ResponseDetails, HttpError> {
-        debug!("{:?} request with response details to: {}", method, url);
+    ) -> Result<ResponseDetails<R>, HttpError> {
+        debug!("{:?} request with details to: {}", method, url);
 
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -205,44 +199,22 @@ impl HttpClient {
         }
     }
 
-    /// Request that returns both parsed response data AND headers
-    /// Useful for APIs that include important metadata in headers (rate limits, pagination, etc.)
-    pub async fn request_with_headers<T: Serialize, R: DeserializeOwned>(
-        &self,
-        method: HttpMethod,
-        url: &str,
-        body: Option<&T>,
-    ) -> Result<ResponseWithHeaders<R>, HttpError> {
-        debug!("{:?} request with headers to: {}", method, url);
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            native::make_request_with_headers(&self.inner, &self.default_headers, method, url, body)
-                .await
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            wasm::make_request_with_headers(&self.default_headers, method, url, body).await
-        }
-    }
-
-    /// Convenience method for POST with headers
-    pub async fn post_with_headers<T: Serialize, R: DeserializeOwned>(
+    /// Convenience method for POST with response details
+    pub async fn post_with_details<T: Serialize, R: DeserializeOwned>(
         &self,
         url: &str,
         body: &T,
-    ) -> Result<ResponseWithHeaders<R>, HttpError> {
-        self.request_with_headers(HttpMethod::POST, url, Some(body))
+    ) -> Result<ResponseDetails<R>, HttpError> {
+        self.request_with_details(HttpMethod::POST, url, Some(body))
             .await
     }
 
-    /// Convenience method for GET with headers
-    pub async fn get_with_headers<R: DeserializeOwned>(
+    /// Convenience method for GET with response details
+    pub async fn get_with_details<R: DeserializeOwned>(
         &self,
         url: &str,
-    ) -> Result<ResponseWithHeaders<R>, HttpError> {
-        self.request_with_headers::<(), R>(HttpMethod::GET, url, None)
+    ) -> Result<ResponseDetails<R>, HttpError> {
+        self.request_with_details::<(), R>(HttpMethod::GET, url, None)
             .await
     }
 }
