@@ -5,11 +5,41 @@ use tracing::debug;
 mod error;
 pub use error::*;
 
+/// Response with parsed data and metadata (headers, status)
 #[derive(Debug)]
-pub struct ResponseDetails {
+pub struct ResponseDetails<T> {
+    pub data: T,
     pub status_code: u16,
-    pub body: String,
     pub headers: std::collections::HashMap<String, String>,
+}
+
+impl<T> ResponseDetails<T> {
+    /// Get a specific header value (case-insensitive)
+    pub fn get_header(&self, name: &str) -> Option<&String> {
+        let name_lower = name.to_lowercase();
+        self.headers
+            .iter()
+            .find(|(k, _)| k.to_lowercase() == name_lower)
+            .map(|(_, v)| v)
+    }
+
+    /// Get the Retry-After header value (in seconds)
+    pub fn retry_after_seconds(&self) -> Option<u64> {
+        self.get_header("retry-after")
+            .and_then(|v| v.parse::<u64>().ok())
+    }
+
+    /// Get rate limit remaining requests (OpenAI format)
+    pub fn rate_limit_remaining_requests(&self) -> Option<u64> {
+        self.get_header("x-ratelimit-remaining-requests")
+            .and_then(|v| v.parse::<u64>().ok())
+    }
+
+    /// Get rate limit reset time (OpenAI format - Unix timestamp)
+    pub fn rate_limit_reset_requests(&self) -> Option<u64> {
+        self.get_header("x-ratelimit-reset-requests")
+            .and_then(|v| v.parse::<u64>().ok())
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -147,14 +177,15 @@ impl HttpClient {
         self.request(HttpMethod::PATCH, url, Some(body)).await
     }
 
-    /// Advanced request method that returns response details for custom handling (retry logic, etc.)
-    pub async fn request_with_response_details<T: Serialize>(
+    /// Request that returns both parsed response data AND metadata (headers, status)
+    /// Useful for APIs that include important metadata in headers (rate limits, pagination, etc.)
+    pub async fn request_with_details<T: Serialize, R: DeserializeOwned>(
         &self,
         method: HttpMethod,
         url: &str,
         body: Option<&T>,
-    ) -> Result<ResponseDetails, HttpError> {
-        debug!("{:?} request with response details to: {}", method, url);
+    ) -> Result<ResponseDetails<R>, HttpError> {
+        debug!("{:?} request with details to: {}", method, url);
 
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -165,6 +196,53 @@ impl HttpClient {
         #[cfg(target_arch = "wasm32")]
         {
             wasm::make_request_with_details(&self.default_headers, method, url, body).await
+        }
+    }
+
+    /// Convenience method for POST with response details
+    pub async fn post_with_details<T: Serialize, R: DeserializeOwned>(
+        &self,
+        url: &str,
+        body: &T,
+    ) -> Result<ResponseDetails<R>, HttpError> {
+        self.request_with_details(HttpMethod::POST, url, Some(body))
+            .await
+    }
+
+    /// Convenience method for GET with response details
+    pub async fn get_with_details<R: DeserializeOwned>(
+        &self,
+        url: &str,
+    ) -> Result<ResponseDetails<R>, HttpError> {
+        self.request_with_details::<(), R>(HttpMethod::GET, url, None)
+            .await
+    }
+
+    /// Request that returns raw text body and metadata (headers, status) without JSON parsing
+    /// Useful for APIs that return malformed JSON or need custom deserialization
+    pub async fn request_text_with_details<T: Serialize>(
+        &self,
+        method: HttpMethod,
+        url: &str,
+        body: Option<&T>,
+    ) -> Result<ResponseDetails<String>, HttpError> {
+        debug!("{method:?} request for text with details to: {url}");
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            native::make_request_text_with_details(
+                &self.inner,
+                &self.default_headers,
+                method,
+                url,
+                body,
+            )
+            .await
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            wasm::make_request_text_with_details(&self.default_headers, method, url, body).await
         }
     }
 }
