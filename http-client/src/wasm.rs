@@ -107,14 +107,18 @@ pub(crate) async fn make_request_with_details<T: Serialize, R: DeserializeOwned>
 
     // Check status before parsing
     if !response.ok() {
-        return Err(HttpError::Custom(format!(
-            "HTTP request failed with status: {status_code}"
-        )));
+        // Get response body as text for error details
+        let body = response.text().await?;
+        return Err(HttpError::HttpStatus {
+            status_code,
+            headers,
+            body,
+        });
     }
 
     // Parse JSON body
     let data = response.json::<R>().await?;
-    debug!("Got response from API: status {}", status_code);
+    debug!("Got response from API: status {status_code}");
 
     Ok(ResponseDetails {
         data,
