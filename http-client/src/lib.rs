@@ -217,6 +217,34 @@ impl HttpClient {
         self.request_with_details::<(), R>(HttpMethod::GET, url, None)
             .await
     }
+
+    /// Request that returns raw text body and metadata (headers, status) without JSON parsing
+    /// Useful for APIs that return malformed JSON or need custom deserialization
+    pub async fn request_text_with_details<T: Serialize>(
+        &self,
+        method: HttpMethod,
+        url: &str,
+        body: Option<&T>,
+    ) -> Result<ResponseDetails<String>, HttpError> {
+        debug!("{method:?} request for text with details to: {url}");
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            native::make_request_text_with_details(
+                &self.inner,
+                &self.default_headers,
+                method,
+                url,
+                body,
+            )
+            .await
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            wasm::make_request_text_with_details(&self.default_headers, method, url, body).await
+        }
+    }
 }
 
 impl Default for HttpClient {

@@ -814,29 +814,24 @@ impl MaestroApi {
         url: &str,
         max_retries: u32,
     ) -> Result<T, MaestroError> {
-        use http_client::{HttpMethod, ResponseDetails};
+        use http_client::HttpMethod;
 
         let mut attempt = 0;
 
         loop {
-            let response_details: ResponseDetails = self
+            // Request text with details to get raw body, headers, and perform custom retry logic
+            let response_details = self
                 .client
-                .request_with_response_details(HttpMethod::GET, url, None::<&()>)
+                .request_text_with_details(HttpMethod::GET, url, None::<&()>)
                 .await?;
 
             match response_details.status_code {
                 429 => {
-                    // Parse Retry-After header if present
-                    let retry_after = response_details
-                        .headers
-                        .get("retry-after")
-                        .and_then(|s| s.parse::<u64>().ok());
+                    // Parse Retry-After header using helper method
+                    let retry_after = response_details.retry_after_seconds();
 
                     if attempt >= max_retries {
-                        warn!(
-                            "Max retries ({}) exceeded for URL: {}, giving up",
-                            max_retries, url
-                        );
+                        warn!("Max retries ({max_retries}) exceeded for URL: {url}, giving up");
                         return Err(MaestroError::RateLimit { retry_after });
                     }
 
@@ -849,10 +844,8 @@ impl MaestroApi {
                         });
 
                     warn!(
-                        "Rate limited on attempt {} for URL: {}, retrying after {}ms",
-                        attempt + 1,
-                        url,
-                        delay_ms
+                        "Rate limited on attempt {} for URL: {url}, retrying after {delay_ms}ms",
+                        attempt + 1
                     );
 
                     // Use worker_utils::sleep for Cloudflare Workers compatibility
@@ -861,8 +854,8 @@ impl MaestroApi {
                     continue;
                 }
                 status if (200..300).contains(&status) => {
-                    // Success - parse response
-                    let cleaned = strip_control_chars(&response_details.body);
+                    // Success - parse response body (data field contains the String)
+                    let cleaned = strip_control_chars(&response_details.data);
                     return serde_json::from_str(&cleaned).map_err(|_| {
                         MaestroError::Deserialization(format!(
                             "deserialization failure for url: {url}"
@@ -873,7 +866,7 @@ impl MaestroApi {
                     // Other HTTP errors - propagate immediately
                     return Err(MaestroError::Http(http_client::HttpError::Custom(format!(
                         "HTTP error {}: {}",
-                        response_details.status_code, response_details.body
+                        response_details.status_code, response_details.data
                     ))));
                 }
             }
