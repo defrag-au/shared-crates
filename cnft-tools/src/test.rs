@@ -13,15 +13,15 @@ mod tests {
         match serde_json::from_str::<CnftAsset>(test_case!("asset_in_list_response.json")) {
             Ok(asset) => {
                 let test_traits = HashMap::from([
-                    ("Eyes".to_string(), "Focus".to_string()),
-                    ("Nose".to_string(), "Button".to_string()),
-                    ("Rank".to_string(), "Quartermaster".to_string()),
-                    ("Skin".to_string(), "Inked".to_string()),
-                    ("Mouth".to_string(), "Gold Beard".to_string()),
-                    ("Weapon".to_string(), "Shark's Hook".to_string()),
-                    ("Clothes".to_string(), "Sapphire Warlord".to_string()),
-                    ("Headwear".to_string(), "Deckhand's Cap".to_string()),
-                    ("Background".to_string(), "Emerald Isle".to_string()),
+                    ("Eyes".to_string(), vec!["Focus".to_string()]),
+                    ("Nose".to_string(), vec!["Button".to_string()]),
+                    ("Rank".to_string(), vec!["Quartermaster".to_string()]),
+                    ("Skin".to_string(), vec!["Inked".to_string()]),
+                    ("Mouth".to_string(), vec!["Gold Beard".to_string()]),
+                    ("Weapon".to_string(), vec!["Shark's Hook".to_string()]),
+                    ("Clothes".to_string(), vec!["Sapphire Warlord".to_string()]),
+                    ("Headwear".to_string(), vec!["Deckhand's Cap".to_string()]),
+                    ("Background".to_string(), vec!["Emerald Isle".to_string()]),
                 ]);
                 assert_eq!(asset.on_sale, Some(false));
                 assert_eq!(asset.asset_name, Some("Pirate376".into()));
@@ -31,7 +31,7 @@ mod tests {
                     asset.icon_url,
                     Some("QmSfqtMhjqeU6cncYWpMXcoQQVrzxsaap2SgRzmhkvXZC9".to_string())
                 );
-                assert_eq!(asset.trait_count, 9);
+                assert_eq!(asset.trait_count, Some(9));
                 assert_eq!(asset.encoded_name, "506972617465333736");
                 assert_eq!(asset.build_type, Some("robot".into()));
                 assert_eq!(asset.rarity_rank, 59);
@@ -57,15 +57,66 @@ mod tests {
                     Some(luffy) => {
                         assert_eq!(
                             luffy.traits,
-                            HashMap::from([("Rank".to_string(), "Legendary".to_string()),])
+                            HashMap::from([("Rank".to_string(), vec!["Legendary".to_string()]),])
                         )
                     }
                     None => panic!("luffy not found"),
                 }
 
                 for asset in assets {
-                    assert_eq!(asset.traits.keys().len() as u32, asset.trait_count);
+                    if let Some(count) = asset.trait_count {
+                        assert_eq!(asset.traits.keys().len() as u32, count);
+                    }
                 }
+            }
+            Err(err) => {
+                panic!("failed decoding: {err:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_deserialize_salty_seagulls() {
+        match serde_json::from_str::<Vec<CnftAsset>>(test_case!("salty_seagulls.json")) {
+            Ok(assets) => {
+                println!("asset count = {}", assets.len());
+                assert_eq!(assets.len(), 5);
+
+                // Verify basic structure and that we can handle arrays in trait values
+                for asset in &assets {
+                    if let Some(count) = asset.trait_count {
+                        assert_eq!(asset.traits.keys().len() as u32, count);
+                    }
+                }
+
+                // Verify at least one asset parsed correctly
+                assert!(!assets.is_empty());
+                let first = &assets[0];
+                assert!(!first.traits.is_empty());
+
+                // Verify we correctly parsed the flattened traits from King Daniel Navagio
+                assert_eq!(first.name, "King Daniel Navagio");
+                assert_eq!(
+                    first.traits.get("background"),
+                    Some(&vec!["Purple".to_string()])
+                );
+                assert_eq!(first.traits.get("role"), Some(&vec!["King".to_string()]));
+                assert_eq!(
+                    first.traits.get("class"),
+                    Some(&vec!["Monarch".to_string()])
+                );
+                assert_eq!(
+                    first.traits.get("colony"),
+                    Some(&vec!["Navagio".to_string()])
+                );
+                assert_eq!(first.traits.get("matedPair"), Some(&vec!["No".to_string()]));
+
+                // Verify we have all the expected trait keys
+                assert!(first.traits.contains_key("feathers"));
+                assert!(first.traits.contains_key("shirt"));
+                assert!(first.traits.contains_key("eyes"));
+                assert!(first.traits.contains_key("hat"));
+                assert!(first.traits.contains_key("beak"));
             }
             Err(err) => {
                 panic!("failed decoding: {err:?}");

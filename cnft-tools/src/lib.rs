@@ -23,12 +23,12 @@ pub struct CnftAsset {
     #[serde(alias = "iconurl")]
     pub icon_url: Option<String>,
     #[serde(
-        default,
         alias = "Trait Count",
         alias = "traitCount",
-        deserialize_with = "deserialize_u32_string"
+        deserialize_with = "deserialize_optional_u32_string",
+        default
     )]
-    pub trait_count: u32,
+    pub trait_count: Option<u32>,
     #[serde(alias = "encodedName")]
     pub encoded_name: String,
     #[serde(alias = "buildType")]
@@ -39,7 +39,7 @@ pub struct CnftAsset {
     pub owner_stake_key: String,
 
     #[serde(flatten, deserialize_with = "deserialize_traits")]
-    pub traits: HashMap<String, String>,
+    pub traits: HashMap<String, Vec<String>>,
 }
 
 impl PartialEq for CnftAsset {
@@ -85,17 +85,28 @@ where
     s.parse::<u32>().map_err(serde::de::Error::custom)
 }
 
-fn deserialize_traits<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+pub(crate) fn deserialize_optional_u32_string<'de, D>(
+    deserializer: D,
+) -> Result<Option<u32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    opt.map(|s| s.parse::<u32>().map_err(serde::de::Error::custom))
+        .transpose()
+}
+
+fn deserialize_traits<'de, D>(deserializer: D) -> Result<HashMap<String, Vec<String>>, D::Error>
 where
     D: Deserializer<'de>,
 {
     struct TraitsVisitor;
 
     impl<'de> Visitor<'de> for TraitsVisitor {
-        type Value = HashMap<String, String>;
+        type Value = HashMap<String, Vec<String>>;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a map of trait key-value pairs")
+            formatter.write_str("a map of trait key-value pairs (strings or arrays)")
         }
 
         fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
@@ -104,9 +115,24 @@ where
         {
             let mut map = HashMap::new();
 
-            while let Some((key, value)) = access.next_entry::<String, String>()? {
-                if value != "None" {
-                    map.insert(key, value);
+            while let Some(key) = access.next_key::<String>()? {
+                #[derive(Deserialize)]
+                #[serde(untagged)]
+                enum TraitValue {
+                    Single(String),
+                    Multi(Vec<String>),
+                }
+
+                let value = access.next_value::<TraitValue>()?;
+
+                let values = match value {
+                    TraitValue::Single(s) if s != "None" => vec![s],
+                    TraitValue::Multi(v) => v.into_iter().filter(|s| s != "None").collect(),
+                    _ => continue,
+                };
+
+                if !values.is_empty() {
+                    map.insert(key, values);
                 }
             }
 
