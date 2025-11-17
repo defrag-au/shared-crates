@@ -94,9 +94,29 @@ mod tests {
                 let first = &assets[0];
                 assert!(!first.traits.is_empty());
 
-                // Verify we correctly parsed the flattened traits
-                assert!(first.traits.contains_key("background"));
-                assert!(first.traits.contains_key("role"));
+                // Verify we correctly parsed the flattened traits from King Daniel Navagio
+                assert_eq!(first.name, "King Daniel Navagio");
+                assert_eq!(
+                    first.traits.get("background"),
+                    Some(&vec!["Purple".to_string()])
+                );
+                assert_eq!(first.traits.get("role"), Some(&vec!["King".to_string()]));
+                assert_eq!(
+                    first.traits.get("class"),
+                    Some(&vec!["Monarch".to_string()])
+                );
+                assert_eq!(
+                    first.traits.get("colony"),
+                    Some(&vec!["Navagio".to_string()])
+                );
+                assert_eq!(first.traits.get("matedPair"), Some(&vec!["No".to_string()]));
+
+                // Verify we have all the expected trait keys
+                assert!(first.traits.contains_key("feathers"));
+                assert!(first.traits.contains_key("shirt"));
+                assert!(first.traits.contains_key("eyes"));
+                assert!(first.traits.contains_key("hat"));
+                assert!(first.traits.contains_key("beak"));
             }
             Err(err) => {
                 panic!("failed decoding: {err:?}");
