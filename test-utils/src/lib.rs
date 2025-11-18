@@ -1,3 +1,8 @@
+/// Load a test case file from the resources/test directory and return its contents as a &'static str.
+/// This macro embeds the file contents at compile time using include_str!.
+///
+/// For large files that should be loaded at runtime to avoid compilation issues,
+/// use `load_test_resource!` instead.
 #[macro_export]
 macro_rules! test_case {
     ($fname:expr) => {{
@@ -7,6 +12,27 @@ macro_rules! test_case {
         use ::std::io::Read;
         file.read_to_string(&mut buff).unwrap();
         &buff.to_string()
+    }};
+}
+
+/// Load a test resource file at runtime and return its contents as a String.
+/// This macro is useful for large test files that should not be embedded at compile time
+/// to avoid compilation issues in CI environments.
+///
+/// # Example
+/// ```no_run
+/// use test_utils::load_test_resource;
+/// let json_data = load_test_resource!("large_block.json");
+/// ```
+#[macro_export]
+macro_rules! load_test_resource {
+    ($fname:expr) => {{
+        use std::path::PathBuf;
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("resources/test/");
+        path.push($fname);
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("Failed to read test file: {}", path.display()))
     }};
 }
 
