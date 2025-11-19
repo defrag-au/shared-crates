@@ -290,11 +290,49 @@ pub struct TransactionOutput {
     pub script_ref: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct AssetAmount {
     pub unit: String, // This is policy_id + asset_name
     #[serde(deserialize_with = "deserialize_u64_string")]
     pub quantity: u64,
+}
+
+#[derive(Deserialize, Debug)]
+struct AddressUtxosResponse {
+    data: Vec<AddressUtxo>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct AddressUtxo {
+    pub tx_hash: String,
+    #[serde(deserialize_with = "deserialize_u32_or_u64")]
+    pub index: u32,
+    #[serde(deserialize_with = "deserialize_u64_string")]
+    pub lovelace: u64,
+    pub assets: Vec<AssetAmount>,
+    pub datum: Option<serde_json::Value>,
+    pub script_ref: Option<String>,
+}
+
+fn deserialize_u32_or_u64<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    let value: serde_json::Value = Deserialize::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::Number(n) => {
+            if let Some(u) = n.as_u64() {
+                u32::try_from(u).map_err(|_| Error::custom("number too large for u32"))
+            } else {
+                Err(Error::custom("expected unsigned integer"))
+            }
+        }
+        serde_json::Value::String(s) => s
+            .parse::<u32>()
+            .map_err(|_| Error::custom("failed to parse string as u32")),
+        _ => Err(Error::custom("expected number or string")),
+    }
 }
 
 // Address decode structures for stake key resolution
@@ -532,6 +570,13 @@ impl MaestroApi {
                 Err(e)
             }
         }
+    }
+
+    /// Get UTxOs at a specific address
+    pub async fn get_address_utxos(&self, address: &str) -> Result<Vec<AddressUtxo>, MaestroError> {
+        let url = format!("https://{BASE_URL}/addresses/{address}/utxos");
+        let response: AddressUtxosResponse = self.get_url(url).await?;
+        Ok(response.data)
     }
 
     /// Get all assets held by a specific stake address/account
