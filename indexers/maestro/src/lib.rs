@@ -484,6 +484,7 @@ pub struct ScriptExecuted {
 
 pub struct MaestroApi {
     client: HttpClient,
+    api_key: String,
 }
 
 impl MaestroApi {
@@ -491,6 +492,7 @@ impl MaestroApi {
     pub fn new(api_key: String) -> Self {
         Self {
             client: HttpClient::new().with_header("api-key", &api_key),
+            api_key: api_key.clone(),
         }
     }
 
@@ -498,6 +500,7 @@ impl MaestroApi {
         let api_key = worker_utils::secrets::get_secret(env, "MAESTRO_API_KEY").await?;
         Ok(Self {
             client: HttpClient::new().with_header("api-key", &api_key),
+            api_key: api_key.clone(),
         })
     }
 
@@ -547,6 +550,84 @@ impl MaestroApi {
         Ok(response.data)
     }
 
+    /// Get UTxOs at a specific address (for wallet operations and transaction building)
+    #[cfg(feature = "transactions")]
+    pub async fn get_address_utxos(&self, address: &str) -> Result<Vec<AddressUtxo>, MaestroError> {
+        let url = format!("https://{BASE_URL}/addresses/{address}/utxos");
+        let response: AddressUtxosResponse = self.get_url(url).await?;
+        Ok(response.data)
+    }
+
+    /// Submit a signed transaction to the blockchain
+    /// Returns the transaction hash on success (202 Accepted)
+    ///
+    /// Note: This uses worker::Fetch directly because we need to send raw CBOR bytes
+    /// with application/cbor content-type, which the http-client doesn't support
+    #[cfg(feature = "transactions")]
+    pub async fn submit_transaction(&self, tx_cbor_hex: &str) -> Result<String, MaestroError> {
+        use worker_stack::worker;
+
+        let url = format!("https://{BASE_URL}/txmanager");
+
+        // Decode hex to bytes for CBOR submission
+        let tx_bytes = hex::decode(tx_cbor_hex)
+            .map_err(|e| MaestroError::Deserialization(format!("Invalid hex: {e}")))?;
+
+        // Use the API key from our struct
+        let api_key = &self.api_key;
+
+        // Create request with CBOR body using worker's Fetch API
+        let headers = worker::Headers::new();
+        headers
+            .set("Content-Type", "application/cbor")
+            .map_err(|e| {
+                MaestroError::Http(http_client::HttpError::Custom(format!(
+                    "Failed to set header: {e:?}"
+                )))
+            })?;
+        headers.set("api-key", api_key).map_err(|e| {
+            MaestroError::Http(http_client::HttpError::Custom(format!(
+                "Failed to set header: {e:?}"
+            )))
+        })?;
+
+        let mut init = worker::RequestInit::new();
+        init.method = worker::Method::Post;
+        init.headers = headers;
+        init.body = Some(tx_bytes.into());
+
+        let request = worker::Request::new_with_init(&url, &init).map_err(|e| {
+            MaestroError::Http(http_client::HttpError::Custom(format!(
+                "Failed to create request: {e:?}"
+            )))
+        })?;
+
+        let mut response = worker::Fetch::Request(request).send().await.map_err(|e| {
+            MaestroError::Http(http_client::HttpError::Custom(format!(
+                "Fetch failed: {e:?}"
+            )))
+        })?;
+
+        // Check for 202 Accepted status
+        if response.status_code() != 202 {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(MaestroError::Http(http_client::HttpError::Custom(format!(
+                "Transaction submission failed (status {}): {}",
+                response.status_code(),
+                error_text
+            ))));
+        }
+
+        // Response body is the transaction hash as plain text
+        let tx_hash = response.text().await.map_err(|e| {
+            MaestroError::Http(http_client::HttpError::Custom(format!(
+                "Failed to read response: {e:?}"
+            )))
+        })?;
+
+        Ok(tx_hash.trim().to_string())
+    }
+
     /// Resolve a payment address to its associated stake key
     pub async fn resolve_address_to_stake_key(
         &self,
@@ -570,13 +651,6 @@ impl MaestroApi {
                 Err(e)
             }
         }
-    }
-
-    /// Get UTxOs at a specific address
-    pub async fn get_address_utxos(&self, address: &str) -> Result<Vec<AddressUtxo>, MaestroError> {
-        let url = format!("https://{BASE_URL}/addresses/{address}/utxos");
-        let response: AddressUtxosResponse = self.get_url(url).await?;
-        Ok(response.data)
     }
 
     /// Get all assets held by a specific stake address/account

@@ -1047,6 +1047,7 @@ dependencies = [
  "chrono",
  "futures-core",
  "futures-util",
+ "hex",
  "http-client",
  "serde",
  "serde_json",
