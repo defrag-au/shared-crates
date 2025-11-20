@@ -335,6 +335,79 @@ where
     }
 }
 
+// Protocol parameters for fee calculation and transaction building
+#[derive(Deserialize, Debug, Clone)]
+pub struct ProtocolParameters {
+    pub coins_per_utxo_size: String,
+    #[serde(deserialize_with = "deserialize_u64_string")]
+    pub max_tx_size: u64,
+    #[serde(deserialize_with = "deserialize_u64_string")]
+    pub min_fee_coefficient: u64,
+    #[serde(deserialize_with = "deserialize_u64_string")]
+    pub min_fee_constant: u64,
+    #[serde(deserialize_with = "deserialize_u64_string")]
+    pub max_block_body_size: u64,
+    #[serde(deserialize_with = "deserialize_u64_string")]
+    pub max_block_header_size: u64,
+    #[serde(deserialize_with = "deserialize_u64_string")]
+    pub stake_credential_deposit: u64,
+    #[serde(deserialize_with = "deserialize_u64_string")]
+    pub stake_pool_deposit: u64,
+    #[serde(deserialize_with = "deserialize_u64_string")]
+    pub min_stake_pool_cost: u64,
+    pub stake_pool_retirement_epoch_bound: u32,
+    pub desired_number_of_stake_pools: u32,
+    pub stake_pool_pledge_influence: String,
+    pub monetary_expansion: String,
+    pub treasury_expansion: String,
+    // Additional fields available but not essential for basic fee calculation
+}
+
+#[derive(Deserialize, Debug)]
+struct ProtocolParametersResponse {
+    data: ProtocolParameters,
+}
+
+// Transaction manager structures for tracking transaction state
+#[cfg(feature = "transactions")]
+#[derive(Deserialize, Debug, Clone)]
+pub struct TransactionState {
+    pub tx_hash: String,
+    pub status: TxStatus,
+    pub confirmations: u32,
+}
+
+#[cfg(feature = "transactions")]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TxStatus {
+    Pending,
+    Confirmed,
+    Failed,
+}
+
+#[cfg(feature = "transactions")]
+#[derive(Deserialize, Debug)]
+struct TransactionStateResponse {
+    #[serde(flatten)]
+    data: TransactionState,
+}
+
+#[cfg(feature = "transactions")]
+#[derive(Deserialize, Debug)]
+pub struct TransactionHistory {
+    pub transactions: Vec<TransactionState>,
+    pub page: u32,
+    pub total_count: u32,
+}
+
+#[cfg(feature = "transactions")]
+#[derive(Deserialize, Debug)]
+struct TransactionHistoryResponse {
+    #[serde(flatten)]
+    data: TransactionHistory,
+}
+
 // Address decode structures for stake key resolution
 #[allow(dead_code)]
 #[derive(Deserialize, Debug)]
@@ -514,6 +587,14 @@ impl MaestroApi {
         Ok(response.data)
     }
 
+    /// Get current protocol parameters
+    /// Essential for fee calculation, min UTxO values, and transaction building
+    pub async fn get_protocol_parameters(&self) -> Result<ProtocolParameters, MaestroError> {
+        let url = format!("https://{BASE_URL}/protocol-parameters");
+        let response: ProtocolParametersResponse = self.get_url(url).await?;
+        Ok(response.data)
+    }
+
     /// Get transaction details by hash
     pub async fn get_transaction(&self, tx_hash: &str) -> Result<TransactionDetails, MaestroError> {
         let url = format!("https://{BASE_URL}/transactions/{tx_hash}");
@@ -626,6 +707,47 @@ impl MaestroApi {
         })?;
 
         Ok(tx_hash.trim().to_string())
+    }
+
+    /// Get the current state of a submitted transaction
+    /// Returns pending, confirmed, or failed status with confirmation count
+    #[cfg(feature = "transactions")]
+    pub async fn get_transaction_state(
+        &self,
+        tx_hash: &str,
+    ) -> Result<TransactionState, MaestroError> {
+        let url = format!("https://{BASE_URL}/txmanager/{tx_hash}/state");
+        let response: TransactionStateResponse = self.get_url(url).await?;
+        Ok(response.data)
+    }
+
+    /// Get transaction history from the transaction manager
+    /// Returns paginated list of submitted transactions with their states
+    #[cfg(feature = "transactions")]
+    pub async fn get_transaction_history(
+        &self,
+        page: Option<u32>,
+        count: Option<u32>,
+    ) -> Result<TransactionHistory, MaestroError> {
+        let mut query_params = Vec::new();
+
+        if let Some(p) = page {
+            query_params.push(format!("page={p}"));
+        }
+
+        if let Some(c) = count {
+            query_params.push(format!("count={c}"));
+        }
+
+        let query_string = if query_params.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", query_params.join("&"))
+        };
+
+        let url = format!("https://{BASE_URL}/txmanager/history{query_string}");
+        let response: TransactionHistoryResponse = self.get_url(url).await?;
+        Ok(response.data)
     }
 
     /// Resolve a payment address to its associated stake key
