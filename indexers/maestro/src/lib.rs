@@ -7,8 +7,9 @@ use cardano_assets::{
 use chrono::Utc;
 use futures_core::stream::Stream;
 use http_client::HttpClient;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
+use std::str::FromStr;
 use std::{error::Error, fmt};
 use tracing::warn;
 use worker_stack::worker;
@@ -290,11 +291,150 @@ pub struct TransactionOutput {
     pub script_ref: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct AssetAmount {
     pub unit: String, // This is policy_id + asset_name
-    #[serde(deserialize_with = "deserialize_u64_string")]
-    pub quantity: u64,
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    #[serde(alias = "quantity")] // Support both "amount" and "quantity"
+    pub amount: u64,
+}
+
+#[derive(Deserialize, Debug)]
+struct AddressUtxosResponse {
+    data: Vec<AddressUtxo>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct AddressUtxo {
+    pub tx_hash: String,
+    #[serde(deserialize_with = "deserialize_u32_or_u64")]
+    pub index: u32,
+    pub assets: Vec<AssetAmount>,
+    pub datum: Option<serde_json::Value>,
+    pub script_ref: Option<String>,
+}
+
+impl From<AddressUtxo> for cardano_assets::UtxoApi {
+    fn from(utxo: AddressUtxo) -> Self {
+        let mut lovelace = 0u64;
+        let mut native_assets = Vec::new();
+
+        for asset in utxo.assets {
+            if asset.unit == "lovelace" {
+                lovelace = asset.amount;
+            } else {
+                // Parse the unit field which is policy_id + asset_name_hex
+                if let Ok(asset_id) = cardano_assets::AssetId::from_str(&asset.unit) {
+                    native_assets.push(cardano_assets::AssetQuantity {
+                        asset_id,
+                        quantity: asset.amount,
+                    });
+                }
+            }
+        }
+
+        Self {
+            tx_hash: utxo.tx_hash,
+            output_index: utxo.index,
+            lovelace,
+            assets: native_assets,
+        }
+    }
+}
+
+fn deserialize_u32_or_u64<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    let value: serde_json::Value = Deserialize::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::Number(n) => {
+            if let Some(u) = n.as_u64() {
+                u32::try_from(u).map_err(|_| Error::custom("number too large for u32"))
+            } else {
+                Err(Error::custom("expected unsigned integer"))
+            }
+        }
+        serde_json::Value::String(s) => s
+            .parse::<u32>()
+            .map_err(|_| Error::custom("failed to parse string as u32")),
+        _ => Err(Error::custom("expected number or string")),
+    }
+}
+
+// Helper types for nested Maestro response structures
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct AdaLovelace {
+    pub ada: AdaAmount,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct AdaAmount {
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub lovelace: u64,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ByteSize {
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub bytes: u64,
+}
+
+// Protocol parameters for fee calculation and transaction building
+// Only deserialize the fields we actually need for transaction building
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ProtocolParameters {
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub min_fee_coefficient: u64,
+    pub min_fee_constant: AdaLovelace,
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub min_utxo_deposit_coefficient: u64,
+}
+
+#[derive(Deserialize, Debug)]
+struct ProtocolParametersResponse {
+    data: ProtocolParameters,
+}
+
+// Transaction manager structures for tracking transaction state
+#[cfg(feature = "transactions")]
+#[derive(Deserialize, Debug, Clone)]
+pub struct TransactionState {
+    pub tx_hash: String,
+    pub status: TxStatus,
+    pub confirmations: u32,
+}
+
+#[cfg(feature = "transactions")]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TxStatus {
+    Pending,
+    Confirmed,
+    Failed,
+}
+
+#[cfg(feature = "transactions")]
+#[derive(Deserialize, Debug)]
+struct TransactionStateResponse {
+    #[serde(flatten)]
+    data: TransactionState,
+}
+
+#[cfg(feature = "transactions")]
+#[derive(Deserialize, Debug)]
+pub struct TransactionHistory {
+    pub transactions: Vec<TransactionState>,
+    pub page: u32,
+    pub total_count: u32,
+}
+
+#[cfg(feature = "transactions")]
+#[derive(Deserialize, Debug)]
+struct TransactionHistoryResponse {
+    #[serde(flatten)]
+    data: TransactionHistory,
 }
 
 // Address decode structures for stake key resolution
@@ -446,6 +586,7 @@ pub struct ScriptExecuted {
 
 pub struct MaestroApi {
     client: HttpClient,
+    api_key: String,
 }
 
 impl MaestroApi {
@@ -453,6 +594,7 @@ impl MaestroApi {
     pub fn new(api_key: String) -> Self {
         Self {
             client: HttpClient::new().with_header("api-key", &api_key),
+            api_key: api_key.clone(),
         }
     }
 
@@ -460,6 +602,7 @@ impl MaestroApi {
         let api_key = worker_utils::secrets::get_secret(env, "MAESTRO_API_KEY").await?;
         Ok(Self {
             client: HttpClient::new().with_header("api-key", &api_key),
+            api_key: api_key.clone(),
         })
     }
 
@@ -470,6 +613,14 @@ impl MaestroApi {
         };
 
         let response: EpochResponse = self.get_url(url).await?;
+        Ok(response.data)
+    }
+
+    /// Get current protocol parameters
+    /// Essential for fee calculation, min UTxO values, and transaction building
+    pub async fn get_protocol_parameters(&self) -> Result<ProtocolParameters, MaestroError> {
+        let url = format!("https://{BASE_URL}/protocol-parameters");
+        let response: ProtocolParametersResponse = self.get_url(url).await?;
         Ok(response.data)
     }
 
@@ -506,6 +657,125 @@ impl MaestroApi {
     ) -> Result<CompleteTransactionDetails, MaestroError> {
         let url = format!("https://{BASE_URL}/transactions/{tx_hash}");
         let response: CompleteTransactionResponse = self.get_url(url).await?;
+        Ok(response.data)
+    }
+
+    /// Get UTxOs at a specific address (for wallet operations and transaction building)
+    #[cfg(feature = "transactions")]
+    pub async fn get_address_utxos(&self, address: &str) -> Result<Vec<AddressUtxo>, MaestroError> {
+        let url = format!("https://{BASE_URL}/addresses/{address}/utxos");
+        let response: AddressUtxosResponse = self.get_url(url).await?;
+        Ok(response.data)
+    }
+
+    /// Submit a signed transaction to the blockchain
+    /// Returns the transaction hash on success (202 Accepted)
+    ///
+    /// Note: This uses worker::Fetch directly because we need to send raw CBOR bytes
+    /// with application/cbor content-type, which the http-client doesn't support
+    #[cfg(feature = "transactions")]
+    pub async fn submit_transaction(&self, tx_cbor_hex: &str) -> Result<String, MaestroError> {
+        use worker_stack::worker;
+
+        let url = format!("https://{BASE_URL}/txmanager");
+
+        // Decode hex to bytes for CBOR submission
+        let tx_bytes = hex::decode(tx_cbor_hex)
+            .map_err(|e| MaestroError::Deserialization(format!("Invalid hex: {e}")))?;
+
+        // Use the API key from our struct
+        let api_key = &self.api_key;
+
+        // Create request with CBOR body using worker's Fetch API
+        let headers = worker::Headers::new();
+        headers
+            .set("Content-Type", "application/cbor")
+            .map_err(|e| {
+                MaestroError::Http(http_client::HttpError::Custom(format!(
+                    "Failed to set header: {e:?}"
+                )))
+            })?;
+        headers.set("api-key", api_key).map_err(|e| {
+            MaestroError::Http(http_client::HttpError::Custom(format!(
+                "Failed to set header: {e:?}"
+            )))
+        })?;
+
+        let mut init = worker::RequestInit::new();
+        init.method = worker::Method::Post;
+        init.headers = headers;
+        init.body = Some(tx_bytes.into());
+
+        let request = worker::Request::new_with_init(&url, &init).map_err(|e| {
+            MaestroError::Http(http_client::HttpError::Custom(format!(
+                "Failed to create request: {e:?}"
+            )))
+        })?;
+
+        let mut response = worker::Fetch::Request(request).send().await.map_err(|e| {
+            MaestroError::Http(http_client::HttpError::Custom(format!(
+                "Fetch failed: {e:?}"
+            )))
+        })?;
+
+        // Check for 202 Accepted status
+        if response.status_code() != 202 {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(MaestroError::Http(http_client::HttpError::Custom(format!(
+                "Transaction submission failed (status {}): {}",
+                response.status_code(),
+                error_text
+            ))));
+        }
+
+        // Response body is the transaction hash as plain text
+        let tx_hash = response.text().await.map_err(|e| {
+            MaestroError::Http(http_client::HttpError::Custom(format!(
+                "Failed to read response: {e:?}"
+            )))
+        })?;
+
+        Ok(tx_hash.trim().to_string())
+    }
+
+    /// Get the current state of a submitted transaction
+    /// Returns pending, confirmed, or failed status with confirmation count
+    #[cfg(feature = "transactions")]
+    pub async fn get_transaction_state(
+        &self,
+        tx_hash: &str,
+    ) -> Result<TransactionState, MaestroError> {
+        let url = format!("https://{BASE_URL}/txmanager/{tx_hash}/state");
+        let response: TransactionStateResponse = self.get_url(url).await?;
+        Ok(response.data)
+    }
+
+    /// Get transaction history from the transaction manager
+    /// Returns paginated list of submitted transactions with their states
+    #[cfg(feature = "transactions")]
+    pub async fn get_transaction_history(
+        &self,
+        page: Option<u32>,
+        count: Option<u32>,
+    ) -> Result<TransactionHistory, MaestroError> {
+        let mut query_params = Vec::new();
+
+        if let Some(p) = page {
+            query_params.push(format!("page={p}"));
+        }
+
+        if let Some(c) = count {
+            query_params.push(format!("count={c}"));
+        }
+
+        let query_string = if query_params.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", query_params.join("&"))
+        };
+
+        let url = format!("https://{BASE_URL}/txmanager/history{query_string}");
+        let response: TransactionHistoryResponse = self.get_url(url).await?;
         Ok(response.data)
     }
 
@@ -856,9 +1126,10 @@ impl MaestroApi {
                 status if (200..300).contains(&status) => {
                     // Success - parse response body (data field contains the String)
                     let cleaned = strip_control_chars(&response_details.data);
-                    return serde_json::from_str(&cleaned).map_err(|_| {
+                    return serde_json::from_str(&cleaned).map_err(|e| {
                         MaestroError::Deserialization(format!(
-                            "deserialization failure for url: {url}"
+                            "deserialization failure for url: {url}, error: {e}, body: {}",
+                            &cleaned[..cleaned.len().min(500)]
                         ))
                     });
                 }
@@ -878,8 +1149,23 @@ pub fn deserialize_u64_string<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let s = String::deserialize(deserializer)?;
-    s.parse::<u64>().map_err(serde::de::Error::custom)
+    use serde::de::Error;
+    match Value::deserialize(deserializer)? {
+        Value::Number(num) => num
+            .as_u64()
+            .ok_or_else(|| Error::custom("number out of u64 range")),
+        Value::String(s) => s
+            .parse::<u64>()
+            .map_err(|_| Error::custom("failed to parse string as u64")),
+        _ => Err(Error::custom("expected number or string")),
+    }
+}
+
+pub fn serialize_u64_string<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_u64(*value)
 }
 
 mod maestro_date_format {
