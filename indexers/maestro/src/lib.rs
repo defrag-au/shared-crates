@@ -7,8 +7,9 @@ use cardano_assets::{
 use chrono::Utc;
 use futures_core::stream::Stream;
 use http_client::HttpClient;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
+use std::str::FromStr;
 use std::{error::Error, fmt};
 use tracing::warn;
 use worker_stack::worker;
@@ -293,8 +294,9 @@ pub struct TransactionOutput {
 #[derive(Deserialize, Clone, Debug)]
 pub struct AssetAmount {
     pub unit: String, // This is policy_id + asset_name
-    #[serde(deserialize_with = "deserialize_u64_string")]
-    pub quantity: u64,
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    #[serde(alias = "quantity")] // Support both "amount" and "quantity"
+    pub amount: u64,
 }
 
 #[derive(Deserialize, Debug)]
@@ -307,11 +309,37 @@ pub struct AddressUtxo {
     pub tx_hash: String,
     #[serde(deserialize_with = "deserialize_u32_or_u64")]
     pub index: u32,
-    #[serde(deserialize_with = "deserialize_u64_string")]
-    pub lovelace: u64,
     pub assets: Vec<AssetAmount>,
     pub datum: Option<serde_json::Value>,
     pub script_ref: Option<String>,
+}
+
+impl From<AddressUtxo> for cardano_assets::UtxoApi {
+    fn from(utxo: AddressUtxo) -> Self {
+        let mut lovelace = 0u64;
+        let mut native_assets = Vec::new();
+
+        for asset in utxo.assets {
+            if asset.unit == "lovelace" {
+                lovelace = asset.amount;
+            } else {
+                // Parse the unit field which is policy_id + asset_name_hex
+                if let Ok(asset_id) = cardano_assets::AssetId::from_str(&asset.unit) {
+                    native_assets.push(cardano_assets::AssetQuantity {
+                        asset_id,
+                        quantity: asset.amount,
+                    });
+                }
+            }
+        }
+
+        Self {
+            tx_hash: utxo.tx_hash,
+            output_index: utxo.index,
+            lovelace,
+            assets: native_assets,
+        }
+    }
 }
 
 fn deserialize_u32_or_u64<'de, D>(deserializer: D) -> Result<u32, D::Error>
@@ -335,32 +363,33 @@ where
     }
 }
 
+// Helper types for nested Maestro response structures
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct AdaLovelace {
+    pub ada: AdaAmount,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct AdaAmount {
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub lovelace: u64,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ByteSize {
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub bytes: u64,
+}
+
 // Protocol parameters for fee calculation and transaction building
-#[derive(Deserialize, Debug, Clone)]
+// Only deserialize the fields we actually need for transaction building
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ProtocolParameters {
-    pub coins_per_utxo_size: String,
-    #[serde(deserialize_with = "deserialize_u64_string")]
-    pub max_tx_size: u64,
-    #[serde(deserialize_with = "deserialize_u64_string")]
+    #[serde(with = "wasm_safe_serde::u64_required")]
     pub min_fee_coefficient: u64,
-    #[serde(deserialize_with = "deserialize_u64_string")]
-    pub min_fee_constant: u64,
-    #[serde(deserialize_with = "deserialize_u64_string")]
-    pub max_block_body_size: u64,
-    #[serde(deserialize_with = "deserialize_u64_string")]
-    pub max_block_header_size: u64,
-    #[serde(deserialize_with = "deserialize_u64_string")]
-    pub stake_credential_deposit: u64,
-    #[serde(deserialize_with = "deserialize_u64_string")]
-    pub stake_pool_deposit: u64,
-    #[serde(deserialize_with = "deserialize_u64_string")]
-    pub min_stake_pool_cost: u64,
-    pub stake_pool_retirement_epoch_bound: u32,
-    pub desired_number_of_stake_pools: u32,
-    pub stake_pool_pledge_influence: String,
-    pub monetary_expansion: String,
-    pub treasury_expansion: String,
-    // Additional fields available but not essential for basic fee calculation
+    pub min_fee_constant: AdaLovelace,
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub min_utxo_deposit_coefficient: u64,
 }
 
 #[derive(Deserialize, Debug)]
@@ -1097,9 +1126,10 @@ impl MaestroApi {
                 status if (200..300).contains(&status) => {
                     // Success - parse response body (data field contains the String)
                     let cleaned = strip_control_chars(&response_details.data);
-                    return serde_json::from_str(&cleaned).map_err(|_| {
+                    return serde_json::from_str(&cleaned).map_err(|e| {
                         MaestroError::Deserialization(format!(
-                            "deserialization failure for url: {url}"
+                            "deserialization failure for url: {url}, error: {e}, body: {}",
+                            &cleaned[..cleaned.len().min(500)]
                         ))
                     });
                 }
@@ -1119,8 +1149,23 @@ pub fn deserialize_u64_string<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let s = String::deserialize(deserializer)?;
-    s.parse::<u64>().map_err(serde::de::Error::custom)
+    use serde::de::Error;
+    match Value::deserialize(deserializer)? {
+        Value::Number(num) => num
+            .as_u64()
+            .ok_or_else(|| Error::custom("number out of u64 range")),
+        Value::String(s) => s
+            .parse::<u64>()
+            .map_err(|_| Error::custom("failed to parse string as u64")),
+        _ => Err(Error::custom("expected number or string")),
+    }
+}
+
+pub fn serialize_u64_string<S>(value: &u64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_u64(*value)
 }
 
 mod maestro_date_format {

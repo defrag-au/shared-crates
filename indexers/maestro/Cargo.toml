@@ -13,6 +13,7 @@ http-client = { path = "../../http-client" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+wasm_safe_serde = { path = "../../wasm-safe-serde" }
 worker_stack = { workspace = true }
 worker_utils = { path = "../../worker-utils" }
 hex = { version = "0.4", optional = true }

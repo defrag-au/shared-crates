@@ -11,6 +11,7 @@ use utoipa::ToSchema;
 pub mod asset_id;
 pub mod collection;
 pub mod traits;
+pub mod utxo;
 
 #[cfg(feature = "utxorpc")]
 pub mod utxorpc;
@@ -18,6 +19,7 @@ pub mod utxorpc;
 pub use asset_id::*;
 pub use collection::*;
 pub use traits::*;
+pub use utxo::*;
 pub type AssetTraits = HashMap<String, String>;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

@@ -1053,6 +1053,7 @@ dependencies = [
  "serde_json",
  "test_utils",
  "tracing",
+ "wasm_safe_serde",
  "worker_stack",
  "worker_utils",
 ]
