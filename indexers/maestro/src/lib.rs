@@ -587,6 +587,7 @@ pub struct ScriptExecuted {
 
 pub struct MaestroApi {
     client: HttpClient,
+    api_key: String,
     base_url: String,
 }
 
@@ -595,14 +596,17 @@ impl MaestroApi {
     pub fn new(api_key: String, base_url: String) -> Self {
         Self {
             client: HttpClient::new().with_header("api-key", &api_key),
+            api_key: api_key.clone(),
             base_url,
         }
     }
 
+    #[deprecated(note = "use for_env_with_network instead")]
     pub async fn for_env(env: &worker::Env) -> worker::Result<Self> {
         let api_key = worker_utils::secrets::get_secret(env, "MAESTRO_API_KEY").await?;
         Ok(Self {
             client: HttpClient::new().with_header("api-key", &api_key),
+            api_key: api_key.clone(),
             base_url: BASE_URL_MAINNET.to_string(),
         })
     }
@@ -629,6 +633,7 @@ impl MaestroApi {
 
         Ok(Self {
             client: HttpClient::new().with_header("api-key", &api_key),
+            api_key: api_key.clone(),
             base_url: base_url.to_string(),
         })
     }
