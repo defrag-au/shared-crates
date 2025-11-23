@@ -18,7 +18,8 @@ mod test;
 
 pub type BlockfrostAsset = serde_json::Map<String, Value>;
 
-const BASE_URL: &str = "mainnet.gomaestro-api.org/v1";
+const BASE_URL_MAINNET: &str = "mainnet.gomaestro-api.org/v1";
+const BASE_URL_PREVIEW: &str = "preview.gomaestro-api.org/v1";
 
 #[derive(Debug)]
 pub enum MaestroError {
@@ -587,29 +588,60 @@ pub struct ScriptExecuted {
 pub struct MaestroApi {
     client: HttpClient,
     api_key: String,
+    base_url: String,
 }
 
 impl MaestroApi {
-    /// Create a new MaestroApi instance with the provided API key
-    pub fn new(api_key: String) -> Self {
+    /// Create a new MaestroApi instance with the provided API key and base URL
+    pub fn new(api_key: String, base_url: String) -> Self {
         Self {
             client: HttpClient::new().with_header("api-key", &api_key),
             api_key: api_key.clone(),
+            base_url,
         }
     }
 
+    #[deprecated(note = "use for_env_with_network instead")]
     pub async fn for_env(env: &worker::Env) -> worker::Result<Self> {
         let api_key = worker_utils::secrets::get_secret(env, "MAESTRO_API_KEY").await?;
         Ok(Self {
             client: HttpClient::new().with_header("api-key", &api_key),
             api_key: api_key.clone(),
+            base_url: BASE_URL_MAINNET.to_string(),
+        })
+    }
+
+    /// Create MaestroApi from environment with network selection
+    ///
+    /// Selects the correct API key and base URL for the network:
+    /// - Mainnet: MAESTRO_API_KEY_MAINNET with mainnet.gomaestro-api.org
+    /// - Testnet: MAESTRO_API_KEY_TESTNET with preview.gomaestro-api.org
+    pub async fn for_env_with_network(env: &worker::Env, network: &str) -> worker::Result<Self> {
+        let (secret_name, base_url) = match network {
+            "cardano:mainnet" => ("MAESTRO_API_KEY_MAINNET", BASE_URL_MAINNET),
+            "cardano:testnet" | "cardano:preview" | "cardano:preprod" => {
+                ("MAESTRO_API_KEY_TESTNET", BASE_URL_PREVIEW)
+            }
+            _ => {
+                return Err(worker::Error::RustError(format!(
+                    "Unsupported network for Maestro: {network}"
+                )))
+            }
+        };
+
+        let api_key = worker_utils::secrets::get_secret(env, secret_name).await?;
+
+        Ok(Self {
+            client: HttpClient::new().with_header("api-key", &api_key),
+            api_key: api_key.clone(),
+            base_url: base_url.to_string(),
         })
     }
 
     pub async fn get_epoch(&self, target: EpochTarget) -> Result<EpochDetails, MaestroError> {
         let url = match target {
-            EpochTarget::Current => format!("https://{BASE_URL}/epochs/current"),
-            EpochTarget::Specific(epoch) => format!("https://{BASE_URL}/epochs/{epoch}"),
+            EpochTarget::Current => format!("https://{}/epochs/current", self.base_url),
+            EpochTarget::Specific(epoch) => format!("https://{}/epochs/{epoch}", self.base_url),
         };
 
         let response: EpochResponse = self.get_url(url).await?;
@@ -619,14 +651,14 @@ impl MaestroApi {
     /// Get current protocol parameters
     /// Essential for fee calculation, min UTxO values, and transaction building
     pub async fn get_protocol_parameters(&self) -> Result<ProtocolParameters, MaestroError> {
-        let url = format!("https://{BASE_URL}/protocol-parameters");
+        let url = format!("https://{}/protocol-parameters", self.base_url);
         let response: ProtocolParametersResponse = self.get_url(url).await?;
         Ok(response.data)
     }
 
     /// Get transaction details by hash
     pub async fn get_transaction(&self, tx_hash: &str) -> Result<TransactionDetails, MaestroError> {
-        let url = format!("https://{BASE_URL}/transactions/{tx_hash}");
+        let url = format!("https://{}/transactions/{tx_hash}", self.base_url);
         let response: TransactionResponse = self.get_url(url).await?;
         Ok(response.data)
     }
@@ -636,7 +668,7 @@ impl MaestroApi {
         &self,
         tx_hash: &str,
     ) -> Result<TransactionUtxos, MaestroError> {
-        let url = format!("https://{BASE_URL}/transactions/{tx_hash}/utxos");
+        let url = format!("https://{}/transactions/{tx_hash}/utxos", self.base_url);
         let response: TransactionUtxosResponse = self.get_url(url).await?;
         Ok(response.data)
     }
@@ -644,7 +676,7 @@ impl MaestroApi {
     /// Get transaction CBOR data (for faster parsing)
     /// Returns hex-encoded CBOR that can be parsed directly with pallas
     pub async fn get_transaction_cbor(&self, tx_hash: &str) -> Result<String, MaestroError> {
-        let url = format!("https://{BASE_URL}/transactions/{tx_hash}/cbor");
+        let url = format!("https://{}/transactions/{tx_hash}/cbor", self.base_url);
         let response: TransactionCborResponse = self.get_url(url).await?;
         Ok(response.data)
     }
@@ -655,7 +687,7 @@ impl MaestroApi {
         &self,
         tx_hash: &str,
     ) -> Result<CompleteTransactionDetails, MaestroError> {
-        let url = format!("https://{BASE_URL}/transactions/{tx_hash}");
+        let url = format!("https://{}/transactions/{tx_hash}", self.base_url);
         let response: CompleteTransactionResponse = self.get_url(url).await?;
         Ok(response.data)
     }
@@ -663,7 +695,7 @@ impl MaestroApi {
     /// Get UTxOs at a specific address (for wallet operations and transaction building)
     #[cfg(feature = "transactions")]
     pub async fn get_address_utxos(&self, address: &str) -> Result<Vec<AddressUtxo>, MaestroError> {
-        let url = format!("https://{BASE_URL}/addresses/{address}/utxos");
+        let url = format!("https://{}/addresses/{address}/utxos", self.base_url);
         let response: AddressUtxosResponse = self.get_url(url).await?;
         Ok(response.data)
     }
@@ -677,7 +709,7 @@ impl MaestroApi {
     pub async fn submit_transaction(&self, tx_cbor_hex: &str) -> Result<String, MaestroError> {
         use worker_stack::worker;
 
-        let url = format!("https://{BASE_URL}/txmanager");
+        let url = format!("https://{}/txmanager", self.base_url);
 
         // Decode hex to bytes for CBOR submission
         let tx_bytes = hex::decode(tx_cbor_hex)
@@ -745,7 +777,7 @@ impl MaestroApi {
         &self,
         tx_hash: &str,
     ) -> Result<TransactionState, MaestroError> {
-        let url = format!("https://{BASE_URL}/txmanager/{tx_hash}/state");
+        let url = format!("https://{}/txmanager/{tx_hash}/state", self.base_url);
         let response: TransactionStateResponse = self.get_url(url).await?;
         Ok(response.data)
     }
@@ -774,7 +806,7 @@ impl MaestroApi {
             format!("?{}", query_params.join("&"))
         };
 
-        let url = format!("https://{BASE_URL}/txmanager/history{query_string}");
+        let url = format!("https://{}/txmanager/history{query_string}", self.base_url);
         let response: TransactionHistoryResponse = self.get_url(url).await?;
         Ok(response.data)
     }
@@ -784,7 +816,7 @@ impl MaestroApi {
         &self,
         address: &str,
     ) -> Result<Option<String>, MaestroError> {
-        let url = format!("https://{BASE_URL}/addresses/{address}/decode");
+        let url = format!("https://{}/addresses/{address}/decode", self.base_url);
 
         match self.get_url::<AddressDecodeResponse>(url).await {
             Ok(response) => {
@@ -878,7 +910,10 @@ impl MaestroApi {
             format!("?{}", query_params.join("&"))
         };
 
-        let url = format!("https://{BASE_URL}/accounts/{stake_address}/assets{querystring}");
+        let url = format!(
+            "https://{}/accounts/{stake_address}/assets{querystring}",
+            self.base_url
+        );
 
         self.get_url(url).await
     }
@@ -894,7 +929,7 @@ impl MaestroApi {
         id: &str,
         policy_id: &str,
     ) -> Result<DetailedAssetInfo, MaestroError> {
-        let url = format!("https://{BASE_URL}/assets/{policy_id}{id}");
+        let url = format!("https://{}/assets/{policy_id}{id}", self.base_url);
         let response: AssetInfoResponse = self.get_url(url.clone()).await?;
         Ok(response.data)
     }
@@ -1031,7 +1066,10 @@ impl MaestroApi {
             format!("?{}", query_params.join("&"))
         };
 
-        let url = format!("https://{BASE_URL}/policy/{policy_id}/assets{querystring}");
+        let url = format!(
+            "https://{}/policy/{policy_id}/assets{querystring}",
+            self.base_url
+        );
 
         self.get_url(url).await
     }
@@ -1042,7 +1080,10 @@ impl MaestroApi {
         cursor: Option<String>,
     ) -> Result<PolicyAccountsResponse, MaestroError> {
         let querystring = cursor.map_or(String::new(), |c| format!("cursor={c}"));
-        let url = format!("https://{BASE_URL}/policy/{policy_id}/accounts?count=100&{querystring}");
+        let url = format!(
+            "https://{}/policy/{policy_id}/accounts?count=100&{querystring}",
+            self.base_url
+        );
 
         self.get_url(url).await
     }
@@ -1055,7 +1096,8 @@ impl MaestroApi {
     ) -> Result<AssetAccountsResponse, MaestroError> {
         let querystring = cursor.map_or(String::new(), |c| format!("cursor={c}"));
         let url = format!(
-            "https://{BASE_URL}/policy/{policy_id}{asset_id}/accounts?count=100&{querystring}"
+            "https://{}/policy/{policy_id}{asset_id}/accounts?count=100&{querystring}",
+            self.base_url
         );
 
         self.get_url(url).await
