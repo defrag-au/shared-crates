@@ -18,7 +18,8 @@ mod test;
 
 pub type BlockfrostAsset = serde_json::Map<String, Value>;
 
-const BASE_URL: &str = "mainnet.gomaestro-api.org/v1";
+const BASE_URL_MAINNET: &str = "mainnet.gomaestro-api.org/v1";
+const BASE_URL_PREVIEW: &str = "preview.gomaestro-api.org/v1";
 
 #[derive(Debug)]
 pub enum MaestroError {
@@ -600,6 +601,33 @@ impl MaestroApi {
 
     pub async fn for_env(env: &worker::Env) -> worker::Result<Self> {
         let api_key = worker_utils::secrets::get_secret(env, "MAESTRO_API_KEY").await?;
+        Ok(Self {
+            client: HttpClient::new().with_header("api-key", &api_key),
+            api_key: api_key.clone(),
+        })
+    }
+
+    /// Create MaestroApi from environment with network selection
+    ///
+    /// Uses BASE_URL constant for all URLs (mainnet), but selects the correct API key:
+    /// - Mainnet: MAESTRO_API_KEY_MAINNET
+    /// - Testnet: MAESTRO_API_KEY_TESTNET
+    ///
+    /// NOTE: This currently only changes the API key, not the BASE_URL.
+    /// Full network URL support will require updating all URL construction in this crate.
+    pub async fn for_env_with_network(env: &worker::Env, network: &str) -> worker::Result<Self> {
+        let secret_name = match network {
+            "cardano:mainnet" => "MAESTRO_API_KEY_MAINNET",
+            "cardano:testnet" | "cardano:preview" | "cardano:preprod" => "MAESTRO_API_KEY_TESTNET",
+            _ => {
+                return Err(worker::Error::RustError(format!(
+                    "Unsupported network for Maestro: {network}"
+                )))
+            }
+        };
+
+        let api_key = worker_utils::secrets::get_secret(env, secret_name).await?;
+
         Ok(Self {
             client: HttpClient::new().with_header("api-key", &api_key),
             api_key: api_key.clone(),
