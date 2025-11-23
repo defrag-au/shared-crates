@@ -19,7 +19,7 @@ mod test;
 pub type BlockfrostAsset = serde_json::Map<String, Value>;
 
 const BASE_URL_MAINNET: &str = "mainnet.gomaestro-api.org/v1";
-const BASE_URL_PREVIEW: &str = "preview.gomaestro-api.org/v1";
+const BASE_URL_PREPROD: &str = "preprod.gomaestro-api.org/v1";
 
 #[derive(Debug)]
 pub enum MaestroError {
@@ -620,7 +620,7 @@ impl MaestroApi {
         let (secret_name, base_url) = match network {
             "cardano:mainnet" => ("MAESTRO_API_KEY_MAINNET", BASE_URL_MAINNET),
             "cardano:testnet" | "cardano:preview" | "cardano:preprod" => {
-                ("MAESTRO_API_KEY_TESTNET", BASE_URL_PREVIEW)
+                ("MAESTRO_API_KEY_TESTNET", BASE_URL_PREPROD)
             }
             _ => {
                 return Err(worker::Error::RustError(format!(
