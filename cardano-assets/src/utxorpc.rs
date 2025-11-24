@@ -372,6 +372,10 @@ mod integration_tests {
         fn get_utxos(&self, _refs: &[TxoRef]) -> Option<UtxoMap> {
             None
         }
+
+        fn get_slot_timestamp(&self, _slot: u64) -> Option<u64> {
+            None
+        }
     }
 
     /// OuraBlock structure for test data (minimal fields needed)
