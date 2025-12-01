@@ -25,7 +25,7 @@ pub struct CnftAsset {
     #[serde(
         alias = "Trait Count",
         alias = "traitCount",
-        deserialize_with = "deserialize_optional_u32_string",
+        deserialize_with = "deserialize_optional_u32_or_string",
         default
     )]
     pub trait_count: Option<u32>,
@@ -33,7 +33,7 @@ pub struct CnftAsset {
     pub encoded_name: String,
     #[serde(alias = "buildType")]
     pub build_type: Option<String>,
-    #[serde(alias = "rarityRank", deserialize_with = "deserialize_u32_string")]
+    #[serde(alias = "rarityRank", deserialize_with = "deserialize_u32_or_string")]
     pub rarity_rank: u32,
     #[serde(alias = "ownerStakeKey")]
     pub owner_stake_key: String,
@@ -77,23 +77,48 @@ impl CnftApi {
     }
 }
 
-pub(crate) fn deserialize_u32_string<'de, D>(deserializer: D) -> Result<u32, D::Error>
+/// Deserialize u32 from either a string "123" or integer 123
+/// This allows round-tripping through JSON serialization
+pub(crate) fn deserialize_u32_or_string<'de, D>(deserializer: D) -> Result<u32, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let s = String::deserialize(deserializer)?;
-    s.parse::<u32>().map_err(serde::de::Error::custom)
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrInt {
+        String(String),
+        Int(u32),
+    }
+
+    match StringOrInt::deserialize(deserializer)? {
+        StringOrInt::String(s) => s.parse::<u32>().map_err(serde::de::Error::custom),
+        StringOrInt::Int(n) => Ok(n),
+    }
 }
 
-pub(crate) fn deserialize_optional_u32_string<'de, D>(
+/// Deserialize Option<u32> from either a string "123" or integer 123
+pub(crate) fn deserialize_optional_u32_or_string<'de, D>(
     deserializer: D,
 ) -> Result<Option<u32>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let opt: Option<String> = Option::deserialize(deserializer)?;
-    opt.map(|s| s.parse::<u32>().map_err(serde::de::Error::custom))
-        .transpose()
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrInt {
+        String(String),
+        Int(u32),
+    }
+
+    let opt: Option<StringOrInt> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(StringOrInt::String(s)) => s
+            .parse::<u32>()
+            .map(Some)
+            .map_err(serde::de::Error::custom),
+        Some(StringOrInt::Int(n)) => Ok(Some(n)),
+        None => Ok(None),
+    }
 }
 
 fn deserialize_traits<'de, D>(deserializer: D) -> Result<HashMap<String, Vec<String>>, D::Error>
