@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "anvil-api",
+    "asset-intents",
     "cardano-assets",
     "cnft-tools",
     "discord-client",

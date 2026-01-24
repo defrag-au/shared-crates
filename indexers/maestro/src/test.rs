@@ -640,13 +640,21 @@ mod tests {
         match serde_json::from_str::<AssetInfoResponse>(&test_case!("wildtangs_s2.json")) {
             Ok(deserialized) => {
                 let test_traits = HashMap::from([
-                    ("tier", "Variant"),
-                    ("background", "Pumba"),
-                    ("body", "Lunar New Year"),
-                    ("clothes", "Charles"),
-                    ("eyes", "Patriot"),
-                    ("nose", "Floral"),
-                    ("head", "Psychedelic"),
+                    ("fur", "White"),
+                    ("body", "Default"),
+                    ("eyes", "Angry"),
+                    ("mouth", "Fruit Snack"),
+                    ("eyewear", "Sunglasses"),
+                    ("clothing", "Baseball Uniform"),
+                    ("headwear", "Halo"),
+                    ("background", "Avocado Green"),
+                    ("accessories", "None"),
+                    ("upgradedFrom", "WildTangz 623"),
+                    (
+                        "originalPolicy",
+                        "33568ad11f93b3e79ae8dee5ad928ded72adcea719e92108caf1521b",
+                    ),
+                    ("artist", "@netanelchn"),
                 ])
                 .into_traits();
                 let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
