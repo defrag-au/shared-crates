@@ -1,6 +1,5 @@
 //! Drop type combining different intent types for rewards/prizes
 
-use crate::{TipIntent, TransferIntent};
 use cardano_assets::AssetId;
 use serde::{Deserialize, Serialize};
 
@@ -11,10 +10,14 @@ use utoipa::ToSchema;
 ///
 /// Used for raffle prizes, achievement rewards, giveaways, etc.
 ///
+/// Serializes with flattened fields:
+/// - `{"type": "tip", "token": "ADA", "amount": 100.0}`
+/// - `{"type": "wallet_send", "asset_id": {...}, "amount": 1}`
+///
 /// # Example
 ///
 /// ```
-/// use asset_intents::{Drop, TipIntent, TransferIntent};
+/// use asset_intents::Drop;
 /// use cardano_assets::AssetId;
 ///
 /// // A tip drop
@@ -25,66 +28,68 @@ use utoipa::ToSchema;
 ///     "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6".to_string(),
 ///     "50697261746531303836".to_string(),
 /// );
-/// let nft_drop = Drop::transfer(asset_id, 1);
+/// let nft_drop = Drop::wallet_send(asset_id, 1);
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub enum Drop {
     /// Fungible token tip via tipping service (e.g., FarmBot ctip)
-    Tip(TipIntent),
+    Tip {
+        /// Token identifier (e.g., "ADA", "CARN", "GOLD")
+        token: String,
+        /// Amount to tip
+        amount: f64,
+    },
     /// Direct asset transfer via wallet service (e.g., cnft.dev)
-    Transfer(TransferIntent),
+    WalletSend {
+        /// The asset to transfer
+        asset_id: AssetId,
+        /// Quantity to transfer
+        amount: u64,
+    },
 }
 
 impl Drop {
     /// Create a new tip drop
     pub fn tip(token: impl Into<String>, amount: f64) -> Self {
-        Drop::Tip(TipIntent::new(token, amount))
+        Drop::Tip {
+            token: token.into(),
+            amount,
+        }
     }
 
-    /// Create a new transfer drop
-    pub fn transfer(asset_id: AssetId, amount: u64) -> Self {
-        Drop::Transfer(TransferIntent::new(asset_id, amount))
+    /// Create a new wallet send drop
+    pub fn wallet_send(asset_id: AssetId, amount: u64) -> Self {
+        Drop::WalletSend { asset_id, amount }
     }
 
-    /// Create a transfer drop for a single NFT
-    pub fn transfer_single(asset_id: AssetId) -> Self {
-        Drop::Transfer(TransferIntent::single(asset_id))
+    /// Create a wallet send drop for a single NFT
+    pub fn wallet_send_single(asset_id: AssetId) -> Self {
+        Drop::WalletSend {
+            asset_id,
+            amount: 1,
+        }
     }
 
     /// Get a human-readable description of the drop
     pub fn description(&self) -> String {
         match self {
-            Drop::Tip(tip) => tip.description(),
-            Drop::Transfer(transfer) => transfer.description(),
+            Drop::Tip { token, amount } => format!("{} {}", amount, token),
+            Drop::WalletSend { asset_id, amount } => {
+                format!("{} x {}", amount, asset_id.delimited(":"))
+            }
         }
     }
 
     /// Returns true if this is a tip drop
     pub fn is_tip(&self) -> bool {
-        matches!(self, Drop::Tip(_))
+        matches!(self, Drop::Tip { .. })
     }
 
-    /// Returns true if this is a transfer drop
-    pub fn is_transfer(&self) -> bool {
-        matches!(self, Drop::Transfer(_))
-    }
-
-    /// Get the tip intent if this is a tip drop
-    pub fn as_tip(&self) -> Option<&TipIntent> {
-        match self {
-            Drop::Tip(tip) => Some(tip),
-            _ => None,
-        }
-    }
-
-    /// Get the transfer intent if this is a transfer drop
-    pub fn as_transfer(&self) -> Option<&TransferIntent> {
-        match self {
-            Drop::Transfer(transfer) => Some(transfer),
-            _ => None,
-        }
+    /// Returns true if this is a wallet send drop
+    pub fn is_wallet_send(&self) -> bool {
+        matches!(self, Drop::WalletSend { .. })
     }
 }
 
@@ -103,14 +108,14 @@ mod tests {
     fn test_tip_drop() {
         let drop = Drop::tip("ADA", 100.0);
         assert!(drop.is_tip());
-        assert!(!drop.is_transfer());
+        assert!(!drop.is_wallet_send());
         assert_eq!(drop.description(), "100 ADA");
     }
 
     #[test]
-    fn test_transfer_drop() {
-        let drop = Drop::transfer(test_asset_id(), 1);
-        assert!(drop.is_transfer());
+    fn test_wallet_send_drop() {
+        let drop = Drop::wallet_send(test_asset_id(), 1);
+        assert!(drop.is_wallet_send());
         assert!(!drop.is_tip());
     }
 
@@ -119,10 +124,13 @@ mod tests {
         let tip = Drop::tip("CARN", 50.0);
         let json = serde_json::to_string(&tip).unwrap();
         assert!(json.contains("\"type\":\"tip\""));
+        assert!(json.contains("\"token\":\"CARN\""));
+        assert!(json.contains("\"amount\":50.0"));
 
-        let transfer = Drop::transfer_single(test_asset_id());
+        let transfer = Drop::wallet_send_single(test_asset_id());
         let json = serde_json::to_string(&transfer).unwrap();
-        assert!(json.contains("\"type\":\"transfer\""));
+        assert!(json.contains("\"type\":\"wallet_send\""));
+        assert!(json.contains("\"amount\":1"));
     }
 
     #[test]
@@ -130,6 +138,9 @@ mod tests {
         let json = r#"{"type":"tip","token":"ADA","amount":100.0}"#;
         let drop: Drop = serde_json::from_str(json).unwrap();
         assert!(drop.is_tip());
-        assert_eq!(drop.as_tip().unwrap().amount, 100.0);
+        if let Drop::Tip { token, amount } = drop {
+            assert_eq!(token, "ADA");
+            assert_eq!(amount, 100.0);
+        }
     }
 }

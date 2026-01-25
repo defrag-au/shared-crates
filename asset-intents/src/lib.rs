@@ -6,7 +6,7 @@
 //!
 //! - [`TipIntent`] - Fungible token tips via tipping services (e.g., FarmBot ctip)
 //! - [`TransferIntent`] - Direct asset transfers via wallet services (e.g., cnft.dev)
-//! - [`Drop`] - A reward/prize that can be either a tip or transfer
+//! - [`Drop`] - A reward/prize that can be either a tip or wallet send
 //!
 //! # Example
 //!
@@ -26,18 +26,20 @@
 //!
 //! // Use the Drop enum for reward configurations
 //! let drops = vec![
-//!     Drop::tip("ADA", 500.0),           // 1st prize: 500 ADA tip
-//!     Drop::tip("ADA", 250.0),           // 2nd prize: 250 ADA tip
-//!     Drop::transfer_single(asset_id),   // 3rd prize: NFT transfer
+//!     Drop::tip("ADA", 500.0),              // 1st prize: 500 ADA tip
+//!     Drop::tip("ADA", 250.0),              // 2nd prize: 250 ADA tip
+//!     Drop::wallet_send_single(asset_id),   // 3rd prize: NFT transfer
 //! ];
 //! ```
 
 mod drop;
 mod tip;
+mod token_amount;
 mod transfer;
 
 pub use drop::Drop;
 pub use tip::TipIntent;
+pub use token_amount::{format_number, TokenAmount};
 pub use transfer::TransferIntent;
 
 // Re-export AssetId for convenience

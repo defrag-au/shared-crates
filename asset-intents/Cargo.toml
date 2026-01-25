@@ -7,7 +7,7 @@ description = "Intent types for asset operations: tips, transfers, minting"
 
 [features]
 default = []
-openapi = ["utoipa"]
+openapi = ["utoipa", "cardano-assets/openapi"]
 
 [dependencies]
 cardano-assets = { path = "../cardano-assets" }
