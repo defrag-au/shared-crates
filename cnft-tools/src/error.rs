@@ -4,17 +4,12 @@ use std::{error::Error, fmt};
 #[cfg(feature = "worker")]
 use worker_stack::worker;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum CnftError {
+    #[default]
     Unknown,
     UntrackedPolicy(String),
     Request(HttpError),
-}
-
-impl Default for CnftError {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl Error for CnftError {}

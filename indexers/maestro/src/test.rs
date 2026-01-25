@@ -636,6 +636,43 @@ mod tests {
     }
 
     #[test]
+    fn test_deserialize_wildtangs_s2() {
+        match serde_json::from_str::<AssetInfoResponse>(&test_case!("wildtangs_s2.json")) {
+            Ok(deserialized) => {
+                let test_traits = HashMap::from([
+                    ("fur", "White"),
+                    ("body", "Default"),
+                    ("eyes", "Angry"),
+                    ("mouth", "Fruit Snack"),
+                    ("eyewear", "Sunglasses"),
+                    ("clothing", "Baseball Uniform"),
+                    ("headwear", "Halo"),
+                    ("background", "Avocado Green"),
+                    ("accessories", "None"),
+                    ("upgradedFrom", "WildTangz 623"),
+                    (
+                        "originalPolicy",
+                        "33568ad11f93b3e79ae8dee5ad928ded72adcea719e92108caf1521b",
+                    ),
+                    ("artist", "@netanelchn"),
+                ])
+                .into_traits();
+                let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
+                assert_eq!(asset.name, "Wild Tangz - Series 2 - #623");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://bafybeienp5gwmgxezesz2uu7pcawjk4nmnb5wftkn4rcst5debmpusxpdq"
+                );
+                assert_eq!(asset.traits, test_traits);
+            }
+            Err(err) => {
+                println!("encountered decoding error: {err:?}");
+                panic!("failed decoding");
+            }
+        }
+    }
+
+    #[test]
     fn test_deserialize_zenflow() {
         match serde_json::from_str::<AssetInfoResponse>(&test_case!("zenflow.json")) {
             Ok(deserialized) => {

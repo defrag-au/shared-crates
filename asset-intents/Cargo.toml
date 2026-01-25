@@ -1,0 +1,20 @@
+[package]
+name = "asset-intents"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Intent types for asset operations: tips, transfers, minting"
+
+[features]
+default = []
+openapi = ["utoipa", "cardano-assets/openapi"]
+
+[dependencies]
+cardano-assets = { path = "../cardano-assets" }
+serde = { workspace = true, features = ["derive"] }
+
+# Optional dependencies
+utoipa = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
