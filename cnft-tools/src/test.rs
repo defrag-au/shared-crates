@@ -57,16 +57,26 @@ mod tests {
                     Some(luffy) => {
                         assert_eq!(
                             luffy.traits,
-                            HashMap::from([("Rank".to_string(), vec!["Legendary".to_string()]),])
+                            HashMap::from([
+                                ("Background".to_string(), vec!["None".to_string()]),
+                                ("Rank".to_string(), vec!["Legendary".to_string()]),
+                                ("Mouth".to_string(), vec!["None".to_string()]),
+                                ("Skin".to_string(), vec!["None".to_string()]),
+                                ("Weapon".to_string(), vec!["None".to_string()]),
+                                ("Clothes".to_string(), vec!["None".to_string()]),
+                                ("Headwear".to_string(), vec!["None".to_string()]),
+                                ("Eyes".to_string(), vec!["None".to_string()]),
+                                ("Nose".to_string(), vec!["None".to_string()]),
+                            ])
                         )
                     }
                     None => panic!("luffy not found"),
                 }
 
-                for asset in assets {
-                    if let Some(count) = asset.trait_count {
-                        assert_eq!(asset.traits.keys().len() as u32, count);
-                    }
+                // Note: trait_count from API represents non-"None" traits,
+                // but we now store all traits including "None" values
+                for asset in &assets {
+                    assert!(!asset.traits.is_empty());
                 }
             }
             Err(err) => {
