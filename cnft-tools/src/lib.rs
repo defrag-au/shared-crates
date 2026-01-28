@@ -112,10 +112,9 @@ where
 
     let opt: Option<StringOrInt> = Option::deserialize(deserializer)?;
     match opt {
-        Some(StringOrInt::String(s)) => s
-            .parse::<u32>()
-            .map(Some)
-            .map_err(serde::de::Error::custom),
+        Some(StringOrInt::String(s)) => {
+            s.parse::<u32>().map(Some).map_err(serde::de::Error::custom)
+        }
         Some(StringOrInt::Int(n)) => Ok(Some(n)),
         None => Ok(None),
     }
@@ -151,14 +150,11 @@ where
                 let value = access.next_value::<TraitValue>()?;
 
                 let values = match value {
-                    TraitValue::Single(s) if s != "None" => vec![s],
-                    TraitValue::Multi(v) => v.into_iter().filter(|s| s != "None").collect(),
-                    _ => continue,
+                    TraitValue::Single(s) => vec![s],
+                    TraitValue::Multi(v) => v,
                 };
 
-                if !values.is_empty() {
-                    map.insert(key, values);
-                }
+                map.insert(key, values);
             }
 
             Ok(map)
