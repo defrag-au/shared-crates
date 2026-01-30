@@ -159,6 +159,47 @@ impl AssetId {
         Ok(bytes)
     }
 
+    /// Compute the CIP-14 asset fingerprint
+    ///
+    /// Returns a bech32-encoded string with "asset" prefix, computed as:
+    /// `bech32(hrp="asset", data=blake2b_160(policy_id || asset_name))`
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cardano_assets::AssetId;
+    ///
+    /// let asset_id = AssetId::new(
+    ///     "7eae28af2208be856f7a119668ae52a49b73725e326dc16579dcc373".to_string(),
+    ///     "".to_string(), // empty asset name for this test vector
+    /// );
+    /// // Note: This example uses a test vector from CIP-14
+    /// ```
+    #[cfg(feature = "cip14")]
+    pub fn fingerprint(&self) -> Result<String, AssetIdError> {
+        use bech32::{Bech32, Hrp};
+        use blake2::digest::{Update, VariableOutput};
+        use blake2::Blake2bVar;
+
+        let bytes = self
+            .as_bytes()
+            .map_err(|_| AssetIdError::InvalidPolicyIdFormat)?;
+
+        // Blake2b-160 (20 bytes output)
+        let mut hasher = Blake2bVar::new(20).expect("valid output size");
+        hasher.update(&bytes);
+        let mut hash = [0u8; 20];
+        hasher
+            .finalize_variable(&mut hash)
+            .expect("valid buffer size");
+
+        let hrp = Hrp::parse("asset").expect("valid hrp");
+        let encoded = bech32::encode::<Bech32>(hrp, &hash)
+            .map_err(|_| AssetIdError::InvalidPolicyIdFormat)?;
+
+        Ok(encoded)
+    }
+
     /// Parse from concatenated format with smart format detection
     /// Parse from delimited format with smart format detection
     ///
@@ -668,5 +709,100 @@ mod tests {
 
         let bytes = asset_id.as_bytes().expect("Should get full bytes");
         assert_eq!(hex::encode(&bytes), TEST_CONCATENATED);
+    }
+
+    // CIP-14 fingerprint tests (using test vectors with non-empty asset names)
+    #[cfg(feature = "cip14")]
+    mod cip14_tests {
+        use super::*;
+
+        #[test]
+        fn test_fingerprint_patate_1() {
+            // Test vector 4 from CIP-14: policy + "PATATE" (504154415445)
+            let asset_id = AssetId::new(
+                "7eae28af2208be856f7a119668ae52a49b73725e326dc16579dcc373".to_string(),
+                "504154415445".to_string(),
+            )
+            .expect("valid asset id");
+
+            assert_eq!(
+                asset_id.fingerprint().unwrap(),
+                "asset13n25uv0yaf5kus35fm2k86cqy60z58d9xmde92"
+            );
+        }
+
+        #[test]
+        fn test_fingerprint_patate_2() {
+            // Test vector 5 from CIP-14: different policy + "PATATE"
+            let asset_id = AssetId::new(
+                "1e349c9bdea19fd6c147626a5260bc44b71635f398b67c59881df209".to_string(),
+                "504154415445".to_string(),
+            )
+            .expect("valid asset id");
+
+            assert_eq!(
+                asset_id.fingerprint().unwrap(),
+                "asset1hv4p5tv2a837mzqrst04d0dcptdjmluqvdx9k3"
+            );
+        }
+
+        #[test]
+        fn test_fingerprint_long_asset_name() {
+            // Test vector 6 from CIP-14: policy + long hex asset name
+            let asset_id = AssetId::new(
+                "1e349c9bdea19fd6c147626a5260bc44b71635f398b67c59881df209".to_string(),
+                "7eae28af2208be856f7a119668ae52a49b73725e326dc16579dcc373".to_string(),
+            )
+            .expect("valid asset id");
+
+            assert_eq!(
+                asset_id.fingerprint().unwrap(),
+                "asset1aqrdypg669jgazruv5ah07nuyqe0wxjhe2el6f"
+            );
+        }
+
+        #[test]
+        fn test_fingerprint_swapped() {
+            // Test vector 7 from CIP-14: swapped policy/asset name from vector 6
+            let asset_id = AssetId::new(
+                "7eae28af2208be856f7a119668ae52a49b73725e326dc16579dcc373".to_string(),
+                "1e349c9bdea19fd6c147626a5260bc44b71635f398b67c59881df209".to_string(),
+            )
+            .expect("valid asset id");
+
+            assert_eq!(
+                asset_id.fingerprint().unwrap(),
+                "asset17jd78wukhtrnmjh3fngzasxm8rck0l2r4hhyyt"
+            );
+        }
+
+        #[test]
+        fn test_fingerprint_zero_bytes() {
+            // Test vector 8 from CIP-14: 32 zero bytes as asset name
+            let asset_id = AssetId::new(
+                "7eae28af2208be856f7a119668ae52a49b73725e326dc16579dcc373".to_string(),
+                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            )
+            .expect("valid asset id");
+
+            assert_eq!(
+                asset_id.fingerprint().unwrap(),
+                "asset1pkpwyknlvul7az0xx8czhl60pyel45rpje4z8w"
+            );
+        }
+
+        #[test]
+        fn test_fingerprint_havoc_worlds() {
+            // Real-world test: HavocWorlds3407
+            let asset_id: AssetId =
+                "1088b361c41f49906645cedeeb7a9ef0e0b793b1a2d24f623ea748764861766f63576f726c647333343037"
+                    .parse()
+                    .expect("valid asset id");
+
+            assert_eq!(
+                asset_id.fingerprint().unwrap(),
+                "asset18dkekwm0l4fcxwhvqf6shagu7wl4p682ktsjlg"
+            );
+        }
     }
 }
