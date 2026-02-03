@@ -278,7 +278,6 @@ dependencies = [
  "tracing",
  "utoipa",
  "utxorpc-spec",
- "worker_stack",
 ]
 
 [[package]]
