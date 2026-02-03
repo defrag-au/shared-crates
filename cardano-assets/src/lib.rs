@@ -1,3 +1,4 @@
+#[cfg(feature = "cnft_tools")]
 use cnft_tools::CnftAsset;
 use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -1112,6 +1113,7 @@ pub struct AssetNotificationRequest {
     pub traits: Traits,
 }
 
+#[cfg(feature = "cnft_tools")]
 #[must_use]
 pub fn get_asset_tags(asset: &CnftAsset, max_rarity: Option<u32>) -> Vec<AssetTag> {
     let mut tags: Vec<_> = if asset.on_sale.unwrap_or(false) {

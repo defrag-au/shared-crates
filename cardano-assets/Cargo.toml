@@ -8,7 +8,7 @@ description = "Cardano asset metadata handling and trait processing"
 [dependencies]
 bech32 = { version = "0.11", optional = true }
 blake2 = { version = "0.10", optional = true }
-cnft_tools = { path = "../cnft-tools" }
+cnft_tools = { path = "../cnft-tools", optional = true }
 hex = "0.4"
 indexmap = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -24,6 +24,7 @@ default = []
 cip14 = ["dep:bech32", "dep:blake2"]
 utxorpc = ["dep:utxorpc-spec", "dep:tracing"]
 openapi = ["dep:utoipa"]
+cnft_tools = ["dep:cnft_tools"]
 
 [dev-dependencies]
 test_utils = { path = "../test-utils" }
