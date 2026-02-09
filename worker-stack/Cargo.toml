@@ -1,23 +1,26 @@
 [package]
 name = "worker_stack"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Damon Oehlman <damon.oehlman@gmail.com>"]
 description = "Facade crate for Cloudflare Workers ecosystem with pinned versions"
 
 [dependencies]
-# Core worker crate with exact version pinning
-worker = { version = "=0.6.6", features = ["queue", "d1"] }
+# Core worker crate - 0.7.x series
+# Breaking changes from 0.6.x:
+# - storage.get() returns Option<T> instead of Result<Option<T>>
+# - DurableObject trait must be explicitly imported
+# - worker-kv deprecated, use worker::kv instead
+worker = { version = "=0.7.4", features = ["queue", "d1"] }
 
-# wasm-bindgen ecosystem - all pinned to compatible versions
-# Note: Using 0.4.53 to match worker 0.6.6's requirement for ^0.4.53
-wasm-bindgen = "=0.2.103"
-wasm-bindgen-macro = "=0.2.103"
-wasm-bindgen-futures = "=0.4.53"
+# wasm-bindgen ecosystem - versions compatible with worker 0.7.4
+wasm-bindgen = "0.2"
+wasm-bindgen-macro = "0.2"
+wasm-bindgen-futures = "0.4"
 
 # JavaScript interop
-js-sys = "=0.3.80"
-web-sys = { version = "=0.3.80", features = [
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
     "console",
     "Blob",
     "BlobPropertyBag",
@@ -25,4 +28,4 @@ web-sys = { version = "=0.3.80", features = [
 ] }
 
 # Serialization for WASM
-serde-wasm-bindgen = "=0.6.5"
+serde-wasm-bindgen = "0.6"
