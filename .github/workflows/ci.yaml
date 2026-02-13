@@ -7,22 +7,27 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 1
+  CARGO_PROFILE_DEV_DEBUG: 0
+
 jobs:
   check-and-test:
     name: Check & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
-      - run: rustup update stable && rustup default stable
+          shared-key: "test"
+          cache-on-failure: true
+
       - run: cargo check --all-targets
       - run: cargo test --all-targets
 
@@ -31,16 +36,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
-      - run: rustup update stable && rustup default stable
+          components: clippy
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "clippy"
+          cache-on-failure: true
+
       - run: cargo clippy --all-targets -- -D warnings
 
   wasm-check:
@@ -48,17 +55,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.lock') }}
-      - run: rustup update stable && rustup default stable
-      - run: rustup target add wasm32-unknown-unknown
+          targets: wasm32-unknown-unknown
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "wasm-check"
+          cache-on-failure: true
+
       - name: Check wasm-compatible crates
         # flow-demo and flow-demo-frontend are excluded: they're Cloudflare Workers
         # built by wrangler, and depend on getrandom/rand with wasm_js feature
