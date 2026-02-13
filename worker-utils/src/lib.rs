@@ -19,6 +19,12 @@ pub mod axum;
 #[cfg(feature = "axum")]
 pub use axum::*;
 
+#[cfg(feature = "sse")]
+pub mod sse;
+
+#[cfg(feature = "scheduled")]
+pub mod scheduled;
+
 pub async fn send_to_queue<M>(queue: &Queue, message: &M) -> Result<()>
 where
     M: Serialize + Clone,

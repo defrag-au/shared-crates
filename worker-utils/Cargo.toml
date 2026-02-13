@@ -11,6 +11,8 @@ console_error_panic_hook = ["dep:console_error_panic_hook"]
 full-logging = ["tracing-subscriber", "tracing-web", "time"]
 simple-logging = []
 axum = ["dep:axum", "dep:tower-http", "dep:futures-channel", "dep:serde_json"]
+sse = ["dep:futures-channel", "dep:futures-util", "dep:wasm-bindgen-futures", "dep:serde_json"]
+scheduled = ["dep:phf"]
 
 [dependencies]
 cfg-if = "1.0.0"
@@ -25,7 +27,10 @@ time = { version = "0.3", features = ['wasm-bindgen'], optional = true }
 axum = { workspace = true, optional = true }
 tower-http = { workspace = true, optional = true, features = ["cors"] }
 futures-channel = { version = "0.3.31", optional = true }
+futures-util = { version = "0.3.31", optional = true }
+wasm-bindgen-futures = { version = "*", optional = true }
 serde_json = { workspace = true, optional = true }
+phf = { version = "0.11", features = ["macros"], optional = true }
 
 [dev-dependencies]
 tracing-subscriber = "0.3"
