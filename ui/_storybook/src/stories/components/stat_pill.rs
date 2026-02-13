@@ -74,7 +74,7 @@ pub fn StatPillStory() -> impl IntoView {
                 <div class="story-canvas">
                     <div style="display: flex; gap: 1rem; align-items: center;">
                         <StatPill
-                            value=move || dynamic_value.get().to_string()
+                            value=Signal::derive(move || dynamic_value.get().to_string())
                             icon="⚡"
                             color=StatPillColor::Info
                         />

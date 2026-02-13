@@ -178,7 +178,7 @@ pub fn UseDraggableStory() -> impl IntoView {
                         view! {
                             <DraggableStack
                                 items=stack_items
-                                on_reorder=move |reorder: Reorder| set_stack_items.update(|i| reorder.apply(i))
+                                on_reorder=Callback::new(move |reorder: Reorder| set_stack_items.update(|i| reorder.apply(i)))
                                 key_fn=|(label, _)| *label
                                 direction=StackDirection::Horizontal
                                 gap="0.5rem"
@@ -211,7 +211,7 @@ pub fn UseDraggableStory() -> impl IntoView {
                         view! {
                             <DraggableStack
                                 items=vertical_items
-                                on_reorder=move |reorder: Reorder| set_vertical_items.update(|i| reorder.apply(i))
+                                on_reorder=Callback::new(move |reorder: Reorder| set_vertical_items.update(|i| reorder.apply(i)))
                                 key_fn=|item| *item
                                 direction=StackDirection::Vertical
                                 gap="0.5rem"

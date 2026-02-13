@@ -194,7 +194,7 @@ fn context_aware_content(
                     </p>
                     <Button
                         variant=ButtonVariant::Secondary
-                        on_click=Callback::new(move || set_show_nested.set(true))
+                        on_click=Callback::new(move |_| set_show_nested.set(true))
                     >
                         "Open Nested Modal"
                     </Button>
@@ -203,7 +203,7 @@ fn context_aware_content(
                     <Modal
                         open=show_nested
                         title="Nested Modal".to_string()
-                        on_close=Callback::new(move || set_show_nested.set(false))
+                        on_close=Callback::new(move |_| set_show_nested.set(false))
                     >
                         <p>"This is a nested Modal that automatically became a stack view!"</p>
                         <p style="color: #888; margin-top: 0.5rem;">
@@ -211,7 +211,7 @@ fn context_aware_content(
                         </p>
                         <Button
                             variant=ButtonVariant::Primary
-                            on_click=Callback::new(move || set_show_nested.set(false))
+                            on_click=Callback::new(move |_| set_show_nested.set(false))
                         >
                             "Close"
                         </Button>
@@ -274,7 +274,7 @@ pub fn ModalStackStory() -> impl IntoView {
             <ModalStack
                 open=show_basic
                 initial_view=DemoView::Main
-                on_close=Callback::new(move || set_show_basic.set(false))
+                on_close=Callback::new(move |_| set_show_basic.set(false))
                 view_title=demo_title
                 view_content=demo_content
             />
@@ -283,7 +283,7 @@ pub fn ModalStackStory() -> impl IntoView {
             <ModalStack
                 open=show_nested
                 initial_view=NestedView::Step1
-                on_close=Callback::new(move || set_show_nested.set(false))
+                on_close=Callback::new(move |_| set_show_nested.set(false))
                 view_title=nested_title
                 view_content=nested_content
             />
@@ -292,7 +292,7 @@ pub fn ModalStackStory() -> impl IntoView {
             <ModalStack
                 open=show_preserved
                 initial_view=DemoView::Main
-                on_close=Callback::new(move || set_show_preserved.set(false))
+                on_close=Callback::new(move |_| set_show_preserved.set(false))
                 view_title=form_title
                 view_content=form_content
             />
@@ -301,7 +301,7 @@ pub fn ModalStackStory() -> impl IntoView {
             <ModalStack
                 open=show_context_aware
                 initial_view=ContextAwareView::Main
-                on_close=Callback::new(move || set_show_context_aware.set(false))
+                on_close=Callback::new(move |_| set_show_context_aware.set(false))
                 view_title=context_aware_title
                 view_content=context_aware_content
             />

@@ -214,10 +214,10 @@ fn CollectionViewer() -> impl IntoView {
     let is_empty = Signal::derive(move || assets.get().is_empty());
     let show_modal = Signal::derive(move || selected_asset.get().is_some());
 
-    let close_modal = move || {
+    let close_modal = Callback::new(move |_| {
         set_selected_asset.set(None);
         set_asset_details.set(None);
-    };
+    });
 
     view! {
         <div>
@@ -276,7 +276,7 @@ fn CollectionViewer() -> impl IntoView {
                                 })
                                 size=CardSize::Sm
                                 show_name=true
-                                on_click={
+                                on_click=Callback::new({
                                     let thumb_url = thumb_url.clone();
                                     move |_id: String| {
                                         set_selected_asset.set(Some((
@@ -286,7 +286,7 @@ fn CollectionViewer() -> impl IntoView {
                                             thumb_url.clone(),
                                         )));
                                     }
-                                }
+                                })
                             />
                         }
                     }

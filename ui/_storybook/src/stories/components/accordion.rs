@@ -109,7 +109,7 @@ pub fn AccordionStory() -> impl IntoView {
                                 title="Section One"
                                 icon="1️⃣"
                                 expanded=Signal::derive(move || expanded_index.get() == Some(0))
-                                on_toggle=move |open| set_expanded_index.set(if open { Some(0) } else { None })
+                                on_toggle=Callback::new(move |open| set_expanded_index.set(if open { Some(0) } else { None }))
                             >
                                 <p>"This is the first section. When you open another section, this one will close."</p>
                             </AccordionItem>
@@ -117,7 +117,7 @@ pub fn AccordionStory() -> impl IntoView {
                                 title="Section Two"
                                 icon="2️⃣"
                                 expanded=Signal::derive(move || expanded_index.get() == Some(1))
-                                on_toggle=move |open| set_expanded_index.set(if open { Some(1) } else { None })
+                                on_toggle=Callback::new(move |open| set_expanded_index.set(if open { Some(1) } else { None }))
                             >
                                 <p>"This is the second section. Only one section can be open at a time."</p>
                             </AccordionItem>
@@ -125,7 +125,7 @@ pub fn AccordionStory() -> impl IntoView {
                                 title="Section Three"
                                 icon="3️⃣"
                                 expanded=Signal::derive(move || expanded_index.get() == Some(2))
-                                on_toggle=move |open| set_expanded_index.set(if open { Some(2) } else { None })
+                                on_toggle=Callback::new(move |open| set_expanded_index.set(if open { Some(2) } else { None }))
                             >
                                 <p>"This is the third section. The parent component controls which item is expanded."</p>
                             </AccordionItem>

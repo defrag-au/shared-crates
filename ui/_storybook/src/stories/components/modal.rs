@@ -47,7 +47,7 @@ pub fn ModalStory() -> impl IntoView {
             // Basic Modal
             <Modal
                 open=show_basic
-                on_close=Callback::new(move || set_show_basic.set(false))
+                on_close=Callback::new(move |_| set_show_basic.set(false))
             >
                 <div style="padding: 1rem;">
                     <p>"This is a basic modal without a title."</p>
@@ -59,7 +59,7 @@ pub fn ModalStory() -> impl IntoView {
             <Modal
                 open=show_titled
                 title="Modal Title"
-                on_close=Callback::new(move || set_show_titled.set(false))
+                on_close=Callback::new(move |_| set_show_titled.set(false))
             >
                 <div style="padding: 1rem;">
                     <p>"This modal has a title and close button in the header."</p>
@@ -70,7 +70,7 @@ pub fn ModalStory() -> impl IntoView {
             <Modal
                 open=show_complex
                 title="Confirm Action"
-                on_close=Callback::new(move || set_show_complex.set(false))
+                on_close=Callback::new(move |_| set_show_complex.set(false))
             >
                 <div style="padding: 1rem;">
                     <p style="margin-bottom: 1rem;">"Are you sure you want to proceed? This action cannot be undone."</p>

@@ -71,10 +71,10 @@ pub fn DropEditorStory() -> impl IntoView {
                 <div class="story-canvas">
                     <DropEditor
                         drops=drops
-                        on_change=move |new_drops| {
+                        on_change=Callback::new(move |new_drops| {
                             web_sys::console::log_1(&format!("Drops changed: {:?}", new_drops).into());
                             set_drops.set(new_drops);
-                        }
+                        })
                     />
                 </div>
                 <div style="margin-top: 1rem; padding: 0.75rem; background: #1a1a2e; border-radius: 4px;">
@@ -94,7 +94,7 @@ pub fn DropEditorStory() -> impl IntoView {
                 <div class="story-canvas">
                     <DropEditor
                         drops=readonly_drops
-                        on_change=move |_| {}
+                        on_change=Callback::new(move |_| {})
                         readonly=true
                     />
                 </div>
@@ -109,7 +109,7 @@ pub fn DropEditorStory() -> impl IntoView {
                 <div class="story-canvas">
                     <DropEditor
                         drops=empty_drops
-                        on_change=move |new_drops| set_empty_drops.set(new_drops)
+                        on_change=Callback::new(move |new_drops| set_empty_drops.set(new_drops))
                     />
                 </div>
             </div>
@@ -125,7 +125,7 @@ pub fn DropEditorStory() -> impl IntoView {
                         <p style="margin: 0 0 0.5rem; font-size: 0.75rem; color: #888;">"Xs (80px)"</p>
                         <DropEditor
                             drops=small_drops
-                            on_change=move |new_drops| set_small_drops.set(new_drops)
+                            on_change=Callback::new(move |new_drops| set_small_drops.set(new_drops))
                             size=CardSize::Xs
                         />
                     </div>
@@ -133,7 +133,7 @@ pub fn DropEditorStory() -> impl IntoView {
                         <p style="margin: 0 0 0.5rem; font-size: 0.75rem; color: #888;">"Sm (120px) - default"</p>
                         <DropEditor
                             drops=drops
-                            on_change=move |new_drops| set_drops.set(new_drops)
+                            on_change=Callback::new(move |new_drops| set_drops.set(new_drops))
                             size=CardSize::Sm
                         />
                     </div>

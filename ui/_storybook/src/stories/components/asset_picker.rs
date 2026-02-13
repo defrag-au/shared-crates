@@ -116,7 +116,7 @@ pub fn AssetPickerStory() -> impl IntoView {
                 })
                 size=CardSize::Sm
                 show_name=true
-                on_click=move |_| on_click.run(())
+                on_click=Callback::new(move |_| on_click.run(()))
             />
         }
     };
@@ -138,7 +138,7 @@ pub fn AssetPickerStory() -> impl IntoView {
                     size=CardSize::Sm
                     show_name=true
                     is_static=!is_available
-                    on_click=move |_| if is_available { on_click.run(()) }
+                    on_click=Callback::new(move |_| if is_available { on_click.run(()) })
                 />
                 {reason.map(|r| view! {
                     <div style="position: absolute; top: 4px; left: 4px;">
@@ -214,7 +214,7 @@ pub fn AssetPickerStory() -> impl IntoView {
                 title="Select Crew Member"
                 assets=sample_assets
                 on_select=on_select_basic
-                on_close=Callback::new(move || set_show_basic.set(false))
+                on_close=Callback::new(move |_| set_show_basic.set(false))
                 render_asset=render_basic
             />
 
@@ -225,14 +225,14 @@ pub fn AssetPickerStory() -> impl IntoView {
                 assets=mixed_assets
                 empty_message="No crew members available"
                 on_select=on_select_mixed
-                on_close=Callback::new(move || set_show_with_disabled.set(false))
+                on_close=Callback::new(move |_| set_show_with_disabled.set(false))
                 render_asset=render_with_badges
             />
 
             // Live API Demo Modal
             <LiveApiPickerDemo
                 open=Signal::derive(move || show_live.get())
-                on_close=Callback::new(move || set_show_live.set(false))
+                on_close=Callback::new(move |_| set_show_live.set(false))
                 on_select=Callback::new({
                     let set_selected = set_selected_asset;
                     move |id: String| {
@@ -482,7 +482,7 @@ fn LiveApiPickerDemo(
                     size=CardSize::Sm
                     show_name=true
                     is_static=!is_available
-                    on_click=move |_| if is_available { on_click.run(()) }
+                    on_click=Callback::new(move |_| if is_available { on_click.run(()) })
                 />
                 {reason.map(|r| view! {
                     <div style="position: absolute; top: 4px; left: 4px;">

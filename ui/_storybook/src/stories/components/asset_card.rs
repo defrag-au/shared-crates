@@ -126,10 +126,10 @@ pub fn AssetCardStory() -> impl IntoView {
                             asset_id="b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6506972617465353535"
                             name="Click me!"
                             show_name=true
-                            on_click=move |asset_id: String| {
+                            on_click=Callback::new(move |asset_id: String| {
                                 set_click_count.update(|c| *c += 1);
                                 set_last_asset_id.set(asset_id);
-                            }
+                            })
                         />
                         <span class="status-indicator status-indicator--connected">
                             {move || if click_count.get() == 0 {
@@ -207,44 +207,44 @@ pub fn AssetCardStory() -> impl IntoView {
                             name="Pirate 189"
                             size=CardSize::Auto
                             show_name=true
-                            on_click=move |id: String| {
+                            on_click=Callback::new(move |id: String| {
                                 if let Ok(asset_id) = AssetId::parse_concatenated(&id) {
                                     set_modal_asset.set(Some(asset_id));
                                 }
-                            }
+                            })
                         />
                         <AssetCard
                             asset_id="b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6506972617465323030"
                             name="Pirate 200"
                             size=CardSize::Auto
                             show_name=true
-                            on_click=move |id: String| {
+                            on_click=Callback::new(move |id: String| {
                                 if let Ok(asset_id) = AssetId::parse_concatenated(&id) {
                                     set_modal_asset.set(Some(asset_id));
                                 }
-                            }
+                            })
                         />
                         <AssetCard
                             asset_id="b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6506972617465333333"
                             name="Pirate 333"
                             size=CardSize::Auto
                             show_name=true
-                            on_click=move |id: String| {
+                            on_click=Callback::new(move |id: String| {
                                 if let Ok(asset_id) = AssetId::parse_concatenated(&id) {
                                     set_modal_asset.set(Some(asset_id));
                                 }
-                            }
+                            })
                         />
                         <AssetCard
                             asset_id="b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6506972617465343434"
                             name="Pirate 444"
                             size=CardSize::Auto
                             show_name=true
-                            on_click=move |id: String| {
+                            on_click=Callback::new(move |id: String| {
                                 if let Ok(asset_id) = AssetId::parse_concatenated(&id) {
                                     set_modal_asset.set(Some(asset_id));
                                 }
-                            }
+                            })
                         />
                     </div>
                 </div>
