@@ -1,0 +1,24 @@
+[package]
+name = "wallet-leptos"
+version = "0.1.0"
+edition = "2021"
+description = "Leptos bindings for wallet-core - reactive Cardano wallet state management"
+
+[dependencies]
+# Leptos framework
+leptos = { version = "0.8", features = ["csr"] }
+
+# Wallet crates
+wallet-core = { path = "../wallet-core" }
+wallet-pallas = { path = "../wallet-pallas" }
+
+# WASM bindings
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+web-sys = { workspace = true }
+js-sys = { workspace = true }
+
+# Utilities
+send_wrapper = "0.6"
+tracing = { workspace = true }
+hex = "0.4"

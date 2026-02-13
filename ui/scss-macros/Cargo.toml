@@ -1,0 +1,15 @@
+[package]
+name = "scss-macros"
+version = "0.1.0"
+edition = "2021"
+description = "Compile-time SCSS to CSS compilation macros"
+license = "MIT"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+grass = "0.13"
+proc-macro2 = "1"
+quote = "1"
+syn = "2"

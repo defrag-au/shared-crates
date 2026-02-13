@@ -21,7 +21,7 @@ pub type BlockfrostAsset = serde_json::Map<String, Value>;
 const BASE_URL_MAINNET: &str = "mainnet.gomaestro-api.org/v1";
 const BASE_URL_PREPROD: &str = "preprod.gomaestro-api.org/v1";
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum MaestroError {
     NoMetadata,
     Http(http_client::HttpError),
@@ -30,13 +30,8 @@ pub enum MaestroError {
         retry_after: Option<u64>,
     },
     Deserialization(String),
+    #[default]
     Unknown,
-}
-
-impl Default for MaestroError {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl Error for MaestroError {}
@@ -301,6 +296,7 @@ pub struct AssetAmount {
 }
 
 #[derive(Deserialize, Debug)]
+#[cfg(feature = "transactions")]
 struct AddressUtxosResponse {
     data: Vec<AddressUtxo>,
 }
@@ -587,6 +583,7 @@ pub struct ScriptExecuted {
 
 pub struct MaestroApi {
     client: HttpClient,
+    #[allow(dead_code)] // read in submit_transaction behind cfg(feature = "transactions")
     api_key: String,
     base_url: String,
 }

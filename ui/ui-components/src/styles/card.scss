@@ -1,0 +1,38 @@
+// Card Component Styles
+@use "variables" as v;
+
+.ui-card {
+    background: v.$bg-secondary;
+    border: 1px solid v.$border-color;
+    border-radius: v.$card-radius-md;
+    overflow: hidden;
+    position: relative;
+
+    &__accent {
+        height: 3px;
+        width: 100%;
+    }
+
+    &__header {
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid v.$border-color;
+
+        h1, h2, h3, h4, h5, h6 {
+            margin: 0;
+            color: v.$text-light;
+        }
+    }
+
+    &__body {
+        padding: 1.25rem;
+        color: v.$text-light;
+    }
+
+    &__footer {
+        padding: 1rem 1.25rem;
+        border-top: 1px solid v.$border-color;
+        display: flex;
+        gap: 0.5rem;
+        justify-content: flex-end;
+    }
+}

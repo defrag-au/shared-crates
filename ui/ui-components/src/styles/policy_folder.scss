@@ -1,0 +1,124 @@
+// Policy Folder Component Styles
+// Collapsible folder for displaying NFTs grouped by policy
+
+@use "variables" as v;
+
+.ui-policy-folder {
+    background: v.$bg-secondary;
+    border: 1px solid v.$border-color;
+    border-radius: v.$card-radius-md;
+    overflow: hidden;
+
+    &--expanded {
+        border-color: v.$border-color-light;
+    }
+
+    &__header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.75rem 1rem;
+        background: transparent;
+        border: none;
+        color: v.$text-light;
+        cursor: pointer;
+        text-align: left;
+        font-family: inherit;
+        font-size: 0.9rem;
+        transition: background-color v.$transition-fast;
+
+        &:hover {
+            background: v.$bg-tertiary;
+        }
+
+        &:focus {
+            outline: none;
+            background: v.$bg-tertiary;
+        }
+    }
+
+    &__icon {
+        font-size: 0.7rem;
+        color: v.$text-muted;
+        width: 1rem;
+        text-align: center;
+        flex-shrink: 0;
+        transition: transform v.$transition-fast;
+    }
+
+    &--expanded &__icon {
+        transform: rotate(0deg);
+    }
+
+    &__title {
+        flex: 1;
+        font-family: monospace;
+        font-size: 0.85rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__count {
+        font-size: 0.75rem;
+        color: v.$text-muted;
+        background: v.$bg-tertiary;
+        padding: 0.125rem 0.5rem;
+        border-radius: v.$card-radius-xs;
+        flex-shrink: 0;
+    }
+
+    &__content {
+        padding: 1rem;
+        border-top: 1px solid v.$border-color;
+    }
+
+    &__grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    &__pagination {
+        display: flex;
+        justify-content: center;
+        padding: 0.75rem 0;
+
+        &:first-child {
+            padding-top: 0;
+            padding-bottom: 1rem;
+        }
+
+        &:last-of-type {
+            padding-top: 1rem;
+            padding-bottom: 0;
+        }
+    }
+
+    &__policy-id {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid v.$border-color;
+        margin-top: 0.5rem;
+    }
+
+    &__policy-label {
+        font-size: 0.7rem;
+        color: v.$text-muted;
+        flex-shrink: 0;
+    }
+
+    &__policy-value {
+        font-size: 0.65rem;
+        color: v.$text-muted;
+        font-family: monospace;
+        word-break: break-all;
+        background: v.$bg-tertiary;
+        padding: 0.25rem 0.5rem;
+        border-radius: v.$card-radius-xs;
+    }
+}

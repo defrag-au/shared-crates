@@ -1,0 +1,40 @@
+@use "variables" as v;
+
+.ui-text-input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+
+  &__label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: v.$text-light;
+  }
+
+  &__field {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: v.$text-light;
+    background-color: v.$bg-secondary;
+    border: 1px solid v.$border-color;
+    border-radius: v.$card-radius-sm;
+    outline: none;
+    transition: border-color v.$transition-fast, box-shadow v.$transition-fast;
+
+    &::placeholder {
+      color: v.$text-muted;
+    }
+
+    &:focus {
+      border-color: v.$accent-gold-strong;
+      box-shadow: 0 0 0 2px v.$accent-gold;
+    }
+
+    &:disabled,
+    &--disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      background-color: v.$bg-tertiary;
+    }
+  }
+}

@@ -1,0 +1,52 @@
+// Wallet NFT Gallery Component Styles
+// Gallery view for displaying NFTs grouped by policy
+
+@use "variables" as v;
+
+.ui-nft-gallery {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+
+    &__loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 2rem;
+        color: v.$text-muted;
+    }
+
+    &__summary {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.75rem 1rem;
+        background: v.$bg-secondary;
+        border-radius: v.$card-radius-sm;
+    }
+
+    &__count {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: v.$text-light;
+    }
+
+    &__policies {
+        color: v.$text-muted;
+        font-size: 0.9rem;
+    }
+
+    &__folders {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    &__empty {
+        text-align: center;
+        padding: 2rem;
+        color: v.$text-muted;
+    }
+}

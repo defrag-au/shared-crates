@@ -1,0 +1,45 @@
+@use "variables" as v;
+
+.ui-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+
+  &__icon {
+    display: inline-block;
+    transition: transform v.$transition-fast;
+
+    &--filled {
+      // Filled icons inherit color from parent or use default
+    }
+
+    &--empty {
+      opacity: 0.3;
+    }
+  }
+
+  // Size variants
+  &--sm {
+    gap: 0.0625rem;
+
+    .ui-rating__icon {
+      font-size: 0.75rem;
+    }
+  }
+
+  &--md {
+    gap: 0.125rem;
+
+    .ui-rating__icon {
+      font-size: 1rem;
+    }
+  }
+
+  &--lg {
+    gap: 0.25rem;
+
+    .ui-rating__icon {
+      font-size: 1.5rem;
+    }
+  }
+}

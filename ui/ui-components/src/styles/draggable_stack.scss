@@ -1,0 +1,20 @@
+// Draggable Stack Component Styles
+// Container for mouse-based drag-and-drop reorderable items
+
+.ui-draggable-stack {
+    // Container styles set inline (flex, direction, gap)
+    position: relative;
+    user-select: none;
+
+    &__item-wrapper {
+        position: relative;
+        cursor: grab;
+        // Prevent text selection during drag
+        user-select: none;
+        -webkit-user-select: none;
+
+        &:active {
+            cursor: grabbing;
+        }
+    }
+}

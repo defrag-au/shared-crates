@@ -1,0 +1,118 @@
+// Pagination Component Styles
+
+@use "variables" as v;
+
+// Breakpoint for simplified pagination (based on container width)
+$compact-breakpoint: 400px;
+
+.ui-pagination {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+
+    // Enable container queries
+    container-type: inline-size;
+    container-name: pagination;
+
+    &__pages {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    // Simple current page indicator (shown when compact)
+    &__current {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        min-width: 2rem;
+        height: 2rem;
+        padding: 0 0.5rem;
+        color: v.$text-light;
+        font-size: 0.85rem;
+        font-variant-numeric: tabular-nums;
+    }
+
+    &__btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 2rem;
+        height: 2rem;
+        padding: 0 0.5rem;
+        background: v.$bg-tertiary;
+        border: 1px solid v.$border-color;
+        border-radius: v.$card-radius-sm;
+        color: v.$text-light;
+        font-size: 0.85rem;
+        font-family: inherit;
+        cursor: pointer;
+        transition: all v.$transition-fast;
+
+        &:hover:not(:disabled) {
+            background: v.$bg-secondary;
+            border-color: v.$border-color-light;
+        }
+
+        &:focus {
+            outline: none;
+            border-color: v.$accent-primary;
+        }
+
+        &:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        &--nav {
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        &--page {
+            font-variant-numeric: tabular-nums;
+        }
+
+        &--active {
+            background: v.$accent-primary;
+            border-color: v.$accent-primary;
+            color: v.$text-light;
+            font-weight: 500;
+
+            &:hover:not(:disabled) {
+                background: v.$accent-primary;
+                border-color: v.$accent-primary;
+            }
+        }
+    }
+
+    &__ellipsis {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        color: v.$text-muted;
+        font-size: 0.85rem;
+    }
+
+    &__info {
+        display: none;
+    }
+
+    &__jump {
+        display: none;
+    }
+}
+
+// Container queries for compact mode
+@container pagination (max-width: #{$compact-breakpoint}) {
+    .ui-pagination__pages {
+        display: none;
+    }
+
+    .ui-pagination__current {
+        display: flex;
+    }
+}

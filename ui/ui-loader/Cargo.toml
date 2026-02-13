@@ -1,0 +1,62 @@
+[package]
+name = "ui-loader"
+version = "0.1.0"
+edition = "2021"
+description = "Framework-agnostic loading orchestrator for WASM widgets"
+license = "MIT"
+
+[features]
+default = ["web"]
+# Enable dev mode features
+dev = ["ui-core/dev"]
+# Web (wasm-bindgen) localStorage access for Identity and LoadingOrchestrator
+web = [
+    "dep:ui-core",
+    "dep:maud",
+    "dep:gloo-timers",
+    "dep:futures",
+    "dep:wasm-bindgen",
+    "dep:web-sys",
+    "dep:js-sys",
+    "dep:tracing",
+    "web-sys/Storage",
+]
+# Macroquad support (uses quad-storage for localStorage access)
+macroquad = ["dep:quad-storage", "dep:log"]
+
+[dependencies]
+# Serialization (for Identity) - always needed
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# === Web feature dependencies (optional) ===
+
+# Core UI utilities
+ui-core = { path = "../ui-core", optional = true }
+
+# HTML templating for loading/error screens
+maud = { workspace = true, optional = true }
+
+# Async/timing utilities
+gloo-timers = { version = "0.3", features = ["futures"], optional = true }
+futures = { workspace = true, optional = true }
+
+# WASM bindings
+wasm-bindgen = { workspace = true, optional = true }
+web-sys = { version = "0.3", features = [
+    "CssStyleDeclaration",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "Window",
+], optional = true }
+js-sys = { workspace = true, optional = true }
+
+# Logging
+tracing = { version = "0.1", optional = true }
+log = { version = "0.4", optional = true }
+
+# === Macroquad feature dependencies (optional) ===
+
+# quad-storage for macroquad localStorage access
+quad-storage = { version = "0.1", optional = true }

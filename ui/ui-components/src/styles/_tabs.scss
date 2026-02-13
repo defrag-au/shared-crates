@@ -1,0 +1,49 @@
+// Tabs component styles
+
+.ui-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+
+  &__list {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  &__tab {
+    padding: 0.75rem 1rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-bottom: -1px;
+
+    &:hover {
+      color: rgba(255, 255, 255, 0.9);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    &--active {
+      color: #fff;
+      border-bottom-color: #f0b429;
+    }
+
+    &:focus-visible {
+      outline: 2px solid #f0b429;
+      outline-offset: -2px;
+    }
+  }
+
+  &__panels {
+    padding: 1rem 0;
+  }
+
+  &__panel {
+    // Visibility controlled via inline style from component
+  }
+}

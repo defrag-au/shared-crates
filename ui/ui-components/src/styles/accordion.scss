@@ -1,0 +1,92 @@
+// Accordion Component Styles
+@use "variables" as v;
+
+.ui-accordion {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+
+    &__item {
+        background: v.$bg-secondary;
+        border: 1px solid v.$border-color;
+        border-radius: v.$card-radius-sm;
+        overflow: hidden;
+        transition: border-color v.$transition-fast;
+
+        &--expanded {
+            border-color: v.$border-color-light;
+        }
+    }
+
+    &__header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.75rem 1rem;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        user-select: none;
+        transition: background v.$transition-fast;
+        text-align: left;
+        font-family: inherit;
+
+        &:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        &:focus-visible {
+            outline: 2px solid v.$border-color-light;
+            outline-offset: -2px;
+        }
+    }
+
+    &__icon {
+        font-size: 1.25rem;
+        line-height: 1;
+        flex-shrink: 0;
+    }
+
+    &__icon-img {
+        width: 1.25rem;
+        height: 1.25rem;
+        object-fit: contain;
+        display: block;
+    }
+
+    &__title {
+        flex: 1;
+        font-weight: 500;
+        color: v.$text-light;
+        font-size: 0.9375rem;
+    }
+
+    &__badge {
+        font-size: 0.75rem;
+        padding: 0.125rem 0.5rem;
+        background: rgba(74, 158, 255, 0.2);
+        color: #4a9eff;
+        border-radius: v.$card-radius-xs;
+        font-weight: 500;
+    }
+
+    &__indicator {
+        color: v.$text-muted;
+        font-size: 0.75rem;
+        transition: color v.$transition-fast;
+    }
+
+    &__item--expanded &__indicator {
+        color: #4a9eff;
+    }
+
+    &__content {
+        border-top: 1px solid v.$border-color;
+    }
+
+    &__content-inner {
+        padding: 1rem;
+        color: v.$text-light;
+    }
+}

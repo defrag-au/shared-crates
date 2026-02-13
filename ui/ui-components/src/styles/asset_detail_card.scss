@@ -1,0 +1,276 @@
+// Asset Detail Card Component Styles
+// Detailed view for NFT assets with traits display
+
+.asset-detail-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-secondary, #1a1a2e);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    width: 100%;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+
+    // Accent bar at top
+    &__accent {
+        height: 4px;
+        width: 100%;
+    }
+
+    // Close button
+    &__close {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        z-index: 10;
+        width: 2rem;
+        height: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.6);
+        border: none;
+        border-radius: 50%;
+        color: var(--text-primary, #fff);
+        font-size: 1.5rem;
+        line-height: 1;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+
+        &:hover {
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        &:focus {
+            outline: 2px solid var(--primary, #0d6efd);
+            outline-offset: 2px;
+        }
+    }
+
+    // Image section
+    &__image {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 1;
+        background: var(--bg-tertiary, #0f0f1a);
+        flex-shrink: 0;
+        overflow: hidden;
+    }
+
+    // Blurred placeholder thumbnail
+    &__placeholder {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        filter: blur(20px);
+        transform: scale(1.1); // Prevent blur edge artifacts
+        transition: opacity 0.3s ease-out;
+        z-index: 1;
+        animation: asset-detail-pulse 2.5s ease-in-out infinite;
+
+        &.loaded {
+            opacity: 0;
+            pointer-events: none;
+            animation: none;
+        }
+    }
+
+    // High-res image
+    &__highres {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0;
+        transition: opacity 0.3s ease-out;
+        z-index: 2;
+
+        &.loaded {
+            opacity: 1;
+        }
+    }
+
+    // Rarity rank pill - overlaid on image
+    &__rarity {
+        position: absolute;
+        bottom: 0.5rem;
+        left: 0.5rem;
+        z-index: 5;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-primary, #fff);
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(4px);
+        padding: 0.25rem 0.625rem;
+        border-radius: 1rem;
+    }
+
+    // Info section
+    &__info {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    // Header with name - sticky at top
+    &__header {
+        display: flex;
+        align-items: baseline;
+        gap: 0.5rem;
+        padding: 1rem;
+        padding-bottom: 0.75rem;
+        flex-shrink: 0;
+    }
+
+    &__name {
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text-primary, #fff);
+    }
+
+    // Traits section - scrollable
+    &__traits {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0 1rem 1rem;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    &__trait {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0.75rem;
+        background: var(--bg-tertiary, #0f0f1a);
+        border-radius: 0.375rem;
+        gap: 1rem;
+    }
+
+    &__trait-name {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted, #888);
+        flex-shrink: 0;
+    }
+
+    &__trait-value {
+        font-size: 0.875rem;
+        color: var(--text-primary, #fff);
+        text-align: right;
+        word-break: break-word;
+    }
+
+    // Footer section (always present for visual balance)
+    &__footer {
+        display: flex;
+        gap: 0.5rem;
+        padding: 1rem;
+        padding-top: 0.75rem;
+        border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+        flex-shrink: 0;
+        min-height: 1rem; // Ensures footer has height even when empty
+
+        // Make action buttons full width
+        > * {
+            flex: 1;
+        }
+
+        // When empty, just show the border for balance
+        &:empty {
+            padding-bottom: 0.75rem;
+        }
+    }
+}
+
+// Mobile: full height with scrollable traits
+@media (max-width: 575px) {
+    .asset-detail-card {
+        height: 100%;
+        border-radius: 0;
+        box-shadow: none;
+
+        &__image {
+            // Limit image height on mobile to leave room for traits
+            max-height: 50vh;
+            aspect-ratio: 1;
+            width: auto;
+            margin: 0 auto;
+        }
+
+        &__info {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: max(1rem, env(safe-area-inset-bottom));
+        }
+    }
+}
+
+// Side-by-side layout - only in flush modal context (not grid/inline)
+.ui-modal__body.flush .asset-detail-card {
+    @media (min-width: 576px) {
+        flex-direction: row;
+
+        .asset-detail-card__image {
+            width: 320px;
+            min-width: 320px;
+            height: 320px;
+            aspect-ratio: 1;
+        }
+
+        .asset-detail-card__info {
+            flex: 1;
+            max-height: 320px;
+        }
+
+        .asset-detail-card__header {
+            padding: 1.5rem;
+            padding-bottom: 0.75rem;
+        }
+
+        .asset-detail-card__traits {
+            padding: 0 1.5rem 1.5rem;
+        }
+
+        .asset-detail-card__footer {
+            padding: 1.5rem;
+            padding-top: 0.75rem;
+        }
+
+        .asset-detail-card__close {
+            top: 1rem;
+            right: 1rem;
+        }
+    }
+}
+
+// Larger screens: bigger image (only in modal context)
+.ui-modal__body.flush .asset-detail-card {
+    @media (min-width: 768px) {
+        .asset-detail-card__image {
+            width: 400px;
+            min-width: 400px;
+            height: 400px;
+        }
+
+        .asset-detail-card__info {
+            max-height: 400px;
+        }
+    }
+}
+
+// Pulse animation for loading placeholder
+@keyframes asset-detail-pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}

@@ -1,0 +1,141 @@
+// =============================================================================
+// Connection Status Component
+// Block: .connection-status
+// =============================================================================
+@use "variables" as v;
+
+// Status colors
+$status-connected: #198754;
+$status-connected-light: #75b798;
+$status-connecting: #ffc107;
+$status-connecting-light: #ffda6a;
+$status-disconnected: #6c757d;
+$status-disconnected-light: #adb5bd;
+$status-error: #dc3545;
+$status-error-light: #ea868f;
+
+.connection-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5em;
+    padding: 0.25em 0.6em;
+    border-radius: 9999px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.2;
+    white-space: nowrap;
+    transition:
+        background-color v.$transition-fast,
+        transform 0.1s ease;
+    user-select: none;
+
+    // Modifier: clickable
+    &--clickable {
+        cursor: pointer;
+
+        &:hover {
+            filter: brightness(1.1);
+        }
+
+        &:active {
+            transform: scale(0.97);
+        }
+
+        &:hover .connection-status__text--clickable::after {
+            opacity: 0.7;
+        }
+    }
+
+    // Modifier: connected
+    &--connected {
+        background: rgba($status-connected, 0.15);
+        color: $status-connected;
+    }
+    &--connected &__indicator {
+        background: $status-connected;
+        box-shadow: 0 0 4px $status-connected;
+    }
+
+    // Modifier: connecting
+    &--connecting {
+        background: rgba($status-connecting, 0.15);
+        color: #997404;
+    }
+    &--connecting &__indicator {
+        background: $status-connecting;
+        animation: connection-status-pulse 1.5s ease-in-out infinite;
+    }
+
+    // Modifier: disconnected
+    &--disconnected {
+        background: rgba($status-disconnected, 0.15);
+        color: $status-disconnected;
+    }
+    &--disconnected &__indicator {
+        background: $status-disconnected;
+    }
+
+    // Modifier: error
+    &--error {
+        background: rgba($status-error, 0.15);
+        color: $status-error;
+    }
+    &--error &__indicator {
+        background: $status-error;
+    }
+
+    // Element: indicator dot
+    &__indicator {
+        width: 0.5em;
+        height: 0.5em;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    // Element: text
+    &__text {
+        // Modifier: clickable hint
+        &--clickable::after {
+            content: " (click to reconnect)";
+            opacity: 0;
+            font-size: 0.85em;
+            transition: opacity v.$transition-fast;
+        }
+    }
+}
+
+@keyframes connection-status-pulse {
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.5;
+        transform: scale(0.85);
+    }
+}
+
+// Dark mode adjustments
+@media (prefers-color-scheme: dark) {
+    .connection-status {
+        &--connected {
+            background: rgba($status-connected, 0.25);
+            color: $status-connected-light;
+        }
+        &--connecting {
+            background: rgba($status-connecting, 0.2);
+            color: $status-connecting-light;
+        }
+        &--disconnected {
+            background: rgba($status-disconnected, 0.25);
+            color: $status-disconnected-light;
+        }
+        &--error {
+            background: rgba($status-error, 0.25);
+            color: $status-error-light;
+        }
+    }
+}

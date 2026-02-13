@@ -1,0 +1,29 @@
+// ButtonGroup Component Styles
+@use "variables" as v;
+
+.ui-button-group {
+    display: inline-flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+
+    // Connected buttons variant (no gap, shared borders)
+    &--connected {
+        gap: 0;
+
+        .ui-button {
+            border-radius: 0;
+
+            &:first-child {
+                border-radius: v.$card-radius-sm 0 0 v.$card-radius-sm;
+            }
+
+            &:last-child {
+                border-radius: 0 v.$card-radius-sm v.$card-radius-sm 0;
+            }
+
+            &:not(:first-child) {
+                margin-left: -1px;
+            }
+        }
+    }
+}

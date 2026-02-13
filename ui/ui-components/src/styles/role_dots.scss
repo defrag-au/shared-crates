@@ -1,0 +1,55 @@
+// Role Dots Component Styles
+@use "variables" as v;
+
+.ui-role-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 4px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 4px;
+    position: relative;
+
+    &__dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #6c757d;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        flex-shrink: 0;
+    }
+
+    &__tooltip {
+        position: absolute;
+        bottom: calc(100% + 6px);
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 4px 8px;
+        background: v.$bg-secondary;
+        border: 1px solid v.$border-color-light;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        color: v.$text-light;
+        white-space: nowrap;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity v.$transition-fast, visibility v.$transition-fast;
+        pointer-events: none;
+        z-index: 10;
+
+        &::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: v.$border-color-light;
+        }
+    }
+
+    &:hover &__tooltip {
+        opacity: 1;
+        visibility: visible;
+    }
+}

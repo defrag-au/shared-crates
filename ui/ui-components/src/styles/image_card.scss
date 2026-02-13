@@ -1,0 +1,179 @@
+// =============================================================================
+// Image Card Component
+// Block: .image-card
+// =============================================================================
+@use "variables" as v;
+
+.image-card {
+    --hover-scale: 1.03; // Default for small sizes
+    position: relative;
+    border-radius: v.$card-radius-md;
+    overflow: hidden;
+    background: var(--card-bg, v.$bg-secondary);
+    cursor: pointer;
+    width: 100%;
+
+    &:hover:not(&--static) {
+        .image-card__image {
+            transform: scale(var(--hover-scale));
+        }
+    }
+
+    // Modifier: static (non-interactive)
+    &--static {
+        cursor: default;
+    }
+
+    // Modifier: size variants
+    // Use explicit width (not just max-width) so skeleton has proper size
+    &--auto {
+        // Auto fills container, no width constraint
+        max-width: none;
+    }
+    &--xs {
+        width: 80px;
+        max-width: 80px;
+        border-radius: v.$card-radius-xs;
+    }
+    &--sm {
+        width: 120px;
+        max-width: 120px;
+        border-radius: v.$card-radius-sm;
+    }
+    &--md {
+        --hover-scale: 1.025;
+        width: 240px;
+        max-width: 240px;
+    }
+    &--lg {
+        --hover-scale: 1.02;
+        width: 400px;
+        max-width: 400px;
+        border-radius: v.$card-radius-lg;
+    }
+    &--xl {
+        --hover-scale: 1.015;
+        width: 800px;
+        max-width: 800px;
+        border-radius: 12px;
+    }
+
+    // Element: accent bar
+    &__accent {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        z-index: 1;
+    }
+    &--xs &__accent {
+        height: 2px;
+    }
+    &--sm &__accent {
+        height: 3px;
+    }
+    &--lg &__accent {
+        height: 5px;
+    }
+    &--xl &__accent {
+        height: 6px;
+    }
+
+    // Element: image wrapper
+    &__image-wrapper {
+        position: relative;
+        aspect-ratio: 1;
+        overflow: hidden;
+    }
+
+    // Element: image
+    &__image {
+        display: block; // Remove baseline gap
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition:
+            transform v.$transition-fast,
+            opacity 0.3s ease;
+
+        // Hidden while loading (skeleton shows instead)
+        &--loading {
+            opacity: 0;
+        }
+    }
+
+    // Element: skeleton loading state
+    &__skeleton {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+
+        .ui-skeleton {
+            width: 100%;
+            height: 100%;
+            border-radius: 0; // Match card's overflow: hidden
+        }
+    }
+
+    // Element: placeholder
+    &__placeholder {
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+            135deg,
+            v.$bg-tertiary 0%,
+            v.$bg-secondary 100%
+        );
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        &::after {
+            content: "";
+            width: 40%;
+            height: 40%;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+        }
+    }
+
+    // Element: name overlay
+    &__name {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 0.35rem 0.5rem;
+        background: rgba(0, 0, 0, 0.75);
+        color: white;
+        font-size: 0.75rem;
+        font-weight: 500;
+        font-family:
+            -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: center;
+    }
+    &--xs &__name {
+        font-size: 0.6rem;
+        padding: 0.2rem 0.3rem;
+    }
+    &--sm &__name {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.4rem;
+    }
+    &--md &__name {
+        font-size: 0.85rem;
+        padding: 0.4rem 0.6rem;
+    }
+    &--lg &__name {
+        font-size: 1rem;
+        padding: 0.5rem 0.75rem;
+    }
+    &--xl &__name {
+        font-size: 1.1rem;
+        padding: 0.6rem 1rem;
+    }
+}

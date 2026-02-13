@@ -1,0 +1,56 @@
+@use "variables" as v;
+
+.ui-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+
+  &__label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: v.$text-light;
+  }
+
+  &__required {
+    color: v.$status-error;
+    margin-left: 0.25rem;
+  }
+
+  &__control {
+    // Wrapper for form control
+    // Allow nested inputs to fill width
+    > * {
+      width: 100%;
+    }
+
+    // Remove nested labels (control handles its own)
+    .ui-text-input__label,
+    .ui-textarea__label {
+      display: none;
+    }
+  }
+
+  &__error {
+    font-size: 0.75rem;
+    color: v.$status-error;
+    min-height: 1rem;
+  }
+
+  &__hint {
+    font-size: 0.75rem;
+    color: v.$text-muted;
+  }
+
+  // Error state
+  &--error {
+    .ui-text-input__field,
+    .ui-textarea__field,
+    .ui-select__trigger {
+      border-color: v.$status-error;
+
+      &:focus {
+        box-shadow: 0 0 0 2px rgba(v.$status-error, 0.25);
+      }
+    }
+  }
+}

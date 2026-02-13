@@ -1,0 +1,38 @@
+[package]
+name = "flow-demo"
+version = "0.1.0"
+edition = "2021"
+description = "Demo worker showcasing the unified realtime protocol"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Worker runtime (via workspace worker_stack)
+worker_stack = { workspace = true }
+worker = "=0.7.4"
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+
+# Protocol types
+ui-flow-protocol = { path = "../../ui-flow-protocol" }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rmp-serde = "1.3"
+
+# RNG for shuffling (wasm-compatible)
+getrandom = { workspace = true }
+rand = { workspace = true }
+
+# Unique IDs
+ulid = "1.1"
+
+# Logging
+tracing = "0.1"
+worker_utils = { workspace = true }
+
+# Cardano assets
+cardano-assets = { workspace = true }
