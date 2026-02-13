@@ -5,16 +5,13 @@ use std::{error::Error, fmt};
 use worker_stack::worker;
 
 #[derive(Debug)]
+#[derive(Default)]
 pub enum PinataError {
+    #[default]
     Unknown,
     Request(HttpError),
 }
 
-impl Default for PinataError {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
 
 impl Error for PinataError {}
 

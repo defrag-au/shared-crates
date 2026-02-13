@@ -22,6 +22,7 @@ const BASE_URL_MAINNET: &str = "mainnet.gomaestro-api.org/v1";
 const BASE_URL_PREPROD: &str = "preprod.gomaestro-api.org/v1";
 
 #[derive(Debug)]
+#[derive(Default)]
 pub enum MaestroError {
     NoMetadata,
     Http(http_client::HttpError),
@@ -30,14 +31,10 @@ pub enum MaestroError {
         retry_after: Option<u64>,
     },
     Deserialization(String),
+    #[default]
     Unknown,
 }
 
-impl Default for MaestroError {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
 
 impl Error for MaestroError {}
 
