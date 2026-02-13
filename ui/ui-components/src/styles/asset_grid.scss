@@ -1,0 +1,52 @@
+// Asset Grid Component Styles
+// Responsive grid layout for displaying asset cards
+
+.asset-grid {
+  display: block;
+  width: 100%;
+
+  // Grid container
+  &__grid {
+    display: grid;
+    // grid-template-columns set via inline style for flexibility
+    width: 100%;
+  }
+
+  // Empty state
+  &__empty {
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-muted, #6c757d);
+    font-style: italic;
+    background: var(--bg-secondary, rgba(255, 255, 255, 0.05));
+    border-radius: 0.5rem;
+    border: 1px dashed var(--border-color, rgba(255, 255, 255, 0.1));
+  }
+
+  // Loading state
+  &__loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    gap: 1rem;
+    color: var(--text-muted, #6c757d);
+  }
+
+  // Loading spinner
+  &__spinner {
+    width: 2rem;
+    height: 2rem;
+    border: 3px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-top-color: var(--primary, #0d6efd);
+    border-radius: 50%;
+    animation: asset-grid-spin 0.8s linear infinite;
+  }
+}
+
+@keyframes asset-grid-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

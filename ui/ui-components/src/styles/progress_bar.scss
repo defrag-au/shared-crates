@@ -1,0 +1,39 @@
+// ProgressBar Component Styles
+@use "variables" as v;
+
+.ui-progress {
+    width: 100%;
+
+    &__header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 0.375rem;
+    }
+
+    &__label {
+        font-size: 0.85rem;
+        color: v.$text-light;
+    }
+
+    &__percentage {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: v.$text-muted;
+        font-variant-numeric: tabular-nums;
+    }
+
+    &__track {
+        height: 0.5rem;
+        background: v.$bg-tertiary;
+        border-radius: 9999px;
+        overflow: hidden;
+    }
+
+    &__bar {
+        height: 100%;
+        background: v.$accent-gold-strong;
+        border-radius: 9999px;
+        transition: width v.$transition-normal;
+    }
+}

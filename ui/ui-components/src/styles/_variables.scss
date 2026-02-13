@@ -1,0 +1,40 @@
+// Shared UI Component Variables
+// Used by all Leptos components via @use "variables" as v;
+
+// Colors - Dark theme
+$bg-primary: #0d0d1a;
+$bg-secondary: #1a1a2e;
+$bg-tertiary: #2a2a4e;
+
+$border-color: #2a2a4e;
+$border-color-light: #3a3a5e;
+
+$text-light: #e0e0e0;
+$text-muted: #888;
+
+$accent-gold: rgba(255, 215, 0, 0.3);
+$accent-gold-strong: rgba(255, 215, 0, 0.9);
+$accent-primary: #3b82f6;
+$accent-primary-hover: #2563eb;
+
+// Status colors
+$status-success: #4caf50;
+$status-warning: #ff9800;
+$status-error: #f44336;
+
+// Card sizing
+$card-radius-xs: 4px;
+$card-radius-sm: 6px;
+$card-radius-md: 8px;
+$card-radius-lg: 10px;
+
+// Memory card sizes
+$memory-card-xs: 80px;
+$memory-card-sm: 100px;
+$memory-card-md: 120px;
+$memory-card-lg: 160px;
+
+// Timing
+$transition-fast: 0.15s ease;
+$transition-normal: 0.3s ease;
+$transition-slow: 0.5s ease;

@@ -1,0 +1,49 @@
+// Page Header Component Styles
+@use "variables" as v;
+
+.ui-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid v.$border-color;
+    margin-bottom: 1.5rem;
+
+    &__content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    &__title {
+        margin: 0 0 0.25rem 0;
+        font-size: 1.75rem;
+        font-weight: 600;
+        color: v.$text-light;
+        line-height: 1.2;
+    }
+
+    &__subtitle {
+        margin: 0;
+        color: v.$text-muted;
+        font-size: 0.95rem;
+    }
+
+    &__actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-shrink: 0;
+    }
+}
+
+// Responsive: stack on small screens
+@media (max-width: 480px) {
+    .ui-page-header {
+        flex-direction: column;
+
+        &__actions {
+            width: 100%;
+            justify-content: flex-start;
+        }
+    }
+}

@@ -1,0 +1,50 @@
+@use "variables" as v;
+
+.ui-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ui-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.375rem 0;
+  border-bottom: 1px solid v.$border-color;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &__label {
+    font-size: 0.875rem;
+    color: v.$text-muted;
+    flex-shrink: 0;
+  }
+
+  &__value {
+    font-size: 0.875rem;
+    color: v.$text-light;
+    text-align: right;
+    word-break: break-word;
+
+    // Allow value to contain badges, etc.
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  // Muted/secondary row
+  &--muted {
+    opacity: 0.7;
+
+    .ui-info-row__label,
+    .ui-info-row__value {
+      font-size: 0.8125rem;
+    }
+  }
+}

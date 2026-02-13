@@ -1,0 +1,658 @@
+// Flow Demo - Dark Theme Styles
+
+:root {
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16213e;
+    --bg-tertiary: #0f3460;
+    --text-primary: #eaeaea;
+    --text-secondary: #a0a0a0;
+    --accent: #e94560;
+    --accent-hover: #ff6b6b;
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --error: #ef4444;
+    --border: #2a2a4a;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+        sans-serif;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    line-height: 1.6;
+}
+
+#app {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+// Header
+.header {
+    text-align: center;
+    margin-bottom: 2rem;
+
+    h1 {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+        color: var(--accent);
+    }
+
+    .subtitle {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+}
+
+// Connection status: styles come from ui-components::STYLES in RootApp
+
+// Main layout
+.main-content {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 1.5rem;
+
+    @media (max-width: 768px) {
+        grid-template-columns: 1fr;
+    }
+}
+
+// Card component
+.card {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+
+    h2 {
+        font-size: 1.1rem;
+        margin-bottom: 1rem;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+}
+
+// Counter section
+.counter {
+    text-align: center;
+
+    .value {
+        font-size: 4rem;
+        font-weight: bold;
+        color: var(--accent);
+        margin: 1rem 0;
+    }
+
+    .buttons {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+    }
+}
+
+// Buttons
+button {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+
+    &:hover {
+        background-color: var(--accent);
+        border-color: var(--accent);
+    }
+
+    &:active {
+        transform: scale(0.98);
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    &.primary {
+        background-color: var(--accent);
+        border-color: var(--accent);
+
+        &:hover {
+            background-color: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+    }
+}
+
+// Chat section
+.chat {
+    display: flex;
+    flex-direction: column;
+    height: 400px;
+
+    .messages {
+        flex: 1;
+        overflow-y: auto;
+        margin-bottom: 1rem;
+        padding: 0.5rem;
+        background-color: var(--bg-primary);
+        border-radius: 0.5rem;
+
+        &::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        &::-webkit-scrollbar-thumb {
+            background-color: var(--border);
+            border-radius: 3px;
+        }
+    }
+
+    .message {
+        margin-bottom: 0.75rem;
+
+        .meta {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+
+            .author {
+                font-weight: 600;
+                color: var(--accent);
+                font-size: 0.85rem;
+            }
+
+            .time {
+                color: var(--text-secondary);
+                font-size: 0.75rem;
+            }
+        }
+
+        .content {
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            padding-left: 0;
+        }
+    }
+
+    .input-row {
+        display: flex;
+        gap: 0.5rem;
+
+        input {
+            flex: 1;
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+
+            &:focus {
+                outline: none;
+                border-color: var(--accent);
+            }
+
+            &::placeholder {
+                color: var(--text-secondary);
+            }
+        }
+    }
+}
+
+// Presence sidebar
+.presence {
+    h2 {
+        margin-bottom: 1rem;
+    }
+
+    .user-list {
+        list-style: none;
+
+        li {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.25rem;
+
+            &:hover {
+                background-color: var(--bg-primary);
+            }
+
+            .status-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background-color: var(--success);
+            }
+
+            .name {
+                color: var(--text-primary);
+                font-size: 0.9rem;
+            }
+
+            &.self {
+                background-color: var(--bg-tertiary);
+
+                .name {
+                    font-weight: 600;
+                }
+            }
+        }
+    }
+
+    .empty {
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        text-align: center;
+        padding: 1rem;
+    }
+}
+
+// Room selector
+.room-selector {
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+
+    label {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    input {
+        background-color: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        padding: 0.5rem 1rem;
+        color: var(--text-primary);
+        font-size: 0.9rem;
+        width: 150px;
+
+        &:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+    }
+}
+
+// Loading spinner
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+// =============================================================================
+// Mode Tabs / Root App
+// =============================================================================
+
+.root-app {
+    min-height: 100vh;
+}
+
+.mode-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+
+    button {
+        background-color: transparent;
+        border: 1px solid var(--border);
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+
+        &.active {
+            background-color: var(--accent);
+            border-color: var(--accent);
+        }
+    }
+}
+
+// =============================================================================
+// Memory Game Styles
+// =============================================================================
+
+.memory-app {
+    max-width: 1400px;
+    margin: 0 auto;
+
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+
+        h1 {
+            margin: 0;
+        }
+    }
+}
+
+// Lobby
+.lobby {
+    max-width: 600px;
+    margin: 0 auto;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 2rem;
+
+    h2 {
+        text-align: center;
+        margin-bottom: 1.5rem;
+        color: var(--accent);
+    }
+
+    h3 {
+        font-size: 1rem;
+        margin-bottom: 0.75rem;
+        color: var(--text-primary);
+
+        .player-count {
+            color: var(--text-secondary);
+            font-weight: normal;
+        }
+    }
+
+    .lobby-players {
+        margin-bottom: 2rem;
+
+        ul {
+            list-style: none;
+            background-color: var(--bg-primary);
+            border-radius: 0.5rem;
+            padding: 0.5rem;
+
+            li {
+                padding: 0.5rem 0.75rem;
+                border-radius: 0.25rem;
+
+                &:hover {
+                    background-color: var(--bg-tertiary);
+                }
+            }
+        }
+    }
+
+    .lobby-settings {
+        .setting-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+
+            label {
+                min-width: 80px;
+                color: var(--text-secondary);
+            }
+
+            select {
+                flex: 1;
+                background-color: var(--bg-primary);
+                border: 1px solid var(--border);
+                border-radius: 0.5rem;
+                padding: 0.5rem;
+                color: var(--text-primary);
+                font-size: 0.9rem;
+
+                &:focus {
+                    outline: none;
+                    border-color: var(--accent);
+                }
+            }
+        }
+
+        .start-button {
+            width: 100%;
+            margin-top: 1.5rem;
+            background-color: var(--accent);
+            border-color: var(--accent);
+            font-size: 1.1rem;
+            padding: 1rem;
+
+            &:hover {
+                background-color: var(--accent-hover);
+            }
+        }
+    }
+
+    .lobby-waiting {
+        text-align: center;
+        color: var(--text-secondary);
+        padding: 2rem;
+
+        p {
+            animation: pulse 2s infinite;
+        }
+    }
+}
+
+// Countdown
+.countdown {
+    text-align: center;
+    padding: 4rem 2rem;
+
+    h2 {
+        color: var(--text-secondary);
+        margin-bottom: 1rem;
+    }
+
+    .countdown-number {
+        font-size: 8rem;
+        font-weight: bold;
+        color: var(--accent);
+        animation: pulse 1s infinite;
+    }
+}
+
+// Game Playing Layout
+.game-playing {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 1.5rem;
+
+    @media (max-width: 900px) {
+        grid-template-columns: 1fr;
+    }
+}
+
+.game-main {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+}
+
+.game-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+// Game Board
+.game-board-container {
+    display: flex;
+    justify-content: center;
+}
+
+.game-board {
+    max-width: 800px;
+    width: 100%;
+    // Card styles come from ui_components::STYLES
+}
+
+// Player List
+.player-list {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 1rem;
+
+    h3 {
+        font-size: 1rem;
+        margin-bottom: 0.75rem;
+        color: var(--text-primary);
+    }
+
+    ul {
+        list-style: none;
+
+        li {
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.25rem;
+
+            &.current-turn {
+                background-color: var(--bg-tertiary);
+                border-left: 3px solid var(--accent);
+            }
+
+            &.spectator {
+                opacity: 0.6;
+            }
+
+            .turn-indicator {
+                color: var(--accent);
+                font-weight: bold;
+            }
+
+            .player-name {
+                flex: 1;
+            }
+
+            .score {
+                color: var(--text-secondary);
+                font-size: 0.85rem;
+            }
+
+            .spectator-badge {
+                font-size: 0.85rem;
+            }
+        }
+    }
+}
+
+// Game Results
+.game-results {
+    max-width: 500px;
+    margin: 0 auto;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 2rem;
+    text-align: center;
+
+    h2 {
+        margin-bottom: 1.5rem;
+        color: var(--accent);
+    }
+
+    .winner-announcement {
+        margin-bottom: 2rem;
+
+        .winner-text {
+            font-size: 1.5rem;
+            font-weight: bold;
+
+            &.you-won {
+                color: var(--success);
+            }
+        }
+    }
+
+    .rankings {
+        margin-bottom: 2rem;
+        text-align: left;
+
+        h3 {
+            text-align: center;
+            margin-bottom: 1rem;
+            font-size: 1rem;
+        }
+
+        ol {
+            list-style: none;
+            counter-reset: rank;
+            background-color: var(--bg-primary);
+            border-radius: 0.5rem;
+            padding: 0.5rem;
+
+            li {
+                padding: 0.75rem;
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                border-radius: 0.25rem;
+
+                &.is-me {
+                    background-color: var(--bg-tertiary);
+                    font-weight: bold;
+                }
+
+                .medal {
+                    font-size: 1.2rem;
+                    min-width: 1.5rem;
+                }
+
+                .rank-name {
+                    flex: 1;
+                }
+
+                .rank-score {
+                    color: var(--text-secondary);
+                    font-size: 0.85rem;
+                }
+            }
+        }
+    }
+
+    .rematch-button {
+        background-color: var(--accent);
+        border-color: var(--accent);
+        font-size: 1.1rem;
+        padding: 0.75rem 2rem;
+
+        &:hover {
+            background-color: var(--accent-hover);
+        }
+    }
+}

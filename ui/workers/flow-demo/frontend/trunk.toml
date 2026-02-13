@@ -1,0 +1,10 @@
+[build]
+target = "index.html"
+dist = "../dist"
+public_url = "/"
+
+[watch]
+watch = ["src", "styles", "index.html", "../../../ui-components/src/styles/*.scss"]
+
+[[proxy]]
+backend = "http://localhost:8787/ws"

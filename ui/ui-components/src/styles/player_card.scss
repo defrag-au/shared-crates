@@ -1,0 +1,161 @@
+// Player Card Component Styles
+@use "variables" as v;
+
+.ui-player-card {
+    display: flex;
+    flex-direction: column;
+    background: v.$bg-primary;
+    border: 1px solid v.$border-color;
+    border-radius: v.$card-radius-md;
+    overflow: hidden;
+    transition: border-color v.$transition-fast, box-shadow v.$transition-fast;
+
+    &:hover {
+        border-color: v.$border-color-light;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    &--clickable {
+        cursor: pointer;
+    }
+
+    // Image section
+    &__image {
+        position: relative;
+        width: 100%;
+        min-height: 120px;
+        background: v.$bg-secondary;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    &__hero {
+        display: block;
+        width: 100%;
+        height: auto;
+        object-fit: cover;
+    }
+
+    // Avatar overlay
+    &__avatar {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 2px solid v.$bg-primary;
+        background: v.$bg-secondary;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+    }
+
+    &__avatar-fallback {
+        color: v.$text-muted;
+        font-size: 1.25rem;
+    }
+
+    // Name overlay on image
+    &__name-overlay {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 0.5rem 0.75rem;
+        background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+    }
+
+    &__name {
+        font-weight: 600;
+        font-size: 1rem;
+        color: #fff;
+        margin: 0;
+        line-height: 1.3;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    }
+
+    // Content section
+    &__content {
+        padding: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    // Header: subtitle + badge
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    &__subtitle {
+        font-size: 0.875rem;
+        color: v.$text-muted;
+        margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+        min-width: 0;
+    }
+
+    &__badge {
+        display: inline-flex;
+        align-items: center;
+        flex-shrink: 0;
+        padding: 0.2rem 0.5rem;
+        background: rgba(74, 158, 255, 0.15);
+        border: 1px solid rgba(74, 158, 255, 0.3);
+        border-radius: v.$card-radius-xs;
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: v.$text-light;
+        text-transform: capitalize;
+    }
+
+    // Meta row
+    &__meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        font-size: 0.75rem;
+        color: v.$text-muted;
+    }
+
+    &__meta-sep {
+        color: v.$border-color-light;
+    }
+
+    // Actions row
+    &__actions {
+        display: flex;
+        gap: 0.25rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid v.$border-color;
+        margin-top: auto;
+
+        > * {
+            flex: 1;
+        }
+    }
+}

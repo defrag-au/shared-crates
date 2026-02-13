@@ -1,0 +1,54 @@
+[package]
+name = "ui-components"
+version.workspace = true
+edition.workspace = true
+description = "Reusable Leptos components for Cardano applications"
+
+[features]
+default = []
+wallet = ["wallet-pallas"]
+
+[dependencies]
+# Wallet types (optional)
+wallet-pallas = { path = "../wallet-pallas", optional = true }
+# Leptos framework
+leptos = { version = "0.8", features = ["csr"] }
+
+# Asset types
+asset-intents = { workspace = true }
+cardano-assets = { workspace = true }
+
+# Styling
+scss-macros = { path = "../scss-macros" }
+
+# WASM bindings
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+web-sys = { workspace = true, features = [
+    "Blob",
+    "CssStyleDeclaration",
+    "DataTransfer",
+    "DomRect",
+    "DragEvent",
+    "Element",
+    "EventTarget",
+    "HtmlCollection",
+    "HtmlElement",
+    "HtmlImageElement",
+    "IntersectionObserver",
+    "IntersectionObserverEntry",
+    "IntersectionObserverInit",
+    "Node",
+    "PointerEvent",
+    "ResizeObserver",
+    "ResizeObserverEntry",
+    "Response",
+    "Url",
+    "Window",
+] }
+js-sys = { workspace = true }
+
+# Utilities
+phf = { workspace = true }
+send_wrapper = "0.6"
+tracing = { workspace = true }

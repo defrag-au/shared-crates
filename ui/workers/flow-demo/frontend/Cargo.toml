@@ -1,0 +1,57 @@
+[package]
+name = "flow-demo-frontend"
+version = "0.1.0"
+edition = "2021"
+description = "Leptos frontend for the flow-demo worker"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Leptos framework (CSR mode)
+leptos = { version = "0.8", features = ["csr"] }
+leptos_meta = "0.8"
+
+# Protocol types
+ui-flow-protocol = { path = "../../../ui-flow-protocol" }
+
+# Shared UI components
+ui-components = { path = "../../../ui-components" }
+
+# Core runtime (tracing setup)
+ui-core = { path = "../../../ui-core" }
+
+# WebSocket + WASM
+web-sys = { version = "0.3", features = [
+    "WebSocket",
+    "MessageEvent",
+    "CloseEvent",
+    "BinaryType",
+    "Blob",
+    "FileReader",
+    "Window",
+    "Document",
+    "HtmlInputElement",
+    "Event",
+    "KeyboardEvent",
+    "Storage",
+] }
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rmp-serde = "1.3"
+
+# Cardano assets
+cardano-assets = { workspace = true }
+
+# Logging
+tracing = "0.1"
+tracing-wasm = "0.2"
+
+# Utilities
+gloo-timers = { version = "0.3", features = ["futures"] }
+send_wrapper = "0.6"

@@ -1,0 +1,1148 @@
+// Shared UI Storybook Styles
+
+// Variables
+$bg-primary: #1a1a2e;
+$bg-secondary: #16213e;
+$bg-tertiary: #0f1424;
+$text-light: #e8e8e8;
+$text-muted: #888;
+$border-color: #2a2a4a;
+$primary: #4a9eff;
+$primary-hover: #3a8eef;
+$success: #4caf50;
+$warning: #ff9800;
+$danger: #f44336;
+
+$spacing-xs: 0.25rem;
+$spacing-sm: 0.5rem;
+$spacing-md: 1rem;
+$spacing-lg: 1.5rem;
+$spacing-xl: 2rem;
+
+$radius: 4px;
+$radius-lg: 8px;
+
+$family-sans-serif:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+$family-mono: "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+
+// Reset
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    background-color: $bg-primary;
+    color: $text-light;
+    font-family: $family-sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+#app {
+    min-height: 100vh;
+}
+
+// Storybook layout
+.storybook {
+    display: flex;
+    min-height: 100vh;
+}
+
+.storybook-sidebar {
+    width: 220px;
+    background: $bg-secondary;
+    border-right: 1px solid $border-color;
+    padding: $spacing-md;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    overflow-y: auto;
+
+    h1 {
+        font-size: 1.25rem;
+        margin: 0 0 $spacing-lg;
+        padding-bottom: $spacing-sm;
+        border-bottom: 1px solid $border-color;
+    }
+}
+
+.nav-section {
+    margin-bottom: $spacing-lg;
+
+    h2 {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        color: $text-muted;
+        margin: 0 0 $spacing-sm;
+        letter-spacing: 0.05em;
+    }
+
+    ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    li {
+        margin-bottom: $spacing-xs;
+    }
+
+    a {
+        display: block;
+        padding: $spacing-xs $spacing-sm;
+        color: $text-light;
+        text-decoration: none;
+        border-radius: $radius;
+        cursor: pointer;
+        transition: background-color 0.2s;
+
+        &:hover {
+            background: $bg-tertiary;
+        }
+
+        &.active {
+            background: $primary;
+            color: white;
+        }
+    }
+}
+
+.storybook-main {
+    flex: 1;
+    margin-left: 220px;
+    padding: $spacing-xl;
+    overflow-y: auto;
+    height: 100vh;
+}
+
+// Story components
+.story-header {
+    margin-bottom: $spacing-xl;
+    padding-bottom: $spacing-md;
+    border-bottom: 1px solid $border-color;
+
+    h2 {
+        margin: 0 0 $spacing-xs;
+        font-size: 1.5rem;
+    }
+
+    p {
+        margin: 0;
+        color: $text-muted;
+    }
+}
+
+.story-section {
+    margin-bottom: $spacing-xl;
+
+    h3 {
+        font-size: 1rem;
+        margin: 0 0 $spacing-md;
+        color: $text-muted;
+    }
+}
+
+.story-canvas {
+    background: $bg-secondary;
+    border: 1px solid $border-color;
+    border-radius: $radius-lg;
+    padding: $spacing-lg;
+}
+
+.story-inline {
+    display: flex;
+    gap: $spacing-md;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.story-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: $spacing-md;
+}
+
+// Code display
+.code-block {
+    background: $bg-tertiary;
+    border: 1px solid $border-color;
+    border-radius: $radius;
+    padding: $spacing-md;
+    font-family: $family-mono;
+    font-size: 0.85rem;
+    overflow-x: auto;
+    white-space: pre;
+    color: $text-muted;
+}
+
+// Demo buttons
+.demo-btn {
+    padding: $spacing-sm $spacing-md;
+    border: none;
+    border-radius: $radius;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition:
+        background-color 0.2s,
+        transform 0.1s;
+
+    &:hover {
+        transform: translateY(-1px);
+    }
+
+    &:active {
+        transform: translateY(0);
+    }
+
+    &--primary {
+        background: $primary;
+        color: white;
+
+        &:hover {
+            background: $primary-hover;
+        }
+    }
+
+    &--success {
+        background: $success;
+        color: white;
+    }
+
+    &--warning {
+        background: $warning;
+        color: black;
+    }
+
+    &--danger {
+        background: $danger;
+        color: white;
+    }
+}
+
+// Demo inputs
+.demo-input {
+    padding: $spacing-sm $spacing-md;
+    border: 1px solid $border-color;
+    border-radius: $radius;
+    background: $bg-tertiary;
+    color: $text-light;
+    font-size: 0.9rem;
+    width: 200px;
+
+    &:focus {
+        outline: none;
+        border-color: $primary;
+    }
+}
+
+// Demo select
+.demo-select {
+    padding: $spacing-sm $spacing-md;
+    border: 1px solid $border-color;
+    border-radius: $radius;
+    background: $bg-tertiary;
+    color: $text-light;
+    font-size: 0.9rem;
+    min-width: 150px;
+
+    &:focus {
+        outline: none;
+        border-color: $primary;
+    }
+}
+
+// Status indicators
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: $spacing-xs;
+    padding: $spacing-xs $spacing-sm;
+    border-radius: $radius;
+    font-size: 0.85rem;
+
+    &--connected {
+        background: rgba($success, 0.2);
+        color: $success;
+    }
+
+    &--disconnected {
+        background: rgba($danger, 0.2);
+        color: $danger;
+    }
+
+    &--connecting {
+        background: rgba($warning, 0.2);
+        color: $warning;
+    }
+}
+
+// Wallet card
+.wallet-card {
+    background: $bg-tertiary;
+    border: 1px solid $border-color;
+    border-radius: $radius-lg;
+    padding: $spacing-md;
+    min-width: 200px;
+    max-width: 300px;
+
+    &--detected {
+        border-color: rgba($success, 0.3);
+    }
+
+    &__header {
+        display: flex;
+        align-items: center;
+        gap: $spacing-sm;
+        margin-bottom: $spacing-md;
+        padding-bottom: $spacing-sm;
+        border-bottom: 1px solid $border-color;
+    }
+
+    &__icon {
+        width: 32px;
+        height: 32px;
+        background: $bg-secondary;
+        border-radius: $radius;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+
+    &__icon-img {
+        width: 24px;
+        height: 24px;
+        object-fit: contain;
+        flex-shrink: 0;
+    }
+
+    &__name {
+        font-weight: 600;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__badge {
+        font-size: 0.7rem;
+        padding: 2px 6px;
+        border-radius: $radius;
+        background: rgba($text-muted, 0.2);
+        color: $text-muted;
+        flex-shrink: 0;
+
+        &--success {
+            background: rgba($success, 0.2);
+            color: $success;
+        }
+    }
+
+    &__body {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-sm;
+    }
+
+    &__row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: $spacing-sm;
+    }
+
+    &__label {
+        color: $text-muted;
+        font-size: 0.85rem;
+        flex-shrink: 0;
+    }
+
+    &__value {
+        font-family: $family-mono;
+        font-size: 0.85rem;
+        text-align: right;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+
+        &--error {
+            color: $danger;
+        }
+    }
+
+    &__empty {
+        color: $text-muted;
+        font-size: 0.85rem;
+        margin: 0;
+    }
+}
+
+// Wallet empty state
+.wallet-empty-state {
+    text-align: center;
+    padding: $spacing-xl;
+
+    &__title {
+        font-size: 1.1rem;
+        margin: 0 0 $spacing-sm;
+    }
+
+    &__hint {
+        color: $text-muted;
+        margin: 0;
+
+        a {
+            color: $primary;
+            text-decoration: none;
+
+            &:hover {
+                text-decoration: underline;
+            }
+        }
+    }
+}
+
+// Story toolbar
+.story-toolbar {
+    display: flex;
+    align-items: center;
+    gap: $spacing-md;
+    margin-bottom: $spacing-md;
+
+    &__info {
+        color: $text-muted;
+        font-size: 0.85rem;
+    }
+}
+
+// Story description
+.story-description {
+    color: $text-muted;
+    margin: 0 0 $spacing-md;
+}
+
+// Connection demo
+.connection-demo {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-lg;
+
+    &__state {
+        display: flex;
+        justify-content: center;
+    }
+
+    &__actions {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: $spacing-md;
+    }
+
+    &__wallet-list {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: $spacing-md;
+    }
+
+    &__label {
+        color: $text-muted;
+    }
+
+    &__buttons {
+        display: flex;
+        gap: $spacing-sm;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    &__connecting {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: $spacing-sm;
+        color: $text-muted;
+    }
+
+    &__hint {
+        color: $text-muted;
+        text-align: center;
+    }
+}
+
+// Connection log
+.connection-log {
+    background: $bg-tertiary;
+    border: 1px solid $border-color;
+    border-radius: $radius;
+    padding: $spacing-md;
+    max-height: 200px;
+    overflow-y: auto;
+
+    &__empty {
+        color: $text-muted;
+        margin: 0;
+        text-align: center;
+    }
+
+    &__list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        font-family: $family-mono;
+        font-size: 0.8rem;
+
+        li {
+            padding: $spacing-xs 0;
+            border-bottom: 1px solid $border-color;
+            color: $text-muted;
+
+            &:last-child {
+                border-bottom: none;
+            }
+        }
+    }
+}
+
+// Buttons
+.btn {
+    padding: $spacing-sm $spacing-md;
+    border: 1px solid transparent;
+    border-radius: $radius;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition:
+        background-color 0.2s,
+        border-color 0.2s;
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    &--primary {
+        background: $primary;
+        color: white;
+
+        &:hover:not(:disabled) {
+            background: $primary-hover;
+        }
+    }
+
+    &--secondary {
+        background: $bg-secondary;
+        color: $text-light;
+        border-color: $border-color;
+
+        &:hover:not(:disabled) {
+            background: $bg-tertiary;
+        }
+    }
+
+    &--outline {
+        background: transparent;
+        color: $text-light;
+        border-color: $border-color;
+
+        &:hover:not(:disabled) {
+            background: $bg-tertiary;
+            border-color: $primary;
+        }
+    }
+}
+
+// Spinner
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid $border-color;
+    border-top-color: $primary;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+// Balance demo
+.balance-demo {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-lg;
+
+    &__controls {
+        display: flex;
+        justify-content: center;
+    }
+
+    &__buttons {
+        display: flex;
+        gap: $spacing-sm;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    &__hint {
+        color: $text-muted;
+        text-align: center;
+        margin: 0;
+    }
+
+    &__loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: $spacing-sm;
+        color: $text-muted;
+    }
+
+    &__error {
+        background: rgba($danger, 0.1);
+        border: 1px solid rgba($danger, 0.3);
+        border-radius: $radius;
+        padding: $spacing-md;
+        color: $danger;
+        text-align: center;
+
+        p {
+            margin: 0;
+        }
+    }
+}
+
+// Balance display
+.balance-display {
+    background: $bg-tertiary;
+    border: 1px solid $border-color;
+    border-radius: $radius-lg;
+    padding: $spacing-lg;
+
+    &__ada {
+        display: flex;
+        align-items: baseline;
+        gap: $spacing-sm;
+        margin-bottom: $spacing-lg;
+        padding-bottom: $spacing-md;
+        border-bottom: 1px solid $border-color;
+    }
+
+    &__ada-amount {
+        font-size: 2rem;
+        font-weight: 700;
+        font-family: $family-mono;
+    }
+
+    &__ada-label {
+        font-size: 1rem;
+        color: $text-muted;
+    }
+
+    &__details {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-sm;
+        margin-bottom: $spacing-lg;
+    }
+
+    &__row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    &__label {
+        color: $text-muted;
+        font-size: 0.85rem;
+    }
+
+    &__value {
+        font-family: $family-mono;
+        font-size: 0.85rem;
+    }
+
+    &__tokens {
+        border-top: 1px solid $border-color;
+        padding-top: $spacing-md;
+    }
+
+    &__tokens-title {
+        font-size: 0.9rem;
+        margin: 0 0 $spacing-md;
+        color: $text-muted;
+    }
+
+    &__tokens-list {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-xs;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+}
+
+// Token row
+.token-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: $spacing-sm;
+    background: $bg-secondary;
+    border-radius: $radius;
+
+    &__info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+        flex: 1;
+    }
+
+    &__name {
+        font-size: 0.85rem;
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    &__policy {
+        font-size: 0.7rem;
+        color: $text-muted;
+        font-family: $family-mono;
+    }
+
+    &__quantity {
+        font-family: $family-mono;
+        font-size: 0.85rem;
+        flex-shrink: 0;
+        margin-left: $spacing-md;
+    }
+}
+
+// Signal demo
+.signal-demo {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-md;
+    min-width: 300px;
+
+    &__output {
+        padding: $spacing-md;
+        background: $bg-tertiary;
+        border-radius: $radius;
+        font-family: $family-mono;
+        min-height: 40px;
+    }
+}
+
+// Event log
+.event-log {
+    background: $bg-tertiary;
+    border: 1px solid $border-color;
+    border-radius: $radius;
+    padding: $spacing-sm;
+    font-family: $family-mono;
+    font-size: 0.8rem;
+    max-height: 200px;
+    overflow-y: auto;
+
+    &__entry {
+        padding: $spacing-xs 0;
+        border-bottom: 1px solid $border-color;
+        color: $text-muted;
+
+        &:last-child {
+            border-bottom: none;
+        }
+    }
+
+    &__time {
+        color: $primary;
+        margin-right: $spacing-sm;
+    }
+}
+
+// NFT Demo
+.nft-demo {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-lg;
+
+    &__controls {
+        display: flex;
+        justify-content: center;
+    }
+
+    &__buttons {
+        display: flex;
+        gap: $spacing-sm;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    &__hint {
+        color: $text-muted;
+        text-align: center;
+        margin: 0;
+    }
+
+    &__loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: $spacing-sm;
+        color: $text-muted;
+    }
+
+    &__error {
+        background: rgba($danger, 0.1);
+        border: 1px solid rgba($danger, 0.3);
+        border-radius: $radius;
+        padding: $spacing-md;
+        color: $danger;
+        text-align: center;
+
+        p {
+            margin: 0;
+        }
+    }
+
+    &__summary {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: $spacing-xs;
+        padding: $spacing-md;
+        background: $bg-tertiary;
+        border-radius: $radius;
+    }
+
+    &__count {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: $primary;
+    }
+
+    &__policies {
+        color: $text-muted;
+    }
+
+    &__empty {
+        text-align: center;
+        padding: $spacing-xl;
+        color: $text-muted;
+
+        p {
+            margin: 0 0 $spacing-sm;
+        }
+    }
+}
+
+// NFT Folders container
+.nft-folders {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-md;
+}
+
+// Wallet Leptos Demo
+.wallet-leptos-demo {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-lg;
+
+    &__section {
+        background: $bg-tertiary;
+        border: 1px solid $border-color;
+        border-radius: $radius;
+        padding: $spacing-md;
+
+        h4 {
+            margin: 0 0 $spacing-md;
+            font-size: 0.9rem;
+            color: $text-muted;
+        }
+    }
+
+    &__wallets {
+        display: flex;
+        gap: $spacing-sm;
+        flex-wrap: wrap;
+    }
+
+    &__info {
+        display: flex;
+        flex-direction: column;
+        gap: $spacing-sm;
+    }
+
+    &__row {
+        display: flex;
+        align-items: center;
+        gap: $spacing-sm;
+
+        .label {
+            color: $text-muted;
+            font-size: 0.85rem;
+            min-width: 80px;
+        }
+
+        code {
+            font-family: $family-mono;
+            font-size: 0.8rem;
+            background: $bg-secondary;
+            padding: 2px 6px;
+            border-radius: $radius;
+        }
+    }
+
+    &__actions {
+        display: flex;
+        gap: $spacing-sm;
+        margin-top: $spacing-md;
+    }
+
+    &__balance {
+        display: flex;
+        align-items: baseline;
+        gap: $spacing-sm;
+    }
+
+    &__ada {
+        font-size: 1.5rem;
+        font-weight: 700;
+        font-family: $family-mono;
+    }
+
+    &__ada-label {
+        color: $text-muted;
+    }
+
+    &__error {
+        background: rgba($danger, 0.1);
+        border: 1px solid rgba($danger, 0.3);
+        border-radius: $radius;
+        padding: $spacing-md;
+        color: $danger;
+
+        p {
+            margin: 0;
+        }
+    }
+}
+
+.text-muted {
+    color: $text-muted;
+}
+
+// Policy folder (collapsible)
+.policy-folder {
+    background: $bg-tertiary;
+    border: 1px solid $border-color;
+    border-radius: $radius-lg;
+    overflow: hidden;
+
+    &--expanded {
+        border-color: rgba($primary, 0.3);
+    }
+
+    &__header {
+        display: flex;
+        align-items: center;
+        gap: $spacing-sm;
+        width: 100%;
+        padding: $spacing-md;
+        background: transparent;
+        border: none;
+        color: $text-light;
+        cursor: pointer;
+        text-align: left;
+        transition: background-color 0.2s;
+
+        &:hover {
+            background: $bg-secondary;
+        }
+    }
+
+    &__icon {
+        font-size: 0.75rem;
+        color: $text-muted;
+        width: 16px;
+        text-align: center;
+    }
+
+    &__name {
+        font-family: $family-mono;
+        font-size: 0.9rem;
+        flex: 1;
+    }
+
+    &__count {
+        font-size: 0.8rem;
+        color: $text-muted;
+        background: $bg-secondary;
+        padding: $spacing-xs $spacing-sm;
+        border-radius: $radius;
+    }
+
+    &__content {
+        padding: $spacing-md;
+        border-top: 1px solid $border-color;
+    }
+
+    &__grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: $spacing-lg;
+        margin-bottom: $spacing-md;
+        padding: $spacing-sm;
+    }
+
+    &__sentinel {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: $spacing-sm;
+        padding: $spacing-md;
+        color: $text-muted;
+    }
+
+    &__loading-text {
+        font-size: 0.85rem;
+    }
+
+    &__policy-id {
+        display: flex;
+        align-items: center;
+        gap: $spacing-sm;
+        padding-top: $spacing-md;
+        border-top: 1px solid $border-color;
+        margin-top: $spacing-md;
+    }
+
+    &__policy-label {
+        font-size: 0.75rem;
+        color: $text-muted;
+        flex-shrink: 0;
+    }
+
+    &__policy-value {
+        font-size: 0.7rem;
+        color: $text-muted;
+        word-break: break-all;
+        background: $bg-secondary;
+        padding: $spacing-xs $spacing-sm;
+        border-radius: $radius;
+    }
+}
+
+// Asset preview modal
+.asset-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: $spacing-lg;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.asset-modal {
+    position: relative;
+    max-width: 90vw;
+    max-height: 90vh;
+    background: $bg-secondary;
+    border-radius: $radius-lg;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    animation: scaleIn 0.2s ease-out;
+
+    &__close {
+        position: absolute;
+        top: $spacing-sm;
+        right: $spacing-sm;
+        width: 32px;
+        height: 32px;
+        background: rgba(0, 0, 0, 0.6);
+        border: none;
+        border-radius: 50%;
+        color: $text-light;
+        font-size: 1.5rem;
+        line-height: 1;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background-color 0.2s;
+        z-index: 1;
+
+        &:hover {
+            background: rgba(0, 0, 0, 0.8);
+        }
+    }
+
+    &__image {
+        display: block;
+        max-width: 800px;
+        max-height: 70vh;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+    }
+
+    &__info {
+        padding: $spacing-md $spacing-lg;
+        background: $bg-tertiary;
+        border-top: 1px solid $border-color;
+    }
+
+    &__name {
+        margin: 0 0 $spacing-xs 0;
+        font-size: 1.1rem;
+        font-weight: 500;
+        color: $text-light;
+    }
+
+    &__id {
+        font-size: 0.75rem;
+        color: $text-muted;
+        background: $bg-secondary;
+        padding: $spacing-xs $spacing-sm;
+        border-radius: $radius;
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}

@@ -1,0 +1,28 @@
+// EmptyState Component Styles
+@use "variables" as v;
+
+.ui-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+    color: v.$text-muted;
+
+    &__icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.75rem;
+        opacity: 0.7;
+    }
+
+    &__message {
+        margin: 0 0 1rem 0;
+        font-size: 0.95rem;
+        max-width: 20rem;
+    }
+
+    &__action {
+        margin-top: 0.5rem;
+    }
+}

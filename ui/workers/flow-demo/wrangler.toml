@@ -1,0 +1,32 @@
+name = "flow-demo"
+main = "build/worker/shim.mjs"
+compatibility_date = "2025-01-01"
+routes = [{ pattern = "flowdemo.cnft.dev", custom_domain = true }]
+
+[build]
+command = "../../scripts/build-worker.sh"
+
+[observability]
+enabled = true
+
+# Serve frontend from dist/
+[assets]
+directory = "./dist/"
+not_found_handling = "single-page-application"
+
+# Durable Object classes
+[[durable_objects.bindings]]
+name = "FLOW_SESSIONS"
+class_name = "FlowDemoSessionDO"
+
+[[durable_objects.bindings]]
+name = "MEMORY_SESSIONS"
+class_name = "MemoryGameSessionDO"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["FlowDemoSessionDO"]
+
+[[migrations]]
+tag = "v2"
+new_classes = ["MemoryGameSessionDO"]

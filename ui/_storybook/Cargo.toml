@@ -1,0 +1,68 @@
+[package]
+name = "shared-ui-storybook"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# DEV ONLY - Storybook for testing shared-ui components
+
+[dependencies]
+# Leptos framework
+leptos = { version = "0.8", features = ["csr"] }
+
+# Shared UI crates
+wallet-core = { path = "../wallet-core" }
+wallet-pallas = { path = "../wallet-pallas" }
+wallet-leptos = { path = "../wallet-leptos" }
+ui-components = { path = "../ui-components", features = ["wallet"] }
+ui-loader = { path = "../ui-loader" }
+ui-toast = { path = "../ui-toast" }
+ui-core = { path = "../ui-core" }
+
+# Core WASM deps
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"
+
+# Logging
+tracing = "0.1"
+tracing-wasm = "0.2"
+
+# HTTP client for WASM
+gloo-net = "0.6"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Cardano types
+cardano-assets = { workspace = true }
+asset-intents = { workspace = true }
+
+# Web APIs
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "HtmlInputElement",
+    "HtmlButtonElement",
+    "HtmlDivElement",
+    "HtmlSelectElement",
+    "Location",
+    "Event",
+    "InputEvent",
+    "MouseEvent",
+    "EventTarget",
+    "CustomEvent",
+    "CustomEventInit",
+    "CssStyleDeclaration",
+    "DomTokenList",
+    "Node",
+    "Text",
+    "IntersectionObserver",
+    "IntersectionObserverInit",
+    "IntersectionObserverEntry",
+] }
+js-sys = "0.3"
+
+[lib]
+crate-type = ["cdylib"]

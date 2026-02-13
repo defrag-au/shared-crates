@@ -1,0 +1,194 @@
+// =============================================================================
+// Memory Card Component
+// Block: .memory-card
+// =============================================================================
+@use "variables" as v;
+
+.memory-card {
+    position: relative;
+    display: inline-block;
+    cursor: pointer;
+    perspective: 1000px;
+    transition: transform 0.1s ease;
+    aspect-ratio: 1; // Cards are square
+
+    // Modifier: size variants (match CardSize: xs, sm, md, lg, xl)
+    &--xs {
+        --card-radius: #{v.$card-radius-xs};
+    }
+    &--sm {
+        --card-radius: #{v.$card-radius-sm};
+    }
+    &--md {
+        --card-radius: #{v.$card-radius-md};
+    }
+    &--lg {
+        --card-radius: #{v.$card-radius-lg};
+    }
+    &--xl {
+        --card-radius: 12px;
+    }
+
+    &:hover:not(&--disabled):not(&--matched) {
+        transform: scale(1.02);
+    }
+
+    &:active:not(&--disabled):not(&--matched) {
+        transform: scale(0.98);
+    }
+
+    // Modifier: disabled
+    &--disabled {
+        cursor: not-allowed;
+        opacity: 0.7;
+    }
+
+    // Modifier: matched (class-based for cursor)
+    &--matched {
+        cursor: default;
+    }
+
+    // Data attribute: flipped - applies 3D rotation to inner container
+    // Using data attributes for more reliable reactivity with Leptos
+    &[data-flipped="true"] &__inner {
+        transform: rotateY(180deg);
+    }
+
+    // Data attribute: matched - glow effect
+    &[data-matched="true"] &__inner {
+        box-shadow: 0 0 8px v.$accent-gold;
+        animation: memory-card-glow 2s ease-in-out infinite;
+    }
+
+    &[data-matched="true"] {
+        cursor: default;
+    }
+
+    // Element: inner (3D transform container)
+    &__inner {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        transform-style: preserve-3d;
+        transition: transform v.$transition-slow;
+    }
+
+    // Element: front face (card back design, shown when not flipped)
+    &__front {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        backface-visibility: hidden;
+        border-radius: var(--card-radius, v.$card-radius-sm);
+        overflow: hidden;
+        background: v.$bg-secondary;
+        border: 2px solid v.$border-color;
+    }
+
+    // Element: back face (asset card, shown when flipped)
+    &__back {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        backface-visibility: hidden;
+        border-radius: var(--card-radius, v.$card-radius-sm);
+        overflow: hidden;
+        transform: rotateY(180deg);
+    }
+
+    // Element: back design (skull pattern on front face)
+    &__back-design {
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+            135deg,
+            v.$bg-primary 0%,
+            v.$bg-secondary 50%,
+            v.$bg-primary 100%
+        );
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+
+        &::before {
+            content: "";
+            position: absolute;
+            inset: 8px;
+            border: 2px solid v.$accent-gold;
+            border-radius: v.$card-radius-xs;
+        }
+
+        &::after {
+            content: "";
+            position: absolute;
+            inset: 4px;
+            background:
+                linear-gradient(
+                    135deg,
+                    rgba(255, 215, 0, 0.2) 0%,
+                    transparent 20%
+                ),
+                linear-gradient(
+                    225deg,
+                    rgba(255, 215, 0, 0.2) 0%,
+                    transparent 20%
+                ),
+                linear-gradient(
+                    315deg,
+                    rgba(255, 215, 0, 0.2) 0%,
+                    transparent 20%
+                ),
+                linear-gradient(
+                    45deg,
+                    rgba(255, 215, 0, 0.2) 0%,
+                    transparent 20%
+                );
+        }
+    }
+
+    // Element: skull icon
+    &__skull {
+        width: 40%;
+        height: 40%;
+        background: rgba(255, 255, 255, 0.1);
+        mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12c0 3.31 1.61 6.24 4.09 8.05L6 22l2-2h8l2 2-.09-1.95C20.39 18.24 22 15.31 22 12c0-5.52-4.48-10-10-10zm-2 14H8v-2h2v2zm0-4H8V8h2v4zm6 4h-2v-2h2v2zm0-4h-2V8h2v4z'/%3E%3C/svg%3E");
+        -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12c0 3.31 1.61 6.24 4.09 8.05L6 22l2-2h8l2 2-.09-1.95C20.39 18.24 22 15.31 22 12c0-5.52-4.48-10-10-10zm-2 14H8v-2h2v2zm0-4H8V8h2v4zm6 4h-2v-2h2v2zm0-4h-2V8h2v4z'/%3E%3C/svg%3E");
+        mask-size: contain;
+        -webkit-mask-size: contain;
+        mask-repeat: no-repeat;
+        -webkit-mask-repeat: no-repeat;
+        mask-position: center;
+        -webkit-mask-position: center;
+        z-index: 1;
+    }
+
+    // Element: matched-by badge
+    &__matched-by {
+        position: absolute;
+        top: 0.25rem;
+        right: 0.25rem;
+        padding: 0.15rem 0.4rem;
+        background: v.$accent-gold-strong;
+        color: #000;
+        font-size: 0.6rem;
+        font-weight: 600;
+        font-family:
+            -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        border-radius: v.$card-radius-xs;
+        white-space: nowrap;
+        z-index: 10;
+    }
+}
+
+@keyframes memory-card-glow {
+    0%,
+    100% {
+        box-shadow: 0 0 6px rgba(255, 215, 0, 0.2);
+    }
+    50% {
+        box-shadow: 0 0 10px rgba(255, 215, 0, 0.35);
+    }
+}

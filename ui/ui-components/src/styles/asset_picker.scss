@@ -1,0 +1,22 @@
+// Asset Picker Component Styles
+@use "variables" as v;
+
+.asset-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.asset-picker__item {
+    cursor: pointer;
+    transition:
+        opacity 0.15s ease,
+        filter 0.15s ease;
+
+    &--disabled {
+        opacity: 0.5;
+        filter: grayscale(0.5);
+        pointer-events: none;
+        cursor: not-allowed;
+    }
+}

@@ -1,0 +1,81 @@
+// AssetCard Component Styles (overlay support)
+@use "variables" as v;
+
+.asset-card {
+    display: inline-flex;
+    flex-direction: column;
+    border-radius: v.$card-radius-md;
+    overflow: hidden;
+    background: v.$bg-secondary;
+
+    // Size variants match image-card sizes
+    &--xs {
+        width: 80px;
+    }
+    &--sm {
+        width: 120px;
+    }
+    &--md {
+        width: 240px;
+    }
+    &--lg {
+        width: 400px;
+    }
+    &--xl {
+        width: 800px;
+    }
+
+    &__image-container {
+        position: relative;
+    }
+
+    &__overlays {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+
+        // Allow pointer events on overlay content
+        > * {
+            pointer-events: auto;
+        }
+    }
+
+    &__overlay {
+        position: absolute;
+        padding: 0.25rem;
+        z-index: 2; // Above name overlay (z-index: 1)
+        display: inline-flex;
+        align-items: flex-start;
+
+        &--top-left {
+            top: 0;
+            left: 0;
+        }
+
+        &--top-right {
+            top: 0;
+            right: 0;
+        }
+
+        &--bottom-left {
+            bottom: 1.5rem; // Above name area
+            left: 0;
+            align-items: flex-end;
+        }
+
+        &--bottom-right {
+            bottom: 1.5rem; // Above name area
+            right: 0;
+            align-items: flex-end;
+        }
+    }
+
+    &__footer {
+        padding: 0.5rem;
+        border-top: 1px solid v.$border-color;
+        display: flex;
+        gap: 0.375rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+}

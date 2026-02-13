@@ -1,0 +1,168 @@
+// Modal Stack Component Styles
+// Extends modal.scss with view swapping and breadcrumb support
+@use "variables" as v;
+
+.ui-modal-stack {
+    // Header layout for breadcrumbs
+    &__header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-height: 3.5rem;
+    }
+
+    // Back button
+    &__back {
+        background: transparent;
+        border: none;
+        color: v.$text-muted;
+        font-size: 1.25rem;
+        padding: 0.25rem 0.5rem;
+        cursor: pointer;
+        transition: color v.$transition-fast;
+        flex-shrink: 0;
+
+        &:hover {
+            color: v.$text-light;
+        }
+    }
+
+    // Breadcrumb navigation
+    &__breadcrumbs {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    &__breadcrumb {
+        display: inline-flex;
+        align-items: center;
+        white-space: nowrap;
+    }
+
+    &__breadcrumb-link {
+        background: transparent;
+        border: none;
+        color: v.$text-muted;
+        font-size: 1rem;
+        padding: 0;
+        cursor: pointer;
+        transition: color v.$transition-fast;
+
+        &:hover {
+            color: v.$accent-gold-strong;
+            text-decoration: underline;
+        }
+    }
+
+    &__breadcrumb-sep {
+        color: v.$text-muted;
+        margin: 0 0.25rem;
+    }
+
+    &__breadcrumb-current {
+        color: v.$text-light;
+        font-size: 1.125rem;
+        font-weight: 600;
+    }
+
+    // Body needs position relative for nested modal overlay + overflow hidden for slide
+    &__body {
+        position: relative;
+        overflow: hidden;
+    }
+
+    // The mounted view placeholder (where nested Modal content overlays)
+    &__mounted-view {
+        // This is just a placeholder, nested modal overlays via absolute positioning
+        display: none;
+    }
+
+    // Content wrapper that slides
+    &__content {
+        display: flex;
+        width: 100%;
+        min-height: 100%;
+
+        // Slide in from right (push)
+        &--slide-in {
+            animation: modal-stack-slide-in 0.25s ease-out forwards;
+        }
+
+        // Slide out to right (pop)
+        &--slide-out {
+            animation: modal-stack-slide-out 0.25s ease-out forwards;
+        }
+    }
+
+    // Individual view container
+    &__view {
+        flex-shrink: 0;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+
+        &--hidden {
+            display: none;
+        }
+
+        &--current {
+            display: flex;
+        }
+    }
+}
+
+// Slide animations
+@keyframes modal-stack-slide-in {
+    from {
+        transform: translateX(30%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes modal-stack-slide-out {
+    from {
+        transform: translateX(-30%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+// Nested Modal styles (when Modal is inside ModalStack)
+// The Modal renders inline but positions absolutely to overlay the current view
+.ui-modal-nested {
+    // Hidden by default
+    display: none;
+
+    &--open {
+        // When open, position absolutely to cover the modal body
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        inset: 0;
+        background: v.$bg-secondary;
+        z-index: 10;
+        overflow-y: auto;
+    }
+
+    // Body inside nested modal gets standard padding
+    .ui-modal__body {
+        padding: 1.25rem;
+        flex: 1;
+
+        &.flush {
+            padding: 0;
+        }
+    }
+}

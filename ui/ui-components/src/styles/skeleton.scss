@@ -1,0 +1,65 @@
+// Skeleton Component Styles
+@use "variables" as v;
+
+.ui-skeleton {
+    background: linear-gradient(
+        90deg,
+        v.$bg-tertiary 25%,
+        rgba(255, 255, 255, 0.08) 50%,
+        v.$bg-tertiary 75%
+    );
+    background-size: 200% 100%;
+    animation: ui-skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: v.$card-radius-xs;
+
+    &--text {
+        height: 1rem;
+        margin-bottom: 0.5rem;
+
+        &:last-child {
+            margin-bottom: 0;
+        }
+    }
+
+    &--circle {
+        border-radius: 50%;
+    }
+
+    &--rect {
+        border-radius: v.$card-radius-sm;
+    }
+}
+
+.ui-skeleton-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.ui-skeleton-card {
+    background: v.$bg-secondary;
+    border: 1px solid v.$border-color;
+    border-radius: v.$card-radius-md;
+    overflow: hidden;
+
+    &__image {
+        height: 120px;
+        border-radius: 0;
+    }
+
+    &__content {
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+}
+
+@keyframes ui-skeleton-shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
