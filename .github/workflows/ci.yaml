@@ -8,16 +8,9 @@ on:
     types: [opened, synchronize]
 
 jobs:
-  build:
-    name: Build, Test & Clippy Check
+  check-and-test:
+    name: Check & Test
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        toolchain:
-          - stable
-          # - beta
-          # - nightly
-
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -28,15 +21,64 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      - run: rustup update ${{ matrix.toolchain }} && rustup default ${{ matrix.toolchain }}
-      - run: cargo build --all-targets --verbose
-      - run: cargo test --all-targets --verbose
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+      - run: rustup update stable && rustup default stable
+      - run: cargo check --all-targets
+      - run: cargo test --all-targets
 
-      - name: Run Clippy
-        run: cargo clippy --all-targets --all-features
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+      - run: rustup update stable && rustup default stable
+      - run: cargo clippy --all-targets -- -D warnings
 
-      - name: Check wasm32 build
+  wasm-check:
+    name: WASM Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.lock') }}
+      - run: rustup update stable && rustup default stable
+      - run: rustup target add wasm32-unknown-unknown
+      - name: Check wasm-compatible crates
+        # flow-demo and flow-demo-frontend are excluded: they're Cloudflare Workers
+        # built by wrangler, and depend on getrandom/rand with wasm_js feature
+        # which requires JS glue not available in bare wasm32 target
         run: |
-          rustup target add wasm32-unknown-unknown
-          cargo build --target wasm32-unknown-unknown --release
+          cargo check --target wasm32-unknown-unknown \
+            -p asset-intents \
+            -p cardano-assets \
+            -p wasm_safe_serde \
+            -p worker_stack \
+            -p worker_utils \
+            -p scss-macros \
+            -p ui-core \
+            -p ui-flow \
+            -p ui-flow-protocol \
+            -p ui-loader \
+            -p ui-loader-macros \
+            -p ui-toast \
+            -p ui-components \
+            -p wallet-core \
+            -p wallet-pallas \
+            -p wallet-leptos \
+            -p shared-ui-storybook
