@@ -12,6 +12,7 @@ members = [
     "wasm-safe-serde",
     "worker-stack",
     "worker-utils",
+    "asset-rarity",
     "indexers/*",
     "ui/scss-macros",
     "ui/ui-core",
@@ -106,3 +107,4 @@ rand = { version = "0.9", features = ["small_rng", "std"] }
 asset-intents = { path = "asset-intents" }
 cardano-assets = { path = "cardano-assets" }
 worker_utils = { path = "worker-utils" }
+asset-rarity = { path = "asset-rarity" }
