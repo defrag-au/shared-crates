@@ -242,6 +242,25 @@ struct TransactionCborResponse {
     data: String, // Hex-encoded CBOR
 }
 
+// Datum lookup response types
+#[derive(Deserialize, Debug)]
+struct DatumByHashResponse {
+    data: DatumData,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct DatumData {
+    /// Hex-encoded CBOR bytes of the datum
+    pub bytes: String,
+    /// JSON representation (may be null if Maestro can't decode it)
+    pub json: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize, Debug)]
+struct DatumsByHashesResponse {
+    data: std::collections::HashMap<String, DatumData>,
+}
+
 #[derive(Deserialize, Debug)]
 pub struct TransactionDetails {
     pub tx_hash: String,
@@ -675,6 +694,28 @@ impl MaestroApi {
     pub async fn get_transaction_cbor(&self, tx_hash: &str) -> Result<String, MaestroError> {
         let url = format!("https://{}/transactions/{tx_hash}/cbor", self.base_url);
         let response: TransactionCborResponse = self.get_url(url).await?;
+        Ok(response.data)
+    }
+
+    /// Get a single datum by its hash
+    /// Returns CBOR bytes and optional JSON representation
+    pub async fn get_datum_by_hash(&self, datum_hash: &str) -> Result<DatumData, MaestroError> {
+        let url = format!("https://{}/datums/{datum_hash}", self.base_url);
+        let response: DatumByHashResponse = self.get_url(url).await?;
+        Ok(response.data)
+    }
+
+    /// Get multiple datums by their hashes in a single request
+    /// Returns a map of datum_hash -> DatumData
+    pub async fn get_datums_by_hashes(
+        &self,
+        datum_hashes: &[&str],
+    ) -> Result<std::collections::HashMap<String, DatumData>, MaestroError> {
+        let url = format!("https://{}/datums", self.base_url);
+        let body = serde_json::to_value(datum_hashes).map_err(|e| {
+            MaestroError::Deserialization(format!("Failed to serialize datum hashes: {e}"))
+        })?;
+        let response: DatumsByHashesResponse = self.post_url(url, &body).await?;
         Ok(response.data)
     }
 
@@ -1180,6 +1221,39 @@ impl MaestroApi {
                     ))));
                 }
             }
+        }
+    }
+
+    async fn post_url<T: serde::de::DeserializeOwned, B: serde::Serialize>(
+        &self,
+        url: String,
+        body: &B,
+    ) -> Result<T, MaestroError> {
+        use http_client::HttpMethod;
+
+        let response_details = self
+            .client
+            .request_text_with_details(HttpMethod::POST, &url, Some(body))
+            .await?;
+
+        match response_details.status_code {
+            status if (200..300).contains(&status) => {
+                let cleaned = strip_control_chars(&response_details.data);
+                serde_json::from_str(&cleaned).map_err(|e| {
+                    MaestroError::Deserialization(format!(
+                        "deserialization failure for url: {url}, error: {e}, body: {}",
+                        &cleaned[..cleaned.len().min(500)]
+                    ))
+                })
+            }
+            429 => {
+                let retry_after = response_details.retry_after_seconds();
+                Err(MaestroError::RateLimit { retry_after })
+            }
+            _ => Err(MaestroError::Http(http_client::HttpError::Custom(format!(
+                "HTTP error {}: {}",
+                response_details.status_code, response_details.data
+            )))),
         }
     }
 }
