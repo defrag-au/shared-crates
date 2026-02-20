@@ -41,6 +41,26 @@ where
     queue.send_raw(raw_message).await
 }
 
+pub async fn send_to_queue_with_delay<M>(
+    queue: &Queue,
+    message: &M,
+    delay_seconds: u32,
+) -> Result<()>
+where
+    M: Serialize + Clone,
+{
+    let serializer = serde_wasm_bindgen::Serializer::json_compatible();
+    let js_value = message
+        .serialize(&serializer)
+        .map_err(|e| Error::RustError(format!("Serialization failed: {e}")))?;
+
+    let raw_message = RawMessageBuilder::new(js_value)
+        .delay_seconds(delay_seconds)
+        .build_with_content_type(QueueContentType::Json);
+
+    queue.send_raw(raw_message).await
+}
+
 pub async fn send_batch_to_queue<M>(queue: &Queue, messages: &[M]) -> Result<()>
 where
     M: Serialize + Clone,

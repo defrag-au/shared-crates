@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use cardano_assets::AssetId;
 pub use serde::{Deserialize, Serialize};
 pub use wasm_safe_serde;
 
@@ -52,6 +53,16 @@ pub struct TxAsset {
     pub qty: u64,
     #[serde(default)]
     pub traits: Option<HashMap<String, Vec<String>>>,
+}
+
+impl From<AssetId> for TxAsset {
+    fn from(value: AssetId) -> Self {
+        Self {
+            id: value.concatenated(),
+            qty: 1,
+            traits: None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

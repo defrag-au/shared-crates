@@ -4216,6 +4216,7 @@ dependencies = [
 name = "tx_insights"
 version = "0.1.0"
 dependencies = [
+ "cardano-assets",
  "serde",
  "serde_json",
  "wasm_safe_serde",
