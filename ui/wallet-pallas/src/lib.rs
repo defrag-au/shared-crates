@@ -42,4 +42,4 @@ pub use error::PallasError;
 pub use transaction::{
     extract_vkey_witnesses, parse_transaction, parse_witness_set, TransactionInfo, WitnessSetInfo,
 };
-pub use value::{decode_balance, NativeToken, PolicyGroup, WalletBalance};
+pub use value::{decode_balance, NativeToken, PolicyGroup, WalletBalance, ADA_HANDLE_POLICY};

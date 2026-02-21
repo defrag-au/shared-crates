@@ -9,6 +9,9 @@ use pallas_primitives::conway::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// ADA Handle policy ID
+pub const ADA_HANDLE_POLICY: &str = "f0ff48bbb7bbe9d59a40f1ce90e9e9d0ff5002ec48f232b49ca0fb9a";
+
 /// Decoded wallet balance
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletBalance {
@@ -23,6 +26,34 @@ impl WalletBalance {
     /// Get the ADA amount (lovelace / 1_000_000)
     pub fn ada(&self) -> f64 {
         self.lovelace as f64 / 1_000_000.0
+    }
+
+    /// Get the first ADA handle found in the wallet (alphabetically).
+    ///
+    /// Looks for tokens under the ADA Handle policy, strips the CIP-67
+    /// prefix, decodes the asset name as UTF-8, and returns the first
+    /// handle alphabetically prefixed with `$`.
+    pub fn ada_handle(&self) -> Option<String> {
+        let asset_map = self.assets.get(ADA_HANDLE_POLICY)?;
+
+        let mut handles: Vec<String> = asset_map
+            .keys()
+            .filter_map(|asset_name_hex| {
+                let asset_id =
+                    AssetId::new(ADA_HANDLE_POLICY.to_string(), asset_name_hex.clone()).ok()?;
+                let stripped = asset_id.strip_cip67();
+                let name = stripped.asset_name();
+                // Only include valid UTF-8 names that aren't raw hex
+                if !name.is_empty() && name != stripped.asset_name_hex() {
+                    Some(name)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        handles.sort();
+        handles.first().map(|h| format!("${h}"))
     }
 
     /// Get total number of distinct native tokens
@@ -370,6 +401,66 @@ mod tests {
     #[test]
     fn test_split_pascal_case_empty() {
         assert_eq!(split_pascal_case(""), "");
+    }
+
+    #[test]
+    fn test_ada_handle_extraction() {
+        let mut assets = HashMap::new();
+        let mut handle_assets = HashMap::new();
+        // "000de140" is CIP-67 label 222 prefix, "6175676d696e746564" is "augminted"
+        handle_assets.insert("000de1406175676d696e746564".to_string(), 1u64);
+        assets.insert(ADA_HANDLE_POLICY.to_string(), handle_assets);
+
+        let balance = WalletBalance {
+            lovelace: 5_000_000,
+            assets,
+        };
+
+        assert_eq!(balance.ada_handle(), Some("$augminted".to_string()));
+    }
+
+    #[test]
+    fn test_ada_handle_with_special_chars() {
+        let mut assets = HashMap::new();
+        let mut handle_assets = HashMap::new();
+        // "000de140" + "66696e616e636540646566726167" = "finance@defrag"
+        handle_assets.insert("000de14066696e616e636540646566726167".to_string(), 1u64);
+        assets.insert(ADA_HANDLE_POLICY.to_string(), handle_assets);
+
+        let balance = WalletBalance {
+            lovelace: 5_000_000,
+            assets,
+        };
+
+        assert_eq!(balance.ada_handle(), Some("$finance@defrag".to_string()));
+    }
+
+    #[test]
+    fn test_ada_handle_alphabetical_order() {
+        let mut assets = HashMap::new();
+        let mut handle_assets = HashMap::new();
+        // "augminted"
+        handle_assets.insert("000de1406175676d696e746564".to_string(), 1u64);
+        // "finance@defrag"
+        handle_assets.insert("000de14066696e616e636540646566726167".to_string(), 1u64);
+        assets.insert(ADA_HANDLE_POLICY.to_string(), handle_assets);
+
+        let balance = WalletBalance {
+            lovelace: 5_000_000,
+            assets,
+        };
+
+        assert_eq!(balance.ada_handle(), Some("$augminted".to_string()));
+    }
+
+    #[test]
+    fn test_ada_handle_none_when_no_handles() {
+        let balance = WalletBalance {
+            lovelace: 5_000_000,
+            assets: HashMap::new(),
+        };
+
+        assert_eq!(balance.ada_handle(), None);
     }
 
     #[test]

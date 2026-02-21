@@ -31,6 +31,9 @@ pub struct WalletContext {
     /// Derived stake address (bech32)
     pub stake_address: Memo<Option<String>>,
 
+    /// ADA handle (e.g. "$augminted") derived from balance, if one exists
+    pub handle: Memo<Option<String>>,
+
     /// Loading state for async operations
     pub loading: RwSignal<bool>,
 
@@ -45,6 +48,7 @@ impl WalletContext {
     /// Create a new wallet context with default state
     pub fn new() -> Self {
         let address: RwSignal<Option<String>> = RwSignal::new(None);
+        let balance: RwSignal<Option<WalletBalance>> = RwSignal::new(None);
 
         // Derive stake address from payment address
         // Returns the stake address in bech32 format (stake1... or stake_test1...)
@@ -56,13 +60,17 @@ impl WalletContext {
             })
         });
 
+        // Derive ADA handle from balance (first handle alphabetically, prefixed with $)
+        let handle = Memo::new(move |_| balance.get().and_then(|b| b.ada_handle()));
+
         Self {
             connection_state: RwSignal::new(ConnectionState::Disconnected),
             available_wallets: RwSignal::new(vec![]),
             address,
             network: RwSignal::new(None),
-            balance: RwSignal::new(None),
+            balance,
             stake_address,
+            handle,
             loading: RwSignal::new(false),
             error: RwSignal::new(None),
             api: RwSignal::new(None),
@@ -233,17 +241,17 @@ impl WalletContext {
         });
     }
 
-    /// Check if connected
+    /// Check if connected (untracked — use in closures/handlers, not reactive views)
     pub fn is_connected(&self) -> bool {
         matches!(
-            self.connection_state.get(),
+            self.connection_state.get_untracked(),
             ConnectionState::Connected { .. }
         )
     }
 
-    /// Get the current provider if connected
+    /// Get the current provider if connected (untracked — use in closures/handlers, not reactive views)
     pub fn current_provider(&self) -> Option<WalletProvider> {
-        match self.connection_state.get() {
+        match self.connection_state.get_untracked() {
             ConnectionState::Connected { provider, .. } => Some(provider),
             _ => None,
         }
