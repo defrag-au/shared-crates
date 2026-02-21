@@ -25,8 +25,7 @@
 
 /// Represents the state of an async fetch operation.
 /// Use pattern matching to handle the different states.
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum FetchState<T> {
     /// No fetch has been initiated
     #[default]
@@ -86,4 +85,3 @@ impl<T> FetchState<T> {
         }
     }
 }
-
