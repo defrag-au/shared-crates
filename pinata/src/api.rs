@@ -71,9 +71,8 @@ impl PinataApi {
             host_nodes: None,
         };
 
-        let response: PinByCidApiResponse = self
-            .request(HttpMethod::POST, &url, Some(&request))
-            .await?;
+        let response: PinByCidApiResponse =
+            self.request(HttpMethod::POST, &url, Some(&request)).await?;
 
         Ok(response.data)
     }

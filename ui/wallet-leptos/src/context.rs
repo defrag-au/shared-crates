@@ -31,6 +31,9 @@ pub struct WalletContext {
     /// Derived stake address (bech32)
     pub stake_address: Memo<Option<String>>,
 
+    /// ADA handle (e.g. "$augminted") derived from balance, if one exists
+    pub handle: Memo<Option<String>>,
+
     /// Loading state for async operations
     pub loading: RwSignal<bool>,
 
@@ -45,6 +48,7 @@ impl WalletContext {
     /// Create a new wallet context with default state
     pub fn new() -> Self {
         let address: RwSignal<Option<String>> = RwSignal::new(None);
+        let balance: RwSignal<Option<WalletBalance>> = RwSignal::new(None);
 
         // Derive stake address from payment address
         // Returns the stake address in bech32 format (stake1... or stake_test1...)
@@ -56,13 +60,17 @@ impl WalletContext {
             })
         });
 
+        // Derive ADA handle from balance (first handle alphabetically, prefixed with $)
+        let handle = Memo::new(move |_| balance.get().and_then(|b| b.ada_handle()));
+
         Self {
             connection_state: RwSignal::new(ConnectionState::Disconnected),
             available_wallets: RwSignal::new(vec![]),
             address,
             network: RwSignal::new(None),
-            balance: RwSignal::new(None),
+            balance,
             stake_address,
+            handle,
             loading: RwSignal::new(false),
             error: RwSignal::new(None),
             api: RwSignal::new(None),
@@ -131,7 +139,7 @@ impl WalletContext {
         let ctx = self.clone();
 
         spawn_local(async move {
-            if let Some(api_wrapper) = ctx.api.get() {
+            if let Some(api_wrapper) = ctx.api.get_untracked() {
                 // Clone the api handle to avoid holding RefCell borrow across await
                 let api = api_wrapper.borrow().clone();
                 match api.balance().await {
@@ -165,17 +173,85 @@ impl WalletContext {
         self.available_wallets.set(wallets);
     }
 
-    /// Check if connected
+    /// Refresh wallet state (address + balance) from the connected API.
+    ///
+    /// Call this on window focus/visibility change to detect wallet switches
+    /// in extensions like Eternl that allow changing the active account.
+    pub fn refresh(&self) {
+        let state = self.connection_state.get_untracked();
+        tracing::info!(?state, "Wallet refresh triggered");
+
+        let connected = matches!(state, ConnectionState::Connected { .. });
+        if !connected {
+            tracing::info!("Wallet not connected, skipping refresh");
+            return;
+        }
+
+        let has_api = self.api.get_untracked().is_some();
+        tracing::info!(has_api, "Wallet refresh: checking API handle");
+        if !has_api {
+            return;
+        }
+
+        let ctx = self.clone();
+        spawn_local(async move {
+            if let Some(api_wrapper) = ctx.api.get_untracked() {
+                let api = api_wrapper.borrow().clone();
+
+                // Re-fetch address to detect account switch
+                match api.change_address().await {
+                    Ok(new_address) => {
+                        let old_address = ctx.address.get_untracked();
+                        let changed = old_address.as_deref() != Some(&new_address);
+                        tracing::info!(changed, "Wallet refresh: address check");
+                        if changed {
+                            ctx.address.set(Some(new_address));
+                        }
+
+                        // Re-fetch balance
+                        match api.balance().await {
+                            Ok(balance_hex) => {
+                                if let Ok(decoded) = wallet_pallas::decode_balance(&balance_hex) {
+                                    let token_count = decoded.token_count();
+                                    tracing::info!(token_count, "Wallet refresh: balance updated");
+                                    ctx.balance.set(Some(decoded));
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("Wallet refresh: failed to get balance: {e}");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        // Eternl (and other wallets) throw "account changed" when
+                        // the user switches accounts — the old API handle is stale.
+                        // Re-connect to get a fresh handle.
+                        let err_str = format!("{e}");
+                        if err_str.contains("account changed") {
+                            tracing::info!("Account changed detected, reconnecting");
+                            if let Some(provider) = ctx.current_provider() {
+                                ctx.connect(provider);
+                            }
+                        } else {
+                            tracing::warn!("Wallet refresh: failed to get address: {e}");
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /// Check if connected (untracked — use in closures/handlers, not reactive views)
     pub fn is_connected(&self) -> bool {
         matches!(
-            self.connection_state.get(),
+            self.connection_state.get_untracked(),
             ConnectionState::Connected { .. }
         )
     }
 
-    /// Get the current provider if connected
+    /// Get the current provider if connected (untracked — use in closures/handlers, not reactive views)
     pub fn current_provider(&self) -> Option<WalletProvider> {
-        match self.connection_state.get() {
+        match self.connection_state.get_untracked() {
             ConnectionState::Connected { provider, .. } => Some(provider),
             _ => None,
         }
@@ -190,12 +266,12 @@ impl WalletContext {
     ) -> Result<wallet_core::DataSignature, WalletError> {
         let api_wrapper = self
             .api
-            .get()
+            .get_untracked()
             .ok_or_else(|| WalletError::NotEnabled("Not connected".into()))?;
 
         let address = self
             .address
-            .get()
+            .get_untracked()
             .ok_or_else(|| WalletError::NotEnabled("No address".into()))?;
 
         // Clone to avoid holding RefCell borrow across await
@@ -209,7 +285,7 @@ impl WalletContext {
     pub async fn sign_tx(&self, tx_hex: &str, partial_sign: bool) -> Result<String, WalletError> {
         let api_wrapper = self
             .api
-            .get()
+            .get_untracked()
             .ok_or_else(|| WalletError::NotEnabled("Not connected".into()))?;
 
         // Clone to avoid holding RefCell borrow across await
@@ -223,7 +299,7 @@ impl WalletContext {
     pub async fn submit_tx(&self, tx_hex: &str) -> Result<String, WalletError> {
         let api_wrapper = self
             .api
-            .get()
+            .get_untracked()
             .ok_or_else(|| WalletError::NotEnabled("Not connected".into()))?;
 
         // Clone to avoid holding RefCell borrow across await

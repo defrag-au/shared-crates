@@ -177,7 +177,7 @@ fn NftCard(
     nft: NativeToken,
     #[prop(optional)] on_click: Option<Callback<(String, String)>>,
 ) -> impl IntoView {
-    let asset_id = nft.asset_id();
+    let asset_id = nft.asset_id().to_string();
     let name = nft.display_name();
 
     if let Some(cb) = on_click {

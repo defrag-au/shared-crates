@@ -4,14 +4,12 @@ use std::{error::Error, fmt};
 #[cfg(feature = "worker")]
 use worker_stack::worker;
 
-#[derive(Debug)]
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum PinataError {
     #[default]
     Unknown,
     Request(HttpError),
 }
-
 
 impl Error for PinataError {}
 

@@ -69,7 +69,6 @@ pub enum Identity {
     },
 }
 
-
 impl Identity {
     /// Check if this is an anonymous identity
     pub fn is_anonymous(&self) -> bool {

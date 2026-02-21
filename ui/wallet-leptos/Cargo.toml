@@ -15,7 +15,7 @@ wallet-pallas = { path = "../wallet-pallas" }
 # WASM bindings
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
-web-sys = { workspace = true }
+web-sys = { workspace = true, features = ["Document", "VisibilityState"] }
 js-sys = { workspace = true }
 
 # Utilities

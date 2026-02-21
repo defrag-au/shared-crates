@@ -382,7 +382,7 @@ pub fn Pagination(
                 {move || {
                     page_numbers()
                         .into_iter()
-                        
+
                         .map(|item| {
                             match item {
                                 PageItem::Page { num, is_sibling } => {

@@ -3,8 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Current status of the WebSocket connection
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ConnectionStatus {
     /// Not connected, no reconnection in progress
     #[default]
@@ -56,7 +55,6 @@ impl ConnectionStatus {
         }
     }
 }
-
 
 /// Information about a WebSocket close event
 #[derive(Debug, Clone, Serialize, Deserialize)]
