@@ -92,9 +92,9 @@ pub struct NativeToken {
 }
 
 impl NativeToken {
-    /// Get the full asset ID (policy_id + asset_name_hex) for IIIF lookups
-    pub fn asset_id(&self) -> String {
-        format!("{}{}", self.policy_id, self.asset_name_hex)
+    /// Get the full asset ID as an `AssetId` type
+    pub fn asset_id(&self) -> AssetId {
+        AssetId::new_unchecked(self.policy_id.clone(), self.asset_name_hex.clone())
     }
 
     /// Check if this token looks like an NFT (quantity = 1)
@@ -238,6 +238,21 @@ impl PolicyGroup {
 }
 
 impl WalletBalance {
+    /// Get all `AssetId`s held under a given policy ID
+    pub fn asset_ids_for_policy(&self, policy_id: &str) -> Vec<AssetId> {
+        self.assets
+            .get(policy_id)
+            .map(|asset_map| {
+                asset_map
+                    .keys()
+                    .map(|asset_name_hex| {
+                        AssetId::new_unchecked(policy_id.to_string(), asset_name_hex.clone())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// Get all native tokens as a flat list
     pub fn tokens(&self) -> Vec<NativeToken> {
         let mut tokens = Vec::new();
