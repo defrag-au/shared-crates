@@ -2,6 +2,7 @@
 members = [
     "anvil-api",
     "asset-intents",
+    "cardano-tx",
     "cardano-assets",
     "cnft-tools",
     "discord-client",
@@ -92,6 +93,13 @@ web-sys = { version = "0.3", features = [
     "FocusEvent",
     "KeyboardEvent",
 ] }
+# Cardano primitives
+pallas-addresses = "1.0.0-alpha.3"
+pallas-codec = "1.0.0-alpha.3"
+pallas-crypto = "1.0.0-alpha.3"
+pallas-primitives = "1.0.0-alpha.3"
+pallas-txbuilder = "1.0.0-alpha.3"
+
 thiserror = "1"
 futures = "0.3"
 futures-signals = "0.3"
@@ -106,5 +114,6 @@ rand = { version = "0.9", features = ["small_rng", "std"] }
 # Internal path deps usable as workspace deps
 asset-intents = { path = "asset-intents" }
 cardano-assets = { path = "cardano-assets" }
+cardano-tx = { path = "cardano-tx" }
 worker_utils = { path = "worker-utils" }
 asset-rarity = { path = "asset-rarity" }

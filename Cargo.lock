@@ -459,6 +459,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "cardano-tx"
+version = "0.1.0"
+dependencies = [
+ "cardano-assets",
+ "hex",
+ "http-client",
+ "maestro",
+ "pallas-addresses",
+ "pallas-codec",
+ "pallas-crypto",
+ "pallas-primitives",
+ "pallas-txbuilder",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2366,6 +2386,23 @@ dependencies = [
  "pallas-primitives",
  "paste",
  "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "pallas-txbuilder"
+version = "1.0.0-alpha.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "015c424818c4766d91c32d64bbeb0ecadbf537d95cc0d5ddf8dfccc919509175"
+dependencies = [
+ "hex",
+ "pallas-addresses",
+ "pallas-codec",
+ "pallas-crypto",
+ "pallas-primitives",
+ "pallas-traverse",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 

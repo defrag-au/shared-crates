@@ -1,0 +1,29 @@
+[package]
+name = "cardano-tx"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cardano transaction utilities: fee calculation, min UTxO, and DEX order building"
+
+[dependencies]
+# Cardano primitives
+pallas-addresses = { workspace = true }
+pallas-codec = { workspace = true }
+pallas-crypto = { workspace = true }
+pallas-primitives = { workspace = true }
+pallas-txbuilder = { workspace = true }
+
+# Workspace crates
+cardano-assets = { workspace = true }
+maestro = { path = "../indexers/maestro" }
+http-client = { path = "../http-client" }
+
+# General
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+hex = "0.4"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
