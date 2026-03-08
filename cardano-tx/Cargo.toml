@@ -18,6 +18,9 @@ cardano-assets = { workspace = true }
 maestro = { path = "../indexers/maestro" }
 http-client = { path = "../http-client" }
 
+# Workspace crates (serde helpers)
+wasm_safe_serde = { path = "../wasm-safe-serde" }
+
 # General
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
