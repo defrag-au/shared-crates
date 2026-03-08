@@ -4,6 +4,8 @@
 //! No IO — consumers provide UTxOs and protocol parameters, get back a staged
 //! transaction ready for signing via Ed25519 or CIP-30.
 
+pub mod buy;
+pub mod marketplace;
 pub mod mint;
 pub mod send;
 

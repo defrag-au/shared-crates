@@ -63,6 +63,8 @@ pub enum TxBuildError {
     PolicyMismatch { expected: String, actual: String },
     #[error("Transaction build failed: {0}")]
     BuildFailed(String),
+    #[error("CBOR parse error: {0}")]
+    CborParse(String),
     #[error("Signing failed: {0}")]
     SignFailed(String),
 }

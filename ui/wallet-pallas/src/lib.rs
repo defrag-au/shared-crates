@@ -34,6 +34,7 @@ mod address;
 mod cip8;
 mod error;
 mod transaction;
+pub mod utxo;
 mod value;
 
 pub use address::Address;
@@ -42,4 +43,5 @@ pub use error::PallasError;
 pub use transaction::{
     extract_vkey_witnesses, parse_transaction, parse_witness_set, TransactionInfo, WitnessSetInfo,
 };
+pub use utxo::{decode_utxo, decode_utxos};
 pub use value::{decode_balance, NativeToken, PolicyGroup, WalletBalance, ADA_HANDLE_POLICY};

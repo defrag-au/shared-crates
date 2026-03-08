@@ -192,7 +192,7 @@ pub fn build_send_assets(
     let recipient_output = build_recipient_output_with_assets(to_addr, min_ada_for_assets, assets)?;
 
     // 5. Calculate min ADA for change output
-    let input_refs: Vec<&UtxoApi> = input_utxos.iter().copied().collect();
+    let input_refs: Vec<&UtxoApi> = input_utxos.to_vec();
     let change_asset_ids = collect_asset_ids(&input_refs, Some(&assets_to_send));
     let mut min_ada_for_change = crate::calculate_min_ada_with_params(
         &to_maestro_params(&deps.params),
@@ -218,7 +218,7 @@ pub fn build_send_assets(
         input_lovelace += additional_lovelace;
 
         // Recalculate change with additional UTxOs
-        let new_refs: Vec<&UtxoApi> = input_utxos.iter().copied().collect();
+        let new_refs: Vec<&UtxoApi> = input_utxos.to_vec();
         let new_change_asset_ids = collect_asset_ids(&new_refs, Some(&assets_to_send));
         min_ada_for_change = crate::calculate_min_ada_with_params(
             &to_maestro_params(&deps.params),
@@ -371,7 +371,7 @@ fn find_utxos_for_assets<'a>(
                     .iter()
                     .any(|a| a.asset_id.concatenated() == concatenated)
             })
-            .ok_or_else(|| TxBuildError::AssetNotFound(concatenated))?;
+            .ok_or(TxBuildError::AssetNotFound(concatenated))?;
 
         utxo_refs.push((&utxo.tx_hash, utxo.output_index));
     }

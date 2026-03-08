@@ -14,6 +14,9 @@ use crate::error::TxBuildError;
 use crate::helpers::decode::{decode_asset_name, decode_policy_id};
 use crate::helpers::normalize_asset_name_to_hex;
 use crate::helpers::output::{add_assets_from_map, create_ada_output};
+
+/// Selected UTxOs, total input lovelace, and accumulated native assets.
+type UtxoSelection<'a> = (Vec<&'a UtxoApi>, u64, HashMap<(String, String), u64>);
 use crate::intents::MintingPolicy;
 
 /// Build a CIP-25 mint transaction.
@@ -252,11 +255,11 @@ pub fn calculate_mint_fee(
 }
 
 /// Select UTxOs for a mint operation (prefer pure ADA).
-fn select_utxos_for_mint<'a>(
+fn select_utxos_for_mint(
     min_ada: u64,
     estimated_fee: u64,
-    deps: &'a TxDeps,
-) -> Result<(Vec<&'a UtxoApi>, u64, HashMap<(String, String), u64>), TxBuildError> {
+    deps: &TxDeps,
+) -> Result<UtxoSelection<'_>, TxBuildError> {
     let selected_utxo = crate::selection::select_utxo_for_amount_prefer_pure_ada(
         &deps.utxos,
         min_ada,
@@ -289,7 +292,7 @@ fn select_utxos_for_burn<'a>(
     min_ada: u64,
     estimated_fee: u64,
     deps: &'a TxDeps,
-) -> Result<(Vec<&'a UtxoApi>, u64, HashMap<(String, String), u64>), TxBuildError> {
+) -> Result<UtxoSelection<'a>, TxBuildError> {
     let mut selected_utxos: Vec<&UtxoApi> = Vec::new();
     let mut total_input_lovelace: u64 = 0;
     let mut input_native_assets: HashMap<(String, String), u64> = HashMap::new();

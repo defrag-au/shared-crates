@@ -12,6 +12,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "address-registry"
+version = "0.1.0"
+dependencies = [
+ "phf",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -462,6 +472,7 @@ dependencies = [
 name = "cardano-tx"
 version = "0.1.0"
 dependencies = [
+ "address-registry",
  "cardano-assets",
  "hex",
  "http-client",

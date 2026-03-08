@@ -15,6 +15,7 @@ pallas-txbuilder = { workspace = true }
 
 # Workspace crates
 cardano-assets = { workspace = true }
+address-registry = { workspace = true }
 maestro = { path = "../indexers/maestro" }
 http-client = { path = "../http-client" }
 

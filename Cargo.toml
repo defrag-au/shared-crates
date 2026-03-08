@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "address-registry",
     "anvil-api",
     "asset-intents",
     "cardano-tx",
@@ -112,6 +113,7 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 rand = { version = "0.9", features = ["small_rng", "std"] }
 
 # Internal path deps usable as workspace deps
+address-registry = { path = "address-registry" }
 asset-intents = { path = "asset-intents" }
 cardano-assets = { path = "cardano-assets" }
 cardano-tx = { path = "cardano-tx" }
