@@ -3,6 +3,9 @@ pub mod error;
 pub mod fee;
 pub mod helpers;
 pub mod metadata;
+pub mod params;
+pub mod selection;
+pub mod sign;
 pub mod utxo;
 
 // Convenience re-exports

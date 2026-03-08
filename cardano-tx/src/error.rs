@@ -1,8 +1,7 @@
-//! Transaction submission error classification
+//! Transaction error types
 //!
-//! Provides platform-agnostic detection of permanent vs retriable submission failures.
-//! Consumers construct a [`SubmissionResult`] from their HTTP layer (Maestro, Blockfrost, etc.)
-//! and call [`SubmissionResult::is_permanent_rejection`] to determine retry strategy.
+//! - [`SubmissionResult`] — platform-agnostic detection of permanent vs retriable submission failures
+//! - [`TxBuildError`] — errors from transaction building operations
 
 /// Known Cardano ledger validation error patterns that indicate a permanent rejection.
 /// These come from the Cardano node's ledger rules and will never succeed on retry.
@@ -47,6 +46,21 @@ impl SubmissionResult {
             .iter()
             .any(|pattern| self.message.contains(pattern))
     }
+}
+
+/// Errors from transaction building operations.
+#[derive(Debug, thiserror::Error)]
+pub enum TxBuildError {
+    #[error("Invalid hex: {0}")]
+    InvalidHex(String),
+    #[error("Insufficient funds: need {needed} lovelace, have {available}")]
+    InsufficientFunds { needed: u64, available: u64 },
+    #[error("No suitable UTxO found")]
+    NoSuitableUtxo,
+    #[error("Transaction build failed: {0}")]
+    BuildFailed(String),
+    #[error("Signing failed: {0}")]
+    SignFailed(String),
 }
 
 #[cfg(test)]
