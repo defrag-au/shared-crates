@@ -118,6 +118,34 @@ pub fn estimate_tx_size(tx: &StagingTransaction, num_witnesses: u32) -> u64 {
     size
 }
 
+/// Calculate the exact transaction fee using [`TxBuildParams`].
+///
+/// This is the isomorphic version — no dependency on Maestro types. Preferred
+/// for new code in `cardano_tx::builder`.
+pub fn calculate_fee(tx: &StagingTransaction, params: &crate::params::TxBuildParams) -> u64 {
+    use pallas_txbuilder::BuildConway;
+
+    let built = match tx.clone().build_conway_raw() {
+        Ok(b) => b,
+        Err(_) => {
+            let estimated_size = estimate_tx_size(tx, 1);
+            return estimated_size * params.min_fee_coefficient + params.min_fee_constant;
+        }
+    };
+
+    let dummy_secret = pallas_crypto::key::ed25519::SecretKey::from([0u8; 32]);
+    let signed = match built.sign(&dummy_secret) {
+        Ok(s) => s,
+        Err(_) => {
+            let estimated_size = estimate_tx_size(tx, 1);
+            return estimated_size * params.min_fee_coefficient + params.min_fee_constant;
+        }
+    };
+
+    let tx_size = signed.tx_bytes.0.len() as u64;
+    tx_size * params.min_fee_coefficient + params.min_fee_constant
+}
+
 /// Calculate the exact transaction fee by building and signing with a dummy key.
 ///
 /// This produces the exact signed tx size — no estimation or safety margins needed.

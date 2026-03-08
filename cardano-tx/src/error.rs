@@ -57,6 +57,10 @@ pub enum TxBuildError {
     InsufficientFunds { needed: u64, available: u64 },
     #[error("No suitable UTxO found")]
     NoSuitableUtxo,
+    #[error("Asset not found in wallet UTxOs: {0}")]
+    AssetNotFound(String),
+    #[error("Policy ID mismatch: expected {expected}, got {actual}")]
+    PolicyMismatch { expected: String, actual: String },
     #[error("Transaction build failed: {0}")]
     BuildFailed(String),
     #[error("Signing failed: {0}")]
