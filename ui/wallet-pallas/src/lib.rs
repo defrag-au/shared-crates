@@ -41,7 +41,8 @@ pub use address::Address;
 pub use cip8::{compute_key_hash, verify_data_signature, DataSignatureInfo};
 pub use error::PallasError;
 pub use transaction::{
-    extract_vkey_witnesses, parse_transaction, parse_witness_set, TransactionInfo, WitnessSetInfo,
+    assemble_signed_tx, extract_vkey_witnesses, parse_transaction, parse_witness_set,
+    TransactionInfo, WitnessSetInfo,
 };
 pub use utxo::{decode_utxo, decode_utxos};
 pub use value::{decode_balance, NativeToken, PolicyGroup, WalletBalance, ADA_HANDLE_POLICY};

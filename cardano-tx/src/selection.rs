@@ -98,6 +98,32 @@ pub fn select_all_utxos_for_max<'a>(
     Ok(usable)
 }
 
+/// Select the best collateral UTxO from wallet UTxOs.
+///
+/// Plutus script transactions require a collateral input (pure ADA, no native
+/// assets). Prefers the smallest pure-ADA UTxO with at least 5 ADA. Falls back
+/// to the largest pure-ADA UTxO if none meet the 5 ADA threshold.
+pub fn select_collateral(utxos: &[UtxoApi]) -> Option<&UtxoApi> {
+    const MIN_COLLATERAL: u64 = 5_000_000; // 5 ADA
+
+    // Prefer smallest pure-ADA UTxO >= 5 ADA (least wasteful)
+    let mut candidates: Vec<&UtxoApi> = utxos
+        .iter()
+        .filter(|u| is_pure_ada_utxo(u) && u.lovelace >= MIN_COLLATERAL)
+        .collect();
+    candidates.sort_by_key(|u| u.lovelace);
+
+    if let Some(best) = candidates.first() {
+        return Some(best);
+    }
+
+    // Fallback: largest pure-ADA UTxO (even if < 5 ADA)
+    utxos
+        .iter()
+        .filter(|u| is_pure_ada_utxo(u))
+        .max_by_key(|u| u.lovelace)
+}
+
 /// Estimate fee for a simple transaction (1 input, 2 outputs, ~300 bytes).
 pub fn estimate_simple_fee(params: &TxBuildParams) -> u64 {
     let tx_size_estimate = 300u64;
@@ -187,5 +213,49 @@ mod tests {
         let params = test_params();
         let result = select_all_utxos_for_max(&utxos, &params).unwrap();
         assert_eq!(result.len(), 2);
+    }
+
+    // --- select_collateral tests ---
+
+    #[test]
+    fn test_collateral_prefers_smallest_above_threshold() {
+        let utxos = vec![
+            make_utxo(10_000_000),
+            make_utxo(5_000_000),
+            make_utxo(50_000_000),
+        ];
+        let result = select_collateral(&utxos).unwrap();
+        assert_eq!(result.lovelace, 5_000_000);
+    }
+
+    #[test]
+    fn test_collateral_skips_asset_utxos() {
+        let utxos = vec![make_utxo_with_asset(20_000_000), make_utxo(6_000_000)];
+        let result = select_collateral(&utxos).unwrap();
+        assert_eq!(result.lovelace, 6_000_000);
+        assert!(result.assets.is_empty());
+    }
+
+    #[test]
+    fn test_collateral_fallback_below_threshold() {
+        // Only pure-ADA UTxOs below 5 ADA — picks the largest
+        let utxos = vec![make_utxo(2_000_000), make_utxo(4_000_000)];
+        let result = select_collateral(&utxos).unwrap();
+        assert_eq!(result.lovelace, 4_000_000);
+    }
+
+    #[test]
+    fn test_collateral_none_when_no_pure_ada() {
+        let utxos = vec![
+            make_utxo_with_asset(10_000_000),
+            make_utxo_with_asset(20_000_000),
+        ];
+        assert!(select_collateral(&utxos).is_none());
+    }
+
+    #[test]
+    fn test_collateral_empty_utxos() {
+        let utxos: Vec<UtxoApi> = vec![];
+        assert!(select_collateral(&utxos).is_none());
     }
 }
