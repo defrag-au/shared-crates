@@ -1,0 +1,12 @@
+[package]
+name = "openai-client"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Portable OpenAI-compatible API client (native + WASM)"
+
+[dependencies]
+http-client = { path = "../http-client" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
