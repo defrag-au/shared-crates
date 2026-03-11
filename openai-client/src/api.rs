@@ -11,8 +11,7 @@ pub struct Api {
 impl Api {
     pub fn for_api_key(api_key: &str) -> Self {
         Self {
-            client: HttpClient::new()
-                .with_header("Authorization", &format!("Bearer {api_key}")),
+            client: HttpClient::new().with_header("Authorization", &format!("Bearer {api_key}")),
             base_url: DEFAULT_BASE_URL.to_string(),
         }
     }
@@ -27,6 +26,7 @@ impl Api {
         self
     }
 
+    #[allow(dead_code)]
     pub async fn post<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
