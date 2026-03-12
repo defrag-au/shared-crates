@@ -28,6 +28,7 @@ members = [
     "ui/wallet-core",
     "ui/wallet-pallas",
     "ui/wallet-leptos",
+    "ui/egui-widgets",
     "ui/_storybook",
     "ui/workers/flow-demo",
     "ui/workers/flow-demo/frontend",
@@ -112,6 +113,13 @@ serde-wasm-bindgen = "0.6"
 serde_repr = "0.1"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 rand = { version = "0.9", features = ["small_rng", "std"] }
+log = "0.4"
+
+# egui stack
+egui = "0.33"
+eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow"] }
+egui_extras = { version = "0.33", features = ["image", "http"] }
+image = { version = "0.25", default-features = false }
 
 # Internal path deps usable as workspace deps
 address-registry = { path = "address-registry" }
@@ -120,3 +128,6 @@ cardano-assets = { path = "cardano-assets" }
 cardano-tx = { path = "cardano-tx" }
 worker_utils = { path = "worker-utils" }
 asset-rarity = { path = "asset-rarity" }
+egui-widgets = { path = "ui/egui-widgets" }
+wallet-core = { path = "ui/wallet-core" }
+wallet-pallas = { path = "ui/wallet-pallas" }
