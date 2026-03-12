@@ -19,6 +19,7 @@ pub mod color;
 pub mod error;
 pub mod fetch_state;
 pub mod http;
+pub mod kv;
 pub mod runtime;
 pub mod token;
 pub mod urls;
