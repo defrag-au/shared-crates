@@ -191,6 +191,49 @@ struct PolicyAssetsResponse {
     next_cursor: Option<String>,
 }
 
+// ─── Policy transaction types ───────────────────────────────────────────
+
+#[derive(Deserialize, Debug)]
+struct PolicyTransactionsResponse {
+    data: Vec<PolicyTransaction>,
+    last_updated: LastUpdated,
+    next_cursor: Option<String>,
+}
+
+/// A transaction involving assets of a specific policy.
+#[derive(Deserialize, Debug, Clone)]
+pub struct PolicyTransaction {
+    /// Transaction hash
+    pub tx_hash: String,
+    /// Absolute slot of the block containing this transaction
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub slot: u64,
+    /// Asset names (hex) of the policy involved in the transaction
+    pub assets: Vec<String>,
+}
+
+/// Block metadata from the most recently processed block.
+#[derive(Deserialize, Debug, Clone)]
+pub struct LastUpdated {
+    /// UTC timestamp of the most recently processed block
+    pub timestamp: String,
+    /// Hex-encoded hash of the chain tip
+    pub block_hash: String,
+    /// Absolute slot of the most recently processed block
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub block_slot: u64,
+}
+
+/// Result page from [`MaestroApi::get_policy_transactions`].
+pub struct PolicyTransactionPage {
+    /// Transactions in this page
+    pub transactions: Vec<PolicyTransaction>,
+    /// Block metadata at time of query
+    pub last_updated: LastUpdated,
+    /// Cursor for the next page, or `None` if this was the last page
+    pub next_cursor: Option<String>,
+}
+
 impl PolicyAssetsResponse {
     pub fn get_importable_nfts(&self) -> Vec<&AssetResult> {
         self.data
@@ -847,6 +890,91 @@ impl MaestroApi {
         let url = format!("https://{}/txmanager/history{query_string}", self.base_url);
         let response: TransactionHistoryResponse = self.get_url(url).await?;
         Ok(response.data)
+    }
+
+    /// Fetch a single page of transactions involving assets of a specific policy.
+    ///
+    /// Use `from` to only return transactions in blocks at or after a specific slot.
+    /// Use `cursor` to paginate through results.
+    pub async fn get_policy_transactions(
+        &self,
+        policy_id: &str,
+        from_slot: Option<u64>,
+        count: Option<u32>,
+        order: Option<&str>,
+        cursor: Option<&str>,
+    ) -> Result<PolicyTransactionPage, MaestroError> {
+        let mut query_params = Vec::new();
+
+        if let Some(slot) = from_slot {
+            query_params.push(format!("from={slot}"));
+        }
+        if let Some(c) = count {
+            query_params.push(format!("count={c}"));
+        }
+        if let Some(o) = order {
+            query_params.push(format!("order={o}"));
+        }
+        if let Some(c) = cursor {
+            query_params.push(format!("cursor={c}"));
+        }
+
+        let querystring = if query_params.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", query_params.join("&"))
+        };
+
+        let url = format!(
+            "https://{}/policy/{policy_id}/transactions{querystring}",
+            self.base_url
+        );
+
+        let response: PolicyTransactionsResponse = self.get_url(url).await?;
+        Ok(PolicyTransactionPage {
+            transactions: response.data,
+            last_updated: response.last_updated,
+            next_cursor: response.next_cursor,
+        })
+    }
+
+    /// Fetch all transactions for a policy since a given slot, paginating automatically.
+    ///
+    /// Returns all transaction hashes and the slot of the last block processed by Maestro.
+    /// The caller should persist this slot and pass it as `from_slot` on the next call
+    /// to avoid re-processing.
+    pub async fn get_all_policy_transactions(
+        &self,
+        policy_id: &str,
+        from_slot: Option<u64>,
+    ) -> Result<(Vec<PolicyTransaction>, LastUpdated), MaestroError> {
+        let mut all_txs = Vec::new();
+
+        // Fetch first page to seed last_updated
+        let first_page = self
+            .get_policy_transactions(policy_id, from_slot, Some(100), Some("asc"), None)
+            .await?;
+        let mut last_updated = first_page.last_updated;
+        all_txs.extend(first_page.transactions);
+        let mut cursor = first_page.next_cursor;
+
+        while cursor.is_some() {
+            let page = self
+                .get_policy_transactions(
+                    policy_id,
+                    from_slot,
+                    Some(100),
+                    Some("asc"),
+                    cursor.as_deref(),
+                )
+                .await?;
+
+            last_updated = page.last_updated;
+            all_txs.extend(page.transactions);
+            cursor = page.next_cursor;
+        }
+
+        Ok((all_txs, last_updated))
     }
 
     /// Resolve a payment address to its associated stake key

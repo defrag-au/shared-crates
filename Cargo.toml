@@ -30,6 +30,7 @@ members = [
     "ui/wallet-leptos",
     "ui/egui-widgets",
     "ui/_storybook",
+    "ui/_storybook-egui",
     "ui/workers/flow-demo",
     "ui/workers/flow-demo/frontend",
 ]
