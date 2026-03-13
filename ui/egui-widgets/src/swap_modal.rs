@@ -103,6 +103,7 @@ pub enum SwapProgress {
 // ============================================================================
 
 /// Actions returned by [`SwapModal::show()`] that the caller must handle.
+#[derive(Debug)]
 pub enum SwapModalAction {
     /// No action needed.
     None,

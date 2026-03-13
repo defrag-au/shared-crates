@@ -1,0 +1,233 @@
+mod stories;
+
+use eframe::wasm_bindgen::JsCast as _;
+use wasm_bindgen::prelude::*;
+
+// ============================================================================
+// Story Registry
+// ============================================================================
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Story {
+    Marquee,
+    Buttons,
+    WalletButton,
+    SwapModal,
+}
+
+impl Story {
+    fn all() -> &'static [Self] {
+        &[
+            Self::Marquee,
+            Self::Buttons,
+            Self::WalletButton,
+            Self::SwapModal,
+        ]
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Marquee => "Marquee",
+            Self::Buttons => "Buttons",
+            Self::WalletButton => "Wallet Button",
+            Self::SwapModal => "Swap Modal",
+        }
+    }
+
+    fn category(&self) -> &'static str {
+        match self {
+            Self::Marquee | Self::Buttons => "Primitives",
+            Self::WalletButton => "Wallet",
+            Self::SwapModal => "Swap",
+        }
+    }
+
+    fn description(&self) -> &'static str {
+        match self {
+            Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
+            Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
+            Self::WalletButton => "CIP-30 wallet connection button with state management",
+            Self::SwapModal => "DEX swap modal with preview, culture buys, and progress states",
+        }
+    }
+}
+
+// ============================================================================
+// Theme
+// ============================================================================
+
+const BG_SIDEBAR: egui::Color32 = egui::Color32::from_rgb(20, 20, 40);
+const BG_MAIN: egui::Color32 = egui::Color32::from_rgb(26, 26, 46);
+const TEXT_MUTED: egui::Color32 = egui::Color32::from_rgb(100, 100, 130);
+const TEXT_PRIMARY: egui::Color32 = egui::Color32::from_rgb(220, 220, 235);
+const ACCENT: egui::Color32 = egui::Color32::from_rgb(68, 255, 68);
+const BG_SELECTED: egui::Color32 = egui::Color32::from_rgb(40, 40, 60);
+
+fn configure_style(ctx: &egui::Context) {
+    let mut style = (*ctx.style()).clone();
+    style.visuals.dark_mode = true;
+    style.visuals.panel_fill = BG_MAIN;
+    style.visuals.window_fill = BG_MAIN;
+    style.visuals.override_text_color = Some(TEXT_PRIMARY);
+    ctx.set_style(style);
+}
+
+// ============================================================================
+// App
+// ============================================================================
+
+struct StorybookApp {
+    current_story: Story,
+    // Per-story state
+    marquee: egui_widgets::Marquee,
+    marquee_messages: Vec<egui_widgets::MarqueeItem>,
+    wallet_btn: egui_widgets::WalletButton,
+    wallet_connector: egui_widgets::wallet::WalletConnector,
+    swap_modal: egui_widgets::SwapModal,
+    swap_progress: egui_widgets::SwapProgress,
+}
+
+impl StorybookApp {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        configure_style(&cc.egui_ctx);
+
+        Self {
+            current_story: Story::Marquee,
+            marquee: egui_widgets::Marquee::default(),
+            marquee_messages: vec![egui_widgets::MarqueeItem {
+                text: "Welcome to the egui Widgets Storybook".into(),
+                color: ACCENT,
+            }],
+            wallet_btn: egui_widgets::WalletButton::new(),
+            wallet_connector: egui_widgets::wallet::WalletConnector::new(),
+            swap_modal: egui_widgets::SwapModal::new(egui_widgets::SwapModalConfig {
+                token_name: "TestToken".into(),
+                token_ticker: Some("TST".into()),
+                culture_buys: vec![
+                    egui_widgets::CultureBuy {
+                        ada_amount: 51,
+                        label: "Area 51".into(),
+                    },
+                    egui_widgets::CultureBuy {
+                        ada_amount: 69,
+                        label: "Nice".into(),
+                    },
+                    egui_widgets::CultureBuy {
+                        ada_amount: 420,
+                        label: "Blaze".into(),
+                    },
+                ],
+                theme: egui_widgets::SwapModalTheme::default(),
+            }),
+            swap_progress: egui_widgets::SwapProgress::Idle,
+        }
+    }
+
+    fn draw_sidebar(&mut self, ui: &mut egui::Ui) {
+        let mut current_category = "";
+        for story in Story::all() {
+            if story.category() != current_category {
+                current_category = story.category();
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(current_category)
+                        .color(TEXT_MUTED)
+                        .small()
+                        .strong(),
+                );
+            }
+            let is_selected = self.current_story == *story;
+            let text = if is_selected {
+                egui::RichText::new(story.label()).color(ACCENT).strong()
+            } else {
+                egui::RichText::new(story.label()).color(TEXT_PRIMARY)
+            };
+            let fill = if is_selected {
+                BG_SELECTED
+            } else {
+                egui::Color32::TRANSPARENT
+            };
+            if ui
+                .add(
+                    egui::Button::new(text)
+                        .fill(fill)
+                        .frame(false)
+                        .min_size(egui::vec2(ui.available_width(), 24.0)),
+                )
+                .clicked()
+            {
+                self.current_story = *story;
+            }
+        }
+    }
+}
+
+impl eframe::App for StorybookApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::SidePanel::left("stories")
+            .default_width(180.0)
+            .resizable(false)
+            .frame(egui::Frame::side_top_panel(&ctx.style()).fill(BG_SIDEBAR))
+            .show(ctx, |ui| {
+                ui.add_space(8.0);
+                ui.heading(egui::RichText::new("egui Widgets").color(ACCENT));
+                ui.separator();
+                self.draw_sidebar(ui);
+            });
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::central_panel(&ctx.style()).fill(BG_MAIN))
+            .show(ctx, |ui| {
+                ui.heading(self.current_story.label());
+                ui.label(egui::RichText::new(self.current_story.description()).color(TEXT_MUTED));
+                ui.separator();
+                ui.add_space(8.0);
+
+                match self.current_story {
+                    Story::Marquee => {
+                        stories::marquee::show(ui, &mut self.marquee, &mut self.marquee_messages)
+                    }
+                    Story::Buttons => stories::buttons::show(ui),
+                    Story::WalletButton => {
+                        stories::wallet::show(ui, &mut self.wallet_btn, &mut self.wallet_connector)
+                    }
+                    Story::SwapModal => {
+                        stories::swap::show(ctx, ui, &mut self.swap_modal, &mut self.swap_progress)
+                    }
+                }
+            });
+    }
+}
+
+// ============================================================================
+// Entry Point
+// ============================================================================
+
+#[wasm_bindgen(start)]
+pub fn main() {
+    console_error_panic_hook::set_once();
+    eframe::WebLogger::init(log::LevelFilter::Debug).ok();
+
+    let web_options = eframe::WebOptions::default();
+
+    wasm_bindgen_futures::spawn_local(async {
+        let document = web_sys::window()
+            .expect("no window")
+            .document()
+            .expect("no document");
+        let canvas = document
+            .get_element_by_id("egui_canvas")
+            .expect("no egui_canvas element")
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .expect("not a canvas");
+
+        eframe::WebRunner::new()
+            .start(
+                canvas,
+                web_options,
+                Box::new(|cc| Ok(Box::new(StorybookApp::new(cc)))),
+            )
+            .await
+            .expect("failed to start eframe");
+    });
+}

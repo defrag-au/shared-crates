@@ -94,10 +94,7 @@ impl OpenAI {
     /// Send a chat completion request with a list of messages.
     ///
     /// Each message is a (role, content) pair where role is "system", "user", or "assistant".
-    pub async fn chat_completion(
-        &self,
-        messages: &[(&str, &str)],
-    ) -> Result<String, OpenAiError> {
+    pub async fn chat_completion(&self, messages: &[(&str, &str)]) -> Result<String, OpenAiError> {
         let msgs: Vec<ChatMessage> = messages
             .iter()
             .map(|(role, content)| ChatMessage {
@@ -113,9 +110,7 @@ impl OpenAI {
         });
 
         let response = self.execute_request(request).await?;
-        response
-            .get_content()
-            .ok_or(OpenAiError::Unknown)
+        response.get_content().ok_or(OpenAiError::Unknown)
     }
 
     async fn execute_request(
