@@ -110,18 +110,76 @@ pub struct SpotOrderConfig {
 // Fee API types (used by fetch module)
 // ============================================================================
 
-#[derive(Debug, Deserialize)]
-pub(crate) struct FeeDistribution {
-    pub(crate) steps: Vec<FeeStep>,
+#[derive(Debug, Clone, Deserialize)]
+pub struct FeeApiResponse {
+    pub config: FeeConfig,
 }
 
-#[derive(Debug, Deserialize)]
-pub(crate) struct FeeStep {
-    #[serde(rename = "lowerBound")]
-    pub(crate) lower_bound: u64,
-    #[serde(rename = "upperBound")]
-    pub(crate) upper_bound: u64,
-    pub(crate) fee: u64,
+#[derive(Debug, Clone, Deserialize)]
+pub struct FeeConfig {
+    #[serde(rename = "fromAdaSteps")]
+    pub from_ada_steps: Vec<FeeStep>,
+    #[serde(rename = "fromAssetSteps")]
+    pub from_asset_steps: Vec<FeeStep>,
+}
+
+/// Flattened fee distribution for a single direction (ADA→Token or Token→ADA).
+#[derive(Debug, Clone)]
+pub struct FeeDistribution {
+    pub steps: Vec<FeeStep>,
+}
+
+impl FeeDistribution {
+    /// Look up the executor fee for a given input amount.
+    /// Falls back to the last (highest) tier if no exact match.
+    pub fn fee_for_amount(&self, amount: u64, default_fee: u64) -> u64 {
+        for step in &self.steps {
+            if amount >= step.lower_bound() && amount < step.upper_bound() {
+                return step.fee;
+            }
+        }
+        self.steps.last().map(|s| s.fee).unwrap_or(default_fee)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FeeStep {
+    #[serde(deserialize_with = "deserialize_string_u64")]
+    pub min: u64,
+    /// `null` means unbounded (u64::MAX)
+    #[serde(deserialize_with = "deserialize_option_string_u64")]
+    pub max: Option<u64>,
+    #[serde(deserialize_with = "deserialize_string_u64")]
+    pub fee: u64,
+}
+
+impl FeeStep {
+    pub fn lower_bound(&self) -> u64 {
+        self.min
+    }
+
+    pub fn upper_bound(&self) -> u64 {
+        self.max.unwrap_or(u64::MAX)
+    }
+}
+
+fn deserialize_string_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: String = serde::Deserialize::deserialize(deserializer)?;
+    s.parse().map_err(serde::de::Error::custom)
+}
+
+fn deserialize_option_string_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let v: Option<String> = serde::Deserialize::deserialize(deserializer)?;
+    match v {
+        Some(s) => s.parse().map(Some).map_err(serde::de::Error::custom),
+        None => Ok(None),
+    }
 }
 
 // ============================================================================

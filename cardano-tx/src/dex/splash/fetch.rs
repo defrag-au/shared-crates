@@ -6,8 +6,8 @@
 use http_client::HttpClient;
 
 use super::config::{
-    decimal_to_rational, to_splash_asset, FeeDistribution, OrderBookQuote, RawOrderBook,
-    MAINNET_FEE_URL, ORDER_BOOK_URL,
+    decimal_to_rational, to_splash_asset, FeeApiResponse, FeeDistribution, OrderBookQuote,
+    RawOrderBook, MAINNET_FEE_URL, ORDER_BOOK_URL,
 };
 use super::SplashError;
 
@@ -40,26 +40,40 @@ async fn fetch_executor_fee_inner(
     output_asset: &str,
     amount: u64,
 ) -> Result<u64, SplashError> {
-    let url = format!("{MAINNET_FEE_URL}?from={input_asset}&to={output_asset}");
+    let dist = fetch_fee_distribution(input_asset, output_asset).await?;
+    dist.steps
+        .iter()
+        .find(|s| amount >= s.lower_bound() && amount < s.upper_bound())
+        .or(dist.steps.last())
+        .map(|s| s.fee)
+        .ok_or_else(|| SplashError::ConfigFetch("empty fee distribution".to_string()))
+}
 
+/// Fetch the full fee distribution table for a trading pair.
+///
+/// Returns all fee tiers — callers can look up specific amounts via
+/// `FeeDistribution::fee_for_amount()`.
+pub async fn fetch_fee_distribution(
+    input_asset: &str,
+    output_asset: &str,
+) -> Result<FeeDistribution, SplashError> {
+    let from = to_splash_asset(input_asset);
+    let to = to_splash_asset(output_asset);
+    let url = format!("{MAINNET_FEE_URL}?from={from}&to={to}");
     let client = HttpClient::new();
-    let dist: FeeDistribution = client
+    let resp: FeeApiResponse = client
         .get(&url)
         .await
         .map_err(|e| SplashError::ConfigFetch(format!("fee fetch failed: {e}")))?;
 
-    // Find the fee tier that matches the input amount
-    for step in &dist.steps {
-        if amount >= step.lower_bound && amount < step.upper_bound {
-            return Ok(step.fee);
-        }
-    }
+    // Pick the right direction: ADA input → fromAdaSteps, token input → fromAssetSteps
+    let steps = if input_asset == "lovelace" {
+        resp.config.from_ada_steps
+    } else {
+        resp.config.from_asset_steps
+    };
 
-    // If no matching tier, use the last tier's fee (highest amount range)
-    dist.steps
-        .last()
-        .map(|s| s.fee)
-        .ok_or_else(|| SplashError::ConfigFetch("empty fee distribution".to_string()))
+    Ok(FeeDistribution { steps })
 }
 
 /// Fetch order book and extract spot price for a trading pair.
