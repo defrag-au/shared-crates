@@ -172,6 +172,11 @@ impl SwapModal {
         }
     }
 
+    /// Access the cached preview data (preserved through processing/success states).
+    pub fn last_preview(&self) -> Option<&SwapPreviewData> {
+        self.last_preview.as_ref()
+    }
+
     /// Current input amount in lovelace, parsed from either culture button or text.
     pub fn input_lovelace(&self) -> Option<u64> {
         match self.selection {
