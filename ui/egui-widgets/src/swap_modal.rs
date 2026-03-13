@@ -389,8 +389,11 @@ impl SwapModal {
         let has_amount = self.selection.is_some();
         let is_loading = matches!(progress, SwapProgress::PreviewLoading);
 
-        // Use live preview if available, otherwise fall back to cached
-        let preview_data = if let SwapProgress::PreviewReady(p) = progress {
+        // Use live preview if available, otherwise fall back to cached.
+        // When loading a new preview, show skeleton instead of stale data.
+        let preview_data = if is_loading {
+            None
+        } else if let SwapProgress::PreviewReady(p) = progress {
             Some(p)
         } else {
             self.last_preview.as_ref()
