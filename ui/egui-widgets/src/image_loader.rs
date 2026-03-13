@@ -101,12 +101,43 @@ pub mod browser {
             if let Some(entry) = self.cache.lock().unwrap().get(uri).cloned() {
                 return match entry {
                     Poll::Ready(Ok(image)) => Ok(ImagePoll::Ready { image }),
-                    Poll::Ready(Err(err)) => Err(LoadError::Loading(err)),
+                    Poll::Ready(Err(ref err)) => Err(LoadError::Loading(err.clone())),
                     Poll::Pending => Ok(ImagePoll::Pending { size: None }),
                 };
             }
 
-            // Try to get bytes from the existing BytesLoader (EhttpLoader)
+            // Data URLs: handle directly without going through BytesLoader.
+            // This handles both base64 PNG/JPEG and URL-encoded SVGs.
+            if uri.starts_with("data:") {
+                self.cache
+                    .lock()
+                    .unwrap()
+                    .insert(uri.to_owned(), Poll::Pending);
+
+                let cache = self.cache.clone();
+                let uri_owned = uri.to_owned();
+                let ctx = ctx.clone();
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    let result = browser_decode_data_url(&uri_owned).await;
+                    if let Err(ref err) = result {
+                        log::warn!(
+                            "[image_loader] data URL decode failed for {}: {err}",
+                            &uri_owned[..uri_owned.len().min(60)]
+                        );
+                    }
+                    let entry = match result {
+                        Ok(image) => Poll::Ready(Ok(Arc::new(image))),
+                        Err(err) => Poll::Ready(Err(err)),
+                    };
+                    cache.lock().unwrap().insert(uri_owned, entry);
+                    ctx.request_repaint();
+                });
+
+                return Ok(ImagePoll::Pending { size: None });
+            }
+
+            // HTTP URLs: get bytes from the existing BytesLoader (EhttpLoader)
             match ctx.try_load_bytes(uri) {
                 Ok(BytesPoll::Ready { bytes, .. }) => {
                     // Mark as pending in cache before spawning async decode
@@ -122,9 +153,15 @@ pub mod browser {
                     // Spawn async browser decode — runs off main thread
                     wasm_bindgen_futures::spawn_local(async move {
                         let result = browser_decode_image(&bytes).await;
-                        let entry = match &result {
-                            Ok(image) => Poll::Ready(Ok(Arc::new(image.clone()))),
-                            Err(err) => Poll::Ready(Err(err.clone())),
+                        if let Err(ref err) = result {
+                            log::warn!(
+                                "[image_loader] decode failed for {}: {err}",
+                                &uri_owned[..uri_owned.len().min(60)]
+                            );
+                        }
+                        let entry = match result {
+                            Ok(image) => Poll::Ready(Ok(Arc::new(image))),
+                            Err(err) => Poll::Ready(Err(err)),
                         };
                         cache.lock().unwrap().insert(uri_owned, entry);
                         ctx.request_repaint();
@@ -159,6 +196,84 @@ pub mod browser {
                 })
                 .sum()
         }
+    }
+
+    /// Decode a data URL (base64 PNG/JPEG or URL-encoded SVG) using the browser's
+    /// native `Image()` element + canvas.
+    ///
+    /// This handles SVGs correctly (unlike `createImageBitmap` which rejects them
+    /// in many browsers). Works for all image formats the browser supports.
+    async fn browser_decode_data_url(data_url: &str) -> Result<ColorImage, String> {
+        use wasm_bindgen::closure::Closure;
+
+        // Create an HtmlImageElement and set src to the data URL
+        let img = web_sys::HtmlImageElement::new()
+            .map_err(|e| format!("Failed to create Image element: {e:?}"))?;
+
+        // Wait for the image to load via a Promise
+        let load_promise = js_sys::Promise::new(&mut |resolve, reject| {
+            let on_load = Closure::<dyn FnMut()>::new({
+                let resolve = resolve.clone();
+                move || {
+                    let _ = resolve.call0(&wasm_bindgen::JsValue::NULL);
+                }
+            });
+            let on_error = Closure::<dyn FnMut()>::new({
+                let reject = reject.clone();
+                move || {
+                    let _ = reject.call1(
+                        &wasm_bindgen::JsValue::NULL,
+                        &wasm_bindgen::JsValue::from_str("Image load failed"),
+                    );
+                }
+            });
+            img.set_onload(Some(on_load.as_ref().unchecked_ref()));
+            img.set_onerror(Some(on_error.as_ref().unchecked_ref()));
+            // Prevent closures from being dropped while the image loads
+            on_load.forget();
+            on_error.forget();
+        });
+
+        img.set_src(data_url);
+
+        JsFuture::from(load_promise)
+            .await
+            .map_err(|e| format!("Image load rejected: {e:?}"))?;
+
+        let width = img.natural_width();
+        let height = img.natural_height();
+
+        if width == 0 || height == 0 {
+            return Err("Image has zero dimensions".into());
+        }
+
+        // Render to OffscreenCanvas to extract RGBA pixels
+        let canvas = web_sys::OffscreenCanvas::new(width, height)
+            .map_err(|e| format!("Failed to create OffscreenCanvas: {e:?}"))?;
+
+        let ctx_obj = canvas
+            .get_context("2d")
+            .map_err(|e| format!("Failed to get 2d context: {e:?}"))?
+            .ok_or("get_context returned None")?;
+
+        let ctx_2d: web_sys::OffscreenCanvasRenderingContext2d = ctx_obj
+            .dyn_into()
+            .map_err(|_| "Context is not OffscreenCanvasRenderingContext2d".to_string())?;
+
+        ctx_2d
+            .draw_image_with_html_image_element(&img, 0.0, 0.0)
+            .map_err(|e| format!("drawImage failed: {e:?}"))?;
+
+        let image_data = ctx_2d
+            .get_image_data(0.0, 0.0, width as f64, height as f64)
+            .map_err(|e| format!("getImageData failed: {e:?}"))?;
+
+        let rgba = image_data.data().0;
+
+        Ok(ColorImage::from_rgba_unmultiplied(
+            [width as usize, height as usize],
+            &rgba,
+        ))
     }
 
     /// Decode image bytes using the browser's native `createImageBitmap` API.

@@ -47,8 +47,6 @@ pub enum WalletAction {
 
 /// Reusable wallet connection button widget.
 pub struct WalletButton {
-    /// Whether the wallet picker popup is open.
-    picker_open: bool,
     /// Theme colors.
     pub theme: WalletButtonTheme,
 }
@@ -56,17 +54,13 @@ pub struct WalletButton {
 impl WalletButton {
     pub fn new() -> Self {
         Self {
-            picker_open: false,
             theme: WalletButtonTheme::default(),
         }
     }
 
     /// Create with a custom theme.
     pub fn with_theme(theme: WalletButtonTheme) -> Self {
-        Self {
-            picker_open: false,
-            theme,
-        }
+        Self { theme }
     }
 
     /// Render the wallet button. Returns an action the caller must handle.
@@ -108,73 +102,70 @@ impl WalletButton {
         let mut action = WalletAction::None;
         let theme = &self.theme;
 
-        if !self.picker_open {
-            // Single "Connect Wallet" button
-            let btn = ui.button(
-                RichText::new("Connect Wallet")
-                    .color(theme.accent)
-                    .size(12.0),
-            );
-            if btn.clicked() {
-                if connector.available_wallets.len() == 1 {
-                    // Only one wallet — connect directly
-                    if let Some(provider) =
-                        WalletProvider::from_api_name(&connector.available_wallets[0].api_name)
-                    {
-                        action = WalletAction::Connect(provider);
-                    }
-                } else {
-                    self.picker_open = true;
-                }
-            }
-            if connector.available_wallets.is_empty() {
+        if connector.available_wallets.is_empty() {
+            ui.vertical_centered(|ui| {
                 ui.label(
                     RichText::new("No wallets detected")
                         .color(theme.text_muted)
-                        .size(9.0),
+                        .size(10.0),
+                );
+            });
+            return action;
+        }
+
+        // Single wallet — connect directly with one button
+        if connector.available_wallets.len() == 1 {
+            let info = &connector.available_wallets[0];
+            let btn = ui.add_sized(
+                [ui.available_width(), 32.0],
+                egui::Button::new(
+                    RichText::new(format!("Connect {}", info.name))
+                        .color(theme.accent)
+                        .size(12.0),
+                )
+                .corner_radius(4.0),
+            );
+            if btn.clicked() {
+                if let Some(provider) = WalletProvider::from_api_name(&info.api_name) {
+                    action = WalletAction::Connect(provider);
+                }
+            }
+            return action;
+        }
+
+        // Multiple wallets — show picker directly
+        for wallet_info in &connector.available_wallets {
+            let btn = ui.add_sized(
+                [ui.available_width(), 30.0],
+                egui::Button::new(
+                    RichText::new(&wallet_info.name)
+                        .color(theme.accent)
+                        .size(11.0),
+                )
+                .fill(Color32::TRANSPARENT)
+                .stroke(egui::Stroke::new(0.5, theme.text_muted))
+                .corner_radius(4.0),
+            );
+
+            // Paint icon inside the button rect (left side)
+            if let Some(ref icon_url) = wallet_info.icon {
+                let icon_size = 18.0;
+                let icon_rect = egui::Rect::from_min_size(
+                    btn.rect.left_center() - egui::vec2(-8.0, icon_size / 2.0),
+                    egui::vec2(icon_size, icon_size),
+                );
+                ui.put(
+                    icon_rect,
+                    egui::Image::new(icon_url.as_str())
+                        .fit_to_exact_size(egui::vec2(icon_size, icon_size))
+                        .corner_radius(2.0),
                 );
             }
-        } else {
-            // Wallet picker — show available wallets
-            ui.label(
-                RichText::new("Select wallet:")
-                    .color(theme.text_muted)
-                    .size(10.0),
-            );
-            ui.add_space(4.0);
 
-            for wallet_info in &connector.available_wallets {
-                ui.horizontal(|ui| {
-                    // Wallet icon (from CIP-30 base64 data URL)
-                    if let Some(ref icon_url) = wallet_info.icon {
-                        ui.add(
-                            egui::Image::new(icon_url.as_str())
-                                .fit_to_exact_size(egui::vec2(16.0, 16.0))
-                                .corner_radius(2.0),
-                        );
-                    }
-
-                    let btn = ui.button(
-                        RichText::new(&wallet_info.name)
-                            .color(theme.accent)
-                            .size(11.0),
-                    );
-                    if btn.clicked() {
-                        if let Some(provider) = WalletProvider::from_api_name(&wallet_info.api_name)
-                        {
-                            action = WalletAction::Connect(provider);
-                            self.picker_open = false;
-                        }
-                    }
-                });
-            }
-
-            ui.add_space(4.0);
-            if ui
-                .button(RichText::new("Cancel").color(theme.text_muted).size(10.0))
-                .clicked()
-            {
-                self.picker_open = false;
+            if btn.clicked() {
+                if let Some(provider) = WalletProvider::from_api_name(&wallet_info.api_name) {
+                    action = WalletAction::Connect(provider);
+                }
             }
         }
 
@@ -195,62 +186,74 @@ impl WalletButton {
 
     fn draw_connected(&mut self, ui: &mut egui::Ui, connector: &WalletConnector) -> WalletAction {
         let mut action = WalletAction::None;
-        let theme = &self.theme;
 
+        // Copy theme colors to avoid borrow conflicts
+        let text_muted = self.theme.text_muted;
+        let accent = self.theme.accent;
+
+        // Top row: icon + handle/address
         ui.horizontal(|ui| {
-            // Wallet icon
             if let Some(ref icon_url) = connector.connected_icon {
                 ui.add(
                     egui::Image::new(icon_url.as_str())
-                        .fit_to_exact_size(egui::vec2(16.0, 16.0))
-                        .corner_radius(2.0),
+                        .fit_to_exact_size(egui::vec2(20.0, 20.0))
+                        .corner_radius(3.0),
                 );
             }
 
-            // Provider name
-            if let Some(name) = connector.provider_name() {
-                ui.label(RichText::new(name).color(theme.text_primary).size(11.0));
+            if let Some(ref handle) = connector.handle {
+                ui.label(RichText::new(handle).color(accent).size(12.0).strong());
+            } else if let Some(ref stake) = connector.stake_address {
+                let truncated = if stake.len() > 20 {
+                    format!("{}...{}", &stake[..8], &stake[stake.len() - 6..])
+                } else {
+                    stake.clone()
+                };
+                ui.label(RichText::new(truncated).color(text_muted).size(11.0));
             }
+        });
 
-            // Handle or truncated stake
-            let display = connector
-                .handle
-                .as_deref()
-                .or(connector.stake_address.as_deref().map(|s| {
-                    // Truncate stake address inline — return full if short
-                    if s.len() > 20 {
-                        &s[..12]
-                    } else {
-                        s
-                    }
-                }))
-                .unwrap_or("");
-            if !display.is_empty() {
-                ui.label(RichText::new(display).color(theme.accent).size(10.0));
-            }
+        // Balance row
+        if let Some(ref balance) = connector.balance {
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                let ada = balance.ada();
+                let ada_display = if ada >= 1000.0 {
+                    format!("{:.0}", ada)
+                } else {
+                    format!("{:.2}", ada)
+                };
+                ui.label(
+                    RichText::new(format!("{ada_display} ADA"))
+                        .color(accent)
+                        .size(13.0)
+                        .strong(),
+                );
 
-            // Balance (right-aligned)
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                // Disconnect button
-                if ui
-                    .button(RichText::new("x").color(theme.text_muted).size(10.0))
-                    .on_hover_text("Disconnect")
-                    .clicked()
-                {
-                    action = WalletAction::Disconnect;
-                }
-
-                // ADA balance
-                if let Some(ref balance) = connector.balance {
-                    let ada = balance.lovelace / 1_000_000;
+                let tokens = balance.token_count();
+                if tokens > 0 {
                     ui.label(
-                        RichText::new(format!("{ada} ADA"))
-                            .color(theme.accent)
+                        RichText::new(format!("\u{2022} {tokens} tokens"))
+                            .color(text_muted)
                             .size(10.0),
                     );
                 }
             });
-        });
+        }
+
+        // Disconnect at bottom
+        ui.add_space(4.0);
+        if ui
+            .add(
+                egui::Button::new(RichText::new("Disconnect").color(text_muted).size(10.0))
+                    .fill(Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::new(0.5, text_muted))
+                    .corner_radius(3.0),
+            )
+            .clicked()
+        {
+            action = WalletAction::Disconnect;
+        }
 
         action
     }

@@ -37,6 +37,17 @@ impl WalletConnector {
     /// Create a new connector, detecting available wallets.
     pub fn new() -> Self {
         let available_wallets = wallet_core::detect_wallets_with_info();
+        for w in &available_wallets {
+            let icon_info = match &w.icon {
+                Some(url) => format!("len={}, prefix={}", url.len(), &url[..url.len().min(80)]),
+                None => "None".to_string(),
+            };
+            log::info!(
+                "[wallet] detected: {} ({}), icon: {icon_info}",
+                w.name,
+                w.api_name
+            );
+        }
         Self {
             available_wallets,
             connection_state: ConnectionState::Disconnected,

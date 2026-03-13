@@ -16,6 +16,7 @@ wasm-bindgen-futures = { workspace = true }
 web-sys = { workspace = true, features = [
     "Request", "RequestInit", "Response", "Headers", "Window",
     "Blob", "BlobPropertyBag",
+    "HtmlImageElement",
     "ImageBitmap",
     "OffscreenCanvas", "OffscreenCanvasRenderingContext2d",
     "ImageData",
