@@ -29,6 +29,8 @@ pub struct WalletConnector {
     pub balance: Option<WalletBalance>,
     /// CIP-30 API handle — stored after connect for later use (sign_tx, utxos, etc.)
     pub api: Option<WalletApi>,
+    /// Wallet icon data URL (base64 from CIP-30), set on connect for display.
+    pub connected_icon: Option<String>,
 }
 
 impl WalletConnector {
@@ -43,6 +45,7 @@ impl WalletConnector {
             handle: None,
             balance: None,
             api: None,
+            connected_icon: None,
         }
     }
 
@@ -77,6 +80,12 @@ impl WalletConnector {
             1 => wallet_core::Network::Mainnet,
             _ => wallet_core::Network::Preprod,
         };
+        // Look up the wallet icon from the available wallets list
+        self.connected_icon = self
+            .available_wallets
+            .iter()
+            .find(|w| WalletProvider::from_api_name(&w.api_name) == Some(result.provider))
+            .and_then(|w| w.icon.clone());
         self.connection_state = ConnectionState::Connected {
             provider: result.provider,
             address: result.address_hex.clone(),
@@ -106,6 +115,7 @@ impl WalletConnector {
         self.handle = None;
         self.balance = None;
         self.api = None;
+        self.connected_icon = None;
         wallet_core::clear_last_wallet();
     }
 
