@@ -9,6 +9,7 @@ use wasm_bindgen::prelude::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Story {
+    Distribution,
     Marquee,
     Buttons,
     WalletButton,
@@ -18,6 +19,7 @@ pub enum Story {
 impl Story {
     fn all() -> &'static [Self] {
         &[
+            Self::Distribution,
             Self::Marquee,
             Self::Buttons,
             Self::WalletButton,
@@ -27,6 +29,7 @@ impl Story {
 
     fn label(&self) -> &'static str {
         match self {
+            Self::Distribution => "Distribution",
             Self::Marquee => "Marquee",
             Self::Buttons => "Buttons",
             Self::WalletButton => "Wallet Button",
@@ -36,7 +39,7 @@ impl Story {
 
     fn category(&self) -> &'static str {
         match self {
-            Self::Marquee | Self::Buttons => "Primitives",
+            Self::Distribution | Self::Marquee | Self::Buttons => "Primitives",
             Self::WalletButton => "Wallet",
             Self::SwapModal => "Swap",
         }
@@ -44,6 +47,7 @@ impl Story {
 
     fn description(&self) -> &'static str {
         match self {
+            Self::Distribution => "Concentric orbital rings supply distribution chart",
             Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
             Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
             Self::WalletButton => "CIP-30 wallet connection button with state management",
@@ -79,6 +83,7 @@ fn configure_style(ctx: &egui::Context) {
 struct StorybookApp {
     current_story: Story,
     // Per-story state
+    distribution_chart: egui_widgets::DistributionChart,
     marquee: egui_widgets::Marquee,
     marquee_messages: Vec<egui_widgets::MarqueeItem>,
     wallet_btn: egui_widgets::WalletButton,
@@ -92,7 +97,8 @@ impl StorybookApp {
         configure_style(&cc.egui_ctx);
 
         Self {
-            current_story: Story::Marquee,
+            current_story: Story::Distribution,
+            distribution_chart: egui_widgets::DistributionChart::new(),
             marquee: egui_widgets::Marquee::default(),
             marquee_messages: vec![egui_widgets::MarqueeItem {
                 text: "Welcome to the egui Widgets Storybook".into(),
@@ -184,6 +190,9 @@ impl eframe::App for StorybookApp {
                 ui.add_space(8.0);
 
                 match self.current_story {
+                    Story::Distribution => {
+                        stories::distribution::show(ui, &mut self.distribution_chart)
+                    }
                     Story::Marquee => {
                         stories::marquee::show(ui, &mut self.marquee, &mut self.marquee_messages)
                     }
