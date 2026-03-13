@@ -28,8 +28,8 @@ jobs:
           shared-key: "test"
           cache-on-failure: true
 
-      - run: cargo check --all-targets
-      - run: cargo test --all-targets
+      - run: cargo check --workspace --exclude storybook-egui --all-targets
+      - run: cargo test --workspace --exclude storybook-egui --all-targets
 
   clippy:
     name: Clippy
@@ -48,7 +48,7 @@ jobs:
           shared-key: "clippy"
           cache-on-failure: true
 
-      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --workspace --exclude storybook-egui --all-targets -- -D warnings
 
   wasm-check:
     name: WASM Check

@@ -34,9 +34,6 @@ members = [
     "ui/workers/flow-demo",
     "ui/workers/flow-demo/frontend",
 ]
-# wasm32-only crates — excluded so native cargo check/clippy skip them.
-# Build explicitly with: cargo check -p storybook-egui --target wasm32-unknown-unknown
-exclude = ["ui/_storybook-egui"]
 resolver = "2"
 
 [workspace.package]
