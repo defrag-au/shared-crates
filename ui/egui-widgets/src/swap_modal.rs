@@ -12,6 +12,8 @@
 
 use egui::{Align, Color32, Layout, RichText};
 
+use crate::buttons::UiButtonExt;
+
 // ============================================================================
 // Config
 // ============================================================================
@@ -163,6 +165,13 @@ impl SwapModal {
         }
     }
 
+    /// Programmatically select a culture buy button by index.
+    pub fn select_culture_buy(&mut self, idx: usize) {
+        if idx < self.config.culture_buys.len() {
+            self.selection = Some(AmountSelection::CultureBuy(idx));
+        }
+    }
+
     /// Current input amount in lovelace, parsed from either culture button or text.
     pub fn input_lovelace(&self) -> Option<u64> {
         match self.selection {
@@ -288,7 +297,7 @@ impl SwapModal {
                             .min_size(egui::vec2(btn_width, 36.0))
                     };
 
-                    if ui.add(button).clicked() {
+                    if ui.add_clickable(button).clicked() {
                         self.selection = Some(AmountSelection::CultureBuy(idx));
                         self.input_text.clear();
                         action = SwapModalAction::AmountChanged(cb.ada_amount * 1_000_000);
@@ -310,7 +319,7 @@ impl SwapModal {
                         .min_size(egui::vec2(btn_width, 36.0))
                 };
 
-                if ui.add(custom_btn).clicked() {
+                if ui.add_clickable(custom_btn).clicked() {
                     self.selection = Some(AmountSelection::Custom);
                 }
             });
@@ -361,7 +370,7 @@ impl SwapModal {
                         .corner_radius(4.0)
                         .min_size(egui::vec2(36.0, 22.0))
                 };
-                if ui.add(btn).clicked() && self.slippage_bps != bps {
+                if ui.add_clickable(btn).clicked() && self.slippage_bps != bps {
                     self.slippage_bps = bps;
                     action = SwapModalAction::SlippageChanged(bps);
                 }
@@ -402,7 +411,7 @@ impl SwapModal {
             } else {
                 // Confirm button — disabled while loading or no preview
                 let can_confirm = preview_data.is_some() && self.input_lovelace().is_some();
-                let confirm_btn = ui.add_sized(
+                let confirm_btn = ui.add_clickable_sized(
                     [ui.available_width(), 36.0],
                     egui::Button::new(RichText::new("Confirm Swap").color(bg).strong().size(14.0))
                         .fill(if can_confirm {
@@ -544,7 +553,7 @@ impl SwapModal {
 
             ui.add_space(16.0);
             if ui
-                .add(
+                .add_clickable(
                     egui::Button::new(RichText::new("New Swap").color(theme.accent).size(12.0))
                         .corner_radius(4.0),
                 )
@@ -576,7 +585,7 @@ impl SwapModal {
 
             ui.add_space(12.0);
             if ui
-                .add(
+                .add_clickable(
                     egui::Button::new(RichText::new("Try Again").color(theme.accent).size(12.0))
                         .corner_radius(4.0),
                 )

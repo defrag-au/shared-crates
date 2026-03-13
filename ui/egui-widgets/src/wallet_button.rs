@@ -11,6 +11,7 @@
 
 use egui::{Color32, RichText};
 
+use super::buttons::UiButtonExt;
 use super::wallet::{ConnectionState, WalletConnector, WalletProvider};
 
 /// Theme colors for the wallet button widget.
@@ -116,7 +117,7 @@ impl WalletButton {
         // Single wallet — connect directly with one button
         if connector.available_wallets.len() == 1 {
             let info = &connector.available_wallets[0];
-            let btn = ui.add_sized(
+            let btn = ui.add_clickable_sized(
                 [ui.available_width(), 32.0],
                 egui::Button::new(
                     RichText::new(format!("Connect {}", info.name))
@@ -135,7 +136,7 @@ impl WalletButton {
 
         // Multiple wallets — show picker directly
         for wallet_info in &connector.available_wallets {
-            let btn = ui.add_sized(
+            let btn = ui.add_clickable_sized(
                 [ui.available_width(), 30.0],
                 egui::Button::new(
                     RichText::new(&wallet_info.name)
@@ -244,7 +245,7 @@ impl WalletButton {
         // Disconnect at bottom
         ui.add_space(4.0);
         if ui
-            .add(
+            .add_clickable(
                 egui::Button::new(RichText::new("Disconnect").color(text_muted).size(10.0))
                     .fill(Color32::TRANSPARENT)
                     .stroke(egui::Stroke::new(0.5, text_muted))
@@ -278,7 +279,9 @@ impl WalletButton {
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
-                    .button(RichText::new("Retry").color(theme.accent).size(10.0))
+                    .add_clickable(egui::Button::new(
+                        RichText::new("Retry").color(theme.accent).size(10.0),
+                    ))
                     .clicked()
                 {
                     // Try to reconnect with the first available wallet

@@ -101,6 +101,12 @@ export function extractKey(dataSignature) {
 export async function submitTx(api, txHex) {
     return await api.submitTx(txHex);
 }
+
+export function onWindowFocus(callback) {
+    if (typeof window !== 'undefined') {
+        window.addEventListener('focus', () => callback());
+    }
+}
 "#)]
 extern "C" {
     #[wasm_bindgen(js_name = detectWallets)]
@@ -156,6 +162,9 @@ extern "C" {
 
     #[wasm_bindgen(js_name = submitTx, catch)]
     pub async fn submit_tx_js(api: &JsValue, tx_hex: &str) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(js_name = onWindowFocus)]
+    pub fn on_window_focus_js(callback: &Closure<dyn Fn()>);
 }
 
 /// Detect available wallet extensions
@@ -295,4 +304,14 @@ impl WalletApi {
             .as_string()
             .ok_or_else(|| WalletError::SubmitFailed("Invalid submit response".into()))
     }
+}
+
+/// Register a callback that fires when the browser window regains focus.
+///
+/// The closure is leaked (lives for the lifetime of the page) since we only
+/// register once and need it to survive indefinitely.
+pub fn on_window_focus(callback: impl Fn() + 'static) {
+    let closure = Closure::wrap(Box::new(callback) as Box<dyn Fn()>);
+    on_window_focus_js(&closure);
+    closure.forget(); // leak — lives for the page lifetime
 }

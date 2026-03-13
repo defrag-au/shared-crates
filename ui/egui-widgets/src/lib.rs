@@ -1,3 +1,4 @@
+pub mod buttons;
 pub mod image_loader;
 pub mod listing_grid;
 pub mod screenshot;
@@ -7,6 +8,7 @@ pub mod wallet;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet_button;
 
+pub use buttons::UiButtonExt;
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use screenshot::ScreenshotButton;
 pub use swap_modal::{

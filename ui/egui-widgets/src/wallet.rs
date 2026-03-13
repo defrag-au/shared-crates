@@ -4,7 +4,7 @@
 //! utilities into a single state struct. Consumers drive async operations
 //! through their own message channels — this module never spawns tasks.
 
-pub use wallet_core::{ConnectionState, WalletApi, WalletInfo, WalletProvider};
+pub use wallet_core::{on_window_focus, ConnectionState, WalletApi, WalletInfo, WalletProvider};
 pub use wallet_pallas::{decode_balance, Address, WalletBalance};
 
 /// Result of a successful wallet connection (produced by async connect task).
