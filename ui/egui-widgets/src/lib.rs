@@ -5,6 +5,8 @@ pub mod listing_grid;
 pub mod marquee;
 pub mod screenshot;
 pub mod swap_modal;
+pub mod theme;
+pub mod utils;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
 #[cfg(target_arch = "wasm32")]
@@ -21,5 +23,7 @@ pub use swap_modal::{
     CultureBuy, SwapModal, SwapModalAction, SwapModalConfig, SwapModalTheme, SwapPreviewData,
     SwapProgress,
 };
+pub use theme::FontStrategy;
+pub use utils::{format_duration, format_number, section_heading, stat_card, truncate_hex};
 #[cfg(target_arch = "wasm32")]
 pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};
