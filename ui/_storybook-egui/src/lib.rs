@@ -26,6 +26,8 @@ mod app {
         SevenSegment,
         FlipCounter,
         AsyncData,
+        MeshPlayground,
+        PerspectiveText,
         WalletButton,
         SwapModal,
     }
@@ -42,6 +44,8 @@ mod app {
                 Self::SevenSegment,
                 Self::FlipCounter,
                 Self::AsyncData,
+                Self::MeshPlayground,
+                Self::PerspectiveText,
                 Self::WalletButton,
                 Self::SwapModal,
             ]
@@ -58,6 +62,8 @@ mod app {
                 Self::SevenSegment => "Seven Segment",
                 Self::FlipCounter => "Flip Counter",
                 Self::AsyncData => "Async Data",
+                Self::MeshPlayground => "Mesh Playground",
+                Self::PerspectiveText => "Perspective Text",
                 Self::WalletButton => "Wallet Button",
                 Self::SwapModal => "Swap Modal",
             }
@@ -71,7 +77,9 @@ mod app {
                 | Self::MetricCard
                 | Self::SevenSegment
                 | Self::FlipCounter
-                | Self::AsyncData => "Data Visualization",
+                | Self::AsyncData
+                | Self::MeshPlayground
+                | Self::PerspectiveText => "Data Visualization",
                 Self::WalletButton => "Wallet",
                 Self::SwapModal => "Swap",
             }
@@ -92,6 +100,12 @@ mod app {
                 Self::SevenSegment => "Retro LED-style 7-segment display with animated counter",
                 Self::FlipCounter => "Split-flap airport board style counter with flip animations",
                 Self::AsyncData => "egui_inbox driving widgets from simulated API polling",
+                Self::MeshPlayground => {
+                    "Raw Mesh API: quads, gradients, trapezoids, rotation, strips"
+                }
+                Self::PerspectiveText => {
+                    "Galley mesh vertex transforms: scale, wave, perspective flip"
+                }
                 Self::WalletButton => "CIP-30 wallet connection button with state management",
                 Self::SwapModal => "DEX swap modal with preview, culture buys, and progress states",
             }
@@ -133,6 +147,8 @@ mod app {
         seven_segment_state: stories::seven_segment::SevenSegmentState,
         flip_counter_state: stories::flip_counter::FlipCounterState,
         async_data_state: stories::async_data::AsyncDataState,
+        mesh_playground_state: stories::mesh_playground::MeshPlaygroundState,
+        perspective_text_state: stories::perspective_text::PerspectiveTextState,
         wallet_btn: egui_widgets::WalletButton,
         wallet_connector: egui_widgets::wallet::WalletConnector,
         swap_modal: egui_widgets::SwapModal,
@@ -156,6 +172,8 @@ mod app {
                 seven_segment_state: stories::seven_segment::SevenSegmentState::default(),
                 flip_counter_state: stories::flip_counter::FlipCounterState::default(),
                 async_data_state: stories::async_data::AsyncDataState::default(),
+                mesh_playground_state: stories::mesh_playground::MeshPlaygroundState::default(),
+                perspective_text_state: stories::perspective_text::PerspectiveTextState::default(),
                 wallet_btn: egui_widgets::WalletButton::new(),
                 wallet_connector: egui_widgets::wallet::WalletConnector::new(),
                 swap_modal: egui_widgets::SwapModal::new(egui_widgets::SwapModalConfig {
@@ -236,49 +254,60 @@ mod app {
             egui::CentralPanel::default()
                 .frame(egui::Frame::central_panel(&ctx.style()).fill(BG_MAIN))
                 .show(ctx, |ui| {
-                    ui.heading(self.current_story.label());
-                    ui.label(
-                        egui::RichText::new(self.current_story.description()).color(TEXT_MUTED),
-                    );
-                    ui.separator();
-                    ui.add_space(8.0);
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        ui.heading(self.current_story.label());
+                        ui.label(
+                            egui::RichText::new(self.current_story.description()).color(TEXT_MUTED),
+                        );
+                        ui.separator();
+                        ui.add_space(8.0);
 
-                    match self.current_story {
-                        Story::Distribution => {
-                            stories::distribution::show(ui, &mut self.distribution_chart)
+                        match self.current_story {
+                            Story::Distribution => {
+                                stories::distribution::show(ui, &mut self.distribution_chart)
+                            }
+                            Story::Marquee => stories::marquee::show(
+                                ui,
+                                &mut self.marquee,
+                                &mut self.marquee_messages,
+                            ),
+                            Story::Buttons => stories::buttons::show(ui),
+                            Story::ProgressBar => {
+                                stories::progress_bar::show(ui, &mut self.progress_bar_state)
+                            }
+                            Story::Sparkline => {
+                                stories::sparkline::show(ui, &mut self.sparkline_state)
+                            }
+                            Story::MetricCard => stories::metric_card::show(ui),
+                            Story::SevenSegment => {
+                                stories::seven_segment::show(ui, &mut self.seven_segment_state)
+                            }
+                            Story::FlipCounter => {
+                                stories::flip_counter::show(ui, &mut self.flip_counter_state)
+                            }
+                            Story::AsyncData => {
+                                stories::async_data::show(ui, &mut self.async_data_state)
+                            }
+                            Story::MeshPlayground => {
+                                stories::mesh_playground::show(ui, &mut self.mesh_playground_state)
+                            }
+                            Story::PerspectiveText => stories::perspective_text::show(
+                                ui,
+                                &mut self.perspective_text_state,
+                            ),
+                            Story::WalletButton => stories::wallet::show(
+                                ui,
+                                &mut self.wallet_btn,
+                                &mut self.wallet_connector,
+                            ),
+                            Story::SwapModal => stories::swap::show(
+                                ctx,
+                                ui,
+                                &mut self.swap_modal,
+                                &mut self.swap_progress,
+                            ),
                         }
-                        Story::Marquee => stories::marquee::show(
-                            ui,
-                            &mut self.marquee,
-                            &mut self.marquee_messages,
-                        ),
-                        Story::Buttons => stories::buttons::show(ui),
-                        Story::ProgressBar => {
-                            stories::progress_bar::show(ui, &mut self.progress_bar_state)
-                        }
-                        Story::Sparkline => stories::sparkline::show(ui, &mut self.sparkline_state),
-                        Story::MetricCard => stories::metric_card::show(ui),
-                        Story::SevenSegment => {
-                            stories::seven_segment::show(ui, &mut self.seven_segment_state)
-                        }
-                        Story::FlipCounter => {
-                            stories::flip_counter::show(ui, &mut self.flip_counter_state)
-                        }
-                        Story::AsyncData => {
-                            stories::async_data::show(ui, &mut self.async_data_state)
-                        }
-                        Story::WalletButton => stories::wallet::show(
-                            ui,
-                            &mut self.wallet_btn,
-                            &mut self.wallet_connector,
-                        ),
-                        Story::SwapModal => stories::swap::show(
-                            ctx,
-                            ui,
-                            &mut self.swap_modal,
-                            &mut self.swap_progress,
-                        ),
-                    }
+                    });
                 });
         }
     }
