@@ -418,10 +418,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
     let top_color = Color32::from_rgb(45, 45, 65);
     let bot_color = Color32::from_rgb(38, 38, 56);
     let divider_color = Color32::from_rgb(20, 20, 35);
+    let border_color = Color32::from_rgb(60, 60, 80);
     let text_color = Color32::from_rgb(220, 220, 235);
     let old_char = '3';
     let new_char = '4';
     let flap_font_size = card_h * 0.55;
+    let corner = 4.0;
 
     let top_rect = Rect::from_min_max(
         Pos2::new(card_left, card_top),
@@ -436,18 +438,33 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
         Pos2::new(card_left + card_w, card_bottom),
     );
 
-    // Ease-out quadratic
-    let ep = 1.0 - (1.0 - state.flap_progress) * (1.0 - state.flap_progress);
+    // Phase split at raw progress 0.5. Easing is applied within each phase.
+    let p = state.flap_progress;
 
-    // Draw static card background
-    painter.rect_filled(full_rect, 3.0, bot_color);
-    painter.rect_filled(top_rect, 0.0, top_color);
+    // During phase 1, the flap casts a shadow on the bottom card.
+    // Quadratic ramp so shadow kicks in later (past ~25% progress).
+    let bot_shadow = if p < 0.5 {
+        let t = p * 2.0; // 0→1 over phase 1
+        (30.0 * t * t) as u8
+    } else {
+        let t = (1.0 - p) * 2.0; // 1→0 over phase 2
+        (30.0 * t * t) as u8
+    };
+    let shadowed_bot = darken(bot_color, bot_shadow);
+
+    let border_stroke = egui::Stroke::new(1.0, border_color);
+
+    // Draw each half-card with its own rounded border
+    painter.rect_filled(bot_rect, corner, shadowed_bot);
+    painter.rect_stroke(bot_rect, corner, border_stroke, egui::StrokeKind::Inside);
+    painter.rect_filled(top_rect, corner, top_color);
+    painter.rect_stroke(top_rect, corner, border_stroke, egui::StrokeKind::Inside);
 
     // Font texture UV normalizer
     let font_tex_size = ui.ctx().fonts(|f| f.font_image_size());
     let uv_norm = Vec2::new(1.0 / font_tex_size[0] as f32, 1.0 / font_tex_size[1] as f32);
 
-    if ep < 0.5 {
+    if p < 0.5 {
         // Phase 1: top flap folds forward toward viewer
         // Base: old digit bottom, new digit top (revealed behind flap)
         draw_clipped_text(
@@ -467,7 +484,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
             text_color,
         );
 
-        let angle = ep * 2.0 * std::f32::consts::FRAC_PI_2;
+        // Ease within phase: 0→1 over the first half of progress
+        let phase_t = p * 2.0;
+        let eased = 1.0 - (1.0 - phase_t) * (1.0 - phase_t);
+        let angle = eased * std::f32::consts::FRAC_PI_2;
         let cos_a = angle.cos();
         let flip_h = (half_h * cos_a).round();
 
@@ -499,6 +519,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
                 text_color,
                 &uv_norm,
             );
+            stroke_trapezoid(&painter, &corners, border_stroke);
         }
     } else {
         // Phase 2: bottom flap unfolds downward from hinge
@@ -520,7 +541,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
             text_color,
         );
 
-        let angle = (ep - 0.5) * 2.0 * std::f32::consts::FRAC_PI_2;
+        // Ease within phase: 0→1 over the second half of progress
+        let phase_t = (p - 0.5) * 2.0;
+        let eased = 1.0 - (1.0 - phase_t) * (1.0 - phase_t);
+        let angle = eased * std::f32::consts::FRAC_PI_2;
         let cos_a = angle.sin(); // 0→1
         let flip_h = (half_h * cos_a).round();
 
@@ -552,6 +576,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
                 text_color,
                 &uv_norm,
             );
+            stroke_trapezoid(&painter, &corners, border_stroke);
         }
     }
 
@@ -565,13 +590,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
     );
 
     // Phase indicator
-    let phase_text = if ep < 0.5 {
-        format!("Phase 1: top flap folding ({:.0}°)", ep * 2.0 * 90.0)
+    let phase_text = if p < 0.5 {
+        let phase_t = p * 2.0;
+        let eased = 1.0 - (1.0 - phase_t) * (1.0 - phase_t);
+        format!("Phase 1: top flap folding ({:.0}°)", eased * 90.0)
     } else {
-        format!(
-            "Phase 2: bottom flap unfolding ({:.0}°)",
-            (ep - 0.5) * 2.0 * 90.0
-        )
+        let phase_t = (p - 0.5) * 2.0;
+        let eased = 1.0 - (1.0 - phase_t) * (1.0 - phase_t);
+        format!("Phase 2: bottom flap unfolding ({:.0}°)", eased * 90.0)
     };
     ui.label(egui::RichText::new(phase_text).color(TEXT_MUTED).small());
 
@@ -600,6 +626,13 @@ fn bilinear(tl: Pos2, tr: Pos2, br: Pos2, bl: Pos2, u: f32, v: f32) -> Pos2 {
     let bot = Pos2::new(bl.x + (br.x - bl.x) * u, bl.y + (br.y - bl.y) * u);
     // Vertical interpolation
     Pos2::new(top.x + (bot.x - top.x) * v, top.y + (bot.y - top.y) * v)
+}
+
+/// Stroke the outline of a trapezoid defined by 4 corners [TL, TR, BR, BL].
+fn stroke_trapezoid(painter: &egui::Painter, corners: &[Pos2; 4], stroke: egui::Stroke) {
+    for i in 0..4 {
+        painter.line_segment([corners[i], corners[(i + 1) % 4]], stroke);
+    }
 }
 
 /// Simple HSV→RGB (saturation=1, value=1).
