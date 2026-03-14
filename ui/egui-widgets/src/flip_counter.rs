@@ -68,7 +68,7 @@ impl FlipCounter {
             card_height: 60.0,
             card_width: 40.0,
             card_gap: 4.0,
-            flip_speed: 6.0,
+            flip_speed: 3.0,
             divider_color: Color32::from_rgb(20, 20, 35),
         }
     }
@@ -176,26 +176,36 @@ impl FlipCounter {
                 full_rect.right_bottom(),
             );
 
+            // Draw the card background as a single solid rect so there are
+            // no anti-aliased rounded-corner seams at the hinge line.
+            // The top half is slightly lighter; we paint the whole card in
+            // the bottom colour then overlay the top half on top.
+            painter.rect_filled(full_rect, corner, self.card_color_bottom);
+            painter.rect_filled(top_rect, 0.0, self.card_color);
+
             if digit.is_animating() {
                 let p = digit.progress;
                 let ep = 1.0 - (1.0 - p) * (1.0 - p); // ease-out quadratic
 
+                // The bottom half always shows the OLD digit as its base text
+                // throughout the entire animation. Only the overlay in phase 2
+                // progressively reveals the new digit on the bottom.
+                self.draw_clipped_char(&painter, full_rect, bot_rect, font_size, digit.previous);
+
                 if ep < 0.5 {
-                    // Phase 1: old top flips away, revealing new digit behind
-
-                    // Background: new digit (static)
-                    painter.rect_filled(top_rect, corner, self.card_color);
-                    painter.rect_filled(bot_rect, corner, self.card_color_bottom);
+                    // Phase 1: old top flap shrinks toward hinge, revealing
+                    // new digit on the top half underneath.
+                    //
+                    // Base top text: new digit (revealed as flap shrinks).
+                    // Overlay: old top half shrinking from full height to zero.
                     self.draw_clipped_char(&painter, full_rect, top_rect, font_size, digit.current);
-                    self.draw_clipped_char(&painter, full_rect, bot_rect, font_size, digit.current);
 
-                    // Overlay: old top half shrinking from bottom edge upward
                     let flip_frac = 1.0 - ep * 2.0; // 1.0 → 0.0
-                    if flip_frac > 0.02 {
-                        let flip_h = half_h * flip_frac;
+                    let flip_h = (half_h * flip_frac).round();
+                    if flip_h >= 1.0 {
                         let flip_rect =
                             Rect::from_min_size(full_rect.left_top(), Vec2::new(slot_w, flip_h));
-                        painter.rect_filled(flip_rect, corner, self.card_color);
+                        painter.rect_filled(flip_rect, 0.0, self.card_color);
                         self.draw_clipped_char(
                             &painter,
                             full_rect,
@@ -205,30 +215,21 @@ impl FlipCounter {
                         );
                     }
                 } else {
-                    // Phase 2: new bottom half grows from hinge line downward
-
-                    // Background: new top + old bottom
-                    painter.rect_filled(top_rect, corner, self.card_color);
+                    // Phase 2: new bottom flap grows from hinge downward,
+                    // covering the old digit on the bottom half.
+                    //
+                    // Top text: new digit (already fully revealed).
+                    // Overlay: new bottom half growing from zero to full.
                     self.draw_clipped_char(&painter, full_rect, top_rect, font_size, digit.current);
 
-                    painter.rect_filled(bot_rect, corner, self.card_color_bottom);
-                    self.draw_clipped_char(
-                        &painter,
-                        full_rect,
-                        bot_rect,
-                        font_size,
-                        digit.previous,
-                    );
-
-                    // Overlay: new bottom growing down
                     let flip_frac = (ep - 0.5) * 2.0; // 0.0 → 1.0
-                    let flip_h = half_h * flip_frac;
-                    if flip_h > 1.0 {
+                    let flip_h = (half_h * flip_frac).round();
+                    if flip_h >= 1.0 {
                         let flip_rect = Rect::from_min_size(
                             Pos2::new(card_x, rect.top() + half_h),
                             Vec2::new(slot_w, flip_h),
                         );
-                        painter.rect_filled(flip_rect, corner, self.card_color_bottom);
+                        painter.rect_filled(flip_rect, 0.0, self.card_color_bottom);
                         self.draw_clipped_char(
                             &painter,
                             full_rect,
@@ -240,8 +241,6 @@ impl FlipCounter {
                 }
             } else {
                 // Static: both halves show current digit
-                painter.rect_filled(top_rect, corner, self.card_color);
-                painter.rect_filled(bot_rect, corner, self.card_color_bottom);
                 self.draw_clipped_char(&painter, full_rect, top_rect, font_size, digit.current);
                 self.draw_clipped_char(&painter, full_rect, bot_rect, font_size, digit.current);
             }
