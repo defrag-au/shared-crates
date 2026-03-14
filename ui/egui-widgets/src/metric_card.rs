@@ -181,7 +181,7 @@ impl<'a> MetricCard<'a> {
                             }
                         }
 
-                        ui.label(RichText::new(&*delta).color(color).size(11.0));
+                        ui.label(RichText::new(delta).color(color).size(11.0));
                     });
                 }
 

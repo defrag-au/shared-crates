@@ -1,8 +1,10 @@
 pub mod buttons;
 pub mod distribution;
+pub mod flip_counter;
 pub mod marquee;
 pub mod metric_card;
 pub mod progress_bar;
+pub mod seven_segment;
 pub mod sparkline;
 pub mod swap;
 #[cfg(target_arch = "wasm32")]
