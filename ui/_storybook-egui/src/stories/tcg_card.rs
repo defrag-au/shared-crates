@@ -14,6 +14,9 @@ use crate::{ACCENT, TEXT_MUTED};
 
 const WHITE_UV: Pos2 = Pos2::new(0.0, 0.0);
 
+/// IIIF test image: Pirate758 NFT
+const IIIF_ART_URL: &str = "https://iiif.hodlcroft.com/iiif/3/b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6:506972617465373538/full/400,/0/default.jpg";
+
 pub struct TcgCardState {
     // Demo 1: Card Frame
     pub card_width: f32,
@@ -133,6 +136,72 @@ fn hue_to_rgb(hue: f32) -> Color32 {
     }
 }
 
+/// Draw a textured mesh quad from 4 corners [TL, TR, BR, BL] with a texture.
+/// UV coordinates map the full texture (0,0)→(1,1).
+fn draw_textured_quad(
+    painter: &egui::Painter,
+    corners: [Pos2; 4],
+    texture_id: egui::TextureId,
+    tint: Color32,
+) {
+    let uvs = [
+        Pos2::new(0.0, 0.0), // TL
+        Pos2::new(1.0, 0.0), // TR
+        Pos2::new(1.0, 1.0), // BR
+        Pos2::new(0.0, 1.0), // BL
+    ];
+    let mut mesh = Mesh::with_texture(texture_id);
+    for (i, &pos) in corners.iter().enumerate() {
+        mesh.vertices.push(Vertex {
+            pos,
+            uv: uvs[i],
+            color: tint,
+        });
+    }
+    mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+/// Draw a textured mesh quad subdivided into a grid for perspective-correct mapping.
+/// This avoids the affine distortion that a single quad would produce on tilted cards.
+fn draw_textured_quad_subdivided(
+    painter: &egui::Painter,
+    corners: [Pos2; 4],
+    texture_id: egui::TextureId,
+    tint: Color32,
+    subdivisions: u32,
+) {
+    let cols = subdivisions;
+    let rows = subdivisions;
+    let mut mesh = Mesh::with_texture(texture_id);
+
+    for row in 0..=rows {
+        for col in 0..=cols {
+            let u = col as f32 / cols as f32;
+            let v = row as f32 / rows as f32;
+            let pos = bilinear(corners, u, v);
+            mesh.vertices.push(Vertex {
+                pos,
+                uv: Pos2::new(u, v),
+                color: tint,
+            });
+        }
+    }
+
+    let stride = cols + 1;
+    for row in 0..rows {
+        for col in 0..cols {
+            let tl = row * stride + col;
+            let tr = tl + 1;
+            let bl = tl + stride;
+            let br = bl + 1;
+            mesh.indices.extend_from_slice(&[tl, tr, bl, bl, tr, br]);
+        }
+    }
+
+    painter.add(egui::Shape::mesh(mesh));
+}
+
 /// Draw a solid-colour mesh quad from 4 corners [TL, TR, BR, BL].
 fn draw_quad(painter: &egui::Painter, corners: [Pos2; 4], color: Color32) {
     let mut mesh = Mesh::default();
@@ -217,6 +286,20 @@ impl CardLayout {
     }
 }
 
+/// Try to load the IIIF art texture. Returns the TextureId if ready.
+fn try_load_art_texture(ctx: &egui::Context) -> Option<egui::TextureId> {
+    ctx.try_load_texture(
+        IIIF_ART_URL,
+        egui::TextureOptions::LINEAR,
+        egui::load::SizeHint::default(),
+    )
+    .ok()
+    .and_then(|poll| match poll {
+        egui::load::TexturePoll::Ready { texture } => Some(texture.id),
+        _ => None,
+    })
+}
+
 /// Draw the card frame regions using painter rects (flat, no perspective).
 fn draw_card_frame_flat(
     painter: &egui::Painter,
@@ -224,6 +307,7 @@ fn draw_card_frame_flat(
     rarity: usize,
     border_width: f32,
     corner_radius: f32,
+    art_texture: Option<egui::TextureId>,
 ) {
     let rarity_col = rarity_color(rarity);
     let card_bg = Color32::from_rgb(30, 30, 48);
@@ -257,14 +341,32 @@ fn draw_card_frame_flat(
         se: inner_r,
     };
     painter.rect_filled(layout.title, top_rounding, title_bg);
-    painter.rect_filled(layout.art, 0.0, art_bg);
+
+    // Art region: textured image if loaded, solid colour fallback
+    if let Some(tex_id) = art_texture {
+        let art_corners = [
+            layout.art.left_top(),
+            layout.art.right_top(),
+            layout.art.right_bottom(),
+            layout.art.left_bottom(),
+        ];
+        draw_textured_quad(painter, art_corners, tex_id, Color32::WHITE);
+    } else {
+        painter.rect_filled(layout.art, 0.0, art_bg);
+    }
+
     painter.rect_filled(layout.type_bar, 0.0, type_bar_bg);
     painter.rect_filled(layout.text_box, 0.0, text_bg);
     painter.rect_filled(layout.stats, bot_rounding, stats_bg);
 }
 
 /// Draw text labels within card regions using clip rects (flat, no perspective).
-fn draw_card_labels_flat(painter: &egui::Painter, layout: &CardLayout, rarity: usize) {
+fn draw_card_labels_flat(
+    painter: &egui::Painter,
+    layout: &CardLayout,
+    rarity: usize,
+    has_art_texture: bool,
+) {
     let text_color = Color32::from_rgb(220, 220, 235);
     let muted_color = Color32::from_rgb(140, 140, 160);
 
@@ -280,17 +382,19 @@ fn draw_card_labels_flat(painter: &egui::Painter, layout: &CardLayout, rarity: u
     );
     painter.galley(title_pos, title_galley, Color32::TRANSPARENT);
 
-    // Art placeholder text
-    let art_galley = painter.layout_no_wrap(
-        "[ Art ]".to_string(),
-        egui::FontId::new(14.0, egui::FontFamily::Monospace),
-        muted_color,
-    );
-    let art_pos = Pos2::new(
-        layout.art.center().x - art_galley.size().x / 2.0,
-        layout.art.center().y - art_galley.size().y / 2.0,
-    );
-    painter.galley(art_pos, art_galley, Color32::TRANSPARENT);
+    // Art placeholder text (only when no image loaded)
+    if !has_art_texture {
+        let art_galley = painter.layout_no_wrap(
+            "[ Art ]".to_string(),
+            egui::FontId::new(14.0, egui::FontFamily::Monospace),
+            muted_color,
+        );
+        let art_pos = Pos2::new(
+            layout.art.center().x - art_galley.size().x / 2.0,
+            layout.art.center().y - art_galley.size().y / 2.0,
+        );
+        painter.galley(art_pos, art_galley, Color32::TRANSPARENT);
+    }
 
     // Type line
     let type_text = RARITIES.get(rarity).map_or("Common", |r| r.0);
@@ -362,6 +466,7 @@ fn draw_card_frame_perspective(
     layout: &CardLayout,
     corners: [Pos2; 4],
     rarity: usize,
+    art_texture: Option<egui::TextureId>,
 ) {
     let rarity_col = rarity_color(rarity);
     let card_bg = Color32::from_rgb(30, 30, 48);
@@ -397,7 +502,15 @@ fn draw_card_frame_perspective(
 
     // Regions
     draw_quad(painter, map_rect(layout.title), title_bg);
-    draw_quad(painter, map_rect(layout.art), art_bg);
+
+    // Art region: textured image mapped into perspective, or solid fallback
+    let art_corners = map_rect(layout.art);
+    if let Some(tex_id) = art_texture {
+        draw_textured_quad_subdivided(painter, art_corners, tex_id, Color32::WHITE, 8);
+    } else {
+        draw_quad(painter, art_corners, art_bg);
+    }
+
     draw_quad(painter, map_rect(layout.type_bar), type_bar_bg);
     draw_quad(painter, map_rect(layout.text_box), text_bg);
     draw_quad(painter, map_rect(layout.stats), stats_bg);
@@ -410,6 +523,7 @@ fn draw_card_text_perspective(
     layout: &CardLayout,
     corners: [Pos2; 4],
     rarity: usize,
+    has_art_texture: bool,
 ) {
     let text_color = Color32::from_rgb(220, 220, 235);
     let muted_color = Color32::from_rgb(140, 140, 160);
@@ -465,17 +579,19 @@ fn draw_card_text_perspective(
     );
     draw_mapped(&title_galley, title_pos);
 
-    // Art placeholder
-    let art_galley = painter.layout_no_wrap(
-        "[ Art ]".to_string(),
-        egui::FontId::new(14.0, egui::FontFamily::Monospace),
-        muted_color,
-    );
-    let art_pos = Pos2::new(
-        layout.art.center().x - art_galley.size().x / 2.0,
-        layout.art.center().y - art_galley.size().y / 2.0,
-    );
-    draw_mapped(&art_galley, art_pos);
+    // Art placeholder (only when no image loaded)
+    if !has_art_texture {
+        let art_galley = painter.layout_no_wrap(
+            "[ Art ]".to_string(),
+            egui::FontId::new(14.0, egui::FontFamily::Monospace),
+            muted_color,
+        );
+        let art_pos = Pos2::new(
+            layout.art.center().x - art_galley.size().x / 2.0,
+            layout.art.center().y - art_galley.size().y / 2.0,
+        );
+        draw_mapped(&art_galley, art_pos);
+    }
 
     // Type line
     let type_text = RARITIES.get(rarity).map_or("Common", |r| r.0);
@@ -515,8 +631,16 @@ fn draw_card_text_perspective(
 
 /// Draw a holographic overlay on top of the card.
 ///
-/// The overlay is a semi-transparent mesh with hue-shifted vertex colours
-/// that respond to `mouse_u` and `mouse_v` (normalised mouse position over the card).
+/// Uses physics-inspired techniques:
+/// - **Specular streak**: A tight bright band that sweeps across the card based on
+///   the angle between each surface point and the "light source" (mouse position).
+///   Simulates light reflecting off a foil surface.
+/// - **Iridescence**: Rainbow hue shift driven by the dot product of the view
+///   direction approximation and the surface gradient — colour only appears near
+///   the specular streak, not as a uniform wash.
+/// - **Fresnel edge glow**: Subtle brightening at card edges where the surface
+///   angle is most oblique relative to the viewer.
+#[allow(clippy::too_many_arguments)]
 fn draw_holo_overlay(
     painter: &egui::Painter,
     corners: [Pos2; 4],
@@ -527,11 +651,16 @@ fn draw_holo_overlay(
     shimmer_intensity: f32,
     overlay_opacity: f32,
 ) {
-    // Subdivide the card into a grid for smooth colour interpolation
-    let cols = 8_u32;
-    let rows = 12_u32;
+    let cols = 12_u32;
+    let rows = 18_u32;
 
-    let base_hue = mouse_u * 360.0;
+    // "Light direction" from mouse position — each vertex computes a dot product
+    // against this to determine specular intensity.
+    let light_x = mouse_u - 0.5;
+    let light_y = mouse_v - 0.5;
+    let light_len = (light_x * light_x + light_y * light_y).sqrt().max(0.001);
+    let light_dx = light_x / light_len;
+    let light_dy = light_y / light_len;
 
     let mut mesh = Mesh::default();
 
@@ -541,25 +670,39 @@ fn draw_holo_overlay(
             let v = row as f32 / rows as f32;
             let pos = bilinear(corners, u, v);
 
-            // Hue varies across the card surface
-            let hue = base_hue + (u - 0.5) * hue_range + (v - 0.5) * hue_range * 0.5;
-            let mut color = hue_to_rgb(hue);
+            // Vector from this point to the "light source" (mouse)
+            let dx = u - mouse_u;
+            let dy = v - mouse_v;
 
-            // Shimmer band: bright strip that follows the mouse
-            let dist_to_mouse = ((u - mouse_u).powi(2) + (v - mouse_v).powi(2)).sqrt();
-            let shimmer = if dist_to_mouse < shimmer_width {
-                let t = 1.0 - dist_to_mouse / shimmer_width;
-                t * t * shimmer_intensity
-            } else {
-                0.0
-            };
+            // Specular: dot product of surface-to-light with light direction.
+            // This creates a streak perpendicular to the light direction.
+            let dot = dx * light_dx + dy * light_dy;
 
-            // Combine: base overlay + shimmer boost
-            let alpha = ((overlay_opacity + shimmer) * 255.0).min(255.0) as u8;
-            color = Color32::from_rgba_premultiplied(
-                (color.r() as f32 * alpha as f32 / 255.0) as u8,
-                (color.g() as f32 * alpha as f32 / 255.0) as u8,
-                (color.b() as f32 * alpha as f32 / 255.0) as u8,
+            // The streak is strongest where dot ≈ 0 (perpendicular to light dir).
+            // Use a gaussian-like falloff for a tight, natural-looking highlight.
+            let streak_dist = dot.abs();
+            let streak = (-streak_dist * streak_dist / (shimmer_width * shimmer_width * 0.5)).exp()
+                * shimmer_intensity;
+
+            // Cross product gives the position along the streak — drives iridescence.
+            let cross = dx * light_dy - dy * light_dx;
+            let hue = 200.0 + cross * hue_range * 2.0;
+
+            // Fresnel-like edge glow: brighter near card edges.
+            let edge_u = (0.5 - (u - 0.5).abs()) * 2.0; // 0 at edges, 1 at center
+            let edge_v = (0.5 - (v - 0.5).abs()) * 2.0;
+            let fresnel = 1.0 - (edge_u.min(edge_v)).clamp(0.0, 1.0);
+            let fresnel_boost = fresnel * fresnel * overlay_opacity * 0.5;
+
+            // Combine: iridescent colour at specular streak + subtle fresnel
+            let intensity = (streak + fresnel_boost).clamp(0.0, 1.0);
+
+            let rainbow = hue_to_rgb(hue);
+            let alpha = (intensity * 255.0) as u8;
+            let color = Color32::from_rgba_premultiplied(
+                (rainbow.r() as f32 * intensity) as u8,
+                (rainbow.g() as f32 * intensity) as u8,
+                (rainbow.b() as f32 * intensity) as u8,
                 alpha,
             );
 
@@ -637,6 +780,9 @@ fn draw_card_back(painter: &egui::Painter, corners: [Pos2; 4], rarity: usize) {
 pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     let dt = ui.input(|i| i.stable_dt).min(0.1);
 
+    // Try to load the IIIF art texture (cached after first load)
+    let art_texture = try_load_art_texture(ui.ctx());
+
     // --- 1. Card Frame ---
     ui.label(egui::RichText::new("1. Card Frame").color(ACCENT).strong());
     ui.label(
@@ -691,8 +837,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
         state.rarity,
         state.border_width,
         state.corner_radius,
+        art_texture,
     );
-    draw_card_labels_flat(&painter, &layout, state.rarity);
+    draw_card_labels_flat(&painter, &layout, state.rarity, art_texture.is_some());
 
     ui.add_space(16.0);
 
@@ -771,8 +918,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
         );
     }
 
-    draw_card_frame_perspective(&painter2, &layout2, corners2, state.rarity);
-    draw_card_text_perspective(ui, &painter2, &layout2, corners2, state.rarity);
+    draw_card_frame_perspective(&painter2, &layout2, corners2, state.rarity, art_texture);
+    draw_card_text_perspective(
+        ui,
+        &painter2,
+        &layout2,
+        corners2,
+        state.rarity,
+        art_texture.is_some(),
+    );
 
     ui.add_space(16.0);
 
@@ -827,8 +981,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
         state.rarity,
         state.border_width,
         state.corner_radius,
+        art_texture,
     );
-    draw_card_labels_flat(&painter3, &layout3, state.rarity);
+    draw_card_labels_flat(&painter3, &layout3, state.rarity, art_texture.is_some());
 
     // Mouse UV for holo
     let (mouse_u, mouse_v) = if let Some(hover_pos) = response3.hover_pos() {
@@ -861,8 +1016,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     );
     ui.label(
         egui::RichText::new(
-            "Full 180° horizontal flip. Phase 1: card narrows to edge-on. \
-             Phase 2: card widens showing back face. Click to flip.",
+            "Physics-based 180° flip. The card lifts off the surface during rotation, \
+             peaks at edge-on, and settles back. A thin edge is visible at the midpoint. \
+             Click the card or button to flip.",
         )
         .color(TEXT_MUTED)
         .small(),
@@ -898,8 +1054,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     }
     ui.add_space(4.0);
 
+    // Extra vertical room for the lift effect
+    let lift_headroom = 20.0;
     let (rect4, response4) = ui.allocate_exact_size(
-        Vec2::new(state.card_width + 40.0, state.card_height + 20.0),
+        Vec2::new(
+            state.card_width + 40.0,
+            state.card_height + 20.0 + lift_headroom,
+        ),
         egui::Sense::click(),
     );
     let painter4 = ui.painter_at(rect4);
@@ -909,44 +1070,88 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
         state.flip_progress = 0.0;
     }
 
+    let p = state.flip_progress;
+
+    // Rotation angle: 0 → π using cosine for width (cos(0)=1, cos(π/2)=0, cos(π)=-1)
+    // Smooth ease: slight slow-down through the middle where the edge is visible
+    let angle = p * std::f32::consts::PI;
+    let cos_a = angle.cos(); // 1.0 → 0.0 → -1.0
+    let width_fraction = cos_a.abs(); // 1.0 → 0.0 → 1.0
+
+    // Which face is showing: front when cos > 0, back when cos < 0
+    let showing_front = if state.showing_back {
+        cos_a < 0.0
+    } else {
+        cos_a >= 0.0
+    };
+
+    // Vertical lift: sin curve peaks at midpoint (edge-on)
+    let lift = angle.sin() * lift_headroom;
+
+    // Card center shifted up by lift
+    let base_center = Pos2::new(
+        rect4.center().x,
+        rect4.center().y + lift_headroom / 2.0, // base position (bottom of headroom)
+    );
+    let lifted_center = Pos2::new(base_center.x, base_center.y - lift);
+
     let card_rect4 = Rect::from_center_size(
-        rect4.center(),
+        lifted_center,
         Vec2::new(state.card_width, state.card_height),
     );
     let layout4 = CardLayout::compute(card_rect4, state.border_width, state.art_ratio);
 
-    let p = state.flip_progress;
-    // Ease-out quadratic within each phase
-    let (showing_front, width_fraction) = if p < 0.5 {
-        // Phase 1: front face narrowing
-        let phase_t = p * 2.0;
-        let eased = 1.0 - (1.0 - phase_t) * (1.0 - phase_t);
-        let w = 1.0 - eased; // 1.0 → 0.0
-        (!state.showing_back, w)
-    } else {
-        // Phase 2: back face widening
-        let phase_t = (p - 0.5) * 2.0;
-        let eased = 1.0 - (1.0 - phase_t) * (1.0 - phase_t);
-        (state.showing_back, eased) // 0.0 → 1.0
-    };
+    // Shadow on the "table" — grows and softens as card lifts
+    let shadow_alpha = (0.25 * (1.0 + lift / lift_headroom)) * 80.0;
+    let shadow_spread = lift * 0.3;
+    let shadow_rect = Rect::from_center_size(
+        Pos2::new(base_center.x, base_center.y + 4.0 + shadow_spread * 0.5),
+        Vec2::new(
+            state.card_width * width_fraction + shadow_spread * 2.0,
+            state.card_height + shadow_spread,
+        ),
+    );
+    painter4.rect_filled(
+        shadow_rect,
+        8.0,
+        Color32::from_rgba_premultiplied(0, 0, 0, shadow_alpha as u8),
+    );
 
     let cx = card_rect4.center().x;
     let half_w = state.card_width / 2.0 * width_fraction;
-    let flip_corners = [
-        Pos2::new(cx - half_w, card_rect4.top()),
-        Pos2::new(cx + half_w, card_rect4.top()),
-        Pos2::new(cx + half_w, card_rect4.bottom()),
-        Pos2::new(cx - half_w, card_rect4.bottom()),
-    ];
+
+    // Card edge thickness visible at edge-on (2px sliver)
+    let edge_thickness = 2.0;
+    let edge_visible = (1.0 - width_fraction) * edge_thickness;
 
     if width_fraction > 0.01 {
+        let flip_corners = [
+            Pos2::new(cx - half_w, card_rect4.top()),
+            Pos2::new(cx + half_w, card_rect4.top()),
+            Pos2::new(cx + half_w, card_rect4.bottom()),
+            Pos2::new(cx - half_w, card_rect4.bottom()),
+        ];
+
         if showing_front {
-            draw_card_frame_perspective(&painter4, &layout4, flip_corners, state.rarity);
-            draw_card_text_perspective(ui, &painter4, &layout4, flip_corners, state.rarity);
+            draw_card_frame_perspective(
+                &painter4,
+                &layout4,
+                flip_corners,
+                state.rarity,
+                art_texture,
+            );
+            draw_card_text_perspective(
+                ui,
+                &painter4,
+                &layout4,
+                flip_corners,
+                state.rarity,
+                art_texture.is_some(),
+            );
         } else {
             draw_card_back(&painter4, flip_corners, state.rarity);
         }
-        // Border around the flipped card
+
         let border_col = rarity_color(state.rarity);
         stroke_quad(
             &painter4,
@@ -955,12 +1160,24 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
         );
     }
 
+    // Draw card edge (thin strip) when near edge-on
+    if edge_visible > 0.5 {
+        let edge_color = Color32::from_rgb(60, 60, 80);
+        let edge_corners = [
+            Pos2::new(cx + half_w, card_rect4.top()),
+            Pos2::new(cx + half_w + edge_visible, card_rect4.top()),
+            Pos2::new(cx + half_w + edge_visible, card_rect4.bottom()),
+            Pos2::new(cx + half_w, card_rect4.bottom()),
+        ];
+        draw_quad(&painter4, edge_corners, edge_color);
+    }
+
     // Phase indicator
     let face_label = if showing_front { "Front" } else { "Back" };
     let face_state = if state.showing_back { "Back" } else { "Front" };
     ui.label(
         egui::RichText::new(format!(
-            "Showing: {face_label} (base: {face_state}, width: {:.0}%)",
+            "Showing: {face_label} (base: {face_state}, lift: {lift:.1}px, width: {:.0}%)",
             width_fraction * 100.0
         ))
         .color(TEXT_MUTED)
@@ -1044,8 +1261,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
             egui::Stroke::new(state.border_width, rarity_color(state.rarity)),
         );
     } else {
-        draw_card_frame_perspective(&painter5, &layout5, corners5, state.rarity);
-        draw_card_text_perspective(ui, &painter5, &layout5, corners5, state.rarity);
+        draw_card_frame_perspective(&painter5, &layout5, corners5, state.rarity, art_texture);
+        draw_card_text_perspective(
+            ui,
+            &painter5,
+            &layout5,
+            corners5,
+            state.rarity,
+            art_texture.is_some(),
+        );
 
         // Holographic overlay for Rare and above
         if state.rarity >= 2 {

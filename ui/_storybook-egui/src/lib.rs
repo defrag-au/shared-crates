@@ -166,6 +166,7 @@ mod app {
     impl StorybookApp {
         fn new(cc: &eframe::CreationContext<'_>) -> Self {
             configure_style(&cc.egui_ctx);
+            egui_extras::install_image_loaders(&cc.egui_ctx);
 
             Self {
                 current_story: Story::Distribution,

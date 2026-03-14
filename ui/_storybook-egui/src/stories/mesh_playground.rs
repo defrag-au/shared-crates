@@ -342,6 +342,7 @@ fn draw_gradient_quad(
     painter.add(egui::Shape::mesh(mesh));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_trapezoid(
     painter: &egui::Painter,
     x0: f32,
