@@ -17,7 +17,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.label(egui::RichText::new("Basic Cards").color(ACCENT).strong());
     ui.add_space(4.0);
 
-    ui.horizontal(|ui| {
+    ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
         egui_widgets::MetricCard::new("Total Accrued", "12,345")
             .subtitle("points")
             .width(160.0)
@@ -46,7 +46,7 @@ pub fn show(ui: &mut egui::Ui) {
     );
     ui.add_space(4.0);
 
-    ui.horizontal(|ui| {
+    ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
         egui_widgets::MetricCard::new("Holders", "1,247")
             .trend(egui_widgets::Trend::Up, "+12 today")
             .width(180.0)
@@ -89,7 +89,7 @@ pub fn show(ui: &mut egui::Ui) {
         20.0, 20.0, 20.0, 20.0,
     ];
 
-    ui.horizontal(|ui| {
+    ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
         egui_widgets::MetricCard::new("Accrued Points", "212")
             .trend(egui_widgets::Trend::Up, "+30/hr")
             .sparkline(&accrual_data)
