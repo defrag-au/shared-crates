@@ -1174,6 +1174,7 @@ version = "0.1.0"
 dependencies = [
  "egui",
  "egui_extras",
+ "egui_inbox",
  "image",
  "js-sys",
  "log",
@@ -1236,6 +1237,16 @@ dependencies = [
  "profiling",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "egui_inbox"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da31d355094b21970302411fb9bd23d3d7642077d46387b7d4e59323392e69d2"
+dependencies = [
+ "egui",
+ "parking_lot",
 ]
 
 [[package]]
@@ -5036,6 +5047,7 @@ dependencies = [
  "egui",
  "egui-widgets",
  "egui_extras",
+ "gloo-timers",
  "js-sys",
  "log",
  "wasm-bindgen",

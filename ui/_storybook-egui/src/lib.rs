@@ -25,6 +25,7 @@ mod app {
         MetricCard,
         SevenSegment,
         FlipCounter,
+        AsyncData,
         WalletButton,
         SwapModal,
     }
@@ -40,6 +41,7 @@ mod app {
                 Self::MetricCard,
                 Self::SevenSegment,
                 Self::FlipCounter,
+                Self::AsyncData,
                 Self::WalletButton,
                 Self::SwapModal,
             ]
@@ -55,6 +57,7 @@ mod app {
                 Self::MetricCard => "Metric Card",
                 Self::SevenSegment => "Seven Segment",
                 Self::FlipCounter => "Flip Counter",
+                Self::AsyncData => "Async Data",
                 Self::WalletButton => "Wallet Button",
                 Self::SwapModal => "Swap Modal",
             }
@@ -67,7 +70,8 @@ mod app {
                 | Self::Sparkline
                 | Self::MetricCard
                 | Self::SevenSegment
-                | Self::FlipCounter => "Data Visualization",
+                | Self::FlipCounter
+                | Self::AsyncData => "Data Visualization",
                 Self::WalletButton => "Wallet",
                 Self::SwapModal => "Swap",
             }
@@ -87,6 +91,7 @@ mod app {
                 }
                 Self::SevenSegment => "Retro LED-style 7-segment display with animated counter",
                 Self::FlipCounter => "Split-flap airport board style counter with flip animations",
+                Self::AsyncData => "egui_inbox driving widgets from simulated API polling",
                 Self::WalletButton => "CIP-30 wallet connection button with state management",
                 Self::SwapModal => "DEX swap modal with preview, culture buys, and progress states",
             }
@@ -127,6 +132,7 @@ mod app {
         sparkline_state: stories::sparkline::SparklineState,
         seven_segment_state: stories::seven_segment::SevenSegmentState,
         flip_counter_state: stories::flip_counter::FlipCounterState,
+        async_data_state: stories::async_data::AsyncDataState,
         wallet_btn: egui_widgets::WalletButton,
         wallet_connector: egui_widgets::wallet::WalletConnector,
         swap_modal: egui_widgets::SwapModal,
@@ -149,6 +155,7 @@ mod app {
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 seven_segment_state: stories::seven_segment::SevenSegmentState::default(),
                 flip_counter_state: stories::flip_counter::FlipCounterState::default(),
+                async_data_state: stories::async_data::AsyncDataState::default(),
                 wallet_btn: egui_widgets::WalletButton::new(),
                 wallet_connector: egui_widgets::wallet::WalletConnector::new(),
                 swap_modal: egui_widgets::SwapModal::new(egui_widgets::SwapModalConfig {
@@ -256,6 +263,9 @@ mod app {
                         }
                         Story::FlipCounter => {
                             stories::flip_counter::show(ui, &mut self.flip_counter_state)
+                        }
+                        Story::AsyncData => {
+                            stories::async_data::show(ui, &mut self.async_data_state)
                         }
                         Story::WalletButton => stories::wallet::show(
                             ui,

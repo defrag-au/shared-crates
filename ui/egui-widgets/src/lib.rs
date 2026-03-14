@@ -1,3 +1,5 @@
+pub use egui_inbox;
+
 pub mod animated_counter;
 pub mod buttons;
 pub mod donut_chart;

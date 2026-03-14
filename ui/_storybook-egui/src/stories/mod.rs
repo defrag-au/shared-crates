@@ -1,3 +1,4 @@
+pub mod async_data;
 pub mod buttons;
 pub mod distribution;
 pub mod flip_counter;
