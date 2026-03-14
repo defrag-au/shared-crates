@@ -2,6 +2,7 @@ pub mod async_data;
 pub mod buttons;
 pub mod distribution;
 pub mod flip_counter;
+pub mod icon_gallery;
 pub mod marquee;
 pub mod mesh_playground;
 pub mod metric_card;

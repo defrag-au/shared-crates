@@ -11,7 +11,9 @@
 //! X/Y axes then projected with perspective division.
 
 use egui::epaint::{Mesh, Vertex};
-use egui::{Color32, Pos2, Rect, Vec2};
+use egui::text::LayoutJob;
+use egui::{Color32, Pos2, Rect, TextFormat, Vec2};
+use egui_widgets::icons::{phosphor_family, PhosphorIcon};
 use std::f32::consts::TAU;
 
 use crate::{ACCENT, TEXT_MUTED};
@@ -391,24 +393,50 @@ fn draw_textured_fan_rect_uv(
 // Tilted text
 // ============================================================================
 
-/// Draw text projected through 3D perspective.
+/// Project a pre-laid-out galley through 3D perspective with text shadows.
 #[allow(clippy::too_many_arguments)]
-fn draw_projected_text(
+fn draw_projected_galley(
     ui: &egui::Ui,
     painter: &egui::Painter,
-    text: &str,
-    font: egui::FontId,
-    color: Color32,
+    galley: &std::sync::Arc<egui::Galley>,
     text_pos: Pos2,
     center: Pos2,
     angle_x: f32,
     angle_y: f32,
     perspective: f32,
 ) {
-    let galley = painter.layout_no_wrap(text.to_string(), font, color);
+    let shadow_color = Color32::from_rgba_premultiplied(0, 0, 0, 180);
     let font_tex_size = ui.ctx().fonts(|f| f.font_image_size());
     let uv_norm = Vec2::new(1.0 / font_tex_size[0] as f32, 1.0 / font_tex_size[1] as f32);
 
+    // Shadow pass
+    for &(dx, dy) in &[(1.0f32, 1.0f32), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
+        let mut shadow_mesh = Mesh::with_texture(egui::TextureId::default());
+        for placed_row in &galley.rows {
+            let row_offset = placed_row.pos;
+            let row_mesh = &placed_row.row.visuals.mesh;
+            let idx_offset = shadow_mesh.vertices.len() as u32;
+            for vertex in &row_mesh.vertices {
+                let abs = Pos2::new(
+                    text_pos.x + row_offset.x + vertex.pos.x + dx,
+                    text_pos.y + row_offset.y + vertex.pos.y + dy,
+                );
+                let projected = project_3d(abs, center, angle_x, angle_y, perspective);
+                let norm_uv = Pos2::new(vertex.uv.x * uv_norm.x, vertex.uv.y * uv_norm.y);
+                shadow_mesh.vertices.push(Vertex {
+                    pos: projected,
+                    uv: norm_uv,
+                    color: shadow_color,
+                });
+            }
+            for &idx in &row_mesh.indices {
+                shadow_mesh.indices.push(idx + idx_offset);
+            }
+        }
+        painter.add(egui::Shape::mesh(shadow_mesh));
+    }
+
+    // Foreground
     let mut text_mesh = Mesh::with_texture(egui::TextureId::default());
     for placed_row in &galley.rows {
         let row_offset = placed_row.pos;
@@ -432,6 +460,32 @@ fn draw_projected_text(
         }
     }
     painter.add(egui::Shape::mesh(text_mesh));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_projected_text(
+    ui: &egui::Ui,
+    painter: &egui::Painter,
+    text: &str,
+    font: egui::FontId,
+    color: Color32,
+    text_pos: Pos2,
+    center: Pos2,
+    angle_x: f32,
+    angle_y: f32,
+    perspective: f32,
+) {
+    let galley = painter.layout_no_wrap(text.to_string(), font, color);
+    draw_projected_galley(
+        ui,
+        painter,
+        &galley,
+        text_pos,
+        center,
+        angle_x,
+        angle_y,
+        perspective,
+    );
 }
 
 /// Draw title/stats/rarity labels projected through 3D perspective.
@@ -476,21 +530,36 @@ fn draw_projected_labels(
         perspective,
     );
 
-    let stats_g = painter.layout_no_wrap(
-        "ATK 5  /  DEF 3".to_string(),
-        stats_font.clone(),
-        stats_color,
+    // Stats line with Phosphor icons: Sword 5  /  Shield 3
+    let icon_font = egui::FontId::new(11.0, phosphor_family());
+    let atk_color = Color32::from_rgb(255, 130, 100);
+    let def_color = Color32::from_rgb(100, 160, 255);
+    let mut stats_job = LayoutJob::default();
+    stats_job.append(
+        &PhosphorIcon::Sword.as_str(),
+        0.0,
+        TextFormat::simple(icon_font.clone(), atk_color),
     );
+    stats_job.append(
+        " 5   ",
+        0.0,
+        TextFormat::simple(stats_font.clone(), stats_color),
+    );
+    stats_job.append(
+        &PhosphorIcon::Shield.as_str(),
+        0.0,
+        TextFormat::simple(icon_font, def_color),
+    );
+    stats_job.append(" 3", 0.0, TextFormat::simple(stats_font, stats_color));
+    let stats_g = ui.ctx().fonts_mut(|f| f.layout_job(stats_job));
     let stats_pos = Pos2::new(
         label_center_x - stats_g.size().x / 2.0,
         stats_y - stats_g.size().y / 2.0,
     );
-    draw_projected_text(
+    draw_projected_galley(
         ui,
         painter,
-        "ATK 5  /  DEF 3",
-        stats_font,
-        stats_color,
+        &stats_g,
         stats_pos,
         proj_center,
         angle_x,
@@ -498,17 +567,28 @@ fn draw_projected_labels(
         perspective,
     );
 
-    let rarity_g = painter.layout_no_wrap(rarity_name.to_string(), rarity_font.clone(), rarity_col);
+    // Rarity line with star icon
+    let rarity_icon_font = egui::FontId::new(9.0, phosphor_family());
+    let mut rarity_job = LayoutJob::default();
+    rarity_job.append(
+        &PhosphorIcon::Star.as_str(),
+        0.0,
+        TextFormat::simple(rarity_icon_font, rarity_col),
+    );
+    rarity_job.append(
+        &format!(" {rarity_name}"),
+        0.0,
+        TextFormat::simple(rarity_font, rarity_col),
+    );
+    let rarity_g = ui.ctx().fonts_mut(|f| f.layout_job(rarity_job));
     let rarity_pos = Pos2::new(
         label_center_x - rarity_g.size().x / 2.0,
         rarity_y - rarity_g.size().y / 2.0,
     );
-    draw_projected_text(
+    draw_projected_galley(
         ui,
         painter,
-        rarity_name,
-        rarity_font,
-        rarity_col,
+        &rarity_g,
         rarity_pos,
         proj_center,
         angle_x,
@@ -894,27 +974,19 @@ fn demo_rounded_square(
         );
     }
 
-    // Labels below the shape (overlay bands don't work with rounded corners)
-    let label_x = project_3d(
-        Pos2::new(center.x, bbox.bottom() + 8.0),
+    // Text labels on the shape (same as square, but no overlay bands)
+    draw_projected_labels(
+        ui,
+        &painter,
+        rarity,
+        bbox.center().x,
+        bbox.top() + size * 0.08,
+        bbox.bottom() - size * 0.12,
+        bbox.bottom() - size * 0.04,
         center,
         ax,
         ay,
         perspective,
-    );
-    painter.text(
-        label_x,
-        egui::Align2::CENTER_TOP,
-        "Shadow Drake",
-        egui::FontId::proportional(14.0),
-        Color32::WHITE,
-    );
-    painter.text(
-        Pos2::new(label_x.x, label_x.y + 18.0),
-        egui::Align2::CENTER_TOP,
-        format!("ATK 5 / DEF 3  —  {}", RARITIES[rarity].0),
-        egui::FontId::proportional(12.0),
-        Color32::LIGHT_GRAY,
     );
 }
 

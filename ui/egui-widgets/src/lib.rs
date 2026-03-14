@@ -4,6 +4,7 @@ pub mod animated_counter;
 pub mod buttons;
 pub mod donut_chart;
 pub mod flip_counter;
+pub mod icons;
 pub mod image_loader;
 pub mod listing_grid;
 pub mod marquee;
@@ -26,6 +27,7 @@ pub use donut_chart::{
     format_value as format_chart_value, legend_row, DistBand, DistributionChart,
 };
 pub use flip_counter::FlipCounter;
+pub use icons::{install_phosphor_font, PhosphorIcon};
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
