@@ -2,15 +2,26 @@
 //!
 //! Each digit is rendered as two cards (top half, bottom half) with the same
 //! text drawn in both, clipped to show only the relevant half. When a digit
-//! changes, the old top half flips down and the new bottom half flips in.
+//! changes, a flap rotates forward around the hinge line: the old top half
+//! folds down (phase 1), then the new bottom half unfolds (phase 2).
 //!
-//! Technique based on the classic CSS flip-clock approach:
-//! two 50%-height containers with overflow:hidden, same full-height text in each.
-//! https://github.com/objectivehtml/FlipClock
+//! The flap is drawn as a trapezoid mesh to simulate perspective foreshortening,
+//! with a subtle shadow that darkens as the flap rotates away from the viewer.
 
+use egui::epaint::{Mesh, Vertex};
 use egui::{Color32, Pos2, Rect, Ui, Vec2};
 
 use crate::theme;
+
+/// Darken a colour by subtracting `amount` from each RGB channel.
+fn darken(c: Color32, amount: u8) -> Color32 {
+    Color32::from_rgba_premultiplied(
+        c.r().saturating_sub(amount),
+        c.g().saturating_sub(amount),
+        c.b().saturating_sub(amount),
+        c.a(),
+    )
+}
 
 /// State for a single flipping digit.
 #[derive(Clone)]
@@ -175,11 +186,10 @@ impl FlipCounter {
                 Pos2::new(full_rect.left(), full_rect.top() + half_h),
                 full_rect.right_bottom(),
             );
+            let hinge_y = full_rect.top() + half_h;
 
             // Draw the card background as a single solid rect so there are
             // no anti-aliased rounded-corner seams at the hinge line.
-            // The top half is slightly lighter; we paint the whole card in
-            // the bottom colour then overlay the top half on top.
             painter.rect_filled(full_rect, corner, self.card_color_bottom);
             painter.rect_filled(top_rect, 0.0, self.card_color);
 
@@ -187,56 +197,85 @@ impl FlipCounter {
                 let p = digit.progress;
                 let ep = 1.0 - (1.0 - p) * (1.0 - p); // ease-out quadratic
 
-                // The bottom half always shows the OLD digit as its base text
-                // throughout the entire animation. Only the overlay in phase 2
-                // progressively reveals the new digit on the bottom.
+                // The bottom half always shows the OLD digit as base text.
                 self.draw_clipped_char(&painter, full_rect, bot_rect, font_size, digit.previous);
 
                 if ep < 0.5 {
-                    // Phase 1: old top flap shrinks toward hinge, revealing
-                    // new digit on the top half underneath.
-                    //
-                    // Base top text: new digit (revealed as flap shrinks).
-                    // Overlay: old top half shrinking from full height to zero.
+                    // Phase 1: old top flap rotates forward around the hinge.
+                    // Behind it, the new digit's top half is revealed.
                     self.draw_clipped_char(&painter, full_rect, top_rect, font_size, digit.current);
 
-                    let flip_frac = 1.0 - ep * 2.0; // 1.0 → 0.0
-                    let flip_h = (half_h * flip_frac).round();
+                    // Flap angle: 0° (flat) → 90° (edge-on).
+                    // Visible height foreshortens as cos(angle).
+                    let angle = ep * 2.0 * std::f32::consts::FRAC_PI_2;
+                    let cos_a = angle.cos(); // 1.0 → 0.0
+                    let flip_h = (half_h * cos_a).round();
                     if flip_h >= 1.0 {
-                        let flip_rect =
-                            Rect::from_min_size(full_rect.left_top(), Vec2::new(slot_w, flip_h));
-                        painter.rect_filled(flip_rect, 0.0, self.card_color);
+                        // Flap anchored at hinge. Top edge drops toward hinge.
+                        let top_y = hinge_y - flip_h;
+                        let pinch = slot_w * 0.06 * (1.0 - cos_a);
+                        let shadow = (40.0 * (1.0 - cos_a)) as u8;
+                        let flap_color = darken(self.card_color, shadow);
+
+                        Self::draw_trapezoid(
+                            &painter,
+                            card_x + pinch,
+                            top_y,
+                            card_x + slot_w - pinch,
+                            top_y,
+                            card_x + slot_w,
+                            hinge_y,
+                            card_x,
+                            hinge_y,
+                            flap_color,
+                        );
+
+                        let clip = Rect::from_min_max(
+                            Pos2::new(card_x, top_y),
+                            Pos2::new(card_x + slot_w, hinge_y),
+                        );
                         self.draw_clipped_char(
                             &painter,
                             full_rect,
-                            flip_rect,
+                            clip,
                             font_size,
                             digit.previous,
                         );
                     }
                 } else {
-                    // Phase 2: new bottom flap grows from hinge downward,
-                    // covering the old digit on the bottom half.
-                    //
-                    // Top text: new digit (already fully revealed).
-                    // Overlay: new bottom half growing from zero to full.
+                    // Phase 2: flap continues past vertical, now showing its
+                    // back face (new digit bottom half) growing downward.
                     self.draw_clipped_char(&painter, full_rect, top_rect, font_size, digit.current);
 
-                    let flip_frac = (ep - 0.5) * 2.0; // 0.0 → 1.0
-                    let flip_h = (half_h * flip_frac).round();
+                    // Angle: 90° → 180° (flat again).
+                    let angle = (ep - 0.5) * 2.0 * std::f32::consts::FRAC_PI_2;
+                    let cos_a = angle.sin(); // 0.0 → 1.0
+                    let flip_h = (half_h * cos_a).round();
                     if flip_h >= 1.0 {
-                        let flip_rect = Rect::from_min_size(
-                            Pos2::new(card_x, rect.top() + half_h),
-                            Vec2::new(slot_w, flip_h),
-                        );
-                        painter.rect_filled(flip_rect, 0.0, self.card_color_bottom);
-                        self.draw_clipped_char(
+                        // Flap anchored at hinge. Bottom edge grows downward.
+                        let bot_y = hinge_y + flip_h;
+                        let pinch = slot_w * 0.06 * (1.0 - cos_a);
+                        let shadow = (40.0 * (1.0 - cos_a)) as u8;
+                        let flap_color = darken(self.card_color_bottom, shadow);
+
+                        Self::draw_trapezoid(
                             &painter,
-                            full_rect,
-                            flip_rect,
-                            font_size,
-                            digit.current,
+                            card_x,
+                            hinge_y,
+                            card_x + slot_w,
+                            hinge_y,
+                            card_x + slot_w - pinch,
+                            bot_y,
+                            card_x + pinch,
+                            bot_y,
+                            flap_color,
                         );
+
+                        let clip = Rect::from_min_max(
+                            Pos2::new(card_x, hinge_y),
+                            Pos2::new(card_x + slot_w, bot_y),
+                        );
+                        self.draw_clipped_char(&painter, full_rect, clip, font_size, digit.current);
                     }
                 }
             } else {
@@ -246,9 +285,11 @@ impl FlipCounter {
             }
 
             // Divider line at hinge (always on top)
-            let div_y = rect.top() + half_h;
             painter.line_segment(
-                [Pos2::new(card_x, div_y), Pos2::new(card_x + slot_w, div_y)],
+                [
+                    Pos2::new(card_x, hinge_y),
+                    Pos2::new(card_x + slot_w, hinge_y),
+                ],
                 egui::Stroke::new(1.5, self.divider_color),
             );
 
@@ -273,6 +314,48 @@ impl FlipCounter {
                 self.text_color,
             );
         }
+    }
+
+    /// Draw a solid-colour trapezoid (4-vertex quad) via a custom mesh.
+    /// Vertices: top-left, top-right, bottom-right, bottom-left (clockwise).
+    fn draw_trapezoid(
+        painter: &egui::Painter,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        x3: f32,
+        y3: f32,
+        color: Color32,
+    ) {
+        let white_uv = Pos2::new(0.0, 0.0);
+        let mut mesh = Mesh::default();
+        mesh.vertices.extend_from_slice(&[
+            Vertex {
+                pos: Pos2::new(x0, y0),
+                uv: white_uv,
+                color,
+            },
+            Vertex {
+                pos: Pos2::new(x1, y1),
+                uv: white_uv,
+                color,
+            },
+            Vertex {
+                pos: Pos2::new(x2, y2),
+                uv: white_uv,
+                color,
+            },
+            Vertex {
+                pos: Pos2::new(x3, y3),
+                uv: white_uv,
+                color,
+            },
+        ]);
+        mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
+        painter.add(egui::Shape::mesh(mesh));
     }
 
     /// Draw a character centered in `full_rect`, but clipped to only show within `clip`.
