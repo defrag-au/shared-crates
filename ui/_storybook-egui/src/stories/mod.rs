@@ -1,6 +1,9 @@
 pub mod buttons;
 pub mod distribution;
 pub mod marquee;
+pub mod metric_card;
+pub mod progress_bar;
+pub mod sparkline;
 pub mod swap;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;

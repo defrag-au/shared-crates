@@ -3,7 +3,10 @@ pub mod donut_chart;
 pub mod image_loader;
 pub mod listing_grid;
 pub mod marquee;
+pub mod metric_card;
+pub mod progress_bar;
 pub mod screenshot;
+pub mod sparkline;
 pub mod swap_modal;
 pub mod theme;
 pub mod utils;
@@ -18,7 +21,10 @@ pub use donut_chart::{
 };
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
+pub use metric_card::{MetricCard, Trend};
+pub use progress_bar::ProgressBar;
 pub use screenshot::ScreenshotButton;
+pub use sparkline::Sparkline;
 pub use swap_modal::{
     CultureBuy, SwapModal, SwapModalAction, SwapModalConfig, SwapModalTheme, SwapPreviewData,
     SwapProgress,

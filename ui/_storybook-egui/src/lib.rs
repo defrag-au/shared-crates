@@ -20,6 +20,9 @@ mod app {
         Distribution,
         Marquee,
         Buttons,
+        ProgressBar,
+        Sparkline,
+        MetricCard,
         WalletButton,
         SwapModal,
     }
@@ -30,6 +33,9 @@ mod app {
                 Self::Distribution,
                 Self::Marquee,
                 Self::Buttons,
+                Self::ProgressBar,
+                Self::Sparkline,
+                Self::MetricCard,
                 Self::WalletButton,
                 Self::SwapModal,
             ]
@@ -40,6 +46,9 @@ mod app {
                 Self::Distribution => "Distribution",
                 Self::Marquee => "Marquee",
                 Self::Buttons => "Buttons",
+                Self::ProgressBar => "Progress Bar",
+                Self::Sparkline => "Sparkline",
+                Self::MetricCard => "Metric Card",
                 Self::WalletButton => "Wallet Button",
                 Self::SwapModal => "Swap Modal",
             }
@@ -48,6 +57,7 @@ mod app {
         fn category(&self) -> &'static str {
             match self {
                 Self::Distribution | Self::Marquee | Self::Buttons => "Primitives",
+                Self::ProgressBar | Self::Sparkline | Self::MetricCard => "Data Visualization",
                 Self::WalletButton => "Wallet",
                 Self::SwapModal => "Swap",
             }
@@ -58,6 +68,13 @@ mod app {
                 Self::Distribution => "Concentric orbital rings supply distribution chart",
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
+                Self::ProgressBar => "Determinate and countdown progress bars with custom colors",
+                Self::Sparkline => {
+                    "Inline line chart with fill gradient, mean line, and hover inspection"
+                }
+                Self::MetricCard => {
+                    "Dashboard stat card with trend indicators and embedded sparklines"
+                }
                 Self::WalletButton => "CIP-30 wallet connection button with state management",
                 Self::SwapModal => "DEX swap modal with preview, culture buys, and progress states",
             }
@@ -94,6 +111,8 @@ mod app {
         distribution_chart: egui_widgets::DistributionChart,
         marquee: egui_widgets::Marquee,
         marquee_messages: Vec<egui_widgets::MarqueeItem>,
+        progress_bar_state: stories::progress_bar::ProgressBarState,
+        sparkline_state: stories::sparkline::SparklineState,
         wallet_btn: egui_widgets::WalletButton,
         wallet_connector: egui_widgets::wallet::WalletConnector,
         swap_modal: egui_widgets::SwapModal,
@@ -112,6 +131,8 @@ mod app {
                     text: "Welcome to the egui Widgets Storybook".into(),
                     color: ACCENT,
                 }],
+                progress_bar_state: stories::progress_bar::ProgressBarState::default(),
+                sparkline_state: stories::sparkline::SparklineState::default(),
                 wallet_btn: egui_widgets::WalletButton::new(),
                 wallet_connector: egui_widgets::wallet::WalletConnector::new(),
                 swap_modal: egui_widgets::SwapModal::new(egui_widgets::SwapModalConfig {
@@ -209,6 +230,11 @@ mod app {
                             &mut self.marquee_messages,
                         ),
                         Story::Buttons => stories::buttons::show(ui),
+                        Story::ProgressBar => {
+                            stories::progress_bar::show(ui, &mut self.progress_bar_state)
+                        }
+                        Story::Sparkline => stories::sparkline::show(ui, &mut self.sparkline_state),
+                        Story::MetricCard => stories::metric_card::show(ui),
                         Story::WalletButton => stories::wallet::show(
                             ui,
                             &mut self.wallet_btn,
