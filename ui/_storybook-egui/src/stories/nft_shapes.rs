@@ -1,11 +1,10 @@
 //! NFT Shape Experiments — exploring alternatives to the card metaphor.
 //!
-//! Four shape demos rendered with the same IIIF art, rarity border, and stat
+//! Three shape demos rendered with the same IIIF art, rarity border, and stat
 //! overlay so they're directly comparable:
 //! 1. Square Tile — natural 1:1 fit, art-first
 //! 2. Hex Tile — tessellatable, game-board feel
-//! 3. Circle / Medallion — PFP culture, iconic
-//! 4. Rounded Square — modern app-icon aesthetic
+//! 3. Rounded Square — modern app-icon aesthetic
 //!
 //! Tilt uses proper 3D perspective projection: each vertex is rotated around
 //! X/Y axes then projected with perspective division.
@@ -32,8 +31,13 @@ pub struct NftShapesState {
     pub rarity: usize,
     pub tilt_ease: f32,
     pub perspective_distance: f32,
+    // Holographic overlay
+    pub hue_range: f32,
+    pub shimmer_width: f32,
+    pub shimmer_intensity: f32,
+    pub overlay_opacity: f32,
     // Per-demo tilt state
-    tilts: [TiltState; 4],
+    tilts: [TiltState; 3],
 }
 
 #[derive(Clone, Copy, Default)]
@@ -49,7 +53,11 @@ impl Default for NftShapesState {
             rarity: 2,
             tilt_ease: 0.1,
             perspective_distance: 800.0,
-            tilts: [TiltState::default(); 4],
+            hue_range: 60.0,
+            shimmer_width: 0.15,
+            shimmer_intensity: 0.4,
+            overlay_opacity: 0.2,
+            tilts: [TiltState::default(); 3],
         }
     }
 }
@@ -82,6 +90,69 @@ fn rarity_glow(rarity: usize) -> Option<Color32> {
     } else {
         None
     }
+}
+
+// ============================================================================
+// Colour utilities
+// ============================================================================
+
+fn hue_to_rgb(hue: f32) -> Color32 {
+    let h = ((hue % 360.0) + 360.0) % 360.0 / 60.0;
+    let i = h.floor() as u8;
+    let f = h - h.floor();
+    let q = (255.0 * (1.0 - f)) as u8;
+    let t = (255.0 * f) as u8;
+    match i {
+        0 => Color32::from_rgb(255, t, 0),
+        1 => Color32::from_rgb(q, 255, 0),
+        2 => Color32::from_rgb(0, 255, t),
+        3 => Color32::from_rgb(0, q, 255),
+        4 => Color32::from_rgb(t, 0, 255),
+        _ => Color32::from_rgb(255, 0, q),
+    }
+}
+
+/// Compute holo vertex colour from normalised position and light direction.
+#[allow(clippy::too_many_arguments)]
+fn holo_color(
+    u: f32,
+    v: f32,
+    mouse_u: f32,
+    mouse_v: f32,
+    hue_range: f32,
+    shimmer_width: f32,
+    shimmer_intensity: f32,
+    overlay_opacity: f32,
+) -> Color32 {
+    let light_x = mouse_u - 0.5;
+    let light_y = mouse_v - 0.5;
+    let light_len = (light_x * light_x + light_y * light_y).sqrt().max(0.001);
+    let light_dx = light_x / light_len;
+    let light_dy = light_y / light_len;
+
+    let dx = u - mouse_u;
+    let dy = v - mouse_v;
+    let dot = dx * light_dx + dy * light_dy;
+    let streak_dist = dot.abs();
+    let streak = (-streak_dist * streak_dist / (shimmer_width * shimmer_width * 0.5)).exp()
+        * shimmer_intensity;
+    let cross = dx * light_dy - dy * light_dx;
+    let hue = 200.0 + cross * hue_range * 2.0;
+
+    let edge_u = (0.5 - (u - 0.5).abs()) * 2.0;
+    let edge_v = (0.5 - (v - 0.5).abs()) * 2.0;
+    let fresnel = 1.0 - edge_u.min(edge_v).clamp(0.0, 1.0);
+    let fresnel_boost = fresnel * fresnel * overlay_opacity * 0.5;
+    let intensity = (streak + fresnel_boost).clamp(0.0, 1.0);
+
+    let rainbow = hue_to_rgb(hue);
+    let alpha = (intensity * 255.0) as u8;
+    Color32::from_rgba_premultiplied(
+        (rainbow.r() as f32 * intensity) as u8,
+        (rainbow.g() as f32 * intensity) as u8,
+        (rainbow.b() as f32 * intensity) as u8,
+        alpha,
+    )
 }
 
 // ============================================================================
@@ -390,10 +461,165 @@ fn draw_textured_fan_rect_uv(
 }
 
 // ============================================================================
+// Holographic overlay
+// ============================================================================
+
+/// Holographic overlay for quad shapes (square), projected through 3D.
+/// Subdivides the quad into a grid and colours each vertex based on mouse position.
+#[allow(clippy::too_many_arguments)]
+fn draw_holo_quad(
+    painter: &egui::Painter,
+    bbox: Rect,
+    center: Pos2,
+    angle_x: f32,
+    angle_y: f32,
+    perspective: f32,
+    mouse_u: f32,
+    mouse_v: f32,
+    hue_range: f32,
+    shimmer_width: f32,
+    shimmer_intensity: f32,
+    overlay_opacity: f32,
+) {
+    let cols = 12_u32;
+    let rows = 12_u32;
+    let mut mesh = Mesh::default();
+
+    for row in 0..=rows {
+        for col in 0..=cols {
+            let u = col as f32 / cols as f32;
+            let v = row as f32 / rows as f32;
+            let flat_pos = Pos2::new(
+                bbox.left() + u * bbox.width(),
+                bbox.top() + v * bbox.height(),
+            );
+            let pos = project_3d(flat_pos, center, angle_x, angle_y, perspective);
+            let color = holo_color(
+                u,
+                v,
+                mouse_u,
+                mouse_v,
+                hue_range,
+                shimmer_width,
+                shimmer_intensity,
+                overlay_opacity,
+            );
+            mesh.vertices.push(Vertex {
+                pos,
+                uv: WHITE_UV,
+                color,
+            });
+        }
+    }
+
+    let stride = cols + 1;
+    for row in 0..rows {
+        for col in 0..cols {
+            let tl = row * stride + col;
+            let tr = tl + 1;
+            let bl = tl + stride;
+            let br = bl + 1;
+            mesh.indices.extend_from_slice(&[tl, tr, bl, bl, tr, br]);
+        }
+    }
+
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+/// Holographic overlay for fan-based shapes (hex, rounded square).
+/// Subdivides each triangle of the fan and colours vertices based on mouse position.
+#[allow(clippy::too_many_arguments)]
+fn draw_holo_fan(
+    painter: &egui::Painter,
+    center: Pos2,
+    vertices: &[Pos2],
+    bbox: Rect,
+    mouse_u: f32,
+    mouse_v: f32,
+    hue_range: f32,
+    shimmer_width: f32,
+    shimmer_intensity: f32,
+    overlay_opacity: f32,
+) {
+    let n = vertices.len();
+    if n < 2 {
+        return;
+    }
+
+    let subdivisions = 4_u32;
+    let mut mesh = Mesh::default();
+
+    let to_uv = |p: Pos2| -> (f32, f32) {
+        (
+            ((p.x - bbox.left()) / bbox.width()).clamp(0.0, 1.0),
+            ((p.y - bbox.top()) / bbox.height()).clamp(0.0, 1.0),
+        )
+    };
+
+    for i in 0..n {
+        let j = (i + 1) % n;
+        let v0 = center;
+        let v1 = vertices[i];
+        let v2 = vertices[j];
+
+        let base_idx = mesh.vertices.len() as u32;
+
+        // Subdivide the triangle using barycentric coordinates
+        for row in 0..=subdivisions {
+            for col in 0..=(subdivisions - row) {
+                let a = row as f32 / subdivisions as f32;
+                let b = col as f32 / subdivisions as f32;
+                let c = 1.0 - a - b;
+                let pos = Pos2::new(
+                    c * v0.x + a * v1.x + b * v2.x,
+                    c * v0.y + a * v1.y + b * v2.y,
+                );
+                let (u, v) = to_uv(pos);
+                let color = holo_color(
+                    u,
+                    v,
+                    mouse_u,
+                    mouse_v,
+                    hue_range,
+                    shimmer_width,
+                    shimmer_intensity,
+                    overlay_opacity,
+                );
+                mesh.vertices.push(Vertex {
+                    pos,
+                    uv: WHITE_UV,
+                    color,
+                });
+            }
+        }
+
+        // Index the subdivided triangle
+        let mut row_start = base_idx;
+        for row in 0..subdivisions {
+            let row_len = subdivisions - row + 1;
+            let next_row_start = row_start + row_len;
+            for col in 0..(row_len - 1) {
+                let tl = row_start + col;
+                let tr = row_start + col + 1;
+                let bl = next_row_start + col;
+                mesh.indices.extend_from_slice(&[tl, tr, bl]);
+                if col < row_len - 2 {
+                    let br = next_row_start + col + 1;
+                    mesh.indices.extend_from_slice(&[tr, br, bl]);
+                }
+            }
+            row_start = next_row_start;
+        }
+    }
+
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+// ============================================================================
 // Tilted text
 // ============================================================================
 
-/// Project a pre-laid-out galley through 3D perspective with text shadows.
+/// Project a pre-laid-out galley through 3D perspective, optionally with text shadows.
 #[allow(clippy::too_many_arguments)]
 fn draw_projected_galley(
     ui: &egui::Ui,
@@ -404,37 +630,40 @@ fn draw_projected_galley(
     angle_x: f32,
     angle_y: f32,
     perspective: f32,
+    shadow: bool,
 ) {
-    let shadow_color = Color32::from_rgba_premultiplied(0, 0, 0, 180);
     let font_tex_size = ui.ctx().fonts(|f| f.font_image_size());
     let uv_norm = Vec2::new(1.0 / font_tex_size[0] as f32, 1.0 / font_tex_size[1] as f32);
 
     // Shadow pass
-    for &(dx, dy) in &[(1.0f32, 1.0f32), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
-        let mut shadow_mesh = Mesh::with_texture(egui::TextureId::default());
-        for placed_row in &galley.rows {
-            let row_offset = placed_row.pos;
-            let row_mesh = &placed_row.row.visuals.mesh;
-            let idx_offset = shadow_mesh.vertices.len() as u32;
-            for vertex in &row_mesh.vertices {
-                let abs = Pos2::new(
-                    text_pos.x + row_offset.x + vertex.pos.x + dx,
-                    text_pos.y + row_offset.y + vertex.pos.y + dy,
-                );
-                let projected = project_3d(abs, center, angle_x, angle_y, perspective);
-                let norm_uv = Pos2::new(vertex.uv.x * uv_norm.x, vertex.uv.y * uv_norm.y);
-                shadow_mesh.vertices.push(Vertex {
-                    pos: projected,
-                    uv: norm_uv,
-                    color: shadow_color,
-                });
+    if shadow {
+        let shadow_color = Color32::from_rgba_premultiplied(0, 0, 0, 180);
+        for &(dx, dy) in &[(1.0f32, 1.0f32), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
+            let mut shadow_mesh = Mesh::with_texture(egui::TextureId::default());
+            for placed_row in &galley.rows {
+                let row_offset = placed_row.pos;
+                let row_mesh = &placed_row.row.visuals.mesh;
+                let idx_offset = shadow_mesh.vertices.len() as u32;
+                for vertex in &row_mesh.vertices {
+                    let abs = Pos2::new(
+                        text_pos.x + row_offset.x + vertex.pos.x + dx,
+                        text_pos.y + row_offset.y + vertex.pos.y + dy,
+                    );
+                    let projected = project_3d(abs, center, angle_x, angle_y, perspective);
+                    let norm_uv = Pos2::new(vertex.uv.x * uv_norm.x, vertex.uv.y * uv_norm.y);
+                    shadow_mesh.vertices.push(Vertex {
+                        pos: projected,
+                        uv: norm_uv,
+                        color: shadow_color,
+                    });
+                }
+                for &idx in &row_mesh.indices {
+                    shadow_mesh.indices.push(idx + idx_offset);
+                }
             }
-            for &idx in &row_mesh.indices {
-                shadow_mesh.indices.push(idx + idx_offset);
-            }
+            painter.add(egui::Shape::mesh(shadow_mesh));
         }
-        painter.add(egui::Shape::mesh(shadow_mesh));
-    }
+    } // end if shadow
 
     // Foreground
     let mut text_mesh = Mesh::with_texture(egui::TextureId::default());
@@ -485,36 +714,120 @@ fn draw_projected_text(
         angle_x,
         angle_y,
         perspective,
+        true,
     );
 }
 
-/// Draw title/stats/rarity labels projected through 3D perspective.
+/// Stat definitions for the right-edge vertical stack.
+struct StatEntry {
+    icon: PhosphorIcon,
+    value: &'static str,
+    color: Color32,
+}
+
+const DEMO_STATS: &[StatEntry] = &[
+    StatEntry {
+        icon: PhosphorIcon::Sword,
+        value: "5",
+        color: Color32::from_rgb(255, 130, 100),
+    },
+    StatEntry {
+        icon: PhosphorIcon::Shield,
+        value: "3",
+        color: Color32::from_rgb(100, 160, 255),
+    },
+    StatEntry {
+        icon: PhosphorIcon::Lightning,
+        value: "7",
+        color: Color32::from_rgb(255, 220, 50),
+    },
+    StatEntry {
+        icon: PhosphorIcon::Heart,
+        value: "12",
+        color: Color32::from_rgb(255, 80, 120),
+    },
+];
+
+/// Draw a projected rounded-left / hard-right pill background for a stat.
+/// Split into a half-circle fan (left cap) + a rectangle quad (body).
 #[allow(clippy::too_many_arguments)]
-fn draw_projected_labels(
+fn draw_stat_pill(
+    painter: &egui::Painter,
+    left: f32,
+    top: f32,
+    width: f32,
+    height: f32,
+    center: Pos2,
+    angle_x: f32,
+    angle_y: f32,
+    perspective: f32,
+    color: Color32,
+) {
+    let r = height / 2.0;
+    let cap_cx = left + r;
+    let cap_cy = top + r;
+    let right = left + width;
+
+    // 1. Left half-circle cap (fan from arc center)
+    let arc_segs = 10;
+    let mut arc_verts = Vec::new();
+    for i in 0..=arc_segs {
+        let t = i as f32 / arc_segs as f32;
+        let angle = std::f32::consts::FRAC_PI_2 + t * std::f32::consts::PI;
+        arc_verts.push(Pos2::new(
+            cap_cx + angle.cos() * r,
+            cap_cy - angle.sin() * r,
+        ));
+    }
+    let proj_arc = project_points(&arc_verts, center, angle_x, angle_y, perspective);
+    let proj_cap_center = project_3d(
+        Pos2::new(cap_cx, cap_cy),
+        center,
+        angle_x,
+        angle_y,
+        perspective,
+    );
+    draw_colored_fan(painter, proj_cap_center, &proj_arc, color);
+
+    // 2. Rectangular body (from cap edge to hard right)
+    let body = [
+        Pos2::new(cap_cx, top),
+        Pos2::new(right, top),
+        Pos2::new(right, top + height),
+        Pos2::new(cap_cx, top + height),
+    ];
+    let proj_body = project_points(&body, center, angle_x, angle_y, perspective);
+    draw_quad(
+        painter,
+        [proj_body[0], proj_body[1], proj_body[2], proj_body[3]],
+        color,
+    );
+}
+
+/// Draw title at top-center, stat pills stacked vertically on the right edge,
+/// and a badge popout at the bottom.
+#[allow(clippy::too_many_arguments)]
+fn draw_tile_overlay(
     ui: &egui::Ui,
     painter: &egui::Painter,
     rarity: usize,
-    label_center_x: f32,
-    title_y: f32,
-    stats_y: f32,
-    rarity_y: f32,
+    bbox: Rect,
     proj_center: Pos2,
     angle_x: f32,
     angle_y: f32,
     perspective: f32,
 ) {
     let text_color = Color32::from_rgb(220, 220, 235);
-    let stats_color = Color32::from_rgb(200, 200, 220);
-    let (rarity_name, rarity_col) = RARITIES.get(rarity).copied().unwrap_or(RARITIES[0]);
+    let (_rarity_name, rarity_col) = RARITIES.get(rarity).copied().unwrap_or(RARITIES[0]);
+    let pill_bg = Color32::from_rgba_premultiplied(20, 20, 35, 200);
 
+    // --- Title (top center) ---
     let title_font = egui::FontId::new(13.0, egui::FontFamily::Monospace);
-    let stats_font = egui::FontId::new(11.0, egui::FontFamily::Monospace);
-    let rarity_font = egui::FontId::new(9.0, egui::FontFamily::Monospace);
-
+    let title_y = bbox.top() + bbox.height() * 0.07;
     let title_g =
         painter.layout_no_wrap("Shadow Drake".to_string(), title_font.clone(), text_color);
     let title_pos = Pos2::new(
-        label_center_x - title_g.size().x / 2.0,
+        bbox.center().x - title_g.size().x / 2.0,
         title_y - title_g.size().y / 2.0,
     );
     draw_projected_text(
@@ -530,70 +843,163 @@ fn draw_projected_labels(
         perspective,
     );
 
-    // Stats line with Phosphor icons: Sword 5  /  Shield 3
-    let icon_font = egui::FontId::new(11.0, phosphor_family());
-    let atk_color = Color32::from_rgb(255, 130, 100);
-    let def_color = Color32::from_rgb(100, 160, 255);
-    let mut stats_job = LayoutJob::default();
-    stats_job.append(
-        &PhosphorIcon::Sword.as_str(),
-        0.0,
-        TextFormat::simple(icon_font.clone(), atk_color),
-    );
-    stats_job.append(
-        " 5   ",
-        0.0,
-        TextFormat::simple(stats_font.clone(), stats_color),
-    );
-    stats_job.append(
-        &PhosphorIcon::Shield.as_str(),
-        0.0,
-        TextFormat::simple(icon_font, def_color),
-    );
-    stats_job.append(" 3", 0.0, TextFormat::simple(stats_font, stats_color));
-    let stats_g = ui.ctx().fonts_mut(|f| f.layout_job(stats_job));
-    let stats_pos = Pos2::new(
-        label_center_x - stats_g.size().x / 2.0,
-        stats_y - stats_g.size().y / 2.0,
-    );
-    draw_projected_galley(
-        ui,
-        painter,
-        &stats_g,
-        stats_pos,
-        proj_center,
-        angle_x,
-        angle_y,
-        perspective,
-    );
+    // --- Stats (pill stack, right edge, vertically centered) ---
+    let stat_font = egui::FontId::new(10.0, egui::FontFamily::Monospace);
+    let icon_font = egui::FontId::new(12.0, phosphor_family());
+    let pill_w = bbox.width() * 0.22;
+    let pill_h = 16.0;
+    let pill_gap = 3.0;
+    let total_h =
+        DEMO_STATS.len() as f32 * pill_h + (DEMO_STATS.len() - 1).max(0) as f32 * pill_gap;
+    let stack_top = bbox.center().y - total_h / 2.0;
+    let pill_right = bbox.right(); // hard right edge flush with card
 
-    // Rarity line with star icon
-    let rarity_icon_font = egui::FontId::new(9.0, phosphor_family());
-    let mut rarity_job = LayoutJob::default();
-    rarity_job.append(
+    for (i, stat) in DEMO_STATS.iter().enumerate() {
+        let y = stack_top + i as f32 * (pill_h + pill_gap);
+        let pill_left = pill_right - pill_w;
+
+        // Pill background: rounded left, hard right
+        draw_stat_pill(
+            painter,
+            pill_left,
+            y,
+            pill_w,
+            pill_h,
+            proj_center,
+            angle_x,
+            angle_y,
+            perspective,
+            pill_bg,
+        );
+
+        // Text (no shadow — pill bg provides contrast)
+        let mut job = LayoutJob::default();
+        job.append(
+            &stat.icon.as_str(),
+            0.0,
+            TextFormat::simple(icon_font.clone(), stat.color),
+        );
+        job.append(
+            &format!(" {}", stat.value),
+            0.0,
+            TextFormat::simple(stat_font.clone(), stat.color),
+        );
+        let galley = ui.ctx().fonts_mut(|f| f.layout_job(job));
+        // Center text within pill
+        let text_x = pill_left + (pill_w - galley.size().x) / 2.0;
+        let text_y = y + (pill_h - galley.size().y) / 2.0;
+        draw_projected_galley(
+            ui,
+            painter,
+            &galley,
+            Pos2::new(text_x, text_y),
+            proj_center,
+            angle_x,
+            angle_y,
+            perspective,
+            false,
+        );
+    }
+
+    // --- Badge popout (extends below bottom edge) ---
+    let badge_font = egui::FontId::new(11.0, phosphor_family());
+    let badge_text_font = egui::FontId::new(9.0, egui::FontFamily::Monospace);
+    let badge_h = 22.0;
+    let badge_w = bbox.width() * 0.45;
+    let badge_top = bbox.bottom() - badge_h * 0.4; // 40% overlap, 60% popout
+    let badge_left = bbox.center().x - badge_w / 2.0;
+
+    // Badge background: rounded rect (all corners)
+    let badge_r = badge_h / 2.0;
+    let badge_cx = badge_left + badge_r;
+    let badge_cy = badge_top + badge_r;
+    let badge_right = badge_left + badge_w;
+    let badge_rcx = badge_right - badge_r;
+
+    let mut badge_verts = Vec::new();
+    let arc_segs = 6;
+    // Left arc
+    for i in 0..=arc_segs {
+        let t = i as f32 / arc_segs as f32;
+        let a = std::f32::consts::FRAC_PI_2 + t * std::f32::consts::PI;
+        badge_verts.push(Pos2::new(
+            badge_cx + a.cos() * badge_r,
+            badge_cy - a.sin() * badge_r,
+        ));
+    }
+    // Right arc
+    for i in 0..=arc_segs {
+        let t = i as f32 / arc_segs as f32;
+        let a = -std::f32::consts::FRAC_PI_2 + t * std::f32::consts::PI;
+        badge_verts.push(Pos2::new(
+            badge_rcx + a.cos() * badge_r,
+            badge_cy - a.sin() * badge_r,
+        ));
+    }
+
+    let badge_center_pt = Pos2::new(bbox.center().x, badge_top + badge_h / 2.0);
+    let proj_badge_verts = project_points(&badge_verts, proj_center, angle_x, angle_y, perspective);
+    let proj_badge_center = project_3d(badge_center_pt, proj_center, angle_x, angle_y, perspective);
+    draw_colored_fan(painter, proj_badge_center, &proj_badge_verts, pill_bg);
+
+    // Badge border
+    let badge_border_r = badge_r + 1.5;
+    let badge_border_cx = badge_left - 1.5 + badge_border_r;
+    let badge_border_rcx = badge_right + 1.5 - badge_border_r;
+    let badge_border_cy = badge_top - 1.5 + badge_border_r + 1.5; // same cy
+    let mut border_verts = Vec::new();
+    for i in 0..=arc_segs {
+        let t = i as f32 / arc_segs as f32;
+        let a = std::f32::consts::FRAC_PI_2 + t * std::f32::consts::PI;
+        border_verts.push(Pos2::new(
+            badge_border_cx + a.cos() * badge_border_r,
+            badge_border_cy - a.sin() * badge_border_r,
+        ));
+    }
+    for i in 0..=arc_segs {
+        let t = i as f32 / arc_segs as f32;
+        let a = -std::f32::consts::FRAC_PI_2 + t * std::f32::consts::PI;
+        border_verts.push(Pos2::new(
+            badge_border_rcx + a.cos() * badge_border_r,
+            badge_border_cy - a.sin() * badge_border_r,
+        ));
+    }
+    let proj_border_verts =
+        project_points(&border_verts, proj_center, angle_x, angle_y, perspective);
+    draw_colored_ring(painter, &proj_badge_verts, &proj_border_verts, rarity_col);
+
+    // Badge content: rarity stars + label
+    let mut badge_job = LayoutJob::default();
+    badge_job.append(
         &PhosphorIcon::Star.as_str(),
         0.0,
-        TextFormat::simple(rarity_icon_font, rarity_col),
+        TextFormat::simple(badge_font.clone(), rarity_col),
     );
-    rarity_job.append(
-        &format!(" {rarity_name}"),
+    badge_job.append(
+        " Dragon ",
         0.0,
-        TextFormat::simple(rarity_font, rarity_col),
+        TextFormat::simple(badge_text_font, text_color),
     );
-    let rarity_g = ui.ctx().fonts_mut(|f| f.layout_job(rarity_job));
-    let rarity_pos = Pos2::new(
-        label_center_x - rarity_g.size().x / 2.0,
-        rarity_y - rarity_g.size().y / 2.0,
+    badge_job.append(
+        &PhosphorIcon::Star.as_str(),
+        0.0,
+        TextFormat::simple(badge_font, rarity_col),
+    );
+    let badge_g = ui.ctx().fonts_mut(|f| f.layout_job(badge_job));
+    let badge_text_pos = Pos2::new(
+        bbox.center().x - badge_g.size().x / 2.0,
+        badge_top + (badge_h - badge_g.size().y) / 2.0,
     );
     draw_projected_galley(
         ui,
         painter,
-        &rarity_g,
-        rarity_pos,
+        &badge_g,
+        badge_text_pos,
         proj_center,
         angle_x,
         angle_y,
         perspective,
+        false,
     );
 }
 
@@ -633,6 +1039,14 @@ fn update_tilt(
 // Individual shape demos
 // ============================================================================
 
+#[derive(Clone, Copy)]
+struct HoloParams {
+    hue_range: f32,
+    shimmer_width: f32,
+    shimmer_intensity: f32,
+    overlay_opacity: f32,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn demo_square(
     ui: &mut egui::Ui,
@@ -643,6 +1057,7 @@ fn demo_square(
     tilt_ease: f32,
     max_tilt: f32,
     perspective: f32,
+    holo: HoloParams,
 ) {
     let half = size / 2.0;
     let padding = 40.0;
@@ -700,50 +1115,34 @@ fn demo_square(
         draw_quad(&painter, proj4, Color32::from_rgb(30, 30, 48));
     }
 
-    // Title overlay band (top 14%)
-    let band_h = size * 0.14;
-    let tb = [
-        Pos2::new(card_rect.left(), card_rect.top()),
-        Pos2::new(card_rect.right(), card_rect.top()),
-        Pos2::new(card_rect.right(), card_rect.top() + band_h),
-        Pos2::new(card_rect.left(), card_rect.top() + band_h),
-    ];
-    let tbp: Vec<Pos2> = project_points(&tb, center, ax, ay, perspective);
-    draw_quad(
-        &painter,
-        [tbp[0], tbp[1], tbp[2], tbp[3]],
-        Color32::from_rgba_premultiplied(10, 10, 20, 160),
-    );
+    // Holographic overlay (Rare+)
+    if rarity >= 2 {
+        let (mu, mv) = if let Some(hover_pos) = response.hover_pos() {
+            (
+                ((hover_pos.x - card_rect.left()) / card_rect.width()).clamp(0.0, 1.0),
+                ((hover_pos.y - card_rect.top()) / card_rect.height()).clamp(0.0, 1.0),
+            )
+        } else {
+            (0.5, 0.5)
+        };
+        draw_holo_quad(
+            &painter,
+            card_rect,
+            center,
+            ax,
+            ay,
+            perspective,
+            mu,
+            mv,
+            holo.hue_range,
+            holo.shimmer_width,
+            holo.shimmer_intensity,
+            holo.overlay_opacity,
+        );
+    }
 
-    // Stats overlay band (bottom 18%)
-    let stats_h = size * 0.18;
-    let sb = [
-        Pos2::new(card_rect.left(), card_rect.bottom() - stats_h),
-        Pos2::new(card_rect.right(), card_rect.bottom() - stats_h),
-        Pos2::new(card_rect.right(), card_rect.bottom()),
-        Pos2::new(card_rect.left(), card_rect.bottom()),
-    ];
-    let sbp: Vec<Pos2> = project_points(&sb, center, ax, ay, perspective);
-    draw_quad(
-        &painter,
-        [sbp[0], sbp[1], sbp[2], sbp[3]],
-        Color32::from_rgba_premultiplied(10, 10, 20, 160),
-    );
-
-    // Text labels
-    draw_projected_labels(
-        ui,
-        &painter,
-        rarity,
-        card_rect.center().x,
-        card_rect.top() + band_h / 2.0,
-        card_rect.bottom() - stats_h * 0.55,
-        card_rect.bottom() - stats_h * 0.2,
-        center,
-        ax,
-        ay,
-        perspective,
-    );
+    // Overlay: title, stats, badge
+    draw_tile_overlay(ui, &painter, rarity, card_rect, center, ax, ay, perspective);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -756,6 +1155,7 @@ fn demo_hex(
     tilt_ease: f32,
     max_tilt: f32,
     perspective: f32,
+    holo: HoloParams,
 ) {
     let radius = size / 2.0;
     let padding = 50.0;
@@ -809,101 +1209,33 @@ fn demo_hex(
         );
     }
 
-    // Labels below
-    let below_y = center.y + radius + 8.0;
-    draw_projected_labels(
-        ui,
-        &painter,
-        rarity,
-        center.x,
-        below_y + 7.0,
-        below_y + 25.0,
-        below_y + 41.0,
-        center,
-        ax,
-        ay,
-        perspective,
-    );
-}
-
-#[allow(clippy::too_many_arguments)]
-fn demo_circle(
-    ui: &mut egui::Ui,
-    size: f32,
-    rarity: usize,
-    art_tex: Option<egui::TextureId>,
-    tilt: &mut TiltState,
-    tilt_ease: f32,
-    max_tilt: f32,
-    perspective: f32,
-) {
-    let radius = size / 2.0;
-    let padding = 50.0;
-    let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(size + padding, size + padding),
-        egui::Sense::hover(),
-    );
-    let painter = ui.painter_at(rect);
-    let center = rect.center();
-
-    let (ax, ay) = update_tilt(&response, center, radius, tilt, tilt_ease, max_tilt);
-    if tilt.current_x.abs() > 0.001 || tilt.current_y.abs() > 0.001 {
-        ui.ctx().request_repaint();
-    }
-
-    let segments = 48;
-
-    // Glow
-    if let Some(glow) = rarity_glow(rarity) {
-        let glow_verts = regular_polygon_vertices(center, radius + 6.0, segments, 0.0);
-        let glow_proj = project_points(&glow_verts, center, ax, ay, perspective);
-        let glow_center = project_3d(center, center, ax, ay, perspective);
-        draw_colored_fan(&painter, glow_center, &glow_proj, glow);
-    }
-
-    // Border ring
-    let art_verts = regular_polygon_vertices(center, radius, segments, 0.0);
-    let border_verts = regular_polygon_vertices(center, radius + 3.0, segments, 0.0);
-    let art_proj = project_points(&art_verts, center, ax, ay, perspective);
-    let border_proj = project_points(&border_verts, center, ax, ay, perspective);
-    draw_colored_ring(&painter, &art_proj, &border_proj, rarity_color(rarity));
-
-    // Art fill
-    let art_center = project_3d(center, center, ax, ay, perspective);
-    if let Some(tex) = art_tex {
-        draw_textured_fan(
+    // Holographic overlay (Rare+)
+    let hex_bbox = Rect::from_center_size(center, Vec2::splat(radius * 2.0));
+    if rarity >= 2 {
+        let (mu, mv) = if let Some(hover_pos) = response.hover_pos() {
+            (
+                ((hover_pos.x - hex_bbox.left()) / hex_bbox.width()).clamp(0.0, 1.0),
+                ((hover_pos.y - hex_bbox.top()) / hex_bbox.height()).clamp(0.0, 1.0),
+            )
+        } else {
+            (0.5, 0.5)
+        };
+        draw_holo_fan(
             &painter,
             art_center,
             &art_proj,
-            tex,
-            Color32::WHITE,
-            &art_verts,
-            center,
-        );
-    } else {
-        draw_colored_fan(
-            &painter,
-            art_center,
-            &art_proj,
-            Color32::from_rgb(30, 30, 48),
+            hex_bbox,
+            mu,
+            mv,
+            holo.hue_range,
+            holo.shimmer_width,
+            holo.shimmer_intensity,
+            holo.overlay_opacity,
         );
     }
 
-    // Labels below
-    let below_y = center.y + radius + 8.0;
-    draw_projected_labels(
-        ui,
-        &painter,
-        rarity,
-        center.x,
-        below_y + 7.0,
-        below_y + 25.0,
-        below_y + 41.0,
-        center,
-        ax,
-        ay,
-        perspective,
-    );
+    // Overlay: title, stats, badge
+    draw_tile_overlay(ui, &painter, rarity, hex_bbox, center, ax, ay, perspective);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -916,6 +1248,7 @@ fn demo_rounded_square(
     tilt_ease: f32,
     max_tilt: f32,
     perspective: f32,
+    holo: HoloParams,
 ) {
     let half = size / 2.0;
     let corner_radius = size * 0.15;
@@ -974,20 +1307,32 @@ fn demo_rounded_square(
         );
     }
 
-    // Text labels on the shape (same as square, but no overlay bands)
-    draw_projected_labels(
-        ui,
-        &painter,
-        rarity,
-        bbox.center().x,
-        bbox.top() + size * 0.08,
-        bbox.bottom() - size * 0.12,
-        bbox.bottom() - size * 0.04,
-        center,
-        ax,
-        ay,
-        perspective,
-    );
+    // Holographic overlay (Rare+)
+    if rarity >= 2 {
+        let (mu, mv) = if let Some(hover_pos) = response.hover_pos() {
+            (
+                ((hover_pos.x - bbox.left()) / bbox.width()).clamp(0.0, 1.0),
+                ((hover_pos.y - bbox.top()) / bbox.height()).clamp(0.0, 1.0),
+            )
+        } else {
+            (0.5, 0.5)
+        };
+        draw_holo_fan(
+            &painter,
+            art_center,
+            &art_proj,
+            bbox,
+            mu,
+            mv,
+            holo.hue_range,
+            holo.shimmer_width,
+            holo.shimmer_intensity,
+            holo.overlay_opacity,
+        );
+    }
+
+    // Overlay: title, stats, badge
+    draw_tile_overlay(ui, &painter, rarity, bbox, center, ax, ay, perspective);
 }
 
 // ============================================================================
@@ -1018,6 +1363,25 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
         }
     });
 
+    // Holo controls (only visible for Rare+)
+    if state.rarity >= 2 {
+        ui.horizontal(|ui| {
+            ui.add(egui::Slider::new(&mut state.hue_range, 0.0..=180.0).text("Hue Range"));
+            ui.add(egui::Slider::new(&mut state.shimmer_width, 0.05..=0.5).text("Shimmer W"));
+        });
+        ui.horizontal(|ui| {
+            ui.add(egui::Slider::new(&mut state.shimmer_intensity, 0.0..=1.0).text("Intensity"));
+            ui.add(egui::Slider::new(&mut state.overlay_opacity, 0.0..=0.5).text("Opacity"));
+        });
+    }
+
+    let holo = HoloParams {
+        hue_range: state.hue_range,
+        shimmer_width: state.shimmer_width,
+        shimmer_intensity: state.shimmer_intensity,
+        overlay_opacity: state.overlay_opacity,
+    };
+
     let art_status = if art_texture.is_some() {
         "loaded"
     } else {
@@ -1034,7 +1398,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
     ui.label(egui::RichText::new("1. Square Tile").color(ACCENT).strong());
     ui.label(
         egui::RichText::new(
-            "Natural 1:1 fit. Art fills the square with overlay bands for title/stats.",
+            "Natural 1:1 fit. Art-first with right-edge stats and holographic foil.",
         )
         .color(TEXT_MUTED)
         .small(),
@@ -1049,15 +1413,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
         state.tilt_ease,
         15.0,
         state.perspective_distance,
+        holo,
     );
     ui.add_space(16.0);
 
     // --- 2. Hex Tile ---
     ui.label(egui::RichText::new("2. Hex Tile").color(ACCENT).strong());
     ui.label(
-        egui::RichText::new("Pointy-top hexagon. Tessellates for game boards. Labels below shape.")
-            .color(TEXT_MUTED)
-            .small(),
+        egui::RichText::new(
+            "Pointy-top hexagon. Tessellates for game boards. Holographic foil on Rare+.",
+        )
+        .color(TEXT_MUTED)
+        .small(),
     );
     ui.add_space(4.0);
     demo_hex(
@@ -1069,42 +1436,19 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
         state.tilt_ease,
         15.0,
         state.perspective_distance,
+        holo,
     );
     ui.add_space(16.0);
 
-    // --- 3. Circle / Medallion ---
+    // --- 3. Rounded Square ---
     ui.label(
-        egui::RichText::new("3. Circle / Medallion")
-            .color(ACCENT)
-            .strong(),
-    );
-    ui.label(
-        egui::RichText::new("Clean, iconic. Fits PFP culture. Labels below shape.")
-            .color(TEXT_MUTED)
-            .small(),
-    );
-    ui.add_space(4.0);
-    demo_circle(
-        ui,
-        state.size,
-        state.rarity,
-        art_texture,
-        &mut state.tilts[2],
-        state.tilt_ease,
-        15.0,
-        state.perspective_distance,
-    );
-    ui.add_space(16.0);
-
-    // --- 4. Rounded Square ---
-    ui.label(
-        egui::RichText::new("4. Rounded Square")
+        egui::RichText::new("3. Rounded Square")
             .color(ACCENT)
             .strong(),
     );
     ui.label(
         egui::RichText::new(
-            "Modern app-icon aesthetic. Generous corner radius with overlay bands.",
+            "Modern app-icon aesthetic. Generous corner radius with holographic foil.",
         )
         .color(TEXT_MUTED)
         .small(),
@@ -1115,10 +1459,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
         state.size,
         state.rarity,
         art_texture,
-        &mut state.tilts[3],
+        &mut state.tilts[2],
         state.tilt_ease,
         15.0,
         state.perspective_distance,
+        holo,
     );
 
     ui.add_space(24.0);
@@ -1131,6 +1476,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
     );
     ui.label("- Square: best art utilisation, familiar grid layout");
     ui.label("- Hex: strongest game-board identity, tessellation-ready");
-    ui.label("- Circle: cleanest silhouette, loses corner art detail");
     ui.label("- Rounded Square: modern feel, good compromise");
+    ui.label("- Holographic: specular streak + iridescence + fresnel glow (Rare+)");
 }

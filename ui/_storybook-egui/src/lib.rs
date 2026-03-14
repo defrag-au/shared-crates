@@ -122,7 +122,7 @@ mod app {
                     "Trading card rendering with perspective tilt, holographic effects, and card flip"
                 }
                 Self::NftShapes => {
-                    "Shape experiments: square, hex, circle, rounded square — exploring alternatives to the card metaphor"
+                    "Shape experiments: square, hex, rounded square — with holographic foil, stats, and 3D tilt"
                 }
                 Self::IconGallery => {
                     "Phosphor icon font gallery with size/color controls and contextual examples"
