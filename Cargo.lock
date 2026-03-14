@@ -5048,6 +5048,7 @@ dependencies = [
  "egui-widgets",
  "egui_extras",
  "gloo-timers",
+ "image",
  "js-sys",
  "log",
  "wasm-bindgen",

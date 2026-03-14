@@ -5,6 +5,7 @@ pub mod flip_counter;
 pub mod marquee;
 pub mod mesh_playground;
 pub mod metric_card;
+pub mod nft_shapes;
 pub mod perspective_text;
 pub mod progress_bar;
 pub mod seven_segment;
