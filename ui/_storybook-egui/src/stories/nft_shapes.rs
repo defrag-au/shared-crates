@@ -748,6 +748,82 @@ const DEMO_STATS: &[StatEntry] = &[
     },
 ];
 
+// ============================================================================
+// Shape-aware overlay positioning
+// ============================================================================
+
+/// Card mask type — controls how overlay elements position relative to the shape.
+#[derive(Clone, Copy)]
+enum CardMask {
+    Square,
+    Hex { radius: f32 },
+    RoundedSquare { corner_radius: f32 },
+}
+
+impl CardMask {
+    /// Right edge X at a given Y, relative to shape center.
+    /// Returns the X coordinate of the shape's right boundary at `y`.
+    fn right_edge_at(&self, center: Pos2, half: f32, y: f32) -> f32 {
+        match self {
+            CardMask::Square => center.x + half,
+            CardMask::Hex { radius } => {
+                // Pointy-top hex vertices (rotation = -90°):
+                //   V0 top (cx, cy-r), V1 upper-right (cx+r√3/2, cy-r/2),
+                //   V2 lower-right (cx+r√3/2, cy+r/2), V3 bottom (cx, cy+r)
+                // Right edge has 3 segments:
+                //   NE edge (V0→V1): slopes from (cx, cy-r) to (cx+r√3/2, cy-r/2)
+                //   E edge  (V1→V2): vertical at x = cx+r√3/2, from cy-r/2 to cy+r/2
+                //   SE edge (V2→V3): slopes from (cx+r√3/2, cy+r/2) to (cx, cy+r)
+                let max_half_w = radius * (std::f32::consts::PI / 6.0).cos(); // r√3/2
+                let dy = y - center.y;
+                let half_r = radius * 0.5;
+                if dy.abs() <= half_r {
+                    // Vertical right edge (between upper-right and lower-right vertices)
+                    center.x + max_half_w
+                } else {
+                    // Sloping edge (NE or SE): linear from max width at ±r/2 to 0 at ±r
+                    let overshoot = dy.abs() - half_r;
+                    let slope_len = radius - half_r; // = r/2
+                    let frac = (overshoot / slope_len).clamp(0.0, 1.0);
+                    center.x + max_half_w * (1.0 - frac)
+                }
+            }
+            CardMask::RoundedSquare { corner_radius } => {
+                let r = *corner_radius;
+                let dy = (y - center.y).abs();
+                let straight_half = half - r;
+                if dy <= straight_half {
+                    // In the straight section
+                    center.x + half
+                } else {
+                    // In the corner arc
+                    let arc_dy = dy - straight_half;
+                    let arc_dx = (r * r - arc_dy * arc_dy).max(0.0).sqrt();
+                    center.x + straight_half + arc_dx
+                }
+            }
+        }
+    }
+
+    /// Title Y position (inside the shape's top area).
+    fn title_y(&self, center: Pos2, half: f32) -> f32 {
+        match self {
+            CardMask::Square => center.y - half + half * 0.14,
+            CardMask::Hex { radius } => center.y - radius * 0.72,
+            CardMask::RoundedSquare { .. } => center.y - half + half * 0.14,
+        }
+    }
+
+    /// Bottom anchor Y for badge popout.
+    fn badge_anchor_y(&self, center: Pos2, half: f32) -> f32 {
+        match self {
+            CardMask::Square => center.y + half,
+            CardMask::Hex { radius } => center.y + *radius,
+            CardMask::RoundedSquare { .. } => center.y + half,
+        }
+    }
+}
+
 /// Draw a projected rounded-left / hard-right pill background for a stat.
 /// Split into a half-circle fan (left cap) + a rectangle quad (body).
 #[allow(clippy::too_many_arguments)]
@@ -804,14 +880,185 @@ fn draw_stat_pill(
     );
 }
 
-/// Draw title at top-center, stat pills stacked vertically on the right edge,
-/// and a badge popout at the bottom.
+/// Draw stat pills stacked vertically, anchored to shape's right edge.
+#[allow(clippy::too_many_arguments)]
+fn draw_stat_stack(
+    ui: &egui::Ui,
+    painter: &egui::Painter,
+    center: Pos2,
+    half: f32,
+    mask: CardMask,
+    proj_center: Pos2,
+    angle_x: f32,
+    angle_y: f32,
+    perspective: f32,
+    pill_bg: Color32,
+) {
+    let stat_font = egui::FontId::new(10.0, egui::FontFamily::Monospace);
+    let icon_font = egui::FontId::new(12.0, phosphor_family());
+    let pill_w = 46.0;
+    let pill_h = 16.0;
+    let pill_gap = 3.0;
+    let total_h =
+        DEMO_STATS.len() as f32 * pill_h + (DEMO_STATS.len() - 1).max(0) as f32 * pill_gap;
+    let stack_top = center.y - total_h / 2.0;
+
+    for (i, stat) in DEMO_STATS.iter().enumerate() {
+        let y = stack_top + i as f32 * (pill_h + pill_gap);
+        let pill_center_y = y + pill_h / 2.0;
+        let pill_right = mask.right_edge_at(center, half, pill_center_y);
+        let pill_left = pill_right - pill_w;
+
+        draw_stat_pill(
+            painter,
+            pill_left,
+            y,
+            pill_w,
+            pill_h,
+            proj_center,
+            angle_x,
+            angle_y,
+            perspective,
+            pill_bg,
+        );
+
+        let mut job = LayoutJob::default();
+        job.append(
+            &stat.icon.as_str(),
+            0.0,
+            TextFormat::simple(icon_font.clone(), stat.color),
+        );
+        job.append(
+            &format!(" {}", stat.value),
+            0.0,
+            TextFormat::simple(stat_font.clone(), stat.color),
+        );
+        let galley = ui.ctx().fonts_mut(|f| f.layout_job(job));
+        let text_x = pill_left + (pill_w - galley.size().x) / 2.0;
+        let text_y = y + (pill_h - galley.size().y) / 2.0;
+        draw_projected_galley(
+            ui,
+            painter,
+            &galley,
+            Pos2::new(text_x, text_y),
+            proj_center,
+            angle_x,
+            angle_y,
+            perspective,
+            false,
+        );
+    }
+}
+
+/// Hex-specific overlay: stats pinned to NE edge, name at bottom, badge text below.
+#[allow(clippy::too_many_arguments)]
+fn draw_hex_overlay(
+    ui: &egui::Ui,
+    painter: &egui::Painter,
+    rarity: usize,
+    center: Pos2,
+    half: f32,
+    mask: CardMask,
+    proj_center: Pos2,
+    angle_x: f32,
+    angle_y: f32,
+    perspective: f32,
+    text_color: Color32,
+    rarity_col: Color32,
+    pill_bg: Color32,
+) {
+    let radius = match mask {
+        CardMask::Hex { radius } => radius,
+        _ => half,
+    };
+
+    // --- Stats on right edge (vertical edge of pointy-top hex) ---
+    // The right edge (V1→V2) is perfectly vertical, so use the standard
+    // horizontal pill stack, same as square/rounded-square.
+    draw_stat_stack(
+        ui,
+        painter,
+        center,
+        half,
+        mask,
+        proj_center,
+        angle_x,
+        angle_y,
+        perspective,
+        pill_bg,
+    );
+
+    // --- Name at bottom of hex ---
+    let title_font = egui::FontId::new(13.0, egui::FontFamily::Monospace);
+    let name_y = center.y + radius * 0.62;
+    let title_g =
+        painter.layout_no_wrap("Shadow Drake".to_string(), title_font.clone(), text_color);
+    let title_pos = Pos2::new(
+        center.x - title_g.size().x / 2.0,
+        name_y - title_g.size().y / 2.0,
+    );
+    draw_projected_text(
+        ui,
+        painter,
+        "Shadow Drake",
+        title_font,
+        text_color,
+        title_pos,
+        proj_center,
+        angle_x,
+        angle_y,
+        perspective,
+    );
+
+    // --- Badge text below name (no background, just rarity stars + type) ---
+    let badge_font = egui::FontId::new(10.0, phosphor_family());
+    let badge_text_font = egui::FontId::new(9.0, egui::FontFamily::Monospace);
+    let badge_y = name_y + 14.0;
+
+    let mut badge_job = LayoutJob::default();
+    badge_job.append(
+        &PhosphorIcon::Star.as_str(),
+        0.0,
+        TextFormat::simple(badge_font.clone(), rarity_col),
+    );
+    badge_job.append(
+        " Dragon ",
+        0.0,
+        TextFormat::simple(badge_text_font, text_color),
+    );
+    badge_job.append(
+        &PhosphorIcon::Star.as_str(),
+        0.0,
+        TextFormat::simple(badge_font, rarity_col),
+    );
+    let badge_g = ui.ctx().fonts_mut(|f| f.layout_job(badge_job));
+    let badge_pos = Pos2::new(
+        center.x - badge_g.size().x / 2.0,
+        badge_y - badge_g.size().y / 2.0,
+    );
+    draw_projected_galley(
+        ui,
+        painter,
+        &badge_g,
+        badge_pos,
+        proj_center,
+        angle_x,
+        angle_y,
+        perspective,
+        true,
+    );
+
+    let _ = rarity;
+}
+
+/// Draw title, stat pills, and badge — layout varies by mask shape.
 #[allow(clippy::too_many_arguments)]
 fn draw_tile_overlay(
     ui: &egui::Ui,
     painter: &egui::Painter,
     rarity: usize,
     bbox: Rect,
+    mask: CardMask,
     proj_center: Pos2,
     angle_x: f32,
     angle_y: f32,
@@ -820,14 +1067,39 @@ fn draw_tile_overlay(
     let text_color = Color32::from_rgb(220, 220, 235);
     let (_rarity_name, rarity_col) = RARITIES.get(rarity).copied().unwrap_or(RARITIES[0]);
     let pill_bg = Color32::from_rgba_premultiplied(20, 20, 35, 200);
+    let center = bbox.center();
+    let half = bbox.width() / 2.0;
 
-    // --- Title (top center) ---
+    if matches!(mask, CardMask::Hex { .. }) {
+        // === Hex-specific layout ===
+        // Stats pinned to NE edge, name at bottom, badge text below name (no bg)
+        draw_hex_overlay(
+            ui,
+            painter,
+            rarity,
+            center,
+            half,
+            mask,
+            proj_center,
+            angle_x,
+            angle_y,
+            perspective,
+            text_color,
+            rarity_col,
+            pill_bg,
+        );
+        return;
+    }
+
+    // === Square / RoundedSquare layout ===
+
+    // --- Title (top center, inside the shape) ---
     let title_font = egui::FontId::new(13.0, egui::FontFamily::Monospace);
-    let title_y = bbox.top() + bbox.height() * 0.07;
+    let title_y = mask.title_y(center, half);
     let title_g =
         painter.layout_no_wrap("Shadow Drake".to_string(), title_font.clone(), text_color);
     let title_pos = Pos2::new(
-        bbox.center().x - title_g.size().x / 2.0,
+        center.x - title_g.size().x / 2.0,
         title_y - title_g.size().y / 2.0,
     );
     draw_projected_text(
@@ -843,71 +1115,28 @@ fn draw_tile_overlay(
         perspective,
     );
 
-    // --- Stats (pill stack, right edge, vertically centered) ---
-    let stat_font = egui::FontId::new(10.0, egui::FontFamily::Monospace);
-    let icon_font = egui::FontId::new(12.0, phosphor_family());
-    let pill_w = bbox.width() * 0.22;
-    let pill_h = 16.0;
-    let pill_gap = 3.0;
-    let total_h =
-        DEMO_STATS.len() as f32 * pill_h + (DEMO_STATS.len() - 1).max(0) as f32 * pill_gap;
-    let stack_top = bbox.center().y - total_h / 2.0;
-    let pill_right = bbox.right(); // hard right edge flush with card
+    // --- Stats (pill stack, anchored to shape's right edge, vertically centered) ---
+    draw_stat_stack(
+        ui,
+        painter,
+        center,
+        half,
+        mask,
+        proj_center,
+        angle_x,
+        angle_y,
+        perspective,
+        pill_bg,
+    );
 
-    for (i, stat) in DEMO_STATS.iter().enumerate() {
-        let y = stack_top + i as f32 * (pill_h + pill_gap);
-        let pill_left = pill_right - pill_w;
-
-        // Pill background: rounded left, hard right
-        draw_stat_pill(
-            painter,
-            pill_left,
-            y,
-            pill_w,
-            pill_h,
-            proj_center,
-            angle_x,
-            angle_y,
-            perspective,
-            pill_bg,
-        );
-
-        // Text (no shadow — pill bg provides contrast)
-        let mut job = LayoutJob::default();
-        job.append(
-            &stat.icon.as_str(),
-            0.0,
-            TextFormat::simple(icon_font.clone(), stat.color),
-        );
-        job.append(
-            &format!(" {}", stat.value),
-            0.0,
-            TextFormat::simple(stat_font.clone(), stat.color),
-        );
-        let galley = ui.ctx().fonts_mut(|f| f.layout_job(job));
-        // Center text within pill
-        let text_x = pill_left + (pill_w - galley.size().x) / 2.0;
-        let text_y = y + (pill_h - galley.size().y) / 2.0;
-        draw_projected_galley(
-            ui,
-            painter,
-            &galley,
-            Pos2::new(text_x, text_y),
-            proj_center,
-            angle_x,
-            angle_y,
-            perspective,
-            false,
-        );
-    }
-
-    // --- Badge popout (extends below bottom edge) ---
+    // --- Badge popout (extends below shape's bottom edge) ---
     let badge_font = egui::FontId::new(11.0, phosphor_family());
     let badge_text_font = egui::FontId::new(9.0, egui::FontFamily::Monospace);
     let badge_h = 22.0;
     let badge_w = bbox.width() * 0.45;
-    let badge_top = bbox.bottom() - badge_h * 0.4; // 40% overlap, 60% popout
-    let badge_left = bbox.center().x - badge_w / 2.0;
+    let badge_anchor = mask.badge_anchor_y(center, half);
+    let badge_top = badge_anchor - badge_h * 0.4; // 40% overlap, 60% popout
+    let badge_left = center.x - badge_w / 2.0;
 
     // Badge background: rounded rect (all corners)
     let badge_r = badge_h / 2.0;
@@ -937,7 +1166,7 @@ fn draw_tile_overlay(
         ));
     }
 
-    let badge_center_pt = Pos2::new(bbox.center().x, badge_top + badge_h / 2.0);
+    let badge_center_pt = Pos2::new(center.x, badge_top + badge_h / 2.0);
     let proj_badge_verts = project_points(&badge_verts, proj_center, angle_x, angle_y, perspective);
     let proj_badge_center = project_3d(badge_center_pt, proj_center, angle_x, angle_y, perspective);
     draw_colored_fan(painter, proj_badge_center, &proj_badge_verts, pill_bg);
@@ -987,7 +1216,7 @@ fn draw_tile_overlay(
     );
     let badge_g = ui.ctx().fonts_mut(|f| f.layout_job(badge_job));
     let badge_text_pos = Pos2::new(
-        bbox.center().x - badge_g.size().x / 2.0,
+        center.x - badge_g.size().x / 2.0,
         badge_top + (badge_h - badge_g.size().y) / 2.0,
     );
     draw_projected_galley(
@@ -1115,34 +1344,40 @@ fn demo_square(
         draw_quad(&painter, proj4, Color32::from_rgb(30, 30, 48));
     }
 
-    // Holographic overlay (Rare+)
+    // Holographic overlay (Rare+, only while hovering)
     if rarity >= 2 {
-        let (mu, mv) = if let Some(hover_pos) = response.hover_pos() {
-            (
-                ((hover_pos.x - card_rect.left()) / card_rect.width()).clamp(0.0, 1.0),
-                ((hover_pos.y - card_rect.top()) / card_rect.height()).clamp(0.0, 1.0),
-            )
-        } else {
-            (0.5, 0.5)
-        };
-        draw_holo_quad(
-            &painter,
-            card_rect,
-            center,
-            ax,
-            ay,
-            perspective,
-            mu,
-            mv,
-            holo.hue_range,
-            holo.shimmer_width,
-            holo.shimmer_intensity,
-            holo.overlay_opacity,
-        );
+        if let Some(hover_pos) = response.hover_pos() {
+            let mu = ((hover_pos.x - card_rect.left()) / card_rect.width()).clamp(0.0, 1.0);
+            let mv = ((hover_pos.y - card_rect.top()) / card_rect.height()).clamp(0.0, 1.0);
+            draw_holo_quad(
+                &painter,
+                card_rect,
+                center,
+                ax,
+                ay,
+                perspective,
+                mu,
+                mv,
+                holo.hue_range,
+                holo.shimmer_width,
+                holo.shimmer_intensity,
+                holo.overlay_opacity,
+            );
+        }
     }
 
     // Overlay: title, stats, badge
-    draw_tile_overlay(ui, &painter, rarity, card_rect, center, ax, ay, perspective);
+    draw_tile_overlay(
+        ui,
+        &painter,
+        rarity,
+        card_rect,
+        CardMask::Square,
+        center,
+        ax,
+        ay,
+        perspective,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1209,33 +1444,39 @@ fn demo_hex(
         );
     }
 
-    // Holographic overlay (Rare+)
+    // Holographic overlay (Rare+, only while hovering)
     let hex_bbox = Rect::from_center_size(center, Vec2::splat(radius * 2.0));
     if rarity >= 2 {
-        let (mu, mv) = if let Some(hover_pos) = response.hover_pos() {
-            (
-                ((hover_pos.x - hex_bbox.left()) / hex_bbox.width()).clamp(0.0, 1.0),
-                ((hover_pos.y - hex_bbox.top()) / hex_bbox.height()).clamp(0.0, 1.0),
-            )
-        } else {
-            (0.5, 0.5)
-        };
-        draw_holo_fan(
-            &painter,
-            art_center,
-            &art_proj,
-            hex_bbox,
-            mu,
-            mv,
-            holo.hue_range,
-            holo.shimmer_width,
-            holo.shimmer_intensity,
-            holo.overlay_opacity,
-        );
+        if let Some(hover_pos) = response.hover_pos() {
+            let mu = ((hover_pos.x - hex_bbox.left()) / hex_bbox.width()).clamp(0.0, 1.0);
+            let mv = ((hover_pos.y - hex_bbox.top()) / hex_bbox.height()).clamp(0.0, 1.0);
+            draw_holo_fan(
+                &painter,
+                art_center,
+                &art_proj,
+                hex_bbox,
+                mu,
+                mv,
+                holo.hue_range,
+                holo.shimmer_width,
+                holo.shimmer_intensity,
+                holo.overlay_opacity,
+            );
+        }
     }
 
     // Overlay: title, stats, badge
-    draw_tile_overlay(ui, &painter, rarity, hex_bbox, center, ax, ay, perspective);
+    draw_tile_overlay(
+        ui,
+        &painter,
+        rarity,
+        hex_bbox,
+        CardMask::Hex { radius },
+        center,
+        ax,
+        ay,
+        perspective,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1307,32 +1548,38 @@ fn demo_rounded_square(
         );
     }
 
-    // Holographic overlay (Rare+)
+    // Holographic overlay (Rare+, only while hovering)
     if rarity >= 2 {
-        let (mu, mv) = if let Some(hover_pos) = response.hover_pos() {
-            (
-                ((hover_pos.x - bbox.left()) / bbox.width()).clamp(0.0, 1.0),
-                ((hover_pos.y - bbox.top()) / bbox.height()).clamp(0.0, 1.0),
-            )
-        } else {
-            (0.5, 0.5)
-        };
-        draw_holo_fan(
-            &painter,
-            art_center,
-            &art_proj,
-            bbox,
-            mu,
-            mv,
-            holo.hue_range,
-            holo.shimmer_width,
-            holo.shimmer_intensity,
-            holo.overlay_opacity,
-        );
+        if let Some(hover_pos) = response.hover_pos() {
+            let mu = ((hover_pos.x - bbox.left()) / bbox.width()).clamp(0.0, 1.0);
+            let mv = ((hover_pos.y - bbox.top()) / bbox.height()).clamp(0.0, 1.0);
+            draw_holo_fan(
+                &painter,
+                art_center,
+                &art_proj,
+                bbox,
+                mu,
+                mv,
+                holo.hue_range,
+                holo.shimmer_width,
+                holo.shimmer_intensity,
+                holo.overlay_opacity,
+            );
+        }
     }
 
     // Overlay: title, stats, badge
-    draw_tile_overlay(ui, &painter, rarity, bbox, center, ax, ay, perspective);
+    draw_tile_overlay(
+        ui,
+        &painter,
+        rarity,
+        bbox,
+        CardMask::RoundedSquare { corner_radius },
+        center,
+        ax,
+        ay,
+        perspective,
+    );
 }
 
 // ============================================================================
