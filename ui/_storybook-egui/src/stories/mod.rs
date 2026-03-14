@@ -10,5 +10,6 @@ pub mod progress_bar;
 pub mod seven_segment;
 pub mod sparkline;
 pub mod swap;
+pub mod tcg_card;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;

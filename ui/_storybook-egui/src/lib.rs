@@ -28,6 +28,7 @@ mod app {
         AsyncData,
         MeshPlayground,
         PerspectiveText,
+        TcgCard,
         WalletButton,
         SwapModal,
     }
@@ -46,6 +47,7 @@ mod app {
                 Self::AsyncData,
                 Self::MeshPlayground,
                 Self::PerspectiveText,
+                Self::TcgCard,
                 Self::WalletButton,
                 Self::SwapModal,
             ]
@@ -64,6 +66,7 @@ mod app {
                 Self::AsyncData => "Async Data",
                 Self::MeshPlayground => "Mesh Playground",
                 Self::PerspectiveText => "Perspective Text",
+                Self::TcgCard => "TCG Card",
                 Self::WalletButton => "Wallet Button",
                 Self::SwapModal => "Swap Modal",
             }
@@ -79,7 +82,8 @@ mod app {
                 | Self::FlipCounter
                 | Self::AsyncData
                 | Self::MeshPlayground
-                | Self::PerspectiveText => "Data Visualization",
+                | Self::PerspectiveText
+                | Self::TcgCard => "Data Visualization",
                 Self::WalletButton => "Wallet",
                 Self::SwapModal => "Swap",
             }
@@ -105,6 +109,9 @@ mod app {
                 }
                 Self::PerspectiveText => {
                     "Galley mesh vertex transforms: scale, wave, perspective flip"
+                }
+                Self::TcgCard => {
+                    "Trading card rendering with perspective tilt, holographic effects, and card flip"
                 }
                 Self::WalletButton => "CIP-30 wallet connection button with state management",
                 Self::SwapModal => "DEX swap modal with preview, culture buys, and progress states",
@@ -149,6 +156,7 @@ mod app {
         async_data_state: stories::async_data::AsyncDataState,
         mesh_playground_state: stories::mesh_playground::MeshPlaygroundState,
         perspective_text_state: stories::perspective_text::PerspectiveTextState,
+        tcg_card_state: stories::tcg_card::TcgCardState,
         wallet_btn: egui_widgets::WalletButton,
         wallet_connector: egui_widgets::wallet::WalletConnector,
         swap_modal: egui_widgets::SwapModal,
@@ -174,6 +182,7 @@ mod app {
                 async_data_state: stories::async_data::AsyncDataState::default(),
                 mesh_playground_state: stories::mesh_playground::MeshPlaygroundState::default(),
                 perspective_text_state: stories::perspective_text::PerspectiveTextState::default(),
+                tcg_card_state: stories::tcg_card::TcgCardState::default(),
                 wallet_btn: egui_widgets::WalletButton::new(),
                 wallet_connector: egui_widgets::wallet::WalletConnector::new(),
                 swap_modal: egui_widgets::SwapModal::new(egui_widgets::SwapModalConfig {
@@ -295,6 +304,7 @@ mod app {
                                 ui,
                                 &mut self.perspective_text_state,
                             ),
+                            Story::TcgCard => stories::tcg_card::show(ui, &mut self.tcg_card_state),
                             Story::WalletButton => stories::wallet::show(
                                 ui,
                                 &mut self.wallet_btn,
