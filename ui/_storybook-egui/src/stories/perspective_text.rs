@@ -146,17 +146,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
 
     ui.add_space(16.0);
 
-    // --- 3. Perspective flip (like flip counter) ---
+    // --- 3. Perspective flip — unified card + text surface ---
     ui.label(
-        egui::RichText::new("3. Perspective Flip")
+        egui::RichText::new("3. Perspective Flip (Unified Surface)")
             .color(ACCENT)
             .strong(),
     );
     ui.label(
         egui::RichText::new(
-            "Text on a card that rotates around a horizontal axis. \
-             Y vertices compressed by cos(angle), X pinched toward center. \
-             This is the FlipCounter technique.",
+            "Card and text rendered as a single surface. Galley mesh vertices \
+             are extracted and bilinearly mapped into the card's trapezoid \
+             coordinate space via raw Shape::mesh(). No TextShape — card and \
+             glyphs share the same perspective transform.",
         )
         .color(TEXT_MUTED)
         .small(),
@@ -184,14 +185,20 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
 
     let angle_rad = state.flip_angle.to_radians();
     let cos_a = angle_rad.cos();
-    let pinch_frac = 0.12 * (1.0 - cos_a); // up to 12% pinch
+    let pinch_frac = 0.12 * (1.0 - cos_a); // up to 12% pinch at far edge
     let shadow = (60.0 * (1.0 - cos_a)) as u8;
 
-    // Draw the card as a trapezoid
+    // Card trapezoid corners — top edge pinched (tilted away), bottom edge full width (near)
     let card_left = rect.left() + 10.0;
     let card_top = rect.center().y - (card_h * cos_a) / 2.0;
     let card_bottom = rect.center().y + (card_h * cos_a) / 2.0;
     let pinch_px = card_w * pinch_frac;
+
+    // The four corners of our trapezoid (TL, TR, BR, BL)
+    let tl = Pos2::new(card_left + pinch_px, card_top);
+    let tr = Pos2::new(card_left + card_w - pinch_px, card_top);
+    let br = Pos2::new(card_left + card_w, card_bottom);
+    let bl = Pos2::new(card_left, card_bottom);
 
     let card_color = Color32::from_rgb(
         45_u8.saturating_sub(shadow),
@@ -199,66 +206,101 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
         65_u8.saturating_sub(shadow),
     );
 
-    // Trapezoid: top edge pinched, bottom edge full width
-    let mut mesh = Mesh::default();
-    mesh.vertices.extend_from_slice(&[
+    // Draw card background trapezoid (solid colour, uses WHITE_UV)
+    let mut card_mesh = Mesh::default();
+    card_mesh.vertices.extend_from_slice(&[
         Vertex {
-            pos: Pos2::new(card_left + pinch_px, card_top),
+            pos: tl,
             uv: WHITE_UV,
             color: card_color,
         },
         Vertex {
-            pos: Pos2::new(card_left + card_w - pinch_px, card_top),
+            pos: tr,
             uv: WHITE_UV,
             color: card_color,
         },
         Vertex {
-            pos: Pos2::new(card_left + card_w, card_bottom),
+            pos: br,
             uv: WHITE_UV,
             color: card_color,
         },
         Vertex {
-            pos: Pos2::new(card_left, card_bottom),
+            pos: bl,
             uv: WHITE_UV,
             color: card_color,
         },
     ]);
-    mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
-    painter.add(egui::Shape::mesh(mesh));
+    card_mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
+    painter.add(egui::Shape::mesh(card_mesh));
 
-    // Draw text with matching vertex transforms
+    // Layout text to get glyph mesh with font atlas UVs
     let galley = painter.layout_no_wrap(
         "FLIPPING".to_string(),
         FontId::new(36.0, egui::FontFamily::Monospace),
         Color32::from_rgb(220, 220, 235),
     );
 
-    let mut modified = galley.clone();
-    let galley_ref = Arc::make_mut(&mut modified);
-    let g_w = galley_ref.rect.width();
-    let g_h = galley_ref.rect.height();
-    let g_center_y = g_h / 2.0;
-    let g_center_x = g_w / 2.0;
+    // Extract galley mesh vertices and map into the card's trapezoid space.
+    // Each vertex pos is galley-local; we normalise to (u, v) ∈ [0,1]×[0,1]
+    // within the galley rect, then bilinearly interpolate into the trapezoid.
+    //
+    // IMPORTANT: row.visuals.mesh stores UVs as texel coordinates (not normalised).
+    // The tessellator normally divides by font texture size — we must do the same.
+    let g_rect = galley.rect;
+    let font_tex_size = ui.ctx().fonts(|f| f.font_image_size());
+    let uv_norm = Vec2::new(1.0 / font_tex_size[0] as f32, 1.0 / font_tex_size[1] as f32);
 
-    for placed_row in &mut galley_ref.rows {
-        let row = Arc::make_mut(&mut placed_row.row);
-        for vertex in &mut row.visuals.mesh.vertices {
-            // Compress Y toward center
-            vertex.pos.y = g_center_y + (vertex.pos.y - g_center_y) * cos_a;
-            // Pinch X toward center proportional to distance from center
-            let x_offset = vertex.pos.x - g_center_x;
-            vertex.pos.x = g_center_x + x_offset * (1.0 - pinch_frac);
+    // Text centred within the card with some padding
+    let pad_x = 0.08; // 8% horizontal padding inside card
+    let pad_y = 0.15; // 15% vertical padding inside card
+
+    let mut text_mesh = Mesh::with_texture(egui::TextureId::default());
+
+    for placed_row in &galley.rows {
+        let row_offset = placed_row.pos;
+        let row_mesh = &placed_row.row.visuals.mesh;
+
+        let idx_offset = text_mesh.vertices.len() as u32;
+
+        for vertex in &row_mesh.vertices {
+            // Galley-local position (row vertices are relative to row origin)
+            let galley_pos = Pos2::new(vertex.pos.x + row_offset.x, vertex.pos.y + row_offset.y);
+
+            // Normalise position to [0,1] within galley bounding rect
+            let u = if g_rect.width() > 0.0 {
+                (galley_pos.x - g_rect.left()) / g_rect.width()
+            } else {
+                0.5
+            };
+            let v = if g_rect.height() > 0.0 {
+                (galley_pos.y - g_rect.top()) / g_rect.height()
+            } else {
+                0.5
+            };
+
+            // Map normalised coords into card space with padding
+            let card_u = pad_x + u * (1.0 - 2.0 * pad_x);
+            let card_v = pad_y + v * (1.0 - 2.0 * pad_y);
+
+            // Bilinear interpolation into trapezoid corners
+            let screen_pos = bilinear(tl, tr, br, bl, card_u, card_v);
+
+            // Normalise texel UVs to [0,1] range for the font atlas
+            let normalised_uv = Pos2::new(vertex.uv.x * uv_norm.x, vertex.uv.y * uv_norm.y);
+
+            text_mesh.vertices.push(Vertex {
+                pos: screen_pos,
+                uv: normalised_uv,
+                color: vertex.color,
+            });
+        }
+
+        for &idx in &row_mesh.indices {
+            text_mesh.indices.push(idx + idx_offset);
         }
     }
 
-    // Position the transformed text centered on the card
-    let text_x = card_left + (card_w - g_w * (1.0 - pinch_frac)) / 2.0;
-    let text_y = rect.center().y - (g_h * cos_a) / 2.0;
-    painter.add(egui::Shape::Text(TextShape::new(
-        Pos2::new(text_x, text_y),
-        modified,
-        Color32::TRANSPARENT,
-    )));
+    painter.add(egui::Shape::mesh(text_mesh));
 
     ui.add_space(16.0);
 
@@ -312,10 +354,25 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
     ui.label(egui::RichText::new("Key patterns:").color(ACCENT).strong());
     ui.label("- Galley mesh: galley.rows[i].row.visuals.mesh.vertices");
     ui.label("- Mutable access: Arc::make_mut(&mut galley).rows → Arc::make_mut(&mut row)");
-    ui.label("- Draw via: painter.add(Shape::Text(TextShape::new(pos, galley, fallback)))");
-    ui.label("- Y-scale toward center simulates viewing angle (perspective)");
-    ui.label("- X-pinch toward center adds convergence (vanishing point)");
+    ui.label("- TextShape: modify vertices in-place, draw at a screen position");
+    ui.label("- Raw mesh: extract vertices, map into arbitrary quad via bilinear()");
+    ui.label("  Use Mesh::with_texture(TextureId::default()) to preserve font atlas UVs");
+    ui.label("- Unified surface: card background (WHITE_UV) + text (font UVs) as separate meshes");
     ui.label("- Vertex colour can be modified for gradient/tint effects");
+}
+
+/// Bilinear interpolation within a quad defined by four corners.
+///
+/// `u` goes left→right (0 = left edge, 1 = right edge).
+/// `v` goes top→bottom (0 = top edge, 1 = bottom edge).
+/// Corners: `tl` (top-left), `tr` (top-right), `br` (bottom-right), `bl` (bottom-left).
+fn bilinear(tl: Pos2, tr: Pos2, br: Pos2, bl: Pos2, u: f32, v: f32) -> Pos2 {
+    // Top edge interpolation
+    let top = Pos2::new(tl.x + (tr.x - tl.x) * u, tl.y + (tr.y - tl.y) * u);
+    // Bottom edge interpolation
+    let bot = Pos2::new(bl.x + (br.x - bl.x) * u, bl.y + (br.y - bl.y) * u);
+    // Vertical interpolation
+    Pos2::new(top.x + (bot.x - top.x) * v, top.y + (bot.y - top.y) * v)
 }
 
 /// Simple HSV→RGB (saturation=1, value=1).

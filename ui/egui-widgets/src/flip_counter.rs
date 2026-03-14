@@ -217,27 +217,18 @@ impl FlipCounter {
                         let shadow = (40.0 * (1.0 - cos_a)) as u8;
                         let flap_color = darken(self.card_color, shadow);
 
-                        Self::draw_trapezoid(
-                            &painter,
-                            card_x + pinch,
-                            top_y,
-                            card_x + slot_w - pinch,
-                            top_y,
-                            card_x + slot_w,
-                            hinge_y,
-                            card_x,
-                            hinge_y,
-                            flap_color,
-                        );
-
-                        let clip = Rect::from_min_max(
-                            Pos2::new(card_x, top_y),
-                            Pos2::new(card_x + slot_w, hinge_y),
-                        );
-                        self.draw_clipped_char(
+                        self.draw_flap_with_text(
+                            ui,
                             &painter,
                             full_rect,
-                            clip,
+                            top_rect,
+                            [
+                                Pos2::new(card_x + pinch, top_y),
+                                Pos2::new(card_x + slot_w - pinch, top_y),
+                                Pos2::new(card_x + slot_w, hinge_y),
+                                Pos2::new(card_x, hinge_y),
+                            ],
+                            flap_color,
                             font_size,
                             digit.previous,
                         );
@@ -258,24 +249,21 @@ impl FlipCounter {
                         let shadow = (40.0 * (1.0 - cos_a)) as u8;
                         let flap_color = darken(self.card_color_bottom, shadow);
 
-                        Self::draw_trapezoid(
+                        self.draw_flap_with_text(
+                            ui,
                             &painter,
-                            card_x,
-                            hinge_y,
-                            card_x + slot_w,
-                            hinge_y,
-                            card_x + slot_w - pinch,
-                            bot_y,
-                            card_x + pinch,
-                            bot_y,
+                            full_rect,
+                            bot_rect,
+                            [
+                                Pos2::new(card_x, hinge_y),
+                                Pos2::new(card_x + slot_w, hinge_y),
+                                Pos2::new(card_x + slot_w - pinch, bot_y),
+                                Pos2::new(card_x + pinch, bot_y),
+                            ],
                             flap_color,
+                            font_size,
+                            digit.current,
                         );
-
-                        let clip = Rect::from_min_max(
-                            Pos2::new(card_x, hinge_y),
-                            Pos2::new(card_x + slot_w, bot_y),
-                        );
-                        self.draw_clipped_char(&painter, full_rect, clip, font_size, digit.current);
                     }
                 }
             } else {
@@ -317,43 +305,17 @@ impl FlipCounter {
     }
 
     /// Draw a solid-colour trapezoid (4-vertex quad) via a custom mesh.
-    /// Vertices: top-left, top-right, bottom-right, bottom-left (clockwise).
-    fn draw_trapezoid(
-        painter: &egui::Painter,
-        x0: f32,
-        y0: f32,
-        x1: f32,
-        y1: f32,
-        x2: f32,
-        y2: f32,
-        x3: f32,
-        y3: f32,
-        color: Color32,
-    ) {
+    /// Corners: top-left, top-right, bottom-right, bottom-left (clockwise).
+    fn draw_trapezoid(painter: &egui::Painter, corners: [Pos2; 4], color: Color32) {
         let white_uv = Pos2::new(0.0, 0.0);
         let mut mesh = Mesh::default();
-        mesh.vertices.extend_from_slice(&[
-            Vertex {
-                pos: Pos2::new(x0, y0),
+        for &pos in &corners {
+            mesh.vertices.push(Vertex {
+                pos,
                 uv: white_uv,
                 color,
-            },
-            Vertex {
-                pos: Pos2::new(x1, y1),
-                uv: white_uv,
-                color,
-            },
-            Vertex {
-                pos: Pos2::new(x2, y2),
-                uv: white_uv,
-                color,
-            },
-            Vertex {
-                pos: Pos2::new(x3, y3),
-                uv: white_uv,
-                color,
-            },
-        ]);
+            });
+        }
         mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
         painter.add(egui::Shape::mesh(mesh));
     }
@@ -390,4 +352,103 @@ impl FlipCounter {
             sub.galley(text_pos, galley, Color32::TRANSPARENT);
         }
     }
+
+    /// Draw a trapezoid flap with text mapped onto the card surface.
+    ///
+    /// The text is rendered as a raw mesh with galley vertices bilinearly
+    /// mapped into the trapezoid's corner positions, so the text foreshortens
+    /// and pinches along with the card. `source_rect` defines which portion
+    /// of the full card the flap represents (top or bottom half).
+    #[allow(clippy::too_many_arguments)]
+    fn draw_flap_with_text(
+        &self,
+        ui: &Ui,
+        painter: &egui::Painter,
+        full_rect: Rect,
+        source_rect: Rect,
+        corners: [Pos2; 4],
+        flap_color: Color32,
+        font_size: f32,
+        ch: char,
+    ) {
+        // Draw the card surface
+        Self::draw_trapezoid(painter, corners, flap_color);
+
+        if ch == ' ' {
+            return;
+        }
+
+        let galley = painter.layout_no_wrap(
+            ch.to_string(),
+            egui::FontId::new(font_size, egui::FontFamily::Monospace),
+            self.text_color,
+        );
+
+        // Text is centered in the full card rect. Compute where each glyph
+        // vertex sits relative to the source_rect (the half we're showing).
+        let text_origin = Pos2::new(
+            full_rect.center().x - galley.size().x / 2.0,
+            full_rect.center().y - galley.size().y / 2.0,
+        );
+
+        let font_tex_size = ui.ctx().fonts(|f| f.font_image_size());
+        let uv_norm_x = 1.0 / font_tex_size[0] as f32;
+        let uv_norm_y = 1.0 / font_tex_size[1] as f32;
+
+        let src_w = source_rect.width();
+        let src_h = source_rect.height();
+
+        let mut text_mesh = Mesh::with_texture(egui::TextureId::default());
+
+        for placed_row in &galley.rows {
+            let row_offset = placed_row.pos;
+            let row_mesh = &placed_row.row.visuals.mesh;
+            let idx_offset = text_mesh.vertices.len() as u32;
+
+            for vertex in &row_mesh.vertices {
+                // Absolute screen position of this vertex (without perspective)
+                let abs_x = text_origin.x + row_offset.x + vertex.pos.x;
+                let abs_y = text_origin.y + row_offset.y + vertex.pos.y;
+
+                // Normalise within the source_rect (the half of the card this flap covers)
+                let u = if src_w > 0.0 {
+                    ((abs_x - source_rect.left()) / src_w).clamp(0.0, 1.0)
+                } else {
+                    0.5
+                };
+                let v = if src_h > 0.0 {
+                    ((abs_y - source_rect.top()) / src_h).clamp(0.0, 1.0)
+                } else {
+                    0.5
+                };
+
+                // Bilinear interpolation into the trapezoid corners
+                let screen_pos = bilinear(corners, u, v);
+
+                text_mesh.vertices.push(Vertex {
+                    pos: screen_pos,
+                    uv: Pos2::new(vertex.uv.x * uv_norm_x, vertex.uv.y * uv_norm_y),
+                    color: vertex.color,
+                });
+            }
+
+            for &idx in &row_mesh.indices {
+                text_mesh.indices.push(idx + idx_offset);
+            }
+        }
+
+        painter.add(egui::Shape::mesh(text_mesh));
+    }
+}
+
+/// Bilinear interpolation within a quad defined by four corners.
+/// `u` goes left→right (0..1), `v` goes top→bottom (0..1).
+/// Corners order: [TL, TR, BR, BL].
+fn bilinear(corners: [Pos2; 4], u: f32, v: f32) -> Pos2 {
+    let [tl, tr, br, bl] = corners;
+    let top_x = tl.x + (tr.x - tl.x) * u;
+    let top_y = tl.y + (tr.y - tl.y) * u;
+    let bot_x = bl.x + (br.x - bl.x) * u;
+    let bot_y = bl.y + (br.y - bl.y) * u;
+    Pos2::new(top_x + (bot_x - top_x) * v, top_y + (bot_y - top_y) * v)
 }
