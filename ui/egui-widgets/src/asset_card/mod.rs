@@ -21,8 +21,8 @@ pub use projection::{project_3d, project_points, update_tilt, TiltState};
 
 // Geometry
 pub use geometry::{
-    cumulative_lengths, expand_outline, regular_polygon_vertices, rounded_rect_vertices,
-    sample_path, unified_outline, BADGE_H, BADGE_W_FRAC,
+    base_outline, cumulative_lengths, expand_outline, regular_polygon_vertices,
+    rounded_rect_vertices, sample_path, unified_outline, with_badge, BADGE_H, BADGE_W_FRAC,
 };
 
 // Mesh drawing

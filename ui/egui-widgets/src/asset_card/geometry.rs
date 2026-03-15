@@ -146,13 +146,8 @@ fn pill_polygon(cx: f32, cy: f32, width: f32, height: f32, segs: u32) -> Vec<[f3
     pts
 }
 
-/// Build a unified outline path that merges the card border and badge popout
-/// into a single continuous silhouette using boolean union.
-pub fn unified_outline(center: Pos2, half: f32, mask: CardMask) -> Vec<Pos2> {
-    use i_overlay::core::fill_rule::FillRule;
-    use i_overlay::core::overlay_rule::OverlayRule;
-    use i_overlay::float::single::SingleFloatOverlay;
-
+/// Generate the base outline for a card shape — no badge, just the shape itself.
+pub fn base_outline(center: Pos2, half: f32, mask: CardMask) -> Vec<Pos2> {
     match mask {
         CardMask::Hex { radius } => regular_polygon_vertices(center, radius, 6, -TAU / 4.0),
         CardMask::Square => {
@@ -160,23 +155,6 @@ pub fn unified_outline(center: Pos2, half: f32, mask: CardMask) -> Vec<Pos2> {
             let right = center.x + half;
             let top = center.y - half;
             let bottom = center.y + half;
-
-            let card: Vec<[f32; 2]> =
-                vec![[left, top], [right, top], [right, bottom], [left, bottom]];
-
-            let badge_w = half * 2.0 * BADGE_W_FRAC;
-            let badge_top = bottom - BADGE_H * BADGE_OVERLAP;
-            let badge_cy = badge_top + BADGE_H / 2.0;
-            let pill = pill_polygon(center.x, badge_cy, badge_w, BADGE_H, BADGE_ARC_SEGS);
-
-            let result = card.overlay(&pill, OverlayRule::Union, FillRule::EvenOdd);
-
-            if let Some(shape) = result.first() {
-                if let Some(contour) = shape.first() {
-                    return contour.iter().map(|p| Pos2::new(p[0], p[1])).collect();
-                }
-            }
-
             vec![
                 Pos2::new(left, top),
                 Pos2::new(right, top),
@@ -185,62 +163,51 @@ pub fn unified_outline(center: Pos2, half: f32, mask: CardMask) -> Vec<Pos2> {
             ]
         }
         CardMask::RoundedSquare { corner_radius } => {
-            let r = corner_radius.min(half);
-            let left = center.x - half;
-            let right = center.x + half;
-            let top = center.y - half;
-            let bottom = center.y + half;
-
-            let segs = 8_u32;
-            let quarter = TAU / 4.0;
-            let mut card: Vec<[f32; 2]> = Vec::new();
-
-            let cx_tr = right - r;
-            let cy_tr = top + r;
-            for i in 0..=segs {
-                let t = i as f32 / segs as f32;
-                let a = -quarter + t * quarter;
-                card.push([cx_tr + a.cos() * r, cy_tr + a.sin() * r]);
-            }
-
-            let cx_br = right - r;
-            let cy_br = bottom - r;
-            for i in 0..=segs {
-                let t = i as f32 / segs as f32;
-                let a = t * quarter;
-                card.push([cx_br + a.cos() * r, cy_br + a.sin() * r]);
-            }
-
-            let cx_bl = left + r;
-            let cy_bl = bottom - r;
-            for i in 0..=segs {
-                let t = i as f32 / segs as f32;
-                let a = quarter + t * quarter;
-                card.push([cx_bl + a.cos() * r, cy_bl + a.sin() * r]);
-            }
-
-            let cx_tl = left + r;
-            let cy_tl = top + r;
-            for i in 0..=segs {
-                let t = i as f32 / segs as f32;
-                let a = 2.0 * quarter + t * quarter;
-                card.push([cx_tl + a.cos() * r, cy_tl + a.sin() * r]);
-            }
-
-            let badge_w = half * 2.0 * BADGE_W_FRAC;
-            let badge_top = bottom - BADGE_H * BADGE_OVERLAP;
-            let badge_cy = badge_top + BADGE_H / 2.0;
-            let pill = pill_polygon(center.x, badge_cy, badge_w, BADGE_H, BADGE_ARC_SEGS);
-
-            let result = card.overlay(&pill, OverlayRule::Union, FillRule::EvenOdd);
-
-            if let Some(shape) = result.first() {
-                if let Some(contour) = shape.first() {
-                    return contour.iter().map(|p| Pos2::new(p[0], p[1])).collect();
-                }
-            }
-
-            card.iter().map(|p| Pos2::new(p[0], p[1])).collect()
+            rounded_rect_vertices(center, half, half, corner_radius.min(half), 8)
         }
+    }
+}
+
+/// Union a badge pill popout onto an existing outline using boolean geometry.
+///
+/// The badge is centered horizontally at `center.x` and anchored at the bottom
+/// edge (`center.y + half`). Pass any closed polygon — the badge pill is merged
+/// into it, producing a single continuous silhouette.
+pub fn with_badge(outline: &[Pos2], center: Pos2, half: f32) -> Vec<Pos2> {
+    use i_overlay::core::fill_rule::FillRule;
+    use i_overlay::core::overlay_rule::OverlayRule;
+    use i_overlay::float::single::SingleFloatOverlay;
+
+    let card: Vec<[f32; 2]> = outline.iter().map(|p| [p.x, p.y]).collect();
+
+    let bottom = center.y + half;
+    let badge_w = half * 2.0 * BADGE_W_FRAC;
+    let badge_top = bottom - BADGE_H * BADGE_OVERLAP;
+    let badge_cy = badge_top + BADGE_H / 2.0;
+    let pill = pill_polygon(center.x, badge_cy, badge_w, BADGE_H, BADGE_ARC_SEGS);
+
+    let result = card.overlay(&pill, OverlayRule::Union, FillRule::EvenOdd);
+
+    if let Some(shape) = result.first() {
+        if let Some(contour) = shape.first() {
+            return contour.iter().map(|p| Pos2::new(p[0], p[1])).collect();
+        }
+    }
+
+    // Fallback: return original outline unchanged
+    outline.to_vec()
+}
+
+/// Build a unified outline path that merges the card shape and badge popout
+/// into a single continuous silhouette.
+///
+/// This is a convenience that calls [`base_outline`] then [`with_badge`].
+/// For badge-free outlines, call [`base_outline`] directly.
+pub fn unified_outline(center: Pos2, half: f32, mask: CardMask) -> Vec<Pos2> {
+    let base = base_outline(center, half, mask);
+    match mask {
+        // Hex cards don't have a badge popout
+        CardMask::Hex { .. } => base,
+        _ => with_badge(&base, center, half),
     }
 }

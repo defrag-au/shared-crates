@@ -2,10 +2,10 @@
 
 use egui::{Color32, Pos2, Rect, Vec2};
 use egui_widgets::asset_card::{
-    draw_colored_fan, draw_colored_ring, draw_effect_fan, draw_effect_quad, draw_quad,
-    draw_spark_streak, draw_textured_fan, draw_textured_fan_rect_uv, draw_textured_quad,
+    base_outline, draw_colored_fan, draw_colored_ring, draw_effect_fan, draw_effect_quad,
+    draw_quad, draw_spark_streak, draw_textured_fan, draw_textured_fan_rect_uv, draw_textured_quad,
     draw_tile_overlay, expand_outline, project_3d, project_points, rarity_color, rarity_glow,
-    rounded_rect_vertices, unified_outline, update_tilt, AuroraCurtain, BrushedMetal, CardEffect,
+    rounded_rect_vertices, update_tilt, with_badge, AuroraCurtain, BrushedMetal, CardEffect,
     CardMask, DiffractionGrating, Glitter, PrismaticDispersion, StreakHolo, ThinFilmIridescence,
     TiltState, EFFECT_NAMES, RARITIES,
 };
@@ -164,7 +164,9 @@ fn demo_square(
     let projected: Vec<Pos2> = project_points(&corners, center, ax, ay, perspective);
     let proj4: [Pos2; 4] = [projected[0], projected[1], projected[2], projected[3]];
 
-    let outline = unified_outline(center, half, CardMask::Square);
+    // Composable outline: base shape, then badge union
+    let base = base_outline(center, half, CardMask::Square);
+    let outline = with_badge(&base, center, half);
     let border_outer = expand_outline(&outline, 3.0);
     let proj_outline = project_points(&outline, center, ax, ay, perspective);
     let proj_border = project_points(&border_outer, center, ax, ay, perspective);
@@ -246,7 +248,8 @@ fn demo_hex(
         ui.ctx().request_repaint();
     }
 
-    let outline = unified_outline(center, radius, CardMask::Hex { radius });
+    // Hex: base shape only, no badge union
+    let outline = base_outline(center, radius, CardMask::Hex { radius });
     let border_outer = expand_outline(&outline, 3.0);
     let proj_outline = project_points(&outline, center, ax, ay, perspective);
     let proj_border = project_points(&border_outer, center, ax, ay, perspective);
@@ -345,7 +348,9 @@ fn demo_rounded_square(
 
     let bbox = Rect::from_center_size(center, Vec2::splat(size));
 
-    let outline = unified_outline(center, half, CardMask::RoundedSquare { corner_radius });
+    // Composable outline: base shape, then badge union
+    let base = base_outline(center, half, CardMask::RoundedSquare { corner_radius });
+    let outline = with_badge(&base, center, half);
     let border_outer = expand_outline(&outline, 3.0);
     let proj_outline = project_points(&outline, center, ax, ay, perspective);
     let proj_border = project_points(&border_outer, center, ax, ay, perspective);
