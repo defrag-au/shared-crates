@@ -128,6 +128,8 @@ pub struct CardBrowserResponse {
     pub hovered: Option<usize>,
     /// Whether the detail panel is visible.
     pub detail_visible: bool,
+    /// True when scroll position is within ~2 rows of the bottom content edge.
+    pub near_bottom: bool,
 }
 
 // ============================================================================
@@ -165,6 +167,7 @@ pub fn show<T>(
         clicked: None,
         hovered: None,
         detail_visible: has_selection,
+        near_bottom: false,
     };
 
     ui.horizontal_top(|ui| {
@@ -194,7 +197,7 @@ pub fn show<T>(
                 scroll = scroll.vertical_scroll_offset(new_offset);
             }
 
-            scroll.show(ui, |ui| {
+            let scroll_output = scroll.show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::splat(config.spacing);
                     let spinner = CachedSpinner::new(ui, 12.0, config.text_muted);
@@ -274,6 +277,17 @@ pub fn show<T>(
                     }
                 });
             });
+
+            // Detect near-bottom: within ~2 card rows of the content bottom
+            let content_height = scroll_output.content_size.y;
+            let viewport_height = scroll_output.inner_rect.height();
+            let offset = scroll_output.state.offset.y;
+            let threshold = (config.card_height() + config.spacing) * 2.0;
+            if content_height > viewport_height
+                && offset + viewport_height >= content_height - threshold
+            {
+                response.near_bottom = true;
+            }
         });
 
         // RIGHT: detail panel
