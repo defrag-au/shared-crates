@@ -9,4 +9,4 @@ open = false
 
 [watch]
 ignore = ["dist"]
-watch = ["src", "../egui-widgets/src"]
+watch = ["src", "../egui-widgets/src", "assets"]

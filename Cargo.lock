@@ -1174,6 +1174,8 @@ version = "0.1.0"
 dependencies = [
  "egui",
  "egui_extras",
+ "egui_inbox",
+ "i_overlay",
  "image",
  "js-sys",
  "log",
@@ -1236,6 +1238,16 @@ dependencies = [
  "profiling",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "egui_inbox"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da31d355094b21970302411fb9bd23d3d7642077d46387b7d4e59323392e69d2"
+dependencies = [
+ "egui",
+ "parking_lot",
 ]
 
 [[package]]
@@ -2067,6 +2079,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "i_float"
+version = "1.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "813145bb0ad5b60f55cbbf3c74cdceda1c0a9d253b35c4cc36ae0df7887cb78f"
+dependencies = [
+ "libm",
+]
+
+[[package]]
+name = "i_key_sort"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c4d36ff9fb73dc62e163e25a07523ca5c2126660fb2485cdecf063e59b58f29"
+
+[[package]]
+name = "i_overlay"
+version = "4.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edb334802d238cf2ff3075896f39bae37bb9c6cc3b83abdb8f6919e63c7e52c3"
+dependencies = [
+ "i_float",
+ "i_key_sort",
+ "i_shape",
+ "i_tree",
+]
+
+[[package]]
+name = "i_shape"
+version = "1.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7722ecde565c0b5845a8850934b18a4c08cda242a116e7ce1676ae990feea0e8"
+dependencies = [
+ "i_float",
+]
+
+[[package]]
+name = "i_tree"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4804bdc1dc124eb7e1aa9e144ecc04096bcf787a10a15fa44af682b51f0f6cce"
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2584,6 +2638,12 @@ dependencies = [
  "cfg-if 1.0.3",
  "windows-link 0.2.1",
 ]
+
+[[package]]
+name = "libm"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "libredox"
@@ -5036,6 +5096,8 @@ dependencies = [
  "egui",
  "egui-widgets",
  "egui_extras",
+ "gloo-timers",
+ "image",
  "js-sys",
  "log",
  "wasm-bindgen",
