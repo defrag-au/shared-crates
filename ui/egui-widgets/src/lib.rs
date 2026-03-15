@@ -20,6 +20,7 @@ pub mod seven_segment;
 pub mod sparkline;
 pub mod swap_modal;
 pub mod theme;
+pub mod trait_filter;
 pub mod utils;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
@@ -53,6 +54,7 @@ pub use swap_modal::{
     SwapProgress,
 };
 pub use theme::FontStrategy;
+pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
 pub use utils::{format_duration, format_number, section_heading, stat_card, truncate_hex};
 #[cfg(target_arch = "wasm32")]
 pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};

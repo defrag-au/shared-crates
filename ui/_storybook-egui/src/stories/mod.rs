@@ -17,5 +17,6 @@ pub mod seven_segment;
 pub mod sparkline;
 pub mod swap;
 pub mod tcg_card;
+pub mod trait_filter;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
