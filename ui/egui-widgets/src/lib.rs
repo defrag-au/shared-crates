@@ -10,6 +10,7 @@ pub mod image_loader;
 pub mod listing_grid;
 pub mod marquee;
 pub mod metric_card;
+pub mod pip_row;
 pub mod progress_bar;
 pub mod radar_chart;
 pub mod range_bar;
@@ -34,6 +35,9 @@ pub use icons::{install_phosphor_font, PhosphorIcon};
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
+pub use pip_row::{
+    HoverInfo, HoveredBin, HoveredPip, Pip, PipRowConfig, PipRowData, PipRowResponse,
+};
 pub use progress_bar::ProgressBar;
 pub use radar_chart::{RadarChartConfig, RadarPoint};
 pub use range_bar::{RangeBarConfig, RangePoint};

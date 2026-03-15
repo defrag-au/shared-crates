@@ -8,6 +8,7 @@ pub mod marquee;
 pub mod mesh_playground;
 pub mod metric_card;
 pub mod perspective_text;
+pub mod pip_row;
 pub mod progress_bar;
 pub mod radar_chart;
 pub mod range_bar;

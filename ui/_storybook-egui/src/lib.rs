@@ -32,6 +32,7 @@ mod app {
         AssetCard,
         RadarChart,
         RangeBar,
+        PipRow,
         IconGallery,
         WalletButton,
         SwapModal,
@@ -55,6 +56,7 @@ mod app {
                 Self::AssetCard,
                 Self::RadarChart,
                 Self::RangeBar,
+                Self::PipRow,
                 Self::IconGallery,
                 Self::WalletButton,
                 Self::SwapModal,
@@ -78,6 +80,7 @@ mod app {
                 Self::AssetCard => "Asset Card",
                 Self::RadarChart => "Radar Chart",
                 Self::RangeBar => "Range Bar",
+                Self::PipRow => "Pip Row",
                 Self::IconGallery => "Icon Gallery",
                 Self::WalletButton => "Wallet Button",
                 Self::SwapModal => "Swap Modal",
@@ -99,6 +102,7 @@ mod app {
                 | Self::AssetCard
                 | Self::RadarChart
                 | Self::RangeBar
+                | Self::PipRow
                 | Self::IconGallery => "Data Visualization",
                 Self::WalletButton => "Wallet",
                 Self::SwapModal => "Swap",
@@ -137,6 +141,9 @@ mod app {
                 }
                 Self::RangeBar => {
                     "Horizontal range bar with labeled tick marks, gradient fill, and auto-staggered labels"
+                }
+                Self::PipRow => {
+                    "Label + horizontal pip bar for distributions, market depth, and ranked data"
                 }
                 Self::IconGallery => {
                     "Phosphor icon font gallery with size/color controls and contextual examples"
@@ -188,6 +195,7 @@ mod app {
         asset_card_state: stories::asset_card::AssetCardState,
         radar_chart_state: stories::radar_chart::RadarChartState,
         range_bar_state: stories::range_bar::RangeBarState,
+        pip_row_state: stories::pip_row::PipRowState,
         icon_gallery_state: stories::icon_gallery::IconGalleryState,
         wallet_btn: egui_widgets::WalletButton,
         wallet_connector: egui_widgets::wallet::WalletConnector,
@@ -220,6 +228,7 @@ mod app {
                 asset_card_state: stories::asset_card::AssetCardState::default(),
                 radar_chart_state: stories::radar_chart::RadarChartState::default(),
                 range_bar_state: stories::range_bar::RangeBarState::default(),
+                pip_row_state: stories::pip_row::PipRowState::default(),
                 icon_gallery_state: stories::icon_gallery::IconGalleryState::default(),
                 wallet_btn: egui_widgets::WalletButton::new(),
                 wallet_connector: egui_widgets::wallet::WalletConnector::new(),
@@ -352,6 +361,7 @@ mod app {
                             Story::RangeBar => {
                                 stories::range_bar::show(ui, &mut self.range_bar_state)
                             }
+                            Story::PipRow => stories::pip_row::show(ui, &mut self.pip_row_state),
                             Story::IconGallery => {
                                 stories::icon_gallery::show(ui, &mut self.icon_gallery_state)
                             }
