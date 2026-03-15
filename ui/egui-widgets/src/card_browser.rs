@@ -15,11 +15,16 @@ use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
 // ============================================================================
 
 /// Layout and color configuration for the card browser.
+///
+/// Card height is computed automatically from `card_width` and `text_lines`:
+/// `inset + thumbnail (= card_width - 2*inset) + gap + text_lines * line_height + bottom_padding`
+///
+/// Use [`CardBrowserConfig::card_height`] to query the computed value.
 pub struct CardBrowserConfig {
-    /// Width of each card.
+    /// Width of each card. The thumbnail fills this width (minus a small inset).
     pub card_width: f32,
-    /// Height of each card.
-    pub card_height: f32,
+    /// Number of text lines below the thumbnail (e.g. name + subtitle + price = 3).
+    pub text_lines: u8,
     /// Width of the detail panel when a card is selected.
     pub detail_width: f32,
     /// Spacing between cards.
@@ -46,11 +51,28 @@ pub struct CardBrowserConfig {
     pub detail_margin: f32,
 }
 
+/// Inset around the thumbnail within the card.
+const CARD_INSET: f32 = 4.0;
+/// Gap between thumbnail bottom and text area.
+const TEXT_GAP: f32 = 4.0;
+/// Height per text line below the thumbnail.
+const LINE_HEIGHT: f32 = 14.0;
+/// Padding below the last text line.
+const BOTTOM_PAD: f32 = 4.0;
+
+impl CardBrowserConfig {
+    /// Computed card height based on `card_width` and `text_lines`.
+    pub fn card_height(&self) -> f32 {
+        let thumb = self.card_width - CARD_INSET * 2.0;
+        CARD_INSET + thumb + TEXT_GAP + self.text_lines as f32 * LINE_HEIGHT + BOTTOM_PAD
+    }
+}
+
 impl Default for CardBrowserConfig {
     fn default() -> Self {
         Self {
             card_width: 140.0,
-            card_height: 180.0,
+            text_lines: 3,
             detail_width: 420.0,
             spacing: 8.0,
             rounding: 6.0,
@@ -159,7 +181,7 @@ pub fn show<T>(
                         let _ = spinner; // available for draw_thumbnail callers
 
                         for (idx, item) in items.iter_mut().enumerate() {
-                            let card_size = Vec2::new(config.card_width, config.card_height);
+                            let card_size = Vec2::new(config.card_width, config.card_height());
                             let (rect, card_resp) =
                                 ui.allocate_exact_size(card_size, Sense::click());
 
@@ -198,16 +220,14 @@ pub fn show<T>(
                             }
 
                             // Compute sub-rects — thumbnail fills card width
-                            let inset = 4.0;
-                            let thumb_w = config.card_width - inset * 2.0;
-                            let thumb_h = thumb_w; // square thumbnail
+                            let thumb_side = config.card_width - CARD_INSET * 2.0;
                             let thumb_rect = Rect::from_min_size(
-                                rect.min + Vec2::new(inset, inset),
-                                Vec2::new(thumb_w, thumb_h),
+                                rect.min + Vec2::splat(CARD_INSET),
+                                Vec2::splat(thumb_side),
                             );
                             let text_x = rect.min.x + 6.0;
                             let text_w = config.card_width - 12.0;
-                            let text_y = thumb_rect.max.y + 4.0;
+                            let text_y = thumb_rect.max.y + TEXT_GAP;
 
                             let ctx = CardRenderContext {
                                 rect,

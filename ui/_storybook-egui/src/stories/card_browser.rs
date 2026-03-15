@@ -15,7 +15,7 @@ pub struct CardBrowserStoryState {
     pub browser: CardBrowserState,
     pub preset: usize,
     pub card_width: f32,
-    pub card_height: f32,
+    pub text_lines: u8,
     pub detail_width: f32,
     pub spacing: f32,
     pub items: Vec<DemoItem>,
@@ -27,7 +27,7 @@ impl Default for CardBrowserStoryState {
             browser: CardBrowserState::default(),
             preset: 0,
             card_width: 140.0,
-            card_height: 190.0,
+            text_lines: 3,
             detail_width: 360.0,
             spacing: 8.0,
             items: build_preset_items(0),
@@ -56,31 +56,78 @@ fn iiif_url(asset_hex: &str, size: u32) -> String {
     format!("{IIIF_BASE}/{POLICY_ID}:{asset_hex}/full/{size},/0/default.jpg")
 }
 
-// Real Hodlcroft Pirates assets
-const PIRATE_ASSETS: &[(&str, &str)] = &[
-    ("5069726174653834", "Pirate84"),
-    ("506972617465323733", "Pirate273"),
-    ("50697261746531303430", "Pirate1040"),
-    ("506972617465333830", "Pirate380"),
-    ("506972617465313432", "Pirate142"),
-    ("506972617465393336", "Pirate936"),
-    ("50697261746531323736", "Pirate1276"),
-    ("506972617465373835", "Pirate785"),
-    ("50697261746531393133", "Pirate1913"),
-    ("50697261746531363133", "Pirate1613"),
-    ("506972617465333138", "Pirate318"),
-    ("506972617465353532", "Pirate552"),
+// Real Hodlcroft Pirates assets (50 hex asset names from asset_ids.csv)
+const PIRATE_HEX: &[&str] = &[
+    "5069726174653834",
+    "506972617465323733",
+    "50697261746531303430",
+    "506972617465333830",
+    "506972617465313432",
+    "506972617465393336",
+    "50697261746531323736",
+    "506972617465373835",
+    "50697261746531393133",
+    "50697261746531363133",
+    "506972617465333138",
+    "506972617465353532",
+    "50697261746531323237",
+    "5069726174653734",
+    "5069726174653533",
+    "506972617465363031",
+    "5069726174653230",
+    "506972617465393239",
+    "50697261746531303732",
+    "506972617465353832",
+    "506972617465353234",
+    "50697261746531373239",
+    "50697261746531393431",
+    "506972617465313038",
+    "50697261746531373531",
+    "50697261746531373530",
+    "506972617465313533",
+    "506972617465363134",
+    "5069726174653130",
+    "50697261746531313537",
+    "506972617465313937",
+    "50697261746531383436",
+    "50697261746531363532",
+    "506972617465313935",
+    "50697261746531343539",
+    "50697261746531313737",
+    "5069726174653733",
+    "50697261746531363238",
+    "506972617465343137",
+    "506972617465363839",
+    "506972617465343132",
+    "50697261746531333432",
+    "506972617465323130",
+    "506972617465363634",
+    "506972617465313838",
+    "5069726174653237",
+    "506972617465343433",
+    "50697261746531383432",
+    "506972617465353631",
+    "506972617465333435",
 ];
+
+/// Decode a hex-encoded asset name to a UTF-8 string.
+fn decode_hex_name(hex: &str) -> String {
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .filter_map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect();
+    String::from_utf8(bytes).unwrap_or_else(|_| hex.to_string())
+}
 
 const PRESET_NAMES: [&str; 3] = ["NFT Portfolio", "Marketplace", "Minimal"];
 
 fn build_preset_items(preset: usize) -> Vec<DemoItem> {
     match preset {
-        0 => PIRATE_ASSETS
+        0 => PIRATE_HEX
             .iter()
             .enumerate()
-            .take(8)
-            .map(|(i, (hex, name))| {
+            .map(|(i, hex)| {
+                let name = decode_hex_name(hex);
                 let rank = (i * 137 + 42) % 2000;
                 let price = 30.0 + (i as f64 * 47.0) % 400.0;
                 let badge = match i % 4 {
@@ -94,7 +141,7 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                     _ => egui::Color32::TRANSPARENT,
                 };
                 DemoItem {
-                    name: (*name).into(),
+                    name,
                     subtitle: format!("Rank {rank} / 2000"),
                     badge,
                     badge_color,
@@ -113,12 +160,11 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                 }
             })
             .collect(),
-        1 => PIRATE_ASSETS
+        1 => PIRATE_HEX
             .iter()
             .enumerate()
-            .skip(4)
-            .take(6)
-            .map(|(i, (hex, name))| {
+            .map(|(i, hex)| {
+                let name = decode_hex_name(hex);
                 let has_gaps = i % 2 == 0;
                 DemoItem {
                     name: format!("Listed: {name}"),
@@ -201,10 +247,16 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
 
 pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
     // Controls
+    let mut text_lines_f32 = state.text_lines as f32;
     ui.horizontal(|ui| {
         ui.add(egui::Slider::new(&mut state.card_width, 100.0..=200.0).text("Card width"));
-        ui.add(egui::Slider::new(&mut state.card_height, 120.0..=260.0).text("Card height"));
+        ui.add(
+            egui::Slider::new(&mut text_lines_f32, 1.0..=5.0)
+                .step_by(1.0)
+                .text("Text lines"),
+        );
     });
+    state.text_lines = text_lines_f32 as u8;
     ui.horizontal(|ui| {
         ui.add(egui::Slider::new(&mut state.detail_width, 200.0..=600.0).text("Detail width"));
         ui.add(egui::Slider::new(&mut state.spacing, 2.0..=16.0).text("Spacing"));
@@ -247,11 +299,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
     // Build config from sliders
     let config = CardBrowserConfig {
         card_width: state.card_width,
-        card_height: state.card_height,
+        text_lines: state.text_lines,
         detail_width: state.detail_width,
         spacing: state.spacing,
         ..Default::default()
     };
+
+    // Show computed card height
+    ui.label(
+        egui::RichText::new(format!("Card height: {:.0}px (auto)", config.card_height()))
+            .color(TEXT_MUTED)
+            .size(10.0),
+    );
 
     // Show the browser
     card_browser::show(
@@ -400,6 +459,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
     ui.label(egui::RichText::new("Features:").color(ACCENT).strong());
     let features = [
         "Real IIIF thumbnails from Hodlcroft Pirates collection",
+        "Auto card height: computed from card_width + text_lines",
         "Closure-based: caller provides render_card + render_detail callbacks",
         "Selection: click to open detail panel, click again to close",
         "Layout: responsive grid + side-by-side detail panel",
