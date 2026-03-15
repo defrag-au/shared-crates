@@ -3,6 +3,7 @@ pub use egui_inbox;
 pub mod animated_counter;
 pub mod asset_card;
 pub mod buttons;
+pub mod card_browser;
 pub mod donut_chart;
 pub mod flip_counter;
 pub mod icons;
@@ -27,6 +28,9 @@ pub mod wallet_button;
 
 pub use animated_counter::AnimatedCounter;
 pub use buttons::UiButtonExt;
+pub use card_browser::{
+    CardBrowserConfig, CardBrowserResponse, CardBrowserState, CardRenderContext,
+};
 pub use donut_chart::{
     format_value as format_chart_value, legend_row, DistBand, DistributionChart,
 };

@@ -1,0 +1,325 @@
+//! Composable master-detail card browser widget.
+//!
+//! A filterable card grid on the left with an optional detail panel that slides
+//! in on the right when a card is selected. The widget handles layout, scroll,
+//! selection state, and card chrome — the caller provides rendering via closures.
+//!
+//! Supports both static thumbnails (via [`draw_thumbnail`]) and interactive cards
+//! (e.g. `AssetCard` with 3D tilt) through the [`CardRenderContext::response`] field.
+
+use crate::image_loader::CachedSpinner;
+use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
+
+// ============================================================================
+// Config & State
+// ============================================================================
+
+/// Layout and color configuration for the card browser.
+pub struct CardBrowserConfig {
+    /// Width of each card.
+    pub card_width: f32,
+    /// Height of each card.
+    pub card_height: f32,
+    /// Width of the detail panel when a card is selected.
+    pub detail_width: f32,
+    /// Spacing between cards.
+    pub spacing: f32,
+    /// Card corner radius.
+    pub rounding: f32,
+    /// Scroll area ID salt (must be unique if multiple browsers on one page).
+    pub scroll_id: &'static str,
+    /// Card background color (normal).
+    pub bg_card: Color32,
+    /// Card background color (hovered).
+    pub bg_card_hover: Color32,
+    /// Card background color (selected).
+    pub bg_card_selected: Color32,
+    /// Card border color (normal).
+    pub border_color: Color32,
+    /// Card border color (selected).
+    pub border_selected: Color32,
+    /// Muted text / placeholder color.
+    pub text_muted: Color32,
+    /// Detail panel background color.
+    pub bg_detail: Color32,
+    /// Detail panel inner margin.
+    pub detail_margin: f32,
+}
+
+impl Default for CardBrowserConfig {
+    fn default() -> Self {
+        Self {
+            card_width: 140.0,
+            card_height: 180.0,
+            detail_width: 420.0,
+            spacing: 8.0,
+            rounding: 6.0,
+            scroll_id: "card_browser",
+            bg_card: Color32::from_rgb(30, 31, 48),
+            bg_card_hover: Color32::from_rgb(45, 46, 68),
+            bg_card_selected: Color32::from_rgb(40, 45, 55),
+            border_color: Color32::from_rgba_premultiplied(86, 95, 137, 40),
+            border_selected: Color32::from_rgb(125, 207, 255),
+            text_muted: Color32::from_rgb(96, 104, 128),
+            bg_detail: Color32::from_rgb(30, 32, 42),
+            detail_margin: 14.0,
+        }
+    }
+}
+
+/// Persistent state for the card browser (selection tracking).
+#[derive(Default)]
+pub struct CardBrowserState {
+    /// Index of the currently selected card, if any.
+    pub selected: Option<usize>,
+}
+
+/// Context passed to the card render closure for each card.
+pub struct CardRenderContext {
+    /// The full card rect (including padding).
+    pub rect: Rect,
+    /// The thumbnail area rect (centered within the card).
+    pub thumb_rect: Rect,
+    /// Origin point for text below the thumbnail.
+    pub text_origin: Pos2,
+    /// Available width for text content.
+    pub text_width: f32,
+    /// Whether this card is the currently selected one.
+    pub is_selected: bool,
+    /// Whether this card is being hovered.
+    pub is_hovered: bool,
+    /// The card's egui Response — use `hover_pos()` for interactive content
+    /// like 3D tilt, or `hovered()` for highlight effects.
+    pub response: egui::Response,
+}
+
+/// Result from a `show()` call.
+pub struct CardBrowserResponse {
+    /// Index of the card that was clicked this frame (for caller to react).
+    pub clicked: Option<usize>,
+    /// Index of the card being hovered.
+    pub hovered: Option<usize>,
+    /// Whether the detail panel is visible.
+    pub detail_visible: bool,
+}
+
+// ============================================================================
+// Main widget
+// ============================================================================
+
+/// Draw a master-detail card browser.
+///
+/// The widget handles the grid layout, scroll, selection toggle, card chrome
+/// (background, border, hover/selected states), and the side-by-side split with
+/// the detail panel. The caller provides two closures:
+///
+/// - `render_card`: paints card content into the [`CardRenderContext`] rects
+/// - `render_detail`: paints the detail panel when a card is selected
+///
+/// Items are `&mut` so card render closures can mutate per-item state (e.g.
+/// `TiltState` for interactive cards). For read-only use cases, simply don't
+/// mutate.
+pub fn show<T>(
+    ui: &mut egui::Ui,
+    state: &mut CardBrowserState,
+    items: &mut [T],
+    config: &CardBrowserConfig,
+    mut render_card: impl FnMut(&mut egui::Ui, &CardRenderContext, &mut T),
+    mut render_detail: impl FnMut(&mut egui::Ui, usize, &mut T),
+) -> CardBrowserResponse {
+    let has_selection = state.selected.is_some_and(|idx| idx < items.len());
+    let detail_width = if has_selection {
+        config.detail_width
+    } else {
+        0.0
+    };
+
+    let mut response = CardBrowserResponse {
+        clicked: None,
+        hovered: None,
+        detail_visible: has_selection,
+    };
+
+    ui.horizontal_top(|ui| {
+        // LEFT: card grid
+        let grid_width = if has_selection {
+            (ui.available_width() - detail_width - 12.0).max(200.0)
+        } else {
+            ui.available_width()
+        };
+
+        ui.vertical(|ui| {
+            ui.set_max_width(grid_width);
+            egui::ScrollArea::vertical()
+                .id_salt(config.scroll_id)
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = Vec2::splat(config.spacing);
+                        let spinner = CachedSpinner::new(ui, 12.0, config.text_muted);
+                        let _ = spinner; // available for draw_thumbnail callers
+
+                        for (idx, item) in items.iter_mut().enumerate() {
+                            let card_size = Vec2::new(config.card_width, config.card_height);
+                            let (rect, card_resp) =
+                                ui.allocate_exact_size(card_size, Sense::click());
+
+                            let is_selected = state.selected == Some(idx);
+                            let is_hovered = card_resp.hovered();
+
+                            if is_hovered {
+                                response.hovered = Some(idx);
+                            }
+
+                            // Card background
+                            let bg = if is_selected {
+                                config.bg_card_selected
+                            } else if is_hovered {
+                                config.bg_card_hover
+                            } else {
+                                config.bg_card
+                            };
+                            ui.painter().rect_filled(rect, config.rounding, bg);
+
+                            // Border
+                            if is_selected {
+                                ui.painter().rect_stroke(
+                                    rect,
+                                    config.rounding,
+                                    Stroke::new(3.0, config.border_selected),
+                                    egui::StrokeKind::Inside,
+                                );
+                            } else {
+                                ui.painter().rect_stroke(
+                                    rect,
+                                    config.rounding,
+                                    Stroke::new(1.0, config.border_color),
+                                    egui::StrokeKind::Inside,
+                                );
+                            }
+
+                            // Compute sub-rects — thumbnail fills card width
+                            let inset = 4.0;
+                            let thumb_w = config.card_width - inset * 2.0;
+                            let thumb_h = thumb_w; // square thumbnail
+                            let thumb_rect = Rect::from_min_size(
+                                rect.min + Vec2::new(inset, inset),
+                                Vec2::new(thumb_w, thumb_h),
+                            );
+                            let text_x = rect.min.x + 6.0;
+                            let text_w = config.card_width - 12.0;
+                            let text_y = thumb_rect.max.y + 4.0;
+
+                            let ctx = CardRenderContext {
+                                rect,
+                                thumb_rect,
+                                text_origin: Pos2::new(text_x, text_y),
+                                text_width: text_w,
+                                is_selected,
+                                is_hovered,
+                                response: card_resp.clone(),
+                            };
+
+                            // Caller renders card content
+                            render_card(ui, &ctx, item);
+
+                            // Selection toggle
+                            if card_resp.clicked() {
+                                if is_selected {
+                                    state.selected = None;
+                                } else {
+                                    state.selected = Some(idx);
+                                }
+                                response.clicked = Some(idx);
+                            }
+                        }
+                    });
+                });
+        });
+
+        // RIGHT: detail panel
+        if let Some(sel_idx) = state.selected {
+            if sel_idx < items.len() {
+                ui.add_space(12.0);
+                ui.vertical(|ui| {
+                    ui.set_max_width(config.detail_width);
+                    ui.set_min_width(config.detail_width);
+                    egui::Frame::new()
+                        .fill(config.bg_detail)
+                        .corner_radius(config.rounding)
+                        .inner_margin(config.detail_margin)
+                        .show(ui, |ui| {
+                            render_detail(ui, sel_idx, &mut items[sel_idx]);
+                        });
+                });
+            }
+        }
+    });
+
+    response
+}
+
+// ============================================================================
+// Thumbnail helper
+// ============================================================================
+
+/// Draw an async-loading thumbnail into a rect.
+///
+/// Uses egui's built-in image loader. Returns `true` if the image is still
+/// loading (caller should batch `CachedSpinner::request_repaint` calls).
+///
+/// If `image_url` is `None`, draws a placeholder with a "?" glyph.
+pub fn draw_thumbnail(
+    ui: &mut egui::Ui,
+    thumb_rect: Rect,
+    image_url: Option<&str>,
+    config: &CardBrowserConfig,
+) -> bool {
+    let Some(url) = image_url else {
+        // No URL — placeholder
+        ui.painter()
+            .rect_filled(thumb_rect, 4.0, config.bg_card_hover);
+        ui.painter().text(
+            thumb_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "?",
+            egui::FontId::proportional(20.0),
+            config.text_muted,
+        );
+        return false;
+    };
+
+    let visible = ui.clip_rect().intersects(thumb_rect);
+    if !visible {
+        ui.painter()
+            .rect_filled(thumb_rect, 4.0, config.bg_card_hover);
+        return false;
+    }
+
+    let is_loaded = ui
+        .ctx()
+        .try_load_texture(
+            url,
+            egui::TextureOptions::default(),
+            egui::load::SizeHint::default(),
+        )
+        .is_ok_and(|poll| matches!(poll, egui::load::TexturePoll::Ready { .. }));
+
+    if is_loaded {
+        let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(thumb_rect).layout(
+            egui::Layout::centered_and_justified(egui::Direction::TopDown),
+        ));
+        child_ui.add(
+            egui::Image::new(url)
+                .fit_to_exact_size(thumb_rect.size())
+                .show_loading_spinner(false)
+                .corner_radius(4),
+        );
+        false
+    } else {
+        ui.painter()
+            .rect_filled(thumb_rect, 4.0, config.bg_card_hover);
+        let spinner = CachedSpinner::new(ui, 12.0, config.text_muted);
+        spinner.paint(ui, thumb_rect);
+        true
+    }
+}
