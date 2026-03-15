@@ -60,7 +60,6 @@ fn hue_to_rgb(hue: f32) -> Color32 {
     }
 }
 
-/// Compute holo vertex colour from normalised position and light direction.
 #[allow(clippy::too_many_arguments)]
 fn holo_color(
     u: f32,
@@ -107,13 +106,11 @@ fn holo_color(
 // Hash utilities (used by Glitter, PrismaticDispersion)
 // ============================================================================
 
-/// Simple deterministic hash for 2D → f32.
 fn hash1(x: f32, y: f32) -> f32 {
     let p = x * 12.9898 + y * 4.1414;
     (p.sin() * 43_758.547).fract().abs()
 }
 
-/// Simple deterministic hash for 2D → (f32, f32).
 fn hash2(x: f32, y: f32) -> (f32, f32) {
     let p1 = x * 127.1 + y * 311.7;
     let p2 = x * 269.5 + y * 183.3;
@@ -127,7 +124,6 @@ fn hash2(x: f32, y: f32) -> (f32, f32) {
 // Spectral utilities (used by DiffractionGrating)
 // ============================================================================
 
-/// Zucconi6 spectral approximation (wavelength 400..700nm → RGB).
 fn spectral_zucconi6(w: f32) -> [f32; 3] {
     let x = ((w - 400.0) / 300.0).clamp(0.0, 1.0);
 
@@ -147,7 +143,6 @@ fn spectral_zucconi6(w: f32) -> [f32; 3] {
 // 1. Streak Holo
 // ============================================================================
 
-/// Specular streak + iridescence + Fresnel edge glow (original effect).
 #[derive(Clone, Copy)]
 pub struct StreakHolo {
     pub hue_range: f32,
@@ -189,15 +184,12 @@ impl CardEffect for StreakHolo {
 // 2. Thin Film Iridescence
 // ============================================================================
 
-/// Thin-film interference — oil-on-water / soap bubble rainbow.
-/// Uses sine-wave RGB channels at different wavelengths modulated by
-/// Fresnel–Schlick approximation for view-angle dependent intensity.
 #[derive(Clone, Copy)]
 pub struct ThinFilmIridescence {
-    pub iri_min: f32,       // minimum film thickness (nm)
-    pub iri_range: f32,     // thickness variation range (nm)
-    pub fresnel_power: f32, // Schlick exponent (higher = more edge-only)
-    pub intensity: f32,     // overall effect strength
+    pub iri_min: f32,
+    pub iri_range: f32,
+    pub fresnel_power: f32,
+    pub intensity: f32,
 }
 
 impl CardEffect for ThinFilmIridescence {
@@ -244,15 +236,12 @@ impl CardEffect for ThinFilmIridescence {
 // 3. Diffraction Grating
 // ============================================================================
 
-/// Diffraction grating — sharp rainbow bands like a CD/DVD holographic sticker.
-/// Uses the grating equation with multiple diffraction orders summed via the
-/// Zucconi spectral approximation for physically-accurate rainbow colours.
 #[derive(Clone, Copy)]
 pub struct DiffractionGrating {
-    pub grating_spacing: f32, // controls rainbow density (800..3000)
-    pub grating_angle: f32,   // tangent rotation in radians
-    pub max_orders: u32,      // diffraction orders to sum (1..8)
-    pub intensity: f32,       // overall brightness
+    pub grating_spacing: f32,
+    pub grating_angle: f32,
+    pub max_orders: u32,
+    pub intensity: f32,
 }
 
 impl CardEffect for DiffractionGrating {
@@ -321,14 +310,12 @@ impl CardEffect for DiffractionGrating {
 // 4. Glitter
 // ============================================================================
 
-/// Glitter / micro-sparkle — hundreds of tiny flashing points that light up
-/// as the mouse moves, like holographic foil with embedded metallic flakes.
 #[derive(Clone, Copy)]
 pub struct Glitter {
-    pub grid_scale: f32,        // number of sparkle cells (10..80)
-    pub sparkle_sharpness: f32, // pow exponent for alignment (50..500)
-    pub sparkle_threshold: f32, // fraction of cells that can sparkle (0..1)
-    pub z_depth: f32,           // view vector z, controls mouse sensitivity (0.1..1.0)
+    pub grid_scale: f32,
+    pub sparkle_sharpness: f32,
+    pub sparkle_threshold: f32,
+    pub z_depth: f32,
 }
 
 impl CardEffect for Glitter {
@@ -394,14 +381,12 @@ impl CardEffect for Glitter {
 // 5. Brushed Metal
 // ============================================================================
 
-/// Brushed metal — elongated anisotropic highlight like brushed steel, gold, or copper.
-/// Based on Ward's anisotropic BRDF model.
 #[derive(Clone, Copy)]
 pub struct BrushedMetal {
-    pub roughness_along: f32, // roughness along brush direction (0.01..0.5)
-    pub roughness_perp: f32,  // roughness perpendicular (0.1..2.0)
-    pub brush_angle: f32,     // brush direction in radians
-    pub metal_r: f32,         // metal tint RGB
+    pub roughness_along: f32,
+    pub roughness_perp: f32,
+    pub brush_angle: f32,
+    pub metal_r: f32,
     pub metal_g: f32,
     pub metal_b: f32,
 }
@@ -461,15 +446,13 @@ impl CardEffect for BrushedMetal {
 // 6. Aurora
 // ============================================================================
 
-/// Aurora / northern lights — flowing curtains of green, teal, purple, and pink
-/// that ripple across the card surface.
 #[derive(Clone, Copy)]
 pub struct AuroraCurtain {
-    pub freq1: f32,             // wave frequency layer 1 (3..15)
-    pub freq2: f32,             // wave frequency layer 2
-    pub curtain_sharpness: f32, // power exponent for curtain bands (2..8)
-    pub vertical_falloff: f32,  // how quickly aurora fades top to bottom (0.5..3)
-    pub brightness: f32,        // overall intensity
+    pub freq1: f32,
+    pub freq2: f32,
+    pub curtain_sharpness: f32,
+    pub vertical_falloff: f32,
+    pub brightness: f32,
 }
 
 impl CardEffect for AuroraCurtain {
@@ -546,18 +529,15 @@ impl CardEffect for AuroraCurtain {
 // 7. Prismatic Dispersion
 // ============================================================================
 
-/// Prismatic dispersion — separated RGB channels + crystal facets,
-/// simulating light through a prism or cut diamond.
 #[derive(Clone, Copy)]
 pub struct PrismaticDispersion {
-    pub dispersion: f32,  // how much RGB channels separate (0.01..0.15)
-    pub spread: f32,      // offset distance multiplier (0.02..0.2)
-    pub facet_scale: f32, // voronoi cell count (4..20)
-    pub intensity: f32,   // overall brightness
+    pub dispersion: f32,
+    pub spread: f32,
+    pub facet_scale: f32,
+    pub intensity: f32,
 }
 
 impl PrismaticDispersion {
-    /// Voronoi-based facet brightness at a UV position.
     fn facet_brightness(&self, px: f32, py: f32) -> f32 {
         let sx = px * self.facet_scale;
         let sy = py * self.facet_scale;

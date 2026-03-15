@@ -1,13 +1,12 @@
+pub mod asset_card;
 pub mod async_data;
 pub mod buttons;
-pub mod card_effects;
 pub mod distribution;
 pub mod flip_counter;
 pub mod icon_gallery;
 pub mod marquee;
 pub mod mesh_playground;
 pub mod metric_card;
-pub mod nft_shapes;
 pub mod perspective_text;
 pub mod progress_bar;
 pub mod seven_segment;

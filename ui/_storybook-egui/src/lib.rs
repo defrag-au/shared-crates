@@ -171,7 +171,7 @@ mod app {
         mesh_playground_state: stories::mesh_playground::MeshPlaygroundState,
         perspective_text_state: stories::perspective_text::PerspectiveTextState,
         tcg_card_state: stories::tcg_card::TcgCardState,
-        nft_shapes_state: stories::nft_shapes::NftShapesState,
+        nft_shapes_state: stories::asset_card::NftShapesState,
         icon_gallery_state: stories::icon_gallery::IconGalleryState,
         wallet_btn: egui_widgets::WalletButton,
         wallet_connector: egui_widgets::wallet::WalletConnector,
@@ -201,7 +201,7 @@ mod app {
                 mesh_playground_state: stories::mesh_playground::MeshPlaygroundState::default(),
                 perspective_text_state: stories::perspective_text::PerspectiveTextState::default(),
                 tcg_card_state: stories::tcg_card::TcgCardState::default(),
-                nft_shapes_state: stories::nft_shapes::NftShapesState::default(),
+                nft_shapes_state: stories::asset_card::NftShapesState::default(),
                 icon_gallery_state: stories::icon_gallery::IconGalleryState::default(),
                 wallet_btn: egui_widgets::WalletButton::new(),
                 wallet_connector: egui_widgets::wallet::WalletConnector::new(),
@@ -326,7 +326,7 @@ mod app {
                             ),
                             Story::TcgCard => stories::tcg_card::show(ui, &mut self.tcg_card_state),
                             Story::NftShapes => {
-                                stories::nft_shapes::show(ui, &mut self.nft_shapes_state)
+                                stories::asset_card::show(ui, &mut self.nft_shapes_state)
                             }
                             Story::IconGallery => {
                                 stories::icon_gallery::show(ui, &mut self.icon_gallery_state)
