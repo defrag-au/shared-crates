@@ -8,7 +8,7 @@ use super::projection::project_3d;
 
 const WHITE_UV: Pos2 = Pos2::new(0.0, 0.0);
 
-pub(super) fn draw_quad(painter: &egui::Painter, corners: [Pos2; 4], color: Color32) {
+pub fn draw_quad(painter: &egui::Painter, corners: [Pos2; 4], color: Color32) {
     let mut mesh = Mesh::default();
     for &pos in &corners {
         mesh.vertices.push(Vertex {
@@ -21,7 +21,7 @@ pub(super) fn draw_quad(painter: &egui::Painter, corners: [Pos2; 4], color: Colo
     painter.add(egui::Shape::mesh(mesh));
 }
 
-pub(super) fn draw_textured_quad(
+pub fn draw_textured_quad(
     painter: &egui::Painter,
     corners: [Pos2; 4],
     texture_id: egui::TextureId,
@@ -46,12 +46,7 @@ pub(super) fn draw_textured_quad(
 }
 
 /// Solid-colour triangle fan from center through edge vertices.
-pub(super) fn draw_colored_fan(
-    painter: &egui::Painter,
-    center: Pos2,
-    vertices: &[Pos2],
-    color: Color32,
-) {
+pub fn draw_colored_fan(painter: &egui::Painter, center: Pos2, vertices: &[Pos2], color: Color32) {
     let n = vertices.len();
     if n < 2 {
         return;
@@ -78,12 +73,7 @@ pub(super) fn draw_colored_fan(
 }
 
 /// Coloured ring (annular mesh) between inner and outer edge vertices.
-pub(super) fn draw_colored_ring(
-    painter: &egui::Painter,
-    inner: &[Pos2],
-    outer: &[Pos2],
-    color: Color32,
-) {
+pub fn draw_colored_ring(painter: &egui::Painter, inner: &[Pos2], outer: &[Pos2], color: Color32) {
     let n = inner.len();
     if n < 2 || outer.len() != n {
         return;
@@ -115,12 +105,7 @@ pub(super) fn draw_colored_ring(
 
 /// Animated spark streak that travels along a projected border path.
 /// Draws a short glowing trail at `phase` (0..1) around the path.
-pub(super) fn draw_spark_streak(
-    painter: &egui::Painter,
-    path: &[Pos2],
-    phase: f32,
-    color: Color32,
-) {
+pub fn draw_spark_streak(painter: &egui::Painter, path: &[Pos2], phase: f32, color: Color32) {
     if path.len() < 3 {
         return;
     }
@@ -210,7 +195,7 @@ pub(super) fn draw_spark_streak(
 
 /// Textured triangle fan. Center vertex gets UV(0.5, 0.5).
 /// Edge vertex UVs computed from angle relative to center.
-pub(super) fn draw_textured_fan(
+pub fn draw_textured_fan(
     painter: &egui::Painter,
     center: Pos2,
     vertices: &[Pos2],
@@ -255,7 +240,7 @@ pub(super) fn draw_textured_fan(
 
 /// Textured triangle fan with rectangular UV mapping (for rounded rects).
 #[allow(clippy::too_many_arguments)]
-pub(super) fn draw_textured_fan_rect_uv(
+pub fn draw_textured_fan_rect_uv(
     painter: &egui::Painter,
     center: Pos2,
     vertices: &[Pos2],
@@ -303,7 +288,7 @@ pub(super) fn draw_textured_fan_rect_uv(
 
 /// Effect overlay for quad shapes (square), projected through 3D.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn draw_effect_quad(
+pub fn draw_effect_quad(
     painter: &egui::Painter,
     bbox: Rect,
     center: Pos2,
@@ -362,7 +347,7 @@ pub(super) fn draw_effect_quad(
 }
 
 /// Effect overlay for fan-based shapes (hex, rounded square).
-pub(super) fn draw_effect_fan(
+pub fn draw_effect_fan(
     painter: &egui::Painter,
     center: Pos2,
     vertices: &[Pos2],

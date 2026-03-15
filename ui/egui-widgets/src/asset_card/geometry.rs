@@ -4,18 +4,13 @@ use std::f32::consts::TAU;
 use super::overlay::CardMask;
 
 /// Badge geometry constants.
-pub(super) const BADGE_H: f32 = 22.0;
-pub(super) const BADGE_W_FRAC: f32 = 0.45;
+pub const BADGE_H: f32 = 22.0;
+pub const BADGE_W_FRAC: f32 = 0.45;
 const BADGE_OVERLAP: f32 = 0.4;
 const BADGE_ARC_SEGS: u32 = 8;
 
 /// Vertices for a regular polygon centered at `center` with given `radius`.
-pub(super) fn regular_polygon_vertices(
-    center: Pos2,
-    radius: f32,
-    sides: u32,
-    rotation: f32,
-) -> Vec<Pos2> {
+pub fn regular_polygon_vertices(center: Pos2, radius: f32, sides: u32, rotation: f32) -> Vec<Pos2> {
     (0..sides)
         .map(|i| {
             let angle = rotation + (i as f32 / sides as f32) * TAU;
@@ -28,7 +23,7 @@ pub(super) fn regular_polygon_vertices(
 }
 
 /// Vertices tracing a rounded rectangle path.
-pub(super) fn rounded_rect_vertices(
+pub fn rounded_rect_vertices(
     center: Pos2,
     half_w: f32,
     half_h: f32,
@@ -58,7 +53,7 @@ pub(super) fn rounded_rect_vertices(
 }
 
 /// Expand a closed outline outward by `thickness` using miter normals.
-pub(super) fn expand_outline(inner: &[Pos2], thickness: f32) -> Vec<Pos2> {
+pub fn expand_outline(inner: &[Pos2], thickness: f32) -> Vec<Pos2> {
     let n = inner.len();
     if n < 3 {
         return inner.to_vec();
@@ -96,7 +91,7 @@ pub(super) fn expand_outline(inner: &[Pos2], thickness: f32) -> Vec<Pos2> {
 }
 
 /// Cumulative arc-lengths for a closed polygon path.
-pub(super) fn cumulative_lengths(path: &[Pos2]) -> Vec<f32> {
+pub fn cumulative_lengths(path: &[Pos2]) -> Vec<f32> {
     let n = path.len();
     let mut cum = Vec::with_capacity(n + 1);
     cum.push(0.0);
@@ -110,7 +105,7 @@ pub(super) fn cumulative_lengths(path: &[Pos2]) -> Vec<f32> {
 }
 
 /// Sample a position along a closed polygon path at parameter `t` (0..1).
-pub(super) fn sample_path(path: &[Pos2], cum: &[f32], t: f32) -> Pos2 {
+pub fn sample_path(path: &[Pos2], cum: &[f32], t: f32) -> Pos2 {
     let total = *cum.last().unwrap_or(&1.0);
     let target = (t.fract() + 1.0).fract() * total;
     let seg = match cum.binary_search_by(|v| v.partial_cmp(&target).unwrap()) {
@@ -153,7 +148,7 @@ fn pill_polygon(cx: f32, cy: f32, width: f32, height: f32, segs: u32) -> Vec<[f3
 
 /// Build a unified outline path that merges the card border and badge popout
 /// into a single continuous silhouette using boolean union.
-pub(super) fn unified_outline(center: Pos2, half: f32, mask: CardMask) -> Vec<Pos2> {
+pub fn unified_outline(center: Pos2, half: f32, mask: CardMask) -> Vec<Pos2> {
     use i_overlay::core::fill_rule::FillRule;
     use i_overlay::core::overlay_rule::OverlayRule;
     use i_overlay::float::single::SingleFloatOverlay;

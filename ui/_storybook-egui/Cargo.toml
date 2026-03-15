@@ -27,4 +27,3 @@ image = { workspace = true, features = ["png"] }
 gloo-timers = { workspace = true, features = ["futures"] }
 console_error_panic_hook = "0.1"
 log = { workspace = true }
-i_overlay = "4.4.1"

@@ -1,6 +1,7 @@
 pub use egui_inbox;
 
 pub mod animated_counter;
+pub mod asset_card;
 pub mod buttons;
 pub mod donut_chart;
 pub mod flip_counter;

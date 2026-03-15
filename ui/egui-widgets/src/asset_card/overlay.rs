@@ -1,7 +1,7 @@
+use crate::icons::{phosphor_family, PhosphorIcon};
 use egui::epaint::{Mesh, Vertex};
 use egui::text::LayoutJob;
 use egui::{Color32, Pos2, Rect, TextFormat, Vec2};
-use egui_widgets::icons::{phosphor_family, PhosphorIcon};
 
 use super::mesh::{draw_colored_fan, draw_quad};
 use super::projection::{project_3d, project_points};
@@ -10,7 +10,7 @@ use super::projection::{project_3d, project_points};
 // Rarity
 // ============================================================================
 
-pub(super) const RARITIES: &[(&str, Color32)] = &[
+pub const RARITIES: &[(&str, Color32)] = &[
     ("Common", Color32::from_rgb(120, 120, 140)),
     ("Uncommon", Color32::from_rgb(158, 206, 106)),
     ("Rare", Color32::from_rgb(122, 162, 247)),
@@ -18,11 +18,11 @@ pub(super) const RARITIES: &[(&str, Color32)] = &[
     ("Legendary", Color32::from_rgb(224, 175, 104)),
 ];
 
-pub(super) fn rarity_color(rarity: usize) -> Color32 {
+pub fn rarity_color(rarity: usize) -> Color32 {
     RARITIES.get(rarity).map_or(RARITIES[0].1, |r| r.1)
 }
 
-pub(super) fn rarity_glow(rarity: usize) -> Option<Color32> {
+pub fn rarity_glow(rarity: usize) -> Option<Color32> {
     if rarity >= 2 {
         let c = rarity_color(rarity);
         Some(Color32::from_rgba_premultiplied(
@@ -42,7 +42,7 @@ pub(super) fn rarity_glow(rarity: usize) -> Option<Color32> {
 
 /// Card mask type — controls how overlay elements position relative to the shape.
 #[derive(Clone, Copy)]
-pub(super) enum CardMask {
+pub enum CardMask {
     Square,
     Hex { radius: f32 },
     RoundedSquare { corner_radius: f32 },
@@ -459,7 +459,7 @@ fn draw_hex_overlay(
 
 /// Draw title, stat pills, and badge — layout varies by mask shape.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn draw_tile_overlay(
+pub fn draw_tile_overlay(
     ui: &egui::Ui,
     painter: &egui::Painter,
     rarity: usize,

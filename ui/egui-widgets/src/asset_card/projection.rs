@@ -1,7 +1,7 @@
 use egui::Pos2;
 
 #[derive(Clone, Copy, Default)]
-pub(super) struct TiltState {
+pub struct TiltState {
     pub current_x: f32,
     pub current_y: f32,
 }
@@ -13,13 +13,7 @@ pub(super) struct TiltState {
 /// 3. Rotate around Y axis by `angle_y` (tilt left/right)
 /// 4. Perspective divide: x' = x * d/(d+z), y' = y * d/(d+z)
 /// 5. Translate back to screen space
-pub(super) fn project_3d(
-    point: Pos2,
-    center: Pos2,
-    angle_x: f32,
-    angle_y: f32,
-    perspective: f32,
-) -> Pos2 {
+pub fn project_3d(point: Pos2, center: Pos2, angle_x: f32, angle_y: f32, perspective: f32) -> Pos2 {
     let x = point.x - center.x;
     let y = point.y - center.y;
     let z: f32 = 0.0;
@@ -40,7 +34,7 @@ pub(super) fn project_3d(
 }
 
 /// Project a slice of points through 3D perspective.
-pub(super) fn project_points(
+pub fn project_points(
     points: &[Pos2],
     center: Pos2,
     angle_x: f32,
@@ -54,7 +48,7 @@ pub(super) fn project_points(
 }
 
 /// Update tilt state from hover, return angles in radians for 3D projection.
-pub(super) fn update_tilt(
+pub fn update_tilt(
     response: &egui::Response,
     center: Pos2,
     half: f32,

@@ -10,6 +10,7 @@ egui_inbox = { workspace = true }
 image = { workspace = true, features = ["jpeg"] }
 serde = { workspace = true, features = ["derive"] }
 log = { workspace = true }
+i_overlay = "4.4.1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }

@@ -29,7 +29,7 @@ mod app {
         MeshPlayground,
         PerspectiveText,
         TcgCard,
-        NftShapes,
+        AssetCard,
         IconGallery,
         WalletButton,
         SwapModal,
@@ -50,7 +50,7 @@ mod app {
                 Self::MeshPlayground,
                 Self::PerspectiveText,
                 Self::TcgCard,
-                Self::NftShapes,
+                Self::AssetCard,
                 Self::IconGallery,
                 Self::WalletButton,
                 Self::SwapModal,
@@ -71,7 +71,7 @@ mod app {
                 Self::MeshPlayground => "Mesh Playground",
                 Self::PerspectiveText => "Perspective Text",
                 Self::TcgCard => "TCG Card",
-                Self::NftShapes => "NFT Shapes",
+                Self::AssetCard => "Asset Card",
                 Self::IconGallery => "Icon Gallery",
                 Self::WalletButton => "Wallet Button",
                 Self::SwapModal => "Swap Modal",
@@ -90,7 +90,7 @@ mod app {
                 | Self::MeshPlayground
                 | Self::PerspectiveText
                 | Self::TcgCard
-                | Self::NftShapes
+                | Self::AssetCard
                 | Self::IconGallery => "Data Visualization",
                 Self::WalletButton => "Wallet",
                 Self::SwapModal => "Swap",
@@ -121,8 +121,8 @@ mod app {
                 Self::TcgCard => {
                     "Trading card rendering with perspective tilt, holographic effects, and card flip"
                 }
-                Self::NftShapes => {
-                    "Shape experiments: square, hex, rounded square — with holographic foil, stats, and 3D tilt"
+                Self::AssetCard => {
+                    "Asset card widget: square, hex, rounded square — with holographic foil, stats, and 3D tilt"
                 }
                 Self::IconGallery => {
                     "Phosphor icon font gallery with size/color controls and contextual examples"
@@ -171,7 +171,7 @@ mod app {
         mesh_playground_state: stories::mesh_playground::MeshPlaygroundState,
         perspective_text_state: stories::perspective_text::PerspectiveTextState,
         tcg_card_state: stories::tcg_card::TcgCardState,
-        nft_shapes_state: stories::asset_card::NftShapesState,
+        asset_card_state: stories::asset_card::AssetCardState,
         icon_gallery_state: stories::icon_gallery::IconGalleryState,
         wallet_btn: egui_widgets::WalletButton,
         wallet_connector: egui_widgets::wallet::WalletConnector,
@@ -201,7 +201,7 @@ mod app {
                 mesh_playground_state: stories::mesh_playground::MeshPlaygroundState::default(),
                 perspective_text_state: stories::perspective_text::PerspectiveTextState::default(),
                 tcg_card_state: stories::tcg_card::TcgCardState::default(),
-                nft_shapes_state: stories::asset_card::NftShapesState::default(),
+                asset_card_state: stories::asset_card::AssetCardState::default(),
                 icon_gallery_state: stories::icon_gallery::IconGalleryState::default(),
                 wallet_btn: egui_widgets::WalletButton::new(),
                 wallet_connector: egui_widgets::wallet::WalletConnector::new(),
@@ -325,8 +325,8 @@ mod app {
                                 &mut self.perspective_text_state,
                             ),
                             Story::TcgCard => stories::tcg_card::show(ui, &mut self.tcg_card_state),
-                            Story::NftShapes => {
-                                stories::asset_card::show(ui, &mut self.nft_shapes_state)
+                            Story::AssetCard => {
+                                stories::asset_card::show(ui, &mut self.asset_card_state)
                             }
                             Story::IconGallery => {
                                 stories::icon_gallery::show(ui, &mut self.icon_gallery_state)
