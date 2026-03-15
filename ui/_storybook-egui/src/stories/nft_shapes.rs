@@ -22,6 +22,11 @@ const WHITE_UV: Pos2 = Pos2::new(0.0, 0.0);
 /// IIIF test image: Pirate758 NFT (1:1 aspect)
 const IIIF_ART_URL: &str = "https://iiif.hodlcroft.com/iiif/3/b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6:506972617465373538/full/400,/0/default.jpg";
 
+use super::card_effects::{
+    AuroraCurtain, BrushedMetal, CardEffect, DiffractionGrating, EffectVertex, Glitter,
+    PrismaticDispersion, StreakHolo, ThinFilmIridescence, EFFECT_NAMES,
+};
+
 // ============================================================================
 // State
 // ============================================================================
@@ -31,11 +36,44 @@ pub struct NftShapesState {
     pub rarity: usize,
     pub tilt_ease: f32,
     pub perspective_distance: f32,
-    // Holographic overlay
+    // Effect selection
+    pub effect_index: usize,
+    // Streak Holo params
     pub hue_range: f32,
     pub shimmer_width: f32,
     pub shimmer_intensity: f32,
     pub overlay_opacity: f32,
+    // Thin Film Iridescence params
+    pub iri_min: f32,
+    pub iri_range: f32,
+    pub fresnel_power: f32,
+    pub iri_intensity: f32,
+    // Diffraction Grating params
+    pub grating_spacing: f32,
+    pub grating_angle: f32,
+    pub max_orders: u32,
+    pub diffraction_intensity: f32,
+    // Glitter params
+    pub glitter_scale: f32,
+    pub sparkle_sharpness: f32,
+    pub sparkle_threshold: f32,
+    pub glitter_z_depth: f32,
+    // Brushed Metal params
+    pub roughness_along: f32,
+    pub roughness_perp: f32,
+    pub brush_angle: f32,
+    pub metal_preset: usize, // 0=silver, 1=gold, 2=copper
+    // Aurora params
+    pub aurora_freq1: f32,
+    pub aurora_freq2: f32,
+    pub curtain_sharpness: f32,
+    pub vertical_falloff: f32,
+    pub aurora_brightness: f32,
+    // Prismatic params
+    pub prism_dispersion: f32,
+    pub prism_spread: f32,
+    pub facet_scale: f32,
+    pub prism_intensity: f32,
     // Per-demo tilt state
     tilts: [TiltState; 3],
 }
@@ -53,10 +91,36 @@ impl Default for NftShapesState {
             rarity: 2,
             tilt_ease: 0.1,
             perspective_distance: 800.0,
+            effect_index: 0,
             hue_range: 60.0,
             shimmer_width: 0.15,
             shimmer_intensity: 0.4,
             overlay_opacity: 0.2,
+            iri_min: 250.0,
+            iri_range: 400.0,
+            fresnel_power: 5.0,
+            iri_intensity: 0.3,
+            grating_spacing: 1500.0,
+            grating_angle: 0.0,
+            max_orders: 4,
+            diffraction_intensity: 1.5,
+            glitter_scale: 40.0,
+            sparkle_sharpness: 150.0,
+            sparkle_threshold: 0.3,
+            glitter_z_depth: 0.6,
+            roughness_along: 0.05,
+            roughness_perp: 0.8,
+            brush_angle: 0.0,
+            metal_preset: 0,
+            aurora_freq1: 8.0,
+            aurora_freq2: 5.0,
+            curtain_sharpness: 4.0,
+            vertical_falloff: 1.5,
+            aurora_brightness: 1.0,
+            prism_dispersion: 0.08,
+            prism_spread: 0.1,
+            facet_scale: 8.0,
+            prism_intensity: 1.5,
             tilts: [TiltState::default(); 3],
         }
     }
@@ -90,69 +154,6 @@ fn rarity_glow(rarity: usize) -> Option<Color32> {
     } else {
         None
     }
-}
-
-// ============================================================================
-// Colour utilities
-// ============================================================================
-
-fn hue_to_rgb(hue: f32) -> Color32 {
-    let h = ((hue % 360.0) + 360.0) % 360.0 / 60.0;
-    let i = h.floor() as u8;
-    let f = h - h.floor();
-    let q = (255.0 * (1.0 - f)) as u8;
-    let t = (255.0 * f) as u8;
-    match i {
-        0 => Color32::from_rgb(255, t, 0),
-        1 => Color32::from_rgb(q, 255, 0),
-        2 => Color32::from_rgb(0, 255, t),
-        3 => Color32::from_rgb(0, q, 255),
-        4 => Color32::from_rgb(t, 0, 255),
-        _ => Color32::from_rgb(255, 0, q),
-    }
-}
-
-/// Compute holo vertex colour from normalised position and light direction.
-#[allow(clippy::too_many_arguments)]
-fn holo_color(
-    u: f32,
-    v: f32,
-    mouse_u: f32,
-    mouse_v: f32,
-    hue_range: f32,
-    shimmer_width: f32,
-    shimmer_intensity: f32,
-    overlay_opacity: f32,
-) -> Color32 {
-    let light_x = mouse_u - 0.5;
-    let light_y = mouse_v - 0.5;
-    let light_len = (light_x * light_x + light_y * light_y).sqrt().max(0.001);
-    let light_dx = light_x / light_len;
-    let light_dy = light_y / light_len;
-
-    let dx = u - mouse_u;
-    let dy = v - mouse_v;
-    let dot = dx * light_dx + dy * light_dy;
-    let streak_dist = dot.abs();
-    let streak = (-streak_dist * streak_dist / (shimmer_width * shimmer_width * 0.5)).exp()
-        * shimmer_intensity;
-    let cross = dx * light_dy - dy * light_dx;
-    let hue = 200.0 + cross * hue_range * 2.0;
-
-    let edge_u = (0.5 - (u - 0.5).abs()) * 2.0;
-    let edge_v = (0.5 - (v - 0.5).abs()) * 2.0;
-    let fresnel = 1.0 - edge_u.min(edge_v).clamp(0.0, 1.0);
-    let fresnel_boost = fresnel * fresnel * overlay_opacity * 0.5;
-    let intensity = (streak + fresnel_boost).clamp(0.0, 1.0);
-
-    let rainbow = hue_to_rgb(hue);
-    let alpha = (intensity * 255.0) as u8;
-    Color32::from_rgba_premultiplied(
-        (rainbow.r() as f32 * intensity) as u8,
-        (rainbow.g() as f32 * intensity) as u8,
-        (rainbow.b() as f32 * intensity) as u8,
-        alpha,
-    )
 }
 
 // ============================================================================
@@ -464,10 +465,10 @@ fn draw_textured_fan_rect_uv(
 // Holographic overlay
 // ============================================================================
 
-/// Holographic overlay for quad shapes (square), projected through 3D.
-/// Subdivides the quad into a grid and colours each vertex based on mouse position.
+/// Effect overlay for quad shapes (square), projected through 3D.
+/// Subdivides the quad into a grid and colours vertices via the given effect.
 #[allow(clippy::too_many_arguments)]
-fn draw_holo_quad(
+fn draw_effect_quad(
     painter: &egui::Painter,
     bbox: Rect,
     center: Pos2,
@@ -476,14 +477,14 @@ fn draw_holo_quad(
     perspective: f32,
     mouse_u: f32,
     mouse_v: f32,
-    hue_range: f32,
-    shimmer_width: f32,
-    shimmer_intensity: f32,
-    overlay_opacity: f32,
+    effect: &dyn CardEffect,
 ) {
     let cols = 12_u32;
     let rows = 12_u32;
-    let mut mesh = Mesh::default();
+
+    // Build vertex positions and normalized UVs
+    let mut positions = Vec::with_capacity(((rows + 1) * (cols + 1)) as usize);
+    let mut effect_verts = Vec::with_capacity(positions.capacity());
 
     for row in 0..=rows {
         for col in 0..=cols {
@@ -493,23 +494,23 @@ fn draw_holo_quad(
                 bbox.left() + u * bbox.width(),
                 bbox.top() + v * bbox.height(),
             );
-            let pos = project_3d(flat_pos, center, angle_x, angle_y, perspective);
-            let color = holo_color(
-                u,
-                v,
-                mouse_u,
-                mouse_v,
-                hue_range,
-                shimmer_width,
-                shimmer_intensity,
-                overlay_opacity,
-            );
-            mesh.vertices.push(Vertex {
-                pos,
-                uv: WHITE_UV,
-                color,
+            positions.push(project_3d(flat_pos, center, angle_x, angle_y, perspective));
+            effect_verts.push(EffectVertex {
+                norm_u: u,
+                norm_v: v,
             });
         }
+    }
+
+    let colors = effect.compute_colors(&effect_verts, mouse_u, mouse_v);
+
+    let mut mesh = Mesh::default();
+    for (i, pos) in positions.iter().enumerate() {
+        mesh.vertices.push(Vertex {
+            pos: *pos,
+            uv: WHITE_UV,
+            color: colors[i],
+        });
     }
 
     let stride = cols + 1;
@@ -526,20 +527,16 @@ fn draw_holo_quad(
     painter.add(egui::Shape::mesh(mesh));
 }
 
-/// Holographic overlay for fan-based shapes (hex, rounded square).
-/// Subdivides each triangle of the fan and colours vertices based on mouse position.
-#[allow(clippy::too_many_arguments)]
-fn draw_holo_fan(
+/// Effect overlay for fan-based shapes (hex, rounded square).
+/// Subdivides each triangle of the fan and colours vertices via the given effect.
+fn draw_effect_fan(
     painter: &egui::Painter,
     center: Pos2,
     vertices: &[Pos2],
     bbox: Rect,
     mouse_u: f32,
     mouse_v: f32,
-    hue_range: f32,
-    shimmer_width: f32,
-    shimmer_intensity: f32,
-    overlay_opacity: f32,
+    effect: &dyn CardEffect,
 ) {
     let n = vertices.len();
     if n < 2 {
@@ -547,7 +544,6 @@ fn draw_holo_fan(
     }
 
     let subdivisions = 4_u32;
-    let mut mesh = Mesh::default();
 
     let to_uv = |p: Pos2| -> (f32, f32) {
         (
@@ -556,15 +552,18 @@ fn draw_holo_fan(
         )
     };
 
+    // Collect all positions and UVs first
+    let mut positions = Vec::new();
+    let mut effect_verts = Vec::new();
+    let mut tri_index_ranges = Vec::new();
+
     for i in 0..n {
         let j = (i + 1) % n;
         let v0 = center;
         let v1 = vertices[i];
         let v2 = vertices[j];
 
-        let base_idx = mesh.vertices.len() as u32;
-
-        // Subdivide the triangle using barycentric coordinates
+        let base_idx = positions.len();
         for row in 0..=subdivisions {
             for col in 0..=(subdivisions - row) {
                 let a = row as f32 / subdivisions as f32;
@@ -575,26 +574,32 @@ fn draw_holo_fan(
                     c * v0.y + a * v1.y + b * v2.y,
                 );
                 let (u, v) = to_uv(pos);
-                let color = holo_color(
-                    u,
-                    v,
-                    mouse_u,
-                    mouse_v,
-                    hue_range,
-                    shimmer_width,
-                    shimmer_intensity,
-                    overlay_opacity,
-                );
-                mesh.vertices.push(Vertex {
-                    pos,
-                    uv: WHITE_UV,
-                    color,
+                positions.push(pos);
+                effect_verts.push(EffectVertex {
+                    norm_u: u,
+                    norm_v: v,
                 });
             }
         }
+        tri_index_ranges.push(base_idx);
+    }
 
-        // Index the subdivided triangle
-        let mut row_start = base_idx;
+    let colors = effect.compute_colors(&effect_verts, mouse_u, mouse_v);
+
+    let mut mesh = Mesh::default();
+    for (i, pos) in positions.iter().enumerate() {
+        mesh.vertices.push(Vertex {
+            pos: *pos,
+            uv: WHITE_UV,
+            color: colors[i],
+        });
+    }
+
+    // Index the subdivided triangles
+    for (seg, &base_idx) in tri_index_ranges.iter().enumerate() {
+        let _ = seg;
+        let base = base_idx as u32;
+        let mut row_start = base;
         for row in 0..subdivisions {
             let row_len = subdivisions - row + 1;
             let next_row_start = row_start + row_len;
@@ -1268,14 +1273,6 @@ fn update_tilt(
 // Individual shape demos
 // ============================================================================
 
-#[derive(Clone, Copy)]
-struct HoloParams {
-    hue_range: f32,
-    shimmer_width: f32,
-    shimmer_intensity: f32,
-    overlay_opacity: f32,
-}
-
 #[allow(clippy::too_many_arguments)]
 fn demo_square(
     ui: &mut egui::Ui,
@@ -1286,7 +1283,7 @@ fn demo_square(
     tilt_ease: f32,
     max_tilt: f32,
     perspective: f32,
-    holo: HoloParams,
+    effect: &dyn CardEffect,
 ) {
     let half = size / 2.0;
     let padding = 40.0;
@@ -1344,12 +1341,12 @@ fn demo_square(
         draw_quad(&painter, proj4, Color32::from_rgb(30, 30, 48));
     }
 
-    // Holographic overlay (Rare+, only while hovering)
+    // Effect overlay (Rare+, only while hovering)
     if rarity >= 2 {
         if let Some(hover_pos) = response.hover_pos() {
             let mu = ((hover_pos.x - card_rect.left()) / card_rect.width()).clamp(0.0, 1.0);
             let mv = ((hover_pos.y - card_rect.top()) / card_rect.height()).clamp(0.0, 1.0);
-            draw_holo_quad(
+            draw_effect_quad(
                 &painter,
                 card_rect,
                 center,
@@ -1358,10 +1355,7 @@ fn demo_square(
                 perspective,
                 mu,
                 mv,
-                holo.hue_range,
-                holo.shimmer_width,
-                holo.shimmer_intensity,
-                holo.overlay_opacity,
+                effect,
             );
         }
     }
@@ -1390,7 +1384,7 @@ fn demo_hex(
     tilt_ease: f32,
     max_tilt: f32,
     perspective: f32,
-    holo: HoloParams,
+    effect: &dyn CardEffect,
 ) {
     let radius = size / 2.0;
     let padding = 50.0;
@@ -1444,24 +1438,13 @@ fn demo_hex(
         );
     }
 
-    // Holographic overlay (Rare+, only while hovering)
+    // Effect overlay (Rare+, only while hovering)
     let hex_bbox = Rect::from_center_size(center, Vec2::splat(radius * 2.0));
     if rarity >= 2 {
         if let Some(hover_pos) = response.hover_pos() {
             let mu = ((hover_pos.x - hex_bbox.left()) / hex_bbox.width()).clamp(0.0, 1.0);
             let mv = ((hover_pos.y - hex_bbox.top()) / hex_bbox.height()).clamp(0.0, 1.0);
-            draw_holo_fan(
-                &painter,
-                art_center,
-                &art_proj,
-                hex_bbox,
-                mu,
-                mv,
-                holo.hue_range,
-                holo.shimmer_width,
-                holo.shimmer_intensity,
-                holo.overlay_opacity,
-            );
+            draw_effect_fan(&painter, art_center, &art_proj, hex_bbox, mu, mv, effect);
         }
     }
 
@@ -1489,7 +1472,7 @@ fn demo_rounded_square(
     tilt_ease: f32,
     max_tilt: f32,
     perspective: f32,
-    holo: HoloParams,
+    effect: &dyn CardEffect,
 ) {
     let half = size / 2.0;
     let corner_radius = size * 0.15;
@@ -1553,18 +1536,7 @@ fn demo_rounded_square(
         if let Some(hover_pos) = response.hover_pos() {
             let mu = ((hover_pos.x - bbox.left()) / bbox.width()).clamp(0.0, 1.0);
             let mv = ((hover_pos.y - bbox.top()) / bbox.height()).clamp(0.0, 1.0);
-            draw_holo_fan(
-                &painter,
-                art_center,
-                &art_proj,
-                bbox,
-                mu,
-                mv,
-                holo.hue_range,
-                holo.shimmer_width,
-                holo.shimmer_intensity,
-                holo.overlay_opacity,
-            );
+            draw_effect_fan(&painter, art_center, &art_proj, bbox, mu, mv, effect);
         }
     }
 
@@ -1610,23 +1582,220 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
         }
     });
 
-    // Holo controls (only visible for Rare+)
+    // Effect controls (only visible for Rare+)
     if state.rarity >= 2 {
         ui.horizontal(|ui| {
-            ui.add(egui::Slider::new(&mut state.hue_range, 0.0..=180.0).text("Hue Range"));
-            ui.add(egui::Slider::new(&mut state.shimmer_width, 0.05..=0.5).text("Shimmer W"));
+            ui.label("Effect:");
+            egui::ComboBox::from_id_salt("effect_selector")
+                .selected_text(EFFECT_NAMES[state.effect_index])
+                .show_ui(ui, |ui| {
+                    for (i, name) in EFFECT_NAMES.iter().enumerate() {
+                        ui.selectable_value(&mut state.effect_index, i, *name);
+                    }
+                });
         });
-        ui.horizontal(|ui| {
-            ui.add(egui::Slider::new(&mut state.shimmer_intensity, 0.0..=1.0).text("Intensity"));
-            ui.add(egui::Slider::new(&mut state.overlay_opacity, 0.0..=0.5).text("Opacity"));
-        });
+
+        match state.effect_index {
+            0 => {
+                // Streak Holo params
+                ui.horizontal(|ui| {
+                    ui.add(egui::Slider::new(&mut state.hue_range, 0.0..=180.0).text("Hue Range"));
+                    ui.add(
+                        egui::Slider::new(&mut state.shimmer_width, 0.05..=0.5).text("Shimmer W"),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::Slider::new(&mut state.shimmer_intensity, 0.0..=1.0)
+                            .text("Intensity"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut state.overlay_opacity, 0.0..=0.5).text("Opacity"),
+                    );
+                });
+            }
+            1 => {
+                // Thin Film params
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::Slider::new(&mut state.iri_min, 100.0..=500.0).text("Film Min (nm)"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut state.iri_range, 100.0..=800.0)
+                            .text("Film Range (nm)"),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::Slider::new(&mut state.fresnel_power, 1.0..=10.0)
+                            .text("Fresnel Power"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut state.iri_intensity, 0.05..=1.0).text("Intensity"),
+                    );
+                });
+            }
+            2 => {
+                // Diffraction Grating params
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::Slider::new(&mut state.grating_spacing, 800.0..=3000.0)
+                            .text("Spacing"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut state.grating_angle, 0.0..=std::f32::consts::PI)
+                            .text("Angle"),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.add(egui::Slider::new(&mut state.max_orders, 1..=8).text("Orders"));
+                    ui.add(
+                        egui::Slider::new(&mut state.diffraction_intensity, 0.5..=3.0)
+                            .text("Intensity"),
+                    );
+                });
+            }
+            3 => {
+                // Glitter params
+                ui.horizontal(|ui| {
+                    ui.add(egui::Slider::new(&mut state.glitter_scale, 10.0..=80.0).text("Scale"));
+                    ui.add(
+                        egui::Slider::new(&mut state.sparkle_sharpness, 50.0..=500.0)
+                            .text("Sharpness"),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::Slider::new(&mut state.sparkle_threshold, 0.0..=1.0)
+                            .text("Threshold"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut state.glitter_z_depth, 0.1..=1.0).text("Z Depth"),
+                    );
+                });
+            }
+            4 => {
+                // Brushed Metal params
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::Slider::new(&mut state.roughness_along, 0.01..=0.5)
+                            .text("Roughness Along"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut state.roughness_perp, 0.1..=2.0)
+                            .text("Roughness Perp"),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::Slider::new(&mut state.brush_angle, 0.0..=std::f32::consts::PI)
+                            .text("Brush Angle"),
+                    );
+                    ui.label("Metal:");
+                    for (i, name) in ["Silver", "Gold", "Copper"].iter().enumerate() {
+                        if ui
+                            .selectable_label(state.metal_preset == i, *name)
+                            .clicked()
+                        {
+                            state.metal_preset = i;
+                        }
+                    }
+                });
+            }
+            5 => {
+                // Aurora params
+                ui.horizontal(|ui| {
+                    ui.add(egui::Slider::new(&mut state.aurora_freq1, 3.0..=15.0).text("Freq 1"));
+                    ui.add(egui::Slider::new(&mut state.aurora_freq2, 3.0..=15.0).text("Freq 2"));
+                });
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::Slider::new(&mut state.curtain_sharpness, 2.0..=8.0)
+                            .text("Sharpness"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut state.vertical_falloff, 0.5..=3.0).text("V Falloff"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut state.aurora_brightness, 0.3..=2.0)
+                            .text("Brightness"),
+                    );
+                });
+            }
+            6 => {
+                // Prismatic params
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::Slider::new(&mut state.prism_dispersion, 0.01..=0.15)
+                            .text("Dispersion"),
+                    );
+                    ui.add(egui::Slider::new(&mut state.prism_spread, 0.02..=0.2).text("Spread"));
+                });
+                ui.horizontal(|ui| {
+                    ui.add(egui::Slider::new(&mut state.facet_scale, 4.0..=20.0).text("Facets"));
+                    ui.add(
+                        egui::Slider::new(&mut state.prism_intensity, 0.5..=3.0).text("Intensity"),
+                    );
+                });
+            }
+            _ => {}
+        }
     }
 
-    let holo = HoloParams {
-        hue_range: state.hue_range,
-        shimmer_width: state.shimmer_width,
-        shimmer_intensity: state.shimmer_intensity,
-        overlay_opacity: state.overlay_opacity,
+    // Build the selected effect
+    let metal_colors: [(f32, f32, f32); 3] = [
+        (0.75, 0.78, 0.82), // silver
+        (1.00, 0.84, 0.00), // gold
+        (0.72, 0.45, 0.20), // copper
+    ];
+    let (mr, mg, mb) = metal_colors[state.metal_preset.min(2)];
+
+    let effect: Box<dyn CardEffect> = match state.effect_index {
+        1 => Box::new(ThinFilmIridescence {
+            iri_min: state.iri_min,
+            iri_range: state.iri_range,
+            fresnel_power: state.fresnel_power,
+            intensity: state.iri_intensity,
+        }),
+        2 => Box::new(DiffractionGrating {
+            grating_spacing: state.grating_spacing,
+            grating_angle: state.grating_angle,
+            max_orders: state.max_orders,
+            intensity: state.diffraction_intensity,
+        }),
+        3 => Box::new(Glitter {
+            grid_scale: state.glitter_scale,
+            sparkle_sharpness: state.sparkle_sharpness,
+            sparkle_threshold: state.sparkle_threshold,
+            z_depth: state.glitter_z_depth,
+        }),
+        4 => Box::new(BrushedMetal {
+            roughness_along: state.roughness_along,
+            roughness_perp: state.roughness_perp,
+            brush_angle: state.brush_angle,
+            metal_r: mr,
+            metal_g: mg,
+            metal_b: mb,
+        }),
+        5 => Box::new(AuroraCurtain {
+            freq1: state.aurora_freq1,
+            freq2: state.aurora_freq2,
+            curtain_sharpness: state.curtain_sharpness,
+            vertical_falloff: state.vertical_falloff,
+            brightness: state.aurora_brightness,
+        }),
+        6 => Box::new(PrismaticDispersion {
+            dispersion: state.prism_dispersion,
+            spread: state.prism_spread,
+            facet_scale: state.facet_scale,
+            intensity: state.prism_intensity,
+        }),
+        _ => Box::new(StreakHolo {
+            hue_range: state.hue_range,
+            shimmer_width: state.shimmer_width,
+            shimmer_intensity: state.shimmer_intensity,
+            overlay_opacity: state.overlay_opacity,
+        }),
     };
 
     let art_status = if art_texture.is_some() {
@@ -1660,7 +1829,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
         state.tilt_ease,
         15.0,
         state.perspective_distance,
-        holo,
+        &*effect,
     );
     ui.add_space(16.0);
 
@@ -1683,7 +1852,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
         state.tilt_ease,
         15.0,
         state.perspective_distance,
-        holo,
+        &*effect,
     );
     ui.add_space(16.0);
 
@@ -1710,7 +1879,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
         state.tilt_ease,
         15.0,
         state.perspective_distance,
-        holo,
+        &*effect,
     );
 
     ui.add_space(24.0);

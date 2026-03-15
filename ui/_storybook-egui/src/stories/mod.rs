@@ -1,5 +1,6 @@
 pub mod async_data;
 pub mod buttons;
+pub mod card_effects;
 pub mod distribution;
 pub mod flip_counter;
 pub mod icon_gallery;
