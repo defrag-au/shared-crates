@@ -8,6 +8,7 @@
 //! (e.g. `AssetCard` with 3D tilt) through the [`CardRenderContext::response`] field.
 
 use crate::image_loader::CachedSpinner;
+use crate::theme;
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
 
 // ============================================================================
@@ -77,12 +78,12 @@ impl Default for CardBrowserConfig {
             spacing: 8.0,
             rounding: 6.0,
             scroll_id: "card_browser",
-            bg_card: Color32::from_rgb(30, 31, 48),
-            bg_card_hover: Color32::from_rgb(45, 46, 68),
+            bg_card: theme::BG_PRIMARY,
+            bg_card_hover: theme::BG_HIGHLIGHT,
             bg_card_selected: Color32::from_rgb(40, 45, 55),
             border_color: Color32::from_rgba_premultiplied(86, 95, 137, 40),
-            border_selected: Color32::from_rgb(125, 207, 255),
-            text_muted: Color32::from_rgb(96, 104, 128),
+            border_selected: theme::ACCENT_CYAN,
+            text_muted: theme::TEXT_MUTED,
             bg_detail: Color32::from_rgb(30, 32, 42),
             detail_margin: 14.0,
         }
@@ -94,6 +95,10 @@ impl Default for CardBrowserConfig {
 pub struct CardBrowserState {
     /// Index of the currently selected card, if any.
     pub selected: Option<usize>,
+    /// One-shot scroll anchor: (card_index, screen_y_at_click).
+    /// Set when selection changes, consumed on the next frame to stabilize
+    /// the selected card's screen position after the grid reflows.
+    scroll_anchor: Option<(usize, f32)>,
 }
 
 /// Context passed to the card render closure for each card.
@@ -172,88 +177,103 @@ pub fn show<T>(
 
         ui.vertical(|ui| {
             ui.set_max_width(grid_width);
-            egui::ScrollArea::vertical()
-                .id_salt(config.scroll_id)
-                .show(ui, |ui| {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing = Vec2::splat(config.spacing);
-                        let spinner = CachedSpinner::new(ui, 12.0, config.text_muted);
-                        let _ = spinner; // available for draw_thumbnail callers
 
-                        for (idx, item) in items.iter_mut().enumerate() {
-                            let card_size = Vec2::new(config.card_width, config.card_height());
-                            let (rect, card_resp) =
-                                ui.allocate_exact_size(card_size, Sense::click());
+            // Scroll stabilization: when selection changes, the grid width
+            // changes and cards reflow. Compute the new scroll offset so the
+            // clicked card stays at the same screen-Y position.
+            let mut scroll = egui::ScrollArea::vertical().id_salt(config.scroll_id);
+            if let Some((anchor_idx, anchor_screen_y)) = state.scroll_anchor.take() {
+                let cols = ((grid_width + config.spacing) / (config.card_width + config.spacing))
+                    .floor()
+                    .max(1.0) as usize;
+                let row = anchor_idx / cols;
+                let card_y_in_content = row as f32 * (config.card_height() + config.spacing);
+                let scroll_area_top = ui.cursor().min.y;
+                let screen_y_relative = anchor_screen_y - scroll_area_top;
+                let new_offset = (card_y_in_content - screen_y_relative).max(0.0);
+                scroll = scroll.vertical_scroll_offset(new_offset);
+            }
 
-                            let is_selected = state.selected == Some(idx);
-                            let is_hovered = card_resp.hovered();
+            scroll.show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::splat(config.spacing);
+                    let spinner = CachedSpinner::new(ui, 12.0, config.text_muted);
+                    let _ = spinner; // available for draw_thumbnail callers
 
-                            if is_hovered {
-                                response.hovered = Some(idx);
-                            }
+                    for (idx, item) in items.iter_mut().enumerate() {
+                        let card_size = Vec2::new(config.card_width, config.card_height());
+                        let (rect, card_resp) = ui.allocate_exact_size(card_size, Sense::click());
 
-                            // Card background
-                            let bg = if is_selected {
-                                config.bg_card_selected
-                            } else if is_hovered {
-                                config.bg_card_hover
-                            } else {
-                                config.bg_card
-                            };
-                            ui.painter().rect_filled(rect, config.rounding, bg);
+                        let is_selected = state.selected == Some(idx);
+                        let is_hovered = card_resp.hovered();
 
-                            // Border
-                            if is_selected {
-                                ui.painter().rect_stroke(
-                                    rect,
-                                    config.rounding,
-                                    Stroke::new(3.0, config.border_selected),
-                                    egui::StrokeKind::Inside,
-                                );
-                            } else {
-                                ui.painter().rect_stroke(
-                                    rect,
-                                    config.rounding,
-                                    Stroke::new(1.0, config.border_color),
-                                    egui::StrokeKind::Inside,
-                                );
-                            }
-
-                            // Compute sub-rects — thumbnail fills card width
-                            let thumb_side = config.card_width - CARD_INSET * 2.0;
-                            let thumb_rect = Rect::from_min_size(
-                                rect.min + Vec2::splat(CARD_INSET),
-                                Vec2::splat(thumb_side),
-                            );
-                            let text_x = rect.min.x + 6.0;
-                            let text_w = config.card_width - 12.0;
-                            let text_y = thumb_rect.max.y + TEXT_GAP;
-
-                            let ctx = CardRenderContext {
-                                rect,
-                                thumb_rect,
-                                text_origin: Pos2::new(text_x, text_y),
-                                text_width: text_w,
-                                is_selected,
-                                is_hovered,
-                                response: card_resp.clone(),
-                            };
-
-                            // Caller renders card content
-                            render_card(ui, &ctx, item);
-
-                            // Selection toggle
-                            if card_resp.clicked() {
-                                if is_selected {
-                                    state.selected = None;
-                                } else {
-                                    state.selected = Some(idx);
-                                }
-                                response.clicked = Some(idx);
-                            }
+                        if is_hovered {
+                            response.hovered = Some(idx);
                         }
-                    });
+
+                        // Card background
+                        let bg = if is_selected {
+                            config.bg_card_selected
+                        } else if is_hovered {
+                            config.bg_card_hover
+                        } else {
+                            config.bg_card
+                        };
+                        ui.painter().rect_filled(rect, config.rounding, bg);
+
+                        // Border
+                        if is_selected {
+                            ui.painter().rect_stroke(
+                                rect,
+                                config.rounding,
+                                Stroke::new(3.0, config.border_selected),
+                                egui::StrokeKind::Inside,
+                            );
+                        } else {
+                            ui.painter().rect_stroke(
+                                rect,
+                                config.rounding,
+                                Stroke::new(1.0, config.border_color),
+                                egui::StrokeKind::Inside,
+                            );
+                        }
+
+                        // Compute sub-rects — thumbnail fills card width
+                        let thumb_side = config.card_width - CARD_INSET * 2.0;
+                        let thumb_rect = Rect::from_min_size(
+                            rect.min + Vec2::splat(CARD_INSET),
+                            Vec2::splat(thumb_side),
+                        );
+                        let text_x = rect.min.x + 6.0;
+                        let text_w = config.card_width - 12.0;
+                        let text_y = thumb_rect.max.y + TEXT_GAP;
+
+                        let ctx = CardRenderContext {
+                            rect,
+                            thumb_rect,
+                            text_origin: Pos2::new(text_x, text_y),
+                            text_width: text_w,
+                            is_selected,
+                            is_hovered,
+                            response: card_resp.clone(),
+                        };
+
+                        // Caller renders card content
+                        render_card(ui, &ctx, item);
+
+                        // Selection toggle
+                        if card_resp.clicked() {
+                            state.scroll_anchor = Some((idx, rect.min.y));
+                            if is_selected {
+                                state.selected = None;
+                            } else {
+                                state.selected = Some(idx);
+                            }
+                            response.clicked = Some(idx);
+                        }
+                    }
                 });
+            });
         });
 
         // RIGHT: detail panel
