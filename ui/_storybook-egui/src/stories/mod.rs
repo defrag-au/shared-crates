@@ -9,6 +9,8 @@ pub mod mesh_playground;
 pub mod metric_card;
 pub mod perspective_text;
 pub mod progress_bar;
+pub mod radar_chart;
+pub mod range_bar;
 pub mod seven_segment;
 pub mod sparkline;
 pub mod swap;

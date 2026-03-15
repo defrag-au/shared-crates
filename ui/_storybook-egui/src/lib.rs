@@ -30,6 +30,8 @@ mod app {
         PerspectiveText,
         TcgCard,
         AssetCard,
+        RadarChart,
+        RangeBar,
         IconGallery,
         WalletButton,
         SwapModal,
@@ -51,6 +53,8 @@ mod app {
                 Self::PerspectiveText,
                 Self::TcgCard,
                 Self::AssetCard,
+                Self::RadarChart,
+                Self::RangeBar,
                 Self::IconGallery,
                 Self::WalletButton,
                 Self::SwapModal,
@@ -72,6 +76,8 @@ mod app {
                 Self::PerspectiveText => "Perspective Text",
                 Self::TcgCard => "TCG Card",
                 Self::AssetCard => "Asset Card",
+                Self::RadarChart => "Radar Chart",
+                Self::RangeBar => "Range Bar",
                 Self::IconGallery => "Icon Gallery",
                 Self::WalletButton => "Wallet Button",
                 Self::SwapModal => "Swap Modal",
@@ -91,6 +97,8 @@ mod app {
                 | Self::PerspectiveText
                 | Self::TcgCard
                 | Self::AssetCard
+                | Self::RadarChart
+                | Self::RangeBar
                 | Self::IconGallery => "Data Visualization",
                 Self::WalletButton => "Wallet",
                 Self::SwapModal => "Swap",
@@ -123,6 +131,12 @@ mod app {
                 }
                 Self::AssetCard => {
                     "Asset card widget: square, hex, rounded square — with holographic foil, stats, and 3D tilt"
+                }
+                Self::RadarChart => {
+                    "Spider/radar chart for N-dimensional normalized data with bezier curves"
+                }
+                Self::RangeBar => {
+                    "Horizontal range bar with labeled tick marks, gradient fill, and auto-staggered labels"
                 }
                 Self::IconGallery => {
                     "Phosphor icon font gallery with size/color controls and contextual examples"
@@ -172,6 +186,8 @@ mod app {
         perspective_text_state: stories::perspective_text::PerspectiveTextState,
         tcg_card_state: stories::tcg_card::TcgCardState,
         asset_card_state: stories::asset_card::AssetCardState,
+        radar_chart_state: stories::radar_chart::RadarChartState,
+        range_bar_state: stories::range_bar::RangeBarState,
         icon_gallery_state: stories::icon_gallery::IconGalleryState,
         wallet_btn: egui_widgets::WalletButton,
         wallet_connector: egui_widgets::wallet::WalletConnector,
@@ -202,6 +218,8 @@ mod app {
                 perspective_text_state: stories::perspective_text::PerspectiveTextState::default(),
                 tcg_card_state: stories::tcg_card::TcgCardState::default(),
                 asset_card_state: stories::asset_card::AssetCardState::default(),
+                radar_chart_state: stories::radar_chart::RadarChartState::default(),
+                range_bar_state: stories::range_bar::RangeBarState::default(),
                 icon_gallery_state: stories::icon_gallery::IconGalleryState::default(),
                 wallet_btn: egui_widgets::WalletButton::new(),
                 wallet_connector: egui_widgets::wallet::WalletConnector::new(),
@@ -327,6 +345,12 @@ mod app {
                             Story::TcgCard => stories::tcg_card::show(ui, &mut self.tcg_card_state),
                             Story::AssetCard => {
                                 stories::asset_card::show(ui, &mut self.asset_card_state)
+                            }
+                            Story::RadarChart => {
+                                stories::radar_chart::show(ui, &mut self.radar_chart_state)
+                            }
+                            Story::RangeBar => {
+                                stories::range_bar::show(ui, &mut self.range_bar_state)
                             }
                             Story::IconGallery => {
                                 stories::icon_gallery::show(ui, &mut self.icon_gallery_state)
