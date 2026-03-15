@@ -215,6 +215,9 @@ mod app {
         fn new(cc: &eframe::CreationContext<'_>) -> Self {
             configure_style(&cc.egui_ctx);
             egui_extras::install_image_loaders(&cc.egui_ctx);
+            cc.egui_ctx.add_image_loader(std::sync::Arc::new(
+                egui_widgets::image_loader::browser::BrowserImageLoader::default(),
+            ));
             egui_widgets::install_phosphor_font(&cc.egui_ctx);
 
             Self {
