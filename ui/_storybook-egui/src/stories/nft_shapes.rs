@@ -74,6 +74,10 @@ pub struct NftShapesState {
     pub prism_spread: f32,
     pub facet_scale: f32,
     pub prism_intensity: f32,
+    // Spark traversal
+    pub spark_phase: f32,
+    pub spark_speed: f32,
+    pub spark_enabled: bool,
     // Per-demo tilt state
     tilts: [TiltState; 3],
 }
@@ -121,6 +125,9 @@ impl Default for NftShapesState {
             prism_spread: 0.1,
             facet_scale: 8.0,
             prism_intensity: 1.5,
+            spark_phase: 0.0,
+            spark_speed: 0.3,
+            spark_enabled: true,
             tilts: [TiltState::default(); 3],
         }
     }
@@ -267,6 +274,227 @@ fn rounded_rect_vertices(
 }
 
 // ============================================================================
+// Outline helpers (unified border path + spark traversal)
+// ============================================================================
+
+/// Expand a closed outline outward by `thickness` using miter normals.
+/// Returns a parallel outer path with the same vertex count.
+fn expand_outline(inner: &[Pos2], thickness: f32) -> Vec<Pos2> {
+    let n = inner.len();
+    if n < 3 {
+        return inner.to_vec();
+    }
+    let mut outer = Vec::with_capacity(n);
+    for i in 0..n {
+        let prev = inner[(i + n - 1) % n];
+        let curr = inner[i];
+        let next = inner[(i + 1) % n];
+
+        // Edge vectors
+        let e1x = curr.x - prev.x;
+        let e1y = curr.y - prev.y;
+        let e2x = next.x - curr.x;
+        let e2y = next.y - curr.y;
+
+        // Outward normals (rotate edge 90° CW for clockwise winding)
+        let len1 = (e1x * e1x + e1y * e1y).sqrt().max(0.001);
+        let n1x = e1y / len1;
+        let n1y = -e1x / len1;
+        let len2 = (e2x * e2x + e2y * e2y).sqrt().max(0.001);
+        let n2x = e2y / len2;
+        let n2y = -e2x / len2;
+
+        // Miter direction (average of the two normals)
+        let mx = n1x + n2x;
+        let my = n1y + n2y;
+        let mlen = (mx * mx + my * my).sqrt().max(0.001);
+        let mx = mx / mlen;
+        let my = my / mlen;
+
+        // Miter length: thickness / cos(half-angle)
+        let cos_half = (mx * n1x + my * n1y).max(0.2); // clamp to avoid spikes
+        let miter_len = thickness / cos_half;
+
+        outer.push(Pos2::new(curr.x + mx * miter_len, curr.y + my * miter_len));
+    }
+    outer
+}
+
+/// Cumulative arc-lengths for a closed polygon path.
+/// Returns a vec of length `path.len() + 1` where [0] = 0 and [n] = total perimeter.
+fn cumulative_lengths(path: &[Pos2]) -> Vec<f32> {
+    let n = path.len();
+    let mut cum = Vec::with_capacity(n + 1);
+    cum.push(0.0);
+    for i in 0..n {
+        let j = (i + 1) % n;
+        let dx = path[j].x - path[i].x;
+        let dy = path[j].y - path[i].y;
+        cum.push(cum[i] + (dx * dx + dy * dy).sqrt());
+    }
+    cum
+}
+
+/// Sample a position along a closed polygon path at parameter `t` (0..1).
+fn sample_path(path: &[Pos2], cum: &[f32], t: f32) -> Pos2 {
+    let total = *cum.last().unwrap_or(&1.0);
+    let target = (t.fract() + 1.0).fract() * total; // handle negative t
+                                                    // Binary search for the segment
+    let seg = match cum.binary_search_by(|v| v.partial_cmp(&target).unwrap()) {
+        Ok(i) => i.min(path.len() - 1),
+        Err(i) => (i - 1).min(path.len() - 1),
+    };
+    let seg_start = cum[seg];
+    let seg_end = cum[seg + 1];
+    let seg_len = seg_end - seg_start;
+    let frac = if seg_len > 0.001 {
+        (target - seg_start) / seg_len
+    } else {
+        0.0
+    };
+    let a = path[seg];
+    let b = path[(seg + 1) % path.len()];
+    Pos2::new(a.x + (b.x - a.x) * frac, a.y + (b.y - a.y) * frac)
+}
+
+/// Badge geometry constants.
+const BADGE_H: f32 = 22.0;
+const BADGE_W_FRAC: f32 = 0.45; // fraction of card width
+const BADGE_OVERLAP: f32 = 0.4; // 40% overlaps card bottom
+const BADGE_ARC_SEGS: u32 = 8;
+
+/// Generate a pill (stadium) polygon as a Vec of [f32; 2] points.
+fn pill_polygon(cx: f32, cy: f32, width: f32, height: f32, segs: u32) -> Vec<[f32; 2]> {
+    let r = height / 2.0;
+    let half_straight = (width / 2.0 - r).max(0.0);
+    let mut pts = Vec::new();
+
+    // Right cap (semicircle from -π/2 to +π/2)
+    for i in 0..=segs {
+        let t = i as f32 / segs as f32;
+        let a = -std::f32::consts::FRAC_PI_2 + t * std::f32::consts::PI;
+        pts.push([cx + half_straight + r * a.cos(), cy + r * a.sin()]);
+    }
+
+    // Left cap (semicircle from +π/2 to +3π/2)
+    for i in 0..=segs {
+        let t = i as f32 / segs as f32;
+        let a = std::f32::consts::FRAC_PI_2 + t * std::f32::consts::PI;
+        pts.push([cx - half_straight + r * a.cos(), cy + r * a.sin()]);
+    }
+
+    pts
+}
+
+/// Build a unified outline path (clockwise) that merges the card border and
+/// badge popout into a single continuous silhouette using boolean union.
+///
+/// For hex shapes (no badge pill), returns the plain polygon outline.
+fn unified_outline(center: Pos2, half: f32, mask: CardMask) -> Vec<Pos2> {
+    use i_overlay::core::fill_rule::FillRule;
+    use i_overlay::core::overlay_rule::OverlayRule;
+    use i_overlay::float::single::SingleFloatOverlay;
+
+    match mask {
+        CardMask::Hex { radius } => regular_polygon_vertices(center, radius, 6, -TAU / 4.0),
+        CardMask::Square => {
+            let left = center.x - half;
+            let right = center.x + half;
+            let top = center.y - half;
+            let bottom = center.y + half;
+
+            let card: Vec<[f32; 2]> =
+                vec![[left, top], [right, top], [right, bottom], [left, bottom]];
+
+            let badge_w = half * 2.0 * BADGE_W_FRAC;
+            let badge_top = bottom - BADGE_H * BADGE_OVERLAP;
+            let badge_cy = badge_top + BADGE_H / 2.0;
+            let pill = pill_polygon(center.x, badge_cy, badge_w, BADGE_H, BADGE_ARC_SEGS);
+
+            let result = card.overlay(&pill, OverlayRule::Union, FillRule::EvenOdd);
+
+            if let Some(shape) = result.first() {
+                if let Some(contour) = shape.first() {
+                    return contour.iter().map(|p| Pos2::new(p[0], p[1])).collect();
+                }
+            }
+
+            // Fallback: plain card rect
+            vec![
+                Pos2::new(left, top),
+                Pos2::new(right, top),
+                Pos2::new(right, bottom),
+                Pos2::new(left, bottom),
+            ]
+        }
+        CardMask::RoundedSquare { corner_radius } => {
+            let r = corner_radius.min(half);
+            let left = center.x - half;
+            let right = center.x + half;
+            let top = center.y - half;
+            let bottom = center.y + half;
+
+            // Build rounded rect as polygon
+            let segs = 8_u32;
+            let quarter = TAU / 4.0;
+            let mut card: Vec<[f32; 2]> = Vec::new();
+
+            // Top-right corner arc
+            let cx_tr = right - r;
+            let cy_tr = top + r;
+            for i in 0..=segs {
+                let t = i as f32 / segs as f32;
+                let a = -quarter + t * quarter;
+                card.push([cx_tr + a.cos() * r, cy_tr + a.sin() * r]);
+            }
+
+            // Bottom-right corner arc
+            let cx_br = right - r;
+            let cy_br = bottom - r;
+            for i in 0..=segs {
+                let t = i as f32 / segs as f32;
+                let a = t * quarter;
+                card.push([cx_br + a.cos() * r, cy_br + a.sin() * r]);
+            }
+
+            // Bottom-left corner arc
+            let cx_bl = left + r;
+            let cy_bl = bottom - r;
+            for i in 0..=segs {
+                let t = i as f32 / segs as f32;
+                let a = quarter + t * quarter;
+                card.push([cx_bl + a.cos() * r, cy_bl + a.sin() * r]);
+            }
+
+            // Top-left corner arc
+            let cx_tl = left + r;
+            let cy_tl = top + r;
+            for i in 0..=segs {
+                let t = i as f32 / segs as f32;
+                let a = 2.0 * quarter + t * quarter;
+                card.push([cx_tl + a.cos() * r, cy_tl + a.sin() * r]);
+            }
+
+            let badge_w = half * 2.0 * BADGE_W_FRAC;
+            let badge_top = bottom - BADGE_H * BADGE_OVERLAP;
+            let badge_cy = badge_top + BADGE_H / 2.0;
+            let pill = pill_polygon(center.x, badge_cy, badge_w, BADGE_H, BADGE_ARC_SEGS);
+
+            let result = card.overlay(&pill, OverlayRule::Union, FillRule::EvenOdd);
+
+            if let Some(shape) = result.first() {
+                if let Some(contour) = shape.first() {
+                    return contour.iter().map(|p| Pos2::new(p[0], p[1])).collect();
+                }
+            }
+
+            // Fallback: plain rounded rect
+            card.iter().map(|p| Pos2::new(p[0], p[1])).collect()
+        }
+    }
+}
+
+// ============================================================================
 // Mesh drawing primitives
 // ============================================================================
 
@@ -362,6 +590,106 @@ fn draw_colored_ring(painter: &egui::Painter, inner: &[Pos2], outer: &[Pos2], co
         mesh.indices
             .extend_from_slice(&[i_in, i_out, j_out, i_in, j_out, j_in]);
     }
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+/// Animated spark streak that travels along a projected border path.
+/// Draws a short glowing trail at `phase` (0..1) around the path.
+fn draw_spark_streak(painter: &egui::Painter, path: &[Pos2], phase: f32, color: Color32) {
+    if path.len() < 3 {
+        return;
+    }
+    let cum = cumulative_lengths(path);
+    let total = *cum.last().unwrap();
+    if total < 1.0 {
+        return;
+    }
+
+    let streak_frac = 0.08; // 8% of path length
+    let samples = 20;
+
+    let [r, g, b, _] = color.to_array();
+    // Brighten toward white for the core
+    let core_r = r.saturating_add((255 - r) / 2);
+    let core_g = g.saturating_add((255 - g) / 2);
+    let core_b = b.saturating_add((255 - b) / 2);
+
+    let mut mesh = Mesh::default();
+
+    for i in 0..samples {
+        let frac = i as f32 / (samples - 1) as f32; // 0 = tail, 1 = head
+        let t = (phase - streak_frac * (1.0 - frac)).rem_euclid(1.0);
+        let pos = sample_path(path, &cum, t);
+
+        // Cubic falloff from head to tail
+        let alpha = frac * frac * frac;
+
+        // Glow circle (larger, dimmer)
+        let glow_radius = 5.0;
+        let glow_alpha = (alpha * 0.3 * 255.0) as u8;
+        let glow_color = Color32::from_rgba_premultiplied(
+            (r as f32 * alpha * 0.3) as u8,
+            (g as f32 * alpha * 0.3) as u8,
+            (b as f32 * alpha * 0.3) as u8,
+            glow_alpha,
+        );
+        let glow_segs = 6;
+        let center_idx = mesh.vertices.len() as u32;
+        mesh.vertices.push(Vertex {
+            pos,
+            uv: WHITE_UV,
+            color: glow_color,
+        });
+        for s in 0..glow_segs {
+            let a = std::f32::consts::TAU * s as f32 / glow_segs as f32;
+            mesh.vertices.push(Vertex {
+                pos: Pos2::new(pos.x + a.cos() * glow_radius, pos.y + a.sin() * glow_radius),
+                uv: WHITE_UV,
+                color: Color32::TRANSPARENT,
+            });
+        }
+        for s in 0..glow_segs {
+            let next = (s + 1) % glow_segs;
+            mesh.indices.extend_from_slice(&[
+                center_idx,
+                center_idx + 1 + s as u32,
+                center_idx + 1 + next as u32,
+            ]);
+        }
+
+        // Core circle (smaller, brighter)
+        let core_radius = 2.0;
+        let core_alpha = (alpha * 255.0) as u8;
+        let core_color = Color32::from_rgba_premultiplied(
+            (core_r as f32 * alpha) as u8,
+            (core_g as f32 * alpha) as u8,
+            (core_b as f32 * alpha) as u8,
+            core_alpha,
+        );
+        let center_idx2 = mesh.vertices.len() as u32;
+        mesh.vertices.push(Vertex {
+            pos,
+            uv: WHITE_UV,
+            color: core_color,
+        });
+        for s in 0..glow_segs {
+            let a = std::f32::consts::TAU * s as f32 / glow_segs as f32;
+            mesh.vertices.push(Vertex {
+                pos: Pos2::new(pos.x + a.cos() * core_radius, pos.y + a.sin() * core_radius),
+                uv: WHITE_UV,
+                color: Color32::TRANSPARENT,
+            });
+        }
+        for s in 0..glow_segs {
+            let next = (s + 1) % glow_segs;
+            mesh.indices.extend_from_slice(&[
+                center_idx2,
+                center_idx2 + 1 + s as u32,
+                center_idx2 + 1 + next as u32,
+            ]);
+        }
+    }
+
     painter.add(egui::Shape::mesh(mesh));
 }
 
@@ -1176,32 +1504,6 @@ fn draw_tile_overlay(
     let proj_badge_center = project_3d(badge_center_pt, proj_center, angle_x, angle_y, perspective);
     draw_colored_fan(painter, proj_badge_center, &proj_badge_verts, pill_bg);
 
-    // Badge border
-    let badge_border_r = badge_r + 1.5;
-    let badge_border_cx = badge_left - 1.5 + badge_border_r;
-    let badge_border_rcx = badge_right + 1.5 - badge_border_r;
-    let badge_border_cy = badge_top - 1.5 + badge_border_r + 1.5; // same cy
-    let mut border_verts = Vec::new();
-    for i in 0..=arc_segs {
-        let t = i as f32 / arc_segs as f32;
-        let a = std::f32::consts::FRAC_PI_2 + t * std::f32::consts::PI;
-        border_verts.push(Pos2::new(
-            badge_border_cx + a.cos() * badge_border_r,
-            badge_border_cy - a.sin() * badge_border_r,
-        ));
-    }
-    for i in 0..=arc_segs {
-        let t = i as f32 / arc_segs as f32;
-        let a = -std::f32::consts::FRAC_PI_2 + t * std::f32::consts::PI;
-        border_verts.push(Pos2::new(
-            badge_border_rcx + a.cos() * badge_border_r,
-            badge_border_cy - a.sin() * badge_border_r,
-        ));
-    }
-    let proj_border_verts =
-        project_points(&border_verts, proj_center, angle_x, angle_y, perspective);
-    draw_colored_ring(painter, &proj_badge_verts, &proj_border_verts, rarity_col);
-
     // Badge content: rarity stars + label
     let mut badge_job = LayoutJob::default();
     badge_job.append(
@@ -1284,6 +1586,8 @@ fn demo_square(
     max_tilt: f32,
     perspective: f32,
     effect: &dyn CardEffect,
+    spark_phase: f32,
+    spark_enabled: bool,
 ) {
     let half = size / 2.0;
     let padding = 40.0;
@@ -1310,29 +1614,21 @@ fn demo_square(
     let projected: Vec<Pos2> = project_points(&corners, center, ax, ay, perspective);
     let proj4: [Pos2; 4] = [projected[0], projected[1], projected[2], projected[3]];
 
+    // Unified border (card + badge silhouette)
+    let outline = unified_outline(center, half, CardMask::Square);
+    let border_outer = expand_outline(&outline, 3.0);
+    let proj_outline = project_points(&outline, center, ax, ay, perspective);
+    let proj_border = project_points(&border_outer, center, ax, ay, perspective);
+
     // Rarity glow
     if let Some(glow) = rarity_glow(rarity) {
-        let glow_rect = card_rect.expand(6.0);
-        let gc = [
-            glow_rect.left_top(),
-            glow_rect.right_top(),
-            glow_rect.right_bottom(),
-            glow_rect.left_bottom(),
-        ];
-        let gp: Vec<Pos2> = project_points(&gc, center, ax, ay, perspective);
-        draw_quad(&painter, [gp[0], gp[1], gp[2], gp[3]], glow);
+        let glow_outer = expand_outline(&outline, 6.0);
+        let proj_glow = project_points(&glow_outer, center, ax, ay, perspective);
+        draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
     }
 
-    // Rarity border
-    let border_rect = card_rect.expand(3.0);
-    let bc = [
-        border_rect.left_top(),
-        border_rect.right_top(),
-        border_rect.right_bottom(),
-        border_rect.left_bottom(),
-    ];
-    let bp: Vec<Pos2> = project_points(&bc, center, ax, ay, perspective);
-    draw_quad(&painter, [bp[0], bp[1], bp[2], bp[3]], rarity_color(rarity));
+    // Rarity border ring
+    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(rarity));
 
     // Art fill
     if let Some(tex) = art_tex {
@@ -1360,6 +1656,11 @@ fn demo_square(
         }
     }
 
+    // Spark traversal
+    if spark_enabled && rarity >= 2 {
+        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(rarity));
+    }
+
     // Overlay: title, stats, badge
     draw_tile_overlay(
         ui,
@@ -1385,6 +1686,8 @@ fn demo_hex(
     max_tilt: f32,
     perspective: f32,
     effect: &dyn CardEffect,
+    spark_phase: f32,
+    spark_enabled: bool,
 ) {
     let radius = size / 2.0;
     let padding = 50.0;
@@ -1400,22 +1703,21 @@ fn demo_hex(
         ui.ctx().request_repaint();
     }
 
-    let rotation = -TAU / 4.0; // pointy-top
+    // Unified border
+    let outline = unified_outline(center, radius, CardMask::Hex { radius });
+    let border_outer = expand_outline(&outline, 3.0);
+    let proj_outline = project_points(&outline, center, ax, ay, perspective);
+    let proj_border = project_points(&border_outer, center, ax, ay, perspective);
 
     // Glow
     if let Some(glow) = rarity_glow(rarity) {
-        let glow_verts = regular_polygon_vertices(center, radius + 6.0, 6, rotation);
-        let glow_proj = project_points(&glow_verts, center, ax, ay, perspective);
-        let glow_center = project_3d(center, center, ax, ay, perspective);
-        draw_colored_fan(&painter, glow_center, &glow_proj, glow);
+        let glow_outer = expand_outline(&outline, 6.0);
+        let proj_glow = project_points(&glow_outer, center, ax, ay, perspective);
+        draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
     }
 
-    // Border (ring between inner art and outer border)
-    let art_verts = regular_polygon_vertices(center, radius, 6, rotation);
-    let border_verts = regular_polygon_vertices(center, radius + 3.0, 6, rotation);
-    let art_proj = project_points(&art_verts, center, ax, ay, perspective);
-    let border_proj = project_points(&border_verts, center, ax, ay, perspective);
-    draw_colored_ring(&painter, &art_proj, &border_proj, rarity_color(rarity));
+    // Rarity border ring
+    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(rarity));
 
     // Art fill
     let art_center = project_3d(center, center, ax, ay, perspective);
@@ -1423,17 +1725,17 @@ fn demo_hex(
         draw_textured_fan(
             &painter,
             art_center,
-            &art_proj,
+            &proj_outline,
             tex,
             Color32::WHITE,
-            &art_verts,
+            &outline,
             center,
         );
     } else {
         draw_colored_fan(
             &painter,
             art_center,
-            &art_proj,
+            &proj_outline,
             Color32::from_rgb(30, 30, 48),
         );
     }
@@ -1444,8 +1746,21 @@ fn demo_hex(
         if let Some(hover_pos) = response.hover_pos() {
             let mu = ((hover_pos.x - hex_bbox.left()) / hex_bbox.width()).clamp(0.0, 1.0);
             let mv = ((hover_pos.y - hex_bbox.top()) / hex_bbox.height()).clamp(0.0, 1.0);
-            draw_effect_fan(&painter, art_center, &art_proj, hex_bbox, mu, mv, effect);
+            draw_effect_fan(
+                &painter,
+                art_center,
+                &proj_outline,
+                hex_bbox,
+                mu,
+                mv,
+                effect,
+            );
         }
+    }
+
+    // Spark traversal
+    if spark_enabled && rarity >= 2 {
+        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(rarity));
     }
 
     // Overlay: title, stats, badge
@@ -1473,6 +1788,8 @@ fn demo_rounded_square(
     max_tilt: f32,
     perspective: f32,
     effect: &dyn CardEffect,
+    spark_phase: f32,
+    spark_enabled: bool,
 ) {
     let half = size / 2.0;
     let corner_radius = size * 0.15;
@@ -1492,24 +1809,25 @@ fn demo_rounded_square(
 
     let bbox = Rect::from_center_size(center, Vec2::splat(size));
 
+    // Unified border (card + badge silhouette)
+    let outline = unified_outline(center, half, CardMask::RoundedSquare { corner_radius });
+    let border_outer = expand_outline(&outline, 3.0);
+    let proj_outline = project_points(&outline, center, ax, ay, perspective);
+    let proj_border = project_points(&border_outer, center, ax, ay, perspective);
+
     // Glow
     if let Some(glow) = rarity_glow(rarity) {
-        let glow_verts =
-            rounded_rect_vertices(center, half + 6.0, half + 6.0, corner_radius + 6.0, segs);
-        let glow_proj = project_points(&glow_verts, center, ax, ay, perspective);
-        let glow_center = project_3d(center, center, ax, ay, perspective);
-        draw_colored_fan(&painter, glow_center, &glow_proj, glow);
+        let glow_outer = expand_outline(&outline, 6.0);
+        let proj_glow = project_points(&glow_outer, center, ax, ay, perspective);
+        draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
     }
 
-    // Border ring
-    let art_verts = rounded_rect_vertices(center, half, half, corner_radius, segs);
-    let border_verts =
-        rounded_rect_vertices(center, half + 3.0, half + 3.0, corner_radius + 3.0, segs);
-    let art_proj = project_points(&art_verts, center, ax, ay, perspective);
-    let border_proj = project_points(&border_verts, center, ax, ay, perspective);
-    draw_colored_ring(&painter, &art_proj, &border_proj, rarity_color(rarity));
+    // Rarity border ring
+    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(rarity));
 
-    // Art fill
+    // Art fill (uses plain rounded rect, not the badge-merged outline)
+    let art_verts = rounded_rect_vertices(center, half, half, corner_radius, segs);
+    let art_proj = project_points(&art_verts, center, ax, ay, perspective);
     let art_center = project_3d(center, center, ax, ay, perspective);
     if let Some(tex) = art_tex {
         draw_textured_fan_rect_uv(
@@ -1531,13 +1849,18 @@ fn demo_rounded_square(
         );
     }
 
-    // Holographic overlay (Rare+, only while hovering)
+    // Effect overlay (Rare+, only while hovering)
     if rarity >= 2 {
         if let Some(hover_pos) = response.hover_pos() {
             let mu = ((hover_pos.x - bbox.left()) / bbox.width()).clamp(0.0, 1.0);
             let mv = ((hover_pos.y - bbox.top()) / bbox.height()).clamp(0.0, 1.0);
             draw_effect_fan(&painter, art_center, &art_proj, bbox, mu, mv, effect);
         }
+    }
+
+    // Spark traversal
+    if spark_enabled && rarity >= 2 {
+        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(rarity));
     }
 
     // Overlay: title, stats, badge
@@ -1559,6 +1882,13 @@ fn demo_rounded_square(
 // ============================================================================
 
 pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
+    // Spark animation tick
+    if state.spark_enabled && state.rarity >= 2 {
+        let dt = ui.input(|i| i.stable_dt).min(0.1);
+        state.spark_phase = (state.spark_phase + dt * state.spark_speed) % 1.0;
+        ui.ctx().request_repaint();
+    }
+
     let art_texture = try_load_texture(ui.ctx(), IIIF_ART_URL);
 
     // Shared controls
@@ -1740,6 +2070,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
             }
             _ => {}
         }
+
+        // Spark controls
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut state.spark_enabled, "Spark");
+            if state.spark_enabled {
+                ui.add(egui::Slider::new(&mut state.spark_speed, 0.1..=1.0).text("Speed"));
+            }
+        });
     }
 
     // Build the selected effect
@@ -1830,6 +2168,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
         15.0,
         state.perspective_distance,
         &*effect,
+        state.spark_phase,
+        state.spark_enabled,
     );
     ui.add_space(16.0);
 
@@ -1853,6 +2193,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
         15.0,
         state.perspective_distance,
         &*effect,
+        state.spark_phase,
+        state.spark_enabled,
     );
     ui.add_space(16.0);
 
@@ -1880,6 +2222,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut NftShapesState) {
         15.0,
         state.perspective_distance,
         &*effect,
+        state.spark_phase,
+        state.spark_enabled,
     );
 
     ui.add_space(24.0);
