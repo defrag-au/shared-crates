@@ -8,6 +8,7 @@ pub mod buy;
 pub mod marketplace;
 pub mod mint;
 pub mod send;
+pub mod swap;
 
 use cardano_assets::UtxoApi;
 use pallas_addresses::Address;
