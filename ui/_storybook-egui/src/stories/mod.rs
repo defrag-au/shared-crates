@@ -23,6 +23,7 @@ pub mod wallet;
 pub mod wallet_editor;
 
 // Trade desk widgets
+pub mod asset_strip;
 pub mod coverage_delta_bar;
 pub mod signing_status;
 pub mod trade_table;

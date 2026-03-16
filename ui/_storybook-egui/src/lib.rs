@@ -41,6 +41,7 @@ mod app {
         SwapModal,
         TraitDelta,
         CoverageDeltaBar,
+        AssetStrip,
         TradeTable,
         SigningStatus,
         WalletAssetPicker,
@@ -73,6 +74,7 @@ mod app {
                 Self::SwapModal,
                 Self::TraitDelta,
                 Self::CoverageDeltaBar,
+                Self::AssetStrip,
                 Self::TradeTable,
                 Self::SigningStatus,
                 Self::WalletAssetPicker,
@@ -105,6 +107,7 @@ mod app {
                 Self::SwapModal => "Swap Modal",
                 Self::TraitDelta => "Trait Delta",
                 Self::CoverageDeltaBar => "Coverage Delta Bar",
+                Self::AssetStrip => "Asset Strip",
                 Self::TradeTable => "Trade Table",
                 Self::SigningStatus => "Signing Status",
                 Self::WalletAssetPicker => "Wallet Asset Picker",
@@ -134,6 +137,7 @@ mod app {
                 Self::SwapModal => "Swap",
                 Self::TraitDelta
                 | Self::CoverageDeltaBar
+                | Self::AssetStrip
                 | Self::TradeTable
                 | Self::SigningStatus
                 | Self::WalletAssetPicker => "Trade Desk",
@@ -205,6 +209,9 @@ mod app {
                 Self::WalletAssetPicker => {
                     "Modal asset browser with accordion policy groups and card grid selection"
                 }
+                Self::AssetStrip => {
+                    "Horizontally stacked asset thumbnails with progressive overlap and click-to-remove"
+                }
             }
         }
     }
@@ -260,6 +267,7 @@ mod app {
         swap_modal: egui_widgets::SwapModal,
         swap_progress: egui_widgets::SwapProgress,
         // Trade desk
+        asset_strip_state: stories::asset_strip::AssetStripStoryState,
         signing_status_state: stories::signing_status::SigningStatusStoryState,
         trade_table_state: stories::trade_table::TradeTableStoryState,
         wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
@@ -320,6 +328,7 @@ mod app {
                     theme: egui_widgets::SwapModalTheme::default(),
                 }),
                 swap_progress: egui_widgets::SwapProgress::Idle,
+                asset_strip_state: stories::asset_strip::AssetStripStoryState::default(),
                 signing_status_state: stories::signing_status::SigningStatusStoryState::default(),
                 trade_table_state: stories::trade_table::TradeTableStoryState::default(),
                 wallet_asset_picker_state:
@@ -472,6 +481,9 @@ mod app {
                                 ui,
                                 &mut self.wallet_asset_picker_state,
                             ),
+                            Story::AssetStrip => {
+                                stories::asset_strip::show(ui, &mut self.asset_strip_state)
+                            }
                         }
                     });
                 });

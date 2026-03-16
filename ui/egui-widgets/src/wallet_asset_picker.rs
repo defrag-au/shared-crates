@@ -1,9 +1,11 @@
 //! Wallet asset picker — modal widget for browsing and selecting NFTs from a
 //! wallet, grouped by policy in an accordion layout.
 //!
-//! The widget is UI-only: it emits a confirmed selection and the caller handles
+//! Supports multi-select with a summary bar showing all selected assets.
+//! The widget is UI-only: it emits confirmed selections and the caller handles
 //! business logic (adding to trade offers, etc).
 
+use cardano_assets::AssetId;
 use egui::{Color32, CornerRadius, Vec2};
 
 use crate::card_browser;
@@ -54,7 +56,7 @@ pub struct WalletAssetPickerConfig {
 impl Default for WalletAssetPickerConfig {
     fn default() -> Self {
         Self {
-            title: "Select Asset",
+            title: "Select Assets",
             card_size: 80.0,
             max_width: 480.0,
             max_height: 600.0,
@@ -69,18 +71,48 @@ pub struct WalletAssetPickerState {
     pub open: bool,
     /// Search filter text.
     pub search: String,
-    /// Currently selected asset: (policy_id, asset_name_hex).
-    pub selected: Option<(String, String)>,
+    /// Currently selected assets.
+    pub selected: Vec<AssetId>,
+}
+
+impl WalletAssetPickerState {
+    /// Check whether a specific asset is selected.
+    pub fn is_selected(&self, policy_id: &str, asset_name_hex: &str) -> bool {
+        self.selected
+            .iter()
+            .any(|id| id.policy_id == policy_id && id.asset_name_hex == asset_name_hex)
+    }
+
+    /// Toggle selection of an asset.
+    fn toggle(&mut self, policy_id: &str, asset_name_hex: &str) {
+        if let Some(idx) = self
+            .selected
+            .iter()
+            .position(|id| id.policy_id == policy_id && id.asset_name_hex == asset_name_hex)
+        {
+            self.selected.remove(idx);
+        } else {
+            self.selected.push(AssetId::new_unchecked(
+                policy_id.to_string(),
+                asset_name_hex.to_string(),
+            ));
+        }
+    }
+
+    /// Count how many assets are selected from a given policy.
+    fn selected_count_for_policy(&self, policy_id: &str) -> usize {
+        self.selected
+            .iter()
+            .filter(|id| id.policy_id == policy_id)
+            .count()
+    }
 }
 
 /// Actions emitted by the widget.
 pub enum WalletAssetPickerAction {
-    /// User confirmed their selection.
-    Confirmed {
-        asset: PickerAsset,
-        policy_id: String,
-    },
-    /// User closed the modal without selecting.
+    /// User confirmed their selection (one or more assets).
+    Confirmed(Vec<AssetId>),
+    /// User closed the modal without confirming.
     Closed,
 }
 
@@ -141,7 +173,10 @@ pub fn show(
             ui.add_space(8.0);
 
             // ── Scrollable accordion area ──
-            let scroll_height = config.max_height - 120.0; // leave room for search + confirm
+            let has_selection = !state.selected.is_empty();
+            // Reserve space for summary bar + confirm when selections exist
+            let bottom_reserve = if has_selection { 160.0 } else { 120.0 };
+            let scroll_height = config.max_height - bottom_reserve;
             egui::ScrollArea::vertical()
                 .max_height(scroll_height)
                 .show(ui, |ui| {
@@ -164,11 +199,27 @@ pub fn show(
                             continue;
                         }
 
-                        let header_text = format!("{} ({})", group.label, filtered.len());
+                        // Build header text with selection badge
+                        let sel_count = state.selected_count_for_policy(&group.policy_id);
+                        let header_text = if sel_count > 0 {
+                            format!(
+                                "{} ({}) \u{2022} {sel_count} selected",
+                                group.label,
+                                filtered.len()
+                            )
+                        } else {
+                            format!("{} ({})", group.label, filtered.len())
+                        };
+
+                        let header_color = if sel_count > 0 {
+                            theme::ACCENT_CYAN
+                        } else {
+                            theme::TEXT_PRIMARY
+                        };
 
                         let mut header = egui::CollapsingHeader::new(
                             egui::RichText::new(header_text)
-                                .color(theme::TEXT_PRIMARY)
+                                .color(header_color)
                                 .size(11.0)
                                 .strong(),
                         )
@@ -186,7 +237,7 @@ pub fn show(
                                 &filtered,
                                 &group.policy_id,
                                 config.card_size,
-                                &mut state.selected,
+                                state,
                             );
                         });
                     }
@@ -194,18 +245,25 @@ pub fn show(
 
             ui.add_space(8.0);
 
+            // ── Selection summary bar ──
+            if has_selection {
+                draw_selection_summary(ui, state, groups);
+                ui.add_space(8.0);
+            }
+
             // ── Confirm button ──
-            let has_selection = state.selected.is_some();
+            let count = state.selected.len();
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                    let btn_text = if has_selection {
-                        egui::RichText::new("Confirm")
-                            .color(theme::BG_PRIMARY)
-                            .strong()
+                    let label = if count > 0 {
+                        format!("Confirm ({count})")
                     } else {
-                        egui::RichText::new("Confirm")
-                            .color(theme::TEXT_MUTED)
-                            .strong()
+                        "Confirm".into()
+                    };
+                    let btn_text = if has_selection {
+                        egui::RichText::new(label).color(theme::BG_PRIMARY).strong()
+                    } else {
+                        egui::RichText::new(label).color(theme::TEXT_MUTED).strong()
                     };
                     let btn = egui::Button::new(btn_text)
                         .fill(if has_selection {
@@ -217,24 +275,12 @@ pub fn show(
                         .min_size(Vec2::new(120.0, 28.0));
 
                     let resp = ui.add_enabled(has_selection, btn);
-                    if resp.clicked() {
-                        if let Some((ref sel_policy, ref sel_hex)) = state.selected {
-                            // Find the matching asset
-                            if let Some(group) = groups.iter().find(|g| g.policy_id == *sel_policy)
-                            {
-                                if let Some(asset) =
-                                    group.assets.iter().find(|a| a.asset_name_hex == *sel_hex)
-                                {
-                                    action = Some(WalletAssetPickerAction::Confirmed {
-                                        asset: asset.clone(),
-                                        policy_id: sel_policy.clone(),
-                                    });
-                                    state.open = false;
-                                    state.selected = None;
-                                    state.search.clear();
-                                }
-                            }
-                        }
+                    if resp.clicked() && !state.selected.is_empty() {
+                        let confirmed = state.selected.clone();
+                        action = Some(WalletAssetPickerAction::Confirmed(confirmed));
+                        state.open = false;
+                        state.selected.clear();
+                        state.search.clear();
                     }
                 });
             });
@@ -242,12 +288,53 @@ pub fn show(
 
     if !still_open {
         state.open = false;
-        state.selected = None;
+        state.selected.clear();
         state.search.clear();
         action = Some(WalletAssetPickerAction::Closed);
     }
 
     WalletAssetPickerResponse { action }
+}
+
+// ============================================================================
+// Selection summary bar
+// ============================================================================
+
+/// Visual strip of selected asset thumbnails — click to deselect.
+fn draw_selection_summary(
+    ui: &mut egui::Ui,
+    state: &mut WalletAssetPickerState,
+    groups: &[PickerPolicyGroup],
+) {
+    use crate::asset_strip;
+
+    let strip_items: Vec<asset_strip::AssetStripItem> = state
+        .selected
+        .iter()
+        .filter_map(|id| {
+            let group = groups.iter().find(|g| g.policy_id == id.policy_id)?;
+            let asset = group
+                .assets
+                .iter()
+                .find(|a| a.asset_name_hex == id.asset_name_hex)?;
+            Some(asset_strip::AssetStripItem {
+                asset_id: id.clone(),
+                display_name: asset.display_name.clone(),
+            })
+        })
+        .collect();
+
+    let config = asset_strip::AssetStripConfig {
+        thumb_size: 56.0,
+        min_visible: 18.0,
+    };
+    let resp = asset_strip::show(ui, &strip_items, &config);
+
+    if let Some(idx) = resp.clicked {
+        if idx < state.selected.len() {
+            state.selected.remove(idx);
+        }
+    }
 }
 
 // ============================================================================
@@ -286,7 +373,7 @@ fn draw_card_grid(
     assets: &[&PickerAsset],
     policy_id: &str,
     card_size: f32,
-    selected: &mut Option<(String, String)>,
+    state: &mut WalletAssetPickerState,
 ) {
     let available_width = ui.available_width();
     let spacing = 6.0;
@@ -298,7 +385,7 @@ fn draw_card_grid(
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = spacing;
             for asset in row_assets {
-                draw_picker_card(ui, asset, policy_id, card_size, selected);
+                draw_picker_card(ui, asset, policy_id, card_size, state);
             }
         });
         ui.add_space(spacing);
@@ -310,14 +397,12 @@ fn draw_picker_card(
     asset: &PickerAsset,
     policy_id: &str,
     card_size: f32,
-    selected: &mut Option<(String, String)>,
+    state: &mut WalletAssetPickerState,
 ) {
     let size = Vec2::splat(card_size);
     let (card_rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
 
-    let is_selected = selected
-        .as_ref()
-        .is_some_and(|(p, h)| p == policy_id && h == &asset.asset_name_hex);
+    let is_selected = state.is_selected(policy_id, &asset.asset_name_hex);
     let hovered = response.hovered();
     let painter = ui.painter_at(card_rect);
     let rounding = CornerRadius::same(4);
@@ -365,7 +450,20 @@ fn draw_picker_card(
         theme::TEXT_PRIMARY,
     );
 
-    // Border — rarity color or selection highlight
+    // Selected checkmark badge (top-left)
+    if is_selected {
+        let badge_center = egui::pos2(card_rect.min.x + 10.0, card_rect.min.y + 10.0);
+        painter.circle_filled(badge_center, 8.0, theme::ACCENT_CYAN);
+        PhosphorIcon::Check.paint(
+            &painter,
+            badge_center,
+            egui::Align2::CENTER_CENTER,
+            10.0,
+            theme::BG_PRIMARY,
+        );
+    }
+
+    // Border — selection highlight, rarity, or default
     let (border_color, border_width) = if is_selected {
         (theme::ACCENT_CYAN, 2.0)
     } else if let Some(rank) = asset.rarity_rank {
@@ -407,12 +505,8 @@ fn draw_picker_card(
         }
     });
 
-    // Click to select/deselect
+    // Click to toggle selection
     if response.clicked() {
-        if is_selected {
-            *selected = None;
-        } else {
-            *selected = Some((policy_id.to_string(), asset.asset_name_hex.clone()));
-        }
+        state.toggle(policy_id, &asset.asset_name_hex);
     }
 }

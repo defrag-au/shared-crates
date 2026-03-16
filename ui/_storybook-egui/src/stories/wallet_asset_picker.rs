@@ -32,7 +32,7 @@ fn balance_to_groups(balance: &egui_widgets::wallet::WalletBalance) -> Vec<Picke
                 .collect();
             PickerPolicyGroup {
                 policy_id: pg.policy_id.clone(),
-                label: pg.policy_id_short.clone(),
+                label: pg.policy_id.clone(),
                 assets,
             }
         })
@@ -224,11 +224,9 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
 
     if let Some(action) = resp.action {
         match action {
-            wallet_asset_picker::WalletAssetPickerAction::Confirmed { asset, policy_id } => {
-                let short_policy = &policy_id[..8.min(policy_id.len())];
-                let short_hex = &asset.asset_name_hex[..8.min(asset.asset_name_hex.len())];
-                state.last_selection =
-                    format!("{} [{short_policy}:{short_hex}]", asset.display_name);
+            wallet_asset_picker::WalletAssetPickerAction::Confirmed(assets) => {
+                let names: Vec<String> = assets.iter().map(|a| a.asset_name()).collect();
+                state.last_selection = format!("{} asset(s): {}", assets.len(), names.join(", "));
             }
             wallet_asset_picker::WalletAssetPickerAction::Closed => {
                 state.last_selection = "Closed without selecting".into();
