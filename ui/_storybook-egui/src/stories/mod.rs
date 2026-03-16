@@ -21,3 +21,9 @@ pub mod trait_filter;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
 pub mod wallet_editor;
+
+// Trade desk widgets
+pub mod coverage_delta_bar;
+pub mod signing_status;
+pub mod trade_table;
+pub mod trait_delta;

@@ -39,6 +39,10 @@ mod app {
         TraitFilter,
         WalletEditor,
         SwapModal,
+        TraitDelta,
+        CoverageDeltaBar,
+        TradeTable,
+        SigningStatus,
     }
 
     impl Story {
@@ -66,6 +70,10 @@ mod app {
                 Self::WalletEditor,
                 Self::TraitFilter,
                 Self::SwapModal,
+                Self::TraitDelta,
+                Self::CoverageDeltaBar,
+                Self::TradeTable,
+                Self::SigningStatus,
             ]
         }
 
@@ -93,6 +101,10 @@ mod app {
                 Self::TraitFilter => "Trait Filter",
                 Self::WalletEditor => "Wallet Editor",
                 Self::SwapModal => "Swap Modal",
+                Self::TraitDelta => "Trait Delta",
+                Self::CoverageDeltaBar => "Coverage Delta Bar",
+                Self::TradeTable => "Trade Table",
+                Self::SigningStatus => "Signing Status",
             }
         }
 
@@ -117,6 +129,10 @@ mod app {
                 | Self::TraitFilter => "Data Visualization",
                 Self::WalletButton | Self::WalletEditor => "Wallet",
                 Self::SwapModal => "Swap",
+                Self::TraitDelta
+                | Self::CoverageDeltaBar
+                | Self::TradeTable
+                | Self::SigningStatus => "Trade Desk",
             }
         }
 
@@ -170,6 +186,18 @@ mod app {
                     "Wallet bundle editor with input, status indicators, and add/remove actions"
                 }
                 Self::SwapModal => "DEX swap modal with preview, culture buys, and progress states",
+                Self::TraitDelta => {
+                    "Trait gain/loss chips showing which traits change hands in a trade"
+                }
+                Self::CoverageDeltaBar => {
+                    "Before/after coverage bar with delta indicator for trade impact"
+                }
+                Self::TradeTable => {
+                    "Two-column trade offer layout with asset cards, add/remove controls"
+                }
+                Self::SigningStatus => {
+                    "Concurrent signing checklist with Sign/Cancel actions and progress states"
+                }
             }
         }
     }
@@ -224,6 +252,9 @@ mod app {
         wallet_connector: egui_widgets::wallet::WalletConnector,
         swap_modal: egui_widgets::SwapModal,
         swap_progress: egui_widgets::SwapProgress,
+        // Trade desk
+        signing_status_state: stories::signing_status::SigningStatusStoryState,
+        trade_table_state: stories::trade_table::TradeTableStoryState,
     }
 
     impl StorybookApp {
@@ -281,6 +312,8 @@ mod app {
                     theme: egui_widgets::SwapModalTheme::default(),
                 }),
                 swap_progress: egui_widgets::SwapProgress::Idle,
+                signing_status_state: stories::signing_status::SigningStatusStoryState::default(),
+                trade_table_state: stories::trade_table::TradeTableStoryState::default(),
             }
         }
 
@@ -333,7 +366,9 @@ mod app {
                     ui.add_space(8.0);
                     ui.heading(egui::RichText::new("egui Widgets").color(ACCENT));
                     ui.separator();
-                    self.draw_sidebar(ui);
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        self.draw_sidebar(ui);
+                    });
                 });
 
             egui::CentralPanel::default()
@@ -414,6 +449,14 @@ mod app {
                                 &mut self.swap_modal,
                                 &mut self.swap_progress,
                             ),
+                            Story::TraitDelta => stories::trait_delta::show(ui),
+                            Story::CoverageDeltaBar => stories::coverage_delta_bar::show(ui),
+                            Story::TradeTable => {
+                                stories::trade_table::show(ui, &mut self.trade_table_state)
+                            }
+                            Story::SigningStatus => {
+                                stories::signing_status::show(ui, &mut self.signing_status_state)
+                            }
                         }
                     });
                 });

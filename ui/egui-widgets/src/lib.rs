@@ -28,6 +28,13 @@ pub mod wallet;
 pub mod wallet_button;
 pub mod wallet_editor;
 
+// Trade desk widgets
+pub mod coverage_delta_bar;
+pub mod offer_slot;
+pub mod signing_status;
+pub mod trade_table;
+pub mod trait_delta;
+
 pub use animated_counter::AnimatedCounter;
 pub use buttons::UiButtonExt;
 pub use card_browser::{
@@ -63,3 +70,10 @@ pub use wallet_editor::{
     WalletEditorAction, WalletEditorConfig, WalletEditorEntry, WalletEditorResponse,
     WalletEditorState, WalletEntryStatus,
 };
+
+// Trade desk re-exports
+pub use coverage_delta_bar::CoverageDeltaConfig;
+pub use offer_slot::{OfferSlotAction, OfferSlotConfig, OfferSlotData, OfferSlotResponse};
+pub use signing_status::{SigningAction, SigningPhase, SigningStatusConfig, SigningStatusResponse};
+pub use trade_table::{PeerState, TradeTableAction, TradeTableConfig, TradeTableResponse};
+pub use trait_delta::{TraitDeltaConfig, TraitItem};
