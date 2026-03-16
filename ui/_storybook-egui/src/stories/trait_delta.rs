@@ -12,8 +12,8 @@ pub fn show(ui: &mut egui::Ui) {
     );
     ui.label(
         egui::RichText::new(
-            "Shows traits gained and lost in a trade as colored chips. \
-             Green (+) for gains, red (\u{2212}) for losses.",
+            "Trait chips showing what changes hands in a trade. \
+             Green (+) for gains, red (-) for losses. No labels, just data.",
         )
         .color(TEXT_MUTED)
         .size(11.0),
@@ -103,27 +103,6 @@ pub fn show(ui: &mut egui::Ui) {
                     TraitItem::new("Eyes", "Laser"),
                 ];
                 trait_delta::show(ui, &[], &losses, &config);
-            });
-    });
-
-    ui.add_space(16.0);
-
-    // Example 4: Empty (no changes)
-    ui.allocate_ui(egui::vec2(400.0, ui.available_height()), |ui| {
-        egui::Frame::new()
-            .fill(BG_MAIN)
-            .corner_radius(6.0)
-            .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
-            .show(ui, |ui| {
-                ui.label(
-                    egui::RichText::new("No Changes (duplicate traits)")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
-                        .size(11.0)
-                        .strong(),
-                );
-                ui.add_space(6.0);
-                trait_delta::show(ui, &[], &[], &config);
             });
     });
 }

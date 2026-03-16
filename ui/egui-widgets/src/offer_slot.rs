@@ -1,11 +1,12 @@
 //! Offer slot widget — a single asset card placed on a trade table.
 //!
-//! Compact card showing thumbnail, name, rarity rank, and an optional
-//! remove button. Used inside [`super::trade_table`] to represent assets
-//! that a party has placed on the trade desk.
+//! Compact card showing an async-loaded IIIF thumbnail, name, rarity rank,
+//! and an optional remove button. Used inside [`super::trade_table`] to
+//! represent assets that a party has placed on the trade desk.
 
 use egui::{Color32, CornerRadius, Vec2};
 
+use crate::card_browser;
 use crate::theme;
 
 // ============================================================================
@@ -15,14 +16,28 @@ use crate::theme;
 /// Data for a single offered asset.
 #[derive(Clone, Debug)]
 pub struct OfferSlotData {
-    /// Asset display name (e.g. "Alien Fren #1234").
+    /// Asset display name (e.g. "Pirate84").
     pub name: String,
-    /// Optional thumbnail URL (loaded async via egui image loaders).
-    pub thumbnail_url: Option<String>,
+    /// Policy ID hex (for IIIF URL construction).
+    pub policy_id: String,
+    /// Asset name hex (for IIIF URL construction).
+    pub asset_name_hex: String,
     /// Optional rarity rank (e.g. 42 of 5000).
     pub rarity_rank: Option<u32>,
+    /// Total ranked assets in collection (for rarity coloring).
+    pub total_ranked: Option<u32>,
     /// Accent color for the card border.
     pub accent: Color32,
+}
+
+impl OfferSlotData {
+    /// Build the IIIF thumbnail URL for this asset.
+    pub fn thumbnail_url(&self, size: u32) -> String {
+        format!(
+            "https://iiif.hodlcroft.com/iiif/3/{}:{}/full/{size},/0/default.jpg",
+            self.policy_id, self.asset_name_hex
+        )
+    }
 }
 
 /// Configuration for offer slot appearance.
@@ -104,41 +119,21 @@ pub fn show(
         egui::StrokeKind::Outside,
     );
 
-    // Thumbnail area
+    // Thumbnail area — use card_browser::draw_thumbnail for async loading + spinner
     let thumb_rect = egui::Rect::from_min_size(
         card_rect.min + egui::vec2(1.0, 1.0),
         Vec2::new(config.width - 2.0, config.thumb_height),
     );
 
-    if let Some(ref url) = data.thumbnail_url {
-        let image = egui::Image::new(url.as_str())
-            .fit_to_exact_size(thumb_rect.size())
-            .corner_radius(CornerRadius {
-                nw: 3,
-                ne: 3,
-                sw: 0,
-                se: 0,
-            });
-        ui.put(thumb_rect, image);
-    } else {
-        // Placeholder
-        painter.rect_filled(
-            thumb_rect,
-            CornerRadius {
-                nw: 3,
-                ne: 3,
-                sw: 0,
-                se: 0,
-            },
-            Color32::from_rgb(40, 40, 55),
-        );
-        painter.text(
-            thumb_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "?",
-            egui::FontId::monospace(20.0),
-            theme::TEXT_MUTED,
-        );
+    let image_url = data.thumbnail_url(400);
+    let browser_config = crate::CardBrowserConfig {
+        rounding: 3.0,
+        bg_card_hover: Color32::from_rgb(40, 40, 55),
+        ..Default::default()
+    };
+    let loading = card_browser::draw_thumbnail(ui, thumb_rect, Some(&image_url), &browser_config);
+    if loading {
+        crate::image_loader::CachedSpinner::request_repaint(ui);
     }
 
     // Name label (below thumbnail)
@@ -146,31 +141,28 @@ pub fn show(
         card_rect.min.x + 4.0,
         card_rect.min.y + config.thumb_height + 3.0,
     );
-    let truncated_name = if data.name.len() > 14 {
-        format!("{}...", &data.name[..12])
-    } else {
-        data.name.clone()
-    };
-    painter.text(
+    let name_rect = egui::Rect::from_min_size(name_pos, Vec2::new(config.width - 8.0, 14.0));
+    painter.with_clip_rect(name_rect).text(
         name_pos,
         egui::Align2::LEFT_TOP,
-        &truncated_name,
+        &data.name,
         egui::FontId::monospace(config.font_size),
         theme::TEXT_PRIMARY,
     );
 
-    // Rarity rank (bottom-right of name area)
+    // Rarity rank (bottom-right of name area) — colored by percentile
     if let Some(rank) = data.rarity_rank {
         let rank_pos = egui::pos2(
             card_rect.max.x - 4.0,
             card_rect.min.y + config.thumb_height + 3.0,
         );
+        let rank_color = theme::rarity_rank_color(rank, data.total_ranked.unwrap_or(10000));
         painter.text(
             rank_pos,
             egui::Align2::RIGHT_TOP,
             format!("#{rank}"),
             egui::FontId::monospace(config.rank_font_size),
-            theme::TEXT_MUTED,
+            rank_color,
         );
     }
 
@@ -197,7 +189,7 @@ pub fn show(
             btn_center,
             egui::Align2::CENTER_CENTER,
             crate::PhosphorIcon::X.codepoint().to_string(),
-            egui::FontId::new(10.0, egui::FontFamily::Name("phosphor".into())),
+            egui::FontId::new(10.0, crate::icons::phosphor_family()),
             x_color,
         );
 

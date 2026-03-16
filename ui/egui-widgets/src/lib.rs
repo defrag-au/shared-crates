@@ -61,7 +61,7 @@ pub use swap_modal::{
     CultureBuy, SwapModal, SwapModalAction, SwapModalConfig, SwapModalTheme, SwapPreviewData,
     SwapProgress,
 };
-pub use theme::FontStrategy;
+pub use theme::{rarity_rank_color, FontStrategy};
 pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
 pub use utils::{format_duration, format_number, section_heading, stat_card, truncate_hex};
 #[cfg(target_arch = "wasm32")]
@@ -75,5 +75,7 @@ pub use wallet_editor::{
 pub use coverage_delta_bar::CoverageDeltaConfig;
 pub use offer_slot::{OfferSlotAction, OfferSlotConfig, OfferSlotData, OfferSlotResponse};
 pub use signing_status::{SigningAction, SigningPhase, SigningStatusConfig, SigningStatusResponse};
-pub use trade_table::{PeerState, TradeTableAction, TradeTableConfig, TradeTableResponse};
+pub use trade_table::{
+    PeerState, TradeOffer, TradeTableAction, TradeTableConfig, TradeTableResponse, TradeTableState,
+};
 pub use trait_delta::{TraitDeltaConfig, TraitItem};

@@ -49,6 +49,36 @@ pub const ERROR: Color32 = ACCENT_RED;
 pub const BORDER: Color32 = BG_HIGHLIGHT;
 
 // ============================================================================
+// Rarity rank coloring
+// ============================================================================
+
+/// Color a rarity rank by its percentile within a collection.
+///
+/// Returns a color that communicates scarcity at a glance:
+/// - Gold for top 1%, amber for top 5%, cyan for top 10%, green for top 25%,
+///   muted for everything else.
+///
+/// Used by offer slots, browse views, pricing panels — anywhere a `#rank`
+/// label is displayed.
+pub fn rarity_rank_color(rank: u32, total: u32) -> Color32 {
+    if total == 0 {
+        return TEXT_MUTED;
+    }
+    let pct = rank as f32 / total as f32;
+    if pct <= 0.01 {
+        Color32::from_rgb(255, 215, 0) // gold — top 1%
+    } else if pct <= 0.05 {
+        ACCENT_YELLOW // amber — top 5%
+    } else if pct <= 0.10 {
+        ACCENT_CYAN // cyan — top 10%
+    } else if pct <= 0.25 {
+        ACCENT_GREEN // green — top 25%
+    } else {
+        TEXT_MUTED
+    }
+}
+
+// ============================================================================
 // Style configuration
 // ============================================================================
 

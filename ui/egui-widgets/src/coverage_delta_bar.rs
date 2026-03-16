@@ -59,11 +59,13 @@ pub fn show(
     label: Option<&str>,
     config: &CoverageDeltaConfig,
 ) {
+    crate::install_phosphor_font(ui.ctx());
+
     let before = before.clamp(0.0, 1.0);
     let after = after.clamp(0.0, 1.0);
     let delta = after - before;
 
-    // Label row: "Coverage: 67% → 71% (+4%)"
+    // Label row: "Coverage: 67% -> 71% (+4%)"
     ui.horizontal(|ui| {
         if let Some(lbl) = label {
             ui.label(
@@ -79,11 +81,7 @@ pub fn show(
                 .size(config.font_size),
         );
 
-        ui.label(
-            RichText::new("\u{2192}")
-                .color(theme::TEXT_MUTED)
-                .size(config.font_size),
-        );
+        crate::PhosphorIcon::ArrowRight.show(ui, config.font_size, theme::TEXT_MUTED);
 
         let after_color = if delta >= 0.0 {
             config.gain_color

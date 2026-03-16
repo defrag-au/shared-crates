@@ -1,60 +1,87 @@
-//! Storybook demo for the TradeTable widget (includes OfferSlot).
+//! Storybook demo for the TradeTable widget — TCG-style top/bottom layout.
 
 use egui::Color32;
 use egui_widgets::offer_slot::OfferSlotData;
-use egui_widgets::trade_table::{self, PeerState, TradeTableConfig};
+use egui_widgets::trade_table::{self, PeerState, TradeOffer, TradeTableConfig, TradeTableState};
 
 use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
 
+const POLICY_ID: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
+
+// A handful of real Hodlcroft Pirates hex asset names for demo thumbnails.
+const YOUR_PIRATES: &[(&str, u32)] = &[
+    ("5069726174653834", 42),
+    ("506972617465323733", 273),
+    ("50697261746531303430", 891),
+];
+
+const THEIR_PIRATES: &[(&str, u32)] = &[
+    ("506972617465333830", 15),
+    ("506972617465313432", 2103),
+    ("506972617465393336", 777),
+    ("50697261746531323736", 156),
+];
+
+fn decode_hex_name(hex: &str) -> String {
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .filter_map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect();
+    String::from_utf8(bytes).unwrap_or_else(|_| hex.to_string())
+}
+
+fn make_slot(hex: &str, rank: u32, accent: Color32) -> OfferSlotData {
+    OfferSlotData {
+        name: decode_hex_name(hex),
+        policy_id: POLICY_ID.into(),
+        asset_name_hex: hex.into(),
+        rarity_rank: Some(rank),
+        total_ranked: Some(2000),
+        accent,
+    }
+}
+
 pub struct TradeTableStoryState {
-    pub your_offer: Vec<OfferSlotData>,
-    pub their_offer: Vec<OfferSlotData>,
+    pub your_offer: TradeOffer,
+    pub their_offer: TradeOffer,
     pub peer_state: PeerState,
+    pub table_state: TradeTableState,
     pub last_action: String,
+    next_idx: usize,
 }
 
 impl Default for TradeTableStoryState {
     fn default() -> Self {
         Self {
-            your_offer: vec![
-                OfferSlotData {
-                    name: "Alien Fren #1234".into(),
-                    thumbnail_url: None,
-                    rarity_rank: Some(42),
-                    accent: egui_widgets::theme::ACCENT_GREEN,
-                },
-                OfferSlotData {
-                    name: "Alien Fren #5678".into(),
-                    thumbnail_url: None,
-                    rarity_rank: Some(891),
-                    accent: egui_widgets::theme::ACCENT_GREEN,
-                },
-            ],
-            their_offer: vec![
-                OfferSlotData {
-                    name: "Alien Fren #9012".into(),
-                    thumbnail_url: None,
-                    rarity_rank: Some(15),
-                    accent: egui_widgets::theme::ACCENT_CYAN,
-                },
-                OfferSlotData {
-                    name: "Alien Fren #3456".into(),
-                    thumbnail_url: None,
-                    rarity_rank: Some(2103),
-                    accent: egui_widgets::theme::ACCENT_CYAN,
-                },
-                OfferSlotData {
-                    name: "Alien Fren #7777".into(),
-                    thumbnail_url: None,
-                    rarity_rank: Some(777),
-                    accent: egui_widgets::theme::ACCENT_CYAN,
-                },
-            ],
+            your_offer: TradeOffer {
+                assets: YOUR_PIRATES
+                    .iter()
+                    .map(|(hex, rank)| make_slot(hex, *rank, egui_widgets::theme::ACCENT_GREEN))
+                    .collect(),
+                lovelace: 25_000_000, // 25 ADA sweetener
+            },
+            their_offer: TradeOffer {
+                assets: THEIR_PIRATES
+                    .iter()
+                    .map(|(hex, rank)| make_slot(hex, *rank, egui_widgets::theme::ACCENT_CYAN))
+                    .collect(),
+                lovelace: 0,
+            },
             peer_state: PeerState::Connected,
+            table_state: TradeTableState::default(),
             last_action: String::new(),
+            next_idx: YOUR_PIRATES.len(),
         }
     }
 }
+
+// Extra pirates for the "add" action.
+const EXTRA_PIRATES: &[(&str, u32)] = &[
+    ("506972617465373835", 500),
+    ("50697261746531393133", 1200),
+    ("50697261746531363133", 88),
+    ("506972617465333138", 950),
+];
 
 pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
     ui.label(
@@ -64,8 +91,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
     );
     ui.label(
         egui::RichText::new(
-            "Two-column trade offer layout with OfferSlot cards. \
-             Your side has add/remove controls, their side is read-only.",
+            "TCG-style top/bottom trade layout with real IIIF thumbnails, \
+             ADA sweetener, and add/remove controls.",
         )
         .color(TEXT_MUTED)
         .size(11.0),
@@ -105,6 +132,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
             let config = TradeTableConfig::default();
             let resp = trade_table::show(
                 ui,
+                &mut state.table_state,
                 &state.your_offer,
                 &state.their_offer,
                 &state.peer_state,
@@ -115,23 +143,28 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
                 match action {
                     trade_table::TradeTableAction::AddAsset => {
                         state.last_action = "Add asset clicked".into();
-                        // Simulate adding a new asset
-                        state.your_offer.push(OfferSlotData {
-                            name: format!("Alien Fren #{}", 1000 + state.your_offer.len()),
-                            thumbnail_url: None,
-                            rarity_rank: Some(999),
-                            accent: egui_widgets::theme::ACCENT_GREEN,
-                        });
+                        let extra_idx = state.next_idx % EXTRA_PIRATES.len();
+                        let (hex, rank) = EXTRA_PIRATES[extra_idx];
+                        state.your_offer.assets.push(make_slot(
+                            hex,
+                            rank,
+                            egui_widgets::theme::ACCENT_GREEN,
+                        ));
+                        state.next_idx += 1;
                     }
                     trade_table::TradeTableAction::RemoveYourAsset(idx) => {
                         state.last_action = format!(
-                            "Remove: [{}] \"{}\"",
+                            "Removed: [{}] \"{}\"",
                             idx,
-                            state.your_offer.get(idx).map_or("?", |d| &d.name)
+                            state.your_offer.assets.get(idx).map_or("?", |d| &d.name)
                         );
-                        if idx < state.your_offer.len() {
-                            state.your_offer.remove(idx);
+                        if idx < state.your_offer.assets.len() {
+                            state.your_offer.assets.remove(idx);
                         }
+                    }
+                    trade_table::TradeTableAction::SetYourLovelace(lovelace) => {
+                        state.last_action = format!("ADA sweetener: {lovelace} lovelace");
+                        state.your_offer.lovelace = lovelace;
                     }
                 }
             }
@@ -142,11 +175,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
     // Action log
     if state.last_action.is_empty() {
         ui.label(
-            egui::RichText::new(
-                "No actions yet \u{2014} try adding or removing assets from your offer",
-            )
-            .color(TEXT_MUTED)
-            .size(11.0),
+            egui::RichText::new("No actions yet -- try adding/removing assets or adjusting ADA")
+                .color(TEXT_MUTED)
+                .size(11.0),
         );
     } else {
         ui.label(
@@ -157,11 +188,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
     }
 
     ui.add_space(8.0);
+    let your_ada = state.your_offer.lovelace as f64 / 1_000_000.0;
+    let their_ada = state.their_offer.lovelace as f64 / 1_000_000.0;
     ui.label(
         egui::RichText::new(format!(
-            "Your: {} assets | Theirs: {} assets",
-            state.your_offer.len(),
-            state.their_offer.len()
+            "Your: {} assets + {your_ada:.1} ADA | Theirs: {} assets + {their_ada:.1} ADA",
+            state.your_offer.assets.len(),
+            state.their_offer.assets.len()
         ))
         .color(TEXT_MUTED)
         .size(10.0),

@@ -112,6 +112,7 @@ pub enum PhosphorIcon {
     ArrowDown,
     ArrowLeft,
     ArrowRight,
+    ArrowsDownUp,
 
     // Misc
     Spiral,
@@ -163,6 +164,7 @@ impl PhosphorIcon {
             Self::ArrowDown => '\u{e03e}',
             Self::ArrowLeft => '\u{e058}',
             Self::ArrowRight => '\u{e06c}',
+            Self::ArrowsDownUp => '\u{e098}',
             Self::Spiral => '\u{e9fa}',
         }
     }
@@ -250,6 +252,7 @@ impl PhosphorIcon {
         Self::ArrowDown,
         Self::ArrowLeft,
         Self::ArrowRight,
+        Self::ArrowsDownUp,
         Self::Spiral,
     ];
 
@@ -298,6 +301,7 @@ impl PhosphorIcon {
             Self::ArrowDown => "Arrow Down",
             Self::ArrowLeft => "Arrow Left",
             Self::ArrowRight => "Arrow Right",
+            Self::ArrowsDownUp => "Arrows Down Up",
             Self::Spiral => "Spiral",
         }
     }

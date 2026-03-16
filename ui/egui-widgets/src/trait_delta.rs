@@ -34,12 +34,6 @@ impl TraitItem {
 pub struct TraitDeltaConfig {
     /// Font size for trait chips.
     pub font_size: f32,
-    /// Font size for section headings.
-    pub heading_size: f32,
-    /// Label for gains section.
-    pub gains_label: &'static str,
-    /// Label for losses section.
-    pub losses_label: &'static str,
     /// Color for gain chips.
     pub gain_color: Color32,
     /// Color for loss chips.
@@ -52,9 +46,6 @@ impl Default for TraitDeltaConfig {
     fn default() -> Self {
         Self {
             font_size: 10.0,
-            heading_size: 11.0,
-            gains_label: "You gain",
-            losses_label: "You lose",
             gain_color: theme::ACCENT_GREEN,
             loss_color: theme::ACCENT_RED,
             chip_spacing: 4.0,
@@ -68,27 +59,12 @@ impl Default for TraitDeltaConfig {
 
 /// Render the trait delta display.
 ///
-/// Shows gained and lost traits as colored chips grouped under headings.
-/// Either section is hidden if its list is empty.
+/// Shows gained and lost traits as colored chips. Gains are prefixed with `+`
+/// in the gain color, losses with `-` in the loss color. No headings or
+/// informational text — just the data.
 pub fn show(ui: &mut Ui, gains: &[TraitItem], losses: &[TraitItem], config: &TraitDeltaConfig) {
-    if gains.is_empty() && losses.is_empty() {
-        ui.label(
-            RichText::new("No trait changes")
-                .color(theme::TEXT_MUTED)
-                .size(config.font_size),
-        );
-        return;
-    }
-
     if !gains.is_empty() {
-        draw_section(
-            ui,
-            config.gains_label,
-            "+",
-            gains,
-            config.gain_color,
-            config,
-        );
+        draw_chips(ui, "+", gains, config.gain_color, config);
     }
 
     if !gains.is_empty() && !losses.is_empty() {
@@ -96,34 +72,17 @@ pub fn show(ui: &mut Ui, gains: &[TraitItem], losses: &[TraitItem], config: &Tra
     }
 
     if !losses.is_empty() {
-        draw_section(
-            ui,
-            config.losses_label,
-            "\u{2212}",
-            losses,
-            config.loss_color,
-            config,
-        );
+        draw_chips(ui, "-", losses, config.loss_color, config);
     }
 }
 
-fn draw_section(
+fn draw_chips(
     ui: &mut Ui,
-    heading: &str,
     prefix: &str,
     traits: &[TraitItem],
     color: Color32,
     config: &TraitDeltaConfig,
 ) {
-    ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(heading)
-                .color(theme::TEXT_SECONDARY)
-                .size(config.heading_size),
-        );
-    });
-    ui.add_space(2.0);
-
     // Flow-wrap trait chips horizontally
     let available = ui.available_width();
     let mut cursor_x = 0.0_f32;
