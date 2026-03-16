@@ -1,13 +1,22 @@
 //! Trade table widget — TCG-style top/bottom offer display for the trade desk.
 //!
-//! Renders a stacked layout: "THEIR OFFER" at the top (remote party, read-only),
-//! "YOUR OFFER" at the bottom (local party, interactive). Each side shows NFT
-//! assets as [`OfferSlotData`] cards plus an optional ADA sweetener amount.
+//! A live workspace where both parties build their offers in real time.
+//! Each side shows NFT assets, an ADA sweetener card, and (while unlocked)
+//! an "add asset" placeholder card.
 //!
-//! The vertical layout is mobile-friendly — your offer sits near the bottom of
-//! the screen, close to your thumbs.
+//! ## Lock mechanics
+//!
+//! Either party can **lock** their side to signal "I'm happy with this offer."
+//! Once locked, that side's cards become read-only (no add/remove/edit).
+//! When both sides are locked the trade is ready to sign.
+//!
+//! Unlocking resets *both* locks — if you change your mind after locking,
+//! both parties need to re-confirm since the deal has changed.
+//!
+//! The vertical layout is mobile-friendly — your offer sits near the bottom
+//! of the screen, close to your thumbs.
 
-use egui::{RichText, Vec2};
+use egui::{Color32, CornerRadius, RichText, Vec2};
 
 use crate::icons::PhosphorIcon;
 use crate::offer_slot::{self, OfferSlotConfig, OfferSlotData};
@@ -26,22 +35,32 @@ pub struct TradeOffer {
     pub lovelace: u64,
 }
 
+/// Lock state for the trade — drives editability and progression.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LockState {
+    /// Whether the local party has locked their offer.
+    pub you_locked: bool,
+    /// Whether the remote party has locked their offer.
+    pub they_locked: bool,
+}
+
+impl LockState {
+    /// Both sides locked — ready to proceed to signing.
+    pub fn both_locked(self) -> bool {
+        self.you_locked && self.they_locked
+    }
+}
+
 /// Configuration for the trade table.
 pub struct TradeTableConfig {
     /// Heading for the local side.
     pub your_heading: &'static str,
     /// Heading for the remote side.
     pub their_heading: &'static str,
-    /// Card width for offer slots.
-    pub card_width: f32,
-    /// Card thumbnail height.
-    pub card_thumb_height: f32,
+    /// Card size (square, width = height).
+    pub card_size: f32,
     /// Font size for headings.
     pub heading_size: f32,
-    /// Whether the "Add asset" button is shown on the local side.
-    pub can_add: bool,
-    /// Whether the local side's assets are removable.
-    pub can_remove: bool,
 }
 
 impl Default for TradeTableConfig {
@@ -49,11 +68,8 @@ impl Default for TradeTableConfig {
         Self {
             your_heading: "YOUR OFFER",
             their_heading: "THEIR OFFER",
-            card_width: 90.0,
-            card_thumb_height: 90.0,
+            card_size: 90.0,
             heading_size: 11.0,
-            can_add: true,
-            can_remove: true,
         }
     }
 }
@@ -76,6 +92,10 @@ pub enum TradeTableAction {
     RemoveYourAsset(usize),
     /// User changed their ADA sweetener amount (new value in lovelace).
     SetYourLovelace(u64),
+    /// User locked their offer.
+    Lock,
+    /// User unlocked their offer (resets both locks).
+    Unlock,
 }
 
 /// Response from rendering the trade table.
@@ -105,116 +125,24 @@ pub fn show(
     your_offer: &TradeOffer,
     their_offer: &TradeOffer,
     peer_state: &PeerState,
+    lock_state: &LockState,
     config: &TradeTableConfig,
 ) -> TradeTableResponse {
     crate::install_phosphor_font(ui.ctx());
 
     let mut action = None;
+    let you_locked = lock_state.you_locked;
+    let they_locked = lock_state.they_locked;
 
-    // ── Their offer (top) ──────────────────────────────────────────────
-    draw_offer_panel(
-        ui,
-        config.their_heading,
-        their_offer,
-        config,
-        false,
-        peer_state,
-        &mut action,
-    );
-
-    // ── Divider ────────────────────────────────────────────────────────
-    ui.add_space(4.0);
-    let avail_width = ui.available_width();
-    let divider_rect = ui.allocate_space(Vec2::new(avail_width, 20.0)).1;
-    let painter = ui.painter();
-
-    // Horizontal line
-    let mid_y = divider_rect.center().y;
-    painter.line_segment(
-        [
-            egui::pos2(divider_rect.min.x, mid_y),
-            egui::pos2(divider_rect.max.x, mid_y),
-        ],
-        egui::Stroke::new(1.0, theme::BG_HIGHLIGHT),
-    );
-
-    // Swap icon in center
-    let icon_text = PhosphorIcon::ArrowsDownUp.codepoint().to_string();
-    painter.text(
-        divider_rect.center(),
-        egui::Align2::CENTER_CENTER,
-        &icon_text,
-        egui::FontId::new(14.0, crate::icons::phosphor_family()),
-        theme::TEXT_MUTED,
-    );
-    ui.add_space(4.0);
-
-    // ── Your offer (bottom) ────────────────────────────────────────────
-    draw_offer_panel(
-        ui,
-        config.your_heading,
-        your_offer,
-        config,
-        true,
-        &PeerState::Connected,
-        &mut action,
-    );
-
-    // ── ADA sweetener (your side) ──────────────────────────────────────
-    ui.add_space(6.0);
-    draw_ada_sweetener(
-        ui,
-        state,
-        your_offer.lovelace,
-        their_offer.lovelace,
-        &mut action,
-    );
-
-    TradeTableResponse { action }
-}
-
-// ============================================================================
-// Internals
-// ============================================================================
-
-fn draw_offer_panel(
-    ui: &mut egui::Ui,
-    heading: &str,
-    offer: &TradeOffer,
-    config: &TradeTableConfig,
-    is_local: bool,
-    peer_state: &PeerState,
-    action: &mut Option<TradeTableAction>,
-) {
-    let heading_color = if is_local {
-        theme::ACCENT_GREEN
-    } else {
-        theme::ACCENT_CYAN
+    let slot_config = OfferSlotConfig {
+        size: config.card_size,
+        ..OfferSlotConfig::default()
     };
 
-    // Heading row
-    ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(heading)
-                .color(heading_color)
-                .size(config.heading_size)
-                .strong(),
-        );
+    // ── Their offer (top) ──────────────────────────────────────────────
+    draw_offer_heading(ui, config.their_heading, theme::ACCENT_CYAN, they_locked);
 
-        // Remote ADA sweetener (read-only, shown inline with heading)
-        if !is_local && offer.lovelace > 0 {
-            let ada = offer.lovelace as f64 / 1_000_000.0;
-            ui.label(
-                RichText::new(format!("+ {ada:.1} ADA"))
-                    .color(theme::ACCENT_YELLOW)
-                    .size(config.heading_size),
-            );
-        }
-    });
-    ui.add_space(4.0);
-
-    // Empty state for remote side waiting for peer
-    if !is_local && *peer_state == PeerState::WaitingForPeer {
+    if *peer_state == PeerState::WaitingForPeer {
         ui.add_space(12.0);
         ui.horizontal(|ui| {
             ui.spinner();
@@ -225,107 +153,258 @@ fn draw_offer_panel(
             );
         });
         ui.add_space(12.0);
-        return;
+    } else {
+        draw_card_row(
+            ui,
+            &their_offer.assets,
+            their_offer.lovelace,
+            &OfferSlotConfig {
+                removable: false,
+                ..slot_config
+            },
+            CardRowOptions {
+                is_local: false,
+                show_add: false,
+                ada_input: None,
+            },
+            &mut action,
+        );
     }
 
-    // Asset cards in flow layout
-    let slot_config = OfferSlotConfig {
-        width: config.card_width,
-        thumb_height: config.card_thumb_height,
-        removable: is_local && config.can_remove,
-        ..OfferSlotConfig::default()
+    // ── Divider ────────────────────────────────────────────────────────
+    ui.add_space(4.0);
+    draw_divider(ui, lock_state);
+    ui.add_space(4.0);
+
+    // ── Your offer (bottom) ────────────────────────────────────────────
+    draw_offer_heading(ui, config.your_heading, theme::ACCENT_GREEN, you_locked);
+
+    draw_card_row(
+        ui,
+        &your_offer.assets,
+        your_offer.lovelace,
+        &OfferSlotConfig {
+            removable: !you_locked,
+            ..slot_config
+        },
+        CardRowOptions {
+            is_local: true,
+            show_add: !you_locked,
+            ada_input: if you_locked {
+                None
+            } else {
+                Some(&mut state.ada_input)
+            },
+        },
+        &mut action,
+    );
+
+    // ── Lock/Unlock button ─────────────────────────────────────────────
+    ui.add_space(8.0);
+    draw_lock_button(ui, lock_state, &mut action);
+
+    TradeTableResponse { action }
+}
+
+// ============================================================================
+// Internals
+// ============================================================================
+
+fn draw_offer_heading(ui: &mut egui::Ui, heading: &str, color: Color32, locked: bool) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(heading).color(color).size(11.0).strong());
+        if locked {
+            ui.label(PhosphorIcon::Lock.rich_text(11.0, theme::ACCENT_YELLOW));
+        }
+    });
+    ui.add_space(4.0);
+}
+
+fn draw_divider(ui: &mut egui::Ui, lock_state: &LockState) {
+    let avail_width = ui.available_width();
+    let divider_rect = ui.allocate_space(Vec2::new(avail_width, 20.0)).1;
+    let painter = ui.painter();
+
+    let mid_y = divider_rect.center().y;
+
+    // Line color reflects state
+    let line_color = if lock_state.both_locked() {
+        theme::ACCENT_GREEN
+    } else {
+        theme::BG_HIGHLIGHT
     };
 
-    if offer.assets.is_empty() {
-        if is_local {
-            // Empty local side — just show the add button below
-        } else {
-            ui.add_space(8.0);
+    painter.line_segment(
+        [
+            egui::pos2(divider_rect.min.x, mid_y),
+            egui::pos2(divider_rect.max.x, mid_y),
+        ],
+        egui::Stroke::new(1.0, line_color),
+    );
+
+    // Center icon: handshake when both locked, arrows otherwise
+    let (icon, icon_color) = if lock_state.both_locked() {
+        (PhosphorIcon::Handshake, theme::ACCENT_GREEN)
+    } else {
+        (PhosphorIcon::ArrowsDownUp, theme::TEXT_MUTED)
+    };
+
+    // Background circle so icon doesn't sit on the line
+    painter.circle_filled(divider_rect.center(), 12.0, theme::BG_PRIMARY);
+    icon.paint(
+        painter,
+        divider_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        14.0,
+        icon_color,
+    );
+}
+
+fn draw_lock_button(
+    ui: &mut egui::Ui,
+    lock_state: &LockState,
+    action: &mut Option<TradeTableAction>,
+) {
+    if lock_state.both_locked() {
+        // Both locked — show status, offer unlock
+        ui.horizontal(|ui| {
+            ui.label(PhosphorIcon::CheckCircle.rich_text(14.0, theme::ACCENT_GREEN));
             ui.label(
-                RichText::new("No assets offered yet")
-                    .color(theme::TEXT_MUTED)
+                RichText::new("Both sides locked — ready to sign")
+                    .color(theme::ACCENT_GREEN)
                     .size(10.0),
             );
-            ui.add_space(8.0);
-        }
-    } else {
-        let cards_per_row = ((ui.available_width()) / (config.card_width + 6.0)).floor() as usize;
-        let cards_per_row = cards_per_row.max(1);
-
-        for (chunk_idx, chunk) in offer.assets.chunks(cards_per_row).enumerate() {
-            ui.horizontal(|ui| {
-                for (offset, data) in chunk.iter().enumerate() {
-                    let idx = chunk_idx * cards_per_row + offset;
-                    let resp = offer_slot::show(ui, data, &slot_config);
-                    if let Some(offer_slot::OfferSlotAction::Remove) = resp.action {
-                        *action = Some(TradeTableAction::RemoveYourAsset(idx));
-                    }
-                }
-            });
-            ui.add_space(4.0);
-        }
-    }
-
-    // Add button (local side only)
-    if is_local && config.can_add {
-        ui.horizontal(|ui| {
-            let btn = ui.add(
-                egui::Button::new(
-                    RichText::new(format!("{}  Add asset", PhosphorIcon::Plus.codepoint()))
-                        .family(crate::icons::phosphor_family())
-                        .color(theme::ACCENT_CYAN)
-                        .size(11.0),
+            if ui
+                .add(
+                    egui::Button::new(RichText::new("Unlock").color(theme::TEXT_MUTED).size(10.0))
+                        .fill(theme::BG_SECONDARY)
+                        .corner_radius(CornerRadius::same(4)),
                 )
-                .frame(false),
-            );
-            if btn.clicked() {
-                *action = Some(TradeTableAction::AddAsset);
+                .clicked()
+            {
+                *action = Some(TradeTableAction::Unlock);
             }
         });
+    } else if lock_state.you_locked {
+        // You locked, waiting for them
+        ui.horizontal(|ui| {
+            ui.label(PhosphorIcon::Lock.rich_text(14.0, theme::ACCENT_YELLOW));
+            ui.label(
+                RichText::new("Your offer is locked — waiting for peer")
+                    .color(theme::ACCENT_YELLOW)
+                    .size(10.0),
+            );
+            if ui
+                .add(
+                    egui::Button::new(RichText::new("Unlock").color(theme::TEXT_MUTED).size(10.0))
+                        .fill(theme::BG_SECONDARY)
+                        .corner_radius(CornerRadius::same(4)),
+                )
+                .clicked()
+            {
+                *action = Some(TradeTableAction::Unlock);
+            }
+        });
+    } else {
+        // Not locked — show lock button
+        let has_assets = true; // caller decides if lockable; we always show the button
+        let label = if lock_state.they_locked {
+            "Lock your offer to proceed"
+        } else {
+            "Lock offer"
+        };
+
+        let btn_color = if lock_state.they_locked {
+            theme::ACCENT_GREEN // emphasise — they're waiting for you
+        } else {
+            theme::ACCENT_CYAN
+        };
+
+        if has_assets
+            && ui
+                .add(
+                    egui::Button::new(
+                        RichText::new(format!("{}  {label}", PhosphorIcon::Lock.codepoint()))
+                            .family(crate::icons::phosphor_family())
+                            .color(btn_color)
+                            .size(11.0),
+                    )
+                    .fill(theme::BG_SECONDARY)
+                    .corner_radius(CornerRadius::same(4)),
+                )
+                .clicked()
+        {
+            *action = Some(TradeTableAction::Lock);
+        }
     }
 }
 
-/// Draw the ADA sweetener row — editable for your side, read-only display for theirs.
-fn draw_ada_sweetener(
+/// Options for a single card row.
+struct CardRowOptions<'a> {
+    is_local: bool,
+    show_add: bool,
+    ada_input: Option<&'a mut String>,
+}
+
+/// Draw a flow row of: [asset cards...] [ADA card] [+ add card].
+fn draw_card_row(
     ui: &mut egui::Ui,
-    state: &mut TradeTableState,
-    your_lovelace: u64,
-    _their_lovelace: u64,
+    assets: &[OfferSlotData],
+    lovelace: u64,
+    slot_config: &OfferSlotConfig,
+    opts: CardRowOptions<'_>,
     action: &mut Option<TradeTableAction>,
 ) {
-    ui.horizontal(|ui| {
-        // Coins icon
-        ui.label(PhosphorIcon::Coins.rich_text(14.0, theme::ACCENT_YELLOW));
+    let CardRowOptions {
+        is_local,
+        show_add,
+        ada_input,
+    } = opts;
 
-        ui.label(
-            RichText::new("ADA")
-                .color(theme::ACCENT_YELLOW)
-                .size(10.0)
-                .strong(),
-        );
+    // Total cards: assets + ada card + maybe add card
+    let total_cards = assets.len() + 1 + if show_add { 1 } else { 0 };
+    let cards_per_row = ((ui.available_width()) / (slot_config.size + 6.0))
+        .floor()
+        .max(1.0) as usize;
 
-        // Initialize the input buffer from the current value if empty
-        if state.ada_input.is_empty() && your_lovelace > 0 {
-            let ada = your_lovelace as f64 / 1_000_000.0;
-            state.ada_input = format!("{ada:.1}");
-        }
+    let mut card_idx = 0;
+    let mut ada_input = ada_input;
 
-        let resp = ui.add(
-            egui::TextEdit::singleline(&mut state.ada_input)
-                .desired_width(80.0)
-                .hint_text("0")
-                .font(egui::FontId::monospace(11.0)),
-        );
-
-        // Parse and emit on change
-        if resp.changed() {
-            let trimmed = state.ada_input.trim();
-            if trimmed.is_empty() || trimmed == "0" {
-                *action = Some(TradeTableAction::SetYourLovelace(0));
-            } else if let Ok(ada) = trimmed.parse::<f64>() {
-                let lovelace = (ada * 1_000_000.0) as u64;
-                *action = Some(TradeTableAction::SetYourLovelace(lovelace));
+    while card_idx < total_cards {
+        let row_end = (card_idx + cards_per_row).min(total_cards);
+        ui.horizontal(|ui| {
+            for i in card_idx..row_end {
+                if i < assets.len() {
+                    let resp = offer_slot::show(ui, &assets[i], slot_config);
+                    if let Some(offer_slot::OfferSlotAction::Remove) = resp.action {
+                        *action = Some(TradeTableAction::RemoveYourAsset(i));
+                    }
+                } else if i == assets.len() {
+                    let input = if is_local {
+                        ada_input.as_deref_mut()
+                    } else {
+                        None
+                    };
+                    if let Some(new_lovelace) =
+                        offer_slot::show_ada_card(ui, lovelace, input, slot_config)
+                    {
+                        *action = Some(TradeTableAction::SetYourLovelace(new_lovelace));
+                    }
+                } else if offer_slot::show_add_card(ui, slot_config) {
+                    *action = Some(TradeTableAction::AddAsset);
+                }
             }
-        }
-    });
+        });
+        ui.add_space(4.0);
+        card_idx = row_end;
+    }
+
+    // Empty remote side message
+    if !is_local && assets.is_empty() && lovelace == 0 {
+        ui.label(
+            RichText::new("No assets offered yet")
+                .color(theme::TEXT_MUTED)
+                .size(10.0),
+        );
+    }
 }

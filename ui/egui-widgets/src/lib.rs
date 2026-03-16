@@ -76,6 +76,7 @@ pub use coverage_delta_bar::CoverageDeltaConfig;
 pub use offer_slot::{OfferSlotAction, OfferSlotConfig, OfferSlotData, OfferSlotResponse};
 pub use signing_status::{SigningAction, SigningPhase, SigningStatusConfig, SigningStatusResponse};
 pub use trade_table::{
-    PeerState, TradeOffer, TradeTableAction, TradeTableConfig, TradeTableResponse, TradeTableState,
+    LockState, PeerState, TradeOffer, TradeTableAction, TradeTableConfig, TradeTableResponse,
+    TradeTableState,
 };
 pub use trait_delta::{TraitDeltaConfig, TraitItem};
