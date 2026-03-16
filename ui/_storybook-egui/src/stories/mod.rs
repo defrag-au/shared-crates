@@ -20,3 +20,4 @@ pub mod tcg_card;
 pub mod trait_filter;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
+pub mod wallet_editor;

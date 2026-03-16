@@ -156,6 +156,9 @@ pub fn show<T>(
     mut render_card: impl FnMut(&mut egui::Ui, &CardRenderContext, &mut T),
     mut render_detail: impl FnMut(&mut egui::Ui, usize, &mut T),
 ) -> CardBrowserResponse {
+    // Ensure Phosphor icon font is available (used for close button etc.)
+    crate::install_phosphor_font(ui.ctx());
+
     let has_selection = state.selected.is_some_and(|idx| idx < items.len());
     let detail_width = if has_selection {
         config.detail_width
@@ -297,13 +300,34 @@ pub fn show<T>(
                 ui.vertical(|ui| {
                     ui.set_max_width(config.detail_width);
                     ui.set_min_width(config.detail_width);
-                    egui::Frame::new()
+                    let frame_resp = egui::Frame::new()
                         .fill(config.bg_detail)
                         .corner_radius(config.rounding)
                         .inner_margin(config.detail_margin)
                         .show(ui, |ui| {
                             render_detail(ui, sel_idx, &mut items[sel_idx]);
                         });
+
+                    // Overlay close button at top-right of panel (no vertical space consumed)
+                    let panel_rect = frame_resp.response.rect;
+                    let btn_size = egui::Vec2::splat(20.0);
+                    let btn_rect = egui::Rect::from_min_size(
+                        egui::pos2(panel_rect.max.x - btn_size.x - 4.0, panel_rect.min.y + 4.0),
+                        btn_size,
+                    );
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(btn_rect), |ui| {
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    crate::PhosphorIcon::X.rich_text(14.0, config.border_selected),
+                                )
+                                .frame(false),
+                            )
+                            .clicked()
+                        {
+                            state.selected = None;
+                        }
+                    });
                 });
             }
         }

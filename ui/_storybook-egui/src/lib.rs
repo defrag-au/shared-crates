@@ -37,6 +37,7 @@ mod app {
         IconGallery,
         WalletButton,
         TraitFilter,
+        WalletEditor,
         SwapModal,
     }
 
@@ -62,6 +63,7 @@ mod app {
                 Self::CardBrowser,
                 Self::IconGallery,
                 Self::WalletButton,
+                Self::WalletEditor,
                 Self::TraitFilter,
                 Self::SwapModal,
             ]
@@ -89,6 +91,7 @@ mod app {
                 Self::IconGallery => "Icon Gallery",
                 Self::WalletButton => "Wallet Button",
                 Self::TraitFilter => "Trait Filter",
+                Self::WalletEditor => "Wallet Editor",
                 Self::SwapModal => "Swap Modal",
             }
         }
@@ -112,7 +115,7 @@ mod app {
                 | Self::CardBrowser
                 | Self::IconGallery
                 | Self::TraitFilter => "Data Visualization",
-                Self::WalletButton => "Wallet",
+                Self::WalletButton | Self::WalletEditor => "Wallet",
                 Self::SwapModal => "Swap",
             }
         }
@@ -163,6 +166,9 @@ mod app {
                     "Compound-key prefix trie tag filter with dual category/value indexing"
                 }
                 Self::WalletButton => "CIP-30 wallet connection button with state management",
+                Self::WalletEditor => {
+                    "Wallet bundle editor with input, status indicators, and add/remove actions"
+                }
                 Self::SwapModal => "DEX swap modal with preview, culture buys, and progress states",
             }
         }
@@ -213,6 +219,7 @@ mod app {
         card_browser_state: stories::card_browser::CardBrowserStoryState,
         icon_gallery_state: stories::icon_gallery::IconGalleryState,
         trait_filter_state: stories::trait_filter::TraitFilterStoryState,
+        wallet_editor_state: stories::wallet_editor::WalletEditorStoryState,
         wallet_btn: egui_widgets::WalletButton,
         wallet_connector: egui_widgets::wallet::WalletConnector,
         swap_modal: egui_widgets::SwapModal,
@@ -251,6 +258,7 @@ mod app {
                 card_browser_state: stories::card_browser::CardBrowserStoryState::default(),
                 icon_gallery_state: stories::icon_gallery::IconGalleryState::default(),
                 trait_filter_state: stories::trait_filter::TraitFilterStoryState::default(),
+                wallet_editor_state: stories::wallet_editor::WalletEditorStoryState::default(),
                 wallet_btn: egui_widgets::WalletButton::new(),
                 wallet_connector: egui_widgets::wallet::WalletConnector::new(),
                 swap_modal: egui_widgets::SwapModal::new(egui_widgets::SwapModalConfig {
@@ -391,6 +399,9 @@ mod app {
                             }
                             Story::TraitFilter => {
                                 stories::trait_filter::show(ui, &mut self.trait_filter_state)
+                            }
+                            Story::WalletEditor => {
+                                stories::wallet_editor::show(ui, &mut self.wallet_editor_state)
                             }
                             Story::WalletButton => stories::wallet::show(
                                 ui,

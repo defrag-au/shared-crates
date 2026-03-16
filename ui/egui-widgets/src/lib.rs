@@ -26,6 +26,7 @@ pub mod utils;
 pub mod wallet;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet_button;
+pub mod wallet_editor;
 
 pub use animated_counter::AnimatedCounter;
 pub use buttons::UiButtonExt;
@@ -58,3 +59,7 @@ pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, Trai
 pub use utils::{format_duration, format_number, section_heading, stat_card, truncate_hex};
 #[cfg(target_arch = "wasm32")]
 pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};
+pub use wallet_editor::{
+    WalletEditorAction, WalletEditorConfig, WalletEditorEntry, WalletEditorResponse,
+    WalletEditorState, WalletEntryStatus,
+};
