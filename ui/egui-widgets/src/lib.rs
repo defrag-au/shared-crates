@@ -34,6 +34,7 @@ pub mod offer_slot;
 pub mod signing_status;
 pub mod trade_table;
 pub mod trait_delta;
+pub mod wallet_asset_picker;
 
 pub use animated_counter::AnimatedCounter;
 pub use buttons::UiButtonExt;
@@ -45,6 +46,7 @@ pub use donut_chart::{
 };
 pub use flip_counter::FlipCounter;
 pub use icons::{install_phosphor_font, PhosphorIcon};
+pub use image_loader::{iiif_asset_url, AssetImageSize};
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
@@ -80,3 +82,7 @@ pub use trade_table::{
     TradeTableState,
 };
 pub use trait_delta::{TraitDeltaConfig, TraitItem};
+pub use wallet_asset_picker::{
+    PickerAsset, PickerPolicyGroup, WalletAssetPickerAction, WalletAssetPickerConfig,
+    WalletAssetPickerResponse, WalletAssetPickerState,
+};

@@ -43,6 +43,7 @@ mod app {
         CoverageDeltaBar,
         TradeTable,
         SigningStatus,
+        WalletAssetPicker,
     }
 
     impl Story {
@@ -74,6 +75,7 @@ mod app {
                 Self::CoverageDeltaBar,
                 Self::TradeTable,
                 Self::SigningStatus,
+                Self::WalletAssetPicker,
             ]
         }
 
@@ -105,6 +107,7 @@ mod app {
                 Self::CoverageDeltaBar => "Coverage Delta Bar",
                 Self::TradeTable => "Trade Table",
                 Self::SigningStatus => "Signing Status",
+                Self::WalletAssetPicker => "Wallet Asset Picker",
             }
         }
 
@@ -132,7 +135,8 @@ mod app {
                 Self::TraitDelta
                 | Self::CoverageDeltaBar
                 | Self::TradeTable
-                | Self::SigningStatus => "Trade Desk",
+                | Self::SigningStatus
+                | Self::WalletAssetPicker => "Trade Desk",
             }
         }
 
@@ -198,6 +202,9 @@ mod app {
                 Self::SigningStatus => {
                     "Concurrent signing checklist with Sign/Cancel actions and progress states"
                 }
+                Self::WalletAssetPicker => {
+                    "Modal asset browser with accordion policy groups and card grid selection"
+                }
             }
         }
     }
@@ -255,6 +262,7 @@ mod app {
         // Trade desk
         signing_status_state: stories::signing_status::SigningStatusStoryState,
         trade_table_state: stories::trade_table::TradeTableStoryState,
+        wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
     }
 
     impl StorybookApp {
@@ -314,6 +322,8 @@ mod app {
                 swap_progress: egui_widgets::SwapProgress::Idle,
                 signing_status_state: stories::signing_status::SigningStatusStoryState::default(),
                 trade_table_state: stories::trade_table::TradeTableStoryState::default(),
+                wallet_asset_picker_state:
+                    stories::wallet_asset_picker::WalletAssetPickerStoryState::default(),
             }
         }
 
@@ -457,6 +467,11 @@ mod app {
                             Story::SigningStatus => {
                                 stories::signing_status::show(ui, &mut self.signing_status_state)
                             }
+                            Story::WalletAssetPicker => stories::wallet_asset_picker::show(
+                                ctx,
+                                ui,
+                                &mut self.wallet_asset_picker_state,
+                            ),
                         }
                     });
                 });

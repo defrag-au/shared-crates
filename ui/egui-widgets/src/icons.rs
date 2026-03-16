@@ -116,6 +116,9 @@ pub enum PhosphorIcon {
 
     // Misc
     Spiral,
+    CaretRight,
+    CaretDown,
+    MagnifyingGlass,
 }
 
 impl PhosphorIcon {
@@ -166,6 +169,9 @@ impl PhosphorIcon {
             Self::ArrowRight => '\u{e06c}',
             Self::ArrowsDownUp => '\u{e098}',
             Self::Spiral => '\u{e9fa}',
+            Self::CaretRight => '\u{e13a}',
+            Self::CaretDown => '\u{e136}',
+            Self::MagnifyingGlass => '\u{e30c}',
         }
     }
 
@@ -254,6 +260,9 @@ impl PhosphorIcon {
         Self::ArrowRight,
         Self::ArrowsDownUp,
         Self::Spiral,
+        Self::CaretRight,
+        Self::CaretDown,
+        Self::MagnifyingGlass,
     ];
 
     /// Human-readable name for display.
@@ -303,6 +312,9 @@ impl PhosphorIcon {
             Self::ArrowRight => "Arrow Right",
             Self::ArrowsDownUp => "Arrows Down Up",
             Self::Spiral => "Spiral",
+            Self::CaretRight => "Caret Right",
+            Self::CaretDown => "Caret Down",
+            Self::MagnifyingGlass => "Magnifying Glass",
         }
     }
 }

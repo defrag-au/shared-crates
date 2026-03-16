@@ -8,6 +8,7 @@ use egui::{Color32, CornerRadius, Vec2};
 
 use crate::card_browser;
 use crate::icons::PhosphorIcon;
+use crate::image_loader::{iiif_asset_url, AssetImageSize};
 use crate::theme;
 
 // ============================================================================
@@ -32,12 +33,9 @@ pub struct OfferSlotData {
 }
 
 impl OfferSlotData {
-    /// Build the IIIF thumbnail URL for this asset.
-    pub fn thumbnail_url(&self, size: u32) -> String {
-        format!(
-            "https://iiif.hodlcroft.com/iiif/3/{}:{}/full/{size},/0/default.jpg",
-            self.policy_id, self.asset_name_hex
-        )
+    /// Build the IIIF image URL for this asset at the given size.
+    pub fn image_url(&self, size: AssetImageSize) -> String {
+        iiif_asset_url(&self.policy_id, &self.asset_name_hex, size)
     }
 }
 
@@ -104,7 +102,7 @@ pub fn show(
     painter.rect_filled(card_rect, rounding, theme::BG_SECONDARY);
 
     // Full-bleed thumbnail
-    let image_url = data.thumbnail_url(400);
+    let image_url = data.image_url(AssetImageSize::Thumbnail);
     let browser_config = crate::CardBrowserConfig {
         rounding: 4.0,
         bg_card_hover: Color32::from_rgb(40, 40, 55),
