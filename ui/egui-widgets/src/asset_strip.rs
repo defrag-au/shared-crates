@@ -100,7 +100,7 @@ pub fn show(
     let coverage_ratio = (1.0 - step / thumb).max(0.0);
     // Subtle pop when uncovered, large lift when heavily stacked
     let min_lift = thumb * 0.08;
-    let max_lift = thumb * 0.75;
+    let max_lift = thumb * 1.0;
     let lift_amount = min_lift + (max_lift - min_lift) * coverage_ratio;
 
     let (strip_rect, strip_response) = ui.allocate_exact_size(
