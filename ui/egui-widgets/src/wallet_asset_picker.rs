@@ -28,6 +28,8 @@ pub struct PickerAsset {
     pub rarity_rank: Option<u32>,
     /// Total ranked assets in collection.
     pub total_ranked: Option<u32>,
+    /// Decoded trait strings for search (e.g. `["Background:Red", "Eyes:Laser"]`).
+    pub traits: Vec<String>,
 }
 
 /// A policy group for display in the picker.
@@ -125,8 +127,9 @@ pub struct WalletAssetPickerResponse {
 // Main render
 // ============================================================================
 
-/// Render the wallet asset picker modal. Call every frame while the modal
-/// might be open — it only renders when `state.open` is true.
+/// Render the wallet asset picker as a centered modal window.
+/// Call every frame while the modal might be open — it only renders when
+/// `state.open` is true.
 pub fn show(
     ctx: &egui::Context,
     state: &mut WalletAssetPickerState,
@@ -158,132 +161,7 @@ pub fn show(
         )
         .show(ctx, |ui| {
             ui.set_max_width(config.max_width);
-
-            // ── Search bar ──
-            ui.horizontal(|ui| {
-                PhosphorIcon::MagnifyingGlass.show(ui, 14.0, theme::TEXT_MUTED);
-                ui.add(
-                    egui::TextEdit::singleline(&mut state.search)
-                        .desired_width(ui.available_width())
-                        .hint_text("Search...")
-                        .font(egui::FontId::monospace(11.0)),
-                );
-            });
-
-            ui.add_space(8.0);
-
-            // ── Scrollable accordion area ──
-            let has_selection = !state.selected.is_empty();
-            // Reserve space for summary bar + confirm when selections exist
-            let bottom_reserve = if has_selection { 160.0 } else { 120.0 };
-            let scroll_height = config.max_height - bottom_reserve;
-            egui::ScrollArea::vertical()
-                .max_height(scroll_height)
-                .show(ui, |ui| {
-                    let search_lower = state.search.to_lowercase();
-                    let is_searching = !search_lower.is_empty();
-
-                    for group in groups {
-                        // Filter assets by search
-                        let filtered: Vec<&PickerAsset> = if is_searching {
-                            group
-                                .assets
-                                .iter()
-                                .filter(|a| a.display_name.to_lowercase().contains(&search_lower))
-                                .collect()
-                        } else {
-                            group.assets.iter().collect()
-                        };
-
-                        if filtered.is_empty() {
-                            continue;
-                        }
-
-                        // Build header text with selection badge
-                        let sel_count = state.selected_count_for_policy(&group.policy_id);
-                        let header_text = if sel_count > 0 {
-                            format!(
-                                "{} ({}) \u{2022} {sel_count} selected",
-                                group.label,
-                                filtered.len()
-                            )
-                        } else {
-                            format!("{} ({})", group.label, filtered.len())
-                        };
-
-                        let header_color = if sel_count > 0 {
-                            theme::ACCENT_CYAN
-                        } else {
-                            theme::TEXT_PRIMARY
-                        };
-
-                        let mut header = egui::CollapsingHeader::new(
-                            egui::RichText::new(header_text)
-                                .color(header_color)
-                                .size(11.0)
-                                .strong(),
-                        )
-                        .id_salt(&group.policy_id)
-                        .icon(phosphor_caret_icon);
-
-                        // Force open when search is active
-                        if is_searching {
-                            header = header.open(Some(true));
-                        }
-
-                        header.show(ui, |ui| {
-                            draw_card_grid(
-                                ui,
-                                &filtered,
-                                &group.policy_id,
-                                config.card_size,
-                                state,
-                            );
-                        });
-                    }
-                });
-
-            ui.add_space(8.0);
-
-            // ── Selection summary bar ──
-            if has_selection {
-                draw_selection_summary(ui, state, groups);
-                ui.add_space(8.0);
-            }
-
-            // ── Confirm button ──
-            let count = state.selected.len();
-            ui.horizontal(|ui| {
-                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                    let label = if count > 0 {
-                        format!("Confirm ({count})")
-                    } else {
-                        "Confirm".into()
-                    };
-                    let btn_text = if has_selection {
-                        egui::RichText::new(label).color(theme::BG_PRIMARY).strong()
-                    } else {
-                        egui::RichText::new(label).color(theme::TEXT_MUTED).strong()
-                    };
-                    let btn = egui::Button::new(btn_text)
-                        .fill(if has_selection {
-                            theme::ACCENT_GREEN
-                        } else {
-                            theme::BG_SECONDARY
-                        })
-                        .corner_radius(CornerRadius::same(4))
-                        .min_size(Vec2::new(120.0, 28.0));
-
-                    let resp = ui.add_enabled(has_selection, btn);
-                    if resp.clicked() && !state.selected.is_empty() {
-                        let confirmed = state.selected.clone();
-                        action = Some(WalletAssetPickerAction::Confirmed(confirmed));
-                        state.open = false;
-                        state.selected.clear();
-                        state.search.clear();
-                    }
-                });
-            });
+            action = draw_picker_content(ui, state, groups, config);
         });
 
     if !still_open {
@@ -294,6 +172,162 @@ pub fn show(
     }
 
     WalletAssetPickerResponse { action }
+}
+
+/// Render the picker content inline into any `Ui` region (e.g. a side panel).
+/// Returns the action if the user confirms or closes. The caller is responsible
+/// for layout (panel width, visibility toggling, etc.).
+pub fn show_inline(
+    ui: &mut egui::Ui,
+    state: &mut WalletAssetPickerState,
+    groups: &[PickerPolicyGroup],
+    config: &WalletAssetPickerConfig,
+) -> WalletAssetPickerResponse {
+    crate::install_phosphor_font(ui.ctx());
+    let action = draw_picker_content(ui, state, groups, config);
+    WalletAssetPickerResponse { action }
+}
+
+/// Shared picker content — search, accordion, selection summary, confirm button.
+/// Used by both the modal `show()` and the inline `show_inline()`.
+fn draw_picker_content(
+    ui: &mut egui::Ui,
+    state: &mut WalletAssetPickerState,
+    groups: &[PickerPolicyGroup],
+    config: &WalletAssetPickerConfig,
+) -> Option<WalletAssetPickerAction> {
+    let mut action = None;
+
+    // ── Search bar ──
+    ui.horizontal(|ui| {
+        PhosphorIcon::MagnifyingGlass.show(ui, 14.0, theme::TEXT_MUTED);
+        ui.add(
+            egui::TextEdit::singleline(&mut state.search)
+                .desired_width(ui.available_width())
+                .hint_text("Search...")
+                .font(egui::FontId::monospace(11.0)),
+        );
+    });
+
+    ui.add_space(8.0);
+
+    // ── Scrollable accordion area ──
+    let has_selection = !state.selected.is_empty();
+    // Reserve space for summary bar + confirm when selections exist
+    let bottom_reserve = if has_selection { 160.0 } else { 120.0 };
+    let scroll_height = (config.max_height - bottom_reserve).max(100.0);
+    egui::ScrollArea::vertical()
+        .max_height(scroll_height)
+        .show(ui, |ui| {
+            let search_lower = state.search.to_lowercase();
+            let is_searching = !search_lower.is_empty();
+
+            for group in groups {
+                // Filter assets by search (matches name, traits, or group label)
+                let group_label_matches =
+                    is_searching && group.label.to_lowercase().contains(&search_lower);
+
+                let filtered: Vec<&PickerAsset> = if is_searching && !group_label_matches {
+                    group
+                        .assets
+                        .iter()
+                        .filter(|a| {
+                            a.display_name.to_lowercase().contains(&search_lower)
+                                || a.traits
+                                    .iter()
+                                    .any(|t| t.to_lowercase().contains(&search_lower))
+                        })
+                        .collect()
+                } else {
+                    // Show all assets if not searching or if group label matches
+                    group.assets.iter().collect()
+                };
+
+                if filtered.is_empty() {
+                    continue;
+                }
+
+                // Build header text with selection badge
+                let sel_count = state.selected_count_for_policy(&group.policy_id);
+                let header_text = if sel_count > 0 {
+                    format!(
+                        "{} ({}) \u{2022} {sel_count} selected",
+                        group.label,
+                        filtered.len()
+                    )
+                } else {
+                    format!("{} ({})", group.label, filtered.len())
+                };
+
+                let header_color = if sel_count > 0 {
+                    theme::ACCENT_CYAN
+                } else {
+                    theme::TEXT_PRIMARY
+                };
+
+                let mut header = egui::CollapsingHeader::new(
+                    egui::RichText::new(header_text)
+                        .color(header_color)
+                        .size(11.0)
+                        .strong(),
+                )
+                .id_salt(&group.policy_id)
+                .icon(phosphor_caret_icon);
+
+                // Force open when search is active
+                if is_searching {
+                    header = header.open(Some(true));
+                }
+
+                header.show(ui, |ui| {
+                    draw_card_grid(ui, &filtered, &group.policy_id, config.card_size, state);
+                });
+            }
+        });
+
+    ui.add_space(8.0);
+
+    // ── Selection summary bar ──
+    if has_selection {
+        draw_selection_summary(ui, state, groups);
+        ui.add_space(8.0);
+    }
+
+    // ── Confirm button ──
+    let count = state.selected.len();
+    ui.horizontal(|ui| {
+        ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+            let label = if count > 0 {
+                format!("Confirm ({count})")
+            } else {
+                "Confirm".into()
+            };
+            let btn_text = if has_selection {
+                egui::RichText::new(label).color(theme::BG_PRIMARY).strong()
+            } else {
+                egui::RichText::new(label).color(theme::TEXT_MUTED).strong()
+            };
+            let btn = egui::Button::new(btn_text)
+                .fill(if has_selection {
+                    theme::ACCENT_GREEN
+                } else {
+                    theme::BG_SECONDARY
+                })
+                .corner_radius(CornerRadius::same(4))
+                .min_size(Vec2::new(120.0, 28.0));
+
+            let resp = ui.add_enabled(has_selection, btn);
+            if resp.clicked() && !state.selected.is_empty() {
+                let confirmed = state.selected.clone();
+                action = Some(WalletAssetPickerAction::Confirmed(confirmed));
+                state.open = false;
+                state.selected.clear();
+                state.search.clear();
+            }
+        });
+    });
+
+    action
 }
 
 // ============================================================================

@@ -31,8 +31,29 @@ pub struct SwapSide {
     pub ada_lovelace: u64,
 }
 
-/// Minimum lovelace on a receive output (covers min UTxO for NFT outputs).
-const MIN_RECEIVE_LOVELACE: u64 = 2_000_000;
+/// Result of building an atomic swap, including the unsigned TX and a cost breakdown.
+#[derive(Debug)]
+pub struct SwapBuildResult {
+    pub unsigned: UnsignedTx,
+    pub costs: SwapCostBreakdown,
+}
+
+/// Detailed cost breakdown for an atomic swap, one entry per side.
+#[derive(Debug)]
+pub struct SwapCostBreakdown {
+    /// Total network TX fee (split between parties).
+    pub network_fee: u64,
+    /// Total platform/orchestration fee.
+    pub platform_fee: u64,
+    /// Min UTxO lovelace Party A must fund for the output carrying their assets to B.
+    pub a_min_utxo_cost: u64,
+    /// Min UTxO lovelace Party B must fund for the output carrying their assets to A.
+    pub b_min_utxo_cost: u64,
+    /// Net ADA gain/loss for Party A (positive = gains ADA, negative = loses ADA).
+    pub a_net_ada: i64,
+    /// Net ADA gain/loss for Party B.
+    pub b_net_ada: i64,
+}
 
 /// Additional fee per VKey witness beyond the first (bytes × min_fee_coefficient).
 /// Each VKey witness is ~100 bytes CBOR. `converge_fee` accounts for one witness
@@ -48,13 +69,13 @@ const EXTRA_WITNESS_BYTES: u64 = 100;
 /// * `network_id` — Cardano network ID (1 = mainnet, 0 = testnet)
 ///
 /// # Returns
-/// An [`UnsignedTx`] ready for CIP-30 partial signing by both parties.
+/// A [`SwapBuildResult`] with the unsigned TX and a full cost breakdown.
 pub fn build_atomic_swap(
     sides: &[SwapSide; 2],
     fee_output: Option<(Address, u64)>,
     params: &TxBuildParams,
     network_id: u8,
-) -> Result<UnsignedTx, TxBuildError> {
+) -> Result<SwapBuildResult, TxBuildError> {
     let a = &sides[0];
     let b = &sides[1];
 
@@ -95,12 +116,17 @@ pub fn build_atomic_swap(
     let a_kept = a_kept_assets.clone();
     let b_kept = b_kept_assets.clone();
 
-    // Min ADA for receive outputs — each party funds the output that delivers
-    // their offered assets to the peer. If ADA sweetener exceeds min, use that.
-    let a_receive_min = a.ada_lovelace.max(MIN_RECEIVE_LOVELACE);
-    let b_receive_min = b.ada_lovelace.max(MIN_RECEIVE_LOVELACE);
+    // Compute min UTxO for each receive output based on actual assets being delivered.
+    // Each party funds the output that delivers their offered assets to the peer.
+    let a_offered_ids: Vec<AssetId> = a.offered_assets.keys().cloned().collect();
+    let b_offered_ids: Vec<AssetId> = b.offered_assets.keys().cloned().collect();
+    let a_min_utxo = min_utxo_for_assets(params, &a_offered_ids);
+    let b_min_utxo = min_utxo_for_assets(params, &b_offered_ids);
 
-    converge_fee(
+    let a_receive_min = a.ada_lovelace.max(a_min_utxo);
+    let b_receive_min = b.ada_lovelace.max(b_min_utxo);
+
+    let unsigned = converge_fee(
         move |fee| {
             let total_fee = fee + extra_witness_fee;
             // Split TX fee evenly between parties
@@ -136,10 +162,10 @@ pub fn build_atomic_swap(
             let mut tx = add_utxo_inputs(StagingTransaction::new(), &all_inputs)?;
 
             // Output 1: Party A receives B's offered assets + B's ADA sweetener
-            tx = add_receive_output(tx, a_addr.clone(), &b_offered, b_ada)?;
+            tx = add_receive_output(tx, a_addr.clone(), &b_offered, b_ada, b_min_utxo)?;
 
             // Output 2: Party B receives A's offered assets + A's ADA sweetener
-            tx = add_receive_output(tx, b_addr.clone(), &a_offered, a_ada)?;
+            tx = add_receive_output(tx, b_addr.clone(), &a_offered, a_ada, a_min_utxo)?;
 
             // Output 3: Party A's change (kept assets + remaining ADA)
             if a_change > 0 || !a_kept.is_empty() {
@@ -162,7 +188,37 @@ pub fn build_atomic_swap(
         },
         300_000, // Initial fee estimate (generous for multi-input/output TX)
         params,
-    )
+    )?;
+
+    // Compute cost breakdown from the converged fee
+    let network_fee = unsigned.fee;
+    let total_fee_with_witness = network_fee + extra_witness_fee;
+    let fee_per_side = total_fee_with_witness / 2;
+    let fee_remainder = total_fee_with_witness % 2;
+
+    let a_platform_share = fee_output_amount / 2;
+    let b_platform_share = fee_output_amount - a_platform_share;
+    let a_network_share = fee_per_side + fee_remainder;
+    let b_network_share = fee_per_side;
+
+    // Net ADA = sweetener received from peer - min UTxO cost - network fee share - platform fee share
+    // Party A receives b.ada_lovelace from B, Party B receives a.ada_lovelace from A
+    let a_net_ada =
+        b_ada as i64 - a_min_utxo as i64 - a_network_share as i64 - a_platform_share as i64;
+    let b_net_ada =
+        a_ada as i64 - b_min_utxo as i64 - b_network_share as i64 - b_platform_share as i64;
+
+    Ok(SwapBuildResult {
+        unsigned,
+        costs: SwapCostBreakdown {
+            network_fee: total_fee_with_witness,
+            platform_fee: fee_output_amount,
+            a_min_utxo_cost: a_min_utxo,
+            b_min_utxo_cost: b_min_utxo,
+            a_net_ada,
+            b_net_ada,
+        },
+    })
 }
 
 /// Create a receive output with offered assets and ADA sweetener.
@@ -171,8 +227,9 @@ fn add_receive_output(
     address: Address,
     offered_assets: &HashMap<AssetId, u64>,
     ada_sweetener: u64,
+    min_utxo: u64,
 ) -> Result<StagingTransaction, TxBuildError> {
-    let lovelace = ada_sweetener.max(MIN_RECEIVE_LOVELACE);
+    let lovelace = ada_sweetener.max(min_utxo);
     let output = create_ada_output(address, lovelace);
     if offered_assets.is_empty() {
         Ok(tx.output(output))
@@ -196,6 +253,50 @@ fn add_change_output(
         let output = add_assets_from_map(output, kept_assets)?;
         Ok(tx.output(output))
     }
+}
+
+/// Compute min UTxO lovelace for a receive output carrying the given assets.
+///
+/// Uses the Babbage/Conway formula: `(160 + |serialized_output|) × coinsPerUTxOByte`
+/// with a 10% safety margin. Returns 0 for pure-ADA outputs (no assets).
+fn min_utxo_for_assets(params: &TxBuildParams, assets: &[AssetId]) -> u64 {
+    if assets.is_empty() {
+        return 0;
+    }
+
+    const UTXO_OVERHEAD: u64 = 160;
+    // Map header (1) + key 0 (1) + address with stake key (59) + key 1 (1)
+    let fixed_overhead: u64 = 1 + 1 + 59 + 1;
+
+    // Value: array(2) tag (1) + lovelace (5) + policy map
+    let lovelace_size: u64 = 1 + 5;
+
+    // Group assets by policy to estimate map sizes
+    let mut policies: HashMap<&str, Vec<&AssetId>> = HashMap::new();
+    for asset in assets {
+        policies.entry(&asset.policy_id).or_default().push(asset);
+    }
+
+    let policies_map_tag: u64 = if policies.len() < 24 { 1 } else { 3 };
+    let mut policy_size: u64 = 0;
+    for assets_in_policy in policies.values() {
+        // Policy ID: 2-byte tag + 28 bytes = 30
+        policy_size += 30;
+        // Inner assets map tag
+        let inner_tag: u64 = if assets_in_policy.len() < 24 { 1 } else { 3 };
+        policy_size += inner_tag;
+        for asset in assets_in_policy {
+            let name_len = (asset.asset_name_hex.len() / 2) as u64;
+            let name_tag: u64 = if name_len < 24 { 1 } else { 2 };
+            policy_size += name_tag + name_len + 1; // +1 for quantity
+        }
+    }
+
+    let output_size = fixed_overhead + lovelace_size + policies_map_tag + policy_size;
+    let raw = (UTXO_OVERHEAD + output_size) * params.coins_per_utxo_byte;
+
+    // 10% safety margin — protects against minor CBOR encoding variations
+    raw + raw / 10
 }
 
 /// Subtract offered assets from total assets, returning what's kept.
@@ -282,13 +383,16 @@ mod tests {
         let result = build_atomic_swap(&sides, None, &test_params(), 0);
         assert!(result.is_ok(), "swap build failed: {result:?}");
 
-        let unsigned = result.unwrap();
-        assert!(unsigned.fee > 0);
+        let swap = result.unwrap();
+        assert!(swap.unsigned.fee > 0);
         assert!(
-            unsigned.fee < 1_000_000,
+            swap.unsigned.fee < 1_000_000,
             "fee unreasonably high: {}",
-            unsigned.fee
+            swap.unsigned.fee
         );
+        // Both sides offer NFTs, both have min UTxO costs
+        assert!(swap.costs.a_min_utxo_cost > 0);
+        assert!(swap.costs.b_min_utxo_cost > 0);
     }
 
     #[test]
@@ -316,6 +420,17 @@ mod tests {
 
         let result = build_atomic_swap(&sides, None, &test_params(), 0);
         assert!(result.is_ok(), "swap with sweetener failed: {result:?}");
+
+        let swap = result.unwrap();
+        // Party A offers NFT (has min UTxO cost), Party B offers pure ADA (no min UTxO)
+        assert!(swap.costs.a_min_utxo_cost > 0);
+        assert_eq!(swap.costs.b_min_utxo_cost, 0);
+        // Party A receives 5 ADA sweetener, net should be positive
+        assert!(
+            swap.costs.a_net_ada > 0,
+            "seller should profit: {}",
+            swap.costs.a_net_ada
+        );
     }
 
     #[test]
