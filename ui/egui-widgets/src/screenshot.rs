@@ -162,8 +162,9 @@ fn draw_checkmark(ui: &mut egui::Ui, rect: Rect) {
 /// `Frame::show()` response rect.
 pub fn show_at_top_right(btn: &mut ScreenshotButton, ui: &mut egui::Ui, panel_rect: Rect) -> bool {
     let btn_size = Vec2::splat(20.0);
+    // Offset left by 24px to leave room for an overlaid close button at the far right
     let btn_rect = Rect::from_min_size(
-        egui::pos2(panel_rect.max.x - btn_size.x - 4.0, panel_rect.min.y + 4.0),
+        egui::pos2(panel_rect.max.x - btn_size.x - 28.0, panel_rect.min.y + 4.0),
         btn_size,
     );
     let mut result = false;

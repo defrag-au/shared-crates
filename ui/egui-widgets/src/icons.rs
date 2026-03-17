@@ -6,19 +6,28 @@
 //! Call [`install_phosphor_font`] once during app setup, then use [`PhosphorIcon`]
 //! to render icons with arbitrary size and color.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use egui::{Color32, FontFamily, FontId, Pos2, RichText, Ui};
 
 /// The font family name registered for Phosphor icons.
 pub const PHOSPHOR_FAMILY_NAME: &str = "phosphor-icons";
 
-/// Font family for Phosphor icons. Use after calling [`install_phosphor_font`].
+/// Tracks whether the font has been installed in the current process.
+static FONT_INSTALLED: AtomicBool = AtomicBool::new(false);
+
+/// Font family for Phosphor icons.
 pub fn phosphor_family() -> FontFamily {
     FontFamily::Name(PHOSPHOR_FAMILY_NAME.into())
 }
 
 /// Register the Phosphor icon font with the egui context.
-/// Call once during app initialization (e.g. in `CreationContext` setup).
+/// Safe to call multiple times — only installs once per process.
 pub fn install_phosphor_font(ctx: &egui::Context) {
+    if FONT_INSTALLED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+
     let mut fonts = egui::FontDefinitions::default();
 
     fonts.font_data.insert(
@@ -35,6 +44,11 @@ pub fn install_phosphor_font(ctx: &egui::Context) {
         .push(PHOSPHOR_FAMILY_NAME.to_owned());
 
     ctx.set_fonts(fonts);
+}
+
+/// Returns true if the font has already been installed.
+pub fn phosphor_font_installed() -> bool {
+    FONT_INSTALLED.load(Ordering::Relaxed)
 }
 
 /// Phosphor icon identifiers with their Unicode codepoints.
@@ -79,21 +93,32 @@ pub enum PhosphorIcon {
     Gear,
 
     // Actions
+    Copy,
     Trash,
     ArrowsOut,
     SignOut,
     Plus,
     Minus,
     X,
+    PencilSimple,
+    Check,
+    CheckCircle,
+    Lock,
+    LockOpen,
+    Handshake,
 
     // Arrows
     ArrowUp,
     ArrowDown,
     ArrowLeft,
     ArrowRight,
+    ArrowsDownUp,
 
     // Misc
     Spiral,
+    CaretRight,
+    CaretDown,
+    MagnifyingGlass,
 }
 
 impl PhosphorIcon {
@@ -125,17 +150,28 @@ impl PhosphorIcon {
             Self::Question => '\u{e3e8}',
             Self::Eye => '\u{e220}',
             Self::Gear => '\u{e270}',
+            Self::Copy => '\u{e1ca}',
             Self::Trash => '\u{e4a6}',
             Self::ArrowsOut => '\u{e0a2}',
             Self::SignOut => '\u{e42a}',
             Self::Plus => '\u{e3d4}',
             Self::Minus => '\u{e32a}',
             Self::X => '\u{e4f6}',
+            Self::PencilSimple => '\u{e3b4}',
+            Self::Check => '\u{e182}',
+            Self::CheckCircle => '\u{e184}',
+            Self::Lock => '\u{e2fa}',
+            Self::LockOpen => '\u{e306}',
+            Self::Handshake => '\u{e582}',
             Self::ArrowUp => '\u{e08e}',
             Self::ArrowDown => '\u{e03e}',
             Self::ArrowLeft => '\u{e058}',
             Self::ArrowRight => '\u{e06c}',
+            Self::ArrowsDownUp => '\u{e098}',
             Self::Spiral => '\u{e9fa}',
+            Self::CaretRight => '\u{e13a}',
+            Self::CaretDown => '\u{e136}',
+            Self::MagnifyingGlass => '\u{e30c}',
         }
     }
 
@@ -152,11 +188,14 @@ impl PhosphorIcon {
     }
 
     /// Display this icon as an egui label.
+    /// Automatically installs the Phosphor font if not already registered.
     pub fn show(self, ui: &mut Ui, size: f32, color: Color32) -> egui::Response {
+        install_phosphor_font(ui.ctx());
         ui.label(self.rich_text(size, color))
     }
 
     /// Paint this icon at a specific position using the painter.
+    /// Automatically installs the Phosphor font if not already registered.
     pub fn paint(
         self,
         painter: &egui::Painter,
@@ -165,6 +204,7 @@ impl PhosphorIcon {
         size: f32,
         color: Color32,
     ) {
+        install_phosphor_font(painter.ctx());
         painter.text(
             pos,
             align,
@@ -201,17 +241,28 @@ impl PhosphorIcon {
         Self::Question,
         Self::Eye,
         Self::Gear,
+        Self::Copy,
         Self::Trash,
         Self::ArrowsOut,
         Self::SignOut,
         Self::Plus,
         Self::Minus,
         Self::X,
+        Self::PencilSimple,
+        Self::Check,
+        Self::CheckCircle,
+        Self::Lock,
+        Self::LockOpen,
+        Self::Handshake,
         Self::ArrowUp,
         Self::ArrowDown,
         Self::ArrowLeft,
         Self::ArrowRight,
+        Self::ArrowsDownUp,
         Self::Spiral,
+        Self::CaretRight,
+        Self::CaretDown,
+        Self::MagnifyingGlass,
     ];
 
     /// Human-readable name for display.
@@ -242,17 +293,28 @@ impl PhosphorIcon {
             Self::Question => "Question",
             Self::Eye => "Eye",
             Self::Gear => "Gear",
+            Self::Copy => "Copy",
             Self::Trash => "Trash",
             Self::ArrowsOut => "Arrows Out",
             Self::SignOut => "Sign Out",
             Self::Plus => "Plus",
             Self::Minus => "Minus",
             Self::X => "X",
+            Self::PencilSimple => "Pencil Simple",
+            Self::Check => "Check",
+            Self::CheckCircle => "Check Circle",
+            Self::Lock => "Lock",
+            Self::LockOpen => "Lock Open",
+            Self::Handshake => "Handshake",
             Self::ArrowUp => "Arrow Up",
             Self::ArrowDown => "Arrow Down",
             Self::ArrowLeft => "Arrow Left",
             Self::ArrowRight => "Arrow Right",
+            Self::ArrowsDownUp => "Arrows Down Up",
             Self::Spiral => "Spiral",
+            Self::CaretRight => "Caret Right",
+            Self::CaretDown => "Caret Down",
+            Self::MagnifyingGlass => "Magnifying Glass",
         }
     }
 }

@@ -470,6 +470,7 @@ pub fn draw_tile_overlay(
     angle_y: f32,
     perspective: f32,
 ) {
+    crate::install_phosphor_font(ui.ctx());
     let text_color = Color32::from_rgb(220, 220, 235);
     let (_rarity_name, rarity_col) = RARITIES.get(rarity).copied().unwrap_or(RARITIES[0]);
     let pill_bg = Color32::from_rgba_premultiplied(20, 20, 35, 200);

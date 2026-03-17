@@ -128,6 +128,8 @@ pub struct CardBrowserResponse {
     pub hovered: Option<usize>,
     /// Whether the detail panel is visible.
     pub detail_visible: bool,
+    /// True when scroll position is within ~2 rows of the bottom content edge.
+    pub near_bottom: bool,
 }
 
 // ============================================================================
@@ -154,6 +156,9 @@ pub fn show<T>(
     mut render_card: impl FnMut(&mut egui::Ui, &CardRenderContext, &mut T),
     mut render_detail: impl FnMut(&mut egui::Ui, usize, &mut T),
 ) -> CardBrowserResponse {
+    // Ensure Phosphor icon font is available (used for close button etc.)
+    crate::install_phosphor_font(ui.ctx());
+
     let has_selection = state.selected.is_some_and(|idx| idx < items.len());
     let detail_width = if has_selection {
         config.detail_width
@@ -165,6 +170,7 @@ pub fn show<T>(
         clicked: None,
         hovered: None,
         detail_visible: has_selection,
+        near_bottom: false,
     };
 
     ui.horizontal_top(|ui| {
@@ -194,7 +200,7 @@ pub fn show<T>(
                 scroll = scroll.vertical_scroll_offset(new_offset);
             }
 
-            scroll.show(ui, |ui| {
+            let scroll_output = scroll.show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::splat(config.spacing);
                     let spinner = CachedSpinner::new(ui, 12.0, config.text_muted);
@@ -274,6 +280,17 @@ pub fn show<T>(
                     }
                 });
             });
+
+            // Detect near-bottom: within ~2 card rows of the content bottom
+            let content_height = scroll_output.content_size.y;
+            let viewport_height = scroll_output.inner_rect.height();
+            let offset = scroll_output.state.offset.y;
+            let threshold = (config.card_height() + config.spacing) * 2.0;
+            if content_height > viewport_height
+                && offset + viewport_height >= content_height - threshold
+            {
+                response.near_bottom = true;
+            }
         });
 
         // RIGHT: detail panel
@@ -283,13 +300,34 @@ pub fn show<T>(
                 ui.vertical(|ui| {
                     ui.set_max_width(config.detail_width);
                     ui.set_min_width(config.detail_width);
-                    egui::Frame::new()
+                    let frame_resp = egui::Frame::new()
                         .fill(config.bg_detail)
                         .corner_radius(config.rounding)
                         .inner_margin(config.detail_margin)
                         .show(ui, |ui| {
                             render_detail(ui, sel_idx, &mut items[sel_idx]);
                         });
+
+                    // Overlay close button at top-right of panel (no vertical space consumed)
+                    let panel_rect = frame_resp.response.rect;
+                    let btn_size = egui::Vec2::splat(20.0);
+                    let btn_rect = egui::Rect::from_min_size(
+                        egui::pos2(panel_rect.max.x - btn_size.x - 4.0, panel_rect.min.y + 4.0),
+                        btn_size,
+                    );
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(btn_rect), |ui| {
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    crate::PhosphorIcon::X.rich_text(14.0, config.border_selected),
+                                )
+                                .frame(false),
+                            )
+                            .clicked()
+                        {
+                            state.selected = None;
+                        }
+                    });
                 });
             }
         }

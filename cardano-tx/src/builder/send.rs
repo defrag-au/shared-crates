@@ -487,6 +487,7 @@ mod tests {
             min_fee_constant: 155381,
             coins_per_utxo_byte: 4310,
             max_tx_size: 16384,
+            max_value_size: 5000,
         }
     }
 

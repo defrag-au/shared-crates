@@ -26,6 +26,18 @@ pub mod utils;
 pub mod wallet;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet_button;
+pub mod wallet_editor;
+
+// Trade desk widgets
+pub mod asset_strip;
+pub mod coverage_delta_bar;
+pub mod fee_report;
+pub mod offer_slot;
+pub mod signing_status;
+pub mod trade_table;
+pub mod trait_delta;
+pub mod tx_estimate;
+pub mod wallet_asset_picker;
 
 pub use animated_counter::AnimatedCounter;
 pub use buttons::UiButtonExt;
@@ -37,6 +49,7 @@ pub use donut_chart::{
 };
 pub use flip_counter::FlipCounter;
 pub use icons::{install_phosphor_font, PhosphorIcon};
+pub use image_loader::{iiif_asset_url, AssetImageSize};
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
@@ -53,8 +66,29 @@ pub use swap_modal::{
     CultureBuy, SwapModal, SwapModalAction, SwapModalConfig, SwapModalTheme, SwapPreviewData,
     SwapProgress,
 };
-pub use theme::FontStrategy;
+pub use theme::{rarity_rank_color, FontStrategy};
 pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
 pub use utils::{format_duration, format_number, section_heading, stat_card, truncate_hex};
 #[cfg(target_arch = "wasm32")]
 pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};
+pub use wallet_editor::{
+    WalletEditorAction, WalletEditorConfig, WalletEditorEntry, WalletEditorResponse,
+    WalletEditorState, WalletEntryStatus,
+};
+
+// Trade desk re-exports
+pub use asset_strip::{AssetStripConfig, AssetStripItem, AssetStripResponse};
+pub use coverage_delta_bar::CoverageDeltaConfig;
+pub use fee_report::{FeeReportConfig, FeeReportData, SideFeeData};
+pub use offer_slot::{OfferSlotAction, OfferSlotConfig, OfferSlotData, OfferSlotResponse};
+pub use signing_status::{SigningAction, SigningPhase, SigningStatusConfig, SigningStatusResponse};
+pub use trade_table::{
+    LockState, PeerState, TradeOffer, TradeTableAction, TradeTableConfig, TradeTableResponse,
+    TradeTableState,
+};
+pub use trait_delta::{TraitDeltaConfig, TraitItem};
+pub use tx_estimate::{TxEstimateConfig, TxEstimateData, UtxoCost};
+pub use wallet_asset_picker::{
+    PickerAsset, PickerPolicyGroup, WalletAssetPickerAction, WalletAssetPickerConfig,
+    WalletAssetPickerResponse, WalletAssetPickerState,
+};

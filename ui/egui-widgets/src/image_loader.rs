@@ -1,5 +1,43 @@
 use egui::{Color32, Pos2, Rect, Shape, Stroke};
 
+// ============================================================================
+// IIIF image helpers
+// ============================================================================
+
+const IIIF_BASE_URL: &str = "https://iiif.hodlcroft.com/iiif/3";
+
+/// Standard image sizes served by the IIIF worker.
+///
+/// Using a fixed set of sizes maximises CDN cache hit rates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AssetImageSize {
+    /// 400px — fast, pre-cached thumbnails for grids and cards.
+    #[default]
+    Thumbnail,
+    /// 1646px — high-resolution for detail views and full-screen.
+    Large,
+}
+
+impl AssetImageSize {
+    /// Pixel width sent to the IIIF `{size}` parameter.
+    pub const fn pixels(self) -> u32 {
+        match self {
+            Self::Thumbnail => 400,
+            Self::Large => 1646,
+        }
+    }
+}
+
+/// Build a full IIIF asset image URL.
+///
+/// ```text
+/// https://iiif.hodlcroft.com/iiif/3/{policy_id}:{asset_name_hex}/full/{size},/0/default.jpg
+/// ```
+pub fn iiif_asset_url(policy_id: &str, asset_name_hex: &str, size: AssetImageSize) -> String {
+    let px = size.pixels();
+    format!("{IIIF_BASE_URL}/{policy_id}:{asset_name_hex}/full/{px},/0/default.jpg")
+}
+
 /// Build a IIIF thumbnail URL for an asset image.
 ///
 /// Constructs a IIIF Image API v3 URL that requests a square crop at the

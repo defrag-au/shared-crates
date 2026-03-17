@@ -18,6 +18,10 @@ pub struct TxBuildParams {
     pub coins_per_utxo_byte: u64,
     /// Maximum transaction size in bytes
     pub max_tx_size: u32,
+    /// Maximum serialised size of the *value* portion of a single UTxO output
+    /// (Cardano Conway parameter `maxValueSize`). Outputs whose value exceeds
+    /// this limit are rejected by the ledger (`OutputTooBigUTxO`).
+    pub max_value_size: u64,
 }
 
 impl From<&maestro::ProtocolParameters> for TxBuildParams {
@@ -28,6 +32,7 @@ impl From<&maestro::ProtocolParameters> for TxBuildParams {
             coins_per_utxo_byte: pp.min_utxo_deposit_coefficient,
             // Maestro doesn't expose max_tx_size directly; use Cardano mainnet default
             max_tx_size: 16384,
+            max_value_size: 5000,
         }
     }
 }
@@ -51,5 +56,6 @@ mod tests {
         assert_eq!(params.min_fee_constant, 155381);
         assert_eq!(params.coins_per_utxo_byte, 4310);
         assert_eq!(params.max_tx_size, 16384);
+        assert_eq!(params.max_value_size, 5000);
     }
 }

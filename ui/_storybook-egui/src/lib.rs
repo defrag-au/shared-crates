@@ -37,7 +37,16 @@ mod app {
         IconGallery,
         WalletButton,
         TraitFilter,
+        WalletEditor,
         SwapModal,
+        TraitDelta,
+        CoverageDeltaBar,
+        AssetStrip,
+        TradeTable,
+        SigningStatus,
+        FeeReport,
+        TxEstimate,
+        WalletAssetPicker,
     }
 
     impl Story {
@@ -62,8 +71,17 @@ mod app {
                 Self::CardBrowser,
                 Self::IconGallery,
                 Self::WalletButton,
+                Self::WalletEditor,
                 Self::TraitFilter,
                 Self::SwapModal,
+                Self::TraitDelta,
+                Self::CoverageDeltaBar,
+                Self::AssetStrip,
+                Self::TradeTable,
+                Self::SigningStatus,
+                Self::FeeReport,
+                Self::TxEstimate,
+                Self::WalletAssetPicker,
             ]
         }
 
@@ -89,7 +107,16 @@ mod app {
                 Self::IconGallery => "Icon Gallery",
                 Self::WalletButton => "Wallet Button",
                 Self::TraitFilter => "Trait Filter",
+                Self::WalletEditor => "Wallet Editor",
                 Self::SwapModal => "Swap Modal",
+                Self::TraitDelta => "Trait Delta",
+                Self::CoverageDeltaBar => "Coverage Delta Bar",
+                Self::AssetStrip => "Asset Strip",
+                Self::TradeTable => "Trade Table",
+                Self::SigningStatus => "Signing Status",
+                Self::FeeReport => "Fee Report",
+                Self::TxEstimate => "TX Estimate",
+                Self::WalletAssetPicker => "Wallet Asset Picker",
             }
         }
 
@@ -112,8 +139,16 @@ mod app {
                 | Self::CardBrowser
                 | Self::IconGallery
                 | Self::TraitFilter => "Data Visualization",
-                Self::WalletButton => "Wallet",
+                Self::WalletButton | Self::WalletEditor => "Wallet",
                 Self::SwapModal => "Swap",
+                Self::TraitDelta
+                | Self::CoverageDeltaBar
+                | Self::AssetStrip
+                | Self::TradeTable
+                | Self::SigningStatus
+                | Self::FeeReport
+                | Self::TxEstimate
+                | Self::WalletAssetPicker => "Trade Desk",
             }
         }
 
@@ -163,7 +198,34 @@ mod app {
                     "Compound-key prefix trie tag filter with dual category/value indexing"
                 }
                 Self::WalletButton => "CIP-30 wallet connection button with state management",
+                Self::WalletEditor => {
+                    "Wallet bundle editor with input, status indicators, and add/remove actions"
+                }
                 Self::SwapModal => "DEX swap modal with preview, culture buys, and progress states",
+                Self::TraitDelta => {
+                    "Trait gain/loss chips showing which traits change hands in a trade"
+                }
+                Self::CoverageDeltaBar => {
+                    "Before/after coverage bar with delta indicator for trade impact"
+                }
+                Self::TradeTable => {
+                    "Two-column trade offer layout with asset cards, add/remove controls"
+                }
+                Self::SigningStatus => {
+                    "Concurrent signing checklist with Sign/Cancel actions and progress states"
+                }
+                Self::FeeReport => {
+                    "Per-side fee breakdown with Black Flag holder waiver display"
+                }
+                Self::TxEstimate => {
+                    "Per-wallet transaction estimate with platform fee, network fee, min UTxO, and net ADA"
+                }
+                Self::WalletAssetPicker => {
+                    "Modal asset browser with accordion policy groups and card grid selection"
+                }
+                Self::AssetStrip => {
+                    "Horizontally stacked asset thumbnails with progressive overlap and click-to-remove"
+                }
             }
         }
     }
@@ -213,10 +275,18 @@ mod app {
         card_browser_state: stories::card_browser::CardBrowserStoryState,
         icon_gallery_state: stories::icon_gallery::IconGalleryState,
         trait_filter_state: stories::trait_filter::TraitFilterStoryState,
+        wallet_editor_state: stories::wallet_editor::WalletEditorStoryState,
         wallet_btn: egui_widgets::WalletButton,
         wallet_connector: egui_widgets::wallet::WalletConnector,
         swap_modal: egui_widgets::SwapModal,
         swap_progress: egui_widgets::SwapProgress,
+        // Trade desk
+        asset_strip_state: stories::asset_strip::AssetStripStoryState,
+        fee_report_state: stories::fee_report::FeeReportStoryState,
+        tx_estimate_state: stories::tx_estimate::TxEstimateStoryState,
+        signing_status_state: stories::signing_status::SigningStatusStoryState,
+        trade_table_state: stories::trade_table::TradeTableStoryState,
+        wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
     }
 
     impl StorybookApp {
@@ -251,6 +321,7 @@ mod app {
                 card_browser_state: stories::card_browser::CardBrowserStoryState::default(),
                 icon_gallery_state: stories::icon_gallery::IconGalleryState::default(),
                 trait_filter_state: stories::trait_filter::TraitFilterStoryState::default(),
+                wallet_editor_state: stories::wallet_editor::WalletEditorStoryState::default(),
                 wallet_btn: egui_widgets::WalletButton::new(),
                 wallet_connector: egui_widgets::wallet::WalletConnector::new(),
                 swap_modal: egui_widgets::SwapModal::new(egui_widgets::SwapModalConfig {
@@ -273,6 +344,13 @@ mod app {
                     theme: egui_widgets::SwapModalTheme::default(),
                 }),
                 swap_progress: egui_widgets::SwapProgress::Idle,
+                asset_strip_state: stories::asset_strip::AssetStripStoryState::default(),
+                fee_report_state: stories::fee_report::FeeReportStoryState::default(),
+                tx_estimate_state: stories::tx_estimate::TxEstimateStoryState::default(),
+                signing_status_state: stories::signing_status::SigningStatusStoryState::default(),
+                trade_table_state: stories::trade_table::TradeTableStoryState::default(),
+                wallet_asset_picker_state:
+                    stories::wallet_asset_picker::WalletAssetPickerStoryState::default(),
             }
         }
 
@@ -325,7 +403,9 @@ mod app {
                     ui.add_space(8.0);
                     ui.heading(egui::RichText::new("egui Widgets").color(ACCENT));
                     ui.separator();
-                    self.draw_sidebar(ui);
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        self.draw_sidebar(ui);
+                    });
                 });
 
             egui::CentralPanel::default()
@@ -392,6 +472,9 @@ mod app {
                             Story::TraitFilter => {
                                 stories::trait_filter::show(ui, &mut self.trait_filter_state)
                             }
+                            Story::WalletEditor => {
+                                stories::wallet_editor::show(ui, &mut self.wallet_editor_state)
+                            }
                             Story::WalletButton => stories::wallet::show(
                                 ui,
                                 &mut self.wallet_btn,
@@ -403,6 +486,28 @@ mod app {
                                 &mut self.swap_modal,
                                 &mut self.swap_progress,
                             ),
+                            Story::TraitDelta => stories::trait_delta::show(ui),
+                            Story::CoverageDeltaBar => stories::coverage_delta_bar::show(ui),
+                            Story::TradeTable => {
+                                stories::trade_table::show(ui, &mut self.trade_table_state)
+                            }
+                            Story::SigningStatus => {
+                                stories::signing_status::show(ui, &mut self.signing_status_state)
+                            }
+                            Story::FeeReport => {
+                                stories::fee_report::show(ui, &mut self.fee_report_state)
+                            }
+                            Story::TxEstimate => {
+                                stories::tx_estimate::show(ui, &mut self.tx_estimate_state)
+                            }
+                            Story::WalletAssetPicker => stories::wallet_asset_picker::show(
+                                ctx,
+                                ui,
+                                &mut self.wallet_asset_picker_state,
+                            ),
+                            Story::AssetStrip => {
+                                stories::asset_strip::show(ui, &mut self.asset_strip_state)
+                            }
                         }
                     });
                 });
