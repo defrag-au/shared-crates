@@ -87,7 +87,7 @@ pub use trade_table::{
     TradeTableState,
 };
 pub use trait_delta::{TraitDeltaConfig, TraitItem};
-pub use tx_estimate::{TxEstimateConfig, TxEstimateData};
+pub use tx_estimate::{TxEstimateConfig, TxEstimateData, UtxoCost};
 pub use wallet_asset_picker::{
     PickerAsset, PickerPolicyGroup, WalletAssetPickerAction, WalletAssetPickerConfig,
     WalletAssetPickerResponse, WalletAssetPickerState,

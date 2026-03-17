@@ -126,6 +126,7 @@ pub fn build_atomic_swap(
     let a_receive_min = a.ada_lovelace.max(a_min_utxo);
     let b_receive_min = b.ada_lovelace.max(b_min_utxo);
 
+    let params_clone = params.clone();
     let unsigned = converge_fee(
         move |fee| {
             let total_fee = fee + extra_witness_fee;
@@ -167,17 +168,21 @@ pub fn build_atomic_swap(
             // Output 2: Party B receives A's offered assets + A's ADA sweetener
             tx = add_receive_output(tx, b_addr.clone(), &a_offered, a_ada, a_min_utxo)?;
 
-            // Output 3: Party A's change (kept assets + remaining ADA)
+            // Outputs 3+: Party A's change (split if needed)
             if a_change > 0 || !a_kept.is_empty() {
-                tx = add_change_output(tx, a_addr.clone(), a_change, &a_kept)?;
+                let (new_tx, _) =
+                    add_split_change_outputs(tx, a_addr.clone(), a_change, &a_kept, &params_clone)?;
+                tx = new_tx;
             }
 
-            // Output 4: Party B's change (kept assets + remaining ADA)
+            // Outputs N+: Party B's change (split if needed)
             if b_change > 0 || !b_kept.is_empty() {
-                tx = add_change_output(tx, b_addr.clone(), b_change, &b_kept)?;
+                let (new_tx, _) =
+                    add_split_change_outputs(tx, b_addr.clone(), b_change, &b_kept, &params_clone)?;
+                tx = new_tx;
             }
 
-            // Output 5: Optional orchestration fee to community wallet
+            // Final output: Optional orchestration fee to community wallet
             if let Some((ref fee_addr, fee_amount)) = fee_output_clone {
                 if fee_amount > 0 {
                     tx = tx.output(create_ada_output(fee_addr.clone(), fee_amount));
@@ -202,7 +207,7 @@ pub fn build_atomic_swap(
     let b_network_share = fee_per_side;
 
     // Net ADA = received from peer - sent to peer - min UTxO cost - network fee - platform fee
-    // Party A receives b.ada_lovelace from B, Party B receives a.ada_lovelace from A
+    // Note: change output splitting is NOT a cost — that ADA stays in your wallet.
     let a_net_ada = b_ada as i64
         - a_ada as i64
         - a_min_utxo as i64
@@ -261,27 +266,132 @@ fn add_change_output(
     }
 }
 
-/// Compute min UTxO lovelace for a receive output carrying the given assets.
+/// Add change outputs for one party, splitting across multiple outputs if the
+/// value portion would exceed `max_value_size`.
 ///
-/// Uses the Babbage/Conway formula: `(160 + |serialized_output|) × coinsPerUTxOByte`
-/// with a 10% safety margin. Returns 0 for pure-ADA outputs (no assets).
-fn min_utxo_for_assets(params: &TxBuildParams, assets: &[AssetId]) -> u64 {
+/// Returns the total min UTxO locked in non-final chunks (the "change overhead"
+/// cost borne by this party). The final chunk receives all remaining ADA.
+fn add_split_change_outputs(
+    mut tx: StagingTransaction,
+    address: Address,
+    total_lovelace: u64,
+    kept_assets: &HashMap<AssetId, u64>,
+    params: &TxBuildParams,
+) -> Result<(StagingTransaction, u64), TxBuildError> {
+    if kept_assets.is_empty() {
+        if total_lovelace > 0 {
+            tx = tx.output(create_ada_output(address, total_lovelace));
+        }
+        return Ok((tx, 0));
+    }
+
+    let chunks = split_assets_for_change(kept_assets, params.max_value_size);
+
+    if chunks.len() <= 1 {
+        // Single chunk — no splitting overhead
+        tx = add_change_output(tx, address, total_lovelace, kept_assets)?;
+        return Ok((tx, 0));
+    }
+
+    // Multiple chunks: each non-final chunk gets min UTxO, final gets remainder
+    let mut remaining = total_lovelace;
+    let mut overhead = 0u64;
+    let last_idx = chunks.len() - 1;
+
+    for (i, chunk) in chunks.iter().enumerate() {
+        if i == last_idx {
+            tx = add_change_output(tx, address.clone(), remaining, chunk)?;
+        } else {
+            let asset_ids: Vec<AssetId> = chunk.keys().cloned().collect();
+            let min = min_utxo_for_assets(params, &asset_ids);
+            overhead += min;
+            remaining = remaining.saturating_sub(min);
+            tx = add_change_output(tx, address.clone(), min, chunk)?;
+        }
+    }
+
+    Ok((tx, overhead))
+}
+
+/// Split a set of kept assets into chunks whose estimated output value size
+/// stays under `max_value_size`. Groups by policy to minimise chunk count.
+fn split_assets_for_change(
+    kept: &HashMap<AssetId, u64>,
+    max_value_size: u64,
+) -> Vec<HashMap<AssetId, u64>> {
+    if kept.is_empty() {
+        return vec![];
+    }
+
+    let threshold = max_value_size * 9 / 10; // 90% safety margin
+
+    // Fast path: everything fits in one output
+    if estimate_value_size_from_map(kept) <= threshold {
+        return vec![kept.clone()];
+    }
+
+    // Group by policy for efficient packing (same-policy assets are cheap)
+    let mut by_policy: std::collections::BTreeMap<&str, Vec<(&AssetId, u64)>> =
+        std::collections::BTreeMap::new();
+    for (asset_id, &qty) in kept {
+        by_policy
+            .entry(&asset_id.policy_id)
+            .or_default()
+            .push((asset_id, qty));
+    }
+
+    let mut chunks: Vec<HashMap<AssetId, u64>> = Vec::new();
+    let mut current: HashMap<AssetId, u64> = HashMap::new();
+
+    for (_policy, assets) in by_policy {
+        // Try adding this policy's assets to the current chunk
+        let mut tentative = current.clone();
+        for &(asset_id, qty) in &assets {
+            tentative.insert(asset_id.clone(), qty);
+        }
+
+        if estimate_value_size_from_map(&tentative) <= threshold || current.is_empty() {
+            current = tentative;
+        } else {
+            // Current chunk is full — push it and start a new one
+            chunks.push(std::mem::take(&mut current));
+            for &(asset_id, qty) in &assets {
+                current.insert(asset_id.clone(), qty);
+            }
+        }
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+
+    chunks
+}
+
+/// Estimate the CBOR-encoded size of the *value* portion of an output
+/// carrying the given asset map. Used for `max_value_size` checks.
+fn estimate_value_size_from_map(assets: &HashMap<AssetId, u64>) -> u64 {
     if assets.is_empty() {
-        return 0;
+        return 6; // lovelace only
     }
 
-    const UTXO_OVERHEAD: u64 = 160;
-    // Map header (1) + key 0 (1) + address with stake key (59) + key 1 (1)
-    let fixed_overhead: u64 = 1 + 1 + 59 + 1;
-
-    // Value: array(2) tag (1) + lovelace (5) + policy map
-    let lovelace_size: u64 = 1 + 5;
-
-    // Group assets by policy to estimate map sizes
     let mut policies: HashMap<&str, Vec<&AssetId>> = HashMap::new();
-    for asset in assets {
-        policies.entry(&asset.policy_id).or_default().push(asset);
+    for asset_id in assets.keys() {
+        policies
+            .entry(&asset_id.policy_id)
+            .or_default()
+            .push(asset_id);
     }
+
+    estimate_value_size_inner(&policies)
+}
+
+/// Estimate the CBOR-encoded size of the *value* portion of an output
+/// carrying the given assets (grouped by policy). Used for both
+/// `min_utxo_for_assets` and `max_value_size` checks.
+fn estimate_value_size_inner(policies: &HashMap<&str, Vec<&AssetId>>) -> u64 {
+    // lovelace: array(2) tag (1) + lovelace (5)
+    let lovelace_size: u64 = 1 + 5;
 
     let policies_map_tag: u64 = if policies.len() < 24 { 1 } else { 3 };
     let mut policy_size: u64 = 0;
@@ -298,7 +408,30 @@ fn min_utxo_for_assets(params: &TxBuildParams, assets: &[AssetId]) -> u64 {
         }
     }
 
-    let output_size = fixed_overhead + lovelace_size + policies_map_tag + policy_size;
+    lovelace_size + policies_map_tag + policy_size
+}
+
+/// Compute min UTxO lovelace for a receive output carrying the given assets.
+///
+/// Uses the Babbage/Conway formula: `(160 + |serialized_output|) × coinsPerUTxOByte`
+/// with a 10% safety margin. Returns 0 for pure-ADA outputs (no assets).
+fn min_utxo_for_assets(params: &TxBuildParams, assets: &[AssetId]) -> u64 {
+    if assets.is_empty() {
+        return 0;
+    }
+
+    const UTXO_OVERHEAD: u64 = 160;
+    // Map header (1) + key 0 (1) + address with stake key (59) + key 1 (1)
+    let fixed_overhead: u64 = 1 + 1 + 59 + 1;
+
+    // Group assets by policy to estimate map sizes
+    let mut policies: HashMap<&str, Vec<&AssetId>> = HashMap::new();
+    for asset in assets {
+        policies.entry(&asset.policy_id).or_default().push(asset);
+    }
+
+    let value_size = estimate_value_size_inner(&policies);
+    let output_size = fixed_overhead + value_size;
     let raw = (UTXO_OVERHEAD + output_size) * params.coins_per_utxo_byte;
 
     // 10% safety margin — protects against minor CBOR encoding variations
@@ -355,6 +488,7 @@ mod tests {
             min_fee_constant: 155381,
             coins_per_utxo_byte: 4310,
             max_tx_size: 16384,
+            max_value_size: 5000,
         }
     }
 
@@ -513,5 +647,59 @@ mod tests {
 
         let result = build_atomic_swap(&sides, None, &test_params(), 0);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_swap_with_many_policies() {
+        // Simulate a wallet with 150 distinct policies — a single change output
+        // would exceed maxValueSize (5000 bytes) without splitting.
+        // 150 policies × ~38 bytes each ≈ 5700 bytes > 4500 threshold.
+        let nft_a = make_asset_id("OfferedNFT");
+
+        // Build 150 distinct policy assets in party A's UTxOs (kept, not offered)
+        let mut kept_assets: Vec<(AssetId, u64)> = Vec::new();
+        for i in 0..150 {
+            let policy = format!("{:0>56}", format!("{i:028x}"));
+            let asset = AssetId::new_unchecked(policy, hex::encode(format!("NFT{i}")));
+            kept_assets.push((asset, 1));
+        }
+
+        // Party A offers one NFT from the test policy, but their UTxOs also contain 70 others
+        let mut a_utxo_assets = vec![(nft_a.clone(), 1)];
+        a_utxo_assets.extend(kept_assets.clone());
+
+        let nft_b = make_asset_id("TheirNFT");
+
+        let sides = [
+            SwapSide {
+                utxos: vec![make_utxo(&"a".repeat(64), 50_000_000, a_utxo_assets)],
+                address: Address::from_bech32(TEST_ADDR_A).unwrap(),
+                offered_assets: HashMap::from([(nft_a.clone(), 1)]),
+                ada_lovelace: 0,
+            },
+            SwapSide {
+                utxos: vec![make_utxo(
+                    &"b".repeat(64),
+                    10_000_000,
+                    vec![(nft_b.clone(), 1)],
+                )],
+                address: Address::from_bech32(TEST_ADDR_B).unwrap(),
+                offered_assets: HashMap::from([(nft_b.clone(), 1)]),
+                ada_lovelace: 0,
+            },
+        ];
+
+        let result = build_atomic_swap(&sides, None, &test_params(), 0);
+        assert!(result.is_ok(), "many-policy swap failed: {result:?}");
+
+        let swap = result.unwrap();
+        // TX should build successfully despite many policies (change gets split)
+        assert!(swap.unsigned.fee > 0);
+        // Net ADA should NOT include change overhead — split change is still yours
+        assert!(
+            swap.costs.a_net_ada > -5_000_000,
+            "net ADA unreasonably negative (change overhead leaked?): {}",
+            swap.costs.a_net_ada
+        );
     }
 }

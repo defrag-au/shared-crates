@@ -23,18 +23,24 @@ pub struct TxEstimateData {
     pub platform_fee: u64,
     /// Estimated network TX fee share in lovelace.
     pub network_fee: u64,
-    /// Min UTxO cost for outbound assets in lovelace (0 if no assets offered).
-    pub min_utxo: u64,
-    /// Min UTxO deposit on the inbound output carrying the peer's assets to you.
-    /// Not a cost — this ADA arrives locked alongside the incoming assets.
-    /// 0 if the peer isn't offering any assets.
-    pub inbound_min_utxo: u64,
+    /// UTxO-related costs (min UTxO for receive outputs, change overhead, etc.).
+    /// Outbound costs are negative ADA impact, inbound deposits are positive.
+    /// Rolled up into summary lines in the display.
+    pub utxo_costs: Vec<UtxoCost>,
     /// Net ADA impact on wallet (positive = gains ADA, negative = loses ADA).
     pub net_ada: i64,
     /// Whether the platform fee was waived (e.g. BF holder).
     pub waived: bool,
     /// Reason for waiver (e.g. "Black Flag holder").
     pub waiver_reason: Option<String>,
+}
+
+/// A single UTxO-related cost or deposit.
+pub struct UtxoCost {
+    /// Lovelace amount.
+    pub lovelace: u64,
+    /// Whether this is inbound (ADA arriving with peer's assets — not a cost).
+    pub inbound: bool,
 }
 
 /// Configuration for the transaction estimate display.
@@ -74,8 +80,7 @@ pub fn show(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimateConfig)
     };
 
     // Pass 1: measure content height using an invisible child UI
-    let content_width =
-        ui.available_width() - heading_width - heading_gap - content_margin.sum().x;
+    let content_width = ui.available_width() - heading_width - heading_gap - content_margin.sum().x;
     let content_height = ui
         .scope(|ui| {
             let offscreen = egui::Rect::from_min_size(
@@ -127,11 +132,9 @@ pub fn show(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimateConfig)
                 // Layout the heading galley and paint it rotated -90°
                 let font =
                     egui::FontId::new(config.heading_size - 1.0, egui::FontFamily::Proportional);
-                let galley = ui.painter().layout_no_wrap(
-                    "TX ESTIMATE".into(),
-                    font,
-                    theme::TEXT_PRIMARY,
-                );
+                let galley =
+                    ui.painter()
+                        .layout_no_wrap("TX ESTIMATE".into(), font, theme::TEXT_PRIMARY);
 
                 // Rotate -90° around the text's center point.
                 // with_angle_and_anchor keeps the anchor point (CENTER_CENTER)
@@ -186,23 +189,36 @@ fn draw_cost_lines(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimate
         );
     }
 
-    // Outbound min UTxO (cost: you fund the output carrying your assets to them)
-    if data.min_utxo > 0 {
+    // UTxO overhead: sum outbound costs and inbound deposits separately
+    let outbound_total: u64 = data
+        .utxo_costs
+        .iter()
+        .filter(|c| !c.inbound)
+        .map(|c| c.lovelace)
+        .sum();
+    let inbound_total: u64 = data
+        .utxo_costs
+        .iter()
+        .filter(|c| c.inbound)
+        .map(|c| c.lovelace)
+        .sum();
+
+    if outbound_total > 0 {
         cost_line(
             ui,
-            "Min UTxO (out)",
-            &format!("~{}", format_lovelace(data.min_utxo)),
+            "UTxO overhead",
+            &format!("~{}", format_lovelace(outbound_total)),
             theme::TEXT_SECONDARY,
             config.font_size,
         );
     }
 
     // Inbound min UTxO (not a cost — ADA arriving locked with peer's assets)
-    if data.inbound_min_utxo > 0 {
+    if inbound_total > 0 {
         cost_line(
             ui,
-            "Min UTxO (in)",
-            &format!("+~{}", format_lovelace(data.inbound_min_utxo)),
+            "UTxO deposit (in)",
+            &format!("+~{}", format_lovelace(inbound_total)),
             theme::ACCENT_CYAN,
             config.font_size,
         );
