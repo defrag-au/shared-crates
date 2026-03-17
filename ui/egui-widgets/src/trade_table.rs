@@ -53,10 +53,10 @@ impl LockState {
 
 /// Configuration for the trade table.
 pub struct TradeTableConfig {
-    /// Heading for the local side.
-    pub your_heading: &'static str,
-    /// Heading for the remote side.
-    pub their_heading: &'static str,
+    /// Heading for the local side (e.g. "$handle (You)").
+    pub your_heading: String,
+    /// Heading for the remote side (e.g. "$handle" or truncated stake).
+    pub their_heading: String,
     /// Card size (square, width = height).
     pub card_size: f32,
     /// Font size for headings.
@@ -66,8 +66,8 @@ pub struct TradeTableConfig {
 impl Default for TradeTableConfig {
     fn default() -> Self {
         Self {
-            your_heading: "YOUR OFFER",
-            their_heading: "THEIR OFFER",
+            your_heading: "YOUR OFFER".into(),
+            their_heading: "THEIR OFFER".into(),
             card_size: 90.0,
             heading_size: 11.0,
         }
@@ -140,7 +140,7 @@ pub fn show(
     };
 
     // ── Their offer (top) ──────────────────────────────────────────────
-    draw_offer_heading(ui, config.their_heading, theme::ACCENT_CYAN, they_locked);
+    draw_offer_heading(ui, &config.their_heading, theme::ACCENT_CYAN, they_locked);
 
     if *peer_state == PeerState::WaitingForPeer {
         ui.add_space(12.0);
@@ -177,7 +177,7 @@ pub fn show(
     ui.add_space(4.0);
 
     // ── Your offer (bottom) ────────────────────────────────────────────
-    draw_offer_heading(ui, config.your_heading, theme::ACCENT_GREEN, you_locked);
+    draw_offer_heading(ui, &config.your_heading, theme::ACCENT_GREEN, you_locked);
 
     draw_card_row(
         ui,
@@ -306,34 +306,24 @@ fn draw_lock_button(
             }
         });
     } else {
-        // Not locked — show lock button
-        let has_assets = true; // caller decides if lockable; we always show the button
-        let label = if lock_state.they_locked {
-            "Lock your offer to proceed"
+        // Not locked — show prominent lock button
+        let (label, btn_color) = if lock_state.they_locked {
+            ("Lock Offer to Proceed", theme::ACCENT_GREEN)
         } else {
-            "Lock offer"
+            ("Lock Offer", theme::ACCENT_CYAN)
         };
 
-        let btn_color = if lock_state.they_locked {
-            theme::ACCENT_GREEN // emphasise — they're waiting for you
-        } else {
-            theme::ACCENT_CYAN
-        };
+        let btn = egui::Button::new(
+            RichText::new(label)
+                .color(theme::BG_PRIMARY)
+                .size(12.0)
+                .strong(),
+        )
+        .fill(btn_color)
+        .corner_radius(CornerRadius::same(6))
+        .min_size(egui::Vec2::new(180.0, 36.0));
 
-        if has_assets
-            && ui
-                .add(
-                    egui::Button::new(
-                        RichText::new(format!("{}  {label}", PhosphorIcon::Lock.codepoint()))
-                            .family(crate::icons::phosphor_family())
-                            .color(btn_color)
-                            .size(11.0),
-                    )
-                    .fill(theme::BG_SECONDARY)
-                    .corner_radius(CornerRadius::same(4)),
-                )
-                .clicked()
-        {
+        if ui.add(btn).clicked() {
             *action = Some(TradeTableAction::Lock);
         }
     }
