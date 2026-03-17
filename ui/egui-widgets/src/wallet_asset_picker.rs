@@ -151,6 +151,7 @@ pub fn show(
         .resizable(false)
         .collapsible(false)
         .default_width(config.max_width)
+        .max_height(config.max_height)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
         .frame(
             egui::Frame::window(&ctx.style())
@@ -161,6 +162,7 @@ pub fn show(
         )
         .show(ctx, |ui| {
             ui.set_max_width(config.max_width);
+            ui.set_max_height(config.max_height);
             action = draw_picker_content(ui, state, groups, config);
         });
 
@@ -213,9 +215,9 @@ fn draw_picker_content(
 
     // ── Scrollable accordion area ──
     let has_selection = !state.selected.is_empty();
-    // Reserve space for summary bar + confirm when selections exist
-    let bottom_reserve = if has_selection { 160.0 } else { 120.0 };
-    let scroll_height = (config.max_height - bottom_reserve).max(100.0);
+    // Reserve space for selection summary bar + confirm button below the scroll area
+    let bottom_reserve = if has_selection { 100.0 } else { 50.0 };
+    let scroll_height = (ui.available_height() - bottom_reserve).max(100.0);
     egui::ScrollArea::vertical()
         .max_height(scroll_height)
         .show(ui, |ui| {
