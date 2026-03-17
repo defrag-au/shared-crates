@@ -244,7 +244,7 @@ fn format_net_ada(label: &str, lovelace: i64) -> (String, egui::Color32) {
     (text, color)
 }
 
-fn format_lovelace(lovelace: u64) -> String {
+pub(crate) fn format_lovelace(lovelace: u64) -> String {
     let ada = lovelace as f64 / 1_000_000.0;
     if ada.fract() == 0.0 {
         format!("{} ADA", ada as u64)

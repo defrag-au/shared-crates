@@ -28,6 +28,7 @@ fn balance_to_groups(balance: &egui_widgets::wallet::WalletBalance) -> Vec<Picke
                     display_name: token.display_name(),
                     rarity_rank: None,
                     total_ranked: None,
+                    traits: Vec::new(),
                 })
                 .collect();
             PickerPolicyGroup {

@@ -74,6 +74,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut FeeReportStoryState) {
                 } else {
                     None
                 },
+                network_fee_share: Some(90_000),
+                min_utxo_cost: Some(1_300_000),
+                net_ada: Some(3_610_000),
             },
             SideFeeData {
                 label: "$boef".into(),
@@ -84,9 +87,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut FeeReportStoryState) {
                 } else {
                     None
                 },
+                network_fee_share: Some(90_000),
+                min_utxo_cost: Some(0),
+                net_ada: Some(-6_090_000),
             },
         ],
         total_lovelace: you_fee + them_fee,
+        network_fee: Some(180_000),
     };
 
     // Widget

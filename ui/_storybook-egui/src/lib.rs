@@ -45,6 +45,7 @@ mod app {
         TradeTable,
         SigningStatus,
         FeeReport,
+        TxEstimate,
         WalletAssetPicker,
     }
 
@@ -79,6 +80,7 @@ mod app {
                 Self::TradeTable,
                 Self::SigningStatus,
                 Self::FeeReport,
+                Self::TxEstimate,
                 Self::WalletAssetPicker,
             ]
         }
@@ -113,6 +115,7 @@ mod app {
                 Self::TradeTable => "Trade Table",
                 Self::SigningStatus => "Signing Status",
                 Self::FeeReport => "Fee Report",
+                Self::TxEstimate => "TX Estimate",
                 Self::WalletAssetPicker => "Wallet Asset Picker",
             }
         }
@@ -144,6 +147,7 @@ mod app {
                 | Self::TradeTable
                 | Self::SigningStatus
                 | Self::FeeReport
+                | Self::TxEstimate
                 | Self::WalletAssetPicker => "Trade Desk",
             }
         }
@@ -213,6 +217,9 @@ mod app {
                 Self::FeeReport => {
                     "Per-side fee breakdown with Black Flag holder waiver display"
                 }
+                Self::TxEstimate => {
+                    "Per-wallet transaction estimate with platform fee, network fee, min UTxO, and net ADA"
+                }
                 Self::WalletAssetPicker => {
                     "Modal asset browser with accordion policy groups and card grid selection"
                 }
@@ -276,6 +283,7 @@ mod app {
         // Trade desk
         asset_strip_state: stories::asset_strip::AssetStripStoryState,
         fee_report_state: stories::fee_report::FeeReportStoryState,
+        tx_estimate_state: stories::tx_estimate::TxEstimateStoryState,
         signing_status_state: stories::signing_status::SigningStatusStoryState,
         trade_table_state: stories::trade_table::TradeTableStoryState,
         wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
@@ -338,6 +346,7 @@ mod app {
                 swap_progress: egui_widgets::SwapProgress::Idle,
                 asset_strip_state: stories::asset_strip::AssetStripStoryState::default(),
                 fee_report_state: stories::fee_report::FeeReportStoryState::default(),
+                tx_estimate_state: stories::tx_estimate::TxEstimateStoryState::default(),
                 signing_status_state: stories::signing_status::SigningStatusStoryState::default(),
                 trade_table_state: stories::trade_table::TradeTableStoryState::default(),
                 wallet_asset_picker_state:
@@ -487,6 +496,9 @@ mod app {
                             }
                             Story::FeeReport => {
                                 stories::fee_report::show(ui, &mut self.fee_report_state)
+                            }
+                            Story::TxEstimate => {
+                                stories::tx_estimate::show(ui, &mut self.tx_estimate_state)
                             }
                             Story::WalletAssetPicker => stories::wallet_asset_picker::show(
                                 ctx,

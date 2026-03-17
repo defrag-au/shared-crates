@@ -201,12 +201,18 @@ pub fn build_atomic_swap(
     let a_network_share = fee_per_side + fee_remainder;
     let b_network_share = fee_per_side;
 
-    // Net ADA = sweetener received from peer - min UTxO cost - network fee share - platform fee share
+    // Net ADA = received from peer - sent to peer - min UTxO cost - network fee - platform fee
     // Party A receives b.ada_lovelace from B, Party B receives a.ada_lovelace from A
-    let a_net_ada =
-        b_ada as i64 - a_min_utxo as i64 - a_network_share as i64 - a_platform_share as i64;
-    let b_net_ada =
-        a_ada as i64 - b_min_utxo as i64 - b_network_share as i64 - b_platform_share as i64;
+    let a_net_ada = b_ada as i64
+        - a_ada as i64
+        - a_min_utxo as i64
+        - a_network_share as i64
+        - a_platform_share as i64;
+    let b_net_ada = a_ada as i64
+        - b_ada as i64
+        - b_min_utxo as i64
+        - b_network_share as i64
+        - b_platform_share as i64;
 
     Ok(SwapBuildResult {
         unsigned,

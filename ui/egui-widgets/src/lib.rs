@@ -36,6 +36,7 @@ pub mod offer_slot;
 pub mod signing_status;
 pub mod trade_table;
 pub mod trait_delta;
+pub mod tx_estimate;
 pub mod wallet_asset_picker;
 
 pub use animated_counter::AnimatedCounter;
@@ -86,6 +87,7 @@ pub use trade_table::{
     TradeTableState,
 };
 pub use trait_delta::{TraitDeltaConfig, TraitItem};
+pub use tx_estimate::{TxEstimateConfig, TxEstimateData};
 pub use wallet_asset_picker::{
     PickerAsset, PickerPolicyGroup, WalletAssetPickerAction, WalletAssetPickerConfig,
     WalletAssetPickerResponse, WalletAssetPickerState,
