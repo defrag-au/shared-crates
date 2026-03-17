@@ -31,6 +31,7 @@ pub mod wallet_editor;
 // Trade desk widgets
 pub mod asset_strip;
 pub mod coverage_delta_bar;
+pub mod fee_report;
 pub mod offer_slot;
 pub mod signing_status;
 pub mod trade_table;
@@ -77,6 +78,7 @@ pub use wallet_editor::{
 // Trade desk re-exports
 pub use asset_strip::{AssetStripConfig, AssetStripItem, AssetStripResponse};
 pub use coverage_delta_bar::CoverageDeltaConfig;
+pub use fee_report::{FeeReportConfig, FeeReportData, SideFeeData};
 pub use offer_slot::{OfferSlotAction, OfferSlotConfig, OfferSlotData, OfferSlotResponse};
 pub use signing_status::{SigningAction, SigningPhase, SigningStatusConfig, SigningStatusResponse};
 pub use trade_table::{

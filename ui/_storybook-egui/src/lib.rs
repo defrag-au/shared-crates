@@ -44,6 +44,7 @@ mod app {
         AssetStrip,
         TradeTable,
         SigningStatus,
+        FeeReport,
         WalletAssetPicker,
     }
 
@@ -77,6 +78,7 @@ mod app {
                 Self::AssetStrip,
                 Self::TradeTable,
                 Self::SigningStatus,
+                Self::FeeReport,
                 Self::WalletAssetPicker,
             ]
         }
@@ -110,6 +112,7 @@ mod app {
                 Self::AssetStrip => "Asset Strip",
                 Self::TradeTable => "Trade Table",
                 Self::SigningStatus => "Signing Status",
+                Self::FeeReport => "Fee Report",
                 Self::WalletAssetPicker => "Wallet Asset Picker",
             }
         }
@@ -140,6 +143,7 @@ mod app {
                 | Self::AssetStrip
                 | Self::TradeTable
                 | Self::SigningStatus
+                | Self::FeeReport
                 | Self::WalletAssetPicker => "Trade Desk",
             }
         }
@@ -206,6 +210,9 @@ mod app {
                 Self::SigningStatus => {
                     "Concurrent signing checklist with Sign/Cancel actions and progress states"
                 }
+                Self::FeeReport => {
+                    "Per-side fee breakdown with Black Flag holder waiver display"
+                }
                 Self::WalletAssetPicker => {
                     "Modal asset browser with accordion policy groups and card grid selection"
                 }
@@ -268,6 +275,7 @@ mod app {
         swap_progress: egui_widgets::SwapProgress,
         // Trade desk
         asset_strip_state: stories::asset_strip::AssetStripStoryState,
+        fee_report_state: stories::fee_report::FeeReportStoryState,
         signing_status_state: stories::signing_status::SigningStatusStoryState,
         trade_table_state: stories::trade_table::TradeTableStoryState,
         wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
@@ -329,6 +337,7 @@ mod app {
                 }),
                 swap_progress: egui_widgets::SwapProgress::Idle,
                 asset_strip_state: stories::asset_strip::AssetStripStoryState::default(),
+                fee_report_state: stories::fee_report::FeeReportStoryState::default(),
                 signing_status_state: stories::signing_status::SigningStatusStoryState::default(),
                 trade_table_state: stories::trade_table::TradeTableStoryState::default(),
                 wallet_asset_picker_state:
@@ -475,6 +484,9 @@ mod app {
                             }
                             Story::SigningStatus => {
                                 stories::signing_status::show(ui, &mut self.signing_status_state)
+                            }
+                            Story::FeeReport => {
+                                stories::fee_report::show(ui, &mut self.fee_report_state)
                             }
                             Story::WalletAssetPicker => stories::wallet_asset_picker::show(
                                 ctx,
