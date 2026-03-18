@@ -9,7 +9,6 @@ egui_extras = { workspace = true }
 egui_inbox = { workspace = true }
 image = { workspace = true, features = ["jpeg"] }
 cardano-assets = { workspace = true }
-utxo-optimizer = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 log = { workspace = true }
 i_overlay = "4.4.1"

@@ -48,7 +48,6 @@ mod app {
         TxEstimate,
         WalletAssetPicker,
         UtxoMap,
-        UtxoOptimizer,
     }
 
     impl Story {
@@ -85,7 +84,6 @@ mod app {
                 Self::TxEstimate,
                 Self::WalletAssetPicker,
                 Self::UtxoMap,
-                Self::UtxoOptimizer,
             ]
         }
 
@@ -122,7 +120,6 @@ mod app {
                 Self::TxEstimate => "TX Estimate",
                 Self::WalletAssetPicker => "Wallet Asset Picker",
                 Self::UtxoMap => "UTxO Shelf",
-                Self::UtxoOptimizer => "UTxO Optimizer",
             }
         }
 
@@ -156,7 +153,6 @@ mod app {
                 | Self::TxEstimate
                 | Self::WalletAssetPicker => "Trade Desk",
                 Self::UtxoMap => "Wallet",
-                Self::UtxoOptimizer => "Wallet",
             }
         }
 
@@ -237,9 +233,6 @@ mod app {
                 Self::UtxoMap => {
                     "UTxO health shelving unit: classify UTxOs into Collateral, Liquid, Clean, Cluttered, Bloated, Dust tiers"
                 }
-                Self::UtxoOptimizer => {
-                    "Wallet optimization: consolidate fragmented UTxOs with animated step-by-step preview"
-                }
             }
         }
     }
@@ -302,7 +295,6 @@ mod app {
         trade_table_state: stories::trade_table::TradeTableStoryState,
         wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
         utxo_map_state: stories::utxo_map::UtxoMapStoryState,
-        utxo_optimizer_state: stories::utxo_optimizer::UtxoOptimizerStoryState,
     }
 
     impl StorybookApp {
@@ -368,7 +360,6 @@ mod app {
                 wallet_asset_picker_state:
                     stories::wallet_asset_picker::WalletAssetPickerStoryState::default(),
                 utxo_map_state: stories::utxo_map::UtxoMapStoryState::default(),
-                utxo_optimizer_state: stories::utxo_optimizer::UtxoOptimizerStoryState::default(),
             }
         }
 
@@ -529,12 +520,6 @@ mod app {
                             Story::UtxoMap => stories::utxo_map::show(
                                 ui,
                                 &mut self.utxo_map_state,
-                                &mut self.wallet_btn,
-                                &mut self.wallet_connector,
-                            ),
-                            Story::UtxoOptimizer => stories::utxo_optimizer::show(
-                                ui,
-                                &mut self.utxo_optimizer_state,
                                 &mut self.wallet_btn,
                                 &mut self.wallet_connector,
                             ),
