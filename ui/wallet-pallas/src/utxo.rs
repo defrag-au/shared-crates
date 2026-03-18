@@ -4,8 +4,9 @@
 //! CIP-30 returns `TransactionUnspentOutput = (TransactionInput, TransactionOutput)` CBOR.
 
 use crate::PallasError;
-use cardano_assets::utxo::{AssetQuantity, UtxoApi};
+use cardano_assets::utxo::{AssetQuantity, UtxoApi, UtxoTag};
 use cardano_assets::AssetId;
+use pallas_addresses::Address;
 use pallas_codec::minicbor;
 use pallas_primitives::conway::{TransactionInput, TransactionOutput};
 
@@ -23,13 +24,14 @@ pub fn decode_utxo(hex_str: &str) -> Result<UtxoApi, PallasError> {
     let tx_hash = hex::encode(input.transaction_id.as_ref());
     let output_index = input.index as u32;
 
-    let (lovelace, assets) = extract_value_and_assets(&output);
+    let decoded = extract_output(&output);
 
     Ok(UtxoApi {
         tx_hash,
         output_index,
-        lovelace,
-        assets,
+        lovelace: decoded.lovelace,
+        assets: decoded.assets,
+        tags: decoded.tags,
     })
 }
 
@@ -38,12 +40,34 @@ pub fn decode_utxos(hex_strings: &[String]) -> Result<Vec<UtxoApi>, PallasError>
     hex_strings.iter().map(|h| decode_utxo(h)).collect()
 }
 
-/// Extract lovelace and multi-assets from a TransactionOutput.
-fn extract_value_and_assets(output: &TransactionOutput) -> (u64, Vec<AssetQuantity>) {
+/// Decoded output fields from a TransactionOutput.
+struct DecodedOutput {
+    lovelace: u64,
+    assets: Vec<AssetQuantity>,
+    tags: Vec<UtxoTag>,
+}
+
+/// Check if raw address bytes have a script payment credential.
+///
+/// Shelley address header byte: top 4 bits = type, bottom 4 bits = network.
+/// Types with script payment: 1, 3, 5, 7 (odd types in 0-7 range).
+fn is_script_payment_address(addr_bytes: &[u8]) -> bool {
+    if addr_bytes.is_empty() {
+        return false;
+    }
+    // Try parsing with pallas-addresses for robustness
+    if let Ok(Address::Shelley(shelley)) = Address::from_bytes(addr_bytes) {
+        return shelley.payment().is_script();
+    }
+    false
+}
+
+/// Extract lovelace, multi-assets, and tags from a TransactionOutput.
+fn extract_output(output: &TransactionOutput) -> DecodedOutput {
     match output {
         TransactionOutput::Legacy(legacy) => {
             use pallas_primitives::alonzo::Value;
-            match &legacy.amount {
+            let (lovelace, assets) = match &legacy.amount {
                 Value::Coin(lovelace) => (*lovelace, vec![]),
                 Value::Multiasset(lovelace, multi_assets) => {
                     let mut assets = Vec::new();
@@ -61,11 +85,21 @@ fn extract_value_and_assets(output: &TransactionOutput) -> (u64, Vec<AssetQuanti
                     }
                     (*lovelace, assets)
                 }
+            };
+            // Legacy outputs: check address for script credential, no datum/script_ref
+            let mut tags = Vec::new();
+            if is_script_payment_address(&legacy.address) {
+                tags.push(UtxoTag::ScriptAddress);
+            }
+            DecodedOutput {
+                lovelace,
+                assets,
+                tags,
             }
         }
         TransactionOutput::PostAlonzo(post_alonzo) => {
             use pallas_primitives::conway::Value;
-            match &post_alonzo.value {
+            let (lovelace, assets) = match &post_alonzo.value {
                 Value::Coin(lovelace) => (*lovelace, vec![]),
                 Value::Multiasset(lovelace, multi_assets) => {
                     let mut assets = Vec::new();
@@ -83,6 +117,21 @@ fn extract_value_and_assets(output: &TransactionOutput) -> (u64, Vec<AssetQuanti
                     }
                     (*lovelace, assets)
                 }
+            };
+            let mut tags = Vec::new();
+            if post_alonzo.datum_option.is_some() {
+                tags.push(UtxoTag::HasDatum);
+            }
+            if post_alonzo.script_ref.is_some() {
+                tags.push(UtxoTag::HasScriptRef);
+            }
+            if is_script_payment_address(&post_alonzo.address) {
+                tags.push(UtxoTag::ScriptAddress);
+            }
+            DecodedOutput {
+                lovelace,
+                assets,
+                tags,
             }
         }
     }

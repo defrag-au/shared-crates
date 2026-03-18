@@ -30,4 +30,5 @@ pub mod signing_status;
 pub mod trade_table;
 pub mod trait_delta;
 pub mod tx_estimate;
+pub mod utxo_map;
 pub mod wallet_asset_picker;

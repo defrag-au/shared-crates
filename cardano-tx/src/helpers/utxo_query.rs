@@ -92,6 +92,7 @@ mod tests {
                     quantity: qty,
                 })
                 .collect(),
+            tags: vec![],
         }
     }
 
@@ -102,6 +103,7 @@ mod tests {
             output_index: 0,
             lovelace: 5_000_000,
             assets: vec![],
+            tags: vec![],
         };
         assert!(is_pure_ada_utxo(&pure));
     }
@@ -120,12 +122,14 @@ mod tests {
             output_index: 0,
             lovelace: 3_000_000,
             assets: vec![],
+            tags: vec![],
         };
         let u2 = UtxoApi {
             tx_hash: "b".repeat(64),
             output_index: 1,
             lovelace: 7_000_000,
             assets: vec![],
+            tags: vec![],
         };
         assert_eq!(total_utxo_lovelace(&[&u1, &u2]), 10_000_000);
     }

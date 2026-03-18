@@ -10,6 +10,18 @@ use std::collections::HashMap;
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
+/// Properties detected on a UTxO during decoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub enum UtxoTag {
+    /// Carries a datum (hash or inline). Typically script-locked.
+    HasDatum,
+    /// Carries a script reference.
+    HasScriptRef,
+    /// Sits at a script payment address (e.g. marketplace franken address).
+    ScriptAddress,
+}
+
 /// API-friendly UTxO representation with assets as a vec
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -18,6 +30,16 @@ pub struct UtxoApi {
     pub output_index: u32,
     pub lovelace: u64,
     pub assets: Vec<AssetQuantity>,
+    /// Tags describing properties of this UTxO (datum, script ref, script address, etc.)
+    #[serde(default)]
+    pub tags: Vec<UtxoTag>,
+}
+
+impl UtxoApi {
+    /// Check if this UTxO has a specific tag.
+    pub fn has_tag(&self, tag: UtxoTag) -> bool {
+        self.tags.contains(&tag)
+    }
 }
 
 /// Asset with quantity for API responses
@@ -49,6 +71,7 @@ impl From<Utxo> for UtxoApi {
                 .into_iter()
                 .map(|(asset_id, quantity)| AssetQuantity { asset_id, quantity })
                 .collect(),
+            tags: vec![],
         }
     }
 }

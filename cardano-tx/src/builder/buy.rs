@@ -299,6 +299,7 @@ mod tests {
                 output_index: 0,
                 lovelace: 5_000_000,
                 assets: vec![],
+                tags: vec![],
             },
             script_ref: ScriptRefInput {
                 tx_hash: "b".repeat(64),

@@ -397,6 +397,7 @@ impl From<AddressUtxo> for cardano_assets::UtxoApi {
             output_index: utxo.index,
             lovelace,
             assets: native_assets,
+            tags: vec![],
         }
     }
 }
