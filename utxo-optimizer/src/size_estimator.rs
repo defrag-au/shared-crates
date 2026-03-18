@@ -143,7 +143,7 @@ fn estimate_token_data_size(assets: &[AssetQuantity]) -> u64 {
 }
 
 /// Number of decimal digits in a u64 value.
-fn digit_count(n: u64) -> u64 {
+pub(crate) fn digit_count(n: u64) -> u64 {
     if n == 0 {
         return 1;
     }

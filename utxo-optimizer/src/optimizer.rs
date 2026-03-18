@@ -17,8 +17,8 @@ use cardano_assets::AssetId;
 use crate::config::{AdaStrategy, FeeParams, OptimizeConfig};
 use crate::plan::*;
 use crate::size_estimator::{
-    bail_size, estimate_fee, estimate_min_lovelace_for_assets, estimate_tx_size, InputTokenData,
-    OutputTokenData,
+    bail_size, digit_count, estimate_fee, estimate_min_lovelace_for_assets, estimate_tx_size,
+    InputTokenData, OutputTokenData,
 };
 
 // ============================================================================
@@ -40,10 +40,9 @@ struct PolicyTokens {
     tokens: Vec<Token>,
 }
 
-/// An indexed reference to a wallet UTxO.
+/// A reference to a wallet UTxO used in phase 1 (ideal state computation).
 #[derive(Clone, Debug)]
 struct IndexedUtxo {
-    index: usize,
     utxo: UtxoApi,
 }
 
@@ -54,6 +53,17 @@ struct ProposedOutput {
     kind: OutputKind,
     /// Which input UTxO refs contributed to this output.
     source_refs: Vec<String>,
+}
+
+/// A UTxO in the iterative working set (may be original or produced by a prior step).
+#[derive(Clone, Debug)]
+struct WorkingUtxo {
+    utxo_ref: String,
+    original_index: usize,
+    lovelace: u64,
+    assets: Vec<AssetQuantity>,
+    tags: Vec<UtxoTag>,
+    produced_by_step: Option<usize>,
 }
 
 // ============================================================================
@@ -105,15 +115,12 @@ pub fn compute_ideal_state(
     let mut working: Vec<IndexedUtxo> = Vec::new();
     let mut excluded: Vec<&UtxoApi> = Vec::new();
 
-    for (i, u) in utxos.iter().enumerate() {
+    for u in utxos {
         let utxo_ref = format!("{}#{}", u.tx_hash, u.output_index);
         if is_script_locked(u) || collateral_refs.contains(&utxo_ref) {
             excluded.push(u);
         } else {
-            working.push(IndexedUtxo {
-                index: i,
-                utxo: u.clone(),
-            });
+            working.push(IndexedUtxo { utxo: u.clone() });
         }
     }
 
@@ -313,281 +320,383 @@ pub fn build_optimization_steps(
     fee_params: &FeeParams,
 ) -> OptimizationPlan {
     let collateral_refs = select_collateral_to_preserve(utxos, &config.collateral);
-
-    // Build working set (excludes script-locked + collateral)
-    let working: Vec<IndexedUtxo> = utxos
-        .iter()
-        .enumerate()
-        .filter(|(_, u)| {
-            let utxo_ref = format!("{}#{}", u.tx_hash, u.output_index);
-            !is_script_locked(u) && !collateral_refs.contains(&utxo_ref)
-        })
-        .map(|(i, u)| IndexedUtxo {
-            index: i,
-            utxo: u.clone(),
-        })
-        .collect();
-
-    // Classify and pack ideal outputs (same as compute_ideal_state)
-    let (fungibles, nonfungibles) = classify_tokens(&working);
-    let ideal_fungible = process_tokens(&fungibles, config, config.isolate_fungible);
-    let ideal_nonfungible = process_tokens(&nonfungibles, config, config.isolate_nonfungible);
-
-    let all_ideal: Vec<Vec<Token>> = ideal_fungible
-        .into_iter()
-        .chain(ideal_nonfungible)
-        .collect();
-
-    // For each ideal output, find which UTxOs contain its tokens.
-    // An ideal output is "already satisfied" if a single UTxO contains exactly
-    // those tokens (and only those tokens).
     let bail = bail_size(fee_params);
 
-    // Build a lookup: utxo_ref -> IndexedUtxo
-    let utxo_map: HashMap<String, &IndexedUtxo> = working
-        .iter()
-        .map(|iu| {
-            let r = format!("{}#{}", iu.utxo.tx_hash, iu.utxo.output_index);
-            (r, iu)
-        })
-        .collect();
+    // Separate excluded (script-locked + collateral) from working set
+    let mut working: Vec<WorkingUtxo> = Vec::new();
+    let mut excluded_snapshots: Vec<UtxoSnapshot> = Vec::new();
 
-    // For each ideal output, determine needed inputs and whether it's already optimal.
-    struct PendingOutput<'a> {
-        tokens: Vec<Token>,
-        needed_inputs: Vec<(String, &'a IndexedUtxo)>,
-    }
-
-    let mut pending: Vec<PendingOutput<'_>> = Vec::new();
-    let mut already_optimal_refs: HashSet<String> = HashSet::new();
-
-    for ideal_tokens in &all_ideal {
-        let needed = find_needed_inputs(ideal_tokens, &working, &already_optimal_refs);
-
-        // Check if already optimal: single input with exact same assets
-        if needed.len() == 1 {
-            let iu = needed[0].1;
-            if is_exact_match(&iu.utxo, ideal_tokens) {
-                already_optimal_refs.insert(needed[0].0.clone());
-                continue;
-            }
-        }
-
-        if needed.is_empty() {
-            continue;
-        }
-
-        pending.push(PendingOutput {
-            tokens: ideal_tokens.clone(),
-            needed_inputs: needed,
-        });
-    }
-
-    // Identify ADA-only UTxOs for rollup (not already used as optimal matches)
-    let ada_only_refs: Vec<String> = working
-        .iter()
-        .filter(|iu| iu.utxo.assets.is_empty())
-        .map(|iu| format!("{}#{}", iu.utxo.tx_hash, iu.utxo.output_index))
-        .filter(|r| !already_optimal_refs.contains(r))
-        .collect();
-
-    // If nothing to do, return empty plan
-    let do_ada_rollup = config.ada_strategy != AdaStrategy::Leave;
-
-    if pending.is_empty() && (ada_only_refs.len() <= 1 || !do_ada_rollup) {
-        return empty_plan(utxos.len());
-    }
-
-    // Chunk pending outputs into TX-sized steps.
-    // Each step greedily accumulates outputs until the bail threshold.
-    let mut steps: Vec<OptimizationStep> = Vec::new();
-    let mut consumed_refs: HashSet<String> = HashSet::new();
-
-    let mut remaining_pending: Vec<&PendingOutput<'_>> = pending.iter().collect();
-    let mut remaining_ada_refs: Vec<&str> = ada_only_refs.iter().map(|s| s.as_str()).collect();
-
-    let mut step_index = 0;
-
-    while !remaining_pending.is_empty() || (!remaining_ada_refs.is_empty() && do_ada_rollup) {
-        let mut step_inputs: HashMap<String, &IndexedUtxo> = HashMap::new();
-        let mut step_outputs: Vec<ProposedOutput> = Vec::new();
-        let mut step_size: u64 = 0;
-        let mut processed_indices: Vec<usize> = Vec::new();
-
-        // Add token outputs
-        for (idx, po) in remaining_pending.iter().enumerate() {
-            // Check if any needed input was already consumed in a prior step
-            let all_available = po
-                .needed_inputs
-                .iter()
-                .all(|(r, _)| !consumed_refs.contains(r) || step_inputs.contains_key(r));
-
-            if !all_available {
-                continue;
-            }
-
-            // Estimate size if we add this output + its new inputs
-            let new_inputs: Vec<(&str, &IndexedUtxo)> = po
-                .needed_inputs
-                .iter()
-                .filter(|(r, _)| !step_inputs.contains_key(r))
-                .map(|(r, iu)| (r.as_str(), *iu))
-                .collect();
-
-            let size_delta = estimate_addition_size(&po.tokens, &new_inputs);
-
-            if step_size + size_delta > bail && !step_inputs.is_empty() {
-                // Would exceed bail — skip for now (try in next step)
-                continue;
-            }
-
-            // Add this output
-            for (r, iu) in &po.needed_inputs {
-                step_inputs.entry(r.clone()).or_insert(iu);
-            }
-            step_outputs.push(ProposedOutput {
-                tokens: po.tokens.clone(),
-                kind: classify_output_kind(&po.tokens),
-                source_refs: po.needed_inputs.iter().map(|(r, _)| r.clone()).collect(),
+    for (i, u) in utxos.iter().enumerate() {
+        let utxo_ref = format!("{}#{}", u.tx_hash, u.output_index);
+        if is_script_locked(u) || collateral_refs.contains(&utxo_ref) {
+            excluded_snapshots.push(UtxoSnapshot {
+                utxo_ref,
+                lovelace: u.lovelace,
+                assets: u.assets.clone(),
+                tags: u.tags.clone(),
+                produced_by_step: None,
+                consumed_by_step: None,
             });
+        } else {
+            working.push(WorkingUtxo {
+                utxo_ref,
+                original_index: i,
+                lovelace: u.lovelace,
+                assets: u.assets.clone(),
+                tags: u.tags.clone(),
+                produced_by_step: None,
+            });
+        }
+    }
 
-            step_size = calc_step_size(&step_inputs, &step_outputs);
-            processed_indices.push(idx);
+    // Iterative: each step consumes some working UTxOs and produces clean outputs.
+    // After each step, newly produced outputs replace consumed ones in the working set.
+    let mut steps: Vec<OptimizationStep> = Vec::new();
+    let mut step_index = 0;
+    // Track UTxOs that repacking can't improve (e.g. mixed outputs the packer reproduces).
+    let mut settled_refs: HashSet<String> = HashSet::new();
 
-            if step_size >= bail {
-                break;
+    loop {
+        // Identify non-optimal UTxOs: anything that isn't already a clean single-policy
+        // bundle within bundle_size, or a pure-ADA UTxO we want to leave alone.
+        let mut candidates: Vec<usize> = Vec::new(); // indices into working
+        let mut ada_only: Vec<usize> = Vec::new();
+
+        // Track per-policy UTxO indices for consolidation detection
+        let mut policy_utxo_indices: HashMap<&str, Vec<usize>> = HashMap::new();
+
+        for (i, wu) in working.iter().enumerate() {
+            if wu.assets.is_empty() {
+                ada_only.push(i);
+                continue;
+            }
+
+            let mut by_policy: HashMap<&str, usize> = HashMap::new();
+            for a in &wu.assets {
+                *by_policy.entry(a.asset_id.policy_id.as_str()).or_default() += 1;
+            }
+
+            if by_policy.len() == 1 {
+                let (pid, count) = by_policy.into_iter().next().unwrap();
+                policy_utxo_indices.entry(pid).or_default().push(i);
+                if count > config.bundle_size as usize {
+                    // Over bundle_size — needs splitting
+                    candidates.push(i);
+                }
+                // Single-policy within limit: might consolidate with siblings (checked below)
+            } else if !settled_refs.contains(&wu.utxo_ref) {
+                // Multi-policy UTxOs need repacking — the ideal state
+                // separates tokens by policy into single-policy outputs.
+                // Skip if already settled (packer reproduced same mixed output).
+                candidates.push(i);
             }
         }
 
-        // Remove processed outputs (reverse order to preserve indices)
-        processed_indices.sort_unstable();
-        for &idx in processed_indices.iter().rev() {
-            remaining_pending.remove(idx);
+        // Add single-policy UTxOs that have siblings and can be consolidated
+        let candidate_set: HashSet<usize> = candidates.iter().copied().collect();
+        for (pid, indices) in &policy_utxo_indices {
+            if indices.len() <= 1 {
+                continue;
+            }
+            // Total tokens across all UTxOs for this policy
+            let total_tokens: usize = indices
+                .iter()
+                .map(|&i| {
+                    working[i]
+                        .assets
+                        .iter()
+                        .filter(|a| a.asset_id.policy_id.as_str() == *pid)
+                        .count()
+                })
+                .sum();
+            // Only consolidate if total exceeds what any single UTxO already holds
+            // (i.e., there's actually a benefit to merging)
+            let max_single = indices
+                .iter()
+                .map(|&i| {
+                    working[i]
+                        .assets
+                        .iter()
+                        .filter(|a| a.asset_id.policy_id.as_str() == *pid)
+                        .count()
+                })
+                .max()
+                .unwrap_or(0);
+            if total_tokens <= config.bundle_size as usize && max_single == total_tokens {
+                // Already have a single UTxO holding all tokens — no consolidation needed
+                continue;
+            }
+            for &i in indices {
+                if !candidate_set.contains(&i) {
+                    candidates.push(i);
+                }
+            }
         }
 
-        // Backfill: tokens from selected inputs not in any output
-        let backfill = compute_backfill(&step_inputs, &step_outputs, config);
-        step_outputs.extend(backfill);
+        // Also add ADA-only UTxOs if we need to rollup/split
+        let do_ada = config.ada_strategy != AdaStrategy::Leave;
+        if do_ada && ada_only.len() > 1 {
+            candidates.extend(&ada_only);
+        }
 
-        // Add ADA-only rollup if space remains
-        if do_ada_rollup && step_size < bail {
-            let mut ada_consumed: Vec<usize> = Vec::new();
-            for (i, &ada_ref) in remaining_ada_refs.iter().enumerate() {
-                if step_inputs.contains_key(ada_ref) {
-                    ada_consumed.push(i);
-                    continue;
-                }
-                if let Some(iu) = utxo_map.get(ada_ref) {
-                    step_inputs.insert(ada_ref.to_string(), iu);
-                    step_size = calc_step_size(&step_inputs, &step_outputs);
-                    ada_consumed.push(i);
-                    if step_size >= bail {
-                        break;
+        // Deduplicate and sort by index for deterministic order
+        candidates.sort_unstable();
+        candidates.dedup();
+
+        if candidates.is_empty() {
+            break;
+        }
+
+        // Greedily select inputs up to bail size
+        let mut selected_indices: Vec<usize> = Vec::new();
+        let mut cumulative_size: u64 = 0;
+
+        for &ci in &candidates {
+            let wu = &working[ci];
+            // Estimate size contribution of this input
+            let input_size: u64 = 37
+                + wu.assets
+                    .iter()
+                    .map(|a| {
+                        32 + (a.asset_id.asset_name_hex.len() as u64 / 2) + digit_count(a.quantity)
+                    })
+                    .sum::<u64>();
+
+            if cumulative_size + input_size > bail && !selected_indices.is_empty() {
+                continue; // Skip this one, try smaller ones
+            }
+
+            selected_indices.push(ci);
+            cumulative_size += input_size;
+        }
+
+        if selected_indices.is_empty() {
+            break;
+        }
+
+        // Collect all tokens from selected inputs
+        let mut all_tokens: Vec<Token> = Vec::new();
+        let mut total_input_lovelace: u64 = 0;
+
+        for &si in &selected_indices {
+            let wu = &working[si];
+            total_input_lovelace += wu.lovelace;
+            for aq in &wu.assets {
+                all_tokens.push(Token {
+                    policy_id: aq.asset_id.policy_id.clone(),
+                    asset_name_hex: aq.asset_id.asset_name_hex.clone(),
+                    quantity: aq.quantity,
+                });
+            }
+        }
+
+        // Repack tokens into clean outputs using the same packing algorithm
+        let (fungibles, nonfungibles) = classify_token_list(&all_tokens);
+        let packed_fungible = process_tokens(&fungibles, config, config.isolate_fungible);
+        let packed_nonfungible = process_tokens(&nonfungibles, config, config.isolate_nonfungible);
+
+        let mut proposed: Vec<ProposedOutput> = Vec::new();
+        for tokens in packed_fungible.into_iter().chain(packed_nonfungible) {
+            proposed.push(ProposedOutput {
+                tokens,
+                kind: OutputKind::PolicyBundle,
+                source_refs: vec![],
+            });
+        }
+
+        // Now check if the TX fits. If too many outputs, trim inputs.
+        let mut step_inputs: HashMap<String, &WorkingUtxo> = HashMap::new();
+        for &si in &selected_indices {
+            let wu = &working[si];
+            step_inputs.insert(wu.utxo_ref.clone(), wu);
+        }
+
+        let step_size = calc_step_size_working(&step_inputs, &proposed, fee_params);
+
+        if step_size > bail && selected_indices.len() > 1 {
+            // TX too large — binary search for max inputs that fit
+            let mut lo = 1usize;
+            let mut hi = selected_indices.len();
+            let mut best = 1;
+
+            while lo <= hi {
+                let mid = (lo + hi) / 2;
+                let trial_indices = &selected_indices[..mid];
+
+                // Collect tokens for trial
+                let mut trial_tokens: Vec<Token> = Vec::new();
+                for &si in trial_indices {
+                    for aq in &working[si].assets {
+                        trial_tokens.push(Token {
+                            policy_id: aq.asset_id.policy_id.clone(),
+                            asset_name_hex: aq.asset_id.asset_name_hex.clone(),
+                            quantity: aq.quantity,
+                        });
                     }
                 }
+                let (tf, tnf) = classify_token_list(&trial_tokens);
+                let pf = process_tokens(&tf, config, config.isolate_fungible);
+                let pnf = process_tokens(&tnf, config, config.isolate_nonfungible);
+                let trial_proposed: Vec<ProposedOutput> = pf
+                    .into_iter()
+                    .chain(pnf)
+                    .map(|tokens| ProposedOutput {
+                        tokens,
+                        kind: OutputKind::PolicyBundle,
+                        source_refs: vec![],
+                    })
+                    .collect();
+
+                let mut trial_inputs: HashMap<String, &WorkingUtxo> = HashMap::new();
+                for &si in trial_indices {
+                    let wu = &working[si];
+                    trial_inputs.insert(wu.utxo_ref.clone(), wu);
+                }
+
+                let trial_size = calc_step_size_working(&trial_inputs, &trial_proposed, fee_params);
+                if trial_size <= bail {
+                    best = mid;
+                    lo = mid + 1;
+                } else {
+                    if mid == 0 {
+                        break;
+                    }
+                    hi = mid - 1;
+                }
             }
-            for &i in ada_consumed.iter().rev() {
-                remaining_ada_refs.remove(i);
+
+            // Rebuild with best count
+            selected_indices.truncate(best);
+
+            all_tokens.clear();
+            total_input_lovelace = 0;
+            for &si in &selected_indices {
+                let wu = &working[si];
+                total_input_lovelace += wu.lovelace;
+                for aq in &wu.assets {
+                    all_tokens.push(Token {
+                        policy_id: aq.asset_id.policy_id.clone(),
+                        asset_name_hex: aq.asset_id.asset_name_hex.clone(),
+                        quantity: aq.quantity,
+                    });
+                }
+            }
+
+            let (fungibles, nonfungibles) = classify_token_list(&all_tokens);
+            let pf = process_tokens(&fungibles, config, config.isolate_fungible);
+            let pnf = process_tokens(&nonfungibles, config, config.isolate_nonfungible);
+
+            proposed.clear();
+            for tokens in pf.into_iter().chain(pnf) {
+                proposed.push(ProposedOutput {
+                    tokens,
+                    kind: OutputKind::PolicyBundle,
+                    source_refs: vec![],
+                });
+            }
+
+            step_inputs.clear();
+            for &si in &selected_indices {
+                let wu = &working[si];
+                step_inputs.insert(wu.utxo_ref.clone(), wu);
             }
         }
 
-        // If nothing got selected, break to avoid infinite loop
-        if step_inputs.is_empty() {
-            break;
-        }
+        // No-op detection: if repacking produces the same number of token outputs
+        // as token inputs consumed, with the same total asset count, nothing improved.
+        let input_token_count: usize = selected_indices
+            .iter()
+            .map(|&si| working[si].assets.len())
+            .sum();
+        let output_token_count: usize = proposed.iter().map(|p| p.tokens.len()).sum();
+        let token_inputs = selected_indices
+            .iter()
+            .filter(|&&si| !working[si].assets.is_empty())
+            .count();
 
-        // Check for no-op: only ADA inputs and count <= 1
-        if step_outputs.is_empty()
-            && step_inputs.values().all(|iu| iu.utxo.assets.is_empty())
-            && step_inputs.len() <= 1
-            && config.ada_strategy != AdaStrategy::Split
+        if proposed.len() == token_inputs
+            && input_token_count == output_token_count
+            && token_inputs > 0
         {
+            // Repacking produced the same structure — no improvement possible
             break;
         }
 
-        // Balance ADA for this step
-        let finalized_outputs =
-            balance_ada(&step_inputs, &step_outputs, config, fee_params, step_index);
+        if selected_indices.len() == 1 && proposed.is_empty() {
+            // Single ADA-only UTxO, nothing to consolidate
+            break;
+        }
 
-        let estimated_size = calc_step_size(&step_inputs, &step_outputs);
+        // Build finalized outputs with proper lovelace balancing
+        let finalized = balance_ada_working(
+            &step_inputs,
+            &proposed,
+            config,
+            fee_params,
+            step_index,
+            total_input_lovelace,
+        );
+
+        let estimated_size = calc_step_size_working(&step_inputs, &proposed, fee_params);
         let estimated_fee = estimate_fee(estimated_size, fee_params);
 
-        // Track consumed refs
-        for r in step_inputs.keys() {
-            consumed_refs.insert(r.clone());
-        }
+        let inputs: Vec<InputRef> = selected_indices
+            .iter()
+            .map(|&si| {
+                let wu = &working[si];
+                InputRef {
+                    utxo_ref: wu.utxo_ref.clone(),
+                    original_index: wu.original_index,
+                }
+            })
+            .collect();
 
-        // Build resulting_utxos: all non-consumed working UTxOs + new outputs
-        let mut resulting_utxos: Vec<UtxoSnapshot> = Vec::new();
+        // Remove consumed UTxOs from working set (reverse order to preserve indices)
+        let consumed_refs: HashSet<String> = selected_indices
+            .iter()
+            .map(|&si| working[si].utxo_ref.clone())
+            .collect();
 
-        // Untouched working UTxOs
-        for iu in &working {
-            let r = format!("{}#{}", iu.utxo.tx_hash, iu.utxo.output_index);
-            if !consumed_refs.contains(&r) {
-                resulting_utxos.push(UtxoSnapshot {
-                    utxo_ref: r,
-                    lovelace: iu.utxo.lovelace,
-                    assets: iu.utxo.assets.clone(),
-                    tags: iu.utxo.tags.clone(),
-                    produced_by_step: None,
-                    consumed_by_step: None,
-                });
+        working.retain(|wu| !consumed_refs.contains(&wu.utxo_ref));
+
+        // Add new outputs to working set; mark multi-policy outputs as settled
+        for out in &finalized {
+            let policies: HashSet<&str> = out
+                .assets
+                .iter()
+                .map(|a| a.asset_id.policy_id.as_str())
+                .collect();
+            if policies.len() > 1 {
+                settled_refs.insert(out.output_id.clone());
             }
-        }
-
-        // New outputs from all previous steps
-        for prev_step in &steps {
-            for out in &prev_step.outputs {
-                resulting_utxos.push(UtxoSnapshot {
-                    utxo_ref: out.output_id.clone(),
-                    lovelace: out.lovelace,
-                    assets: out.assets.clone(),
-                    tags: vec![],
-                    produced_by_step: Some(prev_step.step_index),
-                    consumed_by_step: None,
-                });
-            }
-        }
-
-        // New outputs from this step
-        for out in &finalized_outputs {
-            resulting_utxos.push(UtxoSnapshot {
+            working.push(WorkingUtxo {
                 utxo_ref: out.output_id.clone(),
+                original_index: usize::MAX, // synthetic
                 lovelace: out.lovelace,
                 assets: out.assets.clone(),
                 tags: vec![],
                 produced_by_step: Some(step_index),
-                consumed_by_step: None,
             });
         }
 
-        // Excluded UTxOs (collateral + script-locked) — always present
-        for u in utxos.iter() {
-            let r = format!("{}#{}", u.tx_hash, u.output_index);
-            if is_script_locked(u) || collateral_refs.contains(&r) {
-                resulting_utxos.push(UtxoSnapshot {
-                    utxo_ref: r,
-                    lovelace: u.lovelace,
-                    assets: u.assets.clone(),
-                    tags: u.tags.clone(),
-                    produced_by_step: None,
-                    consumed_by_step: None,
-                });
-            }
-        }
-
-        let inputs: Vec<InputRef> = step_inputs
+        // Build resulting_utxos snapshot: current working set + excluded
+        let mut resulting_utxos: Vec<UtxoSnapshot> = working
             .iter()
-            .map(|(r, iu)| InputRef {
-                utxo_ref: r.clone(),
-                original_index: iu.index,
+            .map(|wu| UtxoSnapshot {
+                utxo_ref: wu.utxo_ref.clone(),
+                lovelace: wu.lovelace,
+                assets: wu.assets.clone(),
+                tags: wu.tags.clone(),
+                produced_by_step: wu.produced_by_step,
+                consumed_by_step: None,
             })
             .collect();
+        resulting_utxos.extend(excluded_snapshots.iter().cloned());
 
         steps.push(OptimizationStep {
             step_index,
             inputs,
-            outputs: finalized_outputs,
+            outputs: finalized,
             estimated_size,
             estimated_fee,
             resulting_utxos,
@@ -596,7 +705,7 @@ pub fn build_optimization_steps(
         step_index += 1;
 
         // Safety cap
-        if step_index >= 20 {
+        if step_index >= 50 {
             break;
         }
     }
@@ -629,19 +738,6 @@ pub fn optimize(
     fee_params: &FeeParams,
 ) -> OptimizationPlan {
     build_optimization_steps(utxos, config, fee_params)
-}
-
-fn empty_plan(utxos_before: usize) -> OptimizationPlan {
-    OptimizationPlan {
-        summary: PlanSummary {
-            utxos_before,
-            utxos_after: utxos_before,
-            total_fees: 0,
-            num_steps: 0,
-            ada_freed: 0,
-        },
-        steps: vec![],
-    }
 }
 
 // ============================================================================
@@ -778,237 +874,7 @@ fn pack_tokens(policies: &[PolicyTokens], bundle_size: u32, skip_limits: bool) -
     outputs
 }
 
-// ============================================================================
-// Input selection & matching
-// ============================================================================
-
-/// Find which UTxOs contain the tokens for an ideal output.
-fn find_needed_inputs<'a>(
-    ideal_tokens: &[Token],
-    working_set: &'a [IndexedUtxo],
-    skip_refs: &HashSet<String>,
-) -> Vec<(String, &'a IndexedUtxo)> {
-    let mut needed: Vec<(String, &IndexedUtxo)> = Vec::new();
-    let mut needed_refs: HashSet<String> = HashSet::new();
-
-    for token in ideal_tokens {
-        for iu in working_set {
-            if iu.utxo.assets.is_empty() {
-                continue;
-            }
-
-            let has_token = iu.utxo.assets.iter().any(|aq| {
-                aq.asset_id.policy_id == token.policy_id
-                    && aq.asset_id.asset_name_hex == token.asset_name_hex
-            });
-
-            if has_token {
-                let utxo_ref = format!("{}#{}", iu.utxo.tx_hash, iu.utxo.output_index);
-                if !needed_refs.contains(&utxo_ref) && !skip_refs.contains(&utxo_ref) {
-                    needed_refs.insert(utxo_ref.clone());
-                    needed.push((utxo_ref, iu));
-                }
-            }
-        }
-    }
-
-    needed
-}
-
-/// Check if a UTxO already has exactly the tokens of an ideal output (and nothing else).
-fn is_exact_match(utxo: &UtxoApi, ideal_tokens: &[Token]) -> bool {
-    if utxo.assets.len() != ideal_tokens.len() {
-        return false;
-    }
-
-    for token in ideal_tokens {
-        let found = utxo.assets.iter().any(|aq| {
-            aq.asset_id.policy_id == token.policy_id
-                && aq.asset_id.asset_name_hex == token.asset_name_hex
-                && aq.quantity == token.quantity
-        });
-        if !found {
-            return false;
-        }
-    }
-
-    true
-}
-
-/// Classify an output kind from its tokens.
-fn classify_output_kind(tokens: &[Token]) -> OutputKind {
-    if tokens.is_empty() {
-        return OutputKind::AdaRollup;
-    }
-    let policies: HashSet<&str> = tokens.iter().map(|t| t.policy_id.as_str()).collect();
-    if policies.len() == 1 {
-        if tokens.iter().any(|t| t.quantity > 1) {
-            OutputKind::FungibleIsolate
-        } else {
-            OutputKind::PolicyBundle
-        }
-    } else {
-        OutputKind::PolicyBundle
-    }
-}
-
-// ============================================================================
-// Backfill
-// ============================================================================
-
-/// Find tokens from selected inputs that aren't accounted for in any output.
-fn compute_backfill(
-    selected_inputs: &HashMap<String, &IndexedUtxo>,
-    selected_outputs: &[ProposedOutput],
-    config: &OptimizeConfig,
-) -> Vec<ProposedOutput> {
-    let mut output_assets: HashSet<String> = HashSet::new();
-    for output in selected_outputs {
-        for token in &output.tokens {
-            output_assets.insert(format!("{}{}", token.policy_id, token.asset_name_hex));
-        }
-    }
-
-    let mut surplus_fungible: BTreeMap<String, Vec<Token>> = BTreeMap::new();
-    let mut surplus_nonfungible: BTreeMap<String, Vec<Token>> = BTreeMap::new();
-
-    for iu in selected_inputs.values() {
-        for aq in &iu.utxo.assets {
-            let key = format!("{}{}", aq.asset_id.policy_id, aq.asset_id.asset_name_hex);
-            if !output_assets.contains(&key) {
-                let token = Token {
-                    policy_id: aq.asset_id.policy_id.clone(),
-                    asset_name_hex: aq.asset_id.asset_name_hex.clone(),
-                    quantity: aq.quantity,
-                };
-                if aq.quantity > 1 {
-                    surplus_fungible
-                        .entry(aq.asset_id.policy_id.clone())
-                        .or_default()
-                        .push(token);
-                } else {
-                    surplus_nonfungible
-                        .entry(aq.asset_id.policy_id.clone())
-                        .or_default()
-                        .push(token);
-                }
-            }
-        }
-    }
-
-    let mut backfill_outputs = Vec::new();
-
-    let to_policy_tokens = |map: BTreeMap<String, Vec<Token>>| -> Vec<PolicyTokens> {
-        map.into_iter()
-            .map(|(policy_id, tokens)| PolicyTokens { policy_id, tokens })
-            .collect()
-    };
-
-    if !surplus_fungible.is_empty() {
-        let groups = to_policy_tokens(surplus_fungible);
-        let packed = process_tokens(&groups, config, config.isolate_fungible);
-        for tokens in packed {
-            backfill_outputs.push(ProposedOutput {
-                tokens,
-                kind: OutputKind::Backfill,
-                source_refs: vec![],
-            });
-        }
-    }
-
-    if !surplus_nonfungible.is_empty() {
-        let groups = to_policy_tokens(surplus_nonfungible);
-        let packed = process_tokens(&groups, config, config.isolate_nonfungible);
-        for tokens in packed {
-            backfill_outputs.push(ProposedOutput {
-                tokens,
-                kind: OutputKind::Backfill,
-                source_refs: vec![],
-            });
-        }
-    }
-
-    backfill_outputs
-}
-
-// ============================================================================
-// ADA balancing
-// ============================================================================
-
 const ADA_SPLIT_THRESHOLD: u64 = 100_000_000;
-
-/// Assign lovelace to each output and create ADA change/split outputs.
-fn balance_ada(
-    selected_inputs: &HashMap<String, &IndexedUtxo>,
-    proposed_outputs: &[ProposedOutput],
-    config: &OptimizeConfig,
-    fee_params: &FeeParams,
-    step_index: usize,
-) -> Vec<PlannedOutput> {
-    let total_input_lovelace: u64 = selected_inputs.values().map(|iu| iu.utxo.lovelace).sum();
-
-    let mut finalized: Vec<PlannedOutput> = Vec::new();
-    let mut token_lovelace_total: u64 = 0;
-
-    for (i, proposed) in proposed_outputs.iter().enumerate() {
-        let assets = tokens_to_assets(&proposed.tokens);
-        let min_lovelace =
-            estimate_min_lovelace_for_assets(fee_params.coins_per_utxo_byte, &assets);
-
-        token_lovelace_total += min_lovelace;
-
-        finalized.push(PlannedOutput {
-            output_id: format!("step{step_index}_out{i}"),
-            lovelace: min_lovelace,
-            assets,
-            source_utxo_refs: proposed.source_refs.clone(),
-            output_kind: proposed.kind,
-        });
-    }
-
-    let estimated_size = calc_step_size(selected_inputs, proposed_outputs);
-    let estimated_fee = estimate_fee(estimated_size, fee_params);
-
-    let remaining = total_input_lovelace
-        .saturating_sub(token_lovelace_total)
-        .saturating_sub(estimated_fee);
-
-    if remaining == 0 {
-        return finalized;
-    }
-
-    if config.ada_strategy == AdaStrategy::Split && remaining > ADA_SPLIT_THRESHOLD {
-        let splits = [0.50, 0.15, 0.10, 0.10, 0.05, 0.05, 0.05];
-        let mut accounted = 0u64;
-        for (j, &pct) in splits.iter().enumerate() {
-            let amount = if j == splits.len() - 1 {
-                remaining.saturating_sub(accounted)
-            } else {
-                (remaining as f64 * pct) as u64
-            };
-            accounted += amount;
-            if amount > 0 {
-                finalized.push(PlannedOutput {
-                    output_id: format!("step{step_index}_ada{j}"),
-                    lovelace: amount,
-                    assets: vec![],
-                    source_utxo_refs: vec![],
-                    output_kind: OutputKind::AdaSplit,
-                });
-            }
-        }
-    } else if remaining >= fee_params.coins_per_utxo_byte * 160 {
-        finalized.push(PlannedOutput {
-            output_id: format!("step{step_index}_change"),
-            lovelace: remaining,
-            assets: vec![],
-            source_utxo_refs: vec![],
-            output_kind: OutputKind::Change,
-        });
-    }
-
-    finalized
-}
 
 // ============================================================================
 // Helpers
@@ -1080,43 +946,6 @@ fn tokens_to_assets(tokens: &[Token]) -> Vec<AssetQuantity> {
         .collect()
 }
 
-fn calc_step_size(inputs: &HashMap<String, &IndexedUtxo>, outputs: &[ProposedOutput]) -> u64 {
-    let output_assets: Vec<Vec<AssetQuantity>> = outputs
-        .iter()
-        .map(|o| tokens_to_assets(&o.tokens))
-        .collect();
-
-    let output_refs: Vec<OutputTokenData<'_>> = output_assets
-        .iter()
-        .map(|a| OutputTokenData { assets: a })
-        .collect();
-
-    let input_refs: Vec<InputTokenData<'_>> = inputs
-        .values()
-        .map(|iu| InputTokenData {
-            assets: &iu.utxo.assets,
-        })
-        .collect();
-
-    estimate_tx_size(inputs.len(), &output_refs, &input_refs)
-}
-
-fn estimate_addition_size(tokens: &[Token], new_inputs: &[(&str, &IndexedUtxo)]) -> u64 {
-    let assets = tokens_to_assets(tokens);
-    let output_data = [OutputTokenData { assets: &assets }];
-
-    let input_refs: Vec<InputTokenData<'_>> = new_inputs
-        .iter()
-        .map(|(_, iu)| InputTokenData {
-            assets: &iu.utxo.assets,
-        })
-        .collect();
-
-    let full_size = estimate_tx_size(new_inputs.len(), &output_data, &input_refs);
-    let base_overhead = full_size.min(292);
-    full_size.saturating_sub(base_overhead)
-}
-
 fn estimate_ada_freed(
     original_utxos: &[UtxoApi],
     steps: &[OptimizationStep],
@@ -1141,6 +970,150 @@ fn estimate_ada_freed(
     original_locked.saturating_sub(final_locked)
 }
 
+/// Classify a flat list of tokens (from consumed inputs) into fungible/nonfungible groups.
+/// Unlike `classify_tokens` which works on `IndexedUtxo`, this works on raw `Token` lists
+/// and aggregates quantities for the same asset.
+fn classify_token_list(tokens: &[Token]) -> (Vec<PolicyTokens>, Vec<PolicyTokens>) {
+    // Aggregate by unique asset
+    let mut asset_totals: BTreeMap<String, (String, String, u64)> = BTreeMap::new();
+    for t in tokens {
+        let key = format!("{}{}", t.policy_id, t.asset_name_hex);
+        asset_totals
+            .entry(key)
+            .and_modify(|(_, _, q)| *q += t.quantity)
+            .or_insert((t.policy_id.clone(), t.asset_name_hex.clone(), t.quantity));
+    }
+
+    let mut fungible_map: BTreeMap<String, Vec<Token>> = BTreeMap::new();
+    let mut nonfungible_map: BTreeMap<String, Vec<Token>> = BTreeMap::new();
+
+    for (policy_id, asset_name_hex, quantity) in asset_totals.values() {
+        let token = Token {
+            policy_id: policy_id.clone(),
+            asset_name_hex: asset_name_hex.clone(),
+            quantity: *quantity,
+        };
+        if *quantity > 1 {
+            fungible_map
+                .entry(policy_id.clone())
+                .or_default()
+                .push(token);
+        } else {
+            nonfungible_map
+                .entry(policy_id.clone())
+                .or_default()
+                .push(token);
+        }
+    }
+
+    let to_vec = |map: BTreeMap<String, Vec<Token>>| -> Vec<PolicyTokens> {
+        map.into_iter()
+            .map(|(policy_id, mut tokens)| {
+                tokens.sort_by(|a, b| a.asset_name_hex.cmp(&b.asset_name_hex));
+                PolicyTokens { policy_id, tokens }
+            })
+            .collect()
+    };
+
+    (to_vec(fungible_map), to_vec(nonfungible_map))
+}
+
+/// Estimate TX size for a step using WorkingUtxo inputs.
+fn calc_step_size_working(
+    inputs: &HashMap<String, &WorkingUtxo>,
+    outputs: &[ProposedOutput],
+    _fee_params: &FeeParams,
+) -> u64 {
+    let output_assets: Vec<Vec<AssetQuantity>> = outputs
+        .iter()
+        .map(|o| tokens_to_assets(&o.tokens))
+        .collect();
+
+    let output_refs: Vec<OutputTokenData<'_>> = output_assets
+        .iter()
+        .map(|a| OutputTokenData { assets: a })
+        .collect();
+
+    let input_refs: Vec<InputTokenData<'_>> = inputs
+        .values()
+        .map(|wu| InputTokenData { assets: &wu.assets })
+        .collect();
+
+    estimate_tx_size(inputs.len(), &output_refs, &input_refs)
+}
+
+/// Balance ADA across outputs for a step using WorkingUtxo inputs.
+fn balance_ada_working(
+    inputs: &HashMap<String, &WorkingUtxo>,
+    proposed_outputs: &[ProposedOutput],
+    config: &OptimizeConfig,
+    fee_params: &FeeParams,
+    step_index: usize,
+    total_input_lovelace: u64,
+) -> Vec<PlannedOutput> {
+    let mut finalized: Vec<PlannedOutput> = Vec::new();
+    let mut token_lovelace_total: u64 = 0;
+
+    for (i, proposed) in proposed_outputs.iter().enumerate() {
+        let assets = tokens_to_assets(&proposed.tokens);
+        let min_lovelace =
+            estimate_min_lovelace_for_assets(fee_params.coins_per_utxo_byte, &assets);
+
+        token_lovelace_total += min_lovelace;
+
+        finalized.push(PlannedOutput {
+            output_id: format!("step{step_index}_out{i}"),
+            lovelace: min_lovelace,
+            assets,
+            source_utxo_refs: proposed.source_refs.clone(),
+            output_kind: proposed.kind,
+        });
+    }
+
+    let estimated_size = calc_step_size_working(inputs, proposed_outputs, fee_params);
+    let estimated_fee = estimate_fee(estimated_size, fee_params);
+
+    let remaining = total_input_lovelace
+        .saturating_sub(token_lovelace_total)
+        .saturating_sub(estimated_fee);
+
+    if remaining == 0 {
+        return finalized;
+    }
+
+    if config.ada_strategy == AdaStrategy::Split && remaining > ADA_SPLIT_THRESHOLD {
+        let splits = [0.50, 0.15, 0.10, 0.10, 0.05, 0.05, 0.05];
+        let mut accounted = 0u64;
+        for (j, &pct) in splits.iter().enumerate() {
+            let amount = if j == splits.len() - 1 {
+                remaining.saturating_sub(accounted)
+            } else {
+                (remaining as f64 * pct) as u64
+            };
+            accounted += amount;
+            if amount > 0 {
+                finalized.push(PlannedOutput {
+                    output_id: format!("step{step_index}_ada{j}"),
+                    lovelace: amount,
+                    assets: vec![],
+                    source_utxo_refs: vec![],
+                    output_kind: OutputKind::AdaSplit,
+                });
+            }
+        }
+    } else if remaining >= fee_params.coins_per_utxo_byte * 160 {
+        finalized.push(PlannedOutput {
+            output_id: format!("step{step_index}_change"),
+            lovelace: remaining,
+            assets: vec![],
+            source_utxo_refs: vec![],
+            output_kind: OutputKind::Change,
+        });
+    }
+
+    finalized
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -1148,7 +1121,7 @@ fn estimate_ada_freed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{FeeParams, OptimizeConfig};
+    use crate::config::{CollateralConfig, FeeParams, OptimizeConfig};
 
     fn pure_ada_utxo(tx_hash: &str, lovelace: u64) -> UtxoApi {
         UtxoApi {
@@ -1303,11 +1276,7 @@ mod tests {
         ];
         let working_set: Vec<IndexedUtxo> = utxos
             .iter()
-            .enumerate()
-            .map(|(i, u)| IndexedUtxo {
-                index: i,
-                utxo: u.clone(),
-            })
+            .map(|u| IndexedUtxo { utxo: u.clone() })
             .collect();
 
         let (fungibles, nonfungibles) = classify_tokens(&working_set);
@@ -1616,40 +1585,53 @@ mod tests {
     }
 
     // ========================================================================
-    // Backfill tests
+    // Multi-policy splitting tests
     // ========================================================================
 
     #[test]
-    fn test_backfill_surplus_tokens() {
-        let input_utxo = bloated_utxo(
-            "tx1",
-            5_000_000,
-            &[(POLICY_A, &["a1"]), (POLICY_B, &["b1"])],
-        );
-        let working_set = [IndexedUtxo {
-            index: 0,
-            utxo: input_utxo,
-        }];
-
-        let mut selected_inputs: HashMap<String, &IndexedUtxo> = HashMap::new();
-        selected_inputs.insert("tx1#0".to_string(), &working_set[0]);
-
-        let outputs = vec![ProposedOutput {
-            tokens: vec![Token {
-                policy_id: POLICY_A.to_string(),
-                asset_name_hex: hex::encode("a1"),
-                quantity: 1,
-            }],
-            kind: OutputKind::PolicyBundle,
-            source_refs: vec!["tx1#0".to_string()],
-        }];
-
-        let backfill = compute_backfill(&selected_inputs, &outputs, &OptimizeConfig::default());
-        assert!(!backfill.is_empty());
-        let b_found = backfill
+    fn test_bloated_utxo_gets_debloated() {
+        // A UTxO with many tokens from many policies (exceeds mixed_limit)
+        // should be split into cleaner outputs.
+        let many_policies: Vec<(&str, &[&str])> = vec![
+            (
+                POLICY_A,
+                &["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10"],
+            ),
+            (
+                POLICY_B,
+                &["b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8", "b9", "b10"],
+            ),
+        ];
+        let utxos = vec![bloated_utxo("tx1", 10_000_000, &many_policies)];
+        let config = OptimizeConfig {
+            bundle_size: 10, // mixed_limit = 5
+            collateral: CollateralConfig {
+                count: 0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let plan = build_optimization_steps(&utxos, &config, &FeeParams::default());
+        assert!(!plan.steps.is_empty(), "Should need optimization");
+        let final_step = plan.steps.last().unwrap();
+        // All 20 tokens should be preserved
+        let total_assets: usize = final_step
+            .resulting_utxos
             .iter()
-            .any(|o| o.tokens.iter().any(|t| t.policy_id == POLICY_B));
-        assert!(b_found);
+            .map(|u| u.assets.len())
+            .sum();
+        assert_eq!(total_assets, 20);
+        // Should produce multiple outputs (splitting the bloated UTxO)
+        let token_utxos: Vec<_> = final_step
+            .resulting_utxos
+            .iter()
+            .filter(|u| !u.assets.is_empty())
+            .collect();
+        assert!(
+            token_utxos.len() > 1,
+            "Expected split into multiple outputs, got {}",
+            token_utxos.len()
+        );
     }
 
     // ========================================================================
