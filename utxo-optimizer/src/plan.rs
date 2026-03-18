@@ -86,6 +86,8 @@ pub enum OutputKind {
     Backfill,
     /// Change output with remaining ADA.
     Change,
+    /// Collateral output — pure ADA reserved for DApp interactions.
+    Collateral,
 }
 
 /// Snapshot of a UTxO at a point in time (for before/after display).

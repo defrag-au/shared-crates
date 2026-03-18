@@ -227,8 +227,6 @@ const COLLATERAL_THRESHOLD: u64 = 5_000_000;
 /// Upper bound for collateral — above this, ADA is more useful as Liquid.
 const COLLATERAL_CEILING: u64 = 15_000_000;
 const DUST_THRESHOLD: u64 = 1_500_000;
-/// Max collateral UTxOs to keep — enough for concurrent DApp interactions.
-const MAX_COLLATERAL: usize = 3;
 
 /// Classify raw CIP-30 UTxOs into shelf tiers.
 ///
@@ -288,24 +286,6 @@ pub fn classify_utxos(
             assets: utxo.assets.clone(),
             tags: utxo.tags.clone(),
         });
-    }
-
-    // Pass 2: cap Collateral at MAX_COLLATERAL, preferring smaller (collateral-sized) UTxOs.
-    // Large pure-ADA UTxOs are more useful as Liquid than locked as collateral.
-    let mut collateral_indices: Vec<usize> = shelf_utxos
-        .iter()
-        .enumerate()
-        .filter(|(_, u)| u.tier == ShelfTier::Collateral)
-        .map(|(i, _)| i)
-        .collect();
-
-    if collateral_indices.len() > MAX_COLLATERAL {
-        // Sort by lovelace ascending — keep smallest as collateral
-        collateral_indices.sort_by_key(|&i| shelf_utxos[i].lovelace);
-        // Reclassify excess (the larger ones) as Liquid
-        for &i in &collateral_indices[MAX_COLLATERAL..] {
-            shelf_utxos[i].tier = ShelfTier::Liquid;
-        }
     }
 
     let has_collateral = shelf_utxos.iter().any(|u| u.tier == ShelfTier::Collateral);
@@ -1069,8 +1049,7 @@ mod tests {
             pure_ada_utxo(5_000_000),
         ];
         let data = classify_utxos(&utxos, TEST_COINS_PER_UTXO_BYTE);
-        // 5 ADA and 8 ADA both qualify for Collateral, but only up to MAX_COLLATERAL (3).
-        // Both fit under the cap, so both stay as Collateral.
+        // 5 ADA and 8 ADA both qualify for Collateral (within 5-15 ADA range).
         // 2 ADA is Liquid (below threshold).
         // Within Collateral: largest first in display order.
         let collateral: Vec<u64> = data
@@ -1083,14 +1062,14 @@ mod tests {
     }
 
     #[test]
-    fn test_collateral_cap_at_max() {
-        // 5 pure-ADA UTxOs within collateral range (5-15 ADA) — only 3 smallest kept
+    fn test_many_collateral_all_kept() {
+        // All pure-ADA UTxOs within collateral range (5-15 ADA) stay as Collateral
         let utxos = vec![
-            pure_ada_utxo(14_000_000), // 14 ADA — over cap, reclassified as Liquid
-            pure_ada_utxo(12_000_000), // 12 ADA — over cap, reclassified as Liquid
-            pure_ada_utxo(10_000_000), // 10 ADA — Collateral (3rd smallest)
-            pure_ada_utxo(5_000_000),  // 5 ADA — Collateral (smallest)
-            pure_ada_utxo(7_000_000),  // 7 ADA — Collateral (2nd smallest)
+            pure_ada_utxo(14_000_000), // 14 ADA — Collateral
+            pure_ada_utxo(12_000_000), // 12 ADA — Collateral
+            pure_ada_utxo(10_000_000), // 10 ADA — Collateral
+            pure_ada_utxo(5_000_000),  // 5 ADA — Collateral
+            pure_ada_utxo(7_000_000),  // 7 ADA — Collateral
         ];
         let data = classify_utxos(&utxos, TEST_COINS_PER_UTXO_BYTE);
         assert!(data.has_collateral);
@@ -1101,17 +1080,18 @@ mod tests {
             .filter(|u| u.tier == ShelfTier::Collateral)
             .map(|u| u.lovelace)
             .collect();
-        // Kept: 5M, 7M, 10M (3 smallest). Display order: largest first.
-        assert_eq!(collateral, vec![10_000_000, 7_000_000, 5_000_000]);
+        // All 5 within range, display order: largest first.
+        assert_eq!(
+            collateral,
+            vec![14_000_000, 12_000_000, 10_000_000, 7_000_000, 5_000_000]
+        );
 
-        let liquid: Vec<u64> = data
+        let liquid_count = data
             .utxos
             .iter()
             .filter(|u| u.tier == ShelfTier::Liquid)
-            .map(|u| u.lovelace)
-            .collect();
-        // Excess: 12M, 14M reclassified as Liquid. Display order: largest first.
-        assert_eq!(liquid, vec![14_000_000, 12_000_000]);
+            .count();
+        assert_eq!(liquid_count, 0);
     }
 
     #[test]

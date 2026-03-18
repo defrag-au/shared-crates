@@ -164,11 +164,38 @@ pub fn compute_ideal_state(
     // Compute total ADA budget
     let total_lovelace: u64 = working.iter().map(|iu| iu.utxo.lovelace).sum();
     let token_lovelace: u64 = token_outputs.iter().map(|o| o.lovelace).sum();
-    let remaining_ada = total_lovelace.saturating_sub(token_lovelace);
+    let mut remaining_ada = total_lovelace.saturating_sub(token_lovelace);
 
-    // Build ADA outputs based on strategy
+    // Create missing collateral UTxOs from the ADA pool.
+    // Existing collateral is already in `excluded`. If the user wants more than
+    // what currently exists, synthesize new ones at the preferred target amount.
     let mut ada_outputs: Vec<IdealOutput> = Vec::new();
+    let existing_collateral_count = collateral_refs.len() as u32;
 
+    if config.collateral.count > existing_collateral_count {
+        let shortfall = config.collateral.count - existing_collateral_count;
+        // Pick the smallest target as the preferred amount for new collateral
+        let target = config
+            .collateral
+            .targets_lovelace
+            .iter()
+            .copied()
+            .min()
+            .unwrap_or(5_000_000);
+
+        for _ in 0..shortfall {
+            if remaining_ada >= target {
+                ada_outputs.push(IdealOutput {
+                    assets: vec![],
+                    lovelace: target,
+                    kind: OutputKind::Collateral,
+                });
+                remaining_ada -= target;
+            }
+        }
+    }
+
+    // Build remaining ADA outputs based on strategy
     match config.ada_strategy {
         AdaStrategy::Leave => {
             // Pass ADA-only UTxOs through unchanged as individual outputs
@@ -1305,7 +1332,14 @@ mod tests {
     #[test]
     fn test_ideal_state_single_ada_utxo() {
         let utxos = vec![pure_ada_utxo("tx1", 50_000_000)];
-        let ideal = compute_ideal_state(&utxos, &OptimizeConfig::default(), &FeeParams::default());
+        let config = OptimizeConfig {
+            collateral: crate::config::CollateralConfig {
+                count: 0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let ideal = compute_ideal_state(&utxos, &config, &FeeParams::default());
         // Single ADA UTxO → single ADA output + nothing else
         assert_eq!(ideal.summary.utxos_after, 1);
         assert!(ideal.as_utxos.iter().all(|u| u.assets.is_empty()));
@@ -1658,6 +1692,10 @@ mod tests {
         let utxos = vec![pure_ada_utxo("tx1", 200_000_000)]; // 200 ADA
         let config = OptimizeConfig {
             ada_strategy: AdaStrategy::Split,
+            collateral: crate::config::CollateralConfig {
+                count: 0,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let ideal = compute_ideal_state(&utxos, &config, &FeeParams::default());
@@ -1678,6 +1716,10 @@ mod tests {
         let utxos = vec![pure_ada_utxo("tx1", 50_000_000)]; // 50 ADA < 100 ADA threshold
         let config = OptimizeConfig {
             ada_strategy: AdaStrategy::Split,
+            collateral: crate::config::CollateralConfig {
+                count: 0,
+                ..Default::default()
+            },
             ..Default::default()
         };
         let ideal = compute_ideal_state(&utxos, &config, &FeeParams::default());
@@ -1688,5 +1730,42 @@ mod tests {
             .filter(|u| u.assets.is_empty())
             .collect();
         assert_eq!(ada_utxos.len(), 1, "Should not split below threshold");
+    }
+
+    #[test]
+    fn test_collateral_creation_from_ada_pool() {
+        // Wallet has no collateral-sized UTxOs, but user wants 3.
+        // Should create them from the ADA pool.
+        let utxos = vec![pure_ada_utxo("tx1", 100_000_000)]; // 100 ADA, above ceiling
+        let config = OptimizeConfig {
+            collateral: crate::config::CollateralConfig {
+                count: 3,
+                targets_lovelace: vec![5_000_000],
+                ceiling_lovelace: 15_000_000,
+            },
+            ..Default::default()
+        };
+        let ideal = compute_ideal_state(&utxos, &config, &FeeParams::default());
+
+        // Should have 3 collateral outputs at 5 ADA each + 1 remaining ADA
+        let collateral_utxos: Vec<_> = ideal
+            .as_utxos
+            .iter()
+            .filter(|u| u.lovelace == 5_000_000 && u.assets.is_empty())
+            .collect();
+        assert_eq!(
+            collateral_utxos.len(),
+            3,
+            "Should create 3 collateral UTxOs"
+        );
+
+        // Remaining ADA should be 100 - 15 = 85 ADA
+        let remaining: Vec<_> = ideal
+            .as_utxos
+            .iter()
+            .filter(|u| u.lovelace > 15_000_000 && u.assets.is_empty())
+            .collect();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].lovelace, 85_000_000);
     }
 }
