@@ -33,6 +33,7 @@ members = [
     "ui/_storybook-egui",
     "ui/workers/flow-demo",
     "ui/workers/flow-demo/frontend",
+    "utxo-optimizer",
 ]
 resolver = "2"
 
@@ -133,3 +134,4 @@ asset-rarity = { path = "asset-rarity" }
 egui-widgets = { path = "ui/egui-widgets" }
 wallet-core = { path = "ui/wallet-core" }
 wallet-pallas = { path = "ui/wallet-pallas" }
+utxo-optimizer = { path = "utxo-optimizer" }

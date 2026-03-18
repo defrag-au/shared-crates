@@ -1190,6 +1190,7 @@ dependencies = [
  "js-sys",
  "log",
  "serde",
+ "utxo-optimizer",
  "voronoice",
  "wallet-core",
  "wallet-pallas",
@@ -5118,6 +5119,7 @@ dependencies = [
  "image",
  "js-sys",
  "log",
+ "utxo-optimizer",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -5991,6 +5993,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "utxo-optimizer"
+version = "0.1.0"
+dependencies = [
+ "cardano-assets",
+ "hex",
+ "serde",
 ]
 
 [[package]]

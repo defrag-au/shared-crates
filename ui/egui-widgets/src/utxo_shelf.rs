@@ -129,6 +129,7 @@ impl ShelfUtxo {
 }
 
 /// Classified wallet data for the shelf widget.
+#[derive(Clone)]
 pub struct ShelfData {
     /// All UTxOs, classified by tier.
     pub utxos: Vec<ShelfUtxo>,
@@ -360,7 +361,7 @@ impl ShelfConfig {
     /// Compute the width of a single block.
     /// Dust blocks are compact squares; pure-ADA blocks get fixed width;
     /// asset blocks scale proportionally.
-    fn block_width(
+    pub(crate) fn block_width(
         &self,
         lovelace: u64,
         max_lovelace: u64,
@@ -382,7 +383,7 @@ impl ShelfConfig {
     }
 
     /// Block height for a given tier.
-    fn block_height(&self, tier: ShelfTier) -> f32 {
+    pub(crate) fn block_height(&self, tier: ShelfTier) -> f32 {
         if tier == ShelfTier::Dust {
             DUST_BLOCK_SIZE
         } else {
@@ -391,7 +392,7 @@ impl ShelfConfig {
     }
 
     /// Gap between blocks for a given tier.
-    fn block_gap(&self, tier: ShelfTier) -> f32 {
+    pub(crate) fn block_gap(&self, tier: ShelfTier) -> f32 {
         if tier == ShelfTier::Dust {
             DUST_BLOCK_GAP
         } else {

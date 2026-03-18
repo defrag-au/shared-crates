@@ -1,0 +1,11 @@
+[package]
+name = "utxo-optimizer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+cardano-assets = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+hex = "0.4"

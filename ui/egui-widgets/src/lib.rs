@@ -11,6 +11,7 @@ pub mod image_loader;
 pub mod listing_grid;
 pub mod marquee;
 pub mod metric_card;
+pub mod optimizer_panel;
 pub mod pip_row;
 pub mod progress_bar;
 pub mod radar_chart;
@@ -24,6 +25,7 @@ pub mod trait_filter;
 pub mod utils;
 pub mod utxo_map;
 pub mod utxo_shelf;
+pub mod utxo_shelf_anim;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
 #[cfg(target_arch = "wasm32")]
@@ -55,6 +57,7 @@ pub use image_loader::{iiif_asset_url, AssetImageSize};
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
+pub use optimizer_panel::{OptimizerPanel, OptimizerResponse};
 pub use pip_row::{
     HoverInfo, HoveredBin, HoveredPip, Pip, PipRowConfig, PipRowData, PipRowResponse,
 };
@@ -79,6 +82,7 @@ pub use utxo_shelf::{
     classify_utxos, ShelfAction, ShelfConfig, ShelfData, ShelfResponse, ShelfState, ShelfTier,
     ShelfUtxo,
 };
+pub use utxo_shelf_anim::{BlockLayout, ShelfStepViewer};
 #[cfg(target_arch = "wasm32")]
 pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};
 pub use wallet_editor::{
