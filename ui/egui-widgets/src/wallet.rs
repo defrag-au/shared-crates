@@ -194,3 +194,18 @@ pub async fn fetch_wallet_balance(api: &WalletApi) -> Result<WalletBalance, Stri
 
     decode_balance(&balance_hex).map_err(|e| format!("Failed to decode balance: {e}"))
 }
+
+/// Async helper: fetch and decode wallet UTxOs.
+///
+/// Call from `wasm_bindgen_futures::spawn_local` and send the result
+/// through your app's message channel.
+pub async fn fetch_wallet_utxos(
+    api: &WalletApi,
+) -> Result<Vec<cardano_assets::utxo::UtxoApi>, String> {
+    let cbor_hexes = api
+        .utxos()
+        .await
+        .map_err(|e| format!("Failed to get UTxOs: {e}"))?;
+
+    wallet_pallas::decode_utxos(&cbor_hexes).map_err(|e| format!("Failed to decode UTxOs: {e}"))
+}

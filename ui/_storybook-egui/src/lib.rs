@@ -47,6 +47,7 @@ mod app {
         FeeReport,
         TxEstimate,
         WalletAssetPicker,
+        UtxoMap,
     }
 
     impl Story {
@@ -82,6 +83,7 @@ mod app {
                 Self::FeeReport,
                 Self::TxEstimate,
                 Self::WalletAssetPicker,
+                Self::UtxoMap,
             ]
         }
 
@@ -117,6 +119,7 @@ mod app {
                 Self::FeeReport => "Fee Report",
                 Self::TxEstimate => "TX Estimate",
                 Self::WalletAssetPicker => "Wallet Asset Picker",
+                Self::UtxoMap => "UTxO Shelf",
             }
         }
 
@@ -149,6 +152,7 @@ mod app {
                 | Self::FeeReport
                 | Self::TxEstimate
                 | Self::WalletAssetPicker => "Trade Desk",
+                Self::UtxoMap => "Wallet",
             }
         }
 
@@ -226,6 +230,9 @@ mod app {
                 Self::AssetStrip => {
                     "Horizontally stacked asset thumbnails with progressive overlap and click-to-remove"
                 }
+                Self::UtxoMap => {
+                    "UTxO health shelving unit: classify UTxOs into Collateral, Liquid, Clean, Cluttered, Bloated, Dust tiers"
+                }
             }
         }
     }
@@ -287,6 +294,7 @@ mod app {
         signing_status_state: stories::signing_status::SigningStatusStoryState,
         trade_table_state: stories::trade_table::TradeTableStoryState,
         wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
+        utxo_map_state: stories::utxo_map::UtxoMapStoryState,
     }
 
     impl StorybookApp {
@@ -351,6 +359,7 @@ mod app {
                 trade_table_state: stories::trade_table::TradeTableStoryState::default(),
                 wallet_asset_picker_state:
                     stories::wallet_asset_picker::WalletAssetPickerStoryState::default(),
+                utxo_map_state: stories::utxo_map::UtxoMapStoryState::default(),
             }
         }
 
@@ -508,6 +517,12 @@ mod app {
                             Story::AssetStrip => {
                                 stories::asset_strip::show(ui, &mut self.asset_strip_state)
                             }
+                            Story::UtxoMap => stories::utxo_map::show(
+                                ui,
+                                &mut self.utxo_map_state,
+                                &mut self.wallet_btn,
+                                &mut self.wallet_connector,
+                            ),
                         }
                     });
                 });

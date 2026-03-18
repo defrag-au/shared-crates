@@ -22,6 +22,8 @@ pub mod swap_modal;
 pub mod theme;
 pub mod trait_filter;
 pub mod utils;
+pub mod utxo_map;
+pub mod utxo_shelf;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
 #[cfg(target_arch = "wasm32")]
@@ -69,6 +71,14 @@ pub use swap_modal::{
 pub use theme::{rarity_rank_color, FontStrategy};
 pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
 pub use utils::{format_duration, format_number, section_heading, stat_card, truncate_hex};
+pub use utxo_map::{
+    utxos_to_map_data, UtxoCell, UtxoMapAction, UtxoMapConfig, UtxoMapData, UtxoMapResponse,
+    UtxoMapState,
+};
+pub use utxo_shelf::{
+    classify_utxos, ShelfAction, ShelfConfig, ShelfData, ShelfResponse, ShelfState, ShelfTier,
+    ShelfUtxo,
+};
 #[cfg(target_arch = "wasm32")]
 pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};
 pub use wallet_editor::{

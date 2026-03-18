@@ -501,6 +501,7 @@ mod tests {
             output_index: 0,
             lovelace,
             assets: vec![],
+            tags: vec![],
         }
     }
 
@@ -513,6 +514,7 @@ mod tests {
                 asset_id: AssetId::new(policy.to_string(), name.to_string()).unwrap(),
                 quantity: qty,
             }],
+            tags: vec![],
         }
     }
 

@@ -1,6 +1,7 @@
 //! Storybook demo for the TxEstimate widget.
 
 use egui_widgets::tx_estimate::{self, TxEstimateConfig, TxEstimateData};
+use egui_widgets::UtxoCost;
 
 use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
 
@@ -148,6 +149,20 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
         platform_fee_lovelace
     };
 
+    let mut utxo_costs = Vec::new();
+    if min_utxo > 0 {
+        utxo_costs.push(UtxoCost {
+            lovelace: min_utxo,
+            inbound: false,
+        });
+    }
+    if inbound_min_utxo > 0 {
+        utxo_costs.push(UtxoCost {
+            lovelace: inbound_min_utxo,
+            inbound: true,
+        });
+    }
+
     let net_ada = (state.ada_receiving * 1_000_000) as i64
         - (state.ada_sending * 1_000_000) as i64
         - min_utxo as i64
@@ -158,8 +173,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
     let data = TxEstimateData {
         platform_fee: platform_fee_lovelace,
         network_fee,
-        min_utxo,
-        inbound_min_utxo,
+        utxo_costs,
         net_ada,
         waived: state.bf_holder,
         waiver_reason: if state.bf_holder {

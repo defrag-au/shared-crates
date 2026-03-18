@@ -595,6 +595,7 @@ mod tests {
                 output_index: 0,
                 lovelace: 10_000_000,
                 assets: vec![],
+                tags: vec![],
             }],
             params: test_params(),
             from_address: test_address(),

@@ -479,6 +479,7 @@ mod tests {
                 .into_iter()
                 .map(|(asset_id, quantity)| AssetQuantity { asset_id, quantity })
                 .collect(),
+            tags: vec![],
         }
     }
 

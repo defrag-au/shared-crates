@@ -12,6 +12,7 @@ cardano-assets = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 log = { workspace = true }
 i_overlay = "4.4.1"
+voronoice = "0.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }
