@@ -312,9 +312,18 @@ pub fn compute_ideal_state(
 /// Build an optimization plan: diff the ideal state against the current wallet
 /// and chunk into TX-sized steps.
 ///
-/// Each step consumes some current UTxOs and produces ideal-state outputs.
-/// Steps are independent — each produces final-form outputs directly.
+/// Delegates to the MILP-based step planner in `step_planner`.
 pub fn build_optimization_steps(
+    utxos: &[UtxoApi],
+    config: &OptimizeConfig,
+    fee_params: &FeeParams,
+) -> OptimizationPlan {
+    crate::step_planner::build_steps_from_diff(utxos, config, fee_params)
+}
+
+/// Previous iterative step builder — kept for reference/comparison.
+#[allow(dead_code)]
+fn build_optimization_steps_iterative(
     utxos: &[UtxoApi],
     config: &OptimizeConfig,
     fee_params: &FeeParams,
@@ -880,10 +889,23 @@ const ADA_SPLIT_THRESHOLD: u64 = 100_000_000;
 // Helpers
 // ============================================================================
 
+/// Check if a UTxO is script-locked (has datum, script ref, or script address).
+pub(crate) fn is_script_locked_pub(utxo: &UtxoApi) -> bool {
+    is_script_locked(utxo)
+}
+
 fn is_script_locked(utxo: &UtxoApi) -> bool {
     utxo.has_tag(UtxoTag::HasDatum)
         || utxo.has_tag(UtxoTag::HasScriptRef)
         || utxo.has_tag(UtxoTag::ScriptAddress)
+}
+
+/// Return the set of UTxO refs that should be preserved as collateral.
+pub(crate) fn select_collateral_refs(
+    utxos: &[UtxoApi],
+    config: &crate::config::CollateralConfig,
+) -> HashSet<String> {
+    select_collateral_to_preserve(utxos, config)
 }
 
 fn select_collateral_to_preserve(

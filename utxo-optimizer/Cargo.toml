@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 cardano-assets = { workspace = true }
+good_lp = { version = "1.15", default-features = false, features = ["microlp"] }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
