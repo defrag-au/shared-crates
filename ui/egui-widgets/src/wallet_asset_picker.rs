@@ -30,6 +30,8 @@ pub struct PickerAsset {
     pub total_ranked: Option<u32>,
     /// Decoded trait strings for search (e.g. `["Background:Red", "Eyes:Laser"]`).
     pub traits: Vec<String>,
+    /// Available quantity in wallet (1 for NFTs, >1 for FTs).
+    pub quantity: u64,
 }
 
 /// A policy group for display in the picker.
@@ -41,6 +43,15 @@ pub struct PickerPolicyGroup {
     pub label: String,
     /// Assets under this policy.
     pub assets: Vec<PickerAsset>,
+    /// If true, this group represents fungible tokens (shown in "Tokens" section).
+    pub is_token_group: bool,
+}
+
+/// A selected asset with its chosen quantity.
+#[derive(Clone, Debug)]
+pub struct SelectedAsset {
+    pub asset_id: AssetId,
+    pub quantity: u64,
 }
 
 /// Configuration for the picker appearance.
@@ -73,47 +84,68 @@ pub struct WalletAssetPickerState {
     pub open: bool,
     /// Search filter text.
     pub search: String,
-    /// Currently selected assets.
-    pub selected: Vec<AssetId>,
+    /// Currently selected assets with quantities.
+    pub selected: Vec<SelectedAsset>,
+    /// Per-token quantity input strings (keyed by `policy_id:asset_name_hex`).
+    pub token_inputs: std::collections::HashMap<String, String>,
 }
 
 impl WalletAssetPickerState {
     /// Check whether a specific asset is selected.
     pub fn is_selected(&self, policy_id: &str, asset_name_hex: &str) -> bool {
-        self.selected
-            .iter()
-            .any(|id| id.policy_id == policy_id && id.asset_name_hex == asset_name_hex)
+        self.selected.iter().any(|s| {
+            s.asset_id.policy_id == policy_id && s.asset_id.asset_name_hex == asset_name_hex
+        })
     }
 
-    /// Toggle selection of an asset.
-    fn toggle(&mut self, policy_id: &str, asset_name_hex: &str) {
-        if let Some(idx) = self
-            .selected
-            .iter()
-            .position(|id| id.policy_id == policy_id && id.asset_name_hex == asset_name_hex)
-        {
+    /// Toggle selection of an NFT (quantity always 1).
+    fn toggle_nft(&mut self, policy_id: &str, asset_name_hex: &str) {
+        if let Some(idx) = self.selected.iter().position(|s| {
+            s.asset_id.policy_id == policy_id && s.asset_id.asset_name_hex == asset_name_hex
+        }) {
             self.selected.remove(idx);
         } else {
-            self.selected.push(AssetId::new_unchecked(
-                policy_id.to_string(),
-                asset_name_hex.to_string(),
-            ));
+            self.selected.push(SelectedAsset {
+                asset_id: AssetId::new_unchecked(policy_id.to_string(), asset_name_hex.to_string()),
+                quantity: 1,
+            });
         }
+    }
+
+    /// Add or update a token selection with a specific quantity.
+    fn set_token(&mut self, policy_id: &str, asset_name_hex: &str, quantity: u64) {
+        if let Some(existing) = self.selected.iter_mut().find(|s| {
+            s.asset_id.policy_id == policy_id && s.asset_id.asset_name_hex == asset_name_hex
+        }) {
+            existing.quantity = quantity;
+        } else {
+            self.selected.push(SelectedAsset {
+                asset_id: AssetId::new_unchecked(policy_id.to_string(), asset_name_hex.to_string()),
+                quantity,
+            });
+        }
+    }
+
+    /// Remove a token from the selection.
+    fn remove_token(&mut self, policy_id: &str, asset_name_hex: &str) {
+        self.selected.retain(|s| {
+            !(s.asset_id.policy_id == policy_id && s.asset_id.asset_name_hex == asset_name_hex)
+        });
     }
 
     /// Count how many assets are selected from a given policy.
     fn selected_count_for_policy(&self, policy_id: &str) -> usize {
         self.selected
             .iter()
-            .filter(|id| id.policy_id == policy_id)
+            .filter(|s| s.asset_id.policy_id == policy_id)
             .count()
     }
 }
 
 /// Actions emitted by the widget.
 pub enum WalletAssetPickerAction {
-    /// User confirmed their selection (one or more assets).
-    Confirmed(Vec<AssetId>),
+    /// User confirmed their selection (one or more assets with quantities).
+    Confirmed(Vec<SelectedAsset>),
     /// User closed the modal without confirming.
     Closed,
 }
@@ -170,6 +202,7 @@ pub fn show(
         state.open = false;
         state.selected.clear();
         state.search.clear();
+        state.token_inputs.clear();
         action = Some(WalletAssetPickerAction::Closed);
     }
 
@@ -190,7 +223,8 @@ pub fn show_inline(
     WalletAssetPickerResponse { action }
 }
 
-/// Shared picker content — search, accordion, selection summary, confirm button.
+/// Shared picker content — search, tokens section, collections accordion,
+/// selection summary, confirm button.
 /// Used by both the modal `show()` and the inline `show_inline()`.
 fn draw_picker_content(
     ui: &mut egui::Ui,
@@ -213,9 +247,14 @@ fn draw_picker_content(
 
     ui.add_space(8.0);
 
-    // ── Scrollable accordion area ──
+    // Partition groups into tokens vs collections
+    let token_groups: Vec<&PickerPolicyGroup> =
+        groups.iter().filter(|g| g.is_token_group).collect();
+    let collection_groups: Vec<&PickerPolicyGroup> =
+        groups.iter().filter(|g| !g.is_token_group).collect();
+
+    // ── Scrollable area ──
     let has_selection = !state.selected.is_empty();
-    // Reserve space for selection summary bar + confirm button below the scroll area
     let bottom_reserve = if has_selection { 100.0 } else { 50.0 };
     let scroll_height = (ui.available_height() - bottom_reserve).max(100.0);
     egui::ScrollArea::vertical()
@@ -224,66 +263,113 @@ fn draw_picker_content(
             let search_lower = state.search.to_lowercase();
             let is_searching = !search_lower.is_empty();
 
-            for group in groups {
-                // Filter assets by search (matches name, traits, or group label)
-                let group_label_matches =
-                    is_searching && group.label.to_lowercase().contains(&search_lower);
+            // ── Tokens section ──
+            if !token_groups.is_empty() {
+                let filtered_tokens: Vec<(&PickerPolicyGroup, &PickerAsset)> = token_groups
+                    .iter()
+                    .flat_map(|g| g.assets.iter().map(move |a| (*g, a)))
+                    .filter(|(g, a)| {
+                        !is_searching
+                            || a.display_name.to_lowercase().contains(&search_lower)
+                            || g.label.to_lowercase().contains(&search_lower)
+                    })
+                    .collect();
 
-                let filtered: Vec<&PickerAsset> = if is_searching && !group_label_matches {
-                    group
-                        .assets
-                        .iter()
-                        .filter(|a| {
+                if !filtered_tokens.is_empty() {
+                    ui.label(
+                        egui::RichText::new("Tokens")
+                            .color(theme::TEXT_SECONDARY)
+                            .size(10.0)
+                            .strong(),
+                    );
+                    ui.add_space(4.0);
+
+                    draw_token_list(ui, &filtered_tokens, state);
+
+                    ui.add_space(8.0);
+                }
+            }
+
+            // ── Collections section ──
+            if !collection_groups.is_empty() {
+                let has_any_collection = collection_groups.iter().any(|g| {
+                    !is_searching
+                        || g.label.to_lowercase().contains(&search_lower)
+                        || g.assets.iter().any(|a| {
                             a.display_name.to_lowercase().contains(&search_lower)
                                 || a.traits
                                     .iter()
                                     .any(|t| t.to_lowercase().contains(&search_lower))
                         })
-                        .collect()
-                } else {
-                    // Show all assets if not searching or if group label matches
-                    group.assets.iter().collect()
-                };
-
-                if filtered.is_empty() {
-                    continue;
-                }
-
-                // Build header text with selection badge
-                let sel_count = state.selected_count_for_policy(&group.policy_id);
-                let header_text = if sel_count > 0 {
-                    format!(
-                        "{} ({}) \u{2022} {sel_count} selected",
-                        group.label,
-                        filtered.len()
-                    )
-                } else {
-                    format!("{} ({})", group.label, filtered.len())
-                };
-
-                let header_color = if sel_count > 0 {
-                    theme::ACCENT_CYAN
-                } else {
-                    theme::TEXT_PRIMARY
-                };
-
-                let mut header = egui::CollapsingHeader::new(
-                    egui::RichText::new(header_text)
-                        .color(header_color)
-                        .size(11.0)
-                        .strong(),
-                )
-                .id_salt(&group.policy_id)
-                .icon(phosphor_caret_icon);
-
-                // Force open when search is active
-                if is_searching {
-                    header = header.open(Some(true));
-                }
-
-                header.show(ui, |ui| {
-                    draw_card_grid(ui, &filtered, &group.policy_id, config.card_size, state);
                 });
+
+                if has_any_collection && !token_groups.is_empty() {
+                    ui.label(
+                        egui::RichText::new("Collections")
+                            .color(theme::TEXT_SECONDARY)
+                            .size(10.0)
+                            .strong(),
+                    );
+                    ui.add_space(4.0);
+                }
+
+                for group in &collection_groups {
+                    let group_label_matches =
+                        is_searching && group.label.to_lowercase().contains(&search_lower);
+
+                    let filtered: Vec<&PickerAsset> = if is_searching && !group_label_matches {
+                        group
+                            .assets
+                            .iter()
+                            .filter(|a| {
+                                a.display_name.to_lowercase().contains(&search_lower)
+                                    || a.traits
+                                        .iter()
+                                        .any(|t| t.to_lowercase().contains(&search_lower))
+                            })
+                            .collect()
+                    } else {
+                        group.assets.iter().collect()
+                    };
+
+                    if filtered.is_empty() {
+                        continue;
+                    }
+
+                    let sel_count = state.selected_count_for_policy(&group.policy_id);
+                    let header_text = if sel_count > 0 {
+                        format!(
+                            "{} ({}) \u{2022} {sel_count} selected",
+                            group.label,
+                            filtered.len()
+                        )
+                    } else {
+                        format!("{} ({})", group.label, filtered.len())
+                    };
+
+                    let header_color = if sel_count > 0 {
+                        theme::ACCENT_CYAN
+                    } else {
+                        theme::TEXT_PRIMARY
+                    };
+
+                    let mut header = egui::CollapsingHeader::new(
+                        egui::RichText::new(header_text)
+                            .color(header_color)
+                            .size(11.0)
+                            .strong(),
+                    )
+                    .id_salt(&group.policy_id)
+                    .icon(phosphor_caret_icon);
+
+                    if is_searching {
+                        header = header.open(Some(true));
+                    }
+
+                    header.show(ui, |ui| {
+                        draw_card_grid(ui, &filtered, &group.policy_id, config.card_size, state);
+                    });
+                }
             }
         });
 
@@ -325,6 +411,7 @@ fn draw_picker_content(
                 state.open = false;
                 state.selected.clear();
                 state.search.clear();
+                state.token_inputs.clear();
             }
         });
     });
@@ -347,14 +434,16 @@ fn draw_selection_summary(
     let strip_items: Vec<asset_strip::AssetStripItem> = state
         .selected
         .iter()
-        .filter_map(|id| {
-            let group = groups.iter().find(|g| g.policy_id == id.policy_id)?;
+        .filter_map(|s| {
+            let group = groups
+                .iter()
+                .find(|g| g.policy_id == s.asset_id.policy_id)?;
             let asset = group
                 .assets
                 .iter()
-                .find(|a| a.asset_name_hex == id.asset_name_hex)?;
+                .find(|a| a.asset_name_hex == s.asset_id.asset_name_hex)?;
             Some(asset_strip::AssetStripItem {
-                asset_id: id.clone(),
+                asset_id: s.asset_id.clone(),
                 display_name: asset.display_name.clone(),
             })
         })
@@ -370,6 +459,125 @@ fn draw_selection_summary(
         if idx < state.selected.len() {
             state.selected.remove(idx);
         }
+    }
+}
+
+// ============================================================================
+// Token list (FT section)
+// ============================================================================
+
+/// Format a large quantity for display (e.g. 1_500_000 → "1.5M").
+pub fn format_quantity(qty: u64) -> String {
+    if qty >= 1_000_000_000 {
+        let v = qty as f64 / 1_000_000_000.0;
+        format!("{v:.1}B")
+    } else if qty >= 1_000_000 {
+        let v = qty as f64 / 1_000_000.0;
+        format!("{v:.1}M")
+    } else if qty >= 10_000 {
+        let v = qty as f64 / 1_000.0;
+        format!("{v:.1}K")
+    } else {
+        qty.to_string()
+    }
+}
+
+/// Draw a compact list of fungible tokens with quantity inputs.
+fn draw_token_list(
+    ui: &mut egui::Ui,
+    tokens: &[(&PickerPolicyGroup, &PickerAsset)],
+    state: &mut WalletAssetPickerState,
+) {
+    for &(group, asset) in tokens {
+        let policy_id = &group.policy_id;
+        let asset_hex = &asset.asset_name_hex;
+        let is_selected = state.is_selected(policy_id, asset_hex);
+        let input_key = format!("{policy_id}:{asset_hex}");
+
+        ui.horizontal(|ui| {
+            // Small IIIF thumbnail (24x24)
+            let thumb_size = Vec2::splat(24.0);
+            let (thumb_rect, _) = ui.allocate_exact_size(thumb_size, egui::Sense::hover());
+            let image_url = iiif_asset_url(policy_id, asset_hex, AssetImageSize::Thumbnail);
+            let browser_config = crate::CardBrowserConfig {
+                rounding: 3.0,
+                ..Default::default()
+            };
+            let loading =
+                card_browser::draw_thumbnail(ui, thumb_rect, Some(&image_url), &browser_config);
+            if loading {
+                crate::image_loader::CachedSpinner::request_repaint(ui);
+            }
+
+            // Token name
+            let name_color = if is_selected {
+                theme::ACCENT_CYAN
+            } else {
+                theme::TEXT_PRIMARY
+            };
+            ui.label(
+                egui::RichText::new(&asset.display_name)
+                    .color(name_color)
+                    .size(11.0)
+                    .strong(),
+            );
+
+            // Available balance (muted)
+            ui.label(
+                egui::RichText::new(format!("({})", format_quantity(asset.quantity)))
+                    .color(theme::TEXT_MUTED)
+                    .size(9.0),
+            );
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if is_selected {
+                    // Remove button
+                    let remove_btn =
+                        egui::Button::new(PhosphorIcon::X.rich_text(12.0, theme::ACCENT_RED))
+                            .frame(false);
+                    if ui.add(remove_btn).clicked() {
+                        state.remove_token(policy_id, asset_hex);
+                        state.token_inputs.remove(&input_key);
+                    }
+                } else {
+                    // Add button
+                    let add_btn = egui::Button::new(
+                        egui::RichText::new("Add")
+                            .color(theme::BG_PRIMARY)
+                            .size(10.0)
+                            .strong(),
+                    )
+                    .fill(theme::ACCENT_CYAN)
+                    .corner_radius(CornerRadius::same(3))
+                    .min_size(Vec2::new(36.0, 18.0));
+                    if ui.add(add_btn).clicked() {
+                        // Parse quantity from input or default to full balance
+                        let qty = state
+                            .token_inputs
+                            .get(&input_key)
+                            .and_then(|s| s.trim().parse::<u64>().ok())
+                            .unwrap_or(asset.quantity);
+                        let qty = qty.min(asset.quantity).max(1);
+                        state.set_token(policy_id, asset_hex, qty);
+                    }
+                }
+
+                // Quantity input field
+                let input = state
+                    .token_inputs
+                    .entry(input_key)
+                    .or_insert_with(|| asset.quantity.to_string());
+                let input_width = 60.0;
+                ui.add(
+                    egui::TextEdit::singleline(input)
+                        .desired_width(input_width)
+                        .horizontal_align(egui::Align::RIGHT)
+                        .font(egui::FontId::monospace(10.0)),
+                );
+            });
+        });
+
+        ui.add_space(2.0);
     }
 }
 
@@ -541,8 +749,8 @@ fn draw_picker_card(
         }
     });
 
-    // Click to toggle selection
+    // Click to toggle selection (NFT — always quantity 1)
     if response.clicked() {
-        state.toggle(policy_id, &asset.asset_name_hex);
+        state.toggle_nft(policy_id, &asset.asset_name_hex);
     }
 }

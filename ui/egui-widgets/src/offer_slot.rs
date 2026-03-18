@@ -30,6 +30,8 @@ pub struct OfferSlotData {
     pub total_ranked: Option<u32>,
     /// Accent color for the card border.
     pub accent: Color32,
+    /// Quantity (1 for NFTs, >1 for FTs). Badge shown when > 1.
+    pub quantity: u64,
 }
 
 impl OfferSlotData {
@@ -140,6 +142,31 @@ pub fn show(
         egui::FontId::monospace(config.font_size),
         theme::TEXT_PRIMARY,
     );
+
+    // Quantity badge (top-left, only for FTs with quantity > 1)
+    if data.quantity > 1 {
+        let qty_text = super::wallet_asset_picker::format_quantity(data.quantity);
+        let font = egui::FontId::monospace(8.0);
+        let galley = painter.layout_no_wrap(qty_text.clone(), font.clone(), theme::TEXT_PRIMARY);
+        let badge_w = galley.size().x + 6.0;
+        let badge_h = 14.0;
+        let badge_rect = egui::Rect::from_min_size(
+            egui::pos2(card_rect.min.x + 2.0, card_rect.min.y + 2.0),
+            Vec2::new(badge_w, badge_h),
+        );
+        painter.rect_filled(
+            badge_rect,
+            CornerRadius::same(3),
+            Color32::from_rgba_premultiplied(15, 15, 25, 210),
+        );
+        painter.text(
+            badge_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            &qty_text,
+            font,
+            theme::ACCENT_YELLOW,
+        );
+    }
 
     // Rarity border — always visible, color based on rank percentile
     let border_color = if let Some(rank) = data.rarity_rank {
