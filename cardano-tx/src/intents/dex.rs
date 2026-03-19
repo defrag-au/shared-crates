@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum DexPlatform {
     Splash,
+    Cswap,
 }
 
 /// DEX order type: market (auto-resolve price with slippage) or limit (explicit price)
