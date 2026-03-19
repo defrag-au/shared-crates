@@ -30,6 +30,8 @@ pub struct PickerAsset {
     pub total_ranked: Option<u32>,
     /// Decoded trait strings for search (e.g. `["Background:Red", "Eyes:Laser"]`).
     pub traits: Vec<String>,
+    /// Available quantity in wallet (1 for NFTs, >1 for FTs).
+    pub quantity: u64,
 }
 
 /// A policy group for display in the picker.
@@ -41,6 +43,17 @@ pub struct PickerPolicyGroup {
     pub label: String,
     /// Assets under this policy.
     pub assets: Vec<PickerAsset>,
+    /// If true, this group represents fungible tokens (shown in "Tokens" section).
+    pub is_token_group: bool,
+    /// Whether this policy has been verified by at least one source.
+    pub is_verified: bool,
+}
+
+/// A selected asset with its chosen quantity.
+#[derive(Clone, Debug)]
+pub struct SelectedAsset {
+    pub asset_id: AssetId,
+    pub quantity: u64,
 }
 
 /// Configuration for the picker appearance.
@@ -73,48 +86,36 @@ pub struct WalletAssetPickerState {
     pub open: bool,
     /// Search filter text.
     pub search: String,
-    /// Currently selected assets.
-    pub selected: Vec<AssetId>,
+    /// Asset IDs already in the offer — shown as disabled/dimmed in the picker.
+    pub already_offered: std::collections::HashSet<AssetId>,
+    /// Whether to show unverified/unknown collections.
+    pub show_unverified: bool,
 }
 
 impl WalletAssetPickerState {
-    /// Check whether a specific asset is selected.
-    pub fn is_selected(&self, policy_id: &str, asset_name_hex: &str) -> bool {
-        self.selected
+    /// Check whether a specific asset is already in the offer.
+    pub fn is_already_offered(&self, policy_id: &str, asset_name_hex: &str) -> bool {
+        self.already_offered
             .iter()
-            .any(|id| id.policy_id == policy_id && id.asset_name_hex == asset_name_hex)
+            .any(|a| a.policy_id == policy_id && a.asset_name_hex == asset_name_hex)
     }
 
-    /// Toggle selection of an asset.
-    fn toggle(&mut self, policy_id: &str, asset_name_hex: &str) {
-        if let Some(idx) = self
-            .selected
+    /// Count how many assets from a given policy are already offered.
+    fn offered_count_for_policy(&self, policy_id: &str) -> usize {
+        self.already_offered
             .iter()
-            .position(|id| id.policy_id == policy_id && id.asset_name_hex == asset_name_hex)
-        {
-            self.selected.remove(idx);
-        } else {
-            self.selected.push(AssetId::new_unchecked(
-                policy_id.to_string(),
-                asset_name_hex.to_string(),
-            ));
-        }
-    }
-
-    /// Count how many assets are selected from a given policy.
-    fn selected_count_for_policy(&self, policy_id: &str) -> usize {
-        self.selected
-            .iter()
-            .filter(|id| id.policy_id == policy_id)
+            .filter(|a| a.policy_id == policy_id)
             .count()
     }
 }
 
 /// Actions emitted by the widget.
 pub enum WalletAssetPickerAction {
-    /// User confirmed their selection (one or more assets).
-    Confirmed(Vec<AssetId>),
-    /// User closed the modal without confirming.
+    /// User clicked an asset — add it to the offer immediately.
+    Selected(SelectedAsset),
+    /// User clicked an already-offered asset — remove it from the offer.
+    Removed(AssetId),
+    /// User closed the picker.
     Closed,
 }
 
@@ -168,7 +169,6 @@ pub fn show(
 
     if !still_open {
         state.open = false;
-        state.selected.clear();
         state.search.clear();
         action = Some(WalletAssetPickerAction::Closed);
     }
@@ -190,7 +190,8 @@ pub fn show_inline(
     WalletAssetPickerResponse { action }
 }
 
-/// Shared picker content — search, accordion, selection summary, confirm button.
+/// Shared picker content — search, tokens section, collections accordion,
+/// selection summary, confirm button.
 /// Used by both the modal `show()` and the inline `show_inline()`.
 fn draw_picker_content(
     ui: &mut egui::Ui,
@@ -213,163 +214,166 @@ fn draw_picker_content(
 
     ui.add_space(8.0);
 
-    // ── Scrollable accordion area ──
-    let has_selection = !state.selected.is_empty();
-    // Reserve space for selection summary bar + confirm button below the scroll area
-    let bottom_reserve = if has_selection { 100.0 } else { 50.0 };
-    let scroll_height = (ui.available_height() - bottom_reserve).max(100.0);
+    // Filter out token groups — only show NFT collections
+    let verified_groups: Vec<&PickerPolicyGroup> = groups
+        .iter()
+        .filter(|g| !g.is_token_group && g.is_verified)
+        .collect();
+    let unverified_groups: Vec<&PickerPolicyGroup> = groups
+        .iter()
+        .filter(|g| !g.is_token_group && !g.is_verified)
+        .collect();
+
+    // ── Scrollable area ──
+    let scroll_height = (ui.available_height() - 8.0).max(100.0);
     egui::ScrollArea::vertical()
         .max_height(scroll_height)
         .show(ui, |ui| {
             let search_lower = state.search.to_lowercase();
             let is_searching = !search_lower.is_empty();
 
-            for group in groups {
-                // Filter assets by search (matches name, traits, or group label)
-                let group_label_matches =
-                    is_searching && group.label.to_lowercase().contains(&search_lower);
+            // ── Verified collections ──
+            draw_collection_section(
+                ui,
+                &verified_groups,
+                &search_lower,
+                is_searching,
+                config,
+                state,
+                &mut action,
+            );
 
-                let filtered: Vec<&PickerAsset> = if is_searching && !group_label_matches {
-                    group
-                        .assets
-                        .iter()
-                        .filter(|a| {
-                            a.display_name.to_lowercase().contains(&search_lower)
-                                || a.traits
-                                    .iter()
-                                    .any(|t| t.to_lowercase().contains(&search_lower))
-                        })
-                        .collect()
-                } else {
-                    // Show all assets if not searching or if group label matches
-                    group.assets.iter().collect()
-                };
+            // ── Unverified collections (behind checkbox) ──
+            if !unverified_groups.is_empty() {
+                ui.add_space(8.0);
+                ui.checkbox(
+                    &mut state.show_unverified,
+                    egui::RichText::new("Show unverified collections")
+                        .color(theme::TEXT_MUTED)
+                        .size(10.0),
+                );
 
-                if filtered.is_empty() {
-                    continue;
+                if state.show_unverified {
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("Unverified Collections")
+                            .color(theme::TEXT_MUTED)
+                            .size(10.0)
+                            .strong(),
+                    );
+                    ui.add_space(4.0);
+                    draw_collection_section(
+                        ui,
+                        &unverified_groups,
+                        &search_lower,
+                        is_searching,
+                        config,
+                        state,
+                        &mut action,
+                    );
                 }
-
-                // Build header text with selection badge
-                let sel_count = state.selected_count_for_policy(&group.policy_id);
-                let header_text = if sel_count > 0 {
-                    format!(
-                        "{} ({}) \u{2022} {sel_count} selected",
-                        group.label,
-                        filtered.len()
-                    )
-                } else {
-                    format!("{} ({})", group.label, filtered.len())
-                };
-
-                let header_color = if sel_count > 0 {
-                    theme::ACCENT_CYAN
-                } else {
-                    theme::TEXT_PRIMARY
-                };
-
-                let mut header = egui::CollapsingHeader::new(
-                    egui::RichText::new(header_text)
-                        .color(header_color)
-                        .size(11.0)
-                        .strong(),
-                )
-                .id_salt(&group.policy_id)
-                .icon(phosphor_caret_icon);
-
-                // Force open when search is active
-                if is_searching {
-                    header = header.open(Some(true));
-                }
-
-                header.show(ui, |ui| {
-                    draw_card_grid(ui, &filtered, &group.policy_id, config.card_size, state);
-                });
             }
         });
-
-    ui.add_space(8.0);
-
-    // ── Selection summary bar ──
-    if has_selection {
-        draw_selection_summary(ui, state, groups);
-        ui.add_space(8.0);
-    }
-
-    // ── Confirm button ──
-    let count = state.selected.len();
-    ui.horizontal(|ui| {
-        ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-            let label = if count > 0 {
-                format!("Confirm ({count})")
-            } else {
-                "Confirm".into()
-            };
-            let btn_text = if has_selection {
-                egui::RichText::new(label).color(theme::BG_PRIMARY).strong()
-            } else {
-                egui::RichText::new(label).color(theme::TEXT_MUTED).strong()
-            };
-            let btn = egui::Button::new(btn_text)
-                .fill(if has_selection {
-                    theme::ACCENT_GREEN
-                } else {
-                    theme::BG_SECONDARY
-                })
-                .corner_radius(CornerRadius::same(4))
-                .min_size(Vec2::new(120.0, 28.0));
-
-            let resp = ui.add_enabled(has_selection, btn);
-            if resp.clicked() && !state.selected.is_empty() {
-                let confirmed = state.selected.clone();
-                action = Some(WalletAssetPickerAction::Confirmed(confirmed));
-                state.open = false;
-                state.selected.clear();
-                state.search.clear();
-            }
-        });
-    });
 
     action
 }
 
 // ============================================================================
-// Selection summary bar
+// Collection section (shared by verified + unverified)
 // ============================================================================
 
-/// Visual strip of selected asset thumbnails — click to deselect.
-fn draw_selection_summary(
+/// Draw a list of collection groups as collapsible accordions with card grids.
+fn draw_collection_section(
     ui: &mut egui::Ui,
-    state: &mut WalletAssetPickerState,
-    groups: &[PickerPolicyGroup],
+    groups: &[&PickerPolicyGroup],
+    search_lower: &str,
+    is_searching: bool,
+    config: &WalletAssetPickerConfig,
+    state: &WalletAssetPickerState,
+    action: &mut Option<WalletAssetPickerAction>,
 ) {
-    use crate::asset_strip;
+    for group in groups {
+        let group_label_matches = is_searching && group.label.to_lowercase().contains(search_lower);
 
-    let strip_items: Vec<asset_strip::AssetStripItem> = state
-        .selected
-        .iter()
-        .filter_map(|id| {
-            let group = groups.iter().find(|g| g.policy_id == id.policy_id)?;
-            let asset = group
+        let filtered: Vec<&PickerAsset> = if is_searching && !group_label_matches {
+            group
                 .assets
                 .iter()
-                .find(|a| a.asset_name_hex == id.asset_name_hex)?;
-            Some(asset_strip::AssetStripItem {
-                asset_id: id.clone(),
-                display_name: asset.display_name.clone(),
-            })
-        })
-        .collect();
+                .filter(|a| {
+                    a.display_name.to_lowercase().contains(search_lower)
+                        || a.traits
+                            .iter()
+                            .any(|t| t.to_lowercase().contains(search_lower))
+                })
+                .collect()
+        } else {
+            group.assets.iter().collect()
+        };
 
-    let config = asset_strip::AssetStripConfig {
-        thumb_size: 56.0,
-        min_visible: 18.0,
-    };
-    let resp = asset_strip::show(ui, &strip_items, &config);
-
-    if let Some(idx) = resp.clicked {
-        if idx < state.selected.len() {
-            state.selected.remove(idx);
+        if filtered.is_empty() {
+            continue;
         }
+
+        let offered_count = state.offered_count_for_policy(&group.policy_id);
+        let header_text = if offered_count > 0 {
+            format!(
+                "{} ({}) \u{2022} {offered_count} in offer",
+                group.label,
+                filtered.len()
+            )
+        } else {
+            format!("{} ({})", group.label, filtered.len())
+        };
+
+        let header_color = if offered_count > 0 {
+            theme::ACCENT_CYAN
+        } else {
+            theme::TEXT_PRIMARY
+        };
+
+        let mut header = egui::CollapsingHeader::new(
+            egui::RichText::new(header_text)
+                .color(header_color)
+                .size(11.0)
+                .strong(),
+        )
+        .id_salt(&group.policy_id)
+        .icon(phosphor_caret_icon);
+
+        if is_searching {
+            header = header.open(Some(true));
+        }
+
+        header.show(ui, |ui| {
+            draw_card_grid(
+                ui,
+                &filtered,
+                &group.policy_id,
+                config.card_size,
+                state,
+                action,
+            );
+        });
+    }
+}
+
+// ============================================================================
+// Token list (FT section)
+// ============================================================================
+
+/// Format a large quantity for display (e.g. 1_500_000 → "1.5M").
+pub fn format_quantity(qty: u64) -> String {
+    if qty >= 1_000_000_000 {
+        let v = qty as f64 / 1_000_000_000.0;
+        format!("{v:.1}B")
+    } else if qty >= 1_000_000 {
+        let v = qty as f64 / 1_000_000.0;
+        format!("{v:.1}M")
+    } else if qty >= 10_000 {
+        let v = qty as f64 / 1_000.0;
+        format!("{v:.1}K")
+    } else {
+        qty.to_string()
     }
 }
 
@@ -409,7 +413,8 @@ fn draw_card_grid(
     assets: &[&PickerAsset],
     policy_id: &str,
     card_size: f32,
-    state: &mut WalletAssetPickerState,
+    state: &WalletAssetPickerState,
+    action: &mut Option<WalletAssetPickerAction>,
 ) {
     let available_width = ui.available_width();
     let spacing = 6.0;
@@ -421,7 +426,7 @@ fn draw_card_grid(
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = spacing;
             for asset in row_assets {
-                draw_picker_card(ui, asset, policy_id, card_size, state);
+                draw_picker_card(ui, asset, policy_id, card_size, state, action);
             }
         });
         ui.add_space(spacing);
@@ -433,12 +438,13 @@ fn draw_picker_card(
     asset: &PickerAsset,
     policy_id: &str,
     card_size: f32,
-    state: &mut WalletAssetPickerState,
+    state: &WalletAssetPickerState,
+    action: &mut Option<WalletAssetPickerAction>,
 ) {
     let size = Vec2::splat(card_size);
+    let already_offered = state.is_already_offered(policy_id, &asset.asset_name_hex);
     let (card_rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
 
-    let is_selected = state.is_selected(policy_id, &asset.asset_name_hex);
     let hovered = response.hovered();
     let painter = ui.painter_at(card_rect);
     let rounding = CornerRadius::same(4);
@@ -456,6 +462,15 @@ fn draw_picker_card(
     let loading = card_browser::draw_thumbnail(ui, card_rect, Some(&image_url), &browser_config);
     if loading {
         crate::image_loader::CachedSpinner::request_repaint(ui);
+    }
+
+    // Dim overlay for already-offered assets
+    if already_offered {
+        painter.rect_filled(
+            card_rect,
+            rounding,
+            Color32::from_rgba_premultiplied(10, 10, 20, 160),
+        );
     }
 
     // Name overlay banner
@@ -483,13 +498,17 @@ fn draw_picker_card(
         egui::Align2::LEFT_CENTER,
         &asset.display_name,
         egui::FontId::monospace(8.0),
-        theme::TEXT_PRIMARY,
+        if already_offered {
+            theme::TEXT_MUTED
+        } else {
+            theme::TEXT_PRIMARY
+        },
     );
 
-    // Selected checkmark badge (top-left)
-    if is_selected {
+    // "In offer" checkmark badge (top-left) for already-offered assets
+    if already_offered {
         let badge_center = egui::pos2(card_rect.min.x + 10.0, card_rect.min.y + 10.0);
-        painter.circle_filled(badge_center, 8.0, theme::ACCENT_CYAN);
+        painter.circle_filled(badge_center, 8.0, theme::TEXT_MUTED);
         PhosphorIcon::Check.paint(
             &painter,
             badge_center,
@@ -499,9 +518,9 @@ fn draw_picker_card(
         );
     }
 
-    // Border — selection highlight, rarity, or default
-    let (border_color, border_width) = if is_selected {
-        (theme::ACCENT_CYAN, 2.0)
+    // Border — already offered (muted), rarity, or default
+    let (border_color, border_width) = if already_offered {
+        (theme::TEXT_MUTED, 1.0)
     } else if let Some(rank) = asset.rarity_rank {
         let total = asset.total_ranked.unwrap_or(10000);
         let color = theme::rarity_rank_color(rank, total);
@@ -524,6 +543,8 @@ fn draw_picker_card(
 
     // Tooltip
     response.clone().on_hover_ui(|ui| {
+        ui.set_min_width(180.0);
+
         ui.label(
             egui::RichText::new(&asset.display_name)
                 .color(theme::TEXT_PRIMARY)
@@ -533,16 +554,60 @@ fn draw_picker_card(
         if let Some(rank) = asset.rarity_rank {
             let total = asset.total_ranked.unwrap_or(0);
             let rank_color = theme::rarity_rank_color(rank, total);
+            let rank_text = if total > 0 {
+                format!("Rank #{rank} / {total}")
+            } else {
+                format!("Rank #{rank}")
+            };
+            ui.label(egui::RichText::new(rank_text).color(rank_color).size(10.0));
+        }
+        if !asset.traits.is_empty() {
+            ui.add_space(4.0);
+            egui::Grid::new("trait_tooltip")
+                .num_columns(2)
+                .spacing([8.0, 2.0])
+                .show(ui, |ui| {
+                    for trait_str in &asset.traits {
+                        if let Some((key, value)) = trait_str.split_once(':') {
+                            ui.label(egui::RichText::new(key).color(theme::TEXT_MUTED).size(10.0));
+                            ui.label(
+                                egui::RichText::new(value)
+                                    .color(theme::TEXT_SECONDARY)
+                                    .size(10.0),
+                            );
+                        } else {
+                            ui.label(
+                                egui::RichText::new(trait_str)
+                                    .color(theme::TEXT_SECONDARY)
+                                    .size(10.0),
+                            );
+                            ui.label("");
+                        }
+                        ui.end_row();
+                    }
+                });
+        }
+        if already_offered {
+            ui.add_space(2.0);
             ui.label(
-                egui::RichText::new(format!("Rank #{rank} / {total}"))
-                    .color(rank_color)
-                    .size(10.0),
+                egui::RichText::new("Already in offer")
+                    .color(theme::TEXT_MUTED)
+                    .size(9.0),
             );
         }
     });
 
-    // Click to toggle selection
+    // Click to toggle: add if not offered, remove if already offered.
     if response.clicked() {
-        state.toggle(policy_id, &asset.asset_name_hex);
+        let asset_id =
+            AssetId::new_unchecked(policy_id.to_string(), asset.asset_name_hex.to_string());
+        if already_offered {
+            *action = Some(WalletAssetPickerAction::Removed(asset_id));
+        } else {
+            *action = Some(WalletAssetPickerAction::Selected(SelectedAsset {
+                asset_id,
+                quantity: 1,
+            }));
+        }
     }
 }

@@ -92,6 +92,8 @@ pub enum TradeTableAction {
     RemoveYourAsset(usize),
     /// User changed their ADA sweetener amount (new value in lovelace).
     SetYourLovelace(u64),
+    /// User changed a fungible token quantity at the given offer index.
+    SetYourAssetQuantity { index: usize, quantity: u64 },
     /// User locked their offer.
     Lock,
     /// User unlocked their offer (resets both locks).
@@ -112,6 +114,8 @@ pub struct TradeTableResponse {
 pub struct TradeTableState {
     /// Text buffer for the ADA input field.
     pub ada_input: String,
+    /// Per-slot text buffers for FT quantity editing (keyed by offer index).
+    pub asset_qty_inputs: std::collections::HashMap<usize, String>,
 }
 
 // ============================================================================
@@ -166,6 +170,7 @@ pub fn show(
                 is_local: false,
                 show_add: false,
                 ada_input: None,
+                asset_qty_inputs: None,
             },
             &mut action,
         );
@@ -194,6 +199,11 @@ pub fn show(
                 None
             } else {
                 Some(&mut state.ada_input)
+            },
+            asset_qty_inputs: if you_locked {
+                None
+            } else {
+                Some(&mut state.asset_qty_inputs)
             },
         },
         &mut action,
@@ -334,6 +344,7 @@ struct CardRowOptions<'a> {
     is_local: bool,
     show_add: bool,
     ada_input: Option<&'a mut String>,
+    asset_qty_inputs: Option<&'a mut std::collections::HashMap<usize, String>>,
 }
 
 /// Draw a flow row of: [asset cards...] [ADA card] [+ add card].
@@ -349,6 +360,7 @@ fn draw_card_row(
         is_local,
         show_add,
         ada_input,
+        mut asset_qty_inputs,
     } = opts;
 
     // Total cards: assets + ada card + maybe add card
@@ -365,9 +377,26 @@ fn draw_card_row(
         ui.horizontal(|ui| {
             for i in card_idx..row_end {
                 if i < assets.len() {
-                    let resp = offer_slot::show(ui, &assets[i], slot_config);
-                    if let Some(offer_slot::OfferSlotAction::Remove) = resp.action {
-                        *action = Some(TradeTableAction::RemoveYourAsset(i));
+                    // For local fungible slots, provide a qty input buffer
+                    let qty_input = if assets[i].is_fungible {
+                        asset_qty_inputs
+                            .as_deref_mut()
+                            .map(|m| m.entry(i).or_default() as &mut String)
+                    } else {
+                        None
+                    };
+                    let resp = offer_slot::show(ui, &assets[i], slot_config, qty_input);
+                    match resp.action {
+                        Some(offer_slot::OfferSlotAction::Remove) => {
+                            *action = Some(TradeTableAction::RemoveYourAsset(i));
+                        }
+                        Some(offer_slot::OfferSlotAction::SetQuantity(q)) => {
+                            *action = Some(TradeTableAction::SetYourAssetQuantity {
+                                index: i,
+                                quantity: q,
+                            });
+                        }
+                        _ => {}
                     }
                 } else if i == assets.len() {
                     let input = if is_local {

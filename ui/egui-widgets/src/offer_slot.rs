@@ -30,6 +30,12 @@ pub struct OfferSlotData {
     pub total_ranked: Option<u32>,
     /// Accent color for the card border.
     pub accent: Color32,
+    /// Quantity (1 for NFTs, >1 for FTs). Badge shown when > 1.
+    pub quantity: u64,
+    /// Whether this is a fungible token (enables quantity editing).
+    pub is_fungible: bool,
+    /// Wallet balance for this asset (max quantity, shown as hint).
+    pub wallet_balance: Option<u64>,
 }
 
 impl OfferSlotData {
@@ -66,6 +72,8 @@ pub enum OfferSlotAction {
     Remove,
     /// User clicked the "add asset" placeholder card.
     Add,
+    /// User changed the quantity of a fungible token.
+    SetQuantity(u64),
 }
 
 /// Response from rendering an offer slot.
@@ -86,6 +94,7 @@ pub fn show(
     ui: &mut egui::Ui,
     data: &OfferSlotData,
     config: &OfferSlotConfig,
+    qty_input: Option<&mut String>,
 ) -> OfferSlotResponse {
     crate::install_phosphor_font(ui.ctx());
 
@@ -113,33 +122,149 @@ pub fn show(
         crate::image_loader::CachedSpinner::request_repaint(ui);
     }
 
-    // Name overlay banner at the bottom
-    let banner_h = 18.0;
-    let banner_rect = egui::Rect::from_min_size(
-        egui::pos2(card_rect.min.x, card_rect.max.y - banner_h),
-        Vec2::new(config.size, banner_h),
-    );
-    painter.rect_filled(
-        banner_rect,
-        CornerRadius {
-            nw: 0,
-            ne: 0,
-            sw: 4,
-            se: 4,
-        },
-        Color32::from_rgba_premultiplied(15, 15, 25, 200),
-    );
-    let name_rect = egui::Rect::from_min_size(
-        egui::pos2(banner_rect.min.x + 4.0, banner_rect.min.y),
-        Vec2::new(config.size - 8.0, banner_h),
-    );
-    painter.with_clip_rect(name_rect).text(
-        name_rect.left_center(),
-        egui::Align2::LEFT_CENTER,
-        &data.name,
-        egui::FontId::monospace(config.font_size),
-        theme::TEXT_PRIMARY,
-    );
+    // For editable FTs, the bottom area is used for the quantity input
+    // instead of just the name banner.
+    let has_qty_input = data.is_fungible && qty_input.is_some();
+
+    if has_qty_input {
+        // Taller bottom overlay: name + quantity input + balance hint
+        let overlay_h = 40.0;
+        let overlay_rect = egui::Rect::from_min_size(
+            egui::pos2(card_rect.min.x, card_rect.max.y - overlay_h),
+            Vec2::new(config.size, overlay_h),
+        );
+        painter.rect_filled(
+            overlay_rect,
+            CornerRadius {
+                nw: 0,
+                ne: 0,
+                sw: 4,
+                se: 4,
+            },
+            Color32::from_rgba_premultiplied(15, 15, 25, 220),
+        );
+
+        // Name at top of overlay
+        let name_rect = egui::Rect::from_min_size(
+            egui::pos2(overlay_rect.min.x + 4.0, overlay_rect.min.y),
+            Vec2::new(config.size - 8.0, 14.0),
+        );
+        painter.with_clip_rect(name_rect).text(
+            name_rect.left_center(),
+            egui::Align2::LEFT_CENTER,
+            &data.name,
+            egui::FontId::monospace(8.0),
+            theme::TEXT_PRIMARY,
+        );
+
+        // Quantity text input
+        if let Some(input) = qty_input {
+            let input_rect = egui::Rect::from_min_size(
+                egui::pos2(overlay_rect.min.x + 4.0, overlay_rect.min.y + 14.0),
+                Vec2::new(config.size - 8.0, 16.0),
+            );
+
+            let hint = data
+                .wallet_balance
+                .map(super::wallet_asset_picker::format_quantity)
+                .unwrap_or_else(|| "0".into());
+
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(input_rect));
+            let resp = child.add(
+                egui::TextEdit::singleline(input)
+                    .desired_width(input_rect.width())
+                    .hint_text(hint)
+                    .horizontal_align(egui::Align::Center)
+                    .font(egui::FontId::monospace(10.0)),
+            );
+
+            if resp.changed() {
+                let trimmed = input.trim();
+                if trimmed.is_empty() || trimmed == "0" {
+                    action = Some(OfferSlotAction::SetQuantity(0));
+                } else if let Ok(qty) = trimmed.parse::<u64>() {
+                    let max = data.wallet_balance.unwrap_or(u64::MAX);
+                    action = Some(OfferSlotAction::SetQuantity(qty.min(max)));
+                }
+            }
+        }
+    } else {
+        // Standard name overlay banner at the bottom
+        let banner_h = 18.0;
+        let banner_rect = egui::Rect::from_min_size(
+            egui::pos2(card_rect.min.x, card_rect.max.y - banner_h),
+            Vec2::new(config.size, banner_h),
+        );
+        painter.rect_filled(
+            banner_rect,
+            CornerRadius {
+                nw: 0,
+                ne: 0,
+                sw: 4,
+                se: 4,
+            },
+            Color32::from_rgba_premultiplied(15, 15, 25, 200),
+        );
+        let name_rect = egui::Rect::from_min_size(
+            egui::pos2(banner_rect.min.x + 4.0, banner_rect.min.y),
+            Vec2::new(config.size - 8.0, banner_h),
+        );
+        painter.with_clip_rect(name_rect).text(
+            name_rect.left_center(),
+            egui::Align2::LEFT_CENTER,
+            &data.name,
+            egui::FontId::monospace(config.font_size),
+            theme::TEXT_PRIMARY,
+        );
+    }
+
+    // Quantity badge (top-left, for FTs — read-only when not editable)
+    if data.is_fungible && !has_qty_input && data.quantity > 0 {
+        let qty_text = super::wallet_asset_picker::format_quantity(data.quantity);
+        let font = egui::FontId::monospace(8.0);
+        let galley = painter.layout_no_wrap(qty_text.clone(), font.clone(), theme::TEXT_PRIMARY);
+        let badge_w = galley.size().x + 6.0;
+        let badge_h = 14.0;
+        let badge_rect = egui::Rect::from_min_size(
+            egui::pos2(card_rect.min.x + 2.0, card_rect.min.y + 2.0),
+            Vec2::new(badge_w, badge_h),
+        );
+        painter.rect_filled(
+            badge_rect,
+            CornerRadius::same(3),
+            Color32::from_rgba_premultiplied(15, 15, 25, 210),
+        );
+        painter.text(
+            badge_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            &qty_text,
+            font,
+            theme::ACCENT_YELLOW,
+        );
+    } else if !data.is_fungible && data.quantity > 1 {
+        // Non-fungible with quantity > 1 (shouldn't happen, but safe fallback)
+        let qty_text = super::wallet_asset_picker::format_quantity(data.quantity);
+        let font = egui::FontId::monospace(8.0);
+        let galley = painter.layout_no_wrap(qty_text.clone(), font.clone(), theme::TEXT_PRIMARY);
+        let badge_w = galley.size().x + 6.0;
+        let badge_h = 14.0;
+        let badge_rect = egui::Rect::from_min_size(
+            egui::pos2(card_rect.min.x + 2.0, card_rect.min.y + 2.0),
+            Vec2::new(badge_w, badge_h),
+        );
+        painter.rect_filled(
+            badge_rect,
+            CornerRadius::same(3),
+            Color32::from_rgba_premultiplied(15, 15, 25, 210),
+        );
+        painter.text(
+            badge_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            &qty_text,
+            font,
+            theme::ACCENT_YELLOW,
+        );
+    }
 
     // Rarity border — always visible, color based on rank percentile
     let border_color = if let Some(rank) = data.rarity_rank {
@@ -172,6 +297,18 @@ pub fn show(
                     .color(rank_color)
                     .size(10.0),
             );
+        }
+        if data.is_fungible {
+            if let Some(bal) = data.wallet_balance {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "Balance: {}",
+                        super::wallet_asset_picker::format_quantity(bal)
+                    ))
+                    .color(theme::TEXT_MUTED)
+                    .size(10.0),
+                );
+            }
         }
     });
 

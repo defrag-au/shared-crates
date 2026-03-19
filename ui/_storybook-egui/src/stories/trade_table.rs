@@ -41,6 +41,7 @@ fn make_slot(hex: &str, rank: u32, accent: Color32) -> OfferSlotData {
         rarity_rank: Some(rank),
         total_ranked: Some(2000),
         accent,
+        quantity: 1,
     }
 }
 
