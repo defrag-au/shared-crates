@@ -84,69 +84,32 @@ pub struct WalletAssetPickerState {
     pub open: bool,
     /// Search filter text.
     pub search: String,
-    /// Currently selected assets with quantities.
-    pub selected: Vec<SelectedAsset>,
-    /// Per-token quantity input strings (keyed by `policy_id:asset_name_hex`).
-    pub token_inputs: std::collections::HashMap<String, String>,
+    /// Asset IDs already in the offer — shown as disabled/dimmed in the picker.
+    pub already_offered: std::collections::HashSet<AssetId>,
 }
 
 impl WalletAssetPickerState {
-    /// Check whether a specific asset is selected.
-    pub fn is_selected(&self, policy_id: &str, asset_name_hex: &str) -> bool {
-        self.selected.iter().any(|s| {
-            s.asset_id.policy_id == policy_id && s.asset_id.asset_name_hex == asset_name_hex
-        })
-    }
-
-    /// Toggle selection of an NFT (quantity always 1).
-    fn toggle_nft(&mut self, policy_id: &str, asset_name_hex: &str) {
-        if let Some(idx) = self.selected.iter().position(|s| {
-            s.asset_id.policy_id == policy_id && s.asset_id.asset_name_hex == asset_name_hex
-        }) {
-            self.selected.remove(idx);
-        } else {
-            self.selected.push(SelectedAsset {
-                asset_id: AssetId::new_unchecked(policy_id.to_string(), asset_name_hex.to_string()),
-                quantity: 1,
-            });
-        }
-    }
-
-    /// Add or update a token selection with a specific quantity.
-    fn set_token(&mut self, policy_id: &str, asset_name_hex: &str, quantity: u64) {
-        if let Some(existing) = self.selected.iter_mut().find(|s| {
-            s.asset_id.policy_id == policy_id && s.asset_id.asset_name_hex == asset_name_hex
-        }) {
-            existing.quantity = quantity;
-        } else {
-            self.selected.push(SelectedAsset {
-                asset_id: AssetId::new_unchecked(policy_id.to_string(), asset_name_hex.to_string()),
-                quantity,
-            });
-        }
-    }
-
-    /// Remove a token from the selection.
-    fn remove_token(&mut self, policy_id: &str, asset_name_hex: &str) {
-        self.selected.retain(|s| {
-            !(s.asset_id.policy_id == policy_id && s.asset_id.asset_name_hex == asset_name_hex)
-        });
-    }
-
-    /// Count how many assets are selected from a given policy.
-    fn selected_count_for_policy(&self, policy_id: &str) -> usize {
-        self.selected
+    /// Check whether a specific asset is already in the offer.
+    pub fn is_already_offered(&self, policy_id: &str, asset_name_hex: &str) -> bool {
+        self.already_offered
             .iter()
-            .filter(|s| s.asset_id.policy_id == policy_id)
+            .any(|a| a.policy_id == policy_id && a.asset_name_hex == asset_name_hex)
+    }
+
+    /// Count how many assets from a given policy are already offered.
+    fn offered_count_for_policy(&self, policy_id: &str) -> usize {
+        self.already_offered
+            .iter()
+            .filter(|a| a.policy_id == policy_id)
             .count()
     }
 }
 
 /// Actions emitted by the widget.
 pub enum WalletAssetPickerAction {
-    /// User confirmed their selection (one or more assets with quantities).
-    Confirmed(Vec<SelectedAsset>),
-    /// User closed the modal without confirming.
+    /// User clicked an asset — add it to the offer immediately.
+    Selected(SelectedAsset),
+    /// User closed the picker.
     Closed,
 }
 
@@ -200,9 +163,7 @@ pub fn show(
 
     if !still_open {
         state.open = false;
-        state.selected.clear();
         state.search.clear();
-        state.token_inputs.clear();
         action = Some(WalletAssetPickerAction::Closed);
     }
 
@@ -254,9 +215,7 @@ fn draw_picker_content(
         groups.iter().filter(|g| !g.is_token_group).collect();
 
     // ── Scrollable area ──
-    let has_selection = !state.selected.is_empty();
-    let bottom_reserve = if has_selection { 100.0 } else { 50.0 };
-    let scroll_height = (ui.available_height() - bottom_reserve).max(100.0);
+    let scroll_height = (ui.available_height() - 8.0).max(100.0);
     egui::ScrollArea::vertical()
         .max_height(scroll_height)
         .show(ui, |ui| {
@@ -284,7 +243,7 @@ fn draw_picker_content(
                     );
                     ui.add_space(4.0);
 
-                    draw_token_list(ui, &filtered_tokens, state);
+                    draw_token_list(ui, &filtered_tokens, state, &mut action);
 
                     ui.add_space(8.0);
                 }
@@ -336,10 +295,10 @@ fn draw_picker_content(
                         continue;
                     }
 
-                    let sel_count = state.selected_count_for_policy(&group.policy_id);
-                    let header_text = if sel_count > 0 {
+                    let offered_count = state.offered_count_for_policy(&group.policy_id);
+                    let header_text = if offered_count > 0 {
                         format!(
-                            "{} ({}) \u{2022} {sel_count} selected",
+                            "{} ({}) \u{2022} {offered_count} in offer",
                             group.label,
                             filtered.len()
                         )
@@ -347,7 +306,7 @@ fn draw_picker_content(
                         format!("{} ({})", group.label, filtered.len())
                     };
 
-                    let header_color = if sel_count > 0 {
+                    let header_color = if offered_count > 0 {
                         theme::ACCENT_CYAN
                     } else {
                         theme::TEXT_PRIMARY
@@ -367,99 +326,20 @@ fn draw_picker_content(
                     }
 
                     header.show(ui, |ui| {
-                        draw_card_grid(ui, &filtered, &group.policy_id, config.card_size, state);
+                        draw_card_grid(
+                            ui,
+                            &filtered,
+                            &group.policy_id,
+                            config.card_size,
+                            state,
+                            &mut action,
+                        );
                     });
                 }
             }
         });
 
-    ui.add_space(8.0);
-
-    // ── Selection summary bar ──
-    if has_selection {
-        draw_selection_summary(ui, state, groups);
-        ui.add_space(8.0);
-    }
-
-    // ── Confirm button ──
-    let count = state.selected.len();
-    ui.horizontal(|ui| {
-        ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-            let label = if count > 0 {
-                format!("Confirm ({count})")
-            } else {
-                "Confirm".into()
-            };
-            let btn_text = if has_selection {
-                egui::RichText::new(label).color(theme::BG_PRIMARY).strong()
-            } else {
-                egui::RichText::new(label).color(theme::TEXT_MUTED).strong()
-            };
-            let btn = egui::Button::new(btn_text)
-                .fill(if has_selection {
-                    theme::ACCENT_GREEN
-                } else {
-                    theme::BG_SECONDARY
-                })
-                .corner_radius(CornerRadius::same(4))
-                .min_size(Vec2::new(120.0, 28.0));
-
-            let resp = ui.add_enabled(has_selection, btn);
-            if resp.clicked() && !state.selected.is_empty() {
-                let confirmed = state.selected.clone();
-                action = Some(WalletAssetPickerAction::Confirmed(confirmed));
-                state.open = false;
-                state.selected.clear();
-                state.search.clear();
-                state.token_inputs.clear();
-            }
-        });
-    });
-
     action
-}
-
-// ============================================================================
-// Selection summary bar
-// ============================================================================
-
-/// Visual strip of selected asset thumbnails — click to deselect.
-fn draw_selection_summary(
-    ui: &mut egui::Ui,
-    state: &mut WalletAssetPickerState,
-    groups: &[PickerPolicyGroup],
-) {
-    use crate::asset_strip;
-
-    let strip_items: Vec<asset_strip::AssetStripItem> = state
-        .selected
-        .iter()
-        .filter_map(|s| {
-            let group = groups
-                .iter()
-                .find(|g| g.policy_id == s.asset_id.policy_id)?;
-            let asset = group
-                .assets
-                .iter()
-                .find(|a| a.asset_name_hex == s.asset_id.asset_name_hex)?;
-            Some(asset_strip::AssetStripItem {
-                asset_id: s.asset_id.clone(),
-                display_name: asset.display_name.clone(),
-            })
-        })
-        .collect();
-
-    let config = asset_strip::AssetStripConfig {
-        thumb_size: 56.0,
-        min_visible: 18.0,
-    };
-    let resp = asset_strip::show(ui, &strip_items, &config);
-
-    if let Some(idx) = resp.clicked {
-        if idx < state.selected.len() {
-            state.selected.remove(idx);
-        }
-    }
 }
 
 // ============================================================================
@@ -482,17 +362,17 @@ pub fn format_quantity(qty: u64) -> String {
     }
 }
 
-/// Draw a compact list of fungible tokens with quantity inputs.
+/// Draw a compact list of fungible tokens with "Add" buttons.
 fn draw_token_list(
     ui: &mut egui::Ui,
     tokens: &[(&PickerPolicyGroup, &PickerAsset)],
-    state: &mut WalletAssetPickerState,
+    state: &WalletAssetPickerState,
+    action: &mut Option<WalletAssetPickerAction>,
 ) {
     for &(group, asset) in tokens {
         let policy_id = &group.policy_id;
         let asset_hex = &asset.asset_name_hex;
-        let is_selected = state.is_selected(policy_id, asset_hex);
-        let input_key = format!("{policy_id}:{asset_hex}");
+        let already_offered = state.is_already_offered(policy_id, asset_hex);
 
         ui.horizontal(|ui| {
             // Small IIIF thumbnail (24x24)
@@ -510,8 +390,8 @@ fn draw_token_list(
             }
 
             // Token name
-            let name_color = if is_selected {
-                theme::ACCENT_CYAN
+            let name_color = if already_offered {
+                theme::TEXT_MUTED
             } else {
                 theme::TEXT_PRIMARY
             };
@@ -530,17 +410,15 @@ fn draw_token_list(
             );
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if is_selected {
-                    // Remove button
-                    let remove_btn =
-                        egui::Button::new(PhosphorIcon::X.rich_text(12.0, theme::ACCENT_RED))
-                            .frame(false);
-                    if ui.add(remove_btn).clicked() {
-                        state.remove_token(policy_id, asset_hex);
-                        state.token_inputs.remove(&input_key);
-                    }
+                if already_offered {
+                    // Already in offer indicator
+                    ui.label(
+                        egui::RichText::new("In offer")
+                            .color(theme::TEXT_MUTED)
+                            .size(9.0),
+                    );
                 } else {
-                    // Add button
+                    // Add button — emit immediately with quantity 0 (user edits on the offer slot)
                     let add_btn = egui::Button::new(
                         egui::RichText::new("Add")
                             .color(theme::BG_PRIMARY)
@@ -551,29 +429,15 @@ fn draw_token_list(
                     .corner_radius(CornerRadius::same(3))
                     .min_size(Vec2::new(36.0, 18.0));
                     if ui.add(add_btn).clicked() {
-                        // Parse quantity from input or default to full balance
-                        let qty = state
-                            .token_inputs
-                            .get(&input_key)
-                            .and_then(|s| s.trim().parse::<u64>().ok())
-                            .unwrap_or(asset.quantity);
-                        let qty = qty.min(asset.quantity).max(1);
-                        state.set_token(policy_id, asset_hex, qty);
+                        *action = Some(WalletAssetPickerAction::Selected(SelectedAsset {
+                            asset_id: AssetId::new_unchecked(
+                                policy_id.to_string(),
+                                asset_hex.to_string(),
+                            ),
+                            quantity: 0,
+                        }));
                     }
                 }
-
-                // Quantity input field
-                let input = state
-                    .token_inputs
-                    .entry(input_key)
-                    .or_insert_with(|| asset.quantity.to_string());
-                let input_width = 60.0;
-                ui.add(
-                    egui::TextEdit::singleline(input)
-                        .desired_width(input_width)
-                        .horizontal_align(egui::Align::RIGHT)
-                        .font(egui::FontId::monospace(10.0)),
-                );
             });
         });
 
@@ -617,7 +481,8 @@ fn draw_card_grid(
     assets: &[&PickerAsset],
     policy_id: &str,
     card_size: f32,
-    state: &mut WalletAssetPickerState,
+    state: &WalletAssetPickerState,
+    action: &mut Option<WalletAssetPickerAction>,
 ) {
     let available_width = ui.available_width();
     let spacing = 6.0;
@@ -629,7 +494,7 @@ fn draw_card_grid(
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = spacing;
             for asset in row_assets {
-                draw_picker_card(ui, asset, policy_id, card_size, state);
+                draw_picker_card(ui, asset, policy_id, card_size, state, action);
             }
         });
         ui.add_space(spacing);
@@ -641,12 +506,13 @@ fn draw_picker_card(
     asset: &PickerAsset,
     policy_id: &str,
     card_size: f32,
-    state: &mut WalletAssetPickerState,
+    state: &WalletAssetPickerState,
+    action: &mut Option<WalletAssetPickerAction>,
 ) {
     let size = Vec2::splat(card_size);
+    let already_offered = state.is_already_offered(policy_id, &asset.asset_name_hex);
     let (card_rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
 
-    let is_selected = state.is_selected(policy_id, &asset.asset_name_hex);
     let hovered = response.hovered();
     let painter = ui.painter_at(card_rect);
     let rounding = CornerRadius::same(4);
@@ -664,6 +530,15 @@ fn draw_picker_card(
     let loading = card_browser::draw_thumbnail(ui, card_rect, Some(&image_url), &browser_config);
     if loading {
         crate::image_loader::CachedSpinner::request_repaint(ui);
+    }
+
+    // Dim overlay for already-offered assets
+    if already_offered {
+        painter.rect_filled(
+            card_rect,
+            rounding,
+            Color32::from_rgba_premultiplied(10, 10, 20, 160),
+        );
     }
 
     // Name overlay banner
@@ -691,13 +566,17 @@ fn draw_picker_card(
         egui::Align2::LEFT_CENTER,
         &asset.display_name,
         egui::FontId::monospace(8.0),
-        theme::TEXT_PRIMARY,
+        if already_offered {
+            theme::TEXT_MUTED
+        } else {
+            theme::TEXT_PRIMARY
+        },
     );
 
-    // Selected checkmark badge (top-left)
-    if is_selected {
+    // "In offer" checkmark badge (top-left) for already-offered assets
+    if already_offered {
         let badge_center = egui::pos2(card_rect.min.x + 10.0, card_rect.min.y + 10.0);
-        painter.circle_filled(badge_center, 8.0, theme::ACCENT_CYAN);
+        painter.circle_filled(badge_center, 8.0, theme::TEXT_MUTED);
         PhosphorIcon::Check.paint(
             &painter,
             badge_center,
@@ -707,9 +586,9 @@ fn draw_picker_card(
         );
     }
 
-    // Border — selection highlight, rarity, or default
-    let (border_color, border_width) = if is_selected {
-        (theme::ACCENT_CYAN, 2.0)
+    // Border — already offered (muted), rarity, or default
+    let (border_color, border_width) = if already_offered {
+        (theme::TEXT_MUTED, 1.0)
     } else if let Some(rank) = asset.rarity_rank {
         let total = asset.total_ranked.unwrap_or(10000);
         let color = theme::rarity_rank_color(rank, total);
@@ -747,10 +626,23 @@ fn draw_picker_card(
                     .size(10.0),
             );
         }
+        if already_offered {
+            ui.label(
+                egui::RichText::new("Already in offer")
+                    .color(theme::TEXT_MUTED)
+                    .size(9.0),
+            );
+        }
     });
 
-    // Click to toggle selection (NFT — always quantity 1)
-    if response.clicked() {
-        state.toggle_nft(policy_id, &asset.asset_name_hex);
+    // Click to add immediately (NFT — always quantity 1). No-op if already offered.
+    if response.clicked() && !already_offered {
+        *action = Some(WalletAssetPickerAction::Selected(SelectedAsset {
+            asset_id: AssetId::new_unchecked(
+                policy_id.to_string(),
+                asset.asset_name_hex.to_string(),
+            ),
+            quantity: 1,
+        }));
     }
 }
