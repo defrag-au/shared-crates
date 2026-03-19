@@ -543,6 +543,8 @@ fn draw_picker_card(
 
     // Tooltip
     response.clone().on_hover_ui(|ui| {
+        ui.set_min_width(180.0);
+
         ui.label(
             egui::RichText::new(&asset.display_name)
                 .color(theme::TEXT_PRIMARY)
@@ -552,13 +554,41 @@ fn draw_picker_card(
         if let Some(rank) = asset.rarity_rank {
             let total = asset.total_ranked.unwrap_or(0);
             let rank_color = theme::rarity_rank_color(rank, total);
-            ui.label(
-                egui::RichText::new(format!("Rank #{rank} / {total}"))
-                    .color(rank_color)
-                    .size(10.0),
-            );
+            let rank_text = if total > 0 {
+                format!("Rank #{rank} / {total}")
+            } else {
+                format!("Rank #{rank}")
+            };
+            ui.label(egui::RichText::new(rank_text).color(rank_color).size(10.0));
+        }
+        if !asset.traits.is_empty() {
+            ui.add_space(4.0);
+            egui::Grid::new("trait_tooltip")
+                .num_columns(2)
+                .spacing([8.0, 2.0])
+                .show(ui, |ui| {
+                    for trait_str in &asset.traits {
+                        if let Some((key, value)) = trait_str.split_once(':') {
+                            ui.label(egui::RichText::new(key).color(theme::TEXT_MUTED).size(10.0));
+                            ui.label(
+                                egui::RichText::new(value)
+                                    .color(theme::TEXT_SECONDARY)
+                                    .size(10.0),
+                            );
+                        } else {
+                            ui.label(
+                                egui::RichText::new(trait_str)
+                                    .color(theme::TEXT_SECONDARY)
+                                    .size(10.0),
+                            );
+                            ui.label("");
+                        }
+                        ui.end_row();
+                    }
+                });
         }
         if already_offered {
+            ui.add_space(2.0);
             ui.label(
                 egui::RichText::new("Already in offer")
                     .color(theme::TEXT_MUTED)
