@@ -45,6 +45,8 @@ pub struct PickerPolicyGroup {
     pub assets: Vec<PickerAsset>,
     /// If true, this group represents fungible tokens (shown in "Tokens" section).
     pub is_token_group: bool,
+    /// Whether this policy has been verified by at least one source.
+    pub is_verified: bool,
 }
 
 /// A selected asset with its chosen quantity.
@@ -86,6 +88,8 @@ pub struct WalletAssetPickerState {
     pub search: String,
     /// Asset IDs already in the offer — shown as disabled/dimmed in the picker.
     pub already_offered: std::collections::HashSet<AssetId>,
+    /// Whether to show unverified/unknown collections.
+    pub show_unverified: bool,
 }
 
 impl WalletAssetPickerState {
@@ -109,6 +113,8 @@ impl WalletAssetPickerState {
 pub enum WalletAssetPickerAction {
     /// User clicked an asset — add it to the offer immediately.
     Selected(SelectedAsset),
+    /// User clicked an already-offered asset — remove it from the offer.
+    Removed(AssetId),
     /// User closed the picker.
     Closed,
 }
@@ -208,11 +214,15 @@ fn draw_picker_content(
 
     ui.add_space(8.0);
 
-    // Partition groups into tokens vs collections
-    let token_groups: Vec<&PickerPolicyGroup> =
-        groups.iter().filter(|g| g.is_token_group).collect();
-    let collection_groups: Vec<&PickerPolicyGroup> =
-        groups.iter().filter(|g| !g.is_token_group).collect();
+    // Filter out token groups — only show NFT collections
+    let verified_groups: Vec<&PickerPolicyGroup> = groups
+        .iter()
+        .filter(|g| !g.is_token_group && g.is_verified)
+        .collect();
+    let unverified_groups: Vec<&PickerPolicyGroup> = groups
+        .iter()
+        .filter(|g| !g.is_token_group && !g.is_verified)
+        .collect();
 
     // ── Scrollable area ──
     let scroll_height = (ui.available_height() - 8.0).max(100.0);
@@ -222,124 +232,129 @@ fn draw_picker_content(
             let search_lower = state.search.to_lowercase();
             let is_searching = !search_lower.is_empty();
 
-            // ── Tokens section ──
-            if !token_groups.is_empty() {
-                let filtered_tokens: Vec<(&PickerPolicyGroup, &PickerAsset)> = token_groups
-                    .iter()
-                    .flat_map(|g| g.assets.iter().map(move |a| (*g, a)))
-                    .filter(|(g, a)| {
-                        !is_searching
-                            || a.display_name.to_lowercase().contains(&search_lower)
-                            || g.label.to_lowercase().contains(&search_lower)
-                    })
-                    .collect();
+            // ── Verified collections ──
+            draw_collection_section(
+                ui,
+                &verified_groups,
+                &search_lower,
+                is_searching,
+                config,
+                state,
+                &mut action,
+            );
 
-                if !filtered_tokens.is_empty() {
+            // ── Unverified collections (behind checkbox) ──
+            if !unverified_groups.is_empty() {
+                ui.add_space(8.0);
+                ui.checkbox(
+                    &mut state.show_unverified,
+                    egui::RichText::new("Show unverified collections")
+                        .color(theme::TEXT_MUTED)
+                        .size(10.0),
+                );
+
+                if state.show_unverified {
+                    ui.add_space(4.0);
                     ui.label(
-                        egui::RichText::new("Tokens")
-                            .color(theme::TEXT_SECONDARY)
+                        egui::RichText::new("Unverified Collections")
+                            .color(theme::TEXT_MUTED)
                             .size(10.0)
                             .strong(),
                     );
                     ui.add_space(4.0);
-
-                    draw_token_list(ui, &filtered_tokens, state, &mut action);
-
-                    ui.add_space(8.0);
-                }
-            }
-
-            // ── Collections section ──
-            if !collection_groups.is_empty() {
-                let has_any_collection = collection_groups.iter().any(|g| {
-                    !is_searching
-                        || g.label.to_lowercase().contains(&search_lower)
-                        || g.assets.iter().any(|a| {
-                            a.display_name.to_lowercase().contains(&search_lower)
-                                || a.traits
-                                    .iter()
-                                    .any(|t| t.to_lowercase().contains(&search_lower))
-                        })
-                });
-
-                if has_any_collection && !token_groups.is_empty() {
-                    ui.label(
-                        egui::RichText::new("Collections")
-                            .color(theme::TEXT_SECONDARY)
-                            .size(10.0)
-                            .strong(),
+                    draw_collection_section(
+                        ui,
+                        &unverified_groups,
+                        &search_lower,
+                        is_searching,
+                        config,
+                        state,
+                        &mut action,
                     );
-                    ui.add_space(4.0);
-                }
-
-                for group in &collection_groups {
-                    let group_label_matches =
-                        is_searching && group.label.to_lowercase().contains(&search_lower);
-
-                    let filtered: Vec<&PickerAsset> = if is_searching && !group_label_matches {
-                        group
-                            .assets
-                            .iter()
-                            .filter(|a| {
-                                a.display_name.to_lowercase().contains(&search_lower)
-                                    || a.traits
-                                        .iter()
-                                        .any(|t| t.to_lowercase().contains(&search_lower))
-                            })
-                            .collect()
-                    } else {
-                        group.assets.iter().collect()
-                    };
-
-                    if filtered.is_empty() {
-                        continue;
-                    }
-
-                    let offered_count = state.offered_count_for_policy(&group.policy_id);
-                    let header_text = if offered_count > 0 {
-                        format!(
-                            "{} ({}) \u{2022} {offered_count} in offer",
-                            group.label,
-                            filtered.len()
-                        )
-                    } else {
-                        format!("{} ({})", group.label, filtered.len())
-                    };
-
-                    let header_color = if offered_count > 0 {
-                        theme::ACCENT_CYAN
-                    } else {
-                        theme::TEXT_PRIMARY
-                    };
-
-                    let mut header = egui::CollapsingHeader::new(
-                        egui::RichText::new(header_text)
-                            .color(header_color)
-                            .size(11.0)
-                            .strong(),
-                    )
-                    .id_salt(&group.policy_id)
-                    .icon(phosphor_caret_icon);
-
-                    if is_searching {
-                        header = header.open(Some(true));
-                    }
-
-                    header.show(ui, |ui| {
-                        draw_card_grid(
-                            ui,
-                            &filtered,
-                            &group.policy_id,
-                            config.card_size,
-                            state,
-                            &mut action,
-                        );
-                    });
                 }
             }
         });
 
     action
+}
+
+// ============================================================================
+// Collection section (shared by verified + unverified)
+// ============================================================================
+
+/// Draw a list of collection groups as collapsible accordions with card grids.
+fn draw_collection_section(
+    ui: &mut egui::Ui,
+    groups: &[&PickerPolicyGroup],
+    search_lower: &str,
+    is_searching: bool,
+    config: &WalletAssetPickerConfig,
+    state: &WalletAssetPickerState,
+    action: &mut Option<WalletAssetPickerAction>,
+) {
+    for group in groups {
+        let group_label_matches = is_searching && group.label.to_lowercase().contains(search_lower);
+
+        let filtered: Vec<&PickerAsset> = if is_searching && !group_label_matches {
+            group
+                .assets
+                .iter()
+                .filter(|a| {
+                    a.display_name.to_lowercase().contains(search_lower)
+                        || a.traits
+                            .iter()
+                            .any(|t| t.to_lowercase().contains(search_lower))
+                })
+                .collect()
+        } else {
+            group.assets.iter().collect()
+        };
+
+        if filtered.is_empty() {
+            continue;
+        }
+
+        let offered_count = state.offered_count_for_policy(&group.policy_id);
+        let header_text = if offered_count > 0 {
+            format!(
+                "{} ({}) \u{2022} {offered_count} in offer",
+                group.label,
+                filtered.len()
+            )
+        } else {
+            format!("{} ({})", group.label, filtered.len())
+        };
+
+        let header_color = if offered_count > 0 {
+            theme::ACCENT_CYAN
+        } else {
+            theme::TEXT_PRIMARY
+        };
+
+        let mut header = egui::CollapsingHeader::new(
+            egui::RichText::new(header_text)
+                .color(header_color)
+                .size(11.0)
+                .strong(),
+        )
+        .id_salt(&group.policy_id)
+        .icon(phosphor_caret_icon);
+
+        if is_searching {
+            header = header.open(Some(true));
+        }
+
+        header.show(ui, |ui| {
+            draw_card_grid(
+                ui,
+                &filtered,
+                &group.policy_id,
+                config.card_size,
+                state,
+                action,
+            );
+        });
+    }
 }
 
 // ============================================================================
@@ -359,89 +374,6 @@ pub fn format_quantity(qty: u64) -> String {
         format!("{v:.1}K")
     } else {
         qty.to_string()
-    }
-}
-
-/// Draw a compact list of fungible tokens with "Add" buttons.
-fn draw_token_list(
-    ui: &mut egui::Ui,
-    tokens: &[(&PickerPolicyGroup, &PickerAsset)],
-    state: &WalletAssetPickerState,
-    action: &mut Option<WalletAssetPickerAction>,
-) {
-    for &(group, asset) in tokens {
-        let policy_id = &group.policy_id;
-        let asset_hex = &asset.asset_name_hex;
-        let already_offered = state.is_already_offered(policy_id, asset_hex);
-
-        ui.horizontal(|ui| {
-            // Small IIIF thumbnail (24x24)
-            let thumb_size = Vec2::splat(24.0);
-            let (thumb_rect, _) = ui.allocate_exact_size(thumb_size, egui::Sense::hover());
-            let image_url = iiif_asset_url(policy_id, asset_hex, AssetImageSize::Thumbnail);
-            let browser_config = crate::CardBrowserConfig {
-                rounding: 3.0,
-                ..Default::default()
-            };
-            let loading =
-                card_browser::draw_thumbnail(ui, thumb_rect, Some(&image_url), &browser_config);
-            if loading {
-                crate::image_loader::CachedSpinner::request_repaint(ui);
-            }
-
-            // Token name
-            let name_color = if already_offered {
-                theme::TEXT_MUTED
-            } else {
-                theme::TEXT_PRIMARY
-            };
-            ui.label(
-                egui::RichText::new(&asset.display_name)
-                    .color(name_color)
-                    .size(11.0)
-                    .strong(),
-            );
-
-            // Available balance (muted)
-            ui.label(
-                egui::RichText::new(format!("({})", format_quantity(asset.quantity)))
-                    .color(theme::TEXT_MUTED)
-                    .size(9.0),
-            );
-
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if already_offered {
-                    // Already in offer indicator
-                    ui.label(
-                        egui::RichText::new("In offer")
-                            .color(theme::TEXT_MUTED)
-                            .size(9.0),
-                    );
-                } else {
-                    // Add button — emit immediately with quantity 0 (user edits on the offer slot)
-                    let add_btn = egui::Button::new(
-                        egui::RichText::new("Add")
-                            .color(theme::BG_PRIMARY)
-                            .size(10.0)
-                            .strong(),
-                    )
-                    .fill(theme::ACCENT_CYAN)
-                    .corner_radius(CornerRadius::same(3))
-                    .min_size(Vec2::new(36.0, 18.0));
-                    if ui.add(add_btn).clicked() {
-                        *action = Some(WalletAssetPickerAction::Selected(SelectedAsset {
-                            asset_id: AssetId::new_unchecked(
-                                policy_id.to_string(),
-                                asset_hex.to_string(),
-                            ),
-                            quantity: 0,
-                        }));
-                    }
-                }
-            });
-        });
-
-        ui.add_space(2.0);
     }
 }
 
@@ -635,14 +567,17 @@ fn draw_picker_card(
         }
     });
 
-    // Click to add immediately (NFT — always quantity 1). No-op if already offered.
-    if response.clicked() && !already_offered {
-        *action = Some(WalletAssetPickerAction::Selected(SelectedAsset {
-            asset_id: AssetId::new_unchecked(
-                policy_id.to_string(),
-                asset.asset_name_hex.to_string(),
-            ),
-            quantity: 1,
-        }));
+    // Click to toggle: add if not offered, remove if already offered.
+    if response.clicked() {
+        let asset_id =
+            AssetId::new_unchecked(policy_id.to_string(), asset.asset_name_hex.to_string());
+        if already_offered {
+            *action = Some(WalletAssetPickerAction::Removed(asset_id));
+        } else {
+            *action = Some(WalletAssetPickerAction::Selected(SelectedAsset {
+                asset_id,
+                quantity: 1,
+            }));
+        }
     }
 }
