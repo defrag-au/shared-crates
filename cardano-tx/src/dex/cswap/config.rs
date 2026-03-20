@@ -3,6 +3,13 @@
 //! Parameters for building swap orders against CSWAP's constant product
 //! AMM pools. Reverse-engineered from on-chain transactions and pool datums.
 
+/// CSWAP pool script address (mainnet).
+/// All CSWAP constant product pools live as UTxOs at this single script address.
+/// Each pool UTxO contains a pool NFT (amount=1) plus the traded token reserves.
+/// To find a specific token's pool, filter UTxOs by asset at this address.
+pub const POOL_SCRIPT_ADDRESS: &str =
+    "addr1z8ke0c9p89rjfwmuh98jpt8ky74uy5mffjft3zlcld9h7ml3lmln3mwk0y3zsh3gs3dzqlwa9rjzrxawkwm4udw9axhs6fuu6e";
+
 /// CSWAP order script payment credential (28 bytes hex).
 /// This is the payment script hash of the order escrow address.
 pub const ORDER_SCRIPT_HASH: &str = "da5b47aed3955c9132ee087796fa3b58a1ba6173fa31a7bc29e56d4e";

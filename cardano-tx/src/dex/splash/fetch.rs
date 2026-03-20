@@ -6,8 +6,8 @@
 use http_client::HttpClient;
 
 use super::config::{
-    decimal_to_rational, to_splash_asset, FeeApiResponse, FeeDistribution, OrderBookQuote,
-    RawOrderBook, MAINNET_FEE_URL, ORDER_BOOK_URL,
+    decimal_to_rational, derive_lp_fee_bps, to_splash_asset, FeeApiResponse, FeeDistribution,
+    OrderBookQuote, RawOrderBook, MAINNET_FEE_URL, ORDER_BOOK_URL,
 };
 use super::SplashError;
 
@@ -112,6 +112,8 @@ pub async fn fetch_spot_price(asset_a: &str, asset_b: &str) -> Result<OrderBookQ
         .as_deref()
         .and_then(|s| s.parse::<u64>().ok());
 
+    let lp_fee_bps = derive_lp_fee_bps(amm_base_reserves, amm_quote_reserves, &book.asks);
+
     Ok(OrderBookQuote {
         spot_price: book.spot,
         numerator,
@@ -120,5 +122,6 @@ pub async fn fetch_spot_price(asset_a: &str, asset_b: &str) -> Result<OrderBookQ
         asks: book.asks,
         amm_base_reserves,
         amm_quote_reserves,
+        lp_fee_bps,
     })
 }
