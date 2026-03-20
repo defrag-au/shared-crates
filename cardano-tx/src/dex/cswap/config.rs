@@ -17,9 +17,21 @@ pub const DEFAULT_EXECUTION_PARAM: u64 = 10;
 /// Fee tier constant — always 15 across all observed orders.
 pub const DEFAULT_FEE_TIER: u64 = 15;
 
-/// Estimated batcher fee (lovelace). The batcher takes whatever ADA remains
-/// after the pool swap and user output. Observed actual fee ~0.75 ADA.
-pub const BATCHER_FEE_ESTIMATE: u64 = 750_000;
+/// Batcher fee (lovelace). CSWAP currently charges 0 batcher fee.
+pub const BATCHER_FEE: u64 = 0;
+
+/// Estimated network fee for the batcher fill TX (lovelace).
+/// The batcher TX is a Plutus script execution (~0.31 ADA observed).
+/// CSWAP UI provisions 0.88 ADA — we match to ensure fills.
+pub const BATCHER_NETWORK_FEE_ESTIMATE: u64 = 880_000;
+
+/// Estimated network fee for our order submission TX (lovelace).
+/// Simple TX with inline datum, observed ~0.175 ADA.
+pub const ORDER_NETWORK_FEE_ESTIMATE: u64 = 200_000;
+
+/// LP fee as basis points (1% = 100 bps).
+/// The concentrated pool takes this from the swap amount.
+pub const LP_FEE_BPS: u64 = 100;
 
 /// Minimum UTxO ADA returned to the user with their tokens (lovelace).
 pub const MIN_UTXO_RETURN: u64 = 2_000_000;

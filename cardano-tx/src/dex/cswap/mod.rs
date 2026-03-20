@@ -161,17 +161,17 @@ fn build_order_script_address(network: Network) -> Result<Address, CswapError> {
 /// Calculate total ADA deposit for a CSWAP order.
 ///
 /// For buy orders (ADA -> Token):
-///   swap_amount + min_utxo_return + batcher_fee
+///   swap_amount + min_utxo_return + batcher_fee + batcher_network_fee
 ///
 /// For sell orders (Token -> ADA):
-///   min_utxo (to hold the token in the order UTxO) + batcher_fee
-fn calculate_order_deposit(sell_amount: u64, is_selling_ada: bool) -> u64 {
+///   min_utxo + batcher_fee + batcher_network_fee
+pub fn calculate_order_deposit(sell_amount: u64, is_selling_ada: bool) -> u64 {
+    let overhead =
+        config::MIN_UTXO_RETURN + config::BATCHER_FEE + config::BATCHER_NETWORK_FEE_ESTIMATE;
     if is_selling_ada {
-        sell_amount + config::MIN_UTXO_RETURN + config::BATCHER_FEE_ESTIMATE
+        sell_amount + overhead
     } else {
-        // Selling tokens: need enough ADA for the script UTxO + batcher fee
-        // The user's tokens are in the UTxO, plus ADA for min UTxO + batcher
-        config::MIN_UTXO_RETURN + config::BATCHER_FEE_ESTIMATE
+        overhead
     }
 }
 
@@ -225,8 +225,8 @@ mod tests {
             "expected addr1z prefix, got: {addr_str}"
         );
 
-        // Total lovelace: 50M + 2M + 750K = 52.75M
-        assert_eq!(order.total_lovelace, 52_750_000);
+        // Total lovelace: 50M + 2M + 0 + 880K = 52.88M
+        assert_eq!(order.total_lovelace, 52_880_000);
     }
 
     #[test]
@@ -259,19 +259,19 @@ mod tests {
         let addr_str = order.script_address.to_string();
         assert!(addr_str.starts_with("addr1z"));
 
-        // 10M + 2M + 750K = 12.75M
-        assert_eq!(order.total_lovelace, 12_750_000);
+        // 10M + 2M + 0 + 880K = 12.88M
+        assert_eq!(order.total_lovelace, 12_880_000);
     }
 
     #[test]
     fn test_deposit_calculation_buy() {
-        // Buy: 50 ADA + 2 ADA min UTxO + 0.75 ADA batcher = 52.75 ADA
-        assert_eq!(calculate_order_deposit(50_000_000, true), 52_750_000);
+        // Buy: 50 ADA + 2 ADA min UTxO + 0.88 ADA network = 52.88 ADA
+        assert_eq!(calculate_order_deposit(50_000_000, true), 52_880_000);
     }
 
     #[test]
     fn test_deposit_calculation_sell() {
-        // Sell: 2 ADA min UTxO + 0.75 ADA batcher = 2.75 ADA
-        assert_eq!(calculate_order_deposit(1_000_000, false), 2_750_000);
+        // Sell: 2 ADA min UTxO + 0.88 ADA network = 2.88 ADA
+        assert_eq!(calculate_order_deposit(1_000_000, false), 2_880_000);
     }
 }
