@@ -159,21 +159,21 @@ mod tests {
                 hex::decode("38220e3d6473be31a145f81eac6c32fd71231da373ff9ea07de72b2f").unwrap(),
             ),
             min_receive: vec![
-                // 2 ADA min UTxO
-                (vec![], vec![], 2_000_000),
-                // min 405,535 Aliens
+                // min 405,535 Aliens (tokens first)
                 (
                     hex::decode("16657df32ad8eaa8f8c628586ac6b8ba3771226c12bd69b582738fb7")
                         .unwrap(),
                     hex::decode("416c69656e73").unwrap(),
                     405_535,
                 ),
+                // 2 ADA min UTxO (ADA second)
+                (vec![], vec![], 2_000_000),
             ],
             sell_asset: vec![
                 // Selling ADA, 0 = sell all
                 (vec![], vec![], 0),
             ],
-            execution_param: 1000,
+            execution_param: 10,
             fee_tier: 15,
         };
 

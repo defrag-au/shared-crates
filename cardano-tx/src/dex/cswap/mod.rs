@@ -79,15 +79,16 @@ pub fn build_cswap_order(req: &CswapOrderRequest) -> Result<CswapOrder, CswapErr
     // Build min_receive entries
     let mut min_receive = Vec::new();
     if is_selling_ada {
-        // Buying tokens: min_receive = [min_utxo_ada, min_tokens]
-        if req.min_receive_ada > 0 {
-            min_receive.push((vec![], vec![], req.min_receive_ada));
-        }
+        // Buying tokens: min_receive = [min_tokens, min_utxo_ada]
+        // Token entry first, ADA entry second (matches CSWAP UI ordering)
         min_receive.push((
             req.buy_asset.policy_id.clone(),
             req.buy_asset.asset_name.clone(),
             req.min_receive_amount,
         ));
+        if req.min_receive_ada > 0 {
+            min_receive.push((vec![], vec![], req.min_receive_ada));
+        }
     } else {
         // Selling tokens: min_receive = [min_ada]
         min_receive.push((vec![], vec![], req.min_receive_amount));
@@ -118,9 +119,8 @@ pub fn build_cswap_order(req: &CswapOrderRequest) -> Result<CswapOrder, CswapErr
     // Hash the datum CBOR with blake2b-256
     let datum_hash = Hasher::<256>::hash(&datum_bytes);
 
-    // Build script address
-    let script_address =
-        build_order_script_address(req.destination_stake_key.as_ref(), req.network)?;
+    // Build script address (always uses canonical CSWAP stake key)
+    let script_address = build_order_script_address(req.network)?;
 
     // Calculate total lovelace
     let total_lovelace = calculate_order_deposit(req.sell_amount, is_selling_ada);
@@ -136,30 +136,23 @@ pub fn build_cswap_order(req: &CswapOrderRequest) -> Result<CswapOrder, CswapErr
 
 /// Build the CSWAP order script address.
 ///
-/// Uses the order script's payment credential and the user's stake key
-/// for staking delegation (same pattern as Splash).
-fn build_order_script_address(
-    stake_key_hash: Option<&[u8; 28]>,
-    network: Network,
-) -> Result<Address, CswapError> {
+/// Always uses the order script's payment credential + the script's own
+/// stake key. Unlike Splash, CSWAP does NOT embed the user's stake key
+/// in the order address — the batcher monitors the canonical script address.
+/// The user's destination is encoded in the datum instead.
+fn build_order_script_address(network: Network) -> Result<Address, CswapError> {
     let script_hash_bytes: [u8; 28] = hex::decode(config::ORDER_SCRIPT_HASH)
         .map_err(|e| CswapError::Address(format!("invalid script hash hex: {e}")))?
         .try_into()
         .map_err(|_| CswapError::Address("script hash must be 28 bytes".to_string()))?;
 
-    let payment = ShelleyPaymentPart::Script(Hash::from(script_hash_bytes));
+    let stake_bytes: [u8; 28] = hex::decode(config::ORDER_STAKE_KEY_HASH)
+        .map_err(|e| CswapError::Address(format!("invalid stake key hex: {e}")))?
+        .try_into()
+        .map_err(|_| CswapError::Address("stake key must be 28 bytes".to_string()))?;
 
-    let delegation = match stake_key_hash {
-        Some(hash) => ShelleyDelegationPart::Key(Hash::from(*hash)),
-        None => {
-            // Fall back to the order script's own stake key
-            let stake_bytes: [u8; 28] = hex::decode(config::ORDER_STAKE_KEY_HASH)
-                .map_err(|e| CswapError::Address(format!("invalid stake key hex: {e}")))?
-                .try_into()
-                .map_err(|_| CswapError::Address("stake key must be 28 bytes".to_string()))?;
-            ShelleyDelegationPart::Key(Hash::from(stake_bytes))
-        }
-    };
+    let payment = ShelleyPaymentPart::Script(Hash::from(script_hash_bytes));
+    let delegation = ShelleyDelegationPart::Key(Hash::from(stake_bytes));
 
     let shelley = ShelleyAddress::new(network, payment, delegation);
     Ok(Address::Shelley(shelley))
@@ -210,7 +203,7 @@ mod tests {
             .unwrap(),
             min_receive_amount: 405_535,
             min_receive_ada: 2_000_000,
-            execution_param: 1000,
+            execution_param: 10,
             fee_tier: 15,
             network: Network::Mainnet,
         };
@@ -232,8 +225,8 @@ mod tests {
             "expected addr1z prefix, got: {addr_str}"
         );
 
-        // Total lovelace: 50M + 2M + 700K = 52.7M
-        assert_eq!(order.total_lovelace, 52_700_000);
+        // Total lovelace: 50M + 2M + 750K = 52.75M
+        assert_eq!(order.total_lovelace, 52_750_000);
     }
 
     #[test]
@@ -255,7 +248,7 @@ mod tests {
             .unwrap(),
             min_receive_amount: 80_000,
             min_receive_ada: 2_000_000,
-            execution_param: 1000,
+            execution_param: 10,
             fee_tier: 15,
             network: Network::Mainnet,
         };
@@ -266,19 +259,19 @@ mod tests {
         let addr_str = order.script_address.to_string();
         assert!(addr_str.starts_with("addr1z"));
 
-        // 10M + 2M + 700K = 12.7M
-        assert_eq!(order.total_lovelace, 12_700_000);
+        // 10M + 2M + 750K = 12.75M
+        assert_eq!(order.total_lovelace, 12_750_000);
     }
 
     #[test]
     fn test_deposit_calculation_buy() {
-        // Buy: 50 ADA + 2 ADA min UTxO + 0.7 ADA batcher = 52.7 ADA
-        assert_eq!(calculate_order_deposit(50_000_000, true), 52_700_000);
+        // Buy: 50 ADA + 2 ADA min UTxO + 0.75 ADA batcher = 52.75 ADA
+        assert_eq!(calculate_order_deposit(50_000_000, true), 52_750_000);
     }
 
     #[test]
     fn test_deposit_calculation_sell() {
-        // Sell: 2 ADA min UTxO + 0.7 ADA batcher = 2.7 ADA
-        assert_eq!(calculate_order_deposit(1_000_000, false), 2_700_000);
+        // Sell: 2 ADA min UTxO + 0.75 ADA batcher = 2.75 ADA
+        assert_eq!(calculate_order_deposit(1_000_000, false), 2_750_000);
     }
 }
