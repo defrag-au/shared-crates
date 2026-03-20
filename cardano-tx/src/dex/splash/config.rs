@@ -214,6 +214,12 @@ pub struct RawOrderBook {
     pub bids: Vec<RawOrderBookItem>,
     #[serde(default)]
     pub asks: Vec<RawOrderBookItem>,
+    /// Total tokens in the AMM pool (base asset)
+    #[serde(rename = "ammTotalLiquidityBase", default)]
+    pub amm_total_liquidity_base: Option<String>,
+    /// Total lovelace in the AMM pool (quote asset)
+    #[serde(rename = "ammTotalLiquidityQuote", default)]
+    pub amm_total_liquidity_quote: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -223,6 +229,12 @@ pub struct RawOrderBookItem {
     pub avg_price: String,
     #[serde(rename = "accumulatedLiquidity")]
     pub accumulated_liquidity: String,
+    /// Cumulative AMM pool liquidity (tokens) up to this price level
+    #[serde(rename = "poolsLiquidity", default)]
+    pub pools_liquidity: Option<String>,
+    /// Incremental limit order liquidity (tokens) at this price level
+    #[serde(rename = "ordersLiquidity", default)]
+    pub orders_liquidity: Option<String>,
 }
 
 /// Spot price quote resolved to a rational number
@@ -238,6 +250,10 @@ pub struct OrderBookQuote {
     pub bids: Vec<RawOrderBookItem>,
     /// Raw order book for inspection
     pub asks: Vec<RawOrderBookItem>,
+    /// Total tokens in the AMM pool (base asset), if available
+    pub amm_base_reserves: Option<u64>,
+    /// Total lovelace in the AMM pool (quote asset), if available
+    pub amm_quote_reserves: Option<u64>,
 }
 
 // ============================================================================

@@ -103,11 +103,22 @@ pub async fn fetch_spot_price(asset_a: &str, asset_b: &str) -> Result<OrderBookQ
 
     let (numerator, denominator) = decimal_to_rational(&book.spot)?;
 
+    let amm_base_reserves = book
+        .amm_total_liquidity_base
+        .as_deref()
+        .and_then(|s| s.parse::<u64>().ok());
+    let amm_quote_reserves = book
+        .amm_total_liquidity_quote
+        .as_deref()
+        .and_then(|s| s.parse::<u64>().ok());
+
     Ok(OrderBookQuote {
         spot_price: book.spot,
         numerator,
         denominator,
         bids: book.bids,
         asks: book.asks,
+        amm_base_reserves,
+        amm_quote_reserves,
     })
 }
