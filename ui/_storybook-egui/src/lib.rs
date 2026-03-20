@@ -48,6 +48,12 @@ mod app {
         TxEstimate,
         WalletAssetPicker,
         UtxoMap,
+        // DEX split swap
+        SlippageSelector,
+        AmountInput,
+        SplitAllocationBar,
+        RouteSummary,
+        PoolLiquidity,
     }
 
     impl Story {
@@ -84,6 +90,12 @@ mod app {
                 Self::TxEstimate,
                 Self::WalletAssetPicker,
                 Self::UtxoMap,
+                // DEX split swap
+                Self::SlippageSelector,
+                Self::AmountInput,
+                Self::SplitAllocationBar,
+                Self::RouteSummary,
+                Self::PoolLiquidity,
             ]
         }
 
@@ -120,6 +132,11 @@ mod app {
                 Self::TxEstimate => "TX Estimate",
                 Self::WalletAssetPicker => "Wallet Asset Picker",
                 Self::UtxoMap => "UTxO Shelf",
+                Self::SlippageSelector => "Slippage Selector",
+                Self::AmountInput => "Amount Input",
+                Self::SplitAllocationBar => "Split Allocation Bar",
+                Self::RouteSummary => "Route Summary",
+                Self::PoolLiquidity => "Pool Liquidity",
             }
         }
 
@@ -153,6 +170,11 @@ mod app {
                 | Self::TxEstimate
                 | Self::WalletAssetPicker => "Trade Desk",
                 Self::UtxoMap => "Wallet",
+                Self::SlippageSelector
+                | Self::AmountInput
+                | Self::SplitAllocationBar
+                | Self::RouteSummary
+                | Self::PoolLiquidity => "DEX Split Swap",
             }
         }
 
@@ -233,6 +255,21 @@ mod app {
                 Self::UtxoMap => {
                     "UTxO health shelving unit: classify UTxOs into Collateral, Liquid, Clean, Cluttered, Bloated, Dust tiers"
                 }
+                Self::SlippageSelector => {
+                    "Preset slippage buttons + custom input mode with high/low warnings"
+                }
+                Self::AmountInput => {
+                    "ADA amount input with preset buttons, optional MAX, and validation warnings"
+                }
+                Self::SplitAllocationBar => {
+                    "Segmented horizontal bar showing ADA allocation across DEXes with tooltips and legend"
+                }
+                Self::RouteSummary => {
+                    "Split routing result: per-leg breakdown, totals, blended price, and improvement vs single pool"
+                }
+                Self::PoolLiquidity => {
+                    "Per-pool depth bars, TVL, spot price, price impact (green/yellow/red), and allocation fraction"
+                }
             }
         }
     }
@@ -295,6 +332,9 @@ mod app {
         trade_table_state: stories::trade_table::TradeTableStoryState,
         wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
         utxo_map_state: stories::utxo_map::UtxoMapStoryState,
+        // DEX split swap
+        slippage_selector_state: stories::slippage_selector::SlippageSelectorStoryState,
+        amount_input_state: stories::amount_input::AmountInputStoryState,
     }
 
     impl StorybookApp {
@@ -360,6 +400,9 @@ mod app {
                 wallet_asset_picker_state:
                     stories::wallet_asset_picker::WalletAssetPickerStoryState::default(),
                 utxo_map_state: stories::utxo_map::UtxoMapStoryState::default(),
+                slippage_selector_state:
+                    stories::slippage_selector::SlippageSelectorStoryState::default(),
+                amount_input_state: stories::amount_input::AmountInputStoryState::default(),
             }
         }
 
@@ -523,6 +566,17 @@ mod app {
                                 &mut self.wallet_btn,
                                 &mut self.wallet_connector,
                             ),
+                            // DEX split swap
+                            Story::SlippageSelector => stories::slippage_selector::show(
+                                ui,
+                                &mut self.slippage_selector_state,
+                            ),
+                            Story::AmountInput => {
+                                stories::amount_input::show(ui, &mut self.amount_input_state)
+                            }
+                            Story::SplitAllocationBar => stories::split_allocation_bar::show(ui),
+                            Story::RouteSummary => stories::route_summary::show(ui),
+                            Story::PoolLiquidity => stories::pool_liquidity::show(ui),
                         }
                     });
                 });

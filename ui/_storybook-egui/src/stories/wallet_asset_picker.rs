@@ -37,6 +37,7 @@ fn balance_to_groups(balance: &egui_widgets::wallet::WalletBalance) -> Vec<Picke
                 label: pg.policy_id.clone(),
                 assets,
                 is_token_group: false,
+                is_verified: false,
             }
         })
         .collect()
@@ -227,9 +228,11 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
 
     if let Some(action) = resp.action {
         match action {
-            wallet_asset_picker::WalletAssetPickerAction::Confirmed(assets) => {
-                let names: Vec<String> = assets.iter().map(|a| a.asset_id.asset_name()).collect();
-                state.last_selection = format!("{} asset(s): {}", assets.len(), names.join(", "));
+            wallet_asset_picker::WalletAssetPickerAction::Selected(asset) => {
+                state.last_selection = format!("Selected: {}", asset.asset_id.asset_name());
+            }
+            wallet_asset_picker::WalletAssetPickerAction::Removed(asset_id) => {
+                state.last_selection = format!("Removed: {}", asset_id.asset_name());
             }
             wallet_asset_picker::WalletAssetPickerAction::Closed => {
                 state.last_selection = "Closed without selecting".into();

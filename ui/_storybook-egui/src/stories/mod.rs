@@ -22,6 +22,13 @@ pub mod trait_filter;
 pub mod wallet;
 pub mod wallet_editor;
 
+// DEX split swap widgets
+pub mod amount_input;
+pub mod pool_liquidity;
+pub mod route_summary;
+pub mod slippage_selector;
+pub mod split_allocation_bar;
+
 // Trade desk widgets
 pub mod asset_strip;
 pub mod coverage_delta_bar;
