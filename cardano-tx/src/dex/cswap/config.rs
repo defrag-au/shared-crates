@@ -1,7 +1,7 @@
-//! CSWAP concentrated liquidity pool — configuration and constants
+//! CSWAP constant product AMM — configuration and constants
 //!
-//! Parameters for building swap orders against CSWAP's concentrated
-//! liquidity pools. Reverse-engineered from on-chain transactions.
+//! Parameters for building swap orders against CSWAP's constant product
+//! AMM pools. Reverse-engineered from on-chain transactions and pool datums.
 
 /// CSWAP order script payment credential (28 bytes hex).
 /// This is the payment script hash of the order escrow address.
@@ -29,9 +29,10 @@ pub const BATCHER_NETWORK_FEE_ESTIMATE: u64 = 880_000;
 /// Simple TX with inline datum, observed ~0.175 ADA.
 pub const ORDER_NETWORK_FEE_ESTIMATE: u64 = 200_000;
 
-/// LP fee as basis points (1% = 100 bps).
-/// The concentrated pool takes this from the swap amount.
-pub const LP_FEE_BPS: u64 = 100;
+/// Default pool fee in basis points (0.85% = 85 bps).
+/// Sourced from on-chain pool datum field `poolFee`.
+/// Used as fallback when datum decoding fails.
+pub const DEFAULT_POOL_FEE_BPS: u64 = 85;
 
 /// Minimum UTxO ADA returned to the user with their tokens (lovelace).
 pub const MIN_UTXO_RETURN: u64 = 2_000_000;

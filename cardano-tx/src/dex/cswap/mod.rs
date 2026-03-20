@@ -1,14 +1,15 @@
-//! CSWAP concentrated liquidity pool integration
+//! CSWAP constant product AMM integration
 //!
-//! Provides datum construction and configuration for submitting swap
-//! orders to CSWAP's concentrated liquidity pools on Cardano.
+//! Provides datum construction, pool state decoding, and configuration
+//! for submitting swap orders to CSWAP's constant product AMM pools on Cardano.
 //!
-//! A CSWAP order is a UTxO sent to the order script address with a
-//! datum hash. The CSWAP batcher picks up and executes the order
-//! against the concentrated pool.
+//! A CSWAP order is a UTxO sent to the order script address with an
+//! inline datum. The CSWAP batcher picks up and executes the order
+//! against the pool.
 
 pub mod config;
 pub mod datum;
+pub mod pool;
 
 use pallas_addresses::{
     Address, Network, ShelleyAddress, ShelleyDelegationPart, ShelleyPaymentPart,
