@@ -33,6 +33,7 @@ pub mod wallet_editor;
 // DEX split swap widgets
 pub mod amount_input;
 pub mod pool_liquidity_indicator;
+pub mod price_impact_curve;
 pub mod route_summary;
 pub mod slippage_selector;
 pub mod split_allocation_bar;
@@ -98,6 +99,7 @@ pub use amount_input::{
     AmountInputAction, AmountInputConfig, AmountInputResponse, AmountInputState,
 };
 pub use pool_liquidity_indicator::{PoolInfo, PoolLiquidityConfig};
+pub use price_impact_curve::{ImpactCurvePool, PriceImpactCurveConfig};
 pub use route_summary::{RouteLeg, RouteSummaryConfig, RouteSummaryData};
 pub use slippage_selector::{
     SlippagePreset, SlippageSelectorAction, SlippageSelectorConfig, SlippageSelectorState,

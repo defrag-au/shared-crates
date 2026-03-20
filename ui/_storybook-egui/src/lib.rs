@@ -54,6 +54,7 @@ mod app {
         SplitAllocationBar,
         RouteSummary,
         PoolLiquidity,
+        PriceImpactCurve,
     }
 
     impl Story {
@@ -96,6 +97,7 @@ mod app {
                 Self::SplitAllocationBar,
                 Self::RouteSummary,
                 Self::PoolLiquidity,
+                Self::PriceImpactCurve,
             ]
         }
 
@@ -137,6 +139,7 @@ mod app {
                 Self::SplitAllocationBar => "Split Allocation Bar",
                 Self::RouteSummary => "Route Summary",
                 Self::PoolLiquidity => "Pool Liquidity",
+                Self::PriceImpactCurve => "Price Impact Curve",
             }
         }
 
@@ -174,7 +177,8 @@ mod app {
                 | Self::AmountInput
                 | Self::SplitAllocationBar
                 | Self::RouteSummary
-                | Self::PoolLiquidity => "DEX Split Swap",
+                | Self::PoolLiquidity
+                | Self::PriceImpactCurve => "DEX Split Swap",
             }
         }
 
@@ -269,6 +273,9 @@ mod app {
                 }
                 Self::PoolLiquidity => {
                     "Per-pool depth bars, TVL, spot price, price impact (green/yellow/red), and allocation fraction"
+                }
+                Self::PriceImpactCurve => {
+                    "AMM price impact curves per pool — visualizes why split routing minimizes slippage"
                 }
             }
         }
@@ -577,6 +584,7 @@ mod app {
                             Story::SplitAllocationBar => stories::split_allocation_bar::show(ui),
                             Story::RouteSummary => stories::route_summary::show(ui),
                             Story::PoolLiquidity => stories::pool_liquidity::show(ui),
+                            Story::PriceImpactCurve => stories::price_impact_curve::show(ui),
                         }
                     });
                 });

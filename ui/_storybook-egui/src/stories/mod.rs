@@ -25,6 +25,7 @@ pub mod wallet_editor;
 // DEX split swap widgets
 pub mod amount_input;
 pub mod pool_liquidity;
+pub mod price_impact_curve;
 pub mod route_summary;
 pub mod slippage_selector;
 pub mod split_allocation_bar;
