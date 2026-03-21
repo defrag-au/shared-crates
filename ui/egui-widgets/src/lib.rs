@@ -78,7 +78,10 @@ pub use swap_modal::{
 };
 pub use theme::{rarity_rank_color, FontStrategy};
 pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
-pub use utils::{format_duration, format_number, section_heading, stat_card, truncate_hex};
+pub use utils::{
+    format_ada, format_duration, format_lovelace, format_number, format_percent, section_heading,
+    stat_card, truncate_hex,
+};
 pub use utxo_map::{
     utxos_to_map_data, UtxoCell, UtxoMapAction, UtxoMapConfig, UtxoMapData, UtxoMapResponse,
     UtxoMapState,

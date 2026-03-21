@@ -4,6 +4,7 @@ pub mod buttons;
 pub mod card_browser;
 pub mod distribution;
 pub mod flip_counter;
+pub mod formatting;
 pub mod icon_gallery;
 pub mod marquee;
 pub mod mesh_playground;

@@ -17,6 +17,7 @@ mod app {
 
     #[derive(Clone, Copy, PartialEq, Eq)]
     pub enum Story {
+        Formatting,
         Distribution,
         Marquee,
         Buttons,
@@ -60,6 +61,7 @@ mod app {
     impl Story {
         fn all() -> &'static [Self] {
             &[
+                Self::Formatting,
                 Self::Distribution,
                 Self::Marquee,
                 Self::Buttons,
@@ -103,6 +105,7 @@ mod app {
 
         fn label(&self) -> &'static str {
             match self {
+                Self::Formatting => "Formatting",
                 Self::Distribution => "Distribution",
                 Self::Marquee => "Marquee",
                 Self::Buttons => "Buttons",
@@ -145,7 +148,9 @@ mod app {
 
         fn category(&self) -> &'static str {
             match self {
-                Self::Distribution | Self::Marquee | Self::Buttons => "Primitives",
+                Self::Formatting | Self::Distribution | Self::Marquee | Self::Buttons => {
+                    "Primitives"
+                }
                 Self::ProgressBar
                 | Self::Sparkline
                 | Self::MetricCard
@@ -184,6 +189,7 @@ mod app {
 
         fn description(&self) -> &'static str {
             match self {
+                Self::Formatting => "Shared formatters: ADA, lovelace, percent, number, duration, hex truncation",
                 Self::Distribution => "Concentric orbital rings supply distribution chart",
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
@@ -479,6 +485,7 @@ mod app {
                         ui.add_space(8.0);
 
                         match self.current_story {
+                            Story::Formatting => stories::formatting::show(ui),
                             Story::Distribution => {
                                 stories::distribution::show(ui, &mut self.distribution_chart)
                             }
