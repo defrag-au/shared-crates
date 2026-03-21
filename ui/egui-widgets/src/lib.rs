@@ -38,6 +38,10 @@ pub mod route_summary;
 pub mod slippage_selector;
 pub mod split_allocation_bar;
 
+// Loan dashboard widgets
+pub mod data_table;
+pub mod exposure_bar;
+
 // Trade desk widgets
 pub mod asset_strip;
 pub mod coverage_delta_bar;
@@ -108,6 +112,12 @@ pub use slippage_selector::{
     SlippagePreset, SlippageSelectorAction, SlippageSelectorConfig, SlippageSelectorState,
 };
 pub use split_allocation_bar::{dex_color, AllocationSegment, SplitAllocationBarConfig};
+
+// Loan dashboard re-exports
+pub use data_table::{
+    DataRowItem, DataRowStatus, DataTableConfig, DataTableResponse, DataTableState,
+};
+pub use exposure_bar::{ltv_risk_color, ExposureBarConfig, ExposureSegment};
 
 // Trade desk re-exports
 pub use asset_strip::{AssetStripConfig, AssetStripItem, AssetStripResponse};

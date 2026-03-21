@@ -56,6 +56,9 @@ mod app {
         RouteSummary,
         PoolLiquidity,
         PriceImpactCurve,
+        // Loan dashboard
+        ExposureBar,
+        DataTable,
     }
 
     impl Story {
@@ -100,6 +103,9 @@ mod app {
                 Self::RouteSummary,
                 Self::PoolLiquidity,
                 Self::PriceImpactCurve,
+                // Loan dashboard
+                Self::ExposureBar,
+                Self::DataTable,
             ]
         }
 
@@ -143,6 +149,8 @@ mod app {
                 Self::RouteSummary => "Route Summary",
                 Self::PoolLiquidity => "Pool Liquidity",
                 Self::PriceImpactCurve => "Price Impact Curve",
+                Self::ExposureBar => "Exposure Bar",
+                Self::DataTable => "Data Table",
             }
         }
 
@@ -184,6 +192,7 @@ mod app {
                 | Self::RouteSummary
                 | Self::PoolLiquidity
                 | Self::PriceImpactCurve => "DEX Split Swap",
+                Self::ExposureBar | Self::DataTable => "Loan Dashboard",
             }
         }
 
@@ -283,6 +292,12 @@ mod app {
                 Self::PriceImpactCurve => {
                     "AMM price impact curves per pool — visualizes why split routing minimizes slippage"
                 }
+                Self::ExposureBar => {
+                    "Stacked horizontal bar showing total ADA exposure by collateral token, colored by LTV risk"
+                }
+                Self::DataTable => {
+                    "Dense row-based table with column headers, LTV micro-bars, selection, and detail panel"
+                }
             }
         }
     }
@@ -348,6 +363,8 @@ mod app {
         // DEX split swap
         slippage_selector_state: stories::slippage_selector::SlippageSelectorStoryState,
         amount_input_state: stories::amount_input::AmountInputStoryState,
+        // Loan dashboard
+        data_table_state: stories::data_table::DataTableStoryState,
     }
 
     impl StorybookApp {
@@ -416,6 +433,7 @@ mod app {
                 slippage_selector_state:
                     stories::slippage_selector::SlippageSelectorStoryState::default(),
                 amount_input_state: stories::amount_input::AmountInputStoryState::default(),
+                data_table_state: stories::data_table::DataTableStoryState::default(),
             }
         }
 
@@ -592,6 +610,11 @@ mod app {
                             Story::RouteSummary => stories::route_summary::show(ui),
                             Story::PoolLiquidity => stories::pool_liquidity::show(ui),
                             Story::PriceImpactCurve => stories::price_impact_curve::show(ui),
+                            // Loan dashboard
+                            Story::ExposureBar => stories::exposure_bar::show(ui),
+                            Story::DataTable => {
+                                stories::data_table::show(ui, &mut self.data_table_state)
+                            }
                         }
                     });
                 });
