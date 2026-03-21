@@ -118,6 +118,8 @@ pub static ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
     "addr1w8p79rpkcdz8x9d6tft0x0dx5mwuzac2sa4gm8cvkw5hcnqst2ctf" => AC::Script(SC::Exchange { label: "Minswap" }),
 
     "addr1zyd0sj57d9lpu7cy9g9qdurpazqc9l4eaxk6j59nd2gkh4275jq4yvpskgayj55xegdp30g5rfynax66r8vgn9fldndsqzf5tn" => AC::Script(SC::Exchange { label: "SaturnSwap" }),
+    // Levvy V2 lending — enterprise script address (no staking credential)
+    "addr1w85lr4yaa7jarua6pxquxxvuenrfhqca6eqfs472lnjsetcmkrsmp" => AC::Script(SC::DeFi { label: "Levvy V2", protocol: "levvy-v2" }),
 };
 
 /// Address prefixes for scripts that use variable staking credentials.
@@ -170,6 +172,22 @@ static ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[
     (
         "addr1zyupekdkyr8f6lrnm4zulcs8juwv080hjfgsqvgkp98kkd",
         AC::Script(SC::Vesting { label: "CrowdLock" }),
+    ),
+    // Levvy V2 lending v1 validator (script hash: e9f1d49defa5d1f3ba0981c3199cccc69b831dd6409857cafce50caf)
+    (
+        "addr1z85lr4yaa7jarua6pxquxxvuenrfhqca6eqfs472lnjset",
+        AC::Script(SC::DeFi {
+            label: "Levvy V2",
+            protocol: "levvy-v2",
+        }),
+    ),
+    // Levvy V2 lending v2 validator (script hash: 4cf4baed35ae008e1a38bc8b1c76c5a6dbb78640d366bb4ca53cf39a)
+    (
+        "addr1z9x0fwhdxkhqprs68z7gk8rkckndhduxgrfkdw6v55708x",
+        AC::Script(SC::DeFi {
+            label: "Levvy V2",
+            protocol: "levvy-v2",
+        }),
     ),
 ];
 
@@ -329,7 +347,10 @@ pub enum ScriptCategory {
     Exchange {
         label: &'static str,
     },
-    DeFi,
+    DeFi {
+        label: &'static str,
+        protocol: &'static str,
+    },
     Minter(Minter),
     Staking {
         label: &'static str,
@@ -361,7 +382,16 @@ impl PartialEq for ScriptCategory {
             (ScriptCategory::Exchange { label: l1 }, ScriptCategory::Exchange { label: l2 }) => {
                 l1 == l2
             }
-            (ScriptCategory::DeFi, ScriptCategory::DeFi) => true,
+            (
+                ScriptCategory::DeFi {
+                    label: l1,
+                    protocol: p1,
+                },
+                ScriptCategory::DeFi {
+                    label: l2,
+                    protocol: p2,
+                },
+            ) => l1 == l2 && p1 == p2,
             (ScriptCategory::Minter(m1), ScriptCategory::Minter(m2)) => m1 == m2,
             (
                 ScriptCategory::Staking {
@@ -397,7 +427,7 @@ impl fmt::Display for ScriptCategory {
             ScriptCategory::Exchange { label } => {
                 write!(f, "{label} exchange")
             }
-            ScriptCategory::DeFi => write!(f, "DeFi"),
+            ScriptCategory::DeFi { label, .. } => write!(f, "{label} DeFi"),
             ScriptCategory::Minter(minter) => write!(f, "{minter} Minter"),
             ScriptCategory::Staking { label, project } => {
                 write!(f, "{label} staking for {project}")
