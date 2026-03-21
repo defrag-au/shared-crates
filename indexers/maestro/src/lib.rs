@@ -361,6 +361,7 @@ pub struct AssetAmount {
 #[cfg(feature = "transactions")]
 struct AddressUtxosResponse {
     data: Vec<AddressUtxo>,
+    next_cursor: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -774,12 +775,73 @@ impl MaestroApi {
         Ok(response.data)
     }
 
-    /// Get UTxOs at a specific address (for wallet operations and transaction building)
+    /// Get first page of UTxOs at a specific address (for wallet operations and transaction building)
     #[cfg(feature = "transactions")]
     pub async fn get_address_utxos(&self, address: &str) -> Result<Vec<AddressUtxo>, MaestroError> {
         let url = format!("https://{}/addresses/{address}/utxos", self.base_url);
         let response: AddressUtxosResponse = self.get_url(url).await?;
         Ok(response.data)
+    }
+
+    /// Get ALL UTxOs at a specific address, paginating through all pages.
+    #[cfg(feature = "transactions")]
+    pub async fn get_all_address_utxos(
+        &self,
+        address: &str,
+    ) -> Result<Vec<AddressUtxo>, MaestroError> {
+        let mut all_utxos = Vec::new();
+        let mut cursor: Option<String> = None;
+
+        loop {
+            let querystring = match &cursor {
+                Some(c) => format!("?cursor={c}"),
+                None => String::new(),
+            };
+            let url = format!(
+                "https://{}/addresses/{address}/utxos{querystring}",
+                self.base_url
+            );
+            let response: AddressUtxosResponse = self.get_url(url).await?;
+            all_utxos.extend(response.data);
+
+            match response.next_cursor {
+                Some(c) if !c.is_empty() => cursor = Some(c),
+                _ => break,
+            }
+        }
+
+        Ok(all_utxos)
+    }
+
+    /// Get ALL UTxOs at a payment credential (bech32 `script1...` or `addr_vkh1...`),
+    /// paginating through all pages. This finds UTxOs across all staking variants.
+    #[cfg(feature = "transactions")]
+    pub async fn get_credential_utxos(
+        &self,
+        credential: &str,
+    ) -> Result<Vec<AddressUtxo>, MaestroError> {
+        let mut all_utxos = Vec::new();
+        let mut cursor: Option<String> = None;
+
+        loop {
+            let querystring = match &cursor {
+                Some(c) => format!("?cursor={c}"),
+                None => String::new(),
+            };
+            let url = format!(
+                "https://{}/addresses/cred/{credential}/utxos{querystring}",
+                self.base_url
+            );
+            let response: AddressUtxosResponse = self.get_url(url).await?;
+            all_utxos.extend(response.data);
+
+            match response.next_cursor {
+                Some(c) if !c.is_empty() => cursor = Some(c),
+                _ => break,
+            }
+        }
+
+        Ok(all_utxos)
     }
 
     /// Submit a signed transaction to the blockchain
