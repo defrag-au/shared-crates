@@ -120,6 +120,8 @@ pub static ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
     "addr1zyd0sj57d9lpu7cy9g9qdurpazqc9l4eaxk6j59nd2gkh4275jq4yvpskgayj55xegdp30g5rfynax66r8vgn9fldndsqzf5tn" => AC::Script(SC::Exchange { label: "SaturnSwap" }),
     // Levvy V2 lending — enterprise script address (no staking credential)
     "addr1w85lr4yaa7jarua6pxquxxvuenrfhqca6eqfs472lnjsetcmkrsmp" => AC::Script(SC::DeFi { label: "Levvy V2", protocol: "levvy-v2" }),
+    // Asset Hire — NFT rental/hire validator (enterprise script, mainnet)
+    "addr1w8kyx8vxy7pf6l3pzxgkrkgfaz56zhty3fnml7pvet7r2uqxu0rvq" => AC::Script(SC::DeFi { label: "Asset Hire", protocol: "asset-hire" }),
 };
 
 /// Address prefixes for scripts that use variable staking credentials.
@@ -199,16 +201,52 @@ static ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[
     ),
 ];
 
-/// Look up an address in the registry, falling back to prefix matching for scripts
-/// with variable staking credentials (e.g. Wayup per-seller addresses).
+// ── Testnet / Preprod registries ─────────────────────────────────────────────
+
+/// Registry of known testnet/preprod addresses.
+/// Addresses here use `addr_test1` prefix and are separate from mainnet.
+pub static TESTNET_ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
+    // Asset Hire — NFT rental/hire validator (enterprise script, preprod)
+    "addr_test1wrkyx8vxy7pf6l3pzxgkrkgfaz56zhty3fnml7pvet7r2uqa5mlr9" => AC::Script(SC::DeFi { label: "Asset Hire", protocol: "asset-hire" }),
+};
+
+/// Testnet address prefix registry (variable staking credentials).
+static TESTNET_ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[];
+
+// ── Network enum ─────────────────────────────────────────────────────────────
+
+/// Which network's address registry to use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RegistryNetwork {
+    #[default]
+    Mainnet,
+    Testnet,
+}
+
+// ── Lookup functions ─────────────────────────────────────────────────────────
+
+/// Look up an address in the mainnet registry (default, backward-compatible).
 pub fn lookup_address(address: &str) -> Option<&'static AddressCategory> {
+    lookup_address_for_network(address, RegistryNetwork::Mainnet)
+}
+
+/// Look up an address in the registry for the specified network.
+pub fn lookup_address_for_network(
+    address: &str,
+    network: RegistryNetwork,
+) -> Option<&'static AddressCategory> {
+    let (registry, prefixes) = match network {
+        RegistryNetwork::Mainnet => (&ADDRESS_REGISTRY, ADDRESS_PREFIX_REGISTRY),
+        RegistryNetwork::Testnet => (&TESTNET_ADDRESS_REGISTRY, TESTNET_ADDRESS_PREFIX_REGISTRY),
+    };
+
     // Fast exact match first
-    if let Some(cat) = ADDRESS_REGISTRY.get(address) {
+    if let Some(cat) = registry.get(address) {
         return Some(cat);
     }
 
     // Prefix-based fallback for per-seller script addresses
-    for (prefix, category) in ADDRESS_PREFIX_REGISTRY {
+    for (prefix, category) in prefixes {
         if address.starts_with(prefix) {
             return Some(category);
         }
@@ -450,14 +488,25 @@ impl fmt::Display for ScriptCategory {
 /// Smart contract registry for identifying known contract addresses and their purposes
 #[derive(Debug, Clone)]
 pub struct SmartContractRegistry {
+    /// Which network's address registry to consult
+    network: RegistryNetwork,
     /// Runtime additions for development/testing (not used in production lookups)
     runtime_contracts: std::collections::HashMap<String, ContractInfo>,
 }
 
 impl SmartContractRegistry {
-    /// Create a new registry
+    /// Create a new registry (defaults to Mainnet)
     pub fn new() -> Self {
         Self {
+            network: RegistryNetwork::Mainnet,
+            runtime_contracts: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Create a new registry for a specific network
+    pub fn new_for_network(network: RegistryNetwork) -> Self {
+        Self {
+            network,
             runtime_contracts: std::collections::HashMap::new(),
         }
     }
@@ -474,17 +523,17 @@ impl SmartContractRegistry {
         self.runtime_contracts.get(address)
     }
 
-    /// Look up address category using the ADDRESS_REGISTRY (with prefix fallback)
+    /// Look up address category using the address registry for this network (with prefix fallback)
     pub fn get_address_category(&self, address: &str) -> Option<&AddressCategory> {
-        lookup_address(address)
+        lookup_address_for_network(address, self.network)
     }
 
-    /// Get marketplace info from address using the ADDRESS_REGISTRY (with prefix fallback)
+    /// Get marketplace info from address using the address registry for this network
     pub fn get_marketplace_info(
         &self,
         address: &str,
     ) -> Option<(Marketplace, Option<MarketplacePurpose>)> {
-        match lookup_address(address) {
+        match lookup_address_for_network(address, self.network) {
             Some(AddressCategory::Script(ScriptCategory::Marketplace {
                 marketplace,
                 purpose,
@@ -508,7 +557,7 @@ impl SmartContractRegistry {
 
     /// Check if an address is a known regular address
     pub fn is_known_address(&self, address: &str) -> bool {
-        lookup_address(address).is_some()
+        lookup_address_for_network(address, self.network).is_some()
     }
 
     /// Check if address belongs to a specific marketplace
@@ -530,7 +579,7 @@ impl SmartContractRegistry {
 
     /// Get the fee calculation function for a marketplace address
     pub fn get_marketplace_fee_calculation(&self, address: &str) -> Option<FeeCalculationFn> {
-        match lookup_address(address) {
+        match lookup_address_for_network(address, self.network) {
             Some(AddressCategory::Script(ScriptCategory::Marketplace {
                 fee_calculation, ..
             })) => Some(*fee_calculation),
