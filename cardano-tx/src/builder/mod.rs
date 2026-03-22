@@ -5,8 +5,11 @@
 //! transaction ready for signing via Ed25519 or CIP-30.
 
 pub mod buy;
+pub mod cost_models;
+pub mod fluent;
 pub mod marketplace;
 pub mod mint;
+pub mod script;
 pub mod send;
 pub mod swap;
 
