@@ -15,10 +15,12 @@
 //!     .build()?;
 //! ```
 
+use cardano_assets::utxo::UtxoTag;
 use cardano_assets::UtxoApi;
 use pallas_addresses::Address;
 use pallas_crypto::hash::Hash;
 use pallas_txbuilder::{ExUnits, Input, Output, ScriptKind, StagingTransaction};
+use std::collections::HashSet;
 
 use super::cost_models::{PLUTUS_V2_COST_MODEL, PLUTUS_V3_COST_MODEL};
 use super::script::{CollateralConfig, MintEntry, ScriptInput, ScriptSource, ValidityInterval};
@@ -27,7 +29,7 @@ use crate::error::TxBuildError;
 use crate::helpers::decode::decode_tx_hash;
 use crate::helpers::output::{add_assets_to_output, create_ada_output};
 use crate::metadata::cip25::build_cip25_auxiliary_data;
-use crate::selection::select_collateral;
+use crate::selection::{estimate_simple_fee, select_collateral};
 
 // ============================================================================
 // TxBuilder
@@ -49,6 +51,10 @@ pub struct TxBuilder {
     collateral: Option<CollateralConfig>,
     /// Track highest Plutus version used (for cost model selection)
     max_script_kind: Option<ScriptKind>,
+    /// Track UTxO refs already added as inputs (tx_hash, output_index) to avoid double-spend.
+    used_input_refs: HashSet<(String, u32)>,
+    /// Sum of lovelace from explicitly added inputs (for coin selection).
+    input_lovelace: u64,
 }
 
 impl TxBuilder {
@@ -65,6 +71,8 @@ impl TxBuilder {
             auxiliary_data: None,
             collateral: None,
             max_script_kind: None,
+            used_input_refs: HashSet::new(),
+            input_lovelace: 0,
         }
     }
 
@@ -74,6 +82,9 @@ impl TxBuilder {
     pub fn input(mut self, utxo: &UtxoApi) -> Result<Self, TxBuildError> {
         let tx_hash = decode_tx_hash(&utxo.tx_hash)?;
         let input = Input::new(Hash::from(tx_hash), utxo.output_index as u64);
+        self.used_input_refs
+            .insert((utxo.tx_hash.clone(), utxo.output_index));
+        self.input_lovelace += utxo.lovelace;
         self.inputs.push((input, None));
         Ok(self)
     }
@@ -86,6 +97,9 @@ impl TxBuilder {
     ) -> Result<Self, TxBuildError> {
         let tx_hash = decode_tx_hash(&utxo.tx_hash)?;
         let input = Input::new(Hash::from(tx_hash), utxo.output_index as u64);
+        self.used_input_refs
+            .insert((utxo.tx_hash.clone(), utxo.output_index));
+        self.input_lovelace += utxo.lovelace;
         self.track_script_kind(&script_input.script);
         self.inputs.push((input, Some(script_input)));
         Ok(self)
@@ -225,8 +239,59 @@ impl TxBuilder {
             None
         };
 
+        // ── Coin selection ───────────────────────────────────────────────
+        // Sum explicit output lovelace to determine how much ADA we need.
+        let output_lovelace: u64 = self.outputs.iter().map(|o| o.lovelace).sum();
+        let estimated_fee = estimate_simple_fee(&self.deps.params);
+        // Min change UTxO size: (160 + 28-byte addr) * coins_per_utxo_byte
+        let min_change_lovelace = 188 * self.deps.params.coins_per_utxo_byte;
+        let required = output_lovelace + estimated_fee + min_change_lovelace;
+
+        let mut inputs = self.inputs;
+        let mut total_input = self.input_lovelace;
+
+        if total_input < required {
+            // Select additional pure-ADA UTxOs that are safe to spend
+            let mut candidates: Vec<&UtxoApi> = self
+                .deps
+                .utxos
+                .iter()
+                .filter(|u| {
+                    // Not already used as an input
+                    !self
+                        .used_input_refs
+                        .contains(&(u.tx_hash.clone(), u.output_index))
+                    // Pure ADA (no native assets to worry about in change)
+                    && u.assets.is_empty()
+                    // No datum or script ref (those are likely locked UTxOs)
+                    && !u.tags.contains(&UtxoTag::HasDatum)
+                    && !u.tags.contains(&UtxoTag::HasScriptRef)
+                    && !u.tags.contains(&UtxoTag::ScriptAddress)
+                })
+                .collect();
+
+            // Prefer larger UTxOs first to minimise inputs
+            candidates.sort_by(|a, b| b.lovelace.cmp(&a.lovelace));
+
+            for utxo in candidates {
+                if total_input >= required {
+                    break;
+                }
+                let tx_hash = decode_tx_hash(&utxo.tx_hash)?;
+                let input = Input::new(Hash::from(tx_hash), utxo.output_index as u64);
+                inputs.push((input, None));
+                total_input += utxo.lovelace;
+            }
+
+            if total_input < output_lovelace + estimated_fee {
+                return Err(TxBuildError::InsufficientFunds {
+                    needed: required,
+                    available: total_input,
+                });
+            }
+        }
+
         // Capture everything we need for the build closure
-        let inputs = self.inputs;
         let reference_inputs = self.reference_inputs;
         let outputs = self.outputs;
         let mints = self.mints;
@@ -235,13 +300,23 @@ impl TxBuilder {
         let auxiliary_data = self.auxiliary_data;
         let max_script_kind = self.max_script_kind;
         let network_id = self.deps.network_id;
+        let change_address = self.deps.from_address.clone();
 
         super::converge_fee(
             |fee| {
+                // Compute change: total input minus outputs minus fee
+                let change = total_input.saturating_sub(output_lovelace + fee);
+
+                // Build outputs: explicit outputs + change (if above dust threshold)
+                let mut all_outputs = outputs.clone();
+                if change >= min_change_lovelace {
+                    all_outputs.push(create_ada_output(change_address.clone(), change));
+                }
+
                 assemble_tx(
                     &inputs,
                     &reference_inputs,
-                    &outputs,
+                    &all_outputs,
                     &mints,
                     &required_signers,
                     &validity,

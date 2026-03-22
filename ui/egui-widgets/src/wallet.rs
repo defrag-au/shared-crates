@@ -4,7 +4,9 @@
 //! utilities into a single state struct. Consumers drive async operations
 //! through their own message channels — this module never spawns tasks.
 
-pub use wallet_core::{on_window_focus, ConnectionState, WalletApi, WalletInfo, WalletProvider};
+pub use wallet_core::{
+    on_window_focus, ConnectionState, Network, WalletApi, WalletInfo, WalletProvider,
+};
 pub use wallet_pallas::{decode_balance, Address, WalletBalance};
 
 /// Result of a successful wallet connection (produced by async connect task).
@@ -139,6 +141,14 @@ impl WalletConnector {
     pub fn set_error(&mut self, error: String) {
         self.connection_state = ConnectionState::Error(error);
     }
+
+    /// Get the connected wallet's network, if connected.
+    pub fn connected_network(&self) -> Option<Network> {
+        match &self.connection_state {
+            ConnectionState::Connected { network, .. } => Some(*network),
+            _ => None,
+        }
+    }
 }
 
 impl Default for WalletConnector {
@@ -208,4 +218,24 @@ pub async fn fetch_wallet_utxos(
         .map_err(|e| format!("Failed to get UTxOs: {e}"))?;
 
     wallet_pallas::decode_utxos(&cbor_hexes).map_err(|e| format!("Failed to decode UTxOs: {e}"))
+}
+
+/// Infer the expected Cardano network from the current page hostname.
+///
+/// Returns `Preprod` if the hostname contains `.dev.` (e.g. `hire.dev.hodlcroft.com`)
+/// or is `localhost`, otherwise `Mainnet`.
+pub fn expected_network_from_hostname() -> Network {
+    let hostname = web_sys::window()
+        .and_then(|w| w.location().hostname().ok())
+        .unwrap_or_default();
+
+    if hostname.contains(".dev.")
+        || hostname.contains(".preprod.")
+        || hostname == "localhost"
+        || hostname.starts_with("127.")
+    {
+        Network::Preprod
+    } else {
+        Network::Mainnet
+    }
 }
