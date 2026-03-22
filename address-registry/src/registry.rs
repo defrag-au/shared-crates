@@ -189,6 +189,14 @@ static ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[
             protocol: "levvy-v2",
         }),
     ),
+    // Levvy V2 lending v3 validator (script hash: 4cf4baed35ae0037068e2f22ce3b62d36eede320d3365da64a79f9a9)
+    (
+        "addr1z9x0fwhdxkhqqdcx3chj9n3mvtfkam0ryrfnvhdxffuln2",
+        AC::Script(SC::DeFi {
+            label: "Levvy V2",
+            protocol: "levvy-v2",
+        }),
+    ),
 ];
 
 /// Look up an address in the registry, falling back to prefix matching for scripts

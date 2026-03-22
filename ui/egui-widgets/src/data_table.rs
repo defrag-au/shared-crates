@@ -15,6 +15,7 @@ use crate::theme;
 // Column widths
 // ============================================================================
 
+const COL_CHEVRON: f32 = 20.0;
 const COL_ICON: f32 = 28.0;
 const COL_TOKEN: f32 = 80.0;
 const COL_PRINCIPAL: f32 = 100.0;
@@ -24,17 +25,6 @@ const COL_RATE: f32 = 50.0;
 const COL_DURATION: f32 = 50.0;
 const COL_INTEREST: f32 = 80.0;
 const COL_STATUS: f32 = 80.0;
-
-/// Sum of all fixed column widths (excluding status which gets the remainder).
-const FIXED_WIDTH: f32 = COL_ICON
-    + COL_TOKEN
-    + COL_PRINCIPAL
-    + COL_COLLATERAL
-    + COL_LTV
-    + COL_RATE
-    + COL_DURATION
-    + COL_INTEREST
-    + COL_STATUS;
 
 // ============================================================================
 // Types
@@ -51,23 +41,23 @@ pub enum DataRowStatus {
 ///
 /// All string fields are pre-formatted by the caller — the widget does no
 /// number formatting itself, keeping it reusable across domains.
-pub struct DataRowItem<'a> {
+pub struct DataRowItem {
     /// Small token icon URL (rendered at icon_size). `None` = no icon.
-    pub icon_url: Option<&'a str>,
+    pub icon_url: Option<String>,
     /// Token/pool name (e.g. "NIGHT").
-    pub token_name: &'a str,
+    pub token_name: String,
     /// Pre-formatted principal (e.g. "3,000 ADA").
-    pub principal: &'a str,
+    pub principal: String,
     /// Pre-formatted collateral (e.g. "20,155 NIGHT").
-    pub collateral: &'a str,
+    pub collateral: String,
     /// LTV percentage. `None` if no price data available.
     pub ltv_pct: Option<f64>,
     /// Pre-formatted interest rate (e.g. "4.0%").
-    pub rate: &'a str,
+    pub rate: String,
     /// Pre-formatted duration (e.g. "14d").
-    pub duration: &'a str,
+    pub duration: String,
     /// Pre-formatted interest amount (e.g. "120 ADA").
-    pub interest: &'a str,
+    pub interest: String,
     /// Row lifecycle status.
     pub status: DataRowStatus,
 }
@@ -81,8 +71,6 @@ pub struct DataTableState {
 
 /// Configuration for the data table.
 pub struct DataTableConfig {
-    /// Width of the detail panel (0 = no detail panel).
-    pub detail_width: f32,
     /// Height of each data row in pixels.
     pub row_height: f32,
     /// Height of the column header row.
@@ -93,17 +81,19 @@ pub struct DataTableConfig {
     pub scroll_id: &'static str,
     /// Whether to show a micro LTV bar behind the LTV text.
     pub show_ltv_bar: bool,
+    /// Background color for the expanded accordion detail area.
+    pub detail_bg: Color32,
 }
 
 impl Default for DataTableConfig {
     fn default() -> Self {
         Self {
-            detail_width: 340.0,
             row_height: 36.0,
             header_height: 28.0,
             icon_size: 20.0,
             scroll_id: "data_table",
             show_ltv_bar: true,
+            detail_bg: Color32::from_rgb(30, 32, 42),
         }
     }
 }
@@ -129,101 +119,57 @@ pub fn show<T>(
     state: &mut DataTableState,
     items: &[T],
     config: &DataTableConfig,
-    mut render_row: impl FnMut(&T) -> DataRowItem<'_>,
+    mut render_row: impl FnMut(&T) -> DataRowItem,
     mut render_detail: impl FnMut(&mut Ui, usize, &T),
 ) -> DataTableResponse {
     crate::install_phosphor_font(ui.ctx());
-
-    let has_selection = state.selected_index.is_some_and(|idx| idx < items.len());
-    let detail_width = if has_selection {
-        config.detail_width
-    } else {
-        0.0
-    };
 
     let mut response = DataTableResponse {
         selected_changed: false,
         selected_index: state.selected_index,
     };
 
-    ui.horizontal_top(|ui| {
-        // LEFT: table
-        let grid_width = if has_selection {
-            (ui.available_width() - detail_width - 12.0).max(FIXED_WIDTH)
-        } else {
-            ui.available_width()
-        };
+    // Column headers
+    draw_header(ui, config);
 
-        ui.vertical(|ui| {
-            ui.set_max_width(grid_width);
+    // Scrollable rows with inline accordion detail
+    egui::ScrollArea::vertical()
+        .id_salt(config.scroll_id)
+        .show(ui, |ui| {
+            for (idx, item) in items.iter().enumerate() {
+                let row_data = render_row(item);
+                let is_selected = state.selected_index == Some(idx);
 
-            // Column headers
-            draw_header(ui, config, grid_width);
+                let clicked = draw_row(ui, &row_data, config, idx, is_selected);
 
-            // Scrollable rows
-            egui::ScrollArea::vertical()
-                .id_salt(config.scroll_id)
-                .show(ui, |ui| {
-                    for (idx, item) in items.iter().enumerate() {
-                        let row_data = render_row(item);
-                        let is_selected = state.selected_index == Some(idx);
-
-                        let clicked = draw_row(ui, &row_data, config, grid_width, idx, is_selected);
-
-                        if clicked {
-                            if is_selected {
-                                state.selected_index = None;
-                            } else {
-                                state.selected_index = Some(idx);
-                            }
-                            response.selected_changed = true;
-                            response.selected_index = state.selected_index;
-                        }
+                if clicked {
+                    if is_selected {
+                        state.selected_index = None;
+                    } else {
+                        state.selected_index = Some(idx);
                     }
-                });
-        });
+                    response.selected_changed = true;
+                    response.selected_index = state.selected_index;
+                }
 
-        // RIGHT: detail panel
-        if let Some(sel_idx) = state.selected_index {
-            if sel_idx < items.len() {
-                ui.add_space(12.0);
-                ui.vertical(|ui| {
-                    ui.set_max_width(config.detail_width);
-                    ui.set_min_width(config.detail_width);
-                    let frame_resp = egui::Frame::new()
-                        .fill(Color32::from_rgb(30, 32, 42))
-                        .corner_radius(6.0)
+                // Accordion detail — rendered inline below the selected row
+                if state.selected_index == Some(idx) {
+                    egui::Frame::new()
+                        .fill(config.detail_bg)
+                        .corner_radius(4.0)
                         .inner_margin(14.0)
+                        .outer_margin(egui::Margin {
+                            left: COL_CHEVRON as i8,
+                            right: 0,
+                            top: 0,
+                            bottom: 4,
+                        })
                         .show(ui, |ui| {
-                            render_detail(ui, sel_idx, &items[sel_idx]);
+                            render_detail(ui, idx, item);
                         });
-
-                    // Close button overlay at top-right
-                    let panel_rect = frame_resp.response.rect;
-                    let btn_size = Vec2::splat(20.0);
-                    let btn_rect = Rect::from_min_size(
-                        egui::pos2(panel_rect.max.x - btn_size.x - 4.0, panel_rect.min.y + 4.0),
-                        btn_size,
-                    );
-                    ui.scope_builder(egui::UiBuilder::new().max_rect(btn_rect), |ui| {
-                        if ui
-                            .add(
-                                egui::Button::new(
-                                    crate::PhosphorIcon::X.rich_text(14.0, theme::TEXT_SECONDARY),
-                                )
-                                .frame(false),
-                            )
-                            .clicked()
-                        {
-                            state.selected_index = None;
-                            response.selected_changed = true;
-                            response.selected_index = None;
-                        }
-                    });
-                });
+                }
             }
-        }
-    });
+        });
 
     response
 }
@@ -232,7 +178,7 @@ pub fn show<T>(
 // Header
 // ============================================================================
 
-fn draw_header(ui: &mut Ui, config: &DataTableConfig, _grid_width: f32) {
+fn draw_header(ui: &mut Ui, config: &DataTableConfig) {
     let desired = Vec2::new(ui.available_width(), config.header_height);
     let (rect, _) = ui.allocate_exact_size(desired, Sense::hover());
 
@@ -246,6 +192,7 @@ fn draw_header(ui: &mut Ui, config: &DataTableConfig, _grid_width: f32) {
     let y = rect.center().y;
 
     let headers = [
+        ("", COL_CHEVRON),
         ("", COL_ICON),
         ("Pool", COL_TOKEN),
         ("Principal", COL_PRINCIPAL),
@@ -285,9 +232,8 @@ fn draw_header(ui: &mut Ui, config: &DataTableConfig, _grid_width: f32) {
 
 fn draw_row(
     ui: &mut Ui,
-    item: &DataRowItem<'_>,
+    item: &DataRowItem,
     config: &DataTableConfig,
-    _grid_width: f32,
     idx: usize,
     is_selected: bool,
 ) -> bool {
@@ -316,13 +262,33 @@ fn draw_row(
     let cy = rect.center().y;
     let mut x = rect.min.x;
 
+    // ── Chevron ──
+    let chevron = if is_selected {
+        crate::PhosphorIcon::CaretDown
+    } else {
+        crate::PhosphorIcon::CaretRight
+    };
+    let chevron_color = if is_selected || is_hovered {
+        theme::TEXT_SECONDARY
+    } else {
+        theme::TEXT_MUTED
+    };
+    chevron.paint(
+        painter,
+        egui::pos2(x + COL_CHEVRON / 2.0, cy),
+        egui::Align2::CENTER_CENTER,
+        10.0,
+        chevron_color,
+    );
+    x += COL_CHEVRON;
+
     // ── Icon ──
-    if let Some(url) = item.icon_url {
+    if let Some(ref url) = item.icon_url {
         let icon_rect = Rect::from_center_size(
             egui::pos2(x + COL_ICON / 2.0, cy),
             Vec2::splat(config.icon_size),
         );
-        let image = egui::Image::new(url)
+        let image = egui::Image::new(url.as_str())
             .fit_to_exact_size(Vec2::splat(config.icon_size))
             .corner_radius(CornerRadius::same(2));
         image.paint_at(ui, icon_rect);
@@ -333,7 +299,7 @@ fn draw_row(
     painter.text(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
-        item.token_name,
+        &item.token_name,
         egui::FontId::proportional(11.0),
         theme::TEXT_PRIMARY,
     );
@@ -343,7 +309,7 @@ fn draw_row(
     painter.text(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
-        item.principal,
+        &item.principal,
         egui::FontId::monospace(11.0),
         theme::ACCENT_CYAN,
     );
@@ -353,7 +319,7 @@ fn draw_row(
     painter.text(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
-        item.collateral,
+        &item.collateral,
         egui::FontId::proportional(10.0),
         theme::TEXT_SECONDARY,
     );
@@ -395,7 +361,7 @@ fn draw_row(
     painter.text(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
-        item.rate,
+        &item.rate,
         egui::FontId::monospace(10.0),
         theme::TEXT_PRIMARY,
     );
@@ -405,7 +371,7 @@ fn draw_row(
     painter.text(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
-        item.duration,
+        &item.duration,
         egui::FontId::proportional(10.0),
         theme::TEXT_MUTED,
     );
@@ -415,7 +381,7 @@ fn draw_row(
     painter.text(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
-        item.interest,
+        &item.interest,
         egui::FontId::monospace(10.0),
         theme::ACCENT_GREEN,
     );

@@ -185,13 +185,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
                 // render_row closure
                 |loan| DataRowItem {
                     icon_url: None, // No real images in storybook
-                    token_name: loan.token,
-                    principal: loan.principal,
-                    collateral: loan.collateral,
+                    token_name: loan.token.into(),
+                    principal: loan.principal.into(),
+                    collateral: loan.collateral.into(),
                     ltv_pct: loan.ltv_pct,
-                    rate: loan.rate,
-                    duration: loan.duration,
-                    interest: loan.interest,
+                    rate: loan.rate.into(),
+                    duration: loan.duration.into(),
+                    interest: loan.interest.into(),
                     status: loan.status,
                 },
                 // render_detail closure
