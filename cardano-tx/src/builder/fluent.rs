@@ -215,6 +215,79 @@ impl TxBuilder {
     /// 3. Runs two-round fee convergence
     /// 4. Returns `UnsignedTx` ready for signing
     pub fn build(self) -> Result<UnsignedTx, TxBuildError> {
+        let prepared = self.prepare()?;
+        prepared.converge()
+    }
+
+    /// Build with script evaluation via Maestro.
+    ///
+    /// 1. Build with estimated ExUnits (from the `ScriptInput`/`MintEntry` values)
+    /// 2. Evaluate the TX via Maestro to get real execution units
+    /// 3. Patch the redeemers with actual ExUnits and rebuild
+    ///
+    /// This produces accurate fees that include the script execution cost.
+    pub async fn build_evaluated(
+        self,
+        maestro: &maestro::MaestroApi,
+    ) -> Result<UnsignedTx, TxBuildError> {
+        let mut prepared = self.prepare()?;
+
+        // Round 1: build with estimated ExUnits
+        let initial = prepared.converge()?;
+
+        // Serialize to CBOR for evaluation
+        use pallas_txbuilder::BuildConway;
+        let built = initial
+            .staging
+            .build_conway_raw()
+            .map_err(|e| TxBuildError::BuildFailed(format!("build_conway_raw failed: {e}")))?;
+        let tx_cbor_hex = hex::encode(&built.tx_bytes.0);
+
+        // Evaluate via Maestro
+        let eval_results = maestro
+            .evaluate_transaction(&tx_cbor_hex, None::<&[maestro::AdditionalUtxo]>)
+            .await
+            .map_err(|e| TxBuildError::BuildFailed(format!("Maestro evaluate failed: {e}")))?;
+
+        // Patch spend redeemer ExUnits (redeemer_tag = "spend")
+        // Maestro returns redeemer_index which maps to sorted input order.
+        // Our inputs list is in insertion order, which should match the sorted
+        // order after assemble_tx. We match by index.
+        let mut spend_idx = 0u64;
+        for (_input, script_ctx) in &mut prepared.inputs {
+            if let Some(ctx) = script_ctx {
+                // Find matching evaluation result
+                if let Some(eval) = eval_results.iter().find(|r| {
+                    r.redeemer_tag == "spend" && r.redeemer_index == spend_idx
+                }) {
+                    ctx.ex_units = ExUnits {
+                        mem: eval.ex_units.mem,
+                        steps: eval.ex_units.steps,
+                    };
+                }
+                spend_idx += 1;
+            }
+        }
+
+        // Patch mint redeemer ExUnits (redeemer_tag = "mint")
+        for (mint_idx, mint_entry) in prepared.mints.iter_mut().enumerate() {
+            if let Some(eval) = eval_results.iter().find(|r| {
+                r.redeemer_tag == "mint" && r.redeemer_index == mint_idx as u64
+            }) {
+                mint_entry.ex_units = ExUnits {
+                    mem: eval.ex_units.mem,
+                    steps: eval.ex_units.steps,
+                };
+            }
+        }
+
+        // Round 2: rebuild with real ExUnits — fee now includes execution cost
+        prepared.converge()
+    }
+
+    /// Resolve collateral + coin selection, returning a `PreparedTx` ready
+    /// for fee convergence. Shared by `build()` and `build_evaluated()`.
+    fn prepare(self) -> Result<PreparedTx, TxBuildError> {
         let has_scripts = self.max_script_kind.is_some();
 
         // Resolve collateral
@@ -240,10 +313,8 @@ impl TxBuilder {
         };
 
         // ── Coin selection ───────────────────────────────────────────────
-        // Sum explicit output lovelace to determine how much ADA we need.
         let output_lovelace: u64 = self.outputs.iter().map(|o| o.lovelace).sum();
         let estimated_fee = estimate_simple_fee(&self.deps.params);
-        // Min change UTxO size: (160 + 28-byte addr) * coins_per_utxo_byte
         let min_change_lovelace = 188 * self.deps.params.coins_per_utxo_byte;
         let required = output_lovelace + estimated_fee + min_change_lovelace;
 
@@ -251,26 +322,21 @@ impl TxBuilder {
         let mut total_input = self.input_lovelace;
 
         if total_input < required {
-            // Select additional pure-ADA UTxOs that are safe to spend
             let mut candidates: Vec<&UtxoApi> = self
                 .deps
                 .utxos
                 .iter()
                 .filter(|u| {
-                    // Not already used as an input
                     !self
                         .used_input_refs
                         .contains(&(u.tx_hash.clone(), u.output_index))
-                    // Pure ADA (no native assets to worry about in change)
                     && u.assets.is_empty()
-                    // No datum or script ref (those are likely locked UTxOs)
                     && !u.tags.contains(&UtxoTag::HasDatum)
                     && !u.tags.contains(&UtxoTag::HasScriptRef)
                     && !u.tags.contains(&UtxoTag::ScriptAddress)
                 })
                 .collect();
 
-            // Prefer larger UTxOs first to minimise inputs
             candidates.sort_by(|a, b| b.lovelace.cmp(&a.lovelace));
 
             for utxo in candidates {
@@ -291,45 +357,23 @@ impl TxBuilder {
             }
         }
 
-        // Capture everything we need for the build closure
-        let reference_inputs = self.reference_inputs;
-        let outputs = self.outputs;
-        let mints = self.mints;
-        let required_signers = self.required_signers;
-        let validity = self.validity;
-        let auxiliary_data = self.auxiliary_data;
-        let max_script_kind = self.max_script_kind;
-        let network_id = self.deps.network_id;
-        let change_address = self.deps.from_address.clone();
-
-        super::converge_fee(
-            |fee| {
-                // Compute change: total input minus outputs minus fee
-                let change = total_input.saturating_sub(output_lovelace + fee);
-
-                // Build outputs: explicit outputs + change (if above dust threshold)
-                let mut all_outputs = outputs.clone();
-                if change >= min_change_lovelace {
-                    all_outputs.push(create_ada_output(change_address.clone(), change));
-                }
-
-                assemble_tx(
-                    &inputs,
-                    &reference_inputs,
-                    &all_outputs,
-                    &mints,
-                    &required_signers,
-                    &validity,
-                    &auxiliary_data,
-                    &collateral_input,
-                    max_script_kind,
-                    network_id,
-                    fee,
-                )
-            },
-            300_000, // initial estimate
-            &self.deps.params,
-        )
+        Ok(PreparedTx {
+            inputs,
+            reference_inputs: self.reference_inputs,
+            outputs: self.outputs,
+            mints: self.mints,
+            required_signers: self.required_signers,
+            validity: self.validity,
+            auxiliary_data: self.auxiliary_data,
+            collateral_input,
+            max_script_kind: self.max_script_kind,
+            network_id: self.deps.network_id,
+            change_address: self.deps.from_address,
+            params: self.deps.params,
+            total_input,
+            output_lovelace,
+            min_change_lovelace,
+        })
     }
 
     // --- Private helpers ---
@@ -348,6 +392,67 @@ impl TxBuilder {
                 self.max_script_kind = Some(ScriptKind::PlutusV3);
             }
         }
+    }
+}
+
+// ============================================================================
+// PreparedTx — intermediate state after coin selection, before fee convergence
+// ============================================================================
+
+/// A transaction with collateral + coin selection resolved, ready for fee
+/// convergence. Created by `TxBuilder::prepare()`, used by both `build()`
+/// and `build_evaluated()`.
+struct PreparedTx {
+    inputs: Vec<(Input, Option<ScriptInput>)>,
+    reference_inputs: Vec<Input>,
+    outputs: Vec<Output>,
+    mints: Vec<MintEntry>,
+    required_signers: Vec<Hash<28>>,
+    validity: ValidityInterval,
+    auxiliary_data: Option<Vec<u8>>,
+    collateral_input: Option<Input>,
+    max_script_kind: Option<ScriptKind>,
+    network_id: u8,
+    change_address: Address,
+    params: crate::params::TxBuildParams,
+    total_input: u64,
+    output_lovelace: u64,
+    min_change_lovelace: u64,
+}
+
+impl PreparedTx {
+    /// Run two-round fee convergence and produce the final unsigned TX.
+    fn converge(&self) -> Result<UnsignedTx, TxBuildError> {
+        let total_input = self.total_input;
+        let output_lovelace = self.output_lovelace;
+        let min_change_lovelace = self.min_change_lovelace;
+
+        super::converge_fee(
+            |fee| {
+                let change = total_input.saturating_sub(output_lovelace + fee);
+
+                let mut all_outputs = self.outputs.clone();
+                if change >= min_change_lovelace {
+                    all_outputs.push(create_ada_output(self.change_address.clone(), change));
+                }
+
+                assemble_tx(
+                    &self.inputs,
+                    &self.reference_inputs,
+                    &all_outputs,
+                    &self.mints,
+                    &self.required_signers,
+                    &self.validity,
+                    &self.auxiliary_data,
+                    &self.collateral_input,
+                    self.max_script_kind,
+                    self.network_id,
+                    fee,
+                )
+            },
+            300_000,
+            &self.params,
+        )
     }
 }
 

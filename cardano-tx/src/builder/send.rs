@@ -473,6 +473,7 @@ pub(crate) fn to_maestro_params(
             },
         },
         min_utxo_deposit_coefficient: params.coins_per_utxo_byte,
+        script_execution_prices: None,
     }
 }
 

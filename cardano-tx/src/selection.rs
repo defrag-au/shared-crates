@@ -83,6 +83,7 @@ pub fn select_all_utxos_for_max<'a>(
                         },
                     },
                     min_utxo_deposit_coefficient: params.coins_per_utxo_byte,
+                    script_execution_prices: None,
                 },
                 &asset_ids,
                 &crate::OutputParams { datum_size: None },

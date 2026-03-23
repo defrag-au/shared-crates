@@ -977,7 +977,6 @@ impl MaestroApi {
     ///
     /// Sends the unsigned TX CBOR to Maestro which runs the Plutus scripts and
     /// returns the real memory/CPU costs for each redeemer.
-    #[cfg(feature = "transactions")]
     pub async fn evaluate_transaction(
         &self,
         tx_cbor_hex: &str,

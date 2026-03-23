@@ -191,6 +191,7 @@ mod tests {
             min_fee_constant: maestro::AdaLovelace {
                 ada: maestro::AdaAmount { lovelace: 155381 },
             },
+            script_execution_prices: None,
         };
 
         // Create asset ID matching the transaction
