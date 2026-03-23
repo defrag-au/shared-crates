@@ -13,6 +13,7 @@ simple-logging = []
 axum = ["dep:axum", "dep:tower-http", "dep:futures-channel", "dep:serde_json"]
 sse = ["dep:futures-channel", "dep:futures-util", "dep:wasm-bindgen-futures", "dep:serde_json"]
 scheduled = ["dep:phf"]
+do-workqueue = ["dep:serde_json"]
 
 [dependencies]
 cfg-if = "1.0.0"

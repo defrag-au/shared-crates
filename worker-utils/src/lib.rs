@@ -25,6 +25,9 @@ pub mod sse;
 #[cfg(feature = "scheduled")]
 pub mod scheduled;
 
+#[cfg(feature = "do-workqueue")]
+pub mod do_workqueue;
+
 pub async fn send_to_queue<M>(queue: &Queue, message: &M) -> Result<()>
 where
     M: Serialize + Clone,
