@@ -122,28 +122,68 @@ pub fn estimate_tx_size(tx: &StagingTransaction, num_witnesses: u32) -> u64 {
 ///
 /// This is the isomorphic version — no dependency on Maestro types. Preferred
 /// for new code in `cardano_tx::builder`.
+///
+/// When `price_mem` and `price_step` are set in params, the fee includes the
+/// Plutus script execution cost component derived from all redeemers in the TX:
+///   `fee = base_fee + Σ(mem × price_mem_num / price_mem_den + steps × price_step_num / price_step_den)`
 pub fn calculate_fee(tx: &StagingTransaction, params: &crate::params::TxBuildParams) -> u64 {
     use pallas_txbuilder::BuildConway;
 
-    let built = match tx.clone().build_conway_raw() {
-        Ok(b) => b,
-        Err(_) => {
-            let estimated_size = estimate_tx_size(tx, 1);
-            return estimated_size * params.min_fee_coefficient + params.min_fee_constant;
-        }
+    let base_fee = {
+        let built = match tx.clone().build_conway_raw() {
+            Ok(b) => b,
+            Err(_) => {
+                let estimated_size = estimate_tx_size(tx, 1);
+                return estimated_size * params.min_fee_coefficient + params.min_fee_constant;
+            }
+        };
+
+        let dummy_secret = pallas_crypto::key::ed25519::SecretKey::from([0u8; 32]);
+        let signed = match built.sign(&dummy_secret) {
+            Ok(s) => s,
+            Err(_) => {
+                let estimated_size = estimate_tx_size(tx, 1);
+                return estimated_size * params.min_fee_coefficient + params.min_fee_constant;
+            }
+        };
+
+        let tx_size = signed.tx_bytes.0.len() as u64;
+        tx_size * params.min_fee_coefficient + params.min_fee_constant
     };
 
-    let dummy_secret = pallas_crypto::key::ed25519::SecretKey::from([0u8; 32]);
-    let signed = match built.sign(&dummy_secret) {
-        Ok(s) => s,
-        Err(_) => {
-            let estimated_size = estimate_tx_size(tx, 1);
-            return estimated_size * params.min_fee_coefficient + params.min_fee_constant;
-        }
+    base_fee + execution_fee_from_redeemers(tx, params)
+}
+
+/// Sum the execution cost of all redeemers in a staged transaction.
+///
+/// Returns 0 when `price_mem`/`price_step` are `None` (non-Plutus callers)
+/// or when the transaction has no redeemers.
+fn execution_fee_from_redeemers(
+    tx: &StagingTransaction,
+    params: &crate::params::TxBuildParams,
+) -> u64 {
+    let (Some((mem_num, mem_den)), Some((step_num, step_den))) =
+        (params.price_mem, params.price_step)
+    else {
+        return 0;
     };
 
-    let tx_size = signed.tx_bytes.0.len() as u64;
-    tx_size * params.min_fee_coefficient + params.min_fee_constant
+    let redeemers = match &tx.redeemers {
+        Some(r) => r,
+        None => return 0,
+    };
+
+    let mut total: u128 = 0;
+    for (_purpose, (_data, opt_eu)) in redeemers.iter() {
+        if let Some(eu) = opt_eu {
+            // Use u128 to avoid overflow on large execution units
+            total += (eu.mem as u128) * (mem_num as u128) / (mem_den as u128);
+            total += (eu.steps as u128) * (step_num as u128) / (step_den as u128);
+        }
+    }
+
+    // Ceil to ensure we never underpay
+    total as u64
 }
 
 /// Calculate the exact transaction fee by building and signing with a dummy key.
