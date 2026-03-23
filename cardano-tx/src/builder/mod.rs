@@ -5,8 +5,11 @@
 //! transaction ready for signing via Ed25519 or CIP-30.
 
 pub mod buy;
+pub mod cost_models;
+pub mod fluent;
 pub mod marketplace;
 pub mod mint;
+pub mod script;
 pub mod send;
 pub mod swap;
 
@@ -91,6 +94,8 @@ mod tests {
             coins_per_utxo_byte: 4310,
             max_tx_size: 16384,
             max_value_size: 5000,
+            price_mem: None,
+            price_step: None,
         };
 
         // Minimal TX that builds successfully

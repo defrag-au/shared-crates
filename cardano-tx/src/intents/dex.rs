@@ -5,6 +5,31 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum DexPlatform {
     Splash,
+    Cswap,
+}
+
+impl std::fmt::Display for DexPlatform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Splash => write!(f, "Splash"),
+            Self::Cswap => write!(f, "CSWAP"),
+        }
+    }
+}
+
+/// Optimization fee charged when split routing provides benefit.
+///
+/// Only applied when the split across multiple pools provably yields
+/// more tokens than routing through any single pool. Configurable per
+/// project — different projects can set different fee amounts and
+/// treasury addresses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DexSplitFee {
+    /// Fee amount in lovelace
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub amount_lovelace: u64,
+    /// Treasury/fee recipient address (bech32)
+    pub target_address: String,
 }
 
 /// DEX order type: market (auto-resolve price with slippage) or limit (explicit price)

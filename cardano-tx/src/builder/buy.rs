@@ -17,9 +17,9 @@ use pallas_addresses::Address;
 use pallas_crypto::hash::Hash;
 use pallas_txbuilder::{Input, Output, ScriptKind, StagingTransaction};
 
+use super::cost_models::PLUTUS_V2_COST_MODEL;
 use crate::builder::marketplace::ParsedListing;
 use crate::builder::UnsignedTx;
-use crate::dex::splash::config::PLUTUS_V2_COST_MODEL;
 use crate::error::TxBuildError;
 use crate::helpers::decode::decode_tx_hash;
 use crate::helpers::output::create_ada_output;
@@ -291,6 +291,8 @@ mod tests {
                 coins_per_utxo_byte: 4310,
                 max_tx_size: 16384,
                 max_value_size: 5000,
+                price_mem: None,
+                price_step: None,
             },
             buyer_address: addr,
             network_id: 0,

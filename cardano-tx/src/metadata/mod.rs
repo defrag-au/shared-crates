@@ -4,6 +4,7 @@
 //! - [`cip68`] — CIP-68 inline datums (on-chain reference token metadata)
 //! - [`cip67`] — CIP-67 asset name label prefixes
 
+pub mod cip20;
 pub mod cip25;
 pub mod cip68;
 

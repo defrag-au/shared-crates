@@ -31,6 +31,42 @@ pub fn format_number(n: i64) -> String {
 }
 
 // ============================================================================
+// ADA / currency formatting
+// ============================================================================
+
+/// Format lovelace as ADA with comma-separated whole part (e.g. 3_000_000_000 → "3,000").
+/// Shows decimals only when they're non-zero (e.g. 1_500_000 → "1.5", 3_000_000 → "3").
+pub fn format_ada(lovelace: i64) -> String {
+    let ada = lovelace as f64 / 1_000_000.0;
+    let whole = ada.trunc() as i64;
+    let frac = (ada.fract().abs() * 100.0).round() as i64;
+    if frac == 0 {
+        format_number(whole)
+    } else if frac % 10 == 0 {
+        format!("{}.{}", format_number(whole), frac / 10)
+    } else {
+        format!("{}.{frac:02}", format_number(whole))
+    }
+}
+
+/// Format lovelace as ADA with "ADA" suffix (e.g. 3_000_000_000 → "3,000 ADA").
+pub fn format_lovelace(lovelace: i64) -> String {
+    format!("{} ADA", format_ada(lovelace))
+}
+
+/// Format a percentage, dropping unnecessary trailing zeros
+/// (e.g. 4.0 → "4%", 4.5 → "4.5%", 12.75 → "12.75%").
+pub fn format_percent(pct: f64) -> String {
+    if pct.fract().abs() < 0.001 {
+        format!("{}%", pct as i64)
+    } else if (pct * 10.0).fract().abs() < 0.01 {
+        format!("{pct:.1}%")
+    } else {
+        format!("{pct:.2}%")
+    }
+}
+
+// ============================================================================
 // String truncation
 // ============================================================================
 

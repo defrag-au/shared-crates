@@ -4,6 +4,7 @@ pub mod buttons;
 pub mod card_browser;
 pub mod distribution;
 pub mod flip_counter;
+pub mod formatting;
 pub mod icon_gallery;
 pub mod marquee;
 pub mod mesh_playground;
@@ -21,6 +22,18 @@ pub mod trait_filter;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
 pub mod wallet_editor;
+
+// DEX split swap widgets
+pub mod amount_input;
+pub mod pool_liquidity;
+pub mod price_impact_curve;
+pub mod route_summary;
+pub mod slippage_selector;
+pub mod split_allocation_bar;
+
+// Loan dashboard widgets
+pub mod data_table;
+pub mod exposure_bar;
 
 // Trade desk widgets
 pub mod asset_strip;

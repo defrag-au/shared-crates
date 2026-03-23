@@ -42,6 +42,8 @@ fn make_slot(hex: &str, rank: u32, accent: Color32) -> OfferSlotData {
         total_ranked: Some(2000),
         accent,
         quantity: 1,
+        is_fungible: false,
+        wallet_balance: None,
     }
 }
 
@@ -203,6 +205,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
                         state.last_action = "Unlocked — both sides reset".into();
                         state.lock_state.you_locked = false;
                         state.lock_state.they_locked = false;
+                    }
+                    trade_table::TradeTableAction::SetYourAssetQuantity { index, quantity } => {
+                        state.last_action = format!("Set asset [{index}] quantity to {quantity}");
+                        if let Some(asset) = state.your_offer.assets.get_mut(index) {
+                            asset.quantity = quantity;
+                        }
                     }
                 }
             }

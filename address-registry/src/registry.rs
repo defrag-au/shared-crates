@@ -173,16 +173,51 @@ static ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[
     ),
 ];
 
-/// Look up an address in the registry, falling back to prefix matching for scripts
-/// with variable staking credentials (e.g. Wayup per-seller addresses).
+// ── Testnet / Preprod registries ─────────────────────────────────────────────
+
+/// Registry of known testnet/preprod addresses.
+/// Addresses here use `addr_test1` prefix and are separate from mainnet.
+/// Note: App-specific testnet addresses (Asset Hire, Levvy V2, etc.) live in
+/// the `address-config` crate within cnft.dev-workers.
+pub static TESTNET_ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {};
+
+/// Testnet address prefix registry (variable staking credentials).
+static TESTNET_ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[];
+
+// ── Network enum ─────────────────────────────────────────────────────────────
+
+/// Which network's address registry to use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RegistryNetwork {
+    #[default]
+    Mainnet,
+    Testnet,
+}
+
+// ── Lookup functions ─────────────────────────────────────────────────────────
+
+/// Look up an address in the mainnet registry (default, backward-compatible).
 pub fn lookup_address(address: &str) -> Option<&'static AddressCategory> {
+    lookup_address_for_network(address, RegistryNetwork::Mainnet)
+}
+
+/// Look up an address in the registry for the specified network.
+pub fn lookup_address_for_network(
+    address: &str,
+    network: RegistryNetwork,
+) -> Option<&'static AddressCategory> {
+    let (registry, prefixes) = match network {
+        RegistryNetwork::Mainnet => (&ADDRESS_REGISTRY, ADDRESS_PREFIX_REGISTRY),
+        RegistryNetwork::Testnet => (&TESTNET_ADDRESS_REGISTRY, TESTNET_ADDRESS_PREFIX_REGISTRY),
+    };
+
     // Fast exact match first
-    if let Some(cat) = ADDRESS_REGISTRY.get(address) {
+    if let Some(cat) = registry.get(address) {
         return Some(cat);
     }
 
     // Prefix-based fallback for per-seller script addresses
-    for (prefix, category) in ADDRESS_PREFIX_REGISTRY {
+    for (prefix, category) in prefixes {
         if address.starts_with(prefix) {
             return Some(category);
         }
@@ -329,7 +364,10 @@ pub enum ScriptCategory {
     Exchange {
         label: &'static str,
     },
-    DeFi,
+    DeFi {
+        label: &'static str,
+        protocol: &'static str,
+    },
     Minter(Minter),
     Staking {
         label: &'static str,
@@ -361,7 +399,16 @@ impl PartialEq for ScriptCategory {
             (ScriptCategory::Exchange { label: l1 }, ScriptCategory::Exchange { label: l2 }) => {
                 l1 == l2
             }
-            (ScriptCategory::DeFi, ScriptCategory::DeFi) => true,
+            (
+                ScriptCategory::DeFi {
+                    label: l1,
+                    protocol: p1,
+                },
+                ScriptCategory::DeFi {
+                    label: l2,
+                    protocol: p2,
+                },
+            ) => l1 == l2 && p1 == p2,
             (ScriptCategory::Minter(m1), ScriptCategory::Minter(m2)) => m1 == m2,
             (
                 ScriptCategory::Staking {
@@ -397,7 +444,7 @@ impl fmt::Display for ScriptCategory {
             ScriptCategory::Exchange { label } => {
                 write!(f, "{label} exchange")
             }
-            ScriptCategory::DeFi => write!(f, "DeFi"),
+            ScriptCategory::DeFi { label, .. } => write!(f, "{label} DeFi"),
             ScriptCategory::Minter(minter) => write!(f, "{minter} Minter"),
             ScriptCategory::Staking { label, project } => {
                 write!(f, "{label} staking for {project}")
@@ -409,44 +456,32 @@ impl fmt::Display for ScriptCategory {
     }
 }
 
-/// Smart contract registry for identifying known contract addresses and their purposes
-#[derive(Debug, Clone)]
-pub struct SmartContractRegistry {
-    /// Runtime additions for development/testing (not used in production lookups)
-    runtime_contracts: std::collections::HashMap<String, ContractInfo>,
-}
+// ── AddressLookup trait ──────────────────────────────────────────────────────
 
-impl SmartContractRegistry {
-    /// Create a new registry
-    pub fn new() -> Self {
-        Self {
-            runtime_contracts: std::collections::HashMap::new(),
-        }
+/// Trait for address registry implementations.
+///
+/// Consumers accept `Box<dyn AddressLookup>` instead of a concrete registry type.
+/// This enables composing multiple registries (e.g. ecosystem + app-specific).
+pub trait AddressLookup: Send + Sync {
+    /// Look up an address category (exact + prefix match).
+    fn lookup(&self, address: &str) -> Option<&AddressCategory>;
+
+    /// Look up contract info by script hash.
+    fn get_contract_info(&self, script_hash: &str) -> Option<&ContractInfo>;
+
+    // ── Default convenience methods ──────────────────────────────────────
+
+    /// Look up address category (alias for `lookup`).
+    fn get_address_category(&self, address: &str) -> Option<&AddressCategory> {
+        self.lookup(address)
     }
 
-    /// Look up contract information by address
-    /// First checks the compile-time SCRIPT_REGISTRY, then falls back to runtime additions
-    pub fn get_contract_info(&self, address: &str) -> Option<&ContractInfo> {
-        // First check compile-time registry (production contracts)
-        if let Some(info) = SCRIPT_REGISTRY.get(address) {
-            return Some(info);
-        }
-
-        // Fall back to runtime additions (development/testing)
-        self.runtime_contracts.get(address)
-    }
-
-    /// Look up address category using the ADDRESS_REGISTRY (with prefix fallback)
-    pub fn get_address_category(&self, address: &str) -> Option<&AddressCategory> {
-        lookup_address(address)
-    }
-
-    /// Get marketplace info from address using the ADDRESS_REGISTRY (with prefix fallback)
-    pub fn get_marketplace_info(
+    /// Get marketplace info from an address.
+    fn get_marketplace_info(
         &self,
         address: &str,
     ) -> Option<(Marketplace, Option<MarketplacePurpose>)> {
-        match lookup_address(address) {
+        match self.lookup(address) {
             Some(AddressCategory::Script(ScriptCategory::Marketplace {
                 marketplace,
                 purpose,
@@ -457,42 +492,36 @@ impl SmartContractRegistry {
         }
     }
 
-    /// Add a contract to runtime registry (for development/testing only)
-    /// Production contracts should be added to the SCRIPT_REGISTRY compile-time map
-    pub fn register_contract(&mut self, address: String, info: ContractInfo) {
-        self.runtime_contracts.insert(address, info);
+    /// Check if an address is a known script address.
+    fn is_known_script(&self, address: &str) -> bool {
+        self.get_contract_info(address).is_some()
     }
 
-    /// Check if an address is a known script address
-    pub fn is_known_script(&self, address: &str) -> bool {
-        SCRIPT_REGISTRY.contains_key(address) || self.runtime_contracts.contains_key(address)
+    /// Check if an address is a known regular address.
+    fn is_known_address(&self, address: &str) -> bool {
+        self.lookup(address).is_some()
     }
 
-    /// Check if an address is a known regular address
-    pub fn is_known_address(&self, address: &str) -> bool {
-        lookup_address(address).is_some()
-    }
-
-    /// Check if address belongs to a specific marketplace
-    pub fn is_marketplace_address(&self, address: &str, marketplace: &Marketplace) -> bool {
+    /// Check if address belongs to a specific marketplace.
+    fn is_marketplace_address(&self, address: &str, marketplace: &Marketplace) -> bool {
         match self.get_marketplace_info(address) {
             Some((addr_marketplace, _)) => addr_marketplace == *marketplace,
             None => false,
         }
     }
 
-    /// Check if address is ANY marketplace address
-    pub fn is_any_marketplace_address(&self, address: &str) -> bool {
+    /// Check if address is ANY marketplace address.
+    fn is_any_marketplace_address(&self, address: &str) -> bool {
         matches!(
-            self.get_address_category(address),
+            self.lookup(address),
             Some(AddressCategory::Script(ScriptCategory::Marketplace { .. }))
                 | Some(AddressCategory::Marketplace(_))
         )
     }
 
-    /// Get the fee calculation function for a marketplace address
-    pub fn get_marketplace_fee_calculation(&self, address: &str) -> Option<FeeCalculationFn> {
-        match lookup_address(address) {
+    /// Get the fee calculation function for a marketplace address.
+    fn get_marketplace_fee_calculation(&self, address: &str) -> Option<FeeCalculationFn> {
+        match self.lookup(address) {
             Some(AddressCategory::Script(ScriptCategory::Marketplace {
                 fee_calculation, ..
             })) => Some(*fee_calculation),
@@ -500,30 +529,28 @@ impl SmartContractRegistry {
         }
     }
 
-    /// Calculate marketplace fee for a given address and base price
-    pub fn calculate_marketplace_fee(&self, address: &str, base_price_lovelace: u64) -> u64 {
+    /// Calculate marketplace fee for a given address and base price.
+    fn calculate_marketplace_fee(&self, address: &str, base_price_lovelace: u64) -> u64 {
         match self.get_marketplace_fee_calculation(address) {
             Some(fee_calc) => fee_calc(base_price_lovelace, address),
-            None => 0, // Default to no fee if not a known marketplace
+            None => 0,
         }
     }
 
-    /// Get all known marketplaces involved in a transaction
-    pub fn get_transaction_marketplaces(
+    /// Get all known marketplaces involved in a transaction.
+    fn get_transaction_marketplaces(
         &self,
         input_addresses: &[String],
         output_addresses: &[String],
     ) -> std::collections::HashSet<Marketplace> {
         let mut marketplaces = std::collections::HashSet::new();
 
-        // Check input addresses
         for address in input_addresses {
             if let Some((marketplace, _)) = self.get_marketplace_info(address) {
                 marketplaces.insert(marketplace);
             }
         }
 
-        // Check output addresses
         for address in output_addresses {
             if let Some((marketplace, _)) = self.get_marketplace_info(address) {
                 marketplaces.insert(marketplace);
@@ -531,6 +558,66 @@ impl SmartContractRegistry {
         }
 
         marketplaces
+    }
+}
+
+// ── SmartContractRegistry (ecosystem addresses) ─────────────────────────────
+
+/// Ecosystem address registry for identifying known contract addresses and their purposes.
+///
+/// Contains well-known ecosystem addresses (marketplaces, DEXes, etc.) from
+/// the compile-time `ADDRESS_REGISTRY` and `SCRIPT_REGISTRY` maps.
+/// App-specific addresses should be provided via a separate `AddressLookup`
+/// implementation and composed using a composite registry.
+#[derive(Debug, Clone)]
+pub struct SmartContractRegistry {
+    /// Which network's address registry to consult
+    network: RegistryNetwork,
+    /// Runtime additions for development/testing (not used in production lookups)
+    runtime_contracts: std::collections::HashMap<String, ContractInfo>,
+}
+
+impl SmartContractRegistry {
+    /// Create a new registry (defaults to Mainnet)
+    pub fn new() -> Self {
+        Self {
+            network: RegistryNetwork::Mainnet,
+            runtime_contracts: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Create a new registry for a specific network
+    pub fn new_for_network(network: RegistryNetwork) -> Self {
+        Self {
+            network,
+            runtime_contracts: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Add a contract to runtime registry (for development/testing only).
+    /// Production contracts should be added to the SCRIPT_REGISTRY compile-time map.
+    pub fn register_contract(&mut self, address: String, info: ContractInfo) {
+        self.runtime_contracts.insert(address, info);
+    }
+}
+
+impl AddressLookup for SmartContractRegistry {
+    fn lookup(&self, address: &str) -> Option<&AddressCategory> {
+        lookup_address_for_network(address, self.network)
+    }
+
+    fn get_contract_info(&self, address: &str) -> Option<&ContractInfo> {
+        // First check compile-time registry (production contracts)
+        if let Some(info) = SCRIPT_REGISTRY.get(address) {
+            return Some(info);
+        }
+
+        // Fall back to runtime additions (development/testing)
+        self.runtime_contracts.get(address)
+    }
+
+    fn is_known_script(&self, address: &str) -> bool {
+        SCRIPT_REGISTRY.contains_key(address) || self.runtime_contracts.contains_key(address)
     }
 }
 

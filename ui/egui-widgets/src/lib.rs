@@ -30,6 +30,18 @@ pub mod wallet;
 pub mod wallet_button;
 pub mod wallet_editor;
 
+// DEX split swap widgets
+pub mod amount_input;
+pub mod pool_liquidity_indicator;
+pub mod price_impact_curve;
+pub mod route_summary;
+pub mod slippage_selector;
+pub mod split_allocation_bar;
+
+// Loan dashboard widgets
+pub mod data_table;
+pub mod exposure_bar;
+
 // Trade desk widgets
 pub mod asset_strip;
 pub mod coverage_delta_bar;
@@ -70,7 +82,10 @@ pub use swap_modal::{
 };
 pub use theme::{rarity_rank_color, FontStrategy};
 pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
-pub use utils::{format_duration, format_number, section_heading, stat_card, truncate_hex};
+pub use utils::{
+    format_ada, format_duration, format_lovelace, format_number, format_percent, section_heading,
+    stat_card, truncate_hex,
+};
 pub use utxo_map::{
     utxos_to_map_data, UtxoCell, UtxoMapAction, UtxoMapConfig, UtxoMapData, UtxoMapResponse,
     UtxoMapState,
@@ -85,6 +100,24 @@ pub use wallet_editor::{
     WalletEditorAction, WalletEditorConfig, WalletEditorEntry, WalletEditorResponse,
     WalletEditorState, WalletEntryStatus,
 };
+
+// DEX split swap re-exports
+pub use amount_input::{
+    AmountInputAction, AmountInputConfig, AmountInputResponse, AmountInputState,
+};
+pub use pool_liquidity_indicator::{PoolInfo, PoolLiquidityConfig};
+pub use price_impact_curve::{ImpactCurvePool, PriceImpactCurveConfig};
+pub use route_summary::{RouteLeg, RouteSummaryConfig, RouteSummaryData};
+pub use slippage_selector::{
+    SlippagePreset, SlippageSelectorAction, SlippageSelectorConfig, SlippageSelectorState,
+};
+pub use split_allocation_bar::{dex_color, AllocationSegment, SplitAllocationBarConfig};
+
+// Loan dashboard re-exports
+pub use data_table::{
+    DataRowItem, DataRowStatus, DataTableConfig, DataTableResponse, DataTableState,
+};
+pub use exposure_bar::{ltv_risk_color, ExposureBarConfig, ExposureSegment};
 
 // Trade desk re-exports
 pub use asset_strip::{AssetStripConfig, AssetStripItem, AssetStripResponse};

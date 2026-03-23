@@ -361,6 +361,7 @@ pub struct AssetAmount {
 #[cfg(feature = "transactions")]
 struct AddressUtxosResponse {
     data: Vec<AddressUtxo>,
+    next_cursor: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -450,6 +451,37 @@ pub struct ProtocolParameters {
     pub min_fee_constant: AdaLovelace,
     #[serde(with = "wasm_safe_serde::u64_required")]
     pub min_utxo_deposit_coefficient: u64,
+    /// Script execution prices (memory and CPU). Present on all post-Alonzo networks.
+    /// Values are ratio strings like "577/10000".
+    #[serde(default)]
+    pub script_execution_prices: Option<ExecutionPrices>,
+}
+
+/// Script execution prices returned by Maestro as ratio strings.
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ExecutionPrices {
+    /// Memory price ratio, e.g. "577/10000" means 0.0577 lovelace per memory unit
+    pub memory: String,
+    /// CPU price ratio, e.g. "721/10000000" means 0.0000721 lovelace per CPU step
+    pub cpu: String,
+}
+
+impl ExecutionPrices {
+    /// Parse the memory ratio string into (numerator, denominator).
+    pub fn parse_memory(&self) -> Option<(u64, u64)> {
+        parse_ratio(&self.memory)
+    }
+
+    /// Parse the CPU ratio string into (numerator, denominator).
+    pub fn parse_cpu(&self) -> Option<(u64, u64)> {
+        parse_ratio(&self.cpu)
+    }
+}
+
+/// Parse a ratio string like "577/10000" into (numerator, denominator).
+fn parse_ratio(s: &str) -> Option<(u64, u64)> {
+    let (num, den) = s.split_once('/')?;
+    Some((num.trim().parse().ok()?, den.trim().parse().ok()?))
 }
 
 #[derive(Deserialize, Debug)]
@@ -644,6 +676,34 @@ pub struct ScriptExecuted {
     pub json: Option<serde_json::Value>,
 }
 
+// ─── Transaction evaluation types ────────────────────────────────────────
+
+/// Result from Maestro's `POST /transactions/evaluate` endpoint.
+#[derive(Deserialize, Debug, Clone)]
+pub struct EvaluateRedeemerResult {
+    pub redeemer_tag: String,
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub redeemer_index: u64,
+    pub ex_units: EvalExUnits,
+}
+
+/// Execution units returned by transaction evaluation.
+#[derive(Deserialize, Debug, Clone)]
+pub struct EvalExUnits {
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub mem: u64,
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub steps: u64,
+}
+
+/// An additional UTxO to provide context for evaluation (for inputs not yet on-chain).
+#[derive(Serialize, Debug)]
+pub struct AdditionalUtxo {
+    pub tx_hash: String,
+    pub index: u32,
+    pub txout_cbor: String,
+}
+
 pub struct MaestroApi {
     client: HttpClient,
     #[allow(dead_code)] // read in submit_transaction behind cfg(feature = "transactions")
@@ -774,12 +834,73 @@ impl MaestroApi {
         Ok(response.data)
     }
 
-    /// Get UTxOs at a specific address (for wallet operations and transaction building)
+    /// Get first page of UTxOs at a specific address (for wallet operations and transaction building)
     #[cfg(feature = "transactions")]
     pub async fn get_address_utxos(&self, address: &str) -> Result<Vec<AddressUtxo>, MaestroError> {
         let url = format!("https://{}/addresses/{address}/utxos", self.base_url);
         let response: AddressUtxosResponse = self.get_url(url).await?;
         Ok(response.data)
+    }
+
+    /// Get ALL UTxOs at a specific address, paginating through all pages.
+    #[cfg(feature = "transactions")]
+    pub async fn get_all_address_utxos(
+        &self,
+        address: &str,
+    ) -> Result<Vec<AddressUtxo>, MaestroError> {
+        let mut all_utxos = Vec::new();
+        let mut cursor: Option<String> = None;
+
+        loop {
+            let querystring = match &cursor {
+                Some(c) => format!("?cursor={c}"),
+                None => String::new(),
+            };
+            let url = format!(
+                "https://{}/addresses/{address}/utxos{querystring}",
+                self.base_url
+            );
+            let response: AddressUtxosResponse = self.get_url(url).await?;
+            all_utxos.extend(response.data);
+
+            match response.next_cursor {
+                Some(c) if !c.is_empty() => cursor = Some(c),
+                _ => break,
+            }
+        }
+
+        Ok(all_utxos)
+    }
+
+    /// Get ALL UTxOs at a payment credential (bech32 `script1...` or `addr_vkh1...`),
+    /// paginating through all pages. This finds UTxOs across all staking variants.
+    #[cfg(feature = "transactions")]
+    pub async fn get_credential_utxos(
+        &self,
+        credential: &str,
+    ) -> Result<Vec<AddressUtxo>, MaestroError> {
+        let mut all_utxos = Vec::new();
+        let mut cursor: Option<String> = None;
+
+        loop {
+            let querystring = match &cursor {
+                Some(c) => format!("?cursor={c}"),
+                None => String::new(),
+            };
+            let url = format!(
+                "https://{}/addresses/cred/{credential}/utxos{querystring}",
+                self.base_url
+            );
+            let response: AddressUtxosResponse = self.get_url(url).await?;
+            all_utxos.extend(response.data);
+
+            match response.next_cursor {
+                Some(c) if !c.is_empty() => cursor = Some(c),
+                _ => break,
+            }
+        }
+
+        Ok(all_utxos)
     }
 
     /// Submit a signed transaction to the blockchain
@@ -850,6 +971,31 @@ impl MaestroApi {
         })?;
 
         Ok(tx_hash.trim().to_string())
+    }
+
+    /// Evaluate a transaction's script redeemers to get actual execution units.
+    ///
+    /// Sends the unsigned TX CBOR to Maestro which runs the Plutus scripts and
+    /// returns the real memory/CPU costs for each redeemer.
+    pub async fn evaluate_transaction(
+        &self,
+        tx_cbor_hex: &str,
+        additional_utxos: Option<&[AdditionalUtxo]>,
+    ) -> Result<Vec<EvaluateRedeemerResult>, MaestroError> {
+        let url = format!("https://{}/transactions/evaluate", self.base_url);
+
+        let mut body = serde_json::Map::new();
+        body.insert("cbor".to_string(), serde_json::Value::String(tx_cbor_hex.to_string()));
+        if let Some(utxos) = additional_utxos {
+            let utxos_val = serde_json::to_value(utxos).map_err(|e| {
+                MaestroError::Deserialization(format!("Failed to serialize additional_utxos: {e}"))
+            })?;
+            body.insert("additional_utxos".to_string(), utxos_val);
+        }
+
+        let response: Vec<EvaluateRedeemerResult> =
+            self.post_url(url, &body).await?;
+        Ok(response)
     }
 
     /// Get the current state of a submitted transaction

@@ -81,6 +81,11 @@ pub const PLUTUS_V2_COST_MODEL: [i64; 175] = [
     32, 24623, 32, 43053543, 10, 53384111, 14333, 10, 43574283, 26308, 10,
 ];
 
+/// Default LP fee in basis points, used when order-book-based derivation fails.
+/// Empirically calibrated against the Aliens pool (78 bps gives output within
+/// 0.003% of the Splash UI for a 1000 ADA swap).
+pub const DEFAULT_LP_FEE_BPS: u64 = 78;
+
 /// Mainnet executor fee API
 pub const MAINNET_FEE_URL: &str =
     "https://analytics.splash.trade/platform-api/v1/fees-api/distribution/by/pair";
@@ -214,6 +219,12 @@ pub struct RawOrderBook {
     pub bids: Vec<RawOrderBookItem>,
     #[serde(default)]
     pub asks: Vec<RawOrderBookItem>,
+    /// Total tokens in the AMM pool (base asset)
+    #[serde(rename = "ammTotalLiquidityBase", default)]
+    pub amm_total_liquidity_base: Option<String>,
+    /// Total lovelace in the AMM pool (quote asset)
+    #[serde(rename = "ammTotalLiquidityQuote", default)]
+    pub amm_total_liquidity_quote: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -223,6 +234,12 @@ pub struct RawOrderBookItem {
     pub avg_price: String,
     #[serde(rename = "accumulatedLiquidity")]
     pub accumulated_liquidity: String,
+    /// Cumulative AMM pool liquidity (tokens) up to this price level
+    #[serde(rename = "poolsLiquidity", default)]
+    pub pools_liquidity: Option<String>,
+    /// Incremental limit order liquidity (tokens) at this price level
+    #[serde(rename = "ordersLiquidity", default)]
+    pub orders_liquidity: Option<String>,
 }
 
 /// Spot price quote resolved to a rational number
@@ -238,6 +255,13 @@ pub struct OrderBookQuote {
     pub bids: Vec<RawOrderBookItem>,
     /// Raw order book for inspection
     pub asks: Vec<RawOrderBookItem>,
+    /// Total tokens in the AMM pool (base asset), if available
+    pub amm_base_reserves: Option<u64>,
+    /// Total lovelace in the AMM pool (quote asset), if available
+    pub amm_quote_reserves: Option<u64>,
+    /// Estimated LP fee in basis points, derived from AMM reserves vs order book.
+    /// Falls back to `DEFAULT_LP_FEE_BPS` if derivation fails.
+    pub lp_fee_bps: u64,
 }
 
 // ============================================================================
@@ -442,6 +466,76 @@ fn gcd(mut a: u64, mut b: u64) -> u64 {
 }
 
 // ============================================================================
+// LP fee derivation from order book
+// ============================================================================
+
+/// Derive the LP fee in basis points from the AMM reserves and order book.
+///
+/// The Splash order book's first ask level includes the LP fee in its price.
+/// By comparing the no-fee constant-product price against the first ask price,
+/// we can back out the effective fee:
+///
+///   no_fee_price = quote_reserves * tokens / (base_reserves - tokens)  / tokens
+///   pass_through = no_fee_price / first_ask_price
+///   fee_bps = (1 - pass_through) * 10_000
+///
+/// Falls back to `DEFAULT_LP_FEE_BPS` if reserves or asks are missing.
+pub fn derive_lp_fee_bps(
+    amm_base_reserves: Option<u64>,
+    amm_quote_reserves: Option<u64>,
+    asks: &[RawOrderBookItem],
+) -> u64 {
+    let (base, quote) = match (amm_base_reserves, amm_quote_reserves) {
+        (Some(b), Some(q)) if b > 0 && q > 0 => (b as f64, q as f64),
+        _ => return DEFAULT_LP_FEE_BPS,
+    };
+
+    // Find the first ask with non-zero pool liquidity
+    let first_ask = asks.iter().find_map(|a| {
+        let pools_liq: u64 = a
+            .pools_liquidity
+            .as_deref()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        if pools_liq == 0 {
+            return None;
+        }
+        let price: f64 = a.price.parse().ok()?;
+        if price <= 0.0 {
+            return None;
+        }
+        Some((pools_liq as f64, price))
+    });
+
+    let (tokens, ask_price) = match first_ask {
+        Some(v) => v,
+        None => return DEFAULT_LP_FEE_BPS,
+    };
+
+    if tokens >= base {
+        return DEFAULT_LP_FEE_BPS;
+    }
+
+    // No-fee constant product price for buying `tokens` from the pool
+    let no_fee_price = quote * tokens / ((base - tokens) * tokens);
+    // = quote / (base - tokens)
+
+    if no_fee_price <= 0.0 || ask_price <= no_fee_price {
+        return DEFAULT_LP_FEE_BPS;
+    }
+
+    let pass_through = no_fee_price / ask_price;
+    let fee_bps = ((1.0 - pass_through) * 10_000.0).round() as u64;
+
+    // Sanity check: Splash fees range from 1 bps to ~500 bps
+    if fee_bps == 0 || fee_bps > 1000 {
+        return DEFAULT_LP_FEE_BPS;
+    }
+
+    fee_bps
+}
+
+// ============================================================================
 // Deposit calculation
 // ============================================================================
 
@@ -590,5 +684,41 @@ mod tests {
     fn test_to_splash_asset() {
         assert_eq!(to_splash_asset("lovelace"), ".");
         assert_eq!(to_splash_asset("abc123.def456"), "abc123.def456");
+    }
+
+    #[test]
+    fn test_derive_lp_fee_bps_aliens() {
+        // Aliens pool: base=223,923,798 tokens, quote=24,060,072,677 lovelace
+        // First ask band: price=108.533, poolsLiquidity=559809
+        // Expected fee: ~75-78 bps
+        let asks = vec![RawOrderBookItem {
+            price: "108.5329202666588128404949494949495".to_string(),
+            avg_price: "108.5329202666588128404949494949495".to_string(),
+            accumulated_liquidity: "559809".to_string(),
+            pools_liquidity: Some("559809".to_string()),
+            orders_liquidity: Some("0".to_string()),
+        }];
+        let fee = derive_lp_fee_bps(Some(223_923_798), Some(24_060_072_677), &asks);
+        // Should be in the range 70-85 bps (approximate due to band width)
+        assert!(
+            (70..=85).contains(&fee),
+            "expected fee 70-85 bps, got {fee}"
+        );
+    }
+
+    #[test]
+    fn test_derive_lp_fee_bps_fallback() {
+        // No reserves -> default
+        assert_eq!(derive_lp_fee_bps(None, None, &[]), DEFAULT_LP_FEE_BPS);
+        // No asks -> default
+        assert_eq!(
+            derive_lp_fee_bps(Some(1000), Some(1000), &[]),
+            DEFAULT_LP_FEE_BPS
+        );
+        // Zero reserves -> default
+        assert_eq!(
+            derive_lp_fee_bps(Some(0), Some(1000), &[]),
+            DEFAULT_LP_FEE_BPS
+        );
     }
 }

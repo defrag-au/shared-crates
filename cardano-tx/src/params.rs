@@ -22,10 +22,23 @@ pub struct TxBuildParams {
     /// (Cardano Conway parameter `maxValueSize`). Outputs whose value exceeds
     /// this limit are rejected by the ledger (`OutputTooBigUTxO`).
     pub max_value_size: u64,
+    /// Script execution memory price as (numerator, denominator).
+    /// Fee contribution per redeemer = mem_units × numerator / denominator.
+    /// `None` for callers that don't need Plutus fee calculation.
+    pub price_mem: Option<(u64, u64)>,
+    /// Script execution CPU step price as (numerator, denominator).
+    /// Fee contribution per redeemer = step_units × numerator / denominator.
+    pub price_step: Option<(u64, u64)>,
 }
 
 impl From<&maestro::ProtocolParameters> for TxBuildParams {
     fn from(pp: &maestro::ProtocolParameters) -> Self {
+        let (price_mem, price_step) = pp
+            .script_execution_prices
+            .as_ref()
+            .map(|ep| (ep.parse_memory(), ep.parse_cpu()))
+            .unwrap_or((None, None));
+
         Self {
             min_fee_coefficient: pp.min_fee_coefficient,
             min_fee_constant: pp.min_fee_constant.ada.lovelace,
@@ -33,6 +46,8 @@ impl From<&maestro::ProtocolParameters> for TxBuildParams {
             // Maestro doesn't expose max_tx_size directly; use Cardano mainnet default
             max_tx_size: 16384,
             max_value_size: 5000,
+            price_mem,
+            price_step,
         }
     }
 }
@@ -49,6 +64,10 @@ mod tests {
                 ada: maestro::AdaAmount { lovelace: 155381 },
             },
             min_utxo_deposit_coefficient: 4310,
+            script_execution_prices: Some(maestro::ExecutionPrices {
+                memory: "577/10000".to_string(),
+                cpu: "721/10000000".to_string(),
+            }),
         };
 
         let params = TxBuildParams::from(&maestro_params);
@@ -57,5 +76,7 @@ mod tests {
         assert_eq!(params.coins_per_utxo_byte, 4310);
         assert_eq!(params.max_tx_size, 16384);
         assert_eq!(params.max_value_size, 5000);
+        assert_eq!(params.price_mem, Some((577, 10000)));
+        assert_eq!(params.price_step, Some((721, 10000000)));
     }
 }
