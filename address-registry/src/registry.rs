@@ -118,10 +118,6 @@ pub static ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
     "addr1w8p79rpkcdz8x9d6tft0x0dx5mwuzac2sa4gm8cvkw5hcnqst2ctf" => AC::Script(SC::Exchange { label: "Minswap" }),
 
     "addr1zyd0sj57d9lpu7cy9g9qdurpazqc9l4eaxk6j59nd2gkh4275jq4yvpskgayj55xegdp30g5rfynax66r8vgn9fldndsqzf5tn" => AC::Script(SC::Exchange { label: "SaturnSwap" }),
-    // Levvy V2 lending — enterprise script address (no staking credential)
-    "addr1w85lr4yaa7jarua6pxquxxvuenrfhqca6eqfs472lnjsetcmkrsmp" => AC::Script(SC::DeFi { label: "Levvy V2", protocol: "levvy-v2" }),
-    // Asset Hire — NFT rental/hire validator (enterprise script, mainnet)
-    "addr1w8kyx8vxy7pf6l3pzxgkrkgfaz56zhty3fnml7pvet7r2uqxu0rvq" => AC::Script(SC::DeFi { label: "Asset Hire", protocol: "asset-hire" }),
 };
 
 /// Address prefixes for scripts that use variable staking credentials.
@@ -175,40 +171,15 @@ static ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[
         "addr1zyupekdkyr8f6lrnm4zulcs8juwv080hjfgsqvgkp98kkd",
         AC::Script(SC::Vesting { label: "CrowdLock" }),
     ),
-    // Levvy V2 lending v1 validator (script hash: e9f1d49defa5d1f3ba0981c3199cccc69b831dd6409857cafce50caf)
-    (
-        "addr1z85lr4yaa7jarua6pxquxxvuenrfhqca6eqfs472lnjset",
-        AC::Script(SC::DeFi {
-            label: "Levvy V2",
-            protocol: "levvy-v2",
-        }),
-    ),
-    // Levvy V2 lending v2 validator (script hash: 4cf4baed35ae008e1a38bc8b1c76c5a6dbb78640d366bb4ca53cf39a)
-    (
-        "addr1z9x0fwhdxkhqprs68z7gk8rkckndhduxgrfkdw6v55708x",
-        AC::Script(SC::DeFi {
-            label: "Levvy V2",
-            protocol: "levvy-v2",
-        }),
-    ),
-    // Levvy V2 lending v3 validator (script hash: 4cf4baed35ae0037068e2f22ce3b62d36eede320d3365da64a79f9a9)
-    (
-        "addr1z9x0fwhdxkhqqdcx3chj9n3mvtfkam0ryrfnvhdxffuln2",
-        AC::Script(SC::DeFi {
-            label: "Levvy V2",
-            protocol: "levvy-v2",
-        }),
-    ),
 ];
 
 // ── Testnet / Preprod registries ─────────────────────────────────────────────
 
 /// Registry of known testnet/preprod addresses.
 /// Addresses here use `addr_test1` prefix and are separate from mainnet.
-pub static TESTNET_ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
-    // Asset Hire — NFT rental/hire validator (enterprise script, preprod)
-    "addr_test1wrkyx8vxy7pf6l3pzxgkrkgfaz56zhty3fnml7pvet7r2uqa5mlr9" => AC::Script(SC::DeFi { label: "Asset Hire", protocol: "asset-hire" }),
-};
+/// Note: App-specific testnet addresses (Asset Hire, Levvy V2, etc.) live in
+/// the `address-config` crate within cnft.dev-workers.
+pub static TESTNET_ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {};
 
 /// Testnet address prefix registry (variable staking credentials).
 static TESTNET_ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[];
@@ -485,7 +456,119 @@ impl fmt::Display for ScriptCategory {
     }
 }
 
-/// Smart contract registry for identifying known contract addresses and their purposes
+// ── AddressLookup trait ──────────────────────────────────────────────────────
+
+/// Trait for address registry implementations.
+///
+/// Consumers accept `Box<dyn AddressLookup>` instead of a concrete registry type.
+/// This enables composing multiple registries (e.g. ecosystem + app-specific).
+pub trait AddressLookup: Send + Sync {
+    /// Look up an address category (exact + prefix match).
+    fn lookup(&self, address: &str) -> Option<&AddressCategory>;
+
+    /// Look up contract info by script hash.
+    fn get_contract_info(&self, script_hash: &str) -> Option<&ContractInfo>;
+
+    // ── Default convenience methods ──────────────────────────────────────
+
+    /// Look up address category (alias for `lookup`).
+    fn get_address_category(&self, address: &str) -> Option<&AddressCategory> {
+        self.lookup(address)
+    }
+
+    /// Get marketplace info from an address.
+    fn get_marketplace_info(
+        &self,
+        address: &str,
+    ) -> Option<(Marketplace, Option<MarketplacePurpose>)> {
+        match self.lookup(address) {
+            Some(AddressCategory::Script(ScriptCategory::Marketplace {
+                marketplace,
+                purpose,
+                ..
+            })) => Some((*marketplace, Some(*purpose))),
+            Some(AddressCategory::Marketplace(marketplace)) => Some((*marketplace, None)),
+            _ => None,
+        }
+    }
+
+    /// Check if an address is a known script address.
+    fn is_known_script(&self, address: &str) -> bool {
+        self.get_contract_info(address).is_some()
+    }
+
+    /// Check if an address is a known regular address.
+    fn is_known_address(&self, address: &str) -> bool {
+        self.lookup(address).is_some()
+    }
+
+    /// Check if address belongs to a specific marketplace.
+    fn is_marketplace_address(&self, address: &str, marketplace: &Marketplace) -> bool {
+        match self.get_marketplace_info(address) {
+            Some((addr_marketplace, _)) => addr_marketplace == *marketplace,
+            None => false,
+        }
+    }
+
+    /// Check if address is ANY marketplace address.
+    fn is_any_marketplace_address(&self, address: &str) -> bool {
+        matches!(
+            self.lookup(address),
+            Some(AddressCategory::Script(ScriptCategory::Marketplace { .. }))
+                | Some(AddressCategory::Marketplace(_))
+        )
+    }
+
+    /// Get the fee calculation function for a marketplace address.
+    fn get_marketplace_fee_calculation(&self, address: &str) -> Option<FeeCalculationFn> {
+        match self.lookup(address) {
+            Some(AddressCategory::Script(ScriptCategory::Marketplace {
+                fee_calculation, ..
+            })) => Some(*fee_calculation),
+            _ => None,
+        }
+    }
+
+    /// Calculate marketplace fee for a given address and base price.
+    fn calculate_marketplace_fee(&self, address: &str, base_price_lovelace: u64) -> u64 {
+        match self.get_marketplace_fee_calculation(address) {
+            Some(fee_calc) => fee_calc(base_price_lovelace, address),
+            None => 0,
+        }
+    }
+
+    /// Get all known marketplaces involved in a transaction.
+    fn get_transaction_marketplaces(
+        &self,
+        input_addresses: &[String],
+        output_addresses: &[String],
+    ) -> std::collections::HashSet<Marketplace> {
+        let mut marketplaces = std::collections::HashSet::new();
+
+        for address in input_addresses {
+            if let Some((marketplace, _)) = self.get_marketplace_info(address) {
+                marketplaces.insert(marketplace);
+            }
+        }
+
+        for address in output_addresses {
+            if let Some((marketplace, _)) = self.get_marketplace_info(address) {
+                marketplaces.insert(marketplace);
+            }
+        }
+
+        marketplaces
+    }
+}
+
+// ── SmartContractRegistry (ecosystem addresses) ─────────────────────────────
+
+/// Ecosystem address registry for identifying known contract addresses and their purposes.
+///
+/// Contains well-known ecosystem addresses (marketplaces, DEXes, etc.) from
+/// the compile-time `ADDRESS_REGISTRY` and `SCRIPT_REGISTRY` maps.
+/// App-specific addresses should be provided via a separate `AddressLookup`
+/// implementation and composed using a composite registry.
 #[derive(Debug, Clone)]
 pub struct SmartContractRegistry {
     /// Which network's address registry to consult
@@ -511,9 +594,19 @@ impl SmartContractRegistry {
         }
     }
 
-    /// Look up contract information by address
-    /// First checks the compile-time SCRIPT_REGISTRY, then falls back to runtime additions
-    pub fn get_contract_info(&self, address: &str) -> Option<&ContractInfo> {
+    /// Add a contract to runtime registry (for development/testing only).
+    /// Production contracts should be added to the SCRIPT_REGISTRY compile-time map.
+    pub fn register_contract(&mut self, address: String, info: ContractInfo) {
+        self.runtime_contracts.insert(address, info);
+    }
+}
+
+impl AddressLookup for SmartContractRegistry {
+    fn lookup(&self, address: &str) -> Option<&AddressCategory> {
+        lookup_address_for_network(address, self.network)
+    }
+
+    fn get_contract_info(&self, address: &str) -> Option<&ContractInfo> {
         // First check compile-time registry (production contracts)
         if let Some(info) = SCRIPT_REGISTRY.get(address) {
             return Some(info);
@@ -523,101 +616,8 @@ impl SmartContractRegistry {
         self.runtime_contracts.get(address)
     }
 
-    /// Look up address category using the address registry for this network (with prefix fallback)
-    pub fn get_address_category(&self, address: &str) -> Option<&AddressCategory> {
-        lookup_address_for_network(address, self.network)
-    }
-
-    /// Get marketplace info from address using the address registry for this network
-    pub fn get_marketplace_info(
-        &self,
-        address: &str,
-    ) -> Option<(Marketplace, Option<MarketplacePurpose>)> {
-        match lookup_address_for_network(address, self.network) {
-            Some(AddressCategory::Script(ScriptCategory::Marketplace {
-                marketplace,
-                purpose,
-                ..
-            })) => Some((*marketplace, Some(*purpose))),
-            Some(AddressCategory::Marketplace(marketplace)) => Some((*marketplace, None)),
-            _ => None,
-        }
-    }
-
-    /// Add a contract to runtime registry (for development/testing only)
-    /// Production contracts should be added to the SCRIPT_REGISTRY compile-time map
-    pub fn register_contract(&mut self, address: String, info: ContractInfo) {
-        self.runtime_contracts.insert(address, info);
-    }
-
-    /// Check if an address is a known script address
-    pub fn is_known_script(&self, address: &str) -> bool {
+    fn is_known_script(&self, address: &str) -> bool {
         SCRIPT_REGISTRY.contains_key(address) || self.runtime_contracts.contains_key(address)
-    }
-
-    /// Check if an address is a known regular address
-    pub fn is_known_address(&self, address: &str) -> bool {
-        lookup_address_for_network(address, self.network).is_some()
-    }
-
-    /// Check if address belongs to a specific marketplace
-    pub fn is_marketplace_address(&self, address: &str, marketplace: &Marketplace) -> bool {
-        match self.get_marketplace_info(address) {
-            Some((addr_marketplace, _)) => addr_marketplace == *marketplace,
-            None => false,
-        }
-    }
-
-    /// Check if address is ANY marketplace address
-    pub fn is_any_marketplace_address(&self, address: &str) -> bool {
-        matches!(
-            self.get_address_category(address),
-            Some(AddressCategory::Script(ScriptCategory::Marketplace { .. }))
-                | Some(AddressCategory::Marketplace(_))
-        )
-    }
-
-    /// Get the fee calculation function for a marketplace address
-    pub fn get_marketplace_fee_calculation(&self, address: &str) -> Option<FeeCalculationFn> {
-        match lookup_address_for_network(address, self.network) {
-            Some(AddressCategory::Script(ScriptCategory::Marketplace {
-                fee_calculation, ..
-            })) => Some(*fee_calculation),
-            _ => None,
-        }
-    }
-
-    /// Calculate marketplace fee for a given address and base price
-    pub fn calculate_marketplace_fee(&self, address: &str, base_price_lovelace: u64) -> u64 {
-        match self.get_marketplace_fee_calculation(address) {
-            Some(fee_calc) => fee_calc(base_price_lovelace, address),
-            None => 0, // Default to no fee if not a known marketplace
-        }
-    }
-
-    /// Get all known marketplaces involved in a transaction
-    pub fn get_transaction_marketplaces(
-        &self,
-        input_addresses: &[String],
-        output_addresses: &[String],
-    ) -> std::collections::HashSet<Marketplace> {
-        let mut marketplaces = std::collections::HashSet::new();
-
-        // Check input addresses
-        for address in input_addresses {
-            if let Some((marketplace, _)) = self.get_marketplace_info(address) {
-                marketplaces.insert(marketplace);
-            }
-        }
-
-        // Check output addresses
-        for address in output_addresses {
-            if let Some((marketplace, _)) = self.get_marketplace_info(address) {
-                marketplaces.insert(marketplace);
-            }
-        }
-
-        marketplaces
     }
 }
 
