@@ -139,23 +139,19 @@ pub fn show(ui: &mut Ui, segments: &[AllocationSegment], config: &SplitAllocatio
         }
     }
 
-    // Hover tooltips — detect which segment the pointer is over
+    // Hover tooltip — single summary with one line per segment
     if response.hovered() {
-        if let Some(pointer) = ui.ctx().pointer_hover_pos() {
-            let rel_x = pointer.x - rect.min.x;
-            let frac_x = rel_x / rect.width();
-            let mut cumulative = 0.0;
-            for seg in segments {
-                cumulative += seg.fraction;
-                if frac_x <= cumulative {
-                    let ada = seg.amount_lovelace as f64 / 1_000_000.0;
-                    let pct = (seg.fraction * 100.0).round() as u32;
-                    response
-                        .clone()
-                        .on_hover_text(format!("{}: {:.1} ADA ({pct}%)", seg.label, ada,));
-                    break;
-                }
+        let mut lines = Vec::new();
+        for seg in segments {
+            if seg.fraction <= 0.0 {
+                continue;
             }
+            let ada = seg.amount_lovelace as f64 / 1_000_000.0;
+            let pct = (seg.fraction * 100.0).round() as u32;
+            lines.push(format!("{}: {:.1} ADA ({pct}%)", seg.label, ada));
+        }
+        if !lines.is_empty() {
+            response.clone().on_hover_text(lines.join("\n"));
         }
     }
 
