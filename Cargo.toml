@@ -28,6 +28,7 @@ members = [
     "ui/wallet-core",
     "ui/wallet-pallas",
     "ui/wallet-leptos",
+    "ui/canvas-bridge",
     "ui/egui-widgets",
     "ui/_storybook",
     "ui/_storybook-egui",
