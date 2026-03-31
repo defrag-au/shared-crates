@@ -35,6 +35,10 @@ pub mod split_allocation_bar;
 pub mod data_table;
 pub mod exposure_bar;
 
+// Utility widgets
+#[cfg(target_arch = "wasm32")]
+pub mod file_upload;
+
 // Trade desk widgets
 pub mod asset_strip;
 pub mod coverage_delta_bar;

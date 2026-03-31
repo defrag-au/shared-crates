@@ -59,6 +59,8 @@ mod app {
         // Loan dashboard
         ExposureBar,
         DataTable,
+        // Utility
+        FileUpload,
     }
 
     impl Story {
@@ -106,6 +108,8 @@ mod app {
                 // Loan dashboard
                 Self::ExposureBar,
                 Self::DataTable,
+                // Utility
+                Self::FileUpload,
             ]
         }
 
@@ -151,6 +155,7 @@ mod app {
                 Self::PriceImpactCurve => "Price Impact Curve",
                 Self::ExposureBar => "Exposure Bar",
                 Self::DataTable => "Data Table",
+                Self::FileUpload => "File Upload",
             }
         }
 
@@ -193,6 +198,7 @@ mod app {
                 | Self::PoolLiquidity
                 | Self::PriceImpactCurve => "DEX Split Swap",
                 Self::ExposureBar | Self::DataTable => "Loan Dashboard",
+                Self::FileUpload => "Utility",
             }
         }
 
@@ -298,6 +304,9 @@ mod app {
                 Self::DataTable => {
                     "Dense row-based table with column headers, LTV micro-bars, selection, and detail panel"
                 }
+                Self::FileUpload => {
+                    "Browser file picker button — reads selected files into memory with name, MIME type, and bytes"
+                }
             }
         }
     }
@@ -365,6 +374,8 @@ mod app {
         amount_input_state: stories::amount_input::AmountInputStoryState,
         // Loan dashboard
         data_table_state: stories::data_table::DataTableStoryState,
+        // Utility
+        file_upload_state: stories::file_upload::FileUploadState,
     }
 
     impl StorybookApp {
@@ -434,6 +445,7 @@ mod app {
                     stories::slippage_selector::SlippageSelectorStoryState::default(),
                 amount_input_state: stories::amount_input::AmountInputStoryState::default(),
                 data_table_state: stories::data_table::DataTableStoryState::default(),
+                file_upload_state: stories::file_upload::FileUploadState::default(),
             }
         }
 
@@ -614,6 +626,9 @@ mod app {
                             Story::ExposureBar => stories::exposure_bar::show(ui),
                             Story::DataTable => {
                                 stories::data_table::show(ui, &mut self.data_table_state)
+                            }
+                            Story::FileUpload => {
+                                stories::file_upload::show(ui, &mut self.file_upload_state)
                             }
                         }
                     });

@@ -25,6 +25,8 @@ web-sys = { workspace = true, features = [
     "OffscreenCanvas", "OffscreenCanvasRenderingContext2d",
     "ImageData",
     "WorkerGlobalScope",
+    "Document", "Element", "HtmlElement", "HtmlInputElement",
+    "FileList", "File", "FileReader",
 ] }
 js-sys = { workspace = true }
 wallet-core = { workspace = true }

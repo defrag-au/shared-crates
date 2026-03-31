@@ -5,6 +5,8 @@ pub mod asset_card;
 pub mod buttons;
 pub mod card_browser;
 pub mod donut_chart;
+#[cfg(target_arch = "wasm32")]
+pub mod file_upload;
 pub mod flip_counter;
 pub mod icons;
 pub mod image_loader;
@@ -74,6 +76,8 @@ pub use progress_bar::ProgressBar;
 pub use radar_chart::{RadarChartConfig, RadarPoint};
 pub use range_bar::{RangeBarConfig, RangePoint};
 pub use screenshot::ScreenshotButton;
+#[cfg(target_arch = "wasm32")]
+pub use file_upload::{FileUploadButton, UploadedFile};
 pub use seven_segment::SevenSegmentDisplay;
 pub use sparkline::Sparkline;
 pub use swap_modal::{
