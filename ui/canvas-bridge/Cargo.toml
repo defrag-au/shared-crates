@@ -1,0 +1,27 @@
+[package]
+name = "canvas-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "FBO-based bridge for compositing femtovg canvas rendering into egui PaintCallback regions"
+
+[dependencies]
+egui = { workspace = true }
+egui_glow = "0.33"
+
+# Raw WebGL2 for FBO management (avoids glow slotmap conflicts)
+js-sys = { workspace = true }
+web-sys = { version = "0.3", features = [
+    "HtmlCanvasElement",
+    "WebGl2RenderingContext",
+    "WebGlBuffer",
+    "WebGlFramebuffer",
+    "WebGlProgram",
+    "WebGlShader",
+    "WebGlTexture",
+    "WebGlUniformLocation",
+    "WebGlVertexArrayObject",
+] }
+wasm-bindgen = { workspace = true }
+
+tracing = { workspace = true }

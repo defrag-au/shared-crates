@@ -257,9 +257,10 @@ impl TxBuilder {
         for (_input, script_ctx) in &mut prepared.inputs {
             if let Some(ctx) = script_ctx {
                 // Find matching evaluation result
-                if let Some(eval) = eval_results.iter().find(|r| {
-                    r.redeemer_tag == "spend" && r.redeemer_index == spend_idx
-                }) {
+                if let Some(eval) = eval_results
+                    .iter()
+                    .find(|r| r.redeemer_tag == "spend" && r.redeemer_index == spend_idx)
+                {
                     ctx.ex_units = ExUnits {
                         mem: eval.ex_units.mem,
                         steps: eval.ex_units.steps,
@@ -271,9 +272,10 @@ impl TxBuilder {
 
         // Patch mint redeemer ExUnits (redeemer_tag = "mint")
         for (mint_idx, mint_entry) in prepared.mints.iter_mut().enumerate() {
-            if let Some(eval) = eval_results.iter().find(|r| {
-                r.redeemer_tag == "mint" && r.redeemer_index == mint_idx as u64
-            }) {
+            if let Some(eval) = eval_results
+                .iter()
+                .find(|r| r.redeemer_tag == "mint" && r.redeemer_index == mint_idx as u64)
+            {
                 mint_entry.ex_units = ExUnits {
                     mem: eval.ex_units.mem,
                     steps: eval.ex_units.steps,
@@ -330,10 +332,10 @@ impl TxBuilder {
                     !self
                         .used_input_refs
                         .contains(&(u.tx_hash.clone(), u.output_index))
-                    && u.assets.is_empty()
-                    && !u.tags.contains(&UtxoTag::HasDatum)
-                    && !u.tags.contains(&UtxoTag::HasScriptRef)
-                    && !u.tags.contains(&UtxoTag::ScriptAddress)
+                        && u.assets.is_empty()
+                        && !u.tags.contains(&UtxoTag::HasDatum)
+                        && !u.tags.contains(&UtxoTag::HasScriptRef)
+                        && !u.tags.contains(&UtxoTag::ScriptAddress)
                 })
                 .collect();
 

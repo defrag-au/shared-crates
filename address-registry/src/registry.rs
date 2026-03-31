@@ -519,6 +519,14 @@ pub trait AddressLookup: Send + Sync {
         )
     }
 
+    /// Check if the address belongs to a known vesting contract (Shield or CrowdLock).
+    fn is_any_vesting_address(&self, address: &str) -> bool {
+        matches!(
+            self.lookup(address),
+            Some(AddressCategory::Script(ScriptCategory::Vesting { .. }))
+        )
+    }
+
     /// Get the fee calculation function for a marketplace address.
     fn get_marketplace_fee_calculation(&self, address: &str) -> Option<FeeCalculationFn> {
         match self.lookup(address) {
