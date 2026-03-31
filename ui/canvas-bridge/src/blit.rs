@@ -1,10 +1,10 @@
 //! FBO-based canvas bridge for compositing external rendering into egui.
 
-use web_sys::{
-    HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlBuffer, WebGlFramebuffer,
-    WebGlProgram, WebGlTexture, WebGlUniformLocation, WebGlVertexArrayObject,
-};
 use wasm_bindgen::JsCast;
+use web_sys::{
+    HtmlCanvasElement, WebGl2RenderingContext as GL, WebGlBuffer, WebGlFramebuffer, WebGlProgram,
+    WebGlTexture, WebGlUniformLocation, WebGlVertexArrayObject,
+};
 
 use crate::shaders;
 
@@ -73,16 +73,8 @@ impl CanvasBridge {
 
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MIN_FILTER, GL::LINEAR as i32);
         gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_MAG_FILTER, GL::LINEAR as i32);
-        gl.tex_parameteri(
-            GL::TEXTURE_2D,
-            GL::TEXTURE_WRAP_S,
-            GL::CLAMP_TO_EDGE as i32,
-        );
-        gl.tex_parameteri(
-            GL::TEXTURE_2D,
-            GL::TEXTURE_WRAP_T,
-            GL::CLAMP_TO_EDGE as i32,
-        );
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_S, GL::CLAMP_TO_EDGE as i32);
+        gl.tex_parameteri(GL::TEXTURE_2D, GL::TEXTURE_WRAP_T, GL::CLAMP_TO_EDGE as i32);
 
         gl.framebuffer_texture_2d(
             GL::FRAMEBUFFER,
@@ -119,11 +111,7 @@ impl CanvasBridge {
 
         unsafe {
             let data = js_sys::Float32Array::view(&shaders::QUAD_VERTICES);
-            gl.buffer_data_with_array_buffer_view(
-                GL::ARRAY_BUFFER,
-                &data,
-                GL::STATIC_DRAW,
-            );
+            gl.buffer_data_with_array_buffer_view(GL::ARRAY_BUFFER, &data, GL::STATIC_DRAW);
         }
 
         let stride = 4 * std::mem::size_of::<f32>() as i32;
@@ -211,11 +199,7 @@ impl CanvasBridge {
         // Blit default framebuffer → our FBO
         gl.bind_framebuffer(GL::READ_FRAMEBUFFER, None);
         gl.bind_framebuffer(GL::DRAW_FRAMEBUFFER, Some(&self.fbo));
-        gl.blit_framebuffer(
-            0, 0, w, h, 0, 0, w, h,
-            GL::COLOR_BUFFER_BIT,
-            GL::NEAREST,
-        );
+        gl.blit_framebuffer(0, 0, w, h, 0, 0, w, h, GL::COLOR_BUFFER_BIT, GL::NEAREST);
 
         gl.bind_framebuffer(GL::READ_FRAMEBUFFER, None);
         gl.bind_framebuffer(GL::DRAW_FRAMEBUFFER, None);
@@ -263,18 +247,10 @@ impl CanvasBridge {
         self.capture_default_fb();
 
         let vp = info.viewport_in_pixels();
-        self.gl.viewport(
-            vp.left_px,
-            vp.from_bottom_px,
-            vp.width_px,
-            vp.height_px,
-        );
-        self.gl.scissor(
-            vp.left_px,
-            vp.from_bottom_px,
-            vp.width_px,
-            vp.height_px,
-        );
+        self.gl
+            .viewport(vp.left_px, vp.from_bottom_px, vp.width_px, vp.height_px);
+        self.gl
+            .scissor(vp.left_px, vp.from_bottom_px, vp.width_px, vp.height_px);
         self.gl.enable(GL::SCISSOR_TEST);
 
         self.blit_to_viewport();

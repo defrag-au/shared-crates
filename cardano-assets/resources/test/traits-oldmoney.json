@@ -1,0 +1,43 @@
+{
+    "Asset": "2Bill7063",
+    "Base": "Base 3",
+    "Blood": "Blood 6",
+    "Burns and Tape": "Sideburn 1",
+    "Collection": "Old Money",
+    "Contour": "Bandana",
+    "Degradation": "Ink Stain 2",
+    "Drawing": "Dude",
+    "Eye Pop": "Nothing",
+    "Eyes": "Red",
+    "Forehead": "Nothing",
+    "Glasses": "Nothing",
+    "Hair": "Hair Long Black",
+    "Head": "Kaki Dot",
+    "Horns": "Nothing",
+    "Label": "FTW",
+    "Laser Eyes": "Nothing",
+    "Mask": "Nothing",
+    "Mouth": "Blood Teeth",
+    "Name": ".2 Bill #7063",
+    "Nose": "Nothing",
+    "Note Number": "17",
+    "Number": "7063",
+    "Phrase": "15",
+    "Plate Number": "46",
+    "Serial Number": "U85026127",
+    "Series": "$0.2 Bills",
+    "Spear": "Nothing",
+    "Stamp": "Panama",
+    "Stamp Color": "Red",
+    "Suit": "Ripped",
+    "Website": "https://www.oldmoney.io",
+    "files": [
+        {
+            "mediaType": "image/jpeg",
+            "name": "2Bill7063",
+            "src": "ipfs://QmXVV2qKdojm1NK35cJBSn1MWEE54seUFea3HJVkFKo1sZ"
+        }
+    ],
+    "image": "ipfs://QmXVV2qKdojm1NK35cJBSn1MWEE54seUFea3HJVkFKo1sZ",
+    "mediaType": "image/jpeg"
+}

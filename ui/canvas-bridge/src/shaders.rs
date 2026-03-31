@@ -35,11 +35,7 @@ pub const QUAD_VERTICES: [f32; 24] = [
      1.0,  1.0,    1.0, 1.0,
 ];
 
-pub fn compile_program(
-    gl: &GL,
-    vert_src: &str,
-    frag_src: &str,
-) -> Result<WebGlProgram, String> {
+pub fn compile_program(gl: &GL, vert_src: &str, frag_src: &str) -> Result<WebGlProgram, String> {
     let vert = compile_shader(gl, GL::VERTEX_SHADER, vert_src)?;
     let frag = compile_shader(gl, GL::FRAGMENT_SHADER, frag_src)?;
 
@@ -60,11 +56,7 @@ pub fn compile_program(
     }
 }
 
-fn compile_shader(
-    gl: &GL,
-    shader_type: u32,
-    source: &str,
-) -> Result<WebGlShader, String> {
+fn compile_shader(gl: &GL, shader_type: u32, source: &str) -> Result<WebGlShader, String> {
     let shader = gl
         .create_shader(shader_type)
         .ok_or("Failed to create shader")?;

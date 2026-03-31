@@ -37,6 +37,9 @@ pub struct SplitAllocationBarConfig {
     pub min_label_width: f32,
     /// Whether to show the legend row below the bar.
     pub show_legend: bool,
+    /// Whether to show the built-in hover tooltip (segment amounts as ADA).
+    /// Set to `false` when providing a custom tooltip via the returned `Response`.
+    pub show_tooltip: bool,
     /// Font size for percentage labels inside segments.
     pub label_size: f32,
     /// Font size for legend text.
@@ -51,6 +54,7 @@ impl Default for SplitAllocationBarConfig {
             bg_color: theme::BG_SECONDARY,
             min_label_width: 40.0,
             show_legend: true,
+            show_tooltip: true,
             label_size: 10.0,
             legend_size: 10.0,
         }
@@ -78,10 +82,18 @@ pub fn dex_color(index: usize) -> Color32 {
 // Widget
 // ============================================================================
 
-/// Render the split allocation bar.
-pub fn show(ui: &mut Ui, segments: &[AllocationSegment], config: &SplitAllocationBarConfig) {
+/// Render the split allocation bar. Returns the bar's hover `Response` so
+/// callers can attach custom tooltips (set `show_tooltip: false` to suppress
+/// the built-in one).
+pub fn show(
+    ui: &mut Ui,
+    segments: &[AllocationSegment],
+    config: &SplitAllocationBarConfig,
+) -> egui::Response {
     if segments.is_empty() {
-        return;
+        // Allocate zero-size so we always return a Response
+        let (_, r) = ui.allocate_exact_size(Vec2::ZERO, Sense::hover());
+        return r;
     }
 
     let available_width = ui.available_width();
@@ -140,7 +152,7 @@ pub fn show(ui: &mut Ui, segments: &[AllocationSegment], config: &SplitAllocatio
     }
 
     // Hover tooltip — single summary with one line per segment
-    if response.hovered() {
+    let response = if config.show_tooltip && response.hovered() {
         let mut lines = Vec::new();
         for seg in segments {
             if seg.fraction <= 0.0 {
@@ -151,9 +163,13 @@ pub fn show(ui: &mut Ui, segments: &[AllocationSegment], config: &SplitAllocatio
             lines.push(format!("{}: {:.1} ADA ({pct}%)", seg.label, ada));
         }
         if !lines.is_empty() {
-            response.clone().on_hover_text(lines.join("\n"));
+            response.on_hover_text(lines.join("\n"))
+        } else {
+            response
         }
-    }
+    } else {
+        response
+    };
 
     // Legend row
     if config.show_legend {
@@ -179,4 +195,6 @@ pub fn show(ui: &mut Ui, segments: &[AllocationSegment], config: &SplitAllocatio
             }
         });
     }
+
+    response
 }

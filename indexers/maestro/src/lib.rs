@@ -985,7 +985,10 @@ impl MaestroApi {
         let url = format!("https://{}/transactions/evaluate", self.base_url);
 
         let mut body = serde_json::Map::new();
-        body.insert("cbor".to_string(), serde_json::Value::String(tx_cbor_hex.to_string()));
+        body.insert(
+            "cbor".to_string(),
+            serde_json::Value::String(tx_cbor_hex.to_string()),
+        );
         if let Some(utxos) = additional_utxos {
             let utxos_val = serde_json::to_value(utxos).map_err(|e| {
                 MaestroError::Deserialization(format!("Failed to serialize additional_utxos: {e}"))
@@ -993,8 +996,7 @@ impl MaestroApi {
             body.insert("additional_utxos".to_string(), utxos_val);
         }
 
-        let response: Vec<EvaluateRedeemerResult> =
-            self.post_url(url, &body).await?;
+        let response: Vec<EvaluateRedeemerResult> = self.post_url(url, &body).await?;
         Ok(response)
     }
 

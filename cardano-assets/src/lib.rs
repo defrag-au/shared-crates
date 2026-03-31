@@ -108,6 +108,7 @@ pub enum AssetMetadata {
     // known projects:
     // - gophers
     CodifiedTraits {
+        #[serde(alias = "Name")]
         name: String,
         image: PrimitiveOrList<String>,
         #[serde(alias = "mediaType")]
@@ -139,6 +140,7 @@ pub enum AssetMetadata {
     // known projects
     // - snekkies
     Attributed {
+        #[serde(alias = "Name")]
         name: String,
         description: Option<PrimitiveOrList<String>>,
         image: PrimitiveOrList<String>,
@@ -166,6 +168,7 @@ pub enum AssetMetadata {
     // known projects
     // - black flag, aquafarmers
     Flattened {
+        #[serde(alias = "Name")]
         name: String,
         image: PrimitiveOrList<String>,
         #[serde(alias = "mediaType")]
@@ -198,6 +201,7 @@ pub enum AssetMetadata {
     // known projects:
     // - blockowls (and potentially other 3D/collectible formats)
     ColonDelimitedAttributes {
+        #[serde(alias = "Name")]
         name: String,
         image: PrimitiveOrList<String>,
         #[serde(alias = "mediaType")]
@@ -222,6 +226,7 @@ pub enum AssetMetadata {
     // known projects:
     // - mallard order
     AttributeArray {
+        #[serde(alias = "Name")]
         name: String,
         image: PrimitiveOrList<String>,
         #[serde(alias = "mediaType")]
@@ -241,6 +246,7 @@ pub enum AssetMetadata {
     // known projects:
     // - jellycubes
     FlattenedMixed {
+        #[serde(alias = "Name")]
         name: String,
         image: PrimitiveOrList<String>,
         #[serde(alias = "mediaType")]
@@ -1493,6 +1499,31 @@ mod tests {
             },
             Err(err) => {
                 panic!("failed decoding: {err:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_oldmoney_capital_name_field() {
+        // Old Money collection uses "Name" (capital N) instead of "name"
+        // This tests that the alias handles it correctly
+        match serde_json::from_str::<AssetMetadata>(test_case!("traits-oldmoney.json")) {
+            Ok(metadata) => {
+                let asset: Asset = metadata.into();
+                assert_eq!(asset.name, ".2 Bill #7063");
+                assert_eq!(
+                    asset.image,
+                    "ipfs://QmXVV2qKdojm1NK35cJBSn1MWEE54seUFea3HJVkFKo1sZ"
+                );
+                assert_eq!(
+                    asset.traits.get("Collection"),
+                    Some(&vec!["Old Money".to_string()])
+                );
+                assert_eq!(asset.traits.get("Eyes"), Some(&vec!["Red".to_string()]));
+                assert_eq!(asset.traits.get("Stamp"), Some(&vec!["Panama".to_string()]));
+            }
+            Err(err) => {
+                panic!("failed decoding Old Money metadata with capital Name: {err:?}");
             }
         }
     }
