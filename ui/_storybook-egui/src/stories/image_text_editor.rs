@@ -1,6 +1,7 @@
 //! Image text editor story — demonstrates text overlay placement on images.
 
 use crate::ACCENT;
+use egui_widgets::image_text_editor::TextEffect;
 use egui_widgets::{ImageTextEditor, TextOverlay};
 
 pub struct ImageTextEditorState {
@@ -11,9 +12,17 @@ pub struct ImageTextEditorState {
 impl Default for ImageTextEditorState {
     fn default() -> Self {
         let mut editor = ImageTextEditor::new();
-        // Start with classic meme layout
-        editor.overlays.push(TextOverlay::top("TOP TEXT"));
-        editor.overlays.push(TextOverlay::bottom("BOTTOM TEXT"));
+        // Classic meme layout with different effects
+        let mut top = TextOverlay::top("TOP TEXT");
+        top.effect = TextEffect::OutlineAndShadow;
+        top.font_scale = 0.10;
+        editor.overlays.push(top);
+
+        let mut bottom = TextOverlay::bottom("BOTTOM TEXT");
+        bottom.effect = TextEffect::Outline;
+        bottom.font_scale = 0.10;
+        editor.overlays.push(bottom);
+
         editor.selected = Some(0);
         Self {
             editor,
@@ -23,7 +32,7 @@ impl Default for ImageTextEditorState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut ImageTextEditorState) {
-    ui.label("Drag text to reposition. Click to select, then edit properties below.");
+    ui.label("Drag text to reposition. Drag the bottom-right handle to resize. Click to select, then edit properties in the right panel.");
     ui.add_space(8.0);
 
     // Create a sample texture on first frame
@@ -33,11 +42,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageTextEditorState) {
         for y in 0..h {
             for x in 0..w {
                 let i = (y * w + x) * 4;
-                // Gradient background
-                pixels[i] = (x * 255 / w) as u8; // R
-                pixels[i + 1] = (y * 255 / h) as u8; // G
-                pixels[i + 2] = 128; // B
-                pixels[i + 3] = 255; // A
+                pixels[i] = (x * 255 / w) as u8;
+                pixels[i + 1] = (y * 255 / h) as u8;
+                pixels[i + 2] = 128;
+                pixels[i + 3] = 255;
             }
         }
         let color_image = egui::ColorImage::from_rgba_unmultiplied([w, h], &pixels);
@@ -45,7 +53,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageTextEditorState) {
             .load_texture("sample_image", color_image, egui::TextureOptions::LINEAR)
     });
 
-    // Two-column layout: editor left, properties right
     ui.columns(2, |cols| {
         // Left: image editor
         cols[0].label(egui::RichText::new("Image Editor").color(ACCENT).strong());
@@ -80,7 +87,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageTextEditorState) {
             let label = if overlay.text.is_empty() {
                 format!("[{i}] (empty)")
             } else {
-                format!("[{i}] \"{}\"", overlay.text)
+                format!(
+                    "[{i}] \"{}\" — {} / {}",
+                    overlay.text,
+                    overlay.font.label(&state.editor),
+                    overlay.effect.label(),
+                )
             };
             let text = if selected {
                 egui::RichText::new(label).strong().color(ACCENT)

@@ -73,7 +73,9 @@ pub use flip_counter::FlipCounter;
 pub use icons::{install_phosphor_font, PhosphorIcon};
 pub use image_loader::{iiif_asset_url, AssetImageSize};
 #[cfg(feature = "image-editor")]
-pub use image_text_editor::{ImageTextEditor, TextOverlay, TextOverlayAnchor};
+pub use image_text_editor::{
+    FontChoice, ImageTextEditor, TextEffect, TextOverlay, TextOverlayAnchor,
+};
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
