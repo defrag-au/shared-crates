@@ -49,12 +49,7 @@ impl FileUploadButton {
     /// - `label`: button text (e.g. "Upload Image")
     /// - `accept`: file type filter (e.g. "image/*", ".png,.jpg,.webp")
     #[cfg(target_arch = "wasm32")]
-    pub fn show(
-        &mut self,
-        ui: &mut egui::Ui,
-        label: &str,
-        accept: &str,
-    ) -> Option<UploadedFile> {
+    pub fn show(&mut self, ui: &mut egui::Ui, label: &str, accept: &str) -> Option<UploadedFile> {
         if ui.button(label).clicked() {
             self.trigger_file_picker(accept);
         }
@@ -96,9 +91,7 @@ impl FileUploadButton {
         input.set_type("file");
         input.set_accept(accept);
         input.set_id(&self.id);
-        let _ = input
-            .style()
-            .set_property("display", "none");
+        let _ = input.style().set_property("display", "none");
 
         // Append to body so it's part of the DOM.
         if let Some(body) = document.body() {
@@ -173,8 +166,7 @@ fn read_selected_file(
         }
     });
 
-    let _ = reader
-        .add_event_listener_with_callback("loadend", onload.as_ref().unchecked_ref());
+    let _ = reader.add_event_listener_with_callback("loadend", onload.as_ref().unchecked_ref());
     onload.forget();
 
     let _ = reader.read_as_array_buffer(&file);

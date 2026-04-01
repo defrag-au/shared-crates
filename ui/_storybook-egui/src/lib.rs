@@ -61,6 +61,8 @@ mod app {
         DataTable,
         // Utility
         FileUpload,
+        // Media
+        ImageTextEditor,
     }
 
     impl Story {
@@ -110,6 +112,8 @@ mod app {
                 Self::DataTable,
                 // Utility
                 Self::FileUpload,
+                // Media
+                Self::ImageTextEditor,
             ]
         }
 
@@ -156,6 +160,7 @@ mod app {
                 Self::ExposureBar => "Exposure Bar",
                 Self::DataTable => "Data Table",
                 Self::FileUpload => "File Upload",
+                Self::ImageTextEditor => "Image Text Editor",
             }
         }
 
@@ -199,6 +204,7 @@ mod app {
                 | Self::PriceImpactCurve => "DEX Split Swap",
                 Self::ExposureBar | Self::DataTable => "Loan Dashboard",
                 Self::FileUpload => "Utility",
+                Self::ImageTextEditor => "Media",
             }
         }
 
@@ -307,6 +313,9 @@ mod app {
                 Self::FileUpload => {
                     "Browser file picker button — reads selected files into memory with name, MIME type, and bytes"
                 }
+                Self::ImageTextEditor => {
+                    "Drag-to-position text overlays on images with font size, color, and outline controls. Flattens to final composite."
+                }
             }
         }
     }
@@ -376,6 +385,7 @@ mod app {
         data_table_state: stories::data_table::DataTableStoryState,
         // Utility
         file_upload_state: stories::file_upload::FileUploadState,
+        image_text_editor_state: stories::image_text_editor::ImageTextEditorState,
     }
 
     impl StorybookApp {
@@ -446,6 +456,8 @@ mod app {
                 amount_input_state: stories::amount_input::AmountInputStoryState::default(),
                 data_table_state: stories::data_table::DataTableStoryState::default(),
                 file_upload_state: stories::file_upload::FileUploadState::default(),
+                image_text_editor_state: stories::image_text_editor::ImageTextEditorState::default(
+                ),
             }
         }
 
@@ -630,6 +642,10 @@ mod app {
                             Story::FileUpload => {
                                 stories::file_upload::show(ui, &mut self.file_upload_state)
                             }
+                            Story::ImageTextEditor => stories::image_text_editor::show(
+                                ui,
+                                &mut self.image_text_editor_state,
+                            ),
                         }
                     });
                 });

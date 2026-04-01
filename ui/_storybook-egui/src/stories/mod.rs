@@ -38,6 +38,7 @@ pub mod exposure_bar;
 // Utility widgets
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
+pub mod image_text_editor;
 
 // Trade desk widgets
 pub mod asset_strip;
