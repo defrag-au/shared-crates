@@ -383,44 +383,47 @@ impl ImageTextEditor {
                     egui::StrokeKind::Outside,
                 );
 
-                // Corner resize handles
+                // Corner resize handles — all four are interactive
+                let hit_size = 28.0; // generous hit target
                 let corners = [
                     text_rect.left_top(),
                     text_rect.right_top(),
                     text_rect.left_bottom(),
                     text_rect.right_bottom(),
                 ];
-                for corner in corners {
-                    painter.circle_filled(corner, handle_radius, Color32::from_rgb(100, 180, 255));
-                    painter.circle_stroke(corner, handle_radius, Stroke::new(1.0, Color32::WHITE));
-                }
+                for (ci, corner) in corners.iter().enumerate() {
+                    painter.circle_filled(*corner, handle_radius, Color32::from_rgb(100, 180, 255));
+                    painter.circle_stroke(*corner, handle_radius, Stroke::new(1.0, Color32::WHITE));
 
-                // Resize handle interaction (bottom-right corner)
-                let handle_rect =
-                    Rect::from_center_size(text_rect.right_bottom(), egui::vec2(16.0, 16.0));
-                let handle_id = id_base.with(("resize", i));
-                let handle_resp = ui.interact(handle_rect, handle_id, Sense::drag());
+                    let handle_rect =
+                        Rect::from_center_size(*corner, egui::vec2(hit_size, hit_size));
+                    let handle_id = id_base.with(("resize", i, ci));
+                    let handle_resp = ui.interact(handle_rect, handle_id, Sense::drag());
 
-                if handle_resp.hovered() {
-                    ui.ctx().set_cursor_icon(CursorIcon::ResizeNwSe);
-                }
+                    if handle_resp.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::ResizeNwSe);
+                    }
 
-                if handle_resp.drag_started() {
-                    self.drag_mode = Some(DragMode::Resize(i));
-                }
+                    if handle_resp.drag_started() {
+                        self.drag_mode = Some(DragMode::Resize(i));
+                    }
 
-                if handle_resp.dragged()
-                    && matches!(self.drag_mode, Some(DragMode::Resize(idx)) if idx == i)
-                {
-                    let delta_y = handle_resp.drag_delta().y;
-                    overlay.font_scale += delta_y / image_rect.height();
-                    overlay.font_scale = overlay.font_scale.clamp(0.02, 0.4);
-                }
+                    if handle_resp.dragged()
+                        && matches!(self.drag_mode, Some(DragMode::Resize(idx)) if idx == i)
+                    {
+                        // Use vertical drag distance for resize; bottom corners
+                        // drag down = bigger, top corners drag up = bigger.
+                        let sign = if ci < 2 { -1.0 } else { 1.0 };
+                        let delta_y = handle_resp.drag_delta().y * sign;
+                        overlay.font_scale += delta_y / image_rect.height();
+                        overlay.font_scale = overlay.font_scale.clamp(0.02, 0.4);
+                    }
 
-                if handle_resp.drag_stopped()
-                    && matches!(self.drag_mode, Some(DragMode::Resize(idx)) if idx == i)
-                {
-                    self.drag_mode = None;
+                    if handle_resp.drag_stopped()
+                        && matches!(self.drag_mode, Some(DragMode::Resize(idx)) if idx == i)
+                    {
+                        self.drag_mode = None;
+                    }
                 }
             }
 
