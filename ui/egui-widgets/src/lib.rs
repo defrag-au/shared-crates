@@ -5,6 +5,8 @@ pub mod asset_card;
 pub mod buttons;
 pub mod card_browser;
 pub mod donut_chart;
+#[cfg(target_arch = "wasm32")]
+pub mod file_upload;
 pub mod flip_counter;
 pub mod icons;
 pub mod image_loader;
@@ -29,6 +31,10 @@ pub mod wallet;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet_button;
 pub mod wallet_editor;
+
+// Image text editor (feature-gated)
+#[cfg(feature = "image-editor")]
+pub mod image_text_editor;
 
 // DEX split swap widgets
 pub mod amount_input;
@@ -61,9 +67,15 @@ pub use card_browser::{
 pub use donut_chart::{
     format_value as format_chart_value, legend_row, DistBand, DistributionChart,
 };
+#[cfg(target_arch = "wasm32")]
+pub use file_upload::{FileUploadButton, UploadedFile};
 pub use flip_counter::FlipCounter;
 pub use icons::{install_phosphor_font, PhosphorIcon};
 pub use image_loader::{iiif_asset_url, AssetImageSize};
+#[cfg(feature = "image-editor")]
+pub use image_text_editor::{
+    FontChoice, ImageTextEditor, TextEffect, TextOverlay, TextOverlayAnchor,
+};
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};

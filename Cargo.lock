@@ -65,6 +65,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ai-media-gen"
+version = "0.1.0"
+dependencies = [
+ "http-client",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -698,6 +709,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "city-gen"
+version = "0.1.0"
+dependencies = [
+ "rand 0.9.1",
+]
+
+[[package]]
 name = "clap"
 version = "4.5.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1193,6 +1211,7 @@ dependencies = [
 name = "egui-widgets"
 version = "0.1.0"
 dependencies = [
+ "ab_glyph",
  "cardano-assets",
  "egui",
  "egui_extras",
@@ -2480,6 +2499,13 @@ name = "khronos_api"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
+
+[[package]]
+name = "l-system"
+version = "0.1.0"
+dependencies = [
+ "rand 0.9.1",
+]
 
 [[package]]
 name = "lasso"
@@ -6454,6 +6480,13 @@ name = "weezl"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
+
+[[package]]
+name = "wfc"
+version = "0.1.0"
+dependencies = [
+ "rand 0.9.1",
+]
 
 [[package]]
 name = "winapi"

@@ -12,16 +12,9 @@ use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
 // Story state
 // ============================================================================
 
+#[derive(Default)]
 pub struct DataTableStoryState {
     pub table_state: DataTableState,
-}
-
-impl Default for DataTableStoryState {
-    fn default() -> Self {
-        Self {
-            table_state: DataTableState::default(),
-        }
-    }
 }
 
 // ============================================================================

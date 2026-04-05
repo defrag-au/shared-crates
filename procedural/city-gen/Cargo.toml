@@ -1,0 +1,12 @@
+[package]
+name = "city-gen"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Procedural city layout generation using tensor fields and streamline tracing"
+
+[dependencies]
+rand = { version = "0.9", default-features = false, features = ["small_rng", "alloc"] }
+
+[dev-dependencies]
+rand = { version = "0.9", features = ["small_rng", "os_rng"] }

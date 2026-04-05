@@ -3,6 +3,10 @@ name = "egui-widgets"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+image-editor = ["dep:ab_glyph"]
+
 [dependencies]
 egui = { workspace = true }
 egui_extras = { workspace = true }
@@ -13,6 +17,7 @@ serde = { workspace = true, features = ["derive"] }
 log = { workspace = true }
 i_overlay = "4.4.1"
 voronoice = "0.2"
+ab_glyph = { version = "0.2", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { workspace = true }
@@ -25,6 +30,8 @@ web-sys = { workspace = true, features = [
     "OffscreenCanvas", "OffscreenCanvasRenderingContext2d",
     "ImageData",
     "WorkerGlobalScope",
+    "Document", "Element", "HtmlElement", "HtmlInputElement",
+    "FileList", "File", "FileReader",
 ] }
 js-sys = { workspace = true }
 wallet-core = { workspace = true }

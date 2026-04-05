@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 eframe = { workspace = true }
 egui = { workspace = true }
 egui_extras = { workspace = true }
-egui-widgets = { path = "../egui-widgets" }
+egui-widgets = { path = "../egui-widgets", features = ["image-editor"] }
 cardano-assets = { workspace = true }
 cardano-tx = { path = "../../cardano-tx" }
 wasm-bindgen = { workspace = true }
