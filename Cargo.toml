@@ -35,6 +35,7 @@ members = [
     "ui/workers/flow-demo",
     "ui/workers/flow-demo/frontend",
     "procedural/*",
+    "ai-media-gen",
 ]
 resolver = "2"
 

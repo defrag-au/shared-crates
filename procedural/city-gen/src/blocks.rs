@@ -44,7 +44,7 @@ pub fn detect_blocks(graph: &RoadGraph, min_area: f32, max_area: f32) -> Vec<Blo
             // Trace the block by always turning right
             if let Some(polygon) = trace_block(graph, start_node, end_node, &mut visited_directed) {
                 let area = polygon_area(&polygon);
-                if area > min_area && area < max_area {
+                if area > min_area && area < max_area && is_good_shape(&polygon, area) {
                     blocks.push(Block { polygon, area });
                 }
             }
@@ -171,7 +171,7 @@ fn recursive_subdivide(
 ) {
     // Base case: small enough to be a lot
     if area < max_area || depth > 6 {
-        if area >= min_area {
+        if area >= min_area && is_good_shape(polygon, area) {
             lots.push(Lot {
                 polygon: polygon.to_vec(),
                 area,
@@ -211,14 +211,66 @@ fn recursive_subdivide(
         recursive_subdivide(&poly_a, area_a, max_area, min_area, lots, depth + 1);
         recursive_subdivide(&poly_b, area_b, max_area, min_area, lots, depth + 1);
     } else {
-        // Couldn't split — accept as-is
-        if area >= min_area {
+        // Couldn't split — accept as-is if shape is good
+        if area >= min_area && is_good_shape(polygon, area) {
             lots.push(Lot {
                 polygon: polygon.to_vec(),
                 area,
             });
         }
     }
+}
+
+/// Check if a polygon has a reasonable shape (not too elongated or spiky).
+///
+/// Rejects:
+/// - Very elongated shapes (area / perimeter² < 0.04)
+/// - Polygons with very acute interior angles (< 15°)
+fn is_good_shape(polygon: &[Vec2], area: f32) -> bool {
+    let n = polygon.len();
+    if n < 3 { return false; }
+
+    // Elongation check: compactness = area / perimeter²
+    // A square has compactness ~0.0625, a 10:1 rectangle ~0.023
+    let perimeter: f32 = (0..n)
+        .map(|i| polygon[i].distance(polygon[(i + 1) % n]))
+        .sum();
+    if perimeter < 1.0 { return false; }
+
+    let compactness = area / (perimeter * perimeter);
+    if compactness < 0.035 {
+        return false; // too elongated
+    }
+
+    // Reject triangles — they almost always look like artifacts
+    if n == 3 {
+        return false;
+    }
+
+    // Acute angle check: reject if any interior angle < 30°
+    let min_cos = (30.0f32).to_radians().cos(); // cos(30°) ≈ 0.866
+    for i in 0..n {
+        let prev = polygon[(i + n - 1) % n];
+        let curr = polygon[i];
+        let next = polygon[(i + 1) % n];
+
+        let a = (prev - curr).normalize();
+        let b = (next - curr).normalize();
+
+        // Skip degenerate edges
+        if a.length_sq() < 0.001 || b.length_sq() < 0.001 {
+            return false;
+        }
+
+        let dot = a.dot(b);
+
+        // dot close to 1.0 means very acute angle
+        if dot > min_cos {
+            return false;
+        }
+    }
+
+    true
 }
 
 /// Split a polygon along a line defined by a point and direction.
