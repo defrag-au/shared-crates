@@ -1,0 +1,12 @@
+[package]
+name = "l-system"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "L-system string rewriting and turtle interpretation for procedural generation"
+
+[dependencies]
+rand = { version = "0.9", default-features = false, features = ["small_rng", "alloc"] }
+
+[dev-dependencies]
+rand = { version = "0.9", features = ["small_rng", "os_rng"] }

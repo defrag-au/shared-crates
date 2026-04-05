@@ -175,9 +175,12 @@ impl AssetId {
     /// );
     /// // Note: This example uses a test vector from CIP-14
     /// ```
+    /// Compute the raw CIP-14 fingerprint as 20 bytes (Blake2b-160)
+    ///
+    /// Returns the raw hash bytes before bech32 encoding.
+    /// Useful for compact binary storage and personality derivation.
     #[cfg(feature = "cip14")]
-    pub fn fingerprint(&self) -> Result<String, AssetIdError> {
-        use bech32::{Bech32, Hrp};
+    pub fn fingerprint_bytes(&self) -> Result<[u8; 20], AssetIdError> {
         use blake2::digest::{Update, VariableOutput};
         use blake2::Blake2bVar;
 
@@ -185,7 +188,6 @@ impl AssetId {
             .as_bytes()
             .map_err(|_| AssetIdError::InvalidPolicyIdFormat)?;
 
-        // Blake2b-160 (20 bytes output)
         let mut hasher = Blake2bVar::new(20).expect("valid output size");
         hasher.update(&bytes);
         let mut hash = [0u8; 20];
@@ -193,6 +195,30 @@ impl AssetId {
             .finalize_variable(&mut hash)
             .expect("valid buffer size");
 
+        Ok(hash)
+    }
+
+    /// Compute the CIP-14 asset fingerprint
+    ///
+    /// Returns a bech32-encoded string with "asset" prefix, computed as:
+    /// `bech32(hrp="asset", data=blake2b_160(policy_id || asset_name))`
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use cardano_assets::AssetId;
+    ///
+    /// let asset_id = AssetId::new(
+    ///     "7eae28af2208be856f7a119668ae52a49b73725e326dc16579dcc373".to_string(),
+    ///     "".to_string(), // empty asset name for this test vector
+    /// );
+    /// // Note: This example uses a test vector from CIP-14
+    /// ```
+    #[cfg(feature = "cip14")]
+    pub fn fingerprint(&self) -> Result<String, AssetIdError> {
+        use bech32::{Bech32, Hrp};
+
+        let hash = self.fingerprint_bytes()?;
         let hrp = Hrp::parse("asset").expect("valid hrp");
         let encoded = bech32::encode::<Bech32>(hrp, &hash)
             .map_err(|_| AssetIdError::InvalidPolicyIdFormat)?;
@@ -789,6 +815,25 @@ mod tests {
                 asset_id.fingerprint().unwrap(),
                 "asset1pkpwyknlvul7az0xx8czhl60pyel45rpje4z8w"
             );
+        }
+
+        #[test]
+        fn test_fingerprint_bytes_roundtrip() {
+            // Verify fingerprint_bytes produces the same hash that fingerprint() bech32-encodes
+            use bech32::{Bech32, Hrp};
+
+            let asset_id = AssetId::new(
+                "7eae28af2208be856f7a119668ae52a49b73725e326dc16579dcc373".to_string(),
+                "504154415445".to_string(),
+            )
+            .expect("valid asset id");
+
+            let bytes = asset_id.fingerprint_bytes().unwrap();
+            let hrp = Hrp::parse("asset").expect("valid hrp");
+            let manual_bech32 = bech32::encode::<Bech32>(hrp, &bytes).unwrap();
+
+            assert_eq!(manual_bech32, asset_id.fingerprint().unwrap());
+            assert_eq!(bytes.len(), 20);
         }
 
         #[test]
