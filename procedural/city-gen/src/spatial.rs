@@ -34,6 +34,7 @@ impl SpatialGrid {
     }
 
     /// Insert a line segment, adding its index to all cells it crosses.
+    #[allow(dead_code)]
     pub fn insert_segment(&mut self, a: Vec2, b: Vec2, index: usize) {
         let (c0, r0) = self.to_cell(a);
         let (c1, r1) = self.to_cell(b);

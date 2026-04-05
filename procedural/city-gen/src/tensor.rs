@@ -41,8 +41,8 @@ impl Tensor {
         Vec2::new(a.cos(), a.sin())
     }
 
-    /// Add two tensors.
-    pub fn add(self, other: Tensor) -> Tensor {
+    /// Combine two tensors additively.
+    pub fn combine(self, other: Tensor) -> Tensor {
         Tensor {
             r: self.r + other.r,
             s: self.s + other.s,
@@ -165,7 +165,7 @@ impl TensorField {
         for field in &self.fields {
             let (tensor, weight) = field.sample(point);
             if weight > 0.001 {
-                result = result.add(tensor.scale(weight));
+                result = result.combine(tensor.scale(weight));
                 total_weight += weight;
             }
         }

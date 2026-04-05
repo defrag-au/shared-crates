@@ -70,7 +70,6 @@ pub fn trace_streamlines(
         .collect();
 
     let mut seed_idx = 0;
-    let mut rejected = 0u32;
 
     while seed_idx < seeds.len() {
         let (seed, is_major) = seeds[seed_idx];
@@ -83,7 +82,6 @@ pub fn trace_streamlines(
 
         // Skip if too close to existing streamlines
         if sample_grid.has_nearby(seed, config.dtest * 0.5, &all_points) {
-            rejected += 1;
             continue;
         }
 

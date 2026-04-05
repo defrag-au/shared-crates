@@ -15,8 +15,6 @@ pub enum MediaGenError {
     Http(#[from] http_client::HttpError),
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("API error ({status}): {message}")]
-    Api { status: u16, message: String },
     #[error("{0}")]
     Other(String),
 }
@@ -36,12 +34,12 @@ impl XaiClient {
 
     /// Generate an image from a text prompt (no reference image).
     pub async fn generate_image(&self, req: &ImageRequest<'_>) -> Result<ImageResponse, MediaGenError> {
-        let body = serde_json::json!({
-            "model": req.model,
-            "prompt": req.prompt,
-            "n": req.n,
-            "response_format": "url",
-        });
+        let body = GenerationBody {
+            model: req.model,
+            prompt: req.prompt,
+            n: req.n,
+            response_format: "url",
+        };
 
         let url = format!("{BASE_URL}/images/generations");
         let response: ImageResponse = self.client.post(&url, &body).await?;
@@ -59,46 +57,34 @@ impl XaiClient {
         let mut b64 = String::from("data:image/png;base64,");
         base64_encode(png_bytes, &mut b64);
 
-        let body = serde_json::json!({
-            "model": req.model,
-            "prompt": req.prompt,
-            "n": req.n,
-            "aspect_ratio": "auto",
-            "resolution": "1k",
-            "image": {
-                "url": b64
-            }
-        });
+        let body = EditBody {
+            model: req.model,
+            prompt: req.prompt,
+            n: req.n,
+            aspect_ratio: "auto",
+            resolution: "1k",
+            image: ImageInput { url: b64 },
+        };
 
         let url = format!("{BASE_URL}/images/edits");
         let response: ImageResponse = self.client.post(&url, &body).await?;
         Ok(response)
     }
 
-    /// Edit/stylize using URL references.
-    pub async fn edit_image_urls(
+    /// Edit/stylize using a URL reference.
+    pub async fn edit_image_url(
         &self,
         req: &ImageRequest<'_>,
-        image_urls: &[&str],
+        image_url: &str,
     ) -> Result<ImageResponse, MediaGenError> {
-        let images: Vec<serde_json::Value> = image_urls.iter()
-            .map(|u| serde_json::json!({"url": u}))
-            .collect();
-
-        let image_val = if images.len() == 1 {
-            images.into_iter().next().unwrap()
-        } else {
-            serde_json::Value::Array(images)
+        let body = EditBody {
+            model: req.model,
+            prompt: req.prompt,
+            n: req.n,
+            aspect_ratio: "auto",
+            resolution: "1k",
+            image: ImageInput { url: image_url.to_string() },
         };
-
-        let body = serde_json::json!({
-            "model": req.model,
-            "prompt": req.prompt,
-            "n": req.n,
-            "aspect_ratio": "auto",
-            "resolution": "1k",
-            "image": image_val
-        });
 
         let url = format!("{BASE_URL}/images/edits");
         let response: ImageResponse = self.client.post(&url, &body).await?;
@@ -135,7 +121,33 @@ pub struct ImageResponse {
 #[derive(Debug, Deserialize)]
 pub struct ImageData {
     pub url: Option<String>,
+    #[allow(dead_code)]
     pub b64_json: Option<String>,
+}
+
+// ─── Request body types ──────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+struct GenerationBody<'a> {
+    model: &'a str,
+    prompt: &'a str,
+    n: u32,
+    response_format: &'a str,
+}
+
+#[derive(Serialize)]
+struct EditBody<'a> {
+    model: &'a str,
+    prompt: &'a str,
+    n: u32,
+    aspect_ratio: &'a str,
+    resolution: &'a str,
+    image: ImageInput,
+}
+
+#[derive(Serialize)]
+struct ImageInput {
+    url: String,
 }
 
 /// Simple base64 encoder.

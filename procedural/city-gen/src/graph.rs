@@ -100,9 +100,9 @@ impl RoadGraph {
             let flags = &intersection_points[si];
             let mut segment_start = 0;
 
-            for i in 0..streamline.points.len() {
+            for (i, &flag) in flags.iter().enumerate() {
                 let is_endpoint = i == 0 || i == streamline.points.len() - 1;
-                let is_intersection = flags[i] == 1;
+                let is_intersection = flag == 1;
 
                 if is_endpoint || is_intersection {
                     let p = streamline.points[i];
@@ -114,10 +114,7 @@ impl RoadGraph {
 
                         if start_node != node_idx {
                             let edge_idx = edges.len();
-                            let path: Vec<Vec2> = streamline.points[segment_start..=i]
-                                .iter()
-                                .copied()
-                                .collect();
+                            let path: Vec<Vec2> = streamline.points[segment_start..=i].to_vec();
 
                             edges.push(RoadEdge {
                                 node_a: start_node,

@@ -91,7 +91,7 @@ pub fn interpret(symbols: &[Symbol], config: &TurtleConfig) -> Vec<Segment> {
                 let nx = turtle.x + step * turtle.heading.cos();
                 let ny = turtle.y + step * turtle.heading.sin();
 
-                let in_bounds = config.bounds.map_or(true, |(min_x, min_y, max_x, max_y)| {
+                let in_bounds = config.bounds.is_none_or(|(min_x, min_y, max_x, max_y)| {
                     nx >= min_x && nx <= max_x && ny >= min_y && ny <= max_y
                 });
 
