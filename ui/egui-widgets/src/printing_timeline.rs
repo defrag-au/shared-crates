@@ -38,17 +38,17 @@ pub struct PrintingTimelineConfig {
 impl Default for PrintingTimelineConfig {
     fn default() -> Self {
         Self {
-            height: 200.0,
-            node_width: 100.0,
-            node_spacing: 16.0,
-            dot_radius: 6.0,
+            height: 80.0,
+            node_width: 40.0,
+            node_spacing: 4.0,
+            dot_radius: 5.0,
             line_color: Color32::from_rgb(86, 95, 137),
             dot_color: Color32::from_rgb(86, 95, 137),
             dot_selected: Color32::from_rgb(122, 162, 247),
             text_color: Color32::from_rgb(192, 202, 245),
             text_muted: Color32::from_rgb(86, 95, 137),
-            show_thumbnails: true,
-            thumb_height: 100.0,
+            show_thumbnails: false,
+            thumb_height: 80.0,
         }
     }
 }
@@ -125,9 +125,9 @@ pub fn show(
             //   [date]      ← release date
             //   [rarity]    ← rarity badge
 
-            let thumb_area_h = if config.show_thumbnails { config.thumb_height + 8.0 } else { 0.0 };
-            let timeline_y = rect.top() + thumb_area_h + 16.0;
-            let text_top = timeline_y + config.dot_radius + 8.0;
+            let thumb_area_h = if config.show_thumbnails { config.thumb_height + 4.0 } else { 0.0 };
+            let timeline_y = rect.top() + thumb_area_h + config.dot_radius + 2.0;
+            let text_top = timeline_y + config.dot_radius + 4.0;
 
             // Draw timeline line
             if nodes.len() > 1 {
@@ -197,53 +197,46 @@ pub fn show(
 
                 if click_resp.hovered() {
                     response.hovered = Some(i);
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
 
                 click_resp.on_hover_text(format!(
-                    "{} ({})\n{} #{}\n{}",
+                    "{} ({}) · {} #{} · {}",
                     node.set_name, node.set_code,
                     node.rarity, node.collector_number,
                     node.released_at,
                 ));
 
-                // Set code label
+                // Set code label (centered under dot)
+                let code_color = if is_selected { config.dot_selected } else { config.text_color };
                 let set_galley = painter.layout_no_wrap(
                     node.set_code.clone(),
                     egui::FontId::monospace(11.0),
-                    if is_selected { config.dot_selected } else { config.text_color },
+                    code_color,
                 );
                 let set_w = set_galley.size().x;
                 painter.galley(
                     Pos2::new(center_x - set_w / 2.0, text_top),
                     set_galley,
-                    config.text_color,
+                    code_color,
                 );
 
-                // Date label
+                // Year only (compact date)
+                let year = if node.released_at.len() >= 4 {
+                    &node.released_at[..4]
+                } else {
+                    &node.released_at
+                };
                 let date_galley = painter.layout_no_wrap(
-                    node.released_at.clone(),
+                    year.to_string(),
                     egui::FontId::proportional(9.0),
                     config.text_muted,
                 );
                 let date_w = date_galley.size().x;
                 painter.galley(
-                    Pos2::new(center_x - date_w / 2.0, text_top + 14.0),
+                    Pos2::new(center_x - date_w / 2.0, text_top + 11.0),
                     date_galley,
                     config.text_muted,
-                );
-
-                // Rarity badge
-                let rarity_color = rarity_badge_color(&node.rarity);
-                let rarity_galley = painter.layout_no_wrap(
-                    node.rarity.clone(),
-                    egui::FontId::proportional(9.0),
-                    rarity_color,
-                );
-                let rar_w = rarity_galley.size().x;
-                painter.galley(
-                    Pos2::new(center_x - rar_w / 2.0, text_top + 26.0),
-                    rarity_galley,
-                    rarity_color,
                 );
             }
         });
@@ -265,14 +258,3 @@ fn rarity_dot_color(rarity: &str, config: &PrintingTimelineConfig) -> Color32 {
     }
 }
 
-fn rarity_badge_color(rarity: &str) -> Color32 {
-    match rarity {
-        "mythic" => Color32::from_rgb(247, 118, 142),
-        "rare" => Color32::from_rgb(224, 175, 104),
-        "uncommon" => Color32::from_rgb(180, 180, 180),
-        "common" => Color32::from_rgb(130, 130, 130),
-        "special" => Color32::from_rgb(187, 154, 247),
-        "bonus" => Color32::from_rgb(125, 207, 255),
-        _ => Color32::from_rgb(86, 95, 137),
-    }
-}

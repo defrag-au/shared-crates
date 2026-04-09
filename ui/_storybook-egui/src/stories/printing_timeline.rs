@@ -11,6 +11,7 @@ pub struct PrintingTimelineDemo {
     pub nodes: Vec<PrintingNode>,
     pub show_thumbnails: bool,
     pub node_width: f32,
+    pub height: f32,
 }
 
 impl Default for PrintingTimelineDemo {
@@ -122,7 +123,8 @@ impl Default for PrintingTimelineDemo {
             state: PrintingTimelineState::default(),
             nodes,
             show_thumbnails: false,
-            node_width: 100.0,
+            node_width: 40.0,
+            height: 80.0,
         }
     }
 }
@@ -144,13 +146,15 @@ pub fn show(ui: &mut egui::Ui, demo: &mut PrintingTimelineDemo) {
     // Controls
     ui.horizontal(|ui| {
         ui.checkbox(&mut demo.show_thumbnails, "Show thumbnails");
-        ui.add(egui::Slider::new(&mut demo.node_width, 60.0..=160.0).text("Node width"));
+        ui.add(egui::Slider::new(&mut demo.node_width, 32.0..=120.0).text("Node width"));
+        ui.add(egui::Slider::new(&mut demo.height, 60.0..=240.0).text("Height"));
     });
     ui.add_space(8.0);
 
     let config = PrintingTimelineConfig {
         show_thumbnails: demo.show_thumbnails,
         node_width: demo.node_width,
+        height: demo.height,
         ..PrintingTimelineConfig::default()
     };
 
