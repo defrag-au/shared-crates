@@ -30,6 +30,7 @@ mod app {
         MeshPlayground,
         PerspectiveText,
         TcgCard,
+        PrintingTimeline,
         AssetCard,
         RadarChart,
         RangeBar,
@@ -81,6 +82,7 @@ mod app {
                 Self::MeshPlayground,
                 Self::PerspectiveText,
                 Self::TcgCard,
+                Self::PrintingTimeline,
                 Self::AssetCard,
                 Self::RadarChart,
                 Self::RangeBar,
@@ -132,6 +134,7 @@ mod app {
                 Self::MeshPlayground => "Mesh Playground",
                 Self::PerspectiveText => "Perspective Text",
                 Self::TcgCard => "TCG Card",
+                Self::PrintingTimeline => "Printing Timeline",
                 Self::AssetCard => "Asset Card",
                 Self::RadarChart => "Radar Chart",
                 Self::RangeBar => "Range Bar",
@@ -178,6 +181,7 @@ mod app {
                 | Self::MeshPlayground
                 | Self::PerspectiveText
                 | Self::TcgCard
+                | Self::PrintingTimeline
                 | Self::AssetCard
                 | Self::RadarChart
                 | Self::RangeBar
@@ -232,6 +236,9 @@ mod app {
                 }
                 Self::TcgCard => {
                     "Trading card rendering with perspective tilt, holographic effects, and card flip"
+                }
+                Self::PrintingTimeline => {
+                    "Horizontal timeline showing a card's printing history across sets with rarity evolution"
                 }
                 Self::AssetCard => {
                     "Asset card widget: square, hex, rounded square — with holographic foil, stats, and 3D tilt"
@@ -358,6 +365,7 @@ mod app {
         mesh_playground_state: stories::mesh_playground::MeshPlaygroundState,
         perspective_text_state: stories::perspective_text::PerspectiveTextState,
         tcg_card_state: stories::tcg_card::TcgCardState,
+        printing_timeline_state: stories::printing_timeline::PrintingTimelineDemo,
         asset_card_state: stories::asset_card::AssetCardState,
         radar_chart_state: stories::radar_chart::RadarChartState,
         range_bar_state: stories::range_bar::RangeBarState,
@@ -413,6 +421,7 @@ mod app {
                 mesh_playground_state: stories::mesh_playground::MeshPlaygroundState::default(),
                 perspective_text_state: stories::perspective_text::PerspectiveTextState::default(),
                 tcg_card_state: stories::tcg_card::TcgCardState::default(),
+                printing_timeline_state: stories::printing_timeline::PrintingTimelineDemo::default(),
                 asset_card_state: stories::asset_card::AssetCardState::default(),
                 radar_chart_state: stories::radar_chart::RadarChartState::default(),
                 range_bar_state: stories::range_bar::RangeBarState::default(),
@@ -561,6 +570,7 @@ mod app {
                                 &mut self.perspective_text_state,
                             ),
                             Story::TcgCard => stories::tcg_card::show(ui, &mut self.tcg_card_state),
+                            Story::PrintingTimeline => stories::printing_timeline::show(ui, &mut self.printing_timeline_state),
                             Story::AssetCard => {
                                 stories::asset_card::show(ui, &mut self.asset_card_state)
                             }

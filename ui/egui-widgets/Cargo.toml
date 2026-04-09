@@ -4,15 +4,16 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-default = []
+default = ["cardano"]
 image-editor = ["dep:ab_glyph"]
+cardano = ["dep:cardano-assets", "dep:wallet-core", "dep:wallet-pallas"]
 
 [dependencies]
 egui = { workspace = true }
 egui_extras = { workspace = true }
 egui_inbox = { workspace = true }
 image = { workspace = true, features = ["jpeg"] }
-cardano-assets = { workspace = true }
+cardano-assets = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 log = { workspace = true }
 i_overlay = "4.4.1"
@@ -34,5 +35,5 @@ web-sys = { workspace = true, features = [
     "FileList", "File", "FileReader",
 ] }
 js-sys = { workspace = true }
-wallet-core = { workspace = true }
-wallet-pallas = { workspace = true }
+wallet-core = { workspace = true, optional = true }
+wallet-pallas = { workspace = true, optional = true }
