@@ -24,6 +24,9 @@ use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
 pub struct CardBrowserConfig {
     /// Width of each card. The thumbnail fills this width (minus a small inset).
     pub card_width: f32,
+    /// Aspect ratio of the thumbnail (height / width). Default 1.0 (square).
+    /// Use 1.395 for MtG cards (680/488).
+    pub thumb_aspect_ratio: f32,
     /// Number of text lines below the thumbnail (e.g. name + subtitle + price = 3).
     pub text_lines: u8,
     /// Width of the detail panel when a card is selected.
@@ -62,10 +65,11 @@ const LINE_HEIGHT: f32 = 14.0;
 const BOTTOM_PAD: f32 = 4.0;
 
 impl CardBrowserConfig {
-    /// Computed card height based on `card_width` and `text_lines`.
+    /// Computed card height based on `card_width`, `thumb_aspect_ratio`, and `text_lines`.
     pub fn card_height(&self) -> f32 {
-        let thumb = self.card_width - CARD_INSET * 2.0;
-        CARD_INSET + thumb + TEXT_GAP + self.text_lines as f32 * LINE_HEIGHT + BOTTOM_PAD
+        let thumb_w = self.card_width - CARD_INSET * 2.0;
+        let thumb_h = thumb_w * self.thumb_aspect_ratio;
+        CARD_INSET + thumb_h + TEXT_GAP + self.text_lines as f32 * LINE_HEIGHT + BOTTOM_PAD
     }
 }
 
@@ -73,6 +77,7 @@ impl Default for CardBrowserConfig {
     fn default() -> Self {
         Self {
             card_width: 140.0,
+            thumb_aspect_ratio: 1.0,
             text_lines: 3,
             detail_width: 420.0,
             spacing: 8.0,
@@ -245,10 +250,11 @@ pub fn show<T>(
                         }
 
                         // Compute sub-rects — thumbnail fills card width
-                        let thumb_side = config.card_width - CARD_INSET * 2.0;
+                        let thumb_w = config.card_width - CARD_INSET * 2.0;
+                        let thumb_h = thumb_w * config.thumb_aspect_ratio;
                         let thumb_rect = Rect::from_min_size(
                             rect.min + Vec2::splat(CARD_INSET),
-                            Vec2::splat(thumb_side),
+                            Vec2::new(thumb_w, thumb_h),
                         );
                         let text_x = rect.min.x + 6.0;
                         let text_w = config.card_width - 12.0;

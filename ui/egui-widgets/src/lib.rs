@@ -14,6 +14,7 @@ pub mod listing_grid;
 pub mod marquee;
 pub mod metric_card;
 pub mod pip_row;
+pub mod printing_timeline;
 pub mod progress_bar;
 pub mod radar_chart;
 pub mod range_bar;
@@ -24,12 +25,11 @@ pub mod swap_modal;
 pub mod theme;
 pub mod trait_filter;
 pub mod utils;
-pub mod utxo_map;
-pub mod utxo_shelf;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet;
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet_button;
+#[cfg(feature = "cardano")]
 pub mod wallet_editor;
 
 // Image text editor (feature-gated)
@@ -48,15 +48,28 @@ pub mod split_allocation_bar;
 pub mod data_table;
 pub mod exposure_bar;
 
-// Trade desk widgets
+// Cardano-specific widgets (feature-gated)
+#[cfg(feature = "cardano")]
 pub mod asset_strip;
+#[cfg(feature = "cardano")]
 pub mod coverage_delta_bar;
+#[cfg(feature = "cardano")]
 pub mod fee_report;
+#[cfg(feature = "cardano")]
 pub mod offer_slot;
+#[cfg(feature = "cardano")]
 pub mod signing_status;
+#[cfg(feature = "cardano")]
 pub mod trade_table;
+#[cfg(feature = "cardano")]
 pub mod trait_delta;
+#[cfg(feature = "cardano")]
 pub mod tx_estimate;
+#[cfg(feature = "cardano")]
+pub mod utxo_map;
+#[cfg(feature = "cardano")]
+pub mod utxo_shelf;
+#[cfg(feature = "cardano")]
 pub mod wallet_asset_picker;
 
 pub use animated_counter::AnimatedCounter;
@@ -98,16 +111,9 @@ pub use utils::{
     format_ada, format_duration, format_lovelace, format_number, format_percent, section_heading,
     stat_card, truncate_hex,
 };
-pub use utxo_map::{
-    utxos_to_map_data, UtxoCell, UtxoMapAction, UtxoMapConfig, UtxoMapData, UtxoMapResponse,
-    UtxoMapState,
-};
-pub use utxo_shelf::{
-    classify_utxos, ShelfAction, ShelfConfig, ShelfData, ShelfResponse, ShelfState, ShelfTier,
-    ShelfUtxo,
-};
-#[cfg(target_arch = "wasm32")]
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};
+#[cfg(feature = "cardano")]
 pub use wallet_editor::{
     WalletEditorAction, WalletEditorConfig, WalletEditorEntry, WalletEditorResponse,
     WalletEditorState, WalletEntryStatus,
@@ -131,18 +137,37 @@ pub use data_table::{
 };
 pub use exposure_bar::{ltv_risk_color, ExposureBarConfig, ExposureSegment};
 
-// Trade desk re-exports
+// Cardano-specific re-exports
+#[cfg(feature = "cardano")]
 pub use asset_strip::{AssetStripConfig, AssetStripItem, AssetStripResponse};
+#[cfg(feature = "cardano")]
 pub use coverage_delta_bar::CoverageDeltaConfig;
+#[cfg(feature = "cardano")]
 pub use fee_report::{FeeReportConfig, FeeReportData, SideFeeData};
+#[cfg(feature = "cardano")]
 pub use offer_slot::{OfferSlotAction, OfferSlotConfig, OfferSlotData, OfferSlotResponse};
+#[cfg(feature = "cardano")]
 pub use signing_status::{SigningAction, SigningPhase, SigningStatusConfig, SigningStatusResponse};
+#[cfg(feature = "cardano")]
 pub use trade_table::{
     LockState, PeerState, TradeOffer, TradeTableAction, TradeTableConfig, TradeTableResponse,
     TradeTableState,
 };
+#[cfg(feature = "cardano")]
 pub use trait_delta::{TraitDeltaConfig, TraitItem};
+#[cfg(feature = "cardano")]
 pub use tx_estimate::{TxEstimateConfig, TxEstimateData, UtxoCost};
+#[cfg(feature = "cardano")]
+pub use utxo_map::{
+    utxos_to_map_data, UtxoCell, UtxoMapAction, UtxoMapConfig, UtxoMapData, UtxoMapResponse,
+    UtxoMapState,
+};
+#[cfg(feature = "cardano")]
+pub use utxo_shelf::{
+    classify_utxos, ShelfAction, ShelfConfig, ShelfData, ShelfResponse, ShelfState, ShelfTier,
+    ShelfUtxo,
+};
+#[cfg(feature = "cardano")]
 pub use wallet_asset_picker::{
     PickerAsset, PickerPolicyGroup, SelectedAsset, WalletAssetPickerAction,
     WalletAssetPickerConfig, WalletAssetPickerResponse, WalletAssetPickerState,
