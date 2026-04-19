@@ -17,6 +17,74 @@ pub enum ServiceBindingError {
     HttpError { status: u16, body: String },
 }
 
+impl ServiceBindingError {
+    /// Returns true if this error is retryable (transport failures or 5xx).
+    #[cfg(target_arch = "wasm32")]
+    fn is_retryable(&self) -> bool {
+        match self {
+            ServiceBindingError::Worker(_) => true,
+            ServiceBindingError::HttpError { status, .. } => *status >= 500,
+            _ => false,
+        }
+    }
+}
+
+/// Authentication mode for service binding calls.
+#[derive(Debug, Clone, Copy, Default)]
+pub enum Auth<'a> {
+    #[default]
+    None,
+    Bearer(&'a str),
+    InternalKey(&'a str),
+}
+
+/// Options for service binding calls. Controls retry behaviour and authentication.
+///
+/// Default: 3 attempts (1 + 2 retries) with 50ms/200ms backoff, no auth.
+#[derive(Debug, Clone, Copy)]
+pub struct CallOpts<'a> {
+    pub max_attempts: u32,
+    pub backoff_ms: &'a [i32],
+    pub auth: Auth<'a>,
+}
+
+impl Default for CallOpts<'_> {
+    fn default() -> Self {
+        Self {
+            max_attempts: 3,
+            backoff_ms: &[50, 200],
+            auth: Auth::None,
+        }
+    }
+}
+
+impl<'a> CallOpts<'a> {
+    /// No retry, no auth — single attempt.
+    pub fn no_retry() -> Self {
+        Self {
+            max_attempts: 1,
+            backoff_ms: &[],
+            auth: Auth::None,
+        }
+    }
+
+    /// Default retry with an internal API key.
+    pub fn with_internal_key(api_key: &'a str) -> Self {
+        Self {
+            auth: Auth::InternalKey(api_key),
+            ..Default::default()
+        }
+    }
+
+    /// Default retry with a bearer token.
+    pub fn with_bearer(token: &'a str) -> Self {
+        Self {
+            auth: Auth::Bearer(token),
+            ..Default::default()
+        }
+    }
+}
+
 /// Helper for calling Cloudflare Workers service bindings
 pub struct ServiceBinding {
     #[allow(dead_code)] // Only used in WASM builds
@@ -37,243 +105,181 @@ impl ServiceBinding {
         }
     }
 
-    /// Fetch a URL and deserialize the JSON response
-    ///
-    /// # WASM Build
-    /// Uses `worker::Response::json()` which works in the Cloudflare Workers runtime.
-    ///
-    /// # Native Build
-    /// Returns `NotImplemented` error. This is only for LSP/cargo check and won't run.
+    /// GET a URL and deserialize the JSON response.
     pub async fn fetch_json<T: DeserializeOwned>(
         &self,
         url: impl AsRef<str>,
+        opts: &CallOpts<'_>,
     ) -> Result<T, ServiceBindingError> {
         #[cfg(target_arch = "wasm32")]
         {
-            self.fetch_json_wasm(url).await
+            let mut response = self.get_with_retry(url.as_ref(), opts).await?;
+            let data = response.json().await?;
+            Ok(data)
         }
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let _ = url;
+            let _ = (url, opts);
             Err(ServiceBindingError::NotImplemented)
         }
     }
 
-    /// Fetch a URL and get the text response
-    ///
-    /// # WASM Build
-    /// Uses `worker::Response::text()` which works in the Cloudflare Workers runtime.
-    ///
-    /// # Native Build
-    /// Returns `NotImplemented` error. This is only for LSP/cargo check and won't run.
-    pub async fn fetch_text(&self, url: impl AsRef<str>) -> Result<String, ServiceBindingError> {
+    /// GET a URL and return the text response.
+    pub async fn fetch_text(
+        &self,
+        url: impl AsRef<str>,
+        opts: &CallOpts<'_>,
+    ) -> Result<String, ServiceBindingError> {
         #[cfg(target_arch = "wasm32")]
         {
-            self.fetch_text_wasm(url).await
+            let mut response = self.get_with_retry(url.as_ref(), opts).await?;
+            let text = response.text().await?;
+            Ok(text)
         }
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let _ = url;
+            let _ = (url, opts);
             Err(ServiceBindingError::NotImplemented)
         }
     }
 
-    /// POST a JSON body to a URL and deserialize the JSON response
-    ///
-    /// Optionally pass an auth token to set the `Authorization: Bearer` header.
-    ///
-    /// # WASM Build
-    /// Uses `worker::Response::json()` which works in the Cloudflare Workers runtime.
-    ///
-    /// # Native Build
-    /// Returns `NotImplemented` error. This is only for LSP/cargo check and won't run.
+    /// POST a JSON body and deserialize the JSON response.
     pub async fn post_json<T: DeserializeOwned, B: serde::Serialize>(
         &self,
         url: impl AsRef<str>,
         body: &B,
-        auth_token: Option<&str>,
+        opts: &CallOpts<'_>,
     ) -> Result<T, ServiceBindingError> {
         #[cfg(target_arch = "wasm32")]
         {
-            self.post_json_wasm(url, body, auth_token).await
+            let mut response = self.post_impl(url.as_ref(), body, opts).await?;
+            let data = response.json().await?;
+            Ok(data)
         }
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let _ = (url, body, auth_token);
+            let _ = (url, body, opts);
             Err(ServiceBindingError::NotImplemented)
         }
     }
 
-    /// WASM implementation: fetch and deserialize JSON
-    #[cfg(target_arch = "wasm32")]
-    async fn fetch_json_wasm<T: DeserializeOwned>(
-        &self,
-        url: impl AsRef<str>,
-    ) -> Result<T, ServiceBindingError> {
-        let normalized_url = self.normalize_url(url.as_ref());
-        let mut response = self.fetcher.fetch(&normalized_url, None).await?;
-
-        // Check status code (accept any 2xx)
-        let status = response.status_code();
-        if !(200..300).contains(&status) {
-            let body = response.text().await.unwrap_or_default();
-            return Err(ServiceBindingError::HttpError { status, body });
-        }
-
-        // Deserialize JSON directly from worker::Response
-        let data = response.json().await?;
-        Ok(data)
-    }
-
-    /// WASM implementation: fetch and get text
-    #[cfg(target_arch = "wasm32")]
-    async fn fetch_text_wasm(&self, url: impl AsRef<str>) -> Result<String, ServiceBindingError> {
-        let normalized_url = self.normalize_url(url.as_ref());
-        let mut response = self.fetcher.fetch(&normalized_url, None).await?;
-
-        // Check status code (accept any 2xx)
-        let status = response.status_code();
-        if !(200..300).contains(&status) {
-            let body = response.text().await.unwrap_or_default();
-            return Err(ServiceBindingError::HttpError { status, body });
-        }
-
-        // Get text from worker::Response
-        let text = response.text().await?;
-        Ok(text)
-    }
-
-    /// GET a URL with an internal API key (X-Internal-Key header) and deserialize JSON
-    pub async fn get_json_internal<T: DeserializeOwned>(
-        &self,
-        url: impl AsRef<str>,
-        api_key: &str,
-    ) -> Result<T, ServiceBindingError> {
-        #[cfg(target_arch = "wasm32")]
-        {
-            self.get_json_internal_wasm(url, api_key).await
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let _ = (url, api_key);
-            Err(ServiceBindingError::NotImplemented)
-        }
-    }
-
-    /// WASM implementation: GET JSON with internal API key
-    #[cfg(target_arch = "wasm32")]
-    async fn get_json_internal_wasm<T: DeserializeOwned>(
-        &self,
-        url: impl AsRef<str>,
-        api_key: &str,
-    ) -> Result<T, ServiceBindingError> {
-        let normalized_url = self.normalize_url(url.as_ref());
-
-        let mut init = worker::RequestInit::new();
-        init.method = worker::Method::Get;
-
-        let headers = worker::Headers::new();
-        headers.set("X-Internal-Key", api_key)?;
-        init.headers = headers;
-
-        let request = worker::Request::new_with_init(&normalized_url, &init)?;
-        let mut response = self.fetcher.fetch_request(request).await?;
-
-        let status = response.status_code();
-        if !(200..300).contains(&status) {
-            let body = response.text().await.unwrap_or_default();
-            return Err(ServiceBindingError::HttpError { status, body });
-        }
-
-        let data = response.json().await?;
-        Ok(data)
-    }
-
-    /// POST a JSON body with an internal API key, ignoring the response body.
+    /// POST a JSON body, ignoring the response body.
     /// Returns `Ok(())` on 2xx, or `HttpError` otherwise.
-    pub async fn post_internal<B: serde::Serialize>(
+    pub async fn post<B: serde::Serialize>(
         &self,
         url: impl AsRef<str>,
         body: &B,
-        api_key: &str,
+        opts: &CallOpts<'_>,
     ) -> Result<(), ServiceBindingError> {
         #[cfg(target_arch = "wasm32")]
         {
-            self.post_internal_wasm(url, body, api_key).await
+            let _ = self.post_impl(url.as_ref(), body, opts).await?;
+            Ok(())
         }
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let _ = (url, body, api_key);
+            let _ = (url, body, opts);
             Err(ServiceBindingError::NotImplemented)
         }
     }
 
-    /// WASM implementation: POST with internal API key, no response deserialization
+    /// Apply auth headers from CallOpts to a Headers object.
     #[cfg(target_arch = "wasm32")]
-    async fn post_internal_wasm<B: serde::Serialize>(
-        &self,
-        url: impl AsRef<str>,
-        body: &B,
-        api_key: &str,
-    ) -> Result<(), ServiceBindingError> {
-        let normalized_url = self.normalize_url(url.as_ref());
-
-        let mut init = worker::RequestInit::new();
-        init.method = worker::Method::Post;
-
-        let body_json = serde_json::to_string(body)?;
-        init.body = Some(body_json.into());
-
-        let headers = worker::Headers::new();
-        headers.set("Content-Type", "application/json")?;
-        headers.set("X-Internal-Key", api_key)?;
-        init.headers = headers;
-
-        let request = worker::Request::new_with_init(&normalized_url, &init)?;
-        let mut response = self.fetcher.fetch_request(request).await?;
-
-        let status = response.status_code();
-        if !(200..300).contains(&status) {
-            let body = response.text().await.unwrap_or_default();
-            return Err(ServiceBindingError::HttpError { status, body });
+    fn apply_auth(
+        headers: &worker::Headers,
+        opts: &CallOpts<'_>,
+    ) -> Result<(), worker::Error> {
+        match opts.auth {
+            Auth::None => {}
+            Auth::Bearer(token) => {
+                headers.set("Authorization", &format!("Bearer {token}"))?;
+            }
+            Auth::InternalKey(key) => {
+                headers.set("X-Internal-Key", key)?;
+            }
         }
-
         Ok(())
     }
 
-    /// POST a JSON body with an internal API key (X-Internal-Key header)
-    pub async fn post_json_internal<T: DeserializeOwned, B: serde::Serialize>(
+    /// Execute a GET request with optional retry on transient failures.
+    #[cfg(target_arch = "wasm32")]
+    async fn get_with_retry(
         &self,
-        url: impl AsRef<str>,
-        body: &B,
-        api_key: &str,
-    ) -> Result<T, ServiceBindingError> {
-        #[cfg(target_arch = "wasm32")]
-        {
-            self.post_json_internal_wasm(url, body, api_key).await
+        url: &str,
+        opts: &CallOpts<'_>,
+    ) -> Result<worker::Response, ServiceBindingError> {
+        let normalized_url = self.normalize_url(url);
+        let mut last_err: Option<ServiceBindingError> = None;
+
+        for attempt in 0..opts.max_attempts {
+            let mut init = worker::RequestInit::new();
+            init.method = worker::Method::Get;
+            let headers = worker::Headers::new();
+            Self::apply_auth(&headers, opts)?;
+            init.headers = headers;
+
+            let request = worker::Request::new_with_init(&normalized_url, &init)?;
+
+            match self.fetcher.fetch_request(request).await {
+                Ok(mut response) => {
+                    let status = response.status_code();
+                    if (200..300).contains(&status) {
+                        return Ok(response);
+                    }
+
+                    let body = response.text().await.unwrap_or_default();
+                    let err = ServiceBindingError::HttpError { status, body };
+
+                    if err.is_retryable() && attempt + 1 < opts.max_attempts {
+                        tracing::warn!(
+                            "Service binding GET {url} returned {status}, attempt {}/{} — retrying",
+                            attempt + 1,
+                            opts.max_attempts,
+                        );
+                        if let Some(&delay) = opts.backoff_ms.get(attempt as usize) {
+                            crate::sleep::sleep(delay).await;
+                        }
+                        last_err = Some(err);
+                        continue;
+                    }
+
+                    return Err(err);
+                }
+                Err(e) => {
+                    if attempt + 1 < opts.max_attempts {
+                        tracing::warn!(
+                            "Service binding GET {url} failed: {e}, attempt {}/{} — retrying",
+                            attempt + 1,
+                            opts.max_attempts,
+                        );
+                        if let Some(&delay) = opts.backoff_ms.get(attempt as usize) {
+                            crate::sleep::sleep(delay).await;
+                        }
+                        last_err = Some(ServiceBindingError::Worker(e));
+                        continue;
+                    }
+
+                    return Err(ServiceBindingError::Worker(e));
+                }
+            }
         }
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let _ = (url, body, api_key);
-            Err(ServiceBindingError::NotImplemented)
-        }
+        Err(last_err.unwrap_or(ServiceBindingError::NotImplemented))
     }
 
-    /// WASM implementation: POST JSON with internal API key
+    /// Execute a POST request (single attempt — no retry by default for non-idempotent operations).
     #[cfg(target_arch = "wasm32")]
-    async fn post_json_internal_wasm<T: DeserializeOwned, B: serde::Serialize>(
+    async fn post_impl<B: serde::Serialize>(
         &self,
-        url: impl AsRef<str>,
+        url: &str,
         body: &B,
-        api_key: &str,
-    ) -> Result<T, ServiceBindingError> {
-        let normalized_url = self.normalize_url(url.as_ref());
+        opts: &CallOpts<'_>,
+    ) -> Result<worker::Response, ServiceBindingError> {
+        let normalized_url = self.normalize_url(url);
 
         let mut init = worker::RequestInit::new();
         init.method = worker::Method::Post;
@@ -283,7 +289,7 @@ impl ServiceBinding {
 
         let headers = worker::Headers::new();
         headers.set("Content-Type", "application/json")?;
-        headers.set("X-Internal-Key", api_key)?;
+        Self::apply_auth(&headers, opts)?;
         init.headers = headers;
 
         let request = worker::Request::new_with_init(&normalized_url, &init)?;
@@ -295,47 +301,7 @@ impl ServiceBinding {
             return Err(ServiceBindingError::HttpError { status, body });
         }
 
-        let data = response.json().await?;
-        Ok(data)
-    }
-
-    /// WASM implementation: POST JSON and deserialize response
-    #[cfg(target_arch = "wasm32")]
-    async fn post_json_wasm<T: DeserializeOwned, B: serde::Serialize>(
-        &self,
-        url: impl AsRef<str>,
-        body: &B,
-        auth_token: Option<&str>,
-    ) -> Result<T, ServiceBindingError> {
-        let normalized_url = self.normalize_url(url.as_ref());
-
-        // Create request with JSON body
-        let mut init = worker::RequestInit::new();
-        init.method = worker::Method::Post;
-
-        let body_json = serde_json::to_string(body)?;
-        init.body = Some(body_json.into());
-
-        let headers = worker::Headers::new();
-        headers.set("Content-Type", "application/json")?;
-        if let Some(token) = auth_token {
-            headers.set("Authorization", &format!("Bearer {token}"))?;
-        }
-        init.headers = headers;
-
-        let request = worker::Request::new_with_init(&normalized_url, &init)?;
-        let mut response = self.fetcher.fetch_request(request).await?;
-
-        // Check status code (accept any 2xx)
-        let status = response.status_code();
-        if !(200..300).contains(&status) {
-            let body = response.text().await.unwrap_or_default();
-            return Err(ServiceBindingError::HttpError { status, body });
-        }
-
-        // Deserialize JSON directly from worker::Response
-        let data = response.json().await?;
-        Ok(data)
+        Ok(response)
     }
 }
 
