@@ -28,6 +28,9 @@ pub mod scheduled;
 #[cfg(feature = "do-workqueue")]
 pub mod do_workqueue;
 
+#[cfg(feature = "service-binding")]
+pub mod service_binding;
+
 pub async fn send_to_queue<M>(queue: &Queue, message: &M) -> Result<()>
 where
     M: Serialize + Clone,
