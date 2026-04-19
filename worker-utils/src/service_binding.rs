@@ -85,6 +85,19 @@ impl<'a> CallOpts<'a> {
     }
 }
 
+/// Header name used for request tracing across service binding calls.
+pub const REQUEST_ID_HEADER: &str = "X-Request-Id";
+
+/// Generate a short unique request ID for tracing.
+///
+/// Format: `{timestamp_hex}-{random_hex}` e.g. `18f3a2b1c00-4a7f2e`
+#[cfg(target_arch = "wasm32")]
+fn generate_request_id() -> String {
+    let ts = worker_stack::js_sys::Date::now() as u64;
+    let rand = (worker_stack::js_sys::Math::random() * 0xFFFFFF as f64) as u32;
+    format!("{ts:x}-{rand:06x}")
+}
+
 /// Helper for calling Cloudflare Workers service bindings
 pub struct ServiceBinding {
     #[allow(dead_code)] // Only used in WASM builds
@@ -213,12 +226,14 @@ impl ServiceBinding {
         opts: &CallOpts<'_>,
     ) -> Result<worker::Response, ServiceBindingError> {
         let normalized_url = self.normalize_url(url);
+        let request_id = generate_request_id();
         let mut last_err: Option<ServiceBindingError> = None;
 
         for attempt in 0..opts.max_attempts {
             let mut init = worker::RequestInit::new();
             init.method = worker::Method::Get;
             let headers = worker::Headers::new();
+            headers.set(REQUEST_ID_HEADER, &request_id)?;
             Self::apply_auth(&headers, opts)?;
             init.headers = headers;
 
@@ -236,7 +251,7 @@ impl ServiceBinding {
 
                     if err.is_retryable() && attempt + 1 < opts.max_attempts {
                         tracing::warn!(
-                            "Service binding GET {url} returned {status}, attempt {}/{} — retrying",
+                            "Service binding GET {url} returned {status}, attempt {}/{} — retrying [req_id={request_id}]",
                             attempt + 1,
                             opts.max_attempts,
                         );
@@ -252,7 +267,7 @@ impl ServiceBinding {
                 Err(e) => {
                     if attempt + 1 < opts.max_attempts {
                         tracing::warn!(
-                            "Service binding GET {url} failed: {e}, attempt {}/{} — retrying",
+                            "Service binding GET {url} failed: {e}, attempt {}/{} — retrying [req_id={request_id}]",
                             attempt + 1,
                             opts.max_attempts,
                         );
@@ -287,8 +302,10 @@ impl ServiceBinding {
         let body_json = serde_json::to_string(body)?;
         init.body = Some(body_json.into());
 
+        let request_id = generate_request_id();
         let headers = worker::Headers::new();
         headers.set("Content-Type", "application/json")?;
+        headers.set(REQUEST_ID_HEADER, &request_id)?;
         Self::apply_auth(&headers, opts)?;
         init.headers = headers;
 
