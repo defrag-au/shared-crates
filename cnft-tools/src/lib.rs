@@ -19,6 +19,7 @@ pub struct CnftAsset {
     pub asset_name: Option<String>,
     #[serde(alias = "assetID")]
     pub asset_id: String,
+    #[serde(default, deserialize_with = "deserialize_nullable_string")]
     pub name: String,
     #[serde(alias = "iconurl")]
     pub icon_url: Option<String>,
@@ -35,7 +36,7 @@ pub struct CnftAsset {
     pub build_type: Option<String>,
     #[serde(alias = "rarityRank", deserialize_with = "deserialize_u32_or_string")]
     pub rarity_rank: u32,
-    #[serde(alias = "ownerStakeKey")]
+    #[serde(alias = "ownerStakeKey", default, deserialize_with = "deserialize_nullable_string")]
     pub owner_stake_key: String,
 
     #[serde(flatten, deserialize_with = "deserialize_traits")]
@@ -75,6 +76,14 @@ impl CnftApi {
         tracing::info!("[cnft-tools] requesting {}", url);
         self.client.get(&url).await.map_err(CnftError::Request)
     }
+}
+
+/// Deserialize a String that may be null — returns empty string for null.
+fn deserialize_nullable_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 /// Deserialize u32 from either a string "123" or integer 123
@@ -147,11 +156,13 @@ where
                     Multi(Vec<String>),
                 }
 
-                let value = access.next_value::<TraitValue>()?;
+                // Use Option to handle null values gracefully
+                let value: Option<TraitValue> = access.next_value()?;
 
                 let values = match value {
-                    TraitValue::Single(s) => vec![s],
-                    TraitValue::Multi(v) => v,
+                    Some(TraitValue::Single(s)) => vec![s],
+                    Some(TraitValue::Multi(v)) => v,
+                    None => continue, // skip null trait values
                 };
 
                 map.insert(key, values);
