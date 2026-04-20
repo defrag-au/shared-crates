@@ -153,12 +153,11 @@ pub fn interpret(symbols: &[Symbol], config: &TurtleConfig) -> Vec<Segment> {
                 turtle.step *= config.step_scale;
             }
 
-            '<' => {
+            '<'
                 // Scale step up
-                if config.step_scale > 0.0 {
+                if config.step_scale > 0.0 => {
                     turtle.step /= config.step_scale;
                 }
-            }
 
             _ => {
                 // Ignore unknown symbols (they act as placeholders in rules)

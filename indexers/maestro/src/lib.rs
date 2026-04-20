@@ -152,6 +152,8 @@ impl AssetStandards {
 #[derive(Deserialize, Debug)]
 struct AssetResult {
     asset_name: String,
+    #[serde(default)]
+    total_supply: Option<String>,
     asset_standards: AssetStandards,
 }
 
@@ -234,12 +236,150 @@ pub struct PolicyTransactionPage {
     pub next_cursor: Option<String>,
 }
 
+/// CIP-67 asset name prefixes for on-chain token classification.
+mod cip67_prefix {
+    /// CIP-68 Reference NFT (label 100)
+    pub const REFERENCE_NFT: &str = "000643b0";
+    /// CIP-68 User NFT (label 222)
+    pub const USER_NFT: &str = "000de140";
+    /// CIP-68 Fungible Token (label 333)
+    pub const FUNGIBLE_TOKEN: &str = "0014df10";
+    /// CIP-68 Rich Fungible Token / Semi-Fungible (label 444)
+    pub const RICH_FUNGIBLE: &str = "001bc280";
+}
+
+/// Result of classifying a policy's assets.
+#[derive(Debug, Clone)]
+pub struct PolicyClassification {
+    pub token_type: cardano_assets::TokenType,
+    /// Human-readable reason for the classification.
+    pub reason: String,
+}
+
 impl PolicyAssetsResponse {
     pub fn get_importable_nfts(&self) -> Vec<&AssetResult> {
         self.data
             .iter()
             .filter(|r| r.asset_standards.should_import())
             .collect()
+    }
+
+    /// Classify a policy based on the first page of its assets from Maestro.
+    ///
+    /// Uses multiple signals in priority order:
+    /// 1. CIP-68 asset name prefixes (most authoritative)
+    /// 2. CIP-25 metadata fields (`fungible`, `ticker`, `decimals`)
+    /// 3. Supply + asset count heuristics
+    ///
+    /// Should only be called on the first page (no cursor) for an accurate picture.
+    pub fn classify_policy(&self) -> PolicyClassification {
+        use cardano_assets::TokenType;
+
+        let total_assets = self.data.len();
+
+        // 1. Check CIP-68 prefixes — most authoritative signal
+        let mut has_cip68_nft = false;
+        let mut has_cip68_ft = false;
+        let mut has_cip68_rft = false;
+
+        for asset in &self.data {
+            if asset.asset_name.len() >= 8 {
+                match &asset.asset_name[..8] {
+                    cip67_prefix::USER_NFT | cip67_prefix::REFERENCE_NFT => {
+                        has_cip68_nft = true;
+                    }
+                    cip67_prefix::FUNGIBLE_TOKEN => {
+                        has_cip68_ft = true;
+                    }
+                    cip67_prefix::RICH_FUNGIBLE => {
+                        has_cip68_rft = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        if has_cip68_ft && !has_cip68_nft && !has_cip68_rft {
+            return PolicyClassification {
+                token_type: TokenType::Ft,
+                reason: "CIP-68 fungible token prefix (label 333)".into(),
+            };
+        }
+        if has_cip68_rft && !has_cip68_nft {
+            return PolicyClassification {
+                token_type: TokenType::Rft,
+                reason: "CIP-68 rich fungible token prefix (label 444)".into(),
+            };
+        }
+        if has_cip68_nft {
+            return PolicyClassification {
+                token_type: TokenType::Nft,
+                reason: "CIP-68 NFT prefix (label 222/100)".into(),
+            };
+        }
+
+        // 2. Check CIP-25 metadata signals
+        for asset in &self.data {
+            if let Some(ref meta) = asset.asset_standards.cip25_metadata {
+                if meta.has_fungible_signals() {
+                    return PolicyClassification {
+                        token_type: TokenType::Ft,
+                        reason: "CIP-25 metadata contains fungible/ticker/decimals".into(),
+                    };
+                }
+            }
+        }
+
+        // 3. Supply + asset count heuristics
+        let supplies: Vec<u64> = self
+            .data
+            .iter()
+            .filter_map(|a| {
+                a.total_supply
+                    .as_deref()
+                    .and_then(|s| s.parse::<u64>().ok())
+            })
+            .collect();
+
+        let max_supply = supplies.iter().copied().max().unwrap_or(0);
+
+        // Few assets with very high supply → fungible token
+        if total_assets <= 3 && max_supply > 1_000 {
+            return PolicyClassification {
+                token_type: TokenType::Ft,
+                reason: format!(
+                    "{total_assets} asset(s), max supply {max_supply}"
+                ),
+            };
+        }
+
+        // Multiple assets where most have supply > 1 → RFT (multi-edition)
+        if total_assets > 3 {
+            let multi_supply_count = supplies.iter().filter(|&&s| s > 1).count();
+            let multi_ratio = multi_supply_count as f64 / supplies.len().max(1) as f64;
+            if multi_ratio > 0.5 && max_supply < 1_000_000 {
+                return PolicyClassification {
+                    token_type: TokenType::Rft,
+                    reason: format!(
+                        "{multi_supply_count}/{} assets have supply > 1 (max {max_supply})",
+                        supplies.len()
+                    ),
+                };
+            }
+        }
+
+        // Many assets with supply 1 → NFT collection
+        if total_assets > 3 && max_supply <= 1 {
+            return PolicyClassification {
+                token_type: TokenType::Nft,
+                reason: format!("{total_assets} assets, all supply 1"),
+            };
+        }
+
+        PolicyClassification {
+            token_type: TokenType::Unknown,
+            reason: format!("{total_assets} asset(s), max supply {max_supply}"),
+        }
     }
 }
 
@@ -1281,7 +1421,26 @@ impl MaestroApi {
         cursor: &Option<String>,
         count: Option<u32>,
     ) -> Result<(Vec<AssetWithId>, Option<String>), MaestroError> {
+        let (assets, next_cursor, _) = self
+            .get_asset_page_classified(policy_id, cursor, count)
+            .await?;
+        Ok((assets, next_cursor))
+    }
+
+    /// Like `get_asset_page_with_count` but also classifies the policy on the first page.
+    /// Returns `Some(PolicyClassification)` only on the first page (no cursor).
+    pub async fn get_asset_page_classified(
+        &self,
+        policy_id: &str,
+        cursor: &Option<String>,
+        count: Option<u32>,
+    ) -> Result<(Vec<AssetWithId>, Option<String>, Option<PolicyClassification>), MaestroError> {
         let page = self.get_assets(policy_id, cursor.clone(), count).await?;
+        let classification = if cursor.is_none() {
+            Some(page.classify_policy())
+        } else {
+            None
+        };
         let assets: Vec<_> = page
             .get_importable_nfts()
             .iter()
@@ -1291,7 +1450,7 @@ impl MaestroApi {
             })
             .collect();
 
-        Ok((assets, page.next_cursor))
+        Ok((assets, page.next_cursor, classification))
     }
 
     pub async fn get_all_owners_for_policy(

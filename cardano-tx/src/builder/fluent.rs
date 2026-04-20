@@ -339,7 +339,7 @@ impl TxBuilder {
                 })
                 .collect();
 
-            candidates.sort_by(|a, b| b.lovelace.cmp(&a.lovelace));
+            candidates.sort_by_key(|b| std::cmp::Reverse(b.lovelace));
 
             for utxo in candidates {
                 if total_input >= required {

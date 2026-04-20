@@ -6907,6 +6907,7 @@ dependencies = [
  "serde",
  "serde_json",
  "test_utils",
+ "thiserror 1.0.69",
  "time",
  "tower-http",
  "tracing",

@@ -304,7 +304,7 @@ fn draw_stat_stack(
     let pill_h = 16.0;
     let pill_gap = 3.0;
     let total_h =
-        DEMO_STATS.len() as f32 * pill_h + (DEMO_STATS.len() - 1).max(0) as f32 * pill_gap;
+        DEMO_STATS.len() as f32 * pill_h + (DEMO_STATS.len() - 1) as f32 * pill_gap;
     let stack_top = center.y - total_h / 2.0;
 
     for (i, stat) in DEMO_STATS.iter().enumerate() {
