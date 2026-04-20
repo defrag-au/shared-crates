@@ -283,7 +283,7 @@ impl AssetMetadata {
     pub fn has_fungible_signals(&self) -> bool {
         match self {
             AssetMetadata::Flattened { traits, .. } => {
-                FT_SIGNAL_KEYS.iter().any(|k| traits.contains_key(*k))
+                FT_SIGNAL_KEYS.iter().any(|k| traits.contains_key(k))
             }
             AssetMetadata::FlattenedMixed { raw_traits, .. } => {
                 FT_SIGNAL_KEYS.iter().any(|k| raw_traits.contains_key(*k))
@@ -1111,7 +1111,7 @@ impl From<TraitSummary> for TraitSummarySorted {
                 .map(|(val, count)| TraitValueCount::new(val.clone(), *count))
                 .collect();
 
-            output.sort_by(|a, b| a.count.cmp(&b.count));
+            output.sort_by_key(|a| a.count);
             traits.insert(key.clone(), output);
         }
 
