@@ -1078,7 +1078,7 @@ impl MemoryGameSessionDO {
             .map(|p| (p.user_id.clone(), p.user_name.clone(), p.score))
             .collect();
 
-        rankings.sort_by(|a, b| b.2.cmp(&a.2));
+        rankings.sort_by_key(|b| std::cmp::Reverse(b.2));
 
         let winner = rankings.first().map(|(id, _, _)| id.clone());
 
