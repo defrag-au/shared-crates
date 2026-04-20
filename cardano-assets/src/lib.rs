@@ -12,9 +12,12 @@ use utoipa::ToSchema;
 pub mod asset_id;
 pub mod collection;
 pub mod resolver;
+pub mod token_type;
 pub mod traits;
 pub mod tx_hash;
 pub mod utxo;
+
+pub use token_type::TokenType;
 
 #[cfg(feature = "utxorpc")]
 pub mod utxorpc;
@@ -268,6 +271,31 @@ pub enum AssetMetadata {
         #[serde(flatten)]
         raw_traits: HashMap<String, serde_json::Value>,
     },
+}
+
+/// Fungible token metadata keys — if any of these appear in the metadata,
+/// the asset is likely a fungible token rather than an NFT.
+const FT_SIGNAL_KEYS: &[&str] = &["fungible", "ticker", "decimals", "Ticker", "Decimals"];
+
+impl AssetMetadata {
+    /// Check if the metadata contains signals that suggest a fungible token
+    /// (e.g. `"fungible": "true"`, `"ticker"`, or `"decimals"` fields).
+    pub fn has_fungible_signals(&self) -> bool {
+        match self {
+            AssetMetadata::Flattened { traits, .. } => {
+                FT_SIGNAL_KEYS.iter().any(|k| traits.contains_key(*k))
+            }
+            AssetMetadata::FlattenedMixed { raw_traits, .. } => {
+                FT_SIGNAL_KEYS.iter().any(|k| raw_traits.contains_key(*k))
+            }
+            AssetMetadata::Attributed { extra, .. } => {
+                FT_SIGNAL_KEYS.iter().any(|k| extra.contains_key(*k))
+            }
+            // Other variants are structured enough that they wouldn't contain
+            // these stray fields — they're definitively NFTs.
+            _ => false,
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
