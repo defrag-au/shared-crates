@@ -1,4 +1,4 @@
-use l_system::{LSystem, TurtleConfig, interpret, Symbol};
+use l_system::{interpret, LSystem, Symbol, TurtleConfig};
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
@@ -121,7 +121,10 @@ fn test_turtle_branching() {
 
     // Should have segments at different depths
     let max_depth = segments.iter().map(|s| s.depth).max().unwrap();
-    assert!(max_depth >= 2, "Branching tree should reach depth 2+, got {max_depth}");
+    assert!(
+        max_depth >= 2,
+        "Branching tree should reach depth 2+, got {max_depth}"
+    );
 
     // Trunk segments (depth 0) should exist
     let trunk_count = segments.iter().filter(|s| s.depth == 0).count();
@@ -144,7 +147,7 @@ fn test_turtle_bounds() {
     let config = TurtleConfig {
         step_length: 10.0,
         angle_delta: 0.0,
-        initial_heading: 0.0, // east
+        initial_heading: 0.0,                    // east
         bounds: Some((0.0, -50.0, 100.0, 50.0)), // only 100px wide
         ..Default::default()
     };
@@ -152,10 +155,18 @@ fn test_turtle_bounds() {
     let segments = interpret(&gen5, &config);
 
     // Should have clipped — not all 32 segments drawn
-    assert!(segments.len() < 32, "Bounds should clip some segments, got {}", segments.len());
+    assert!(
+        segments.len() < 32,
+        "Bounds should clip some segments, got {}",
+        segments.len()
+    );
     // All segments should be within bounds
     for seg in &segments {
-        assert!(seg.x2 <= 100.0 + 0.1, "Segment end {:.1} exceeds x bound", seg.x2);
+        assert!(
+            seg.x2 <= 100.0 + 0.1,
+            "Segment end {:.1} exceeds x bound",
+            seg.x2
+        );
     }
 }
 
@@ -178,12 +189,22 @@ fn test_parametric_step() {
     assert_eq!(segments.len(), 2);
 
     // First segment should be length 20
-    let len1 = ((segments[0].x2 - segments[0].x1).powi(2) + (segments[0].y2 - segments[0].y1).powi(2)).sqrt();
-    assert!((len1 - 20.0).abs() < 0.01, "First segment should be 20px, got {len1:.1}");
+    let len1 = ((segments[0].x2 - segments[0].x1).powi(2)
+        + (segments[0].y2 - segments[0].y1).powi(2))
+    .sqrt();
+    assert!(
+        (len1 - 20.0).abs() < 0.01,
+        "First segment should be 20px, got {len1:.1}"
+    );
 
     // Second segment should be length 10
-    let len2 = ((segments[1].x2 - segments[1].x1).powi(2) + (segments[1].y2 - segments[1].y1).powi(2)).sqrt();
-    assert!((len2 - 10.0).abs() < 0.01, "Second segment should be 10px, got {len2:.1}");
+    let len2 = ((segments[1].x2 - segments[1].x1).powi(2)
+        + (segments[1].y2 - segments[1].y1).powi(2))
+    .sqrt();
+    assert!(
+        (len2 - 10.0).abs() < 0.01,
+        "Second segment should be 10px, got {len2:.1}"
+    );
 }
 
 /// Road network generation: stochastic L-system for urban roads.

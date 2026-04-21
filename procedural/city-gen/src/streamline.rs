@@ -53,13 +53,17 @@ pub fn trace_streamlines(
 
     // Spatial index of all sampled points (for spacing enforcement)
     let mut sample_grid = SpatialGrid::new(
-        field.min.x, field.min.y, field.max.x, field.max.y,
+        field.min.x,
+        field.min.y,
+        field.max.x,
+        field.max.y,
         config.dsep,
     );
     let mut all_points: Vec<Vec2> = Vec::new();
 
     // Seed queue: positions to try starting new streamlines from
-    let mut seeds: Vec<(Vec2, bool)> = seed_points.iter()
+    let mut seeds: Vec<(Vec2, bool)> = seed_points
+        .iter()
         .flat_map(|&p| {
             let mut v = vec![(p, true)];
             if config.trace_minor {
@@ -86,8 +90,24 @@ pub fn trace_streamlines(
         }
 
         // Trace in both directions from seed
-        let forward = trace_one_direction(field, &sample_grid, &all_points, config, seed, is_major, false);
-        let backward = trace_one_direction(field, &sample_grid, &all_points, config, seed, is_major, true);
+        let forward = trace_one_direction(
+            field,
+            &sample_grid,
+            &all_points,
+            config,
+            seed,
+            is_major,
+            false,
+        );
+        let backward = trace_one_direction(
+            field,
+            &sample_grid,
+            &all_points,
+            config,
+            seed,
+            is_major,
+            true,
+        );
 
         // Combine into one streamline (backward reversed + forward)
         let mut points = Vec::with_capacity(backward.len() + forward.len());
@@ -207,17 +227,19 @@ fn trace_one_direction(
 }
 
 /// RK4 integration step along the tensor field's eigenvector.
-fn rk4_step(
-    field: &TensorField,
-    pos: Vec2,
-    h: f32,
-    is_major: bool,
-    reverse: bool,
-) -> Vec2 {
+fn rk4_step(field: &TensorField, pos: Vec2, h: f32, is_major: bool, reverse: bool) -> Vec2 {
     let dir = |p: Vec2| -> Vec2 {
         let tensor = field.sample(p);
-        let v = if is_major { tensor.major() } else { tensor.minor() };
-        if reverse { -v } else { v }
+        let v = if is_major {
+            tensor.major()
+        } else {
+            tensor.minor()
+        };
+        if reverse {
+            -v
+        } else {
+            v
+        }
     };
 
     let k1 = dir(pos);

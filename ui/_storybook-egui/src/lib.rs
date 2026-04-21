@@ -421,7 +421,8 @@ mod app {
                 mesh_playground_state: stories::mesh_playground::MeshPlaygroundState::default(),
                 perspective_text_state: stories::perspective_text::PerspectiveTextState::default(),
                 tcg_card_state: stories::tcg_card::TcgCardState::default(),
-                printing_timeline_state: stories::printing_timeline::PrintingTimelineDemo::default(),
+                printing_timeline_state: stories::printing_timeline::PrintingTimelineDemo::default(
+                ),
                 asset_card_state: stories::asset_card::AssetCardState::default(),
                 radar_chart_state: stories::radar_chart::RadarChartState::default(),
                 range_bar_state: stories::range_bar::RangeBarState::default(),
@@ -570,7 +571,10 @@ mod app {
                                 &mut self.perspective_text_state,
                             ),
                             Story::TcgCard => stories::tcg_card::show(ui, &mut self.tcg_card_state),
-                            Story::PrintingTimeline => stories::printing_timeline::show(ui, &mut self.printing_timeline_state),
+                            Story::PrintingTimeline => stories::printing_timeline::show(
+                                ui,
+                                &mut self.printing_timeline_state,
+                            ),
                             Story::AssetCard => {
                                 stories::asset_card::show(ui, &mut self.asset_card_state)
                             }

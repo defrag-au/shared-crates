@@ -10,15 +10,15 @@
 //! The tensor field approach naturally supports mixed city styles — place a grid
 //! field in one district and a radial field in another, and they blend smoothly.
 
-pub mod tensor;
-pub mod streamline;
-pub mod graph;
 pub mod blocks;
+pub mod graph;
 mod spatial;
+pub mod streamline;
+pub mod tensor;
 mod vec2;
 
-pub use vec2::Vec2;
-pub use tensor::{TensorField, BasisField, FieldType};
-pub use streamline::{StreamlineConfig, trace_streamlines, Streamline};
-pub use graph::{RoadGraph, RoadNode, RoadEdge};
 pub use blocks::{detect_blocks, subdivide_block, Block, Lot};
+pub use graph::{RoadEdge, RoadGraph, RoadNode};
+pub use streamline::{trace_streamlines, Streamline, StreamlineConfig};
+pub use tensor::{BasisField, FieldType, TensorField};
+pub use vec2::Vec2;

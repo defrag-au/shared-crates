@@ -12,7 +12,11 @@ pub struct WfcGrid {
 
 impl WfcGrid {
     pub(crate) fn new(width: usize, height: usize, cells: Vec<TileId>) -> Self {
-        Self { width, height, cells }
+        Self {
+            width,
+            height,
+            cells,
+        }
     }
 
     /// Get the tile at (col, row).

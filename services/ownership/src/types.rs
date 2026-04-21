@@ -23,7 +23,7 @@ pub struct BundleParams<'a> {
 }
 
 /// Response for `GET /api/bundle/{policy_id}`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BundleResponse {
     pub cache_generation: u64,
     pub schema_version: u64,
@@ -76,6 +76,24 @@ pub enum TraitData {
     Bitmap(String),
     /// Decoded trait key-value pairs.
     Decoded(HashMap<String, Vec<String>>),
+}
+
+impl BundleEntry {
+    /// Get the raw bitmap hex string, if trait data is in bitmap form.
+    pub fn trait_bitmap(&self) -> Option<&str> {
+        match &self.trait_data {
+            Some(TraitData::Bitmap(hex)) => Some(hex),
+            _ => None,
+        }
+    }
+
+    /// Get decoded traits, if trait data is in decoded form.
+    pub fn traits_decoded(&self) -> Option<&HashMap<String, Vec<String>>> {
+        match &self.trait_data {
+            Some(TraitData::Decoded(map)) => Some(map),
+            _ => None,
+        }
+    }
 }
 
 // ============================================================================
@@ -152,4 +170,140 @@ pub struct AssetIdentity {
     pub policy_id: String,
     pub asset_name_hex: String,
     pub fingerprint: String,
+}
+
+// ============================================================================
+// Sync Status
+// ============================================================================
+
+/// Response for `GET /api/status/{policy_id}`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncStatusResponse {
+    pub phase: String,
+    pub sync_sources: Vec<String>,
+    pub asset_count: u32,
+    pub holder_count: u32,
+    #[serde(default)]
+    pub last_synced_at: Option<u64>,
+    #[serde(default)]
+    pub last_sync_source: Option<String>,
+    #[serde(default)]
+    pub cache_generation: Option<u64>,
+    #[serde(default)]
+    pub last_alarm_at: Option<u64>,
+    #[serde(default)]
+    pub disabled_reason: Option<String>,
+}
+
+// ============================================================================
+// Admin Types
+// ============================================================================
+
+/// A tracked policy entry from the admin API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolicyEntry {
+    pub policy_id: String,
+    pub label: String,
+    pub enabled: i32,
+    pub asset_count: i64,
+    pub holder_count: i64,
+    pub sync_interval_secs: i64,
+    #[serde(default)]
+    pub last_synced_at: Option<i64>,
+    #[serde(default)]
+    pub disabled_reason: Option<String>,
+}
+
+/// Response for `GET /admin/policies`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolicyListResponse {
+    pub policies: Vec<PolicyEntry>,
+}
+
+/// Partial update for a policy (PATCH body).
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct PolicyUpdate {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sync_interval_secs: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+/// Response for `GET /admin/validate`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidateResponse {
+    pub total_policies: usize,
+    pub healthy: usize,
+    pub issues: Vec<PolicyIssue>,
+}
+
+/// A policy with one or more failed validation checks.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolicyIssue {
+    pub policy_id: String,
+    pub label: String,
+    pub checks: Vec<FailedCheck>,
+}
+
+/// A single failed validation check.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FailedCheck {
+    pub check: String,
+    pub severity: String,
+    pub detail: String,
+}
+
+// ============================================================================
+// Visual Analysis
+// ============================================================================
+
+/// Visual style guide for a collection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VisualGuide {
+    pub art_style: String,
+    pub color_palette: serde_json::Value,
+    pub subject_form: String,
+    pub composition: String,
+    pub motifs: Vec<String>,
+    pub summary: String,
+}
+
+/// Response for `GET /admin/visual-analysis/{policy_id}/guide`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VisualGuideResponse {
+    pub guide: VisualGuide,
+    pub sample_count: u32,
+    pub model_used: String,
+    pub updated_at: i64,
+}
+
+/// Narrative style guide for a collection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NarrativeStyleGuide {
+    pub world_tone: String,
+    pub narrative_voice: String,
+    pub character_archetypes: Vec<serde_json::Value>,
+    pub vocabulary_palette: Vec<String>,
+    pub recurring_tensions: Vec<String>,
+    pub world_premise: String,
+}
+
+/// Response for `GET /admin/visual-analysis/{policy_id}/narrative`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NarrativeGuideResponse {
+    pub guide: NarrativeStyleGuide,
+    pub model_used: String,
+    pub updated_at: i64,
+}
+
+/// Visual profile for a single asset.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VisualProfile {
+    pub description: String,
+    pub distinctive_features: Vec<String>,
+    pub character_read: String,
+    pub color_signature: Vec<String>,
+    pub alt_text: String,
 }

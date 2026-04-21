@@ -70,7 +70,9 @@ fn test_road_network() {
                             tile_def.edges[Direction::East.index()],
                             east_def.edges[Direction::West.index()],
                             "Edge mismatch at ({col},{row}) E ↔ ({},{row}) W: {} vs {}",
-                            col + 1, tile_def.name, east_def.name
+                            col + 1,
+                            tile_def.name,
+                            east_def.name
                         );
                     }
 
@@ -82,7 +84,9 @@ fn test_road_network() {
                             tile_def.edges[Direction::South.index()],
                             south_def.edges[Direction::North.index()],
                             "Edge mismatch at ({col},{row}) S ↔ ({col},{}) N: {} vs {}",
-                            row + 1, tile_def.name, south_def.name
+                            row + 1,
+                            tile_def.name,
+                            south_def.name
                         );
                     }
                 }
@@ -91,15 +95,15 @@ fn test_road_network() {
             // Print the grid for visual inspection
             eprintln!("\nRoad network (12x12):");
             for row in 0..grid.height {
-                let line: String = (0..grid.width).map(|col| {
-                    match tileset.tile(grid.get(col, row)).name.as_str() {
+                let line: String = (0..grid.width)
+                    .map(|col| match tileset.tile(grid.get(col, row)).name.as_str() {
                         "grass" => '.',
                         "road_h" => '─',
                         "road_v" => '│',
                         "crossroads" => '┼',
                         _ => '?',
-                    }
-                }).collect();
+                    })
+                    .collect();
                 eprintln!("  {line}");
             }
         }
@@ -147,15 +151,15 @@ fn test_pinned_cells() {
 
             eprintln!("\nPinned crossroads (8x8):");
             for row in 0..grid.height {
-                let line: String = (0..grid.width).map(|col| {
-                    match tileset.tile(grid.get(col, row)).name.as_str() {
+                let line: String = (0..grid.width)
+                    .map(|col| match tileset.tile(grid.get(col, row)).name.as_str() {
                         "grass" => '.',
                         "road_h" => '─',
                         "road_v" => '│',
                         "crossroads" => '┼',
                         _ => '?',
-                    }
-                }).collect();
+                    })
+                    .collect();
                 eprintln!("  {line}");
             }
         }
@@ -193,7 +197,10 @@ fn test_deterministic() {
 
     assert_eq!(result_a, result_b, "Same seed must produce same output");
     // Different seeds should (almost certainly) produce different output
-    assert_ne!(result_a, result_c, "Different seeds should produce different output");
+    assert_ne!(
+        result_a, result_c,
+        "Different seeds should produce different output"
+    );
 }
 
 /// Larger grid stress test.
@@ -217,7 +224,10 @@ fn test_large_grid() {
         SolveResult::Solved(grid) => {
             let total = grid.width * grid.height;
             let road_count = grid.as_slice().iter().filter(|t| t.0 != grass.0).count();
-            eprintln!("40x40 grid: {road_count}/{total} road cells ({:.1}%)", road_count as f64 / total as f64 * 100.0);
+            eprintln!(
+                "40x40 grid: {road_count}/{total} road cells ({:.1}%)",
+                road_count as f64 / total as f64 * 100.0
+            );
             assert!(total == 1600);
         }
         SolveResult::Contradiction(n) => {

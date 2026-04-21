@@ -347,9 +347,7 @@ impl PolicyAssetsResponse {
         if total_assets <= 3 && max_supply > 1_000 {
             return PolicyClassification {
                 token_type: TokenType::Ft,
-                reason: format!(
-                    "{total_assets} asset(s), max supply {max_supply}"
-                ),
+                reason: format!("{total_assets} asset(s), max supply {max_supply}"),
             };
         }
 
@@ -1434,7 +1432,14 @@ impl MaestroApi {
         policy_id: &str,
         cursor: &Option<String>,
         count: Option<u32>,
-    ) -> Result<(Vec<AssetWithId>, Option<String>, Option<PolicyClassification>), MaestroError> {
+    ) -> Result<
+        (
+            Vec<AssetWithId>,
+            Option<String>,
+            Option<PolicyClassification>,
+        ),
+        MaestroError,
+    > {
         let page = self.get_assets(policy_id, cursor.clone(), count).await?;
         let classification = if cursor.is_none() {
             Some(page.classify_policy())

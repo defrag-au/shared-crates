@@ -158,19 +158,16 @@ pub fn show(ui: &mut egui::Ui, demo: &mut PrintingTimelineDemo) {
         ..PrintingTimelineConfig::default()
     };
 
-    let resp = egui_widgets::printing_timeline::show(
-        ui,
-        &mut demo.state,
-        &demo.nodes,
-        &config,
-    );
+    let resp = egui_widgets::printing_timeline::show(ui, &mut demo.state, &demo.nodes, &config);
 
     // Show selection info below timeline
     ui.add_space(8.0);
     if let Some(idx) = demo.state.selected {
         let node = &demo.nodes[idx];
         ui.group(|ui| {
-            ui.label(egui::RichText::new(format!("{} — {}", node.set_name, node.set_code)).strong());
+            ui.label(
+                egui::RichText::new(format!("{} — {}", node.set_name, node.set_code)).strong(),
+            );
             ui.label(format!("Released: {}", node.released_at));
             ui.label(format!("Rarity: {}", node.rarity));
             ui.label(format!("Collector #: {}", node.collector_number));
@@ -194,7 +191,7 @@ pub fn show(ui: &mut egui::Ui, demo: &mut PrintingTimelineDemo) {
             "Lightning Bolt was printed as common for its first 15 years, \
              then shifted to uncommon in Masters sets, and appeared as rare \
              in the Mystical Archive — reflecting its growing recognition as \
-             one of the most iconic cards in the game."
+             one of the most iconic cards in the game.",
         )
         .color(TEXT_MUTED)
         .small(),

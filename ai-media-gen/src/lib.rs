@@ -33,7 +33,10 @@ impl XaiClient {
     }
 
     /// Generate an image from a text prompt (no reference image).
-    pub async fn generate_image(&self, req: &ImageRequest<'_>) -> Result<ImageResponse, MediaGenError> {
+    pub async fn generate_image(
+        &self,
+        req: &ImageRequest<'_>,
+    ) -> Result<ImageResponse, MediaGenError> {
         let body = GenerationBody {
             model: req.model,
             prompt: req.prompt,
@@ -83,7 +86,9 @@ impl XaiClient {
             n: req.n,
             aspect_ratio: "auto",
             resolution: "1k",
-            image: ImageInput { url: image_url.to_string() },
+            image: ImageInput {
+                url: image_url.to_string(),
+            },
         };
 
         let url = format!("{BASE_URL}/images/edits");

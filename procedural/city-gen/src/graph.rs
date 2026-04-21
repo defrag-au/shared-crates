@@ -36,7 +36,10 @@ impl RoadGraph {
     /// 4. Create edges between consecutive nodes along each streamline
     pub fn from_streamlines(streamlines: &[Streamline], snap_distance: f32) -> Self {
         if streamlines.is_empty() {
-            return RoadGraph { nodes: Vec::new(), edges: Vec::new() };
+            return RoadGraph {
+                nodes: Vec::new(),
+                edges: Vec::new(),
+            };
         }
 
         // Build spatial index of all points tagged with (streamline_idx, point_idx)
@@ -53,8 +56,10 @@ impl RoadGraph {
 
         let cell_size = snap_distance * 2.0;
         let mut point_grid = SpatialGrid::new(
-            bounds_min.x - 1.0, bounds_min.y - 1.0,
-            bounds_max.x + 1.0, bounds_max.y + 1.0,
+            bounds_min.x - 1.0,
+            bounds_min.y - 1.0,
+            bounds_max.x + 1.0,
+            bounds_max.y + 1.0,
             cell_size,
         );
 
@@ -71,7 +76,8 @@ impl RoadGraph {
         // For each streamline, find intersection points (where it passes near another streamline)
         // intersection_flags[streamline_idx] = set of point indices that are intersections
         let snap_sq = snap_distance * snap_distance;
-        let mut intersection_points: Vec<Vec<usize>> = streamlines.iter()
+        let mut intersection_points: Vec<Vec<usize>> = streamlines
+            .iter()
             .map(|s| vec![0; s.points.len()]) // 0 = not intersection, 1 = intersection
             .collect();
 
@@ -80,7 +86,9 @@ impl RoadGraph {
                 let candidates = point_grid.query_radius(p, snap_distance);
                 for &ci in &candidates {
                     let (cp, csi) = all_points[ci];
-                    if csi == si { continue; } // same streamline
+                    if csi == si {
+                        continue;
+                    } // same streamline
 
                     if (p - cp).length_sq() < snap_sq {
                         intersection_points[si][pi] = 1;
@@ -95,7 +103,9 @@ impl RoadGraph {
         let mut edges: Vec<RoadEdge> = Vec::new();
 
         for (si, streamline) in streamlines.iter().enumerate() {
-            if streamline.points.len() < 2 { continue; }
+            if streamline.points.len() < 2 {
+                continue;
+            }
 
             let flags = &intersection_points[si];
             let mut segment_start = 0;
@@ -148,7 +158,9 @@ impl RoadGraph {
 
     /// Get the bounding box of all nodes.
     pub fn bounds(&self) -> Option<(Vec2, Vec2)> {
-        if self.nodes.is_empty() { return None; }
+        if self.nodes.is_empty() {
+            return None;
+        }
         let mut min = self.nodes[0].pos;
         let mut max = self.nodes[0].pos;
         for node in &self.nodes {
@@ -163,7 +175,9 @@ impl RoadGraph {
 
 /// Find or create a node near `pos`.
 fn find_or_create_node(nodes: &mut Vec<RoadNode>, pos: Vec2, snap_sq: f32) -> usize {
-    if let Some((idx, _)) = nodes.iter().enumerate()
+    if let Some((idx, _)) = nodes
+        .iter()
+        .enumerate()
         .filter(|(_, n)| (n.pos - pos).length_sq() < snap_sq)
         .min_by(|(_, a), (_, b)| {
             let da = (a.pos - pos).length_sq();
@@ -174,7 +188,10 @@ fn find_or_create_node(nodes: &mut Vec<RoadNode>, pos: Vec2, snap_sq: f32) -> us
         idx
     } else {
         let idx = nodes.len();
-        nodes.push(RoadNode { pos, edges: Vec::new() });
+        nodes.push(RoadNode {
+            pos,
+            edges: Vec::new(),
+        });
         idx
     }
 }

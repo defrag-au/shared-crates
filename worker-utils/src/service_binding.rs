@@ -202,10 +202,7 @@ impl ServiceBinding {
 
     /// Apply auth headers from CallOpts to a Headers object.
     #[cfg(target_arch = "wasm32")]
-    fn apply_auth(
-        headers: &worker::Headers,
-        opts: &CallOpts<'_>,
-    ) -> Result<(), worker::Error> {
+    fn apply_auth(headers: &worker::Headers, opts: &CallOpts<'_>) -> Result<(), worker::Error> {
         match opts.auth {
             Auth::None => {}
             Auth::Bearer(token) => {

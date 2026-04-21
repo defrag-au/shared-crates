@@ -1039,17 +1039,24 @@ mod tests {
 
     #[test]
     fn test_deserialize_policy_assets_old_money() {
-        match serde_json::from_str::<PolicyAssetsResponse>(&test_case!(
-            "old_money_assets.json"
-        )) {
+        match serde_json::from_str::<PolicyAssetsResponse>(&test_case!("old_money_assets.json")) {
             Ok(deserialized) => {
                 // First asset has empty name and null metadata (burned token)
                 assert!(!deserialized.data.is_empty());
                 let importable = deserialized.get_importable_nfts();
-                println!("Old Money: {} total, {} importable", deserialized.data.len(), importable.len());
+                println!(
+                    "Old Money: {} total, {} importable",
+                    deserialized.data.len(),
+                    importable.len()
+                );
                 for nft in &importable {
                     let asset: Result<Asset, _> = Asset::try_from(nft.asset_standards.clone());
-                    assert!(asset.is_ok(), "Failed to convert asset {}: {:?}", nft.asset_name, asset.err());
+                    assert!(
+                        asset.is_ok(),
+                        "Failed to convert asset {}: {:?}",
+                        nft.asset_name,
+                        asset.err()
+                    );
                 }
             }
             Err(err) => {
