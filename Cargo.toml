@@ -16,6 +16,7 @@ members = [
     "worker-stack",
     "worker-utils",
     "asset-rarity",
+    "services/*",
     "indexers/*",
     "ui/scss-macros",
     "ui/ui-core",

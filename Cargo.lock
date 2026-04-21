@@ -3578,6 +3578,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ownership-client"
+version = "0.1.0"
+dependencies = [
+ "http-client",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pallas-addresses"
 version = "1.0.0-alpha.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

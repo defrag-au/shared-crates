@@ -1,0 +1,11 @@
+[package]
+name = "ownership-client"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Typed HTTP client for the collection-ownership service"
+
+[dependencies]
+http-client = { path = "../../http-client" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
