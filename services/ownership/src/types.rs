@@ -23,7 +23,7 @@ pub struct BundleParams<'a> {
 }
 
 /// Response for `GET /api/bundle/{policy_id}`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct BundleResponse {
     pub cache_generation: u64,
     pub schema_version: u64,
@@ -36,7 +36,7 @@ pub struct BundleResponse {
 }
 
 /// A single entry in the ownership bundle.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BundleEntry {
     pub asset_name_hex: String,
     /// Human-readable asset name (e.g. "Skeleton King").
@@ -55,7 +55,7 @@ pub struct BundleEntry {
 }
 
 /// Rarity rankings computed by multiple scoring algorithms.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RarityRanks {
     /// Magic Eden statistical rarity (product of trait probabilities). Rank 1 = rarest.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -69,8 +69,8 @@ pub struct RarityRanks {
 }
 
 /// Trait data in either compact bitmap or decoded form.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TraitData {
     /// Hex-encoded bitmap string (compact, requires schema to decode).
     Bitmap(String),
@@ -101,13 +101,13 @@ impl BundleEntry {
 // ============================================================================
 
 /// Response for `GET /api/owner/{policy_id}?asset=...`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OwnerResponse {
     pub owner_stake: Option<String>,
 }
 
 /// Response for `GET /api/check/{policy_id}?asset=...&stake=...`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CheckResponse {
     pub owned: bool,
 }
@@ -117,7 +117,7 @@ pub struct CheckResponse {
 // ============================================================================
 
 /// Response for `GET /api/stats/{policy_id}`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StatsResponse {
     pub asset_count: u32,
     pub holder_count: u32,
@@ -129,7 +129,7 @@ pub struct StatsResponse {
 // ============================================================================
 
 /// Response for `GET /api/changes/{policy_id}?since=...&limit=...`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChangesFeedResponse {
     pub results: Vec<ChangeEntry>,
     pub last_seq: u64,
@@ -137,7 +137,7 @@ pub struct ChangesFeedResponse {
 }
 
 /// A single ownership change event.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChangeEntry {
     pub seq: u64,
     pub asset_name_hex: String,
@@ -152,7 +152,7 @@ pub struct ChangeEntry {
 // ============================================================================
 
 /// Response for `GET /api/trait-schema/{policy_id}`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TraitSchemaResponse {
     pub schema_version: u64,
     pub bitmap_size: u32,
@@ -165,7 +165,7 @@ pub struct TraitSchemaResponse {
 // ============================================================================
 
 /// A resolved asset identity from CIP-14 fingerprint lookup.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssetIdentity {
     pub policy_id: String,
     pub asset_name_hex: String,
@@ -177,7 +177,7 @@ pub struct AssetIdentity {
 // ============================================================================
 
 /// Response for `GET /api/status/{policy_id}`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SyncStatusResponse {
     pub phase: String,
     pub sync_sources: Vec<String>,
@@ -200,7 +200,7 @@ pub struct SyncStatusResponse {
 // ============================================================================
 
 /// A tracked policy entry from the admin API.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PolicyEntry {
     pub policy_id: String,
     pub label: String,
@@ -215,13 +215,13 @@ pub struct PolicyEntry {
 }
 
 /// Response for `GET /admin/policies`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PolicyListResponse {
     pub policies: Vec<PolicyEntry>,
 }
 
 /// Partial update for a policy (PATCH body).
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PolicyUpdate {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
@@ -232,7 +232,7 @@ pub struct PolicyUpdate {
 }
 
 /// Response for `GET /admin/validate`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ValidateResponse {
     pub total_policies: usize,
     pub healthy: usize,
@@ -240,7 +240,7 @@ pub struct ValidateResponse {
 }
 
 /// A policy with one or more failed validation checks.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PolicyIssue {
     pub policy_id: String,
     pub label: String,
@@ -248,7 +248,7 @@ pub struct PolicyIssue {
 }
 
 /// A single failed validation check.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FailedCheck {
     pub check: String,
     pub severity: String,
@@ -260,7 +260,7 @@ pub struct FailedCheck {
 // ============================================================================
 
 /// Visual style guide for a collection.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VisualGuide {
     pub art_style: String,
     pub color_palette: serde_json::Value,
@@ -271,7 +271,7 @@ pub struct VisualGuide {
 }
 
 /// Response for `GET /admin/visual-analysis/{policy_id}/guide`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VisualGuideResponse {
     pub guide: VisualGuide,
     pub sample_count: u32,
@@ -280,7 +280,7 @@ pub struct VisualGuideResponse {
 }
 
 /// Narrative style guide for a collection.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NarrativeStyleGuide {
     pub world_tone: String,
     pub narrative_voice: String,
@@ -291,7 +291,7 @@ pub struct NarrativeStyleGuide {
 }
 
 /// Response for `GET /admin/visual-analysis/{policy_id}/narrative`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NarrativeGuideResponse {
     pub guide: NarrativeStyleGuide,
     pub model_used: String,
@@ -299,7 +299,7 @@ pub struct NarrativeGuideResponse {
 }
 
 /// Visual profile for a single asset.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VisualProfile {
     pub description: String,
     pub distinctive_features: Vec<String>,

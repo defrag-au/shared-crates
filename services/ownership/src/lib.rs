@@ -1,66 +1,44 @@
 //! Typed HTTP client for the collection-ownership service.
 //!
-//! Provides request/response types and a client for querying ownership data,
-//! rarity ranks, trait bitmaps, and CIP-14 fingerprint resolution.
-//!
-//! # Usage
-//!
-//! ```no_run
-//! use ownership_client::OwnershipClient;
-//!
-//! # async fn example() -> Result<(), ownership_client::Error> {
-//! let client = OwnershipClient::new("https://ownership.cnft.dev");
-//! let bundle = client.get_bundle("policy_id_hex", "stake1...").await?;
-//! # Ok(())
-//! # }
-//! ```
+//! Uses reqwest for HTTP — works on both native and WASM targets.
 
 mod types;
 
 pub use types::*;
 
-use http_client::HttpClient;
-pub use http_client::HttpError;
+use reqwest::Client;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
-/// Unified error type for ownership client operations.
+/// Error type for ownership client operations.
 #[derive(Debug)]
 pub enum Error {
-    Http(HttpError),
-    Json(serde_json::Error),
+    Request(String),
+    Http { status: u16, body: String },
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Http(e) => write!(f, "{e}"),
-            Error::Json(e) => write!(f, "JSON error: {e}"),
+            Error::Request(e) => write!(f, "HTTP request error: {e}"),
+            Error::Http { status, body } => write!(f, "HTTP {status}: {body}"),
         }
     }
 }
 
 impl std::error::Error for Error {}
 
-impl From<HttpError> for Error {
-    fn from(e: HttpError) -> Self {
-        Error::Http(e)
-    }
-}
-
-impl From<serde_json::Error> for Error {
-    fn from(e: serde_json::Error) -> Self {
-        Error::Json(e)
+impl From<reqwest::Error> for Error {
+    fn from(e: reqwest::Error) -> Self {
+        Error::Request(e.to_string())
     }
 }
 
 /// Client for the collection-ownership service.
-///
-/// Wraps the HTTP API with typed request/response pairs.
-/// Can target either a direct URL (e.g. `https://ownership.cnft.dev`)
-/// or be used behind a service binding via the base URL.
 #[derive(Clone)]
 pub struct OwnershipClient {
     base_url: String,
-    client: HttpClient,
+    client: Client,
 }
 
 impl OwnershipClient {
@@ -68,61 +46,96 @@ impl OwnershipClient {
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
-            client: HttpClient::new(),
+            client: Client::new(),
         }
     }
 
     /// Create a client with a debug token for admin endpoints.
     pub fn with_debug_token(base_url: impl Into<String>, token: &str) -> Self {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            "X-Debug-Token",
+            reqwest::header::HeaderValue::from_str(token).unwrap(),
+        );
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
-            client: HttpClient::new().with_header("X-Debug-Token", token),
+            client: Client::builder().default_headers(headers).build().unwrap(),
         }
     }
 
-    /// Create a client with a custom `HttpClient` (e.g. with auth headers).
-    pub fn with_client(base_url: impl Into<String>, client: HttpClient) -> Self {
-        Self {
-            base_url: base_url.into().trim_end_matches('/').to_string(),
-            client,
+    // ── helpers ──────────────────────────────────────────────────────
+
+    async fn get_json<T: DeserializeOwned>(&self, url: &str) -> Result<T, Error> {
+        let resp = self.client.get(url).send().await?;
+        let status = resp.status().as_u16();
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(Error::Http { status, body });
         }
+        Ok(resp.json().await?)
+    }
+
+    async fn post_empty(&self, url: &str) -> Result<String, Error> {
+        let resp = self.client.post(url).send().await?;
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        if status >= 400 {
+            return Err(Error::Http { status, body });
+        }
+        Ok(body)
+    }
+
+    async fn patch_json<T: Serialize>(&self, url: &str, body: &T) -> Result<String, Error> {
+        let resp = self.client.patch(url).json(body).send().await?;
+        let status = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        if status >= 400 {
+            return Err(Error::Http { status, body: text });
+        }
+        Ok(text)
+    }
+
+    async fn delete_url(&self, url: &str) -> Result<String, Error> {
+        let resp = self.client.delete(url).send().await?;
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        if status >= 400 {
+            return Err(Error::Http { status, body });
+        }
+        Ok(body)
     }
 
     // ========================================================================
     // Public Query API
     // ========================================================================
 
-    /// Get the ownership bundle for a stake address within a policy.
     pub async fn get_bundle(
         &self,
         policy_id: &str,
         stake: &str,
-    ) -> Result<BundleResponse, HttpError> {
+    ) -> Result<BundleResponse, Error> {
         let url = format!("{}/api/bundle/{policy_id}?stake={stake}", self.base_url);
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
-    /// Get a paginated bundle with optional filters.
     pub async fn get_bundle_page(
         &self,
         policy_id: &str,
         params: &BundleParams<'_>,
-    ) -> Result<BundleResponse, HttpError> {
+    ) -> Result<BundleResponse, Error> {
         let url = self.build_bundle_url(policy_id, params);
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
-    /// Fetch all bundle entries, automatically paginating.
     pub async fn get_bundle_all(
         &self,
         policy_id: &str,
         stake: Option<&str>,
         page_size: u32,
         trait_bits: &[usize],
-    ) -> Result<BundleResponse, HttpError> {
+    ) -> Result<BundleResponse, Error> {
         let mut all_entries = Vec::new();
 
-        // Fetch first page
         let params = BundleParams {
             stake,
             limit: Some(page_size),
@@ -137,7 +150,6 @@ impl OwnershipClient {
         let asset_count = first.asset_count;
         all_entries.extend(first.entries);
 
-        // Paginate remaining
         let mut cursor = first.next_cursor;
         while let Some(c) = cursor.take() {
             let params = BundleParams {
@@ -162,88 +174,85 @@ impl OwnershipClient {
         })
     }
 
-    /// Point query: who owns this asset?
     pub async fn get_owner(
         &self,
         policy_id: &str,
         asset_name_hex: &str,
-    ) -> Result<OwnerResponse, HttpError> {
+    ) -> Result<OwnerResponse, Error> {
         let url = format!(
             "{}/api/owner/{policy_id}?asset={asset_name_hex}",
             self.base_url
         );
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
-    /// Ownership check: does this stake own this asset?
     pub async fn check_ownership(
         &self,
         policy_id: &str,
         asset_name_hex: &str,
         stake: &str,
-    ) -> Result<CheckResponse, HttpError> {
+    ) -> Result<CheckResponse, Error> {
         let url = format!(
             "{}/api/check/{policy_id}?asset={asset_name_hex}&stake={stake}",
             self.base_url
         );
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
-    /// Get collection stats (asset count, holder count, last updated).
-    pub async fn get_stats(&self, policy_id: &str) -> Result<StatsResponse, HttpError> {
+    pub async fn get_stats(&self, policy_id: &str) -> Result<StatsResponse, Error> {
         let url = format!("{}/api/stats/{policy_id}", self.base_url);
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
-    /// Get ownership changes since a sequence number (polling pattern).
     pub async fn get_changes(
         &self,
         policy_id: &str,
         since: u64,
         limit: u32,
-    ) -> Result<ChangesFeedResponse, HttpError> {
+    ) -> Result<ChangesFeedResponse, Error> {
         let url = format!(
             "{}/api/changes/{policy_id}?since={since}&limit={limit}",
             self.base_url
         );
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
-    /// Get the most recent N changes (for initial load).
     pub async fn get_latest_changes(
         &self,
         policy_id: &str,
         limit: u32,
-    ) -> Result<ChangesFeedResponse, HttpError> {
+    ) -> Result<ChangesFeedResponse, Error> {
         let url = format!(
             "{}/api/changes/{policy_id}?latest=true&limit={limit}",
             self.base_url
         );
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
-    /// Get the trait bitmap schema for decoding bitmaps.
     pub async fn get_trait_schema(
         &self,
         policy_id: &str,
-    ) -> Result<TraitSchemaResponse, HttpError> {
+    ) -> Result<TraitSchemaResponse, Error> {
         let url = format!("{}/api/trait-schema/{policy_id}", self.base_url);
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
-    /// Resolve a CIP-14 fingerprint to (policy_id, asset_name_hex).
-    ///
-    /// Returns `None` (via 404) if the fingerprint is not in the registry.
+    pub async fn get_collections(&self) -> Result<PolicyListResponse, Error> {
+        let url = format!("{}/api/collections", self.base_url);
+        self.get_json(&url).await
+    }
+
     pub async fn resolve_fingerprint(
         &self,
         fingerprint: &str,
-    ) -> Result<Option<AssetIdentity>, HttpError> {
-        let url = format!("{}/api/resolve-fingerprint?fp={fingerprint}", self.base_url);
-        match self.client.get::<AssetIdentity>(&url).await {
+    ) -> Result<Option<AssetIdentity>, Error> {
+        let url = format!(
+            "{}/api/resolve-fingerprint?fp={fingerprint}",
+            self.base_url
+        );
+        match self.get_json::<AssetIdentity>(&url).await {
             Ok(identity) => Ok(Some(identity)),
-            Err(HttpError::HttpStatus {
-                status_code: 404, ..
-            }) => Ok(None),
+            Err(Error::Http { status: 404, .. }) => Ok(None),
             Err(e) => Err(e),
         }
     }
@@ -252,78 +261,69 @@ impl OwnershipClient {
     // Admin API (requires debug token)
     // ========================================================================
 
-    /// List all tracked policies.
-    pub async fn list_policies(&self) -> Result<PolicyListResponse, HttpError> {
+    pub async fn list_policies(&self) -> Result<PolicyListResponse, Error> {
         let url = format!("{}/admin/policies", self.base_url);
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
-    /// Get sync status for a policy.
-    pub async fn get_sync_status(&self, policy_id: &str) -> Result<SyncStatusResponse, HttpError> {
+    pub async fn get_sync_status(&self, policy_id: &str) -> Result<SyncStatusResponse, Error> {
         let url = format!("{}/api/status/{policy_id}", self.base_url);
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
-    /// Trigger an immediate sync for a policy.
-    pub async fn trigger_sync(&self, policy_id: &str) -> Result<String, HttpError> {
+    pub async fn trigger_sync(&self, policy_id: &str) -> Result<String, Error> {
         let url = format!("{}/admin/policies/{policy_id}/sync", self.base_url);
-        self.client.post::<(), String>(&url, &()).await
+        self.post_empty(&url).await
     }
 
-    /// Update a policy (enable/disable, sync interval, label).
     pub async fn update_policy(
         &self,
         policy_id: &str,
         update: &PolicyUpdate,
-    ) -> Result<String, HttpError> {
+    ) -> Result<String, Error> {
         let url = format!("{}/admin/policies/{policy_id}", self.base_url);
-        self.client.patch(&url, update).await
+        self.patch_json(&url, update).await
     }
 
-    /// Delete a policy — resets the DO and removes the D1 row.
-    pub async fn delete_policy(&self, policy_id: &str) -> Result<String, HttpError> {
+    pub async fn delete_policy(&self, policy_id: &str) -> Result<String, Error> {
         let url = format!("{}/admin/policies/{policy_id}", self.base_url);
-        self.client.delete(&url).await
+        self.delete_url(&url).await
     }
 
-    /// Run validation checks across all policies.
-    pub async fn validate(&self) -> Result<ValidateResponse, HttpError> {
+    pub async fn validate(&self) -> Result<ValidateResponse, Error> {
         let url = format!("{}/admin/validate", self.base_url);
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
-    /// Get the visual style guide for a collection.
     pub async fn get_visual_guide(
         &self,
         policy_id: &str,
-    ) -> Result<VisualGuideResponse, HttpError> {
+    ) -> Result<VisualGuideResponse, Error> {
         let url = format!("{}/admin/visual-analysis/{policy_id}/guide", self.base_url);
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
-    /// Get the narrative style guide for a collection.
     pub async fn get_narrative_guide(
         &self,
         policy_id: &str,
-    ) -> Result<NarrativeGuideResponse, HttpError> {
+    ) -> Result<NarrativeGuideResponse, Error> {
         let url = format!(
             "{}/admin/visual-analysis/{policy_id}/narrative",
             self.base_url
         );
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
-    /// Get a visual profile for a specific asset.
     pub async fn get_asset_profile(
         &self,
         policy_id: &str,
         asset_hex: &str,
-    ) -> Result<VisualProfile, HttpError> {
+    ) -> Result<VisualProfile, Error> {
         let url = format!(
             "{}/admin/visual-analysis/{policy_id}/profile/{asset_hex}",
             self.base_url
         );
-        self.client.get(&url).await
+        self.get_json(&url).await
     }
 
     // ========================================================================

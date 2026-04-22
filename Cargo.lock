@@ -2013,12 +2013,10 @@ dependencies = [
 name = "http-client"
 version = "0.1.0"
 dependencies = [
- "gloo-net",
  "reqwest",
  "serde",
  "serde_json",
  "tracing",
- "worker_stack",
 ]
 
 [[package]]
@@ -3581,9 +3579,10 @@ dependencies = [
 name = "ownership-client"
 version = "0.1.0"
 dependencies = [
- "http-client",
+ "reqwest",
  "serde",
  "serde_json",
+ "worker",
 ]
 
 [[package]]
