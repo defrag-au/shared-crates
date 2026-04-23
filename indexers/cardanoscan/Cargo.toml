@@ -1,0 +1,11 @@
+[package]
+name = "cardanoscan"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Cardanoscan API client for Cardano blockchain data"
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
