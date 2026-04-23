@@ -1,0 +1,15 @@
+; JPG.store V2 Ask datum schema
+; Based on real transaction data analysis
+; PlutusData structure with nested arrays
+
+; Simple PlutusData elements
+plutus_data = #6.121(any)
+
+; JPG.store V2 Ask datum - nested plutus data structure  
+; Real structure: nested arrays with PlutusData tags at multiple levels
+ask_datum = #6.121([
+    plutus_data,    ; First element: nested address/owner data
+    uint,           ; Second element: amount (1920000)
+    plutus_data,    ; Third element: more nested data
+    bytes           ; Fourth element: hash/identifier
+])

@@ -1,0 +1,29 @@
+{
+  "name": "JPG.store V2", 
+  "description": "JPG.store NFT marketplace smart contracts - Version 2",
+  "version": "v2.0",
+  "maintainer": "cnft.dev",
+  "repository": "https://github.com/jpg-store/contract-v2",
+  "contracts": {
+    "ask": {
+      "description": "JPG.store V2 Ask (listing) contract with enhanced payout structure",
+      "addresses": {
+        "mainnet": [
+          "addr1x8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7efvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8ekstg4qrx"
+        ],
+        "testnet": []
+      },
+      "schema": "ask.cddl"
+    },
+    "bid": {
+      "description": "JPG.store V2 Bid (offer) contract",
+      "addresses": {
+        "mainnet": [
+          "addr1w9fjqw0xqr7q95q4qx2kq6q4qx2kq6q4qx2kq6q4qx2kq6q4qx2kq6q4qx2kq6q4qx2kq6q4qx2kq6q4qx2kq6q4qx2k"
+        ],
+        "testnet": []
+      },
+      "schema": "bid.cddl"
+    }
+  }
+}

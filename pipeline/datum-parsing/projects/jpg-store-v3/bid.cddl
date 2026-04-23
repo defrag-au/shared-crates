@@ -1,0 +1,28 @@
+; JPG.store Bid (offer) datum schema
+; Version: v3.0
+; Description: NFT offer datum for JPG.store marketplace
+
+; Common address structure used across Cardano
+cardano_address = [
+    payment_credential,
+    ?stake_credential
+]
+
+; Credential can be either key hash or script hash
+credential = [
+    tag: 0..1,           ; 0 = key credential, 1 = script credential
+    hash: bytes .size 28  ; 28-byte hash
+]
+
+payment_credential = credential
+stake_credential = credential
+
+; JPG.store Bid datum - represents an NFT offer
+; Structure: [bidder, policy_id, amount, ?asset_name, ?expires_at]
+bid_datum = [
+    bidder: cardano_address,    ; Address of the bidder
+    policy_id: bytes .size 28,  ; Target NFT policy ID
+    amount: uint,               ; Bid amount in lovelace
+    ?asset_name: bytes,         ; Optional specific asset name (empty = any from policy)
+    ?expires_at: uint           ; Optional expiration timestamp (POSIX)
+]

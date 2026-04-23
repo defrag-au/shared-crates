@@ -1,0 +1,84 @@
+# JPG.store V4 Ask (listing) datum schema
+# Version: v4.0
+# Description: Simplified NFT listing datum — asset ID + seller credentials, no price in datum
+#
+# Datum structure:
+# Constructor(0) [
+#   Constructor(0) [ policy_id: Bytes(28), asset_name: Bytes ],       // asset identifier
+#   Constructor(0) [ payment_cred: Bytes(28), staking_cred: Bytes(28) ] // seller credentials
+# ]
+#
+# Price is NOT encoded in the datum — it must be determined from ADA flow analysis.
+
+[schema]
+name = "jpg_store_v4_ask"
+version = "4.0"
+description = "JPG.store V4 listing datum — simplified asset + seller credentials"
+root_type = "ask_datum"
+
+[types.ask_datum]
+type = "constructor"
+description = "JPG.store V4 Ask datum — asset identifier and seller credentials"
+constructor_tag = 121
+
+[[types.ask_datum.fields]]
+name = "asset_id"
+index = 0
+type = "asset_identifier"
+description = "The NFT being listed (policy ID + asset name)"
+required = true
+
+[[types.ask_datum.fields]]
+name = "seller"
+index = 1
+type = "seller_credentials"
+description = "Seller payment and staking credentials"
+required = true
+
+# Asset identifier: Constructor(0) [ policy_id, asset_name ]
+[types.asset_identifier]
+type = "constructor"
+description = "NFT asset identifier"
+constructor_tag = 121
+
+[[types.asset_identifier.fields]]
+name = "policy_id"
+index = 0
+type = "bytes"
+description = "28-byte policy ID"
+byte_length = 28
+required = true
+
+[[types.asset_identifier.fields]]
+name = "asset_name"
+index = 1
+type = "bytes"
+description = "Asset name (variable length)"
+required = true
+
+# Seller credentials: Constructor(0) [ payment_cred, staking_cred ]
+[types.seller_credentials]
+type = "constructor"
+description = "Seller payment and staking credential hashes"
+constructor_tag = 121
+
+[[types.seller_credentials.fields]]
+name = "payment_credential"
+index = 0
+type = "bytes"
+description = "28-byte payment credential hash"
+byte_length = 28
+required = true
+
+[[types.seller_credentials.fields]]
+name = "staking_credential"
+index = 1
+type = "bytes"
+description = "28-byte staking credential hash"
+byte_length = 28
+required = true
+
+[extraction]
+# No price in datum — must use ADA flow analysis
+price_extraction = "none"
+seller_extraction = "from_credentials"
