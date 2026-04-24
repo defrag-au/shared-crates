@@ -365,6 +365,7 @@ pub fn build_collection_offer_tx(
 ) -> Result<super::UnsignedTx, TxBuildError> {
     use crate::helpers::input::add_utxo_input;
     use crate::helpers::output::{build_change_output, create_ada_output};
+    use crate::helpers::utxo_query::is_simple_utxo;
     use crate::selection;
     use pallas_crypto::hash::Hasher;
     use pallas_txbuilder::StagingTransaction;
@@ -372,8 +373,11 @@ pub fn build_collection_offer_tx(
     let co = build_collection_offer(req)?;
     let estimated_fee = selection::estimate_simple_fee(&deps.params);
 
+    // Filter out UTxOs with datums/scripts — avoid spending CO UTxOs
+    let spendable: Vec<_> = deps.utxos.iter().filter(|u| is_simple_utxo(u)).cloned().collect();
+
     let selected_utxo = selection::select_utxo_for_amount_prefer_pure_ada(
-        &deps.utxos,
+        &spendable,
         co.total_lovelace,
         estimated_fee,
         &deps.params,
@@ -446,6 +450,7 @@ pub fn build_collection_offers_tx(
 ) -> Result<super::UnsignedTx, TxBuildError> {
     use crate::helpers::input::add_utxo_input;
     use crate::helpers::output::{build_change_output, create_ada_output};
+    use crate::helpers::utxo_query::is_simple_utxo;
     use crate::selection;
     use pallas_crypto::hash::Hasher;
     use pallas_txbuilder::StagingTransaction;
@@ -463,8 +468,11 @@ pub fn build_collection_offers_tx(
     let total_lovelace: u64 = offers.iter().map(|o| o.total_lovelace).sum();
     let estimated_fee = selection::estimate_simple_fee(&deps.params);
 
+    // Filter out UTxOs with datums/scripts — avoid spending CO UTxOs
+    let spendable: Vec<_> = deps.utxos.iter().filter(|u| is_simple_utxo(u)).cloned().collect();
+
     let selected_utxo = selection::select_utxo_for_amount_prefer_pure_ada(
-        &deps.utxos,
+        &spendable,
         total_lovelace,
         estimated_fee,
         &deps.params,

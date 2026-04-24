@@ -44,18 +44,22 @@ pub fn select_utxo_for_amount_prefer_pure_ada<'a>(
 
     let has_sufficient = |utxo: &&UtxoApi| utxo.lovelace >= required;
 
-    // First try: pure ADA UTxO with sufficient funds
+    // First try: smallest pure ADA UTxO with sufficient funds.
+    // Preferring smallest reduces the chance of picking UTxOs with
+    // hidden datums (which tend to be larger consolidated UTxOs).
     if let Some(utxo) = utxos
         .iter()
-        .find(|u| is_pure_ada_utxo(u) && has_sufficient(u))
+        .filter(|u| is_pure_ada_utxo(u) && has_sufficient(u))
+        .min_by_key(|u| u.lovelace)
     {
         return Ok(utxo);
     }
 
-    // Fallback: any UTxO with sufficient funds
+    // Fallback: smallest UTxO with sufficient funds
     utxos
         .iter()
-        .find(|u| has_sufficient(u))
+        .filter(|u| has_sufficient(u))
+        .min_by_key(|u| u.lovelace)
         .ok_or(TxBuildError::InsufficientFunds {
             needed: required,
             available: utxos.iter().map(|u| u.lovelace).sum(),
