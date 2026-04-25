@@ -153,7 +153,8 @@ pub fn calculate_fee(tx: &StagingTransaction, params: &crate::params::TxBuildPar
 
     let ref_script_fee = params.ref_script_size * params.min_fee_ref_script_cost_per_byte;
 
-    base_fee + execution_fee_from_redeemers(tx, params) + ref_script_fee
+    // +1 to handle any remaining ceiling rounding across all fee components
+    base_fee + execution_fee_from_redeemers(tx, params) + ref_script_fee + 1
 }
 
 /// Sum the execution cost of all redeemers in a staged transaction.

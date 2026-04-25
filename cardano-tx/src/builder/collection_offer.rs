@@ -564,8 +564,14 @@ fn build_co_metadata_multi(
 
     for (i, (datum_cbor, policy_id)) in offers.iter().enumerate() {
         let datum_hex = hex::encode(datum_cbor);
-        for chunk in datum_hex.as_bytes().chunks(64) {
-            entries.push((label, std::str::from_utf8(chunk).unwrap().to_string()));
+        let chunks: Vec<&[u8]> = datum_hex.as_bytes().chunks(64).collect();
+        for (ci, chunk) in chunks.iter().enumerate() {
+            let mut s = std::str::from_utf8(chunk).unwrap().to_string();
+            // jpg.store format: last datum chunk ends with a comma separator
+            if ci == chunks.len() - 1 {
+                s.push(',');
+            }
+            entries.push((label, s));
             label += 1;
         }
         entries.push((label, format!("{policy_id}::{i:02}")));
