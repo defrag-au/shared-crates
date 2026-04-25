@@ -4,6 +4,7 @@
 //! The widget is provider-agnostic — it renders items and manages the execution
 //! flow, while the caller handles the actual TX building and signing.
 
+use crate::icons::PhosphorIcon;
 use crate::theme;
 use egui::{RichText, Ui};
 
@@ -194,26 +195,24 @@ pub fn show(
     ui.label(
         RichText::new(config.title)
             .color(theme::TEXT_PRIMARY)
-            .size(22.0)
+            .size(18.0)
             .strong(),
     );
-    ui.add_space(8.0);
+    ui.add_space(4.0);
 
     if state.items.is_empty() {
-        ui.add_space(20.0);
-        ui.vertical_centered(|ui| {
-            ui.label(
-                RichText::new("Your cart is empty")
-                    .color(theme::TEXT_MUTED)
-                    .size(13.0),
-            );
-            ui.add_space(4.0);
-            ui.label(
-                RichText::new("Add collection offers from the Browse tab")
-                    .color(theme::TEXT_MUTED)
-                    .size(10.0),
-            );
-        });
+        ui.add_space(16.0);
+        ui.label(
+            RichText::new("Your cart is empty")
+                .color(theme::TEXT_MUTED)
+                .size(12.0),
+        );
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new("Add offers from the Browse tab")
+                .color(theme::TEXT_MUTED)
+                .size(10.0),
+        );
         return action;
     }
 
@@ -228,80 +227,73 @@ pub fn show(
     }
 
     // Render each group
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        let mut remove_id = None;
+    let mut remove_id = None;
 
-        for (group_label, items) in &groups {
-            // Group header with total ADA and clear
-            let group_total: f64 = items
-                .iter()
-                .map(|i| i.ada_per_item * i.quantity as f64)
-                .sum();
+    for (group_label, items) in &groups {
+        let group_total: f64 = items
+            .iter()
+            .map(|i| i.ada_per_item * i.quantity as f64)
+            .sum();
 
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(group_label)
-                        .color(theme::TEXT_PRIMARY)
-                        .size(14.0)
-                        .strong(),
-                );
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if matches!(state.phase, TxCartPhase::Editing) {
-                        if ui
-                            .add(
-                                egui::Button::new(
-                                    RichText::new("Clear")
-                                        .color(theme::TEXT_MUTED)
-                                        .size(10.0),
-                                )
-                                .frame(false),
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(group_label)
+                    .color(theme::TEXT_PRIMARY)
+                    .size(13.0)
+                    .strong(),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if matches!(state.phase, TxCartPhase::Editing) {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                RichText::new("Clear")
+                                    .color(theme::TEXT_MUTED)
+                                    .size(10.0),
                             )
-                            .clicked()
-                        {
-                            action = Some(TxCartAction::Clear);
-                        }
+                            .frame(false),
+                        )
+                        .clicked()
+                    {
+                        action = Some(TxCartAction::Clear);
                     }
-                    ui.label(
-                        RichText::new(format!("- \u{20B3} {:.0}", group_total))
-                            .color(theme::ACCENT_RED)
-                            .size(12.0),
-                    );
-                });
+                }
+                ui.label(
+                    RichText::new(format!("{:.0} ADA", group_total))
+                        .color(theme::ACCENT_RED)
+                        .size(11.0),
+                );
             });
+        });
 
-            ui.add_space(2.0);
-            ui.separator();
-            ui.add_space(6.0);
+        ui.add_space(2.0);
+        ui.separator();
+        ui.add_space(4.0);
 
-            // Item cards
-            for item in items {
-                let card_rect = ui
-                    .horizontal(|ui| {
-                        // Collection image
-                        if let Some(ref url) = item.image_url {
-                            let image = egui::Image::new(url.as_str())
-                                .fit_to_exact_size(egui::vec2(56.0, 56.0))
-                                .corner_radius(egui::CornerRadius::same(4));
-                            ui.add(image);
-                        } else {
-                            // Placeholder
-                            let (rect, _) = ui.allocate_exact_size(
-                                egui::vec2(56.0, 56.0),
-                                egui::Sense::hover(),
-                            );
-                            ui.painter().rect_filled(
-                                rect,
-                                egui::CornerRadius::same(4),
-                                theme::BG_HIGHLIGHT,
-                            );
-                        }
+        // Item cards
+        for item in items {
+            let card_rect = ui
+                .horizontal(|ui| {
+                    // Collection image placeholder (only show if we have a URL)
+                    if let Some(ref url) = item.image_url {
+                        let image = egui::Image::new(url.as_str())
+                            .fit_to_exact_size(egui::vec2(44.0, 44.0))
+                            .corner_radius(egui::CornerRadius::same(4));
+                        ui.add(image);
+                        ui.add_space(6.0);
+                    }
 
-                        ui.add_space(8.0);
-
-                        // Info column
-                        ui.vertical(|ui| {
-                            // Truncated policy ID
-                            let pid = &item.policy_id;
+                    // Info column
+                    ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new(&item.label)
+                                .color(theme::TEXT_PRIMARY)
+                                .size(12.0)
+                                .strong(),
+                        );
+                        // Truncated policy ID
+                        let pid = &item.policy_id;
+                        if !pid.is_empty() {
                             let truncated = if pid.len() > 16 {
                                 format!("{}...{}", &pid[..8], &pid[pid.len() - 4..])
                             } else {
@@ -313,96 +305,89 @@ pub fn show(
                                     .size(9.0)
                                     .monospace(),
                             );
-                            ui.label(
-                                RichText::new(&item.label)
-                                    .color(theme::TEXT_PRIMARY)
-                                    .size(12.0)
-                                    .strong(),
-                            );
+                        }
 
-                            // Status (if not pending)
-                            if !matches!(item.status, TxCartItemStatus::Pending) {
+                        // Status (if not pending)
+                        if !matches!(item.status, TxCartItemStatus::Pending) {
+                            ui.label(
+                                RichText::new(item.status.label())
+                                    .color(item.status.color())
+                                    .size(9.0),
+                            );
+                        }
+                    });
+
+                    // Right side: quantity x price + remove
+                    ui.with_layout(
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            // Remove button
+                            if matches!(item.status, TxCartItemStatus::Pending)
+                                && matches!(state.phase, TxCartPhase::Editing)
+                            {
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            PhosphorIcon::Trash
+                                                .rich_text(14.0, theme::TEXT_MUTED),
+                                        )
+                                        .frame(false),
+                                    )
+                                    .clicked()
+                                {
+                                    remove_id = Some(item.id.clone());
+                                }
+                                ui.add_space(4.0);
+                            }
+
+                            // Price
+                            let total = item.ada_per_item * item.quantity as f64;
+                            ui.label(
+                                RichText::new(format!("{:.0} ADA", total))
+                                    .color(theme::TEXT_PRIMARY)
+                                    .size(11.0),
+                            );
+                            if item.quantity > 1 {
                                 ui.label(
-                                    RichText::new(item.status.label())
-                                        .color(item.status.color())
-                                        .size(9.0),
+                                    RichText::new(format!("{}x", item.quantity))
+                                        .color(theme::TEXT_MUTED)
+                                        .size(10.0),
                                 );
                             }
-                        });
-
-                        // Right side: quantity x price + remove
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                // Remove button
-                                if matches!(item.status, TxCartItemStatus::Pending)
-                                    && matches!(state.phase, TxCartPhase::Editing)
-                                {
-                                    if ui
-                                        .add(
-                                            egui::Button::new(
-                                                RichText::new("\u{2715}")
-                                                    .color(theme::TEXT_MUTED)
-                                                    .size(12.0),
-                                            )
-                                            .frame(false),
-                                        )
-                                        .clicked()
-                                    {
-                                        remove_id = Some(item.id.clone());
-                                    }
-                                    ui.add_space(8.0);
-                                }
-
-                                // Quantity x Price
-                                let total = item.ada_per_item * item.quantity as f64;
-                                ui.label(
-                                    RichText::new(format!("\u{20B3} {:.0}", total))
-                                        .color(theme::TEXT_PRIMARY)
-                                        .size(12.0),
-                                );
-                                if item.quantity > 1 {
-                                    ui.label(
-                                        RichText::new(format!("{}x", item.quantity))
-                                            .color(theme::TEXT_MUTED)
-                                            .size(10.0),
-                                    );
-                                }
-                            },
-                        );
-                    })
-                    .response
-                    .rect;
-
-                // Card border
-                ui.painter().rect_stroke(
-                    card_rect.expand(4.0),
-                    egui::CornerRadius::same(8),
-                    egui::Stroke::new(0.5, theme::BORDER),
-                    egui::StrokeKind::Outside,
-                );
-
-                // Error detail
-                if let TxCartItemStatus::Error { message } = &item.status {
-                    ui.label(
-                        RichText::new(message)
-                            .color(theme::ACCENT_RED)
-                            .size(9.0),
+                        },
                     );
-                }
+                })
+                .response
+                .rect;
 
-                ui.add_space(6.0);
+            // Card border
+            ui.painter().rect_stroke(
+                card_rect.expand(2.0),
+                egui::CornerRadius::same(6),
+                egui::Stroke::new(0.5, theme::BORDER),
+                egui::StrokeKind::Outside,
+            );
+
+            // Error detail
+            if let TxCartItemStatus::Error { message } = &item.status {
+                ui.label(
+                    RichText::new(message)
+                        .color(theme::ACCENT_RED)
+                        .size(9.0),
+                );
             }
 
-            ui.add_space(12.0);
+            ui.add_space(4.0);
         }
 
-        if let Some(id) = remove_id {
-            action = Some(TxCartAction::RemoveItem(id));
-        }
-    });
+        ui.add_space(8.0);
+    }
 
-    ui.add_space(8.0);
+    if let Some(id) = remove_id {
+        action = Some(TxCartAction::RemoveItem(id));
+    }
+
+    ui.add_space(4.0);
 
     // Bottom action area
     match &state.phase {
@@ -415,9 +400,12 @@ pub fn show(
                     .map(|i| i.ada_per_item * i.quantity as f64)
                     .sum();
 
+                ui.separator();
+                ui.add_space(4.0);
+
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(format!("Total: \u{20B3} {:.0}", total_ada))
+                        RichText::new(format!("Total: {:.0} ADA", total_ada))
                             .color(theme::TEXT_SECONDARY)
                             .size(11.0),
                     );
@@ -435,7 +423,7 @@ pub fn show(
                                     )
                                     .fill(theme::ACCENT_GREEN)
                                     .corner_radius(egui::CornerRadius::same(6))
-                                    .min_size(egui::vec2(120.0, 36.0)),
+                                    .min_size(egui::vec2(100.0, 32.0)),
                                 )
                                 .clicked()
                             {
@@ -459,6 +447,9 @@ pub fn show(
         }
 
         TxCartPhase::Preview => {
+            ui.separator();
+            ui.add_space(4.0);
+
             ui.label(
                 RichText::new(format!(
                     "{} transaction(s) to sign",
@@ -484,7 +475,7 @@ pub fn show(
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             RichText::new(format!(
-                                "\u{20B3} {:.2} fee",
+                                "{:.2} ADA fee",
                                 planned.fee as f64 / 1_000_000.0
                             ))
                             .color(theme::TEXT_MUTED)
@@ -494,7 +485,7 @@ pub fn show(
                 });
             }
 
-            ui.add_space(8.0);
+            ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
@@ -507,7 +498,7 @@ pub fn show(
                             )
                             .fill(theme::ACCENT_GREEN)
                             .corner_radius(egui::CornerRadius::same(6))
-                            .min_size(egui::vec2(140.0, 36.0)),
+                            .min_size(egui::vec2(120.0, 32.0)),
                         )
                         .clicked()
                     {
@@ -529,11 +520,15 @@ pub fn show(
         }
 
         TxCartPhase::Done => {
-            ui.vertical_centered(|ui| {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new("\u{2714} All transactions submitted")
+                    PhosphorIcon::CheckCircle.rich_text(16.0, theme::ACCENT_GREEN),
+                );
+                ui.label(
+                    RichText::new("All transactions submitted")
                         .color(theme::ACCENT_GREEN)
-                        .size(14.0)
+                        .size(13.0)
                         .strong(),
                 );
             });
