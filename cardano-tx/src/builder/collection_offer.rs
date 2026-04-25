@@ -589,6 +589,151 @@ fn build_co_metadata_multi(
 }
 
 // ---------------------------------------------------------------------------
+// Cancel CO TX builder
+// ---------------------------------------------------------------------------
+
+/// Script reference UTxO for the jpg.store CO contract (PlutusV2).
+const SCRIPT_REF_TX: &str = "9a32459bd4ef6bbafdeb8cf3b909d0e3e2ec806e4cc6268529280b0fc1d06f5b";
+const SCRIPT_REF_INDEX: u64 = 0;
+
+/// Cancel redeemer: Constructor(1, []) = d87a80
+/// (Verified from on-chain cancel TX a79712998e7e1bcf...)
+const CANCEL_REDEEMER_HEX: &str = "d87a80";
+
+/// Ex-units budget for cancel — generous defaults for evaluation pass.
+/// Real values come from Maestro evaluate in the second pass.
+const CANCEL_EX_UNITS_MEM: u64 = 2_000_000;
+const CANCEL_EX_UNITS_STEPS: u64 = 600_000_000;
+
+/// Parameters for cancelling a collection offer.
+#[derive(Debug, Clone)]
+pub struct CancelOfferRequest {
+    /// TX hash of the CO UTxO to cancel.
+    pub co_tx_hash: String,
+    /// Output index of the CO UTxO.
+    pub co_output_index: u64,
+    /// Lovelace locked in the CO.
+    pub co_lovelace: u64,
+    /// Owner's payment key hash (28 bytes hex).
+    pub owner_pkh: String,
+    /// Datum CBOR bytes (hex). Required for hash-datum COs to include in witness set.
+    pub datum_cbor_hex: Option<String>,
+    /// Script execution memory units. If None, uses default estimate.
+    pub ex_units_mem: Option<u64>,
+    /// Script execution CPU steps. If None, uses default estimate.
+    pub ex_units_steps: Option<u64>,
+}
+
+/// Build an unsigned cancel TX for a collection offer.
+///
+/// This is a Plutus spending TX that:
+/// - Spends the CO UTxO at the script address (with cancel redeemer)
+/// - Uses a script reference input (no inline script needed)
+/// - Requires the owner's signature (disclosed_signer)
+/// - Returns all ADA to the owner
+/// - Fee paid from a separate wallet UTxO (also used as collateral)
+pub fn build_cancel_offer_tx(
+    deps: &super::TxDeps,
+    req: &CancelOfferRequest,
+) -> Result<super::UnsignedTx, TxBuildError> {
+    use crate::builder::cost_models::PLUTUS_V2_COST_MODEL;
+    use crate::helpers::input::add_utxo_input;
+    use crate::helpers::output::create_ada_output;
+    use crate::helpers::utxo_query::is_simple_utxo;
+    use crate::selection;
+    use pallas_crypto::hash::Hash;
+    use pallas_txbuilder::{ExUnits, Input, ScriptKind, StagingTransaction};
+
+    let estimated_fee = selection::estimate_simple_fee(&deps.params);
+
+    // Select a wallet UTxO to pay the fee (also serves as collateral).
+    // No min-change overhead needed — the CO value covers the output min-UTxO,
+    // and any remaining fee UTxO value merges into the single output.
+    let spendable: Vec<_> = deps.utxos.iter().filter(|u| is_simple_utxo(u)).cloned().collect();
+    let fee_utxo = selection::select_utxo_for_amount(
+        &spendable,
+        0,
+        estimated_fee,
+    )?
+    .clone();
+
+    let fee_utxo_lovelace = fee_utxo.lovelace;
+    let from_address = deps.from_address.clone();
+    let network_id = deps.network_id;
+
+    // Parse hashes
+    let co_tx_bytes: [u8; 32] = hex::decode(&req.co_tx_hash)
+        .map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?
+        .try_into()
+        .map_err(|_| TxBuildError::InvalidHex("co tx hash must be 32 bytes".into()))?;
+
+    let script_ref_bytes: [u8; 32] = hex::decode(SCRIPT_REF_TX)
+        .map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?
+        .try_into()
+        .map_err(|_| TxBuildError::InvalidHex("script ref tx hash".into()))?;
+
+    let owner_pkh_bytes: [u8; 28] = hex_to_28_bytes(&req.owner_pkh)?;
+
+    let redeemer_bytes = hex::decode(CANCEL_REDEEMER_HEX)
+        .map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?;
+
+    let script_input = Input::new(Hash::from(co_tx_bytes), req.co_output_index);
+    let ref_input = Input::new(Hash::from(script_ref_bytes), SCRIPT_REF_INDEX);
+
+    let fee_tx_bytes: [u8; 32] = hex::decode(&fee_utxo.tx_hash)
+        .map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?
+        .try_into()
+        .map_err(|_| TxBuildError::InvalidHex("fee tx hash".into()))?;
+    let fee_input = Input::new(Hash::from(fee_tx_bytes), fee_utxo.output_index as u64);
+
+    let co_lovelace = req.co_lovelace;
+
+    // Total input: CO lovelace + fee UTxO lovelace
+    let total_input = co_lovelace + fee_utxo_lovelace;
+
+    super::converge_fee(
+        |fee| {
+            let output_value = total_input
+                .checked_sub(fee)
+                .ok_or(TxBuildError::InsufficientFunds {
+                    needed: fee,
+                    available: total_input,
+                })?;
+
+            let mut tx = StagingTransaction::new()
+                .input(script_input.clone())
+                .input(fee_input.clone())
+                .reference_input(ref_input.clone())
+                .add_spend_redeemer(
+                    script_input.clone(),
+                    redeemer_bytes.clone(),
+                    Some(ExUnits {
+                        mem: req.ex_units_mem.unwrap_or(CANCEL_EX_UNITS_MEM),
+                        steps: req.ex_units_steps.unwrap_or(CANCEL_EX_UNITS_STEPS),
+                    }),
+                )
+                .language_view(ScriptKind::PlutusV2, PLUTUS_V2_COST_MODEL.to_vec())
+                .disclosed_signer(Hash::from(owner_pkh_bytes))
+                .collateral_input(fee_input.clone());
+
+            // Include datum in witness set if provided (needed for hash-datum COs)
+            if let Some(ref hex) = req.datum_cbor_hex {
+                if let Ok(bytes) = hex::decode(hex) {
+                    tx = tx.datum(bytes);
+                }
+            }
+
+            // Single output: CO value + fee UTxO value - fee, all back to wallet
+            tx = tx.output(create_ada_output(from_address.clone(), output_value));
+
+            Ok(tx.fee(fee).network_id(network_id))
+        },
+        estimated_fee,
+        &deps.params,
+    )
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

@@ -634,3 +634,15 @@ impl Default for SmartContractRegistry {
         Self::new()
     }
 }
+
+/// Returns all known exact addresses and prefix patterns from the mainnet registry.
+///
+/// Used by tooling (e.g., block-tap-mcp) to expand `address_category` conditions
+/// into concrete address lists at bake time.
+pub fn all_known_addresses() -> Vec<&'static str> {
+    let mut addrs: Vec<&'static str> = ADDRESS_REGISTRY.keys().copied().collect();
+    for (prefix, _) in ADDRESS_PREFIX_REGISTRY {
+        addrs.push(prefix);
+    }
+    addrs
+}

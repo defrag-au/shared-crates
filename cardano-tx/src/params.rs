@@ -29,6 +29,13 @@ pub struct TxBuildParams {
     /// Script execution CPU step price as (numerator, denominator).
     /// Fee contribution per redeemer = step_units × numerator / denominator.
     pub price_step: Option<(u64, u64)>,
+    /// Cost per byte of reference scripts (Conway parameter `minFeeRefScriptCostPerByte`).
+    /// Added to the fee for each byte of script referenced via CIP-33 reference inputs.
+    /// Mainnet default: 15 lovelace/byte.
+    pub min_fee_ref_script_cost_per_byte: u64,
+    /// Total size in bytes of all scripts in reference inputs.
+    /// Set by the caller when building Plutus TXs with reference scripts.
+    pub ref_script_size: u64,
 }
 
 impl From<&maestro::ProtocolParameters> for TxBuildParams {
@@ -48,6 +55,8 @@ impl From<&maestro::ProtocolParameters> for TxBuildParams {
             max_value_size: 5000,
             price_mem,
             price_step,
+            min_fee_ref_script_cost_per_byte: 15,
+            ref_script_size: 0,
         }
     }
 }
