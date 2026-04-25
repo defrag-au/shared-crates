@@ -308,12 +308,34 @@ pub fn show(
                         }
 
                         // Status (if not pending)
-                        if !matches!(item.status, TxCartItemStatus::Pending) {
-                            ui.label(
-                                RichText::new(item.status.label())
-                                    .color(item.status.color())
-                                    .size(9.0),
-                            );
+                        match &item.status {
+                            TxCartItemStatus::Pending => {}
+                            TxCartItemStatus::Submitted { tx_hash } => {
+                                let short = if tx_hash.len() > 16 {
+                                    format!("{}...{}", &tx_hash[..8], &tx_hash[tx_hash.len() - 4..])
+                                } else {
+                                    tx_hash.clone()
+                                };
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        PhosphorIcon::CheckCircle
+                                            .rich_text(10.0, theme::ACCENT_GREEN),
+                                    );
+                                    ui.label(
+                                        RichText::new(short)
+                                            .color(theme::ACCENT_GREEN)
+                                            .size(9.0)
+                                            .monospace(),
+                                    );
+                                });
+                            }
+                            other => {
+                                ui.label(
+                                    RichText::new(other.label())
+                                        .color(other.color())
+                                        .size(9.0),
+                                );
+                            }
                         }
                     });
 
@@ -368,10 +390,16 @@ pub fn show(
                 egui::StrokeKind::Outside,
             );
 
-            // Error detail
+            // Error detail (truncated to first line)
             if let TxCartItemStatus::Error { message } = &item.status {
+                let short = message.lines().next().unwrap_or(message);
+                let short = if short.len() > 80 {
+                    format!("{}...", &short[..77])
+                } else {
+                    short.to_string()
+                };
                 ui.label(
-                    RichText::new(message)
+                    RichText::new(short)
                         .color(theme::ACCENT_RED)
                         .size(9.0),
                 );
@@ -535,17 +563,49 @@ pub fn show(
         }
 
         TxCartPhase::Error { message } => {
+            let short = message.lines().next().unwrap_or(message);
+            let short = if short.len() > 100 {
+                format!("{}...", &short[..97])
+            } else {
+                short.to_string()
+            };
             ui.label(
-                RichText::new(format!("Error: {message}"))
+                RichText::new(format!("Error: {short}"))
                     .color(theme::ACCENT_RED)
                     .size(11.0),
             );
             ui.add_space(4.0);
-            if state.pending_count() > 0 {
-                if ui.button("Retry").clicked() {
+            ui.horizontal(|ui| {
+                if ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new("Retry")
+                                .color(theme::TEXT_PRIMARY)
+                                .size(12.0),
+                        )
+                        .fill(theme::BG_SECONDARY)
+                        .corner_radius(egui::CornerRadius::same(6))
+                        .min_size(egui::vec2(80.0, 30.0)),
+                    )
+                    .clicked()
+                {
                     action = Some(TxCartAction::Execute);
                 }
-            }
+                ui.add_space(8.0);
+                if ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new("Clear")
+                                .color(theme::TEXT_MUTED)
+                                .size(12.0),
+                        )
+                        .frame(false),
+                    )
+                    .clicked()
+                {
+                    action = Some(TxCartAction::Clear);
+                }
+            });
         }
     }
 

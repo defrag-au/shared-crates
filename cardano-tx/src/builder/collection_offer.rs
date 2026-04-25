@@ -747,6 +747,134 @@ pub fn build_cancel_offer_tx(
 }
 
 // ---------------------------------------------------------------------------
+// Multi-cancel CO TX builder
+// ---------------------------------------------------------------------------
+
+/// Build an unsigned TX that cancels multiple COs in a single transaction.
+///
+/// Each CO becomes a script input with its own redeemer (all Constructor(1, [])).
+/// The TX uses a single reference input for the script, one collateral UTxO,
+/// one wallet input for fees, and returns all ADA to the owner in a single output.
+pub fn build_cancel_offers_tx(
+    deps: &super::TxDeps,
+    requests: &[CancelOfferRequest],
+) -> Result<super::UnsignedTx, TxBuildError> {
+    use crate::builder::cost_models::PLUTUS_V2_COST_MODEL;
+    use crate::helpers::output::create_ada_output;
+    use crate::helpers::utxo_query::is_simple_utxo;
+    use crate::selection;
+    use pallas_crypto::hash::Hash;
+    use pallas_txbuilder::{ExUnits, Input, ScriptKind, StagingTransaction};
+
+    if requests.is_empty() {
+        return Err(TxBuildError::BuildFailed("No cancel requests".into()));
+    }
+
+    let estimated_fee = selection::estimate_simple_fee(&deps.params);
+
+    // Select a wallet UTxO to pay the fee (also serves as collateral).
+    let spendable: Vec<_> = deps
+        .utxos
+        .iter()
+        .filter(|u| is_simple_utxo(u))
+        .cloned()
+        .collect();
+    let fee_utxo = selection::select_utxo_for_amount(&spendable, 0, estimated_fee)?.clone();
+
+    let fee_utxo_lovelace = fee_utxo.lovelace;
+    let from_address = deps.from_address.clone();
+    let network_id = deps.network_id;
+
+    // Parse common data
+    let script_ref_bytes: [u8; 32] = hex::decode(SCRIPT_REF_TX)
+        .map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?
+        .try_into()
+        .map_err(|_| TxBuildError::InvalidHex("script ref tx hash".into()))?;
+
+    let owner_pkh_bytes: [u8; 28] = hex_to_28_bytes(&requests[0].owner_pkh)?;
+
+    let redeemer_bytes = hex::decode(CANCEL_REDEEMER_HEX)
+        .map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?;
+
+    let ref_input = Input::new(Hash::from(script_ref_bytes), SCRIPT_REF_INDEX);
+
+    let fee_tx_bytes: [u8; 32] = hex::decode(&fee_utxo.tx_hash)
+        .map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?
+        .try_into()
+        .map_err(|_| TxBuildError::InvalidHex("fee tx hash".into()))?;
+    let fee_input = Input::new(Hash::from(fee_tx_bytes), fee_utxo.output_index as u64);
+
+    // Parse all CO inputs
+    let mut script_inputs: Vec<Input> = Vec::with_capacity(requests.len());
+    let mut datums: Vec<Vec<u8>> = Vec::new();
+    let mut total_co_lovelace: u64 = 0;
+
+    for req in requests {
+        let co_tx_bytes: [u8; 32] = hex::decode(&req.co_tx_hash)
+            .map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?
+            .try_into()
+            .map_err(|_| TxBuildError::InvalidHex("co tx hash must be 32 bytes".into()))?;
+
+        script_inputs.push(Input::new(Hash::from(co_tx_bytes), req.co_output_index));
+        total_co_lovelace += req.co_lovelace;
+
+        if let Some(ref hex) = req.datum_cbor_hex {
+            if let Ok(bytes) = hex::decode(hex) {
+                datums.push(bytes);
+            }
+        }
+    }
+
+    let total_input = total_co_lovelace + fee_utxo_lovelace;
+
+    super::converge_fee(
+        |fee| {
+            let output_value =
+                total_input
+                    .checked_sub(fee)
+                    .ok_or(TxBuildError::InsufficientFunds {
+                        needed: fee,
+                        available: total_input,
+                    })?;
+
+            let mut tx = StagingTransaction::new();
+
+            // Add all script inputs with their redeemers
+            for input in &script_inputs {
+                tx = tx.input(input.clone()).add_spend_redeemer(
+                    input.clone(),
+                    redeemer_bytes.clone(),
+                    Some(ExUnits {
+                        mem: requests[0].ex_units_mem.unwrap_or(CANCEL_EX_UNITS_MEM),
+                        steps: requests[0].ex_units_steps.unwrap_or(CANCEL_EX_UNITS_STEPS),
+                    }),
+                );
+            }
+
+            // Fee input + reference + collateral + signer
+            tx = tx
+                .input(fee_input.clone())
+                .reference_input(ref_input.clone())
+                .language_view(ScriptKind::PlutusV2, PLUTUS_V2_COST_MODEL.to_vec())
+                .disclosed_signer(Hash::from(owner_pkh_bytes))
+                .collateral_input(fee_input.clone());
+
+            // Include datums in witness set
+            for datum in &datums {
+                tx = tx.datum(datum.clone());
+            }
+
+            // Single output: all CO value + fee UTxO value - fee
+            tx = tx.output(create_ada_output(from_address.clone(), output_value));
+
+            Ok(tx.fee(fee).network_id(network_id))
+        },
+        estimated_fee,
+        &deps.params,
+    )
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
