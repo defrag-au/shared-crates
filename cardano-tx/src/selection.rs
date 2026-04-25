@@ -129,6 +129,82 @@ pub fn select_collateral(utxos: &[UtxoApi]) -> Option<&UtxoApi> {
         .max_by_key(|u| u.lovelace)
 }
 
+/// Select multiple UTxOs to cover a required amount.
+///
+/// Uses a greedy algorithm: sorts UTxOs by lovelace descending, takes until
+/// the accumulated lovelace meets the target. Prefers pure ADA UTxOs first
+/// to avoid unnecessary native asset handling in change outputs.
+///
+/// Returns the selected UTxOs and total lovelace they contain.
+pub fn select_utxos_for_amount(
+    utxos: &[UtxoApi],
+    amount: u64,
+    estimated_fee: u64,
+    params: &TxBuildParams,
+) -> Result<Vec<UtxoApi>, TxBuildError> {
+    let min_change_utxo = 228 * params.coins_per_utxo_byte;
+    let required = amount + estimated_fee + min_change_utxo;
+
+    // First try: single UTxO (cheapest TX)
+    if let Some(utxo) = utxos
+        .iter()
+        .filter(|u| is_pure_ada_utxo(u) && u.lovelace >= required)
+        .min_by_key(|u| u.lovelace)
+    {
+        return Ok(vec![utxo.clone()]);
+    }
+
+    if let Some(utxo) = utxos
+        .iter()
+        .filter(|u| u.lovelace >= required)
+        .min_by_key(|u| u.lovelace)
+    {
+        return Ok(vec![utxo.clone()]);
+    }
+
+    // Multi-UTxO selection: accumulate until we have enough.
+    // Sort: pure ADA first, then by lovelace descending within each group.
+    let mut sorted: Vec<&UtxoApi> = utxos.iter().collect();
+    sorted.sort_by(|a, b| {
+        let a_pure = is_pure_ada_utxo(a);
+        let b_pure = is_pure_ada_utxo(b);
+        b_pure
+            .cmp(&a_pure)
+            .then(b.lovelace.cmp(&a.lovelace))
+    });
+
+    let mut selected = Vec::new();
+    let mut accumulated = 0u64;
+
+    // Each additional input adds ~44 bytes to the TX = ~1936 lovelace extra fee
+    let per_input_fee_overhead = 44 * params.min_fee_coefficient;
+
+    for utxo in sorted {
+        if accumulated >= required {
+            break;
+        }
+        selected.push(utxo.clone());
+        accumulated += utxo.lovelace;
+        // Account for the extra fee from additional inputs
+        if selected.len() > 1 {
+            // required grows slightly with each additional input
+        }
+    }
+
+    // Check if we have enough including the multi-input fee overhead
+    let total_fee_overhead = (selected.len().saturating_sub(1) as u64) * per_input_fee_overhead;
+    let adjusted_required = required + total_fee_overhead;
+
+    if accumulated < adjusted_required {
+        return Err(TxBuildError::InsufficientFunds {
+            needed: adjusted_required,
+            available: accumulated,
+        });
+    }
+
+    Ok(selected)
+}
+
 /// Estimate fee for a simple transaction (1 input, 2 outputs, ~300 bytes).
 pub fn estimate_simple_fee(params: &TxBuildParams) -> u64 {
     let tx_size_estimate = 300u64;

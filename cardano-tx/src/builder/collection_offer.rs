@@ -7,6 +7,7 @@
 //! - creator royalty payout (from collection data, min 1 ADA)
 //! - NFT delivery to the buyer (any NFT from the target policy)
 
+use cardano_assets::UtxoApi;
 use pallas_addresses::{Address, Network, ShelleyAddress, ShelleyDelegationPart, ShelleyPaymentPart};
 use pallas_crypto::hash::Hash;
 use pallas_primitives::conway::PlutusData;
@@ -373,19 +374,16 @@ pub fn build_collection_offer_tx(
     let co = build_collection_offer(req)?;
     let estimated_fee = selection::estimate_simple_fee(&deps.params);
 
-    // Filter out UTxOs with datums/scripts — avoid spending CO UTxOs
-    let spendable: Vec<_> = deps.utxos.iter().filter(|u| is_simple_utxo(u)).cloned().collect();
-
-    let selected_utxo = selection::select_utxo_for_amount_prefer_pure_ada(
-        &spendable,
+    // Select UTxOs (multi-input if needed)
+    let selected_utxos = selection::select_utxos_for_amount(
+        &deps.utxos,
         co.total_lovelace,
         estimated_fee,
         &deps.params,
-    )?
-    .clone();
+    )?;
 
-    let input_amount = selected_utxo.lovelace;
-    let has_native_assets = !selected_utxo.assets.is_empty();
+    let input_amount: u64 = selected_utxos.iter().map(|u| u.lovelace).sum();
+    let has_native_assets = selected_utxos.iter().any(|u| !u.assets.is_empty());
     let from_address = deps.from_address.clone();
     let network_id = deps.network_id;
 
@@ -406,7 +404,12 @@ pub fn build_collection_offer_tx(
                     available: input_amount,
                 })?;
 
-            let mut tx = add_utxo_input(StagingTransaction::new(), &selected_utxo)?;
+            let mut tx = StagingTransaction::new();
+
+            // Add all selected inputs
+            for utxo in &selected_utxos {
+                tx = add_utxo_input(tx, utxo)?;
+            }
 
             // CO output: ADA to V2 script address with datum hash
             let script_output = create_ada_output(co.script_address.clone(), co.total_lovelace)
@@ -419,10 +422,11 @@ pub fn build_collection_offer_tx(
             // Change output (preserves native assets if present)
             if change > 0 {
                 if has_native_assets {
+                    let input_refs: Vec<&UtxoApi> = selected_utxos.iter().collect();
                     let change_output = build_change_output(
                         from_address.clone(),
                         change,
-                        &[&selected_utxo],
+                        &input_refs,
                         None,
                     )?;
                     tx = tx.output(change_output);
@@ -468,19 +472,16 @@ pub fn build_collection_offers_tx(
     let total_lovelace: u64 = offers.iter().map(|o| o.total_lovelace).sum();
     let estimated_fee = selection::estimate_simple_fee(&deps.params);
 
-    // Filter out UTxOs with datums/scripts — avoid spending CO UTxOs
-    let spendable: Vec<_> = deps.utxos.iter().filter(|u| is_simple_utxo(u)).cloned().collect();
-
-    let selected_utxo = selection::select_utxo_for_amount_prefer_pure_ada(
-        &spendable,
+    // Select UTxOs (multi-input if needed)
+    let selected_utxos = selection::select_utxos_for_amount(
+        &deps.utxos,
         total_lovelace,
         estimated_fee,
         &deps.params,
-    )?
-    .clone();
+    )?;
 
-    let input_amount = selected_utxo.lovelace;
-    let has_native_assets = !selected_utxo.assets.is_empty();
+    let input_amount: u64 = selected_utxos.iter().map(|u| u.lovelace).sum();
+    let has_native_assets = selected_utxos.iter().any(|u| !u.assets.is_empty());
     let from_address = deps.from_address.clone();
     let network_id = deps.network_id;
 
@@ -508,7 +509,12 @@ pub fn build_collection_offers_tx(
                     available: input_amount,
                 })?;
 
-            let mut tx = add_utxo_input(StagingTransaction::new(), &selected_utxo)?;
+            let mut tx = StagingTransaction::new();
+
+            // Add all selected inputs
+            for utxo in &selected_utxos {
+                tx = add_utxo_input(tx, utxo)?;
+            }
 
             // One output per CO
             for (i, offer) in offers.iter().enumerate() {
@@ -524,10 +530,11 @@ pub fn build_collection_offers_tx(
             // Change output
             if change > 0 {
                 if has_native_assets {
+                    let input_refs: Vec<&UtxoApi> = selected_utxos.iter().collect();
                     let change_output = build_change_output(
                         from_address.clone(),
                         change,
-                        &[&selected_utxo],
+                        &input_refs,
                         None,
                     )?;
                     tx = tx.output(change_output);
