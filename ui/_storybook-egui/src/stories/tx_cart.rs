@@ -1,6 +1,8 @@
 //! Storybook demo for the TxCart widget.
 
-use egui_widgets::tx_cart::{self, TxCartConfig, TxCartItem, TxCartItemStatus, TxCartPhase, TxCartPlannedTx, TxCartState};
+use egui_widgets::tx_cart::{
+    self, TxCartConfig, TxCartItem, TxCartItemStatus, TxCartPhase, TxCartPlannedTx, TxCartState,
+};
 
 use crate::{ACCENT, TEXT_MUTED};
 
@@ -15,23 +17,35 @@ impl Default for TxCartStoryState {
         cart.items = vec![
             TxCartItem {
                 id: "1".into(),
-                label: "Cancel Helmies CO".into(),
-                detail: "5 ADA".into(),
+                label: "Helmies".into(),
+                policy_id: "a5425bd7bc4182325188af2340415827a73f845846c165d9e14c5aed".into(),
                 provider: "jpg.store".into(),
+                action_label: "Cancel coll. offers".into(),
+                quantity: 1,
+                ada_per_item: 5.0,
+                image_url: None,
                 status: TxCartItemStatus::Pending,
             },
             TxCartItem {
                 id: "2".into(),
-                label: "Cancel Helmies CO".into(),
-                detail: "5 ADA".into(),
+                label: "Helmies".into(),
+                policy_id: "a5425bd7bc4182325188af2340415827a73f845846c165d9e14c5aed".into(),
                 provider: "jpg.store".into(),
+                action_label: "Cancel coll. offers".into(),
+                quantity: 1,
+                ada_per_item: 5.0,
+                image_url: None,
                 status: TxCartItemStatus::Pending,
             },
             TxCartItem {
                 id: "3".into(),
-                label: "Create SpaceBudz CO".into(),
-                detail: "50 ADA x 3".into(),
+                label: "SpaceBudz".into(),
+                policy_id: "d5e6bf0500378d4f0da4e8dde6becec7621cd8cbf5cbb9b87013d4cc".into(),
                 provider: "jpg.store".into(),
+                action_label: "Create coll. offers".into(),
+                quantity: 3,
+                ada_per_item: 50.0,
+                image_url: None,
                 status: TxCartItemStatus::Pending,
             },
         ];
@@ -51,7 +65,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCartStoryState) {
     ui.label(
         egui::RichText::new(
             "Batched transaction cart with sequential signing. Groups actions by \
-             provider and type, shows per-item status during execution.",
+             type, shows per-item status during execution.",
         )
         .color(TEXT_MUTED)
         .size(11.0),
@@ -62,20 +76,29 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCartStoryState) {
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Phase:").color(TEXT_MUTED).size(10.0));
 
-        if ui.selectable_label(state.cart.phase == TxCartPhase::Editing, "Editing").clicked() {
+        if ui
+            .selectable_label(state.cart.phase == TxCartPhase::Editing, "Editing")
+            .clicked()
+        {
             state.cart.phase = TxCartPhase::Editing;
             for item in &mut state.cart.items {
                 item.status = TxCartItemStatus::Pending;
             }
             state.cart.planned_txs.clear();
         }
-        if ui.selectable_label(state.cart.phase == TxCartPhase::Building, "Building").clicked() {
+        if ui
+            .selectable_label(state.cart.phase == TxCartPhase::Building, "Building")
+            .clicked()
+        {
             state.cart.phase = TxCartPhase::Building;
             for item in &mut state.cart.items {
                 item.status = TxCartItemStatus::Building;
             }
         }
-        if ui.selectable_label(state.cart.phase == TxCartPhase::Preview, "Preview").clicked() {
+        if ui
+            .selectable_label(state.cart.phase == TxCartPhase::Preview, "Preview")
+            .clicked()
+        {
             state.cart.phase = TxCartPhase::Preview;
             state.cart.planned_txs = vec![
                 TxCartPlannedTx {
@@ -114,7 +137,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCartStoryState) {
             };
             state.cart.items[2].status = TxCartItemStatus::Signing;
         }
-        if ui.selectable_label(state.cart.phase == TxCartPhase::Done, "Done").clicked() {
+        if ui
+            .selectable_label(state.cart.phase == TxCartPhase::Done, "Done")
+            .clicked()
+        {
             state.cart.phase = TxCartPhase::Done;
             for item in &mut state.cart.items {
                 item.status = TxCartItemStatus::Submitted {
