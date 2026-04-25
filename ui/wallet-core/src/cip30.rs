@@ -98,6 +98,21 @@ export function extractKey(dataSignature) {
     return dataSignature.key || null;
 }
 
+export async function signTxs(api, txHexArray, partialSign) {
+    // Sequential signing — sign one TX at a time.
+    // Batch signTxs (Eternl extension) is available but the API format
+    // is not yet stable, so we use reliable sequential signing for now.
+    const results = [];
+    for (const hex of txHexArray) {
+        results.push(await api.signTx(hex, partialSign));
+    }
+    return results;
+}
+
+export function hasSignTxs(api) {
+    return typeof api.signTxs === 'function';
+}
+
 export async function submitTx(api, txHex) {
     return await api.submitTx(txHex);
 }
@@ -159,6 +174,16 @@ extern "C" {
 
     #[wasm_bindgen(js_name = extractKey)]
     pub fn extract_key_js(data_signature: &JsValue) -> JsValue;
+
+    #[wasm_bindgen(js_name = signTxs, catch)]
+    pub async fn sign_txs_js(
+        api: &JsValue,
+        tx_hex_array: &JsValue,
+        partial_sign: bool,
+    ) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(js_name = hasSignTxs)]
+    pub fn has_sign_txs_js(api: &JsValue) -> bool;
 
     #[wasm_bindgen(js_name = submitTx, catch)]
     pub async fn submit_tx_js(api: &JsValue, tx_hex: &str) -> Result<JsValue, JsValue>;
@@ -274,6 +299,38 @@ impl WalletApi {
         result
             .as_string()
             .ok_or_else(|| WalletError::SigningFailed("Invalid signature response".into()))
+    }
+
+    /// Check if the wallet supports batch signing (signTxs extension).
+    pub fn has_sign_txs(&self) -> bool {
+        has_sign_txs_js(&self.api)
+    }
+
+    /// Sign multiple transactions at once.
+    ///
+    /// If the wallet supports `signTxs` (e.g. Eternl), all TXs are presented
+    /// in a single signing dialog. Otherwise falls back to sequential `signTx`.
+    /// Returns witness set hex strings in the same order as the input.
+    pub async fn sign_txs(
+        &self,
+        tx_hexes: &[String],
+        partial_sign: bool,
+    ) -> Result<Vec<String>, WalletError> {
+        let array = js_sys::Array::new();
+        for hex in tx_hexes {
+            array.push(&JsValue::from_str(hex));
+        }
+
+        let result = sign_txs_js(&self.api, &array, partial_sign).await?;
+        let result_array = js_sys::Array::from(&result);
+        let mut witnesses = Vec::with_capacity(tx_hexes.len());
+        for val in result_array.iter() {
+            let hex = val
+                .as_string()
+                .ok_or_else(|| WalletError::SigningFailed("Invalid witness in batch response".into()))?;
+            witnesses.push(hex);
+        }
+        Ok(witnesses)
     }
 
     /// Sign arbitrary data (CIP-8)

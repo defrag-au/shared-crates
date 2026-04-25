@@ -175,6 +175,8 @@ pub enum TxCartAction {
     Execute,
     /// Sign and submit a specific planned TX.
     SignTx(usize),
+    /// Go back to editing (from Preview).
+    BackToEditing,
     /// Clear the cart.
     Clear,
 }
@@ -444,7 +446,7 @@ pub fn show(
                             if ui
                                 .add(
                                     egui::Button::new(
-                                        RichText::new("Submit")
+                                        RichText::new("Prepare")
                                             .color(theme::BG_PRIMARY)
                                             .size(13.0)
                                             .strong(),
@@ -515,6 +517,20 @@ pub fn show(
 
             ui.add_space(6.0);
             ui.horizontal(|ui| {
+                if ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new("< Edit")
+                                .color(theme::TEXT_MUTED)
+                                .size(11.0),
+                        )
+                        .frame(false),
+                    )
+                    .clicked()
+                {
+                    action = Some(TxCartAction::BackToEditing);
+                }
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
                         .add(
@@ -548,6 +564,7 @@ pub fn show(
         }
 
         TxCartPhase::Done => {
+            ui.separator();
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.label(
@@ -559,6 +576,23 @@ pub fn show(
                         .size(13.0)
                         .strong(),
                 );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                RichText::new("Clear")
+                                    .color(theme::TEXT_PRIMARY)
+                                    .size(12.0),
+                            )
+                            .fill(theme::BG_SECONDARY)
+                            .corner_radius(egui::CornerRadius::same(6))
+                            .min_size(egui::vec2(70.0, 28.0)),
+                        )
+                        .clicked()
+                    {
+                        action = Some(TxCartAction::Clear);
+                    }
+                });
             });
         }
 
