@@ -719,12 +719,18 @@ pub enum VestStyle {
     CrowdLock,
 }
 
+impl VestStyle {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            VestStyle::Shield => "shield",
+            VestStyle::CrowdLock => "crowdlock",
+        }
+    }
+}
+
 impl std::fmt::Display for VestStyle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            VestStyle::Shield => write!(f, "shield"),
-            VestStyle::CrowdLock => write!(f, "crowdlock"),
-        }
+        f.write_str(self.as_str())
     }
 }
 
@@ -1607,7 +1613,7 @@ impl TxClassifier {
     /// Create a classifier from environment variables using the default ecosystem registry.
     pub async fn from_env(
         env: &worker::Env,
-        network: &ChainNetwork,
+        network: &str,
         registry: Box<dyn AddressLookup>,
     ) -> Result<Self, TxClassifierError> {
         let indexer_pool = IndexerPool::from_env(env, network).await?;

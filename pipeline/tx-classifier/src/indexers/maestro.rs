@@ -11,7 +11,7 @@ pub async fn get_tx_from_maestro(
     debug!("Fetching from Maestro: {}", tx_hash);
 
     // Use the complete transaction endpoint if available (transactions feature)
-    #[cfg(feature = "transactions")]
+    #[cfg(feature = "indexers")]
     {
         match maestro.get_complete_transaction(tx_hash).await {
             Ok(complete_tx) => {

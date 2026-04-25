@@ -1,6 +1,5 @@
 use crate::TxClassifierError;
 use pallas_addresses::Address;
-use shared_types::ChainNetwork;
 use tracing::{info, warn};
 use worker::Env;
 
@@ -43,8 +42,8 @@ fn try_is_script_address(addr: &str) -> Result<bool, Box<dyn std::error::Error>>
 
 impl IndexerPool {
     /// Create indexer pool from environment
-    pub async fn from_env(env: &Env, network: &ChainNetwork) -> Result<Self, TxClassifierError> {
-        let maestro = maestro::MaestroApi::for_env_with_network(env, &network.as_str())
+    pub async fn from_env(env: &Env, network: &str) -> Result<Self, TxClassifierError> {
+        let maestro = maestro::MaestroApi::for_env_with_network(env, network)
             .await
             .map_err(|e| {
                 TxClassifierError::ClassificationFailed(format!(
