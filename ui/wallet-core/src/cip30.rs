@@ -99,9 +99,24 @@ export function extractKey(dataSignature) {
 }
 
 export async function signTxs(api, txHexArray, partialSign) {
-    // Sequential signing — sign one TX at a time.
-    // Batch signTxs (Eternl extension) is available but the API format
-    // is not yet stable, so we use reliable sequential signing for now.
+    // CIP-103: Bulk transaction signing with chaining support.
+    // Format: [{cbor: string, partialSign: bool}, ...]
+    // The wallet processes TXs in order, allowing chained inputs.
+    // Eternl: api.experimental.signTxs()  |  Typhon: api.signTxs()
+    const signTxsFn = api.experimental?.signTxs ?? api.signTxs;
+    if (typeof signTxsFn === 'function') {
+        try {
+            const requests = txHexArray.map(hex => ({ cbor: hex, partialSign: partialSign }));
+            const result = await signTxsFn.call(api.experimental ?? api, requests);
+            if (Array.isArray(result) && result.length === txHexArray.length) {
+                console.log('CIP-103 signTxs: signed', result.length, 'TXs');
+                return result;
+            }
+        } catch (e) {
+            console.warn('CIP-103 signTxs failed, falling back to sequential:', e);
+        }
+    }
+    // Fallback: sign one at a time (no chaining support)
     const results = [];
     for (const hex of txHexArray) {
         results.push(await api.signTx(hex, partialSign));
@@ -110,7 +125,7 @@ export async function signTxs(api, txHexArray, partialSign) {
 }
 
 export function hasSignTxs(api) {
-    return typeof api.signTxs === 'function';
+    return typeof (api.experimental?.signTxs ?? api.signTxs) === 'function';
 }
 
 export async function submitTx(api, txHex) {
