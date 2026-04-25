@@ -64,6 +64,8 @@ mod app {
         FileUpload,
         // Media
         ImageTextEditor,
+        // TX Cart
+        TxCart,
     }
 
     impl Story {
@@ -116,6 +118,8 @@ mod app {
                 Self::FileUpload,
                 // Media
                 Self::ImageTextEditor,
+                // TX Cart
+                Self::TxCart,
             ]
         }
 
@@ -164,6 +168,7 @@ mod app {
                 Self::DataTable => "Data Table",
                 Self::FileUpload => "File Upload",
                 Self::ImageTextEditor => "Image Text Editor",
+                Self::TxCart => "TX Cart",
             }
         }
 
@@ -209,6 +214,7 @@ mod app {
                 Self::ExposureBar | Self::DataTable => "Loan Dashboard",
                 Self::FileUpload => "Utility",
                 Self::ImageTextEditor => "Media",
+                Self::TxCart => "TX Cart",
             }
         }
 
@@ -323,6 +329,9 @@ mod app {
                 Self::ImageTextEditor => {
                     "Drag-to-position text overlays on images with font size, color, and outline controls. Flattens to final composite."
                 }
+                Self::TxCart => {
+                    "Batched transaction cart with per-item status, phase state machine, and sequential signing flow"
+                }
             }
         }
     }
@@ -394,6 +403,8 @@ mod app {
         // Utility
         file_upload_state: stories::file_upload::FileUploadState,
         image_text_editor_state: stories::image_text_editor::ImageTextEditorState,
+        // TX Cart
+        tx_cart_state: stories::tx_cart::TxCartStoryState,
     }
 
     impl StorybookApp {
@@ -468,6 +479,7 @@ mod app {
                 file_upload_state: stories::file_upload::FileUploadState::default(),
                 image_text_editor_state: stories::image_text_editor::ImageTextEditorState::default(
                 ),
+                tx_cart_state: stories::tx_cart::TxCartStoryState::default(),
             }
         }
 
@@ -660,6 +672,9 @@ mod app {
                                 ui,
                                 &mut self.image_text_editor_state,
                             ),
+                            Story::TxCart => {
+                                stories::tx_cart::show(ui, &mut self.tx_cart_state)
+                            }
                         }
                     });
                 });
