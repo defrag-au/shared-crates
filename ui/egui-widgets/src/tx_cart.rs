@@ -50,6 +50,8 @@ pub enum TxCartItemStatus {
     Pending,
     Building,
     Signing,
+    Signed,
+    Submitting,
     Submitted { tx_hash: String },
     Error { message: String },
 }
@@ -60,6 +62,8 @@ impl TxCartItemStatus {
             TxCartItemStatus::Pending => "Pending",
             TxCartItemStatus::Building => "Building...",
             TxCartItemStatus::Signing => "Signing...",
+            TxCartItemStatus::Signed => "Signed",
+            TxCartItemStatus::Submitting => "Submitting...",
             TxCartItemStatus::Submitted { .. } => "Submitted",
             TxCartItemStatus::Error { .. } => "Error",
         }
@@ -70,6 +74,8 @@ impl TxCartItemStatus {
             TxCartItemStatus::Pending => theme::TEXT_MUTED,
             TxCartItemStatus::Building => theme::ACCENT_CYAN,
             TxCartItemStatus::Signing => theme::ACCENT_CYAN,
+            TxCartItemStatus::Signed => theme::ACCENT_GREEN,
+            TxCartItemStatus::Submitting => theme::ACCENT_CYAN,
             TxCartItemStatus::Submitted { .. } => theme::ACCENT_GREEN,
             TxCartItemStatus::Error { .. } => theme::ACCENT_RED,
         }
@@ -555,8 +561,18 @@ pub fn show(
         TxCartPhase::Executing { total, completed } => {
             ui.horizontal(|ui| {
                 ui.spinner();
+                let label = if *completed == 0
+                    && state
+                        .items
+                        .iter()
+                        .all(|i| matches!(i.status, TxCartItemStatus::Signing))
+                {
+                    "Waiting for wallet...".to_string()
+                } else {
+                    format!("Submitting {completed}/{total}...")
+                };
                 ui.label(
-                    RichText::new(format!("Signing {completed}/{total}..."))
+                    RichText::new(label)
                         .color(theme::ACCENT_CYAN)
                         .size(12.0),
                 );

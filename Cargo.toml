@@ -145,5 +145,10 @@ wallet-pallas = { path = "ui/wallet-pallas" }
 tx_insights = { path = "tx-insights" }
 test_utils = { path = "test-utils" }
 pipeline-types = { path = "pipeline/pipeline-types" }
+transactions = { path = "pipeline/transactions" }
+tx-classifier = { path = "pipeline/tx-classifier" }
 oura-decoder = { path = "pipeline/oura-decoder" }
 datum-parsing = { path = "pipeline/datum-parsing" }
+maestro = { path = "indexers/maestro" }
+http-client = { path = "http-client" }
+wasm_safe_serde = { path = "wasm-safe-serde" }

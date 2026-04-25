@@ -1158,6 +1158,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
 
 [[package]]
+name = "dotenvy"
+version = "0.15.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
+
+[[package]]
 name = "downcast-rs"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5867,6 +5873,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "transactions"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "pallas-codec",
+ "pallas-primitives",
+ "pipeline-types",
+ "serde",
+ "serde_json",
+ "test_utils",
+ "tokio",
+ "wasm_safe_serde",
+]
+
+[[package]]
 name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5908,6 +5929,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49f8d106028ede53708526364b03318bbf846babe146e3ff9e39821a0ca25ff4"
 dependencies = [
  "twilight-model",
+]
+
+[[package]]
+name = "tx-classifier"
+version = "0.1.0"
+dependencies = [
+ "address-registry",
+ "base64 0.22.1",
+ "cardano-assets",
+ "datum-parsing",
+ "dotenvy",
+ "hex",
+ "maestro",
+ "once_cell",
+ "pallas-addresses",
+ "pallas-codec",
+ "pallas-crypto",
+ "pallas-primitives",
+ "phf",
+ "pipeline-types",
+ "serde",
+ "serde_json",
+ "sha2",
+ "test_utils",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "transactions",
+ "tx_insights",
+ "worker",
 ]
 
 [[package]]
