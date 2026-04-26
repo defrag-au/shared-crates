@@ -181,8 +181,8 @@ fn execution_fee_from_redeemers(
         if let Some(eu) = opt_eu {
             // Use u128 to avoid overflow on large execution units
             // Ceil each division to ensure we never underpay
-            let mem_cost = ((eu.mem as u128) * (mem_num as u128) + (mem_den as u128) - 1) / (mem_den as u128);
-            let step_cost = ((eu.steps as u128) * (step_num as u128) + (step_den as u128) - 1) / (step_den as u128);
+            let mem_cost = ((eu.mem as u128) * (mem_num as u128)).div_ceil(mem_den as u128);
+            let step_cost = ((eu.steps as u128) * (step_num as u128)).div_ceil(step_den as u128);
             total += mem_cost + step_cost;
         }
     }

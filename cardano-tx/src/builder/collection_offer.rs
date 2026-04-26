@@ -366,7 +366,7 @@ pub fn build_collection_offer_tx(
 ) -> Result<super::UnsignedTx, TxBuildError> {
     use crate::helpers::input::add_utxo_input;
     use crate::helpers::output::{build_change_output, create_ada_output};
-    use crate::helpers::utxo_query::is_simple_utxo;
+    
     use crate::selection;
     use pallas_crypto::hash::Hasher;
     use pallas_txbuilder::StagingTransaction;
@@ -454,7 +454,7 @@ pub fn build_collection_offers_tx(
 ) -> Result<super::UnsignedTx, TxBuildError> {
     use crate::helpers::input::add_utxo_input;
     use crate::helpers::output::{build_change_output, create_ada_output};
-    use crate::helpers::utxo_query::is_simple_utxo;
+    
     use crate::selection;
     use pallas_crypto::hash::Hasher;
     use pallas_txbuilder::StagingTransaction;
@@ -650,7 +650,7 @@ pub fn build_cancel_offer_tx(
     req: &CancelOfferRequest,
 ) -> Result<super::UnsignedTx, TxBuildError> {
     use crate::builder::cost_models::PLUTUS_V2_COST_MODEL;
-    use crate::helpers::input::add_utxo_input;
+    
     use crate::helpers::output::create_ada_output;
     use crate::helpers::utxo_query::is_simple_utxo;
     use crate::selection;

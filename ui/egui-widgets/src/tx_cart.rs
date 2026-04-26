@@ -251,8 +251,8 @@ pub fn show(
                     .strong(),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if matches!(state.phase, TxCartPhase::Editing) {
-                    if ui
+                if matches!(state.phase, TxCartPhase::Editing)
+                    && ui
                         .add(
                             egui::Button::new(
                                 RichText::new("Clear")
@@ -265,7 +265,6 @@ pub fn show(
                     {
                         action = Some(TxCartAction::Clear);
                     }
-                }
                 ui.label(
                     RichText::new(format!("{:.0} ADA", group_total))
                         .color(theme::ACCENT_RED)
