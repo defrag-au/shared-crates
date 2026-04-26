@@ -1,0 +1,319 @@
+{
+  "auxiliary": {
+    "metadata": [
+      {
+        "label": "721",
+        "value": {
+          "map": {
+            "pairs": [
+              {
+                "key": {
+                  "text": "8972aab912aed2cf44b65916e206324c6bdcb6fbd3dc4eb634fdbd28"
+                },
+                "value": {
+                  "map": {
+                    "pairs": [
+                      {
+                        "key": { "text": "UG1864" },
+                        "value": {
+                          "map": {
+                            "pairs": [
+                              {
+                                "key": { "text": "collection" },
+                                "value": { "text": "UGs by Squashua 2024" }
+                              },
+                              {
+                                "key": { "text": "files" },
+                                "value": {
+                                  "array": {
+                                    "items": [
+                                      {
+                                        "map": {
+                                          "pairs": [
+                                            {
+                                              "key": { "text": "mediaType" },
+                                              "value": { "text": "image/webp" }
+                                            },
+                                            {
+                                              "key": { "text": "name" },
+                                              "value": {
+                                                "text": "Ugforce Twizzledrizzle"
+                                              }
+                                            },
+                                            {
+                                              "key": { "text": "src" },
+                                              "value": {
+                                                "text": "ipfs://QmXXUGWRt1g9EdrL1yxJUY2tYRkDrFLn1pJFj3HAtCfGBh"
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "key": { "text": "image" },
+                                "value": {
+                                  "text": "ipfs://QmXXUGWRt1g9EdrL1yxJUY2tYRkDrFLn1pJFj3HAtCfGBh"
+                                }
+                              },
+                              {
+                                "key": { "text": "mediaType" },
+                                "value": { "text": "image/webp" }
+                              },
+                              {
+                                "key": { "text": "name" },
+                                "value": { "text": "Ugforce Twizzledrizzle" }
+                              },
+                              {
+                                "key": { "text": "traits" },
+                                "value": {
+                                  "array": {
+                                    "items": [
+                                      {
+                                        "map": {
+                                          "pairs": [
+                                            {
+                                              "key": { "text": "Background" },
+                                              "value": {
+                                                "text": "Concentric Past"
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      {
+                                        "map": {
+                                          "pairs": [
+                                            {
+                                              "key": { "text": "Skin" },
+                                              "value": { "text": "Tree" }
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      {
+                                        "map": {
+                                          "pairs": [
+                                            {
+                                              "key": { "text": "Mouth" },
+                                              "value": { "text": "Mmm Blood" }
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      {
+                                        "map": {
+                                          "pairs": [
+                                            {
+                                              "key": { "text": "Eyenose" },
+                                              "value": { "text": "Wondering" }
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "collateral": {},
+  "fee": "263445",
+  "hash": "PN+cxmVh7RSCCY467i0te++ZEmdzkfFv/DPiaSmv0Co=",
+  "inputs": [
+    {
+      "outputIndex": 5,
+      "txHash": "KSTbntbfFEJPXQUtc+G6wEfPlBujYs1SzTkihAnTB5M="
+    },
+    { "txHash": "NoVqnL6sNkvBq5DDQ8Qx1edNEfI5a85Cp7MP1qbFNU8=" },
+    { "txHash": "PO+P5hAMgtD16NP2JeMxxM7BhFsjFWiXVFzW2DjJ51I=" },
+    {
+      "outputIndex": 7,
+      "txHash": "VDTRFIlSmpKHtQJ26MWS7qz1E7GEOLMdKOdA4ywPnWk="
+    },
+    {
+      "outputIndex": 5,
+      "txHash": "Yo6gv+vT+K2PSKINzmivDhc7ntBIF6huCIl+KwUkMFs="
+    },
+    {
+      "outputIndex": 5,
+      "txHash": "ZFT+Dtt930yqUL10qmy3vxBBBUujrBOG+lIxEOPuUEU="
+    },
+    {
+      "outputIndex": 2,
+      "txHash": "fNxhcoDUDncmC6L+hz5tXDkBfxS4MyS0ZxnWdN7/swc="
+    },
+    {
+      "outputIndex": 3,
+      "txHash": "jOnnkKi2stOv3isDDePU+JcPDy6h7VR31fGbMPY+Pkg="
+    },
+    { "txHash": "ohb8ZqXEOpzosNw7hYM3kTHOp7RZq+E4CZnUhGzFcBk=" },
+    {
+      "outputIndex": 5,
+      "txHash": "plAGIzAaHPaEzMoFFyvSFjCu+srqw/I7taM4nZ6HGBk="
+    },
+    { "txHash": "vxhYoctiXMQjUdlDWaOse10jr0fclizkZZSC3JYTLVo=" },
+    {
+      "outputIndex": 2,
+      "txHash": "6oVPs5WpB14I1MgmfBK8jKkKR/9ojxZ+n/sotH9uipI="
+    },
+    { "txHash": "+kkIc/X/puo7p6xDMpRFRDCNpYNlCY4RFtJIZfdShNE=" }
+  ],
+  "mint": [
+    {
+      "assets": [{ "mintCoin": "1", "name": "VUcxODY0" }],
+      "policyId": "iXKquRKu0s9EtlkW4gYyTGvctvvT3E62NP29KA=="
+    }
+  ],
+  "outputs": [
+    {
+      "address": "Acwuo7Mcb+KC4oMnqW+eNUDOzCeM2aw+wky4kVlQDdUXLjbzwdMFsS7aAAwJNuz7H65btWk4FCWH",
+      "coin": "13500000",
+      "datum": {}
+    },
+    {
+      "address": "AYDVaXgBZNNgmPS6FwtwkLu1VwUaLaX2LoBlseIImlaxmosCENgeOuwFFoBzAbXR80eTI+0U5bqR",
+      "coin": "1500000",
+      "datum": {}
+    },
+    {
+      "address": "AXHk1dnWJdOBn8aiTGQl8ZpsMpqPA5d4jJBDTL/1SMo7xK0KNi+qNZyYZIZ9vqlZG44X0TBmU52c",
+      "assets": [
+        {
+          "assets": [
+            { "name": "SE9IX0RPVERfMTA1Mg==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMTA5Mg==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMTE3Mg==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMTIyNg==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMTcyNg==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMTkyNg==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMTk0Mw==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMjk0Nw==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMjk0OA==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMjk3Mg==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMjk3NQ==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMzEyMg==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMzIwMA==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMzM0Ng==", "outputCoin": "1" },
+            { "name": "SE9IX0RPVERfMzM1OA==", "outputCoin": "1" }
+          ],
+          "policyId": "BibTMe35eH40J0+u3V5J2TugCxbj95X++TT8LA=="
+        },
+        {
+          "assets": [
+            { "name": "AA3hQEJhYnlTbmVrbGV0NTg4MQ==", "outputCoin": "1" },
+            { "name": "AA3hQEJhYnlTbmVrbGV0NjM2OQ==", "outputCoin": "1" }
+          ],
+          "policyId": "Dw3JVqoL9/31E6ZY8wV1XNoJyidXmtZFlGaiXQ=="
+        },
+        {
+          "assets": [
+            { "name": "VGhlIEFuY2VzdG9yICM1ODU=", "outputCoin": "1" },
+            { "name": "VGhlIEFuY2VzdG9yICM2NzQ=", "outputCoin": "1" },
+            { "name": "VGhlIEFuY2VzdG9yICMxMTAw", "outputCoin": "1" }
+          ],
+          "policyId": "OWbPHJSBCeNPLFqflnBEXMyFAI5bim5n+RO0kQ=="
+        },
+        {
+          "assets": [
+            { "name": "AA3hQEZyb2dfMTMzNA==", "outputCoin": "1" },
+            { "name": "AA3hQEZyb2dfMTQ1MA==", "outputCoin": "1" },
+            { "name": "AA3hQEZyb2dfMzg5Ng==", "outputCoin": "1" },
+            { "name": "AA3hQEZyb2dfMzk5Mg==", "outputCoin": "1" }
+          ],
+          "policyId": "PPhImxLe2TRnCL7SYzB7NizoE2Nvkr3f1G4C7A=="
+        },
+        {
+          "assets": [
+            {
+              "name": "RW50ZXJ0YWluZXJPYWtseW5uSGF1a2xhbmQ=",
+              "outputCoin": "1"
+            }
+          ],
+          "policyId": "UympuHRZ4d+Ohs5WuuSzdwhiwJaQEeb69HS2Xw=="
+        },
+        {
+          "assets": [{ "name": "VUcxODY0", "outputCoin": "1" }],
+          "policyId": "iXKquRKu0s9EtlkW4gYyTGvctvvT3E62NP29KA=="
+        },
+        {
+          "assets": [{ "name": "QkFCWURVWDM1MDY=", "outputCoin": "1" }],
+          "policyId": "3lPpNdJy3QefPnhe4POqIdtVedU5mjtdDONIXA=="
+        },
+        {
+          "assets": [
+            { "name": "AA3hQE5pa2V2ZXJzZTAxNTA=", "outputCoin": "1" },
+            { "name": "AA3hQE5pa2V2ZXJzZTAzMDA=", "outputCoin": "1" },
+            { "name": "AA3hQE5pa2V2ZXJzZTA5NTY=", "outputCoin": "1" },
+            { "name": "AA3hQE5pa2V2ZXJzZTExMjU=", "outputCoin": "1" },
+            { "name": "AA3hQE5pa2V2ZXJzZTEyOTg=", "outputCoin": "1" },
+            { "name": "AA3hQE5pa2V2ZXJzZTM3MDE=", "outputCoin": "1" },
+            { "name": "AA3hQE5pa2V2ZXJzZTM4MDQ=", "outputCoin": "1" },
+            { "name": "AA3hQE5pa2V2ZXJzZTM5Mzc=", "outputCoin": "1" },
+            { "name": "AA3hQE5pa2V2ZXJzZTUzODA=", "outputCoin": "1" }
+          ],
+          "policyId": "3nklCvjK/8emRkXYaTkVn2ZdQQfD8ZhWIAe/Mg=="
+        },
+        {
+          "assets": [
+            { "name": "SkFSSEVBRDI3Mw==", "outputCoin": "1" },
+            { "name": "SkFSSEVBRDI5OA==", "outputCoin": "1" },
+            { "name": "QklMTEFOREFSQU5EVEVEMDcz", "outputCoin": "1" }
+          ],
+          "policyId": "5fWggdXabLGEKpROaFXS0cnVU34LazO1jNhe9A=="
+        },
+        {
+          "assets": [{ "name": "U1RSSUtF", "outputCoin": "1000000" }],
+          "policyId": "8TrE1ms+4ZpqoPKiIphze9kHzJUSFmL8lxtSdQ=="
+        }
+      ],
+      "coin": "5167690",
+      "datum": {}
+    },
+    {
+      "address": "AXHk1dnWJdOBn8aiTGQl8ZpsMpqPA5d4jJBDTL/1SMo7xK0KNi+qNZyYZIZ9vqlZG44X0TBmU52c",
+      "coin": "1255623",
+      "datum": {}
+    }
+  ],
+  "successful": true,
+  "validity": { "ttl": "162093791" },
+  "witnesses": {
+    "script": [
+      {
+        "native": {
+          "scriptAll": {
+            "items": [
+              { "scriptPubkey": "kw/mUudt8w54r3wWqKFmsfH4DMtFkEb65JAgVQ==" }
+            ]
+          }
+        }
+      }
+    ],
+    "vkeywitness": [
+      {
+        "signature": "dgJshL73BPWdfays7jVkfHqMg3AZ7XqnJlo0xLIMnmzeMCu7OCfXSUTQFiiyYaSFi8uwJr0xHtczjvKqBF1qAg==",
+        "vkey": "AiuEilPyJ2suD0Vu5YQF1yj2Ij+ZkIVYLH8PPtMrEmk="
+      },
+      {
+        "signature": "bVTNNqgcIKkdvB5vUSD6wH2b2cDvU1HhRR4AJ1elS0wwEtuGE1fUjzrClF3MvpA0K9iZ+6buMk1PuXCTy64GAw==",
+        "vkey": "+BRlSMbv8JcpgfmkUEYF4AOnKOhPJ27cB6SR8oe6d50="
+      }
+    ]
+  }
+}

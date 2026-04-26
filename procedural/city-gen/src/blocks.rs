@@ -1,5 +1,5 @@
-use crate::Vec2;
 use crate::graph::RoadGraph;
+use crate::Vec2;
 
 /// A city block — an enclosed polygon formed by road edges.
 #[derive(Debug, Clone)]
@@ -103,7 +103,11 @@ fn find_rightmost_neighbor(
 
     for &edge_idx in &node_data.edges {
         let edge = &graph.edges[edge_idx];
-        let neighbor = if edge.node_a == node { edge.node_b } else { edge.node_a };
+        let neighbor = if edge.node_a == node {
+            edge.node_b
+        } else {
+            edge.node_a
+        };
 
         if neighbor == from_node {
             continue;
@@ -139,7 +143,9 @@ fn signed_angle(a: Vec2, b: Vec2) -> f32 {
 /// Compute the area of a polygon using the shoelace formula.
 fn polygon_area(polygon: &[Vec2]) -> f32 {
     let n = polygon.len();
-    if n < 3 { return 0.0; }
+    if n < 3 {
+        return 0.0;
+    }
 
     let mut area = 0.0f32;
     for i in 0..n {
@@ -157,7 +163,14 @@ fn polygon_area(polygon: &[Vec2]) -> f32 {
 /// Continues until lots are smaller than `max_lot_area`.
 pub fn subdivide_block(block: &Block, max_lot_area: f32, min_lot_area: f32) -> Vec<Lot> {
     let mut lots = Vec::new();
-    recursive_subdivide(&block.polygon, block.area, max_lot_area, min_lot_area, &mut lots, 0);
+    recursive_subdivide(
+        &block.polygon,
+        block.area,
+        max_lot_area,
+        min_lot_area,
+        &mut lots,
+        0,
+    );
     lots
 }
 
@@ -182,7 +195,9 @@ fn recursive_subdivide(
 
     // Find the longest edge
     let n = polygon.len();
-    if n < 3 { return; }
+    if n < 3 {
+        return;
+    }
 
     let mut longest_idx = 0;
     let mut longest_len = 0.0f32;
@@ -228,14 +243,18 @@ fn recursive_subdivide(
 /// - Polygons with very acute interior angles (< 15°)
 fn is_good_shape(polygon: &[Vec2], area: f32) -> bool {
     let n = polygon.len();
-    if n < 3 { return false; }
+    if n < 3 {
+        return false;
+    }
 
     // Elongation check: compactness = area / perimeter²
     // A square has compactness ~0.0625, a 10:1 rectangle ~0.023
     let perimeter: f32 = (0..n)
         .map(|i| polygon[i].distance(polygon[(i + 1) % n]))
         .sum();
-    if perimeter < 1.0 { return false; }
+    if perimeter < 1.0 {
+        return false;
+    }
 
     let compactness = area / (perimeter * perimeter);
     if compactness < 0.035 {
@@ -280,9 +299,7 @@ fn split_polygon(polygon: &[Vec2], point: Vec2, dir: Vec2) -> Option<(Vec<Vec2>,
     let normal = dir.perpendicular();
 
     // Classify each vertex as on the positive or negative side of the line
-    let signs: Vec<f32> = polygon.iter()
-        .map(|v| (*v - point).dot(normal))
-        .collect();
+    let signs: Vec<f32> = polygon.iter().map(|v| (*v - point).dot(normal)).collect();
 
     let mut poly_a = Vec::new();
     let mut poly_b = Vec::new();

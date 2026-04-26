@@ -165,14 +165,18 @@ impl WfcSolver {
         }
 
         // Build output grid
-        let resolved: Vec<TileId> = self.cells.iter().map(|cell| {
-            for i in 0..self.num_tiles {
-                if cell.candidates[i] {
-                    return TileId(i as u16);
+        let resolved: Vec<TileId> = self
+            .cells
+            .iter()
+            .map(|cell| {
+                for i in 0..self.num_tiles {
+                    if cell.candidates[i] {
+                        return TileId(i as u16);
+                    }
                 }
-            }
-            TileId(0) // shouldn't happen
-        }).collect();
+                TileId(0) // shouldn't happen
+            })
+            .collect();
 
         SolveResult::Solved(WfcGrid::new(self.width, self.height, resolved))
     }
@@ -267,19 +271,27 @@ impl WfcSolver {
             for dir in Direction::ALL {
                 let (ncol, nrow) = match dir {
                     Direction::North => {
-                        if row == 0 { continue; }
+                        if row == 0 {
+                            continue;
+                        }
                         (col, row - 1)
                     }
                     Direction::South => {
-                        if row + 1 >= self.height { continue; }
+                        if row + 1 >= self.height {
+                            continue;
+                        }
                         (col, row + 1)
                     }
                     Direction::East => {
-                        if col + 1 >= self.width { continue; }
+                        if col + 1 >= self.width {
+                            continue;
+                        }
                         (col + 1, row)
                     }
                     Direction::West => {
-                        if col == 0 { continue; }
+                        if col == 0 {
+                            continue;
+                        }
                         (col - 1, row)
                     }
                 };

@@ -8,7 +8,12 @@ fn test_tensor_field_grid() {
     // Center should have horizontal major vector
     let t = field.sample(Vec2::new(100.0, 100.0));
     let major = t.major();
-    assert!((major.x.abs() - 1.0).abs() < 0.01, "Grid field major should be horizontal, got ({:.2}, {:.2})", major.x, major.y);
+    assert!(
+        (major.x.abs() - 1.0).abs() < 0.01,
+        "Grid field major should be horizontal, got ({:.2}, {:.2})",
+        major.x,
+        major.y
+    );
 }
 
 #[test]
@@ -19,7 +24,12 @@ fn test_tensor_field_radial() {
     // Point east of center should have major vector pointing east
     let t = field.sample(Vec2::new(150.0, 100.0));
     let major = t.major();
-    assert!(major.x > 0.5, "Radial field east of center should point east, got ({:.2}, {:.2})", major.x, major.y);
+    assert!(
+        major.x > 0.5,
+        "Radial field east of center should point east, got ({:.2}, {:.2})",
+        major.x,
+        major.y
+    );
 }
 
 #[test]
@@ -57,12 +67,20 @@ fn test_streamline_tracing() {
     let seeds = vec![Vec2::new(150.0, 150.0)];
     let streamlines = trace_streamlines(&field, &config, &seeds);
 
-    assert!(!streamlines.is_empty(), "Should produce at least one streamline");
+    assert!(
+        !streamlines.is_empty(),
+        "Should produce at least one streamline"
+    );
 
     // Should have both major and minor streamlines
     let major_count = streamlines.iter().filter(|s| s.is_major).count();
     let minor_count = streamlines.iter().filter(|s| !s.is_major).count();
-    eprintln!("Grid streamlines: {} total ({} major, {} minor)", streamlines.len(), major_count, minor_count);
+    eprintln!(
+        "Grid streamlines: {} total ({} major, {} minor)",
+        streamlines.len(),
+        major_count,
+        minor_count
+    );
 
     assert!(major_count > 0, "Should have major streamlines");
     assert!(minor_count > 0, "Should have minor streamlines");
@@ -85,7 +103,11 @@ fn test_road_graph_from_streamlines() {
     let streamlines = trace_streamlines(&field, &config, &[Vec2::new(150.0, 150.0)]);
     let graph = RoadGraph::from_streamlines(&streamlines, 15.0);
 
-    eprintln!("Road graph: {} nodes, {} edges", graph.nodes.len(), graph.edges.len());
+    eprintln!(
+        "Road graph: {} nodes, {} edges",
+        graph.nodes.len(),
+        graph.edges.len()
+    );
     assert!(graph.nodes.len() > 2, "Should have multiple nodes");
     assert!(graph.edges.len() > 2, "Should have multiple edges");
 }
@@ -108,10 +130,19 @@ fn test_block_detection() {
     let graph = RoadGraph::from_streamlines(&streamlines, 15.0);
     let blocks = detect_blocks(&graph, 100.0, 100000.0);
 
-    eprintln!("Detected {} blocks from {} nodes, {} edges", blocks.len(), graph.nodes.len(), graph.edges.len());
+    eprintln!(
+        "Detected {} blocks from {} nodes, {} edges",
+        blocks.len(),
+        graph.nodes.len(),
+        graph.edges.len()
+    );
 
     for (i, block) in blocks.iter().enumerate() {
-        eprintln!("  Block {i}: {} vertices, area {:.0}", block.polygon.len(), block.area);
+        eprintln!(
+            "  Block {i}: {} vertices, area {:.0}",
+            block.polygon.len(),
+            block.area
+        );
     }
 }
 
@@ -136,8 +167,14 @@ fn test_lot_subdivision() {
     }
 
     assert!(lots.len() >= 3, "Should subdivide into at least 3 lots");
-    assert!(lots.iter().all(|l| l.area >= 200.0), "No lot should be below min area");
-    assert!(lots.iter().all(|l| l.area <= 2500.0), "No lot should be much above max area");
+    assert!(
+        lots.iter().all(|l| l.area >= 200.0),
+        "No lot should be below min area"
+    );
+    assert!(
+        lots.iter().all(|l| l.area <= 2500.0),
+        "No lot should be much above max area"
+    );
 }
 
 #[test]
@@ -162,12 +199,16 @@ fn test_full_pipeline_grid() {
     let graph = RoadGraph::from_streamlines(&streamlines, config.dstep * 2.5);
     let blocks = detect_blocks(&graph, 200.0, 100000.0);
 
-    let total_lots: usize = blocks.iter().map(|b| {
-        subdivide_block(b, 3000.0, 100.0).len()
-    }).sum();
+    let total_lots: usize = blocks
+        .iter()
+        .map(|b| subdivide_block(b, 3000.0, 100.0).len())
+        .sum();
 
     eprintln!("\nFull pipeline (500x500 grid):");
-    eprintln!("  Streamlines: {} ({major_count} major, {minor_count} minor)", streamlines.len());
+    eprintln!(
+        "  Streamlines: {} ({major_count} major, {minor_count} minor)",
+        streamlines.len()
+    );
     eprintln!("  Road nodes: {}", graph.nodes.len());
     eprintln!("  Road edges: {}", graph.edges.len());
     eprintln!("  Road segments: {}", graph.segments().len());
@@ -196,10 +237,14 @@ fn test_full_pipeline_mixed() {
         trace_minor: true,
     };
 
-    let streamlines = trace_streamlines(&field, &config, &[
-        Vec2::new(350.0, 150.0), // grid district seed
-        Vec2::new(150.0, 350.0), // radial district seed
-    ]);
+    let streamlines = trace_streamlines(
+        &field,
+        &config,
+        &[
+            Vec2::new(350.0, 150.0), // grid district seed
+            Vec2::new(150.0, 350.0), // radial district seed
+        ],
+    );
 
     let graph = RoadGraph::from_streamlines(&streamlines, 12.0);
     let blocks = detect_blocks(&graph, 200.0, 50000.0);

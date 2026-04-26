@@ -1,0 +1,99 @@
+{
+  "data": {
+    "tx_hash": "a62488235792c4066ab7d6b7f1dd3f861bb01ba7e86acd5a2fb2983500bb447d",
+    "block_hash": "9bde1b51cc4c61cbc70ee4e0f266722f7004aafc1177e183b9ef4361a892c24e",
+    "block_tx_index": 0,
+    "block_height": 12187473,
+    "block_timestamp": 1753777530,
+    "block_absolute_slot": 162211239,
+    "block_epoch": 573,
+    "inputs": [
+      {
+        "tx_hash": "2b154425d9b221cf3147093b180401a7b07d5926c4141c309828fdfcbbad25d2",
+        "index": 2,
+        "assets": [
+          {
+            "unit": "lovelace",
+            "amount": 21200000
+          }
+        ],
+        "address": "addr1q9xqxvk5d6mewm43n43306gs2fq2a0ugku7fg4l0x58spu8nm64me2z5ptgmd3dcwawwza929l5mgvy9v8mr58ha9nls8wzr5e",
+        "datum": null,
+        "reference_script": null
+      }
+    ],
+    "outputs": [
+      {
+        "tx_hash": "a62488235792c4066ab7d6b7f1dd3f861bb01ba7e86acd5a2fb2983500bb447d",
+        "index": 0,
+        "assets": [
+          {
+            "unit": "lovelace",
+            "amount": 19025303
+          }
+        ],
+        "address": "addr1q9xqxvk5d6mewm43n43306gs2fq2a0ugku7fg4l0x58spu8nm64me2z5ptgmd3dcwawwza929l5mgvy9v8mr58ha9nls8wzr5e",
+        "datum": null,
+        "reference_script": null
+      }
+    ],
+    "reference_inputs": [],
+    "collateral_inputs": [],
+    "collateral_return": null,
+    "mint": [],
+    "invalid_before": null,
+    "invalid_hereafter": 162218298,
+    "fee": 174697,
+    "deposit": 2000000,
+    "certificates": {
+      "stake_registrations": [
+        {
+          "cert_index": 0,
+          "stake_address": "stake1u8eaa2au4p2q45dkcku8wh8pwj4zl6d5xzzkra36rm7jelclkdcke"
+        }
+      ],
+      "stake_deregistrations": [],
+      "stake_delegations": [
+        {
+          "cert_index": 1,
+          "stake_address": "stake1u8eaa2au4p2q45dkcku8wh8pwj4zl6d5xzzkra36rm7jelclkdcke",
+          "pool_id": "pool13crd2ljx87988umk22er6ynwadfwdqupdpcq6prc6v59z62kxse"
+        }
+      ],
+      "pool_registrations": [],
+      "pool_retirements": [],
+      "reg_certs": [],
+      "unreg_certs": [],
+      "vote_delegations": [],
+      "stake_vote_delegations": [],
+      "stake_reg_delegations": [],
+      "vote_reg_delegations": [],
+      "stake_vote_reg_delegations": [],
+      "auth_committee_hot_certs": [],
+      "resign_committee_cold_certs": [],
+      "reg_drep_certs": [],
+      "unreg_drep_certs": [],
+      "update_drep_certs": [],
+      "mir_transfers": []
+    },
+    "withdrawals": [],
+    "additional_signers": [],
+    "scripts_executed": [],
+    "scripts_successful": true,
+    "redeemers": {
+      "spends": [],
+      "mints": [],
+      "withdrawals": [],
+      "certificates": [],
+      "votes": [],
+      "proposals": []
+    },
+    "metadata": null,
+    "size": 435
+  },
+  "last_updated": {
+    "timestamp": "2025-07-29 11:03:57",
+    "block_hash": "e4b6a66dc0fe8ab1f138a84b79bc06e48057e784fcc5d9135c3c6dfb24d81a07",
+    "block_slot": 162220746
+  }
+}

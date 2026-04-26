@@ -629,6 +629,7 @@ mod tests {
                 max_value_size: 5000,
                 price_mem: None,
                 price_step: None,
+                ..Default::default()
             },
             from_address: addr,
             network_id: 0,

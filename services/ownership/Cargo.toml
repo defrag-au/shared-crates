@@ -1,0 +1,15 @@
+[package]
+name = "ownership-client"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Typed HTTP client for the collection-ownership service"
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# TLS only needed on native — WASM uses the runtime's fetch API
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

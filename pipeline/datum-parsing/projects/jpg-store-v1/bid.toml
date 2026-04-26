@@ -1,0 +1,106 @@
+# JPG.store V1 Bid (offer) datum schema
+# Equivalent to: bid.cddl
+# Version: v1.0
+# Description: NFT offer datum for JPG.store marketplace (Legacy format)
+
+[schema]
+name = "jpg_store_v1_bid"
+version = "1.0"
+description = "JPG.store V1 Bid datum - legacy format"
+root_type = "bid_datum"
+
+# Main bid datum structure (constructor wrapper)
+[types.bid_datum]
+type = "constructor"
+description = "JPG.store V1 Bid datum - represents an NFT offer"
+constructor_tag = 121
+
+[[types.bid_datum.fields]]
+name = "bidder"
+index = 0
+type = "cardano_address"
+description = "Address of the bidder"
+required = true
+
+[[types.bid_datum.fields]]
+name = "policy_id"
+index = 1
+type = "bytes"
+description = "Target NFT policy ID"
+byte_length = 28
+required = true
+
+[[types.bid_datum.fields]]
+name = "amount"
+index = 2
+type = "uint"
+description = "Bid amount in lovelace"
+required = true
+extract_as = "bid_amount"
+
+[[types.bid_datum.fields]]
+name = "asset_name"
+index = 3
+type = "bytes"
+description = "Optional specific asset name (empty = any from policy)"
+required = false
+
+[[types.bid_datum.fields]]
+name = "expires_at"
+index = 4
+type = "uint"
+description = "Optional expiration timestamp (POSIX)"
+required = false
+
+# Cardano address structure
+[types.cardano_address]
+type = "array"
+description = "Common address structure used across Cardano"
+min_items = 1
+max_items = 2
+
+[[types.cardano_address.fields]]
+name = "payment_credential"
+index = 0
+type = "credential"
+required = true
+
+[[types.cardano_address.fields]]
+name = "stake_credential"
+index = 1
+type = "credential"
+required = false
+
+# Credential structure
+[types.credential]
+type = "array"
+description = "Credential can be either key hash or script hash"
+min_items = 2
+max_items = 2
+
+[[types.credential.fields]]
+name = "tag"
+index = 0
+type = "uint"
+description = "0 = key credential, 1 = script credential"
+range = [0, 1]
+required = true
+
+[[types.credential.fields]]
+name = "hash"
+index = 1
+type = "bytes"
+description = "28-byte hash"
+byte_length = 28
+required = true
+
+# Extraction methods
+[extraction]
+# Use fallback price extraction since the real JPG.store bid structure
+# is more complex than this simplified schema can handle
+# The extractor will find the largest reasonable amount in the datum
+price_extraction = "fallback"
+bidder_path = "bidder"
+policy_path = "policy_id"
+asset_name_path = "asset_name"
+expiration_path = "expires_at"

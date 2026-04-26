@@ -36,7 +36,11 @@ pub struct CnftAsset {
     pub build_type: Option<String>,
     #[serde(alias = "rarityRank", deserialize_with = "deserialize_u32_or_string")]
     pub rarity_rank: u32,
-    #[serde(alias = "ownerStakeKey", default, deserialize_with = "deserialize_nullable_string")]
+    #[serde(
+        alias = "ownerStakeKey",
+        default,
+        deserialize_with = "deserialize_nullable_string"
+    )]
     pub owner_stake_key: String,
 
     #[serde(flatten, deserialize_with = "deserialize_traits")]

@@ -16,6 +16,7 @@ members = [
     "worker-stack",
     "worker-utils",
     "asset-rarity",
+    "services/*",
     "indexers/*",
     "ui/scss-macros",
     "ui/ui-core",
@@ -36,6 +37,7 @@ members = [
     "ui/workers/flow-demo/frontend",
     "procedural/*",
     "ai-media-gen",
+    "pipeline/*",
 ]
 resolver = "2"
 
@@ -101,11 +103,15 @@ web-sys = { version = "0.3", features = [
     "KeyboardEvent",
 ] }
 # Cardano primitives
+hex = "0.4"
 pallas-addresses = "1.0.0-alpha.3"
 pallas-codec = "1.0.0-alpha.3"
 pallas-crypto = "1.0.0-alpha.3"
 pallas-primitives = "1.0.0-alpha.3"
+pallas-traverse = "1.0.0-alpha.3"
 pallas-txbuilder = "1.0.0-alpha.3"
+pallas-utxorpc = "1.0.0-alpha.3"
+utxorpc-spec = "0.17"
 
 thiserror = "1"
 futures = "0.3"
@@ -136,3 +142,13 @@ asset-rarity = { path = "asset-rarity" }
 egui-widgets = { path = "ui/egui-widgets" }
 wallet-core = { path = "ui/wallet-core" }
 wallet-pallas = { path = "ui/wallet-pallas" }
+tx_insights = { path = "tx-insights" }
+test_utils = { path = "test-utils" }
+pipeline-types = { path = "pipeline/pipeline-types" }
+transactions = { path = "pipeline/transactions" }
+tx-classifier = { path = "pipeline/tx-classifier" }
+oura-decoder = { path = "pipeline/oura-decoder" }
+datum-parsing = { path = "pipeline/datum-parsing" }
+maestro = { path = "indexers/maestro" }
+http-client = { path = "http-client" }
+wasm_safe_serde = { path = "wasm-safe-serde" }

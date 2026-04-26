@@ -151,7 +151,10 @@ pub fn calculate_fee(tx: &StagingTransaction, params: &crate::params::TxBuildPar
         tx_size * params.min_fee_coefficient + params.min_fee_constant
     };
 
-    base_fee + execution_fee_from_redeemers(tx, params)
+    let ref_script_fee = params.ref_script_size * params.min_fee_ref_script_cost_per_byte;
+
+    // +1 to handle any remaining ceiling rounding across all fee components
+    base_fee + execution_fee_from_redeemers(tx, params) + ref_script_fee + 1
 }
 
 /// Sum the execution cost of all redeemers in a staged transaction.
@@ -177,12 +180,13 @@ fn execution_fee_from_redeemers(
     for (_purpose, (_data, opt_eu)) in redeemers.iter() {
         if let Some(eu) = opt_eu {
             // Use u128 to avoid overflow on large execution units
-            total += (eu.mem as u128) * (mem_num as u128) / (mem_den as u128);
-            total += (eu.steps as u128) * (step_num as u128) / (step_den as u128);
+            // Ceil each division to ensure we never underpay
+            let mem_cost = ((eu.mem as u128) * (mem_num as u128)).div_ceil(mem_den as u128);
+            let step_cost = ((eu.steps as u128) * (step_num as u128)).div_ceil(step_den as u128);
+            total += mem_cost + step_cost;
         }
     }
 
-    // Ceil to ensure we never underpay
     total as u64
 }
 

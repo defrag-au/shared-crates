@@ -1,0 +1,108 @@
+# Wayup marketplace Ask (listing) datum schema
+# Based on analysis of blackflag_create_listing_wayup test transaction
+# 
+# Structure: Constructor 0 with fields containing a list of payment targets
+# Each payment target contains address information and amount
+
+[schema]
+name = "wayup_ask"
+version = "1.0"
+description = "Wayup marketplace Ask/listing datum structure"
+root_type = "wayup_ask_datum"
+
+[extraction]
+price_extraction = "sum_wayup_amounts"
+seller_extraction = "from_payment_targets"
+policy_path = "n/a"
+asset_name_path = "n/a"
+
+[types.wayup_ask_datum]
+type = "constructor"
+description = "Root Wayup ask datum structure"
+constructor_tag = 121
+min_fields = 2
+max_fields = 3
+
+[[types.wayup_ask_datum.fields]]
+name = "payment_targets"
+index = 0
+type = "payment_targets_list"
+description = "List of payment targets with addresses and amounts"
+required = true
+extract_method = "sum_wayup_amounts"
+
+[[types.wayup_ask_datum.fields]]
+name = "owner_info"
+index = 1
+type = "bytes_32"
+description = "Owner/seller information"
+required = true
+extract_as = "seller_address"
+
+[types.payment_targets_list]
+type = "array"
+description = "Array of payment targets"
+min_items = 1
+max_items = 50
+item_type = "payment_target"
+
+[types.payment_target]
+type = "constructor"
+description = "Individual payment target with address and amount"
+constructor_tag = 0
+min_fields = 2
+max_fields = 2
+
+[[types.payment_target.fields]]
+name = "address_info"
+index = 0
+type = "address_wrapper"
+description = "Wrapped address information"
+required = true
+
+[[types.payment_target.fields]]
+name = "amount_lovelace"
+index = 1
+type = "uint"
+description = "Payment amount in lovelace"
+required = true
+extract_as = "lovelace_amount"
+range = [1000000, 1000000000000]
+
+[types.address_wrapper]
+type = "constructor"
+description = "Nested address wrapper structure"
+constructor_tag = 0
+min_fields = 1
+max_fields = 2
+
+[[types.address_wrapper.fields]]
+name = "address_data"
+index = 0
+type = "address_inner"
+description = "Inner address structure"
+required = true
+
+[types.address_inner]
+type = "constructor"
+description = "Inner address structure"
+constructor_tag = 0
+min_fields = 1
+max_fields = 2
+
+[[types.address_inner.fields]]
+name = "address_bytes"
+index = 0
+type = "bytes_32"
+description = "Address bytes"
+required = true
+
+[types.bytes_32]
+type = "bytes"
+description = "32-byte hash or address"
+byte_length = 29
+
+[types.uint]
+type = "uint"
+description = "Unsigned integer"
+range = [0, 999999999999999]

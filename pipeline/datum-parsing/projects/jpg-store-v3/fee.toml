@@ -1,0 +1,52 @@
+# JPG.store V3 Fee datum schema
+# Equivalent to: fee.cddl
+# Version: v3.0
+# Description: Fee collection data for JPG.store marketplace
+
+[schema]
+name = "jpg_store_v3_fee"
+version = "3.0"
+description = "JPG.store V3 Fee datum - represents fee collection data"
+root_type = "fee_datum"
+
+# Main fee datum structure
+[types.fee_datum]
+type = "array"
+description = "Fee collection and distribution data"
+min_items = 2
+max_items = 3
+
+[[types.fee_datum.fields]]
+name = "collected_fees"
+index = 0
+type = "uint"
+description = "Total fees collected in lovelace"
+required = true
+extract_as = "fee_amount"
+
+[[types.fee_datum.fields]]
+name = "last_distribution"
+index = 1
+type = "uint"
+description = "Timestamp of last fee distribution"
+required = true
+
+[[types.fee_datum.fields]]
+name = "admin_address"
+index = 2
+type = "cardano_address_string"
+description = "Optional admin address for fee management"
+required = false
+
+# Simplified address for fee datum (string representation)
+[types.cardano_address_string]
+type = "string"
+description = "Cardano address (bech32 or hex representation)"
+
+# Extraction methods
+[extraction]
+# Fee datums contain fee amounts but not pricing info for sales
+fee_extraction = "direct_field"
+fee_field = "collected_fees"
+admin_path = "admin_address"
+last_distribution_path = "last_distribution"

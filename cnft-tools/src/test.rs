@@ -157,7 +157,10 @@ mod tests {
         assert_eq!(asset.name, ""); // null -> default empty string
         assert_eq!(asset.owner_stake_key, ""); // null -> default empty string
         assert_eq!(asset.icon_url, None);
-        assert_eq!(asset.traits.get("Background"), Some(&vec!["Red".to_string()]));
+        assert_eq!(
+            asset.traits.get("Background"),
+            Some(&vec!["Red".to_string()])
+        );
         assert_eq!(asset.traits.get("Mouth"), Some(&vec!["Smile".to_string()]));
         assert!(!asset.traits.contains_key("Eyes")); // null trait value skipped
     }

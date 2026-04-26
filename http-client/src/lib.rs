@@ -70,6 +70,7 @@ impl HttpMethod {
     }
 }
 
+#[derive(Clone)]
 pub struct HttpClient {
     #[cfg(not(target_arch = "wasm32"))]
     inner: reqwest::Client,

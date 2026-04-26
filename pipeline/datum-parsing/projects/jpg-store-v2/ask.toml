@@ -1,0 +1,60 @@
+# JPG.store V2 Ask datum schema
+# Equivalent to: projects/jpg-store-v2/ask.cddl
+# Version: v2.0
+# Description: JPG.store V2 Ask datum - nested plutus data structure
+
+[schema]
+name = "jpg_store_v2_ask"
+version = "2.0"
+description = "JPG.store V2 Ask datum based on real transaction data analysis"
+root_type = "ask_datum"
+
+# Main datum structure - PlutusData with tag 121 (flexible field count)
+[types.ask_datum]
+type = "constructor"
+description = "JPG.store V2 Ask datum - supports both full listings (4 fields) and listing updates (2 fields)"
+constructor_tag = 121
+min_fields = 2
+max_fields = 4
+
+[[types.ask_datum.fields]]
+name = "payout_data"
+index = 0
+type = "array"
+description = "First element: payout array containing pricing information"
+required = true
+extract_method = "sum_payout_amounts"
+
+[[types.ask_datum.fields]]
+name = "policy_id"
+index = 1
+type = "bytes"
+description = "Second element: policy ID or additional data"
+required = true
+
+[[types.ask_datum.fields]]
+name = "additional_data"
+index = 2
+type = "plutus_data"
+description = "Third element: additional data (optional for listing updates)"
+required = false
+
+[[types.ask_datum.fields]]
+name = "identifier"
+index = 3
+type = "bytes"
+description = "Fourth element: hash/identifier (optional for listing updates)"
+required = false
+
+# Generic PlutusData for nested structures
+[types.plutus_data]
+type = "any_plutus_data"
+description = "Simple PlutusData elements with tag 121"
+constructor_tag = 121
+
+# Extraction methods
+[extraction]
+# Extract price by summing payout amounts in the array
+price_extraction = "sum_payout_amounts"
+# Seller extraction from payout data would be complex, so skip for now
+seller_extraction = "none"

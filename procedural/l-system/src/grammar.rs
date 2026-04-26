@@ -9,7 +9,10 @@ pub struct Symbol {
 
 impl Symbol {
     pub fn new(ch: char) -> Self {
-        Self { ch, params: Vec::new() }
+        Self {
+            ch,
+            params: Vec::new(),
+        }
     }
 
     pub fn with_params(ch: char, params: Vec<f32>) -> Self {
@@ -169,7 +172,11 @@ impl LSystem {
 struct NoRng;
 
 impl RngCore for NoRng {
-    fn next_u32(&mut self) -> u32 { 0 }
-    fn next_u64(&mut self) -> u64 { 0 }
+    fn next_u32(&mut self) -> u32 {
+        0
+    }
+    fn next_u64(&mut self) -> u64 {
+        0
+    }
     fn fill_bytes(&mut self, _dest: &mut [u8]) {}
 }

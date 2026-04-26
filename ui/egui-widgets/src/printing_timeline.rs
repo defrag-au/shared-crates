@@ -106,15 +106,14 @@ pub fn show(
         return response;
     }
 
-    let total_width = nodes.len() as f32 * (config.node_width + config.node_spacing) - config.node_spacing;
+    let total_width =
+        nodes.len() as f32 * (config.node_width + config.node_spacing) - config.node_spacing;
 
     egui::ScrollArea::horizontal()
         .id_salt("printing_timeline")
         .show(ui, |ui| {
-            let (rect, _) = ui.allocate_exact_size(
-                Vec2::new(total_width, config.height),
-                egui::Sense::hover(),
-            );
+            let (rect, _) =
+                ui.allocate_exact_size(Vec2::new(total_width, config.height), egui::Sense::hover());
 
             let painter = ui.painter_at(rect);
 
@@ -125,16 +124,25 @@ pub fn show(
             //   [date]      ← release date
             //   [rarity]    ← rarity badge
 
-            let thumb_area_h = if config.show_thumbnails { config.thumb_height + 4.0 } else { 0.0 };
+            let thumb_area_h = if config.show_thumbnails {
+                config.thumb_height + 4.0
+            } else {
+                0.0
+            };
             let timeline_y = rect.top() + thumb_area_h + config.dot_radius + 2.0;
             let text_top = timeline_y + config.dot_radius + 4.0;
 
             // Draw timeline line
             if nodes.len() > 1 {
                 let first_x = rect.left() + config.node_width / 2.0;
-                let last_x = rect.left() + (nodes.len() - 1) as f32 * (config.node_width + config.node_spacing) + config.node_width / 2.0;
+                let last_x = rect.left()
+                    + (nodes.len() - 1) as f32 * (config.node_width + config.node_spacing)
+                    + config.node_width / 2.0;
                 painter.line_segment(
-                    [Pos2::new(first_x, timeline_y), Pos2::new(last_x, timeline_y)],
+                    [
+                        Pos2::new(first_x, timeline_y),
+                        Pos2::new(last_x, timeline_y),
+                    ],
                     Stroke::new(2.0, config.line_color),
                 );
             }
@@ -202,13 +210,19 @@ pub fn show(
 
                 click_resp.on_hover_text(format!(
                     "{} ({}) · {} #{} · {}",
-                    node.set_name, node.set_code,
-                    node.rarity, node.collector_number,
+                    node.set_name,
+                    node.set_code,
+                    node.rarity,
+                    node.collector_number,
                     node.released_at,
                 ));
 
                 // Set code label (centered under dot)
-                let code_color = if is_selected { config.dot_selected } else { config.text_color };
+                let code_color = if is_selected {
+                    config.dot_selected
+                } else {
+                    config.text_color
+                };
                 let set_galley = painter.layout_no_wrap(
                     node.set_code.clone(),
                     egui::FontId::monospace(11.0),
@@ -257,4 +271,3 @@ fn rarity_dot_color(rarity: &str, config: &PrintingTimelineConfig) -> Color32 {
         _ => config.dot_color,
     }
 }
-

@@ -64,6 +64,8 @@ mod app {
         FileUpload,
         // Media
         ImageTextEditor,
+        // TX Cart
+        TxCart,
     }
 
     impl Story {
@@ -116,6 +118,8 @@ mod app {
                 Self::FileUpload,
                 // Media
                 Self::ImageTextEditor,
+                // TX Cart
+                Self::TxCart,
             ]
         }
 
@@ -164,6 +168,7 @@ mod app {
                 Self::DataTable => "Data Table",
                 Self::FileUpload => "File Upload",
                 Self::ImageTextEditor => "Image Text Editor",
+                Self::TxCart => "TX Cart",
             }
         }
 
@@ -209,6 +214,7 @@ mod app {
                 Self::ExposureBar | Self::DataTable => "Loan Dashboard",
                 Self::FileUpload => "Utility",
                 Self::ImageTextEditor => "Media",
+                Self::TxCart => "TX Cart",
             }
         }
 
@@ -323,6 +329,9 @@ mod app {
                 Self::ImageTextEditor => {
                     "Drag-to-position text overlays on images with font size, color, and outline controls. Flattens to final composite."
                 }
+                Self::TxCart => {
+                    "Batched transaction cart with per-item status, phase state machine, and sequential signing flow"
+                }
             }
         }
     }
@@ -394,6 +403,8 @@ mod app {
         // Utility
         file_upload_state: stories::file_upload::FileUploadState,
         image_text_editor_state: stories::image_text_editor::ImageTextEditorState,
+        // TX Cart
+        tx_cart_state: stories::tx_cart::TxCartStoryState,
     }
 
     impl StorybookApp {
@@ -421,7 +432,8 @@ mod app {
                 mesh_playground_state: stories::mesh_playground::MeshPlaygroundState::default(),
                 perspective_text_state: stories::perspective_text::PerspectiveTextState::default(),
                 tcg_card_state: stories::tcg_card::TcgCardState::default(),
-                printing_timeline_state: stories::printing_timeline::PrintingTimelineDemo::default(),
+                printing_timeline_state: stories::printing_timeline::PrintingTimelineDemo::default(
+                ),
                 asset_card_state: stories::asset_card::AssetCardState::default(),
                 radar_chart_state: stories::radar_chart::RadarChartState::default(),
                 range_bar_state: stories::range_bar::RangeBarState::default(),
@@ -467,6 +479,7 @@ mod app {
                 file_upload_state: stories::file_upload::FileUploadState::default(),
                 image_text_editor_state: stories::image_text_editor::ImageTextEditorState::default(
                 ),
+                tx_cart_state: stories::tx_cart::TxCartStoryState::default(),
             }
         }
 
@@ -570,7 +583,10 @@ mod app {
                                 &mut self.perspective_text_state,
                             ),
                             Story::TcgCard => stories::tcg_card::show(ui, &mut self.tcg_card_state),
-                            Story::PrintingTimeline => stories::printing_timeline::show(ui, &mut self.printing_timeline_state),
+                            Story::PrintingTimeline => stories::printing_timeline::show(
+                                ui,
+                                &mut self.printing_timeline_state,
+                            ),
                             Story::AssetCard => {
                                 stories::asset_card::show(ui, &mut self.asset_card_state)
                             }
@@ -656,6 +672,9 @@ mod app {
                                 ui,
                                 &mut self.image_text_editor_state,
                             ),
+                            Story::TxCart => {
+                                stories::tx_cart::show(ui, &mut self.tx_cart_state)
+                            }
                         }
                     });
                 });

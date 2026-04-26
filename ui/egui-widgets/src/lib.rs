@@ -63,6 +63,7 @@ pub mod signing_status;
 pub mod trade_table;
 #[cfg(feature = "cardano")]
 pub mod trait_delta;
+pub mod tx_cart;
 #[cfg(feature = "cardano")]
 pub mod tx_estimate;
 #[cfg(feature = "cardano")]

@@ -1,0 +1,750 @@
+{
+  "data": {
+    "tx_hash": "a011bc73b8f425078942d44ca8b3e8f172d81d15892c6138bd3c48d0bf3e9048",
+    "block_hash": "ce79b1e4ecbd2c9b8b3474cc118ac8d0aeea56255c4634de229ab12dff526ea3",
+    "block_tx_index": 2,
+    "block_height": 11885720,
+    "block_timestamp": 1747679220,
+    "block_absolute_slot": 156112929,
+    "block_epoch": 558,
+    "inputs": [
+      {
+        "tx_hash": "ab56c1c9a65b4590ed7a8f56964d4a9fc6731cfa31cd98d28a7ad5a7cfa03076",
+        "index": 0,
+        "assets": [
+          {
+            "unit": "lovelace",
+            "amount": 195000000
+          }
+        ],
+        "address": "addr1q8xyn44r39xst5rh826x8sr65y6fu2449n0sfda5pu0ydkvj5dysang6xcyp62r6dwdm7pnv3nsdwwn7jzzhr03ur6tqpz39hc",
+        "datum": null,
+        "reference_script": null
+      }
+    ],
+    "outputs": [
+      {
+        "tx_hash": "a011bc73b8f425078942d44ca8b3e8f172d81d15892c6138bd3c48d0bf3e9048",
+        "index": 0,
+        "assets": [
+          {
+            "unit": "lovelace",
+            "amount": 1340410
+          },
+          {
+            "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000643b04e696b65766572736530343434",
+            "amount": 1
+          }
+        ],
+        "address": "addr1q9jgh2gc9yt2uy0rcad7356cmkqe52qmcxwsxnecwf97wxyj5dysang6xcyp62r6dwdm7pnv3nsdwwn7jzzhr03ur6tqkvnx5f",
+        "datum": {
+          "type": "hash",
+          "hash": "05d342d28b1ebe07291391d377dfc77fe2416b06273fe63b020fd5556d8f792f",
+          "bytes": "d8799faa446e616d654f4e696b65766572736520233034343445696d6167655835697066733a2f2f516d633678734373417a545a7a4d7670376178333176684d6572776d78657a58417856674e584d714d5657506248496d65646961547970654a696d6167652f6a70656744746965724756617269616e744a6261636b67726f756e644b50737963686564656c696344626f64794a48656973656e626f617247636c6f746865734650696772756e446579657347436861726c6573446e6f7365484d6f6e6b2050696744686561644c476f6c64656e204170706c6501ff",
+          "json": {
+            "constructor": 0,
+            "fields": [
+              {
+                "map": [
+                  {
+                    "k": {
+                      "bytes": "6e616d65"
+                    },
+                    "v": {
+                      "bytes": "4e696b657665727365202330343434"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "696d616765"
+                    },
+                    "v": {
+                      "bytes": "697066733a2f2f516d633678734373417a545a7a4d7670376178333176684d6572776d78657a58417856674e584d714d5657506248"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6d6564696154797065"
+                    },
+                    "v": {
+                      "bytes": "696d6167652f6a706567"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "74696572"
+                    },
+                    "v": {
+                      "bytes": "56617269616e74"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6261636b67726f756e64"
+                    },
+                    "v": {
+                      "bytes": "50737963686564656c6963"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "626f6479"
+                    },
+                    "v": {
+                      "bytes": "48656973656e626f6172"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "636c6f74686573"
+                    },
+                    "v": {
+                      "bytes": "50696772756e"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "65796573"
+                    },
+                    "v": {
+                      "bytes": "436861726c6573"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6e6f7365"
+                    },
+                    "v": {
+                      "bytes": "4d6f6e6b20506967"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "68656164"
+                    },
+                    "v": {
+                      "bytes": "476f6c64656e204170706c65"
+                    }
+                  }
+                ]
+              },
+              {
+                "int": 1
+              }
+            ]
+          }
+        },
+        "reference_script": null
+      },
+      {
+        "tx_hash": "a011bc73b8f425078942d44ca8b3e8f172d81d15892c6138bd3c48d0bf3e9048",
+        "index": 1,
+        "assets": [
+          {
+            "unit": "lovelace",
+            "amount": 1340410
+          },
+          {
+            "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000643b04e696b65766572736532353233",
+            "amount": 1
+          }
+        ],
+        "address": "addr1q9jgh2gc9yt2uy0rcad7356cmkqe52qmcxwsxnecwf97wxyj5dysang6xcyp62r6dwdm7pnv3nsdwwn7jzzhr03ur6tqkvnx5f",
+        "datum": {
+          "type": "hash",
+          "hash": "bb0a4debff94ac9faa5273ddcb40906f79761abd543aea48317fc7143992e23e",
+          "bytes": "d8799faa446e616d654f4e696b65766572736520233235323345696d6167655835697066733a2f2f516d515368586a6f323878424272655067474c7846565854734e716e4b6350397862707458353850436d756b4a55496d65646961547970654a696d6167652f6a70656744746965724756617269616e744a6261636b67726f756e6443456d6f44626f6479454d756d6d7947636c6f746865734553616e74614465796573464d6174726978446e6f736547476c7574746f6e4468656164444368656601ff",
+          "json": {
+            "constructor": 0,
+            "fields": [
+              {
+                "map": [
+                  {
+                    "k": {
+                      "bytes": "6e616d65"
+                    },
+                    "v": {
+                      "bytes": "4e696b657665727365202332353233"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "696d616765"
+                    },
+                    "v": {
+                      "bytes": "697066733a2f2f516d515368586a6f323878424272655067474c7846565854734e716e4b6350397862707458353850436d756b4a55"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6d6564696154797065"
+                    },
+                    "v": {
+                      "bytes": "696d6167652f6a706567"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "74696572"
+                    },
+                    "v": {
+                      "bytes": "56617269616e74"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6261636b67726f756e64"
+                    },
+                    "v": {
+                      "bytes": "456d6f"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "626f6479"
+                    },
+                    "v": {
+                      "bytes": "4d756d6d79"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "636c6f74686573"
+                    },
+                    "v": {
+                      "bytes": "53616e7461"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "65796573"
+                    },
+                    "v": {
+                      "bytes": "4d6174726978"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6e6f7365"
+                    },
+                    "v": {
+                      "bytes": "476c7574746f6e"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "68656164"
+                    },
+                    "v": {
+                      "bytes": "43686566"
+                    }
+                  }
+                ]
+              },
+              {
+                "int": 1
+              }
+            ]
+          }
+        },
+        "reference_script": null
+      },
+      {
+        "tx_hash": "a011bc73b8f425078942d44ca8b3e8f172d81d15892c6138bd3c48d0bf3e9048",
+        "index": 2,
+        "assets": [
+          {
+            "unit": "lovelace",
+            "amount": 1340410
+          },
+          {
+            "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000643b04e696b65766572736533373436",
+            "amount": 1
+          }
+        ],
+        "address": "addr1q9jgh2gc9yt2uy0rcad7356cmkqe52qmcxwsxnecwf97wxyj5dysang6xcyp62r6dwdm7pnv3nsdwwn7jzzhr03ur6tqkvnx5f",
+        "datum": {
+          "type": "hash",
+          "hash": "3b00a2b3ab30d00d4ef246a2cfdfa95085b77b02fb61772720b7ae4320e03aaa",
+          "bytes": "d8799faa446e616d654f4e696b65766572736520233337343645696d6167655835697066733a2f2f516d5a5654543642615962724a61756b586f674c5671684350747a6b35743143766d42594b41506a6f64326b7035496d65646961547970654a696d6167652f6a70656744746965724756617269616e744a6261636b67726f756e6447476c6f77696e6744626f6479444669726547636c6f74686573444368656644657965734e43617264616e6f20547261646572446e6f736547476c7574746f6e4468656164484f696e6b6163687501ff",
+          "json": {
+            "constructor": 0,
+            "fields": [
+              {
+                "map": [
+                  {
+                    "k": {
+                      "bytes": "6e616d65"
+                    },
+                    "v": {
+                      "bytes": "4e696b657665727365202333373436"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "696d616765"
+                    },
+                    "v": {
+                      "bytes": "697066733a2f2f516d5a5654543642615962724a61756b586f674c5671684350747a6b35743143766d42594b41506a6f64326b7035"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6d6564696154797065"
+                    },
+                    "v": {
+                      "bytes": "696d6167652f6a706567"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "74696572"
+                    },
+                    "v": {
+                      "bytes": "56617269616e74"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6261636b67726f756e64"
+                    },
+                    "v": {
+                      "bytes": "476c6f77696e67"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "626f6479"
+                    },
+                    "v": {
+                      "bytes": "46697265"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "636c6f74686573"
+                    },
+                    "v": {
+                      "bytes": "43686566"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "65796573"
+                    },
+                    "v": {
+                      "bytes": "43617264616e6f20547261646572"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6e6f7365"
+                    },
+                    "v": {
+                      "bytes": "476c7574746f6e"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "68656164"
+                    },
+                    "v": {
+                      "bytes": "4f696e6b61636875"
+                    }
+                  }
+                ]
+              },
+              {
+                "int": 1
+              }
+            ]
+          }
+        },
+        "reference_script": null
+      },
+      {
+        "tx_hash": "a011bc73b8f425078942d44ca8b3e8f172d81d15892c6138bd3c48d0bf3e9048",
+        "index": 3,
+        "assets": [
+          {
+            "unit": "lovelace",
+            "amount": 1340410
+          },
+          {
+            "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000643b04e696b65766572736533343431",
+            "amount": 1
+          }
+        ],
+        "address": "addr1q9jgh2gc9yt2uy0rcad7356cmkqe52qmcxwsxnecwf97wxyj5dysang6xcyp62r6dwdm7pnv3nsdwwn7jzzhr03ur6tqkvnx5f",
+        "datum": {
+          "type": "hash",
+          "hash": "bd3fc5d8f42171ba73b1899b1d3d7959ff82f128cd9a33608c9410a2138abeb4",
+          "bytes": "d8799faa446e616d654f4e696b65766572736520233334343145696d6167655835697066733a2f2f516d594159524d57657044456a436135374a657a346e567435474e36516279314a364438356b5333444642737832496d65646961547970654a696d6167652f6a70656744746965724756617269616e744a6261636b67726f756e6446496e6469676f44626f647947436861726c657347636c6f7468657344456c6f6e4465796573474d69646e696b65446e6f736547476c6f77696e67446865616447476c6f77696e6701ff",
+          "json": {
+            "constructor": 0,
+            "fields": [
+              {
+                "map": [
+                  {
+                    "k": {
+                      "bytes": "6e616d65"
+                    },
+                    "v": {
+                      "bytes": "4e696b657665727365202333343431"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "696d616765"
+                    },
+                    "v": {
+                      "bytes": "697066733a2f2f516d594159524d57657044456a436135374a657a346e567435474e36516279314a364438356b5333444642737832"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6d6564696154797065"
+                    },
+                    "v": {
+                      "bytes": "696d6167652f6a706567"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "74696572"
+                    },
+                    "v": {
+                      "bytes": "56617269616e74"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6261636b67726f756e64"
+                    },
+                    "v": {
+                      "bytes": "496e6469676f"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "626f6479"
+                    },
+                    "v": {
+                      "bytes": "436861726c6573"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "636c6f74686573"
+                    },
+                    "v": {
+                      "bytes": "456c6f6e"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "65796573"
+                    },
+                    "v": {
+                      "bytes": "4d69646e696b65"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6e6f7365"
+                    },
+                    "v": {
+                      "bytes": "476c6f77696e67"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "68656164"
+                    },
+                    "v": {
+                      "bytes": "476c6f77696e67"
+                    }
+                  }
+                ]
+              },
+              {
+                "int": 1
+              }
+            ]
+          }
+        },
+        "reference_script": null
+      },
+      {
+        "tx_hash": "a011bc73b8f425078942d44ca8b3e8f172d81d15892c6138bd3c48d0bf3e9048",
+        "index": 4,
+        "assets": [
+          {
+            "unit": "lovelace",
+            "amount": 1340410
+          },
+          {
+            "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000643b04e696b65766572736532303439",
+            "amount": 1
+          }
+        ],
+        "address": "addr1q9jgh2gc9yt2uy0rcad7356cmkqe52qmcxwsxnecwf97wxyj5dysang6xcyp62r6dwdm7pnv3nsdwwn7jzzhr03ur6tqkvnx5f",
+        "datum": {
+          "type": "hash",
+          "hash": "84e09fb338a38f41f806bf99e9e15ab83953b007f8666008210a843bfe001a7f",
+          "bytes": "d8799faa446e616d654f4e696b65766572736520233230343945696d6167655835697066733a2f2f516d6145746968597a75556d376455383333664464384646745431474d3957396b706433666670416a4a656b536a496d65646961547970654a696d6167652f6a70656744746965724756617269616e744a6261636b67726f756e644e43617264616e6f2054726164657244626f647946536c6565707947636c6f746865734357656e44657965734a5465726d696e61746f72446e6f7365454e696e6a61446865616446506f726b657201ff",
+          "json": {
+            "constructor": 0,
+            "fields": [
+              {
+                "map": [
+                  {
+                    "k": {
+                      "bytes": "6e616d65"
+                    },
+                    "v": {
+                      "bytes": "4e696b657665727365202332303439"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "696d616765"
+                    },
+                    "v": {
+                      "bytes": "697066733a2f2f516d6145746968597a75556d376455383333664464384646745431474d3957396b706433666670416a4a656b536a"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6d6564696154797065"
+                    },
+                    "v": {
+                      "bytes": "696d6167652f6a706567"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "74696572"
+                    },
+                    "v": {
+                      "bytes": "56617269616e74"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6261636b67726f756e64"
+                    },
+                    "v": {
+                      "bytes": "43617264616e6f20547261646572"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "626f6479"
+                    },
+                    "v": {
+                      "bytes": "536c65657079"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "636c6f74686573"
+                    },
+                    "v": {
+                      "bytes": "57656e"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "65796573"
+                    },
+                    "v": {
+                      "bytes": "5465726d696e61746f72"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "6e6f7365"
+                    },
+                    "v": {
+                      "bytes": "4e696e6a61"
+                    }
+                  },
+                  {
+                    "k": {
+                      "bytes": "68656164"
+                    },
+                    "v": {
+                      "bytes": "506f726b6572"
+                    }
+                  }
+                ]
+              },
+              {
+                "int": 1
+              }
+            ]
+          }
+        },
+        "reference_script": null
+      },
+      {
+        "tx_hash": "a011bc73b8f425078942d44ca8b3e8f172d81d15892c6138bd3c48d0bf3e9048",
+        "index": 5,
+        "assets": [
+          {
+            "unit": "lovelace",
+            "amount": 1521430
+          },
+          {
+            "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000de1404e696b65766572736530343434",
+            "amount": 1
+          },
+          {
+            "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000de1404e696b65766572736532303439",
+            "amount": 1
+          },
+          {
+            "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000de1404e696b65766572736532353233",
+            "amount": 1
+          },
+          {
+            "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000de1404e696b65766572736533343431",
+            "amount": 1
+          },
+          {
+            "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000de1404e696b65766572736533373436",
+            "amount": 1
+          }
+        ],
+        "address": "addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+        "datum": null,
+        "reference_script": null
+      },
+      {
+        "tx_hash": "a011bc73b8f425078942d44ca8b3e8f172d81d15892c6138bd3c48d0bf3e9048",
+        "index": 6,
+        "assets": [
+          {
+            "unit": "lovelace",
+            "amount": 186456035
+          }
+        ],
+        "address": "addr1q8a5ycefte43pvnf7jnqeqczhmv9uzlrt3kn8jet8v4nlh8ql06n54zudj0e67gmevtacmwl0s8ad6l0lmej3yuqjkgqxnrcfh",
+        "datum": null,
+        "reference_script": null
+      }
+    ],
+    "reference_inputs": [],
+    "collateral_inputs": [],
+    "collateral_return": null,
+    "mint": [
+      {
+        "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000643b04e696b65766572736530343434",
+        "amount": 1
+      },
+      {
+        "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000643b04e696b65766572736532303439",
+        "amount": 1
+      },
+      {
+        "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000643b04e696b65766572736532353233",
+        "amount": 1
+      },
+      {
+        "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000643b04e696b65766572736533343431",
+        "amount": 1
+      },
+      {
+        "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000643b04e696b65766572736533373436",
+        "amount": 1
+      },
+      {
+        "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000de1404e696b65766572736530343434",
+        "amount": 1
+      },
+      {
+        "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000de1404e696b65766572736532303439",
+        "amount": 1
+      },
+      {
+        "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000de1404e696b65766572736532353233",
+        "amount": 1
+      },
+      {
+        "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000de1404e696b65766572736533343431",
+        "amount": 1
+      },
+      {
+        "unit": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32000de1404e696b65766572736533373436",
+        "amount": 1
+      }
+    ],
+    "invalid_before": 156112831,
+    "invalid_hereafter": 156372031,
+    "fee": 320485,
+    "deposit": 0,
+    "certificates": {
+      "stake_registrations": [],
+      "stake_deregistrations": [],
+      "stake_delegations": [],
+      "pool_registrations": [],
+      "pool_retirements": [],
+      "reg_certs": [],
+      "unreg_certs": [],
+      "vote_delegations": [],
+      "stake_vote_delegations": [],
+      "stake_reg_delegations": [],
+      "vote_reg_delegations": [],
+      "stake_vote_reg_delegations": [],
+      "auth_committee_hot_certs": [],
+      "resign_committee_cold_certs": [],
+      "reg_drep_certs": [],
+      "unreg_drep_certs": [],
+      "update_drep_certs": [],
+      "mir_transfers": []
+    },
+    "withdrawals": [],
+    "additional_signers": [],
+    "scripts_executed": [
+      {
+        "hash": "de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32",
+        "type": "native",
+        "bytes": "82018382041a091261f482051a0d1f4dac8200581cf66faf8744c10c55300c20efd48184cf1750d5b2c7789192ddc1d551",
+        "json": {
+          "type": "all",
+          "scripts": [
+            {
+              "type": "after",
+              "slot": 152199668
+            },
+            {
+              "type": "before",
+              "slot": 220155308
+            },
+            {
+              "keyHash": "f66faf8744c10c55300c20efd48184cf1750d5b2c7789192ddc1d551",
+              "type": "sig"
+            }
+          ]
+        }
+      }
+    ],
+    "scripts_successful": true,
+    "redeemers": {
+      "spends": [],
+      "mints": [],
+      "withdrawals": [],
+      "certificates": [],
+      "votes": [],
+      "proposals": []
+    },
+    "metadata": null,
+    "size": 2648
+  },
+  "last_updated": {
+    "timestamp": "2025-07-22 07:47:48",
+    "block_hash": "818a3dae25646729bce668dfbe65be6128ac715f6bfaf0cdb2a61aec04c8fe07",
+    "block_slot": 161604177
+  }
+}

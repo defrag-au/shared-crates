@@ -1,0 +1,19 @@
+[package]
+name = "pipeline-types"
+version = "0.1.0"
+edition = "2021"
+description = "Core types for the processing pipeline"
+
+[dependencies]
+cardano-assets = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+hex = { workspace = true }
+thiserror = "1.0"
+tracing = { workspace = true }
+tx_insights = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+test_utils = { workspace = true }

@@ -1,0 +1,146 @@
+# JPG.store V1 Ask (listing) datum schema
+# Equivalent to: projects/jpg-store-v1/ask.cddl
+# Version: v1.0
+# Description: NFT listing datum for JPG.store marketplace (Legacy format)
+
+[schema]
+name = "jpg_store_v1_ask"
+version = "1.0"
+description = "JPG.store V1 Ask datum - legacy format"
+root_type = "ask_datum"
+
+# Main datum structure (constructor wrapper)
+[types.ask_datum]
+type = "constructor"
+description = "JPG.store V1 Ask datum - represents an NFT listing (Legacy format)"
+constructor_tag = 121
+
+[[types.ask_datum.fields]]
+name = "owner"
+index = 0
+type = "cardano_address"
+description = "NFT owner address"
+required = true
+
+[[types.ask_datum.fields]]
+name = "payouts"
+index = 1
+type = "array"
+item_type = "payout"
+description = "At least one payout (seller, fees, royalties)"
+min_items = 1
+required = true
+extract_method = "sum_payout_amounts"
+
+[[types.ask_datum.fields]]
+name = "expires_at"
+index = 2
+type = "uint"
+description = "Optional expiration timestamp (POSIX)"
+required = false
+
+[[types.ask_datum.fields]]
+name = "version"
+index = 3
+type = "uint" 
+description = "Contract version identifier"
+required = false
+
+# Cardano address structure (same as V3)
+[types.cardano_address]
+type = "array"
+description = "Common address structure used across Cardano"
+min_items = 1
+max_items = 2
+
+[[types.cardano_address.fields]]
+name = "payment_credential"
+index = 0
+type = "credential"
+required = true
+
+[[types.cardano_address.fields]]
+name = "stake_credential"
+index = 1
+type = "credential"
+required = false
+
+# Credential structure (same as V3)
+[types.credential]
+type = "array"
+description = "Credential can be either key hash or script hash"
+min_items = 2
+max_items = 2
+
+[[types.credential.fields]]
+name = "tag"
+index = 0
+type = "uint"
+description = "0 = key credential, 1 = script credential"
+range = [0, 1]
+required = true
+
+[[types.credential.fields]]
+name = "hash"
+index = 1
+type = "bytes"
+description = "28-byte hash"
+byte_length = 28
+required = true
+
+# Payout structure (same as V3)
+[types.payout]
+type = "array"
+description = "Payout structure for marketplace transactions"
+min_items = 2
+max_items = 3
+
+[[types.payout.fields]]
+name = "address"
+index = 0
+type = "cardano_address"
+description = "Recipient address"
+required = true
+
+[[types.payout.fields]]
+name = "amount"
+index = 1
+type = "uint"
+description = "Amount in lovelace"
+required = true
+extract_as = "price_component"
+
+[[types.payout.fields]]
+name = "asset"
+index = 2
+type = "asset_ref"
+description = "Optional native asset"
+required = false
+
+# Native asset reference (same as V3)
+[types.asset_ref]
+type = "array"
+description = "Native asset reference"
+min_items = 2
+max_items = 2
+
+[[types.asset_ref.fields]]
+name = "policy_id"
+index = 0
+type = "bytes"
+description = "Policy ID"
+byte_length = 28
+required = true
+
+[[types.asset_ref.fields]]
+name = "asset_name"
+index = 1
+type = "bytes"
+description = "Asset name"
+required = true
+
+# Extraction methods (same as V3)
+[extraction]
+price_extraction = "sum_payout_amounts"
+seller_path = "payouts.0.address"
+expiration_path = "expires_at"

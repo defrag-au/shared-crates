@@ -11,6 +11,11 @@ pub fn is_pure_ada_utxo(utxo: &UtxoApi) -> bool {
     utxo.assets.is_empty()
 }
 
+/// Check if a UTxO is a simple spendable UTxO (no assets, no datum, no script).
+pub fn is_simple_utxo(utxo: &UtxoApi) -> bool {
+    utxo.assets.is_empty() && utxo.tags.is_empty()
+}
+
 /// Calculate total lovelace across multiple UTxOs.
 pub fn total_utxo_lovelace(utxos: &[&UtxoApi]) -> u64 {
     utxos.iter().map(|u| u.lovelace).sum()

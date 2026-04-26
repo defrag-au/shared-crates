@@ -1,0 +1,11 @@
+; JPG.store V3 Fee datum - represents fee collection data
+; This contract handles marketplace fee accumulation and distribution
+
+fee_datum = [
+    collected_fees: uint,           ; Total fees collected in lovelace
+    last_distribution: uint,        ; Timestamp of last fee distribution
+    ?admin_address: cardano_address ; Optional admin address for fee management
+]
+
+; Cardano address (bech32 or hex representation)
+cardano_address = tstr

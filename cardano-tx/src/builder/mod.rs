@@ -5,6 +5,7 @@
 //! transaction ready for signing via Ed25519 or CIP-30.
 
 pub mod buy;
+pub mod collection_offer;
 pub mod cost_models;
 pub mod fluent;
 pub mod marketplace;
@@ -96,6 +97,7 @@ mod tests {
             max_value_size: 5000,
             price_mem: None,
             price_step: None,
+                ..Default::default()
         };
 
         // Minimal TX that builds successfully

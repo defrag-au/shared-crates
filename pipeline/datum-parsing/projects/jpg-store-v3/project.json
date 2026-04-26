@@ -1,0 +1,37 @@
+{
+  "name": "JPG.store V3",
+  "description": "JPG.store NFT marketplace smart contracts - Version 3 (Latest)",
+  "version": "v3.0", 
+  "maintainer": "cnft.dev",
+  "repository": "https://github.com/jpg-store/contracts-v3",
+  "contracts": {
+    "ask": {
+      "description": "JPG.store V3 Ask (listing) contract",
+      "addresses": {
+        "mainnet": [
+          "addr1w8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7efvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8ekstg4qrx"
+        ],
+        "testnet": []
+      },
+      "schema": "ask.cddl"
+    },
+    "bid": {
+      "description": "JPG.store V3 Bid (offer) contract",
+      "addresses": {
+        "mainnet": [],
+        "testnet": []
+      },
+      "schema": "bid.cddl"
+    },
+    "fee": {
+      "description": "JPG.store V3 Fee collection contract",
+      "addresses": {
+        "mainnet": [
+          "addr1xxzvcf02fs5e282qk3pmjkau2emtcsj5wrukxak3np90n2evjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eksg6pw3p"
+        ],
+        "testnet": []
+      },
+      "schema": "fee.cddl"
+    }
+  }
+}

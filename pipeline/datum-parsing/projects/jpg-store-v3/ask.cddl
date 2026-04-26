@@ -1,0 +1,40 @@
+; JPG.store V3 Ask (listing) datum schema
+; Version: v3.0
+; Description: NFT listing datum for JPG.store marketplace (Current/Latest)
+
+; Common address structure used across Cardano
+cardano_address = [
+    payment_credential,
+    ?stake_credential
+]
+
+; Credential can be either key hash or script hash
+credential = [
+    tag: 0..1,           ; 0 = key credential, 1 = script credential
+    hash: bytes .size 28  ; 28-byte hash
+]
+
+payment_credential = credential
+stake_credential = credential
+
+; Payout structure for marketplace transactions
+payout = [
+    address: cardano_address,
+    amount: uint,         ; Amount in lovelace
+    ?asset: asset_ref     ; Optional native asset
+]
+
+; Native asset reference
+asset_ref = [
+    policy_id: bytes .size 28,
+    asset_name: bytes
+]
+
+; JPG.store Ask datum - represents an NFT listing
+; Structure: [owner, payouts, ?expires_at, ?version]
+ask_datum = [
+    owner: cardano_address,     ; NFT owner address
+    payouts: [+ payout],        ; At least one payout (seller, fees, royalties)
+    ?expires_at: uint,          ; Optional expiration timestamp (POSIX)
+    ?version: uint              ; Contract version identifier
+]

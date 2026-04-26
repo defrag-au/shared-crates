@@ -28,13 +28,13 @@
 //! assert!(matches!(result, SolveResult::Solved(_)));
 //! ```
 
-mod tileset;
-mod solver;
 mod grid;
+mod solver;
+mod tileset;
 
-pub use tileset::{Tileset, TileId};
-pub use solver::{WfcSolver, SolveResult};
 pub use grid::WfcGrid;
+pub use solver::{SolveResult, WfcSolver};
+pub use tileset::{TileId, Tileset};
 
 /// Cardinal directions for adjacency.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

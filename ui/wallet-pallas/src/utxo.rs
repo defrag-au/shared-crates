@@ -86,8 +86,10 @@ fn extract_output(output: &TransactionOutput) -> DecodedOutput {
                     (*lovelace, assets)
                 }
             };
-            // Legacy outputs: check address for script credential, no datum/script_ref
             let mut tags = Vec::new();
+            if legacy.datum_hash.is_some() {
+                tags.push(UtxoTag::HasDatum);
+            }
             if is_script_payment_address(&legacy.address) {
                 tags.push(UtxoTag::ScriptAddress);
             }
