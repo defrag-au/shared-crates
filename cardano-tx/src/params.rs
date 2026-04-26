@@ -8,7 +8,7 @@
 ///
 /// These values come from the Cardano node's protocol parameters and are
 /// used for fee calculation, min UTxO computation, and size validation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TxBuildParams {
     /// Per-byte fee multiplier (Cardano parameter `a`)
     pub min_fee_coefficient: u64,
