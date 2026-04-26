@@ -3,7 +3,9 @@
 pub use pipeline_types::{AssetId, OperationPayload, PricedAsset};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{debug, info};
+use tracing::debug;
+#[cfg(feature = "indexers")]
+use tracing::info;
 
 // Re-export types from pipeline crates
 pub use address_registry::*;
@@ -18,7 +20,7 @@ pub mod summary;
 pub mod txdata_ext;
 pub mod utxo_analysis;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "indexers"))]
 mod tests;
 
 #[cfg(feature = "indexers")]
@@ -1667,6 +1669,7 @@ impl TxClassifier {
 }
 
 /// Validate transaction hash format
+#[cfg(feature = "indexers")]
 fn is_valid_tx_hash(tx_hash: &str) -> bool {
     tx_hash.len() == 64 && tx_hash.chars().all(|c| c.is_ascii_hexdigit())
 }
