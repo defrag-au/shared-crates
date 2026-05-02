@@ -7,6 +7,8 @@
 use serde::{Deserialize, Serialize};
 
 mod asset;
+#[cfg(feature = "pallas-adapter")]
+pub mod pallas_adapter;
 mod screening;
 pub mod types;
 

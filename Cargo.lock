@@ -5878,7 +5878,9 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "pallas-codec",
+ "pallas-crypto",
  "pallas-primitives",
+ "pallas-traverse",
  "pipeline-types",
  "serde",
  "serde_json",
