@@ -183,9 +183,9 @@ pub fn mint_operations_from_pallas(tx: &MultiEraTx<'_>) -> Vec<MintOperation> {
 /// from `resolved_inputs` — surfacing rather than silently emitting
 /// a `RawTxData` with incomplete inputs (which would mis-classify
 /// downstream).
-pub fn raw_tx_data_from_pallas<'a>(
-    tx: &MultiEraTx<'a>,
-    resolved_inputs: &HashMap<OutputRef, &'a MultiEraOutput<'a>>,
+pub fn raw_tx_data_from_pallas<'tx, 'inputs>(
+    tx: &MultiEraTx<'tx>,
+    resolved_inputs: &HashMap<OutputRef, MultiEraOutput<'inputs>>,
     block_slot: Option<u64>,
 ) -> Result<RawTxData, PallasAdapterError> {
     let tx_hash = hex::encode(tx.hash());
@@ -196,7 +196,6 @@ pub fn raw_tx_data_from_pallas<'a>(
         let key = OutputRef::new(**input.hash(), input.index() as u32);
         let resolved = resolved_inputs
             .get(&key)
-            .copied()
             .ok_or_else(|| PallasAdapterError::UnresolvedInput(key.clone()))?;
         inputs.push(tx_input_from_pallas(
             *input.hash(),
@@ -211,7 +210,7 @@ pub fn raw_tx_data_from_pallas<'a>(
     let mut reference_inputs = Vec::new();
     for input in tx.reference_inputs() {
         let key = OutputRef::new(**input.hash(), input.index() as u32);
-        if let Some(resolved) = resolved_inputs.get(&key).copied() {
+        if let Some(resolved) = resolved_inputs.get(&key) {
             reference_inputs.push(tx_input_from_pallas(
                 *input.hash(),
                 input.index() as u32,
@@ -237,7 +236,7 @@ pub fn raw_tx_data_from_pallas<'a>(
     let mut collateral_inputs = Vec::new();
     for input in tx.collateral() {
         let key = OutputRef::new(**input.hash(), input.index() as u32);
-        if let Some(resolved) = resolved_inputs.get(&key).copied() {
+        if let Some(resolved) = resolved_inputs.get(&key) {
             collateral_inputs.push(tx_input_from_pallas(
                 *input.hash(),
                 input.index() as u32,
