@@ -102,6 +102,17 @@ impl AssetId {
         &self.policy_id
     }
 
+    /// Get the policy ID as a typed [`PolicyId`].
+    ///
+    /// Validates the underlying string. Prefer this over the
+    /// stringly-typed [`Self::policy_id`] when downstream code
+    /// benefits from type-level distinction (e.g. function
+    /// signatures that distinguish a policy id from a tx hash or
+    /// asset name).
+    pub fn policy_id_typed(&self) -> Result<crate::PolicyId, crate::PolicyIdError> {
+        crate::PolicyId::new(self.policy_id.clone())
+    }
+
     /// Get the asset name hex
     pub fn asset_name_hex(&self) -> &str {
         &self.asset_name_hex
@@ -224,6 +235,19 @@ impl AssetId {
             .map_err(|_| AssetIdError::InvalidPolicyIdFormat)?;
 
         Ok(encoded)
+    }
+
+    /// Compute the CIP-14 asset fingerprint as a typed
+    /// [`Fingerprint`].
+    ///
+    /// Same computation as [`Self::fingerprint`] but the typed
+    /// return makes it impossible for callers to confuse a
+    /// fingerprint with any other 30-50-character string.
+    #[cfg(feature = "cip14")]
+    pub fn fingerprint_typed(&self) -> Result<crate::Fingerprint, AssetIdError> {
+        let s = self.fingerprint()?;
+        // Internally-produced; safe to construct unchecked.
+        Ok(crate::Fingerprint::new_unchecked(s))
     }
 
     /// Parse from concatenated format with smart format detection

@@ -1,0 +1,45 @@
+{
+  "nodes": {
+    "defrag-nix": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1777433163,
+        "narHash": "sha256-FiD35KpptvHXO2vLu8lSGGLGaVroEMMv3mg5aUgGbso=",
+        "owner": "defrag-au",
+        "repo": "defrag-nix",
+        "rev": "cf63d44cb992928a311758b20a3624dd986fa244",
+        "type": "github"
+      },
+      "original": {
+        "owner": "defrag-au",
+        "repo": "defrag-nix",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1777268161,
+        "narHash": "sha256-bxrdOn8SCOv8tN4JbTF/TXq7kjo9ag4M+C8yzzIRYbE=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "1c3fe55ad329cbcb28471bb30f05c9827f724c76",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "defrag-nix": "defrag-nix"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
