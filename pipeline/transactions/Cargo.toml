@@ -9,9 +9,21 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 hex = { workspace = true }
 pallas-codec = { workspace = true }
+pallas-crypto = { workspace = true, optional = true }
 pallas-primitives = { workspace = true }
+pallas-traverse = { workspace = true, optional = true }
 wasm_safe_serde = { workspace = true }
 pipeline-types = { workspace = true }
+
+[features]
+default = []
+# Convert pallas `MultiEraTx` + already-resolved inputs into a
+# `RawTxData`. Used by chain-following indexers (e.g. mitos) that
+# get blocks straight from a Cardano data node rather than from
+# Maestro/Blockfrost JSON. Pulls in `pallas-traverse` and
+# `pallas-crypto` (for datum hash computation), so opt-in for
+# consumers that don't need it.
+pallas-adapter = ["dep:pallas-traverse", "dep:pallas-crypto"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
