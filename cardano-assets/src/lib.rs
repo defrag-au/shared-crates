@@ -11,6 +11,9 @@ use utoipa::ToSchema;
 
 pub mod asset_id;
 pub mod collection;
+#[cfg(feature = "cip14")]
+pub mod fingerprint;
+pub mod policy_id;
 pub mod resolver;
 pub mod token_type;
 pub mod traits;
@@ -24,6 +27,9 @@ pub mod utxorpc;
 
 pub use asset_id::*;
 pub use collection::*;
+#[cfg(feature = "cip14")]
+pub use fingerprint::{Fingerprint, FingerprintError};
+pub use policy_id::{PolicyId, PolicyIdError};
 pub use resolver::*;
 pub use traits::*;
 pub use tx_hash::*;
