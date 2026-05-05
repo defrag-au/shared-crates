@@ -15,8 +15,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_plain = "1.0.2"
 utoipa = { workspace = true, optional = true }
-# UTxORPC support (optional)
-utxorpc-spec = { version = "0.17", optional = true }
+# UTxORPC support (optional). Pulls from workspace pin so the
+# whole pipeline upgrades in lockstep with `pallas-utxorpc`.
+utxorpc-spec = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 
 [features]
@@ -28,4 +29,4 @@ cnft_tools = ["dep:cnft_tools"]
 
 [dev-dependencies]
 test_utils = { path = "../test-utils" }
-pallas-utxorpc = "1.0.0-alpha.3"
+pallas-utxorpc = { workspace = true }

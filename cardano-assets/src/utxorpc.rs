@@ -333,8 +333,13 @@ mod tests {
             redeemer: None,
             assets: vec![u5c::Asset {
                 name: asset_name.into(),
-                output_coin: 1,
-                mint_coin: 1,
+                // utxorpc-spec 0.18: output_coin / mint_coin are now
+                // tagged variants of an `Asset.quantity` oneof carrying
+                // a `BigInt`. For mint operations, this test uses
+                // `MintCoin(1)`.
+                quantity: Some(u5c::asset::Quantity::MintCoin(u5c::BigInt {
+                    big_int: Some(u5c::big_int::BigInt::Int(1)),
+                })),
             }],
         };
 
