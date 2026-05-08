@@ -66,6 +66,9 @@ mod app {
         ImageTextEditor,
         // TX Cart
         TxCart,
+        // Grouping
+        GroupedSection,
+        OfferTile,
     }
 
     impl Story {
@@ -120,6 +123,9 @@ mod app {
                 Self::ImageTextEditor,
                 // TX Cart
                 Self::TxCart,
+                // Grouping
+                Self::GroupedSection,
+                Self::OfferTile,
             ]
         }
 
@@ -169,6 +175,8 @@ mod app {
                 Self::FileUpload => "File Upload",
                 Self::ImageTextEditor => "Image Text Editor",
                 Self::TxCart => "TX Cart",
+                Self::GroupedSection => "Grouped Section",
+                Self::OfferTile => "Offer Tile",
             }
         }
 
@@ -215,6 +223,7 @@ mod app {
                 Self::FileUpload => "Utility",
                 Self::ImageTextEditor => "Media",
                 Self::TxCart => "TX Cart",
+                Self::GroupedSection | Self::OfferTile => "Layout",
             }
         }
 
@@ -331,6 +340,12 @@ mod app {
                 }
                 Self::TxCart => {
                     "Batched transaction cart with per-item status, phase state machine, and sequential signing flow"
+                }
+                Self::GroupedSection => {
+                    "Group header (hero icon + title + verified badge + bulk-action button) with caller-rendered body"
+                }
+                Self::OfferTile => {
+                    "Picker tile with state machine (Active / InCart / Spent), image-or-placeholder content, and corner badge"
                 }
             }
         }
@@ -672,6 +687,8 @@ mod app {
                                 ui,
                                 &mut self.image_text_editor_state,
                             ),
+                            Story::GroupedSection => stories::grouped_section::show(ui),
+                            Story::OfferTile => stories::offer_tile::show(ui),
                             Story::TxCart => {
                                 stories::tx_cart::show(ui, &mut self.tx_cart_state)
                             }

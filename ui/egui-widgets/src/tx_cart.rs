@@ -191,8 +191,32 @@ pub enum TxCartAction {
 // Widget
 // ---------------------------------------------------------------------------
 
-/// Render the TX cart widget.
+/// Render the TX cart widget. Renders title + items + footer
+/// inline. Most callers want this.
+///
+/// For panel layouts that need to pin the footer (Total +
+/// Prepare button) at the bottom while the items list scrolls
+/// independently — typical of long carts in a fixed-height side
+/// panel — call [`show_items`] inside a `ScrollArea` and
+/// [`show_footer`] inside a `TopBottomPanel::bottom`. Both halves
+/// can return actions, so the caller has to merge them.
 pub fn show(
+    ui: &mut Ui,
+    state: &mut TxCartState,
+    config: &TxCartConfig,
+) -> Option<TxCartAction> {
+    let mut action = show_items(ui, state, config);
+    if let Some(a) = show_footer(ui, state) {
+        action = Some(a);
+    }
+    action
+}
+
+/// Render the cart's title + items list. Pair with
+/// [`show_footer`] when you need a pinned footer (e.g. inside a
+/// `SidePanel` where the items overflow but Total + Prepare must
+/// stay visible). For a single inline render use [`show`].
+pub fn show_items(
     ui: &mut Ui,
     state: &mut TxCartState,
     config: &TxCartConfig,
@@ -420,6 +444,21 @@ pub fn show(
 
     if let Some(id) = remove_id {
         action = Some(TxCartAction::RemoveItem(id));
+    }
+
+    action
+}
+
+/// Render the cart's bottom action area — Total + Prepare button
+/// in `Editing`, Sign & Submit in `Preview`, error/success
+/// states, etc. Standalone counterpart to [`show_items`]; both
+/// halves are combined by [`show`] for the inline-render path.
+pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction> {
+    let mut action = None;
+
+    // Empty cart has no footer; nothing to show.
+    if state.items.is_empty() {
+        return action;
     }
 
     ui.add_space(4.0);
