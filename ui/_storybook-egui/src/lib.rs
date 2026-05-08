@@ -66,6 +66,8 @@ mod app {
         ImageTextEditor,
         // TX Cart
         TxCart,
+        // Grouping
+        GroupedSection,
     }
 
     impl Story {
@@ -120,6 +122,8 @@ mod app {
                 Self::ImageTextEditor,
                 // TX Cart
                 Self::TxCart,
+                // Grouping
+                Self::GroupedSection,
             ]
         }
 
@@ -169,6 +173,7 @@ mod app {
                 Self::FileUpload => "File Upload",
                 Self::ImageTextEditor => "Image Text Editor",
                 Self::TxCart => "TX Cart",
+                Self::GroupedSection => "Grouped Section",
             }
         }
 
@@ -215,6 +220,7 @@ mod app {
                 Self::FileUpload => "Utility",
                 Self::ImageTextEditor => "Media",
                 Self::TxCart => "TX Cart",
+                Self::GroupedSection => "Layout",
             }
         }
 
@@ -331,6 +337,9 @@ mod app {
                 }
                 Self::TxCart => {
                     "Batched transaction cart with per-item status, phase state machine, and sequential signing flow"
+                }
+                Self::GroupedSection => {
+                    "Group header (hero icon + title + verified badge + bulk-action button) with caller-rendered body"
                 }
             }
         }
@@ -672,6 +681,7 @@ mod app {
                                 ui,
                                 &mut self.image_text_editor_state,
                             ),
+                            Story::GroupedSection => stories::grouped_section::show(ui),
                             Story::TxCart => {
                                 stories::tx_cart::show(ui, &mut self.tx_cart_state)
                             }

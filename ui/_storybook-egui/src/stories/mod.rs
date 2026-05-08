@@ -54,3 +54,6 @@ pub mod wallet_asset_picker;
 
 // TX cart
 pub mod tx_cart;
+
+// Layout primitives
+pub mod grouped_section;
