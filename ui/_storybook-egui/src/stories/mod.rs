@@ -57,3 +57,4 @@ pub mod tx_cart;
 
 // Layout primitives
 pub mod grouped_section;
+pub mod offer_tile;

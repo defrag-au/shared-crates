@@ -10,6 +10,7 @@ pub mod file_upload;
 pub mod flip_counter;
 pub mod grouped_section;
 pub mod icons;
+pub mod offer_tile;
 pub mod image_loader;
 pub mod listing_grid;
 pub mod marquee;

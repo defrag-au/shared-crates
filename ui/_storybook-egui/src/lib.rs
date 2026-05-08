@@ -68,6 +68,7 @@ mod app {
         TxCart,
         // Grouping
         GroupedSection,
+        OfferTile,
     }
 
     impl Story {
@@ -124,6 +125,7 @@ mod app {
                 Self::TxCart,
                 // Grouping
                 Self::GroupedSection,
+                Self::OfferTile,
             ]
         }
 
@@ -174,6 +176,7 @@ mod app {
                 Self::ImageTextEditor => "Image Text Editor",
                 Self::TxCart => "TX Cart",
                 Self::GroupedSection => "Grouped Section",
+                Self::OfferTile => "Offer Tile",
             }
         }
 
@@ -220,7 +223,7 @@ mod app {
                 Self::FileUpload => "Utility",
                 Self::ImageTextEditor => "Media",
                 Self::TxCart => "TX Cart",
-                Self::GroupedSection => "Layout",
+                Self::GroupedSection | Self::OfferTile => "Layout",
             }
         }
 
@@ -340,6 +343,9 @@ mod app {
                 }
                 Self::GroupedSection => {
                     "Group header (hero icon + title + verified badge + bulk-action button) with caller-rendered body"
+                }
+                Self::OfferTile => {
+                    "Picker tile with state machine (Active / InCart / Spent), image-or-placeholder content, and corner badge"
                 }
             }
         }
@@ -682,6 +688,7 @@ mod app {
                                 &mut self.image_text_editor_state,
                             ),
                             Story::GroupedSection => stories::grouped_section::show(ui),
+                            Story::OfferTile => stories::offer_tile::show(ui),
                             Story::TxCart => {
                                 stories::tx_cart::show(ui, &mut self.tx_cart_state)
                             }
