@@ -593,6 +593,28 @@ pub struct ProtocolParameters {
     /// Values are ratio strings like "577/10000".
     #[serde(default)]
     pub script_execution_prices: Option<ExecutionPrices>,
+    /// Per-transaction Plutus execution budget. Used by callers that batch
+    /// multiple Plutus redeemers in a single TX to size the batch under
+    /// the protocol's hard cap. `None` on networks where the field is
+    /// absent (pre-Alonzo, mostly historical).
+    #[serde(default)]
+    pub max_execution_units_per_transaction: Option<ExUnitsBudget>,
+    /// Maximum transaction size in bytes. `None` lets callers fall back to
+    /// the Conway-mainnet default (16,384) since the field is structurally
+    /// optional in older networks.
+    #[serde(default)]
+    pub max_transaction_size: Option<ByteSize>,
+}
+
+/// Plutus execution-unit budget, returned by Maestro under the
+/// `max_execution_units_per_transaction` and `max_execution_units_per_block`
+/// keys. Memory is in arbitrary plutus units; CPU is "steps".
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ExUnitsBudget {
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub memory: u64,
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub cpu: u64,
 }
 
 /// Script execution prices returned by Maestro as ratio strings.

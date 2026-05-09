@@ -192,6 +192,8 @@ mod tests {
                 ada: maestro::AdaAmount { lovelace: 155381 },
             },
             script_execution_prices: None,
+            max_execution_units_per_transaction: None,
+            max_transaction_size: None,
         };
 
         // Create asset ID matching the transaction

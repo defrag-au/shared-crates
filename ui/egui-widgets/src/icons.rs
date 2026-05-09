@@ -76,6 +76,7 @@ pub enum PhosphorIcon {
     Package,
     Coins,
     Star,
+    Crown,
     Heart,
 
     // Queue / Time
@@ -139,6 +140,7 @@ impl PhosphorIcon {
             Self::Package => '\u{e390}',
             Self::Coins => '\u{e78e}',
             Self::Star => '\u{e46a}',
+            Self::Crown => '\u{e614}',
             Self::Heart => '\u{e2a8}',
             Self::List => '\u{e2f0}',
             Self::Clock => '\u{e19a}',
@@ -230,6 +232,7 @@ impl PhosphorIcon {
         Self::Package,
         Self::Coins,
         Self::Star,
+        Self::Crown,
         Self::Heart,
         Self::List,
         Self::Clock,
@@ -282,6 +285,7 @@ impl PhosphorIcon {
             Self::Package => "Package",
             Self::Coins => "Coins",
             Self::Star => "Star",
+            Self::Crown => "Crown",
             Self::Heart => "Heart",
             Self::List => "List",
             Self::Clock => "Clock",
