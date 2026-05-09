@@ -260,11 +260,11 @@ fn select_utxos_for_mint(
     estimated_fee: u64,
     deps: &TxDeps,
 ) -> Result<UtxoSelection<'_>, TxBuildError> {
-    let selected_utxo = crate::selection::select_utxo_for_amount_prefer_pure_ada(
+    let selected_utxo = crate::selection::select_utxo_for_amount(
         &deps.utxos,
         min_ada,
         estimated_fee,
-        &deps.params,
+        &crate::selection::UtxoSelectionConfig::new(&deps.params),
     )?;
 
     let total_input_lovelace = selected_utxo.lovelace;

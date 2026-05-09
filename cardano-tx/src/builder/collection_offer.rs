@@ -613,10 +613,29 @@ const SCRIPT_REF_INDEX: u64 = 0;
 /// (Verified from on-chain cancel TX a79712998e7e1bcf...)
 const CANCEL_REDEEMER_HEX: &str = "d87a80";
 
-/// Ex-units budget for cancel — generous defaults for evaluation pass.
-/// Real values come from Maestro evaluate in the second pass.
-const CANCEL_EX_UNITS_MEM: u64 = 2_000_000;
-const CANCEL_EX_UNITS_STEPS: u64 = 600_000_000;
+/// Preliminary ex-units placeholder for the redeemer in pass 1 of the
+/// build/evaluate cycle. Sized generously so Maestro never returns
+/// "budget exceeded" — pass 3 replaces these with the real values
+/// Maestro reports. Not what ends up in the submitted TX.
+const CANCEL_PRELIMINARY_EX_UNITS_MEM: u64 = 2_000_000;
+const CANCEL_PRELIMINARY_EX_UNITS_STEPS: u64 = 600_000_000;
+
+/// Worst-case per-cancel ex-units the planner uses to size batches.
+///
+/// Set equal to the preliminary budget so the planner's cap math matches
+/// what Maestro will actually accept at evaluate time:
+/// `N × preliminary ≤ max_tx_ex_mem`. Real per-redeemer values come back
+/// strictly under preliminary (otherwise Maestro evaluate would fail),
+/// so the rebuilt TX is always within budget.
+///
+/// Per-redeemer real cost varies meaningfully with datum complexity
+/// (observed 0.5M–1.3M mem in 2-cancel test runs); the cancel builder
+/// currently applies one ExUnits to *every* spend redeemer
+/// (max-across-all reduction), so the planner must size against the
+/// worst case, not the typical. Lift these once the builder takes
+/// per-redeemer ex-units.
+pub const CANCEL_TYPICAL_EX_UNITS_MEM: u64 = CANCEL_PRELIMINARY_EX_UNITS_MEM;
+pub const CANCEL_TYPICAL_EX_UNITS_STEPS: u64 = CANCEL_PRELIMINARY_EX_UNITS_STEPS;
 
 /// Parameters for cancelling a collection offer.
 #[derive(Debug, Clone)]
@@ -650,9 +669,7 @@ pub fn build_cancel_offer_tx(
     req: &CancelOfferRequest,
 ) -> Result<super::UnsignedTx, TxBuildError> {
     use crate::builder::cost_models::PLUTUS_V2_COST_MODEL;
-    
-    use crate::helpers::output::create_ada_output;
-    use crate::helpers::utxo_query::is_simple_utxo;
+    use crate::helpers::output::{build_change_output, create_ada_output};
     use crate::selection;
     use pallas_crypto::hash::Hash;
     use pallas_txbuilder::{ExUnits, Input, ScriptKind, StagingTransaction};
@@ -660,13 +677,15 @@ pub fn build_cancel_offer_tx(
     let estimated_fee = selection::estimate_simple_fee(&deps.params);
 
     // Select a wallet UTxO to pay the fee (also serves as collateral).
-    // No min-change overhead needed — the CO value covers the output min-UTxO,
-    // and any remaining fee UTxO value merges into the single output.
-    let spendable: Vec<_> = deps.utxos.iter().filter(|u| is_simple_utxo(u)).cloned().collect();
+    // Default config prefers pure ADA but falls back to asset-bearing
+    // UTxOs when needed; the asset-bearing case is handled below by
+    // routing assets through the regular output (success) and
+    // `collateral_output` (script-fail).
     let fee_utxo = selection::select_utxo_for_amount(
-        &spendable,
+        &deps.utxos,
         0,
         estimated_fee,
+        &selection::UtxoSelectionConfig::new(&deps.params),
     )?
     .clone();
 
@@ -721,8 +740,8 @@ pub fn build_cancel_offer_tx(
                     script_input.clone(),
                     redeemer_bytes.clone(),
                     Some(ExUnits {
-                        mem: req.ex_units_mem.unwrap_or(CANCEL_EX_UNITS_MEM),
-                        steps: req.ex_units_steps.unwrap_or(CANCEL_EX_UNITS_STEPS),
+                        mem: req.ex_units_mem.unwrap_or(CANCEL_PRELIMINARY_EX_UNITS_MEM),
+                        steps: req.ex_units_steps.unwrap_or(CANCEL_PRELIMINARY_EX_UNITS_STEPS),
                     }),
                 )
                 .language_view(ScriptKind::PlutusV2, PLUTUS_V2_COST_MODEL.to_vec())
@@ -736,8 +755,36 @@ pub fn build_cancel_offer_tx(
                 }
             }
 
-            // Single output: CO value + fee UTxO value - fee, all back to wallet
-            tx = tx.output(create_ada_output(from_address.clone(), output_value));
+            // Single output: CO value + fee UTxO value - fee, all back to
+            // wallet. When the fee UTxO carries native assets, those assets
+            // must appear in the regular output (success path) and in
+            // `collateral_output` (failure path) — Conway rejects TXs whose
+            // collateral inputs hold assets without a return output.
+            if fee_utxo.assets.is_empty() {
+                tx = tx.output(create_ada_output(from_address.clone(), output_value));
+            } else {
+                let fee_utxo_refs: [&UtxoApi; 1] = [&fee_utxo];
+                let main_output =
+                    build_change_output(from_address.clone(), output_value, &fee_utxo_refs, None)?;
+                tx = tx.output(main_output);
+
+                // Reserve a generous lovelace budget for total_collateral
+                // (~5 ADA). Plenty for the typical cancel fee × 150%
+                // collateral_percent (~2.25 ADA); rest of the lovelace
+                // plus all assets flow back to the user via collateral_return
+                // if the script fails.
+                const COLLATERAL_RESERVE_LOVELACE: u64 = 5_000_000;
+                let collateral_return_lovelace = fee_utxo
+                    .lovelace
+                    .saturating_sub(COLLATERAL_RESERVE_LOVELACE);
+                let collateral_return = build_change_output(
+                    from_address.clone(),
+                    collateral_return_lovelace,
+                    &fee_utxo_refs,
+                    None,
+                )?;
+                tx = tx.collateral_output(collateral_return);
+            }
 
             Ok(tx.fee(fee).network_id(network_id))
         },
@@ -760,8 +807,7 @@ pub fn build_cancel_offers_tx(
     requests: &[CancelOfferRequest],
 ) -> Result<super::UnsignedTx, TxBuildError> {
     use crate::builder::cost_models::PLUTUS_V2_COST_MODEL;
-    use crate::helpers::output::create_ada_output;
-    use crate::helpers::utxo_query::is_simple_utxo;
+    use crate::helpers::output::{build_change_output, create_ada_output};
     use crate::selection;
     use pallas_crypto::hash::Hash;
     use pallas_txbuilder::{ExUnits, Input, ScriptKind, StagingTransaction};
@@ -773,13 +819,17 @@ pub fn build_cancel_offers_tx(
     let estimated_fee = selection::estimate_simple_fee(&deps.params);
 
     // Select a wallet UTxO to pay the fee (also serves as collateral).
-    let spendable: Vec<_> = deps
-        .utxos
-        .iter()
-        .filter(|u| is_simple_utxo(u))
-        .cloned()
-        .collect();
-    let fee_utxo = selection::select_utxo_for_amount(&spendable, 0, estimated_fee)?.clone();
+    // Default config prefers pure ADA but falls back to asset-bearing
+    // UTxOs; the asset-bearing case is handled below by routing assets
+    // through the regular output (success) and `collateral_output`
+    // (script-fail).
+    let fee_utxo = selection::select_utxo_for_amount(
+        &deps.utxos,
+        0,
+        estimated_fee,
+        &selection::UtxoSelectionConfig::new(&deps.params),
+    )?
+    .clone();
 
     let fee_utxo_lovelace = fee_utxo.lovelace;
     let from_address = deps.from_address.clone();
@@ -845,8 +895,8 @@ pub fn build_cancel_offers_tx(
                     input.clone(),
                     redeemer_bytes.clone(),
                     Some(ExUnits {
-                        mem: requests[0].ex_units_mem.unwrap_or(CANCEL_EX_UNITS_MEM),
-                        steps: requests[0].ex_units_steps.unwrap_or(CANCEL_EX_UNITS_STEPS),
+                        mem: requests[0].ex_units_mem.unwrap_or(CANCEL_PRELIMINARY_EX_UNITS_MEM),
+                        steps: requests[0].ex_units_steps.unwrap_or(CANCEL_PRELIMINARY_EX_UNITS_STEPS),
                     }),
                 );
             }
@@ -864,8 +914,37 @@ pub fn build_cancel_offers_tx(
                 tx = tx.datum(datum.clone());
             }
 
-            // Single output: all CO value + fee UTxO value - fee
-            tx = tx.output(create_ada_output(from_address.clone(), output_value));
+            // Single output: all CO value + fee UTxO value - fee.
+            // When the fee UTxO carries native assets, those assets must
+            // appear in the regular output (success path) and in
+            // `collateral_output` (failure path) — Conway rejects TXs whose
+            // collateral inputs hold assets without a return output to
+            // receive them.
+            if fee_utxo.assets.is_empty() {
+                tx = tx.output(create_ada_output(from_address.clone(), output_value));
+            } else {
+                let fee_utxo_refs: [&UtxoApi; 1] = [&fee_utxo];
+                let main_output =
+                    build_change_output(from_address.clone(), output_value, &fee_utxo_refs, None)?;
+                tx = tx.output(main_output);
+
+                // Reserve a generous lovelace budget for total_collateral
+                // (~5 ADA). At typical cancel fees (~1.5 ADA × 150%
+                // collateral_percent ≈ 2.25 ADA) this is plenty; the rest of
+                // the fee UTxO's lovelace plus all of its assets flow back
+                // to the user via collateral_return if the script fails.
+                const COLLATERAL_RESERVE_LOVELACE: u64 = 5_000_000;
+                let collateral_return_lovelace = fee_utxo
+                    .lovelace
+                    .saturating_sub(COLLATERAL_RESERVE_LOVELACE);
+                let collateral_return = build_change_output(
+                    from_address.clone(),
+                    collateral_return_lovelace,
+                    &fee_utxo_refs,
+                    None,
+                )?;
+                tx = tx.collateral_output(collateral_return);
+            }
 
             Ok(tx.fee(fee).network_id(network_id))
         },

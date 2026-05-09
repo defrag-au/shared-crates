@@ -27,11 +27,11 @@ pub fn build_send_lovelace(
     amount: u64,
 ) -> Result<UnsignedTx, TxBuildError> {
     let estimated_fee = selection::estimate_simple_fee(&deps.params);
-    let selected_utxo = selection::select_utxo_for_amount_prefer_pure_ada(
+    let selected_utxo = selection::select_utxo_for_amount(
         &deps.utxos,
         amount,
         estimated_fee,
-        &deps.params,
+        &selection::UtxoSelectionConfig::new(&deps.params),
     )?
     .clone();
 
@@ -474,6 +474,8 @@ pub(crate) fn to_maestro_params(
         },
         min_utxo_deposit_coefficient: params.coins_per_utxo_byte,
         script_execution_prices: None,
+        max_execution_units_per_transaction: None,
+        max_transaction_size: None,
     }
 }
 

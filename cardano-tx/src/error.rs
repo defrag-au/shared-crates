@@ -57,6 +57,34 @@ pub enum TxBuildError {
     InsufficientFunds { needed: u64, available: u64 },
     #[error("No suitable UTxO found")]
     NoSuitableUtxo,
+    /// Wallet has no UTxOs at all to select from. Distinct from
+    /// `InsufficientFunds` (which means the wallet has UTxOs, just not enough)
+    /// so callers can surface a clearer message ("connect a funded wallet").
+    #[error("Wallet has no UTxOs to select from")]
+    NoUtxoCandidates,
+    /// No single UTxO covers the requested amount. Carries `largest` and
+    /// `total` separately so callers can distinguish "you have plenty of ADA
+    /// but it's fragmented across small UTxOs" (consolidate) from "your
+    /// wallet is genuinely thin" (top up).
+    #[error(
+        "No single UTxO covers {needed} lovelace — largest is {largest}, total wallet balance is {total}"
+    )]
+    NoSingleUtxoLargeEnough {
+        needed: u64,
+        largest: u64,
+        total: u64,
+    },
+    /// `UtxoSelectionConfig` required pure-ADA but no pure-ADA UTxO was large
+    /// enough. Useful for surfacing "you need a separate collateral UTxO" in
+    /// strict-mode call sites.
+    #[error(
+        "No pure-ADA UTxO covers {needed} lovelace — largest pure-ADA is {largest_pure_ada}, total pure-ADA is {total_pure_ada}"
+    )]
+    NoPureAdaUtxoLargeEnough {
+        needed: u64,
+        largest_pure_ada: u64,
+        total_pure_ada: u64,
+    },
     #[error("Asset not found in wallet UTxOs: {0}")]
     AssetNotFound(String),
     #[error("Policy ID mismatch: expected {expected}, got {actual}")]

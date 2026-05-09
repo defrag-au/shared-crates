@@ -77,6 +77,8 @@ mod tests {
                 memory: "577/10000".to_string(),
                 cpu: "721/10000000".to_string(),
             }),
+            max_execution_units_per_transaction: None,
+            max_transaction_size: None,
         };
 
         let params = TxBuildParams::from(&maestro_params);
