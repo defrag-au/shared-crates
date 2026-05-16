@@ -10,3 +10,6 @@ Secrets.toml
 .shuttle*
 Secrets*.toml
 database.sql
+
+# Claude Code personal overrides — shared rules live in .claude/settings.json
+.claude/settings.local.json

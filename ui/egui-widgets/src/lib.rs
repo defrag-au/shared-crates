@@ -8,6 +8,7 @@ pub mod donut_chart;
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
 pub mod flip_counter;
+pub mod fungibles_row;
 pub mod grouped_section;
 pub mod icons;
 pub mod offer_tile;
@@ -15,6 +16,7 @@ pub mod image_loader;
 pub mod listing_grid;
 pub mod marquee;
 pub mod metric_card;
+pub mod persona_strip;
 pub mod pip_row;
 pub mod printing_timeline;
 pub mod progress_bar;
@@ -27,6 +29,7 @@ pub mod swap_modal;
 pub mod theme;
 pub mod trait_filter;
 pub mod utils;
+pub mod wallet_identity_header;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
@@ -94,7 +97,12 @@ pub use image_text_editor::{
 };
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
+pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
 pub use metric_card::{MetricCard, Trend};
+pub use persona_strip::{PersonaStrip, PersonaStripConfig};
+pub use wallet_identity_header::{
+    truncate_stake, WalletIdentityAction, WalletIdentityConfig, WalletIdentityHeader,
+};
 pub use pip_row::{
     HoverInfo, HoveredBin, HoveredPip, Pip, PipRowConfig, PipRowData, PipRowResponse,
 };

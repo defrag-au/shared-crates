@@ -1,0 +1,21 @@
+[package]
+name = "filebase"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+http-client = { path = "../http-client" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+worker_stack = { workspace = true, optional = true }
+tracing = { workspace = true }
+
+[features]
+default = []
+worker = ["dep:worker_stack"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros"] }
+test_utils = { path = "../test-utils" }
+worker_utils = { path = "../worker-utils" }
+dotenv = "0.15.0"

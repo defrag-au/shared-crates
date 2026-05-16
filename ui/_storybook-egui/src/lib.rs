@@ -69,6 +69,10 @@ mod app {
         // Grouping
         GroupedSection,
         OfferTile,
+        // Wallet
+        WalletIdentityHeader,
+        PersonaStrip,
+        FungiblesRow,
     }
 
     impl Story {
@@ -126,6 +130,10 @@ mod app {
                 // Grouping
                 Self::GroupedSection,
                 Self::OfferTile,
+                // Wallet
+                Self::WalletIdentityHeader,
+                Self::PersonaStrip,
+                Self::FungiblesRow,
             ]
         }
 
@@ -177,6 +185,9 @@ mod app {
                 Self::TxCart => "TX Cart",
                 Self::GroupedSection => "Grouped Section",
                 Self::OfferTile => "Offer Tile",
+                Self::WalletIdentityHeader => "Wallet Identity Header",
+                Self::PersonaStrip => "Persona Strip",
+                Self::FungiblesRow => "Fungibles Row",
             }
         }
 
@@ -212,7 +223,10 @@ mod app {
                 | Self::FeeReport
                 | Self::TxEstimate
                 | Self::WalletAssetPicker => "Trade Desk",
-                Self::UtxoMap => "Wallet",
+                Self::UtxoMap
+                | Self::WalletIdentityHeader
+                | Self::PersonaStrip
+                | Self::FungiblesRow => "Wallet",
                 Self::SlippageSelector
                 | Self::AmountInput
                 | Self::SplitAllocationBar
@@ -347,6 +361,15 @@ mod app {
                 Self::OfferTile => {
                     "Picker tile with state machine (Active / InCart / Spent), image-or-placeholder content, and corner badge"
                 }
+                Self::WalletIdentityHeader => {
+                    "Big handle or shortened stake address with copy button — top-of-page wallet identity strip"
+                }
+                Self::PersonaStrip => {
+                    "Italic one-liner persona summary with optional tag chips — wallet/collection persona view"
+                }
+                Self::FungiblesRow => {
+                    "Compact row for a fungible token holding (name, ticker chip, quantity, optional ADA value)"
+                }
             }
         }
     }
@@ -420,6 +443,9 @@ mod app {
         image_text_editor_state: stories::image_text_editor::ImageTextEditorState,
         // TX Cart
         tx_cart_state: stories::tx_cart::TxCartStoryState,
+        // Wallet
+        wallet_identity_header_state:
+            stories::wallet_identity_header::WalletIdentityHeaderStoryState,
     }
 
     impl StorybookApp {
@@ -495,6 +521,8 @@ mod app {
                 image_text_editor_state: stories::image_text_editor::ImageTextEditorState::default(
                 ),
                 tx_cart_state: stories::tx_cart::TxCartStoryState::default(),
+                wallet_identity_header_state:
+                    stories::wallet_identity_header::WalletIdentityHeaderStoryState::default(),
             }
         }
 
@@ -692,6 +720,12 @@ mod app {
                             Story::TxCart => {
                                 stories::tx_cart::show(ui, &mut self.tx_cart_state)
                             }
+                            Story::WalletIdentityHeader => stories::wallet_identity_header::show(
+                                ui,
+                                &mut self.wallet_identity_header_state,
+                            ),
+                            Story::PersonaStrip => stories::persona_strip::show(ui),
+                            Story::FungiblesRow => stories::fungibles_row::show(ui),
                         }
                     });
                 });

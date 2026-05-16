@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check:*)",
+      "Bash(cargo test:*)",
+      "Bash(cp:*)",
+      "WebFetch(domain:dev.ada-anvil.io)",
+      "WebFetch(domain:discord.com)",
+      "mcp__acp__Bash",
+      "mcp__acp__Edit"
+    ],
+    "deny": []
+  }
+}
