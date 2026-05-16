@@ -149,12 +149,18 @@ impl<'a> WalletIdentityHeader<'a> {
 }
 
 /// Public helper — short-form a bech32 stake address as `lead…tail`.
+///
+/// `lead` is the **total left-side display width** (visible chars + the
+/// ellipsis), so `lead = 12` reserves 11 chars before the `…`. `tail` is
+/// the number of trailing chars to show. Returns the input unchanged when
+/// truncation wouldn't shorten it.
 pub fn truncate_stake(stake: &str, lead: usize, tail: usize) -> String {
-    if stake.len() <= lead + tail + 1 {
+    if stake.len() <= lead + tail {
         return stake.to_string();
     }
+    let head_len = lead.saturating_sub(1).min(stake.len());
     let end = stake.len().saturating_sub(tail);
-    format!("{}…{}", &stake[..lead.min(stake.len())], &stake[end..])
+    format!("{}…{}", &stake[..head_len], &stake[end..])
 }
 
 #[cfg(test)]
