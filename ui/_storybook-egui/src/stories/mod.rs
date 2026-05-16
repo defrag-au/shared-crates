@@ -58,3 +58,8 @@ pub mod tx_cart;
 // Layout primitives
 pub mod grouped_section;
 pub mod offer_tile;
+
+// Wallet
+pub mod fungibles_row;
+pub mod persona_strip;
+pub mod wallet_identity_header;

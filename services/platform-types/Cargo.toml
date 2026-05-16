@@ -1,0 +1,11 @@
+[package]
+name = "platform-types"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Wire types shared between defrag platform services and their HTTP clients"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+cardano-assets = { path = "../../cardano-assets" }

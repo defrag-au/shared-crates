@@ -1504,6 +1504,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "filebase"
+version = "0.1.0"
+dependencies = [
+ "dotenv",
+ "http-client",
+ "serde",
+ "serde_json",
+ "test_utils",
+ "tokio",
+ "tracing",
+ "worker_stack",
+ "worker_utils",
+]
+
+[[package]]
 name = "fixedbitset"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3997,6 +4012,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
+name = "platform-types"
+version = "0.1.0"
+dependencies = [
+ "cardano-assets",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "png"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4007,6 +4031,16 @@ dependencies = [
  "fdeflate",
  "flate2",
  "miniz_oxide",
+]
+
+[[package]]
+name = "policy-info-client"
+version = "0.1.0"
+dependencies = [
+ "platform-types",
+ "reqwest",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
