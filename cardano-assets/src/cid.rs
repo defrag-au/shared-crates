@@ -8,11 +8,17 @@
 //! This module is pure (no chain dependencies) and is always compiled; the
 //! CIP-68 datum decoder that feeds it lives behind the `cip68` feature.
 
-use crate::{get_image_url, Asset, AssetFile, AssetMetadata, AssetMetadata68, PrimitiveOrList};
+use crate::{Asset, AssetFile, AssetMetadata, AssetMetadata68, PrimitiveOrList};
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
+
 /// Where in the metadata a CID was found.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
 pub enum CidRole {
     /// The headline `image` field.
     Image,
@@ -21,13 +27,15 @@ pub enum CidRole {
 }
 
 /// A single IPFS CID recovered from asset metadata.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ExtractedCid {
     /// The CID, normalised to CIDv1 (base32).
     pub cid: String,
     /// Where it was referenced from.
     pub role: CidRole,
     /// The `mediaType` of the referencing entry, when known (`files[]` only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media_type: Option<String>,
 }
 
@@ -41,7 +49,7 @@ impl AssetMetadata {
         let mut seen = HashSet::new();
         let mut out = Vec::new();
 
-        if let Some(cid) = cid_from_url(&get_image_url(image.clone())) {
+        if let Some(cid) = cid_from_url(&image.dechunked()) {
             if seen.insert(cid.clone()) {
                 out.push(ExtractedCid {
                     cid,
@@ -278,6 +286,96 @@ mod tests {
             cids[1].cid,
             "bafybeidw54qa6bcbbjnztbbj6cd7qzazr33instef33ql4lws45mp6uw3e"
         );
+    }
+
+    #[test]
+    fn dechunked_resolves_cip25_string_chunking() {
+        // A plain string is returned as-is; a chunked value (CIP-25's
+        // 64-byte split) is concatenated back into the whole.
+        let plain = PrimitiveOrList::Primitive("ipfs://bafyone".to_string());
+        assert_eq!(plain.dechunked(), "ipfs://bafyone");
+        let chunked = PrimitiveOrList::List(vec!["ipfs://bafy".to_string(), "rest".to_string()]);
+        assert_eq!(chunked.dechunked(), "ipfs://bafyrest");
+    }
+
+    /// One real on-chain CIP-25 fixture and the CIDs `extract_cids`
+    /// should recover from it.
+    struct CidCase {
+        asset: &'static str,
+        metadata_json: &'static str,
+        expected: &'static [(CidRole, &'static str)],
+    }
+
+    #[test]
+    fn extracts_cids_from_real_collections() {
+        // Each fixture is real on-chain metadata, chosen to span the
+        // shapes the resolver must handle: both metadata variants,
+        // CIDv0 + CIDv1, single + chunked `files[].src`, and a file
+        // that repeats the headline image (which dedupes). Add a case
+        // here when a new on-chain shape needs covering.
+        let cases = [
+            // Attributed variant; 3 files, files[0] repeats the image;
+            // all CIDv0 (exercises CIDv0 -> CIDv1 normalisation).
+            CidCase {
+                asset: "Derp Bird #07490",
+                metadata_json: include_str!("../resources/test/derpbird07490.json"),
+                expected: &[
+                    (
+                        CidRole::Image,
+                        "bafybeihdcqqgawor7rqnucl3fvhbmxtp7bspkf2i6k2ev6wqaihjujrqny",
+                    ),
+                    (
+                        CidRole::File,
+                        "bafybeifxjcrr6ahvauwym6qz6wqxjcxoilu7lkzeyyikzsn6a6rzlwzq34",
+                    ),
+                    (
+                        CidRole::File,
+                        "bafybeih4b5tk5zrfgrzpwogn6voq6lutg2rb3z4753zg4p2hrjof2odnem",
+                    ),
+                ],
+            },
+            // Attributed variant with a numeric trait + `swaps` array
+            // + a `type` (not `mediaType`) field; 2 files, files[0]
+            // repeats the image.
+            CidCase {
+                asset: "Pred #09193",
+                metadata_json: include_str!("../resources/test/pred09193.json"),
+                expected: &[
+                    (
+                        CidRole::Image,
+                        "bafybeicuxkjhqrktemdvjqmb7ppep2capgreu76tdqaxya2h5gr2y35luq",
+                    ),
+                    (
+                        CidRole::File,
+                        "bafybeicju6krfmaqgdjczkj6pnyulmo3dlaaxrpqcys7vjgotv2tyjjb3m",
+                    ),
+                ],
+            },
+            // Flattened variant; a chunked `files[].src` (string array)
+            // pointing at an mp4; CIDv1 image (normalisation passthrough).
+            CidCase {
+                asset: "Bankopoly #01",
+                metadata_json: include_str!("../resources/test/bankcard2500.json"),
+                expected: &[
+                    (
+                        CidRole::Image,
+                        "bafybeibakqunty3xjq6ljfyfi3lde27xf3edm2tz6rm2kyb6n4aczgcjee",
+                    ),
+                    (
+                        CidRole::File,
+                        "bafybeiflyytsm445wlbv4fsayvdlnhnz34rzrxntzp74notjtrqi2jozay",
+                    ),
+                ],
+            },
+        ];
+
+        for case in &cases {
+            let metadata: AssetMetadata = serde_json::from_str(case.metadata_json)
+                .unwrap_or_else(|e| panic!("{}: metadata did not decode: {e}", case.asset));
+            let cids = metadata.extract_cids();
+            let got: Vec<(CidRole, &str)> = cids.iter().map(|c| (c.role, c.cid.as_str())).collect();
+            assert_eq!(got.as_slice(), case.expected, "{}", case.asset);
+        }
     }
 
     #[test]

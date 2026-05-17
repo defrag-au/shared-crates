@@ -1,0 +1,31 @@
+{
+  "attributes": {
+    "Background": "Infiltration",
+    "Body": "Farmer's Body",
+    "Face": "Trooper's Face",
+    "Head": "Marksman's ???",
+    "Rank": 1,
+    "Skin Color": "Gray"
+  },
+  "files": [
+    {
+      "mediaType": "image/png",
+      "name": "Pred #09193",
+      "src": "ipfs://QmU3PxikRHYa6chUW9GD9tb3rgrSejsD2mqJNkeD8pn523"
+    },
+    {
+      "mediaType": "image/png",
+      "name": "v1",
+      "src": "ipfs://QmTJAgWvLRJCHfvM1xvqPE7kXrgaD1yf8jrXhJKytAkdH4"
+    }
+  ],
+  "image": "ipfs://QmU3PxikRHYa6chUW9GD9tb3rgrSejsD2mqJNkeD8pn523",
+  "name": "Pred #09193",
+  "series": 2,
+  "swaps": [
+    "DP05438",
+    "DE10004"
+  ],
+  "type": "image/png",
+  "url": "https://derpbirds.io"
+}

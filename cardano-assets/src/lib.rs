@@ -71,16 +71,26 @@ pub enum PrimitiveOrList<T> {
     List(Vec<T>),
 }
 
+impl PrimitiveOrList<String> {
+    /// Resolve a possibly-chunked string to its full value.
+    ///
+    /// CIP-25 caps on-chain metadata strings at 64 bytes, so longer
+    /// values (IPFS URLs, descriptions) are stored split across a JSON
+    /// array of ≤64-byte chunks; shorter values are stored as a plain
+    /// string. Either way this returns the whole value — chunks
+    /// concatenated in order, a plain string as-is.
+    #[must_use]
+    pub fn dechunked(&self) -> String {
+        match self {
+            PrimitiveOrList::Primitive(value) => value.clone(),
+            PrimitiveOrList::List(chunks) => chunks.concat(),
+        }
+    }
+}
+
 impl From<PrimitiveOrList<String>> for String {
     fn from(value: PrimitiveOrList<String>) -> Self {
-        match value {
-            PrimitiveOrList::Primitive(val) => val,
-            PrimitiveOrList::List(items) => {
-                let default = String::new();
-                let result = items.first().unwrap_or(&default);
-                result.clone()
-            }
-        }
+        value.dechunked()
     }
 }
 
@@ -94,15 +104,9 @@ pub struct AssetFile {
 }
 
 impl AssetFile {
-    /// Get the source URL, handling both string and array formats
+    /// The source URL, with any CIP-25 string chunking resolved.
     pub fn get_src(&self) -> String {
-        match &self.src {
-            PrimitiveOrList::Primitive(url) => url.clone(),
-            PrimitiveOrList::List(urls) => {
-                // For arrays like ["ipfs://hash", "oa"], concatenate them
-                urls.join("")
-            }
-        }
+        self.src.dechunked()
     }
 
     /// Get the media type
@@ -731,7 +735,7 @@ impl AssetMetadata {
 
                 // Otherwise, try to find matching file in files array
                 if let Some(file_list) = files {
-                    let image_url = get_image_url(image.clone());
+                    let image_url = image.dechunked();
                     for file in file_list {
                         if file.get_src() == image_url {
                             return Some(file.media_type().to_string());
@@ -763,7 +767,7 @@ impl From<AssetMetadata> for Asset {
 
                 Self {
                     name,
-                    image: get_image_url(image),
+                    image: image.dechunked(),
                     media_type: extracted_media_type,
                     traits: merged_traits,
                     rarity_rank: None,
@@ -777,7 +781,7 @@ impl From<AssetMetadata> for Asset {
                 ..
             } => Self {
                 name,
-                image: get_image_url(image),
+                image: image.dechunked(),
                 media_type: extracted_media_type,
                 traits,
                 rarity_rank: None,
@@ -812,7 +816,7 @@ impl From<AssetMetadata> for Asset {
 
                 Self {
                     name,
-                    image: get_image_url(image),
+                    image: image.dechunked(),
                     media_type: extracted_media_type,
                     traits,
                     rarity_rank: None,
@@ -834,7 +838,7 @@ impl From<AssetMetadata> for Asset {
 
                 Self {
                     name,
-                    image: get_image_url(image),
+                    image: image.dechunked(),
                     media_type: extracted_media_type,
                     traits,
                     rarity_rank: None,
@@ -854,7 +858,7 @@ impl From<AssetMetadata> for Asset {
 
                 Self {
                     name,
-                    image: get_image_url(image),
+                    image: image.dechunked(),
                     media_type: extracted_media_type,
                     traits,
                     rarity_rank: None,
@@ -872,7 +876,7 @@ impl From<AssetMetadata> for Asset {
 
                 Self {
                     name,
-                    image: get_image_url(image),
+                    image: image.dechunked(),
                     media_type: extracted_media_type,
                     traits,
                     rarity_rank: None,
@@ -912,7 +916,7 @@ impl From<AssetMetadata> for Asset {
 
                 Self {
                     name: title,
-                    image: get_image_url(image),
+                    image: image.dechunked(),
                     media_type: extracted_media_type,
                     traits,
                     rarity_rank: None,
@@ -1038,6 +1042,7 @@ impl Asset {
         AssetWithId {
             id: id.to_string(),
             asset: self.clone(),
+            cids: Vec::new(),
         }
     }
 }
@@ -1057,6 +1062,20 @@ impl From<Asset> for Traits {
 pub struct AssetWithId {
     pub id: String,
     pub asset: Asset,
+    /// IPFS CIDs (headline image + every `files[]` entry) this asset
+    /// references, extracted from the source metadata *before* it was
+    /// flattened to `Asset` — the flatten keeps only the headline
+    /// image, so this is where additional media survives.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub cids: Vec<ExtractedCid>,
+}
+
+impl AssetWithId {
+    /// Construct with an explicit extracted-CID set.
+    #[must_use]
+    pub fn new(id: String, asset: Asset, cids: Vec<ExtractedCid>) -> Self {
+        Self { id, asset, cids }
+    }
 }
 
 #[derive(Serialize, Default, Debug)]
@@ -1177,13 +1196,6 @@ pub fn get_asset_tags(asset: &CnftAsset, max_rarity: Option<u32>) -> Vec<AssetTa
     }
 
     tags
-}
-
-fn get_image_url(input: PrimitiveOrList<String>) -> String {
-    match input {
-        PrimitiveOrList::Primitive(val) => val,
-        PrimitiveOrList::List(items) => items.join(""),
-    }
 }
 
 /// Merge extra metadata fields into traits, filtering out known metadata fields

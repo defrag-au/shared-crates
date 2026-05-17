@@ -2,7 +2,7 @@
 
 use async_stream::stream;
 use cardano_assets::{
-    Asset, AssetMetadata, AssetMetadata68, AssetWithId, MetadataKind, NftPurpose,
+    Asset, AssetMetadata, AssetMetadata68, AssetWithId, ExtractedCid, MetadataKind, NftPurpose,
 };
 use chrono::Utc;
 use futures_core::stream::Stream;
@@ -110,6 +110,24 @@ impl TryFrom<AssetStandards> for Asset {
                 Err(MaestroError::NoMetadata)
             }
         }
+    }
+}
+
+impl AssetStandards {
+    /// Every IPFS CID (headline image + each `files[]` entry) this
+    /// asset's metadata references. Extracted from the rich
+    /// `AssetMetadata` / `AssetMetadata68` — flattening to `Asset`
+    /// keeps only the headline image, so callers that need the full
+    /// media set must read it here.
+    #[must_use]
+    pub fn extract_cids(&self) -> Vec<ExtractedCid> {
+        if let Some(cip68) = &self.cip68_metadata {
+            return cip68.extract_cids();
+        }
+        if let Some(cip25) = &self.cip25_metadata {
+            return cip25.extract_cids();
+        }
+        Vec::new()
     }
 }
 
@@ -1472,7 +1490,12 @@ impl MaestroApi {
             .get_importable_nfts()
             .iter()
             .filter_map(|d| match Asset::try_from(d.asset_standards.clone()) {
-                Ok(asset) => Some(asset.with_id(&d.asset_name)),
+                Ok(asset) => {
+                    // Capture the full CID set (image + files[]) from the
+                    // rich metadata before the flatten to `Asset` drops it.
+                    let cids = d.asset_standards.extract_cids();
+                    Some(AssetWithId::new(d.asset_name.clone(), asset, cids))
+                }
                 Err(_) => None,
             })
             .collect();

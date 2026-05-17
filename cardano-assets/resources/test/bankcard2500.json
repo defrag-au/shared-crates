@@ -1,0 +1,21 @@
+{
+  "Card Type": "Partner",
+  "Game Rewards": "Share of 10%",
+  "Partner Perk 1": "Additional in game benefits",
+  "Platypus Perk": "500 ADA held in wallet to qualify for .5 staking",
+  "Staking Factor": "1",
+  "collection": "BANK- Bankcard",
+  "files": [
+    {
+      "mediaType": "video/mp4",
+      "name": "Bankopoly #01",
+      "src": [
+        "ipfs://bafybeiflyytsm445wlbv4fsayvdlnhnz34rzrxntzp74notjtrqi2joz",
+        "ay"
+      ]
+    }
+  ],
+  "image": "ipfs://bafybeibakqunty3xjq6ljfyfi3lde27xf3edm2tz6rm2kyb6n4aczgcjee",
+  "mediaType": "image/gif",
+  "name": "Bankopoly #01"
+}
