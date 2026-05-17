@@ -9,10 +9,16 @@
 //! CIP-68 datum decoder that feeds it lives behind the `cip68` feature.
 
 use crate::{get_image_url, Asset, AssetFile, AssetMetadata, AssetMetadata68, PrimitiveOrList};
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
+
 /// Where in the metadata a CID was found.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
 pub enum CidRole {
     /// The headline `image` field.
     Image,
@@ -21,13 +27,15 @@ pub enum CidRole {
 }
 
 /// A single IPFS CID recovered from asset metadata.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ExtractedCid {
     /// The CID, normalised to CIDv1 (base32).
     pub cid: String,
     /// Where it was referenced from.
     pub role: CidRole,
     /// The `mediaType` of the referencing entry, when known (`files[]` only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media_type: Option<String>,
 }
 
@@ -277,6 +285,41 @@ mod tests {
         assert_eq!(
             cids[1].cid,
             "bafybeidw54qa6bcbbjnztbbj6cd7qzazr33instef33ql4lws45mp6uw3e"
+        );
+    }
+
+    #[test]
+    fn extracts_all_media_from_multi_file_metadata() {
+        // Real metadata: "Derp Bird #07490" — a headline image plus a
+        // three-entry `files[]` where the first file duplicates the
+        // headline image and the other two are distinct media. All
+        // three CIDs are CIDv0. The flatten to `Asset` would keep only
+        // the headline image; `extract_cids` on `AssetMetadata` keeps
+        // the lot.
+        let json = include_str!("../resources/test/derpbird07490.json");
+        let metadata: AssetMetadata = serde_json::from_str(json).unwrap();
+        let cids = metadata.extract_cids();
+
+        assert_eq!(
+            cids.len(),
+            3,
+            "headline image (deduped with files[0]) + 2 distinct files"
+        );
+        assert_eq!(cids[0].role, CidRole::Image);
+        assert_eq!(
+            cids[0].cid,
+            "bafybeihdcqqgawor7rqnucl3fvhbmxtp7bspkf2i6k2ev6wqaihjujrqny"
+        );
+        assert_eq!(cids[1].role, CidRole::File);
+        assert_eq!(
+            cids[1].cid,
+            "bafybeifxjcrr6ahvauwym6qz6wqxjcxoilu7lkzeyyikzsn6a6rzlwzq34"
+        );
+        assert_eq!(cids[1].media_type.as_deref(), Some("image/png"));
+        assert_eq!(cids[2].role, CidRole::File);
+        assert_eq!(
+            cids[2].cid,
+            "bafybeih4b5tk5zrfgrzpwogn6voq6lutg2rb3z4753zg4p2hrjof2odnem"
         );
     }
 

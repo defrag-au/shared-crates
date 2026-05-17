@@ -1,0 +1,38 @@
+{
+  "attributes": {
+    "Back": "Stoner",
+    "Background": "Black",
+    "Beak": "Stoner",
+    "Body": "Corpo",
+    "Color": "Blue",
+    "Ears": "DJ",
+    "Eyes": "DJ",
+    "Head": "Stoner",
+    "Perfect Specimen": "No",
+    "Power Level": "Undetermined",
+    "Rarity": "Uncommon",
+    "Tail": "Corpo"
+  },
+  "files": [
+    {
+      "mediaType": "image/png",
+      "name": "Rebirth",
+      "src": "ipfs://Qmdd54FbzM2kqb9g8Q9Fhkejbm6k684U7egqRMs7yS9Tim"
+    },
+    {
+      "mediaType": "image/png",
+      "name": "OG",
+      "src": "ipfs://Qmag7ZNVNEQQTBtVXnNoVojeU6MZHaCnX4sRYxGTCpn1Y2"
+    },
+    {
+      "mediaType": "image/png",
+      "name": "Head",
+      "src": "ipfs://QmfJb52NaXNZ8Jtym9iV7dFUzpN3TuC6aRgkZK1NyQrgnW"
+    }
+  ],
+  "image": "ipfs://Qmdd54FbzM2kqb9g8Q9Fhkejbm6k684U7egqRMs7yS9Tim",
+  "mediaType": "image/png",
+  "name": "Derp Bird #07490",
+  "series": 2,
+  "url": "derpbirds.io"
+}

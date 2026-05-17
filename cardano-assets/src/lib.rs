@@ -1038,6 +1038,7 @@ impl Asset {
         AssetWithId {
             id: id.to_string(),
             asset: self.clone(),
+            cids: Vec::new(),
         }
     }
 }
@@ -1057,6 +1058,20 @@ impl From<Asset> for Traits {
 pub struct AssetWithId {
     pub id: String,
     pub asset: Asset,
+    /// IPFS CIDs (headline image + every `files[]` entry) this asset
+    /// references, extracted from the source metadata *before* it was
+    /// flattened to `Asset` — the flatten keeps only the headline
+    /// image, so this is where additional media survives.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub cids: Vec<ExtractedCid>,
+}
+
+impl AssetWithId {
+    /// Construct with an explicit extracted-CID set.
+    #[must_use]
+    pub fn new(id: String, asset: Asset, cids: Vec<ExtractedCid>) -> Self {
+        Self { id, asset, cids }
+    }
 }
 
 #[derive(Serialize, Default, Debug)]
