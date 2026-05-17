@@ -19,10 +19,14 @@ utoipa = { workspace = true, optional = true }
 # whole pipeline upgrades in lockstep with `pallas-utxorpc`.
 utxorpc-spec = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
+# CIP-68 datum (Plutus data) CBOR decoding — optional, behind `cip68`.
+pallas-codec = { workspace = true, optional = true }
+pallas-primitives = { workspace = true, optional = true }
 
 [features]
 default = []
 cip14 = ["dep:bech32", "dep:blake2"]
+cip68 = ["dep:pallas-codec", "dep:pallas-primitives"]
 utxorpc = ["dep:utxorpc-spec", "dep:tracing"]
 openapi = ["dep:utoipa"]
 cnft_tools = ["dep:cnft_tools"]
