@@ -324,6 +324,60 @@ mod tests {
     }
 
     #[test]
+    fn extracts_media_with_numeric_trait_and_extra_fields() {
+        // Real metadata: "Pred #09193" — a headline image plus a
+        // two-entry `files[]` (the first duplicates the image), a
+        // numeric trait value (`Rank: 1`), a `swaps` string array and
+        // a `type` field (not `mediaType`). Exercises CID extraction
+        // alongside the decoder's tolerance of those shapes.
+        let json = include_str!("../resources/test/pred09193.json");
+        let metadata: AssetMetadata = serde_json::from_str(json).unwrap();
+        let cids = metadata.extract_cids();
+
+        assert_eq!(
+            cids.len(),
+            2,
+            "headline image (deduped with files[0]) + 1 distinct file"
+        );
+        assert_eq!(cids[0].role, CidRole::Image);
+        assert_eq!(
+            cids[0].cid,
+            "bafybeicuxkjhqrktemdvjqmb7ppep2capgreu76tdqaxya2h5gr2y35luq"
+        );
+        assert_eq!(cids[1].role, CidRole::File);
+        assert_eq!(
+            cids[1].cid,
+            "bafybeicju6krfmaqgdjczkj6pnyulmo3dlaaxrpqcys7vjgotv2tyjjb3m"
+        );
+        assert_eq!(cids[1].media_type.as_deref(), Some("image/png"));
+    }
+
+    #[test]
+    fn extracts_media_from_flattened_metadata_with_chunked_src() {
+        // Real metadata: "Bankopoly #01" — the `Flattened` variant
+        // (trait keys at the top level), whose single `files[]` entry
+        // has a CIP-25-chunked `src` (a string array that must be
+        // joined) pointing at an mp4, plus a CIDv1 `image` that
+        // passes through normalisation unchanged.
+        let json = include_str!("../resources/test/bankcard2500.json");
+        let metadata: AssetMetadata = serde_json::from_str(json).unwrap();
+        let cids = metadata.extract_cids();
+
+        assert_eq!(cids.len(), 2, "headline image + 1 distinct video file");
+        assert_eq!(cids[0].role, CidRole::Image);
+        assert_eq!(
+            cids[0].cid,
+            "bafybeibakqunty3xjq6ljfyfi3lde27xf3edm2tz6rm2kyb6n4aczgcjee"
+        );
+        assert_eq!(cids[1].role, CidRole::File);
+        assert_eq!(
+            cids[1].cid,
+            "bafybeiflyytsm445wlbv4fsayvdlnhnz34rzrxntzp74notjtrqi2jozay"
+        );
+        assert_eq!(cids[1].media_type.as_deref(), Some("video/mp4"));
+    }
+
+    #[test]
     fn skips_http_image_urls() {
         let json = r#"{"name": "x", "image": "https://example.com/x.png"}"#;
         let metadata: AssetMetadata = serde_json::from_str(json).unwrap();
