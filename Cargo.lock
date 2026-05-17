@@ -618,6 +618,8 @@ dependencies = [
  "cnft_tools",
  "hex",
  "indexmap",
+ "pallas-codec",
+ "pallas-primitives",
  "pallas-utxorpc",
  "serde",
  "serde_json",

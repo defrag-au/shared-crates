@@ -10,6 +10,9 @@ use std::str::FromStr;
 use utoipa::ToSchema;
 
 pub mod asset_id;
+pub mod cid;
+#[cfg(feature = "cip68")]
+pub mod cip68;
 pub mod collection;
 #[cfg(feature = "cip14")]
 pub mod fingerprint;
@@ -26,6 +29,9 @@ pub use token_type::TokenType;
 pub mod utxorpc;
 
 pub use asset_id::*;
+pub use cid::{cid_v0_to_v1, normalize_cid, CidRole, ExtractedCid};
+#[cfg(feature = "cip68")]
+pub use cip68::{decode_cip68_datum, Cip68Error};
 pub use collection::*;
 #[cfg(feature = "cip14")]
 pub use fingerprint::{Fingerprint, FingerprintError};
