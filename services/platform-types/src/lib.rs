@@ -9,4 +9,5 @@
 //!
 //! New services should be added as new modules, not as separate crates.
 
+pub mod policy_cid_index;
 pub mod policy_info;
