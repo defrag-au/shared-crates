@@ -1516,6 +1516,7 @@ dependencies = [
  "test_utils",
  "tokio",
  "tracing",
+ "urlencoding",
  "worker_stack",
  "worker_utils",
 ]

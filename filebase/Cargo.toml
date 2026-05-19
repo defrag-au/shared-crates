@@ -9,6 +9,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 worker_stack = { workspace = true, optional = true }
 tracing = { workspace = true }
+urlencoding = "2"
 
 [features]
 default = []
