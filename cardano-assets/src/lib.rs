@@ -1320,6 +1320,41 @@ mod tests {
     }
 
     #[test]
+    fn test_spacebudz_cip68_value_only_traits_array() {
+        // Real SpaceBud #0 CIP-68 metadata (policy 4523c5e2…). The
+        // `traits` field is a value-only ARRAY and `type` is a
+        // top-level scalar; both must surface as traits, while
+        // `sha256` (integrity hash) and `image` must not. Regression
+        // for collections whose `traits` is `["A","B"]` rather than
+        // a `{key:value}` map.
+        let json = r#"{
+            "name": "SpaceBud #0",
+            "traits": ["Star Suit", "Chestplate", "Belt", "Covered Helmet"],
+            "type": "Frog",
+            "image": "ipfs://bafkreicbn7uu2wyfpzjgterlumqk2pxisww7hszdfupwy2lydtsq3prufq",
+            "sha256": "416fe94d5b057e5269922ba320ad3ee895adf3cb232d1f6c69781ce50dbe342c"
+        }"#;
+        let meta: AssetMetadata =
+            serde_json::from_str(json).expect("decode SpaceBudz CIP-68 metadata");
+        let asset = Asset::from(meta);
+        assert_eq!(asset.name, "SpaceBud #0");
+        assert_eq!(asset.traits.get("type"), Some(&vec!["Frog".to_string()]));
+        let mut gadgets = asset.traits.get("traits").cloned().unwrap_or_default();
+        gadgets.sort();
+        assert_eq!(
+            gadgets,
+            vec![
+                "Belt".to_string(),
+                "Chestplate".to_string(),
+                "Covered Helmet".to_string(),
+                "Star Suit".to_string(),
+            ]
+        );
+        assert!(!asset.traits.contains_key("sha256"));
+        assert!(!asset.traits.contains_key("image"));
+    }
+
+    #[test]
     fn test_https_image() {
         match serde_json::from_str::<Asset>(test_case!("https_image.json")) {
             Ok(asset) => {
