@@ -259,11 +259,34 @@ pub struct FailedCheck {
 // Visual Analysis
 // ============================================================================
 
+/// Color palette for a collection's visual identity.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ColorPalette {
+    /// Dominant background/base color (hex, e.g. "#2a1a0a")
+    pub primary: String,
+    /// Accent and highlight colors (hex)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accents: Vec<String>,
+    /// Overall temperature/mood of the palette
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mood: Option<String>,
+}
+
+/// A character archetype found in the collection.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CharacterArchetype {
+    pub name: String,
+    pub description: String,
+    /// How frequently this archetype appears (e.g. "common", "rare", "unique")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prevalence: Option<String>,
+}
+
 /// Visual style guide for a collection.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VisualGuide {
     pub art_style: String,
-    pub color_palette: serde_json::Value,
+    pub color_palette: ColorPalette,
     pub subject_form: String,
     pub composition: String,
     pub motifs: Vec<String>,
@@ -284,7 +307,7 @@ pub struct VisualGuideResponse {
 pub struct NarrativeStyleGuide {
     pub world_tone: String,
     pub narrative_voice: String,
-    pub character_archetypes: Vec<serde_json::Value>,
+    pub character_archetypes: Vec<CharacterArchetype>,
     pub vocabulary_palette: Vec<String>,
     pub recurring_tensions: Vec<String>,
     pub world_premise: String,

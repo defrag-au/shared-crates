@@ -85,7 +85,8 @@ impl AssetMetadata {
             | AssetMetadata::CodifiedTraits { image, files, .. }
             | AssetMetadata::ColonDelimitedAttributes { image, files, .. }
             | AssetMetadata::AttributeArray { image, files, .. }
-            | AssetMetadata::UnsignedAlgorithms { image, files, .. } => (image, files),
+            | AssetMetadata::UnsignedAlgorithms { image, files, .. }
+            | AssetMetadata::Untitled { image, files, .. } => (image, files),
         }
     }
 }
@@ -383,6 +384,58 @@ mod tests {
         let json = r#"{"name": "x", "image": "https://example.com/x.png"}"#;
         let metadata: AssetMetadata = serde_json::from_str(json).unwrap();
         assert!(metadata.extract_cids().is_empty());
+    }
+
+    /// The BlockGen authority tokens (Auth.Master, Auth.Playground,
+    /// artist.*) carry CIP-25 metadata with no `name` field — the
+    /// asset_name is the display name. They land in the `Untitled`
+    /// variant and the headline `image` CID must still extract cleanly.
+    #[test]
+    fn extracts_image_cid_from_blockgen_authority_metadata() {
+        let cases: &[(&str, &str, &str)] = &[
+            (
+                "Auth.Master",
+                include_str!("../resources/test/blockgen-auth-master.json"),
+                "QmQwR86wUEkvc9qym7RjGsQVEtuXGJ9TSxXjQM5PvrSf3Q",
+            ),
+            (
+                "Auth.Playground",
+                include_str!("../resources/test/blockgen-auth-playground.json"),
+                "QmUt4efxKhwgnfroJdejAdDrp8o5k1u5AVyvtwq58Kysas",
+            ),
+            (
+                "artist.CharlesMachin",
+                include_str!("../resources/test/blockgen-artist-charlesmachin.json"),
+                "QmTDNG1jw2dNDF5s6oVESUX22ydCfobZt7sTxtAtJroDkk",
+            ),
+            (
+                "artist.Hookman",
+                include_str!("../resources/test/blockgen-artist-hookman.json"),
+                "QmdhqQBjTtn8iotXreeJZC7XhnWCyFcdwUZSFSEayuKjAm",
+            ),
+            (
+                "artist.autrecoeur",
+                include_str!("../resources/test/blockgen-artist-autrecoeur.json"),
+                "QmP2jF7Cvbq8EFKtwk1eyfNxszZgGynPL55rBpKe7ZwqTM",
+            ),
+        ];
+
+        for (asset, json, expected_v0) in cases {
+            let metadata: AssetMetadata = serde_json::from_str(json)
+                .unwrap_or_else(|e| panic!("{asset}: metadata did not decode: {e}"));
+            assert!(
+                matches!(metadata, AssetMetadata::Untitled { .. }),
+                "{asset}: expected Untitled variant"
+            );
+
+            let cids = metadata.extract_cids();
+            assert_eq!(cids.len(), 1, "{asset}: expected exactly one CID");
+            assert_eq!(cids[0].role, CidRole::Image, "{asset}: wrong role");
+
+            let expected_v1 = cid_v0_to_v1(expected_v0)
+                .unwrap_or_else(|| panic!("{asset}: could not normalise expected v0 CID"));
+            assert_eq!(cids[0].cid, expected_v1, "{asset}: CID mismatch");
+        }
     }
 
     #[test]
