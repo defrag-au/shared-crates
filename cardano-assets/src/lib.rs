@@ -287,6 +287,20 @@ pub enum AssetMetadata {
         #[serde(flatten)]
         raw_traits: HashMap<String, serde_json::Value>,
     },
+    // known projects:
+    // - blockgen authority tokens (Auth.Master, Auth.Playground, artist.*).
+    //   No top-level `name` — the asset_name itself is the display name.
+    //   Last variant so name-bearing metadata still matches earlier shapes.
+    Untitled {
+        image: PrimitiveOrList<String>,
+        #[serde(alias = "mediaType")]
+        media_type: Option<String>,
+        description: Option<PrimitiveOrList<String>>,
+        files: Option<Vec<AssetFile>>,
+
+        #[serde(flatten)]
+        extra: HashMap<String, serde_json::Value>,
+    },
 }
 
 /// Fungible token metadata keys — if any of these appear in the metadata,
@@ -305,6 +319,9 @@ impl AssetMetadata {
                 FT_SIGNAL_KEYS.iter().any(|k| raw_traits.contains_key(*k))
             }
             AssetMetadata::Attributed { extra, .. } => {
+                FT_SIGNAL_KEYS.iter().any(|k| extra.contains_key(*k))
+            }
+            AssetMetadata::Untitled { extra, .. } => {
                 FT_SIGNAL_KEYS.iter().any(|k| extra.contains_key(*k))
             }
             // Other variants are structured enough that they wouldn't contain
@@ -727,6 +744,12 @@ impl AssetMetadata {
                 image,
                 files,
                 ..
+            }
+            | AssetMetadata::Untitled {
+                media_type,
+                image,
+                files,
+                ..
             } => {
                 // If top-level media_type exists, use it
                 if media_type.is_some() {
@@ -923,6 +946,16 @@ impl From<AssetMetadata> for Asset {
                     tags: vec![],
                 }
             }
+            AssetMetadata::Untitled { image, .. } => Self {
+                // No `name` field in this shape; the asset_name carries the
+                // display name, so callers fill it in from `AssetId`.
+                name: String::new(),
+                image: image.dechunked(),
+                media_type: extracted_media_type,
+                traits: Traits::new(),
+                rarity_rank: None,
+                tags: vec![],
+            },
         }
     }
 }
