@@ -66,13 +66,27 @@ pub fn converge_fee(
     initial_estimate: u64,
     params: &TxBuildParams,
 ) -> Result<UnsignedTx, TxBuildError> {
+    converge_fee_with_witnesses(build_fn, initial_estimate, params, 1)
+}
+
+/// [`converge_fee`] that sizes the fee for `num_witnesses` vkey signatures.
+///
+/// Use this when the transaction needs a required-signer whose key differs
+/// from the wallet payer's (e.g. a Wayup cancel, authorised by the bidder's
+/// stake key). See [`crate::fee::calculate_fee_with_witnesses`].
+pub fn converge_fee_with_witnesses(
+    build_fn: impl Fn(u64) -> Result<StagingTransaction, TxBuildError>,
+    initial_estimate: u64,
+    params: &TxBuildParams,
+    num_witnesses: u32,
+) -> Result<UnsignedTx, TxBuildError> {
     // Round 1: build with rough estimate, calculate real fee
     let preliminary_tx = build_fn(initial_estimate)?;
-    let fee_round1 = crate::fee::calculate_fee(&preliminary_tx, params);
+    let fee_round1 = crate::fee::calculate_fee_with_witnesses(&preliminary_tx, params, num_witnesses);
 
     // Round 2: rebuild with round-1 fee, recalculate
     let tx_round2 = build_fn(fee_round1)?;
-    let final_fee = crate::fee::calculate_fee(&tx_round2, params);
+    let final_fee = crate::fee::calculate_fee_with_witnesses(&tx_round2, params, num_witnesses);
 
     // Final build with converged fee
     let staging = build_fn(final_fee)?;
