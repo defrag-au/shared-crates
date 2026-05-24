@@ -11,6 +11,8 @@ use utoipa::ToSchema;
 
 pub mod asset_id;
 pub mod cid;
+#[cfg(feature = "cip25")]
+pub mod cip25;
 #[cfg(feature = "cip68")]
 pub mod cip68;
 pub mod collection;
@@ -30,6 +32,8 @@ pub mod utxorpc;
 
 pub use asset_id::*;
 pub use cid::{cid_v0_to_v1, normalize_cid, CidRole, ExtractedCid};
+#[cfg(feature = "cip25")]
+pub use cip25::{cip25_metadata_json, cip25_metadata_value, decode_cip25_metadata};
 #[cfg(feature = "cip68")]
 pub use cip68::{decode_cip68_datum, Cip68Error};
 pub use collection::*;
