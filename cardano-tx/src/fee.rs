@@ -127,25 +127,55 @@ pub fn estimate_tx_size(tx: &StagingTransaction, num_witnesses: u32) -> u64 {
 /// Plutus script execution cost component derived from all redeemers in the TX:
 ///   `fee = base_fee + Σ(mem × price_mem_num / price_mem_den + steps × price_step_num / price_step_den)`
 pub fn calculate_fee(tx: &StagingTransaction, params: &crate::params::TxBuildParams) -> u64 {
+    calculate_fee_with_witnesses(tx, params, 1)
+}
+
+/// Like [`calculate_fee`] but sizes the transaction for `num_witnesses`
+/// distinct vkey signatures rather than the default single witness.
+///
+/// The default ([`calculate_fee`]) assumes one witness — correct when the
+/// wallet's payment key both pays the fee and authorises every script
+/// input. Transactions that require an additional required-signer whose
+/// key differs from the payer's must budget the extra witness, or the node
+/// rejects them with `FeeTooSmallUTxO`. A Wayup collection-offer cancel is
+/// the canonical case: it's authorised by the bidder's *stake* key, which
+/// is distinct from the wallet payment key that signs the fee input — two
+/// witnesses. (jpg.store authorises with the bidder's payment key, which
+/// *is* the payer, so one witness suffices.)
+pub fn calculate_fee_with_witnesses(
+    tx: &StagingTransaction,
+    params: &crate::params::TxBuildParams,
+    num_witnesses: u32,
+) -> u64 {
     use pallas_txbuilder::BuildConway;
+
+    let witnesses = num_witnesses.max(1);
 
     let base_fee = {
         let built = match tx.clone().build_conway_raw() {
             Ok(b) => b,
             Err(_) => {
-                let estimated_size = estimate_tx_size(tx, 1);
+                let estimated_size = estimate_tx_size(tx, witnesses);
                 return estimated_size * params.min_fee_coefficient + params.min_fee_constant;
             }
         };
 
-        let dummy_secret = pallas_crypto::key::ed25519::SecretKey::from([0u8; 32]);
-        let signed = match built.sign(&dummy_secret) {
-            Ok(s) => s,
-            Err(_) => {
-                let estimated_size = estimate_tx_size(tx, 1);
-                return estimated_size * params.min_fee_coefficient + params.min_fee_constant;
-            }
-        };
+        // Sign with `witnesses` distinct dummy keys so the measured size
+        // includes every vkey witness the node will require. Distinct seeds
+        // yield distinct pubkeys, so no witness is deduplicated away.
+        let mut signed = built;
+        for i in 0..witnesses {
+            let mut seed = [0u8; 32];
+            seed[..4].copy_from_slice(&i.to_le_bytes());
+            let dummy_secret = pallas_crypto::key::ed25519::SecretKey::from(seed);
+            signed = match signed.sign(&dummy_secret) {
+                Ok(s) => s,
+                Err(_) => {
+                    let estimated_size = estimate_tx_size(tx, witnesses);
+                    return estimated_size * params.min_fee_coefficient + params.min_fee_constant;
+                }
+            };
+        }
 
         let tx_size = signed.tx_bytes.0.len() as u64;
         tx_size * params.min_fee_coefficient + params.min_fee_constant
@@ -230,4 +260,76 @@ pub fn calculate_tx_fee(
     // Exact fee from exact signed tx size
     let tx_size = signed.tx_bytes.0.len() as u64;
     tx_size * protocol_params.min_fee_coefficient + protocol_params.min_fee_constant.ada.lovelace
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::params::TxBuildParams;
+    use pallas_addresses::Address;
+    use pallas_crypto::hash::Hash;
+    use pallas_txbuilder::{Input, StagingTransaction};
+
+    fn params() -> TxBuildParams {
+        TxBuildParams {
+            min_fee_coefficient: 44,
+            min_fee_constant: 155_381,
+            ..Default::default()
+        }
+    }
+
+    fn minimal_tx(fee: u64) -> StagingTransaction {
+        let addr = Address::from_bech32(
+            "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3jcu5d8ps7zex2k2xt3uqxgjqnnj83ws8lhrn648jjxtwq2ytjqp",
+        )
+        .unwrap();
+        StagingTransaction::new()
+            .input(Input::new(Hash::from([0u8; 32]), 0))
+            .output(crate::helpers::output::create_ada_output(addr, 1_000_000))
+            .fee(fee)
+            .network_id(0)
+    }
+
+    /// Each additional witness is one VKeyWitness in the witness set:
+    /// vkey (32 + 2 CBOR) + signature (64 + 2 CBOR) + array element ≈ 101
+    /// bytes. The fee must grow by `~101 × min_fee_coefficient` per witness,
+    /// or a Wayup cancel (whose stake-key required-signer is a *second*
+    /// distinct witness) gets rejected with `FeeTooSmallUTxO`.
+    #[test]
+    fn extra_witness_adds_one_vkey_worth_of_fee() {
+        let p = params();
+        let tx = minimal_tx(200_000);
+        let one = calculate_fee_with_witnesses(&tx, &p, 1);
+        let two = calculate_fee_with_witnesses(&tx, &p, 2);
+        let delta = two - one;
+        // ~101 bytes × 44 = ~4444. Allow CBOR-encoding slack.
+        assert!(
+            (4_000..=5_000).contains(&delta),
+            "one extra witness should add ~one vkey of fee, got delta {delta}"
+        );
+    }
+
+    /// `calculate_fee` is the single-witness default — it must equal
+    /// `calculate_fee_with_witnesses(.., 1)`.
+    #[test]
+    fn default_fee_is_single_witness() {
+        let p = params();
+        let tx = minimal_tx(200_000);
+        assert_eq!(
+            calculate_fee(&tx, &p),
+            calculate_fee_with_witnesses(&tx, &p, 1)
+        );
+    }
+
+    /// Zero witnesses must floor to one — a transaction always needs at
+    /// least the payer's signature.
+    #[test]
+    fn zero_witnesses_floors_to_one() {
+        let p = params();
+        let tx = minimal_tx(200_000);
+        assert_eq!(
+            calculate_fee_with_witnesses(&tx, &p, 0),
+            calculate_fee_with_witnesses(&tx, &p, 1)
+        );
+    }
 }
