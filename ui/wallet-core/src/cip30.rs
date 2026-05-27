@@ -67,6 +67,12 @@ export async function getUsedAddresses(api) {
     return await api.getUsedAddresses();
 }
 
+export async function getRewardAddresses(api) {
+    // CIP-30: returns hex-encoded stake addresses. Used by the CIP-8 signData
+    // flow — the stake key is what signs message payloads.
+    return await api.getRewardAddresses();
+}
+
 export async function getChangeAddress(api) {
     return await api.getChangeAddress();
 }
@@ -156,6 +162,9 @@ extern "C" {
 
     #[wasm_bindgen(js_name = getUsedAddresses, catch)]
     pub async fn get_used_addresses_js(api: &JsValue) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(js_name = getRewardAddresses, catch)]
+    pub async fn get_reward_addresses_js(api: &JsValue) -> Result<JsValue, JsValue>;
 
     #[wasm_bindgen(js_name = getChangeAddress, catch)]
     pub async fn get_change_address_js(api: &JsValue) -> Result<JsValue, JsValue>;
@@ -269,6 +278,14 @@ impl WalletApi {
     /// Get used addresses (hex-encoded)
     pub async fn used_addresses(&self) -> Result<Vec<String>, WalletError> {
         let result = get_used_addresses_js(&self.api).await?;
+        let array = js_sys::Array::from(&result);
+        Ok(array.iter().filter_map(|v| v.as_string()).collect())
+    }
+
+    /// Get reward (stake) addresses (hex-encoded). Required for the CIP-8
+    /// `signData` flow — the stake key is what signs message payloads.
+    pub async fn reward_addresses(&self) -> Result<Vec<String>, WalletError> {
+        let result = get_reward_addresses_js(&self.api).await?;
         let array = js_sys::Array::from(&result);
         Ok(array.iter().filter_map(|v| v.as_string()).collect())
     }

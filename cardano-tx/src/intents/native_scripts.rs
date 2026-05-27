@@ -97,9 +97,12 @@ impl MintingPolicy {
                 let mut key_array = [0u8; 28];
                 key_array.copy_from_slice(&key_bytes);
 
+                // "Mint only before `before_slot`": the script requires the transaction's
+                // upper validity bound to be at/before the slot (`InvalidHereafter`). After
+                // that slot no further mint can ever validate → supply is frozen forever.
                 Ok(NativeScript::ScriptAll(vec![
                     NativeScript::ScriptPubkey(key_array.into()),
-                    NativeScript::InvalidBefore(*before_slot),
+                    NativeScript::InvalidHereafter(*before_slot),
                 ]))
             }
 
@@ -121,10 +124,13 @@ impl MintingPolicy {
                 let mut key_array = [0u8; 28];
                 key_array.copy_from_slice(&key_bytes);
 
+                // "Mint only within [`after_slot`, `before_slot`]": the lower bound is enforced
+                // with `InvalidBefore(after_slot)` (tx must start at/after the slot) and the
+                // upper bound with `InvalidHereafter(before_slot)` (tx must end at/before it).
                 Ok(NativeScript::ScriptAll(vec![
                     NativeScript::ScriptPubkey(key_array.into()),
-                    NativeScript::InvalidHereafter(*after_slot),
-                    NativeScript::InvalidBefore(*before_slot),
+                    NativeScript::InvalidBefore(*after_slot),
+                    NativeScript::InvalidHereafter(*before_slot),
                 ]))
             }
 
@@ -198,11 +204,36 @@ impl MintingPolicy {
                     sig_scripts.push(NativeScript::ScriptPubkey(key_array.into()));
                 }
 
+                // As with `TimeLocked`, the deadline is an upper validity bound:
+                // mint only before `before_slot`, then the multisig supply is frozen.
                 Ok(NativeScript::ScriptAll(vec![
                     NativeScript::ScriptNOfK(*required, sig_scripts),
-                    NativeScript::InvalidBefore(*before_slot),
+                    NativeScript::InvalidHereafter(*before_slot),
                 ]))
             }
+        }
+    }
+
+    /// Transaction validity bounds (in slots) a mint under this policy must set so the
+    /// native-script time locks are satisfied. Returns `(valid_from, invalid_hereafter)`:
+    /// `valid_from` is the lower bound (`StagingTransaction::valid_from_slot`) and
+    /// `invalid_hereafter` the upper bound / TTL (`StagingTransaction::invalid_from_slot`).
+    ///
+    /// A time-locked mint that omits these bounds is rejected on-chain (`ScriptWitnessNotValidating`),
+    /// so the mint builders apply them automatically from this method. Non-time-locked
+    /// policies return `(None, None)`.
+    pub fn validity_bounds(&self) -> (Option<u64>, Option<u64>) {
+        match self {
+            Self::TimeLocked { before_slot, .. } => (None, Some(*before_slot)),
+            Self::TimeBounded {
+                after_slot,
+                before_slot,
+                ..
+            } => (Some(*after_slot), Some(*before_slot)),
+            Self::MultiSigTimeLocked { before_slot, .. } => (None, Some(*before_slot)),
+            Self::WalletDerived
+            | Self::SingleKey { .. }
+            | Self::MultiSig { .. } => (None, None),
         }
     }
 
@@ -386,6 +417,107 @@ mod tests {
         assert_eq!(
             hex::encode(hash1),
             "88263ccf789c6849955b76a287a34d3732c925a1561d260906abfcf9"
+        );
+    }
+
+    fn script_all_clauses(policy: &MintingPolicy) -> Vec<NativeScript> {
+        match policy.to_native_script().unwrap() {
+            NativeScript::ScriptAll(clauses) => clauses,
+            other => panic!("expected ScriptAll, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_time_locked_deadline_is_upper_bound() {
+        // "Mint only before before_slot" must encode as InvalidHereafter (upper bound),
+        // NOT InvalidBefore — otherwise the policy would allow mints only *after* the slot.
+        let policy = MintingPolicy::TimeLocked {
+            key_hash: TEST_KEY_HASH.to_string(),
+            before_slot: 50_000_000,
+        };
+        let clauses = script_all_clauses(&policy);
+        assert!(
+            clauses
+                .iter()
+                .any(|c| matches!(c, NativeScript::InvalidHereafter(s) if *s == 50_000_000)),
+            "TimeLocked must use InvalidHereafter(before_slot)"
+        );
+        assert!(
+            !clauses
+                .iter()
+                .any(|c| matches!(c, NativeScript::InvalidBefore(_))),
+            "TimeLocked must not use InvalidBefore"
+        );
+    }
+
+    #[test]
+    fn test_time_bounded_window_uses_both_bounds() {
+        let policy = MintingPolicy::TimeBounded {
+            key_hash: TEST_KEY_HASH.to_string(),
+            after_slot: 40_000_000,
+            before_slot: 50_000_000,
+        };
+        let clauses = script_all_clauses(&policy);
+        // lower bound = after_slot (InvalidBefore), upper bound = before_slot (InvalidHereafter)
+        assert!(clauses
+            .iter()
+            .any(|c| matches!(c, NativeScript::InvalidBefore(s) if *s == 40_000_000)));
+        assert!(clauses
+            .iter()
+            .any(|c| matches!(c, NativeScript::InvalidHereafter(s) if *s == 50_000_000)));
+    }
+
+    #[test]
+    fn test_multisig_time_locked_deadline_is_upper_bound() {
+        let policy = MintingPolicy::MultiSigTimeLocked {
+            required: 2,
+            key_hashes: vec![TEST_KEY_HASH.to_string(), TEST_KEY_HASH.to_string()],
+            before_slot: 50_000_000,
+        };
+        let clauses = script_all_clauses(&policy);
+        assert!(clauses
+            .iter()
+            .any(|c| matches!(c, NativeScript::InvalidHereafter(s) if *s == 50_000_000)));
+        assert!(!clauses
+            .iter()
+            .any(|c| matches!(c, NativeScript::InvalidBefore(_))));
+    }
+
+    #[test]
+    fn test_validity_bounds() {
+        assert_eq!(MintingPolicy::WalletDerived.validity_bounds(), (None, None));
+        assert_eq!(
+            MintingPolicy::SingleKey {
+                key_hash: TEST_KEY_HASH.to_string()
+            }
+            .validity_bounds(),
+            (None, None)
+        );
+        assert_eq!(
+            MintingPolicy::TimeLocked {
+                key_hash: TEST_KEY_HASH.to_string(),
+                before_slot: 50_000_000,
+            }
+            .validity_bounds(),
+            (None, Some(50_000_000))
+        );
+        assert_eq!(
+            MintingPolicy::TimeBounded {
+                key_hash: TEST_KEY_HASH.to_string(),
+                after_slot: 40_000_000,
+                before_slot: 50_000_000,
+            }
+            .validity_bounds(),
+            (Some(40_000_000), Some(50_000_000))
+        );
+        assert_eq!(
+            MintingPolicy::MultiSigTimeLocked {
+                required: 2,
+                key_hashes: vec![TEST_KEY_HASH.to_string(), TEST_KEY_HASH.to_string()],
+                before_slot: 50_000_000,
+            }
+            .validity_bounds(),
+            (None, Some(50_000_000))
         );
     }
 

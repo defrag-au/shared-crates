@@ -148,6 +148,18 @@ pub fn build_cip25_mint(
         .network_id(network_id)
         .script(pallas_txbuilder::ScriptKind::Native, script_bytes);
 
+    // Apply the validity interval required by the policy's time locks. Without this a
+    // TimeLocked/TimeBounded/MultiSigTimeLocked mint is rejected on-chain because the
+    // native script's InvalidBefore/InvalidHereafter clauses have nothing to validate
+    // against. Non-time-locked policies return (None, None) and leave the tx unbounded.
+    let (valid_from_slot, invalid_hereafter_slot) = policy.validity_bounds();
+    if let Some(slot) = valid_from_slot {
+        tx = tx.valid_from_slot(slot);
+    }
+    if let Some(slot) = invalid_hereafter_slot {
+        tx = tx.invalid_from_slot(slot);
+    }
+
     // Add mint operations
     for (asset_name, quantity) in &assets_owned {
         let asset_name_bytes = decode_asset_name(asset_name);
@@ -213,6 +225,259 @@ pub fn build_burn(
         .collect();
 
     build_cip25_mint(deps, policy, &burn_assets, None, None)
+}
+
+/// A single NFT/RFT to mint and the address that receives it.
+#[derive(Debug, Clone)]
+pub struct MintRecipientEntry {
+    /// Asset name (display string or hex — normalized internally).
+    pub asset_name: String,
+    /// Quantity to mint (must be > 0; burns have no recipient — use `build_burn`).
+    pub quantity: u64,
+    /// Address that receives this asset.
+    pub recipient: Address,
+}
+
+/// Build a CIP-25 mint that fans out to many recipients in a single transaction.
+///
+/// Mints are grouped into one output per recipient, all under one native-script policy and
+/// one CIP-25 metadata blob. This is the batched-mint primitive behind the vending-machine
+/// batcher: many orders fulfilled per tx, bounded by tx size.
+///
+/// Fee and min-ADA are sized from the *actual* serialized metadata plus per-output/per-mint
+/// counts, so it stays correct for both lean (CID-pointer) and heavy (on-chain code) metadata.
+///
+/// - `mints` — per-asset `(name, quantity > 0, recipient)`; must be non-empty.
+/// - `metadata` — optional CIP-25 JSON (`"721"` …) covering all assets under the policy.
+/// - `inputs` — explicit funding UTxOs to spend (e.g. a caller-managed pool UTxO for parallel
+///   submission). `None` falls back to a single pure-ADA selection from `deps.utxos`.
+/// - `extra_self_outputs` — additional pure-ADA outputs paid to `deps.from_address`, in
+///   lovelace. Each becomes its own UTxO. The intended use is maintaining a fuel-UTxO pool
+///   inside the mint tx: the caller computes how many slots short of target the wallet is
+///   and passes that many lovelace amounts here. Drawn from the change side (input − recipient
+///   outputs − fee − extras = remainder change). Each amount must be ≥ the pure-ADA min UTxO;
+///   the builder rejects undersized entries before signing.
+pub fn build_cip25_mint_multi(
+    deps: &TxDeps,
+    policy: &MintingPolicy,
+    mints: &[MintRecipientEntry],
+    metadata: Option<&serde_json::Value>,
+    inputs: Option<&[UtxoApi]>,
+    extra_self_outputs: Option<&[u64]>,
+) -> Result<UnsignedTx, TxBuildError> {
+    use pallas_primitives::Fragment;
+
+    if mints.is_empty() {
+        return Err(TxBuildError::BuildFailed("no mints provided".to_string()));
+    }
+    if let Some(bad) = mints.iter().find(|m| m.quantity == 0) {
+        return Err(TxBuildError::BuildFailed(format!(
+            "mint quantity must be > 0 for asset '{}'",
+            bad.asset_name
+        )));
+    }
+
+    let policy_id_hex = policy
+        .policy_id_hex()
+        .map_err(|e| TxBuildError::BuildFailed(format!("Failed to derive policy ID: {e}")))?;
+    let native_script = policy
+        .to_native_script()
+        .map_err(|e| TxBuildError::BuildFailed(format!("Failed to create native script: {e}")))?;
+    let script_bytes = native_script
+        .encode_fragment()
+        .map_err(|e| TxBuildError::BuildFailed(format!("Failed to encode script: {e}")))?;
+    verify_policy_id(&policy_id_hex, &script_bytes)?;
+    let policy_id_bytes = decode_policy_id(&policy_id_hex)?;
+
+    // Group mints by recipient (preserve first-seen order) → one output per recipient.
+    // Tuple is `(recipient_bech32, recipient_address, Vec<(asset_name, quantity)>)`.
+    type RecipientGroup = (String, Address, Vec<(String, u64)>);
+    let mut groups: Vec<RecipientGroup> = Vec::new();
+    for m in mints {
+        let key = m
+            .recipient
+            .to_bech32()
+            .map_err(|e| TxBuildError::BuildFailed(format!("invalid recipient address: {e}")))?;
+        if let Some(g) = groups.iter_mut().find(|(k, _, _)| *k == key) {
+            g.2.push((m.asset_name.clone(), m.quantity));
+        } else {
+            groups.push((key, m.recipient.clone(), vec![(m.asset_name.clone(), m.quantity)]));
+        }
+    }
+
+    let maestro_params = super::send::to_maestro_params(&deps.params);
+
+    // Per-recipient min-ADA (summed across outputs).
+    let mut per_group_min_ada: Vec<u64> = Vec::with_capacity(groups.len());
+    for (_key, _addr, items) in &groups {
+        let asset_ids: Vec<AssetId> = items
+            .iter()
+            .filter_map(|(name, _)| {
+                let hex = normalize_asset_name_to_hex(name);
+                format!("{policy_id_hex}.{hex}").parse().ok()
+            })
+            .collect();
+        per_group_min_ada.push(crate::calculate_min_ada_with_params(
+            &maestro_params,
+            &asset_ids,
+            &crate::OutputParams { datum_size: None },
+        ));
+    }
+    let total_output_min_ada: u64 = per_group_min_ada.iter().sum();
+
+    // Metadata aux bytes — measured so the fee is sized from the real metadata weight.
+    let assets_i64: Vec<(String, i64)> = mints
+        .iter()
+        .map(|m| (m.asset_name.clone(), m.quantity as i64))
+        .collect();
+    let metadata_bytes = if let Some(v) = metadata {
+        let final_metadata = prepare_cip25_metadata(v, &policy_id_hex, &assets_i64);
+        Some(
+            crate::metadata::cip25::build_cip25_auxiliary_data(&final_metadata)
+                .map_err(|e| TxBuildError::BuildFailed(format!("Metadata encoding failed: {e}")))?,
+        )
+    } else {
+        None
+    };
+
+    // Total extra-self-output lovelace and count (used by fee + needed + change calcs below).
+    let extras: &[u64] = extra_self_outputs.unwrap_or(&[]);
+    let total_extras_lovelace: u64 = extras.iter().sum();
+
+    // Pure-ADA min UTxO under current params. Sanity-check each extra rather than letting
+    // the ledger reject after a fee has been paid.
+    let min_pure_change = 228 * deps.params.coins_per_utxo_byte;
+    for (i, &amount) in extras.iter().enumerate() {
+        if amount < min_pure_change {
+            return Err(TxBuildError::BuildFailed(format!(
+                "extra_self_outputs[{i}] = {amount} lovelace < min_pure_utxo {min_pure_change}"
+            )));
+        }
+    }
+
+    // Fee from real sizes: base + script + aux + per-output + per-mint + extra outputs +
+    // change output.
+    let estimated_tx_size = 300usize
+        + script_bytes.len()
+        + metadata_bytes.as_ref().map_or(0, |b| b.len())
+        + groups.len() * 70
+        + mints.len() * 50
+        + extras.len() * 70
+        + 70;
+    let base_fee =
+        deps.params.min_fee_coefficient * estimated_tx_size as u64 + deps.params.min_fee_constant;
+    let mut fee = base_fee + base_fee / 10;
+
+    // Inputs: explicit (caller-managed pool UTxO) or a single pure-ADA selection.
+    let chosen: Vec<UtxoApi> = match inputs {
+        Some(utxos) => {
+            if utxos.is_empty() {
+                return Err(TxBuildError::BuildFailed(
+                    "explicit inputs were empty".to_string(),
+                ));
+            }
+            utxos.to_vec()
+        }
+        None => {
+            let (selected, _total, _assets) =
+                select_utxos_for_mint(total_output_min_ada, fee, deps)?;
+            selected.into_iter().cloned().collect()
+        }
+    };
+
+    let total_input_lovelace: u64 = chosen.iter().map(|u| u.lovelace).sum();
+    let total_needed = total_output_min_ada + total_extras_lovelace + fee;
+    if total_input_lovelace < total_needed {
+        return Err(TxBuildError::InsufficientFunds {
+            needed: total_needed,
+            available: total_input_lovelace,
+        });
+    }
+
+    // Native assets carried by the inputs pass straight through to change (mint-only).
+    let mut input_native_assets: HashMap<(String, String), u64> = HashMap::new();
+    for u in &chosen {
+        accumulate_native_assets(u, &mut input_native_assets);
+    }
+    let has_remaining_assets = !input_native_assets.is_empty();
+
+    // Assemble the transaction.
+    let refs: Vec<&UtxoApi> = chosen.iter().collect();
+    let mut tx = crate::helpers::input::add_utxo_inputs(StagingTransaction::new(), &refs)?;
+    tx = tx
+        .network_id(deps.network_id)
+        .script(pallas_txbuilder::ScriptKind::Native, script_bytes);
+
+    // Validity interval from the policy's time locks (same as the single-recipient path).
+    let (valid_from_slot, invalid_hereafter_slot) = policy.validity_bounds();
+    if let Some(slot) = valid_from_slot {
+        tx = tx.valid_from_slot(slot);
+    }
+    if let Some(slot) = invalid_hereafter_slot {
+        tx = tx.invalid_from_slot(slot);
+    }
+
+    // Mint entries.
+    for m in mints {
+        let name_bytes = decode_asset_name(&m.asset_name);
+        tx = tx
+            .mint_asset(Hash::from(policy_id_bytes), name_bytes, m.quantity as i64)
+            .map_err(|e| TxBuildError::BuildFailed(format!("Failed to add mint: {e}")))?;
+    }
+
+    // One output per recipient.
+    for ((_key, addr, items), min_ada) in groups.iter().zip(per_group_min_ada.iter()) {
+        let mut output = create_ada_output(addr.clone(), *min_ada);
+        for (name, qty) in items {
+            let name_bytes = decode_asset_name(name);
+            output = output
+                .add_asset(Hash::from(policy_id_bytes), name_bytes, *qty)
+                .map_err(|e| {
+                    TxBuildError::BuildFailed(format!("Failed to add asset to output: {e}"))
+                })?;
+        }
+        tx = tx.output(output);
+    }
+
+    // Extra self-outputs — pure-ADA UTxOs back to `deps.from_address`, one per requested
+    // pool slot. Sized + sanity-checked above; drawn from input change.
+    for &amount in extras {
+        tx = tx.output(create_ada_output(deps.from_address.clone(), amount));
+    }
+
+    // Metadata.
+    if let Some(aux) = metadata_bytes {
+        tx = tx.add_auxiliary_data(aux);
+    }
+
+    // Change. Inputs already cover `total_needed` (recipient outputs + extras + fee).
+    let change_lovelace =
+        total_input_lovelace - total_output_min_ada - total_extras_lovelace - fee;
+    if has_remaining_assets {
+        // Must emit a change output to carry the inputs' native assets.
+        if change_lovelace < min_pure_change {
+            return Err(TxBuildError::InsufficientFunds {
+                needed: total_output_min_ada + total_extras_lovelace + fee + min_pure_change,
+                available: total_input_lovelace,
+            });
+        }
+        let mut change_output = create_ada_output(deps.from_address.clone(), change_lovelace);
+        let asset_map: HashMap<AssetId, u64> = input_native_assets
+            .into_iter()
+            .filter_map(|((p, n), q)| AssetId::new(p, n).ok().map(|id| (id, q)))
+            .collect();
+        change_output = add_assets_from_map(change_output, &asset_map)?;
+        tx = tx.output(change_output);
+    } else if change_lovelace >= min_pure_change {
+        tx = tx.output(create_ada_output(deps.from_address.clone(), change_lovelace));
+    } else {
+        // Dust below a viable change output → fold into the fee to keep the tx balanced.
+        fee += change_lovelace;
+    }
+
+    tx = tx.fee(fee);
+
+    Ok(UnsignedTx { staging: tx, fee })
 }
 
 // ============================================================================
@@ -611,5 +876,181 @@ mod tests {
 
         let unsigned = result.unwrap();
         assert!(unsigned.fee > 0);
+    }
+
+    #[test]
+    fn test_build_cip25_mint_time_locked_applies_validity() {
+        // A TimeLocked policy must build without error: the builder is responsible for
+        // applying the validity interval the native script requires. Before the fix this
+        // path produced a tx the ledger would reject (no validity bound for the time lock).
+        let policy = MintingPolicy::TimeLocked {
+            key_hash: "9ad4da1c6da54e41ecbab2758323f1abcc7b6e6643f5b930065fcb29".to_string(),
+            before_slot: 90_000_000,
+        };
+
+        let deps = super::super::TxDeps {
+            utxos: vec![UtxoApi {
+                tx_hash: "a".repeat(64),
+                output_index: 0,
+                lovelace: 10_000_000,
+                assets: vec![],
+                tags: vec![],
+            }],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+
+        let assets = vec![("TimeLockedNFT".to_string(), 1i64)];
+        let result = build_cip25_mint(&deps, &policy, &assets, None, None);
+        assert!(result.is_ok(), "time-locked mint failed to build: {result:?}");
+
+        // Sanity: the policy reports the upper bound the builder must apply.
+        assert_eq!(policy.validity_bounds(), (None, Some(90_000_000)));
+    }
+
+    fn test_policy() -> MintingPolicy {
+        MintingPolicy::SingleKey {
+            key_hash: "9ad4da1c6da54e41ecbab2758323f1abcc7b6e6643f5b930065fcb29".to_string(),
+        }
+    }
+
+    /// Deterministic, valid testnet address from a seed byte (enterprise / no stake).
+    fn test_recipient(seed: u8) -> Address {
+        let kh = Hash::<28>::from([seed; 28]);
+        pallas_addresses::ShelleyAddress::new(
+            pallas_addresses::Network::Testnet,
+            pallas_addresses::ShelleyPaymentPart::key_hash(kh),
+            pallas_addresses::ShelleyDelegationPart::Null,
+        )
+        .into()
+    }
+
+    fn deps_with(lovelace: u64) -> super::super::TxDeps {
+        super::super::TxDeps {
+            utxos: vec![UtxoApi {
+                tx_hash: "a".repeat(64),
+                output_index: 0,
+                lovelace,
+                assets: vec![],
+                tags: vec![],
+            }],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        }
+    }
+
+    #[test]
+    fn test_build_cip25_mint_multi_two_recipients() {
+        let mints = vec![
+            MintRecipientEntry {
+                asset_name: "Foo001".to_string(),
+                quantity: 1,
+                recipient: test_recipient(1),
+            },
+            MintRecipientEntry {
+                asset_name: "Foo002".to_string(),
+                quantity: 1,
+                recipient: test_recipient(2),
+            },
+        ];
+        let result = build_cip25_mint_multi(&deps_with(20_000_000), &test_policy(), &mints, None, None, None);
+        assert!(result.is_ok(), "multi-recipient mint failed: {result:?}");
+        assert!(result.unwrap().fee > 0);
+    }
+
+    #[test]
+    fn test_build_cip25_mint_multi_explicit_inputs() {
+        // deps carries no UTxOs — the explicit pool UTxO must be used instead.
+        let deps = super::super::TxDeps {
+            utxos: vec![],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let input = UtxoApi {
+            tx_hash: "b".repeat(64),
+            output_index: 1,
+            lovelace: 10_000_000,
+            assets: vec![],
+            tags: vec![],
+        };
+        let mints = vec![MintRecipientEntry {
+            asset_name: "Bar001".to_string(),
+            quantity: 1,
+            recipient: test_recipient(3),
+        }];
+        let result = build_cip25_mint_multi(
+            &deps,
+            &test_policy(),
+            &mints,
+            None,
+            Some(std::slice::from_ref(&input)),
+            None,
+        );
+        assert!(result.is_ok(), "explicit-inputs mint failed: {result:?}");
+    }
+
+    #[test]
+    fn test_build_cip25_mint_multi_rejects_zero_quantity() {
+        let mints = vec![MintRecipientEntry {
+            asset_name: "X".to_string(),
+            quantity: 0,
+            recipient: test_recipient(1),
+        }];
+        assert!(build_cip25_mint_multi(&deps_with(10_000_000), &test_policy(), &mints, None, None, None).is_err());
+    }
+
+    #[test]
+    fn test_build_cip25_mint_multi_empty_errors() {
+        assert!(build_cip25_mint_multi(&deps_with(10_000_000), &test_policy(), &[], None, None, None).is_err());
+    }
+
+    /// `extra_self_outputs` adds pool-slot UTxOs back to `from_address` and the change
+    /// covers the leftover. With a 100 ADA input, a 1 ADA recipient, ~0.5 ADA fee,
+    /// and 4 × 10 ADA pool slots, ~58 ADA remains as change. Builder should succeed
+    /// and the resulting tx fee should be sized to include the extra outputs.
+    #[test]
+    fn test_build_cip25_mint_multi_with_extra_self_outputs() {
+        let mints = vec![MintRecipientEntry {
+            asset_name: "Pool001".to_string(),
+            quantity: 1,
+            recipient: test_recipient(7),
+        }];
+        let extras = [10_000_000u64; 4]; // 4 pool slots × 10 ADA
+        let result = build_cip25_mint_multi(
+            &deps_with(100_000_000),
+            &test_policy(),
+            &mints,
+            None,
+            None,
+            Some(&extras),
+        );
+        assert!(
+            result.is_ok(),
+            "mint with extra_self_outputs failed: {result:?}"
+        );
+    }
+
+    /// Pool slots below `min_pure_change` (under typical params ~1.1 ADA) must be rejected
+    /// before signing — the ledger would reject the tx and burn the fee otherwise.
+    #[test]
+    fn test_build_cip25_mint_multi_rejects_undersized_extras() {
+        let mints = vec![MintRecipientEntry {
+            asset_name: "TinyExtra".to_string(),
+            quantity: 1,
+            recipient: test_recipient(7),
+        }];
+        let extras = [500_000u64]; // 0.5 ADA — below min_pure_change
+        let result = build_cip25_mint_multi(
+            &deps_with(50_000_000),
+            &test_policy(),
+            &mints,
+            None,
+            None,
+            Some(&extras),
+        );
+        assert!(matches!(result, Err(TxBuildError::BuildFailed(_))));
     }
 }
