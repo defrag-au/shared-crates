@@ -111,6 +111,11 @@ pub enum WalletListAction {
     /// [`WalletList::with_can_archive_primary`] is left at the default
     /// `false`, so the parent doesn't need to defend against it again.
     Archive { account_index: u32 },
+    /// User clicked the "View UTxOs" button on a row. Only emitted
+    /// when [`WalletList::with_view_button`] is `true`; the parent
+    /// owns the panel state (toggle / refresh / cache) and the
+    /// indexer round-trip.
+    ViewUtxos { account_index: u32 },
 }
 
 /// Rendering style. Both styles share the same row VM, bucketing, and
@@ -134,6 +139,7 @@ pub struct WalletList<'a> {
     columns: usize,
     can_archive_primary: bool,
     show_section_headers_for_single: bool,
+    view_button: bool,
 }
 
 /// Response — drained actions for this frame.
@@ -168,7 +174,18 @@ impl<'a> WalletList<'a> {
             columns: 1,
             can_archive_primary: false,
             show_section_headers_for_single: false,
+            view_button: false,
         }
+    }
+
+    /// Show a per-row "UTxOs" button alongside Archive. Off by
+    /// default — surfaces an extra affordance which only makes
+    /// sense when the parent has somewhere to render the panel
+    /// (e.g. the portal dashboard). Click → emits
+    /// [`WalletListAction::ViewUtxos`].
+    pub fn with_view_button(mut self, enabled: bool) -> Self {
+        self.view_button = enabled;
+        self
     }
 
     /// Switch the per-row presentation. See [`WalletListLayout`].
@@ -235,6 +252,7 @@ impl<'a> WalletList<'a> {
             self.layout,
             self.columns,
             self.can_archive_primary,
+            self.view_button,
             &mut response,
         );
 
@@ -252,6 +270,7 @@ impl<'a> WalletList<'a> {
             self.layout,
             self.columns,
             /* allow_archive = */ true,
+            self.view_button,
             &mut response,
         );
 
@@ -267,6 +286,7 @@ impl<'a> WalletList<'a> {
             self.layout,
             self.columns,
             /* allow_archive = */ true,
+            self.view_button,
             &mut response,
         );
 
@@ -288,6 +308,7 @@ fn render_bucket(
     layout: WalletListLayout,
     columns: usize,
     allow_archive: bool,
+    view_button: bool,
     response: &mut WalletListResponse,
 ) {
     if rows.is_empty() {
@@ -333,7 +354,7 @@ fn render_bucket(
             // nested `ui.columns` wrapper (which would add layout cost
             // for zero visual gain).
             for r in chunk.iter() {
-                render_one(ui, r, layout, allow_archive, response);
+                render_one(ui, r, layout, allow_archive, view_button, response);
             }
         } else {
             // Multi-column — split into `effective_cols` equal sub-UIs.
@@ -342,7 +363,7 @@ fn render_bucket(
             // grid alignment with cells above).
             ui.columns(effective_cols, |cols| {
                 for (i, r) in chunk.iter().enumerate() {
-                    render_one(&mut cols[i], r, layout, allow_archive, response);
+                    render_one(&mut cols[i], r, layout, allow_archive, view_button, response);
                 }
             });
         }
@@ -357,11 +378,12 @@ fn render_one(
     row: &WalletListRow,
     layout: WalletListLayout,
     allow_archive: bool,
+    view_button: bool,
     response: &mut WalletListResponse,
 ) {
     match layout {
-        WalletListLayout::List => render_row(ui, row, allow_archive, response),
-        WalletListLayout::Card => render_card(ui, row, allow_archive, response),
+        WalletListLayout::List => render_row(ui, row, allow_archive, view_button, response),
+        WalletListLayout::Card => render_card(ui, row, allow_archive, view_button, response),
     }
 }
 
@@ -369,6 +391,7 @@ fn render_row(
     ui: &mut Ui,
     row: &WalletListRow,
     allow_archive: bool,
+    view_button: bool,
     response: &mut WalletListResponse,
 ) {
     let archived = row.archived_at.is_some();
@@ -447,6 +470,21 @@ fn render_row(
                             }
                         }
 
+                        // View-UTxOs button. Opt-in via
+                        // `with_view_button(true)` since not every
+                        // host has a panel to render them into.
+                        if view_button {
+                            let clicked = ui
+                                .small_button(RichText::new("UTxOs").small())
+                                .on_hover_text("View on-chain UTxOs for this wallet")
+                                .clicked();
+                            if clicked {
+                                response.actions.push(WalletListAction::ViewUtxos {
+                                    account_index: row.account_index,
+                                });
+                            }
+                        }
+
                         // Copy-to-clipboard icon button — copies the full
                         // address (not the truncation) so the value is
                         // usable. egui has a built-in clipboard helper;
@@ -477,6 +515,7 @@ fn render_card(
     ui: &mut Ui,
     row: &WalletListRow,
     allow_archive: bool,
+    view_button: bool,
     response: &mut WalletListResponse,
 ) {
     let archived = row.archived_at.is_some();
@@ -559,6 +598,16 @@ fn render_card(
                                 .clicked()
                         {
                             response.actions.push(WalletListAction::Archive {
+                                account_index: row.account_index,
+                            });
+                        }
+                        if view_button
+                            && ui
+                                .small_button(RichText::new("UTxOs").small())
+                                .on_hover_text("View on-chain UTxOs for this wallet")
+                                .clicked()
+                        {
+                            response.actions.push(WalletListAction::ViewUtxos {
                                 account_index: row.account_index,
                             });
                         }
