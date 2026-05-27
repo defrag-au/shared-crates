@@ -290,7 +290,9 @@ pub fn build_cip25_mint_multi(
     let policy_id_bytes = decode_policy_id(&policy_id_hex)?;
 
     // Group mints by recipient (preserve first-seen order) → one output per recipient.
-    let mut groups: Vec<(String, Address, Vec<(String, u64)>)> = Vec::new();
+    // Tuple is `(recipient_bech32, recipient_address, Vec<(asset_name, quantity)>)`.
+    type RecipientGroup = (String, Address, Vec<(String, u64)>);
+    let mut groups: Vec<RecipientGroup> = Vec::new();
     for m in mints {
         let key = m
             .recipient
@@ -1006,8 +1008,8 @@ mod tests {
     }
 
     /// `extra_self_outputs` adds pool-slot UTxOs back to `from_address` and the change
-    /// covers the leftover. With a 100 ADA input, a single 1 ADA recipient + ~0.5 ADA fee
-    /// + 4 × 10 ADA pool slots leaves ~58 ADA remainder change. Builder should succeed
+    /// covers the leftover. With a 100 ADA input, a 1 ADA recipient, ~0.5 ADA fee,
+    /// and 4 × 10 ADA pool slots, ~58 ADA remains as change. Builder should succeed
     /// and the resulting tx fee should be sized to include the extra outputs.
     #[test]
     fn test_build_cip25_mint_multi_with_extra_self_outputs() {
