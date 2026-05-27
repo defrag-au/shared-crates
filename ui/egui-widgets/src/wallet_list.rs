@@ -26,11 +26,24 @@
 //! - **No add-wallet form.** That stays as a parent-owned inline form
 //!   immediately below the list (see `app.rs::render_client_detail`).
 //!
+//! ## Layouts
+//!
+//! Two presentations driven from the same `WalletListRow` VM:
+//!
+//! - [`WalletListLayout::List`] (default) — compact one-row-per-wallet,
+//!   used today by the portal's main dashboard.
+//! - [`WalletListLayout::Card`] — taller tiles with a filled role pill,
+//!   a heading-sized label, and a footer line for the address. Better
+//!   when wallet identity is the focal element (e.g. an "Identities &
+//!   wallets" sub-page); leaves room for future per-card slots (balance,
+//!   collection count) without re-doing the layout.
+//!
 //! ## Usage
 //!
 //! ```ignore
 //! let rows: Vec<WalletListRow> = detail.wallets.iter().map(to_vm).collect();
 //! let resp = WalletList::new(&rows)
+//!     .with_layout(WalletListLayout::Card)
 //!     .with_can_archive_primary(false)
 //!     .show(ui);
 //! for action in resp.actions {
@@ -100,9 +113,25 @@ pub enum WalletListAction {
     Archive { account_index: u32 },
 }
 
+/// Rendering style. Both styles share the same row VM, bucketing, and
+/// action emission — only the per-row geometry differs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WalletListLayout {
+    /// Compact horizontal row (default). Scannable when many wallets are
+    /// on screen — the current portal dashboard look.
+    #[default]
+    List,
+    /// Taller tile with a filled role pill, large title, and the address
+    /// on a dedicated footer line. Good when wallet identity is the
+    /// focal element rather than one entry in a long list.
+    Card,
+}
+
 /// Builder.
 pub struct WalletList<'a> {
     rows: &'a [WalletListRow],
+    layout: WalletListLayout,
+    columns: usize,
     can_archive_primary: bool,
     show_section_headers_for_single: bool,
 }
@@ -135,9 +164,28 @@ impl<'a> WalletList<'a> {
     pub fn new(rows: &'a [WalletListRow]) -> Self {
         Self {
             rows,
+            layout: WalletListLayout::default(),
+            columns: 1,
             can_archive_primary: false,
             show_section_headers_for_single: false,
         }
+    }
+
+    /// Switch the per-row presentation. See [`WalletListLayout`].
+    pub fn with_layout(mut self, layout: WalletListLayout) -> Self {
+        self.layout = layout;
+        self
+    }
+
+    /// Lay rows out as a grid this many columns wide. Default `1`
+    /// (single-column stack). Per-bucket clamped to `min(cols,
+    /// rows_in_bucket)` so a one-wallet bucket (e.g. Primary) still uses
+    /// the full surface width when the configured count would otherwise
+    /// leave dead space. Set to 2–3 for card layouts on wide surfaces;
+    /// list mode tolerates 2 cols, more than that crowds the address.
+    pub fn with_columns(mut self, cols: usize) -> Self {
+        self.columns = cols.max(1);
+        self
     }
 
     /// Override the safety default and allow the Primary row to be
@@ -184,6 +232,8 @@ impl<'a> WalletList<'a> {
             "Primary",
             &primary,
             show_headers,
+            self.layout,
+            self.columns,
             self.can_archive_primary,
             &mut response,
         );
@@ -199,6 +249,8 @@ impl<'a> WalletList<'a> {
             "Collections",
             &collections,
             show_headers,
+            self.layout,
+            self.columns,
             /* allow_archive = */ true,
             &mut response,
         );
@@ -212,6 +264,8 @@ impl<'a> WalletList<'a> {
             "Custom",
             &custom,
             show_headers,
+            self.layout,
+            self.columns,
             /* allow_archive = */ true,
             &mut response,
         );
@@ -224,11 +278,15 @@ impl<'a> WalletList<'a> {
 // Internals
 // ─────────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)] // honest set of knobs; bundling them
+                                     // into a struct would just move the args.
 fn render_bucket(
     ui: &mut Ui,
     title: &str,
     rows: &[&WalletListRow],
     show_header: bool,
+    layout: WalletListLayout,
+    columns: usize,
     allow_archive: bool,
     response: &mut WalletListResponse,
 ) {
@@ -254,9 +312,56 @@ fn render_bucket(
         ui.add_space(4.0);
     }
 
-    for r in rows {
-        render_row(ui, r, allow_archive, response);
-        ui.add_space(4.0);
+    // Card mode wants a touch more breathing room between tiles than the
+    // dense list mode does.
+    let gap = match layout {
+        WalletListLayout::List => 4.0,
+        WalletListLayout::Card => 8.0,
+    };
+
+    // Per-bucket clamp: a 1-row bucket (Primary) renders full-width even
+    // when the caller asked for 2+ columns; a 5-row bucket honours the
+    // configured grid. Keeps each bucket from leaving empty trailing
+    // columns that look like a layout bug.
+    let effective_cols = columns.min(rows.len()).max(1);
+
+    let chunks: Vec<&[&WalletListRow]> = rows.chunks(effective_cols).collect();
+    let last_chunk = chunks.len().saturating_sub(1);
+    for (chunk_idx, chunk) in chunks.iter().enumerate() {
+        if effective_cols == 1 {
+            // Single-column — render directly into the bucket's UI, no
+            // nested `ui.columns` wrapper (which would add layout cost
+            // for zero visual gain).
+            for r in chunk.iter() {
+                render_one(ui, r, layout, allow_archive, response);
+            }
+        } else {
+            // Multi-column — split into `effective_cols` equal sub-UIs.
+            // The last chunk may be short; the closure simply doesn't
+            // touch the trailing columns and they stay empty (preserves
+            // grid alignment with cells above).
+            ui.columns(effective_cols, |cols| {
+                for (i, r) in chunk.iter().enumerate() {
+                    render_one(&mut cols[i], r, layout, allow_archive, response);
+                }
+            });
+        }
+        if chunk_idx < last_chunk {
+            ui.add_space(gap);
+        }
+    }
+}
+
+fn render_one(
+    ui: &mut Ui,
+    row: &WalletListRow,
+    layout: WalletListLayout,
+    allow_archive: bool,
+    response: &mut WalletListResponse,
+) {
+    match layout {
+        WalletListLayout::List => render_row(ui, row, allow_archive, response),
+        WalletListLayout::Card => render_card(ui, row, allow_archive, response),
     }
 }
 
@@ -364,6 +469,120 @@ fn render_row(
                         );
                     },
                 );
+            });
+        });
+}
+
+fn render_card(
+    ui: &mut Ui,
+    row: &WalletListRow,
+    allow_archive: bool,
+    response: &mut WalletListResponse,
+) {
+    let archived = row.archived_at.is_some();
+    let (fill, stroke) = match (row.role, archived) {
+        (_, true) => (ROW_BG_ARCHIVED, ROW_STROKE),
+        (WalletListRole::Primary, false) => (ROW_BG_PRIMARY, ROW_STROKE_PRIMARY),
+        _ => (ROW_BG, ROW_STROKE),
+    };
+    let (role_text, role_colour) = match row.role {
+        WalletListRole::Primary => ("PRIMARY", ROLE_PRIMARY_CHIP),
+        WalletListRole::Collection => ("COLLECTION", ROLE_COLLECTION_CHIP),
+        WalletListRole::Custom => ("CUSTOM", ROLE_CUSTOM_CHIP),
+    };
+
+    Frame::new()
+        .fill(fill)
+        .stroke(Stroke::new(1.0, stroke))
+        .corner_radius(CornerRadius::same(8))
+        .inner_margin(Margin::symmetric(14, 12))
+        .show(ui, |ui| {
+            // Take the full available width — when laid out in a grid the
+            // parent column already constrains us; when single-column we
+            // grow to the surface width.
+            ui.set_width(ui.available_width());
+
+            // ── Title row: label + #N + role pill + meta chips,
+            //    right-aligned archive button ──────────────────────────
+            //
+            // Role is co-located with name + number (no banner above) so
+            // the strongest visual cue is the *identity*, with role
+            // qualifying it. Archive lives at the far right.
+            ui.horizontal(|ui| {
+                let title = RichText::new(&row.label).heading();
+                let title = if archived { title.color(META_GREY) } else { title };
+                ui.label(title);
+                ui.label(
+                    RichText::new(format!("#{}", row.account_index))
+                        .monospace()
+                        .color(META_GREY),
+                );
+
+                // Filled role pill — same palette as the inline list
+                // chip but with a stronger background so it reads as a
+                // proper tag rather than coloured text.
+                Frame::new()
+                    .fill(role_colour)
+                    .corner_radius(CornerRadius::same(3))
+                    .inner_margin(Margin::symmetric(7, 1))
+                    .show(ui, |ui| {
+                        ui.label(
+                            RichText::new(role_text)
+                                .color(Color32::from_rgb(20, 20, 30))
+                                .small()
+                                .strong(),
+                        );
+                    });
+
+                if row.auto_created && row.role != WalletListRole::Collection {
+                    ui.colored_label(META_GREY, RichText::new("auto").small());
+                }
+                if archived {
+                    ui.colored_label(
+                        Color32::LIGHT_YELLOW,
+                        RichText::new("archived").small(),
+                    );
+                }
+
+                ui.with_layout(
+                    egui::Layout::right_to_left(egui::Align::Center),
+                    |ui| {
+                        let can_archive = !archived
+                            && (row.role != WalletListRole::Primary || allow_archive);
+                        if can_archive
+                            && ui
+                                .small_button(RichText::new("Archive").small())
+                                .on_hover_text(
+                                    "Soft-delete this wallet (reversible — historical \
+                                     collections still resolve their key_hash)",
+                                )
+                                .clicked()
+                        {
+                            response.actions.push(WalletListAction::Archive {
+                                account_index: row.account_index,
+                            });
+                        }
+                    },
+                );
+            });
+
+            ui.add_space(8.0);
+
+            // ── Footer: address + copy ─────────────────────────────
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(&row.address_short)
+                        .monospace()
+                        .color(KEYHASH_GREY),
+                );
+                if let Some(full) = &row.address_full {
+                    let copy = ui
+                        .small_button(RichText::new("📋").small())
+                        .on_hover_text("Copy address to clipboard");
+                    if copy.clicked() {
+                        ui.ctx().copy_text(full.clone());
+                    }
+                }
             });
         });
 }

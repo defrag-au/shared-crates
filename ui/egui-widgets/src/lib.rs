@@ -106,7 +106,8 @@ pub use wallet_identity_header::{
     truncate_stake, WalletIdentityAction, WalletIdentityConfig, WalletIdentityHeader,
 };
 pub use wallet_list::{
-    WalletList, WalletListAction, WalletListResponse, WalletListRole, WalletListRow,
+    WalletList, WalletListAction, WalletListLayout, WalletListResponse, WalletListRole,
+    WalletListRow,
 };
 pub use pip_row::{
     HoverInfo, HoveredBin, HoveredPip, Pip, PipRowConfig, PipRowData, PipRowResponse,
