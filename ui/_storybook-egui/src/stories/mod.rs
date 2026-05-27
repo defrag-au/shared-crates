@@ -9,6 +9,7 @@ pub mod icon_gallery;
 pub mod marquee;
 pub mod mesh_playground;
 pub mod metric_card;
+pub mod mnemonic_display;
 pub mod perspective_text;
 pub mod pip_row;
 pub mod printing_timeline;

@@ -73,6 +73,8 @@ mod app {
         WalletIdentityHeader,
         PersonaStrip,
         FungiblesRow,
+        // Auth / admin
+        MnemonicDisplay,
     }
 
     impl Story {
@@ -134,6 +136,7 @@ mod app {
                 Self::WalletIdentityHeader,
                 Self::PersonaStrip,
                 Self::FungiblesRow,
+                Self::MnemonicDisplay,
             ]
         }
 
@@ -188,6 +191,7 @@ mod app {
                 Self::WalletIdentityHeader => "Wallet Identity Header",
                 Self::PersonaStrip => "Persona Strip",
                 Self::FungiblesRow => "Fungibles Row",
+                Self::MnemonicDisplay => "Mnemonic Display",
             }
         }
 
@@ -238,6 +242,7 @@ mod app {
                 Self::ImageTextEditor => "Media",
                 Self::TxCart => "TX Cart",
                 Self::GroupedSection | Self::OfferTile => "Layout",
+                Self::MnemonicDisplay => "Auth / Admin",
             }
         }
 
@@ -370,6 +375,9 @@ mod app {
                 Self::FungiblesRow => {
                     "Compact row for a fungible token holding (name, ticker chip, quantity, optional ADA value)"
                 }
+                Self::MnemonicDisplay => {
+                    "BIP-39 mnemonic shown once during provisioning / Art. 20 export — numbered grid, copy CTA, confirmation gate"
+                }
             }
         }
     }
@@ -446,6 +454,8 @@ mod app {
         // Wallet
         wallet_identity_header_state:
             stories::wallet_identity_header::WalletIdentityHeaderStoryState,
+        // Auth / admin
+        mnemonic_display_state: stories::mnemonic_display::MnemonicDisplayState,
     }
 
     impl StorybookApp {
@@ -523,6 +533,7 @@ mod app {
                 tx_cart_state: stories::tx_cart::TxCartStoryState::default(),
                 wallet_identity_header_state:
                     stories::wallet_identity_header::WalletIdentityHeaderStoryState::default(),
+                mnemonic_display_state: stories::mnemonic_display::MnemonicDisplayState::default(),
             }
         }
 
@@ -726,6 +737,10 @@ mod app {
                             ),
                             Story::PersonaStrip => stories::persona_strip::show(ui),
                             Story::FungiblesRow => stories::fungibles_row::show(ui),
+                            Story::MnemonicDisplay => stories::mnemonic_display::show(
+                                ui,
+                                &mut self.mnemonic_display_state,
+                            ),
                         }
                     });
                 });
