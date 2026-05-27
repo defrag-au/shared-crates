@@ -147,6 +147,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
             WalletListAction::Archive { account_index } => {
                 state.last_archived = Some(account_index);
             }
+            // The story doesn't enable `with_view_button`, so this arm
+            // is unreachable in practice — kept for exhaustive matching
+            // since `WalletListAction` is non-exhaustive in shape but
+            // not in attribute.
+            WalletListAction::ViewUtxos { .. } => {}
         }
     }
     if let Some(idx) = state.last_archived {

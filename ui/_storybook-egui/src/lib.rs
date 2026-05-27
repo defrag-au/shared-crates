@@ -76,6 +76,7 @@ mod app {
         // Auth / admin
         MnemonicDisplay,
         WalletList,
+        CollectionList,
     }
 
     impl Story {
@@ -139,6 +140,7 @@ mod app {
                 Self::FungiblesRow,
                 Self::MnemonicDisplay,
                 Self::WalletList,
+                Self::CollectionList,
             ]
         }
 
@@ -195,6 +197,7 @@ mod app {
                 Self::FungiblesRow => "Fungibles Row",
                 Self::MnemonicDisplay => "Mnemonic Display",
                 Self::WalletList => "Wallet List",
+                Self::CollectionList => "Collection List",
             }
         }
 
@@ -245,7 +248,7 @@ mod app {
                 Self::ImageTextEditor => "Media",
                 Self::TxCart => "TX Cart",
                 Self::GroupedSection | Self::OfferTile => "Layout",
-                Self::MnemonicDisplay | Self::WalletList => "Auth / Admin",
+                Self::MnemonicDisplay | Self::WalletList | Self::CollectionList => "Auth / Admin",
             }
         }
 
@@ -384,6 +387,9 @@ mod app {
                 Self::WalletList => {
                     "Per-client wallet roster — Primary at top, Collections grouped, Custom folded below, with archive actions"
                 }
+                Self::CollectionList => {
+                    "Per-client collections list — title, status/standard/network chips, supply progress, policy_id copy, Test mint / Seed stubs actions"
+                }
             }
         }
     }
@@ -463,6 +469,7 @@ mod app {
         // Auth / admin
         mnemonic_display_state: stories::mnemonic_display::MnemonicDisplayState,
         wallet_list_state: stories::wallet_list::WalletListState,
+        collection_list_state: stories::collection_list::CollectionListState,
     }
 
     impl StorybookApp {
@@ -542,6 +549,7 @@ mod app {
                     stories::wallet_identity_header::WalletIdentityHeaderStoryState::default(),
                 mnemonic_display_state: stories::mnemonic_display::MnemonicDisplayState::default(),
                 wallet_list_state: stories::wallet_list::WalletListState::default(),
+                collection_list_state: stories::collection_list::CollectionListState::default(),
             }
         }
 
@@ -751,6 +759,9 @@ mod app {
                             ),
                             Story::WalletList => {
                                 stories::wallet_list::show(ui, &mut self.wallet_list_state)
+                            }
+                            Story::CollectionList => {
+                                stories::collection_list::show(ui, &mut self.collection_list_state)
                             }
                         }
                     });

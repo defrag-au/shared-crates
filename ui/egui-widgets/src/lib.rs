@@ -4,6 +4,7 @@ pub mod animated_counter;
 pub mod asset_card;
 pub mod buttons;
 pub mod card_browser;
+pub mod collection_list;
 pub mod donut_chart;
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
@@ -104,6 +105,10 @@ pub use metric_card::{MetricCard, Trend};
 pub use persona_strip::{PersonaStrip, PersonaStripConfig};
 pub use wallet_identity_header::{
     truncate_stake, WalletIdentityAction, WalletIdentityConfig, WalletIdentityHeader,
+};
+pub use collection_list::{
+    CollectionList, CollectionListAction, CollectionListLayout, CollectionListResponse,
+    CollectionRow,
 };
 pub use wallet_list::{
     WalletList, WalletListAction, WalletListLayout, WalletListResponse, WalletListRole,

@@ -2,6 +2,7 @@ pub mod asset_card;
 pub mod async_data;
 pub mod buttons;
 pub mod card_browser;
+pub mod collection_list;
 pub mod distribution;
 pub mod flip_counter;
 pub mod formatting;
