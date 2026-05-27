@@ -64,3 +64,4 @@ pub mod offer_tile;
 pub mod fungibles_row;
 pub mod persona_strip;
 pub mod wallet_identity_header;
+pub mod wallet_list;

@@ -31,6 +31,7 @@ pub mod theme;
 pub mod trait_filter;
 pub mod utils;
 pub mod wallet_identity_header;
+pub mod wallet_list;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
@@ -103,6 +104,9 @@ pub use metric_card::{MetricCard, Trend};
 pub use persona_strip::{PersonaStrip, PersonaStripConfig};
 pub use wallet_identity_header::{
     truncate_stake, WalletIdentityAction, WalletIdentityConfig, WalletIdentityHeader,
+};
+pub use wallet_list::{
+    WalletList, WalletListAction, WalletListResponse, WalletListRole, WalletListRow,
 };
 pub use pip_row::{
     HoverInfo, HoveredBin, HoveredPip, Pip, PipRowConfig, PipRowData, PipRowResponse,
