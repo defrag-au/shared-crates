@@ -73,6 +73,28 @@ pub enum WalletListRole {
     Custom,
 }
 
+/// Optional pool-health pill rendered on the wallet card. Set on rows
+/// whose UTxOs have been fetched at least once; absent on rows where the
+/// host hasn't refreshed (the card doesn't gain a "no data" badge — it
+/// simply doesn't render the pill). The widget renders fuel count +
+/// total ADA + a coloured dot for the health bucket.
+#[derive(Clone, Debug)]
+pub struct WalletPoolBadge {
+    pub fuel_count: u32,
+    pub total_lovelace: u64,
+    pub health: WalletPoolBadgeHealth,
+}
+
+/// Health bucket — a local enum so the widget crate stays
+/// shared-types-free. Hosts map their canonical
+/// `WalletPoolHealth` to this at the VM boundary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WalletPoolBadgeHealth {
+    Empty,
+    Low,
+    Healthy,
+}
+
 /// View-model for a single wallet row. Pre-formatted by the caller — the
 /// widget does no truncation itself.
 #[derive(Clone, Debug)]
@@ -99,6 +121,10 @@ pub struct WalletListRow {
     /// Unix seconds of archive, or `None` if active. Archived rows render
     /// dimmed with an "archived" chip.
     pub archived_at: Option<i64>,
+    /// Optional fuel-pool summary. Rendered as a single-line inline pill
+    /// below the address: `🟢 20 fuel · 230 ADA`. `None` → no pill (the
+    /// host hasn't refreshed UTxOs for this wallet yet).
+    pub pool: Option<WalletPoolBadge>,
 }
 
 /// Actions emitted while the widget was on screen this frame. Parent
@@ -111,6 +137,10 @@ pub enum WalletListAction {
     /// [`WalletList::with_can_archive_primary`] is left at the default
     /// `false`, so the parent doesn't need to defend against it again.
     Archive { account_index: u32 },
+    /// User clicked the Restore button on an archived row. Symmetric
+    /// to [`Archive`]; only emitted from archived rows (the widget
+    /// swaps Archive ↔ Restore based on `archived_at`).
+    Unarchive { account_index: u32 },
     /// User clicked the "View UTxOs" button on a row. Only emitted
     /// when [`WalletList::with_view_button`] is `true`; the parent
     /// owns the panel state (toggle / refresh / cache) and the
@@ -449,21 +479,36 @@ fn render_row(
                 ui.with_layout(
                     egui::Layout::right_to_left(egui::Align::Center),
                     |ui| {
-                        // Archive button — placed first because of the
-                        // right-to-left layout (it ends up rightmost).
-                        // Hidden for Primary (unless explicitly enabled)
-                        // and already-archived rows.
-                        let can_archive = !archived
-                            && (row.role != WalletListRole::Primary || allow_archive);
-                        if can_archive {
-                            let clicked = ui
-                                .small_button(RichText::new("Archive").small())
+                        // Archive ↔ Restore — placed first because of
+                        // the right-to-left layout (ends up rightmost).
+                        // Archive hidden for Primary (unless explicitly
+                        // enabled). Restore appears only on archived
+                        // rows; clicking flips the wallet back to active.
+                        if archived {
+                            if ui
+                                .small_button(RichText::new("Restore").small())
                                 .on_hover_text(
-                                    "Soft-delete this wallet (reversible — historical \
-                                     collections still resolve their key_hash)",
+                                    "Bring this wallet back from archived. \
+                                     Clears `archived_at`; no key material touched.",
                                 )
-                                .clicked();
-                            if clicked {
+                                .clicked()
+                            {
+                                response.actions.push(WalletListAction::Unarchive {
+                                    account_index: row.account_index,
+                                });
+                            }
+                        } else {
+                            let can_archive =
+                                row.role != WalletListRole::Primary || allow_archive;
+                            if can_archive
+                                && ui
+                                    .small_button(RichText::new("Archive").small())
+                                    .on_hover_text(
+                                        "Soft-delete this wallet (reversible — historical \
+                                         collections still resolve their key_hash)",
+                                    )
+                                    .clicked()
+                            {
                                 response.actions.push(WalletListAction::Archive {
                                     account_index: row.account_index,
                                 });
@@ -586,20 +631,35 @@ fn render_card(
                 ui.with_layout(
                     egui::Layout::right_to_left(egui::Align::Center),
                     |ui| {
-                        let can_archive = !archived
-                            && (row.role != WalletListRole::Primary || allow_archive);
-                        if can_archive
-                            && ui
-                                .small_button(RichText::new("Archive").small())
+                        if archived {
+                            if ui
+                                .small_button(RichText::new("Restore").small())
                                 .on_hover_text(
-                                    "Soft-delete this wallet (reversible — historical \
-                                     collections still resolve their key_hash)",
+                                    "Bring this wallet back from archived. \
+                                     Clears `archived_at`; no key material touched.",
                                 )
                                 .clicked()
-                        {
-                            response.actions.push(WalletListAction::Archive {
-                                account_index: row.account_index,
-                            });
+                            {
+                                response.actions.push(WalletListAction::Unarchive {
+                                    account_index: row.account_index,
+                                });
+                            }
+                        } else {
+                            let can_archive =
+                                row.role != WalletListRole::Primary || allow_archive;
+                            if can_archive
+                                && ui
+                                    .small_button(RichText::new("Archive").small())
+                                    .on_hover_text(
+                                        "Soft-delete this wallet (reversible — historical \
+                                         collections still resolve their key_hash)",
+                                    )
+                                    .clicked()
+                            {
+                                response.actions.push(WalletListAction::Archive {
+                                    account_index: row.account_index,
+                                });
+                            }
                         }
                         if view_button
                             && ui
@@ -633,5 +693,29 @@ fn render_card(
                     }
                 }
             });
+
+            // ── Pool badge (optional) — fuel-UTxO count + total ADA.
+            // Only rendered when the host has cached UTxOs for this
+            // wallet (i.e. user has hit Refresh at least once). The dot
+            // is `●` (U+25CF) rather than 🟢/🟡/🔴 because the latter
+            // (U+1F7E0..2) are outside egui's `default_fonts` and
+            // render as the missing-glyph box.
+            if let Some(pool) = &row.pool {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    let fg = match pool.health {
+                        WalletPoolBadgeHealth::Empty => Color32::from_rgb(220, 130, 130),
+                        WalletPoolBadgeHealth::Low => Color32::from_rgb(220, 200, 130),
+                        WalletPoolBadgeHealth::Healthy => Color32::from_rgb(150, 210, 160),
+                    };
+                    ui.label(RichText::new("●").small().color(fg));
+                    let ada_whole = pool.total_lovelace / 1_000_000;
+                    ui.label(
+                        RichText::new(format!("{} fuel · {} ADA", pool.fuel_count, ada_whole))
+                            .small()
+                            .color(fg),
+                    );
+                });
+            }
         });
 }

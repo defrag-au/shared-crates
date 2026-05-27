@@ -112,7 +112,7 @@ pub use collection_list::{
 };
 pub use wallet_list::{
     WalletList, WalletListAction, WalletListLayout, WalletListResponse, WalletListRole,
-    WalletListRow,
+    WalletListRow, WalletPoolBadge, WalletPoolBadgeHealth,
 };
 pub use pip_row::{
     HoverInfo, HoveredBin, HoveredPip, Pip, PipRowConfig, PipRowData, PipRowResponse,

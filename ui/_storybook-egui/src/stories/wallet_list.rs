@@ -32,6 +32,7 @@ fn row(
         role,
         auto_created,
         archived_at: if archived { Some(1_700_000_000) } else { None },
+        pool: None,
     }
 }
 
@@ -152,6 +153,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
             // since `WalletListAction` is non-exhaustive in shape but
             // not in attribute.
             WalletListAction::ViewUtxos { .. } => {}
+            // Same — story doesn't trigger archive flow, so restore
+            // never fires; arm kept for exhaustive matching.
+            WalletListAction::Unarchive { .. } => {}
         }
     }
     if let Some(idx) = state.last_archived {

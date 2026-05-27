@@ -14,6 +14,8 @@ pub struct CollectionListState {
     pub last_test_mint: Option<String>,
     /// Last seed-stubs action observed.
     pub last_seed_stubs: Option<String>,
+    /// Last activity action observed.
+    pub last_activity: Option<String>,
     /// Last open-wallet action observed.
     pub last_open_wallet: Option<u32>,
 }
@@ -44,6 +46,7 @@ fn row(
         minted_count,
         test_mint_open: false,
         seed_stubs_open: false,
+        activity_open: false,
     }
 }
 
@@ -413,6 +416,9 @@ fn capture_actions(actions: Vec<CollectionListAction>, state: &mut CollectionLis
             }
             CollectionListAction::SeedStubs { policy_id } => {
                 state.last_seed_stubs = Some(policy_id);
+            }
+            CollectionListAction::Activity { policy_id } => {
+                state.last_activity = Some(policy_id);
             }
             CollectionListAction::OpenWallet { account_index } => {
                 state.last_open_wallet = Some(account_index);

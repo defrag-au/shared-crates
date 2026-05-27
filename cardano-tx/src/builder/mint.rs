@@ -251,12 +251,19 @@ pub struct MintRecipientEntry {
 /// - `metadata` — optional CIP-25 JSON (`"721"` …) covering all assets under the policy.
 /// - `inputs` — explicit funding UTxOs to spend (e.g. a caller-managed pool UTxO for parallel
 ///   submission). `None` falls back to a single pure-ADA selection from `deps.utxos`.
+/// - `extra_self_outputs` — additional pure-ADA outputs paid to `deps.from_address`, in
+///   lovelace. Each becomes its own UTxO. The intended use is maintaining a fuel-UTxO pool
+///   inside the mint tx: the caller computes how many slots short of target the wallet is
+///   and passes that many lovelace amounts here. Drawn from the change side (input − recipient
+///   outputs − fee − extras = remainder change). Each amount must be ≥ the pure-ADA min UTxO;
+///   the builder rejects undersized entries before signing.
 pub fn build_cip25_mint_multi(
     deps: &TxDeps,
     policy: &MintingPolicy,
     mints: &[MintRecipientEntry],
     metadata: Option<&serde_json::Value>,
     inputs: Option<&[UtxoApi]>,
+    extra_self_outputs: Option<&[u64]>,
 ) -> Result<UnsignedTx, TxBuildError> {
     use pallas_primitives::Fragment;
 
@@ -331,12 +338,29 @@ pub fn build_cip25_mint_multi(
         None
     };
 
-    // Fee from real sizes: base + script + aux + per-output + per-mint + change output.
+    // Total extra-self-output lovelace and count (used by fee + needed + change calcs below).
+    let extras: &[u64] = extra_self_outputs.unwrap_or(&[]);
+    let total_extras_lovelace: u64 = extras.iter().sum();
+
+    // Pure-ADA min UTxO under current params. Sanity-check each extra rather than letting
+    // the ledger reject after a fee has been paid.
+    let min_pure_change = 228 * deps.params.coins_per_utxo_byte;
+    for (i, &amount) in extras.iter().enumerate() {
+        if amount < min_pure_change {
+            return Err(TxBuildError::BuildFailed(format!(
+                "extra_self_outputs[{i}] = {amount} lovelace < min_pure_utxo {min_pure_change}"
+            )));
+        }
+    }
+
+    // Fee from real sizes: base + script + aux + per-output + per-mint + extra outputs +
+    // change output.
     let estimated_tx_size = 300usize
         + script_bytes.len()
         + metadata_bytes.as_ref().map_or(0, |b| b.len())
         + groups.len() * 70
         + mints.len() * 50
+        + extras.len() * 70
         + 70;
     let base_fee =
         deps.params.min_fee_coefficient * estimated_tx_size as u64 + deps.params.min_fee_constant;
@@ -360,7 +384,7 @@ pub fn build_cip25_mint_multi(
     };
 
     let total_input_lovelace: u64 = chosen.iter().map(|u| u.lovelace).sum();
-    let total_needed = total_output_min_ada + fee;
+    let total_needed = total_output_min_ada + total_extras_lovelace + fee;
     if total_input_lovelace < total_needed {
         return Err(TxBuildError::InsufficientFunds {
             needed: total_needed,
@@ -413,19 +437,25 @@ pub fn build_cip25_mint_multi(
         tx = tx.output(output);
     }
 
+    // Extra self-outputs — pure-ADA UTxOs back to `deps.from_address`, one per requested
+    // pool slot. Sized + sanity-checked above; drawn from input change.
+    for &amount in extras {
+        tx = tx.output(create_ada_output(deps.from_address.clone(), amount));
+    }
+
     // Metadata.
     if let Some(aux) = metadata_bytes {
         tx = tx.add_auxiliary_data(aux);
     }
 
-    // Change. Inputs already cover `total_needed`.
-    let min_pure_change = 228 * deps.params.coins_per_utxo_byte;
-    let change_lovelace = total_input_lovelace - total_output_min_ada - fee;
+    // Change. Inputs already cover `total_needed` (recipient outputs + extras + fee).
+    let change_lovelace =
+        total_input_lovelace - total_output_min_ada - total_extras_lovelace - fee;
     if has_remaining_assets {
         // Must emit a change output to carry the inputs' native assets.
         if change_lovelace < min_pure_change {
             return Err(TxBuildError::InsufficientFunds {
-                needed: total_output_min_ada + fee + min_pure_change,
+                needed: total_output_min_ada + total_extras_lovelace + fee + min_pure_change,
                 available: total_input_lovelace,
             });
         }
@@ -923,7 +953,7 @@ mod tests {
                 recipient: test_recipient(2),
             },
         ];
-        let result = build_cip25_mint_multi(&deps_with(20_000_000), &test_policy(), &mints, None, None);
+        let result = build_cip25_mint_multi(&deps_with(20_000_000), &test_policy(), &mints, None, None, None);
         assert!(result.is_ok(), "multi-recipient mint failed: {result:?}");
         assert!(result.unwrap().fee > 0);
     }
@@ -955,6 +985,7 @@ mod tests {
             &mints,
             None,
             Some(std::slice::from_ref(&input)),
+            None,
         );
         assert!(result.is_ok(), "explicit-inputs mint failed: {result:?}");
     }
@@ -966,11 +997,58 @@ mod tests {
             quantity: 0,
             recipient: test_recipient(1),
         }];
-        assert!(build_cip25_mint_multi(&deps_with(10_000_000), &test_policy(), &mints, None, None).is_err());
+        assert!(build_cip25_mint_multi(&deps_with(10_000_000), &test_policy(), &mints, None, None, None).is_err());
     }
 
     #[test]
     fn test_build_cip25_mint_multi_empty_errors() {
-        assert!(build_cip25_mint_multi(&deps_with(10_000_000), &test_policy(), &[], None, None).is_err());
+        assert!(build_cip25_mint_multi(&deps_with(10_000_000), &test_policy(), &[], None, None, None).is_err());
+    }
+
+    /// `extra_self_outputs` adds pool-slot UTxOs back to `from_address` and the change
+    /// covers the leftover. With a 100 ADA input, a single 1 ADA recipient + ~0.5 ADA fee
+    /// + 4 × 10 ADA pool slots leaves ~58 ADA remainder change. Builder should succeed
+    /// and the resulting tx fee should be sized to include the extra outputs.
+    #[test]
+    fn test_build_cip25_mint_multi_with_extra_self_outputs() {
+        let mints = vec![MintRecipientEntry {
+            asset_name: "Pool001".to_string(),
+            quantity: 1,
+            recipient: test_recipient(7),
+        }];
+        let extras = [10_000_000u64; 4]; // 4 pool slots × 10 ADA
+        let result = build_cip25_mint_multi(
+            &deps_with(100_000_000),
+            &test_policy(),
+            &mints,
+            None,
+            None,
+            Some(&extras),
+        );
+        assert!(
+            result.is_ok(),
+            "mint with extra_self_outputs failed: {result:?}"
+        );
+    }
+
+    /// Pool slots below `min_pure_change` (under typical params ~1.1 ADA) must be rejected
+    /// before signing — the ledger would reject the tx and burn the fee otherwise.
+    #[test]
+    fn test_build_cip25_mint_multi_rejects_undersized_extras() {
+        let mints = vec![MintRecipientEntry {
+            asset_name: "TinyExtra".to_string(),
+            quantity: 1,
+            recipient: test_recipient(7),
+        }];
+        let extras = [500_000u64]; // 0.5 ADA — below min_pure_change
+        let result = build_cip25_mint_multi(
+            &deps_with(50_000_000),
+            &test_policy(),
+            &mints,
+            None,
+            None,
+            Some(&extras),
+        );
+        assert!(matches!(result, Err(TxBuildError::BuildFailed(_))));
     }
 }

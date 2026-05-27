@@ -105,6 +105,9 @@ pub struct CollectionRow {
     /// `true` when the parent has the Seed-stubs form open below this
     /// row. Same toggle treatment as `test_mint_open`.
     pub seed_stubs_open: bool,
+    /// `true` when the parent has the Activity panel open below this
+    /// row. Same toggle treatment as the form-open flags.
+    pub activity_open: bool,
 }
 
 /// Actions emitted while the widget was on screen this frame. Parent
@@ -116,6 +119,9 @@ pub enum CollectionListAction {
     TestMint { policy_id: String },
     /// User clicked the Seed-stubs toggle. Same as above.
     SeedStubs { policy_id: String },
+    /// User clicked the Activity toggle — open/close the recent-mint
+    /// activity panel for this `policy_id`.
+    Activity { policy_id: String },
     /// User clicked the `wallet #N` link in the footer. Parent opens
     /// that wallet's UTxO panel (or whatever it does for wallet focus).
     OpenWallet { account_index: u32 },
@@ -141,6 +147,7 @@ pub struct CollectionList<'a> {
     columns: usize,
     show_test_mint: bool,
     show_seed_stubs: bool,
+    show_activity: bool,
 }
 
 /// Response — drained actions for this frame.
@@ -186,6 +193,7 @@ impl<'a> CollectionList<'a> {
             columns: 1,
             show_test_mint: false,
             show_seed_stubs: false,
+            show_activity: false,
         }
     }
 
@@ -222,6 +230,15 @@ impl<'a> CollectionList<'a> {
         self
     }
 
+    /// Show the per-card "Activity" toggle. Off by default. Click → emits
+    /// [`CollectionListAction::Activity`]; host opens/closes the recent
+    /// mint-activity panel below the card and polls
+    /// `PortalAction::FetchMintActivity` while open.
+    pub fn with_activity(mut self, enabled: bool) -> Self {
+        self.show_activity = enabled;
+        self
+    }
+
     pub fn show(self, ui: &mut Ui) -> CollectionListResponse {
         let mut response = CollectionListResponse::default();
 
@@ -249,6 +266,7 @@ impl<'a> CollectionList<'a> {
                         self.layout,
                         self.show_test_mint,
                         self.show_seed_stubs,
+                        self.show_activity,
                         &mut response,
                     );
                 }
@@ -261,6 +279,7 @@ impl<'a> CollectionList<'a> {
                             self.layout,
                             self.show_test_mint,
                             self.show_seed_stubs,
+                            self.show_activity,
                             &mut response,
                         );
                     }
@@ -279,17 +298,33 @@ impl<'a> CollectionList<'a> {
 // Internals
 // ─────────────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn render_one(
     ui: &mut Ui,
     row: &CollectionRow,
     layout: CollectionListLayout,
     show_test_mint: bool,
     show_seed_stubs: bool,
+    show_activity: bool,
     response: &mut CollectionListResponse,
 ) {
     match layout {
-        CollectionListLayout::Card => render_card(ui, row, show_test_mint, show_seed_stubs, response),
-        CollectionListLayout::List => render_list_row(ui, row, show_test_mint, show_seed_stubs, response),
+        CollectionListLayout::Card => render_card(
+            ui,
+            row,
+            show_test_mint,
+            show_seed_stubs,
+            show_activity,
+            response,
+        ),
+        CollectionListLayout::List => render_list_row(
+            ui,
+            row,
+            show_test_mint,
+            show_seed_stubs,
+            show_activity,
+            response,
+        ),
     }
 }
 
@@ -298,6 +333,7 @@ fn render_card(
     row: &CollectionRow,
     show_test_mint: bool,
     show_seed_stubs: bool,
+    show_activity: bool,
     response: &mut CollectionListResponse,
 ) {
     Frame::new()
@@ -356,6 +392,25 @@ fn render_card(
                                 .clicked()
                             {
                                 response.actions.push(CollectionListAction::SeedStubs {
+                                    policy_id: row.policy_id.clone(),
+                                });
+                            }
+                        }
+                        if show_activity {
+                            let label = if row.activity_open {
+                                "− Activity"
+                            } else {
+                                "📜 Activity"
+                            };
+                            if ui
+                                .small_button(RichText::new(label).small())
+                                .on_hover_text(
+                                    "Recent mint activity for this collection — \
+                                     fetched from the engine's mint_log",
+                                )
+                                .clicked()
+                            {
+                                response.actions.push(CollectionListAction::Activity {
                                     policy_id: row.policy_id.clone(),
                                 });
                             }
@@ -452,6 +507,7 @@ fn render_list_row(
     row: &CollectionRow,
     show_test_mint: bool,
     show_seed_stubs: bool,
+    show_activity: bool,
     response: &mut CollectionListResponse,
 ) {
     Frame::new()
@@ -504,6 +560,18 @@ fn render_list_row(
                             };
                             if ui.small_button(RichText::new(label).small()).clicked() {
                                 response.actions.push(CollectionListAction::SeedStubs {
+                                    policy_id: row.policy_id.clone(),
+                                });
+                            }
+                        }
+                        if show_activity {
+                            let label = if row.activity_open {
+                                "− Activity"
+                            } else {
+                                "📜 Activity"
+                            };
+                            if ui.small_button(RichText::new(label).small()).clicked() {
+                                response.actions.push(CollectionListAction::Activity {
                                     policy_id: row.policy_id.clone(),
                                 });
                             }
