@@ -12,12 +12,12 @@ pub mod flip_counter;
 pub mod fungibles_row;
 pub mod grouped_section;
 pub mod icons;
-pub mod offer_tile;
 pub mod image_loader;
 pub mod listing_grid;
 pub mod marquee;
 pub mod metric_card;
 pub mod mnemonic_display;
+pub mod offer_tile;
 pub mod persona_strip;
 pub mod pip_row;
 pub mod printing_timeline;
@@ -31,14 +31,14 @@ pub mod swap_modal;
 pub mod theme;
 pub mod trait_filter;
 pub mod utils;
-pub mod wallet_identity_header;
-pub mod wallet_list;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet_button;
 #[cfg(feature = "cardano")]
 pub mod wallet_editor;
+pub mod wallet_identity_header;
+pub mod wallet_list;
 
 // Image text editor (feature-gated)
 #[cfg(feature = "image-editor")]
@@ -86,12 +86,17 @@ pub use buttons::UiButtonExt;
 pub use card_browser::{
     CardBrowserConfig, CardBrowserResponse, CardBrowserState, CardRenderContext,
 };
+pub use collection_list::{
+    CollectionList, CollectionListAction, CollectionListLayout, CollectionListResponse,
+    CollectionRow,
+};
 pub use donut_chart::{
     format_value as format_chart_value, legend_row, DistBand, DistributionChart,
 };
 #[cfg(target_arch = "wasm32")]
 pub use file_upload::{FileUploadButton, UploadedFile};
 pub use flip_counter::FlipCounter;
+pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
 pub use icons::{install_phosphor_font, PhosphorIcon};
 pub use image_loader::{iiif_asset_url, AssetImageSize};
 #[cfg(feature = "image-editor")]
@@ -100,20 +105,8 @@ pub use image_text_editor::{
 };
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
-pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
 pub use metric_card::{MetricCard, Trend};
 pub use persona_strip::{PersonaStrip, PersonaStripConfig};
-pub use wallet_identity_header::{
-    truncate_stake, WalletIdentityAction, WalletIdentityConfig, WalletIdentityHeader,
-};
-pub use collection_list::{
-    CollectionList, CollectionListAction, CollectionListLayout, CollectionListResponse,
-    CollectionRow,
-};
-pub use wallet_list::{
-    WalletList, WalletListAction, WalletListLayout, WalletListResponse, WalletListRole,
-    WalletListRow, WalletPoolBadge, WalletPoolBadgeHealth,
-};
 pub use pip_row::{
     HoverInfo, HoveredBin, HoveredPip, Pip, PipRowConfig, PipRowData, PipRowResponse,
 };
@@ -139,6 +132,13 @@ pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};
 pub use wallet_editor::{
     WalletEditorAction, WalletEditorConfig, WalletEditorEntry, WalletEditorResponse,
     WalletEditorState, WalletEntryStatus,
+};
+pub use wallet_identity_header::{
+    truncate_stake, WalletIdentityAction, WalletIdentityConfig, WalletIdentityHeader,
+};
+pub use wallet_list::{
+    WalletList, WalletListAction, WalletListLayout, WalletListResponse, WalletListRole,
+    WalletListRow, WalletPoolBadge, WalletPoolBadgeHealth,
 };
 
 // DEX split swap re-exports

@@ -60,6 +60,8 @@
 
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke, Ui};
 
+use crate::wallet_list::{WalletPoolBadge, WalletPoolBadgeHealth};
+
 // ─────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────
@@ -108,6 +110,23 @@ pub struct CollectionRow {
     /// `true` when the parent has the Activity panel open below this
     /// row. Same toggle treatment as the form-open flags.
     pub activity_open: bool,
+    /// Pre-truncated wallet address (e.g. middle-elided
+    /// `addr_test1vp…9fc465`) for inline display on the card's wallet
+    /// sub-line. `None` when the parent hasn't resolved an address yet
+    /// (rare — collection-wallet rows ship a derived address on the
+    /// first whoami). The widget hides the wallet sub-line entirely
+    /// when both `wallet_address_short` and `wallet_address_full` are
+    /// `None`, so the card degrades cleanly on older snapshots.
+    pub wallet_address_short: Option<String>,
+    /// Full, un-truncated address to write to the clipboard when the
+    /// user clicks either the row's wallet-address copy icon or the
+    /// "Refuel" button. `None` hides both affordances.
+    pub wallet_address_full: Option<String>,
+    /// Optional fuel-pool summary for the collection's mint wallet —
+    /// rendered as `● 20 fuel · 230 ADA` on the card's wallet sub-line.
+    /// `None` when the parent hasn't refreshed UTxOs for the wallet
+    /// yet (the host populates this from its cached UTxO snapshot).
+    pub pool: Option<WalletPoolBadge>,
 }
 
 /// Actions emitted while the widget was on screen this frame. Parent
@@ -125,6 +144,13 @@ pub enum CollectionListAction {
     /// User clicked the `wallet #N` link in the footer. Parent opens
     /// that wallet's UTxO panel (or whatever it does for wallet focus).
     OpenWallet { account_index: u32 },
+    /// User clicked the per-card "Refuel" button. The widget has already
+    /// copied the wallet address to the clipboard (matches the in-widget
+    /// copy-icon convention); the action exists so the host can flash a
+    /// toast / emit telemetry / open a faucet tab if it wants to. Only
+    /// emitted when [`CollectionList::with_refuel`] is `true` and the
+    /// row supplies `wallet_address_full`.
+    Refuel { account_index: u32 },
 }
 
 /// Rendering style. Both styles share the same row VM and action emission —
@@ -148,6 +174,7 @@ pub struct CollectionList<'a> {
     show_test_mint: bool,
     show_seed_stubs: bool,
     show_activity: bool,
+    show_refuel: bool,
 }
 
 /// Response — drained actions for this frame.
@@ -194,6 +221,7 @@ impl<'a> CollectionList<'a> {
             show_test_mint: false,
             show_seed_stubs: false,
             show_activity: false,
+            show_refuel: false,
         }
     }
 
@@ -239,6 +267,23 @@ impl<'a> CollectionList<'a> {
         self
     }
 
+    /// Show the per-card "Refuel" button on the wallet sub-line. Off by
+    /// default. Click → widget copies `wallet_address_full` to the
+    /// clipboard *and* emits [`CollectionListAction::Refuel`] so the
+    /// host can flash a toast / log it / open a faucet. Hidden on rows
+    /// whose `wallet_address_full` is `None` (nothing to refuel).
+    ///
+    /// Why on the *collection* card rather than the wallet card: an
+    /// operator reasons "this collection needs fuel", not "wallet #4
+    /// is low" — the collection is the unit of work. Surfacing fuel
+    /// state + the address on the collection card lets a low-fuel
+    /// signal trigger the refuel directly, without a hop through the
+    /// Wallets section.
+    pub fn with_refuel(mut self, enabled: bool) -> Self {
+        self.show_refuel = enabled;
+        self
+    }
+
     pub fn show(self, ui: &mut Ui) -> CollectionListResponse {
         let mut response = CollectionListResponse::default();
 
@@ -267,6 +312,7 @@ impl<'a> CollectionList<'a> {
                         self.show_test_mint,
                         self.show_seed_stubs,
                         self.show_activity,
+                        self.show_refuel,
                         &mut response,
                     );
                 }
@@ -280,6 +326,7 @@ impl<'a> CollectionList<'a> {
                             self.show_test_mint,
                             self.show_seed_stubs,
                             self.show_activity,
+                            self.show_refuel,
                             &mut response,
                         );
                     }
@@ -306,6 +353,7 @@ fn render_one(
     show_test_mint: bool,
     show_seed_stubs: bool,
     show_activity: bool,
+    show_refuel: bool,
     response: &mut CollectionListResponse,
 ) {
     match layout {
@@ -315,6 +363,7 @@ fn render_one(
             show_test_mint,
             show_seed_stubs,
             show_activity,
+            show_refuel,
             response,
         ),
         CollectionListLayout::List => render_list_row(
@@ -323,17 +372,20 @@ fn render_one(
             show_test_mint,
             show_seed_stubs,
             show_activity,
+            show_refuel,
             response,
         ),
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_card(
     ui: &mut Ui,
     row: &CollectionRow,
     show_test_mint: bool,
     show_seed_stubs: bool,
     show_activity: bool,
+    show_refuel: bool,
     response: &mut CollectionListResponse,
 ) {
     Frame::new()
@@ -355,68 +407,65 @@ fn render_card(
                 standard_chip(ui, &row.standard);
                 network_chip(ui, &row.network);
 
-                ui.with_layout(
-                    egui::Layout::right_to_left(egui::Align::Center),
-                    |ui| {
-                        if show_test_mint {
-                            let label = if row.test_mint_open {
-                                "− Test mint"
-                            } else {
-                                "🧪 Test mint"
-                            };
-                            if ui
-                                .small_button(RichText::new(label).small())
-                                .on_hover_text(
-                                    "Open the test-mint form for this collection \
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if show_test_mint {
+                        let label = if row.test_mint_open {
+                            "− Test mint"
+                        } else {
+                            "🧪 Test mint"
+                        };
+                        if ui
+                            .small_button(RichText::new(label).small())
+                            .on_hover_text(
+                                "Open the test-mint form for this collection \
                                      (operator/super-admin only)",
-                                )
-                                .clicked()
-                            {
-                                response.actions.push(CollectionListAction::TestMint {
-                                    policy_id: row.policy_id.clone(),
-                                });
-                            }
+                            )
+                            .clicked()
+                        {
+                            response.actions.push(CollectionListAction::TestMint {
+                                policy_id: row.policy_id.clone(),
+                            });
                         }
-                        if show_seed_stubs {
-                            let label = if row.seed_stubs_open {
-                                "− Seed stubs"
-                            } else {
-                                "+ Seed stubs"
-                            };
-                            if ui
-                                .small_button(RichText::new(label).small())
-                                .on_hover_text(
-                                    "Seed placeholder mintable assets \
+                    }
+                    if show_seed_stubs {
+                        let label = if row.seed_stubs_open {
+                            "− Seed stubs"
+                        } else {
+                            "+ Seed stubs"
+                        };
+                        if ui
+                            .small_button(RichText::new(label).small())
+                            .on_hover_text(
+                                "Seed placeholder mintable assets \
                                      (testing-only — real ingest replaces this)",
-                                )
-                                .clicked()
-                            {
-                                response.actions.push(CollectionListAction::SeedStubs {
-                                    policy_id: row.policy_id.clone(),
-                                });
-                            }
+                            )
+                            .clicked()
+                        {
+                            response.actions.push(CollectionListAction::SeedStubs {
+                                policy_id: row.policy_id.clone(),
+                            });
                         }
-                        if show_activity {
-                            let label = if row.activity_open {
-                                "− Activity"
-                            } else {
-                                "📜 Activity"
-                            };
-                            if ui
-                                .small_button(RichText::new(label).small())
-                                .on_hover_text(
-                                    "Recent mint activity for this collection — \
+                    }
+                    if show_activity {
+                        let label = if row.activity_open {
+                            "− Activity"
+                        } else {
+                            "📜 Activity"
+                        };
+                        if ui
+                            .small_button(RichText::new(label).small())
+                            .on_hover_text(
+                                "Recent mint activity for this collection — \
                                      fetched from the engine's mint_log",
-                                )
-                                .clicked()
-                            {
-                                response.actions.push(CollectionListAction::Activity {
-                                    policy_id: row.policy_id.clone(),
-                                });
-                            }
+                            )
+                            .clicked()
+                        {
+                            response.actions.push(CollectionListAction::Activity {
+                                policy_id: row.policy_id.clone(),
+                            });
                         }
-                    },
-                );
+                    }
+                });
             });
 
             ui.add_space(8.0);
@@ -439,12 +488,9 @@ fn render_card(
                 } else {
                     format!("{:.0}%", pct * 100.0)
                 };
-                ui.with_layout(
-                    egui::Layout::right_to_left(egui::Align::Center),
-                    |ui| {
-                        ui.label(RichText::new(label).small().color(KEYHASH_GREY));
-                    },
-                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(RichText::new(label).small().color(KEYHASH_GREY));
+                });
             });
 
             // Thin progress bar — caps at the surface width so it
@@ -464,11 +510,19 @@ fn render_card(
 
             ui.add_space(10.0);
 
-            // ── Footer: wallet ref + policy_id + copy ───────────────
+            // ── Wallet sub-line: address + copy + pool badge + Refuel ─
+            //
+            // The collection card is the primary surface for everything
+            // wallet-shaped that belongs to a collection — address, fuel
+            // level, refuel action. Collection wallets don't appear in
+            // the parent's "Wallets" section anymore, so this sub-line
+            // is the sole place where the operator interacts with the
+            // mint wallet for this collection.
+            //
+            // The `wallet #N` link is kept (left-most) so the
+            // collection-↔-wallet relationship is still visible, and
+            // clicking it still opens that wallet's UTxO panel.
             ui.horizontal(|ui| {
-                // wallet #N — clickable. The link surfaces the
-                // collection ↔ wallet relationship; clicking opens
-                // that wallet's UTxO panel (parent handles the wiring).
                 let wallet_text = format!("wallet #{}", row.wallet_account_index);
                 if ui
                     .small_button(RichText::new(wallet_text).small().color(META_GREY))
@@ -479,12 +533,74 @@ fn render_card(
                         account_index: row.wallet_account_index,
                     });
                 }
-                ui.label(
-                    RichText::new("·")
-                        .color(KEYHASH_GREY)
-                        .monospace()
-                        .small(),
-                );
+
+                // Inline address (truncated) + copy icon. The copy is
+                // done in-widget to match the policy_id pattern below
+                // (no host round-trip for a value the row already
+                // carries). Hidden when the row didn't supply one —
+                // older snapshots or wallets without a derived address.
+                if let Some(short) = &row.wallet_address_short {
+                    ui.label(RichText::new("·").color(KEYHASH_GREY).monospace().small());
+                    ui.label(RichText::new(short).monospace().small().color(KEYHASH_GREY));
+                    if let Some(full) = &row.wallet_address_full {
+                        if ui
+                            .small_button(RichText::new("📋").small())
+                            .on_hover_text("Copy wallet address to clipboard")
+                            .clicked()
+                        {
+                            ui.ctx().copy_text(full.clone());
+                        }
+                    }
+                }
+
+                // Pool badge — same shape as the wallet-list card's
+                // pool pill so the visual is consistent across surfaces.
+                if let Some(pool) = &row.pool {
+                    let fg = match pool.health {
+                        WalletPoolBadgeHealth::Empty => Color32::from_rgb(220, 130, 130),
+                        WalletPoolBadgeHealth::Low => Color32::from_rgb(220, 200, 130),
+                        WalletPoolBadgeHealth::Healthy => Color32::from_rgb(150, 210, 160),
+                    };
+                    ui.label(RichText::new("●").small().color(fg));
+                    let ada_whole = pool.total_lovelace / 1_000_000;
+                    ui.label(
+                        RichText::new(format!("{} fuel · {} ADA", pool.fuel_count, ada_whole))
+                            .small()
+                            .color(fg),
+                    );
+                }
+
+                // Refuel — copies the address (silent, matches the
+                // other copy icons) and emits an action so the host
+                // can flash a toast / open a faucet / log it. Hidden
+                // when the row has no `wallet_address_full` — nothing
+                // to copy.
+                if show_refuel {
+                    if let Some(full) = &row.wallet_address_full {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui
+                                .small_button(RichText::new("⛽ Refuel").small())
+                                .on_hover_text(
+                                    "Copy this wallet's address to the clipboard so \
+                                         you can paste it into the testnet faucet \
+                                         (or send ADA from another wallet).",
+                                )
+                                .clicked()
+                            {
+                                ui.ctx().copy_text(full.clone());
+                                response.actions.push(CollectionListAction::Refuel {
+                                    account_index: row.wallet_account_index,
+                                });
+                            }
+                        });
+                    }
+                }
+            });
+
+            ui.add_space(4.0);
+
+            // ── Footer: policy_id + copy ────────────────────────────
+            ui.horizontal(|ui| {
                 ui.label(
                     RichText::new(&row.policy_id_short)
                         .monospace()
@@ -502,12 +618,14 @@ fn render_card(
         });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_list_row(
     ui: &mut Ui,
     row: &CollectionRow,
     show_test_mint: bool,
     show_seed_stubs: bool,
     show_activity: bool,
+    show_refuel: bool,
     response: &mut CollectionListResponse,
 ) {
     Frame::new()
@@ -537,54 +655,68 @@ fn render_list_row(
                     .small(),
                 );
 
-                ui.with_layout(
-                    egui::Layout::right_to_left(egui::Align::Center),
-                    |ui| {
-                        if show_test_mint {
-                            let label = if row.test_mint_open {
-                                "− Test mint"
-                            } else {
-                                "🧪 Test mint"
-                            };
-                            if ui.small_button(RichText::new(label).small()).clicked() {
-                                response.actions.push(CollectionListAction::TestMint {
-                                    policy_id: row.policy_id.clone(),
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if show_test_mint {
+                        let label = if row.test_mint_open {
+                            "− Test mint"
+                        } else {
+                            "🧪 Test mint"
+                        };
+                        if ui.small_button(RichText::new(label).small()).clicked() {
+                            response.actions.push(CollectionListAction::TestMint {
+                                policy_id: row.policy_id.clone(),
+                            });
+                        }
+                    }
+                    if show_seed_stubs {
+                        let label = if row.seed_stubs_open {
+                            "− Seed stubs"
+                        } else {
+                            "+ Seed stubs"
+                        };
+                        if ui.small_button(RichText::new(label).small()).clicked() {
+                            response.actions.push(CollectionListAction::SeedStubs {
+                                policy_id: row.policy_id.clone(),
+                            });
+                        }
+                    }
+                    if show_activity {
+                        let label = if row.activity_open {
+                            "− Activity"
+                        } else {
+                            "📜 Activity"
+                        };
+                        if ui.small_button(RichText::new(label).small()).clicked() {
+                            response.actions.push(CollectionListAction::Activity {
+                                policy_id: row.policy_id.clone(),
+                            });
+                        }
+                    }
+                    if ui
+                        .small_button(RichText::new("📋").small())
+                        .on_hover_text("Copy policy_id to clipboard")
+                        .clicked()
+                    {
+                        ui.ctx().copy_text(row.policy_id.clone());
+                    }
+                    if show_refuel {
+                        if let Some(full) = &row.wallet_address_full {
+                            if ui
+                                .small_button(RichText::new("⛽").small())
+                                .on_hover_text(
+                                    "Copy this wallet's address to the clipboard \
+                                         (refuel via faucet or another wallet).",
+                                )
+                                .clicked()
+                            {
+                                ui.ctx().copy_text(full.clone());
+                                response.actions.push(CollectionListAction::Refuel {
+                                    account_index: row.wallet_account_index,
                                 });
                             }
                         }
-                        if show_seed_stubs {
-                            let label = if row.seed_stubs_open {
-                                "− Seed stubs"
-                            } else {
-                                "+ Seed stubs"
-                            };
-                            if ui.small_button(RichText::new(label).small()).clicked() {
-                                response.actions.push(CollectionListAction::SeedStubs {
-                                    policy_id: row.policy_id.clone(),
-                                });
-                            }
-                        }
-                        if show_activity {
-                            let label = if row.activity_open {
-                                "− Activity"
-                            } else {
-                                "📜 Activity"
-                            };
-                            if ui.small_button(RichText::new(label).small()).clicked() {
-                                response.actions.push(CollectionListAction::Activity {
-                                    policy_id: row.policy_id.clone(),
-                                });
-                            }
-                        }
-                        if ui
-                            .small_button(RichText::new("📋").small())
-                            .on_hover_text("Copy policy_id to clipboard")
-                            .clicked()
-                        {
-                            ui.ctx().copy_text(row.policy_id.clone());
-                        }
-                    },
-                );
+                    }
+                });
             });
         });
 }
@@ -602,7 +734,12 @@ fn standard_chip(ui: &mut Ui, standard: &str) {
         "cip68" => STD_CIP68_CHIP,
         _ => STD_UNKNOWN_CHIP,
     };
-    chip(ui, &standard.to_uppercase(), Color32::from_rgb(20, 20, 30), colour);
+    chip(
+        ui,
+        &standard.to_uppercase(),
+        Color32::from_rgb(20, 20, 30),
+        colour,
+    );
 }
 
 fn network_chip(ui: &mut Ui, network: &str) {
@@ -653,8 +790,10 @@ fn status_chip_colours(status: &str) -> (Color32, Color32) {
 /// Thin horizontal progress bar — 4 px tall, full surface width.
 fn draw_thin_bar(ui: &mut Ui, pct: f32, fill: Color32) {
     let height = 4.0;
-    let (rect, _) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), height),
+        egui::Sense::hover(),
+    );
     let painter = ui.painter();
     let corner = CornerRadius::same(2);
     painter.rect_filled(rect, corner, BAR_TRACK);

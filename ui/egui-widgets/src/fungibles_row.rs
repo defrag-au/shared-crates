@@ -126,11 +126,7 @@ impl<'a> FungiblesRow<'a> {
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if let Some(v) = self.value_text {
-                    ui.label(
-                        RichText::new(v)
-                            .size(cfg.value_size)
-                            .color(cfg.value_color),
-                    );
+                    ui.label(RichText::new(v).size(cfg.value_size).color(cfg.value_color));
                     ui.add_space(6.0);
                 }
                 ui.label(
@@ -147,11 +143,9 @@ impl<'a> FungiblesRow<'a> {
 
 fn draw_chip(ui: &mut Ui, label: &str, cfg: &FungiblesRowConfig) {
     let font = FontId::proportional(cfg.ticker_size);
-    let galley = ui.painter().layout_no_wrap(
-        label.to_string(),
-        font,
-        cfg.ticker_text_color,
-    );
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_string(), font, cfg.ticker_text_color);
     let size = Vec2::new(
         galley.size().x + cfg.ticker_padding_x * 2.0,
         galley.size().y + cfg.ticker_padding_y * 2.0,
@@ -159,7 +153,11 @@ fn draw_chip(ui: &mut Ui, label: &str, cfg: &FungiblesRowConfig) {
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
-        painter.rect_filled(rect, CornerRadius::same(cfg.ticker_corner_radius), cfg.ticker_bg);
+        painter.rect_filled(
+            rect,
+            CornerRadius::same(cfg.ticker_corner_radius),
+            cfg.ticker_bg,
+        );
         let pos = egui::pos2(
             rect.min.x + cfg.ticker_padding_x,
             rect.min.y + cfg.ticker_padding_y,

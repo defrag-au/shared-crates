@@ -36,10 +36,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletIdentityHeaderStoryState) {
             .strong(),
     );
     ui.add_space(4.0);
-    if let Some(WalletIdentityAction::CopyStake) =
-        WalletIdentityHeader::new(SAMPLE_STAKE)
-            .handle(Some("$djo"))
-            .show(ui)
+    if let Some(WalletIdentityAction::CopyStake) = WalletIdentityHeader::new(SAMPLE_STAKE)
+        .handle(Some("$djo"))
+        .show(ui)
     {
         state.last_action = Some("Copy stake address".to_string());
     }

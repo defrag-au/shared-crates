@@ -31,12 +31,7 @@ pub fn show(ui: &mut egui::Ui) {
     );
     ui.add_space(4.0);
     PersonaStrip::new("ADA-leaning Large with blue-chip taste")
-        .tags(&[
-            "ada_maximalist",
-            "large",
-            "specialist",
-            "blue_chip_leaning",
-        ])
+        .tags(&["ada_maximalist", "large", "specialist", "blue_chip_leaning"])
         .show(ui);
     ui.add_space(16.0);
 
@@ -67,7 +62,5 @@ pub fn show(ui: &mut egui::Ui) {
             .strong(),
     );
     ui.add_space(4.0);
-    PersonaStrip::new("")
-        .tags(&["whale", "ada_maxi"])
-        .show(ui);
+    PersonaStrip::new("").tags(&["whale", "ada_maxi"]).show(ui);
 }

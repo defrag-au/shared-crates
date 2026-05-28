@@ -188,9 +188,7 @@ impl<'a> GroupedSection<'a> {
                             .strong(),
                     );
                     if self.is_verified {
-                        ui.label(
-                            PhosphorIcon::CheckCircle.rich_text(12.0, cfg.badge_color),
-                        );
+                        ui.label(PhosphorIcon::CheckCircle.rich_text(12.0, cfg.badge_color));
                     }
                     if let Some((visible, label)) = &self.bulk_button {
                         if *visible {

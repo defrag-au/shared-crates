@@ -200,11 +200,7 @@ pub enum TxCartAction {
 /// panel — call [`show_items`] inside a `ScrollArea` and
 /// [`show_footer`] inside a `TopBottomPanel::bottom`. Both halves
 /// can return actions, so the caller has to merge them.
-pub fn show(
-    ui: &mut Ui,
-    state: &mut TxCartState,
-    config: &TxCartConfig,
-) -> Option<TxCartAction> {
+pub fn show(ui: &mut Ui, state: &mut TxCartState, config: &TxCartConfig) -> Option<TxCartAction> {
     let mut action = show_items(ui, state, config);
     if let Some(a) = show_footer(ui, state) {
         action = Some(a);
@@ -251,7 +247,10 @@ pub fn show_items(
     // Group items by action_label for section display
     let mut groups: Vec<(String, Vec<&TxCartItem>)> = Vec::new();
     for item in &state.items {
-        if let Some(group) = groups.iter_mut().find(|(label, _)| *label == item.action_label) {
+        if let Some(group) = groups
+            .iter_mut()
+            .find(|(label, _)| *label == item.action_label)
+        {
             group.1.push(item);
         } else {
             groups.push((item.action_label.clone(), vec![item]));
@@ -279,16 +278,14 @@ pub fn show_items(
                     && ui
                         .add(
                             egui::Button::new(
-                                RichText::new("Clear")
-                                    .color(theme::TEXT_MUTED)
-                                    .size(10.0),
+                                RichText::new("Clear").color(theme::TEXT_MUTED).size(10.0),
                             )
                             .frame(false),
                         )
                         .clicked()
-                    {
-                        action = Some(TxCartAction::Clear);
-                    }
+                {
+                    action = Some(TxCartAction::Clear);
+                }
                 ui.label(
                     RichText::new(format!("{:.0} ADA", group_total))
                         .color(theme::ACCENT_RED)
@@ -362,53 +359,47 @@ pub fn show_items(
                             }
                             other => {
                                 ui.label(
-                                    RichText::new(other.label())
-                                        .color(other.color())
-                                        .size(9.0),
+                                    RichText::new(other.label()).color(other.color()).size(9.0),
                                 );
                             }
                         }
                     });
 
                     // Right side: quantity x price + remove
-                    ui.with_layout(
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            // Remove button
-                            if matches!(item.status, TxCartItemStatus::Pending)
-                                && matches!(state.phase, TxCartPhase::Editing)
-                            {
-                                if ui
-                                    .add(
-                                        egui::Button::new(
-                                            PhosphorIcon::Trash
-                                                .rich_text(14.0, theme::TEXT_MUTED),
-                                        )
-                                        .frame(false),
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Remove button
+                        if matches!(item.status, TxCartItemStatus::Pending)
+                            && matches!(state.phase, TxCartPhase::Editing)
+                        {
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        PhosphorIcon::Trash.rich_text(14.0, theme::TEXT_MUTED),
                                     )
-                                    .clicked()
-                                {
-                                    remove_id = Some(item.id.clone());
-                                }
-                                ui.add_space(4.0);
+                                    .frame(false),
+                                )
+                                .clicked()
+                            {
+                                remove_id = Some(item.id.clone());
                             }
+                            ui.add_space(4.0);
+                        }
 
-                            // Price
-                            let total = item.ada_per_item * item.quantity as f64;
+                        // Price
+                        let total = item.ada_per_item * item.quantity as f64;
+                        ui.label(
+                            RichText::new(format!("{:.0} ADA", total))
+                                .color(theme::TEXT_PRIMARY)
+                                .size(11.0),
+                        );
+                        if item.quantity > 1 {
                             ui.label(
-                                RichText::new(format!("{:.0} ADA", total))
-                                    .color(theme::TEXT_PRIMARY)
-                                    .size(11.0),
+                                RichText::new(format!("{}x", item.quantity))
+                                    .color(theme::TEXT_MUTED)
+                                    .size(10.0),
                             );
-                            if item.quantity > 1 {
-                                ui.label(
-                                    RichText::new(format!("{}x", item.quantity))
-                                        .color(theme::TEXT_MUTED)
-                                        .size(10.0),
-                                );
-                            }
-                        },
-                    );
+                        }
+                    });
                 })
                 .response
                 .rect;
@@ -429,11 +420,7 @@ pub fn show_items(
                 } else {
                     short.to_string()
                 };
-                ui.label(
-                    RichText::new(short)
-                        .color(theme::ACCENT_RED)
-                        .size(9.0),
-                );
+                ui.label(RichText::new(short).color(theme::ACCENT_RED).size(9.0));
             }
 
             ui.add_space(4.0);
@@ -484,27 +471,24 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                             .size(11.0),
                     );
 
-                    ui.with_layout(
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        RichText::new("Prepare")
-                                            .color(theme::BG_PRIMARY)
-                                            .size(13.0)
-                                            .strong(),
-                                    )
-                                    .fill(theme::ACCENT_GREEN)
-                                    .corner_radius(egui::CornerRadius::same(6))
-                                    .min_size(egui::vec2(100.0, 32.0)),
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    RichText::new("Prepare")
+                                        .color(theme::BG_PRIMARY)
+                                        .size(13.0)
+                                        .strong(),
                                 )
-                                .clicked()
-                            {
-                                action = Some(TxCartAction::Execute);
-                            }
-                        },
-                    );
+                                .fill(theme::ACCENT_GREEN)
+                                .corner_radius(egui::CornerRadius::same(6))
+                                .min_size(egui::vec2(100.0, 32.0)),
+                            )
+                            .clicked()
+                        {
+                            action = Some(TxCartAction::Execute);
+                        }
+                    });
                 });
             }
         }
@@ -564,9 +548,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                 if ui
                     .add(
                         egui::Button::new(
-                            RichText::new("< Edit")
-                                .color(theme::TEXT_MUTED)
-                                .size(11.0),
+                            RichText::new("< Edit").color(theme::TEXT_MUTED).size(11.0),
                         )
                         .frame(false),
                     )
@@ -609,11 +591,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                 } else {
                     format!("Submitting {completed}/{total}...")
                 };
-                ui.label(
-                    RichText::new(label)
-                        .color(theme::ACCENT_CYAN)
-                        .size(12.0),
-                );
+                ui.label(RichText::new(label).color(theme::ACCENT_CYAN).size(12.0));
             });
         }
 
@@ -621,9 +599,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
             ui.separator();
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.label(
-                    PhosphorIcon::CheckCircle.rich_text(16.0, theme::ACCENT_GREEN),
-                );
+                ui.label(PhosphorIcon::CheckCircle.rich_text(16.0, theme::ACCENT_GREEN));
                 ui.label(
                     RichText::new("All transactions submitted")
                         .color(theme::ACCENT_GREEN)
@@ -634,9 +610,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                     if ui
                         .add(
                             egui::Button::new(
-                                RichText::new("Clear")
-                                    .color(theme::TEXT_PRIMARY)
-                                    .size(12.0),
+                                RichText::new("Clear").color(theme::TEXT_PRIMARY).size(12.0),
                             )
                             .fill(theme::BG_SECONDARY)
                             .corner_radius(egui::CornerRadius::same(6))
@@ -667,9 +641,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                 if ui
                     .add(
                         egui::Button::new(
-                            RichText::new("Retry")
-                                .color(theme::TEXT_PRIMARY)
-                                .size(12.0),
+                            RichText::new("Retry").color(theme::TEXT_PRIMARY).size(12.0),
                         )
                         .fill(theme::BG_SECONDARY)
                         .corner_radius(egui::CornerRadius::same(6))
@@ -683,9 +655,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                 if ui
                     .add(
                         egui::Button::new(
-                            RichText::new("Clear")
-                                .color(theme::TEXT_MUTED)
-                                .size(12.0),
+                            RichText::new("Clear").color(theme::TEXT_MUTED).size(12.0),
                         )
                         .frame(false),
                     )

@@ -8,11 +8,7 @@ const PLACEHOLDER_IMAGE: egui::ImageSource<'_> =
     egui::include_image!("../../assets/placeholders/section_hero_64.png");
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(
-        egui::RichText::new("Offer Tile")
-            .color(ACCENT)
-            .strong(),
-    );
+    ui.label(egui::RichText::new("Offer Tile").color(ACCENT).strong());
     ui.label(
         egui::RichText::new(
             "Picker tile with a state machine (Active / InCart / Spent), an image \
@@ -125,7 +121,9 @@ pub fn show(ui: &mut egui::Ui) {
         OfferTile::image("420.0 ADA", PLACEHOLDER_IMAGE.clone()).show(ui);
         OfferTile::image("150.0 ADA", PLACEHOLDER_IMAGE.clone()).show(ui);
         OfferTile::placeholder("7.0 ADA", "CO").badge("9×").show(ui);
-        OfferTile::placeholder("5.0 ADA", "CO").badge("12×").show(ui);
+        OfferTile::placeholder("5.0 ADA", "CO")
+            .badge("12×")
+            .show(ui);
         OfferTile::image("420.0 ADA", PLACEHOLDER_IMAGE.clone())
             .state(OfferTileState::Spent)
             .show(ui);
@@ -135,11 +133,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(
-        egui::RichText::new("Test cases:")
-            .color(ACCENT)
-            .strong(),
-    );
+    ui.label(egui::RichText::new("Test cases:").color(ACCENT).strong());
     ui.label("\u{2022} Active tile renders full-colour with hover cursor + click events");
     ui.label("\u{2022} InCart / Spent tiles dim the frame and tint the image; clicks are inert");
     ui.label("\u{2022} Tooltip is consumer-supplied; usually disambiguates dimmed states");

@@ -270,8 +270,9 @@ impl<'a> WalletList<'a> {
         collections.sort_by_key(|r| r.account_index);
         custom.sort_by_key(|r| r.account_index);
 
-        let populated_buckets =
-            usize::from(!primary.is_empty()) + usize::from(!collections.is_empty()) + usize::from(!custom.is_empty());
+        let populated_buckets = usize::from(!primary.is_empty())
+            + usize::from(!collections.is_empty())
+            + usize::from(!custom.is_empty());
         let show_headers = self.show_section_headers_for_single || populated_buckets > 1;
 
         render_bucket(
@@ -286,9 +287,7 @@ impl<'a> WalletList<'a> {
             &mut response,
         );
 
-        if !primary.is_empty()
-            && (!collections.is_empty() || !custom.is_empty())
-        {
+        if !primary.is_empty() && (!collections.is_empty() || !custom.is_empty()) {
             ui.add_space(8.0);
         }
 
@@ -348,12 +347,7 @@ fn render_bucket(
     if show_header {
         ui.add_space(2.0);
         ui.horizontal(|ui| {
-            ui.label(
-                RichText::new(title)
-                    .color(SECTION_HEADER)
-                    .small()
-                    .strong(),
-            );
+            ui.label(RichText::new(title).color(SECTION_HEADER).small().strong());
             ui.label(
                 RichText::new(format!("({})", rows.len()))
                     .color(META_GREY)
@@ -393,7 +387,14 @@ fn render_bucket(
             // grid alignment with cells above).
             ui.columns(effective_cols, |cols| {
                 for (i, r) in chunk.iter().enumerate() {
-                    render_one(&mut cols[i], r, layout, allow_archive, view_button, response);
+                    render_one(
+                        &mut cols[i],
+                        r,
+                        layout,
+                        allow_archive,
+                        view_button,
+                        response,
+                    );
                 }
             });
         }
@@ -442,7 +443,11 @@ fn render_row(
                 ui.label(
                     RichText::new(format!("#{}", row.account_index))
                         .monospace()
-                        .color(if archived { META_GREY } else { Color32::from_gray(200) }),
+                        .color(if archived {
+                            META_GREY
+                        } else {
+                            Color32::from_gray(200)
+                        }),
                 );
 
                 // ── Label ───────────────────────────────────────────
@@ -469,89 +474,82 @@ fn render_row(
                 }
 
                 if archived {
-                    ui.colored_label(
-                        Color32::LIGHT_YELLOW,
-                        RichText::new("archived").small(),
-                    );
+                    ui.colored_label(Color32::LIGHT_YELLOW, RichText::new("archived").small());
                 }
 
                 // ── Address (right-aligned with copy + archive) ─────
-                ui.with_layout(
-                    egui::Layout::right_to_left(egui::Align::Center),
-                    |ui| {
-                        // Archive ↔ Restore — placed first because of
-                        // the right-to-left layout (ends up rightmost).
-                        // Archive hidden for Primary (unless explicitly
-                        // enabled). Restore appears only on archived
-                        // rows; clicking flips the wallet back to active.
-                        if archived {
-                            if ui
-                                .small_button(RichText::new("Restore").small())
-                                .on_hover_text(
-                                    "Bring this wallet back from archived. \
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Archive ↔ Restore — placed first because of
+                    // the right-to-left layout (ends up rightmost).
+                    // Archive hidden for Primary (unless explicitly
+                    // enabled). Restore appears only on archived
+                    // rows; clicking flips the wallet back to active.
+                    if archived {
+                        if ui
+                            .small_button(RichText::new("Restore").small())
+                            .on_hover_text(
+                                "Bring this wallet back from archived. \
                                      Clears `archived_at`; no key material touched.",
+                            )
+                            .clicked()
+                        {
+                            response.actions.push(WalletListAction::Unarchive {
+                                account_index: row.account_index,
+                            });
+                        }
+                    } else {
+                        let can_archive = row.role != WalletListRole::Primary || allow_archive;
+                        if can_archive
+                            && ui
+                                .small_button(RichText::new("Archive").small())
+                                .on_hover_text(
+                                    "Soft-delete this wallet (reversible — historical \
+                                         collections still resolve their key_hash)",
                                 )
                                 .clicked()
-                            {
-                                response.actions.push(WalletListAction::Unarchive {
-                                    account_index: row.account_index,
-                                });
-                            }
-                        } else {
-                            let can_archive =
-                                row.role != WalletListRole::Primary || allow_archive;
-                            if can_archive
-                                && ui
-                                    .small_button(RichText::new("Archive").small())
-                                    .on_hover_text(
-                                        "Soft-delete this wallet (reversible — historical \
-                                         collections still resolve their key_hash)",
-                                    )
-                                    .clicked()
-                            {
-                                response.actions.push(WalletListAction::Archive {
-                                    account_index: row.account_index,
-                                });
-                            }
+                        {
+                            response.actions.push(WalletListAction::Archive {
+                                account_index: row.account_index,
+                            });
                         }
+                    }
 
-                        // View-UTxOs button. Opt-in via
-                        // `with_view_button(true)` since not every
-                        // host has a panel to render them into.
-                        if view_button {
-                            let clicked = ui
-                                .small_button(RichText::new("UTxOs").small())
-                                .on_hover_text("View on-chain UTxOs for this wallet")
-                                .clicked();
-                            if clicked {
-                                response.actions.push(WalletListAction::ViewUtxos {
-                                    account_index: row.account_index,
-                                });
-                            }
+                    // View-UTxOs button. Opt-in via
+                    // `with_view_button(true)` since not every
+                    // host has a panel to render them into.
+                    if view_button {
+                        let clicked = ui
+                            .small_button(RichText::new("UTxOs").small())
+                            .on_hover_text("View on-chain UTxOs for this wallet")
+                            .clicked();
+                        if clicked {
+                            response.actions.push(WalletListAction::ViewUtxos {
+                                account_index: row.account_index,
+                            });
                         }
+                    }
 
-                        // Copy-to-clipboard icon button — copies the full
-                        // address (not the truncation) so the value is
-                        // usable. egui has a built-in clipboard helper;
-                        // we don't need to round-trip through a parent
-                        // action. Hidden when no `address_full` is set.
-                        if let Some(full) = &row.address_full {
-                            let copy = ui
-                                .small_button(RichText::new("📋").small())
-                                .on_hover_text("Copy address to clipboard");
-                            if copy.clicked() {
-                                ui.ctx().copy_text(full.clone());
-                            }
+                    // Copy-to-clipboard icon button — copies the full
+                    // address (not the truncation) so the value is
+                    // usable. egui has a built-in clipboard helper;
+                    // we don't need to round-trip through a parent
+                    // action. Hidden when no `address_full` is set.
+                    if let Some(full) = &row.address_full {
+                        let copy = ui
+                            .small_button(RichText::new("📋").small())
+                            .on_hover_text("Copy address to clipboard");
+                        if copy.clicked() {
+                            ui.ctx().copy_text(full.clone());
                         }
+                    }
 
-                        ui.label(
-                            RichText::new(&row.address_short)
-                                .color(KEYHASH_GREY)
-                                .monospace()
-                                .small(),
-                        );
-                    },
-                );
+                    ui.label(
+                        RichText::new(&row.address_short)
+                            .color(KEYHASH_GREY)
+                            .monospace()
+                            .small(),
+                    );
+                });
             });
         });
 }
@@ -594,7 +592,11 @@ fn render_card(
             // qualifying it. Archive lives at the far right.
             ui.horizontal(|ui| {
                 let title = RichText::new(&row.label).heading();
-                let title = if archived { title.color(META_GREY) } else { title };
+                let title = if archived {
+                    title.color(META_GREY)
+                } else {
+                    title
+                };
                 ui.label(title);
                 ui.label(
                     RichText::new(format!("#{}", row.account_index))
@@ -622,57 +624,50 @@ fn render_card(
                     ui.colored_label(META_GREY, RichText::new("auto").small());
                 }
                 if archived {
-                    ui.colored_label(
-                        Color32::LIGHT_YELLOW,
-                        RichText::new("archived").small(),
-                    );
+                    ui.colored_label(Color32::LIGHT_YELLOW, RichText::new("archived").small());
                 }
 
-                ui.with_layout(
-                    egui::Layout::right_to_left(egui::Align::Center),
-                    |ui| {
-                        if archived {
-                            if ui
-                                .small_button(RichText::new("Restore").small())
-                                .on_hover_text(
-                                    "Bring this wallet back from archived. \
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if archived {
+                        if ui
+                            .small_button(RichText::new("Restore").small())
+                            .on_hover_text(
+                                "Bring this wallet back from archived. \
                                      Clears `archived_at`; no key material touched.",
-                                )
-                                .clicked()
-                            {
-                                response.actions.push(WalletListAction::Unarchive {
-                                    account_index: row.account_index,
-                                });
-                            }
-                        } else {
-                            let can_archive =
-                                row.role != WalletListRole::Primary || allow_archive;
-                            if can_archive
-                                && ui
-                                    .small_button(RichText::new("Archive").small())
-                                    .on_hover_text(
-                                        "Soft-delete this wallet (reversible — historical \
-                                         collections still resolve their key_hash)",
-                                    )
-                                    .clicked()
-                            {
-                                response.actions.push(WalletListAction::Archive {
-                                    account_index: row.account_index,
-                                });
-                            }
-                        }
-                        if view_button
-                            && ui
-                                .small_button(RichText::new("UTxOs").small())
-                                .on_hover_text("View on-chain UTxOs for this wallet")
-                                .clicked()
+                            )
+                            .clicked()
                         {
-                            response.actions.push(WalletListAction::ViewUtxos {
+                            response.actions.push(WalletListAction::Unarchive {
                                 account_index: row.account_index,
                             });
                         }
-                    },
-                );
+                    } else {
+                        let can_archive = row.role != WalletListRole::Primary || allow_archive;
+                        if can_archive
+                            && ui
+                                .small_button(RichText::new("Archive").small())
+                                .on_hover_text(
+                                    "Soft-delete this wallet (reversible — historical \
+                                         collections still resolve their key_hash)",
+                                )
+                                .clicked()
+                        {
+                            response.actions.push(WalletListAction::Archive {
+                                account_index: row.account_index,
+                            });
+                        }
+                    }
+                    if view_button
+                        && ui
+                            .small_button(RichText::new("UTxOs").small())
+                            .on_hover_text("View on-chain UTxOs for this wallet")
+                            .clicked()
+                    {
+                        response.actions.push(WalletListAction::ViewUtxos {
+                            account_index: row.account_index,
+                        });
+                    }
+                });
             });
 
             ui.add_space(8.0);

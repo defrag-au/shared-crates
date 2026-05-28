@@ -162,8 +162,7 @@ impl<'a> MnemonicDisplay<'a> {
             ui.add_space(8.0);
             ui.checkbox(
                 confirmed,
-                RichText::new("I have securely recorded this recovery phrase")
-                    .strong(),
+                RichText::new("I have securely recorded this recovery phrase").strong(),
             );
             output.confirmed = *confirmed;
         }

@@ -115,11 +115,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(
-        egui::RichText::new("Test cases:")
-            .color(ACCENT)
-            .strong(),
-    );
+    ui.label(egui::RichText::new("Test cases:").color(ACCENT).strong());
     ui.label("\u{2022} Hero image renders at 32×32 with rounded corners");
     ui.label("\u{2022} Verified badge appears next to title when `verified(true)`");
     ui.label("\u{2022} Subtitle below title in muted text, optional");

@@ -744,9 +744,7 @@ mod app {
                             ),
                             Story::GroupedSection => stories::grouped_section::show(ui),
                             Story::OfferTile => stories::offer_tile::show(ui),
-                            Story::TxCart => {
-                                stories::tx_cart::show(ui, &mut self.tx_cart_state)
-                            }
+                            Story::TxCart => stories::tx_cart::show(ui, &mut self.tx_cart_state),
                             Story::WalletIdentityHeader => stories::wallet_identity_header::show(
                                 ui,
                                 &mut self.wallet_identity_header_state,
