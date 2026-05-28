@@ -244,6 +244,32 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
     ui.separator();
     ui.add_space(16.0);
 
+    // ── Variant 3b: hide archived behind a toggle ──────────────────────
+    ui.label(
+        egui::RichText::new("Archived hidden by default (.with_hide_archived)")
+            .color(ACCENT)
+            .strong(),
+    );
+    ui.add_space(4.0);
+    ui.label(
+        egui::RichText::new(
+            "Same roster as above, but archived rows are dropped from their \
+             buckets until you click the \"Show N archived\" toggle below the \
+             list. The reveal flag is cosmetic — it lives in egui memory, so it \
+             doesn't round-trip through the host. JRYNers (#4) is the archived \
+             one; note it stays hidden until revealed.",
+        )
+        .color(TEXT_MUTED)
+        .small(),
+    );
+    ui.add_space(8.0);
+
+    let _ = WalletList::new(&rows).with_hide_archived(true).show(ui);
+
+    ui.add_space(24.0);
+    ui.separator();
+    ui.add_space(16.0);
+
     // ── Variant 4: mixed roles including Custom ────────────────────────
     ui.label(
         egui::RichText::new("Mixed — including a Custom wallet")
