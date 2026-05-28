@@ -301,7 +301,11 @@ pub fn build_cip25_mint_multi(
         if let Some(g) = groups.iter_mut().find(|(k, _, _)| *k == key) {
             g.2.push((m.asset_name.clone(), m.quantity));
         } else {
-            groups.push((key, m.recipient.clone(), vec![(m.asset_name.clone(), m.quantity)]));
+            groups.push((
+                key,
+                m.recipient.clone(),
+                vec![(m.asset_name.clone(), m.quantity)],
+            ));
         }
     }
 
@@ -451,8 +455,7 @@ pub fn build_cip25_mint_multi(
     }
 
     // Change. Inputs already cover `total_needed` (recipient outputs + extras + fee).
-    let change_lovelace =
-        total_input_lovelace - total_output_min_ada - total_extras_lovelace - fee;
+    let change_lovelace = total_input_lovelace - total_output_min_ada - total_extras_lovelace - fee;
     if has_remaining_assets {
         // Must emit a change output to carry the inputs' native assets.
         if change_lovelace < min_pure_change {
@@ -469,7 +472,10 @@ pub fn build_cip25_mint_multi(
         change_output = add_assets_from_map(change_output, &asset_map)?;
         tx = tx.output(change_output);
     } else if change_lovelace >= min_pure_change {
-        tx = tx.output(create_ada_output(deps.from_address.clone(), change_lovelace));
+        tx = tx.output(create_ada_output(
+            deps.from_address.clone(),
+            change_lovelace,
+        ));
     } else {
         // Dust below a viable change output → fold into the fee to keep the tx balanced.
         fee += change_lovelace;
@@ -903,7 +909,10 @@ mod tests {
 
         let assets = vec![("TimeLockedNFT".to_string(), 1i64)];
         let result = build_cip25_mint(&deps, &policy, &assets, None, None);
-        assert!(result.is_ok(), "time-locked mint failed to build: {result:?}");
+        assert!(
+            result.is_ok(),
+            "time-locked mint failed to build: {result:?}"
+        );
 
         // Sanity: the policy reports the upper bound the builder must apply.
         assert_eq!(policy.validity_bounds(), (None, Some(90_000_000)));
@@ -955,7 +964,14 @@ mod tests {
                 recipient: test_recipient(2),
             },
         ];
-        let result = build_cip25_mint_multi(&deps_with(20_000_000), &test_policy(), &mints, None, None, None);
+        let result = build_cip25_mint_multi(
+            &deps_with(20_000_000),
+            &test_policy(),
+            &mints,
+            None,
+            None,
+            None,
+        );
         assert!(result.is_ok(), "multi-recipient mint failed: {result:?}");
         assert!(result.unwrap().fee > 0);
     }
@@ -999,12 +1015,28 @@ mod tests {
             quantity: 0,
             recipient: test_recipient(1),
         }];
-        assert!(build_cip25_mint_multi(&deps_with(10_000_000), &test_policy(), &mints, None, None, None).is_err());
+        assert!(build_cip25_mint_multi(
+            &deps_with(10_000_000),
+            &test_policy(),
+            &mints,
+            None,
+            None,
+            None
+        )
+        .is_err());
     }
 
     #[test]
     fn test_build_cip25_mint_multi_empty_errors() {
-        assert!(build_cip25_mint_multi(&deps_with(10_000_000), &test_policy(), &[], None, None, None).is_err());
+        assert!(build_cip25_mint_multi(
+            &deps_with(10_000_000),
+            &test_policy(),
+            &[],
+            None,
+            None,
+            None
+        )
+        .is_err());
     }
 
     /// `extra_self_outputs` adds pool-slot UTxOs back to `from_address` and the change

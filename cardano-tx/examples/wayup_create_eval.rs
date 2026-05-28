@@ -63,7 +63,10 @@ fn main() {
 
     let unsigned = build_wayup_collection_offers_tx(&deps, &[mk(10_000_000), mk(25_000_000)])
         .expect("build wayup create");
-    let built = unsigned.staging.build_conway_raw().expect("build_conway_raw");
+    let built = unsigned
+        .staging
+        .build_conway_raw()
+        .expect("build_conway_raw");
 
     eprintln!("converged fee: {} lovelace", unsigned.fee);
     println!("{}", hex::encode(&built.tx_bytes.0));

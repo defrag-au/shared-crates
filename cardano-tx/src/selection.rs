@@ -251,9 +251,7 @@ pub fn select_utxos_for_amount(
     sorted.sort_by(|a, b| {
         let a_pure = is_pure_ada_utxo(a);
         let b_pure = is_pure_ada_utxo(b);
-        b_pure
-            .cmp(&a_pure)
-            .then(b.lovelace.cmp(&a.lovelace))
+        b_pure.cmp(&a_pure).then(b.lovelace.cmp(&a.lovelace))
     });
 
     let mut selected = Vec::new();
@@ -519,9 +517,7 @@ mod tests {
         // single UTxO suffices, but combined the wallet has near-enough.
         let result = select_utxo_for_amount(&utxos, 4_000_000, 200_000, &config);
         match result {
-            Err(TxBuildError::NoSingleUtxoLargeEnough {
-                largest, total, ..
-            }) => {
+            Err(TxBuildError::NoSingleUtxoLargeEnough { largest, total, .. }) => {
                 assert_eq!(largest, 1_500_000);
                 assert_eq!(total, 4_800_000);
                 assert_ne!(largest, total, "fragmentation must be visible");

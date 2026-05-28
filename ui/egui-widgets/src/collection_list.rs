@@ -127,6 +127,11 @@ pub struct CollectionRow {
     /// `None` when the parent hasn't refreshed UTxOs for the wallet
     /// yet (the host populates this from its cached UTxO snapshot).
     pub pool: Option<WalletPoolBadge>,
+    /// `true` while a refuel tx is in flight for this wallet. The
+    /// widget renders the Refuel button disabled with a spinner-style
+    /// label so the operator can't double-fire. Host clears this when
+    /// the action ack lands (success or failure).
+    pub refuel_in_flight: bool,
 }
 
 /// Actions emitted while the widget was on screen this frame. Parent
@@ -144,13 +149,16 @@ pub enum CollectionListAction {
     /// User clicked the `wallet #N` link in the footer. Parent opens
     /// that wallet's UTxO panel (or whatever it does for wallet focus).
     OpenWallet { account_index: u32 },
-    /// User clicked the per-card "Refuel" button. The widget has already
-    /// copied the wallet address to the clipboard (matches the in-widget
-    /// copy-icon convention); the action exists so the host can flash a
-    /// toast / emit telemetry / open a faucet tab if it wants to. Only
-    /// emitted when [`CollectionList::with_refuel`] is `true` and the
-    /// row supplies `wallet_address_full`.
-    Refuel { account_index: u32 },
+    /// User clicked the per-card "Refuel" button. The host fires a
+    /// server-side fan-out tx (keyed by `policy_id` — the collection
+    /// owns the wallet) that sweeps the wallet's pure-ADA UTxOs into
+    /// N × 10 ADA fuel slots, so the wallet is mint-ready before the
+    /// first mint lands. Only emitted when [`CollectionList::with_refuel`]
+    /// is `true`, the row has a `pool` (so the widget can verify the
+    /// pool isn't already healthy), `refuel_in_flight` is `false`, and
+    /// `pool.health != Healthy`. Widget self-enforces the no-op rule
+    /// — host doesn't have to check.
+    Refuel { policy_id: String },
 }
 
 /// Rendering style. Both styles share the same row VM and action emission —
@@ -570,28 +578,22 @@ fn render_card(
                     );
                 }
 
-                // Refuel — copies the address (silent, matches the
-                // other copy icons) and emits an action so the host
-                // can flash a toast / open a faucet / log it. Hidden
-                // when the row has no `wallet_address_full` — nothing
-                // to copy.
+                // Refuel — fires a server-side fan-out tx that splits
+                // the wallet's pure-ADA balance into N × 10 ADA fuel
+                // slots, priming the wallet for parallel mints. The
+                // widget self-disables in three cases so the host
+                // doesn't have to:
+                //   - no pool snapshot yet — operator can't see fuel
+                //     state, button hidden
+                //   - pool already Healthy — refuel would be a no-op,
+                //     button shown but disabled with explanatory
+                //     hover text
+                //   - refuel already in flight — disabled, label is
+                //     "⛽ Refuelling…" until the host clears the flag
                 if show_refuel {
-                    if let Some(full) = &row.wallet_address_full {
+                    if let Some(pool) = &row.pool {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui
-                                .small_button(RichText::new("⛽ Refuel").small())
-                                .on_hover_text(
-                                    "Copy this wallet's address to the clipboard so \
-                                         you can paste it into the testnet faucet \
-                                         (or send ADA from another wallet).",
-                                )
-                                .clicked()
-                            {
-                                ui.ctx().copy_text(full.clone());
-                                response.actions.push(CollectionListAction::Refuel {
-                                    account_index: row.wallet_account_index,
-                                });
-                            }
+                            refuel_button(ui, row, pool, response);
                         });
                     }
                 }
@@ -700,25 +702,61 @@ fn render_list_row(
                         ui.ctx().copy_text(row.policy_id.clone());
                     }
                     if show_refuel {
-                        if let Some(full) = &row.wallet_address_full {
-                            if ui
-                                .small_button(RichText::new("⛽").small())
-                                .on_hover_text(
-                                    "Copy this wallet's address to the clipboard \
-                                         (refuel via faucet or another wallet).",
-                                )
-                                .clicked()
-                            {
-                                ui.ctx().copy_text(full.clone());
-                                response.actions.push(CollectionListAction::Refuel {
-                                    account_index: row.wallet_account_index,
-                                });
-                            }
+                        if let Some(pool) = &row.pool {
+                            refuel_button(ui, row, pool, response);
                         }
                     }
                 });
             });
         });
+}
+
+/// Shared Refuel button used by both card and list layouts. Owns the
+/// no-op-when-healthy + in-flight policies so neither call site (and
+/// no host) has to re-check the rules.
+///
+/// States, in priority order:
+///   - `refuel_in_flight` → disabled, label `⛽ Refuelling…`
+///   - `pool.health == Healthy` → disabled, label `⛽ Refuel`,
+///     explanatory hover ("pool is healthy")
+///   - otherwise → enabled, label `⛽ Refuel`, click emits the action
+fn refuel_button(
+    ui: &mut Ui,
+    row: &CollectionRow,
+    pool: &WalletPoolBadge,
+    response: &mut CollectionListResponse,
+) {
+    if row.refuel_in_flight {
+        ui.add_enabled(
+            false,
+            egui::Button::new(RichText::new("⛽ Refuelling…").small()),
+        )
+        .on_disabled_hover_text(
+            "A refuel tx is in flight — wait for it to confirm before submitting another.",
+        );
+        return;
+    }
+    let healthy = pool.health == WalletPoolBadgeHealth::Healthy;
+    if healthy {
+        ui.add_enabled(false, egui::Button::new(RichText::new("⛽ Refuel").small()))
+            .on_disabled_hover_text(
+                "Fuel pool is healthy — no refuel needed. \
+                 The pool tops up automatically during mints.",
+            );
+        return;
+    }
+    if ui
+        .small_button(RichText::new("⛽ Refuel").small())
+        .on_hover_text(
+            "Split this wallet's pure-ADA balance into 10 ADA fuel UTxOs \
+             so it's ready for parallel mints. Submits a self-spend tx.",
+        )
+        .clicked()
+    {
+        response.actions.push(CollectionListAction::Refuel {
+            policy_id: row.policy_id.clone(),
+        });
+    }
 }
 
 /// Filled chip with the status text in uppercase. Colour mirrors the

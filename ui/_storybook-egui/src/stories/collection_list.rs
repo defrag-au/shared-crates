@@ -19,8 +19,8 @@ pub struct CollectionListState {
     pub last_activity: Option<String>,
     /// Last open-wallet action observed.
     pub last_open_wallet: Option<u32>,
-    /// Last refuel action observed.
-    pub last_refuel: Option<u32>,
+    /// Last refuel action observed (policy_id).
+    pub last_refuel: Option<String>,
 }
 
 /// Construct a sample row. The widget does no truncation itself — the
@@ -53,6 +53,7 @@ fn row(
         wallet_address_short: None,
         wallet_address_full: None,
         pool: None,
+        refuel_in_flight: false,
     }
 }
 
@@ -399,19 +400,20 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
              that belongs to a collection. With `with_refuel(true)` plus a row that \
              ships `wallet_address_*` and a `pool` badge, the card grows a wallet \
              sub-line: clickable wallet # · address · 📋 · ● fuel/ADA · ⛽ Refuel. \
-             Refuel copies the address to the clipboard and emits an action so the \
-             host can flash a toast or open the testnet faucet.",
+             Refuel fires a server-side fan-out tx (sweeps pure-ADA UTxOs into \
+             10 ADA fuel slots). The widget self-disables when the pool is already \
+             Healthy or a refuel is in flight — the host doesn't have to check.",
         )
         .color(TEXT_MUTED)
         .small(),
     );
     ui.add_space(8.0);
 
-    let rows = vec![
+    let mut rows = vec![
         row_with_wallet(
             "7f2b6f15a4c91c2d8e6a3b9f5d2e8c1a4b7d6e9f2c3a5b8d7e0f1c9a8922e0",
             4,
-            "Foobar",
+            "Healthy pool — Refuel disabled",
             "ready",
             "cip25",
             "cardano:preprod",
@@ -427,7 +429,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
         row_with_wallet(
             "a8d4e1c7b2f5a9d3c6e0b4f7a1c8e2d5b9a6c3f0e7d4b1a8c5e2f9b6a3d0e7",
             5,
-            "Black Flag (preprod)",
+            "Low pool — Refuel enabled",
             "live",
             "cip25",
             "cardano:preprod",
@@ -443,7 +445,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
         row_with_wallet(
             "5c3a8e4d2f1b7a9c6e0d3b5f8a2c4e7d1b9f6a3c0e5d8b2f7a4c1e6d3b9f0a8",
             7,
-            "Empty Pool",
+            "Refuel in flight",
             "ingesting",
             "cip68",
             "cardano:preprod",
@@ -457,6 +459,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
             },
         ),
     ];
+    // Demo the in-flight state on the third row — host sets this
+    // between firing the action and receiving the ack.
+    rows[2].refuel_in_flight = true;
     let resp = CollectionList::new(&rows)
         .with_test_mint(true)
         .with_seed_stubs(true)
@@ -527,10 +532,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
                 format!("✓ open-wallet requested for #{idx}"),
             );
         }
-        if let Some(idx) = state.last_refuel {
+        if let Some(p) = &state.last_refuel {
             ui.colored_label(
                 egui::Color32::LIGHT_GREEN,
-                format!("✓ refuel requested for #{idx} (address copied)"),
+                format!("✓ refuel requested for {}", truncate_middle(p, 8, 6)),
             );
         }
     }
@@ -551,8 +556,8 @@ fn capture_actions(actions: Vec<CollectionListAction>, state: &mut CollectionLis
             CollectionListAction::OpenWallet { account_index } => {
                 state.last_open_wallet = Some(account_index);
             }
-            CollectionListAction::Refuel { account_index } => {
-                state.last_refuel = Some(account_index);
+            CollectionListAction::Refuel { policy_id } => {
+                state.last_refuel = Some(policy_id);
             }
         }
     }
