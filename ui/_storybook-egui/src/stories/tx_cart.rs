@@ -57,11 +57,7 @@ impl Default for TxCartStoryState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut TxCartStoryState) {
-    ui.label(
-        egui::RichText::new("TxCart Widget")
-            .color(ACCENT)
-            .strong(),
-    );
+    ui.label(egui::RichText::new("TxCart Widget").color(ACCENT).strong());
     ui.label(
         egui::RichText::new(
             "Batched transaction cart with sequential signing. Groups actions by \

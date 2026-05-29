@@ -231,9 +231,7 @@ impl MintingPolicy {
                 ..
             } => (Some(*after_slot), Some(*before_slot)),
             Self::MultiSigTimeLocked { before_slot, .. } => (None, Some(*before_slot)),
-            Self::WalletDerived
-            | Self::SingleKey { .. }
-            | Self::MultiSig { .. } => (None, None),
+            Self::WalletDerived | Self::SingleKey { .. } | Self::MultiSig { .. } => (None, None),
         }
     }
 

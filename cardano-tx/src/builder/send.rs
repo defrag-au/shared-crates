@@ -3,7 +3,7 @@
 //! Pure functions for building send-lovelace, send-max, send-assets, and
 //! consolidation transactions. All operate on [`TxDeps`] and produce [`UnsignedTx`].
 
-use cardano_assets::{AssetId, UtxoApi};
+use cardano_assets::{AssetId, UtxoApi, UtxoTag};
 use pallas_addresses::Address;
 use pallas_txbuilder::StagingTransaction;
 use std::collections::HashSet;
@@ -351,6 +351,133 @@ pub fn build_consolidate(deps: &TxDeps, max_inputs: u32) -> Result<UnsignedTx, T
     )
 }
 
+/// Build a fan-out (refuel) transaction.
+///
+/// Sweeps the wallet's pure-ADA UTxOs (skipping anything carrying a
+/// script reference or native assets — those have their own purpose)
+/// and emits `slot_count` outputs of `slot_size` lovelace each back to
+/// `deps.from_address`, plus a single change output for the remainder.
+/// Result: a wallet primed with N parallel-spendable fuel UTxOs, ready
+/// for high-throughput minting before the first mint lands.
+///
+/// Multi-input by design — a self-spend can sweep an arbitrary mix of
+/// "bank" UTxOs (one big change UTxO, a few stragglers) into a clean
+/// pool shape. Inputs are taken largest-first so a healthy wallet
+/// usually only consumes one UTxO; smaller stragglers come along
+/// only when needed to cover the deficit.
+///
+/// # Errors
+///
+/// - `BuildFailed` — `slot_count == 0`, or all UTxOs were filtered
+///   out (every UTxO has assets or a script ref).
+/// - `InsufficientFunds` — the spendable UTxOs together can't cover
+///   `slot_size × slot_count + fee + min pure-change`.
+///
+/// Asset-bearing and `HasScriptRef` UTxOs are intentionally excluded
+/// from selection — they may hold the collection's mint policy script
+/// reference (CIP-68) or arbitrary native assets the operator put
+/// there; refuel must not consume either. The filter is conservative:
+/// it's better to fail loudly than to accidentally burn an asset.
+pub fn build_fan_out(
+    deps: &TxDeps,
+    slot_size: u64,
+    slot_count: u32,
+) -> Result<UnsignedTx, TxBuildError> {
+    if slot_count == 0 {
+        return Err(TxBuildError::BuildFailed(
+            "slot_count must be > 0 — caller should no-op when deficit is zero".to_string(),
+        ));
+    }
+
+    // Filter to pure-ADA UTxOs without script refs. Largest-first so
+    // healthy wallets sweep one UTxO; small stragglers join only when
+    // the deficit needs them.
+    let mut spendable: Vec<&UtxoApi> = deps
+        .utxos
+        .iter()
+        .filter(|u| u.assets.is_empty() && !u.has_tag(UtxoTag::HasScriptRef))
+        .collect();
+    spendable.sort_by_key(|u| std::cmp::Reverse(u.lovelace));
+    if spendable.is_empty() {
+        return Err(TxBuildError::BuildFailed(
+            "no spendable pure-ADA UTxOs (all entries carry native assets or a script ref)"
+                .to_string(),
+        ));
+    }
+
+    let total_outputs_lovelace = slot_size
+        .checked_mul(u64::from(slot_count))
+        .ok_or_else(|| {
+            TxBuildError::BuildFailed("slot_size * slot_count overflows u64".to_string())
+        })?;
+
+    // Min change cushion — the tx-builder will reject change outputs
+    // below the pure-ADA min UTxO threshold (~1.1 ADA at current params).
+    // Leave a 1.5 ADA buffer so converge_fee doesn't have to wrestle
+    // with edge-case sub-minimum change.
+    let min_change_cushion: u64 = 1_500_000;
+    // Multi-input fee estimate: base + per-input overhead.
+    let base_fee = selection::estimate_simple_fee(&deps.params);
+
+    let mut selected: Vec<&UtxoApi> = Vec::new();
+    let mut input_lovelace: u64 = 0;
+    for u in &spendable {
+        let projected_fee = base_fee + (selected.len() as u64 + 1) * 50_000;
+        let needed = total_outputs_lovelace
+            .saturating_add(projected_fee)
+            .saturating_add(min_change_cushion);
+        selected.push(u);
+        input_lovelace = input_lovelace.saturating_add(u.lovelace);
+        if input_lovelace >= needed {
+            break;
+        }
+    }
+    let final_fee_estimate = base_fee + (selected.len() as u64 * 50_000);
+    let needed_lovelace = total_outputs_lovelace
+        .saturating_add(final_fee_estimate)
+        .saturating_add(min_change_cushion);
+    if input_lovelace < needed_lovelace {
+        return Err(TxBuildError::InsufficientFunds {
+            needed: needed_lovelace,
+            available: input_lovelace,
+        });
+    }
+
+    let selected_cloned: Vec<UtxoApi> = selected.into_iter().cloned().collect();
+    let from_address = deps.from_address.clone();
+    let network_id = deps.network_id;
+    let rough_fee = final_fee_estimate;
+
+    converge_fee(
+        |fee| {
+            let refs: Vec<&UtxoApi> = selected_cloned.iter().collect();
+            let mut tx = add_utxo_inputs(StagingTransaction::new(), &refs)?;
+
+            // N equal fuel-slot outputs back to self.
+            for _ in 0..slot_count {
+                tx = tx.output(create_ada_output(from_address.clone(), slot_size));
+            }
+
+            // Change output for the remainder — fee converges around
+            // this. Must exceed min-pure-change or the ledger rejects.
+            let change = input_lovelace
+                .checked_sub(total_outputs_lovelace)
+                .and_then(|v| v.checked_sub(fee))
+                .ok_or(TxBuildError::InsufficientFunds {
+                    needed: total_outputs_lovelace + fee,
+                    available: input_lovelace,
+                })?;
+            if change > 0 {
+                tx = tx.output(create_ada_output(from_address.clone(), change));
+            }
+
+            Ok(tx.fee(fee).network_id(network_id))
+        },
+        rough_fee,
+        &deps.params,
+    )
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -621,5 +748,94 @@ mod tests {
 
         let result = find_utxos_for_assets(&[asset_id], &utxos);
         assert!(result.is_err());
+    }
+
+    fn make_script_ref_utxo(lovelace: u64) -> UtxoApi {
+        UtxoApi {
+            tx_hash: format!("{:064x}", lovelace + 9_000_000),
+            output_index: 0,
+            lovelace,
+            assets: vec![],
+            tags: vec![cardano_assets::UtxoTag::HasScriptRef],
+        }
+    }
+
+    #[test]
+    fn test_build_fan_out_splits_one_bank_utxo() {
+        // One 200 ADA "bank" UTxO → fan out into 5 × 10 ADA slots + change.
+        let deps = TxDeps {
+            utxos: vec![make_utxo(200_000_000)],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let result = build_fan_out(&deps, 10_000_000, 5);
+        assert!(result.is_ok(), "build_fan_out failed: {result:?}");
+        let unsigned = result.unwrap();
+        assert!(unsigned.fee > 0);
+        // 5 fuel slots + 1 change output.
+        assert_eq!(unsigned.staging.outputs.as_ref().map(|o| o.len()), Some(6));
+    }
+
+    #[test]
+    fn test_build_fan_out_sweeps_multiple_inputs() {
+        // No single UTxO covers 5 × 10 ADA + fee + change; the sweep
+        // must pull in several stragglers.
+        let deps = TxDeps {
+            utxos: vec![
+                make_utxo(30_000_000),
+                make_utxo(25_000_000),
+                make_utxo(20_000_000),
+            ],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let result = build_fan_out(&deps, 10_000_000, 5);
+        assert!(result.is_ok(), "multi-input fan_out failed: {result:?}");
+        let unsigned = result.unwrap();
+        assert!(
+            unsigned
+                .staging
+                .inputs
+                .as_ref()
+                .map(|i| i.len())
+                .unwrap_or(0)
+                >= 2
+        );
+    }
+
+    #[test]
+    fn test_build_fan_out_skips_script_ref_and_assets() {
+        // The script-ref UTxO + the asset-bearing UTxO must be left
+        // untouched; only the bare pure-ADA UTxO is spendable, and it
+        // can't cover the deficit → InsufficientFunds.
+        let policy = "a".repeat(56);
+        let deps = TxDeps {
+            utxos: vec![
+                make_script_ref_utxo(50_000_000),
+                make_utxo_with_asset(50_000_000, &policy, "4e4654", 1),
+                make_utxo(5_000_000),
+            ],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let result = build_fan_out(&deps, 10_000_000, 5);
+        assert!(
+            matches!(result, Err(TxBuildError::InsufficientFunds { .. })),
+            "expected InsufficientFunds (script-ref + asset UTxOs excluded), got {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_build_fan_out_zero_slots_errors() {
+        let deps = TxDeps {
+            utxos: vec![make_utxo(100_000_000)],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        assert!(build_fan_out(&deps, 10_000_000, 0).is_err());
     }
 }

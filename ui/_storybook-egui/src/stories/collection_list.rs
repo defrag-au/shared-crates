@@ -7,6 +7,7 @@ use crate::{ACCENT, TEXT_MUTED};
 use egui_widgets::collection_list::{
     CollectionList, CollectionListAction, CollectionListLayout, CollectionRow,
 };
+use egui_widgets::wallet_list::{WalletPoolBadge, WalletPoolBadgeHealth};
 
 #[derive(Default)]
 pub struct CollectionListState {
@@ -18,6 +19,8 @@ pub struct CollectionListState {
     pub last_activity: Option<String>,
     /// Last open-wallet action observed.
     pub last_open_wallet: Option<u32>,
+    /// Last refuel action observed (policy_id).
+    pub last_refuel: Option<String>,
 }
 
 /// Construct a sample row. The widget does no truncation itself — the
@@ -47,7 +50,43 @@ fn row(
         test_mint_open: false,
         seed_stubs_open: false,
         activity_open: false,
+        wallet_address_short: None,
+        wallet_address_full: None,
+        pool: None,
+        refuel_in_flight: false,
+        archived_at: None,
     }
+}
+
+/// Construct a sample row pre-populated with a collection-wallet address
+/// and a pool badge — exercises the Refuel-on-card variant.
+#[allow(clippy::too_many_arguments)]
+fn row_with_wallet(
+    policy_id: &str,
+    wallet_account_index: u32,
+    title: &str,
+    status: &str,
+    standard: &str,
+    network: &str,
+    total_supply: u64,
+    minted_count: u64,
+    address: &str,
+    pool: WalletPoolBadge,
+) -> CollectionRow {
+    let mut r = row(
+        policy_id,
+        wallet_account_index,
+        title,
+        status,
+        standard,
+        network,
+        total_supply,
+        minted_count,
+    );
+    r.wallet_address_short = Some(truncate_middle(address, 14, 8));
+    r.wallet_address_full = Some(address.to_string());
+    r.pool = Some(pool);
+    r
 }
 
 fn truncate_middle(s: &str, prefix: usize, suffix: usize) -> String {
@@ -349,7 +388,94 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     ui.separator();
     ui.add_space(16.0);
 
-    // ── Variant 6: list layout ─────────────────────────────────────────
+    // ── Variant 6: collection-centric — wallet + pool + Refuel ─────────
+    ui.label(
+        egui::RichText::new("Collection-centric — wallet sub-line + Refuel")
+            .color(ACCENT)
+            .strong(),
+    );
+    ui.add_space(4.0);
+    ui.label(
+        egui::RichText::new(
+            "The collection card is the primary surface for everything wallet-shaped \
+             that belongs to a collection. With `with_refuel(true)` plus a row that \
+             ships `wallet_address_*` and a `pool` badge, the card grows a wallet \
+             sub-line: clickable wallet # · address · 📋 · ● fuel/ADA · ⛽ Refuel. \
+             Refuel fires a server-side fan-out tx (sweeps pure-ADA UTxOs into \
+             10 ADA fuel slots). The widget self-disables when the pool is already \
+             Healthy or a refuel is in flight — the host doesn't have to check.",
+        )
+        .color(TEXT_MUTED)
+        .small(),
+    );
+    ui.add_space(8.0);
+
+    let mut rows = vec![
+        row_with_wallet(
+            "7f2b6f15a4c91c2d8e6a3b9f5d2e8c1a4b7d6e9f2c3a5b8d7e0f1c9a8922e0",
+            4,
+            "Healthy pool — Refuel disabled",
+            "ready",
+            "cip25",
+            "cardano:preprod",
+            1000,
+            120,
+            "addr_test1vpqxc4dpv2lcw4w98v7y7r9p5m0z3qc9x8f6gj2v0nq4t9sucgmds",
+            WalletPoolBadge {
+                fuel_count: 22,
+                total_lovelace: 245_000_000,
+                health: WalletPoolBadgeHealth::Healthy,
+            },
+        ),
+        row_with_wallet(
+            "a8d4e1c7b2f5a9d3c6e0b4f7a1c8e2d5b9a6c3f0e7d4b1a8c5e2f9b6a3d0e7",
+            5,
+            "Low pool — Refuel enabled",
+            "live",
+            "cip25",
+            "cardano:preprod",
+            500,
+            340,
+            "addr_test1vrm9k2e5xz3l0c8q7t2p6r4n3a1y0w9v8u7s5h2g0f9d8b6jq2fxzc",
+            WalletPoolBadge {
+                fuel_count: 4,
+                total_lovelace: 38_000_000,
+                health: WalletPoolBadgeHealth::Low,
+            },
+        ),
+        row_with_wallet(
+            "5c3a8e4d2f1b7a9c6e0d3b5f8a2c4e7d1b9f6a3c0e5d8b2f7a4c1e6d3b9f0a8",
+            7,
+            "Refuel in flight",
+            "ingesting",
+            "cip68",
+            "cardano:preprod",
+            333,
+            0,
+            "addr_test1vp7l0c8q7t2p6r4n3a1y0w9v8u7s5h2g0f9d8b6jq2fxzcrm9k2e5xz",
+            WalletPoolBadge {
+                fuel_count: 0,
+                total_lovelace: 0,
+                health: WalletPoolBadgeHealth::Empty,
+            },
+        ),
+    ];
+    // Demo the in-flight state on the third row — host sets this
+    // between firing the action and receiving the ack.
+    rows[2].refuel_in_flight = true;
+    let resp = CollectionList::new(&rows)
+        .with_test_mint(true)
+        .with_seed_stubs(true)
+        .with_activity(true)
+        .with_refuel(true)
+        .show(ui);
+    capture_actions(resp.actions, state);
+
+    ui.add_space(24.0);
+    ui.separator();
+    ui.add_space(16.0);
+
+    // ── Variant 7: list layout ─────────────────────────────────────────
     ui.label(
         egui::RichText::new("List layout — compact for dense surfaces")
             .color(ACCENT)
@@ -371,12 +497,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
         .with_layout(CollectionListLayout::List)
         .with_test_mint(true)
         .with_seed_stubs(true)
+        .with_refuel(true)
         .show(ui);
 
     // ── Action receipt ─────────────────────────────────────────────────
     if state.last_test_mint.is_some()
         || state.last_seed_stubs.is_some()
         || state.last_open_wallet.is_some()
+        || state.last_refuel.is_some()
     {
         ui.add_space(16.0);
         ui.separator();
@@ -405,6 +533,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
                 format!("✓ open-wallet requested for #{idx}"),
             );
         }
+        if let Some(p) = &state.last_refuel {
+            ui.colored_label(
+                egui::Color32::LIGHT_GREEN,
+                format!("✓ refuel requested for {}", truncate_middle(p, 8, 6)),
+            );
+        }
     }
 }
 
@@ -422,6 +556,9 @@ fn capture_actions(actions: Vec<CollectionListAction>, state: &mut CollectionLis
             }
             CollectionListAction::OpenWallet { account_index } => {
                 state.last_open_wallet = Some(account_index);
+            }
+            CollectionListAction::Refuel { policy_id } => {
+                state.last_refuel = Some(policy_id);
             }
         }
     }

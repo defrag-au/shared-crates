@@ -19,6 +19,22 @@ use crate::helpers::output::{add_assets_from_map, create_ada_output};
 type UtxoSelection<'a> = (Vec<&'a UtxoApi>, u64, HashMap<(String, String), u64>);
 use crate::intents::MintingPolicy;
 
+/// The change output a mint tx emits back to `deps.from_address`, surfaced so a
+/// caller can **chain** the next tx off it without a chain/indexer round-trip:
+/// `(tx_hash, output_index)` is a spendable input the moment this tx is built.
+///
+/// `output_index` is the index within the tx's output list. `has_assets` is true
+/// when the change carries native assets the inputs dragged through (then it's
+/// not a clean pure-ADA funding source — chainers should skip it). Absent
+/// entirely (`None` from the builder) when the change was dust folded into the
+/// fee, i.e. there is no change output to spend.
+#[derive(Debug, Clone, Copy)]
+pub struct ChangeOutput {
+    pub output_index: u32,
+    pub lovelace: u64,
+    pub has_assets: bool,
+}
+
 /// Build a CIP-25 mint transaction.
 ///
 /// Creates minted tokens with a native script policy and optional CIP-25 metadata.
@@ -265,6 +281,22 @@ pub fn build_cip25_mint_multi(
     inputs: Option<&[UtxoApi]>,
     extra_self_outputs: Option<&[u64]>,
 ) -> Result<UnsignedTx, TxBuildError> {
+    build_cip25_mint_multi_with_change(deps, policy, mints, metadata, inputs, extra_self_outputs)
+        .map(|(tx, _change)| tx)
+}
+
+/// Like [`build_cip25_mint_multi`] but also returns the tx's [`ChangeOutput`]
+/// (the pure-ADA remainder back to `deps.from_address`), so a caller can chain
+/// the next tx off it. `None` when the change was dust folded into the fee
+/// (no change output emitted). See [`ChangeOutput`].
+pub fn build_cip25_mint_multi_with_change(
+    deps: &TxDeps,
+    policy: &MintingPolicy,
+    mints: &[MintRecipientEntry],
+    metadata: Option<&serde_json::Value>,
+    inputs: Option<&[UtxoApi]>,
+    extra_self_outputs: Option<&[u64]>,
+) -> Result<(UnsignedTx, Option<ChangeOutput>), TxBuildError> {
     use pallas_primitives::Fragment;
 
     if mints.is_empty() {
@@ -301,7 +333,11 @@ pub fn build_cip25_mint_multi(
         if let Some(g) = groups.iter_mut().find(|(k, _, _)| *k == key) {
             g.2.push((m.asset_name.clone(), m.quantity));
         } else {
-            groups.push((key, m.recipient.clone(), vec![(m.asset_name.clone(), m.quantity)]));
+            groups.push((
+                key,
+                m.recipient.clone(),
+                vec![(m.asset_name.clone(), m.quantity)],
+            ));
         }
     }
 
@@ -451,8 +487,11 @@ pub fn build_cip25_mint_multi(
     }
 
     // Change. Inputs already cover `total_needed` (recipient outputs + extras + fee).
-    let change_lovelace =
-        total_input_lovelace - total_output_min_ada - total_extras_lovelace - fee;
+    // The change output (when emitted) is appended after the recipient + extra
+    // outputs, so its index is `groups.len() + extras.len()`.
+    let change_lovelace = total_input_lovelace - total_output_min_ada - total_extras_lovelace - fee;
+    let change_index = (groups.len() + extras.len()) as u32;
+    let change: Option<ChangeOutput>;
     if has_remaining_assets {
         // Must emit a change output to carry the inputs' native assets.
         if change_lovelace < min_pure_change {
@@ -468,16 +507,31 @@ pub fn build_cip25_mint_multi(
             .collect();
         change_output = add_assets_from_map(change_output, &asset_map)?;
         tx = tx.output(change_output);
+        change = Some(ChangeOutput {
+            output_index: change_index,
+            lovelace: change_lovelace,
+            has_assets: true,
+        });
     } else if change_lovelace >= min_pure_change {
-        tx = tx.output(create_ada_output(deps.from_address.clone(), change_lovelace));
+        tx = tx.output(create_ada_output(
+            deps.from_address.clone(),
+            change_lovelace,
+        ));
+        change = Some(ChangeOutput {
+            output_index: change_index,
+            lovelace: change_lovelace,
+            has_assets: false,
+        });
     } else {
         // Dust below a viable change output → fold into the fee to keep the tx balanced.
+        // No change output emitted, so nothing to chain off.
         fee += change_lovelace;
+        change = None;
     }
 
     tx = tx.fee(fee);
 
-    Ok(UnsignedTx { staging: tx, fee })
+    Ok((UnsignedTx { staging: tx, fee }, change))
 }
 
 // ============================================================================
@@ -903,7 +957,10 @@ mod tests {
 
         let assets = vec![("TimeLockedNFT".to_string(), 1i64)];
         let result = build_cip25_mint(&deps, &policy, &assets, None, None);
-        assert!(result.is_ok(), "time-locked mint failed to build: {result:?}");
+        assert!(
+            result.is_ok(),
+            "time-locked mint failed to build: {result:?}"
+        );
 
         // Sanity: the policy reports the upper bound the builder must apply.
         assert_eq!(policy.validity_bounds(), (None, Some(90_000_000)));
@@ -955,9 +1012,62 @@ mod tests {
                 recipient: test_recipient(2),
             },
         ];
-        let result = build_cip25_mint_multi(&deps_with(20_000_000), &test_policy(), &mints, None, None, None);
+        let result = build_cip25_mint_multi(
+            &deps_with(20_000_000),
+            &test_policy(),
+            &mints,
+            None,
+            None,
+            None,
+        );
         assert!(result.is_ok(), "multi-recipient mint failed: {result:?}");
         assert!(result.unwrap().fee > 0);
+    }
+
+    #[test]
+    fn test_build_cip25_mint_multi_surfaces_change() {
+        // 2 recipients, big pure-ADA input, no extras → a pure-ADA change output
+        // at index 2 (after the two recipient outputs), chainable.
+        let mints = vec![
+            MintRecipientEntry {
+                asset_name: "Foo001".to_string(),
+                quantity: 1,
+                recipient: test_recipient(1),
+            },
+            MintRecipientEntry {
+                asset_name: "Foo002".to_string(),
+                quantity: 1,
+                recipient: test_recipient(2),
+            },
+        ];
+        let (unsigned, change) = build_cip25_mint_multi_with_change(
+            &deps_with(50_000_000),
+            &test_policy(),
+            &mints,
+            None,
+            None,
+            None,
+        )
+        .expect("build failed");
+        let change = change.expect("expected a change output");
+        assert_eq!(
+            change.output_index, 2,
+            "change follows the 2 recipient outputs"
+        );
+        assert!(!change.has_assets, "pure-ADA input → pure-ADA change");
+        assert!(change.lovelace > 0);
+        // The change index must point at a real output in the staging tx.
+        let n_outputs = unsigned
+            .staging
+            .outputs
+            .as_ref()
+            .map(|o| o.len())
+            .unwrap_or(0);
+        assert!(
+            (change.output_index as usize) < n_outputs,
+            "change index {} out of bounds ({n_outputs} outputs)",
+            change.output_index
+        );
     }
 
     #[test]
@@ -999,12 +1109,28 @@ mod tests {
             quantity: 0,
             recipient: test_recipient(1),
         }];
-        assert!(build_cip25_mint_multi(&deps_with(10_000_000), &test_policy(), &mints, None, None, None).is_err());
+        assert!(build_cip25_mint_multi(
+            &deps_with(10_000_000),
+            &test_policy(),
+            &mints,
+            None,
+            None,
+            None
+        )
+        .is_err());
     }
 
     #[test]
     fn test_build_cip25_mint_multi_empty_errors() {
-        assert!(build_cip25_mint_multi(&deps_with(10_000_000), &test_policy(), &[], None, None, None).is_err());
+        assert!(build_cip25_mint_multi(
+            &deps_with(10_000_000),
+            &test_policy(),
+            &[],
+            None,
+            None,
+            None
+        )
+        .is_err());
     }
 
     /// `extra_self_outputs` adds pool-slot UTxOs back to `from_address` and the change

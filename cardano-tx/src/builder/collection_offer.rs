@@ -8,7 +8,9 @@
 //! - NFT delivery to the buyer (any NFT from the target policy)
 
 use cardano_assets::UtxoApi;
-use pallas_addresses::{Address, Network, ShelleyAddress, ShelleyDelegationPart, ShelleyPaymentPart};
+use pallas_addresses::{
+    Address, Network, ShelleyAddress, ShelleyDelegationPart, ShelleyPaymentPart,
+};
 use pallas_crypto::hash::Hash;
 use pallas_primitives::conway::PlutusData;
 
@@ -45,7 +47,8 @@ const MIN_MARKETPLACE_FEE: u64 = 2_000_000;
 const MIN_ROYALTY: u64 = 1_000_000;
 
 /// jpg.store marketplace fee script payment credential.
-const MARKETPLACE_FEE_SCRIPT_HASH: &str = "84cc25ea4c29951d40b443b95bbc5676bc425470f96376d1984af9ab";
+const MARKETPLACE_FEE_SCRIPT_HASH: &str =
+    "84cc25ea4c29951d40b443b95bbc5676bc425470f96376d1984af9ab";
 
 /// jpg.store marketplace fee staking credential (script).
 const MARKETPLACE_FEE_STAKE_HASH: &str = "2c967f4bd28944b06462e13c5e3f5d5fa6e03f8567569438cd833e6d";
@@ -251,7 +254,13 @@ fn build_nft_payout(
     // Value: Map { policy_id_bytes: Constructor(0) [1, Map {}] }
     let nft_value = PlutusData::Map(pallas_primitives::KeyValuePairs::Def(vec![(
         bytes(policy_bytes),
-        constr_indef(0, vec![int(1), PlutusData::Map(pallas_primitives::KeyValuePairs::Def(vec![]))]),
+        constr_indef(
+            0,
+            vec![
+                int(1),
+                PlutusData::Map(pallas_primitives::KeyValuePairs::Def(vec![])),
+            ],
+        ),
     )]));
 
     Ok(constr_indef(0, vec![address, nft_value]))
@@ -282,7 +291,10 @@ fn build_datum_address(
             // Some(StakingHash(credential))
             constr_indef(
                 0,
-                vec![constr_indef(0, vec![constr_indef(stake_tag, vec![bytes(hash.to_vec())])])],
+                vec![constr_indef(
+                    0,
+                    vec![constr_indef(stake_tag, vec![bytes(hash.to_vec())])],
+                )],
             )
         }
         None => constr_indef(1, vec![]), // None
@@ -366,7 +378,7 @@ pub fn build_collection_offer_tx(
 ) -> Result<super::UnsignedTx, TxBuildError> {
     use crate::helpers::input::add_utxo_input;
     use crate::helpers::output::{build_change_output, create_ada_output};
-    
+
     use crate::selection;
     use pallas_crypto::hash::Hasher;
     use pallas_txbuilder::StagingTransaction;
@@ -423,12 +435,8 @@ pub fn build_collection_offer_tx(
             if change > 0 {
                 if has_native_assets {
                     let input_refs: Vec<&UtxoApi> = selected_utxos.iter().collect();
-                    let change_output = build_change_output(
-                        from_address.clone(),
-                        change,
-                        &input_refs,
-                        None,
-                    )?;
+                    let change_output =
+                        build_change_output(from_address.clone(), change, &input_refs, None)?;
                     tx = tx.output(change_output);
                 } else {
                     tx = tx.output(create_ada_output(from_address.clone(), change));
@@ -454,7 +462,7 @@ pub fn build_collection_offers_tx(
 ) -> Result<super::UnsignedTx, TxBuildError> {
     use crate::helpers::input::add_utxo_input;
     use crate::helpers::output::{build_change_output, create_ada_output};
-    
+
     use crate::selection;
     use pallas_crypto::hash::Hasher;
     use pallas_txbuilder::StagingTransaction;
@@ -531,12 +539,8 @@ pub fn build_collection_offers_tx(
             if change > 0 {
                 if has_native_assets {
                     let input_refs: Vec<&UtxoApi> = selected_utxos.iter().collect();
-                    let change_output = build_change_output(
-                        from_address.clone(),
-                        change,
-                        &input_refs,
-                        None,
-                    )?;
+                    let change_output =
+                        build_change_output(from_address.clone(), change, &input_refs, None)?;
                     tx = tx.output(change_output);
                 } else {
                     tx = tx.output(create_ada_output(from_address.clone(), change));
@@ -560,9 +564,7 @@ fn build_co_metadata(datum_cbor: &[u8], policy_id: &str) -> Result<Vec<u8>, TxBu
 /// Each offer's datum CBOR is hex-encoded, chunked into 64-char strings across
 /// sequential labels starting at 50. Each offer ends with a `policy_id::index`
 /// label. Label 30 contains version "5".
-fn build_co_metadata_multi(
-    offers: &[(&[u8], &str)],
-) -> Result<Vec<u8>, TxBuildError> {
+fn build_co_metadata_multi(offers: &[(&[u8], &str)]) -> Result<Vec<u8>, TxBuildError> {
     use pallas_codec::minicbor::Encoder;
 
     // Collect all metadata entries: (label, value_string)
@@ -1028,8 +1030,8 @@ pub fn build_cancel_offer_tx(
 
     let owner_pkh_bytes: [u8; 28] = hex_to_28_bytes(&req.owner_pkh)?;
 
-    let redeemer_bytes = hex::decode(CANCEL_REDEEMER_HEX)
-        .map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?;
+    let redeemer_bytes =
+        hex::decode(CANCEL_REDEEMER_HEX).map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?;
 
     let script_input = Input::new(Hash::from(co_tx_bytes), req.co_output_index);
     let ref_input = Input::new(Hash::from(script_ref_bytes), SCRIPT_REF_INDEX);
@@ -1047,12 +1049,13 @@ pub fn build_cancel_offer_tx(
 
     super::converge_fee(
         |fee| {
-            let output_value = total_input
-                .checked_sub(fee)
-                .ok_or(TxBuildError::InsufficientFunds {
-                    needed: fee,
-                    available: total_input,
-                })?;
+            let output_value =
+                total_input
+                    .checked_sub(fee)
+                    .ok_or(TxBuildError::InsufficientFunds {
+                        needed: fee,
+                        available: total_input,
+                    })?;
 
             let mut tx = StagingTransaction::new()
                 .input(script_input.clone())
@@ -1063,7 +1066,9 @@ pub fn build_cancel_offer_tx(
                     redeemer_bytes.clone(),
                     Some(ExUnits {
                         mem: req.ex_units_mem.unwrap_or(CANCEL_PRELIMINARY_EX_UNITS_MEM),
-                        steps: req.ex_units_steps.unwrap_or(CANCEL_PRELIMINARY_EX_UNITS_STEPS),
+                        steps: req
+                            .ex_units_steps
+                            .unwrap_or(CANCEL_PRELIMINARY_EX_UNITS_STEPS),
                     }),
                 )
                 .language_view(ScriptKind::PlutusV2, PLUTUS_V2_COST_MODEL.to_vec())
@@ -1177,8 +1182,8 @@ pub fn build_cancel_offers_tx_with(
 
     let owner_pkh_bytes: [u8; 28] = hex_to_28_bytes(&requests[0].owner_pkh)?;
 
-    let redeemer_bytes = hex::decode(CANCEL_REDEEMER_HEX)
-        .map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?;
+    let redeemer_bytes =
+        hex::decode(CANCEL_REDEEMER_HEX).map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?;
 
     let ref_input = Input::new(Hash::from(script_ref_bytes), contract.script_ref_index);
 
@@ -1257,7 +1262,9 @@ pub fn build_cancel_offers_tx_with(
                     input.clone(),
                     redeemer_bytes.clone(),
                     Some(ExUnits {
-                        mem: requests[i].ex_units_mem.unwrap_or(contract.preliminary_ex_mem),
+                        mem: requests[i]
+                            .ex_units_mem
+                            .unwrap_or(contract.preliminary_ex_mem),
                         steps: requests[i]
                             .ex_units_steps
                             .unwrap_or(contract.preliminary_ex_steps),
@@ -1323,8 +1330,7 @@ pub fn build_cancel_offers_tx_with(
 // ---------------------------------------------------------------------------
 
 fn hex_to_28_bytes(hex_str: &str) -> Result<[u8; 28], TxBuildError> {
-    let decoded = hex::decode(hex_str)
-        .map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?;
+    let decoded = hex::decode(hex_str).map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?;
     decoded
         .try_into()
         .map_err(|_| TxBuildError::InvalidHex("expected 28 bytes".into()))
@@ -1380,7 +1386,11 @@ mod tests {
         let datum = build_wayup_co_datum(&req).unwrap();
         let bytes = encode_plutus_data(&datum).unwrap();
         let expected = "d8799f581ccba51a2e5b5b802a0402a87b762d2ecc6b1a9b6d0dd708daf07b82ad9fd8799fd8799fd8799f581c5f08a64f580e581735070e1b1d2ce29ae6942ab45ccff5a1747d2283ffd8799fd8799fd8799f581c28f17fdd2d8b8f559ad61e899e31eae90b9e209cbedb1ee8a8c6c7d1ffffffffa140d8799f00a1401a000f4240ffffd8799fd8799fd8799f581c4a00e5040c2d7e201a9c20744ace64bf28d1cda55999a4931e406922ffd8799fd8799fd8799f581ccba51a2e5b5b802a0402a87b762d2ecc6b1a9b6d0dd708daf07b82adffffffffa1581ca316bcf768f0309be743b4b7d067f3348017bf0f00f6a29562aebda2d8799f01a0ffffd8799fd8799fd8799f581c04bdd97da6dfacd1fb4c5d5e1a14292e4ee0f2015a46f8543e552c49ffd8799fd8799fd8799f581c8eaef6e3337032021c887b180b74dfc0ff625d167df78b77e476b68dffffffffa140d8799f00a1401a000f4240ffffffff";
-        assert_eq!(hex::encode(&bytes), expected, "Wayup datum must be byte-exact to the on-chain offer");
+        assert_eq!(
+            hex::encode(&bytes),
+            expected,
+            "Wayup datum must be byte-exact to the on-chain offer"
+        );
     }
 
     /// The frankenaddress = Wayup payment script + bidder stake key, header 0x11.
@@ -1470,7 +1480,11 @@ mod tests {
             let addr = Address::from_bech32(bech32).unwrap();
             if let Address::Shelley(shelley) = &addr {
                 let payment = hex::encode(shelley.payment().as_hash().as_slice());
-                let delegation = shelley.delegation().as_hash().map(|h| hex::encode(h.as_slice())).unwrap_or_default();
+                let delegation = shelley
+                    .delegation()
+                    .as_hash()
+                    .map(|h| hex::encode(h.as_slice()))
+                    .unwrap_or_default();
                 eprintln!("{label}: payment={payment} staking={delegation}");
             }
         }

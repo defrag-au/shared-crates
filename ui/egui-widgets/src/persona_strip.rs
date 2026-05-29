@@ -105,11 +105,9 @@ impl<'a> PersonaStrip<'a> {
 
 fn draw_chip(ui: &mut Ui, label: &str, cfg: &PersonaStripConfig) {
     let font = FontId::proportional(cfg.chip_text_size);
-    let galley = ui.painter().layout_no_wrap(
-        label.to_string(),
-        font.clone(),
-        cfg.chip_text_color,
-    );
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_string(), font.clone(), cfg.chip_text_color);
     let size = Vec2::new(
         galley.size().x + cfg.chip_padding_x * 2.0,
         galley.size().y + cfg.chip_padding_y * 2.0,
@@ -117,7 +115,11 @@ fn draw_chip(ui: &mut Ui, label: &str, cfg: &PersonaStripConfig) {
     let (rect, _resp) = ui.allocate_exact_size(size, Sense::hover());
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
-        painter.rect_filled(rect, CornerRadius::same(cfg.chip_corner_radius), cfg.chip_bg);
+        painter.rect_filled(
+            rect,
+            CornerRadius::same(cfg.chip_corner_radius),
+            cfg.chip_bg,
+        );
         let text_pos = egui::pos2(
             rect.min.x + cfg.chip_padding_x,
             rect.min.y + cfg.chip_padding_y,

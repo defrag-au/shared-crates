@@ -52,6 +52,40 @@ impl std::fmt::Debug for UnsignedTx {
     }
 }
 
+/// A signed transaction ready for submission — hex tx hash + hex CBOR.
+/// Produced by [`UnsignedTx::build_and_sign`].
+pub struct SignedTx {
+    pub tx_hash: String,
+    pub tx_cbor_hex: String,
+}
+
+impl UnsignedTx {
+    /// Build the Conway-era tx + sign it with an Ed25519 key, returning
+    /// the hex tx hash and CBOR. The staging tx already carries `fee` +
+    /// `network_id` (set during construction), so this is just the
+    /// final assembly + signature — the server-side counterpart to
+    /// handing the CBOR to a CIP-30 wallet in the browser.
+    ///
+    /// Keeps the `pallas_txbuilder` build trait internal to this crate
+    /// so consumers (workers, CLIs) don't have to depend on it directly
+    /// just to turn an [`UnsignedTx`] into submittable bytes.
+    pub fn build_and_sign(
+        self,
+        secret_key: &pallas_crypto::key::ed25519::SecretKey,
+    ) -> Result<SignedTx, TxBuildError> {
+        use pallas_txbuilder::BuildConway;
+        let built = self
+            .staging
+            .build_conway_raw()
+            .map_err(|e| TxBuildError::BuildFailed(e.to_string()))?;
+        let signed = crate::sign::sign_transaction(built, secret_key)?;
+        Ok(SignedTx {
+            tx_hash: hex::encode(signed.tx_hash.0),
+            tx_cbor_hex: hex::encode(&signed.tx_bytes),
+        })
+    }
+}
+
 /// Two-round fee convergence.
 ///
 /// The Cardano fee depends on TX size, which depends on the fee field itself (circular).
@@ -82,7 +116,8 @@ pub fn converge_fee_with_witnesses(
 ) -> Result<UnsignedTx, TxBuildError> {
     // Round 1: build with rough estimate, calculate real fee
     let preliminary_tx = build_fn(initial_estimate)?;
-    let fee_round1 = crate::fee::calculate_fee_with_witnesses(&preliminary_tx, params, num_witnesses);
+    let fee_round1 =
+        crate::fee::calculate_fee_with_witnesses(&preliminary_tx, params, num_witnesses);
 
     // Round 2: rebuild with round-1 fee, recalculate
     let tx_round2 = build_fn(fee_round1)?;
@@ -111,7 +146,7 @@ mod tests {
             max_value_size: 5000,
             price_mem: None,
             price_step: None,
-                ..Default::default()
+            ..Default::default()
         };
 
         // Minimal TX that builds successfully

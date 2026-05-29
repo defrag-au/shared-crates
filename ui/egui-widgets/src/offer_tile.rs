@@ -214,10 +214,7 @@ impl<'a> OfferTile<'a> {
 
         // Outer container — fixed size so wrapping rows align.
         // Height = tile + price label + a hair of spacing.
-        let outer_size = Vec2::new(
-            cfg.tile_size + 8.0,
-            cfg.tile_size + cfg.price_size + 12.0,
-        );
+        let outer_size = Vec2::new(cfg.tile_size + 8.0, cfg.tile_size + cfg.price_size + 12.0);
 
         let inner = ui.allocate_ui_with_layout(
             outer_size,
@@ -236,9 +233,8 @@ impl<'a> OfferTile<'a> {
                                         cfg.image_corner_radius,
                                     ));
                                 if dimmed {
-                                    img = img.tint(Color32::from_white_alpha(
-                                        cfg.dimmed_image_alpha,
-                                    ));
+                                    img =
+                                        img.tint(Color32::from_white_alpha(cfg.dimmed_image_alpha));
                                 }
                                 ui.add(img).rect
                             }
