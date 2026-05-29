@@ -132,6 +132,12 @@ pub struct CollectionRow {
     /// label so the operator can't double-fire. Host clears this when
     /// the action ack lands (success or failure).
     pub refuel_in_flight: bool,
+    /// Soft-archive timestamp (unix seconds), or `None` if active.
+    /// Archived rows render dimmed with an "archived" chip; the
+    /// Archive button flips to Restore. When
+    /// [`CollectionList::with_hide_archived`] is set they're hidden
+    /// behind a "show archived" toggle.
+    pub archived_at: Option<i64>,
 }
 
 /// Actions emitted while the widget was on screen this frame. Parent
@@ -159,6 +165,13 @@ pub enum CollectionListAction {
     /// `pool.health != Healthy`. Widget self-enforces the no-op rule
     /// — host doesn't have to check.
     Refuel { policy_id: String },
+    /// User clicked Archive on an active card. Host soft-archives the
+    /// collection (halts its engine DO + hides it). Only emitted when
+    /// [`CollectionList::with_archive`] is `true`.
+    Archive { policy_id: String },
+    /// User clicked Restore on an archived card. Symmetric to
+    /// [`Archive`]; only emitted from archived rows.
+    Unarchive { policy_id: String },
 }
 
 /// Rendering style. Both styles share the same row VM and action emission —
@@ -183,6 +196,8 @@ pub struct CollectionList<'a> {
     show_seed_stubs: bool,
     show_activity: bool,
     show_refuel: bool,
+    show_archive: bool,
+    hide_archived: bool,
 }
 
 /// Response — drained actions for this frame.
@@ -198,6 +213,7 @@ pub struct CollectionListResponse {
 // ─────────────────────────────────────────────────────────────────────
 
 const ROW_BG: Color32 = Color32::from_rgb(22, 22, 32);
+const ROW_BG_ARCHIVED: Color32 = Color32::from_rgb(18, 18, 24);
 const ROW_STROKE: Color32 = Color32::from_rgb(40, 40, 56);
 const META_GREY: Color32 = Color32::from_gray(140);
 const KEYHASH_GREY: Color32 = Color32::from_gray(120);
@@ -230,7 +246,26 @@ impl<'a> CollectionList<'a> {
             show_seed_stubs: false,
             show_activity: false,
             show_refuel: false,
+            show_archive: false,
+            hide_archived: false,
         }
+    }
+
+    /// Show a per-card Archive button (Restore on archived cards). Off by
+    /// default. Click → [`CollectionListAction::Archive`] /
+    /// [`CollectionListAction::Unarchive`].
+    pub fn with_archive(mut self, enabled: bool) -> Self {
+        self.show_archive = enabled;
+        self
+    }
+
+    /// Hide archived collections by default behind a "Show N archived" toggle
+    /// rendered below the grid. Off by default (archived cards render inline,
+    /// dimmed). The reveal flag is cosmetic — it lives in egui memory, not the
+    /// host. Mirrors [`crate::wallet_list::WalletList::with_hide_archived`].
+    pub fn with_hide_archived(mut self, hide: bool) -> Self {
+        self.hide_archived = hide;
+        self
     }
 
     /// Switch the per-row presentation. See [`CollectionListLayout`].
@@ -295,53 +330,91 @@ impl<'a> CollectionList<'a> {
     pub fn show(self, ui: &mut Ui) -> CollectionListResponse {
         let mut response = CollectionListResponse::default();
 
-        if self.rows.is_empty() {
-            return response;
-        }
-
-        // Per-grid clamp: a 1-row layout renders full-width even when
-        // 2+ columns are configured.
-        let effective_cols = self.columns.min(self.rows.len()).max(1);
-
-        let gap = match self.layout {
-            CollectionListLayout::Card => 8.0,
-            CollectionListLayout::List => 4.0,
+        // Archived collections are hidden by default when `hide_archived` is
+        // set — they're noise on the active dashboard. The reveal flag is
+        // cosmetic, so it lives in egui memory keyed by this Ui's id rather
+        // than round-tripping through the host. When hiding is off, archived
+        // cards render inline (dimmed).
+        let archived_total = self.rows.iter().filter(|r| r.archived_at.is_some()).count();
+        let toggle_id = ui.id().with("collection_list_show_archived");
+        let show_archived = if self.hide_archived {
+            ui.ctx()
+                .data_mut(|d| d.get_temp::<bool>(toggle_id))
+                .unwrap_or(false)
+        } else {
+            true
         };
+        let visible: Vec<&CollectionRow> = self
+            .rows
+            .iter()
+            .filter(|r| show_archived || r.archived_at.is_none())
+            .collect();
 
-        let chunks: Vec<&[CollectionRow]> = self.rows.chunks(effective_cols).collect();
-        let last_chunk = chunks.len().saturating_sub(1);
-        for (chunk_idx, chunk) in chunks.iter().enumerate() {
-            if effective_cols == 1 {
-                for r in chunk.iter() {
-                    render_one(
-                        ui,
-                        r,
-                        self.layout,
-                        self.show_test_mint,
-                        self.show_seed_stubs,
-                        self.show_activity,
-                        self.show_refuel,
-                        &mut response,
-                    );
-                }
-            } else {
-                ui.columns(effective_cols, |cols| {
-                    for (i, r) in chunk.iter().enumerate() {
+        if !visible.is_empty() {
+            // Per-grid clamp: a 1-row layout renders full-width even when
+            // 2+ columns are configured.
+            let effective_cols = self.columns.min(visible.len()).max(1);
+
+            let gap = match self.layout {
+                CollectionListLayout::Card => 8.0,
+                CollectionListLayout::List => 4.0,
+            };
+
+            let chunks: Vec<&[&CollectionRow]> = visible.chunks(effective_cols).collect();
+            let last_chunk = chunks.len().saturating_sub(1);
+            for (chunk_idx, chunk) in chunks.iter().enumerate() {
+                if effective_cols == 1 {
+                    for r in chunk.iter() {
                         render_one(
-                            &mut cols[i],
+                            ui,
                             r,
                             self.layout,
                             self.show_test_mint,
                             self.show_seed_stubs,
                             self.show_activity,
                             self.show_refuel,
+                            self.show_archive,
                             &mut response,
                         );
                     }
-                });
+                } else {
+                    ui.columns(effective_cols, |cols| {
+                        for (i, r) in chunk.iter().enumerate() {
+                            render_one(
+                                &mut cols[i],
+                                r,
+                                self.layout,
+                                self.show_test_mint,
+                                self.show_seed_stubs,
+                                self.show_activity,
+                                self.show_refuel,
+                                self.show_archive,
+                                &mut response,
+                            );
+                        }
+                    });
+                }
+                if chunk_idx < last_chunk {
+                    ui.add_space(gap);
+                }
             }
-            if chunk_idx < last_chunk {
-                ui.add_space(gap);
+        }
+
+        // Reveal toggle — only when hiding is enabled and there's something to
+        // reveal. Flips the cosmetic flag in egui memory.
+        if self.hide_archived && archived_total > 0 {
+            ui.add_space(6.0);
+            let label = if show_archived {
+                format!("Hide {archived_total} archived")
+            } else {
+                format!("Show {archived_total} archived")
+            };
+            if ui
+                .add(egui::Button::new(RichText::new(label).small().color(META_GREY)).small())
+                .clicked()
+            {
+                ui.ctx()
+                    .data_mut(|d| d.insert_temp(toggle_id, !show_archived));
             }
         }
 
@@ -362,6 +435,7 @@ fn render_one(
     show_seed_stubs: bool,
     show_activity: bool,
     show_refuel: bool,
+    show_archive: bool,
     response: &mut CollectionListResponse,
 ) {
     match layout {
@@ -372,6 +446,7 @@ fn render_one(
             show_seed_stubs,
             show_activity,
             show_refuel,
+            show_archive,
             response,
         ),
         CollectionListLayout::List => render_list_row(
@@ -381,6 +456,7 @@ fn render_one(
             show_seed_stubs,
             show_activity,
             show_refuel,
+            show_archive,
             response,
         ),
     }
@@ -394,10 +470,13 @@ fn render_card(
     show_seed_stubs: bool,
     show_activity: bool,
     show_refuel: bool,
+    show_archive: bool,
     response: &mut CollectionListResponse,
 ) {
+    let archived = row.archived_at.is_some();
+    let fill = if archived { ROW_BG_ARCHIVED } else { ROW_BG };
     Frame::new()
-        .fill(ROW_BG)
+        .fill(fill)
         .stroke(Stroke::new(1.0, ROW_STROKE))
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::symmetric(14, 12))
@@ -406,7 +485,12 @@ fn render_card(
 
             // ── Title row: title + chips + (right) action buttons ──
             ui.horizontal(|ui| {
-                ui.label(RichText::new(&row.title).heading());
+                let title = RichText::new(&row.title).heading();
+                ui.label(if archived {
+                    title.color(META_GREY)
+                } else {
+                    title
+                });
 
                 // Status chip — filled tag using the status colour. The
                 // chip is the strongest secondary signal after the title,
@@ -414,8 +498,14 @@ fn render_card(
                 status_chip(ui, &row.status);
                 standard_chip(ui, &row.standard);
                 network_chip(ui, &row.network);
+                if archived {
+                    ui.colored_label(Color32::LIGHT_YELLOW, RichText::new("archived").small());
+                }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if show_archive {
+                        archive_button(ui, row, archived, response);
+                    }
                     if show_test_mint {
                         let label = if row.test_mint_open {
                             "− Test mint"
@@ -628,17 +718,28 @@ fn render_list_row(
     show_seed_stubs: bool,
     show_activity: bool,
     show_refuel: bool,
+    show_archive: bool,
     response: &mut CollectionListResponse,
 ) {
+    let archived = row.archived_at.is_some();
+    let fill = if archived { ROW_BG_ARCHIVED } else { ROW_BG };
     Frame::new()
-        .fill(ROW_BG)
+        .fill(fill)
         .stroke(Stroke::new(1.0, ROW_STROKE))
         .corner_radius(CornerRadius::same(4))
         .inner_margin(Margin::symmetric(10, 7))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(&row.title).strong());
+                let title = RichText::new(&row.title).strong();
+                ui.label(if archived {
+                    title.color(META_GREY)
+                } else {
+                    title
+                });
                 status_chip(ui, &row.status);
+                if archived {
+                    ui.colored_label(Color32::LIGHT_YELLOW, RichText::new("archived").small());
+                }
                 ui.label(
                     RichText::new(format!("{}/{}", row.minted_count, row.total_supply))
                         .monospace()
@@ -658,6 +759,9 @@ fn render_list_row(
                 );
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if show_archive {
+                        archive_button(ui, row, archived, response);
+                    }
                     if show_test_mint {
                         let label = if row.test_mint_open {
                             "− Test mint"
@@ -754,6 +858,42 @@ fn refuel_button(
         .clicked()
     {
         response.actions.push(CollectionListAction::Refuel {
+            policy_id: row.policy_id.clone(),
+        });
+    }
+}
+
+/// Archive ↔ Restore button, shared by both layouts. Emits
+/// [`CollectionListAction::Unarchive`] on an archived card, else
+/// [`CollectionListAction::Archive`]. Archiving halts the collection's
+/// engine DO + hides the card; restoring re-enables it.
+fn archive_button(
+    ui: &mut Ui,
+    row: &CollectionRow,
+    archived: bool,
+    response: &mut CollectionListResponse,
+) {
+    if archived {
+        if ui
+            .small_button(RichText::new("Restore").small())
+            .on_hover_text(
+                "Bring this collection back — the engine resumes processing on the next signal.",
+            )
+            .clicked()
+        {
+            response.actions.push(CollectionListAction::Unarchive {
+                policy_id: row.policy_id.clone(),
+            });
+        }
+    } else if ui
+        .small_button(RichText::new("Archive").small())
+        .on_hover_text(
+            "Retire this collection: halts its mint engine + hides it from the \
+             dashboard. Reversible.",
+        )
+        .clicked()
+    {
+        response.actions.push(CollectionListAction::Archive {
             policy_id: row.policy_id.clone(),
         });
     }

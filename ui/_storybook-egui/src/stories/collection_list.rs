@@ -54,6 +54,7 @@ fn row(
         wallet_address_full: None,
         pool: None,
         refuel_in_flight: false,
+        archived_at: None,
     }
 }
 
