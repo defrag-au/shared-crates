@@ -2,6 +2,19 @@
 
 Reusable egui widget library for defrag frontends.
 
+## 📖 Before building UI here, read [`WIDGETS.md`](./WIDGETS.md)
+
+The crate has 50+ widgets organised into Primitives / Cards & Rows /
+Lists & Tables / Charts / Inputs / Wallet / Section / Domain-specific.
+**Before hand-building anything that looks widget-shaped — a chip, an
+ID display, a label-value grid, a card, a chart — scan WIDGETS.md
+first.** Most things you'd want already exist as a composable widget
+with a Storybook story showing the variants.
+
+If you do extract a new widget, the maintenance section at the bottom
+of WIDGETS.md is the three-step checklist (lib.rs registration,
+storybook story, catalog entry).
+
 ## Icons & Special Characters
 
 **NEVER use raw Unicode symbols** (e.g. `●` `○` `✓` `✕` `→` `★`) — they will render as broken boxes in the browser. The default egui font and the Phosphor font do not include geometric/symbol Unicode blocks.

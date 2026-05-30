@@ -2,8 +2,10 @@ pub use egui_inbox;
 
 pub mod animated_counter;
 pub mod asset_card;
+pub mod button_group;
 pub mod buttons;
 pub mod card_browser;
+pub mod chip;
 pub mod collection_list;
 pub mod donut_chart;
 #[cfg(target_arch = "wasm32")]
@@ -12,6 +14,7 @@ pub mod flip_counter;
 pub mod fungibles_row;
 pub mod grouped_section;
 pub mod icons;
+pub mod id_pill;
 pub mod image_loader;
 pub mod listing_grid;
 pub mod marquee;
@@ -19,9 +22,11 @@ pub mod metric_card;
 pub mod mnemonic_display;
 pub mod offer_tile;
 pub mod persona_strip;
+pub mod phase_card;
 pub mod pip_row;
 pub mod printing_timeline;
 pub mod progress_bar;
+pub mod property_list;
 pub mod radar_chart;
 pub mod range_bar;
 pub mod screenshot;
@@ -82,10 +87,12 @@ pub mod utxo_shelf;
 pub mod wallet_asset_picker;
 
 pub use animated_counter::AnimatedCounter;
+pub use button_group::{ButtonGroup, ButtonGroupButton, ButtonGroupResponse};
 pub use buttons::UiButtonExt;
 pub use card_browser::{
     CardBrowserConfig, CardBrowserResponse, CardBrowserState, CardRenderContext,
 };
+pub use chip::{Chip, ChipResponse, ChipVariant};
 pub use collection_list::{
     CollectionList, CollectionListAction, CollectionListLayout, CollectionListResponse,
     CollectionRow,
@@ -98,6 +105,7 @@ pub use file_upload::{FileUploadButton, UploadedFile};
 pub use flip_counter::FlipCounter;
 pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
 pub use icons::{install_phosphor_font, PhosphorIcon};
+pub use id_pill::{IdPill, IdPillResponse};
 pub use image_loader::{iiif_asset_url, AssetImageSize};
 #[cfg(feature = "image-editor")]
 pub use image_text_editor::{
@@ -107,10 +115,12 @@ pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
 pub use persona_strip::{PersonaStrip, PersonaStripConfig};
+pub use phase_card::{GateChip, PhaseCard, PhaseCardAction, PhaseCardResponse, PhaseCardRow};
 pub use pip_row::{
     HoverInfo, HoveredBin, HoveredPip, Pip, PipRowConfig, PipRowData, PipRowResponse,
 };
 pub use progress_bar::ProgressBar;
+pub use property_list::{PropertyLabelAlign, PropertyList};
 pub use radar_chart::{RadarChartConfig, RadarPoint};
 pub use range_bar::{RangeBarConfig, RangePoint};
 pub use screenshot::ScreenshotButton;
