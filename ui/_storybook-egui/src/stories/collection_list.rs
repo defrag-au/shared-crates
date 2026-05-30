@@ -55,6 +55,8 @@ fn row(
         pool: None,
         refuel_in_flight: false,
         archived_at: None,
+        deposit_address: None,
+        deposit_address_short: None,
     }
 }
 

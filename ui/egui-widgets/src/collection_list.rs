@@ -138,6 +138,15 @@ pub struct CollectionRow {
     /// [`CollectionList::with_hide_archived`] is set they're hidden
     /// behind a "show archived" toggle.
     pub archived_at: Option<i64>,
+    /// The collection's bech32 deposit (payment-receiving) address — buyers
+    /// send ADA here; the host's payment monitor turns each inbound tx into a
+    /// `crypto` mint order. Full value goes to the clipboard on copy.
+    /// `None` hides the row (legacy collections allocated before the deposit
+    /// derivation was wired).
+    pub deposit_address: Option<String>,
+    /// Pre-truncated `deposit_address` for inline display (caller picks the
+    /// prefix/suffix widths). `None` hides the row.
+    pub deposit_address_short: Option<String>,
 }
 
 /// Actions emitted while the widget was on screen this frame. Parent
@@ -707,6 +716,27 @@ fn render_card(
                     ui.ctx().copy_text(row.policy_id.clone());
                 }
             });
+
+            // ── Deposit address (where buyers send ADA) — only when
+            //    allocated (legacy rows hide it cleanly). Same shape as
+            //    the policy_id footer: prefix "deposit · " so it's
+            //    self-labelling at a glance, then the short bech32 + copy.
+            if let (Some(short), Some(full)) = (&row.deposit_address_short, &row.deposit_address) {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("deposit · ").small().color(META_GREY));
+                    ui.label(RichText::new(short).monospace().small().color(KEYHASH_GREY));
+                    if ui
+                        .small_button(RichText::new("📋").small())
+                        .on_hover_text(
+                            "Copy this collection's deposit address — \
+                             buyers send ADA here to mint",
+                        )
+                        .clicked()
+                    {
+                        ui.ctx().copy_text(full.clone());
+                    }
+                });
+            }
         });
 }
 
