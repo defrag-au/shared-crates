@@ -1140,6 +1140,121 @@ mod tests {
         );
     }
 
+    /// Golden: inline refund outputs land between the recipient mints
+    /// and the change, each carrying the exact requested lovelace to the
+    /// payer's address. Proves the on-chain shape `MINT_REFUNDS.md` Mode
+    /// A/C produce: `[mint…, refund…, change]`.
+    #[test]
+    fn test_refunds_place_outputs_before_change() {
+        let mints = vec![
+            MintRecipientEntry {
+                asset_name: "Foo001".to_string(),
+                quantity: 1,
+                recipient: test_recipient(1),
+            },
+            MintRecipientEntry {
+                asset_name: "Foo002".to_string(),
+                quantity: 1,
+                recipient: test_recipient(2),
+            },
+        ];
+        let refund_addr = test_recipient(9);
+        let refund_amount = 5_000_000u64;
+        let (unsigned, change) = build_cip25_mint_multi_with_change_and_refunds(
+            &deps_with(50_000_000),
+            &test_policy(),
+            &mints,
+            None,
+            None,
+            None,
+            std::slice::from_ref(&(refund_addr.clone(), refund_amount)),
+        )
+        .expect("build with refund failed");
+
+        // 2 mints + 1 refund → change at index 3.
+        let change = change.expect("expected a change output");
+        assert_eq!(change.output_index, 3, "change follows 2 mints + 1 refund");
+        assert!(change.lovelace > 0);
+
+        let outputs = unsigned.staging.outputs.as_ref().expect("outputs present");
+        assert_eq!(outputs.len(), 4, "2 mints + 1 refund + 1 change");
+
+        // The refund output sits at index 2 (after the 2 recipient mints),
+        // pays exactly the requested lovelace, and is addressed to the payer.
+        let refund_out = &outputs[2];
+        assert_eq!(
+            refund_out.lovelace, refund_amount,
+            "refund pays the owed amount"
+        );
+        assert_eq!(
+            refund_out.address.to_bech32().unwrap(),
+            refund_addr.to_bech32().unwrap(),
+            "refund output addressed to the payer"
+        );
+        assert!(refund_out.assets.is_none(), "refund is a pure-ADA output");
+    }
+
+    /// Golden: multiple refunds (e.g. several short-filled orders in one
+    /// bin) each get their own output, all before the change. Change
+    /// index = mints + refunds.
+    #[test]
+    fn test_multiple_refund_outputs_each_emitted() {
+        let mints = vec![MintRecipientEntry {
+            asset_name: "Foo001".to_string(),
+            quantity: 1,
+            recipient: test_recipient(1),
+        }];
+        let refunds = [
+            (test_recipient(8), 4_000_000u64),
+            (test_recipient(9), 6_000_000u64),
+        ];
+        let (unsigned, change) = build_cip25_mint_multi_with_change_and_refunds(
+            &deps_with(50_000_000),
+            &test_policy(),
+            &mints,
+            None,
+            None,
+            None,
+            &refunds,
+        )
+        .expect("build with refunds failed");
+
+        let change = change.expect("expected a change output");
+        assert_eq!(change.output_index, 3, "change follows 1 mint + 2 refunds");
+        let outputs = unsigned.staging.outputs.as_ref().expect("outputs present");
+        assert_eq!(outputs.len(), 4, "1 mint + 2 refunds + 1 change");
+        assert_eq!(outputs[1].lovelace, 4_000_000);
+        assert_eq!(outputs[2].lovelace, 6_000_000);
+    }
+
+    /// Golden: a sub-min-UTxO refund output is rejected at build time
+    /// (defence-in-depth — `classify_refund` already forfeits these, but
+    /// the builder must never emit an output the ledger would reject
+    /// after the fee is paid).
+    #[test]
+    fn test_refunds_reject_sub_min_utxo() {
+        let mints = vec![MintRecipientEntry {
+            asset_name: "Foo001".to_string(),
+            quantity: 1,
+            recipient: test_recipient(1),
+        }];
+        // 0.5 ADA is below the pure-ADA min UTxO under test params.
+        let refunds = [(test_recipient(9), 500_000u64)];
+        let result = build_cip25_mint_multi_with_change_and_refunds(
+            &deps_with(50_000_000),
+            &test_policy(),
+            &mints,
+            None,
+            None,
+            None,
+            &refunds,
+        );
+        assert!(
+            matches!(result, Err(TxBuildError::BuildFailed(_))),
+            "sub-min-UTxO refund must be rejected"
+        );
+    }
+
     #[test]
     fn test_build_cip25_mint_multi_explicit_inputs() {
         // deps carries no UTxOs — the explicit pool UTxO must be used instead.
