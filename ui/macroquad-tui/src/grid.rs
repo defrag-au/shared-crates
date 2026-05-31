@@ -22,15 +22,69 @@ use std::collections::VecDeque;
 
 use macroquad::prelude::*;
 
+/// One character cell — foreground colour, optional background, and
+/// per-cell attributes (bold / dim / blink / inverse). Background
+/// defaults to fully transparent so existing terminal-style renderers
+/// that ignore `bg` continue to work unchanged.
 #[derive(Clone, Copy)]
 pub struct Cell {
     pub ch: char,
     pub fg: Color,
+    pub bg: Color,
+    pub attrs: CellAttrs,
 }
 
 impl Cell {
+    /// A blank cell with the given foreground, transparent background,
+    /// no attributes. The cell still gets a foreground colour so a
+    /// terminal-style renderer that draws over the blank ` ` (e.g.
+    /// inverse-video cursor) has something sensible to invert against.
     pub const fn blank(fg: Color) -> Self {
-        Self { ch: ' ', fg }
+        Self {
+            ch: ' ',
+            fg,
+            bg: TRANSPARENT,
+            attrs: CellAttrs::PLAIN,
+        }
+    }
+
+    /// `bg` set; otherwise like [`blank`].
+    pub const fn blank_with_bg(fg: Color, bg: Color) -> Self {
+        Self {
+            ch: ' ',
+            fg,
+            bg,
+            attrs: CellAttrs::PLAIN,
+        }
+    }
+}
+
+const TRANSPARENT: Color = Color::new(0.0, 0.0, 0.0, 0.0);
+
+/// Per-cell attribute bitset. `PLAIN` is no attributes; the others can
+/// be combined with `|`. Interpretation is up to the renderer: an
+/// EGA-faithful renderer might draw `BLINK` as actual blinking; a
+/// quieter renderer might just draw `BLINK` as `BOLD`. `INVERSE`
+/// conventionally swaps `fg` and `bg`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CellAttrs(pub u8);
+
+impl CellAttrs {
+    pub const PLAIN: Self = Self(0);
+    pub const BOLD: Self = Self(1 << 0);
+    pub const DIM: Self = Self(1 << 1);
+    pub const BLINK: Self = Self(1 << 2);
+    pub const INVERSE: Self = Self(1 << 3);
+
+    pub const fn contains(self, flag: Self) -> bool {
+        (self.0 & flag.0) != 0
+    }
+}
+
+impl std::ops::BitOr for CellAttrs {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
     }
 }
 
@@ -169,7 +223,12 @@ impl Grid {
         if self.cursor_col < cols {
             let fg = self.default_fg;
             let col = self.cursor_col;
-            self.lines.back_mut().unwrap()[col] = Cell { ch, fg };
+            self.lines.back_mut().unwrap()[col] = Cell {
+                ch,
+                fg,
+                bg: TRANSPARENT,
+                attrs: CellAttrs::PLAIN,
+            };
         }
         self.cursor_col += 1;
         if self.cursor_col >= cols {

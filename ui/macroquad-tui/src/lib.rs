@@ -1,26 +1,37 @@
-//! macroquad-tui — text-grid primitives for building terminal-style UIs on
-//! top of macroquad.
+//! macroquad-tui — text-grid primitives for building terminal-style
+//! and arcade-style UIs on top of macroquad.
 //!
-//! Born from `uap-terminal`. Kept as a workspace-local crate so the API
-//! can evolve alongside its first real consumer; when a second one
-//! arrives (or this stabilises) it can be lifted to a shared location
-//! without restructuring callers.
+//! Born from `uap-terminal`. Designed for general reuse across any
+//! macroquad app that wants a character-grid frontend; the scene
+//! abstraction makes it easy to launch arcade-style games on top of
+//! a terminal session.
 //!
 //! Layers:
 //!
-//! - [`Grid`] — fixed character buffer with cursor + scroll
+//! - [`Grid`] — character buffer with cursor + scrollback viewport
+//! - [`Cell`] — per-cell `(ch, fg, bg, attrs)`; attributes cover bold /
+//!   dim / blink / inverse
+//! - [`palette`] — canonical 16-colour EGA palette for game-style
+//!   rendering
 //! - [`LineEditor`] — single-line editor with history, tab completion
 //! - [`TypeQueue`] — typewriter print at configurable rate with
 //!   mid-stream speed changes
-//! - [`KeyRepeat`] — initial-delay + repeat-rate for held keys (macroquad
-//!   doesn't expose key-repeat natively, so consumers wire this in)
+//! - [`KeyRepeat`] — initial-delay + repeat-rate for held keys
+//!   (macroquad doesn't expose key-repeat natively, so consumers wire
+//!   this in)
+//! - [`scene`] — stackable [`Scene`] trait + [`SceneStack`] for
+//!   launching games / overlays on top of a base scene; fixed-step
+//!   logic via [`FixedStep`]
 
 pub mod editor;
 pub mod grid;
+pub mod palette;
 pub mod repeat;
+pub mod scene;
 pub mod typer;
 
 pub use editor::{CompletionSource, LineEditor};
-pub use grid::{Cell, Grid};
+pub use grid::{Cell, CellAttrs, Grid};
 pub use repeat::KeyRepeat;
+pub use scene::{FixedStep, Scene, SceneCtx, SceneInput, SceneOutcome, SceneStack};
 pub use typer::TypeQueue;
