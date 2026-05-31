@@ -22,15 +22,69 @@ use std::collections::VecDeque;
 
 use macroquad::prelude::*;
 
-#[derive(Clone, Copy)]
+/// One character cell — foreground colour, optional background, and
+/// per-cell attributes (bold / dim / blink / inverse). Background
+/// defaults to fully transparent so existing terminal-style renderers
+/// that ignore `bg` continue to work unchanged.
+#[derive(Clone, Copy, Debug)]
 pub struct Cell {
     pub ch: char,
     pub fg: Color,
+    pub bg: Color,
+    pub attrs: CellAttrs,
 }
 
 impl Cell {
+    /// A blank cell with the given foreground, transparent background,
+    /// no attributes. The cell still gets a foreground colour so a
+    /// terminal-style renderer that draws over the blank ` ` (e.g.
+    /// inverse-video cursor) has something sensible to invert against.
     pub const fn blank(fg: Color) -> Self {
-        Self { ch: ' ', fg }
+        Self {
+            ch: ' ',
+            fg,
+            bg: TRANSPARENT,
+            attrs: CellAttrs::PLAIN,
+        }
+    }
+
+    /// `bg` set; otherwise like [`blank`].
+    pub const fn blank_with_bg(fg: Color, bg: Color) -> Self {
+        Self {
+            ch: ' ',
+            fg,
+            bg,
+            attrs: CellAttrs::PLAIN,
+        }
+    }
+}
+
+const TRANSPARENT: Color = Color::new(0.0, 0.0, 0.0, 0.0);
+
+/// Per-cell attribute bitset. `PLAIN` is no attributes; the others can
+/// be combined with `|`. Interpretation is up to the renderer: an
+/// EGA-faithful renderer might draw `BLINK` as actual blinking; a
+/// quieter renderer might just draw `BLINK` as `BOLD`. `INVERSE`
+/// conventionally swaps `fg` and `bg`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CellAttrs(pub u8);
+
+impl CellAttrs {
+    pub const PLAIN: Self = Self(0);
+    pub const BOLD: Self = Self(1 << 0);
+    pub const DIM: Self = Self(1 << 1);
+    pub const BLINK: Self = Self(1 << 2);
+    pub const INVERSE: Self = Self(1 << 3);
+
+    pub const fn contains(self, flag: Self) -> bool {
+        (self.0 & flag.0) != 0
+    }
+}
+
+impl std::ops::BitOr for CellAttrs {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
     }
 }
 
@@ -169,7 +223,12 @@ impl Grid {
         if self.cursor_col < cols {
             let fg = self.default_fg;
             let col = self.cursor_col;
-            self.lines.back_mut().unwrap()[col] = Cell { ch, fg };
+            self.lines.back_mut().unwrap()[col] = Cell {
+                ch,
+                fg,
+                bg: TRANSPARENT,
+                attrs: CellAttrs::PLAIN,
+            };
         }
         self.cursor_col += 1;
         if self.cursor_col >= cols {
@@ -184,6 +243,25 @@ impl Grid {
         }
     }
 
+    /// Write a pre-styled [`Cell`] at the cursor and advance — same
+    /// flow as [`Self::write_char`], but the cell keeps its own
+    /// `fg`/`bg`/`attrs` instead of taking the grid's default fg.
+    /// Used by the typer's coloured-cell op so the typewriter can
+    /// emit fully styled rows (e.g. half-block sketch art) inline
+    /// with the surrounding ASCII output.
+    pub fn write_cell(&mut self, cell: Cell) {
+        let cols = self.cols;
+        if self.cursor_col < cols {
+            let col = self.cursor_col;
+            self.lines.back_mut().unwrap()[col] = cell;
+        }
+        self.cursor_col += 1;
+        if self.cursor_col >= cols {
+            self.newline();
+        }
+        self.viewport_offset = 0;
+    }
+
     /// Move the cursor onto a fresh row. The previous row stays in
     /// the buffer (potentially exiting the visible viewport).
     pub fn newline(&mut self) {
@@ -195,6 +273,33 @@ impl Grid {
             self.lines.pop_front();
         }
         self.viewport_offset = 0;
+    }
+
+    /// Write a cell at an absolute viewport position, bypassing the
+    /// cursor. Used by screen-buffer games (Snake, Tetris) that repaint
+    /// the whole grid each frame.
+    ///
+    /// The buffer is padded with blank lines up to `self.rows` if it
+    /// hasn't filled yet, so callers can write to any row/col without
+    /// caring about initial state. Out-of-bounds writes are silently
+    /// dropped (cheaper than panicking; game logic shouldn't be
+    /// writing out of bounds anyway).
+    ///
+    /// Position is always relative to the bottom-aligned viewport
+    /// (offset 0). Games typically `scroll_to_bottom()` before drawing.
+    pub fn put_at(&mut self, row: usize, col: usize, cell: Cell) {
+        if row >= self.rows || col >= self.cols {
+            return;
+        }
+        while self.lines.len() < self.rows {
+            self.lines
+                .push_back(vec![Cell::blank(self.default_fg); self.cols]);
+        }
+        let total = self.lines.len();
+        let buffer_row = total.saturating_sub(self.rows) + row;
+        if buffer_row < total {
+            self.lines[buffer_row][col] = cell;
+        }
     }
 
     /// Iterate visible cells as `(visual_row, col, &Cell)`. `visual_row`
@@ -369,6 +474,53 @@ mod tests {
         let r = collect_chars(&g);
         // After clear the only line is an empty one.
         assert!(r.iter().all(|line| line.is_empty()));
+    }
+
+    #[test]
+    fn put_at_writes_to_visible_position() {
+        let mut g = fresh(10, 5);
+        g.put_at(2, 3, Cell { ch: '@', fg: PHOSPHOR, bg: super::TRANSPARENT, attrs: CellAttrs::PLAIN });
+        let rows = collect_chars(&g);
+        // Buffer was 1 line; put_at padded to 5; visible row 2 is buffer row 2.
+        assert_eq!(rows.len(), 5);
+        assert_eq!(rows[2], "   @");
+    }
+
+    #[test]
+    fn put_at_pads_buffer_to_rows() {
+        let mut g = fresh(10, 5);
+        // Before: 1 line. put_at(4, 0) should pad to 5 lines.
+        g.put_at(4, 0, Cell { ch: 'x', fg: PHOSPHOR, bg: super::TRANSPARENT, attrs: CellAttrs::PLAIN });
+        assert_eq!(g.lines.len(), 5);
+        let rows = collect_chars(&g);
+        assert_eq!(rows[4], "x");
+    }
+
+    #[test]
+    fn put_at_drops_out_of_bounds() {
+        let mut g = fresh(10, 5);
+        g.put_at(99, 0, Cell::blank(PHOSPHOR));
+        g.put_at(0, 99, Cell::blank(PHOSPHOR));
+        // No panic; buffer stays at one initial line (since put_at
+        // returned before padding).
+        assert_eq!(g.lines.len(), 1);
+    }
+
+    #[test]
+    fn put_at_after_scroll_writes_to_current_bottom_aligned_position() {
+        // Write 10 rows then scroll up; put_at still targets the
+        // *bottom-aligned* viewport, not the scrolled-into-view rows.
+        let mut g = fresh(10, 5);
+        for i in 0..10 {
+            g.write_str(&format!("L{i}"));
+            g.newline();
+        }
+        g.scroll_up(2);
+        g.put_at(4, 0, Cell { ch: '!', fg: PHOSPHOR, bg: super::TRANSPARENT, attrs: CellAttrs::PLAIN });
+        g.scroll_to_bottom();
+        let rows = collect_chars(&g);
+        // Bottom-aligned viewport: row 4 is the latest line (post-newline blank).
+        assert_eq!(rows[4], "!");
     }
 
     #[test]

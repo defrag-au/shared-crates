@@ -12,3 +12,9 @@ path = "src/lib.rs"
 
 [dependencies]
 macroquad = "0.4"
+
+# `sprite_atlas` parses an index JSON describing per-key shard / col /
+# row coords. Tiny use of serde; same versions the rest of the
+# workspace pulls in.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

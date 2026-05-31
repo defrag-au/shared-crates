@@ -10,11 +10,14 @@
 
 use std::collections::VecDeque;
 
-use crate::grid::Grid;
+use crate::grid::{Cell, Grid};
 
 #[derive(Clone, Copy)]
 enum Op {
     Char(char),
+    /// Pre-styled cell — paints at the cursor with its own fg/bg/attrs.
+    /// Counts as one "character" of typewriter progress.
+    Cell(Cell),
     SetSpeed(f32),
 }
 
@@ -45,6 +48,22 @@ impl TypeQueue {
 
     pub fn enqueue_line(&mut self, s: &str) {
         self.enqueue(s);
+        self.pending.push_back(Op::Char('\n'));
+    }
+
+    /// Enqueue a pre-styled [`Cell`]. Use this to emit coloured output
+    /// (half-block sprites, palette-mapped sketches) where the source
+    /// already knows the exact fg/bg/attrs — `enqueue` would force the
+    /// default fg.
+    pub fn enqueue_cell(&mut self, cell: Cell) {
+        self.pending.push_back(Op::Cell(cell));
+    }
+
+    /// Enqueue a row of pre-styled cells followed by a newline.
+    pub fn enqueue_cell_line(&mut self, cells: &[Cell]) {
+        for &c in cells {
+            self.pending.push_back(Op::Cell(c));
+        }
         self.pending.push_back(Op::Char('\n'));
     }
 
@@ -79,6 +98,11 @@ impl TypeQueue {
                     written += 1;
                     self.accumulator -= 1.0;
                 }
+                Op::Cell(c) => {
+                    grid.write_cell(c);
+                    written += 1;
+                    self.accumulator -= 1.0;
+                }
                 Op::SetSpeed(rate) => {
                     self.chars_per_second = rate;
                     // Re-accumulate against the new rate so we don't lose
@@ -110,6 +134,7 @@ impl TypeQueue {
         while let Some(op) = self.pending.pop_front() {
             match op {
                 Op::Char(ch) => grid.write_char(ch),
+                Op::Cell(c) => grid.write_cell(c),
                 Op::SetSpeed(rate) => self.chars_per_second = rate,
             }
         }

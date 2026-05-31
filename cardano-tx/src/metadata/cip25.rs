@@ -195,6 +195,43 @@ mod tests {
         assert!(matches!(err, MetadataError::MissingCip25Key));
     }
 
+    /// Golden: a `"674"` key alongside `"721"` emits the CIP-674 `msg`
+    /// label into the same auxiliary data — the inline-refund tag from
+    /// `MINT_REFUNDS.md`. Decode-free check: short text metadata encodes
+    /// the literal UTF-8 bytes, so the `refund:<id>` tags appear verbatim
+    /// in the CBOR when present and are absent otherwise.
+    #[test]
+    fn test_cip674_refund_msg_label_emitted_with_721() {
+        let with_674 = serde_json::json!({
+            "721": { "abc123": { "MyNFT": { "name": "My NFT" } } },
+            "674": { "msg": ["refund:ord1", "refund:ord2"] }
+        });
+        let without_674 = serde_json::json!({
+            "721": { "abc123": { "MyNFT": { "name": "My NFT" } } }
+        });
+
+        let bytes_with = build_cip25_auxiliary_data(&with_674).unwrap();
+        let bytes_without = build_cip25_auxiliary_data(&without_674).unwrap();
+
+        // The 674 label adds content beyond the 721 blob...
+        assert!(
+            bytes_with.len() > bytes_without.len(),
+            "674 label should enlarge the auxiliary data"
+        );
+        // ...and both refund tags are present verbatim in the CBOR.
+        let has = |hay: &[u8], needle: &[u8]| hay.windows(needle.len()).any(|w| w == needle);
+        assert!(has(&bytes_with, b"refund:ord1"), "first refund tag missing");
+        assert!(
+            has(&bytes_with, b"refund:ord2"),
+            "second refund tag missing"
+        );
+        // Absent when no 674 key is supplied.
+        assert!(
+            !has(&bytes_without, b"refund:ord1"),
+            "no 674 key → no refund tag in metadata"
+        );
+    }
+
     #[test]
     fn test_json_to_metadatum_string() {
         let val = serde_json::Value::String("hello".to_string());
