@@ -34,6 +34,7 @@ pub mod seven_segment;
 pub mod sparkline;
 pub mod swap_modal;
 pub mod theme;
+pub mod toast;
 pub mod trait_filter;
 pub mod utils;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
@@ -105,7 +106,7 @@ pub use file_upload::{FileUploadButton, UploadedFile};
 pub use flip_counter::FlipCounter;
 pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
 pub use icons::{install_phosphor_font, PhosphorIcon};
-pub use id_pill::{IdPill, IdPillResponse};
+pub use id_pill::{stacked_width_for as id_pill_stacked_width_for, IdPill, IdPillLayout, IdPillResponse};
 pub use image_loader::{iiif_asset_url, AssetImageSize};
 #[cfg(feature = "image-editor")]
 pub use image_text_editor::{
@@ -131,6 +132,7 @@ pub use swap_modal::{
     SwapProgress,
 };
 pub use theme::{rarity_rank_color, FontStrategy};
+pub use toast::{show_toasts, Toast, ToastKind, ToastQueue, DEFAULT_DURATION_FRAMES};
 pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
 pub use utils::{
     format_ada, format_duration, format_lovelace, format_number, format_percent, section_heading,

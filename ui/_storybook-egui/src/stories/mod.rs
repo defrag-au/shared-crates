@@ -64,6 +64,7 @@ pub mod button_group;
 pub mod chip;
 pub mod id_pill;
 pub mod property_list;
+pub mod toast;
 
 // Layout
 pub mod grouped_section;

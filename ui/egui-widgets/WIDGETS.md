@@ -46,6 +46,11 @@ domain assumptions. Stack these into larger displays.
   icons + tooltips + disabled state, `horizontal_wrapped` by default.
   Returns the clicked button's caller-supplied `id`. **Any time you'd
   otherwise stack 3+ small_button calls into an inline action bar.**
+- **`toast`** → `ToastQueue` + `show_toasts` — Transient overlay
+  messages with frame-countdown auto-dismiss; Success / Error / Warning
+  / Info kinds, host-owned queue, bottom-right stack. **Acknowledging
+  an action without committing to a status bar — "Copied to clipboard",
+  "Save failed", "Refuel submitted".**
 
 ## Cards & rows
 

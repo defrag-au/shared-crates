@@ -83,6 +83,7 @@ mod app {
         IdPill,
         PhaseCard,
         ButtonGroup,
+        Toast,
     }
 
     impl Story {
@@ -99,6 +100,7 @@ mod app {
                 Self::IdPill,
                 Self::PropertyList,
                 Self::ButtonGroup,
+                Self::Toast,
                 Self::ProgressBar,
                 Self::Sparkline,
                 Self::MetricCard,
@@ -218,6 +220,7 @@ mod app {
                 Self::IdPill => "ID Pill",
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
+                Self::Toast => "Toast",
             }
         }
 
@@ -230,7 +233,8 @@ mod app {
                 | Self::Chip
                 | Self::IdPill
                 | Self::PropertyList
-                | Self::ButtonGroup => "Primitives",
+                | Self::ButtonGroup
+                | Self::Toast => "Primitives",
                 Self::ProgressBar
                 | Self::Sparkline
                 | Self::MetricCard
@@ -431,6 +435,9 @@ mod app {
                 Self::ButtonGroup => {
                     "Row of related action buttons — text + optional Phosphor icons + tooltips + disabled state, with horizontal_wrapped layout"
                 }
+                Self::Toast => {
+                    "Transient overlay messages with frame-countdown auto-dismiss — Success/Error/Warning/Info, host-owned ToastQueue, bottom-right stack"
+                }
             }
         }
     }
@@ -513,6 +520,7 @@ mod app {
         collection_list_state: stories::collection_list::CollectionListState,
         // Primitives
         button_group_state: stories::button_group::ButtonGroupState,
+        toast_state: stories::toast::ToastState,
     }
 
     impl StorybookApp {
@@ -594,6 +602,7 @@ mod app {
                 wallet_list_state: stories::wallet_list::WalletListState::default(),
                 collection_list_state: stories::collection_list::CollectionListState::default(),
                 button_group_state: stories::button_group::ButtonGroupState::default(),
+                toast_state: stories::toast::ToastState::default(),
             }
         }
 
@@ -812,6 +821,7 @@ mod app {
                             Story::ButtonGroup => {
                                 stories::button_group::show(ui, &mut self.button_group_state)
                             }
+                            Story::Toast => stories::toast::show(ui, &mut self.toast_state),
                         }
                     });
                 });
