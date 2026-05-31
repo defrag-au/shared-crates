@@ -70,6 +70,18 @@ pub fn build_cip25_auxiliary_data(
     let mut metadata = Metadata::new();
     metadata.insert(721, cip25_metadata);
 
+    // CIP-674 ("msg" label) — additive: if the input JSON carries a
+    // `"674"` key alongside the `"721"` CIP-25 blob, emit it verbatim
+    // at metadata label 674. Used by the minting-engine to tag
+    // inline refund outputs with `refund:<order_id>` for explorer
+    // visibility + worker idempotency. See `MINT_REFUNDS.md` →
+    // "Refund-output metadata tag". No impact on callers that don't
+    // populate the `"674"` key.
+    if let Some(cip674) = metadata_json.get("674") {
+        let cip674_metadatum = json_to_metadatum(cip674)?;
+        metadata.insert(674, cip674_metadatum);
+    }
+
     // Use Alonzo PostAlonzo format with Tag 259 (matches working mainnet transactions)
     let auxiliary_data = AuxiliaryData::PostAlonzo(PostAlonzoAuxiliaryData {
         metadata: Some(metadata),
