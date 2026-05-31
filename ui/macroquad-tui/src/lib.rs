@@ -25,6 +25,7 @@
 
 pub mod editor;
 pub mod grid;
+pub mod half_block;
 pub mod palette;
 pub mod render;
 pub mod repeat;
@@ -33,6 +34,7 @@ pub mod typer;
 
 pub use editor::{CompletionSource, LineEditor};
 pub use grid::{Cell, CellAttrs, Grid};
+pub use half_block::{encode_pair, HalfBlockCanvas};
 pub use render::{paint_cell, paint_grid, GridMetrics};
 pub use repeat::KeyRepeat;
 pub use scene::{FixedStep, Scene, SceneCtx, SceneInput, SceneOutcome, SceneStack};
