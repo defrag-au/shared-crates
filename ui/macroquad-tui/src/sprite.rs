@@ -148,9 +148,9 @@ impl CellSprite {
 }
 
 /// A named collection of sprites. Game scenes typically build one
-/// of these once at construction (e.g. all enemy types + the player
-/// + bullets + UI icons) and then look up by name in the per-frame
-/// render loop.
+/// of these once at construction — every enemy type, the player,
+/// bullets, UI icons — then look up by name in the per-frame render
+/// loop.
 ///
 /// The sheet itself is just a `HashMap<String, CellSprite>`; the
 /// purpose of the type is documentation + a single import path
