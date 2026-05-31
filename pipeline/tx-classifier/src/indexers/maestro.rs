@@ -3,134 +3,30 @@ pub use maestro::MaestroApi;
 use tracing::{debug, warn};
 use transactions::{MintOperation, RawTxData, TxDatum, TxInput, TxOutput};
 
-/// Fetch transaction from Maestro
+/// Fetch a transaction from Maestro and translate to [`RawTxData`].
+///
+/// Backed by `get_complete_transaction`, which returns the full tx
+/// (inputs, outputs, mints, metadata) in one call. The legacy
+/// fallback that tried `get_transaction` + `get_transaction_utxos`
+/// was removed — Maestro retired the `/utxos` sub-endpoint (now
+/// 404), and the basic `/transactions/{hash}` shape dropped several
+/// fields the fallback referenced (`metadata`, `timestamp`, `size`,
+/// `scripts`). The minimal `TransactionDetails` shape that remains
+/// is now used only for thin metadata fetches that don't need
+/// inputs/outputs.
 pub async fn get_tx_from_maestro(
     maestro: &MaestroApi,
     tx_hash: &str,
 ) -> Result<RawTxData, TxClassifierError> {
     debug!("Fetching from Maestro: {}", tx_hash);
-
-    // Use the complete transaction endpoint if available (transactions feature)
-    #[cfg(feature = "indexers")]
-    {
-        match maestro.get_complete_transaction(tx_hash).await {
-            Ok(complete_tx) => {
-                debug!(
-                    "✅ Successfully fetched complete transaction data for {}",
-                    tx_hash
-                );
-                let mut raw_tx = convert_complete_transaction_to_raw_data(&complete_tx)?;
-                enrich_missing_datum_content(maestro, &mut raw_tx).await;
-                return Ok(raw_tx);
-            }
-            Err(e) => {
-                warn!("⚠️ Complete transaction endpoint failed for {}: {:?}, falling back to basic endpoints", tx_hash, e);
-            }
-        }
-    }
-
-    // Fallback to basic transaction details and UTXOs
-    let tx_details = maestro.get_transaction(tx_hash).await?;
-
-    // Try to fetch UTXOs, but don't fail if not available
-    let tx_utxos = match maestro.get_transaction_utxos(tx_hash).await {
-        Ok(utxos) => {
-            debug!("✅ Successfully fetched UTXOs for transaction {}", tx_hash);
-            utxos
-        }
-        Err(e) => {
-            warn!(
-                "⚠️ UTXOs endpoint failed for {}: {:?}, using transaction details only",
-                tx_hash, e
-            );
-            // Create minimal UTXO structure from transaction details if possible
-            return Ok(RawTxData {
-                tx_hash: tx_details.tx_hash,
-                inputs: vec![],  // No input data available without UTXOs endpoint
-                outputs: vec![], // No output data available without UTXOs endpoint
-                collateral_inputs: vec![], // No collateral data available without complete endpoint
-                collateral_outputs: vec![], // No collateral data available without complete endpoint
-                reference_inputs: vec![], // No reference input data available without complete endpoint
-                mint: vec![],             // No mint data available without complete endpoint
-                metadata: tx_details.metadata,
-                fee: Some(tx_details.fee),
-                block_height: Some(tx_details.block_height),
-                timestamp: Some(tx_details.timestamp.timestamp() as u64),
-                size: Some(tx_details.size),
-                scripts: tx_details.scripts,
-                redeemers: None,
-            });
-        }
-    };
-
-    // Convert Maestro data to our RawTxData format
-    let inputs = tx_utxos
-        .inputs
-        .into_iter()
-        .map(|input| {
-            let mut assets = std::collections::HashMap::new();
-            for asset in &input.assets {
-                assets.insert(asset.unit.clone(), asset.amount);
-            }
-
-            TxInput {
-                address: input.address.clone(),
-                tx_hash: input.tx_hash.clone(),
-                output_index: input.output_index,
-                amount_lovelace: input.amount,
-                assets,
-                datum: None, // Basic UTXOs endpoint doesn't provide datum data for inputs
-            }
-        })
-        .collect();
-
-    let outputs = tx_utxos
-        .outputs
-        .into_iter()
-        .map(|output| {
-            let mut assets = std::collections::HashMap::new();
-            for asset in &output.assets {
-                assets.insert(asset.unit.clone(), asset.amount);
-            }
-
-            TxOutput {
-                address: output.address.clone(),
-                amount_lovelace: output.amount,
-                assets,
-                datum: if output.datum_hash.is_some() || output.inline_datum.is_some() {
-                    Some(match (&output.datum_hash, &output.inline_datum) {
-                        (Some(hash), None) => TxDatum::Hash { hash: hash.clone() },
-                        (hash_opt, Some(json)) => TxDatum::Json {
-                            hash: hash_opt.clone().unwrap_or_default(),
-                            json: json.clone(),
-                            bytes: None, // Basic UTXOs endpoint doesn't provide bytes
-                        },
-                        _ => unreachable!(), // We check above that at least one is Some
-                    })
-                } else {
-                    None
-                },
-                script_ref: output.script_ref,
-            }
-        })
-        .collect();
-
-    Ok(RawTxData {
-        tx_hash: tx_details.tx_hash,
-        inputs,
-        outputs,
-        collateral_inputs: vec![], // Basic UTXOs endpoint doesn't provide collateral data
-        collateral_outputs: vec![], // Basic UTXOs endpoint doesn't provide collateral data
-        reference_inputs: vec![],  // Basic UTXOs endpoint doesn't provide reference input data
-        mint: vec![],              // Basic UTXOs endpoint doesn't provide mint data
-        metadata: tx_details.metadata,
-        fee: Some(tx_details.fee),
-        block_height: Some(tx_details.block_height),
-        timestamp: Some(tx_details.timestamp.timestamp() as u64),
-        size: Some(tx_details.size),
-        scripts: tx_details.scripts,
-        redeemers: None,
-    })
+    let complete_tx = maestro.get_complete_transaction(tx_hash).await?;
+    debug!(
+        "✅ Successfully fetched complete transaction data for {}",
+        tx_hash
+    );
+    let mut raw_tx = convert_complete_transaction_to_raw_data(&complete_tx)?;
+    enrich_missing_datum_content(maestro, &mut raw_tx).await;
+    Ok(raw_tx)
 }
 
 /// Parse mint operations from Maestro's mint JSON format

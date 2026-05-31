@@ -21,6 +21,11 @@ pub struct CollectionListState {
     pub last_open_wallet: Option<u32>,
     /// Last refuel action observed (policy_id).
     pub last_refuel: Option<String>,
+    /// Catch-all slot for the portal-only actions
+    /// (Archive / Unarchive / IngestPayment / ScanPayments / Configure).
+    /// The story doesn't model those flows; the field lets the match arm
+    /// stay exhaustive without adding five UI slots.
+    pub last_other: Option<String>,
 }
 
 /// Construct a sample row. The widget does no truncation itself — the
@@ -55,6 +60,10 @@ fn row(
         pool: None,
         refuel_in_flight: false,
         archived_at: None,
+        deposit_address: None,
+        deposit_address_short: None,
+        ingest_payment_open: false,
+        scan_payments_in_flight: false,
     }
 }
 
@@ -518,25 +527,25 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
         if let Some(p) = &state.last_test_mint {
             ui.colored_label(
                 egui::Color32::LIGHT_GREEN,
-                format!("✓ test-mint requested for {}", truncate_middle(p, 8, 6)),
+                format!("test-mint requested for {}", truncate_middle(p, 8, 6)),
             );
         }
         if let Some(p) = &state.last_seed_stubs {
             ui.colored_label(
                 egui::Color32::LIGHT_GREEN,
-                format!("✓ seed-stubs requested for {}", truncate_middle(p, 8, 6)),
+                format!("seed-stubs requested for {}", truncate_middle(p, 8, 6)),
             );
         }
         if let Some(idx) = state.last_open_wallet {
             ui.colored_label(
                 egui::Color32::LIGHT_GREEN,
-                format!("✓ open-wallet requested for #{idx}"),
+                format!("open-wallet requested for #{idx}"),
             );
         }
         if let Some(p) = &state.last_refuel {
             ui.colored_label(
                 egui::Color32::LIGHT_GREEN,
-                format!("✓ refuel requested for {}", truncate_middle(p, 8, 6)),
+                format!("refuel requested for {}", truncate_middle(p, 8, 6)),
             );
         }
     }
@@ -559,6 +568,17 @@ fn capture_actions(actions: Vec<CollectionListAction>, state: &mut CollectionLis
             }
             CollectionListAction::Refuel { policy_id } => {
                 state.last_refuel = Some(policy_id);
+            }
+            // Post-V1 actions added by the cnft.dev portal — captured into
+            // a single `last_other` slot since the story doesn't model
+            // archive / payment / configure flows yet. The widget host
+            // (the real portal) dispatches these directly.
+            CollectionListAction::Archive { policy_id }
+            | CollectionListAction::Unarchive { policy_id }
+            | CollectionListAction::IngestPayment { policy_id }
+            | CollectionListAction::ScanPayments { policy_id }
+            | CollectionListAction::Configure { policy_id } => {
+                state.last_other = Some(policy_id);
             }
         }
     }

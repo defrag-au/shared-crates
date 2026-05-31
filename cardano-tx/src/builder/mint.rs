@@ -289,6 +289,10 @@ pub fn build_cip25_mint_multi(
 /// (the pure-ADA remainder back to `deps.from_address`), so a caller can chain
 /// the next tx off it. `None` when the change was dust folded into the fee
 /// (no change output emitted). See [`ChangeOutput`].
+///
+/// Thin shim over [`build_cip25_mint_multi_with_change_and_refunds`] —
+/// passes an empty refund list, preserving the legacy signature for
+/// callers that don't issue inline refunds.
 pub fn build_cip25_mint_multi_with_change(
     deps: &TxDeps,
     policy: &MintingPolicy,
@@ -296,6 +300,43 @@ pub fn build_cip25_mint_multi_with_change(
     metadata: Option<&serde_json::Value>,
     inputs: Option<&[UtxoApi]>,
     extra_self_outputs: Option<&[u64]>,
+) -> Result<(UnsignedTx, Option<ChangeOutput>), TxBuildError> {
+    build_cip25_mint_multi_with_change_and_refunds(
+        deps,
+        policy,
+        mints,
+        metadata,
+        inputs,
+        extra_self_outputs,
+        &[],
+    )
+}
+
+/// Superset of [`build_cip25_mint_multi_with_change`] that accepts
+/// `refund_outputs` — additional pure-ADA outputs paid to arbitrary
+/// (non-self) bech32 addresses, in lovelace. The intended use is
+/// **Mode A inline refunds** (`MINT_REFUNDS.md`): when an order's
+/// inventory came up short, the executor folds the refund-to-payer
+/// into the same mint tx instead of waiting for a separate worker tx.
+///
+/// Each refund output must be ≥ the pure-ADA min UTxO (the builder
+/// rejects undersized entries before signing). Callers should use
+/// `minting_core::REFUND_OUTPUT_MIN_LOVELACE` as the policy floor;
+/// the ledger min is lower but our platform-wide rule treats
+/// sub-`REFUND_OUTPUT_MIN_LOVELACE` amounts as `dust_forfeit` rather
+/// than emitting an output at all.
+///
+/// **Output ordering**: recipient mints → extra-self → refunds →
+/// change. The `ChangeOutput.output_index` is `groups.len() +
+/// extras.len() + refund_outputs.len()`.
+pub fn build_cip25_mint_multi_with_change_and_refunds(
+    deps: &TxDeps,
+    policy: &MintingPolicy,
+    mints: &[MintRecipientEntry],
+    metadata: Option<&serde_json::Value>,
+    inputs: Option<&[UtxoApi]>,
+    extra_self_outputs: Option<&[u64]>,
+    refund_outputs: &[(Address, u64)],
 ) -> Result<(UnsignedTx, Option<ChangeOutput>), TxBuildError> {
     use pallas_primitives::Fragment;
 
@@ -380,8 +421,12 @@ pub fn build_cip25_mint_multi_with_change(
     let extras: &[u64] = extra_self_outputs.unwrap_or(&[]);
     let total_extras_lovelace: u64 = extras.iter().sum();
 
-    // Pure-ADA min UTxO under current params. Sanity-check each extra rather than letting
-    // the ledger reject after a fee has been paid.
+    // Refund outputs: pure-ADA outputs to arbitrary (non-self)
+    // bech32 addresses. Mode A inline refunds (`MINT_REFUNDS.md`).
+    let total_refund_lovelace: u64 = refund_outputs.iter().map(|(_, l)| *l).sum();
+
+    // Pure-ADA min UTxO under current params. Sanity-check each extra + refund rather
+    // than letting the ledger reject after a fee has been paid.
     let min_pure_change = 228 * deps.params.coins_per_utxo_byte;
     for (i, &amount) in extras.iter().enumerate() {
         if amount < min_pure_change {
@@ -390,15 +435,25 @@ pub fn build_cip25_mint_multi_with_change(
             )));
         }
     }
+    for (i, (_addr, amount)) in refund_outputs.iter().enumerate() {
+        if *amount < min_pure_change {
+            return Err(TxBuildError::BuildFailed(format!(
+                "refund_outputs[{i}] = {amount} lovelace < min_pure_utxo {min_pure_change} \
+                 (use minting_core::REFUND_OUTPUT_MIN_LOVELACE + classify_refund to filter \
+                 sub-floor amounts before they reach the builder)"
+            )));
+        }
+    }
 
     // Fee from real sizes: base + script + aux + per-output + per-mint + extra outputs +
-    // change output.
+    // refund outputs + change output.
     let estimated_tx_size = 300usize
         + script_bytes.len()
         + metadata_bytes.as_ref().map_or(0, |b| b.len())
         + groups.len() * 70
         + mints.len() * 50
         + extras.len() * 70
+        + refund_outputs.len() * 70
         + 70;
     let base_fee =
         deps.params.min_fee_coefficient * estimated_tx_size as u64 + deps.params.min_fee_constant;
@@ -422,7 +477,7 @@ pub fn build_cip25_mint_multi_with_change(
     };
 
     let total_input_lovelace: u64 = chosen.iter().map(|u| u.lovelace).sum();
-    let total_needed = total_output_min_ada + total_extras_lovelace + fee;
+    let total_needed = total_output_min_ada + total_extras_lovelace + total_refund_lovelace + fee;
     if total_input_lovelace < total_needed {
         return Err(TxBuildError::InsufficientFunds {
             needed: total_needed,
@@ -481,22 +536,37 @@ pub fn build_cip25_mint_multi_with_change(
         tx = tx.output(create_ada_output(deps.from_address.clone(), amount));
     }
 
+    // Refund outputs — pure-ADA UTxOs to the payer's address. Mode A
+    // inline refunds (`MINT_REFUNDS.md`). Same sized + sanity-checked
+    // shape as extras, just targeting a non-self address.
+    for (addr, amount) in refund_outputs {
+        tx = tx.output(create_ada_output(addr.clone(), *amount));
+    }
+
     // Metadata.
     if let Some(aux) = metadata_bytes {
         tx = tx.add_auxiliary_data(aux);
     }
 
-    // Change. Inputs already cover `total_needed` (recipient outputs + extras + fee).
-    // The change output (when emitted) is appended after the recipient + extra
-    // outputs, so its index is `groups.len() + extras.len()`.
-    let change_lovelace = total_input_lovelace - total_output_min_ada - total_extras_lovelace - fee;
-    let change_index = (groups.len() + extras.len()) as u32;
+    // Change. Inputs already cover `total_needed` (recipient outputs + extras + refunds + fee).
+    // The change output (when emitted) is appended after the recipient + extra +
+    // refund outputs, so its index is `groups.len() + extras.len() + refund_outputs.len()`.
+    let change_lovelace = total_input_lovelace
+        - total_output_min_ada
+        - total_extras_lovelace
+        - total_refund_lovelace
+        - fee;
+    let change_index = (groups.len() + extras.len() + refund_outputs.len()) as u32;
     let change: Option<ChangeOutput>;
     if has_remaining_assets {
         // Must emit a change output to carry the inputs' native assets.
         if change_lovelace < min_pure_change {
             return Err(TxBuildError::InsufficientFunds {
-                needed: total_output_min_ada + total_extras_lovelace + fee + min_pure_change,
+                needed: total_output_min_ada
+                    + total_extras_lovelace
+                    + total_refund_lovelace
+                    + fee
+                    + min_pure_change,
                 available: total_input_lovelace,
             });
         }

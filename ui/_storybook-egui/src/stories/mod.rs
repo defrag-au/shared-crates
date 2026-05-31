@@ -57,9 +57,21 @@ pub mod wallet_asset_picker;
 // TX cart
 pub mod tx_cart;
 
-// Layout primitives
+// Primitives — foundational composables (semantic chips, ID displays,
+// label/value grids, button groups). Add new foundation widgets to this
+// group rather than tacking on a new category at the end of the file.
+pub mod button_group;
+pub mod chip;
+pub mod id_pill;
+pub mod property_list;
+pub mod toast;
+
+// Layout
 pub mod grouped_section;
 pub mod offer_tile;
+
+// Mint configuration
+pub mod phase_card;
 
 // Wallet
 pub mod fungibles_row;

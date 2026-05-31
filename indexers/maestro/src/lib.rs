@@ -460,17 +460,27 @@ struct DatumsByHashesResponse {
     data: std::collections::HashMap<String, DatumData>,
 }
 
+/// Minimal view of `GET /transactions/{tx_hash}`. Only the fields any
+/// caller in the workspace actually reads — keeping the struct narrow
+/// shields us from upstream additions (Maestro adds fields freely; serde
+/// silently ignores unknown ones with default config). The richer
+/// inputs/outputs/redeemers/etc. shape lives on
+/// [`CompleteTransactionDetails`] for callers that need it.
+///
+/// **Field-name notes**: Maestro's current API exposes the absolute
+/// slot as `block_absolute_slot` and the block timestamp as a unix-epoch
+/// `block_timestamp` int64 — older revisions called them `slot` and
+/// `timestamp: <ISO-8601>`, which is what this struct used to mirror.
+/// If you see "missing field `slot`" deserialization errors, the
+/// struct has drifted from the API again — fact-check against
+/// <https://docs.gomaestro.org/cardano/blockchain-indexer-api/transactions/transaction-details>.
 #[derive(Deserialize, Debug)]
 pub struct TransactionDetails {
     pub tx_hash: String,
     pub block_height: u64,
-    pub slot: u64,
-    #[serde(with = "maestro_date_format")]
-    pub timestamp: chrono::DateTime<Utc>,
+    pub block_absolute_slot: u64,
+    pub block_timestamp: u64,
     pub fee: u64,
-    pub size: u32,
-    pub metadata: Option<serde_json::Value>,
-    pub scripts: Vec<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -841,6 +851,13 @@ pub struct CompleteTransactionOutput {
 #[derive(Deserialize, Debug)]
 pub struct TransactionAsset {
     pub unit: String,
+    // Maestro's OpenAPI says `NumOrString` here — native-token amounts
+    // commonly come as JSON strings (they can overflow JSON's safe int
+    // range). A plain `u64` field fails the whole response when ANY
+    // string-encoded asset is present. Mirrors [`AssetAmount`] (which
+    // has been battle-tested on `get_address_utxos` since day one).
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    #[serde(alias = "quantity")]
     pub amount: u64,
 }
 

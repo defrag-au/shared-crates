@@ -77,15 +77,30 @@ mod app {
         MnemonicDisplay,
         WalletList,
         CollectionList,
+        // Mint configuration
+        Chip,
+        PropertyList,
+        IdPill,
+        PhaseCard,
+        ButtonGroup,
+        Toast,
     }
 
     impl Story {
         fn all() -> &'static [Self] {
             &[
+                // Primitives — foundational composables. Add new
+                // foundation widgets (Chip / IdPill / PropertyList shape)
+                // to this group, not at the end of the list.
                 Self::Formatting,
                 Self::Distribution,
                 Self::Marquee,
                 Self::Buttons,
+                Self::Chip,
+                Self::IdPill,
+                Self::PropertyList,
+                Self::ButtonGroup,
+                Self::Toast,
                 Self::ProgressBar,
                 Self::Sparkline,
                 Self::MetricCard,
@@ -141,6 +156,8 @@ mod app {
                 Self::MnemonicDisplay,
                 Self::WalletList,
                 Self::CollectionList,
+                // Mint configuration
+                Self::PhaseCard,
             ]
         }
 
@@ -198,14 +215,26 @@ mod app {
                 Self::MnemonicDisplay => "Mnemonic Display",
                 Self::WalletList => "Wallet List",
                 Self::CollectionList => "Collection List",
+                Self::Chip => "Chip",
+                Self::PropertyList => "Property List",
+                Self::IdPill => "ID Pill",
+                Self::PhaseCard => "Phase Card",
+                Self::ButtonGroup => "Button Group",
+                Self::Toast => "Toast",
             }
         }
 
         fn category(&self) -> &'static str {
             match self {
-                Self::Formatting | Self::Distribution | Self::Marquee | Self::Buttons => {
-                    "Primitives"
-                }
+                Self::Formatting
+                | Self::Distribution
+                | Self::Marquee
+                | Self::Buttons
+                | Self::Chip
+                | Self::IdPill
+                | Self::PropertyList
+                | Self::ButtonGroup
+                | Self::Toast => "Primitives",
                 Self::ProgressBar
                 | Self::Sparkline
                 | Self::MetricCard
@@ -249,6 +278,7 @@ mod app {
                 Self::TxCart => "TX Cart",
                 Self::GroupedSection | Self::OfferTile => "Layout",
                 Self::MnemonicDisplay | Self::WalletList | Self::CollectionList => "Auth / Admin",
+                Self::PhaseCard => "Mint Configuration",
             }
         }
 
@@ -390,6 +420,24 @@ mod app {
                 Self::CollectionList => {
                     "Per-client collections list — title, status/standard/network chips, supply progress, policy_id copy, Test mint / Seed stubs actions"
                 }
+                Self::Chip => {
+                    "Small filled-tag label with semantic variants (Success / Warning / Danger / Tag / Info / Muted) + optional × remove affordance"
+                }
+                Self::PropertyList => {
+                    "Compact label/value grid for read-only key data — phase summaries, wallet readouts, payment audit"
+                }
+                Self::IdPill => {
+                    "Truncated identifier with copy button — policy_id, wallet addresses, deposit addresses, tx hashes"
+                }
+                Self::PhaseCard => {
+                    "Read-only mint phase card — header (name + status + priority + Edit/Delete), Price/Window/Per-wallet properties, gate chips with × remove + Add gate"
+                }
+                Self::ButtonGroup => {
+                    "Row of related action buttons — text + optional Phosphor icons + tooltips + disabled state, with horizontal_wrapped layout"
+                }
+                Self::Toast => {
+                    "Transient overlay messages with frame-countdown auto-dismiss — Success/Error/Warning/Info, host-owned ToastQueue, bottom-right stack"
+                }
             }
         }
     }
@@ -470,6 +518,9 @@ mod app {
         mnemonic_display_state: stories::mnemonic_display::MnemonicDisplayState,
         wallet_list_state: stories::wallet_list::WalletListState,
         collection_list_state: stories::collection_list::CollectionListState,
+        // Primitives
+        button_group_state: stories::button_group::ButtonGroupState,
+        toast_state: stories::toast::ToastState,
     }
 
     impl StorybookApp {
@@ -550,6 +601,8 @@ mod app {
                 mnemonic_display_state: stories::mnemonic_display::MnemonicDisplayState::default(),
                 wallet_list_state: stories::wallet_list::WalletListState::default(),
                 collection_list_state: stories::collection_list::CollectionListState::default(),
+                button_group_state: stories::button_group::ButtonGroupState::default(),
+                toast_state: stories::toast::ToastState::default(),
             }
         }
 
@@ -761,6 +814,14 @@ mod app {
                             Story::CollectionList => {
                                 stories::collection_list::show(ui, &mut self.collection_list_state)
                             }
+                            Story::Chip => stories::chip::show(ui),
+                            Story::PropertyList => stories::property_list::show(ui),
+                            Story::IdPill => stories::id_pill::show(ui),
+                            Story::PhaseCard => stories::phase_card::show(ui),
+                            Story::ButtonGroup => {
+                                stories::button_group::show(ui, &mut self.button_group_state)
+                            }
+                            Story::Toast => stories::toast::show(ui, &mut self.toast_state),
                         }
                     });
                 });

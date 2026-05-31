@@ -60,7 +60,10 @@
 
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke, Ui};
 
+use crate::button_group::{ButtonGroup, ButtonGroupButton};
+use crate::icons::install_phosphor_font;
 use crate::wallet_list::{WalletPoolBadge, WalletPoolBadgeHealth};
+use crate::PhosphorIcon;
 
 // ─────────────────────────────────────────────────────────────────────
 // Types
@@ -138,6 +141,23 @@ pub struct CollectionRow {
     /// [`CollectionList::with_hide_archived`] is set they're hidden
     /// behind a "show archived" toggle.
     pub archived_at: Option<i64>,
+    /// The collection's bech32 deposit (payment-receiving) address — buyers
+    /// send ADA here; the host's payment monitor turns each inbound tx into a
+    /// `crypto` mint order. Full value goes to the clipboard on copy.
+    /// `None` hides the row (legacy collections allocated before the deposit
+    /// derivation was wired).
+    pub deposit_address: Option<String>,
+    /// Pre-truncated `deposit_address` for inline display (caller picks the
+    /// prefix/suffix widths). `None` hides the row.
+    pub deposit_address_short: Option<String>,
+    /// `true` when the parent has the Ingest-payment form open below this
+    /// row. Same toggle treatment as `test_mint_open` — `+ Ingest` flips to
+    /// `− Ingest`.
+    pub ingest_payment_open: bool,
+    /// `true` while a `ScanPayments` action is in flight for this collection.
+    /// Widget renders the Scan button disabled with a spinner-style label so
+    /// the operator can't double-fire while the engine is walking UTxOs.
+    pub scan_payments_in_flight: bool,
 }
 
 /// Actions emitted while the widget was on screen this frame. Parent
@@ -172,6 +192,22 @@ pub enum CollectionListAction {
     /// User clicked Restore on an archived card. Symmetric to
     /// [`Archive`]; only emitted from archived rows.
     Unarchive { policy_id: String },
+    /// User clicked the `+ Ingest` toggle. Host opens/closes a single-field
+    /// (tx_hash) form below the row and submits a manual `IngestPayment`
+    /// action on confirm. Only emitted when [`CollectionList::with_payments`]
+    /// is `true`.
+    IngestPayment { policy_id: String },
+    /// User clicked the `🔍 Scan` button. Host fires a `ScanPayments` action
+    /// that walks every unspent payment on the collection's deposit address.
+    /// No form — single click, result lands in a toast. Only emitted when
+    /// [`CollectionList::with_payments`] is `true` and `scan_payments_in_flight`
+    /// is `false` (widget self-enforces the no-double-fire rule).
+    ScanPayments { policy_id: String },
+    /// User clicked the `⚙ Configure` button. Host opens (or focuses) the
+    /// floating Configure window for this collection — the operator's
+    /// surface for editing phases, gates, and allowlist. Only emitted when
+    /// [`CollectionList::with_configure`] is `true`.
+    Configure { policy_id: String },
 }
 
 /// Rendering style. Both styles share the same row VM and action emission —
@@ -197,6 +233,8 @@ pub struct CollectionList<'a> {
     show_activity: bool,
     show_refuel: bool,
     show_archive: bool,
+    show_payments: bool,
+    show_configure: bool,
     hide_archived: bool,
 }
 
@@ -247,6 +285,8 @@ impl<'a> CollectionList<'a> {
             show_activity: false,
             show_refuel: false,
             show_archive: false,
+            show_payments: false,
+            show_configure: false,
             hide_archived: false,
         }
     }
@@ -327,6 +367,24 @@ impl<'a> CollectionList<'a> {
         self
     }
 
+    /// Show the per-card payment-monitor buttons (`🔍 Scan` + `+ Ingest`).
+    /// Off by default. The host wires the matching actions: `ScanPayments`
+    /// fires immediately (single click, result toast); `IngestPayment`
+    /// toggles a single-field form for a tx hash. See
+    /// `docs/design/MINT_PAYMENT_MONITOR.md`.
+    pub fn with_payments(mut self, enabled: bool) -> Self {
+        self.show_payments = enabled;
+        self
+    }
+
+    /// Show the per-card `⚙ Configure` button. Off by default. Click →
+    /// emits [`CollectionListAction::Configure`]; host opens / focuses the
+    /// floating Configure window for editing phases, gates, and allowlist.
+    pub fn with_configure(mut self, enabled: bool) -> Self {
+        self.show_configure = enabled;
+        self
+    }
+
     pub fn show(self, ui: &mut Ui) -> CollectionListResponse {
         let mut response = CollectionListResponse::default();
 
@@ -374,6 +432,8 @@ impl<'a> CollectionList<'a> {
                             self.show_activity,
                             self.show_refuel,
                             self.show_archive,
+                            self.show_payments,
+                            self.show_configure,
                             &mut response,
                         );
                     }
@@ -389,6 +449,8 @@ impl<'a> CollectionList<'a> {
                                 self.show_activity,
                                 self.show_refuel,
                                 self.show_archive,
+                                self.show_payments,
+                                self.show_configure,
                                 &mut response,
                             );
                         }
@@ -436,6 +498,8 @@ fn render_one(
     show_activity: bool,
     show_refuel: bool,
     show_archive: bool,
+    show_payments: bool,
+    show_configure: bool,
     response: &mut CollectionListResponse,
 ) {
     match layout {
@@ -447,6 +511,8 @@ fn render_one(
             show_activity,
             show_refuel,
             show_archive,
+            show_payments,
+            show_configure,
             response,
         ),
         CollectionListLayout::List => render_list_row(
@@ -457,6 +523,8 @@ fn render_one(
             show_activity,
             show_refuel,
             show_archive,
+            show_payments,
+            show_configure,
             response,
         ),
     }
@@ -471,8 +539,14 @@ fn render_card(
     show_activity: bool,
     show_refuel: bool,
     show_archive: bool,
+    show_payments: bool,
+    show_configure: bool,
     response: &mut CollectionListResponse,
 ) {
+    // `PhosphorIcon::*.rich_text()` doesn't auto-install the font (unlike
+    // `.show()`); the inline copy / chip / configure buttons below all
+    // rely on the glyph being available. Idempotent.
+    install_phosphor_font(ui.ctx());
     let archived = row.archived_at.is_some();
     let fill = if archived { ROW_BG_ARCHIVED } else { ROW_BG };
     Frame::new()
@@ -483,7 +557,11 @@ fn render_card(
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
 
-            // ── Title row: title + chips + (right) action buttons ──
+            // ── Title row: title + chips only ──────────────────────
+            // Action buttons moved out to their own dedicated bar below so
+            // the title stays readable at any card width (the previous
+            // shape squeezed the title under {chips × ≥4 buttons} at
+            // ~half-width). The bar wraps via `horizontal_wrapped`.
             ui.horizontal(|ui| {
                 let title = RichText::new(&row.title).heading();
                 ui.label(if archived {
@@ -501,70 +579,34 @@ fn render_card(
                 if archived {
                     ui.colored_label(Color32::LIGHT_YELLOW, RichText::new("archived").small());
                 }
-
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if show_archive {
-                        archive_button(ui, row, archived, response);
-                    }
-                    if show_test_mint {
-                        let label = if row.test_mint_open {
-                            "− Test mint"
-                        } else {
-                            "🧪 Test mint"
-                        };
-                        if ui
-                            .small_button(RichText::new(label).small())
-                            .on_hover_text(
-                                "Open the test-mint form for this collection \
-                                     (operator/super-admin only)",
-                            )
-                            .clicked()
-                        {
-                            response.actions.push(CollectionListAction::TestMint {
-                                policy_id: row.policy_id.clone(),
-                            });
-                        }
-                    }
-                    if show_seed_stubs {
-                        let label = if row.seed_stubs_open {
-                            "− Seed stubs"
-                        } else {
-                            "+ Seed stubs"
-                        };
-                        if ui
-                            .small_button(RichText::new(label).small())
-                            .on_hover_text(
-                                "Seed placeholder mintable assets \
-                                     (testing-only — real ingest replaces this)",
-                            )
-                            .clicked()
-                        {
-                            response.actions.push(CollectionListAction::SeedStubs {
-                                policy_id: row.policy_id.clone(),
-                            });
-                        }
-                    }
-                    if show_activity {
-                        let label = if row.activity_open {
-                            "− Activity"
-                        } else {
-                            "📜 Activity"
-                        };
-                        if ui
-                            .small_button(RichText::new(label).small())
-                            .on_hover_text(
-                                "Recent mint activity for this collection — \
-                                     fetched from the engine's mint_log",
-                            )
-                            .clicked()
-                        {
-                            response.actions.push(CollectionListAction::Activity {
-                                policy_id: row.policy_id.clone(),
-                            });
-                        }
-                    }
-                });
             });
+
+            // ── Action bar ─────────────────────────────────────────
+            if has_any_action(
+                show_test_mint,
+                show_seed_stubs,
+                show_activity,
+                show_refuel,
+                show_archive,
+                show_payments,
+                show_configure,
+                row,
+            ) {
+                ui.add_space(6.0);
+                render_operator_actions(
+                    ui,
+                    row,
+                    archived,
+                    show_test_mint,
+                    show_seed_stubs,
+                    show_activity,
+                    show_archive,
+                    show_payments,
+                    show_configure,
+                    true, // wrap — Card layout has its own dedicated bar row
+                    response,
+                );
+            }
 
             ui.add_space(8.0);
 
@@ -642,7 +684,7 @@ fn render_card(
                     ui.label(RichText::new(short).monospace().small().color(KEYHASH_GREY));
                     if let Some(full) = &row.wallet_address_full {
                         if ui
-                            .small_button(RichText::new("📋").small())
+                            .small_button(PhosphorIcon::Copy.rich_text(11.0, META_GREY).small())
                             .on_hover_text("Copy wallet address to clipboard")
                             .clicked()
                         {
@@ -659,7 +701,10 @@ fn render_card(
                         WalletPoolBadgeHealth::Low => Color32::from_rgb(220, 200, 130),
                         WalletPoolBadgeHealth::Healthy => Color32::from_rgb(150, 210, 160),
                     };
-                    ui.label(RichText::new("●").small().color(fg));
+                    // Health indicator: the text colour itself carries the
+                    // signal (red/amber/green). The leading `●` glyph used
+                    // to do this here doesn't render in the browser font;
+                    // CLAUDE.md says drop geometric Unicode.
                     let ada_whole = pool.total_lovelace / 1_000_000;
                     ui.label(
                         RichText::new(format!("{} fuel · {} ADA", pool.fuel_count, ada_whole))
@@ -700,13 +745,34 @@ fn render_card(
                         .color(KEYHASH_GREY),
                 );
                 if ui
-                    .small_button(RichText::new("📋").small())
+                    .small_button(PhosphorIcon::Copy.rich_text(11.0, META_GREY).small())
                     .on_hover_text("Copy policy_id to clipboard")
                     .clicked()
                 {
                     ui.ctx().copy_text(row.policy_id.clone());
                 }
             });
+
+            // ── Deposit address (where buyers send ADA) — only when
+            //    allocated (legacy rows hide it cleanly). Same shape as
+            //    the policy_id footer: prefix "deposit · " so it's
+            //    self-labelling at a glance, then the short bech32 + copy.
+            if let (Some(short), Some(full)) = (&row.deposit_address_short, &row.deposit_address) {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("deposit · ").small().color(META_GREY));
+                    ui.label(RichText::new(short).monospace().small().color(KEYHASH_GREY));
+                    if ui
+                        .small_button(PhosphorIcon::Copy.rich_text(11.0, META_GREY).small())
+                        .on_hover_text(
+                            "Copy this collection's deposit address — \
+                             buyers send ADA here to mint",
+                        )
+                        .clicked()
+                    {
+                        ui.ctx().copy_text(full.clone());
+                    }
+                });
+            }
         });
 }
 
@@ -719,8 +785,14 @@ fn render_list_row(
     show_activity: bool,
     show_refuel: bool,
     show_archive: bool,
+    show_payments: bool,
+    show_configure: bool,
     response: &mut CollectionListResponse,
 ) {
+    // `PhosphorIcon::*.rich_text()` doesn't auto-install the font (unlike
+    // `.show()`); the inline copy / chip / configure buttons below all
+    // rely on the glyph being available. Idempotent.
+    install_phosphor_font(ui.ctx());
     let archived = row.archived_at.is_some();
     let fill = if archived { ROW_BG_ARCHIVED } else { ROW_BG };
     Frame::new()
@@ -759,57 +831,35 @@ fn render_list_row(
                 );
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if show_archive {
-                        archive_button(ui, row, archived, response);
-                    }
-                    if show_test_mint {
-                        let label = if row.test_mint_open {
-                            "− Test mint"
-                        } else {
-                            "🧪 Test mint"
-                        };
-                        if ui.small_button(RichText::new(label).small()).clicked() {
-                            response.actions.push(CollectionListAction::TestMint {
-                                policy_id: row.policy_id.clone(),
-                            });
-                        }
-                    }
-                    if show_seed_stubs {
-                        let label = if row.seed_stubs_open {
-                            "− Seed stubs"
-                        } else {
-                            "+ Seed stubs"
-                        };
-                        if ui.small_button(RichText::new(label).small()).clicked() {
-                            response.actions.push(CollectionListAction::SeedStubs {
-                                policy_id: row.policy_id.clone(),
-                            });
-                        }
-                    }
-                    if show_activity {
-                        let label = if row.activity_open {
-                            "− Activity"
-                        } else {
-                            "📜 Activity"
-                        };
-                        if ui.small_button(RichText::new(label).small()).clicked() {
-                            response.actions.push(CollectionListAction::Activity {
-                                policy_id: row.policy_id.clone(),
-                            });
-                        }
-                    }
-                    if ui
-                        .small_button(RichText::new("📋").small())
-                        .on_hover_text("Copy policy_id to clipboard")
-                        .clicked()
-                    {
-                        ui.ctx().copy_text(row.policy_id.clone());
-                    }
+                    // Right-edge: Refuel → Copy → operator action group.
+                    // Within `right_to_left`, items added first sit furthest
+                    // right; ButtonGroup's internal layout still flows
+                    // left-to-right inside its own cluster.
                     if show_refuel {
                         if let Some(pool) = &row.pool {
                             refuel_button(ui, row, pool, response);
                         }
                     }
+                    if ui
+                        .small_button(PhosphorIcon::Copy.rich_text(11.0, META_GREY).small())
+                        .on_hover_text("Copy policy_id to clipboard")
+                        .clicked()
+                    {
+                        ui.ctx().copy_text(row.policy_id.clone());
+                    }
+                    render_operator_actions(
+                        ui,
+                        row,
+                        archived,
+                        show_test_mint,
+                        show_seed_stubs,
+                        show_activity,
+                        show_archive,
+                        show_payments,
+                        show_configure,
+                        false, // wrap — List layout is single-row by design
+                        response,
+                    );
                 });
             });
         });
@@ -833,7 +883,7 @@ fn refuel_button(
     if row.refuel_in_flight {
         ui.add_enabled(
             false,
-            egui::Button::new(RichText::new("⛽ Refuelling…").small()),
+            egui::Button::new(RichText::new("Refuelling…").small()),
         )
         .on_disabled_hover_text(
             "A refuel tx is in flight — wait for it to confirm before submitting another.",
@@ -842,7 +892,7 @@ fn refuel_button(
     }
     let healthy = pool.health == WalletPoolBadgeHealth::Healthy;
     if healthy {
-        ui.add_enabled(false, egui::Button::new(RichText::new("⛽ Refuel").small()))
+        ui.add_enabled(false, egui::Button::new(RichText::new("Refuel").small()))
             .on_disabled_hover_text(
                 "Fuel pool is healthy — no refuel needed. \
                  The pool tops up automatically during mints.",
@@ -850,7 +900,7 @@ fn refuel_button(
         return;
     }
     if ui
-        .small_button(RichText::new("⛽ Refuel").small())
+        .small_button(RichText::new("Refuel").small())
         .on_hover_text(
             "Split this wallet's pure-ADA balance into 10 ADA fuel UTxOs \
              so it's ready for parallel mints. Submits a self-spend tx.",
@@ -863,39 +913,190 @@ fn refuel_button(
     }
 }
 
-/// Archive ↔ Restore button, shared by both layouts. Emits
-/// [`CollectionListAction::Unarchive`] on an archived card, else
-/// [`CollectionListAction::Archive`]. Archiving halts the collection's
-/// engine DO + hides the card; restoring re-enables it.
-fn archive_button(
+/// Cheap predicate so we can suppress the spacing + action bar entirely
+/// on a card with no buttons configured (e.g. a list view that doesn't
+/// opt into any of the operator flags).
+#[allow(clippy::too_many_arguments)]
+fn has_any_action(
+    show_test_mint: bool,
+    show_seed_stubs: bool,
+    show_activity: bool,
+    show_refuel: bool,
+    show_archive: bool,
+    show_payments: bool,
+    show_configure: bool,
+    row: &CollectionRow,
+) -> bool {
+    show_test_mint
+        || show_seed_stubs
+        || show_activity
+        || show_archive
+        || show_configure
+        || show_payments
+        // Refuel is a card-only affordance + sits in the wallet sub-line,
+        // not the action bar — but the predicate is shared with the bar's
+        // visibility check; counting it keeps the bar logic uniform.
+        || (show_refuel && row.pool.is_some())
+}
+
+/// Operator-action cluster — Test mint / Activity / Configure / Ingest
+/// / Scan / Seed stubs / Archive, all routed through a single
+/// [`ButtonGroup`] so layout / spacing / Phosphor-icon labelling are
+/// handled by the shared primitive rather than re-implemented inline.
+///
+/// `wrap = true` is the Card layout (a dedicated row below the title
+/// that wraps onto a second line on narrow surfaces). `wrap = false` is
+/// the List layout (one compact line, no wrap).
+///
+/// Archive lives at the natural end of the cluster rather than being
+/// pinned to the right edge (the previous shape) — when the cluster
+/// wraps, Archive lands on the last line which is visually equivalent.
+#[allow(clippy::too_many_arguments)]
+fn render_operator_actions(
     ui: &mut Ui,
     row: &CollectionRow,
     archived: bool,
+    show_test_mint: bool,
+    show_seed_stubs: bool,
+    show_activity: bool,
+    show_archive: bool,
+    show_payments: bool,
+    show_configure: bool,
+    wrap: bool,
     response: &mut CollectionListResponse,
 ) {
-    if archived {
-        if ui
-            .small_button(RichText::new("Restore").small())
-            .on_hover_text(
+    // Stable click ids — match the dispatch arm below. Locally scoped
+    // because the host never sees these; the widget emits its own
+    // `CollectionListAction` enum.
+    const ID_TEST_MINT: u64 = 1;
+    const ID_ACTIVITY: u64 = 2;
+    const ID_CONFIGURE: u64 = 3;
+    const ID_INGEST: u64 = 4;
+    const ID_SCAN: u64 = 5;
+    const ID_SEED_STUBS: u64 = 6;
+    const ID_ARCHIVE: u64 = 7;
+
+    let mut group = ButtonGroup::new().wrap(wrap);
+
+    if show_test_mint {
+        let label = if row.test_mint_open {
+            "- Test mint"
+        } else {
+            "Test mint"
+        };
+        group = group.add(ButtonGroupButton::new(ID_TEST_MINT, label).hover_text(
+            "Open the test-mint form for this collection \
+                 (operator/super-admin only)",
+        ));
+    }
+    if show_activity {
+        let label = if row.activity_open {
+            "- Activity"
+        } else {
+            "Activity"
+        };
+        group = group.add(ButtonGroupButton::new(ID_ACTIVITY, label).hover_text(
+            "Recent mint activity for this collection — \
+                 fetched from the engine's mint_log",
+        ));
+    }
+    if show_configure {
+        group = group.add(
+            ButtonGroupButton::new(ID_CONFIGURE, "Configure")
+                .icon(crate::PhosphorIcon::Gear)
+                .hover_text(
+                    "Open the mint configuration — phases (price + time window + \
+                     per-wallet limit), gates (public / allowlist / token-held), \
+                     and allowlist entries.",
+                ),
+        );
+    }
+    if show_payments {
+        let ingest_label = if row.ingest_payment_open {
+            "- Ingest"
+        } else {
+            "+ Ingest"
+        };
+        group = group.add(ButtonGroupButton::new(ID_INGEST, ingest_label).hover_text(
+            "Manually feed an on-chain payment tx through the resolver — \
+                 creates a mint order (or queues a refund). Idempotent on tx hash.",
+        ));
+        let scan_label = if row.scan_payments_in_flight {
+            "Scanning…"
+        } else {
+            "Scan"
+        };
+        let scan_hover = if row.scan_payments_in_flight {
+            "A payments scan is in flight — wait for it to complete before re-running."
+        } else {
+            "Walk this collection's deposit address and process every unspent \
+             payment through the resolver. Idempotent — already-handled txs \
+             short-circuit."
+        };
+        group = group.add(
+            ButtonGroupButton::new(ID_SCAN, scan_label)
+                .icon(crate::PhosphorIcon::MagnifyingGlass)
+                .enabled(!row.scan_payments_in_flight)
+                .hover_text(scan_hover),
+        );
+    }
+    if show_seed_stubs {
+        let label = if row.seed_stubs_open {
+            "- Seed stubs"
+        } else {
+            "+ Seed stubs"
+        };
+        group = group.add(ButtonGroupButton::new(ID_SEED_STUBS, label).hover_text(
+            "Seed placeholder mintable assets \
+                 (testing-only — real ingest replaces this)",
+        ));
+    }
+    if show_archive {
+        let (label, hover) = if archived {
+            (
+                "Restore",
                 "Bring this collection back — the engine resumes processing on the next signal.",
             )
-            .clicked()
-        {
-            response.actions.push(CollectionListAction::Unarchive {
-                policy_id: row.policy_id.clone(),
-            });
-        }
-    } else if ui
-        .small_button(RichText::new("Archive").small())
-        .on_hover_text(
-            "Retire this collection: halts its mint engine + hides it from the \
-             dashboard. Reversible.",
-        )
-        .clicked()
-    {
-        response.actions.push(CollectionListAction::Archive {
+        } else {
+            (
+                "Archive",
+                "Retire this collection: halts its mint engine + hides it from the \
+                 dashboard. Reversible.",
+            )
+        };
+        group = group.add(ButtonGroupButton::new(ID_ARCHIVE, label).hover_text(hover));
+    }
+
+    let clicked = group.show(ui).clicked;
+    let action = match clicked {
+        Some(ID_TEST_MINT) => Some(CollectionListAction::TestMint {
             policy_id: row.policy_id.clone(),
-        });
+        }),
+        Some(ID_ACTIVITY) => Some(CollectionListAction::Activity {
+            policy_id: row.policy_id.clone(),
+        }),
+        Some(ID_CONFIGURE) => Some(CollectionListAction::Configure {
+            policy_id: row.policy_id.clone(),
+        }),
+        Some(ID_INGEST) => Some(CollectionListAction::IngestPayment {
+            policy_id: row.policy_id.clone(),
+        }),
+        Some(ID_SCAN) => Some(CollectionListAction::ScanPayments {
+            policy_id: row.policy_id.clone(),
+        }),
+        Some(ID_SEED_STUBS) => Some(CollectionListAction::SeedStubs {
+            policy_id: row.policy_id.clone(),
+        }),
+        Some(ID_ARCHIVE) if archived => Some(CollectionListAction::Unarchive {
+            policy_id: row.policy_id.clone(),
+        }),
+        Some(ID_ARCHIVE) => Some(CollectionListAction::Archive {
+            policy_id: row.policy_id.clone(),
+        }),
+        _ => None,
+    };
+    if let Some(a) = action {
+        response.actions.push(a);
     }
 }
 
