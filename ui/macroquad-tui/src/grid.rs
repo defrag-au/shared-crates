@@ -243,6 +243,25 @@ impl Grid {
         }
     }
 
+    /// Write a pre-styled [`Cell`] at the cursor and advance — same
+    /// flow as [`Self::write_char`], but the cell keeps its own
+    /// `fg`/`bg`/`attrs` instead of taking the grid's default fg.
+    /// Used by the typer's coloured-cell op so the typewriter can
+    /// emit fully styled rows (e.g. half-block sketch art) inline
+    /// with the surrounding ASCII output.
+    pub fn write_cell(&mut self, cell: Cell) {
+        let cols = self.cols;
+        if self.cursor_col < cols {
+            let col = self.cursor_col;
+            self.lines.back_mut().unwrap()[col] = cell;
+        }
+        self.cursor_col += 1;
+        if self.cursor_col >= cols {
+            self.newline();
+        }
+        self.viewport_offset = 0;
+    }
+
     /// Move the cursor onto a fresh row. The previous row stays in
     /// the buffer (potentially exiting the visible viewport).
     pub fn newline(&mut self) {
