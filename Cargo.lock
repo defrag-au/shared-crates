@@ -2881,6 +2881,8 @@ name = "macroquad-tui"
 version = "0.1.0"
 dependencies = [
  "macroquad",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
