@@ -26,12 +26,14 @@
 pub mod editor;
 pub mod grid;
 pub mod palette;
+pub mod render;
 pub mod repeat;
 pub mod scene;
 pub mod typer;
 
 pub use editor::{CompletionSource, LineEditor};
 pub use grid::{Cell, CellAttrs, Grid};
+pub use render::{paint_cell, paint_grid, GridMetrics};
 pub use repeat::KeyRepeat;
 pub use scene::{FixedStep, Scene, SceneCtx, SceneInput, SceneOutcome, SceneStack};
 pub use typer::TypeQueue;

@@ -256,6 +256,33 @@ impl Grid {
         self.viewport_offset = 0;
     }
 
+    /// Write a cell at an absolute viewport position, bypassing the
+    /// cursor. Used by screen-buffer games (Snake, Tetris) that repaint
+    /// the whole grid each frame.
+    ///
+    /// The buffer is padded with blank lines up to `self.rows` if it
+    /// hasn't filled yet, so callers can write to any row/col without
+    /// caring about initial state. Out-of-bounds writes are silently
+    /// dropped (cheaper than panicking; game logic shouldn't be
+    /// writing out of bounds anyway).
+    ///
+    /// Position is always relative to the bottom-aligned viewport
+    /// (offset 0). Games typically `scroll_to_bottom()` before drawing.
+    pub fn put_at(&mut self, row: usize, col: usize, cell: Cell) {
+        if row >= self.rows || col >= self.cols {
+            return;
+        }
+        while self.lines.len() < self.rows {
+            self.lines
+                .push_back(vec![Cell::blank(self.default_fg); self.cols]);
+        }
+        let total = self.lines.len();
+        let buffer_row = total.saturating_sub(self.rows) + row;
+        if buffer_row < total {
+            self.lines[buffer_row][col] = cell;
+        }
+    }
+
     /// Iterate visible cells as `(visual_row, col, &Cell)`. `visual_row`
     /// is the row within the viewport (0 = top); the renderer maps it
     /// to a pixel y-coordinate. When the buffer hasn't filled, the
@@ -428,6 +455,53 @@ mod tests {
         let r = collect_chars(&g);
         // After clear the only line is an empty one.
         assert!(r.iter().all(|line| line.is_empty()));
+    }
+
+    #[test]
+    fn put_at_writes_to_visible_position() {
+        let mut g = fresh(10, 5);
+        g.put_at(2, 3, Cell { ch: '@', fg: PHOSPHOR, bg: super::TRANSPARENT, attrs: CellAttrs::PLAIN });
+        let rows = collect_chars(&g);
+        // Buffer was 1 line; put_at padded to 5; visible row 2 is buffer row 2.
+        assert_eq!(rows.len(), 5);
+        assert_eq!(rows[2], "   @");
+    }
+
+    #[test]
+    fn put_at_pads_buffer_to_rows() {
+        let mut g = fresh(10, 5);
+        // Before: 1 line. put_at(4, 0) should pad to 5 lines.
+        g.put_at(4, 0, Cell { ch: 'x', fg: PHOSPHOR, bg: super::TRANSPARENT, attrs: CellAttrs::PLAIN });
+        assert_eq!(g.lines.len(), 5);
+        let rows = collect_chars(&g);
+        assert_eq!(rows[4], "x");
+    }
+
+    #[test]
+    fn put_at_drops_out_of_bounds() {
+        let mut g = fresh(10, 5);
+        g.put_at(99, 0, Cell::blank(PHOSPHOR));
+        g.put_at(0, 99, Cell::blank(PHOSPHOR));
+        // No panic; buffer stays at one initial line (since put_at
+        // returned before padding).
+        assert_eq!(g.lines.len(), 1);
+    }
+
+    #[test]
+    fn put_at_after_scroll_writes_to_current_bottom_aligned_position() {
+        // Write 10 rows then scroll up; put_at still targets the
+        // *bottom-aligned* viewport, not the scrolled-into-view rows.
+        let mut g = fresh(10, 5);
+        for i in 0..10 {
+            g.write_str(&format!("L{i}"));
+            g.newline();
+        }
+        g.scroll_up(2);
+        g.put_at(4, 0, Cell { ch: '!', fg: PHOSPHOR, bg: super::TRANSPARENT, attrs: CellAttrs::PLAIN });
+        g.scroll_to_bottom();
+        let rows = collect_chars(&g);
+        // Bottom-aligned viewport: row 4 is the latest line (post-newline blank).
+        assert_eq!(rows[4], "!");
     }
 
     #[test]
