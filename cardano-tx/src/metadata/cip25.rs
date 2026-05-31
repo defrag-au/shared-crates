@@ -101,6 +101,47 @@ pub fn build_cip25_auxiliary_data(
     Ok(auxiliary_bytes)
 }
 
+/// Build auxiliary data from an arbitrary transaction-metadata JSON
+/// object whose top-level keys are numeric metadata labels (e.g.
+/// `{ "674": { "msg": ["refund:…"] } }`).
+///
+/// Unlike [`build_cip25_auxiliary_data`] this does **not** require a
+/// `721` key — it emits every present label verbatim via
+/// [`json_to_metadatum`], so it serves metadata-only transactions that
+/// carry no CIP-25 mint blob. Used by the standalone refund (Mode B)
+/// and settlement txs, which tag themselves with CIP-674 (`msg`) but
+/// mint nothing. (Long `msg` strings chunk per the same CIP-25 rules as
+/// the mint path.)
+pub fn build_metadata_auxiliary_data(
+    metadata_json: &serde_json::Value,
+) -> Result<Vec<u8>, MetadataError> {
+    use pallas_primitives::alonzo::PostAlonzoAuxiliaryData;
+    use pallas_primitives::Fragment;
+
+    let obj = metadata_json.as_object().ok_or_else(|| {
+        MetadataError::UnsupportedValue("metadata root must be a JSON object of labels".to_string())
+    })?;
+
+    let mut metadata = Metadata::new();
+    for (label_str, value) in obj {
+        let label: u64 = label_str.parse().map_err(|_| {
+            MetadataError::UnsupportedValue(format!(
+                "metadata label '{label_str}' is not a numeric key"
+            ))
+        })?;
+        metadata.insert(label, json_to_metadatum(value)?);
+    }
+
+    let auxiliary_data = AuxiliaryData::PostAlonzo(PostAlonzoAuxiliaryData {
+        metadata: Some(metadata),
+        native_scripts: None,
+        plutus_scripts: None,
+    });
+    auxiliary_data
+        .encode_fragment()
+        .map_err(|e| MetadataError::EncodeError(format!("Failed to encode auxiliary data: {e}")))
+}
+
 /// Convert a [`serde_json::Value`] to a pallas [`Metadatum`].
 ///
 /// CIP-25 rules:
@@ -230,6 +271,35 @@ mod tests {
             !has(&bytes_without, b"refund:ord1"),
             "no 674 key → no refund tag in metadata"
         );
+    }
+
+    /// `build_metadata_auxiliary_data` emits a CIP-674-only blob (no 721
+    /// required) — the standalone refund/settlement tx tag.
+    #[test]
+    fn test_build_metadata_auxiliary_data_674_only() {
+        let json = serde_json::json!({ "674": { "msg": ["settle:pol:1"] } });
+        let bytes = build_metadata_auxiliary_data(&json).unwrap();
+        assert!(bytes
+            .windows(b"settle:pol:1".len())
+            .any(|w| w == b"settle:pol:1"));
+    }
+
+    #[test]
+    fn test_build_metadata_auxiliary_data_rejects_non_numeric_label() {
+        let json = serde_json::json!({ "msg": "oops" }); // not a numeric label
+        assert!(matches!(
+            build_metadata_auxiliary_data(&json),
+            Err(MetadataError::UnsupportedValue(_))
+        ));
+    }
+
+    #[test]
+    fn test_build_metadata_auxiliary_data_rejects_non_object() {
+        let json = serde_json::json!(["not", "an", "object"]);
+        assert!(matches!(
+            build_metadata_auxiliary_data(&json),
+            Err(MetadataError::UnsupportedValue(_))
+        ));
     }
 
     #[test]
