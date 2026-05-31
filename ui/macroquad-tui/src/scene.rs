@@ -134,10 +134,10 @@ impl SceneInput {
             chars.push(c);
         }
         // Compact list of keys we care about — exhaustive polling
-        // every KeyCode would be wasteful. Scenes that want
-        // less-common keys can poll get_keys_down() / get_keys_pressed()
-        // for themselves once macroquad exposes it; for now this
-        // covers terminal + arcade-game vocabularies.
+        // every KeyCode would be wasteful. Covers terminal +
+        // arcade-game vocabularies plus the full letter range for
+        // hotkey use (game commands, viewer shortcuts). Letter polls
+        // are 26 cheap calls per frame, well under the budget.
         let watch: &[KeyCode] = &[
             KeyCode::Up,
             KeyCode::Down,
@@ -167,6 +167,36 @@ impl SceneInput {
             KeyCode::F8,
             KeyCode::F9,
             KeyCode::F10,
+            // Letters A–Z. macroquad's KeyCode lists them all
+            // individually so we have to spell each out; the snapshot
+            // then lets scenes treat any letter as a hotkey via the
+            // standard `is_key_pressed` path.
+            KeyCode::A,
+            KeyCode::B,
+            KeyCode::C,
+            KeyCode::D,
+            KeyCode::E,
+            KeyCode::F,
+            KeyCode::G,
+            KeyCode::H,
+            KeyCode::I,
+            KeyCode::J,
+            KeyCode::K,
+            KeyCode::L,
+            KeyCode::M,
+            KeyCode::N,
+            KeyCode::O,
+            KeyCode::P,
+            KeyCode::Q,
+            KeyCode::R,
+            KeyCode::S,
+            KeyCode::T,
+            KeyCode::U,
+            KeyCode::V,
+            KeyCode::W,
+            KeyCode::X,
+            KeyCode::Y,
+            KeyCode::Z,
         ];
         let mut keys_pressed = Vec::new();
         let mut keys_down = Vec::new();
