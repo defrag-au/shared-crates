@@ -1,0 +1,14 @@
+[package]
+name = "macroquad-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Text-grid + line-editor + typewriter + key-repeat primitives for macroquad apps. Built for uap-terminal; designed for general reuse."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+macroquad = "0.4"

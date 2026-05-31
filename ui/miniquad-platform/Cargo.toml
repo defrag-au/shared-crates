@@ -1,0 +1,25 @@
+[package]
+name = "miniquad-platform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Custom getrandom backend + browser-platform plugin for miniquad WASM apps. Lets crypto-heavy Rust crates (pallas, ed25519, rand) run on miniquad without wasm-bindgen by routing getrandom through a miniquad plugin that calls crypto.getRandomValues()."
+
+[lib]
+path = "src/lib.rs"
+
+# getrandom — pulled in transitively by anything wanting RNG. The
+# `custom` feature lets us register our own backend via
+# `register_custom_getrandom!`. Without it, getrandom errors at compile
+# time on wasm32-unknown-unknown. The alternative `js` feature would
+# pull in wasm-bindgen, which miniquad's WASM runtime can't satisfy.
+[dependencies]
+getrandom = { version = "0.2", features = ["custom"] }
+
+# Plugin bridge — JsObject + buffer handling. Already used by quad-storage
+# and most miniquad plugins; we use it to receive the random bytes from
+# the JS side.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+sapp-jsutils = "0.1"
