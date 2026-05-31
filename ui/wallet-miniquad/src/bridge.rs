@@ -104,9 +104,7 @@ mod imp {
     /// `payload_hex` is hex-encoded bytes the wallet will wrap in a
     /// COSE_Sign1 envelope and sign with the corresponding key.
     pub fn sign_data(addr: &str, payload_hex: &str) -> ReqId {
-        ReqId(unsafe {
-            wallet_sign_data(JsObject::string(addr), JsObject::string(payload_hex))
-        })
+        ReqId(unsafe { wallet_sign_data(JsObject::string(addr), JsObject::string(payload_hex)) })
     }
 
     pub fn poll(id: ReqId) -> PollResult {

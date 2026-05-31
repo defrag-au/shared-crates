@@ -54,7 +54,10 @@ impl KeyRepeat {
         if is_key_pressed(key) {
             self.state.insert(
                 key,
-                KeyState { pressed_at: time, last_fired_at: time },
+                KeyState {
+                    pressed_at: time,
+                    last_fired_at: time,
+                },
             );
             return true;
         }
@@ -66,7 +69,10 @@ impl KeyRepeat {
                 // tracking from now without firing.
                 self.state.insert(
                     key,
-                    KeyState { pressed_at: time, last_fired_at: time },
+                    KeyState {
+                        pressed_at: time,
+                        last_fired_at: time,
+                    },
                 );
                 return false;
             };

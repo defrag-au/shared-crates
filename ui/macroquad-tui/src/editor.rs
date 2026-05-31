@@ -123,8 +123,7 @@ impl LineEditor {
         self.cursor = 0;
         self.history_idx = None;
         self.pending.clear();
-        if !line.trim().is_empty()
-            && self.history.last().map(|s| s.as_str()) != Some(line.as_str())
+        if !line.trim().is_empty() && self.history.last().map(|s| s.as_str()) != Some(line.as_str())
         {
             self.history.push(line.clone());
         }
@@ -225,10 +224,14 @@ pub enum CompletionResult {
     Unique,
     /// Buffer was extended to the common prefix of all candidates; caller
     /// can optionally show the list of remaining candidates.
-    Prefix { candidates: Vec<String> },
+    Prefix {
+        candidates: Vec<String>,
+    },
     /// All candidates already share the entire current word as prefix.
     /// Caller should display the list (e.g. on double-tab).
-    Ambiguous { candidates: Vec<String> },
+    Ambiguous {
+        candidates: Vec<String>,
+    },
 }
 
 fn common_prefix(candidates: &[String]) -> String {

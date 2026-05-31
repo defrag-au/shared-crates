@@ -70,7 +70,9 @@ impl TypeQueue {
         self.accumulator += dt * self.chars_per_second;
         let mut written = 0;
         while self.accumulator >= 1.0 || matches!(self.pending.front(), Some(Op::SetSpeed(_))) {
-            let Some(op) = self.pending.pop_front() else { break };
+            let Some(op) = self.pending.pop_front() else {
+                break;
+            };
             match op {
                 Op::Char(ch) => {
                     grid.write_char(ch);
