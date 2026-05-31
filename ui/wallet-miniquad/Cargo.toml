@@ -1,0 +1,34 @@
+[package]
+name = "wallet-miniquad"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Cardano CIP-30 wallet bridge for miniquad WASM apps. JS plugin + Rust shim; promise→poll bridging across frames; pallas-addresses for bech32; balance CBOR walker for $handle extraction. Sibling of wallet-leptos for the miniquad runtime."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Sibling crate — provides the custom getrandom backend so anything
+# in this stack that wants entropy (pallas-crypto for keypair work,
+# bip39 for mnemonics) compiles on wasm32. Not strictly needed for the
+# CIP-30 surface itself, but downstream pallas modules often pull
+# rand_core via pallas-crypto, so listing it here documents intent.
+miniquad-platform = { path = "../miniquad-platform" }
+
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Pallas — pure-rust Cardano. Used here for address parsing (hex →
+# bech32 inference of the right hrp via the address header byte) and
+# CBOR walking of the CIP-30 balance Value. Confirmed building cleanly
+# on wasm32-unknown-unknown without wasm-bindgen.
+pallas-addresses = "0.32"
+pallas-codec = "0.32"
+
+# Plugin bridge — JsObject for promise-bridged string + buffer
+# transport between Rust and the wallet.js plugin.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+sapp-jsutils = "0.1"
