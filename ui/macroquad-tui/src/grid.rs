@@ -26,7 +26,7 @@ use macroquad::prelude::*;
 /// per-cell attributes (bold / dim / blink / inverse). Background
 /// defaults to fully transparent so existing terminal-style renderers
 /// that ignore `bg` continue to work unchanged.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Cell {
     pub ch: char,
     pub fg: Color,

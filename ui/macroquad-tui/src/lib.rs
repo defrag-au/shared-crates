@@ -30,6 +30,7 @@ pub mod palette;
 pub mod render;
 pub mod repeat;
 pub mod scene;
+pub mod sprite;
 pub mod sprite_atlas;
 pub mod typer;
 
@@ -39,5 +40,6 @@ pub use half_block::{encode_pair, HalfBlockCanvas};
 pub use render::{paint_cell, paint_grid, GridMetrics};
 pub use repeat::KeyRepeat;
 pub use scene::{FixedStep, Scene, SceneCtx, SceneInput, SceneOutcome, SceneStack};
+pub use sprite::{CellSprite, SpriteSheet};
 pub use sprite_atlas::{AtlasSlot, ShardedAtlas};
 pub use typer::TypeQueue;
