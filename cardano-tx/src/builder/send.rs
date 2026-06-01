@@ -478,6 +478,143 @@ pub fn build_fan_out(
     )
 }
 
+/// Build a multi-recipient pure-ADA payment transaction with optional
+/// transaction metadata, funded from `deps.from_address` with change
+/// back to it.
+///
+/// The shared substrate for the **Mode B refund worker**
+/// (`MINT_REFUNDS.md`) and the **settlement worker**
+/// (`MINT_SETTLEMENT.md`): both pay N arbitrary addresses pure ADA and
+/// tag the tx with CIP-674 (`refund:…` / `settle:…`) — neither mints,
+/// so the CIP-25 mint builders don't fit.
+///
+/// - `outputs` — `(recipient, lovelace)`. Each amount must clear the
+///   pure-ADA min UTxO (rejected before signing, like the inline-refund
+///   builder), so callers filter sub-floor amounts upstream
+///   (`minting_core::classify_refund`).
+/// - `metadata` — an optional label→value JSON object (e.g.
+///   `{ "674": { "msg": [...] } }`) emitted verbatim via
+///   [`build_metadata_auxiliary_data`](crate::metadata::cip25::build_metadata_auxiliary_data).
+///   `None` for a bare payment.
+///
+/// Funding mirrors [`build_fan_out`]: pure-ADA UTxOs only (asset-bearing
+/// and script-ref entries are excluded so a refund/settlement tx never
+/// consumes a policy script ref or native tokens), largest-first, with
+/// two-round fee convergence around the change output. The
+/// `min_change_cushion` guarantees any emitted change clears the pure-ADA
+/// minimum.
+pub fn build_send_many(
+    deps: &TxDeps,
+    outputs: &[(Address, u64)],
+    metadata: Option<&serde_json::Value>,
+) -> Result<UnsignedTx, TxBuildError> {
+    if outputs.is_empty() {
+        return Err(TxBuildError::BuildFailed(
+            "build_send_many: no outputs".to_string(),
+        ));
+    }
+
+    // Each output must clear the pure-ADA min UTxO or the ledger rejects
+    // after the fee is paid.
+    let min_pure_utxo = 228 * deps.params.coins_per_utxo_byte;
+    for (i, (_addr, amount)) in outputs.iter().enumerate() {
+        if *amount < min_pure_utxo {
+            return Err(TxBuildError::BuildFailed(format!(
+                "build_send_many: outputs[{i}] = {amount} lovelace < min_pure_utxo {min_pure_utxo}"
+            )));
+        }
+    }
+
+    // Pre-encode metadata so the fee is sized from its real weight (the
+    // converge closure re-attaches the same bytes each round).
+    let metadata_bytes = match metadata {
+        Some(v) => Some(
+            crate::metadata::cip25::build_metadata_auxiliary_data(v)
+                .map_err(|e| TxBuildError::BuildFailed(format!("metadata encoding failed: {e}")))?,
+        ),
+        None => None,
+    };
+
+    // Spendable pure-ADA UTxOs only (no assets, no script ref), largest-first.
+    let mut spendable: Vec<&UtxoApi> = deps
+        .utxos
+        .iter()
+        .filter(|u| u.assets.is_empty() && !u.has_tag(UtxoTag::HasScriptRef))
+        .collect();
+    spendable.sort_by_key(|u| std::cmp::Reverse(u.lovelace));
+    if spendable.is_empty() {
+        return Err(TxBuildError::BuildFailed(
+            "no spendable pure-ADA UTxOs (all entries carry native assets or a script ref)"
+                .to_string(),
+        ));
+    }
+
+    let total_outputs_lovelace: u64 = outputs.iter().map(|(_, l)| *l).sum();
+    let min_change_cushion: u64 = 1_500_000;
+    let base_fee = selection::estimate_simple_fee(&deps.params)
+        + metadata_bytes.as_ref().map_or(0, |b| b.len() as u64);
+
+    let mut selected: Vec<&UtxoApi> = Vec::new();
+    let mut input_lovelace: u64 = 0;
+    for u in &spendable {
+        let projected_fee = base_fee + (selected.len() as u64 + 1) * 50_000;
+        let needed = total_outputs_lovelace
+            .saturating_add(projected_fee)
+            .saturating_add(min_change_cushion);
+        selected.push(u);
+        input_lovelace = input_lovelace.saturating_add(u.lovelace);
+        if input_lovelace >= needed {
+            break;
+        }
+    }
+    let final_fee_estimate = base_fee + (selected.len() as u64 * 50_000);
+    let needed_lovelace = total_outputs_lovelace
+        .saturating_add(final_fee_estimate)
+        .saturating_add(min_change_cushion);
+    if input_lovelace < needed_lovelace {
+        return Err(TxBuildError::InsufficientFunds {
+            needed: needed_lovelace,
+            available: input_lovelace,
+        });
+    }
+
+    let selected_cloned: Vec<UtxoApi> = selected.into_iter().cloned().collect();
+    let outputs_cloned: Vec<(Address, u64)> = outputs.to_vec();
+    let from_address = deps.from_address.clone();
+    let network_id = deps.network_id;
+
+    converge_fee(
+        |fee| {
+            let refs: Vec<&UtxoApi> = selected_cloned.iter().collect();
+            let mut tx = add_utxo_inputs(StagingTransaction::new(), &refs)?;
+
+            for (addr, amount) in &outputs_cloned {
+                tx = tx.output(create_ada_output(addr.clone(), *amount));
+            }
+            if let Some(bytes) = &metadata_bytes {
+                tx = tx.add_auxiliary_data(bytes.clone());
+            }
+
+            // Change back to self; fee converges around it. The cushion
+            // keeps it above the pure-ADA minimum.
+            let change = input_lovelace
+                .checked_sub(total_outputs_lovelace)
+                .and_then(|v| v.checked_sub(fee))
+                .ok_or(TxBuildError::InsufficientFunds {
+                    needed: total_outputs_lovelace + fee,
+                    available: input_lovelace,
+                })?;
+            if change > 0 {
+                tx = tx.output(create_ada_output(from_address.clone(), change));
+            }
+
+            Ok(tx.fee(fee).network_id(network_id))
+        },
+        final_fee_estimate,
+        &deps.params,
+    )
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -837,5 +974,121 @@ mod tests {
             network_id: 0,
         };
         assert!(build_fan_out(&deps, 10_000_000, 0).is_err());
+    }
+
+    // ── build_send_many (refund / settlement payout txs) ──────────────
+
+    /// A second distinct recipient — a script-payment enterprise address,
+    /// just to exercise paying two different addresses in one tx.
+    fn other_address() -> Address {
+        use pallas_addresses::{
+            Network, ShelleyAddress, ShelleyDelegationPart, ShelleyPaymentPart,
+        };
+        use pallas_crypto::hash::Hash;
+        ShelleyAddress::new(
+            Network::Testnet,
+            ShelleyPaymentPart::Key(Hash::from([7u8; 28])),
+            ShelleyDelegationPart::Null,
+        )
+        .into()
+    }
+
+    /// Multi-recipient payout with a CIP-674 tag: two recipient outputs +
+    /// change, the recipient amounts land verbatim, and the `674` msg
+    /// bytes ride in the tx's auxiliary data.
+    #[test]
+    fn test_build_send_many_with_metadata() {
+        let deps = TxDeps {
+            utxos: vec![make_utxo(100_000_000)],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let outs = vec![
+            (test_address(), 5_000_000u64),
+            (other_address(), 6_000_000u64),
+        ];
+        let meta = serde_json::json!({ "674": { "msg": ["settle:abc:1"] } });
+
+        let unsigned = build_send_many(&deps, &outs, Some(&meta)).expect("build failed");
+        assert!(unsigned.fee > 0);
+
+        let outputs = unsigned.staging.outputs.as_ref().expect("outputs");
+        // 2 recipients + 1 change.
+        assert_eq!(outputs.len(), 3);
+        assert_eq!(outputs[0].lovelace, 5_000_000);
+        assert_eq!(outputs[1].lovelace, 6_000_000);
+        assert!(outputs[2].lovelace > 0, "change back to self");
+
+        // The CIP-674 tag is attached (auxiliary data present).
+        assert!(
+            unsigned.staging.auxiliary_data.is_some(),
+            "metadata auxiliary data should be attached"
+        );
+    }
+
+    /// No metadata → a plain multi-recipient payment (no auxiliary data).
+    #[test]
+    fn test_build_send_many_without_metadata() {
+        let deps = TxDeps {
+            utxos: vec![make_utxo(50_000_000)],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let outs = vec![(test_address(), 4_000_000u64)];
+        let unsigned = build_send_many(&deps, &outs, None).expect("build failed");
+        assert!(unsigned.staging.auxiliary_data.is_none());
+        assert_eq!(
+            unsigned.staging.outputs.as_ref().unwrap()[0].lovelace,
+            4_000_000
+        );
+    }
+
+    /// A sub-min-UTxO output is rejected before signing.
+    #[test]
+    fn test_build_send_many_rejects_sub_min_output() {
+        let deps = TxDeps {
+            utxos: vec![make_utxo(50_000_000)],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let outs = vec![(test_address(), 500_000u64)]; // 0.5 ADA < min
+        assert!(matches!(
+            build_send_many(&deps, &outs, None),
+            Err(TxBuildError::BuildFailed(_))
+        ));
+    }
+
+    /// Empty output list is rejected.
+    #[test]
+    fn test_build_send_many_rejects_empty() {
+        let deps = TxDeps {
+            utxos: vec![make_utxo(50_000_000)],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        assert!(build_send_many(&deps, &[], None).is_err());
+    }
+
+    /// Underfunded wallet → InsufficientFunds.
+    #[test]
+    fn test_build_send_many_insufficient() {
+        let deps = TxDeps {
+            utxos: vec![make_utxo(5_000_000)],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let outs = vec![
+            (test_address(), 4_000_000u64),
+            (other_address(), 4_000_000u64),
+        ];
+        assert!(matches!(
+            build_send_many(&deps, &outs, None),
+            Err(TxBuildError::InsufficientFunds { .. })
+        ));
     }
 }
