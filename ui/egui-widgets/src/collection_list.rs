@@ -217,6 +217,11 @@ pub enum CollectionListAction {
     /// surface for editing phases, gates, and allowlist. Only emitted when
     /// [`CollectionList::with_configure`] is `true`.
     Configure { policy_id: String },
+    /// User clicked the `Settlement` button. Host opens (or focuses) the
+    /// floating Settlement window — treasury config (founder split, float
+    /// targets, fee waiver) + the manual settle trigger. Only emitted when
+    /// [`CollectionList::with_settlement`] is `true`.
+    Settlement { policy_id: String },
 }
 
 /// Rendering style. Both styles share the same row VM and action emission —
@@ -244,6 +249,7 @@ pub struct CollectionList<'a> {
     show_archive: bool,
     show_payments: bool,
     show_configure: bool,
+    show_settlement: bool,
     hide_archived: bool,
 }
 
@@ -296,6 +302,7 @@ impl<'a> CollectionList<'a> {
             show_archive: false,
             show_payments: false,
             show_configure: false,
+            show_settlement: false,
             hide_archived: false,
         }
     }
@@ -394,6 +401,15 @@ impl<'a> CollectionList<'a> {
         self
     }
 
+    /// Show the per-card `Settlement` button. Off by default. Click →
+    /// emits [`CollectionListAction::Settlement`]; host opens / focuses the
+    /// floating Settlement window for editing treasury config + triggering a
+    /// settlement run.
+    pub fn with_settlement(mut self, enabled: bool) -> Self {
+        self.show_settlement = enabled;
+        self
+    }
+
     pub fn show(self, ui: &mut Ui) -> CollectionListResponse {
         let mut response = CollectionListResponse::default();
 
@@ -443,6 +459,7 @@ impl<'a> CollectionList<'a> {
                             self.show_archive,
                             self.show_payments,
                             self.show_configure,
+                            self.show_settlement,
                             &mut response,
                         );
                     }
@@ -460,6 +477,7 @@ impl<'a> CollectionList<'a> {
                                 self.show_archive,
                                 self.show_payments,
                                 self.show_configure,
+                                self.show_settlement,
                                 &mut response,
                             );
                         }
@@ -509,6 +527,7 @@ fn render_one(
     show_archive: bool,
     show_payments: bool,
     show_configure: bool,
+    show_settlement: bool,
     response: &mut CollectionListResponse,
 ) {
     match layout {
@@ -522,6 +541,7 @@ fn render_one(
             show_archive,
             show_payments,
             show_configure,
+            show_settlement,
             response,
         ),
         CollectionListLayout::List => render_list_row(
@@ -534,6 +554,7 @@ fn render_one(
             show_archive,
             show_payments,
             show_configure,
+            show_settlement,
             response,
         ),
     }
@@ -550,6 +571,7 @@ fn render_card(
     show_archive: bool,
     show_payments: bool,
     show_configure: bool,
+    show_settlement: bool,
     response: &mut CollectionListResponse,
 ) {
     // `PhosphorIcon::*.rich_text()` doesn't auto-install the font (unlike
@@ -599,6 +621,7 @@ fn render_card(
                 show_archive,
                 show_payments,
                 show_configure,
+                show_settlement,
                 row,
             ) {
                 ui.add_space(6.0);
@@ -612,6 +635,7 @@ fn render_card(
                     show_archive,
                     show_payments,
                     show_configure,
+                    show_settlement,
                     true, // wrap — Card layout has its own dedicated bar row
                     response,
                 );
@@ -746,6 +770,7 @@ fn render_list_row(
     show_archive: bool,
     show_payments: bool,
     show_configure: bool,
+    show_settlement: bool,
     response: &mut CollectionListResponse,
 ) {
     // `PhosphorIcon::*.rich_text()` doesn't auto-install the font (unlike
@@ -816,6 +841,7 @@ fn render_list_row(
                         show_archive,
                         show_payments,
                         show_configure,
+                        show_settlement,
                         false, // wrap — List layout is single-row by design
                         response,
                     );
@@ -931,6 +957,7 @@ fn has_any_action(
     show_archive: bool,
     show_payments: bool,
     show_configure: bool,
+    show_settlement: bool,
     row: &CollectionRow,
 ) -> bool {
     show_test_mint
@@ -939,6 +966,7 @@ fn has_any_action(
         || show_archive
         || show_configure
         || show_payments
+        || show_settlement
         // Refuel is a card-only affordance + sits in the wallet sub-line,
         // not the action bar — but the predicate is shared with the bar's
         // visibility check; counting it keeps the bar logic uniform.
@@ -968,6 +996,7 @@ fn render_operator_actions(
     show_archive: bool,
     show_payments: bool,
     show_configure: bool,
+    show_settlement: bool,
     wrap: bool,
     response: &mut CollectionListResponse,
 ) {
@@ -981,6 +1010,7 @@ fn render_operator_actions(
     const ID_SCAN: u64 = 5;
     const ID_SEED_STUBS: u64 = 6;
     const ID_ARCHIVE: u64 = 7;
+    const ID_SETTLEMENT: u64 = 8;
 
     let mut group = ButtonGroup::new().wrap(wrap);
 
@@ -1016,6 +1046,12 @@ fn render_operator_actions(
                      and allowlist entries.",
                 ),
         );
+    }
+    if show_settlement {
+        group = group.add(ButtonGroupButton::new(ID_SETTLEMENT, "Settlement").hover_text(
+            "Open the settlement config — founder distribution split, float \
+             targets, fee waiver — and trigger a settlement run.",
+        ));
     }
     if show_payments {
         let ingest_label = if row.ingest_payment_open {
@@ -1082,6 +1118,9 @@ fn render_operator_actions(
             policy_id: row.policy_id.clone(),
         }),
         Some(ID_CONFIGURE) => Some(CollectionListAction::Configure {
+            policy_id: row.policy_id.clone(),
+        }),
+        Some(ID_SETTLEMENT) => Some(CollectionListAction::Settlement {
             policy_id: row.policy_id.clone(),
         }),
         Some(ID_INGEST) => Some(CollectionListAction::IngestPayment {
