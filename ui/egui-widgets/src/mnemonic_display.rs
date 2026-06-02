@@ -102,11 +102,16 @@ impl<'a> MnemonicDisplay<'a> {
                 .corner_radius(CornerRadius::same(4))
                 .inner_margin(Margin::symmetric(12, 8))
                 .show(ui, |ui| {
-                    ui.label(
-                        RichText::new("⚠  This phrase is shown ONCE. Write it down.")
-                            .color(Color32::from_rgb(240, 210, 140))
-                            .strong(),
-                    );
+                    ui.horizontal(|ui| {
+                        crate::icons::install_phosphor_font(ui.ctx());
+                        let warn = Color32::from_rgb(240, 210, 140);
+                        ui.label(crate::PhosphorIcon::Warning.rich_text(13.0, warn));
+                        ui.label(
+                            RichText::new("This phrase is shown ONCE. Write it down.")
+                                .color(warn)
+                                .strong(),
+                        );
+                    });
                     ui.label(
                         RichText::new(
                             "Anyone with these words controls the wallet. Store offline; \

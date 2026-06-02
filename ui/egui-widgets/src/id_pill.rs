@@ -24,6 +24,8 @@
 //!     .show(ui);
 //! ```
 
+use std::borrow::Cow;
+
 use egui::{Align, Color32, Layout, RichText, Ui};
 
 use crate::icons::{install_phosphor_font, PhosphorIcon};
@@ -50,7 +52,7 @@ pub enum IdPillLayout {
 /// Builder.
 pub struct IdPill<'a> {
     label: Option<&'a str>,
-    value_full: &'a str,
+    value_full: Cow<'a, str>,
     value_short: Option<String>,
     widths: (usize, usize),
     label_min_width: Option<f32>,
@@ -77,7 +79,7 @@ impl<'a> IdPill<'a> {
     pub fn new(label: &'a str, value_full: &'a str) -> Self {
         Self {
             label: Some(label).filter(|s| !s.is_empty()),
-            value_full,
+            value_full: Cow::Borrowed(value_full),
             value_short: None,
             // (10, 8) → 19-char middle-elision: `8532f316dd…45d87a1b`.
             // Reads as a consistent total length across policy_id (56 chars),
@@ -90,6 +92,31 @@ impl<'a> IdPill<'a> {
             layout: IdPillLayout::Stacked,
             label_color: Color32::from_gray(140),
             value_color: Color32::from_gray(220),
+        }
+    }
+
+    /// A pill for a **UTxO reference** — `tx_hash#index`, label-less, in the
+    /// compact [`IdPillLayout::Inline`] shape (suited to a dense UTxO list).
+    /// The copy button writes the canonical `tx_hash#index` (paste into an
+    /// explorer — trim the `#index` — or straight into `cardano-cli`); the
+    /// display middle-elides the hash but keeps the index: `739df5ec…6df854#2`.
+    /// Returns `IdPill<'static>` (it owns the formatted value), so the caller
+    /// can chain builders + `show(ui)` without holding the strings.
+    pub fn utxo_ref(tx_hash: &str, index: u32) -> IdPill<'static> {
+        let full = format!("{tx_hash}#{index}");
+        let short = format!("{}#{index}", truncate_middle(tx_hash, 8, 6));
+        IdPill {
+            label: None,
+            value_full: Cow::Owned(full),
+            value_short: Some(short),
+            widths: (8, 6),
+            label_min_width: None,
+            value_min_width: None,
+            min_width: None,
+            copyable: true,
+            layout: IdPillLayout::Inline,
+            label_color: Color32::from_gray(140),
+            value_color: Color32::from_gray(160),
         }
     }
 
@@ -202,11 +229,9 @@ impl<'a> IdPill<'a> {
         // `allocate_ui_with_layout(vec2(w, 0), …)` carves out exactly
         // `w` of horizontal space for the frame to occupy.
         if let Some(w) = self.min_width {
-            ui.allocate_ui_with_layout(
-                egui::vec2(w, 0.0),
-                Layout::top_down(Align::Min),
-                |ui| self.render_stacked_frame(ui, &mut response, true),
-            );
+            ui.allocate_ui_with_layout(egui::vec2(w, 0.0), Layout::top_down(Align::Min), |ui| {
+                self.render_stacked_frame(ui, &mut response, true)
+            });
         } else {
             self.render_stacked_frame(ui, &mut response, false);
         }
@@ -245,12 +270,8 @@ impl<'a> IdPill<'a> {
                     let copy_budget = if self.copyable { 22.0 } else { 0.0 };
                     let display =
                         self.choose_display_with_budget(ui, ui.available_width() - copy_budget);
-                    ui.label(
-                        RichText::new(display)
-                            .monospace()
-                            .color(self.value_color),
-                    )
-                    .on_hover_text(self.value_full);
+                    ui.label(RichText::new(display).monospace().color(self.value_color))
+                        .on_hover_text(self.value_full.as_ref());
                     if !self.copyable {
                         return;
                     }
@@ -289,9 +310,9 @@ impl<'a> IdPill<'a> {
                     ui.add(label_widget);
                 }
             }
-            let short = self
-                .value_short
-                .unwrap_or_else(|| truncate_middle(self.value_full, self.widths.0, self.widths.1));
+            let short = self.value_short.unwrap_or_else(|| {
+                truncate_middle(self.value_full.as_ref(), self.widths.0, self.widths.1)
+            });
             let value_widget = egui::Label::new(
                 RichText::new(short)
                     .monospace()
@@ -303,7 +324,7 @@ impl<'a> IdPill<'a> {
             } else {
                 ui.add(value_widget)
             };
-            value_resp.on_hover_text(self.value_full);
+            value_resp.on_hover_text(self.value_full.as_ref());
             if self.copyable {
                 install_phosphor_font(ui.ctx());
                 if ui
@@ -344,7 +365,7 @@ impl<'a> IdPill<'a> {
         if full_width <= budget {
             self.value_full.to_string()
         } else {
-            truncate_middle(self.value_full, self.widths.0, self.widths.1)
+            truncate_middle(self.value_full.as_ref(), self.widths.0, self.widths.1)
         }
     }
 }

@@ -62,6 +62,7 @@ fn row(
         archived_at: None,
         deposit_address: None,
         deposit_address_short: None,
+        deposit_account_index: None,
         ingest_payment_open: false,
         scan_payments_in_flight: false,
     }
@@ -577,7 +578,9 @@ fn capture_actions(actions: Vec<CollectionListAction>, state: &mut CollectionLis
             | CollectionListAction::Unarchive { policy_id }
             | CollectionListAction::IngestPayment { policy_id }
             | CollectionListAction::ScanPayments { policy_id }
-            | CollectionListAction::Configure { policy_id } => {
+            | CollectionListAction::Configure { policy_id }
+            | CollectionListAction::FundWallet { policy_id }
+            | CollectionListAction::Settlement { policy_id } => {
                 state.last_other = Some(policy_id);
             }
         }

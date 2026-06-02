@@ -62,6 +62,7 @@ use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke, Ui};
 
 use crate::button_group::{ButtonGroup, ButtonGroupButton};
 use crate::icons::install_phosphor_font;
+use crate::id_pill::{IdPill, IdPillLayout};
 use crate::wallet_list::{WalletPoolBadge, WalletPoolBadgeHealth};
 use crate::PhosphorIcon;
 
@@ -150,6 +151,13 @@ pub struct CollectionRow {
     /// Pre-truncated `deposit_address` for inline display (caller picks the
     /// prefix/suffix widths). `None` hides the row.
     pub deposit_address_short: Option<String>,
+    /// BIP-44 account index of the collection's deposit wallet (the
+    /// `CollectionDeposit` band — `mint + 100_000`). Carried so the deposit
+    /// address pill can offer an Inspect button that opens that wallet's
+    /// UTxO panel via [`CollectionListAction::OpenWallet`], same as the mint
+    /// wallet. `None` hides the deposit Inspect affordance (legacy rows /
+    /// hosts that haven't wired it).
+    pub deposit_account_index: Option<u32>,
     /// `true` when the parent has the Ingest-payment form open below this
     /// row. Same toggle treatment as `test_mint_open` — `+ Ingest` flips to
     /// `− Ingest`.
@@ -172,8 +180,9 @@ pub enum CollectionListAction {
     /// User clicked the Activity toggle — open/close the recent-mint
     /// activity panel for this `policy_id`.
     Activity { policy_id: String },
-    /// User clicked the `wallet #N` link in the footer. Parent opens
-    /// that wallet's UTxO panel (or whatever it does for wallet focus).
+    /// User clicked an Inspect button on a wallet pill (the mint wallet
+    /// or — when `deposit_account_index` is set — the deposit wallet).
+    /// Parent opens that wallet's UTxO panel.
     OpenWallet { account_index: u32 },
     /// User clicked the per-card "Refuel" button. The host fires a
     /// server-side fan-out tx (keyed by `policy_id` — the collection
@@ -185,6 +194,12 @@ pub enum CollectionListAction {
     /// `pool.health != Healthy`. Widget self-enforces the no-op rule
     /// — host doesn't have to check.
     Refuel { policy_id: String },
+    /// User clicked the per-card "Fund" button on the mint-wallet pill. The
+    /// host opens its top-up flow (fund the collection's mint/fuel wallet
+    /// from the operator's browser wallet). Only emitted when
+    /// [`CollectionList::with_fund`] is `true` and the row has a mint
+    /// wallet address.
+    FundWallet { policy_id: String },
     /// User clicked Archive on an active card. Host soft-archives the
     /// collection (halts its engine DO + hides it). Only emitted when
     /// [`CollectionList::with_archive`] is `true`.
@@ -208,6 +223,11 @@ pub enum CollectionListAction {
     /// surface for editing phases, gates, and allowlist. Only emitted when
     /// [`CollectionList::with_configure`] is `true`.
     Configure { policy_id: String },
+    /// User clicked the `Settlement` button. Host opens (or focuses) the
+    /// floating Settlement window — treasury config (founder split, float
+    /// targets, fee waiver) + the manual settle trigger. Only emitted when
+    /// [`CollectionList::with_settlement`] is `true`.
+    Settlement { policy_id: String },
 }
 
 /// Rendering style. Both styles share the same row VM and action emission —
@@ -235,6 +255,8 @@ pub struct CollectionList<'a> {
     show_archive: bool,
     show_payments: bool,
     show_configure: bool,
+    show_settlement: bool,
+    show_fund: bool,
     hide_archived: bool,
 }
 
@@ -287,6 +309,8 @@ impl<'a> CollectionList<'a> {
             show_archive: false,
             show_payments: false,
             show_configure: false,
+            show_settlement: false,
+            show_fund: false,
             hide_archived: false,
         }
     }
@@ -385,6 +409,23 @@ impl<'a> CollectionList<'a> {
         self
     }
 
+    /// Show the per-card `Settlement` button. Off by default. Click →
+    /// emits [`CollectionListAction::Settlement`]; host opens / focuses the
+    /// floating Settlement window for editing treasury config + triggering a
+    /// settlement run.
+    pub fn with_settlement(mut self, enabled: bool) -> Self {
+        self.show_settlement = enabled;
+        self
+    }
+
+    /// Show a "Fund" button on the mint-wallet pill. Off by default. Click →
+    /// emits [`CollectionListAction::FundWallet`]; the host opens its
+    /// browser-wallet top-up flow for the collection's mint/fuel wallet.
+    pub fn with_fund(mut self, enabled: bool) -> Self {
+        self.show_fund = enabled;
+        self
+    }
+
     pub fn show(self, ui: &mut Ui) -> CollectionListResponse {
         let mut response = CollectionListResponse::default();
 
@@ -434,6 +475,8 @@ impl<'a> CollectionList<'a> {
                             self.show_archive,
                             self.show_payments,
                             self.show_configure,
+                            self.show_settlement,
+                            self.show_fund,
                             &mut response,
                         );
                     }
@@ -451,6 +494,8 @@ impl<'a> CollectionList<'a> {
                                 self.show_archive,
                                 self.show_payments,
                                 self.show_configure,
+                                self.show_settlement,
+                                self.show_fund,
                                 &mut response,
                             );
                         }
@@ -500,6 +545,8 @@ fn render_one(
     show_archive: bool,
     show_payments: bool,
     show_configure: bool,
+    show_settlement: bool,
+    show_fund: bool,
     response: &mut CollectionListResponse,
 ) {
     match layout {
@@ -513,6 +560,8 @@ fn render_one(
             show_archive,
             show_payments,
             show_configure,
+            show_settlement,
+            show_fund,
             response,
         ),
         CollectionListLayout::List => render_list_row(
@@ -525,6 +574,7 @@ fn render_one(
             show_archive,
             show_payments,
             show_configure,
+            show_settlement,
             response,
         ),
     }
@@ -541,6 +591,8 @@ fn render_card(
     show_archive: bool,
     show_payments: bool,
     show_configure: bool,
+    show_settlement: bool,
+    show_fund: bool,
     response: &mut CollectionListResponse,
 ) {
     // `PhosphorIcon::*.rich_text()` doesn't auto-install the font (unlike
@@ -590,6 +642,7 @@ fn render_card(
                 show_archive,
                 show_payments,
                 show_configure,
+                show_settlement,
                 row,
             ) {
                 ui.add_space(6.0);
@@ -603,12 +656,26 @@ fn render_card(
                     show_archive,
                     show_payments,
                     show_configure,
+                    show_settlement,
                     true, // wrap — Card layout has its own dedicated bar row
                     response,
                 );
             }
 
             ui.add_space(8.0);
+
+            // ── Identity: policy_id as a stacked pill, above the supply
+            //    bar. The policy_id is the collection's primary on-chain
+            //    identity (and what `mintctl clone-policy` needs), so it
+            //    leads the body rather than trailing in a footer. The
+            //    stacked `IdPill` gives it a labelled, copy-able frame
+            //    consistent with the wallet/deposit pills below.
+            IdPill::new("policy", &row.policy_id)
+                .layout(IdPillLayout::Stacked)
+                .with_short(row.policy_id_short.clone())
+                .show(ui);
+
+            ui.add_space(10.0);
 
             // ── Supply: text + progress bar ──────────────────────────
             ui.horizontal(|ui| {
@@ -650,128 +717,90 @@ fn render_card(
 
             ui.add_space(10.0);
 
-            // ── Wallet sub-line: address + copy + pool badge + Refuel ─
+            // ── Wallets: stacked address pills, each inspectable ──────
             //
-            // The collection card is the primary surface for everything
-            // wallet-shaped that belongs to a collection — address, fuel
-            // level, refuel action. Collection wallets don't appear in
-            // the parent's "Wallets" section anymore, so this sub-line
-            // is the sole place where the operator interacts with the
-            // mint wallet for this collection.
-            //
-            // The `wallet #N` link is kept (left-most) so the
-            // collection-↔-wallet relationship is still visible, and
-            // clicking it still opens that wallet's UTxO panel.
-            ui.horizontal(|ui| {
-                let wallet_text = format!("wallet #{}", row.wallet_account_index);
-                if ui
-                    .small_button(RichText::new(wallet_text).small().color(META_GREY))
-                    .on_hover_text("Open this wallet's UTxOs")
-                    .clicked()
-                {
-                    response.actions.push(CollectionListAction::OpenWallet {
-                        account_index: row.wallet_account_index,
-                    });
-                }
-
-                // Inline address (truncated) + copy icon. The copy is
-                // done in-widget to match the policy_id pattern below
-                // (no host round-trip for a value the row already
-                // carries). Hidden when the row didn't supply one —
-                // older snapshots or wallets without a derived address.
-                if let Some(short) = &row.wallet_address_short {
-                    ui.label(RichText::new("·").color(KEYHASH_GREY).monospace().small());
-                    ui.label(RichText::new(short).monospace().small().color(KEYHASH_GREY));
-                    if let Some(full) = &row.wallet_address_full {
-                        if ui
-                            .small_button(PhosphorIcon::Copy.rich_text(11.0, META_GREY).small())
-                            .on_hover_text("Copy wallet address to clipboard")
+            // The collection card is the sole surface for the collection's
+            // wallets (they're filtered out of the parent's "Wallets"
+            // section), so both the **mint** wallet (fuel + minting) and the
+            // **deposit** wallet (where buyers send ADA) live here. Each is
+            // a stacked `IdPill` (labelled, copy-able address frame) with an
+            // Inspect button that opens its UTxO panel. The mint pill also
+            // carries the fuel-pool badge + Refuel on the controls row.
+            // Under settle-as-you-mint the mint wallet IS the payment wallet —
+            // it signs the mint AND receives the buyer's ADA (no separate
+            // deposit address). Label it so the operator knows both roles live
+            // in one wallet. Legacy two-wallet collections (a separate deposit
+            // address is present) keep the plain "mint wallet" label, with the
+            // deposit pill rendered below.
+            let mint_label = if row.deposit_address.is_some() {
+                format!("mint wallet #{}", row.wallet_account_index)
+            } else {
+                format!("mint + payments #{}", row.wallet_account_index)
+            };
+            render_wallet_pill(
+                ui,
+                &mint_label,
+                row.wallet_address_full.as_deref(),
+                row.wallet_address_short.as_deref(),
+                Some(row.wallet_account_index),
+                response,
+                |ui, response| {
+                    // Fund — top up the mint/fuel wallet from the operator's
+                    // browser wallet. The primary action for an empty wallet,
+                    // so it leads the controls row (before the fuel state +
+                    // Refuel, which only shape funds already present).
+                    if show_fund
+                        && row.wallet_address_full.is_some()
+                        && ui
+                            .small_button(RichText::new("Fund").small())
+                            .on_hover_text("Top up this collection's mint wallet from your wallet")
                             .clicked()
-                        {
-                            ui.ctx().copy_text(full.clone());
-                        }
-                    }
-                }
-
-                // Pool badge — same shape as the wallet-list card's
-                // pool pill so the visual is consistent across surfaces.
-                if let Some(pool) = &row.pool {
-                    let fg = match pool.health {
-                        WalletPoolBadgeHealth::Empty => Color32::from_rgb(220, 130, 130),
-                        WalletPoolBadgeHealth::Low => Color32::from_rgb(220, 200, 130),
-                        WalletPoolBadgeHealth::Healthy => Color32::from_rgb(150, 210, 160),
-                    };
-                    // Health indicator: the text colour itself carries the
-                    // signal (red/amber/green). The leading `●` glyph used
-                    // to do this here doesn't render in the browser font;
-                    // CLAUDE.md says drop geometric Unicode.
-                    let ada_whole = pool.total_lovelace / 1_000_000;
-                    ui.label(
-                        RichText::new(format!("{} fuel · {} ADA", pool.fuel_count, ada_whole))
-                            .small()
-                            .color(fg),
-                    );
-                }
-
-                // Refuel — fires a server-side fan-out tx that splits
-                // the wallet's pure-ADA balance into N × 10 ADA fuel
-                // slots, priming the wallet for parallel mints. The
-                // widget self-disables in three cases so the host
-                // doesn't have to:
-                //   - no pool snapshot yet — operator can't see fuel
-                //     state, button hidden
-                //   - pool already Healthy — refuel would be a no-op,
-                //     button shown but disabled with explanatory
-                //     hover text
-                //   - refuel already in flight — disabled, label is
-                //     "⛽ Refuelling…" until the host clears the flag
-                if show_refuel {
-                    if let Some(pool) = &row.pool {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            refuel_button(ui, row, pool, response);
+                    {
+                        response.actions.push(CollectionListAction::FundWallet {
+                            policy_id: row.policy_id.clone(),
                         });
                     }
-                }
-            });
-
-            ui.add_space(4.0);
-
-            // ── Footer: policy_id + copy ────────────────────────────
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(&row.policy_id_short)
-                        .monospace()
-                        .small()
-                        .color(KEYHASH_GREY),
-                );
-                if ui
-                    .small_button(PhosphorIcon::Copy.rich_text(11.0, META_GREY).small())
-                    .on_hover_text("Copy policy_id to clipboard")
-                    .clicked()
-                {
-                    ui.ctx().copy_text(row.policy_id.clone());
-                }
-            });
-
-            // ── Deposit address (where buyers send ADA) — only when
-            //    allocated (legacy rows hide it cleanly). Same shape as
-            //    the policy_id footer: prefix "deposit · " so it's
-            //    self-labelling at a glance, then the short bech32 + copy.
-            if let (Some(short), Some(full)) = (&row.deposit_address_short, &row.deposit_address) {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("deposit · ").small().color(META_GREY));
-                    ui.label(RichText::new(short).monospace().small().color(KEYHASH_GREY));
-                    if ui
-                        .small_button(PhosphorIcon::Copy.rich_text(11.0, META_GREY).small())
-                        .on_hover_text(
-                            "Copy this collection's deposit address — \
-                             buyers send ADA here to mint",
-                        )
-                        .clicked()
-                    {
-                        ui.ctx().copy_text(full.clone());
+                    // Pool badge — same shape as the wallet-list card's
+                    // pool pill so the visual is consistent across surfaces.
+                    if let Some(pool) = &row.pool {
+                        let fg = match pool.health {
+                            WalletPoolBadgeHealth::Empty => Color32::from_rgb(220, 130, 130),
+                            WalletPoolBadgeHealth::Low => Color32::from_rgb(220, 200, 130),
+                            WalletPoolBadgeHealth::Healthy => Color32::from_rgb(150, 210, 160),
+                        };
+                        let ada_whole = pool.total_lovelace / 1_000_000;
+                        ui.label(
+                            RichText::new(format!("{} fuel · {} ADA", pool.fuel_count, ada_whole))
+                                .small()
+                                .color(fg),
+                        );
                     }
-                });
+                    // Refuel — fan-out tx that splits the wallet's pure-ADA
+                    // balance into N × 10 ADA fuel slots. Self-disables (no
+                    // pool / healthy / in-flight) so the host doesn't re-check.
+                    if show_refuel {
+                        if let Some(pool) = &row.pool {
+                            refuel_button(ui, row, pool, response);
+                        }
+                    }
+                },
+            );
+
+            // ── Deposit wallet — only when allocated (legacy rows hide it
+            //    cleanly). Inspectable too: the deposit wallet is a real
+            //    `CollectionDeposit` account, so its Inspect opens the same
+            //    UTxO panel (handy for eyeballing inbound payments).
+            if row.deposit_address.is_some() {
+                ui.add_space(4.0);
+                render_wallet_pill(
+                    ui,
+                    "deposit",
+                    row.deposit_address.as_deref(),
+                    row.deposit_address_short.as_deref(),
+                    row.deposit_account_index,
+                    response,
+                    |_ui, _response| {},
+                );
             }
         });
 }
@@ -787,6 +816,7 @@ fn render_list_row(
     show_archive: bool,
     show_payments: bool,
     show_configure: bool,
+    show_settlement: bool,
     response: &mut CollectionListResponse,
 ) {
     // `PhosphorIcon::*.rich_text()` doesn't auto-install the font (unlike
@@ -857,12 +887,60 @@ fn render_list_row(
                         show_archive,
                         show_payments,
                         show_configure,
+                        show_settlement,
                         false, // wrap — List layout is single-row by design
                         response,
                     );
                 });
             });
         });
+}
+
+/// Render one collection wallet as a stacked `IdPill` (labelled, copy-able
+/// address frame) followed by a controls row: an **Inspect** button that
+/// opens the wallet's UTxO panel (via [`CollectionListAction::OpenWallet`])
+/// plus any caller-supplied controls (`extra` — the mint wallet passes its
+/// pool badge + Refuel; the deposit wallet passes nothing).
+///
+/// - `address_full` / `address_short`: the bech32 address + its pre-elided
+///   form. `None` (legacy rows without a derived address) falls back to just
+///   the label, no pill.
+/// - `account_index`: drives the Inspect button. `None` hides it (the host
+///   hasn't wired a UTxO panel for this wallet).
+fn render_wallet_pill(
+    ui: &mut Ui,
+    label: &str,
+    address_full: Option<&str>,
+    address_short: Option<&str>,
+    account_index: Option<u32>,
+    response: &mut CollectionListResponse,
+    extra: impl FnOnce(&mut Ui, &mut CollectionListResponse),
+) {
+    if let Some(full) = address_full {
+        let mut pill = IdPill::new(label, full).layout(IdPillLayout::Stacked);
+        if let Some(short) = address_short {
+            pill = pill.with_short(short.to_string());
+        }
+        pill.show(ui);
+    } else {
+        ui.label(RichText::new(label).small().color(META_GREY));
+    }
+
+    ui.add_space(2.0);
+    ui.horizontal(|ui| {
+        if let Some(idx) = account_index {
+            if ui
+                .small_button(RichText::new("Inspect").small().color(META_GREY))
+                .on_hover_text("Open this wallet's UTxOs")
+                .clicked()
+            {
+                response
+                    .actions
+                    .push(CollectionListAction::OpenWallet { account_index: idx });
+            }
+        }
+        extra(ui, response);
+    });
 }
 
 /// Shared Refuel button used by both card and list layouts. Owns the
@@ -925,6 +1003,7 @@ fn has_any_action(
     show_archive: bool,
     show_payments: bool,
     show_configure: bool,
+    show_settlement: bool,
     row: &CollectionRow,
 ) -> bool {
     show_test_mint
@@ -933,6 +1012,7 @@ fn has_any_action(
         || show_archive
         || show_configure
         || show_payments
+        || show_settlement
         // Refuel is a card-only affordance + sits in the wallet sub-line,
         // not the action bar — but the predicate is shared with the bar's
         // visibility check; counting it keeps the bar logic uniform.
@@ -962,6 +1042,7 @@ fn render_operator_actions(
     show_archive: bool,
     show_payments: bool,
     show_configure: bool,
+    show_settlement: bool,
     wrap: bool,
     response: &mut CollectionListResponse,
 ) {
@@ -975,6 +1056,7 @@ fn render_operator_actions(
     const ID_SCAN: u64 = 5;
     const ID_SEED_STUBS: u64 = 6;
     const ID_ARCHIVE: u64 = 7;
+    const ID_SETTLEMENT: u64 = 8;
 
     let mut group = ButtonGroup::new().wrap(wrap);
 
@@ -1009,6 +1091,14 @@ fn render_operator_actions(
                      per-wallet limit), gates (public / allowlist / token-held), \
                      and allowlist entries.",
                 ),
+        );
+    }
+    if show_settlement {
+        group = group.add(
+            ButtonGroupButton::new(ID_SETTLEMENT, "Settlement").hover_text(
+                "Open the settlement config — founder distribution split, float \
+             targets, fee waiver — and trigger a settlement run.",
+            ),
         );
     }
     if show_payments {
@@ -1076,6 +1166,9 @@ fn render_operator_actions(
             policy_id: row.policy_id.clone(),
         }),
         Some(ID_CONFIGURE) => Some(CollectionListAction::Configure {
+            policy_id: row.policy_id.clone(),
+        }),
+        Some(ID_SETTLEMENT) => Some(CollectionListAction::Settlement {
             policy_id: row.policy_id.clone(),
         }),
         Some(ID_INGEST) => Some(CollectionListAction::IngestPayment {

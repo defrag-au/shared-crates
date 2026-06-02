@@ -340,9 +340,15 @@ mod tests {
 
     #[test]
     fn default_icons_match_kind() {
-        assert_eq!(ToastKind::Success.default_icon(), Some(PhosphorIcon::CheckCircle));
+        assert_eq!(
+            ToastKind::Success.default_icon(),
+            Some(PhosphorIcon::CheckCircle)
+        );
         assert_eq!(ToastKind::Error.default_icon(), Some(PhosphorIcon::X));
-        assert_eq!(ToastKind::Warning.default_icon(), Some(PhosphorIcon::Warning));
+        assert_eq!(
+            ToastKind::Warning.default_icon(),
+            Some(PhosphorIcon::Warning)
+        );
         assert_eq!(ToastKind::Info.default_icon(), None);
     }
 
