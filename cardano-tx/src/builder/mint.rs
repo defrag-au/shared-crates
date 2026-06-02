@@ -1364,4 +1364,185 @@ mod tests {
         );
         assert!(matches!(result, Err(TxBuildError::BuildFailed(_))));
     }
+
+    // ── Inline-distribution size spike ────────────────────────────────────
+    //
+    // Foundational check for the settle-as-you-mint pivot
+    // (docs/design/INLINE_MINT_DISTRIBUTION.md): does a single on-chain-art
+    // mint — metadata near the ~15 KB ceiling — still fit under the 16384-byte
+    // Cardano tx limit once we add the artist/platform payout outputs to the
+    // delivery tx? The payout outputs are pure-ADA, byte-identical to the
+    // builder's `refund_outputs`, so we measure with those.
+
+    /// CIP-25 metadata sized near the on-chain-art ceiling. Large generative
+    /// data is stored as an array of ≤64-byte string chunks per CIP-25.
+    fn art_metadata(n_chunks: usize) -> serde_json::Value {
+        use serde_json::{Map, Value};
+        // 60-char chunk (safely ≤ 64-byte metadatum limit).
+        let chunk = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab";
+        let src: Vec<Value> = (0..n_chunks)
+            .map(|_| Value::String(chunk.to_string()))
+            .collect();
+        let mut asset = Map::new();
+        asset.insert("name".into(), Value::String("On-Chain Art Piece #1".into()));
+        asset.insert("mediaType".into(), Value::String("image/svg+xml".into()));
+        asset.insert("artist".into(), Value::String("CM_GenArt".into()));
+        asset.insert("src".into(), Value::Array(src));
+        let mut by_asset = Map::new();
+        by_asset.insert("ArtPiece001".into(), Value::Object(asset));
+        let mut by_policy = Map::new();
+        by_policy.insert(
+            "9ad4da1c6da54e41ecbab2758323f1abcc7b6e6643f5b930065fcb29".into(),
+            Value::Object(by_asset),
+        );
+        let mut root = Map::new();
+        root.insert("721".into(), Value::Object(by_policy));
+        Value::Object(root)
+    }
+
+    /// Build + sign an inline mint: 1 payment input, mint 1 NFT to the buyer,
+    /// `n_payouts` pure-ADA payout outputs (refund + platform + founders),
+    /// change, and the art metadata. Returns the **signed** tx byte length.
+    fn inline_signed_tx_size(metadata: &serde_json::Value, n_payouts: usize) -> usize {
+        let deps = super::super::TxDeps {
+            utxos: vec![UtxoApi {
+                tx_hash: "a".repeat(64),
+                output_index: 0,
+                lovelace: 200_000_000, // the buyer's payment — covers everything
+                assets: vec![],
+                tags: vec![],
+            }],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let mints = vec![MintRecipientEntry {
+            asset_name: "ArtPiece001".to_string(),
+            quantity: 1,
+            recipient: test_recipient(1),
+        }];
+        let payouts: Vec<(Address, u64)> = (0..n_payouts)
+            .map(|i| (test_recipient(100 + i as u8), 2_000_000))
+            .collect();
+        let (unsigned, _change) = build_cip25_mint_multi_with_change_and_refunds(
+            &deps,
+            &test_policy(),
+            &mints,
+            Some(metadata),
+            None,
+            None,
+            &payouts,
+        )
+        .expect("inline mint builds");
+        let sk = pallas_crypto::key::ed25519::SecretKey::from([1u8; 32]);
+        let signed = unsigned.build_and_sign(&sk).expect("sign");
+        signed.tx_cbor_hex.len() / 2 // hex → bytes
+    }
+
+    #[test]
+    fn spike_inline_distribution_15kb_metadata_fits_tx_limit() {
+        const MAX_TX: usize = 16384;
+
+        // ~14.9 KB of metadata — at the observed on-chain-art ceiling.
+        let md = art_metadata(240);
+        let aux = crate::metadata::cip25::build_cip25_auxiliary_data(&md).unwrap();
+        eprintln!(
+            "metadata aux_data: {} bytes ({:.1}% of {MAX_TX})",
+            aux.len(),
+            aux.len() as f64 / MAX_TX as f64 * 100.0
+        );
+        assert!(
+            (13_500..=15_800).contains(&aux.len()),
+            "metadata not in the representative ~15KB range: {} bytes",
+            aux.len()
+        );
+
+        eprintln!("payouts | signed tx bytes | headroom");
+        for n in 0..=8 {
+            let size = inline_signed_tx_size(&md, n);
+            eprintln!(
+                "   {n}    |     {size:>6}    |  {}",
+                MAX_TX as i64 - size as i64
+            );
+        }
+
+        // The realistic inline case: refund-to-buyer + platform + 2 founders.
+        let realistic = inline_signed_tx_size(&md, 4);
+        assert!(
+            realistic < MAX_TX,
+            "inline mint with 4 payout outputs + ~15KB metadata = {realistic} bytes, \
+             exceeds the {MAX_TX} limit — the pivot's headroom assumption is wrong"
+        );
+    }
+
+    /// How much metadata fits with the *minimal* inline distribution — a
+    /// single payout output (one artist) and platform fees waived (no
+    /// platform output). Sweeps metadata up until the signed tx would exceed
+    /// the limit and reports the largest that fits.
+    #[test]
+    fn spike_max_metadata_single_payout_fee_waived() {
+        const MAX_TX: usize = 16384;
+
+        // Build helper that returns None if the tx won't build / serialise.
+        fn try_size(metadata: &serde_json::Value, n_payouts: usize) -> Option<usize> {
+            let deps = super::super::TxDeps {
+                utxos: vec![UtxoApi {
+                    tx_hash: "a".repeat(64),
+                    output_index: 0,
+                    lovelace: 200_000_000,
+                    assets: vec![],
+                    tags: vec![],
+                }],
+                params: test_params(),
+                from_address: test_address(),
+                network_id: 0,
+            };
+            let mints = vec![MintRecipientEntry {
+                asset_name: "ArtPiece001".to_string(),
+                quantity: 1,
+                recipient: test_recipient(1),
+            }];
+            let payouts: Vec<(Address, u64)> = (0..n_payouts)
+                .map(|i| (test_recipient(100 + i as u8), 2_000_000))
+                .collect();
+            let (unsigned, _) = build_cip25_mint_multi_with_change_and_refunds(
+                &deps,
+                &test_policy(),
+                &mints,
+                Some(metadata),
+                None,
+                None,
+                &payouts,
+            )
+            .ok()?;
+            let sk = pallas_crypto::key::ed25519::SecretKey::from([1u8; 32]);
+            let signed = unsigned.build_and_sign(&sk).ok()?;
+            Some(signed.tx_cbor_hex.len() / 2)
+        }
+
+        let mut best = (0usize, 0usize, 0usize); // (chunks, metadata_bytes, tx_bytes)
+        for chunks in (220..420).step_by(1) {
+            let md = art_metadata(chunks);
+            let aux = match crate::metadata::cip25::build_cip25_auxiliary_data(&md) {
+                Ok(a) => a,
+                Err(_) => break,
+            };
+            match try_size(&md, 1) {
+                Some(tx) if tx < MAX_TX => best = (chunks, aux.len(), tx),
+                _ => break,
+            }
+        }
+        eprintln!(
+            "single payout + fee waived: max metadata = {} bytes (signed tx {}, {} chunks, {} bytes spare)",
+            best.1,
+            best.2,
+            best.0,
+            MAX_TX - best.2,
+        );
+        assert!(
+            best.1 >= 15_000,
+            "expected to fit well over 15KB, got {}",
+            best.1
+        );
+    }
 }

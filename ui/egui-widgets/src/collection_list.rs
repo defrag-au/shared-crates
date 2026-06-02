@@ -194,6 +194,12 @@ pub enum CollectionListAction {
     /// `pool.health != Healthy`. Widget self-enforces the no-op rule
     /// — host doesn't have to check.
     Refuel { policy_id: String },
+    /// User clicked the per-card "Fund" button on the mint-wallet pill. The
+    /// host opens its top-up flow (fund the collection's mint/fuel wallet
+    /// from the operator's browser wallet). Only emitted when
+    /// [`CollectionList::with_fund`] is `true` and the row has a mint
+    /// wallet address.
+    FundWallet { policy_id: String },
     /// User clicked Archive on an active card. Host soft-archives the
     /// collection (halts its engine DO + hides it). Only emitted when
     /// [`CollectionList::with_archive`] is `true`.
@@ -250,6 +256,7 @@ pub struct CollectionList<'a> {
     show_payments: bool,
     show_configure: bool,
     show_settlement: bool,
+    show_fund: bool,
     hide_archived: bool,
 }
 
@@ -303,6 +310,7 @@ impl<'a> CollectionList<'a> {
             show_payments: false,
             show_configure: false,
             show_settlement: false,
+            show_fund: false,
             hide_archived: false,
         }
     }
@@ -410,6 +418,14 @@ impl<'a> CollectionList<'a> {
         self
     }
 
+    /// Show a "Fund" button on the mint-wallet pill. Off by default. Click →
+    /// emits [`CollectionListAction::FundWallet`]; the host opens its
+    /// browser-wallet top-up flow for the collection's mint/fuel wallet.
+    pub fn with_fund(mut self, enabled: bool) -> Self {
+        self.show_fund = enabled;
+        self
+    }
+
     pub fn show(self, ui: &mut Ui) -> CollectionListResponse {
         let mut response = CollectionListResponse::default();
 
@@ -460,6 +476,7 @@ impl<'a> CollectionList<'a> {
                             self.show_payments,
                             self.show_configure,
                             self.show_settlement,
+                            self.show_fund,
                             &mut response,
                         );
                     }
@@ -478,6 +495,7 @@ impl<'a> CollectionList<'a> {
                                 self.show_payments,
                                 self.show_configure,
                                 self.show_settlement,
+                                self.show_fund,
                                 &mut response,
                             );
                         }
@@ -528,6 +546,7 @@ fn render_one(
     show_payments: bool,
     show_configure: bool,
     show_settlement: bool,
+    show_fund: bool,
     response: &mut CollectionListResponse,
 ) {
     match layout {
@@ -542,6 +561,7 @@ fn render_one(
             show_payments,
             show_configure,
             show_settlement,
+            show_fund,
             response,
         ),
         CollectionListLayout::List => render_list_row(
@@ -572,6 +592,7 @@ fn render_card(
     show_payments: bool,
     show_configure: bool,
     show_settlement: bool,
+    show_fund: bool,
     response: &mut CollectionListResponse,
 ) {
     // `PhosphorIcon::*.rich_text()` doesn't auto-install the font (unlike
@@ -705,7 +726,17 @@ fn render_card(
             // a stacked `IdPill` (labelled, copy-able address frame) with an
             // Inspect button that opens its UTxO panel. The mint pill also
             // carries the fuel-pool badge + Refuel on the controls row.
-            let mint_label = format!("wallet #{}", row.wallet_account_index);
+            // Under settle-as-you-mint the mint wallet IS the payment wallet —
+            // it signs the mint AND receives the buyer's ADA (no separate
+            // deposit address). Label it so the operator knows both roles live
+            // in one wallet. Legacy two-wallet collections (a separate deposit
+            // address is present) keep the plain "mint wallet" label, with the
+            // deposit pill rendered below.
+            let mint_label = if row.deposit_address.is_some() {
+                format!("mint wallet #{}", row.wallet_account_index)
+            } else {
+                format!("mint + payments #{}", row.wallet_account_index)
+            };
             render_wallet_pill(
                 ui,
                 &mint_label,
@@ -714,6 +745,21 @@ fn render_card(
                 Some(row.wallet_account_index),
                 response,
                 |ui, response| {
+                    // Fund — top up the mint/fuel wallet from the operator's
+                    // browser wallet. The primary action for an empty wallet,
+                    // so it leads the controls row (before the fuel state +
+                    // Refuel, which only shape funds already present).
+                    if show_fund && row.wallet_address_full.is_some() {
+                        if ui
+                            .small_button(RichText::new("Fund").small())
+                            .on_hover_text("Top up this collection's mint wallet from your wallet")
+                            .clicked()
+                        {
+                            response.actions.push(CollectionListAction::FundWallet {
+                                policy_id: row.policy_id.clone(),
+                            });
+                        }
+                    }
                     // Pool badge — same shape as the wallet-list card's
                     // pool pill so the visual is consistent across surfaces.
                     if let Some(pool) = &row.pool {
