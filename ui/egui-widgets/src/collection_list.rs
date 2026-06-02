@@ -1094,10 +1094,12 @@ fn render_operator_actions(
         );
     }
     if show_settlement {
-        group = group.add(ButtonGroupButton::new(ID_SETTLEMENT, "Settlement").hover_text(
-            "Open the settlement config — founder distribution split, float \
+        group = group.add(
+            ButtonGroupButton::new(ID_SETTLEMENT, "Settlement").hover_text(
+                "Open the settlement config — founder distribution split, float \
              targets, fee waiver — and trigger a settlement run.",
-        ));
+            ),
+        );
     }
     if show_payments {
         let ingest_label = if row.ingest_payment_open {

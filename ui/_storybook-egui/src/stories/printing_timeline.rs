@@ -158,7 +158,7 @@ pub fn show(ui: &mut egui::Ui, demo: &mut PrintingTimelineDemo) {
         ..PrintingTimelineConfig::default()
     };
 
-    let resp = egui_widgets::printing_timeline::show(ui, &mut demo.state, &demo.nodes, &config);
+    let _ = egui_widgets::printing_timeline::show(ui, &mut demo.state, &demo.nodes, &config);
 
     // Show selection info below timeline
     ui.add_space(8.0);

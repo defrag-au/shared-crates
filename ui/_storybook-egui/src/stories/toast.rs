@@ -81,9 +81,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
     );
     ui.add_space(6.0);
     if IdPill::new("policy", &state.demo_policy).show(ui).copied {
-        state
-            .queue
-            .push(Toast::new("policy copied to clipboard", ToastKind::Info).icon(PhosphorIcon::Copy));
+        state.queue.push(
+            Toast::new("policy copied to clipboard", ToastKind::Info).icon(PhosphorIcon::Copy),
+        );
     }
 
     ui.add_space(16.0);
@@ -108,14 +108,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
     ui.horizontal(|ui| {
         if ui.button("Long-lived").clicked() {
             state.queue.push(
-                Toast::new("This one stays for 10 seconds", ToastKind::Info)
-                    .duration_frames(600),
+                Toast::new("This one stays for 10 seconds", ToastKind::Info).duration_frames(600),
             );
         }
         if ui.button("Custom icon").clicked() {
-            state.queue.push(
-                Toast::new("Shipping", ToastKind::Success).icon(PhosphorIcon::Lightning),
-            );
+            state
+                .queue
+                .push(Toast::new("Shipping", ToastKind::Success).icon(PhosphorIcon::Lightning));
         }
         if ui.button("Icon-suppressed").clicked() {
             state

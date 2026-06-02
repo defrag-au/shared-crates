@@ -47,6 +47,7 @@ pub mod image_text_editor;
 pub mod asset_strip;
 pub mod coverage_delta_bar;
 pub mod fee_report;
+pub mod managed_wallet_utxos;
 pub mod signing_status;
 pub mod trade_table;
 pub mod trait_delta;

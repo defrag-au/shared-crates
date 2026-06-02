@@ -70,6 +70,8 @@ pub mod coverage_delta_bar;
 #[cfg(feature = "cardano")]
 pub mod fee_report;
 #[cfg(feature = "cardano")]
+pub mod managed_wallet_utxos;
+#[cfg(feature = "cardano")]
 pub mod offer_slot;
 #[cfg(feature = "cardano")]
 pub mod signing_status;
@@ -106,7 +108,9 @@ pub use file_upload::{FileUploadButton, UploadedFile};
 pub use flip_counter::FlipCounter;
 pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
 pub use icons::{install_phosphor_font, PhosphorIcon};
-pub use id_pill::{stacked_width_for as id_pill_stacked_width_for, IdPill, IdPillLayout, IdPillResponse};
+pub use id_pill::{
+    stacked_width_for as id_pill_stacked_width_for, IdPill, IdPillLayout, IdPillResponse,
+};
 pub use image_loader::{iiif_asset_url, AssetImageSize};
 #[cfg(feature = "image-editor")]
 pub use image_text_editor::{
@@ -178,6 +182,8 @@ pub use asset_strip::{AssetStripConfig, AssetStripItem, AssetStripResponse};
 pub use coverage_delta_bar::CoverageDeltaConfig;
 #[cfg(feature = "cardano")]
 pub use fee_report::{FeeReportConfig, FeeReportData, SideFeeData};
+#[cfg(feature = "cardano")]
+pub use managed_wallet_utxos::{ManagedWalletUtxos, UtxoBreakdown, WalletShape};
 #[cfg(feature = "cardano")]
 pub use offer_slot::{OfferSlotAction, OfferSlotConfig, OfferSlotData, OfferSlotResponse};
 #[cfg(feature = "cardano")]
