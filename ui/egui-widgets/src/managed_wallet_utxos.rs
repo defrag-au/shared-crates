@@ -173,14 +173,26 @@ impl<'a> ManagedWalletUtxos<'a> {
             } else {
                 String::new()
             };
+            ui.horizontal(|ui| {
+                crate::icons::install_phosphor_font(ui.ctx());
+                ui.label(crate::PhosphorIcon::Warning.rich_text(12.0, theme::ACCENT_YELLOW));
+                ui.label(
+                    RichText::new(format!(
+                        "Fragmented — {} spendable UTxOs{small}",
+                        b.ada_only_count
+                    ))
+                    .color(theme::ACCENT_YELLOW)
+                    .small()
+                    .strong(),
+                );
+            });
             ui.label(
-                RichText::new(format!(
-                    "⚠ Fragmented — {} spendable UTxOs{small}. A mint tx must spend several as \
-                     inputs; with large on-chain-art metadata that can crowd the 16 KB tx limit. \
-                     Consider consolidating (a Fund/no-op self-send merges them).",
-                    b.ada_only_count,
-                ))
-                .color(theme::ACCENT_YELLOW)
+                RichText::new(
+                    "A mint tx must spend several as inputs; with large on-chain-art metadata \
+                     that can crowd the 16 KB tx limit. Consider consolidating (a Fund/no-op \
+                     self-send merges them).",
+                )
+                .color(theme::TEXT_SECONDARY)
                 .small(),
             );
         }
@@ -216,18 +228,22 @@ impl<'a> ManagedWalletUtxos<'a> {
         if b.has_assets() {
             ui.add_space(8.0);
             if self.assets_unexpected {
-                ui.label(
-                    RichText::new(format!(
-                        "⚠ Holds assets — {} UTxO{} carrying {} token{}",
-                        b.asset_bearing_count,
-                        plural(b.asset_bearing_count),
-                        b.token_count,
-                        plural(b.token_count),
-                    ))
-                    .color(theme::ACCENT_RED)
-                    .small()
-                    .strong(),
-                );
+                ui.horizontal(|ui| {
+                    crate::icons::install_phosphor_font(ui.ctx());
+                    ui.label(crate::PhosphorIcon::Warning.rich_text(12.0, theme::ACCENT_RED));
+                    ui.label(
+                        RichText::new(format!(
+                            "Holds assets — {} UTxO{} carrying {} token{}",
+                            b.asset_bearing_count,
+                            plural(b.asset_bearing_count),
+                            b.token_count,
+                            plural(b.token_count),
+                        ))
+                        .color(theme::ACCENT_RED)
+                        .small()
+                        .strong(),
+                    );
+                });
                 ui.label(
                     RichText::new(
                         "A mint + payments wallet should hold only ADA. Tokens here were most \

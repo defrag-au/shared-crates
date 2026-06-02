@@ -7,6 +7,7 @@ pub mod buttons;
 pub mod card_browser;
 pub mod chip;
 pub mod collection_list;
+pub mod distribution_waterfall;
 pub mod donut_chart;
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
@@ -100,6 +101,7 @@ pub use collection_list::{
     CollectionList, CollectionListAction, CollectionListLayout, CollectionListResponse,
     CollectionRow,
 };
+pub use distribution_waterfall::{DistributionWaterfall, WaterfallMode, WaterfallParty};
 pub use donut_chart::{
     format_value as format_chart_value, legend_row, DistBand, DistributionChart,
 };

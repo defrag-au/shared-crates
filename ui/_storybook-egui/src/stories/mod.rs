@@ -4,6 +4,7 @@ pub mod buttons;
 pub mod card_browser;
 pub mod collection_list;
 pub mod distribution;
+pub mod distribution_waterfall;
 pub mod flip_counter;
 pub mod formatting;
 pub mod icon_gallery;

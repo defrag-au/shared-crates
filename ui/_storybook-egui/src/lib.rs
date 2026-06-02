@@ -51,6 +51,7 @@ mod app {
         WalletAssetPicker,
         UtxoMap,
         ManagedWalletUtxos,
+        DistributionWaterfall,
         // DEX split swap
         SlippageSelector,
         AmountInput,
@@ -132,6 +133,7 @@ mod app {
                 Self::WalletAssetPicker,
                 Self::UtxoMap,
                 Self::ManagedWalletUtxos,
+                Self::DistributionWaterfall,
                 // DEX split swap
                 Self::SlippageSelector,
                 Self::AmountInput,
@@ -199,6 +201,7 @@ mod app {
                 Self::WalletAssetPicker => "Wallet Asset Picker",
                 Self::UtxoMap => "UTxO Shelf",
                 Self::ManagedWalletUtxos => "Managed Wallet UTxOs",
+                Self::DistributionWaterfall => "Distribution Waterfall",
                 Self::SlippageSelector => "Slippage Selector",
                 Self::AmountInput => "Amount Input",
                 Self::SplitAllocationBar => "Split Allocation Bar",
@@ -267,6 +270,7 @@ mod app {
                 | Self::WalletAssetPicker => "Trade Desk",
                 Self::UtxoMap
                 | Self::ManagedWalletUtxos
+                | Self::DistributionWaterfall
                 | Self::WalletIdentityHeader
                 | Self::PersonaStrip
                 | Self::FungiblesRow => "Wallet",
@@ -369,6 +373,9 @@ mod app {
                 }
                 Self::ManagedWalletUtxos => {
                     "Role-aware UTxO breakdown for a custodial wallet: spendable ADA vs flagged asset-bearing (minted-to-self / stray) UTxOs"
+                }
+                Self::DistributionWaterfall => {
+                    "How a buyer's payment flows to each party (gross → fees → distributable → split), across Projected / Live / Final modes"
                 }
                 Self::SlippageSelector => {
                     "Preset slippage buttons + custom input mode with high/low warnings"
@@ -509,6 +516,8 @@ mod app {
         wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
         utxo_map_state: stories::utxo_map::UtxoMapStoryState,
         managed_wallet_utxos_state: stories::managed_wallet_utxos::ManagedWalletUtxosStoryState,
+        distribution_waterfall_state:
+            stories::distribution_waterfall::DistributionWaterfallStoryState,
         // DEX split swap
         slippage_selector_state: stories::slippage_selector::SlippageSelectorStoryState,
         amount_input_state: stories::amount_input::AmountInputStoryState,
@@ -598,6 +607,8 @@ mod app {
                 utxo_map_state: stories::utxo_map::UtxoMapStoryState::default(),
                 managed_wallet_utxos_state:
                     stories::managed_wallet_utxos::ManagedWalletUtxosStoryState::default(),
+                distribution_waterfall_state:
+                    stories::distribution_waterfall::DistributionWaterfallStoryState::default(),
                 slippage_selector_state:
                     stories::slippage_selector::SlippageSelectorStoryState::default(),
                 amount_input_state: stories::amount_input::AmountInputStoryState::default(),
@@ -784,6 +795,10 @@ mod app {
                             Story::ManagedWalletUtxos => stories::managed_wallet_utxos::show(
                                 ui,
                                 &mut self.managed_wallet_utxos_state,
+                            ),
+                            Story::DistributionWaterfall => stories::distribution_waterfall::show(
+                                ui,
+                                &mut self.distribution_waterfall_state,
                             ),
                             // DEX split swap
                             Story::SlippageSelector => stories::slippage_selector::show(
