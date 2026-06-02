@@ -1,0 +1,10 @@
+[package]
+name = "mint-manifest"
+version = "0.1.0"
+edition = "2021"
+description = "Mint-ready interchange manifest: the contract between collection generators (compositor) and the minting import pipeline"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+cardano-assets = { workspace = true }
