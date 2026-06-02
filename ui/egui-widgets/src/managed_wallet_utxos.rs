@@ -309,9 +309,9 @@ fn render_block_strip(ui: &mut Ui, utxos: &[UtxoApi], assets_unexpected: bool) {
     const MAX_W: f32 = 72.0;
 
     let mut order: Vec<&UtxoApi> = utxos.iter().filter(|u| u.assets.is_empty()).collect();
-    order.sort_by(|a, b| b.lovelace.cmp(&a.lovelace));
+    order.sort_by_key(|u| std::cmp::Reverse(u.lovelace));
     let mut with_assets: Vec<&UtxoApi> = utxos.iter().filter(|u| !u.assets.is_empty()).collect();
-    with_assets.sort_by(|a, b| b.lovelace.cmp(&a.lovelace));
+    with_assets.sort_by_key(|u| std::cmp::Reverse(u.lovelace));
     order.extend(with_assets);
 
     ui.horizontal_wrapped(|ui| {

@@ -749,16 +749,16 @@ fn render_card(
                     // browser wallet. The primary action for an empty wallet,
                     // so it leads the controls row (before the fuel state +
                     // Refuel, which only shape funds already present).
-                    if show_fund && row.wallet_address_full.is_some() {
-                        if ui
+                    if show_fund
+                        && row.wallet_address_full.is_some()
+                        && ui
                             .small_button(RichText::new("Fund").small())
                             .on_hover_text("Top up this collection's mint wallet from your wallet")
                             .clicked()
-                        {
-                            response.actions.push(CollectionListAction::FundWallet {
-                                policy_id: row.policy_id.clone(),
-                            });
-                        }
+                    {
+                        response.actions.push(CollectionListAction::FundWallet {
+                            policy_id: row.policy_id.clone(),
+                        });
                     }
                     // Pool badge — same shape as the wallet-list card's
                     // pool pill so the visual is consistent across surfaces.

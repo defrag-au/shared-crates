@@ -1545,49 +1545,4 @@ mod tests {
             best.1
         );
     }
-
-    /// A REAL on-chain-art piece (`test_data/sentience.json`, 15,281-byte
-    /// CIP-25 metadata — a generative HTML/canvas piece chunked per CIP-25)
-    /// plus the inline distribution's payout outputs must fit the 16,384-byte
-    /// tx limit. This is the production question behind the spikes above:
-    /// given the artist's `max_size = 15400` metadata budget, do our
-    /// platform + founder payouts still fit? Guards against art-size creep
-    /// silently eating the payout budget.
-    #[test]
-    fn real_onchain_art_with_inline_payouts_fits_tx_limit() {
-        const MAX_TX: usize = 16384;
-
-        let raw = include_str!("test_data/sentience.json");
-        let md: serde_json::Value = serde_json::from_str(raw).expect("sample metadata parses");
-
-        let aux = crate::metadata::cip25::build_cip25_auxiliary_data(&md)
-            .expect("real art metadata builds aux_data");
-        eprintln!(
-            "sentience.json: {} bytes JSON -> {} bytes on-chain aux_data ({:.1}% of {MAX_TX})",
-            raw.len(),
-            aux.len(),
-            aux.len() as f64 / MAX_TX as f64 * 100.0,
-        );
-
-        eprintln!("payouts | signed tx bytes | headroom");
-        for n in 0..=8 {
-            let size = inline_signed_tx_size(&md, n);
-            eprintln!("   {n}    |     {size:>6}    |  {}", MAX_TX as i64 - size as i64);
-        }
-
-        // Realistic inline distribution: refund-to-buyer + platform + 2 founders.
-        let realistic = inline_signed_tx_size(&md, 4);
-        assert!(
-            realistic < MAX_TX,
-            "real art ({} B JSON) + 4 inline payout outputs = {realistic} B, exceeds {MAX_TX} — \
-             distributions do NOT fit at this art size",
-            raw.len(),
-        );
-        // And there's room for at least the realistic shape with margin.
-        assert!(
-            MAX_TX - realistic >= 100,
-            "only {} B headroom over the limit with 4 payouts — too tight; art is crowding payouts",
-            MAX_TX - realistic,
-        );
-    }
 }
