@@ -117,25 +117,13 @@ pub fn format_duration(secs: u64) -> String {
 // Time formatting (WASM only — requires js_sys)
 // ============================================================================
 
-/// Format a unix timestamp as relative time (e.g. "2m ago", "3h ago").
+/// Format a unix timestamp as relative time (e.g. "2m ago", "3h ago"). Thin
+/// wrapper over the canonical, native-testable [`crate::relative_label`] — prefer
+/// the [`crate::RelativeTime`] widget for new UI; this stays for existing callers.
 #[cfg(target_arch = "wasm32")]
 pub fn relative_time(timestamp: i64) -> String {
     let now = (js_sys::Date::now() / 1000.0) as i64;
-    let delta = now - timestamp;
-
-    if delta < 0 {
-        return "just now".to_string();
-    }
-    if delta < 60 {
-        return format!("{delta}s ago");
-    }
-    if delta < 3600 {
-        return format!("{}m ago", delta / 60);
-    }
-    if delta < 86400 {
-        return format!("{}h ago", delta / 3600);
-    }
-    format!("{}d ago", delta / 86400)
+    crate::relative_label(now - timestamp)
 }
 
 /// Current time as seconds since epoch (WASM-compatible).

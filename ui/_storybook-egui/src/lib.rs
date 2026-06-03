@@ -62,6 +62,8 @@ mod app {
         // Loan dashboard
         ExposureBar,
         DataTable,
+        // Mint dashboard
+        SupplyBar,
         // Utility
         FileUpload,
         // Media
@@ -144,6 +146,8 @@ mod app {
                 // Loan dashboard
                 Self::ExposureBar,
                 Self::DataTable,
+                // Mint dashboard
+                Self::SupplyBar,
                 // Utility
                 Self::FileUpload,
                 // Media
@@ -210,6 +214,7 @@ mod app {
                 Self::PriceImpactCurve => "Price Impact Curve",
                 Self::ExposureBar => "Exposure Bar",
                 Self::DataTable => "Data Table",
+                Self::SupplyBar => "Supply Bar",
                 Self::FileUpload => "File Upload",
                 Self::ImageTextEditor => "Image Text Editor",
                 Self::TxCart => "TX Cart",
@@ -281,6 +286,7 @@ mod app {
                 | Self::PoolLiquidity
                 | Self::PriceImpactCurve => "DEX Split Swap",
                 Self::ExposureBar | Self::DataTable => "Loan Dashboard",
+                Self::SupplyBar => "Mint Dashboard",
                 Self::FileUpload => "Utility",
                 Self::ImageTextEditor => "Media",
                 Self::TxCart => "TX Cart",
@@ -400,6 +406,9 @@ mod app {
                 }
                 Self::DataTable => {
                     "Dense row-based table with column headers, LTV micro-bars, selection, and detail panel"
+                }
+                Self::SupplyBar => {
+                    "Two-band mint supply bar: minted (fulfilled) + ordered backlog, with oversubscription handling"
                 }
                 Self::FileUpload => {
                     "Browser file picker button — reads selected files into memory with name, MIME type, and bytes"
@@ -814,6 +823,7 @@ mod app {
                             Story::PriceImpactCurve => stories::price_impact_curve::show(ui),
                             // Loan dashboard
                             Story::ExposureBar => stories::exposure_bar::show(ui),
+                            Story::SupplyBar => stories::supply_bar::show(ui),
                             Story::DataTable => {
                                 stories::data_table::show(ui, &mut self.data_table_state)
                             }

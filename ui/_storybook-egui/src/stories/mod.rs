@@ -20,6 +20,7 @@ pub mod radar_chart;
 pub mod range_bar;
 pub mod seven_segment;
 pub mod sparkline;
+pub mod supply_bar;
 pub mod swap;
 pub mod tcg_card;
 pub mod trait_filter;

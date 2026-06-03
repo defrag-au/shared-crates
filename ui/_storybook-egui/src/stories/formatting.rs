@@ -201,6 +201,37 @@ pub fn show(ui: &mut egui::Ui) {
 
     ui.add_space(16.0);
 
+    // --- RelativeTime widget ---
+    ui.label(egui::RichText::new("RelativeTime").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new(
+            "Auto-scaling \"time ago\" — steps s \u{2192} m \u{2192} h \u{2192} d \u{2192} w (vs a raw \"3480s ago\")",
+        )
+        .color(TEXT_MUTED)
+        .small(),
+    );
+    ui.add_space(4.0);
+
+    // Pinned "now" so the demo is deterministic; each row is `now - delta`.
+    let now: i64 = 1_000_000_000;
+    let rel_cases: &[i64] = &[2, 20, 90, 3480, 7200, 4 * 86_400, 18 * 86_400];
+    egui::Grid::new("rel_grid")
+        .num_columns(2)
+        .spacing([20.0, 4.0])
+        .show(ui, |ui| {
+            for delta in rel_cases {
+                ui.label(
+                    egui::RichText::new(format!("now - {delta}s"))
+                        .family(egui::FontFamily::Monospace)
+                        .color(TEXT_MUTED),
+                );
+                ui.add(egui_widgets::RelativeTime::new(now - delta).now(now));
+                ui.end_row();
+            }
+        });
+
+    ui.add_space(16.0);
+
     // --- Hex truncation ---
     ui.label(egui::RichText::new("truncate_hex").color(ACCENT).strong());
     ui.label(
