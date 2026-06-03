@@ -17,7 +17,10 @@
 //! The host owns IO: `Refresh` / `SetShowSubmitted` re-fetch server-side;
 //! `ToggleHistory` asks the host to load that order's events into the row.
 
-use egui::{Align, Color32, Label, Layout, RichText, ScrollArea, Sense, Ui};
+use egui::{
+    Align, Color32, CornerRadius, Frame, Label, Layout, Margin, RichText, ScrollArea, Sense,
+    Stroke, Ui,
+};
 
 use crate::chip::{Chip, ChipVariant};
 use crate::relative_time::{relative_label, RelativeTime};
@@ -41,8 +44,104 @@ pub struct OrderEventRow {
     pub at: i64,
 }
 
-/// View-model for one order row. Pre-resolved by the caller — the widget does
-/// no enum mapping; `status` / `refund_status` are the raw lifecycle strings.
+/// Order lifecycle status as a typed enum. The wire status set isn't frozen, so
+/// `Custom(String)` keeps it open — a legacy (`reserved` / `minting`) or future
+/// state still round-trips through [`OrderStatus::as_str`] and renders (as a
+/// muted chip). Build one from the wire string via `OrderStatus::from(s)`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum OrderStatus {
+    Pending,
+    Fulfilling,
+    Submitted,
+    Confirmed,
+    Delivered,
+    /// Benign terminal — the collection sold out before this order filled.
+    Unfulfilled,
+    Failed,
+    /// Any other lifecycle string (unknown / legacy / future).
+    Custom(String),
+}
+
+impl OrderStatus {
+    /// The canonical lifecycle statuses, attention-first — the order the filter
+    /// strip lays its chips out in (matches the engine's `list_orders` intent).
+    pub const KNOWN: [OrderStatus; 7] = [
+        OrderStatus::Failed,
+        OrderStatus::Pending,
+        OrderStatus::Fulfilling,
+        OrderStatus::Submitted,
+        OrderStatus::Confirmed,
+        OrderStatus::Delivered,
+        OrderStatus::Unfulfilled,
+    ];
+
+    /// The wire string — round-trips with [`OrderStatus::from`].
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Pending => "pending",
+            Self::Fulfilling => "fulfilling",
+            Self::Submitted => "submitted",
+            Self::Confirmed => "confirmed",
+            Self::Delivered => "delivered",
+            Self::Unfulfilled => "unfulfilled",
+            Self::Failed => "failed",
+            Self::Custom(s) => s,
+        }
+    }
+
+    /// Semantic badge variant: red failures, amber in-flight, blue submitted,
+    /// green done, grey for the benign `unfulfilled` terminal + unknowns.
+    pub fn chip_variant(&self) -> ChipVariant {
+        match self {
+            Self::Delivered | Self::Confirmed => ChipVariant::Success,
+            Self::Submitted => ChipVariant::Info,
+            Self::Pending | Self::Fulfilling => ChipVariant::Warning,
+            Self::Failed => ChipVariant::Danger,
+            Self::Unfulfilled | Self::Custom(_) => ChipVariant::Muted,
+        }
+    }
+
+    /// A distinct accent colour for the filter-chip dot + selected tint.
+    pub fn accent(&self) -> Color32 {
+        match self {
+            Self::Failed => Color32::from_rgb(200, 90, 90),
+            Self::Pending | Self::Fulfilling => Color32::from_rgb(210, 180, 110),
+            Self::Submitted => Color32::from_rgb(120, 170, 210),
+            Self::Confirmed | Self::Delivered => Color32::from_rgb(140, 200, 140),
+            Self::Unfulfilled => Color32::from_rgb(120, 140, 170),
+            Self::Custom(_) => Color32::from_gray(150),
+        }
+    }
+}
+
+impl From<&str> for OrderStatus {
+    fn from(s: &str) -> Self {
+        match s {
+            "pending" => Self::Pending,
+            "fulfilling" => Self::Fulfilling,
+            "submitted" => Self::Submitted,
+            "confirmed" => Self::Confirmed,
+            "delivered" => Self::Delivered,
+            "unfulfilled" => Self::Unfulfilled,
+            "failed" => Self::Failed,
+            other => Self::Custom(other.to_string()),
+        }
+    }
+}
+
+impl From<String> for OrderStatus {
+    fn from(s: String) -> Self {
+        // Reuse the &str match, but move the string into `Custom` (no re-alloc)
+        // when it isn't a known variant.
+        match Self::from(s.as_str()) {
+            Self::Custom(_) => Self::Custom(s),
+            known => known,
+        }
+    }
+}
+
+/// View-model for one order row. Pre-resolved by the caller — `status` is a typed
+/// [`OrderStatus`]; `refund_status` stays a raw string (only known ones chip).
 #[derive(Clone, Debug)]
 pub struct OrderRow {
     /// Order id (ULID or `test:…` harness id). Full value; the widget truncates
@@ -52,9 +151,8 @@ pub struct OrderRow {
     pub recipient: String,
     /// Units ordered.
     pub quantity: u32,
-    /// Lifecycle status: `pending` / `fulfilling` / `submitted` / `confirmed` /
-    /// `delivered` / `unfulfilled` / `failed` (+ legacy `reserved` / `minting`).
-    pub status: String,
+    /// Lifecycle status (typed; `Custom` for anything off the canonical list).
+    pub status: OrderStatus,
     /// Refund axis: `none` / `not_required` / `pending` / `refunded` /
     /// `required` / `failed`. Only the meaningful ones render a chip.
     pub refund_status: String,
@@ -80,7 +178,7 @@ impl OrderRow {
         order_id: impl Into<String>,
         recipient: impl Into<String>,
         quantity: u32,
-        status: impl Into<String>,
+        status: impl Into<OrderStatus>,
         created_at: i64,
         updated_at: i64,
     ) -> Self {
@@ -222,28 +320,26 @@ impl<'a> OrderList<'a> {
             ui.colored_label(Color32::from_rgb(220, 120, 120), format!("error: {e}"));
         }
 
-        // ── Summary + filter strip: per-status counts as filter chips ────
+        // ── Summary + filter strip: per-status count badges, MULTI-select ─
         let filter_id = ui.id().with("order_list_status_filter");
         let search_id = ui.id().with("order_list_search");
-        let mut active: Option<String> = ui
-            .data_mut(|d| d.get_temp::<Option<String>>(filter_id))
-            .flatten();
+        // Active filter is a SET of status strings — select several at once.
+        // Empty = show all.
+        let mut active: Vec<String> = ui
+            .data_mut(|d| d.get_temp::<Vec<String>>(filter_id))
+            .unwrap_or_default();
         let mut search: String = ui
             .data_mut(|d| d.get_temp::<String>(search_id))
             .unwrap_or_default();
 
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
-            // Search first so it keeps a stable left anchor as chips reflow.
-            ui.label(
-                RichText::new("filter")
-                    .small()
-                    .color(Color32::from_gray(120)),
-            );
+            ui.spacing_mut().item_spacing.x = 5.0;
+            // Search keeps a stable left anchor as the chips reflow.
             let changed = ui
                 .add(
                     egui::TextEdit::singleline(&mut search)
-                        .hint_text("id / address")
+                        .hint_text("search id / address")
                         .desired_width(150.0),
                 )
                 .changed();
@@ -251,53 +347,47 @@ impl<'a> OrderList<'a> {
                 ui.data_mut(|d| d.insert_temp(search_id, search.clone()));
             }
 
-            // "all" + one chip per present status, in lifecycle-attention order.
-            let total = self.rows.len();
-            if ui
-                .selectable_label(active.is_none(), format!("all {total}"))
-                .clicked()
-            {
-                active = None;
+            // "all" clears the selection.
+            if filter_chip(
+                ui,
+                "all",
+                self.rows.len(),
+                Color32::from_gray(150),
+                active.is_empty(),
+            ) {
+                active.clear();
             }
-            for status in STATUS_ORDER {
-                let n = self.rows.iter().filter(|r| r.status == *status).count();
+            // Known statuses present, in canonical attention-first order.
+            for st in OrderStatus::KNOWN {
+                let n = self.rows.iter().filter(|r| r.status == st).count();
                 if n == 0 {
                     continue;
                 }
-                let is_active = active.as_deref() == Some(*status);
-                if ui
-                    .selectable_label(is_active, format!("{status} {n}"))
-                    .clicked()
-                {
-                    active = if is_active {
-                        None
-                    } else {
-                        Some((*status).to_string())
-                    };
+                let selected = active.iter().any(|s| s == st.as_str());
+                if filter_chip(ui, st.as_str(), n, st.accent(), selected) {
+                    toggle_status(&mut active, st.as_str());
                 }
             }
-            // Any statuses not in the canonical order (defensive — keeps the
-            // counts honest if a new status string appears).
-            let mut extra: Vec<&str> = self
+            // Any `Custom` statuses present (defensive — unknown wire values).
+            let mut extras: Vec<&str> = self
                 .rows
                 .iter()
-                .map(|r| r.status.as_str())
-                .filter(|s| !STATUS_ORDER.contains(s))
+                .filter_map(|r| match &r.status {
+                    OrderStatus::Custom(s) => Some(s.as_str()),
+                    _ => None,
+                })
                 .collect();
-            extra.sort_unstable();
-            extra.dedup();
-            for status in extra {
-                let n = self.rows.iter().filter(|r| r.status == status).count();
-                let is_active = active.as_deref() == Some(status);
-                if ui
-                    .selectable_label(is_active, format!("{status} {n}"))
-                    .clicked()
-                {
-                    active = if is_active {
-                        None
-                    } else {
-                        Some(status.to_string())
-                    };
+            extras.sort_unstable();
+            extras.dedup();
+            for key in extras {
+                let n = self
+                    .rows
+                    .iter()
+                    .filter(|r| r.status.as_str() == key)
+                    .count();
+                let selected = active.iter().any(|s| s == key);
+                if filter_chip(ui, key, n, Color32::from_gray(150), selected) {
+                    toggle_status(&mut active, key);
                 }
             }
         });
@@ -308,7 +398,7 @@ impl<'a> OrderList<'a> {
         let filtered: Vec<&OrderRow> = self
             .rows
             .iter()
-            .filter(|r| active.as_deref().map(|s| r.status == s).unwrap_or(true))
+            .filter(|r| active.is_empty() || active.iter().any(|s| s == r.status.as_str()))
             .filter(|r| {
                 needle.is_empty()
                     || r.order_id.to_ascii_lowercase().contains(&needle)
@@ -349,30 +439,63 @@ impl<'a> OrderList<'a> {
 // Internals
 // ─────────────────────────────────────────────────────────────────────
 
-/// Status chips in attention-first order (matches the engine's `list_orders`
-/// ordering intent: failures + work-in-progress float above the happy path).
-const STATUS_ORDER: &[&str] = &[
-    "failed",
-    "pending",
-    "fulfilling",
-    "reserved",
-    "minting",
-    "submitted",
-    "confirmed",
-    "delivered",
-    "unfulfilled",
-];
+/// A clickable status-filter pill: a status-colour dot, the label, and the count
+/// in a badge. Selected → translucent-accent fill + accent border. Returns true
+/// on click. The count badge replaces the old trailing-number text so the qty
+/// reads as a distinct chip, and the whole strip is multi-select.
+fn filter_chip(ui: &mut Ui, label: &str, count: usize, accent: Color32, selected: bool) -> bool {
+    let (fill, stroke, text) = if selected {
+        (
+            Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 55),
+            Stroke::new(1.0, accent),
+            Color32::from_gray(235),
+        )
+    } else {
+        (
+            Color32::from_gray(34),
+            Stroke::NONE,
+            Color32::from_gray(200),
+        )
+    };
+    let resp = Frame::new()
+        .fill(fill)
+        .stroke(stroke)
+        .corner_radius(CornerRadius::same(7))
+        .inner_margin(Margin::symmetric(8, 2))
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.x = 5.0;
+            // Status-colour dot.
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(7.0, 7.0), Sense::hover());
+            ui.painter().circle_filled(rect.center(), 3.5, accent);
+            ui.label(RichText::new(label).small().color(text));
+            // Count badge.
+            Frame::new()
+                .fill(Color32::from_black_alpha(70))
+                .corner_radius(CornerRadius::same(6))
+                .inner_margin(Margin::symmetric(5, 0))
+                .show(ui, |ui| {
+                    ui.label(
+                        RichText::new(count.to_string())
+                            .small()
+                            .strong()
+                            .color(text),
+                    );
+                });
+        })
+        .response
+        .interact(Sense::click());
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp.clicked()
+}
 
-/// Map a lifecycle status to a [`ChipVariant`] so the badge colour says what the
-/// state means: red failures, amber in-flight, blue submitted, green done, grey
-/// for the benign `unfulfilled` (sold-out) terminal.
-fn status_variant(status: &str) -> ChipVariant {
-    match status {
-        "delivered" | "confirmed" => ChipVariant::Success,
-        "submitted" => ChipVariant::Info,
-        "pending" | "fulfilling" | "reserved" | "minting" => ChipVariant::Warning,
-        "failed" => ChipVariant::Danger,
-        _ => ChipVariant::Muted, // unfulfilled / unknown
+/// Toggle a status string in/out of the multi-select filter set.
+fn toggle_status(active: &mut Vec<String>, key: &str) {
+    if let Some(i) = active.iter().position(|s| s == key) {
+        active.remove(i);
+    } else {
+        active.push(key.to_string());
     }
 }
 
@@ -389,8 +512,8 @@ fn refund_variant(refund_status: &str) -> Option<ChipVariant> {
 fn render_row(ui: &mut Ui, o: &OrderRow, now: i64, resp: &mut OrderListResponse) {
     ui.add_space(3.0);
     ui.horizontal(|ui| {
-        Chip::new(&o.status)
-            .variant(status_variant(&o.status))
+        Chip::new(o.status.as_str())
+            .variant(o.status.chip_variant())
             .upper_case(true)
             .show(ui);
 
