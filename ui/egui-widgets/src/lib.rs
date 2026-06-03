@@ -22,6 +22,7 @@ pub mod marquee;
 pub mod metric_card;
 pub mod mnemonic_display;
 pub mod offer_tile;
+pub mod order_list;
 pub mod persona_strip;
 pub mod phase_card;
 pub mod pip_row;
@@ -123,6 +124,7 @@ pub use image_text_editor::{
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
+pub use order_list::{OrderEventRow, OrderList, OrderListAction, OrderListResponse, OrderRow};
 pub use persona_strip::{PersonaStrip, PersonaStripConfig};
 pub use phase_card::{GateChip, PhaseCard, PhaseCardAction, PhaseCardResponse, PhaseCardRow};
 pub use pip_row::{

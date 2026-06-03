@@ -64,6 +64,7 @@ mod app {
         DataTable,
         // Mint dashboard
         SupplyBar,
+        OrderList,
         // Utility
         FileUpload,
         // Media
@@ -148,6 +149,7 @@ mod app {
                 Self::DataTable,
                 // Mint dashboard
                 Self::SupplyBar,
+                Self::OrderList,
                 // Utility
                 Self::FileUpload,
                 // Media
@@ -215,6 +217,7 @@ mod app {
                 Self::ExposureBar => "Exposure Bar",
                 Self::DataTable => "Data Table",
                 Self::SupplyBar => "Supply Bar",
+                Self::OrderList => "Order List",
                 Self::FileUpload => "File Upload",
                 Self::ImageTextEditor => "Image Text Editor",
                 Self::TxCart => "TX Cart",
@@ -286,7 +289,7 @@ mod app {
                 | Self::PoolLiquidity
                 | Self::PriceImpactCurve => "DEX Split Swap",
                 Self::ExposureBar | Self::DataTable => "Loan Dashboard",
-                Self::SupplyBar => "Mint Dashboard",
+                Self::SupplyBar | Self::OrderList => "Mint Dashboard",
                 Self::FileUpload => "Utility",
                 Self::ImageTextEditor => "Media",
                 Self::TxCart => "TX Cart",
@@ -409,6 +412,10 @@ mod app {
                 }
                 Self::SupplyBar => {
                     "Two-band mint supply bar: minted (fulfilled) + ordered backlog, with oversubscription handling"
+                }
+                Self::OrderList => {
+                    "Mint-orders dashboard — per-status filter chips, search, relative dates (absolute on hover), \
+                     quiet refund chips, and an expandable per-order event history"
                 }
                 Self::FileUpload => {
                     "Browser file picker button — reads selected files into memory with name, MIME type, and bytes"
@@ -535,6 +542,8 @@ mod app {
         // Utility
         file_upload_state: stories::file_upload::FileUploadState,
         image_text_editor_state: stories::image_text_editor::ImageTextEditorState,
+        // Mint dashboard
+        order_list_state: stories::order_list::OrderListState,
         // TX Cart
         tx_cart_state: stories::tx_cart::TxCartStoryState,
         // Wallet
@@ -623,6 +632,7 @@ mod app {
                 amount_input_state: stories::amount_input::AmountInputStoryState::default(),
                 data_table_state: stories::data_table::DataTableStoryState::default(),
                 file_upload_state: stories::file_upload::FileUploadState::default(),
+                order_list_state: stories::order_list::OrderListState::default(),
                 image_text_editor_state: stories::image_text_editor::ImageTextEditorState::default(
                 ),
                 tx_cart_state: stories::tx_cart::TxCartStoryState::default(),
@@ -824,6 +834,9 @@ mod app {
                             // Loan dashboard
                             Story::ExposureBar => stories::exposure_bar::show(ui),
                             Story::SupplyBar => stories::supply_bar::show(ui),
+                            Story::OrderList => {
+                                stories::order_list::show(ui, &mut self.order_list_state)
+                            }
                             Story::DataTable => {
                                 stories::data_table::show(ui, &mut self.data_table_state)
                             }
