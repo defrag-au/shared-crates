@@ -25,6 +25,9 @@ pub const QWEN_EDIT: &str = "fal-ai/qwen-image-edit";
 /// `fal-ai/fast-sdxl-controlnet-canny/inpainting` — structure-locked colorize:
 /// canny control keeps the linework in place, mask scopes the region.
 pub const SDXL_CONTROLNET_CANNY_INPAINT: &str = "fal-ai/fast-sdxl-controlnet-canny/inpainting";
+/// `fal-ai/flux-control-lora-canny/image-to-image` — FLUX-quality canny-locked
+/// img2img (no mask). Higher fidelity than the SDXL path.
+pub const FLUX_CANNY: &str = "fal-ai/flux-control-lora-canny/image-to-image";
 
 #[derive(Debug, thiserror::Error)]
 pub enum FalError {
@@ -134,6 +137,26 @@ impl FalClient {
         self.finish(self.run(SDXL_CONTROLNET_CANNY_INPAINT, &body).await?)
     }
 
+    /// FLUX.1 [dev] canny-locked img2img colorize — higher fidelity than the
+    /// SDXL path. `image` is the img2img init and `control` the canny source
+    /// (typically the same flattened linework). No mask; reapply source alpha.
+    pub async fn flux_canny(&self, req: &FluxCannyRequest<'_>) -> Result<ImageOutput, FalError> {
+        let body = FluxCannyInput {
+            prompt: req.prompt,
+            image_url: req.image,
+            control_lora_image_url: req.control,
+            strength: req.strength,
+            control_lora_strength: req.control_strength,
+            guidance_scale: req.guidance_scale,
+            num_images: 1,
+            output_format: "png",
+            sync_mode: true,
+            enable_safety_checker: false,
+            seed: req.seed,
+        };
+        self.finish(self.run(FLUX_CANNY, &body).await?)
+    }
+
     fn finish(&self, out: ImageOutput) -> Result<ImageOutput, FalError> {
         if out.images.is_empty() {
             return Err(FalError::NoImages);
@@ -222,6 +245,35 @@ impl Default for LineartColorizeRequest<'_> {
     }
 }
 
+/// Parameters for FLUX canny-locked colorize ([`FalClient::flux_canny`]).
+/// `image`/`control` are data URIs (typically the same flattened linework).
+pub struct FluxCannyRequest<'a> {
+    pub prompt: &'a str,
+    pub image: &'a str,
+    pub control: &'a str,
+    /// img2img strength 0..1 (fal default 0.85).
+    pub strength: f32,
+    /// Canny control-LoRA strength (fal default 1.0; lower loosens the lock).
+    pub control_strength: f32,
+    /// CFG (fal default 3.5).
+    pub guidance_scale: f32,
+    pub seed: Option<u64>,
+}
+
+impl Default for FluxCannyRequest<'_> {
+    fn default() -> Self {
+        Self {
+            prompt: "",
+            image: "",
+            control: "",
+            strength: 0.85,
+            control_strength: 1.0,
+            guidance_scale: 3.5,
+            seed: None,
+        }
+    }
+}
+
 /// fal image result. With `sync_mode = true`, `images[].url` is a data URI.
 #[derive(Debug, Deserialize)]
 pub struct ImageOutput {
@@ -305,6 +357,22 @@ struct SdxlControlnetInpaintInput<'a> {
     num_images: u32,
     // Note: this endpoint uses `format`, not `output_format`.
     format: &'a str,
+    sync_mode: bool,
+    enable_safety_checker: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct FluxCannyInput<'a> {
+    prompt: &'a str,
+    image_url: &'a str,
+    control_lora_image_url: &'a str,
+    strength: f32,
+    control_lora_strength: f32,
+    guidance_scale: f32,
+    num_images: u32,
+    output_format: &'a str,
     sync_mode: bool,
     enable_safety_checker: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
