@@ -8,6 +8,7 @@ members = [
     "mint-manifest",
     "cnft-tools",
     "discord-client",
+    "fal-client",
     "filebase",
     "http-client",
     "openai-client",
