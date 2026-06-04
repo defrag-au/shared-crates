@@ -21,12 +21,16 @@ pub mod fingerprint;
 pub mod policy_id;
 pub mod resolver;
 pub mod supply;
+#[cfg(feature = "tag-datum")]
+pub mod tag_datum;
 pub mod token_type;
 pub mod traits;
 pub mod tx_hash;
 pub mod utxo;
 
 pub use token_type::TokenType;
+#[cfg(feature = "tag-datum")]
+pub use tag_datum::UtxoTagDatum;
 
 #[cfg(feature = "utxorpc")]
 pub mod utxorpc;

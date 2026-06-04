@@ -29,6 +29,9 @@ cip14 = ["dep:bech32", "dep:blake2"]
 cip68 = ["dep:pallas-codec", "dep:pallas-primitives"]
 # CIP-25 mint-tx metadata (label 721) decode — same pallas deps as cip68.
 cip25 = ["dep:pallas-codec", "dep:pallas-primitives"]
+# Generic UTxO tag datum (namespace + version + app-defined u32 role bitflags)
+# encode/decode — a reusable inline-datum facility; same pallas deps as cip68.
+tag-datum = ["dep:pallas-codec", "dep:pallas-primitives"]
 utxorpc = ["dep:utxorpc-spec", "dep:tracing"]
 openapi = ["dep:utoipa"]
 cnft_tools = ["dep:cnft_tools"]
