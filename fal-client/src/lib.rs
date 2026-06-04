@@ -31,6 +31,9 @@ pub const FLUX_CANNY: &str = "fal-ai/flux-control-lora-canny/image-to-image";
 /// `fal-ai/flux-control-lora-canny` — FLUX canny **text-to-image**: generates
 /// from the control image's edges, so colour comes from the prompt (recolour).
 pub const FLUX_CANNY_GEN: &str = "fal-ai/flux-control-lora-canny";
+/// `fal-ai/birefnet/v2` — semantic background removal / matting (handles soft
+/// fur/hair edges far better than colour-keying).
+pub const BIREFNET: &str = "fal-ai/birefnet/v2";
 
 #[derive(Debug, thiserror::Error)]
 pub enum FalError {
@@ -180,6 +183,21 @@ impl FalClient {
             seed: req.seed,
         };
         self.finish(self.run(FLUX_CANNY_GEN, &body).await?)
+    }
+
+    /// Semantic background removal / matting via BiRefNet. `model` selects the
+    /// variant (e.g. "Matting" for soft fur/hair edges, "General Use (Light)").
+    /// Returns an RGBA image (data URI under `sync_mode`).
+    pub async fn birefnet(&self, image: &str, model: &str) -> Result<MatteOutput, FalError> {
+        let body = BirefnetInput {
+            image_url: image,
+            model,
+            operating_resolution: "1024x1024",
+            output_format: "png",
+            refine_foreground: true,
+            sync_mode: true,
+        };
+        self.run(BIREFNET, &body).await
     }
 
     fn finish(&self, out: ImageOutput) -> Result<ImageOutput, FalError> {
@@ -339,6 +357,21 @@ impl ImageOutput {
     }
 }
 
+/// Result of a [`FalClient::birefnet`] matte: an RGBA image and optional mask.
+#[derive(Debug, Deserialize)]
+pub struct MatteOutput {
+    pub image: FalImage,
+    #[serde(default)]
+    pub mask_image: Option<FalImage>,
+}
+
+impl MatteOutput {
+    /// Decode the matted RGBA image bytes (expects a `sync_mode` data URI).
+    pub fn image_bytes(&self) -> Result<Vec<u8>, FalError> {
+        decode_data_uri(&self.image.url)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct FalImage {
     /// Data URI when `sync_mode` is set, otherwise a hosted fal.media URL.
@@ -426,6 +459,16 @@ struct FluxCannyInput<'a> {
     enable_safety_checker: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     seed: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct BirefnetInput<'a> {
+    image_url: &'a str,
+    model: &'a str,
+    operating_resolution: &'a str,
+    output_format: &'a str,
+    refine_foreground: bool,
+    sync_mode: bool,
 }
 
 #[derive(Serialize)]
