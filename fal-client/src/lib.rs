@@ -26,8 +26,11 @@ pub const QWEN_EDIT: &str = "fal-ai/qwen-image-edit";
 /// canny control keeps the linework in place, mask scopes the region.
 pub const SDXL_CONTROLNET_CANNY_INPAINT: &str = "fal-ai/fast-sdxl-controlnet-canny/inpainting";
 /// `fal-ai/flux-control-lora-canny/image-to-image` — FLUX-quality canny-locked
-/// img2img (no mask). Higher fidelity than the SDXL path.
+/// img2img (no mask). A *refiner*: preserves the init image's colour.
 pub const FLUX_CANNY: &str = "fal-ai/flux-control-lora-canny/image-to-image";
+/// `fal-ai/flux-control-lora-canny` — FLUX canny **text-to-image**: generates
+/// from the control image's edges, so colour comes from the prompt (recolour).
+pub const FLUX_CANNY_GEN: &str = "fal-ai/flux-control-lora-canny";
 
 #[derive(Debug, thiserror::Error)]
 pub enum FalError {
@@ -157,6 +160,28 @@ impl FalClient {
         self.finish(self.run(FLUX_CANNY, &body).await?)
     }
 
+    /// FLUX canny **text-to-image**: generate fresh from the canny edges of
+    /// `control` with colour driven by `prompt`. Unlike [`Self::flux_canny`]
+    /// (a refiner), this actually recolours. Output is square (`square_hd`).
+    pub async fn flux_canny_generate(
+        &self,
+        req: &FluxCannyGenRequest<'_>,
+    ) -> Result<ImageOutput, FalError> {
+        let body = FluxCannyGenInput {
+            prompt: req.prompt,
+            control_lora_image_url: req.control,
+            control_lora_strength: req.control_strength,
+            guidance_scale: req.guidance_scale,
+            image_size: "square_hd",
+            num_images: 1,
+            output_format: "png",
+            sync_mode: true,
+            enable_safety_checker: false,
+            seed: req.seed,
+        };
+        self.finish(self.run(FLUX_CANNY_GEN, &body).await?)
+    }
+
     fn finish(&self, out: ImageOutput) -> Result<ImageOutput, FalError> {
         if out.images.is_empty() {
             return Err(FalError::NoImages);
@@ -274,6 +299,30 @@ impl Default for FluxCannyRequest<'_> {
     }
 }
 
+/// Parameters for FLUX canny generate-mode recolor ([`FalClient::flux_canny_generate`]).
+pub struct FluxCannyGenRequest<'a> {
+    pub prompt: &'a str,
+    /// Control image (canny auto-extracted); typically the flattened linework.
+    pub control: &'a str,
+    /// Canny control strength (fal default 1.0).
+    pub control_strength: f32,
+    /// CFG (fal default 3.5; raise for stronger prompt-colour adherence).
+    pub guidance_scale: f32,
+    pub seed: Option<u64>,
+}
+
+impl Default for FluxCannyGenRequest<'_> {
+    fn default() -> Self {
+        Self {
+            prompt: "",
+            control: "",
+            control_strength: 0.85,
+            guidance_scale: 3.5,
+            seed: None,
+        }
+    }
+}
+
 /// fal image result. With `sync_mode = true`, `images[].url` is a data URI.
 #[derive(Debug, Deserialize)]
 pub struct ImageOutput {
@@ -371,6 +420,21 @@ struct FluxCannyInput<'a> {
     strength: f32,
     control_lora_strength: f32,
     guidance_scale: f32,
+    num_images: u32,
+    output_format: &'a str,
+    sync_mode: bool,
+    enable_safety_checker: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct FluxCannyGenInput<'a> {
+    prompt: &'a str,
+    control_lora_image_url: &'a str,
+    control_lora_strength: f32,
+    guidance_scale: f32,
+    image_size: &'a str,
     num_images: u32,
     output_format: &'a str,
     sync_mode: bool,
