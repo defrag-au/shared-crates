@@ -5,6 +5,7 @@ pub mod card_browser;
 pub mod collection_list;
 pub mod distribution;
 pub mod distribution_waterfall;
+pub mod error_note;
 pub mod flip_counter;
 pub mod formatting;
 pub mod icon_gallery;
@@ -24,6 +25,7 @@ pub mod sparkline;
 pub mod supply_bar;
 pub mod swap;
 pub mod tcg_card;
+pub mod timestamp;
 pub mod trait_filter;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;

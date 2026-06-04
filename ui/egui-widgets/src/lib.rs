@@ -9,6 +9,7 @@ pub mod chip;
 pub mod collection_list;
 pub mod distribution_waterfall;
 pub mod donut_chart;
+pub mod error_note;
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
 pub mod flip_counter;
@@ -38,6 +39,7 @@ pub mod sparkline;
 pub mod supply_bar;
 pub mod swap_modal;
 pub mod theme;
+pub mod timestamp;
 pub mod toast;
 pub mod trait_filter;
 pub mod utils;
@@ -108,6 +110,7 @@ pub use distribution_waterfall::{DistributionWaterfall, WaterfallMode, Waterfall
 pub use donut_chart::{
     format_value as format_chart_value, legend_row, DistBand, DistributionChart,
 };
+pub use error_note::{summarize_error, ErrorNote, ErrorSummary};
 #[cfg(target_arch = "wasm32")]
 pub use file_upload::{FileUploadButton, UploadedFile};
 pub use flip_counter::FlipCounter;
@@ -146,6 +149,7 @@ pub use swap_modal::{
     SwapProgress,
 };
 pub use theme::{rarity_rank_color, FontStrategy};
+pub use timestamp::{format_iso8601, Timestamp};
 pub use toast::{show_toasts, Toast, ToastKind, ToastQueue, DEFAULT_DURATION_FRAMES};
 pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
 pub use utils::{

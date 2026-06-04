@@ -23,7 +23,10 @@ use egui::{
 };
 
 use crate::chip::{Chip, ChipVariant};
-use crate::relative_time::{relative_label, RelativeTime};
+use crate::error_note::{summarize_error, ErrorNote};
+use crate::icons::{install_phosphor_font, PhosphorIcon};
+use crate::relative_time::relative_label;
+use crate::timestamp::Timestamp;
 
 // ─────────────────────────────────────────────────────────────────────
 // View-model
@@ -423,11 +426,14 @@ impl<'a> OrderList<'a> {
         }
 
         // ── List ─────────────────────────────────────────────────────────
+        // One shared status-badge width (the widest label) so every pill is the
+        // same size and the clock + id line up down the list.
+        let badge_w = badge_inner_width(ui, self.rows);
         ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for o in &filtered {
-                    render_row(ui, o, self.now, &mut resp);
+                    render_row(ui, o, self.now, badge_w, &mut resp);
                 }
             });
 
@@ -499,6 +505,64 @@ fn toggle_status(active: &mut Vec<String>, key: &str) {
     }
 }
 
+/// A fixed-width status pill. Mirrors `Chip`'s look (via the status's
+/// `ChipVariant` palette) but pads the frame to a shared `inner_w` and centres
+/// the label, so every badge is the same width and the row content after it
+/// lines up into a clean column.
+fn status_badge(ui: &mut Ui, status: &OrderStatus, inner_w: f32) {
+    let (fg, bg, border) = status.chip_variant().palette();
+    let mut frame = Frame::new()
+        .fill(bg)
+        .corner_radius(CornerRadius::same(3))
+        .inner_margin(Margin::symmetric(5, 1));
+    if let Some(b) = border {
+        frame = frame.stroke(Stroke::new(1.0, b));
+    }
+    // `add_sized` centres the label in an exact `inner_w × line_height` box (both
+    // axes) — reliable, unlike `vertical_centered`, which left-biased the text.
+    let line_h = ui.text_style_height(&egui::TextStyle::Small);
+    frame.show(ui, |ui| {
+        ui.add_sized(
+            [inner_w, line_h],
+            Label::new(
+                RichText::new(status.as_str().to_uppercase())
+                    .small()
+                    .color(fg),
+            ),
+        );
+    });
+}
+
+/// Width of the status-label column — the widest uppercase status text (over the
+/// canonical set + any present `Custom`), measured at the Small text style. The
+/// `status_badge` frame pads to this so every pill matches.
+fn badge_inner_width(ui: &Ui, rows: &[OrderRow]) -> f32 {
+    let size = ui
+        .style()
+        .text_styles
+        .get(&egui::TextStyle::Small)
+        .map(|f| f.size)
+        .unwrap_or(9.0);
+    let font = egui::FontId::new(size, egui::FontFamily::Proportional);
+    let texts = OrderStatus::KNOWN
+        .iter()
+        .map(|s| s.as_str().to_uppercase())
+        .chain(rows.iter().filter_map(|r| match &r.status {
+            OrderStatus::Custom(s) => Some(s.to_uppercase()),
+            _ => None,
+        }));
+    let mut max_w = 0.0_f32;
+    for t in texts {
+        let w = ui
+            .painter()
+            .layout_no_wrap(t, font.clone(), Color32::PLACEHOLDER)
+            .size()
+            .x;
+        max_w = max_w.max(w);
+    }
+    max_w.ceil()
+}
+
 /// Refund chips only render for these — `none` / `not_required` are silent.
 fn refund_variant(refund_status: &str) -> Option<ChipVariant> {
     match refund_status {
@@ -509,13 +573,35 @@ fn refund_variant(refund_status: &str) -> Option<ChipVariant> {
     }
 }
 
-fn render_row(ui: &mut Ui, o: &OrderRow, now: i64, resp: &mut OrderListResponse) {
+fn render_row(ui: &mut Ui, o: &OrderRow, now: i64, badge_w: f32, resp: &mut OrderListResponse) {
     ui.add_space(3.0);
     ui.horizontal(|ui| {
-        Chip::new(o.status.as_str())
-            .variant(o.status.chip_variant())
-            .upper_case(true)
-            .show(ui);
+        status_badge(ui, &o.status, badge_w);
+
+        // History toggle — a Phosphor list (event-log) glyph next to the status,
+        // brighter when the drawer is open. (Not a clock: that read as "time"
+        // right beside the date.) `rich_text` needs the font installed.
+        install_phosphor_font(ui.ctx());
+        let icon_color = if o.detail_open {
+            Color32::from_gray(225)
+        } else {
+            Color32::from_gray(125)
+        };
+        let hist = ui
+            .add(Label::new(PhosphorIcon::List.rich_text(14.0, icon_color)).sense(Sense::click()));
+        if hist.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        let hover = if o.detail_open {
+            "hide history"
+        } else {
+            "history"
+        };
+        if hist.on_hover_text(hover).clicked() {
+            resp.actions.push(OrderListAction::ToggleHistory {
+                order_id: o.order_id.clone(),
+            });
+        }
 
         copy_label(
             ui,
@@ -546,24 +632,10 @@ fn render_row(ui: &mut Ui, o: &OrderRow, now: i64, resp: &mut OrderListResponse)
         }
 
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            // History toggle.
-            let label = if o.detail_open {
-                "- history"
-            } else {
-                "history"
-            };
-            if ui.small_button(label).clicked() {
-                resp.actions.push(OrderListAction::ToggleHistory {
-                    order_id: o.order_id.clone(),
-                });
-            }
-            // Relative time (created), absolute created + updated on hover.
-            ui.add(RelativeTime::new(o.created_at).now(now).size(11.0))
-                .on_hover_text(format!(
-                    "created {}\nupdated {}",
-                    fmt_utc(o.created_at),
-                    fmt_utc(o.updated_at)
-                ));
+            // Creation date+time via the shared `Timestamp` atom (ISO-8601,
+            // consistent size; full form + relative "x ago" on hover) so the
+            // created-desc ordering reads at a glance down the list.
+            ui.add(Timestamp::new(o.created_at).now(now));
             // Refund chip, only when it means something.
             if let Some(v) = refund_variant(&o.refund_status) {
                 Chip::new(&format!("refund {}", o.refund_status))
@@ -597,11 +669,9 @@ fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
             return;
         };
         if let Some(note) = &o.note {
-            ui.label(
-                RichText::new(format!("note: {note}"))
-                    .small()
-                    .color(Color32::from_rgb(210, 170, 120)),
-            );
+            // The failure note is usually a Debug-wrapped, escaped-JSON blob —
+            // `ErrorNote` distils it to the human reason + a show-raw toggle.
+            ErrorNote::new(note).show(ui);
         }
         if events.is_empty() {
             ui.label(
@@ -614,8 +684,7 @@ fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
         for e in events {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(&e.event).small().strong());
-                ui.add(RelativeTime::new(e.at).now(now).size(11.0))
-                    .on_hover_text(fmt_utc(e.at));
+                ui.add(Timestamp::new(e.at).now(now).with_seconds(true));
                 if let Some(tx) = &e.tx_hash {
                     copy_label(
                         ui,
@@ -626,7 +695,17 @@ fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
                     );
                 }
                 if let Some(d) = &e.detail {
-                    ui.label(RichText::new(d).small().color(Color32::from_gray(150)));
+                    // Event details can also carry the raw submit blob — show the
+                    // distilled reason, full de-escaped text on hover.
+                    let summary = summarize_error(d);
+                    let lbl = ui.label(
+                        RichText::new(&summary.headline)
+                            .small()
+                            .color(Color32::from_gray(150)),
+                    );
+                    if summary.detail.trim() != summary.headline.trim() {
+                        lbl.on_hover_text(summary.detail);
+                    }
                 }
             });
         }
@@ -663,42 +742,9 @@ fn fmt_ada(lovelace: u64) -> String {
     s.trim_end_matches('.').to_string()
 }
 
-/// Unix seconds → `YYYY-MM-DD HH:MM UTC` (no deps — the wasm/native widget can't
-/// pull `chrono`). Civil-from-days is Howard Hinnant's algorithm.
-fn fmt_utc(secs: i64) -> String {
-    let days = secs.div_euclid(86_400);
-    let tod = secs.rem_euclid(86_400);
-    let (h, m) = (tod / 3600, (tod % 3600) / 60);
-    let (y, mo, d) = civil_from_days(days);
-    format!("{y:04}-{mo:02}-{d:02} {h:02}:{m:02} UTC")
-}
-
-/// Days since 1970-01-01 → (year, month, day). Hinnant's `civil_from_days`.
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
-    let z = z + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097; // [0, 146096]
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365; // [0, 399]
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
-    let mp = (5 * doy + 2) / 153; // [0, 11]
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32; // [1, 12]
-    (if m <= 2 { y + 1 } else { y }, m, d)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn utc_formats_known_epochs() {
-        assert_eq!(fmt_utc(0), "1970-01-01 00:00 UTC");
-        // 2026-06-04 12:00 UTC = 1780well-known; compute via the algorithm itself
-        // is circular, so pin a couple of hand-checked points.
-        assert_eq!(fmt_utc(1_000_000_000), "2001-09-09 01:46 UTC");
-        assert_eq!(fmt_utc(1_700_000_000), "2023-11-14 22:13 UTC");
-    }
 
     #[test]
     fn ada_trims_trailing_zeros() {

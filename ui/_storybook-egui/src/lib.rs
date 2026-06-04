@@ -89,6 +89,8 @@ mod app {
         PhaseCard,
         ButtonGroup,
         Toast,
+        Timestamp,
+        ErrorNote,
     }
 
     impl Story {
@@ -106,6 +108,8 @@ mod app {
                 Self::PropertyList,
                 Self::ButtonGroup,
                 Self::Toast,
+                Self::Timestamp,
+                Self::ErrorNote,
                 Self::ProgressBar,
                 Self::Sparkline,
                 Self::MetricCard,
@@ -232,6 +236,8 @@ mod app {
                 Self::Chip => "Chip",
                 Self::PropertyList => "Property List",
                 Self::IdPill => "ID Pill",
+                Self::Timestamp => "Timestamp",
+                Self::ErrorNote => "Error Note",
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
                 Self::Toast => "Toast",
@@ -245,6 +251,8 @@ mod app {
                 | Self::Marquee
                 | Self::Buttons
                 | Self::Chip
+                | Self::Timestamp
+                | Self::ErrorNote
                 | Self::IdPill
                 | Self::PropertyList
                 | Self::ButtonGroup
@@ -302,6 +310,8 @@ mod app {
         fn description(&self) -> &'static str {
             match self {
                 Self::Formatting => "Shared formatters: ADA, lovelace, percent, number, duration, hex truncation",
+                Self::Timestamp => "Consistent ISO-8601 timestamp atom — fixed monospace size, optional badge, full + relative on hover",
+                Self::ErrorNote => "Distils Debug-wrapped / escaped-JSON error blobs to the human reason + HTTP status, with a show-raw toggle",
                 Self::Distribution => "Concentric orbital rings supply distribution chart",
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
@@ -713,6 +723,8 @@ mod app {
 
                         match self.current_story {
                             Story::Formatting => stories::formatting::show(ui),
+                            Story::Timestamp => stories::timestamp::show(ui),
+                            Story::ErrorNote => stories::error_note::show(ui),
                             Story::Distribution => {
                                 stories::distribution::show(ui, &mut self.distribution_chart)
                             }
