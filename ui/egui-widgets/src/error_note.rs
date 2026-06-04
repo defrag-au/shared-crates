@@ -142,10 +142,7 @@ fn extract_reason(s: &str) -> Option<String> {
 /// JSON body), trimmed of the Rust-`Debug` wrappers, capped to a readable length.
 fn leading_summary(s: &str) -> String {
     let head = s.split('{').next().unwrap_or(s).trim();
-    let head = head
-        .trim_end_matches(['(', ':', ' '])
-        .trim_start_matches(|c: char| c.is_ascii_lowercase() || c == '_' || c == ' ')
-        .trim();
+    let head = head.trim_end_matches(['(', ':', ' ']).trim();
     let head = if head.is_empty() { s.trim() } else { head };
     if head.chars().count() > 200 {
         let cut: String = head.chars().take(197).collect();
