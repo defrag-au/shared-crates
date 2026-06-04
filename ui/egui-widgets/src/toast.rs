@@ -57,10 +57,11 @@
 use std::collections::VecDeque;
 
 use egui::{
-    Align, Align2, Area, Color32, Context, CornerRadius, Frame, Id, Layout, Margin, Order,
-    RichText, Stroke, Ui,
+    Align, Align2, Area, Color32, Context, CornerRadius, Frame, Id, Label, Layout, Margin, Order,
+    RichText, Sense, Stroke, Ui,
 };
 
+use crate::error_note::summarize_error;
 use crate::icons::{install_phosphor_font, PhosphorIcon};
 
 /// ~3 seconds at 60 fps. Used as the default lifetime for toasts pushed
@@ -120,7 +121,9 @@ impl ToastKind {
     fn default_icon(self) -> Option<PhosphorIcon> {
         match self {
             ToastKind::Success => Some(PhosphorIcon::CheckCircle),
-            ToastKind::Error => Some(PhosphorIcon::X),
+            // Warning glyph (not `X`) so the leading severity icon doesn't clash
+            // with the trailing close `X` on sticky error toasts.
+            ToastKind::Error => Some(PhosphorIcon::Warning),
             ToastKind::Warning => Some(PhosphorIcon::Warning),
             ToastKind::Info => None,
         }
@@ -138,8 +141,13 @@ pub struct Toast {
     /// the icon explicitly.
     pub icon: Option<Option<PhosphorIcon>>,
     /// Frames remaining before auto-dismissal. Decremented once per
-    /// paint by [`show_toasts`]; the entry drops at 0.
+    /// paint by [`show_toasts`]; the entry drops at 0. Ignored when
+    /// [`Toast::sticky`] is set.
     pub frames_remaining: u32,
+    /// When `true`, the toast does NOT auto-dismiss — it stays until the
+    /// user clicks its close `×`. Errors default to sticky so the operator
+    /// has time to read + capture them.
+    pub sticky: bool,
 }
 
 impl Toast {
@@ -151,7 +159,14 @@ impl Toast {
             kind,
             icon: None,
             frames_remaining: DEFAULT_DURATION_FRAMES,
+            sticky: false,
         }
+    }
+
+    /// Make the toast persist until the user dismisses it (no auto-timeout).
+    pub fn sticky(mut self, sticky: bool) -> Self {
+        self.sticky = sticky;
+        self
     }
 
     /// Override the leading Phosphor glyph (e.g. `Copy` for a
@@ -167,9 +182,11 @@ impl Toast {
         self
     }
 
-    /// Override the auto-dismiss duration in frames (60 ≈ 1 s).
+    /// Override the auto-dismiss duration in frames (60 ≈ 1 s). Implies
+    /// non-sticky (a timed toast can't also be sticky).
     pub fn duration_frames(mut self, frames: u32) -> Self {
         self.frames_remaining = frames;
+        self.sticky = false;
         self
     }
 
@@ -224,9 +241,11 @@ impl ToastQueue {
         self.push(Toast::new(message, ToastKind::Success));
     }
 
-    /// Push a red failure toast with the default duration + `X` icon.
+    /// Push a red failure toast. **Sticky** — it stays until the operator
+    /// dismisses it (time to read + capture the error), and its message is
+    /// cleaned through [`crate::summarize_error`] at render with a copy button.
     pub fn error(&mut self, message: impl Into<String>) {
-        self.push(Toast::new(message, ToastKind::Error));
+        self.push(Toast::new(message, ToastKind::Error).sticky(true));
     }
 
     /// Push an amber caution toast with the default duration +
@@ -264,8 +283,9 @@ impl ToastQueue {
 /// Drives `ctx.request_repaint()` while the queue is non-empty so the
 /// countdown keeps ticking without external input events.
 pub fn show_toasts(ctx: &Context, queue: &mut ToastQueue) {
-    // Reap expired entries before measuring.
-    queue.toasts.retain(|t| t.frames_remaining > 0);
+    // Reap expired entries (sticky toasts never time out — only a close click
+    // removes them).
+    queue.toasts.retain(|t| t.sticky || t.frames_remaining > 0);
     if queue.toasts.is_empty() {
         return;
     }
@@ -274,12 +294,18 @@ pub fn show_toasts(ctx: &Context, queue: &mut ToastQueue) {
     // Phosphor font (e.g. an error toast from a boot-time fetch).
     install_phosphor_font(ctx);
 
-    // Tick countdowns + keep the paint pump turning so the toast
-    // dismisses itself with no external input event.
+    // Tick the timed (non-sticky) toasts. Only keep the paint pump turning if
+    // there's actually a countdown to advance — sticky toasts repaint on input.
+    let mut any_ticking = false;
     for t in queue.toasts.iter_mut() {
-        t.frames_remaining = t.frames_remaining.saturating_sub(1);
+        if !t.sticky {
+            t.frames_remaining = t.frames_remaining.saturating_sub(1);
+            any_ticking = true;
+        }
     }
-    ctx.request_repaint();
+    if any_ticking {
+        ctx.request_repaint();
+    }
 
     // Pin to the bottom-right of the *content* area (inside chrome) so
     // the overlay doesn't drift off-viewport on platforms with custom
@@ -287,39 +313,101 @@ pub fn show_toasts(ctx: &Context, queue: &mut ToastQueue) {
     let content_rect = ctx.content_rect();
     let anchor = content_rect.right_bottom() + egui::vec2(-16.0, -16.0);
 
+    // Interactable so the copy/close affordances on (sticky) error toasts work;
+    // the Area only covers the small bottom-right stack.
+    let mut closed: Vec<usize> = Vec::new();
     Area::new(Id::new("egui_widgets_toast_overlay"))
         .order(Order::Foreground)
         .fixed_pos(anchor)
         .pivot(Align2::RIGHT_BOTTOM)
-        .interactable(false)
+        .interactable(true)
         .show(ctx, |ui| {
             ui.spacing_mut().item_spacing.y = 6.0;
             // bottom_up so newer toasts surface at the bottom of the
             // stack (closest to the user's cursor on a typical click)
             // while older ones float upward and fade out of the way.
             ui.with_layout(Layout::bottom_up(Align::Max), |ui| {
-                for toast in queue.toasts.iter() {
-                    render_one(ui, toast);
+                for (i, toast) in queue.toasts.iter().enumerate() {
+                    if render_one(ui, toast) {
+                        closed.push(i);
+                    }
                 }
             });
         });
+
+    // Drop any toast the user dismissed this frame.
+    if !closed.is_empty() {
+        let mut i = 0;
+        queue.toasts.retain(|_| {
+            let keep = !closed.contains(&i);
+            i += 1;
+            keep
+        });
+    }
 }
 
-fn render_one(ui: &mut Ui, toast: &Toast) {
+/// Render one toast. Returns `true` when the user clicked its close `×`.
+fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
     let (fill, stroke, icon_col, text_col) = toast.kind.palette();
+    // Error toasts get the cleaned-up display: the distilled reason on the
+    // toast, the full single-line form behind the copy button.
+    let summary = (toast.kind == ToastKind::Error).then(|| summarize_error(&toast.message));
+    let display = summary
+        .as_ref()
+        .map(|s| s.headline.clone())
+        .unwrap_or_else(|| toast.message.clone());
+    // Cap the on-toast text — the copy button has the full thing.
+    let display = if display.chars().count() > 140 {
+        let cut: String = display.chars().take(139).collect();
+        format!("{cut}…")
+    } else {
+        display
+    };
+
+    let mut closed = false;
     Frame::new()
         .fill(fill)
         .stroke(Stroke::new(1.0, stroke))
         .corner_radius(CornerRadius::same(6))
         .inner_margin(Margin::symmetric(12, 8))
         .show(ui, |ui| {
+            ui.set_max_width(440.0);
             ui.horizontal(|ui| {
                 if let Some(icon) = toast.resolved_icon() {
                     ui.label(icon.rich_text(14.0, icon_col));
                 }
-                ui.label(RichText::new(&toast.message).color(text_col).small());
+                ui.add(Label::new(RichText::new(display).color(text_col).small()).wrap());
+
+                // Trailing affordances, right-aligned: copy (errors) + close (sticky).
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if toast.sticky {
+                        let x = ui.add(
+                            Label::new(PhosphorIcon::X.rich_text(12.0, icon_col))
+                                .sense(Sense::click()),
+                        );
+                        if x.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
+                        if x.on_hover_text("dismiss").clicked() {
+                            closed = true;
+                        }
+                    }
+                    if let Some(s) = &summary {
+                        let copy = ui.add(
+                            Label::new(PhosphorIcon::Copy.rich_text(12.0, icon_col))
+                                .sense(Sense::click()),
+                        );
+                        if copy.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
+                        if copy.on_hover_text("copy error").clicked() {
+                            ui.ctx().copy_text(s.clipboard());
+                        }
+                    }
+                });
             });
         });
+    closed
 }
 
 #[cfg(test)]
@@ -344,12 +432,25 @@ mod tests {
             ToastKind::Success.default_icon(),
             Some(PhosphorIcon::CheckCircle)
         );
-        assert_eq!(ToastKind::Error.default_icon(), Some(PhosphorIcon::X));
+        assert_eq!(ToastKind::Error.default_icon(), Some(PhosphorIcon::Warning));
         assert_eq!(
             ToastKind::Warning.default_icon(),
             Some(PhosphorIcon::Warning)
         );
         assert_eq!(ToastKind::Info.default_icon(), None);
+    }
+
+    #[test]
+    fn errors_are_sticky_others_are_not() {
+        let mut q = ToastQueue::new();
+        q.error("boom");
+        q.success("ok");
+        q.info("fyi");
+        assert!(q.toasts[0].sticky, "error toast must be sticky");
+        assert!(!q.toasts[1].sticky);
+        assert!(!q.toasts[2].sticky);
+        // A timed override clears sticky.
+        assert!(!Toast::new("x", ToastKind::Error).duration_frames(60).sticky);
     }
 
     #[test]

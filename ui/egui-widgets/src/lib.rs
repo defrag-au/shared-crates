@@ -9,6 +9,7 @@ pub mod chip;
 pub mod collection_list;
 pub mod distribution_waterfall;
 pub mod donut_chart;
+pub mod error_note;
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
 pub mod flip_counter;
@@ -22,6 +23,7 @@ pub mod marquee;
 pub mod metric_card;
 pub mod mnemonic_display;
 pub mod offer_tile;
+pub mod order_list;
 pub mod persona_strip;
 pub mod phase_card;
 pub mod pip_row;
@@ -30,11 +32,14 @@ pub mod progress_bar;
 pub mod property_list;
 pub mod radar_chart;
 pub mod range_bar;
+pub mod relative_time;
 pub mod screenshot;
 pub mod seven_segment;
 pub mod sparkline;
+pub mod supply_bar;
 pub mod swap_modal;
 pub mod theme;
+pub mod timestamp;
 pub mod toast;
 pub mod trait_filter;
 pub mod utils;
@@ -98,13 +103,14 @@ pub use card_browser::{
 };
 pub use chip::{Chip, ChipResponse, ChipVariant};
 pub use collection_list::{
-    CollectionList, CollectionListAction, CollectionListLayout, CollectionListResponse,
-    CollectionRow,
+    CollectionControl, CollectionControls, CollectionList, CollectionListAction,
+    CollectionListLayout, CollectionListResponse, CollectionRow,
 };
 pub use distribution_waterfall::{DistributionWaterfall, WaterfallMode, WaterfallParty};
 pub use donut_chart::{
     format_value as format_chart_value, legend_row, DistBand, DistributionChart,
 };
+pub use error_note::{pretty_json, summarize_error, ErrorNote, ErrorSummary};
 #[cfg(target_arch = "wasm32")]
 pub use file_upload::{FileUploadButton, UploadedFile};
 pub use flip_counter::FlipCounter;
@@ -121,6 +127,9 @@ pub use image_text_editor::{
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
+pub use order_list::{
+    OrderEventRow, OrderList, OrderListAction, OrderListResponse, OrderRow, OrderStatus,
+};
 pub use persona_strip::{PersonaStrip, PersonaStripConfig};
 pub use phase_card::{GateChip, PhaseCard, PhaseCardAction, PhaseCardResponse, PhaseCardRow};
 pub use pip_row::{
@@ -130,14 +139,17 @@ pub use progress_bar::ProgressBar;
 pub use property_list::{PropertyLabelAlign, PropertyList};
 pub use radar_chart::{RadarChartConfig, RadarPoint};
 pub use range_bar::{RangeBarConfig, RangePoint};
+pub use relative_time::{relative_label, RelativeTime};
 pub use screenshot::ScreenshotButton;
 pub use seven_segment::SevenSegmentDisplay;
 pub use sparkline::Sparkline;
+pub use supply_bar::SupplyBar;
 pub use swap_modal::{
     CultureBuy, SwapModal, SwapModalAction, SwapModalConfig, SwapModalTheme, SwapPreviewData,
     SwapProgress,
 };
 pub use theme::{rarity_rank_color, FontStrategy};
+pub use timestamp::{format_iso8601, Timestamp};
 pub use toast::{show_toasts, Toast, ToastKind, ToastQueue, DEFAULT_DURATION_FRAMES};
 pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
 pub use utils::{

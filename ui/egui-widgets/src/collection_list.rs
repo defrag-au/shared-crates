@@ -46,8 +46,7 @@
 //! let rows: Vec<CollectionRow> = detail.collections.iter().map(to_vm).collect();
 //! let resp = CollectionList::new(&rows)
 //!     .with_columns(2)
-//!     .with_test_mint(true)
-//!     .with_seed_stubs(true)
+//!     .with_controls([CollectionControl::TestMint, CollectionControl::SeedStubs])
 //!     .show(ui);
 //! for action in resp.actions {
 //!     match action {
@@ -101,9 +100,14 @@ pub struct CollectionRow {
     /// Total minted supply target. Rendered as `minted_count /
     /// total_supply` + a thin progress bar.
     pub total_supply: u64,
-    /// Number of assets already minted. The progress bar fills based on
-    /// `minted_count / total_supply`.
+    /// Number of assets already minted (on chain). The progress bar's first
+    /// band fills based on `minted_count / total_supply`.
     pub minted_count: u64,
+    /// Asset-units ordered but not yet on chain (the mint backlog —
+    /// `unfilled` + `filled` slots). Rendered as a SECOND band on the supply
+    /// bar, right after the minted band, in a distinct colour, so a drop shows
+    /// fulfilled-vs-ordered at a glance. `0` when nothing is queued.
+    pub ordered_awaiting: u64,
     /// `true` when the parent has the Test-mint form open below this
     /// row. The widget renders the button label as `− Test mint` so
     /// the user has a clear "close" affordance.
@@ -200,6 +204,13 @@ pub enum CollectionListAction {
     /// [`CollectionList::with_fund`] is `true` and the row has a mint
     /// wallet address.
     FundWallet { policy_id: String },
+    /// User clicked the per-card "Withdraw" button on the mint-wallet pill.
+    /// **Dev-only** teardown: the host sweeps all spendable tADA in the
+    /// collection's mint wallet back to the operator's connected wallet
+    /// (worker-signed — the mint wallet is custodial). Only emitted when
+    /// [`CollectionList::with_withdraw`] is `true` and the row has a mint
+    /// wallet address.
+    WithdrawWallet { policy_id: String },
     /// User clicked Archive on an active card. Host soft-archives the
     /// collection (halts its engine DO + hides it). Only emitted when
     /// [`CollectionList::with_archive`] is `true`.
@@ -243,20 +254,72 @@ pub enum CollectionListLayout {
     List,
 }
 
+/// One opt-in operator control on a collection card. The host enables a set of
+/// these via [`CollectionList::with_controls`]; the widget renders only the
+/// enabled ones. Collapses the former bag of `show_*: bool` flags into a single
+/// set that threads through rendering as one value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum CollectionControl {
+    /// "Test mint" form toggle (operator/super-admin).
+    TestMint,
+    /// "Seed stubs" form toggle (testing-only placeholder assets).
+    SeedStubs,
+    /// "Activity" panel toggle (recent mint log).
+    Activity,
+    /// "Refuel" on the mint-wallet pill (fuel-UTxO fan-out).
+    Refuel,
+    /// "Archive" / "Restore" button.
+    Archive,
+    /// "+ Ingest" / "Scan" payment-monitor buttons.
+    Payments,
+    /// "Configure" button (phases / gates / allowlist window).
+    Configure,
+    /// "Settlement" button (treasury config window).
+    Settlement,
+    /// "Fund" on the mint-wallet pill (browser-wallet top-up).
+    Fund,
+    /// "Withdraw" on the mint-wallet pill (dev-only sweep to connected wallet).
+    Withdraw,
+}
+
+/// A `Copy` set of [`CollectionControl`]s — a small bitset (there are well under
+/// 16 controls), so it threads through the render fns by value instead of the
+/// former ten `show_*: bool` parameters.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CollectionControls(u16);
+
+impl CollectionControls {
+    /// True when `control` is enabled.
+    pub fn contains(self, control: CollectionControl) -> bool {
+        self.0 & (1 << control as u16) != 0
+    }
+    /// Enable `control` (in place).
+    pub fn insert(&mut self, control: CollectionControl) {
+        self.0 |= 1 << control as u16;
+    }
+    /// Enable `control`, builder-style.
+    pub fn with(mut self, control: CollectionControl) -> Self {
+        self.insert(control);
+        self
+    }
+}
+
+impl FromIterator<CollectionControl> for CollectionControls {
+    fn from_iter<I: IntoIterator<Item = CollectionControl>>(iter: I) -> Self {
+        let mut set = Self::default();
+        for c in iter {
+            set.insert(c);
+        }
+        set
+    }
+}
+
 /// Builder.
 pub struct CollectionList<'a> {
     rows: &'a [CollectionRow],
     layout: CollectionListLayout,
     columns: usize,
-    show_test_mint: bool,
-    show_seed_stubs: bool,
-    show_activity: bool,
-    show_refuel: bool,
-    show_archive: bool,
-    show_payments: bool,
-    show_configure: bool,
-    show_settlement: bool,
-    show_fund: bool,
+    controls: CollectionControls,
     hide_archived: bool,
 }
 
@@ -289,10 +352,8 @@ const STD_UNKNOWN_CHIP: Color32 = Color32::from_gray(150);
 // not the primary identity of the collection.
 const NETWORK_CHIP: Color32 = Color32::from_rgb(120, 130, 150);
 
-// Progress bar — base track + filled portion. Fill colour shifts by
-// status (live = green, otherwise neutral cyan) so an at-a-glance scan
-// distinguishes "in progress" from "actively minting".
-const BAR_TRACK: Color32 = Color32::from_rgb(30, 30, 44);
+// Supply-bar minted fill — shifts by status (live = green, otherwise neutral
+// cyan); the `SupplyBar` widget owns the track + ordered-band colours.
 const BAR_FILL_NEUTRAL: Color32 = Color32::from_rgb(120, 160, 200);
 const BAR_FILL_LIVE: Color32 = Color32::from_rgb(140, 200, 140);
 
@@ -302,24 +363,27 @@ impl<'a> CollectionList<'a> {
             rows,
             layout: CollectionListLayout::default(),
             columns: 1,
-            show_test_mint: false,
-            show_seed_stubs: false,
-            show_activity: false,
-            show_refuel: false,
-            show_archive: false,
-            show_payments: false,
-            show_configure: false,
-            show_settlement: false,
-            show_fund: false,
+            controls: CollectionControls::default(),
             hide_archived: false,
         }
     }
 
-    /// Show a per-card Archive button (Restore on archived cards). Off by
-    /// default. Click → [`CollectionListAction::Archive`] /
-    /// [`CollectionListAction::Unarchive`].
-    pub fn with_archive(mut self, enabled: bool) -> Self {
-        self.show_archive = enabled;
+    /// Enable a set of operator [`CollectionControl`]s on every card. Replaces
+    /// the former per-flag `with_test_mint(true).with_refuel(true)…` chain with
+    /// one call — e.g. `.with_controls([CollectionControl::Fund,
+    /// CollectionControl::Refuel])`. Conditionally include a control by building
+    /// the iterator (or chain [`CollectionList::with_control`]).
+    pub fn with_controls(mut self, controls: impl IntoIterator<Item = CollectionControl>) -> Self {
+        for c in controls {
+            self.controls.insert(c);
+        }
+        self
+    }
+
+    /// Enable a single [`CollectionControl`] — handy for a conditional control
+    /// (`.with_control(CollectionControl::Withdraw)` only when on dev).
+    pub fn with_control(mut self, control: CollectionControl) -> Self {
+        self.controls.insert(control);
         self
     }
 
@@ -344,85 +408,6 @@ impl<'a> CollectionList<'a> {
     /// layout from leaving a trailing empty cell that reads as a bug.
     pub fn with_columns(mut self, cols: usize) -> Self {
         self.columns = cols.max(1);
-        self
-    }
-
-    /// Show the per-card "Test mint" button. Off by default since the
-    /// host may not have a mint-form to render. Click → emits
-    /// [`CollectionListAction::TestMint`].
-    pub fn with_test_mint(mut self, enabled: bool) -> Self {
-        self.show_test_mint = enabled;
-        self
-    }
-
-    /// Show the per-card "Seed stubs" button. Off by default. Click →
-    /// emits [`CollectionListAction::SeedStubs`]. The portal uses this
-    /// for the local testing path; `mintctl clone-policy` replaces it
-    /// for realistic inventory but the toggle remains useful for quick
-    /// one-off seeding.
-    pub fn with_seed_stubs(mut self, enabled: bool) -> Self {
-        self.show_seed_stubs = enabled;
-        self
-    }
-
-    /// Show the per-card "Activity" toggle. Off by default. Click → emits
-    /// [`CollectionListAction::Activity`]; host opens/closes the recent
-    /// mint-activity panel below the card and polls
-    /// `PortalAction::FetchMintActivity` while open.
-    pub fn with_activity(mut self, enabled: bool) -> Self {
-        self.show_activity = enabled;
-        self
-    }
-
-    /// Show the per-card "Refuel" button on the wallet sub-line. Off by
-    /// default. Click → widget copies `wallet_address_full` to the
-    /// clipboard *and* emits [`CollectionListAction::Refuel`] so the
-    /// host can flash a toast / log it / open a faucet. Hidden on rows
-    /// whose `wallet_address_full` is `None` (nothing to refuel).
-    ///
-    /// Why on the *collection* card rather than the wallet card: an
-    /// operator reasons "this collection needs fuel", not "wallet #4
-    /// is low" — the collection is the unit of work. Surfacing fuel
-    /// state + the address on the collection card lets a low-fuel
-    /// signal trigger the refuel directly, without a hop through the
-    /// Wallets section.
-    pub fn with_refuel(mut self, enabled: bool) -> Self {
-        self.show_refuel = enabled;
-        self
-    }
-
-    /// Show the per-card payment-monitor buttons (`🔍 Scan` + `+ Ingest`).
-    /// Off by default. The host wires the matching actions: `ScanPayments`
-    /// fires immediately (single click, result toast); `IngestPayment`
-    /// toggles a single-field form for a tx hash. See
-    /// `docs/design/MINT_PAYMENT_MONITOR.md`.
-    pub fn with_payments(mut self, enabled: bool) -> Self {
-        self.show_payments = enabled;
-        self
-    }
-
-    /// Show the per-card `⚙ Configure` button. Off by default. Click →
-    /// emits [`CollectionListAction::Configure`]; host opens / focuses the
-    /// floating Configure window for editing phases, gates, and allowlist.
-    pub fn with_configure(mut self, enabled: bool) -> Self {
-        self.show_configure = enabled;
-        self
-    }
-
-    /// Show the per-card `Settlement` button. Off by default. Click →
-    /// emits [`CollectionListAction::Settlement`]; host opens / focuses the
-    /// floating Settlement window for editing treasury config + triggering a
-    /// settlement run.
-    pub fn with_settlement(mut self, enabled: bool) -> Self {
-        self.show_settlement = enabled;
-        self
-    }
-
-    /// Show a "Fund" button on the mint-wallet pill. Off by default. Click →
-    /// emits [`CollectionListAction::FundWallet`]; the host opens its
-    /// browser-wallet top-up flow for the collection's mint/fuel wallet.
-    pub fn with_fund(mut self, enabled: bool) -> Self {
-        self.show_fund = enabled;
         self
     }
 
@@ -464,40 +449,12 @@ impl<'a> CollectionList<'a> {
             for (chunk_idx, chunk) in chunks.iter().enumerate() {
                 if effective_cols == 1 {
                     for r in chunk.iter() {
-                        render_one(
-                            ui,
-                            r,
-                            self.layout,
-                            self.show_test_mint,
-                            self.show_seed_stubs,
-                            self.show_activity,
-                            self.show_refuel,
-                            self.show_archive,
-                            self.show_payments,
-                            self.show_configure,
-                            self.show_settlement,
-                            self.show_fund,
-                            &mut response,
-                        );
+                        render_one(ui, r, self.layout, self.controls, &mut response);
                     }
                 } else {
                     ui.columns(effective_cols, |cols| {
                         for (i, r) in chunk.iter().enumerate() {
-                            render_one(
-                                &mut cols[i],
-                                r,
-                                self.layout,
-                                self.show_test_mint,
-                                self.show_seed_stubs,
-                                self.show_activity,
-                                self.show_refuel,
-                                self.show_archive,
-                                self.show_payments,
-                                self.show_configure,
-                                self.show_settlement,
-                                self.show_fund,
-                                &mut response,
-                            );
+                            render_one(&mut cols[i], r, self.layout, self.controls, &mut response);
                         }
                     });
                 }
@@ -533,66 +490,23 @@ impl<'a> CollectionList<'a> {
 // Internals
 // ─────────────────────────────────────────────────────────────────────
 
-#[allow(clippy::too_many_arguments)]
 fn render_one(
     ui: &mut Ui,
     row: &CollectionRow,
     layout: CollectionListLayout,
-    show_test_mint: bool,
-    show_seed_stubs: bool,
-    show_activity: bool,
-    show_refuel: bool,
-    show_archive: bool,
-    show_payments: bool,
-    show_configure: bool,
-    show_settlement: bool,
-    show_fund: bool,
+    controls: CollectionControls,
     response: &mut CollectionListResponse,
 ) {
     match layout {
-        CollectionListLayout::Card => render_card(
-            ui,
-            row,
-            show_test_mint,
-            show_seed_stubs,
-            show_activity,
-            show_refuel,
-            show_archive,
-            show_payments,
-            show_configure,
-            show_settlement,
-            show_fund,
-            response,
-        ),
-        CollectionListLayout::List => render_list_row(
-            ui,
-            row,
-            show_test_mint,
-            show_seed_stubs,
-            show_activity,
-            show_refuel,
-            show_archive,
-            show_payments,
-            show_configure,
-            show_settlement,
-            response,
-        ),
+        CollectionListLayout::Card => render_card(ui, row, controls, response),
+        CollectionListLayout::List => render_list_row(ui, row, controls, response),
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn render_card(
     ui: &mut Ui,
     row: &CollectionRow,
-    show_test_mint: bool,
-    show_seed_stubs: bool,
-    show_activity: bool,
-    show_refuel: bool,
-    show_archive: bool,
-    show_payments: bool,
-    show_configure: bool,
-    show_settlement: bool,
-    show_fund: bool,
+    controls: CollectionControls,
     response: &mut CollectionListResponse,
 ) {
     // `PhosphorIcon::*.rich_text()` doesn't auto-install the font (unlike
@@ -634,29 +548,10 @@ fn render_card(
             });
 
             // ── Action bar ─────────────────────────────────────────
-            if has_any_action(
-                show_test_mint,
-                show_seed_stubs,
-                show_activity,
-                show_refuel,
-                show_archive,
-                show_payments,
-                show_configure,
-                show_settlement,
-                row,
-            ) {
+            if has_any_action(controls, row) {
                 ui.add_space(6.0);
                 render_operator_actions(
-                    ui,
-                    row,
-                    archived,
-                    show_test_mint,
-                    show_seed_stubs,
-                    show_activity,
-                    show_archive,
-                    show_payments,
-                    show_configure,
-                    show_settlement,
+                    ui, row, archived, controls,
                     true, // wrap — Card layout has its own dedicated bar row
                     response,
                 );
@@ -700,20 +595,17 @@ fn render_card(
                 });
             });
 
-            // Thin progress bar — caps at the surface width so it
-            // mirrors the card chrome.
+            // Two-band supply bar (`SupplyBar` widget): minted (fulfilled) then
+            // the ordered backlog, so a drop shows fulfilled-vs-ordered at a glance.
             ui.add_space(2.0);
             let bar_fill_colour = if row.status == "live" {
                 BAR_FILL_LIVE
             } else {
                 BAR_FILL_NEUTRAL
             };
-            let pct = if row.total_supply == 0 {
-                0.0
-            } else {
-                (row.minted_count as f32 / row.total_supply as f32).clamp(0.0, 1.0)
-            };
-            draw_thin_bar(ui, pct, bar_fill_colour);
+            crate::SupplyBar::new(row.minted_count, row.ordered_awaiting, row.total_supply)
+                .minted_color(bar_fill_colour)
+                .show(ui);
 
             ui.add_space(10.0);
 
@@ -749,7 +641,7 @@ fn render_card(
                     // browser wallet. The primary action for an empty wallet,
                     // so it leads the controls row (before the fuel state +
                     // Refuel, which only shape funds already present).
-                    if show_fund
+                    if controls.contains(CollectionControl::Fund)
                         && row.wallet_address_full.is_some()
                         && ui
                             .small_button(RichText::new("Fund").small())
@@ -778,10 +670,26 @@ fn render_card(
                     // Refuel — fan-out tx that splits the wallet's pure-ADA
                     // balance into N × 10 ADA fuel slots. Self-disables (no
                     // pool / healthy / in-flight) so the host doesn't re-check.
-                    if show_refuel {
+                    if controls.contains(CollectionControl::Refuel) {
                         if let Some(pool) = &row.pool {
                             refuel_button(ui, row, pool, response);
                         }
+                    }
+                    // Withdraw — dev-only sweep of the wallet's tADA back to the
+                    // operator's connected wallet. Sits last (it's a teardown, not
+                    // a routine control) and only when the host opts in (preprod).
+                    if controls.contains(CollectionControl::Withdraw)
+                        && row.wallet_address_full.is_some()
+                        && ui
+                            .small_button(RichText::new("Withdraw").small())
+                            .on_hover_text(
+                                "Dev only: sweep all tADA in this wallet back to your connected wallet",
+                            )
+                            .clicked()
+                    {
+                        response.actions.push(CollectionListAction::WithdrawWallet {
+                            policy_id: row.policy_id.clone(),
+                        });
                     }
                 },
             );
@@ -805,18 +713,10 @@ fn render_card(
         });
 }
 
-#[allow(clippy::too_many_arguments)]
 fn render_list_row(
     ui: &mut Ui,
     row: &CollectionRow,
-    show_test_mint: bool,
-    show_seed_stubs: bool,
-    show_activity: bool,
-    show_refuel: bool,
-    show_archive: bool,
-    show_payments: bool,
-    show_configure: bool,
-    show_settlement: bool,
+    controls: CollectionControls,
     response: &mut CollectionListResponse,
 ) {
     // `PhosphorIcon::*.rich_text()` doesn't auto-install the font (unlike
@@ -865,7 +765,7 @@ fn render_list_row(
                     // Within `right_to_left`, items added first sit furthest
                     // right; ButtonGroup's internal layout still flows
                     // left-to-right inside its own cluster.
-                    if show_refuel {
+                    if controls.contains(CollectionControl::Refuel) {
                         if let Some(pool) = &row.pool {
                             refuel_button(ui, row, pool, response);
                         }
@@ -878,16 +778,7 @@ fn render_list_row(
                         ui.ctx().copy_text(row.policy_id.clone());
                     }
                     render_operator_actions(
-                        ui,
-                        row,
-                        archived,
-                        show_test_mint,
-                        show_seed_stubs,
-                        show_activity,
-                        show_archive,
-                        show_payments,
-                        show_configure,
-                        show_settlement,
+                        ui, row, archived, controls,
                         false, // wrap — List layout is single-row by design
                         response,
                     );
@@ -994,29 +885,19 @@ fn refuel_button(
 /// Cheap predicate so we can suppress the spacing + action bar entirely
 /// on a card with no buttons configured (e.g. a list view that doesn't
 /// opt into any of the operator flags).
-#[allow(clippy::too_many_arguments)]
-fn has_any_action(
-    show_test_mint: bool,
-    show_seed_stubs: bool,
-    show_activity: bool,
-    show_refuel: bool,
-    show_archive: bool,
-    show_payments: bool,
-    show_configure: bool,
-    show_settlement: bool,
-    row: &CollectionRow,
-) -> bool {
-    show_test_mint
-        || show_seed_stubs
-        || show_activity
-        || show_archive
-        || show_configure
-        || show_payments
-        || show_settlement
+fn has_any_action(controls: CollectionControls, row: &CollectionRow) -> bool {
+    use CollectionControl::*;
+    controls.contains(TestMint)
+        || controls.contains(SeedStubs)
+        || controls.contains(Activity)
+        || controls.contains(Archive)
+        || controls.contains(Configure)
+        || controls.contains(Payments)
+        || controls.contains(Settlement)
         // Refuel is a card-only affordance + sits in the wallet sub-line,
         // not the action bar — but the predicate is shared with the bar's
         // visibility check; counting it keeps the bar logic uniform.
-        || (show_refuel && row.pool.is_some())
+        || (controls.contains(Refuel) && row.pool.is_some())
 }
 
 /// Operator-action cluster — Test mint / Activity / Configure / Ingest
@@ -1031,18 +912,11 @@ fn has_any_action(
 /// Archive lives at the natural end of the cluster rather than being
 /// pinned to the right edge (the previous shape) — when the cluster
 /// wraps, Archive lands on the last line which is visually equivalent.
-#[allow(clippy::too_many_arguments)]
 fn render_operator_actions(
     ui: &mut Ui,
     row: &CollectionRow,
     archived: bool,
-    show_test_mint: bool,
-    show_seed_stubs: bool,
-    show_activity: bool,
-    show_archive: bool,
-    show_payments: bool,
-    show_configure: bool,
-    show_settlement: bool,
+    controls: CollectionControls,
     wrap: bool,
     response: &mut CollectionListResponse,
 ) {
@@ -1058,9 +932,10 @@ fn render_operator_actions(
     const ID_ARCHIVE: u64 = 7;
     const ID_SETTLEMENT: u64 = 8;
 
+    use CollectionControl::*;
     let mut group = ButtonGroup::new().wrap(wrap);
 
-    if show_test_mint {
+    if controls.contains(TestMint) {
         let label = if row.test_mint_open {
             "- Test mint"
         } else {
@@ -1071,7 +946,7 @@ fn render_operator_actions(
                  (operator/super-admin only)",
         ));
     }
-    if show_activity {
+    if controls.contains(Activity) {
         let label = if row.activity_open {
             "- Activity"
         } else {
@@ -1082,7 +957,7 @@ fn render_operator_actions(
                  fetched from the engine's mint_log",
         ));
     }
-    if show_configure {
+    if controls.contains(Configure) {
         group = group.add(
             ButtonGroupButton::new(ID_CONFIGURE, "Configure")
                 .icon(crate::PhosphorIcon::Gear)
@@ -1093,7 +968,7 @@ fn render_operator_actions(
                 ),
         );
     }
-    if show_settlement {
+    if controls.contains(Settlement) {
         group = group.add(
             ButtonGroupButton::new(ID_SETTLEMENT, "Settlement").hover_text(
                 "Open the settlement config — founder distribution split, float \
@@ -1101,7 +976,7 @@ fn render_operator_actions(
             ),
         );
     }
-    if show_payments {
+    if controls.contains(Payments) {
         let ingest_label = if row.ingest_payment_open {
             "- Ingest"
         } else {
@@ -1130,7 +1005,7 @@ fn render_operator_actions(
                 .hover_text(scan_hover),
         );
     }
-    if show_seed_stubs {
+    if controls.contains(SeedStubs) {
         let label = if row.seed_stubs_open {
             "- Seed stubs"
         } else {
@@ -1141,7 +1016,7 @@ fn render_operator_actions(
                  (testing-only — real ingest replaces this)",
         ));
     }
-    if show_archive {
+    if controls.contains(Archive) {
         let (label, hover) = if archived {
             (
                 "Restore",
@@ -1256,22 +1131,5 @@ fn status_chip_colours(status: &str) -> (Color32, Color32) {
         ),
         "ended" => (Color32::WHITE, Color32::from_gray(140)),
         _ => (Color32::from_rgb(20, 20, 30), Color32::from_gray(160)),
-    }
-}
-
-/// Thin horizontal progress bar — 4 px tall, full surface width.
-fn draw_thin_bar(ui: &mut Ui, pct: f32, fill: Color32) {
-    let height = 4.0;
-    let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), height),
-        egui::Sense::hover(),
-    );
-    let painter = ui.painter();
-    let corner = CornerRadius::same(2);
-    painter.rect_filled(rect, corner, BAR_TRACK);
-    if pct > 0.0 {
-        let mut filled = rect;
-        filled.set_width(rect.width() * pct);
-        painter.rect_filled(filled, corner, fill);
     }
 }

@@ -62,6 +62,9 @@ mod app {
         // Loan dashboard
         ExposureBar,
         DataTable,
+        // Mint dashboard
+        SupplyBar,
+        OrderList,
         // Utility
         FileUpload,
         // Media
@@ -86,6 +89,8 @@ mod app {
         PhaseCard,
         ButtonGroup,
         Toast,
+        Timestamp,
+        ErrorNote,
     }
 
     impl Story {
@@ -103,6 +108,8 @@ mod app {
                 Self::PropertyList,
                 Self::ButtonGroup,
                 Self::Toast,
+                Self::Timestamp,
+                Self::ErrorNote,
                 Self::ProgressBar,
                 Self::Sparkline,
                 Self::MetricCard,
@@ -144,6 +151,9 @@ mod app {
                 // Loan dashboard
                 Self::ExposureBar,
                 Self::DataTable,
+                // Mint dashboard
+                Self::SupplyBar,
+                Self::OrderList,
                 // Utility
                 Self::FileUpload,
                 // Media
@@ -210,6 +220,8 @@ mod app {
                 Self::PriceImpactCurve => "Price Impact Curve",
                 Self::ExposureBar => "Exposure Bar",
                 Self::DataTable => "Data Table",
+                Self::SupplyBar => "Supply Bar",
+                Self::OrderList => "Order List",
                 Self::FileUpload => "File Upload",
                 Self::ImageTextEditor => "Image Text Editor",
                 Self::TxCart => "TX Cart",
@@ -224,6 +236,8 @@ mod app {
                 Self::Chip => "Chip",
                 Self::PropertyList => "Property List",
                 Self::IdPill => "ID Pill",
+                Self::Timestamp => "Timestamp",
+                Self::ErrorNote => "Error Note",
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
                 Self::Toast => "Toast",
@@ -237,6 +251,8 @@ mod app {
                 | Self::Marquee
                 | Self::Buttons
                 | Self::Chip
+                | Self::Timestamp
+                | Self::ErrorNote
                 | Self::IdPill
                 | Self::PropertyList
                 | Self::ButtonGroup
@@ -281,6 +297,7 @@ mod app {
                 | Self::PoolLiquidity
                 | Self::PriceImpactCurve => "DEX Split Swap",
                 Self::ExposureBar | Self::DataTable => "Loan Dashboard",
+                Self::SupplyBar | Self::OrderList => "Mint Dashboard",
                 Self::FileUpload => "Utility",
                 Self::ImageTextEditor => "Media",
                 Self::TxCart => "TX Cart",
@@ -293,6 +310,8 @@ mod app {
         fn description(&self) -> &'static str {
             match self {
                 Self::Formatting => "Shared formatters: ADA, lovelace, percent, number, duration, hex truncation",
+                Self::Timestamp => "Consistent ISO-8601 timestamp atom — fixed monospace size, optional badge, full + relative on hover",
+                Self::ErrorNote => "Distils Debug-wrapped / escaped-JSON error blobs to the human reason + HTTP status, with a show-raw toggle",
                 Self::Distribution => "Concentric orbital rings supply distribution chart",
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
@@ -400,6 +419,13 @@ mod app {
                 }
                 Self::DataTable => {
                     "Dense row-based table with column headers, LTV micro-bars, selection, and detail panel"
+                }
+                Self::SupplyBar => {
+                    "Two-band mint supply bar: minted (fulfilled) + ordered backlog, with oversubscription handling"
+                }
+                Self::OrderList => {
+                    "Mint-orders dashboard — per-status filter chips, search, relative dates (absolute on hover), \
+                     quiet refund chips, and an expandable per-order event history"
                 }
                 Self::FileUpload => {
                     "Browser file picker button — reads selected files into memory with name, MIME type, and bytes"
@@ -526,6 +552,8 @@ mod app {
         // Utility
         file_upload_state: stories::file_upload::FileUploadState,
         image_text_editor_state: stories::image_text_editor::ImageTextEditorState,
+        // Mint dashboard
+        order_list_state: stories::order_list::OrderListState,
         // TX Cart
         tx_cart_state: stories::tx_cart::TxCartStoryState,
         // Wallet
@@ -614,6 +642,7 @@ mod app {
                 amount_input_state: stories::amount_input::AmountInputStoryState::default(),
                 data_table_state: stories::data_table::DataTableStoryState::default(),
                 file_upload_state: stories::file_upload::FileUploadState::default(),
+                order_list_state: stories::order_list::OrderListState::default(),
                 image_text_editor_state: stories::image_text_editor::ImageTextEditorState::default(
                 ),
                 tx_cart_state: stories::tx_cart::TxCartStoryState::default(),
@@ -694,6 +723,8 @@ mod app {
 
                         match self.current_story {
                             Story::Formatting => stories::formatting::show(ui),
+                            Story::Timestamp => stories::timestamp::show(ui),
+                            Story::ErrorNote => stories::error_note::show(ui),
                             Story::Distribution => {
                                 stories::distribution::show(ui, &mut self.distribution_chart)
                             }
@@ -814,6 +845,10 @@ mod app {
                             Story::PriceImpactCurve => stories::price_impact_curve::show(ui),
                             // Loan dashboard
                             Story::ExposureBar => stories::exposure_bar::show(ui),
+                            Story::SupplyBar => stories::supply_bar::show(ui),
+                            Story::OrderList => {
+                                stories::order_list::show(ui, &mut self.order_list_state)
+                            }
                             Story::DataTable => {
                                 stories::data_table::show(ui, &mut self.data_table_state)
                             }

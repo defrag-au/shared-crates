@@ -5,6 +5,7 @@ members = [
     "asset-intents",
     "cardano-tx",
     "cardano-assets",
+    "mint-manifest",
     "cnft-tools",
     "discord-client",
     "filebase",

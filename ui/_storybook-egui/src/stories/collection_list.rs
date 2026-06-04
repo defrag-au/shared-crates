@@ -5,7 +5,7 @@
 
 use crate::{ACCENT, TEXT_MUTED};
 use egui_widgets::collection_list::{
-    CollectionList, CollectionListAction, CollectionListLayout, CollectionRow,
+    CollectionControl, CollectionList, CollectionListAction, CollectionListLayout, CollectionRow,
 };
 use egui_widgets::wallet_list::{WalletPoolBadge, WalletPoolBadgeHealth};
 
@@ -52,6 +52,9 @@ fn row(
         network: network.to_string(),
         total_supply,
         minted_count,
+        // Default: no backlog. Stories set `ordered_awaiting` per row where it
+        // matters (see the "Supply bar states" variant + the mid-mint rows).
+        ordered_awaiting: 0,
         test_mint_open: false,
         seed_stubs_open: false,
         activity_open: false,
@@ -157,8 +160,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
         0,
     )];
     let resp = CollectionList::new(&rows)
-        .with_test_mint(true)
-        .with_seed_stubs(true)
+        .with_controls([CollectionControl::TestMint, CollectionControl::SeedStubs])
         .show(ui);
     capture_actions(resp.actions, state);
 
@@ -175,15 +177,16 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     ui.add_space(4.0);
     ui.label(
         egui::RichText::new(
-            "The supply bar fills as `minted_count / total_supply`. Status chip \
-             colour-codes the lifecycle phase (ingesting / ready / live / paused).",
+            "The supply bar's first band fills as `minted_count / total_supply`; \
+             the second (amber) band is the ordered-but-unminted backlog. Status \
+             chip colour-codes the lifecycle phase (ingesting / ready / live).",
         )
         .color(TEXT_MUTED)
         .small(),
     );
     ui.add_space(8.0);
 
-    let rows = vec![
+    let mut rows = vec![
         row(
             "7f2b6f15a4c91c2d8e6a3b9f5d2e8c1a4b7d6e9f2c3a5b8d7e0f1c9a8922e0",
             4,
@@ -205,10 +208,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
             0,
         ),
     ];
+    // Ordered backlogs: 340 minted + 420 queued; 0 minted + 180 queued.
+    rows[0].ordered_awaiting = 420;
+    rows[1].ordered_awaiting = 180;
     let resp = CollectionList::new(&rows)
         .with_columns(2)
-        .with_test_mint(true)
-        .with_seed_stubs(true)
+        .with_controls([CollectionControl::TestMint, CollectionControl::SeedStubs])
         .show(ui);
     capture_actions(resp.actions, state);
 
@@ -233,7 +238,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     );
     ui.add_space(8.0);
 
-    let rows = vec![row(
+    let mut rows = vec![row(
         "5c3a8e4d2f1b7a9c6e0d3b5f8a2c4e7d1b9f6a3c0e5d8b2f7a4c1e6d3b9f0a8",
         7,
         "Live Collection",
@@ -243,9 +248,82 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
         2000,
         1247,
     )];
+    rows[0].ordered_awaiting = 540; // 1247 minted (green) + 540 queued (amber)
     let resp = CollectionList::new(&rows)
-        .with_test_mint(true)
-        .with_seed_stubs(true)
+        .with_controls([CollectionControl::TestMint, CollectionControl::SeedStubs])
+        .show(ui);
+    capture_actions(resp.actions, state);
+
+    ui.add_space(24.0);
+    ui.separator();
+    ui.add_space(16.0);
+
+    // ── Variant 3b: supply-bar states (fulfilled vs ordered) ───────────
+    ui.label(
+        egui::RichText::new("Supply bar — fulfilled vs ordered vs oversubscribed")
+            .color(ACCENT)
+            .strong(),
+    );
+    ui.add_space(4.0);
+    ui.label(
+        egui::RichText::new(
+            "The two-band `SupplyBar`: minted (fulfilled) then the ordered backlog. \
+             When ordered demand exceeds the remaining supply the card is \
+             oversubscribed — the band fills the remainder in a hotter amber rather \
+             than silently looking full.",
+        )
+        .color(TEXT_MUTED)
+        .small(),
+    );
+    ui.add_space(8.0);
+
+    let mut rows = vec![
+        row(
+            "5c3a8e4d2f1b7a9c6e0d3b5f8a2c4e7d1b9f6a3c0e5d8b2f7a4c1e6d3b9f0a8",
+            7,
+            "No backlog — minting only",
+            "live",
+            "cip25",
+            "cardano:preprod",
+            1000,
+            300,
+        ),
+        row(
+            "a8d4e1c7b2f5a9d3c6e0b4f7a1c8e2d5b9a6c3f0e7d4b1a8c5e2f9b6a3d0e7",
+            5,
+            "Big ordered backlog",
+            "live",
+            "cip25",
+            "cardano:preprod",
+            1000,
+            120,
+        ),
+        row(
+            "1e3d5b7f0a8c2e4d6b9f1c3a5e7d9b1f3a5c7e9d1b3f5a7c9e1d3b5f7a9c1e3",
+            8,
+            "Sold out",
+            "sold_out",
+            "cip68",
+            "cardano:mainnet",
+            500,
+            500,
+        ),
+        row(
+            "9b7a3c1e5d8f2a4c6e9d1b3f7a5c8e0d2b4f6a9c1e3d5b7f0a8c2e4d6b9f1c3",
+            6,
+            "Oversubscribed — demand > supply",
+            "live",
+            "cip25",
+            "cardano:preprod",
+            500,
+            80,
+        ),
+    ];
+    rows[1].ordered_awaiting = 700; // 120 + 700 = 820 of 1000
+    rows[3].ordered_awaiting = 900; // 80 + 900 = 980 > 500 → oversubscribed
+    let resp = CollectionList::new(&rows)
+        .with_columns(2)
+        .with_controls([CollectionControl::TestMint])
         .show(ui);
     capture_actions(resp.actions, state);
 
@@ -335,8 +413,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     ];
     let resp = CollectionList::new(&rows)
         .with_columns(2)
-        .with_test_mint(true)
-        .with_seed_stubs(true)
+        .with_controls([CollectionControl::TestMint, CollectionControl::SeedStubs])
         .show(ui);
     capture_actions(resp.actions, state);
 
@@ -389,8 +466,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     rows[1].seed_stubs_open = true;
     let resp = CollectionList::new(&rows)
         .with_columns(2)
-        .with_test_mint(true)
-        .with_seed_stubs(true)
+        .with_controls([CollectionControl::TestMint, CollectionControl::SeedStubs])
         .show(ui);
     capture_actions(resp.actions, state);
 
@@ -474,10 +550,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     // between firing the action and receiving the ack.
     rows[2].refuel_in_flight = true;
     let resp = CollectionList::new(&rows)
-        .with_test_mint(true)
-        .with_seed_stubs(true)
-        .with_activity(true)
-        .with_refuel(true)
+        .with_controls([
+            CollectionControl::TestMint,
+            CollectionControl::SeedStubs,
+            CollectionControl::Activity,
+            CollectionControl::Refuel,
+            CollectionControl::Fund,
+            CollectionControl::Withdraw,
+        ])
         .show(ui);
     capture_actions(resp.actions, state);
 
@@ -505,9 +585,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
 
     let _ = CollectionList::new(&rows)
         .with_layout(CollectionListLayout::List)
-        .with_test_mint(true)
-        .with_seed_stubs(true)
-        .with_refuel(true)
+        .with_controls([
+            CollectionControl::TestMint,
+            CollectionControl::SeedStubs,
+            CollectionControl::Refuel,
+        ])
         .show(ui);
 
     // ── Action receipt ─────────────────────────────────────────────────
@@ -580,6 +662,7 @@ fn capture_actions(actions: Vec<CollectionListAction>, state: &mut CollectionLis
             | CollectionListAction::ScanPayments { policy_id }
             | CollectionListAction::Configure { policy_id }
             | CollectionListAction::FundWallet { policy_id }
+            | CollectionListAction::WithdrawWallet { policy_id }
             | CollectionListAction::Settlement { policy_id } => {
                 state.last_other = Some(policy_id);
             }
