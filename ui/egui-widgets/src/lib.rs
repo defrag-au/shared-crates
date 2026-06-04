@@ -110,7 +110,7 @@ pub use distribution_waterfall::{DistributionWaterfall, WaterfallMode, Waterfall
 pub use donut_chart::{
     format_value as format_chart_value, legend_row, DistBand, DistributionChart,
 };
-pub use error_note::{summarize_error, ErrorNote, ErrorSummary};
+pub use error_note::{pretty_json, summarize_error, ErrorNote, ErrorSummary};
 #[cfg(target_arch = "wasm32")]
 pub use file_upload::{FileUploadButton, UploadedFile};
 pub use flip_counter::FlipCounter;

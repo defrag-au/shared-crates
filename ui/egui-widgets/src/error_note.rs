@@ -33,6 +33,27 @@ pub struct ErrorSummary {
     pub status: Option<u32>,
 }
 
+impl ErrorSummary {
+    /// A single-line, clipboard-friendly rendering — the reason up front, then
+    /// the whole de-escaped error, whitespace-collapsed (NO line breaks). This is
+    /// the cleanest shape to paste back into a chat/issue: no `\"` escaping, no
+    /// pretty-print newlines, the human reason leading the full context.
+    pub fn clipboard(&self) -> String {
+        let detail = collapse_ws(&self.detail);
+        let headline = self.headline.trim();
+        if detail == headline || headline.is_empty() {
+            detail
+        } else {
+            format!("{headline} — {detail}")
+        }
+    }
+}
+
+/// Collapse every run of whitespace (incl. newlines) to a single space + trim.
+fn collapse_ws(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// De-noise a raw error string into an [`ErrorSummary`]. Pure + testable.
 pub fn summarize_error(raw: &str) -> ErrorSummary {
     let detail = unescape(raw);
@@ -105,7 +126,14 @@ fn extract_reason(s: &str) -> Option<String> {
         .enumerate()
         .filter(|(i, _)| i % 2 == 1) // odd segments are inside quotes
         .map(|(_, seg)| seg.trim())
-        .filter(|seg| seg.contains(' ') && seg.chars().any(|c| c.is_ascii_lowercase()))
+        .filter(|seg| {
+            // natural language: has a space + a lowercase letter, and isn't the
+            // structural wrapper (the leading `… failed (status 400): {` segment
+            // contains a brace — the real reason never does).
+            seg.contains(' ')
+                && seg.chars().any(|c| c.is_ascii_lowercase())
+                && !seg.contains(['{', '}', '[', ']'])
+        })
         .max_by_key(|seg| seg.len())
         .map(|s| s.to_string())
 }
@@ -124,6 +152,84 @@ fn leading_summary(s: &str) -> String {
         format!("{cut}…")
     } else {
         head.to_string()
+    }
+}
+
+/// Lenient JSON pretty-printer — indents `{`/`[`, newlines after `,`, `": "`
+/// after keys, 2-space indent (like JS `JSON.stringify(x, null, 2)`). It is
+/// string-aware (won't break on structural chars inside strings) but does NOT
+/// require valid JSON, so it still tidies the malformed aeson-style blobs these
+/// submit errors carry. Non-structural text is copied verbatim.
+pub fn pretty_json(s: &str) -> String {
+    fn newline_indent(out: &mut String, depth: usize) {
+        out.push('\n');
+        for _ in 0..depth {
+            out.push_str("  ");
+        }
+    }
+    let mut out = String::with_capacity(s.len() * 2);
+    let mut depth: usize = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+    for c in s.chars() {
+        if in_string {
+            out.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => {
+                in_string = true;
+                out.push(c);
+            }
+            '{' | '[' => {
+                out.push(c);
+                depth += 1;
+                newline_indent(&mut out, depth);
+            }
+            '}' | ']' => {
+                depth = depth.saturating_sub(1);
+                newline_indent(&mut out, depth);
+                out.push(c);
+            }
+            ',' => {
+                out.push(c);
+                newline_indent(&mut out, depth);
+            }
+            ':' => out.push_str(": "),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Split a de-escaped error into `(prefix, json)` — the leading message and the
+/// `{ … }` body — so the body can be pretty-printed and the trailing Rust-Debug
+/// wrapper junk (`"))`) dropped.
+fn split_json(detail: &str) -> Option<(&str, &str)> {
+    let start = detail.find('{')?;
+    let end = detail.rfind('}')?;
+    (end > start).then(|| (detail[..start].trim_end(), &detail[start..=end]))
+}
+
+/// The "show raw" body: leading message (if any) + the pretty-printed JSON body.
+fn pretty_detail(detail: &str) -> String {
+    match split_json(detail) {
+        Some((prefix, json)) => {
+            let pretty = pretty_json(json);
+            if prefix.is_empty() {
+                pretty
+            } else {
+                format!("{prefix}\n{pretty}")
+            }
+        }
+        None => detail.to_string(),
     }
 }
 
@@ -156,36 +262,55 @@ impl<'a> ErrorNote<'a> {
                 );
             });
 
-            // "show raw" only when the de-escaped detail carries more than the
-            // headline already does.
-            if s.detail.trim() != s.headline.trim() {
-                let id = ui.id().with(("error_note_raw", self.raw));
-                let mut open = ui.data_mut(|d| d.get_temp::<bool>(id)).unwrap_or(false);
-                let toggle = ui.add(
-                    Label::new(
-                        RichText::new(if open { "hide raw" } else { "show raw" })
-                            .small()
-                            .underline()
-                            .color(Color32::from_gray(135)),
-                    )
-                    .sense(Sense::click()),
+            // Controls row: copy (always) + show-raw toggle (when the de-escaped
+            // detail carries more than the headline). `open` is read before the
+            // row and rendered after it, so the toggle can flip it.
+            let has_raw = s.detail.trim() != s.headline.trim();
+            let raw_id = ui.id().with(("error_note_raw", self.raw));
+            let mut open = has_raw && ui.data_mut(|d| d.get_temp::<bool>(raw_id)).unwrap_or(false);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                // Copy: a single-line, de-escaped form — clean to paste back.
+                let copy = ui.add(
+                    Label::new(PhosphorIcon::Copy.rich_text(12.0, Color32::from_gray(140)))
+                        .sense(Sense::click()),
                 );
-                if toggle.hovered() {
+                if copy.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
-                if toggle.clicked() {
-                    open = !open;
-                    ui.data_mut(|d| d.insert_temp(id, open));
+                if copy
+                    .on_hover_text("copy error (single line, for sharing)")
+                    .clicked()
+                {
+                    ui.ctx().copy_text(s.clipboard());
                 }
-                if open {
-                    ui.add_space(2.0);
-                    ui.label(
-                        RichText::new(&s.detail)
-                            .monospace()
-                            .small()
-                            .color(Color32::from_gray(150)),
+                if has_raw {
+                    let toggle = ui.add(
+                        Label::new(
+                            RichText::new(if open { "hide raw" } else { "show raw" })
+                                .small()
+                                .underline()
+                                .color(Color32::from_gray(135)),
+                        )
+                        .sense(Sense::click()),
                     );
+                    if toggle.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    }
+                    if toggle.clicked() {
+                        open = !open;
+                        ui.data_mut(|d| d.insert_temp(raw_id, open));
+                    }
                 }
+            });
+            if open {
+                ui.add_space(2.0);
+                ui.label(
+                    RichText::new(pretty_detail(&s.detail))
+                        .monospace()
+                        .small()
+                        .color(Color32::from_gray(150)),
+                );
             }
         });
     }
@@ -222,5 +347,40 @@ mod tests {
             unescape("already clean (no escapes)"),
             "already clean (no escapes)"
         );
+    }
+
+    #[test]
+    fn pretty_json_indents_valid_json() {
+        assert_eq!(
+            pretty_json(r#"{"a":1,"b":[2,3]}"#),
+            "{\n  \"a\": 1,\n  \"b\": [\n    2,\n    3\n  ]\n}"
+        );
+    }
+
+    #[test]
+    fn pretty_json_keeps_structural_chars_inside_strings() {
+        // Braces/commas inside a string must not trigger indentation.
+        assert_eq!(
+            pretty_json(r#"{"msg":"a, b {c}"}"#),
+            "{\n  \"msg\": \"a, b {c}\"\n}"
+        );
+    }
+
+    #[test]
+    fn clipboard_is_single_line_with_reason_first() {
+        let raw = r#"submit_transaction: Http(Custom("Transaction submission failed (status 400): {\"error\":[{\"ConwayMempoolFailure \\\"All inputs are spent\\\"\"}],\"tag\":\"TxSubmitFail\"}"))"#;
+        let clip = summarize_error(raw).clipboard();
+        assert!(!clip.contains('\n'), "clipboard must be single-line");
+        assert!(clip.starts_with("All inputs are spent — "));
+        assert!(clip.contains("TxSubmitFail"));
+        assert!(!clip.contains("\\\""), "clipboard must be de-escaped");
+    }
+
+    #[test]
+    fn pretty_detail_splits_prefix_and_body() {
+        let detail = r#"submission failed (status 400): {"tag":"TxSubmitFail"}"#;
+        let pretty = pretty_detail(detail);
+        assert!(pretty.starts_with("submission failed (status 400):\n{"));
+        assert!(pretty.contains("\n  \"tag\": \"TxSubmitFail\""));
     }
 }
