@@ -34,6 +34,9 @@ pub const FLUX_CANNY_GEN: &str = "fal-ai/flux-control-lora-canny";
 /// `fal-ai/birefnet/v2` — semantic background removal / matting (handles soft
 /// fur/hair edges far better than colour-keying).
 pub const BIREFNET: &str = "fal-ai/birefnet/v2";
+/// `fal-ai/flux-2-pro/edit` — frontier instruction-based editing (no mask),
+/// up to 9 reference images. Commercial use included.
+pub const FLUX2_EDIT: &str = "fal-ai/flux-2-pro/edit";
 
 #[derive(Debug, thiserror::Error)]
 pub enum FalError {
@@ -183,6 +186,17 @@ impl FalClient {
             seed: req.seed,
         };
         self.finish(self.run(FLUX_CANNY_GEN, &body).await?)
+    }
+
+    /// FLUX.2 [pro] instruction edit (no mask): transform `images` (1-9 data
+    /// URIs/URLs) per `prompt`. Frontier quality, flattened output.
+    pub async fn flux2_edit(&self, images: &[&str], prompt: &str) -> Result<ImageOutput, FalError> {
+        let body = Flux2EditInput {
+            prompt,
+            image_urls: images,
+            sync_mode: true,
+        };
+        self.finish(self.run(FLUX2_EDIT, &body).await?)
     }
 
     /// Semantic background removal / matting via BiRefNet. `model` selects the
@@ -459,6 +473,13 @@ struct FluxCannyInput<'a> {
     enable_safety_checker: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     seed: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct Flux2EditInput<'a> {
+    prompt: &'a str,
+    image_urls: &'a [&'a str],
+    sync_mode: bool,
 }
 
 #[derive(Serialize)]

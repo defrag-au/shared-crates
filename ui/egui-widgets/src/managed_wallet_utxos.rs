@@ -15,10 +15,62 @@
 //!     .show(ui);
 //! ```
 
-use cardano_assets::utxo::UtxoApi;
-use egui::{RichText, Ui};
+use cardano_assets::utxo::{UtxoApi, UtxoTag};
+use egui::{Color32, RichText, Ui};
 
 use crate::theme;
+
+/// The purpose a UTxO serves in a mint + payments wallet — what the block
+/// strip colours by. Derived purely from the UTxO's own shape: a datum means
+/// our inline FUEL tag (the engine stamps it on fan-out outputs), native
+/// assets are an anomaly here, and everything else is uncommitted liquid ADA
+/// (buyer payments awaiting mint + raw operating float — the two can't be told
+/// apart from the chain alone, so they share a colour).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BlockRole {
+    /// Carries our inline FUEL datum — committed fuel, ready to mint with.
+    Fuel,
+    /// Plain ADA, no datum — buyer payments awaiting mint + operating float.
+    Liquid,
+    /// Holds native assets where they're unexpected (a self-mint / stray send).
+    AssetAnomaly,
+    /// Holds native assets where that's normal (generic wallet).
+    Asset,
+}
+
+impl BlockRole {
+    fn of(u: &UtxoApi, assets_unexpected: bool) -> Self {
+        if !u.assets.is_empty() {
+            if assets_unexpected {
+                BlockRole::AssetAnomaly
+            } else {
+                BlockRole::Asset
+            }
+        } else if u.has_tag(UtxoTag::HasDatum) {
+            BlockRole::Fuel
+        } else {
+            BlockRole::Liquid
+        }
+    }
+
+    fn color(self) -> Color32 {
+        match self {
+            BlockRole::Fuel => theme::ACCENT_GREEN,
+            BlockRole::Liquid => theme::ACCENT_BLUE,
+            BlockRole::AssetAnomaly => theme::ACCENT_RED,
+            BlockRole::Asset => theme::ACCENT_YELLOW,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            BlockRole::Fuel => "Fuel",
+            BlockRole::Liquid => "Liquid ADA",
+            BlockRole::AssetAnomaly => "Holds assets",
+            BlockRole::Asset => "Assets",
+        }
+    }
+}
 
 /// Role-aware UTxO breakdown for a managed wallet.
 pub struct ManagedWalletUtxos<'a> {
@@ -300,8 +352,11 @@ impl<'a> ManagedWalletUtxos<'a> {
 }
 
 /// One block per UTxO, width ∝ lovelace (clamped so tiny ones stay visible),
-/// wrapping across rows. Spendable (ADA-only) blocks first, big→small, in
-/// green; asset-bearing blocks after, flagged. Hover shows the ref + amount.
+/// wrapping across rows. Coloured by [`BlockRole`] — tagged fuel (green),
+/// liquid ADA (blue), asset-bearing (flagged) — so a glance reads the wallet's
+/// composition by *purpose*, not just size. Fuel + liquid first (big→small),
+/// asset-bearing after. Hover shows the ref, amount, and role. A legend with
+/// per-role counts follows the strip.
 fn render_block_strip(ui: &mut Ui, utxos: &[UtxoApi], assets_unexpected: bool) {
     let max = utxos.iter().map(|u| u.lovelace).max().unwrap_or(1).max(1);
     const H: f32 = 20.0;
@@ -316,22 +371,20 @@ fn render_block_strip(ui: &mut Ui, utxos: &[UtxoApi], assets_unexpected: bool) {
 
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = egui::vec2(3.0, 3.0);
-        for u in order {
-            let is_asset = !u.assets.is_empty();
+        for u in &order {
+            let role = BlockRole::of(u, assets_unexpected);
             let frac = u.lovelace as f32 / max as f32;
             let w = (MIN_W + frac * (MAX_W - MIN_W)).clamp(MIN_W, MAX_W);
             let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, H), egui::Sense::hover());
-            let color = if is_asset && assets_unexpected {
-                theme::ACCENT_RED
-            } else if is_asset {
-                theme::ACCENT_YELLOW
-            } else {
-                theme::ACCENT_GREEN
-            };
-            ui.painter().rect_filled(rect, 2.0, color);
+            ui.painter().rect_filled(rect, 2.0, role.color());
             let head = &u.tx_hash[..u.tx_hash.len().min(8)];
-            let mut tip = format!("{head}…#{} · {} ADA", u.output_index, ada(u.lovelace));
-            if is_asset {
+            let mut tip = format!(
+                "{head}…#{} · {} ADA · {}",
+                u.output_index,
+                ada(u.lovelace),
+                role.label()
+            );
+            if !u.assets.is_empty() {
                 tip.push_str(&format!(
                     " · {} asset{}",
                     u.assets.len(),
@@ -339,6 +392,42 @@ fn render_block_strip(ui: &mut Ui, utxos: &[UtxoApi], assets_unexpected: bool) {
                 ));
             }
             resp.on_hover_text(tip);
+        }
+    });
+
+    render_role_legend(ui, &order, assets_unexpected);
+}
+
+/// A compact swatch + label + count for each role present in the strip, so the
+/// colour coding is self-explanatory without a hover. Order follows the strip
+/// (fuel, liquid, then asset roles); roles with no UTxOs are omitted.
+fn render_role_legend(ui: &mut Ui, utxos: &[&UtxoApi], assets_unexpected: bool) {
+    use std::collections::BTreeMap;
+    // BTreeMap keyed by a stable discriminant keeps a deterministic order.
+    let mut counts: BTreeMap<u8, (BlockRole, usize)> = BTreeMap::new();
+    for u in utxos {
+        let role = BlockRole::of(u, assets_unexpected);
+        let key = match role {
+            BlockRole::Fuel => 0,
+            BlockRole::Liquid => 1,
+            BlockRole::AssetAnomaly | BlockRole::Asset => 2,
+        };
+        counts.entry(key).or_insert((role, 0)).1 += 1;
+    }
+    if counts.is_empty() {
+        return;
+    }
+    ui.add_space(4.0);
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = egui::vec2(10.0, 2.0);
+        for (role, n) in counts.values() {
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+            ui.painter().rect_filled(rect, 2.0, role.color());
+            ui.label(
+                RichText::new(format!("{} ({n})", role.label()))
+                    .color(theme::TEXT_SECONDARY)
+                    .small(),
+            );
         }
     });
 }
@@ -408,6 +497,28 @@ mod tests {
             assets,
             tags: vec![],
         }
+    }
+
+    #[test]
+    fn block_role_classifies_by_purpose() {
+        // Plain ADA, no datum → uncommitted liquid (payments + float).
+        assert_eq!(BlockRole::of(&pure(5_000_000), true), BlockRole::Liquid);
+
+        // Same UTxO carrying our inline FUEL datum → committed fuel.
+        let mut fuel = pure(5_000_000);
+        fuel.tags.push(UtxoTag::HasDatum);
+        assert_eq!(BlockRole::of(&fuel, true), BlockRole::Fuel);
+
+        // Native assets at a mint+payments wallet are an anomaly...
+        assert_eq!(
+            BlockRole::of(&with_assets(2_000_000, 1), true),
+            BlockRole::AssetAnomaly
+        );
+        // ...but plain `Asset` where assets are expected.
+        assert_eq!(
+            BlockRole::of(&with_assets(2_000_000, 1), false),
+            BlockRole::Asset
+        );
     }
 
     #[test]
