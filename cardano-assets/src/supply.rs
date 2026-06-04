@@ -106,7 +106,10 @@ mod tests {
     #[test]
     fn serialize_mirrors_db() {
         assert_eq!(serde_json::to_string(&MintSupply::Quota(50)).unwrap(), "50");
-        assert_eq!(serde_json::to_string(&MintSupply::Uncapped).unwrap(), "null");
+        assert_eq!(
+            serde_json::to_string(&MintSupply::Uncapped).unwrap(),
+            "null"
+        );
     }
 
     #[test]

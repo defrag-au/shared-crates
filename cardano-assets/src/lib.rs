@@ -28,9 +28,9 @@ pub mod traits;
 pub mod tx_hash;
 pub mod utxo;
 
-pub use token_type::TokenType;
 #[cfg(feature = "tag-datum")]
 pub use tag_datum::UtxoTagDatum;
+pub use token_type::TokenType;
 
 #[cfg(feature = "utxorpc")]
 pub mod utxorpc;
