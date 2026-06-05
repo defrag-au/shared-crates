@@ -1477,6 +1477,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fal-client"
+version = "0.1.0"
+dependencies = [
+ "http-client",
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

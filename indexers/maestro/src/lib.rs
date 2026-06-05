@@ -559,12 +559,24 @@ impl From<AddressUtxo> for cardano_assets::UtxoApi {
             }
         }
 
+        // Surface the structural tags the consumer (the UTxO shelf) needs to
+        // tell a datum-stamped UTxO from plain ADA. At a mint wallet a datum
+        // means our inline FUEL tag, so `HasDatum` is what the shelf colours
+        // "fuel" against the untagged liquid float.
+        let mut tags = Vec::new();
+        if utxo.datum.is_some() {
+            tags.push(cardano_assets::utxo::UtxoTag::HasDatum);
+        }
+        if utxo.script_ref.is_some() {
+            tags.push(cardano_assets::utxo::UtxoTag::HasScriptRef);
+        }
+
         Self {
             tx_hash: utxo.tx_hash,
             output_index: utxo.index,
             lovelace,
             assets: native_assets,
-            tags: vec![],
+            tags,
         }
     }
 }

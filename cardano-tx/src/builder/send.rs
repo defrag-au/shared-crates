@@ -382,6 +382,7 @@ pub fn build_fan_out(
     deps: &TxDeps,
     slot_size: u64,
     slot_count: u32,
+    slot_datum: Option<Vec<u8>>,
 ) -> Result<UnsignedTx, TxBuildError> {
     if slot_count == 0 {
         return Err(TxBuildError::BuildFailed(
@@ -453,9 +454,15 @@ pub fn build_fan_out(
             let refs: Vec<&UtxoApi> = selected_cloned.iter().collect();
             let mut tx = add_utxo_inputs(StagingTransaction::new(), &refs)?;
 
-            // N equal fuel-slot outputs back to self.
+            // N equal fuel-slot outputs back to self, each optionally carrying an
+            // inline datum tag (e.g. the engine's FUEL role marker) so the outputs
+            // are self-describing on chain — distinguishable from inbound payments.
             for _ in 0..slot_count {
-                tx = tx.output(create_ada_output(from_address.clone(), slot_size));
+                let mut out = create_ada_output(from_address.clone(), slot_size);
+                if let Some(datum) = &slot_datum {
+                    out = out.set_inline_datum(datum.clone());
+                }
+                tx = tx.output(out);
             }
 
             // Change output for the remainder — fee converges around
@@ -906,7 +913,7 @@ mod tests {
             from_address: test_address(),
             network_id: 0,
         };
-        let result = build_fan_out(&deps, 10_000_000, 5);
+        let result = build_fan_out(&deps, 10_000_000, 5, None);
         assert!(result.is_ok(), "build_fan_out failed: {result:?}");
         let unsigned = result.unwrap();
         assert!(unsigned.fee > 0);
@@ -928,7 +935,7 @@ mod tests {
             from_address: test_address(),
             network_id: 0,
         };
-        let result = build_fan_out(&deps, 10_000_000, 5);
+        let result = build_fan_out(&deps, 10_000_000, 5, None);
         assert!(result.is_ok(), "multi-input fan_out failed: {result:?}");
         let unsigned = result.unwrap();
         assert!(
@@ -958,7 +965,7 @@ mod tests {
             from_address: test_address(),
             network_id: 0,
         };
-        let result = build_fan_out(&deps, 10_000_000, 5);
+        let result = build_fan_out(&deps, 10_000_000, 5, None);
         assert!(
             matches!(result, Err(TxBuildError::InsufficientFunds { .. })),
             "expected InsufficientFunds (script-ref + asset UTxOs excluded), got {result:?}"
@@ -973,7 +980,7 @@ mod tests {
             from_address: test_address(),
             network_id: 0,
         };
-        assert!(build_fan_out(&deps, 10_000_000, 0).is_err());
+        assert!(build_fan_out(&deps, 10_000_000, 0, None).is_err());
     }
 
     // ── build_send_many (refund / settlement payout txs) ──────────────
