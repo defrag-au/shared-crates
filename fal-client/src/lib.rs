@@ -37,6 +37,17 @@ pub const BIREFNET: &str = "fal-ai/birefnet/v2";
 /// `fal-ai/flux-2-pro/edit` — frontier instruction-based editing (no mask),
 /// up to 9 reference images. Commercial use included.
 pub const FLUX2_EDIT: &str = "fal-ai/flux-2-pro/edit";
+/// `fal-ai/qwen-image-layered` — decompose an image into 1-10 semantic RGBA layers.
+pub const QWEN_LAYERED: &str = "fal-ai/qwen-image-layered";
+/// `fal-ai/nano-banana-2` — Google Nano Banana 2 text-to-image (Gemini-based;
+/// strong prompt/pose adherence). No native transparency — matte for alpha.
+pub const NANO_BANANA: &str = "fal-ai/nano-banana-2";
+/// `fal-ai/nano-banana-2/edit` — Nano Banana 2 instruction edit; best multi-frame
+/// character consistency, up to 14 reference images. Ideal for variation sets.
+pub const NANO_BANANA_EDIT: &str = "fal-ai/nano-banana-2/edit";
+/// `fal-ai/ideogram/v3/generate-transparent` — text-to-image with a native
+/// transparent background (no matte step needed).
+pub const IDEOGRAM_TRANSPARENT: &str = "fal-ai/ideogram/v3/generate-transparent";
 
 #[derive(Debug, thiserror::Error)]
 pub enum FalError {
@@ -197,6 +208,78 @@ impl FalClient {
             sync_mode: true,
         };
         self.finish(self.run(FLUX2_EDIT, &body).await?)
+    }
+
+    /// Decompose an image into `num_layers` (1-10) semantic RGBA layers.
+    /// Returns the layers as images (data URIs under `sync_mode`).
+    pub async fn qwen_layered(&self, image: &str, num_layers: u32) -> Result<ImageOutput, FalError> {
+        let body = QwenLayeredInput {
+            image_url: image,
+            num_layers,
+            output_format: "png",
+            sync_mode: true,
+        };
+        self.finish(self.run(QWEN_LAYERED, &body).await?)
+    }
+
+    /// Nano Banana 2 text-to-image. `aspect_ratio` e.g. "1:1"/"auto";
+    /// `resolution` is "1K"/"2K"/"4K".
+    pub async fn nano_banana(
+        &self,
+        prompt: &str,
+        num_images: u32,
+        aspect_ratio: &str,
+        resolution: &str,
+    ) -> Result<ImageOutput, FalError> {
+        let body = NanoBananaInput {
+            prompt,
+            num_images,
+            aspect_ratio,
+            resolution,
+            output_format: "png",
+            sync_mode: true,
+        };
+        self.finish(self.run(NANO_BANANA, &body).await?)
+    }
+
+    /// Nano Banana 2 instruction edit: transform `images` (1-14 data URIs/URLs)
+    /// per `prompt`, holding character identity across frames. `aspect_ratio`
+    /// "auto" preserves the input framing; `resolution` is "1K"/"2K"/"4K".
+    pub async fn nano_banana_edit(
+        &self,
+        images: &[&str],
+        prompt: &str,
+        num_images: u32,
+        aspect_ratio: &str,
+        resolution: &str,
+    ) -> Result<ImageOutput, FalError> {
+        let body = NanoBananaEditInput {
+            prompt,
+            image_urls: images,
+            num_images,
+            aspect_ratio,
+            resolution,
+            output_format: "png",
+            sync_mode: true,
+        };
+        self.finish(self.run(NANO_BANANA_EDIT, &body).await?)
+    }
+
+    /// Ideogram v3 text-to-image with a native transparent background.
+    /// `aspect_ratio` e.g. "1:1". Output is RGBA (no matte needed).
+    pub async fn ideogram_transparent(
+        &self,
+        prompt: &str,
+        num_images: u32,
+        aspect_ratio: &str,
+    ) -> Result<ImageOutput, FalError> {
+        let body = IdeogramTransparentInput {
+            prompt,
+            num_images,
+            aspect_ratio,
+            sync_mode: true,
+        };
+        self.finish(self.run(IDEOGRAM_TRANSPARENT, &body).await?)
     }
 
     /// Semantic background removal / matting via BiRefNet. `model` selects the
@@ -479,6 +562,43 @@ struct FluxCannyInput<'a> {
 struct Flux2EditInput<'a> {
     prompt: &'a str,
     image_urls: &'a [&'a str],
+    sync_mode: bool,
+}
+
+#[derive(Serialize)]
+struct QwenLayeredInput<'a> {
+    image_url: &'a str,
+    num_layers: u32,
+    output_format: &'a str,
+    sync_mode: bool,
+}
+
+#[derive(Serialize)]
+struct NanoBananaInput<'a> {
+    prompt: &'a str,
+    num_images: u32,
+    aspect_ratio: &'a str,
+    resolution: &'a str,
+    output_format: &'a str,
+    sync_mode: bool,
+}
+
+#[derive(Serialize)]
+struct NanoBananaEditInput<'a> {
+    prompt: &'a str,
+    image_urls: &'a [&'a str],
+    num_images: u32,
+    aspect_ratio: &'a str,
+    resolution: &'a str,
+    output_format: &'a str,
+    sync_mode: bool,
+}
+
+#[derive(Serialize)]
+struct IdeogramTransparentInput<'a> {
+    prompt: &'a str,
+    num_images: u32,
+    aspect_ratio: &'a str,
     sync_mode: bool,
 }
 
