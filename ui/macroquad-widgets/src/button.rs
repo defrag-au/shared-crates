@@ -2,14 +2,12 @@
 //! disabled states and three weights (filled / tonal / ghost).
 //!
 //! Stateless per the crate charter: hover and pressed are derived purely from
-//! *this frame's* mouse position + button state (no retained widget state), and
-//! "clicked" rides the host's [`Painter::tap`]. So it composes cleanly in the
-//! immediate-mode loop — the host positions the rect, the button draws + reports.
+//! *this frame's* input (via [`Painter::interact`]), and "clicked" rides the
+//! host's tap. The accent defaults to the active theme's, overridable per call.
 
 use macroquad::prelude::*;
 
-use crate::painter::{draw_rounded_rect, Painter};
-use crate::theme;
+use crate::painter::{draw_rounded_rect, with_alpha, shade, Painter};
 
 /// Visual weight.
 #[derive(Clone, Copy)]
@@ -25,7 +23,8 @@ pub enum ButtonVariant {
 pub struct Button<'a> {
     label: &'a str,
     variant: ButtonVariant,
-    accent: Color,
+    /// `None` → use the active theme's accent.
+    accent: Option<Color>,
     enabled: bool,
     font_size: f32,
 }
@@ -35,7 +34,7 @@ impl<'a> Button<'a> {
         Self {
             label,
             variant: ButtonVariant::Filled,
-            accent: theme::ACCENT,
+            accent: None,
             enabled: true,
             font_size: 18.0,
         }
@@ -47,7 +46,7 @@ impl<'a> Button<'a> {
     }
 
     pub fn accent(mut self, accent: Color) -> Self {
-        self.accent = accent;
+        self.accent = Some(accent);
         self
     }
 
@@ -63,47 +62,43 @@ impl<'a> Button<'a> {
 
     /// Draw into `rect`; returns true if tapped/clicked this frame.
     pub fn show(&self, p: &Painter, rect: Rect) -> bool {
-        let (mx, my) = mouse_position();
-        let over = rect.contains(vec2(mx, my));
-        let pressed = self.enabled && over && is_mouse_button_down(MouseButton::Left);
-        let hover = self.enabled && over && !pressed;
-        let clicked = self.enabled && p.tap.is_some_and(|t| rect.contains(t));
+        let hit = p.interact(rect, self.enabled);
+        let a = self.accent.unwrap_or(p.theme.accent);
 
-        let a = self.accent;
         let (fill, label_col) = match self.variant {
             ButtonVariant::Filled => {
                 let f = if !self.enabled {
-                    theme::TRACK
-                } else if pressed {
-                    theme::shade(a, 0.82)
-                } else if hover {
-                    theme::shade(a, 1.12)
+                    p.theme.track
+                } else if hit.pressed {
+                    shade(a, 0.82)
+                } else if hit.hover {
+                    shade(a, 1.12)
                 } else {
                     a
                 };
-                (f, if self.enabled { theme::BG } else { theme::MUTED })
+                (f, if self.enabled { p.theme.bg } else { p.theme.muted })
             }
             ButtonVariant::Tonal => {
                 let f = if !self.enabled {
-                    theme::with_alpha(theme::MUTED, 0.10)
-                } else if pressed {
-                    theme::with_alpha(a, 0.32)
-                } else if hover {
-                    theme::with_alpha(a, 0.22)
+                    with_alpha(p.theme.muted, 0.10)
+                } else if hit.pressed {
+                    with_alpha(a, 0.32)
+                } else if hit.hover {
+                    with_alpha(a, 0.22)
                 } else {
-                    theme::with_alpha(a, 0.13)
+                    with_alpha(a, 0.13)
                 };
-                (f, if self.enabled { a } else { theme::MUTED })
+                (f, if self.enabled { a } else { p.theme.muted })
             }
             ButtonVariant::Ghost => {
-                let f = if pressed {
-                    theme::with_alpha(a, 0.22)
-                } else if hover {
-                    theme::with_alpha(a, 0.12)
+                let f = if hit.pressed {
+                    with_alpha(a, 0.22)
+                } else if hit.hover {
+                    with_alpha(a, 0.12)
                 } else {
-                    theme::with_alpha(a, 0.0)
+                    with_alpha(a, 0.0)
                 };
-                (f, if self.enabled { a } else { theme::MUTED })
+                (f, if self.enabled { a } else { p.theme.muted })
             }
         };
 
@@ -111,7 +106,7 @@ impl<'a> Button<'a> {
         draw_rounded_rect(rect.x, rect.y, rect.w, rect.h, radius, fill);
 
         // Pressed nudges the label down a hair — tactile "push in".
-        let nudge = if pressed { 1.0 } else { 0.0 };
+        let nudge = if hit.pressed { 1.0 } else { 0.0 };
         let dim = p.measure(self.label, self.font_size);
         let baseline = p.centre_baseline(rect.y, rect.h, self.font_size) + nudge;
         p.text(
@@ -122,6 +117,6 @@ impl<'a> Button<'a> {
             label_col,
         );
 
-        clicked
+        hit.clicked
     }
 }

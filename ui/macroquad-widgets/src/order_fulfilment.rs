@@ -12,7 +12,7 @@
 use macroquad::prelude::*;
 
 use crate::painter::Painter;
-use crate::theme;
+use crate::theme::{self, Theme};
 
 /// Order lifecycle status. Mirrors `shared_types::mint::MintOrderStatus`, kept
 /// local so the widget crate carries no backend dependency.
@@ -40,11 +40,11 @@ impl OrderStatus {
         }
     }
 
-    fn color(self) -> Color {
+    fn color(self, t: &Theme) -> Color {
         match self {
-            OrderStatus::Confirmed | OrderStatus::Delivered => theme::ACCENT,
-            OrderStatus::Unfulfilled | OrderStatus::Failed => theme::DANGER,
-            _ => theme::FG,
+            OrderStatus::Confirmed | OrderStatus::Delivered => t.accent,
+            OrderStatus::Unfulfilled | OrderStatus::Failed => t.danger,
+            _ => t.fg,
         }
     }
 
@@ -74,11 +74,11 @@ impl FulfilmentStatus {
         }
     }
 
-    fn color(self) -> Color {
+    fn color(self, t: &Theme) -> Color {
         match self {
-            FulfilmentStatus::Submitted => theme::LINK,
-            FulfilmentStatus::Confirmed => theme::ACCENT,
-            FulfilmentStatus::Failed => theme::DANGER,
+            FulfilmentStatus::Submitted => t.link,
+            FulfilmentStatus::Confirmed => t.accent,
+            FulfilmentStatus::Failed => t.danger,
         }
     }
 }
@@ -130,20 +130,21 @@ pub fn order_fulfilment(
     mut y: f32,
     w: f32,
 ) -> FulfilmentResponse {
+    let t = &p.theme;
     let mut action = None;
 
     // ── Heartbeat: a pulsing dot for active orders, solid for terminal ──
     if vm.status.is_active() {
         let pulse = (get_time() * 2.0).sin() as f32 * 0.5 + 0.5;
-        draw_circle(x + 6.0, y - 6.0, 5.0, theme::with_alpha(theme::ACCENT, 0.3 + 0.7 * pulse));
+        draw_circle(x + 6.0, y - 6.0, 5.0, theme::with_alpha(t.accent, 0.3 + 0.7 * pulse));
     } else {
-        draw_circle(x + 6.0, y - 6.0, 5.0, vm.status.color());
+        draw_circle(x + 6.0, y - 6.0, 5.0, vm.status.color(t));
     }
-    p.text(vm.status.label(), x + 22.0, y, 22.0, vm.status.color());
+    p.text(vm.status.label(), x + 22.0, y, 22.0, vm.status.color(t));
     if let Some(s) = vm.updated_secs_ago {
-        let t = format!("updated {}", ago(s));
-        let dim = p.measure(&t, 14.0);
-        p.text(&t, x + w - dim.width, y - 2.0, 14.0, theme::MUTED);
+        let line = format!("updated {}", ago(s));
+        let dim = p.measure(&line, 14.0);
+        p.text(&line, x + w - dim.width, y - 2.0, 14.0, t.muted);
     }
     y += 24.0;
 
@@ -153,23 +154,17 @@ pub fn order_fulfilment(
     } else {
         0.0
     };
-    p.text(
-        &format!("minted {} / {}", vm.minted, vm.quantity),
-        x,
-        y,
-        16.0,
-        theme::FG,
-    );
+    p.text(&format!("minted {} / {}", vm.minted, vm.quantity), x, y, 16.0, t.fg);
     y += 8.0;
-    p.progress(Rect::new(x, y, w, 8.0), frac, theme::ACCENT);
+    p.progress(Rect::new(x, y, w, 8.0), frac, t.accent);
     y += 22.0;
 
-    // ── Payment line — DISTINCT from fulfilment (this is the bug fix) ──
-    // Label proportional, hash monospace.
+    // ── Payment line — DISTINCT from fulfilment (the bug fix). Label
+    //    proportional, hash monospace. ──
     let paid = "paid · ";
-    p.text(paid, x, y, 14.0, theme::MUTED);
+    p.text(paid, x, y, 14.0, t.muted);
     let pw = p.measure(paid, 14.0).width;
-    p.mono(&short(&vm.payment_tx), x + pw, y, 14.0, theme::MUTED);
+    p.mono(&short(&vm.payment_tx), x + pw, y, 14.0, t.muted);
     y += 24.0;
 
     // ── Fulfilment list (the N side) ──
@@ -179,7 +174,7 @@ pub fn order_fulfilment(
         x,
         y,
         15.0,
-        theme::FG,
+        t.fg,
     );
     y += 22.0;
 
@@ -189,29 +184,29 @@ pub fn order_fulfilment(
             OrderStatus::Failed => "failed — refund queued",
             _ => "waiting for first mint...",
         };
-        p.text(msg, x + 8.0, y, 14.0, theme::MUTED);
+        p.text(msg, x + 8.0, y, 14.0, t.muted);
         y += 22.0;
     } else {
         for f in &vm.fulfilments {
             let row = Rect::new(x, y - 14.0, w, 26.0);
-            draw_circle(x + 6.0, y - 5.0, 4.0, f.status.color());
+            draw_circle(x + 6.0, y - 5.0, 4.0, f.status.color(t));
             // Count + hash are fixed-width data → monospace.
             p.mono(
                 &format!("{}x  {}", f.minted, short(&f.tx_hash)),
                 x + 18.0,
                 y,
                 14.0,
-                theme::LINK,
+                t.link,
             );
             let word = f.status.word();
             let dim = p.measure(word, 13.0);
-            p.text(word, x + w - dim.width, y - 1.0, 13.0, f.status.color());
+            p.text(word, x + w - dim.width, y - 1.0, 13.0, f.status.color(t));
             if p.tapped(row) {
                 action = Some(FulfilmentAction::OpenTx(f.tx_hash.clone()));
             }
             y += 26.0;
         }
-        p.text("tap a tx to view on-chain", x + 8.0, y, 12.0, theme::MUTED);
+        p.text("tap a tx to view on-chain", x + 8.0, y, 12.0, t.muted);
         y += 18.0;
     }
 

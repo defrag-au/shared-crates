@@ -1,24 +1,39 @@
 //! `Painter` — the thin draw surface widgets render through. Carries the host's
-//! font (so widgets don't bake their own) and this frame's tap, and offers the
-//! handful of primitives the widgets need (text, button, progress, hit-test).
-//! Deliberately tiny — this is a widget toolkit, not a UI framework.
+//! fonts (proportional + mono), the active [`Theme`], and this frame's tap, and
+//! offers the primitives widgets need (text, button, progress, rounded rect,
+//! hit-test). Deliberately tiny — a widget toolkit, not a UI framework.
 
 use macroquad::prelude::*;
 
-use crate::theme;
+use crate::theme::{self, Theme};
 
 pub struct Painter<'a> {
     /// Proportional font — UI chrome (headings, labels, buttons).
     pub font: Option<&'a Font>,
     /// Monospace font — hashes / fixed-width data, so columns of hex align.
     pub mono: Option<&'a Font>,
+    /// Active palette — widgets read `p.theme.*`; swap to re-skin everything.
+    pub theme: Theme,
     /// Where the user tapped/clicked this frame, if anywhere (see [`frame_tap`]).
     pub tap: Option<Vec2>,
 }
 
+/// Per-frame interaction state for a rect — for building custom interactive
+/// elements (icon rows etc.) without re-deriving it. See [`Painter::interact`].
+pub struct Hit {
+    pub hover: bool,
+    pub pressed: bool,
+    pub clicked: bool,
+}
+
 impl<'a> Painter<'a> {
-    pub fn new(font: Option<&'a Font>, mono: Option<&'a Font>, tap: Option<Vec2>) -> Self {
-        Self { font, mono, tap }
+    pub fn new(font: Option<&'a Font>, mono: Option<&'a Font>, theme: Theme, tap: Option<Vec2>) -> Self {
+        Self {
+            font,
+            mono,
+            theme,
+            tap,
+        }
     }
 
     pub fn text(&self, s: &str, x: f32, y: f32, size: f32, color: Color) {
@@ -28,6 +43,17 @@ impl<'a> Painter<'a> {
     /// Draw fixed-width data (a tx hash, an amount) in the monospace font.
     pub fn mono(&self, s: &str, x: f32, y: f32, size: f32, color: Color) {
         self.draw_in(self.mono, s, x, y, size, color);
+    }
+
+    /// Baseline for text whose visual top sits at `top` — for top-anchored
+    /// (box) layouts. Uses the `"Ag"` reference so it's string-independent.
+    pub fn top_baseline(&self, top: f32, size: f32) -> f32 {
+        top + self.measure("Ag", size).offset_y
+    }
+
+    /// Draw proportional text with its top at `top` (left-aligned at `x`).
+    pub fn text_top(&self, s: &str, x: f32, top: f32, size: f32, color: Color) {
+        self.text(s, x, self.top_baseline(top, size), size, color);
     }
 
     fn draw_in(&self, font: Option<&Font>, s: &str, x: f32, y: f32, size: f32, color: Color) {
@@ -69,6 +95,19 @@ impl<'a> Painter<'a> {
         self.tap.is_some_and(|p| rect.contains(p))
     }
 
+    /// Hover / pressed / clicked state for `rect` this frame (current-frame
+    /// input only — no retained state). `enabled = false` reports all false.
+    pub fn interact(&self, rect: Rect, enabled: bool) -> Hit {
+        let (mx, my) = mouse_position();
+        let over = enabled && rect.contains(vec2(mx, my));
+        let pressed = over && is_mouse_button_down(MouseButton::Left);
+        Hit {
+            hover: over && !pressed,
+            pressed,
+            clicked: enabled && self.tap.is_some_and(|t| rect.contains(t)),
+        }
+    }
+
     /// A default filled accent button — convenience wrapper over [`Button`].
     /// Returns true on a tap inside. For variants/accent see [`Button`].
     pub fn button(&self, label: &str, rect: Rect, enabled: bool) -> bool {
@@ -79,7 +118,7 @@ impl<'a> Painter<'a> {
     /// over the muted track (rounded).
     pub fn progress(&self, rect: Rect, frac: f32, fill: Color) {
         let r = rect.h * 0.5;
-        draw_rounded_rect(rect.x, rect.y, rect.w, rect.h, r, theme::TRACK);
+        draw_rounded_rect(rect.x, rect.y, rect.w, rect.h, r, self.theme.track);
         let w = rect.w * frac.clamp(0.0, 1.0);
         if w > r {
             draw_rounded_rect(rect.x, rect.y, w, rect.h, r, fill);
@@ -102,7 +141,6 @@ pub fn draw_rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32, color: Color) {
         draw_rectangle(x, y, w, h, color);
         return;
     }
-    // Corner centre + arc range (screen space, y-down), walked clockwise.
     const SEG: usize = 4;
     let corners = [
         (x + r, y + r, PI, 1.5 * PI),           // top-left
@@ -122,6 +160,9 @@ pub fn draw_rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32, color: Color) {
         draw_triangle(centre, pts[i], pts[(i + 1) % pts.len()], color);
     }
 }
+
+// Re-export the colour ops widgets commonly need alongside the Painter.
+pub use theme::{shade, with_alpha};
 
 /// A tap this frame — a fresh touch (mobile) OR a mouse press (desktop). Touch
 /// is checked first so wallet-webview runs exercise the real touch path.

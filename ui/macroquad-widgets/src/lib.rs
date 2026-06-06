@@ -9,11 +9,22 @@ pub mod painter;
 pub mod theme;
 
 mod button;
+mod mint_checkout;
 mod order_fulfilment;
+mod quantity_stepper;
+mod wallet_connect;
 
 pub use button::{Button, ButtonVariant};
+pub use mint_checkout::{
+    mint_checkout, CheckoutAction, CheckoutResponse, CheckoutState, Eligibility, MintCheckoutVm,
+};
 pub use order_fulfilment::{
     order_fulfilment, FulfilmentAction, FulfilmentResponse, FulfilmentStatus, FulfilmentTx,
     OrderFulfilmentVm, OrderStatus,
 };
-pub use painter::{draw_rounded_rect, frame_tap, Painter};
+pub use painter::{draw_rounded_rect, frame_tap, Hit, Painter};
+pub use quantity_stepper::{quantity_stepper, QuantityStepperVm, StepperAction, StepperResponse};
+pub use theme::Theme;
+pub use wallet_connect::{
+    wallet_connect, WalletAction, WalletConnectVm, WalletItem, WalletResponse, WalletState,
+};

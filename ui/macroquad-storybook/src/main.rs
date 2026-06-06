@@ -11,8 +11,10 @@
 
 use macroquad::prelude::*;
 use macroquad_widgets::{
-    frame_tap, order_fulfilment, theme, Button, ButtonVariant, FulfilmentAction, FulfilmentStatus,
-    FulfilmentTx, OrderFulfilmentVm, OrderStatus, Painter,
+    frame_tap, mint_checkout, order_fulfilment, quantity_stepper, theme, wallet_connect, Button,
+    ButtonVariant, CheckoutAction, CheckoutState, Eligibility, FulfilmentAction, FulfilmentStatus,
+    FulfilmentTx, MintCheckoutVm, OrderFulfilmentVm, OrderStatus, Painter, QuantityStepperVm,
+    StepperAction, Theme, WalletAction, WalletConnectVm, WalletItem, WalletState,
 };
 
 const SIDEBAR_W: f32 = 210.0;
@@ -64,8 +66,22 @@ struct Fulfilment {
 }
 
 enum Body {
-    Fulfilment(Fulfilment),
     Buttons,
+    Stepper(u32),
+    Wallet(WalletConnectVm),
+    Checkout(MintCheckoutVm),
+    Fulfilment(Fulfilment),
+}
+
+/// Cheap copy of the story kind — lets `draw_main` dispatch without holding a
+/// borrow of `self.stories` across the per-kind mutation.
+#[derive(Clone, Copy)]
+enum Kind {
+    Buttons,
+    Stepper,
+    Wallet,
+    Checkout,
+    Fulfilment,
 }
 
 struct Story {
@@ -90,10 +106,28 @@ impl Story {
     }
 
     fn buttons(category: &'static str, name: &'static str) -> Self {
-        Self {
-            category,
-            name,
-            body: Body::Buttons,
+        Self { category, name, body: Body::Buttons }
+    }
+
+    fn stepper(category: &'static str, name: &'static str, qty: u32) -> Self {
+        Self { category, name, body: Body::Stepper(qty) }
+    }
+
+    fn wallet(category: &'static str, name: &'static str, state: WalletState) -> Self {
+        Self { category, name, body: Body::Wallet(WalletConnectVm { state }) }
+    }
+
+    fn checkout(category: &'static str, name: &'static str, vm: MintCheckoutVm) -> Self {
+        Self { category, name, body: Body::Checkout(vm) }
+    }
+
+    fn kind(&self) -> Kind {
+        match self.body {
+            Body::Buttons => Kind::Buttons,
+            Body::Stepper(_) => Kind::Stepper,
+            Body::Wallet(_) => Kind::Wallet,
+            Body::Checkout(_) => Kind::Checkout,
+            Body::Fulfilment(_) => Kind::Fulfilment,
         }
     }
 }
@@ -125,32 +159,84 @@ fn simulate_vm() -> OrderFulfilmentVm {
     fx(OrderStatus::Pending, 8, 0, vec![], 0)
 }
 
-fn stories() -> Vec<Story> {
+const STAKE_ADDR: &str = "stake_test1uqxvtxc9k7yg3m2p0lz8w4n6s5d7f9h0j2k4m6n8p0r3s599tqx";
+
+/// `sample_icon` stands in for a decoded CIP-30 icon on the first wallet, so the
+/// texture path renders; the rest fall back to monogram avatars.
+fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
     use FulfilmentStatus as F;
     use OrderStatus as S;
     use StoryMode::*;
     vec![
         Story::buttons("atoms", "buttons"),
-        Story::fulfilment("presets", "pending · no mint", Static, fx(S::Pending, 3, 0, vec![], 1)),
+        Story::stepper("atoms", "quantity stepper", 2),
+        Story::wallet(
+            "wallet",
+            "disconnected",
+            WalletState::Disconnected(vec![
+                WalletItem { key: "eternl".into(), name: "Eternl".into(), icon: sample_icon },
+                WalletItem::new("vespr", "Vespr"),
+                WalletItem::new("lace", "Lace"),
+            ]),
+        ),
+        Story::wallet("wallet", "no wallet", WalletState::Disconnected(vec![])),
+        Story::wallet("wallet", "connecting", WalletState::Connecting),
+        Story::wallet(
+            "wallet",
+            "connected",
+            WalletState::Connected { name: "Eternl".into(), address: STAKE_ADDR.into() },
+        ),
+        Story::wallet("wallet", "error", WalletState::Error("user declined the connection".into())),
+        Story::checkout(
+            "checkout",
+            "eligible",
+            MintCheckoutVm {
+                phase_label: Some("public".into()),
+                eligibility: Eligibility::Eligible { max_per_wallet: 5 },
+                unit_price_lovelace: 40_000_000,
+                qty: 1,
+                state: CheckoutState::Idle,
+            },
+        ),
+        Story::checkout(
+            "checkout",
+            "ineligible",
+            MintCheckoutVm {
+                phase_label: Some("allowlist".into()),
+                eligibility: Eligibility::Ineligible {
+                    reason: "not eligible — wrong phase, sold out, or limit reached".into(),
+                },
+                unit_price_lovelace: 40_000_000,
+                qty: 1,
+                state: CheckoutState::Idle,
+            },
+        ),
+        Story::checkout(
+            "checkout",
+            "working",
+            MintCheckoutVm {
+                phase_label: Some("public".into()),
+                eligibility: Eligibility::Eligible { max_per_wallet: 5 },
+                unit_price_lovelace: 40_000_000,
+                qty: 2,
+                state: CheckoutState::Working("awaiting signature for 80 ADA...".into()),
+            },
+        ),
+        Story::fulfilment("fulfilment", "pending", Static, fx(S::Pending, 3, 0, vec![], 1)),
         Story::fulfilment(
-            "presets",
-            "fulfilling · 1 tx",
+            "fulfilment",
+            "fulfilling 1 tx",
             Static,
             fx(S::Fulfilling, 5, 2, vec![tx(MINT_A, 2, F::Submitted)], 3),
         ),
         Story::fulfilment(
-            "presets",
-            "fulfilling · N txs",
+            "fulfilment",
+            "fulfilling N txs",
             Static,
             fx(S::Fulfilling, 10, 7, vec![tx(MINT_A, 4, F::Confirmed), tx(MINT_B, 3, F::Submitted)], 0),
         ),
-        Story::fulfilment(
-            "presets",
-            "confirmed · complete",
-            Static,
-            fx(S::Confirmed, 3, 3, vec![tx(MINT_A, 3, F::Confirmed)], 30),
-        ),
-        Story::fulfilment("presets", "sold out · refund", Static, fx(S::Unfulfilled, 2, 0, vec![], 12)),
+        Story::fulfilment("fulfilment", "confirmed", Static, fx(S::Confirmed, 3, 3, vec![tx(MINT_A, 3, F::Confirmed)], 30)),
+        Story::fulfilment("fulfilment", "sold out", Static, fx(S::Unfulfilled, 2, 0, vec![], 12)),
         Story::fulfilment("interactive", "knobs playground", Knobs, playground_vm()),
         Story::fulfilment("interactive", "simulate poll", Simulate, simulate_vm()),
     ]
@@ -178,7 +264,7 @@ fn button_gallery(p: &Painter, x: f32, mut y: f32, _w: f32) -> Option<String> {
         ("tonal", ButtonVariant::Tonal),
         ("ghost", ButtonVariant::Ghost),
     ] {
-        p.text(name, x, y, 13.0, theme::MUTED);
+        p.text(name, x, y, 13.0, p.theme.muted);
         y += 10.0;
         if Button::new("Mint")
             .variant(variant)
@@ -193,33 +279,43 @@ fn button_gallery(p: &Painter, x: f32, mut y: f32, _w: f32) -> Option<String> {
         y += bh + 14.0;
     }
 
-    p.text("accents", x, y, 13.0, theme::MUTED);
+    p.text("accents", x, y, 13.0, p.theme.muted);
     y += 10.0;
     let mut bx = x;
-    for (name, accent) in [("green", theme::ACCENT), ("blue", theme::LINK), ("red", theme::DANGER)] {
+    for (name, accent) in [("accent", p.theme.accent), ("link", p.theme.link), ("danger", p.theme.danger)] {
         if Button::new("tap").accent(accent).show(p, Rect::new(bx, y, 90.0, bh)) {
             clicked = Some(format!("clicked {name}"));
         }
         bx += 90.0 + gap;
     }
     y += bh + 16.0;
-    p.text("hover + press to feel the states", x, y, 12.0, theme::MUTED);
+    p.text("hover + press to feel the states", x, y, 12.0, p.theme.muted);
     clicked
 }
 
 struct Storybook {
     stories: Vec<Story>,
     selected: usize,
+    theme_idx: usize,
     last_action: Option<String>,
 }
 
 impl Storybook {
     fn new() -> Self {
+        let icon = Texture2D::from_file_with_format(
+            include_bytes!("../assets/sample-icon.png"),
+            Some(ImageFormat::Png),
+        );
         Self {
-            stories: stories(),
+            stories: stories(Some(icon)),
             selected: 0,
+            theme_idx: 0,
             last_action: None,
         }
+    }
+
+    fn current_theme(&self) -> Theme {
+        Theme::PRESETS[self.theme_idx]()
     }
 
     fn frame(&mut self, p: &Painter) {
@@ -237,6 +333,9 @@ impl Storybook {
         if is_key_pressed(KeyCode::Left) || is_key_pressed(KeyCode::Up) {
             self.select((self.selected + n - 1) % n);
         }
+        if is_key_pressed(KeyCode::T) {
+            self.theme_idx = (self.theme_idx + 1) % Theme::PRESETS.len();
+        }
         for (i, key) in NUM_KEYS.iter().enumerate() {
             if i < n && is_key_pressed(*key) {
                 self.select(i);
@@ -250,13 +349,13 @@ impl Storybook {
     }
 
     fn draw_sidebar(&mut self, p: &Painter) {
-        draw_rectangle(0.0, 0.0, SIDEBAR_W, screen_height(), theme::PANEL);
-        draw_line(SIDEBAR_W, 0.0, SIDEBAR_W, screen_height(), 1.0, theme::TRACK);
+        draw_rectangle(0.0, 0.0, SIDEBAR_W, screen_height(), p.theme.panel);
+        draw_line(SIDEBAR_W, 0.0, SIDEBAR_W, screen_height(), 1.0, p.theme.track);
         let (mx, my) = mouse_position();
         let mouse = vec2(mx, my);
 
         let mut y = 40.0;
-        p.text("STORYBOOK", 16.0, y, 16.0, theme::ACCENT);
+        p.text("STORYBOOK", 16.0, y, 16.0, p.theme.accent);
         y += 30.0;
 
         let mut last_cat = "";
@@ -265,16 +364,16 @@ impl Storybook {
             if s.category != last_cat {
                 last_cat = s.category;
                 y += 6.0;
-                p.text(s.category, 16.0, y, 11.0, theme::MUTED);
+                p.text(s.category, 16.0, y, 11.0, p.theme.muted);
                 y += 18.0;
             }
             let row = Rect::new(6.0, y - 13.0, SIDEBAR_W - 12.0, 24.0);
             let selected = i == self.selected;
             if selected {
-                draw_rectangle(row.x, row.y, row.w, row.h, theme::with_alpha(theme::ACCENT, 0.16));
-                draw_rectangle(row.x, row.y, 3.0, row.h, theme::ACCENT);
+                draw_rectangle(row.x, row.y, row.w, row.h, theme::with_alpha(p.theme.accent, 0.16));
+                draw_rectangle(row.x, row.y, 3.0, row.h, p.theme.accent);
             } else if row.contains(mouse) {
-                draw_rectangle(row.x, row.y, row.w, row.h, theme::with_alpha(theme::FG, 0.05));
+                draw_rectangle(row.x, row.y, row.w, row.h, theme::with_alpha(p.theme.fg, 0.05));
             }
             let label = format!("{}. {}", i + 1, s.name);
             let baseline = p.centre_baseline(row.y, row.h, 13.0);
@@ -283,7 +382,7 @@ impl Storybook {
                 18.0,
                 baseline,
                 13.0,
-                if selected { theme::ACCENT } else { theme::FG },
+                if selected { p.theme.accent } else { p.theme.fg },
             );
             if p.tapped(row) {
                 clicked = Some(i);
@@ -306,23 +405,83 @@ impl Storybook {
             x0,
             y,
             19.0,
-            theme::FG,
+            p.theme.fg,
         );
         y += 20.0;
-        p.text("arrows / click to switch", x0, y, 12.0, theme::MUTED);
+        p.text(
+            &format!("arrows / click to switch  ·  t = theme: {}", p.theme.name),
+            x0,
+            y,
+            12.0,
+            p.theme.muted,
+        );
         y += 30.0;
 
-        match &self.stories[sel].body {
-            Body::Buttons => {
+        match self.stories[sel].kind() {
+            Kind::Buttons => {
                 if let Some(a) = button_gallery(p, x0, y, col_w) {
                     self.last_action = Some(a);
                 }
-                if let Some(a) = &self.last_action {
-                    p.text(a, x0, screen_height() - 32.0, 13.0, theme::ACCENT);
+                self.echo(p, x0);
+            }
+            Kind::Stepper => self.draw_stepper(p, sel, x0, y),
+            Kind::Wallet => self.draw_wallet(p, sel, x0, y, col_w),
+            Kind::Checkout => self.draw_checkout(p, sel, x0, y, col_w),
+            Kind::Fulfilment => self.draw_fulfilment(p, sel, x0, y, col_w),
+        }
+    }
+
+    fn echo(&self, p: &Painter, x: f32) {
+        if let Some(a) = &self.last_action {
+            p.text(a, x, screen_height() - 32.0, 13.0, p.theme.accent);
+        }
+    }
+
+    fn draw_stepper(&mut self, p: &Painter, sel: usize, x: f32, y: f32) {
+        let qty = match &self.stories[sel].body {
+            Body::Stepper(q) => *q,
+            _ => return,
+        };
+        let svm = QuantityStepperVm { qty, min: 1, max: 10 };
+        let resp = quantity_stepper(p, &svm, x, y, 36.0, true);
+        if let Some(StepperAction::Changed(n)) = resp.action {
+            if let Body::Stepper(q) = &mut self.stories[sel].body {
+                *q = n;
+            }
+        }
+        p.text_top(&format!("min 1 · max 10 · qty = {qty}"), x, y + 52.0, 13.0, p.theme.muted);
+    }
+
+    fn draw_wallet(&mut self, p: &Painter, sel: usize, x: f32, y: f32, w: f32) {
+        let action = match &self.stories[sel].body {
+            Body::Wallet(vm) => wallet_connect(p, vm, x, y, w).action,
+            _ => return,
+        };
+        if let Some(a) = action {
+            self.last_action = Some(match a {
+                WalletAction::Connect(k) => format!("action: Connect({k})"),
+                WalletAction::Disconnect => "action: Disconnect".into(),
+                WalletAction::Retry => "action: Retry".into(),
+            });
+        }
+        self.echo(p, x);
+    }
+
+    fn draw_checkout(&mut self, p: &Painter, sel: usize, x: f32, y: f32, w: f32) {
+        let action = match &self.stories[sel].body {
+            Body::Checkout(vm) => mint_checkout(p, vm, x, y, w).action,
+            _ => return,
+        };
+        match action {
+            Some(CheckoutAction::QtyChanged(n)) => {
+                if let Body::Checkout(vm) = &mut self.stories[sel].body {
+                    vm.qty = n;
                 }
             }
-            Body::Fulfilment(_) => self.draw_fulfilment(p, sel, x0, y, col_w),
+            Some(CheckoutAction::Mint) => self.last_action = Some("action: Mint".into()),
+            None => {}
         }
+        self.echo(p, x);
     }
 
     fn draw_fulfilment(&mut self, p: &Painter, sel: usize, x0: f32, y: f32, col_w: f32) {
@@ -343,7 +502,7 @@ impl Storybook {
             self.last_action = Some(format!("action: OpenTx({h})"));
         }
         if let Some(a) = &self.last_action {
-            p.mono(a, x0, bottom + 18.0, 13.0, theme::ACCENT);
+            p.mono(a, x0, bottom + 18.0, 13.0, p.theme.accent);
         }
     }
 
@@ -356,7 +515,7 @@ impl Storybook {
             ("confirm", Knob::Confirm),
             ("reset", Knob::Reset),
         ];
-        p.text("knobs", x, y, 13.0, theme::MUTED);
+        p.text("knobs", x, y, 13.0, p.theme.muted);
         let (bw, bh, gap) = (92.0, 30.0, 8.0);
         let mut bx = x;
         let mut by = y + 8.0;
@@ -409,7 +568,7 @@ impl Storybook {
 
     fn draw_sim_controls(&mut self, p: &Painter, sel: usize, x: f32, y: f32) -> f32 {
         let paused = matches!(&self.stories[sel].body, Body::Fulfilment(f) if f.paused);
-        p.text("simulate", x, y, 13.0, theme::MUTED);
+        p.text("simulate", x, y, 13.0, p.theme.muted);
         let by = y + 8.0;
         let reset = Button::new("reset")
             .variant(ButtonVariant::Tonal)
@@ -419,7 +578,7 @@ impl Storybook {
             .variant(ButtonVariant::Tonal)
             .font_size(15.0)
             .show(p, Rect::new(x + 96.0, by, 88.0, 30.0));
-        p.text("ticks minted up, lands txs, then confirms", x, by + 46.0, 12.0, theme::MUTED);
+        p.text("ticks minted up, lands txs, then confirms", x, by + 46.0, 12.0, p.theme.muted);
         if reset {
             self.reset_sim(sel);
         }
@@ -476,15 +635,26 @@ impl Storybook {
     }
 }
 
-#[macroquad::main("macroquad-widgets storybook")]
+fn window_conf() -> Conf {
+    Conf {
+        window_title: "macroquad-widgets storybook".to_owned(),
+        window_width: 1000,
+        window_height: 760,
+        window_resizable: true,
+        ..Default::default()
+    }
+}
+
+#[macroquad::main(window_conf)]
 async fn main() {
     // Proportional sans for chrome, monospace for hashes/data.
     let font = load_ttf_font_from_bytes(include_bytes!("../assets/NotoSans-Bold.ttf")).ok();
     let mono = load_ttf_font_from_bytes(include_bytes!("../assets/JetBrainsMono-Regular.ttf")).ok();
     let mut book = Storybook::new();
     loop {
-        clear_background(theme::BG);
-        let p = Painter::new(font.as_ref(), mono.as_ref(), frame_tap());
+        let theme = book.current_theme();
+        clear_background(theme.bg);
+        let p = Painter::new(font.as_ref(), mono.as_ref(), theme, frame_tap());
         book.frame(&p);
         next_frame().await;
     }
