@@ -2887,12 +2887,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "macroquad-storybook"
+version = "0.1.0"
+dependencies = [
+ "macroquad",
+ "macroquad-widgets",
+]
+
+[[package]]
 name = "macroquad-tui"
 version = "0.1.0"
 dependencies = [
  "macroquad",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "macroquad-widgets"
+version = "0.1.0"
+dependencies = [
+ "macroquad",
 ]
 
 [[package]]

@@ -34,6 +34,8 @@ members = [
     "ui/wallet-leptos",
     "ui/wallet-miniquad",
     "ui/macroquad-tui",
+    "ui/macroquad-widgets",
+    "ui/macroquad-storybook",
     "ui/miniquad-platform",
     "ui/canvas-bridge",
     "ui/egui-widgets",

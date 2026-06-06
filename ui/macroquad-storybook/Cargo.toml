@@ -1,0 +1,17 @@
+[package]
+name = "macroquad-storybook"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# DEV ONLY — stories for the macroquad-widgets crate. Runs NATIVELY (a desktop
+# window, no web shell needed): `cargo run -p macroquad-storybook`.
+# ←/→ or number keys switch stories; tap a fulfilment tx to see the action.
+
+[[bin]]
+name = "macroquad-storybook"
+path = "src/main.rs"
+
+[dependencies]
+macroquad = "0.4"
+macroquad-widgets = { path = "../macroquad-widgets" }
