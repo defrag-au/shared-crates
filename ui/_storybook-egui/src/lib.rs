@@ -91,6 +91,8 @@ mod app {
         Toast,
         Timestamp,
         ErrorNote,
+        QuantityStepper,
+        MintCheckout,
     }
 
     impl Story {
@@ -172,6 +174,8 @@ mod app {
                 Self::CollectionList,
                 // Mint configuration
                 Self::PhaseCard,
+                Self::QuantityStepper,
+                Self::MintCheckout,
             ]
         }
 
@@ -241,6 +245,8 @@ mod app {
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
                 Self::Toast => "Toast",
+                Self::QuantityStepper => "Quantity Stepper",
+                Self::MintCheckout => "Mint Checkout",
             }
         }
 
@@ -303,7 +309,9 @@ mod app {
                 Self::TxCart => "TX Cart",
                 Self::GroupedSection | Self::OfferTile => "Layout",
                 Self::MnemonicDisplay | Self::WalletList | Self::CollectionList => "Auth / Admin",
-                Self::PhaseCard => "Mint Configuration",
+                Self::PhaseCard | Self::QuantityStepper | Self::MintCheckout => {
+                    "Mint Configuration"
+                }
             }
         }
 
@@ -478,6 +486,12 @@ mod app {
                 Self::Toast => {
                     "Transient overlay messages with frame-countdown auto-dismiss — Success/Error/Warning/Info, host-owned ToastQueue, bottom-right stack"
                 }
+                Self::QuantityStepper => {
+                    "Compact −/[n]/+ quantity control with min/max clamping — caller owns the value, returns clamped value + changed flag, − disables at min and + at max"
+                }
+                Self::MintCheckout => {
+                    "Buyer mint offer + CTA — phase/eligibility chips, QuantityStepper, price-each/total, fixed-price bundle cards, purchase summary, Mint button, working/submitted/error states; VM-driven, returns QtyChanged/Mint/SelectBundle"
+                }
             }
         }
     }
@@ -554,6 +568,9 @@ mod app {
         image_text_editor_state: stories::image_text_editor::ImageTextEditorState,
         // Mint dashboard
         order_list_state: stories::order_list::OrderListState,
+        // Mint configuration
+        quantity_stepper_state: stories::quantity_stepper::QuantityStepperStoryState,
+        mint_checkout_state: stories::mint_checkout::MintCheckoutStoryState,
         // TX Cart
         tx_cart_state: stories::tx_cart::TxCartStoryState,
         // Wallet
@@ -643,6 +660,9 @@ mod app {
                 data_table_state: stories::data_table::DataTableStoryState::default(),
                 file_upload_state: stories::file_upload::FileUploadState::default(),
                 order_list_state: stories::order_list::OrderListState::default(),
+                quantity_stepper_state:
+                    stories::quantity_stepper::QuantityStepperStoryState::default(),
+                mint_checkout_state: stories::mint_checkout::MintCheckoutStoryState::default(),
                 image_text_editor_state: stories::image_text_editor::ImageTextEditorState::default(
                 ),
                 tx_cart_state: stories::tx_cart::TxCartStoryState::default(),
@@ -882,6 +902,15 @@ mod app {
                             Story::PropertyList => stories::property_list::show(ui),
                             Story::IdPill => stories::id_pill::show(ui),
                             Story::PhaseCard => stories::phase_card::show(ui),
+                            Story::QuantityStepper => {
+                                stories::quantity_stepper::show(
+                                    ui,
+                                    &mut self.quantity_stepper_state,
+                                )
+                            }
+                            Story::MintCheckout => {
+                                stories::mint_checkout::show(ui, &mut self.mint_checkout_state)
+                            }
                             Story::ButtonGroup => {
                                 stories::button_group::show(ui, &mut self.button_group_state)
                             }

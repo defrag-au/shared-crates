@@ -61,6 +61,10 @@ mod imp {
         fn wallet_connect(name: JsObject) -> i32;
         fn wallet_reward_address() -> i32;
         fn wallet_balance() -> i32;
+        fn wallet_utxos() -> i32;
+        fn wallet_change_address() -> i32;
+        fn wallet_sign_tx(tx_hex: JsObject, partial_sign: i32) -> i32;
+        fn wallet_submit_tx(tx_hex: JsObject) -> i32;
         fn wallet_disconnect();
         fn wallet_sign_data(addr: JsObject, payload_hex: JsObject) -> i32;
         fn wallet_poll(req_id: i32) -> JsObject;
@@ -90,6 +94,36 @@ mod imp {
     /// to surface the user's $handle.
     pub fn balance() -> ReqId {
         ReqId(unsafe { wallet_balance() })
+    }
+
+    /// CIP-30 getUtxos — the wallet's spendable UTxOs. On the resolved
+    /// poll, `data` is a JSON array of hex-encoded CBOR
+    /// `TransactionUnspentOutput` strings (empty array when the wallet
+    /// holds none). Decode with [`crate::parse_utxos`], then each entry
+    /// via `wallet_pallas::decode_utxo`.
+    pub fn utxos() -> ReqId {
+        ReqId(unsafe { wallet_utxos() })
+    }
+
+    /// CIP-30 getChangeAddress. On the resolved poll, `data` is the
+    /// hex-encoded change address.
+    pub fn change_address() -> ReqId {
+        ReqId(unsafe { wallet_change_address() })
+    }
+
+    /// CIP-30 signTx. `tx_hex` is the unsigned tx CBOR (hex);
+    /// `partial_sign` false means the wallet must fully witness the tx.
+    /// On the resolved poll, `data` is the witness-set hex — assemble it
+    /// onto the tx via `wallet_pallas::assemble_signed_tx` before
+    /// [`submit_tx`].
+    pub fn sign_tx(tx_hex: &str, partial_sign: bool) -> ReqId {
+        ReqId(unsafe { wallet_sign_tx(JsObject::string(tx_hex), partial_sign as i32) })
+    }
+
+    /// CIP-30 submitTx. `tx_hex` is the fully-signed tx CBOR (hex). On
+    /// the resolved poll, `data` is the tx hash.
+    pub fn submit_tx(tx_hex: &str) -> ReqId {
+        ReqId(unsafe { wallet_submit_tx(JsObject::string(tx_hex)) })
     }
 
     /// Drop the cached `api` reference on the JS side. The wallet's
@@ -129,6 +163,18 @@ mod imp {
         ReqId(0)
     }
     pub fn balance() -> ReqId {
+        ReqId(0)
+    }
+    pub fn utxos() -> ReqId {
+        ReqId(0)
+    }
+    pub fn change_address() -> ReqId {
+        ReqId(0)
+    }
+    pub fn sign_tx(_tx_hex: &str, _partial_sign: bool) -> ReqId {
+        ReqId(0)
+    }
+    pub fn submit_tx(_tx_hex: &str) -> ReqId {
         ReqId(0)
     }
     pub fn disconnect() {}
