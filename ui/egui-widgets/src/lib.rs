@@ -130,7 +130,8 @@ pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
 pub use order_list::{
-    OrderEventRow, OrderList, OrderListAction, OrderListResponse, OrderRow, OrderStatus,
+    FulfilmentRow, OrderEventRow, OrderList, OrderListAction, OrderListResponse, OrderRow,
+    OrderStatus,
 };
 pub use persona_strip::{PersonaStrip, PersonaStripConfig};
 pub use phase_card::{GateChip, PhaseCard, PhaseCardAction, PhaseCardResponse, PhaseCardRow};

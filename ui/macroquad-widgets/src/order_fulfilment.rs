@@ -28,6 +28,22 @@ pub enum OrderStatus {
 }
 
 impl OrderStatus {
+    /// Parse the canonical `mint_orders.status` string (snake_case — the
+    /// serialization of `shared_types::mint::MintOrderStatus`). Unknown values
+    /// fall back to `Submitted`. Lives here so hosts don't hand-roll the map.
+    pub fn from_status(s: &str) -> Self {
+        match s {
+            "pending" => Self::Pending,
+            "fulfilling" => Self::Fulfilling,
+            "submitted" => Self::Submitted,
+            "confirmed" => Self::Confirmed,
+            "delivered" => Self::Delivered,
+            "unfulfilled" => Self::Unfulfilled,
+            "failed" => Self::Failed,
+            _ => Self::Submitted,
+        }
+    }
+
     fn label(self) -> &'static str {
         match self {
             OrderStatus::Pending => "pending",
@@ -66,6 +82,15 @@ pub enum FulfilmentStatus {
 }
 
 impl FulfilmentStatus {
+    /// Parse a `mint_log` status string. Unknown / `submitted` → `Submitted`.
+    pub fn from_status(s: &str) -> Self {
+        match s {
+            "confirmed" => Self::Confirmed,
+            "failed" => Self::Failed,
+            _ => Self::Submitted,
+        }
+    }
+
     fn word(self) -> &'static str {
         match self {
             FulfilmentStatus::Submitted => "submitted",

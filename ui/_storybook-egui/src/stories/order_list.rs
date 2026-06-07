@@ -8,7 +8,7 @@
 
 use std::collections::HashSet;
 
-use egui_widgets::{OrderEventRow, OrderList, OrderListAction, OrderRow};
+use egui_widgets::{FulfilmentRow, OrderEventRow, OrderList, OrderListAction, OrderRow};
 
 use crate::{ACCENT, TEXT_MUTED};
 
@@ -197,11 +197,34 @@ fn order(
     if open.contains(&order_id) {
         r.detail_open = true;
         r.events = Some(demo_events(status, refund, created));
+        r.fulfilments = demo_fulfilments(status, qty);
         if status == "failed" {
             r.note = Some("submit failed: inputs already spent (stale fuel)".to_string());
         }
     }
     r
+}
+
+/// Demo mint txs — splits qty across 1-2 txs to show the 1→N grouping.
+fn demo_fulfilments(status: &str, qty: u32) -> Vec<FulfilmentRow> {
+    let tx_a = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a".to_string();
+    let tx_b = "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706".to_string();
+    match status {
+        "confirmed" | "delivered" => {
+            vec![FulfilmentRow { tx_hash: tx_a, minted: qty, status: "confirmed".into() }]
+        }
+        "submitted" if qty >= 4 => {
+            let a = qty / 2;
+            vec![
+                FulfilmentRow { tx_hash: tx_a, minted: a, status: "confirmed".into() },
+                FulfilmentRow { tx_hash: tx_b, minted: qty - a, status: "submitted".into() },
+            ]
+        }
+        "submitted" => {
+            vec![FulfilmentRow { tx_hash: tx_a, minted: qty, status: "submitted".into() }]
+        }
+        _ => vec![],
+    }
 }
 
 fn demo_events(status: &str, refund: &str, created: i64) -> Vec<OrderEventRow> {
