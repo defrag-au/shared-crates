@@ -622,6 +622,153 @@ pub fn build_send_many(
     )
 }
 
+/// One split tx in the parcel-funding chain (`MINT_PARCEL_FUNDING.md`): carve
+/// `source` — the buyer payment, or the prior split's change — into `parcel_count`
+/// equal pure-ADA parcels back to self, plus an optional buyer `refund` output
+/// (CIP-674-tagged via `metadata`).
+///
+/// `source` is ALWAYS the first input, so the funding chain is traceable
+/// (payment → split → parcels) and never silently funded from float instead.
+/// `extra_float` tops the source up only when it can't cover outputs + fee +
+/// min-change. Returns the change output's tx-relative index + value
+/// ([`ChangeOutput`]) so the next split chains off it deterministically — the tx
+/// hash is fixed the moment it's signed, no chain/indexer round-trip.
+#[allow(clippy::too_many_arguments)]
+pub fn build_parcel_split(
+    deps: &TxDeps,
+    source: &UtxoApi,
+    extra_float: &[UtxoApi],
+    parcel_size: u64,
+    parcel_count: u32,
+    refund: Option<(&Address, u64)>,
+    metadata: Option<&serde_json::Value>,
+) -> Result<(UnsignedTx, super::mint::ChangeOutput), TxBuildError> {
+    if parcel_count == 0 {
+        return Err(TxBuildError::BuildFailed(
+            "build_parcel_split: parcel_count must be > 0".to_string(),
+        ));
+    }
+    let min_pure_utxo = 228 * deps.params.coins_per_utxo_byte;
+    if parcel_size < min_pure_utxo {
+        return Err(TxBuildError::BuildFailed(format!(
+            "build_parcel_split: parcel_size {parcel_size} < min_pure_utxo {min_pure_utxo}"
+        )));
+    }
+    if let Some((_, amt)) = refund {
+        if amt < min_pure_utxo {
+            return Err(TxBuildError::BuildFailed(format!(
+                "build_parcel_split: refund {amt} < min_pure_utxo {min_pure_utxo}"
+            )));
+        }
+    }
+
+    // Pre-encode metadata so the fee is sized from its real weight.
+    let metadata_bytes = match metadata {
+        Some(v) => Some(
+            crate::metadata::cip25::build_metadata_auxiliary_data(v)
+                .map_err(|e| TxBuildError::BuildFailed(format!("metadata encoding failed: {e}")))?,
+        ),
+        None => None,
+    };
+
+    let parcels_lovelace = parcel_size
+        .checked_mul(u64::from(parcel_count))
+        .ok_or_else(|| {
+            TxBuildError::BuildFailed("parcel_size * parcel_count overflows u64".to_string())
+        })?;
+    let refund_lovelace = refund.map_or(0, |(_, l)| l);
+    let total_outputs_lovelace = parcels_lovelace.saturating_add(refund_lovelace);
+
+    // Inputs: `source` ALWAYS first (must be spent), then float — pure-ADA, no
+    // script ref, never the source — largest-first until the outputs + fee +
+    // min-change cushion are covered.
+    let min_change_cushion: u64 = 1_500_000;
+    let base_fee = selection::estimate_simple_fee(&deps.params)
+        + metadata_bytes.as_ref().map_or(0, |b| b.len() as u64);
+    let mut floats: Vec<&UtxoApi> = extra_float
+        .iter()
+        .filter(|u| {
+            u.assets.is_empty()
+                && !u.has_tag(UtxoTag::HasScriptRef)
+                && !(u.tx_hash == source.tx_hash && u.output_index == source.output_index)
+        })
+        .collect();
+    floats.sort_by_key(|u| std::cmp::Reverse(u.lovelace));
+
+    let mut selected: Vec<UtxoApi> = vec![source.clone()];
+    let mut input_lovelace: u64 = source.lovelace;
+    let mut fi = 0usize;
+    loop {
+        let projected_fee = base_fee + (selected.len() as u64) * 50_000;
+        let needed = total_outputs_lovelace
+            .saturating_add(projected_fee)
+            .saturating_add(min_change_cushion);
+        if input_lovelace >= needed {
+            break;
+        }
+        if fi >= floats.len() {
+            return Err(TxBuildError::InsufficientFunds {
+                needed,
+                available: input_lovelace,
+            });
+        }
+        let u = floats[fi];
+        fi += 1;
+        input_lovelace = input_lovelace.saturating_add(u.lovelace);
+        selected.push(u.clone());
+    }
+
+    let from_address = deps.from_address.clone();
+    let network_id = deps.network_id;
+    let refund_owned: Option<(Address, u64)> = refund.map(|(a, l)| (a.clone(), l));
+    let final_fee_estimate = base_fee + (selected.len() as u64 * 50_000);
+
+    let unsigned = converge_fee(
+        |fee| {
+            let refs: Vec<&UtxoApi> = selected.iter().collect();
+            let mut tx = add_utxo_inputs(StagingTransaction::new(), &refs)?;
+            // N equal parcels to self (indices 0..parcel_count).
+            for _ in 0..parcel_count {
+                tx = tx.output(create_ada_output(from_address.clone(), parcel_size));
+            }
+            // Buyer refund (index parcel_count), if any.
+            if let Some((addr, lov)) = &refund_owned {
+                tx = tx.output(create_ada_output(addr.clone(), *lov));
+            }
+            if let Some(bytes) = &metadata_bytes {
+                tx = tx.add_auxiliary_data(bytes.clone());
+            }
+            // Change back to self (the chain link); fee converges around it.
+            let change = input_lovelace
+                .checked_sub(total_outputs_lovelace)
+                .and_then(|v| v.checked_sub(fee))
+                .ok_or(TxBuildError::InsufficientFunds {
+                    needed: total_outputs_lovelace + fee,
+                    available: input_lovelace,
+                })?;
+            if change > 0 {
+                tx = tx.output(create_ada_output(from_address.clone(), change));
+            }
+            Ok(tx.fee(fee).network_id(network_id))
+        },
+        final_fee_estimate,
+        &deps.params,
+    )?;
+
+    // Change ref = the last output (after parcels + the optional refund). Value is
+    // input − outputs − the converged fee; the cushion guaranteed it's emitted.
+    let change_index = parcel_count + u32::from(refund.is_some());
+    let change_lovelace = input_lovelace
+        .saturating_sub(total_outputs_lovelace)
+        .saturating_sub(unsigned.fee);
+    let change = super::mint::ChangeOutput {
+        output_index: change_index,
+        lovelace: change_lovelace,
+        has_assets: false,
+    };
+    Ok((unsigned, change))
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -981,6 +1128,88 @@ mod tests {
             network_id: 0,
         };
         assert!(build_fan_out(&deps, 10_000_000, 0, None).is_err());
+    }
+
+    // ── build_parcel_split (parcel funding + chaining) ────────────────
+
+    #[test]
+    fn test_build_parcel_split_carves_source_and_returns_change() {
+        // 200 ADA payment → 5 × 10 ADA parcels + change; source alone covers it.
+        let deps = TxDeps {
+            utxos: vec![],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let source = make_utxo(200_000_000);
+        let (unsigned, change) =
+            build_parcel_split(&deps, &source, &[], 10_000_000, 5, None, None).unwrap();
+        // 5 parcels + 1 change output, single input (the source).
+        assert_eq!(unsigned.staging.outputs.as_ref().map(|o| o.len()), Some(6));
+        assert_eq!(unsigned.staging.inputs.as_ref().map(|i| i.len()), Some(1));
+        // Change is the last output; value = 200 − 50 − fee (≈ 149.7 ADA).
+        assert_eq!(change.output_index, 5);
+        assert!(change.lovelace > 149_000_000 && change.lovelace < 150_000_000);
+        // The returned change value reconciles exactly: input − parcels − fee.
+        assert_eq!(change.lovelace, 200_000_000 - 50_000_000 - unsigned.fee);
+    }
+
+    #[test]
+    fn test_build_parcel_split_always_spends_source() {
+        // Source is SMALL (15 ADA) but a much bigger float (500 ADA) exists. A
+        // greedy builder would fund from the 500 ADA alone (1 input); the parcel
+        // split MUST spend the source for traceability → source + float = 2 inputs.
+        let deps = TxDeps {
+            utxos: vec![],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let source = make_utxo(15_000_000);
+        let float = vec![make_utxo(500_000_000)];
+        let (unsigned, _change) =
+            build_parcel_split(&deps, &source, &float, 10_000_000, 3, None, None).unwrap();
+        assert_eq!(
+            unsigned.staging.inputs.as_ref().map(|i| i.len()),
+            Some(2),
+            "source must be spent alongside the float, not skipped for the bigger UTxO"
+        );
+    }
+
+    #[test]
+    fn test_build_parcel_split_with_refund_and_metadata() {
+        // 3 parcels + a buyer refund output + CIP-674 tag. Change index sits after
+        // the parcels AND the refund.
+        let deps = TxDeps {
+            utxos: vec![],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let source = make_utxo(200_000_000);
+        let buyer = other_address();
+        let mut cip674 = serde_json::Map::new();
+        cip674.insert(
+            "msg".to_string(),
+            serde_json::Value::Array(vec![serde_json::Value::String("refund:abc".to_string())]),
+        );
+        let mut root = serde_json::Map::new();
+        root.insert("674".to_string(), serde_json::Value::Object(cip674));
+        let meta = serde_json::Value::Object(root);
+        let (unsigned, change) = build_parcel_split(
+            &deps,
+            &source,
+            &[],
+            10_000_000,
+            3,
+            Some((&buyer, 20_000_000)),
+            Some(&meta),
+        )
+        .unwrap();
+        // 3 parcels + 1 refund + 1 change = 5 outputs; change after parcels+refund.
+        assert_eq!(unsigned.staging.outputs.as_ref().map(|o| o.len()), Some(5));
+        assert_eq!(change.output_index, 4);
+        assert!(unsigned.staging.auxiliary_data.is_some(), "CIP-674 aux data present");
     }
 
     // ── build_send_many (refund / settlement payout txs) ──────────────
