@@ -635,6 +635,7 @@ name = "cardano-tx"
 version = "0.1.0"
 dependencies = [
  "address-registry",
+ "async-trait",
  "cardano-assets",
  "hex",
  "http-client",
