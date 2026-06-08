@@ -187,6 +187,24 @@ impl UnsignedTx {
         };
         Ok((signed, effects))
     }
+
+    /// [`build_and_sign_multi`] + the tx's [`TxEffects`] — the multi-key analogue of
+    /// [`build_and_sign_tracked`], for a wallet-ledger caller whose tx spends inputs
+    /// across more than one of its addresses (e.g. the Mode-B refund over `D` + `O`).
+    pub fn build_and_sign_multi_tracked(
+        self,
+        secret_keys: &[&pallas_crypto::key::ed25519::SecretKey],
+    ) -> Result<(SignedTx, TxEffects), TxBuildError> {
+        let spent = staging_spent(&self.staging);
+        let outputs = staging_outputs(&self.staging);
+        let signed = self.build_and_sign_multi(secret_keys)?;
+        let effects = TxEffects {
+            tx_hash: signed.tx_hash.clone(),
+            spent,
+            outputs,
+        };
+        Ok((signed, effects))
+    }
 }
 
 /// Two-round fee convergence.
