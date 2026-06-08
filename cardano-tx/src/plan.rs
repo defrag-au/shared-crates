@@ -39,6 +39,7 @@ pub struct TxPlan<'a, U: Selectable> {
     strategy: Strategy,
     outputs: Vec<(Address, u64)>,
     metadata: Option<serde_json::Value>,
+    sweep_to: Option<Address>,
 }
 
 impl<'a, U: Selectable> TxPlan<'a, U> {
@@ -55,6 +56,7 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
             strategy: Strategy::ManualOnly,
             outputs: Vec::new(),
             metadata: None,
+            sweep_to: None,
         }
     }
 
@@ -97,10 +99,23 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         self
     }
 
+    /// SWEEP mode: spend the whole `must_spend` set (caller-curated, pure-ADA) and
+    /// send the entire balance MINUS the fee to `address` as one output — no change,
+    /// no pool selection. The `build_send_max` shape, for dust consolidation (sweep
+    /// to self) and withdraw (sweep to an external address). `pay_*`/`select_from`
+    /// are ignored when set.
+    pub fn sweep_to(mut self, address: Address) -> Self {
+        self.sweep_to = Some(address);
+        self
+    }
+
     /// Net the target (Σ outputs + fee + change cushion), run selection, assemble
     /// the staging tx (inputs = must_spend ++ selected, outputs, metadata, change →
     /// change_address) and converge the fee. Returns the standard [`UnsignedTx`].
     pub fn build(self) -> Result<UnsignedTx, TxBuildError> {
+        if let Some(target) = self.sweep_to.clone() {
+            return self.build_sweep(target);
+        }
         if self.outputs.is_empty() {
             return Err(TxBuildError::BuildFailed("TxPlan: no outputs".into()));
         }
@@ -173,6 +188,66 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
                     })?;
                 if change > 0 {
                     tx = tx.output(create_ada_output(change_address.clone(), change));
+                }
+                Ok(tx.fee(fee).network_id(network_id))
+            },
+            fee_estimate,
+            &params,
+        )
+    }
+
+    /// SWEEP build: spend every (pure-ADA) `must_spend` input and send the whole
+    /// balance minus the converged fee to `target` as a single output. Maximises
+    /// the swept amount (smaller fee → larger output). Mirrors `build_send_max`.
+    fn build_sweep(self, target: Address) -> Result<UnsignedTx, TxBuildError> {
+        let inputs: Vec<&'a U> = self
+            .must_spend
+            .iter()
+            .copied()
+            .filter(|u| !u.has_assets() && !u.has_script_ref())
+            .collect();
+        if inputs.is_empty() {
+            return Err(TxBuildError::BuildFailed(
+                "TxPlan sweep: no pure-ADA inputs to sweep".into(),
+            ));
+        }
+        let total: u64 = inputs.iter().map(|u| u.lovelace()).sum();
+        let input_refs: Vec<(String, u32)> = inputs
+            .iter()
+            .map(|u| (u.tx_hash().to_string(), u.output_index()))
+            .collect();
+        let metadata_bytes = match &self.metadata {
+            Some(v) => Some(
+                crate::metadata::cip25::build_metadata_auxiliary_data(v).map_err(|e| {
+                    TxBuildError::BuildFailed(format!("metadata encoding failed: {e}"))
+                })?,
+            ),
+            None => None,
+        };
+        let min_pure_utxo = 228 * self.params.coins_per_utxo_byte;
+        let fee_estimate = estimate_simple_fee(&self.params)
+            + metadata_bytes.as_ref().map_or(0, |b| b.len() as u64);
+        let network_id = self.network_id;
+        let params = self.params;
+
+        converge_fee(
+            move |fee| {
+                let mut tx = StagingTransaction::new();
+                for (h, ix) in &input_refs {
+                    tx = add_input_ref(tx, h, *ix)?;
+                }
+                let out = total.checked_sub(fee).ok_or(TxBuildError::InsufficientFunds {
+                    needed: fee,
+                    available: total,
+                })?;
+                if out < min_pure_utxo {
+                    return Err(TxBuildError::BuildFailed(format!(
+                        "TxPlan sweep: output {out} < min_pure_utxo {min_pure_utxo} after fee"
+                    )));
+                }
+                tx = tx.output(create_ada_output(target.clone(), out));
+                if let Some(bytes) = &metadata_bytes {
+                    tx = tx.add_auxiliary_data(bytes.clone());
                 }
                 Ok(tx.fee(fee).network_id(network_id))
             },
