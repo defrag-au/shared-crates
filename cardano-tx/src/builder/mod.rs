@@ -146,6 +146,27 @@ impl UnsignedTx {
         })
     }
 
+    /// Build + sign with MULTIPLE keys — for a tx whose inputs span more than one of
+    /// the engine's addresses (e.g. a Mode-B refund spending un-split payments at the
+    /// deposit address `D` AND orphaned parcels at the operational address `O`). One
+    /// vkey witness per key; pass only the keys actually required. See
+    /// `cnft.dev-workers/docs/design/WALLET_UTXO_LEDGER.md`.
+    pub fn build_and_sign_multi(
+        self,
+        secret_keys: &[&pallas_crypto::key::ed25519::SecretKey],
+    ) -> Result<SignedTx, TxBuildError> {
+        use pallas_txbuilder::BuildConway;
+        let built = self
+            .staging
+            .build_conway_raw()
+            .map_err(|e| TxBuildError::BuildFailed(e.to_string()))?;
+        let signed = crate::sign::sign_transaction_multi(built, secret_keys)?;
+        Ok(SignedTx {
+            tx_hash: hex::encode(signed.tx_hash.0),
+            tx_cbor_hex: hex::encode(&signed.tx_bytes),
+        })
+    }
+
     /// Build + sign AND return the tx's [`TxEffects`] (spent inputs + created
     /// outputs) for a caller maintaining a local wallet-UTxO ledger. The spent /
     /// output sets are read off the staged tx before assembly, so they exactly
