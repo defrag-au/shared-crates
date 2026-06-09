@@ -648,6 +648,7 @@ pub fn build_parcel_split(
     deps: &TxDeps,
     source: &UtxoApi,
     extra_float: &[UtxoApi],
+    float_pool: &[UtxoApi],
     parcel_size: u64,
     parcel_count: u32,
     refund: Option<(&Address, u64)>,
@@ -716,20 +717,56 @@ pub fn build_parcel_split(
             })
             .cloned(),
     );
-    let input_lovelace: u64 = selected.iter().map(|u| u.lovelace).sum();
+    let mut input_lovelace: u64 = selected.iter().map(|u| u.lovelace).sum();
 
     let from_address = deps.from_address.clone();
     let network_id = deps.network_id;
     let refund_owned: Option<(Address, u64)> = refund.map(|(a, l)| (a.clone(), l));
-    let final_fee_estimate = base_fee + (selected.len() as u64 * 50_000);
 
-    // Decide whether the leftover is emitted as a standalone change UTxO or
-    // absorbed into the fee. Use the fee ESTIMATE — an over-estimate of the real
-    // fee — plus a small margin above the min-UTxO floor. A large leftover (an
-    // intermediate split, whose change funds the next batch) clears the floor and
-    // is emitted as a normal chain-link change; a sub-floor leftover (the final,
-    // self-funded split) can't form a valid change UTxO, so it's absorbed.
+    // A sub-floor leftover (input − parcels − fee) can't form a valid change UTxO,
+    // so it's absorbed into the fee (the self-funding final split); a larger
+    // leftover clears the floor and is emitted as a normal chain-link change.
     let emit_change_floor = min_pure_utxo.saturating_add(200_000);
+
+    // v2 coin selection (CARDANO_TX_BUILDER_V2): when the must-spend inputs (the
+    // `source` + any `extra_float` dust) can't cover parcels + fee + a valid change,
+    // draw the shortfall from `float_pool`. This is the fragmented-float case for
+    // zero-cost splits — when the largest single float UTxO is only ~parcels-worth,
+    // the old self-funding math floored the fee to 0; selection pulls additional
+    // float so the fee converges normally. An EMPTY pool (a PAID order, which
+    // self-funds from its own payment) is a no-op. Fails cleanly with
+    // `InsufficientFunds` if the pool can't reach the target, so the caller defers
+    // instead of submitting an underpaying tx.
+    let select_target = total_outputs_lovelace
+        .saturating_add(base_fee + (selected.len() as u64 * 50_000))
+        .saturating_add(emit_change_floor);
+    if input_lovelace < select_target && !float_pool.is_empty() {
+        let new_selected: Vec<UtxoApi> = {
+            let exclude: std::collections::HashSet<(String, u32)> = selected
+                .iter()
+                .map(|u| (u.tx_hash.clone(), u.output_index))
+                .collect();
+            let must: Vec<&UtxoApi> = selected.iter().collect();
+            let sel = crate::select::Selection {
+                must_spend: must,
+                pool: float_pool,
+                exclude: &exclude,
+                strategy: crate::select::Strategy::SmallestSufficient,
+            };
+            crate::select::select(&sel, select_target)
+                .map_err(|crate::select::SelectError::Insufficient { target, available }| {
+                    TxBuildError::InsufficientFunds { needed: target, available }
+                })?
+                .into_iter()
+                .cloned()
+                .collect()
+        };
+        selected = new_selected;
+        input_lovelace = selected.iter().map(|u| u.lovelace).sum();
+    }
+
+    // Fee estimate AFTER selection (the input count is now final).
+    let final_fee_estimate = base_fee + (selected.len() as u64 * 50_000);
     let est_remainder = input_lovelace
         .saturating_sub(total_outputs_lovelace)
         .saturating_sub(final_fee_estimate);
@@ -775,6 +812,19 @@ pub fn build_parcel_split(
         // conservative split-fee reserve (it sized the parcels to leave exactly
         // this), which is ≥ the real min fee, so the tx never underpays — the
         // small excess (reserve − real fee) is the only cost, paid to the chain.
+        //
+        // GUARD: this fee is `input − parcels` taken DIRECTLY (no converge), so it's
+        // only valid when the source genuinely left fee headroom. If the inputs
+        // can't cover parcels + the min fee, it would otherwise floor below the
+        // minimum (the `fee=0` / `ValueNotConservedUTxO` reject seen on fragmented
+        // zero-cost float). Fail cleanly instead — the caller defers / sources
+        // differently rather than submitting an underpaying tx.
+        if input_lovelace < total_outputs_lovelace.saturating_add(base_fee) {
+            return Err(TxBuildError::InsufficientFunds {
+                needed: total_outputs_lovelace + base_fee,
+                available: input_lovelace,
+            });
+        }
         let fee = input_lovelace.saturating_sub(total_outputs_lovelace);
         let refs: Vec<&UtxoApi> = selected.iter().collect();
         let mut tx = add_utxo_inputs(StagingTransaction::new(), &refs)?;
@@ -1186,7 +1236,7 @@ mod tests {
         };
         let source = make_utxo(200_000_000);
         let (unsigned, change) =
-            build_parcel_split(&deps, &source, &[], 10_000_000, 5, None, None).unwrap();
+            build_parcel_split(&deps, &source, &[], &[], 10_000_000, 5, None, None).unwrap();
         // 5 parcels + 1 change output, single input (the source).
         assert_eq!(unsigned.staging.outputs.as_ref().map(|o| o.len()), Some(6));
         assert_eq!(unsigned.staging.inputs.as_ref().map(|i| i.len()), Some(1));
@@ -1211,7 +1261,7 @@ mod tests {
         let source = make_utxo(15_000_000);
         let float = vec![make_utxo(500_000_000)];
         let (unsigned, _change) =
-            build_parcel_split(&deps, &source, &float, 10_000_000, 3, None, None).unwrap();
+            build_parcel_split(&deps, &source, &float, &[], 10_000_000, 3, None, None).unwrap();
         assert_eq!(
             unsigned.staging.inputs.as_ref().map(|i| i.len()),
             Some(2),
@@ -1242,6 +1292,7 @@ mod tests {
         let (unsigned, change) = build_parcel_split(
             &deps,
             &source,
+            &[],
             &[],
             10_000_000,
             3,
@@ -1276,7 +1327,7 @@ mod tests {
         // parcels + fee, leaving a sub-floor remainder (< min-UTxO).
         let source = make_utxo(50_800_000);
         let (unsigned, change) =
-            build_parcel_split(&deps, &source, &[], 10_000_000, 5, None, None).unwrap();
+            build_parcel_split(&deps, &source, &[], &[], 10_000_000, 5, None, None).unwrap();
         // 5 parcels, NO change output (leftover absorbed into fee), single input.
         assert_eq!(
             unsigned.staging.outputs.as_ref().map(|o| o.len()),
@@ -1325,7 +1376,7 @@ mod tests {
             make_utxo(1_600_000),
         ];
         let (unsigned, change) =
-            build_parcel_split(&deps, &source, &dust, 10_000_000, 5, None, None).unwrap();
+            build_parcel_split(&deps, &source, &dust, &[], 10_000_000, 5, None, None).unwrap();
         // 1 source + 3 dust = 4 inputs (every dust UTxO spent).
         assert_eq!(unsigned.staging.inputs.as_ref().map(|i| i.len()), Some(4));
         // 5 parcels + 1 change.
@@ -1334,6 +1385,60 @@ mod tests {
         // Change consolidates the source leftover + ALL the dust: input − parcels − fee.
         let input = 200_000_000u64 + 1_500_000 + 1_400_000 + 1_600_000;
         assert_eq!(change.lovelace, input - 50_000_000 - unsigned.fee);
+    }
+
+    #[test]
+    fn test_build_parcel_split_draws_fee_shortfall_from_pool() {
+        // Fragmented-float case: the `source` is only ~parcels-worth (3 × 4 ADA =
+        // 12 ADA), leaving NO headroom for the split fee — the bug that floored the
+        // fee to 0. With a `float_pool`, v2 selection draws an extra UTxO to cover
+        // the fee + a valid change, and the source is still spent.
+        let deps = TxDeps {
+            utxos: vec![],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let source = make_utxo(12_000_000); // exactly 3 × 4 ADA parcels — no fee room
+        let pool = vec![make_utxo(5_000_000), make_utxo(8_000_000)];
+        let (unsigned, _change) =
+            build_parcel_split(&deps, &source, &[], &pool, 4_000_000, 3, None, None).unwrap();
+        // The fee is real (never 0) and clears the protocol minimum.
+        assert!(
+            unsigned.fee >= 165_000,
+            "fee must be a real min fee, not floored to 0 (got {})",
+            unsigned.fee
+        );
+        // Source is spent (always), plus at least one pool UTxO to cover the fee.
+        let n_inputs = unsigned.staging.inputs.as_ref().map(|i| i.len()).unwrap_or(0);
+        assert!(n_inputs >= 2, "drew the fee shortfall from the pool (got {n_inputs} inputs)");
+        // 3 uniform parcels still present.
+        let parcels: u64 = unsigned
+            .staging
+            .outputs
+            .as_ref()
+            .map(|os| os.iter().filter(|o| o.lovelace == 4_000_000).count() as u64)
+            .unwrap_or(0);
+        assert_eq!(parcels, 3, "parcels stay uniform at the flat size");
+    }
+
+    #[test]
+    fn test_build_parcel_split_too_small_source_no_pool_fails_cleanly() {
+        // The guard: a source that can't cover parcels + the min fee, and NO pool to
+        // draw from, must return `InsufficientFunds` — NOT a fee=0 tx that the node
+        // rejects (FeeTooSmallUTxO / ValueNotConservedUTxO).
+        let deps = TxDeps {
+            utxos: vec![],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let source = make_utxo(12_000_000); // == 3 × 4 ADA parcels, no fee headroom
+        let err = build_parcel_split(&deps, &source, &[], &[], 4_000_000, 3, None, None);
+        assert!(
+            matches!(err, Err(TxBuildError::InsufficientFunds { .. })),
+            "expected InsufficientFunds, got {err:?}"
+        );
     }
 
     // ── build_send_many (refund / settlement payout txs) ──────────────
