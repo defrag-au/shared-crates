@@ -33,6 +33,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let bytes = out.first_bytes()?;
     std::fs::write("fal-out.png", &bytes)?;
-    println!("wrote fal-out.png ({} bytes), seed={:?}", bytes.len(), out.seed);
+    println!(
+        "wrote fal-out.png ({} bytes), seed={:?}",
+        bytes.len(),
+        out.seed
+    );
     Ok(())
 }

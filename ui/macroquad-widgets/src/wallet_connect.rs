@@ -37,7 +37,10 @@ pub enum WalletState {
     Disconnected(Vec<WalletItem>),
     Connecting,
     /// Connected: display name + (bech32) address.
-    Connected { name: String, address: String },
+    Connected {
+        name: String,
+        address: String,
+    },
     Error(String),
 }
 
@@ -56,7 +59,13 @@ pub struct WalletResponse {
     pub action: Option<WalletAction>,
 }
 
-pub fn wallet_connect(p: &Painter, vm: &WalletConnectVm, x: f32, mut y: f32, w: f32) -> WalletResponse {
+pub fn wallet_connect(
+    p: &Painter,
+    vm: &WalletConnectVm,
+    x: f32,
+    mut y: f32,
+    w: f32,
+) -> WalletResponse {
     let t = p.theme;
     let mut action = None;
     match &vm.state {
@@ -96,7 +105,12 @@ pub fn wallet_connect(p: &Painter, vm: &WalletConnectVm, x: f32, mut y: f32, w: 
         }
         WalletState::Connecting => {
             let pulse = (get_time() * 2.0).sin() as f32 * 0.5 + 0.5;
-            draw_circle(x + 6.0, y + 9.0, 5.0, with_alpha(t.accent, 0.3 + 0.7 * pulse));
+            draw_circle(
+                x + 6.0,
+                y + 9.0,
+                5.0,
+                with_alpha(t.accent, 0.3 + 0.7 * pulse),
+            );
             p.text_top("connecting...", x + 22.0, y, 16.0, t.fg);
             y += 30.0;
         }
@@ -111,7 +125,13 @@ pub fn wallet_connect(p: &Painter, vm: &WalletConnectVm, x: f32, mut y: f32, w: 
                 action = Some(WalletAction::Disconnect);
             }
             y += 26.0;
-            p.mono(&short(address), x + 22.0, p.top_baseline(y, 13.0), 13.0, t.muted);
+            p.mono(
+                &short(address),
+                x + 22.0,
+                p.top_baseline(y, 13.0),
+                13.0,
+                t.muted,
+            );
             y += 22.0;
         }
         WalletState::Error(msg) => {
@@ -154,7 +174,13 @@ fn draw_avatar(p: &Painter, x: f32, y: f32, size: f32, item: &WalletItem) {
             .to_string();
         let dim = p.measure(&ch, size * 0.5);
         let baseline = p.centre_baseline(y, size, size * 0.5);
-        p.text(&ch, x + r - dim.width * 0.5, baseline, size * 0.5, p.theme.accent);
+        p.text(
+            &ch,
+            x + r - dim.width * 0.5,
+            baseline,
+            size * 0.5,
+            p.theme.accent,
+        );
     }
 }
 

@@ -55,7 +55,13 @@ pub fn quantity_stepper(
     let s = vm.qty.to_string();
     let dim = p.measure(&s, 16.0);
     let baseline = p.centre_baseline(y, h, 16.0);
-    p.text(&s, vx + (val_w - dim.width) * 0.5, baseline, 16.0, p.theme.fg);
+    p.text(
+        &s,
+        vx + (val_w - dim.width) * 0.5,
+        baseline,
+        16.0,
+        p.theme.fg,
+    );
 
     let px = vx + val_w + gap;
     if Button::new("+")

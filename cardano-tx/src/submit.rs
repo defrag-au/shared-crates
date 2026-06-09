@@ -174,7 +174,10 @@ mod tests {
         let r = submit_with_fallback(&[&a, &b], b"tx").await;
         assert_eq!(r.unwrap(), SubmitOk::Accepted);
         assert!(a.called.get());
-        assert!(!b.called.get(), "second provider must not be tried after accept");
+        assert!(
+            !b.called.get(),
+            "second provider must not be tried after accept"
+        );
     }
 
     #[tokio::test]
@@ -193,7 +196,10 @@ mod tests {
         let r = submit_with_fallback(&[&a, &b], b"tx").await;
         assert!(matches!(r, Err(SubmitError::Rejected(_))));
         assert!(a.called.get());
-        assert!(!b.called.get(), "a rejection must NOT fall through to other providers");
+        assert!(
+            !b.called.get(),
+            "a rejection must NOT fall through to other providers"
+        );
     }
 
     #[tokio::test]

@@ -169,7 +169,12 @@ impl<'a> MintCheckout<'a> {
         let total = unit.saturating_mul(vm.qty as u64);
         ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
             ui.spacing_mut().item_spacing.x = 10.0;
-            price_card(ui, "Price each", &format_lovelace(unit as i64), theme::TEXT_PRIMARY);
+            price_card(
+                ui,
+                "Price each",
+                &format_lovelace(unit as i64),
+                theme::TEXT_PRIMARY,
+            );
             price_card(ui, "Total", &format_lovelace(total as i64), self.accent);
         });
 
@@ -289,7 +294,11 @@ fn bundle_card(ui: &mut Ui, bundle: &BundleOffer, unit: u64, busy: bool, accent:
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
-                    ui.label(RichText::new(&bundle.label).color(theme::TEXT_PRIMARY).strong());
+                    ui.label(
+                        RichText::new(&bundle.label)
+                            .color(theme::TEXT_PRIMARY)
+                            .strong(),
+                    );
                     if saving > 0 {
                         ui.label(
                             RichText::new(format!("save {}", format_lovelace(saving as i64)))
@@ -300,15 +309,18 @@ fn bundle_card(ui: &mut Ui, bundle: &BundleOffer, unit: u64, busy: bool, accent:
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let label = if bundle.available {
-                        format!("{} for {}", bundle.size, format_lovelace(bundle.price_lovelace as i64))
+                        format!(
+                            "{} for {}",
+                            bundle.size,
+                            format_lovelace(bundle.price_lovelace as i64)
+                        )
                     } else {
                         "Sold out".to_string()
                     };
-                    let btn = egui::Button::new(
-                        RichText::new(label).strong().color(theme::BG_PRIMARY),
-                    )
-                    .fill(accent)
-                    .corner_radius(6.0);
+                    let btn =
+                        egui::Button::new(RichText::new(label).strong().color(theme::BG_PRIMARY))
+                            .fill(accent)
+                            .corner_radius(6.0);
                     if ui.add_enabled(bundle.available && !busy, btn).clicked() {
                         clicked = true;
                     }

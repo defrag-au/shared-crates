@@ -212,7 +212,11 @@ impl FalClient {
 
     /// Decompose an image into `num_layers` (1-10) semantic RGBA layers.
     /// Returns the layers as images (data URIs under `sync_mode`).
-    pub async fn qwen_layered(&self, image: &str, num_layers: u32) -> Result<ImageOutput, FalError> {
+    pub async fn qwen_layered(
+        &self,
+        image: &str,
+        num_layers: u32,
+    ) -> Result<ImageOutput, FalError> {
         let body = QwenLayeredInput {
             image_url: image,
             num_layers,
@@ -648,7 +652,11 @@ mod tests {
         for n in 0..32usize {
             let data: Vec<u8> = (0..n).map(|i| (i * 7 + 1) as u8).collect();
             let enc = base64::encode(&data);
-            assert_eq!(base64::decode(&enc).as_deref(), Some(data.as_slice()), "n={n}");
+            assert_eq!(
+                base64::decode(&enc).as_deref(),
+                Some(data.as_slice()),
+                "n={n}"
+            );
         }
     }
 

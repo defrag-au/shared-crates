@@ -211,17 +211,33 @@ fn demo_fulfilments(status: &str, qty: u32) -> Vec<FulfilmentRow> {
     let tx_b = "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706".to_string();
     match status {
         "confirmed" | "delivered" => {
-            vec![FulfilmentRow { tx_hash: tx_a, minted: qty, status: "confirmed".into() }]
+            vec![FulfilmentRow {
+                tx_hash: tx_a,
+                minted: qty,
+                status: "confirmed".into(),
+            }]
         }
         "submitted" if qty >= 4 => {
             let a = qty / 2;
             vec![
-                FulfilmentRow { tx_hash: tx_a, minted: a, status: "confirmed".into() },
-                FulfilmentRow { tx_hash: tx_b, minted: qty - a, status: "submitted".into() },
+                FulfilmentRow {
+                    tx_hash: tx_a,
+                    minted: a,
+                    status: "confirmed".into(),
+                },
+                FulfilmentRow {
+                    tx_hash: tx_b,
+                    minted: qty - a,
+                    status: "submitted".into(),
+                },
             ]
         }
         "submitted" => {
-            vec![FulfilmentRow { tx_hash: tx_a, minted: qty, status: "submitted".into() }]
+            vec![FulfilmentRow {
+                tx_hash: tx_a,
+                minted: qty,
+                status: "submitted".into(),
+            }]
         }
         _ => vec![],
     }

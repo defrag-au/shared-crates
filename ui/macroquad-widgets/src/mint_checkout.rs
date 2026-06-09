@@ -39,7 +39,13 @@ pub struct CheckoutResponse {
     pub action: Option<CheckoutAction>,
 }
 
-pub fn mint_checkout(p: &Painter, vm: &MintCheckoutVm, x: f32, mut y: f32, w: f32) -> CheckoutResponse {
+pub fn mint_checkout(
+    p: &Painter,
+    vm: &MintCheckoutVm,
+    x: f32,
+    mut y: f32,
+    w: f32,
+) -> CheckoutResponse {
     let mut action = None;
 
     if let Some(phase) = &vm.phase_label {
@@ -89,7 +95,12 @@ pub fn mint_checkout(p: &Painter, vm: &MintCheckoutVm, x: f32, mut y: f32, w: f3
     match &vm.state {
         CheckoutState::Working(msg) => {
             let pulse = (get_time() * 2.0).sin() as f32 * 0.5 + 0.5;
-            draw_circle(x + 6.0, y + 9.0, 5.0, theme::with_alpha(p.theme.link, 0.3 + 0.7 * pulse));
+            draw_circle(
+                x + 6.0,
+                y + 9.0,
+                5.0,
+                theme::with_alpha(p.theme.link, 0.3 + 0.7 * pulse),
+            );
             p.text_top(msg, x + 22.0, y, 15.0, p.theme.link);
             y += 30.0;
         }

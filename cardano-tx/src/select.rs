@@ -128,7 +128,10 @@ pub fn select<'a, U: Selectable>(
         .pool
         .iter()
         .filter(|u| !u.has_assets() && !u.has_script_ref())
-        .filter(|u| !sel.exclude.contains(&(u.tx_hash().to_string(), u.output_index())))
+        .filter(|u| {
+            !sel.exclude
+                .contains(&(u.tx_hash().to_string(), u.output_index()))
+        })
         .filter(|u| !must_ids.contains(&(u.tx_hash(), u.output_index())))
         .collect();
 
@@ -143,8 +146,11 @@ pub fn select<'a, U: Selectable>(
         // A single smallest UTxO that covers the whole remaining gap = the least
         // disruptive choice (one input, one change).
         let need = target_lovelace - sum;
-        let mut sufficient: Vec<&'a U> =
-            cands.iter().copied().filter(|u| u.lovelace() >= need).collect();
+        let mut sufficient: Vec<&'a U> = cands
+            .iter()
+            .copied()
+            .filter(|u| u.lovelace() >= need)
+            .collect();
         if !sufficient.is_empty() {
             sufficient.sort_by(|a, b| a.lovelace().cmp(&b.lovelace()).then_with(|| by_id(a, b)));
             chosen.push(sufficient[0]);
@@ -185,7 +191,13 @@ mod tests {
     }
     impl U {
         fn ada(h: &str, i: u32, l: u64) -> Self {
-            U { h: h.into(), i, l, assets: false, script: false }
+            U {
+                h: h.into(),
+                i,
+                l,
+                assets: false,
+                script: false,
+            }
         }
     }
     impl Selectable for U {
@@ -263,7 +275,10 @@ mod tests {
         };
         // need 11M, no single UTxO covers → smallest-first 3+4+5.
         let out = select(&sel, 11_000_000).unwrap();
-        assert_eq!(ids(&out), vec![("aa".into(), 0), ("bb".into(), 0), ("cc".into(), 0)]);
+        assert_eq!(
+            ids(&out),
+            vec![("aa".into(), 0), ("bb".into(), 0), ("cc".into(), 0)]
+        );
     }
 
     #[test]
@@ -287,9 +302,27 @@ mod tests {
     #[test]
     fn exclude_and_assets_and_scriptref_are_skipped() {
         let pool = vec![
-            U { h: "ex".into(), i: 0, l: 50_000_000, assets: false, script: false }, // excluded
-            U { h: "as".into(), i: 0, l: 50_000_000, assets: true, script: false },  // asset-bearing
-            U { h: "sc".into(), i: 0, l: 50_000_000, assets: false, script: true },  // script ref
+            U {
+                h: "ex".into(),
+                i: 0,
+                l: 50_000_000,
+                assets: false,
+                script: false,
+            }, // excluded
+            U {
+                h: "as".into(),
+                i: 0,
+                l: 50_000_000,
+                assets: true,
+                script: false,
+            }, // asset-bearing
+            U {
+                h: "sc".into(),
+                i: 0,
+                l: 50_000_000,
+                assets: false,
+                script: true,
+            }, // script ref
             U::ada("ok", 0, 9_000_000),
         ];
         let mut ex = empty_exclude();
@@ -318,7 +351,10 @@ mod tests {
         assert!(select(&sel, 5_000_000).is_ok()); // 6M covers 5M
         assert_eq!(
             select(&sel, 9_000_000),
-            Err(SelectError::Insufficient { target: 9_000_000, available: 6_000_000 })
+            Err(SelectError::Insufficient {
+                target: 9_000_000,
+                available: 6_000_000
+            })
         ); // pool NOT used to top up
     }
 
@@ -334,7 +370,10 @@ mod tests {
         };
         assert_eq!(
             select(&sel, 10_000_000),
-            Err(SelectError::Insufficient { target: 10_000_000, available: 5_000_000 })
+            Err(SelectError::Insufficient {
+                target: 10_000_000,
+                available: 5_000_000
+            })
         );
     }
 

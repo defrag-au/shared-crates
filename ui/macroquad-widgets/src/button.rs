@@ -7,7 +7,7 @@
 
 use macroquad::prelude::*;
 
-use crate::painter::{draw_rounded_rect, with_alpha, shade, Painter};
+use crate::painter::{draw_rounded_rect, shade, with_alpha, Painter};
 
 /// Visual weight.
 #[derive(Clone, Copy)]
@@ -76,7 +76,14 @@ impl<'a> Button<'a> {
                 } else {
                     a
                 };
-                (f, if self.enabled { p.theme.bg } else { p.theme.muted })
+                (
+                    f,
+                    if self.enabled {
+                        p.theme.bg
+                    } else {
+                        p.theme.muted
+                    },
+                )
             }
             ButtonVariant::Tonal => {
                 let f = if !self.enabled {

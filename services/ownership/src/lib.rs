@@ -109,11 +109,7 @@ impl OwnershipClient {
     // Public Query API
     // ========================================================================
 
-    pub async fn get_bundle(
-        &self,
-        policy_id: &str,
-        stake: &str,
-    ) -> Result<BundleResponse, Error> {
+    pub async fn get_bundle(&self, policy_id: &str, stake: &str) -> Result<BundleResponse, Error> {
         let url = format!("{}/api/bundle/{policy_id}?stake={stake}", self.base_url);
         self.get_json(&url).await
     }
@@ -229,10 +225,7 @@ impl OwnershipClient {
         self.get_json(&url).await
     }
 
-    pub async fn get_trait_schema(
-        &self,
-        policy_id: &str,
-    ) -> Result<TraitSchemaResponse, Error> {
+    pub async fn get_trait_schema(&self, policy_id: &str) -> Result<TraitSchemaResponse, Error> {
         let url = format!("{}/api/trait-schema/{policy_id}", self.base_url);
         self.get_json(&url).await
     }
@@ -246,10 +239,7 @@ impl OwnershipClient {
         &self,
         fingerprint: &str,
     ) -> Result<Option<AssetIdentity>, Error> {
-        let url = format!(
-            "{}/api/resolve-fingerprint?fp={fingerprint}",
-            self.base_url
-        );
+        let url = format!("{}/api/resolve-fingerprint?fp={fingerprint}", self.base_url);
         match self.get_json::<AssetIdentity>(&url).await {
             Ok(identity) => Ok(Some(identity)),
             Err(Error::Http { status: 404, .. }) => Ok(None),
@@ -295,10 +285,7 @@ impl OwnershipClient {
         self.get_json(&url).await
     }
 
-    pub async fn get_visual_guide(
-        &self,
-        policy_id: &str,
-    ) -> Result<VisualGuideResponse, Error> {
+    pub async fn get_visual_guide(&self, policy_id: &str) -> Result<VisualGuideResponse, Error> {
         let url = format!("{}/admin/visual-analysis/{policy_id}/guide", self.base_url);
         self.get_json(&url).await
     }

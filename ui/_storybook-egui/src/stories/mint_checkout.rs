@@ -105,7 +105,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut MintCheckoutStoryState) {
 
     // ── 4. Working ──────────────────────────────────────────────────────
     section(ui, "Working — awaiting signature");
-    let vm = base_vm(2, CheckoutState::Working("Awaiting signature for 200 ADA…".into()));
+    let vm = base_vm(
+        2,
+        CheckoutState::Working("Awaiting signature for 200 ADA…".into()),
+    );
     let _ = MintCheckout::new(&vm).show(ui);
     ui.add_space(16.0);
 

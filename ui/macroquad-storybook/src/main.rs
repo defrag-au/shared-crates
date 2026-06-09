@@ -91,7 +91,12 @@ struct Story {
 }
 
 impl Story {
-    fn fulfilment(category: &'static str, name: &'static str, mode: StoryMode, vm: OrderFulfilmentVm) -> Self {
+    fn fulfilment(
+        category: &'static str,
+        name: &'static str,
+        mode: StoryMode,
+        vm: OrderFulfilmentVm,
+    ) -> Self {
         Self {
             category,
             name,
@@ -106,19 +111,35 @@ impl Story {
     }
 
     fn buttons(category: &'static str, name: &'static str) -> Self {
-        Self { category, name, body: Body::Buttons }
+        Self {
+            category,
+            name,
+            body: Body::Buttons,
+        }
     }
 
     fn stepper(category: &'static str, name: &'static str, qty: u32) -> Self {
-        Self { category, name, body: Body::Stepper(qty) }
+        Self {
+            category,
+            name,
+            body: Body::Stepper(qty),
+        }
     }
 
     fn wallet(category: &'static str, name: &'static str, state: WalletState) -> Self {
-        Self { category, name, body: Body::Wallet(WalletConnectVm { state }) }
+        Self {
+            category,
+            name,
+            body: Body::Wallet(WalletConnectVm { state }),
+        }
     }
 
     fn checkout(category: &'static str, name: &'static str, vm: MintCheckoutVm) -> Self {
-        Self { category, name, body: Body::Checkout(vm) }
+        Self {
+            category,
+            name,
+            body: Body::Checkout(vm),
+        }
     }
 
     fn kind(&self) -> Kind {
@@ -132,7 +153,13 @@ impl Story {
     }
 }
 
-fn fx(status: OrderStatus, quantity: u32, minted: u32, fulfilments: Vec<FulfilmentTx>, ago: u32) -> OrderFulfilmentVm {
+fn fx(
+    status: OrderStatus,
+    quantity: u32,
+    minted: u32,
+    fulfilments: Vec<FulfilmentTx>,
+    ago: u32,
+) -> OrderFulfilmentVm {
     OrderFulfilmentVm {
         status,
         quantity,
@@ -152,7 +179,13 @@ fn tx(hash: &str, minted: u32, status: FulfilmentStatus) -> FulfilmentTx {
 }
 
 fn playground_vm() -> OrderFulfilmentVm {
-    fx(OrderStatus::Fulfilling, 6, 2, vec![tx(MINT_A, 2, FulfilmentStatus::Submitted)], 2)
+    fx(
+        OrderStatus::Fulfilling,
+        6,
+        2,
+        vec![tx(MINT_A, 2, FulfilmentStatus::Submitted)],
+        2,
+    )
 }
 
 fn simulate_vm() -> OrderFulfilmentVm {
@@ -174,7 +207,11 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
             "wallet",
             "disconnected",
             WalletState::Disconnected(vec![
-                WalletItem { key: "eternl".into(), name: "Eternl".into(), icon: sample_icon },
+                WalletItem {
+                    key: "eternl".into(),
+                    name: "Eternl".into(),
+                    icon: sample_icon,
+                },
                 WalletItem::new("vespr", "Vespr"),
                 WalletItem::new("lace", "Lace"),
             ]),
@@ -184,9 +221,16 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::wallet(
             "wallet",
             "connected",
-            WalletState::Connected { name: "Eternl".into(), address: STAKE_ADDR.into() },
+            WalletState::Connected {
+                name: "Eternl".into(),
+                address: STAKE_ADDR.into(),
+            },
         ),
-        Story::wallet("wallet", "error", WalletState::Error("user declined the connection".into())),
+        Story::wallet(
+            "wallet",
+            "error",
+            WalletState::Error("user declined the connection".into()),
+        ),
         Story::checkout(
             "checkout",
             "eligible",
@@ -222,7 +266,12 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
                 state: CheckoutState::Working("awaiting signature for 80 ADA...".into()),
             },
         ),
-        Story::fulfilment("fulfilment", "pending", Static, fx(S::Pending, 3, 0, vec![], 1)),
+        Story::fulfilment(
+            "fulfilment",
+            "pending",
+            Static,
+            fx(S::Pending, 3, 0, vec![], 1),
+        ),
         Story::fulfilment(
             "fulfilment",
             "fulfilling 1 tx",
@@ -233,10 +282,26 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
             "fulfilment",
             "fulfilling N txs",
             Static,
-            fx(S::Fulfilling, 10, 7, vec![tx(MINT_A, 4, F::Confirmed), tx(MINT_B, 3, F::Submitted)], 0),
+            fx(
+                S::Fulfilling,
+                10,
+                7,
+                vec![tx(MINT_A, 4, F::Confirmed), tx(MINT_B, 3, F::Submitted)],
+                0,
+            ),
         ),
-        Story::fulfilment("fulfilment", "confirmed", Static, fx(S::Confirmed, 3, 3, vec![tx(MINT_A, 3, F::Confirmed)], 30)),
-        Story::fulfilment("fulfilment", "sold out", Static, fx(S::Unfulfilled, 2, 0, vec![], 12)),
+        Story::fulfilment(
+            "fulfilment",
+            "confirmed",
+            Static,
+            fx(S::Confirmed, 3, 3, vec![tx(MINT_A, 3, F::Confirmed)], 30),
+        ),
+        Story::fulfilment(
+            "fulfilment",
+            "sold out",
+            Static,
+            fx(S::Unfulfilled, 2, 0, vec![], 12),
+        ),
         Story::fulfilment("interactive", "knobs playground", Knobs, playground_vm()),
         Story::fulfilment("interactive", "simulate poll", Simulate, simulate_vm()),
     ]
@@ -282,14 +347,27 @@ fn button_gallery(p: &Painter, x: f32, mut y: f32, _w: f32) -> Option<String> {
     p.text("accents", x, y, 13.0, p.theme.muted);
     y += 10.0;
     let mut bx = x;
-    for (name, accent) in [("accent", p.theme.accent), ("link", p.theme.link), ("danger", p.theme.danger)] {
-        if Button::new("tap").accent(accent).show(p, Rect::new(bx, y, 90.0, bh)) {
+    for (name, accent) in [
+        ("accent", p.theme.accent),
+        ("link", p.theme.link),
+        ("danger", p.theme.danger),
+    ] {
+        if Button::new("tap")
+            .accent(accent)
+            .show(p, Rect::new(bx, y, 90.0, bh))
+        {
             clicked = Some(format!("clicked {name}"));
         }
         bx += 90.0 + gap;
     }
     y += bh + 16.0;
-    p.text("hover + press to feel the states", x, y, 12.0, p.theme.muted);
+    p.text(
+        "hover + press to feel the states",
+        x,
+        y,
+        12.0,
+        p.theme.muted,
+    );
     clicked
 }
 
@@ -350,7 +428,14 @@ impl Storybook {
 
     fn draw_sidebar(&mut self, p: &Painter) {
         draw_rectangle(0.0, 0.0, SIDEBAR_W, screen_height(), p.theme.panel);
-        draw_line(SIDEBAR_W, 0.0, SIDEBAR_W, screen_height(), 1.0, p.theme.track);
+        draw_line(
+            SIDEBAR_W,
+            0.0,
+            SIDEBAR_W,
+            screen_height(),
+            1.0,
+            p.theme.track,
+        );
         let (mx, my) = mouse_position();
         let mouse = vec2(mx, my);
 
@@ -370,10 +455,22 @@ impl Storybook {
             let row = Rect::new(6.0, y - 13.0, SIDEBAR_W - 12.0, 24.0);
             let selected = i == self.selected;
             if selected {
-                draw_rectangle(row.x, row.y, row.w, row.h, theme::with_alpha(p.theme.accent, 0.16));
+                draw_rectangle(
+                    row.x,
+                    row.y,
+                    row.w,
+                    row.h,
+                    theme::with_alpha(p.theme.accent, 0.16),
+                );
                 draw_rectangle(row.x, row.y, 3.0, row.h, p.theme.accent);
             } else if row.contains(mouse) {
-                draw_rectangle(row.x, row.y, row.w, row.h, theme::with_alpha(p.theme.fg, 0.05));
+                draw_rectangle(
+                    row.x,
+                    row.y,
+                    row.w,
+                    row.h,
+                    theme::with_alpha(p.theme.fg, 0.05),
+                );
             }
             let label = format!("{}. {}", i + 1, s.name);
             let baseline = p.centre_baseline(row.y, row.h, 13.0);
@@ -401,7 +498,10 @@ impl Storybook {
         let mut y = 44.0;
 
         p.text(
-            &format!("{}  >  {}", self.stories[sel].category, self.stories[sel].name),
+            &format!(
+                "{}  >  {}",
+                self.stories[sel].category, self.stories[sel].name
+            ),
             x0,
             y,
             19.0,
@@ -442,14 +542,24 @@ impl Storybook {
             Body::Stepper(q) => *q,
             _ => return,
         };
-        let svm = QuantityStepperVm { qty, min: 1, max: 10 };
+        let svm = QuantityStepperVm {
+            qty,
+            min: 1,
+            max: 10,
+        };
         let resp = quantity_stepper(p, &svm, x, y, 36.0, true);
         if let Some(StepperAction::Changed(n)) = resp.action {
             if let Body::Stepper(q) = &mut self.stories[sel].body {
                 *q = n;
             }
         }
-        p.text_top(&format!("min 1 · max 10 · qty = {qty}"), x, y + 52.0, 13.0, p.theme.muted);
+        p.text_top(
+            &format!("min 1 · max 10 · qty = {qty}"),
+            x,
+            y + 52.0,
+            13.0,
+            p.theme.muted,
+        );
     }
 
     fn draw_wallet(&mut self, p: &Painter, sel: usize, x: f32, y: f32, w: f32) {
@@ -578,7 +688,13 @@ impl Storybook {
             .variant(ButtonVariant::Tonal)
             .font_size(15.0)
             .show(p, Rect::new(x + 96.0, by, 88.0, 30.0));
-        p.text("ticks minted up, lands txs, then confirms", x, by + 46.0, 12.0, p.theme.muted);
+        p.text(
+            "ticks minted up, lands txs, then confirms",
+            x,
+            by + 46.0,
+            12.0,
+            p.theme.muted,
+        );
         if reset {
             self.reset_sim(sel);
         }
@@ -620,7 +736,8 @@ impl Storybook {
             let remaining = vm.quantity - vm.minted;
             let chunk = SIM_CHUNKS[f.sim_chunk_idx % SIM_CHUNKS.len()].min(remaining);
             let h = POOL[vm.fulfilments.len() % POOL.len()];
-            vm.fulfilments.push(tx(h, chunk, FulfilmentStatus::Submitted));
+            vm.fulfilments
+                .push(tx(h, chunk, FulfilmentStatus::Submitted));
             vm.minted += chunk;
             f.sim_chunk_idx += 1;
         } else if let Some(t) = vm

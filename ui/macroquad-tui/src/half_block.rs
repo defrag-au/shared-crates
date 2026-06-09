@@ -273,11 +273,23 @@ mod tests {
         let mut grid = Grid::new(5, 5, RED);
         // Pre-populate the grid with a sentinel so we can verify it's
         // left untouched where the canvas is fully transparent.
-        grid.put_at(0, 0, Cell { ch: 'X', fg: RED, bg: TRANSPARENT, attrs: CellAttrs::PLAIN });
+        grid.put_at(
+            0,
+            0,
+            Cell {
+                ch: 'X',
+                fg: RED,
+                bg: TRANSPARENT,
+                attrs: CellAttrs::PLAIN,
+            },
+        );
         canvas.write_to_grid(&mut grid, 0, 0);
         let cells: Vec<_> = grid.cells().collect();
         let cell = cells.iter().find(|(r, c, _)| *r == 0 && *c == 0).unwrap();
-        assert_eq!(cell.2.ch, 'X', "transparent pair should preserve underlying cell");
+        assert_eq!(
+            cell.2.ch, 'X',
+            "transparent pair should preserve underlying cell"
+        );
     }
 
     #[test]

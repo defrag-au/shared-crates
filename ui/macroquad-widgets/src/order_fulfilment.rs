@@ -161,7 +161,12 @@ pub fn order_fulfilment(
     // ── Heartbeat: a pulsing dot for active orders, solid for terminal ──
     if vm.status.is_active() {
         let pulse = (get_time() * 2.0).sin() as f32 * 0.5 + 0.5;
-        draw_circle(x + 6.0, y - 6.0, 5.0, theme::with_alpha(t.accent, 0.3 + 0.7 * pulse));
+        draw_circle(
+            x + 6.0,
+            y - 6.0,
+            5.0,
+            theme::with_alpha(t.accent, 0.3 + 0.7 * pulse),
+        );
     } else {
         draw_circle(x + 6.0, y - 6.0, 5.0, vm.status.color(t));
     }
@@ -179,7 +184,13 @@ pub fn order_fulfilment(
     } else {
         0.0
     };
-    p.text(&format!("minted {} / {}", vm.minted, vm.quantity), x, y, 16.0, t.fg);
+    p.text(
+        &format!("minted {} / {}", vm.minted, vm.quantity),
+        x,
+        y,
+        16.0,
+        t.fg,
+    );
     y += 8.0;
     p.progress(Rect::new(x, y, w, 8.0), frac, t.accent);
     y += 22.0;

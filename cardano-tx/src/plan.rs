@@ -20,7 +20,7 @@ use crate::error::TxBuildError;
 use crate::helpers::input::add_input_ref;
 use crate::helpers::output::create_ada_output;
 use crate::params::TxBuildParams;
-use crate::select::{select, Selectable, SelectError, Selection, Strategy};
+use crate::select::{select, SelectError, Selectable, Selection, Strategy};
 use crate::selection::estimate_simple_fee;
 
 /// Lovelace headroom kept as change so a selected build never emits a sub-min-UTxO
@@ -40,6 +40,7 @@ pub struct TxPlan<'a, U: Selectable> {
     outputs: Vec<(Address, u64)>,
     metadata: Option<serde_json::Value>,
     sweep_to: Option<Address>,
+    fold_change: bool,
 }
 
 impl<'a, U: Selectable> TxPlan<'a, U> {
@@ -57,6 +58,7 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
             outputs: Vec::new(),
             metadata: None,
             sweep_to: None,
+            fold_change: false,
         }
     }
 
@@ -109,12 +111,29 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         self
     }
 
+    /// SELF-FUNDING mode (parcel split): the outputs are sized to consume the inputs
+    /// almost exactly, leaving only ~the fee. So DON'T reserve a change cushion in
+    /// the selection target, and when the post-output leftover is below the min-UTxO
+    /// floor (can't form a valid change UTxO) ABSORB it into the fee rather than
+    /// emit a sub-floor change — the source funds its own build with no operator
+    /// float. A larger leftover (an intermediate split whose change funds the next
+    /// batch) still emits a normal chain-link change. Without this, `build()` would
+    /// reserve `MIN_CHANGE_CUSHION` and fail to fund a payment that's sized to its
+    /// own parcels + fee.
+    pub fn fold_change(mut self) -> Self {
+        self.fold_change = true;
+        self
+    }
+
     /// Net the target (Σ outputs + fee + change cushion), run selection, assemble
     /// the staging tx (inputs = must_spend ++ selected, outputs, metadata, change →
     /// change_address) and converge the fee. Returns the standard [`UnsignedTx`].
     pub fn build(self) -> Result<UnsignedTx, TxBuildError> {
         if let Some(target) = self.sweep_to.clone() {
             return self.build_sweep(target);
+        }
+        if self.fold_change {
+            return self.build_fold();
         }
         if self.outputs.is_empty() {
             return Err(TxBuildError::BuildFailed("TxPlan: no outputs".into()));
@@ -150,9 +169,10 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
             strategy: self.strategy,
         };
         let chosen = select(&sel, target).map_err(|e| match e {
-            SelectError::Insufficient { target, available } => {
-                TxBuildError::InsufficientFunds { needed: target, available }
-            }
+            SelectError::Insufficient { target, available } => TxBuildError::InsufficientFunds {
+                needed: target,
+                available,
+            },
         })?;
         let input_lovelace: u64 = chosen.iter().map(|u| u.lovelace()).sum();
         let input_refs: Vec<(String, u32)> = chosen
@@ -196,6 +216,126 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         )
     }
 
+    /// SELF-FUNDING build (`fold_change`): the inputs are sized to their own outputs
+    /// (a parcel split's source carved into parcels). Selection nets `outputs + fee`
+    /// with NO change cushion; the fee converges around a chain-link change when the
+    /// leftover clears the min-UTxO floor, otherwise the sub-floor leftover is folded
+    /// into the fee (no change output) so the source funds its own build. Guards
+    /// against an underpaying tx (the fragmented-source `fee=0` hazard).
+    fn build_fold(self) -> Result<UnsignedTx, TxBuildError> {
+        if self.outputs.is_empty() {
+            return Err(TxBuildError::BuildFailed("TxPlan fold: no outputs".into()));
+        }
+        let min_pure_utxo = 228 * self.params.coins_per_utxo_byte;
+        for (i, (_, amt)) in self.outputs.iter().enumerate() {
+            if *amt < min_pure_utxo {
+                return Err(TxBuildError::BuildFailed(format!(
+                    "TxPlan fold: outputs[{i}] = {amt} lovelace < min_pure_utxo {min_pure_utxo}"
+                )));
+            }
+        }
+        let metadata_bytes = match &self.metadata {
+            Some(v) => Some(
+                crate::metadata::cip25::build_metadata_auxiliary_data(v).map_err(|e| {
+                    TxBuildError::BuildFailed(format!("metadata encoding failed: {e}"))
+                })?,
+            ),
+            None => None,
+        };
+        let total_outputs: u64 = self.outputs.iter().map(|(_, l)| *l).sum();
+        let base_fee = estimate_simple_fee(&self.params)
+            + metadata_bytes.as_ref().map_or(0, |b| b.len() as u64);
+
+        // Net `outputs + fee` only — NO change cushion (the source is sized to its
+        // own parcels + fee). `ManualOnly` (a paid split) errors here if the source
+        // can't cover; a zero-cost split with a pool draws the shortfall.
+        let sel = Selection {
+            must_spend: self.must_spend,
+            pool: self.pool,
+            exclude: &self.exclude,
+            strategy: self.strategy,
+        };
+        let chosen = select(&sel, total_outputs.saturating_add(base_fee)).map_err(|e| match e {
+            SelectError::Insufficient { target, available } => TxBuildError::InsufficientFunds {
+                needed: target,
+                available,
+            },
+        })?;
+        let input_lovelace: u64 = chosen.iter().map(|u| u.lovelace()).sum();
+        let input_refs: Vec<(String, u32)> = chosen
+            .iter()
+            .map(|u| (u.tx_hash().to_string(), u.output_index()))
+            .collect();
+        drop(sel);
+
+        let outputs = self.outputs;
+        let change_address = self.change_address;
+        let network_id = self.network_id;
+        let params = self.params;
+
+        let final_fee_estimate = base_fee + (input_refs.len() as u64 * 50_000);
+        let emit_change_floor = min_pure_utxo.saturating_add(200_000);
+        let est_remainder = input_lovelace
+            .saturating_sub(total_outputs)
+            .saturating_sub(final_fee_estimate);
+
+        if est_remainder >= emit_change_floor {
+            // Chain-link change: converge the fee around a normal change output.
+            converge_fee(
+                move |fee| {
+                    let mut tx = StagingTransaction::new();
+                    for (h, ix) in &input_refs {
+                        tx = add_input_ref(tx, h, *ix)?;
+                    }
+                    for (addr, amount) in &outputs {
+                        tx = tx.output(create_ada_output(addr.clone(), *amount));
+                    }
+                    if let Some(bytes) = &metadata_bytes {
+                        tx = tx.add_auxiliary_data(bytes.clone());
+                    }
+                    let change = input_lovelace
+                        .checked_sub(total_outputs)
+                        .and_then(|v| v.checked_sub(fee))
+                        .ok_or(TxBuildError::InsufficientFunds {
+                            needed: total_outputs + fee,
+                            available: input_lovelace,
+                        })?;
+                    if change > 0 {
+                        tx = tx.output(create_ada_output(change_address.clone(), change));
+                    }
+                    Ok(tx.fee(fee).network_id(network_id))
+                },
+                final_fee_estimate,
+                &params,
+            )
+        } else {
+            // Fold: the sub-floor leftover is paid directly as the fee (no change).
+            // GUARD: a source that can't cover outputs + the min fee fails cleanly
+            // rather than flooring the fee below the minimum.
+            if input_lovelace < total_outputs.saturating_add(base_fee) {
+                return Err(TxBuildError::InsufficientFunds {
+                    needed: total_outputs + base_fee,
+                    available: input_lovelace,
+                });
+            }
+            let fee = input_lovelace.saturating_sub(total_outputs);
+            let mut tx = StagingTransaction::new();
+            for (h, ix) in &input_refs {
+                tx = add_input_ref(tx, h, *ix)?;
+            }
+            for (addr, amount) in &outputs {
+                tx = tx.output(create_ada_output(addr.clone(), *amount));
+            }
+            if let Some(bytes) = &metadata_bytes {
+                tx = tx.add_auxiliary_data(bytes.clone());
+            }
+            Ok(UnsignedTx {
+                staging: tx.fee(fee).network_id(network_id),
+                fee,
+            })
+        }
+    }
+
     /// SWEEP build: spend every (pure-ADA) `must_spend` input and send the whole
     /// balance minus the converged fee to `target` as a single output. Maximises
     /// the swept amount (smaller fee → larger output). Mirrors `build_send_max`.
@@ -236,10 +376,12 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
                 for (h, ix) in &input_refs {
                     tx = add_input_ref(tx, h, *ix)?;
                 }
-                let out = total.checked_sub(fee).ok_or(TxBuildError::InsufficientFunds {
-                    needed: fee,
-                    available: total,
-                })?;
+                let out = total
+                    .checked_sub(fee)
+                    .ok_or(TxBuildError::InsufficientFunds {
+                        needed: fee,
+                        available: total,
+                    })?;
                 if out < min_pure_utxo {
                     return Err(TxBuildError::BuildFailed(format!(
                         "TxPlan sweep: output {out} < min_pure_utxo {min_pure_utxo} after fee"

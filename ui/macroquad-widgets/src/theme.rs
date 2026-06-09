@@ -100,8 +100,13 @@ impl Theme {
     }
 
     /// All presets, for a theme switcher.
-    pub const PRESETS: &'static [fn() -> Theme] =
-        &[Theme::tokyo_night, Theme::ember, Theme::iris, Theme::aqua, Theme::rose];
+    pub const PRESETS: &'static [fn() -> Theme] = &[
+        Theme::tokyo_night,
+        Theme::ember,
+        Theme::iris,
+        Theme::aqua,
+        Theme::rose,
+    ];
 }
 
 impl Default for Theme {

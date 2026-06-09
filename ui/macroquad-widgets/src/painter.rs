@@ -27,7 +27,12 @@ pub struct Hit {
 }
 
 impl<'a> Painter<'a> {
-    pub fn new(font: Option<&'a Font>, mono: Option<&'a Font>, theme: Theme, tap: Option<Vec2>) -> Self {
+    pub fn new(
+        font: Option<&'a Font>,
+        mono: Option<&'a Font>,
+        theme: Theme,
+        tap: Option<Vec2>,
+    ) -> Self {
         Self {
             font,
             mono,
@@ -111,7 +116,9 @@ impl<'a> Painter<'a> {
     /// A default filled accent button — convenience wrapper over [`Button`].
     /// Returns true on a tap inside. For variants/accent see [`Button`].
     pub fn button(&self, label: &str, rect: Rect, enabled: bool) -> bool {
-        crate::button::Button::new(label).enabled(enabled).show(self, rect)
+        crate::button::Button::new(label)
+            .enabled(enabled)
+            .show(self, rect)
     }
 
     /// A horizontal progress bar: `frac` (0..1) of `rect` filled with `fill`

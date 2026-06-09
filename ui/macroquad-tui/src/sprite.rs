@@ -109,7 +109,11 @@ impl CellSprite {
                 });
             }
         }
-        Self { width, height, cells }
+        Self {
+            width,
+            height,
+            cells,
+        }
     }
 
     /// Set or clear a single cell. Out-of-bounds writes silently
@@ -304,13 +308,15 @@ mod tests {
         // Only the (col 3) column lands inside; cols 4 and 5 clip.
         let xs: Vec<(usize, usize)> = grid
             .cells()
-            .filter_map(|(r, c, cell)| {
-                if cell.ch == 'X' {
-                    Some((r, c))
-                } else {
-                    None
-                }
-            })
+            .filter_map(
+                |(r, c, cell)| {
+                    if cell.ch == 'X' {
+                        Some((r, c))
+                    } else {
+                        None
+                    }
+                },
+            )
             .collect();
         assert_eq!(xs.len(), 2);
     }

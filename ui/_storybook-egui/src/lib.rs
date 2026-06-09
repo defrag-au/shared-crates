@@ -902,12 +902,10 @@ mod app {
                             Story::PropertyList => stories::property_list::show(ui),
                             Story::IdPill => stories::id_pill::show(ui),
                             Story::PhaseCard => stories::phase_card::show(ui),
-                            Story::QuantityStepper => {
-                                stories::quantity_stepper::show(
-                                    ui,
-                                    &mut self.quantity_stepper_state,
-                                )
-                            }
+                            Story::QuantityStepper => stories::quantity_stepper::show(
+                                ui,
+                                &mut self.quantity_stepper_state,
+                            ),
                             Story::MintCheckout => {
                                 stories::mint_checkout::show(ui, &mut self.mint_checkout_state)
                             }

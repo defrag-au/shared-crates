@@ -479,7 +479,16 @@ mod tests {
     #[test]
     fn put_at_writes_to_visible_position() {
         let mut g = fresh(10, 5);
-        g.put_at(2, 3, Cell { ch: '@', fg: PHOSPHOR, bg: super::TRANSPARENT, attrs: CellAttrs::PLAIN });
+        g.put_at(
+            2,
+            3,
+            Cell {
+                ch: '@',
+                fg: PHOSPHOR,
+                bg: super::TRANSPARENT,
+                attrs: CellAttrs::PLAIN,
+            },
+        );
         let rows = collect_chars(&g);
         // Buffer was 1 line; put_at padded to 5; visible row 2 is buffer row 2.
         assert_eq!(rows.len(), 5);
@@ -490,7 +499,16 @@ mod tests {
     fn put_at_pads_buffer_to_rows() {
         let mut g = fresh(10, 5);
         // Before: 1 line. put_at(4, 0) should pad to 5 lines.
-        g.put_at(4, 0, Cell { ch: 'x', fg: PHOSPHOR, bg: super::TRANSPARENT, attrs: CellAttrs::PLAIN });
+        g.put_at(
+            4,
+            0,
+            Cell {
+                ch: 'x',
+                fg: PHOSPHOR,
+                bg: super::TRANSPARENT,
+                attrs: CellAttrs::PLAIN,
+            },
+        );
         assert_eq!(g.lines.len(), 5);
         let rows = collect_chars(&g);
         assert_eq!(rows[4], "x");
@@ -516,7 +534,16 @@ mod tests {
             g.newline();
         }
         g.scroll_up(2);
-        g.put_at(4, 0, Cell { ch: '!', fg: PHOSPHOR, bg: super::TRANSPARENT, attrs: CellAttrs::PLAIN });
+        g.put_at(
+            4,
+            0,
+            Cell {
+                ch: '!',
+                fg: PHOSPHOR,
+                bg: super::TRANSPARENT,
+                attrs: CellAttrs::PLAIN,
+            },
+        );
         g.scroll_to_bottom();
         let rows = collect_chars(&g);
         // Bottom-aligned viewport: row 4 is the latest line (post-newline blank).
