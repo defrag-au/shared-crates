@@ -21,6 +21,11 @@ use crate::selection;
 ///
 /// Selects a single UTxO (preferring pure ADA), constructs a two-output TX
 /// (recipient + change), and converges the fee.
+#[deprecated(
+    note = "use cardano_tx::plan::TxPlan — the hardened v2 path (witness-aware fees, \
+            validity bounds, duplicate-input guard, automatic asset value-balance). \
+            Recipe: .select_from(pool, SmallestSufficient).pay_to(addr, amount).build(). See CARDANO_TX_BUILDER_V2.md."
+)]
 pub fn build_send_lovelace(
     deps: &TxDeps,
     to_addr: &Address,
@@ -82,6 +87,11 @@ pub fn build_send_lovelace(
 ///
 /// Selects all UTxOs with extractable ADA, sends max ADA to recipient,
 /// and creates change outputs for UTxOs with native assets (min ADA + assets back to self).
+#[deprecated(
+    note = "use cardano_tx::plan::TxPlan — the hardened v2 path (witness-aware fees, \
+            validity bounds, duplicate-input guard, automatic asset value-balance). \
+            Recipe: .must_spend(all).sweep_to(addr).rehome_assets().build(). See CARDANO_TX_BUILDER_V2.md."
+)]
 pub fn build_send_max(deps: &TxDeps, to_addr: &Address) -> Result<UnsignedTx, TxBuildError> {
     let selected_utxos = selection::select_all_utxos_for_max(&deps.utxos, &deps.params)?;
 
@@ -124,8 +134,8 @@ pub fn build_send_max(deps: &TxDeps, to_addr: &Address) -> Result<UnsignedTx, Tx
         .collect();
 
     // Rough fee includes per-input overhead
-    let rough_fee =
-        selection::estimate_simple_fee(&deps.params) + (selected_cloned.len() as u64 * 50_000);
+    let rough_fee = selection::estimate_simple_fee(&deps.params)
+        + (selected_cloned.len() as u64 * selection::PER_INPUT_FEE_HEADROOM);
 
     converge_fee(
         |fee| {
@@ -163,6 +173,11 @@ pub fn build_send_max(deps: &TxDeps, to_addr: &Address) -> Result<UnsignedTx, Tx
 ///
 /// Finds UTxOs containing the requested assets, selects additional UTxOs if needed
 /// for fees, and builds recipient + change outputs.
+#[deprecated(
+    note = "use cardano_tx::plan::TxPlan — the hardened v2 path (witness-aware fees, \
+            validity bounds, duplicate-input guard, automatic asset value-balance). \
+            Recipe: .select_from(pool, SmallestSufficient).send_assets_to(addr, assets).build(). See CARDANO_TX_BUILDER_V2.md."
+)]
 pub fn build_send_assets(
     deps: &TxDeps,
     to_addr: &Address,
@@ -201,8 +216,8 @@ pub fn build_send_assets(
     );
 
     // 7. Rough fee estimate
-    let rough_fee =
-        selection::estimate_simple_fee(&deps.params) + (input_utxos.len() as u64 * 50_000);
+    let rough_fee = selection::estimate_simple_fee(&deps.params)
+        + (input_utxos.len() as u64 * selection::PER_INPUT_FEE_HEADROOM);
 
     // 8. Check if we need additional UTxOs for fees
     let total_required = min_ada_for_assets
@@ -243,9 +258,19 @@ pub fn build_send_assets(
             let refs: Vec<&UtxoApi> = final_utxos.iter().collect();
             let mut tx = add_utxo_inputs(StagingTransaction::new(), &refs)?;
 
-            // Calculate change lovelace
-            let remaining = input_lovelace - min_ada_for_assets - fee;
-            let change = remaining.max(min_ada_for_change);
+            // Change lovelace — checked: a converged fee above the rough
+            // estimate must surface as InsufficientFunds, not wrap; and change
+            // below the asset-change minimum cannot be conjured by forcing it
+            // (that would emit an output the inputs don't fund →
+            // ValueNotConservedUTxO after the build work).
+            let change = input_lovelace
+                .checked_sub(min_ada_for_assets)
+                .and_then(|v| v.checked_sub(fee))
+                .filter(|v| *v >= min_ada_for_change)
+                .ok_or(TxBuildError::InsufficientFunds {
+                    needed: min_ada_for_assets + fee + min_ada_for_change,
+                    available: input_lovelace,
+                })?;
 
             let mut co = final_change_output.clone();
             co.lovelace = change;
@@ -267,6 +292,11 @@ pub fn build_send_assets(
 ///
 /// Packs all native assets from consumed inputs into one output with minimum ADA.
 /// Remaining pure ADA goes into a second output. Both outputs go back to self.
+#[deprecated(
+    note = "use cardano_tx::plan::TxPlan — the hardened v2 path (witness-aware fees, \
+            validity bounds, duplicate-input guard, automatic asset value-balance). \
+            Recipe: .must_spend(largest_n).sweep_to(self_addr).rehome_assets().build(). See CARDANO_TX_BUILDER_V2.md."
+)]
 pub fn build_consolidate(deps: &TxDeps, max_inputs: u32) -> Result<UnsignedTx, TxBuildError> {
     if deps.utxos.len() <= 1 {
         return Err(TxBuildError::BuildFailed(
@@ -303,7 +333,8 @@ pub fn build_consolidate(deps: &TxDeps, max_inputs: u32) -> Result<UnsignedTx, T
     let from_address = deps.from_address.clone();
     let network_id = deps.network_id;
 
-    let rough_fee = selection::estimate_simple_fee(&deps.params) + (selected.len() as u64 * 50_000);
+    let rough_fee = selection::estimate_simple_fee(&deps.params)
+        + (selected.len() as u64 * selection::PER_INPUT_FEE_HEADROOM);
 
     converge_fee(
         |fee| {
@@ -378,6 +409,11 @@ pub fn build_consolidate(deps: &TxDeps, max_inputs: u32) -> Result<UnsignedTx, T
 /// reference (CIP-68) or arbitrary native assets the operator put
 /// there; refuel must not consume either. The filter is conservative:
 /// it's better to fail loudly than to accidentally burn an asset.
+#[deprecated(
+    note = "use cardano_tx::plan::TxPlan — the hardened v2 path (witness-aware fees, \
+            validity bounds, duplicate-input guard, automatic asset value-balance). \
+            Recipe: .select_from(pool, LargestFirst).pay_many(n x (self_addr, slot_size)).build(). See CARDANO_TX_BUILDER_V2.md."
+)]
 pub fn build_fan_out(
     deps: &TxDeps,
     slot_size: u64,
@@ -423,7 +459,8 @@ pub fn build_fan_out(
     let mut selected: Vec<&UtxoApi> = Vec::new();
     let mut input_lovelace: u64 = 0;
     for u in &spendable {
-        let projected_fee = base_fee + (selected.len() as u64 + 1) * 50_000;
+        let projected_fee =
+            base_fee + (selected.len() as u64 + 1) * selection::PER_INPUT_FEE_HEADROOM;
         let needed = total_outputs_lovelace
             .saturating_add(projected_fee)
             .saturating_add(min_change_cushion);
@@ -433,7 +470,7 @@ pub fn build_fan_out(
             break;
         }
     }
-    let final_fee_estimate = base_fee + (selected.len() as u64 * 50_000);
+    let final_fee_estimate = base_fee + (selected.len() as u64 * selection::PER_INPUT_FEE_HEADROOM);
     let needed_lovelace = total_outputs_lovelace
         .saturating_add(final_fee_estimate)
         .saturating_add(min_change_cushion);
@@ -510,6 +547,11 @@ pub fn build_fan_out(
 /// two-round fee convergence around the change output. The
 /// `min_change_cushion` guarantees any emitted change clears the pure-ADA
 /// minimum.
+#[deprecated(
+    note = "use cardano_tx::plan::TxPlan — the hardened v2 path (witness-aware fees, \
+            validity bounds, duplicate-input guard, automatic asset value-balance). \
+            Recipe: .select_from(pool, SmallestSufficient).pay_many(outs).metadata(md).build(). See CARDANO_TX_BUILDER_V2.md."
+)]
 pub fn build_send_many(
     deps: &TxDeps,
     outputs: &[(Address, u64)],
@@ -523,7 +565,7 @@ pub fn build_send_many(
 
     // Each output must clear the pure-ADA min UTxO or the ledger rejects
     // after the fee is paid.
-    let min_pure_utxo = 228 * deps.params.coins_per_utxo_byte;
+    let min_pure_utxo = deps.params.min_pure_utxo();
     for (i, (_addr, amount)) in outputs.iter().enumerate() {
         if *amount < min_pure_utxo {
             return Err(TxBuildError::BuildFailed(format!(
@@ -564,7 +606,8 @@ pub fn build_send_many(
     let mut selected: Vec<&UtxoApi> = Vec::new();
     let mut input_lovelace: u64 = 0;
     for u in &spendable {
-        let projected_fee = base_fee + (selected.len() as u64 + 1) * 50_000;
+        let projected_fee =
+            base_fee + (selected.len() as u64 + 1) * selection::PER_INPUT_FEE_HEADROOM;
         let needed = total_outputs_lovelace
             .saturating_add(projected_fee)
             .saturating_add(min_change_cushion);
@@ -574,7 +617,7 @@ pub fn build_send_many(
             break;
         }
     }
-    let final_fee_estimate = base_fee + (selected.len() as u64 * 50_000);
+    let final_fee_estimate = base_fee + (selected.len() as u64 * selection::PER_INPUT_FEE_HEADROOM);
     let needed_lovelace = total_outputs_lovelace
         .saturating_add(final_fee_estimate)
         .saturating_add(min_change_cushion);
@@ -636,9 +679,9 @@ pub fn build_send_many(
 ///
 /// No change cushion is reserved: when the leftover after parcels + fee is below
 /// the min-UTxO floor (the self-funding case — the caller carved the payment into
-/// parcels holding back only the fee), it's **folded into the last parcel** so no
-/// standalone change UTxO is needed and the payment funds its own split with zero
-/// operator float. A large leftover (an intermediate split, whose change funds the
+/// parcels holding back only the fee), it's **folded into the fee** (sub-min-UTxO
+/// amounts only, so the give-up is bounded) and no change UTxO is emitted — the
+/// payment funds its own split with zero operator float. A large leftover (an intermediate split, whose change funds the
 /// next batch) is emitted as a normal change output. Returns that change's
 /// tx-relative index + value ([`ChangeOutput`]) so the next split chains off it
 /// deterministically (the tx hash is fixed the moment it's signed); `lovelace` is
@@ -658,7 +701,7 @@ pub fn build_parcel_split(
             "build_parcel_split: parcel_count must be > 0".to_string(),
         ));
     }
-    let min_pure_utxo = 228 * deps.params.coins_per_utxo_byte;
+    let min_pure_utxo = deps.params.min_pure_utxo();
     if parcel_size < min_pure_utxo {
         return Err(TxBuildError::BuildFailed(format!(
             "build_parcel_split: parcel_size {parcel_size} < min_pure_utxo {min_pure_utxo}"
@@ -867,6 +910,7 @@ pub(crate) fn to_maestro_params(
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // the deprecated recipes keep their tests until removal
 mod tests {
     use super::*;
     use cardano_assets::{AssetQuantity, UtxoApi};

@@ -16,11 +16,20 @@ pub trait Selectable {
     fn tx_hash(&self) -> &str;
     fn output_index(&self) -> u32;
     fn lovelace(&self) -> u64;
-    /// Carries native assets — skipped by pure-ADA cover (v1) and never funds a
+    /// Carries native assets — skipped by pure-ADA cover and never funds a
     /// lovelace target on its own.
     fn has_assets(&self) -> bool;
     /// Carries a CIP-33 script reference — never auto-selected from the pool.
     fn has_script_ref(&self) -> bool;
+    /// The native assets this UTxO carries (empty for pure-ADA). Defaults empty
+    /// so pure-ADA implementors need no change — but an implementor whose
+    /// `has_assets()` is true MUST override this, or the asset-aware `TxPlan`
+    /// paths reject the input (an asset-bearing input without asset detail
+    /// cannot be value-balanced; dropping its assets would be
+    /// `ValueNotConservedUTxO` at submit).
+    fn assets(&self) -> Vec<cardano_assets::AssetQuantity> {
+        Vec::new()
+    }
 }
 
 impl Selectable for cardano_assets::UtxoApi {
@@ -38,6 +47,9 @@ impl Selectable for cardano_assets::UtxoApi {
     }
     fn has_script_ref(&self) -> bool {
         self.has_tag(cardano_assets::UtxoTag::HasScriptRef)
+    }
+    fn assets(&self) -> Vec<cardano_assets::AssetQuantity> {
+        self.assets.clone()
     }
 }
 
@@ -76,6 +88,10 @@ pub enum SelectError {
     /// `must_spend` + the (filtered) pool can't reach `target`. Carries the figures
     /// so the caller can fall back (e.g. to a chain fetch) or defer.
     Insufficient { target: u64, available: u64 },
+    /// The same UTxO ref appears more than once in `must_spend` — a caller bug
+    /// (e.g. one payment listed twice). Without this guard it would surface only
+    /// as a duplicate-input rejection at build/ledger time, after fee sizing.
+    DuplicateMustSpend { tx_hash: String, output_index: u32 },
 }
 
 impl std::fmt::Display for SelectError {
@@ -84,6 +100,14 @@ impl std::fmt::Display for SelectError {
             SelectError::Insufficient { target, available } => write!(
                 f,
                 "coin selection insufficient: need {target} lovelace, pool covers {available}"
+            ),
+            SelectError::DuplicateMustSpend {
+                tx_hash,
+                output_index,
+            } => write!(
+                f,
+                "duplicate must-spend input {tx_hash}#{output_index} — caller passed the same \
+                 UTxO twice"
             ),
         }
     }
@@ -99,6 +123,19 @@ pub fn select<'a, U: Selectable>(
     sel: &Selection<'a, U>,
     target_lovelace: u64,
 ) -> Result<Vec<&'a U>, SelectError> {
+    // Duplicate-input guard: the ledger rejects a tx that spends the same ref
+    // twice, but only AFTER the build work — catch the caller bug here.
+    {
+        let mut seen: HashSet<(&str, u32)> = HashSet::with_capacity(sel.must_spend.len());
+        for u in &sel.must_spend {
+            if !seen.insert((u.tx_hash(), u.output_index())) {
+                return Err(SelectError::DuplicateMustSpend {
+                    tx_hash: u.tx_hash().to_string(),
+                    output_index: u.output_index(),
+                });
+            }
+        }
+    }
     let mut chosen: Vec<&'a U> = sel.must_spend.clone();
     let mut sum: u64 = chosen.iter().map(|u| u.lovelace()).sum();
 

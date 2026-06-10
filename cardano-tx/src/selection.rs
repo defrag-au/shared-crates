@@ -292,6 +292,13 @@ pub fn estimate_simple_fee(params: &TxBuildParams) -> u64 {
     params.min_fee_coefficient * tx_size_estimate + params.min_fee_constant
 }
 
+/// Per-input lovelace headroom added to a SELECTION target for each input a
+/// build might consume. Deliberately generous (~25x the real ~43-byte input
+/// cost): it only inflates the target the selector covers — the converged fee
+/// is exact, and the surplus returns as change. One named constant; the
+/// builders used to hand-copy a magic `50_000` into every selection loop.
+pub const PER_INPUT_FEE_HEADROOM: u64 = 50_000;
+
 #[cfg(test)]
 mod tests {
     use super::*;

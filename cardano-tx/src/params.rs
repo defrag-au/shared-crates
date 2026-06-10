@@ -38,6 +38,22 @@ pub struct TxBuildParams {
     pub ref_script_size: u64,
 }
 
+impl TxBuildParams {
+    /// The pure-ADA minimum UTxO value under these params — the floor every
+    /// asset-less output must clear or the ledger rejects the tx
+    /// (`BabbageOutputTooSmallUTxO`) after the build work is done.
+    ///
+    /// `228` is the serialized size (bytes) of a worst-case pure-ADA output
+    /// (Shelley address + max-width coin) plus the ledger's fixed
+    /// 160-byte overhead, per the Babbage `coinsPerUTxOByte` formula. ONE
+    /// definition — the builders used to hand-copy `228 * coins_per_utxo_byte`
+    /// at every call site, where a single drifted copy meant sub-minimum
+    /// outputs rejected at submit.
+    pub fn min_pure_utxo(&self) -> u64 {
+        228 * self.coins_per_utxo_byte
+    }
+}
+
 impl From<&maestro::ProtocolParameters> for TxBuildParams {
     fn from(pp: &maestro::ProtocolParameters) -> Self {
         let (price_mem, price_step) = pp

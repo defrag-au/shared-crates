@@ -149,7 +149,7 @@ pub fn build_cip25_mint(
     let min_change_utxo = if has_remaining_assets {
         min_ada
     } else {
-        228 * deps.params.coins_per_utxo_byte
+        deps.params.min_pure_utxo()
     };
 
     let from_address = deps.from_address.clone();
@@ -427,7 +427,7 @@ pub fn build_cip25_mint_multi_with_change_and_refunds(
 
     // Pure-ADA min UTxO under current params. Sanity-check each extra + refund rather
     // than letting the ledger reject after a fee has been paid.
-    let min_pure_change = 228 * deps.params.coins_per_utxo_byte;
+    let min_pure_change = deps.params.min_pure_utxo();
     for (i, &amount) in extras.iter().enumerate() {
         if amount < min_pure_change {
             return Err(TxBuildError::BuildFailed(format!(
