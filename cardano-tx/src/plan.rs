@@ -1014,7 +1014,7 @@ mod tests {
 
     #[test]
     fn fold_change_rejects_asset_outputs() {
-        let world = vec![ada("aa", 0, 30_000_000)];
+        let world = [ada("aa", 0, 30_000_000)];
         let id = AssetId::new_unchecked(POLICY_A.repeat(28), NAME_1.into());
         let err = TxPlan::new(addr(), 0, params())
             .must_spend(world.iter())
