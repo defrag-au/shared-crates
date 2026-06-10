@@ -97,18 +97,14 @@ impl PolicyInfoClient {
     /// Batch-resolve subjects. Transparently chunks at `MAX_BATCH_SIZE`
     /// and merges the responses. Missing subjects are simply absent from
     /// the returned map (matching server behaviour).
-    pub async fn resolve_batch(
-        &self,
-        subjects: &[String],
-    ) -> Result<BatchPolicyResponse, Error> {
+    pub async fn resolve_batch(&self, subjects: &[String]) -> Result<BatchPolicyResponse, Error> {
         let mut merged: BatchPolicyResponse = BatchPolicyResponse::new();
         for chunk in subjects.chunks(MAX_BATCH_SIZE) {
             let body = BatchPolicyRequest {
                 subjects: chunk.to_vec(),
             };
             let url = format!("{}/api/policies", self.base_url);
-            let chunk_resp: BatchPolicyResponse =
-                self.post_json(&url, &body).await?;
+            let chunk_resp: BatchPolicyResponse = self.post_json(&url, &body).await?;
             merged.extend(chunk_resp);
         }
         Ok(merged)

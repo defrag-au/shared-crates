@@ -317,7 +317,10 @@ impl TxBuilder {
         // ── Coin selection ───────────────────────────────────────────────
         let output_lovelace: u64 = self.outputs.iter().map(|o| o.lovelace).sum();
         let estimated_fee = estimate_simple_fee(&self.deps.params);
-        let min_change_lovelace = 188 * self.deps.params.coins_per_utxo_byte;
+        // The REAL pure-ADA floor (shared helper). This was `188 *` — below the
+        // ledger's 228-based minimum, so a change output in the ~0.81–0.98 ADA
+        // band passed the builder but was rejected `BabbageOutputTooSmallUTxO`.
+        let min_change_lovelace = self.deps.params.min_pure_utxo();
         let required = output_lovelace + estimated_fee + min_change_lovelace;
 
         let mut inputs = self.inputs;
@@ -424,19 +427,41 @@ struct PreparedTx {
 
 impl PreparedTx {
     /// Run two-round fee convergence and produce the final unsigned TX.
+    ///
+    /// Change handling is the VALUE-BALANCE guarantee: the leftover either
+    /// clears the pure-ADA floor and becomes a change output, or it is FOLDED
+    /// INTO THE FEE — never silently dropped (a dropped leftover is
+    /// `ValueNotConservedUTxO` at the node, after the build + signing work).
+    /// And the leftover is computed CHECKED: a converged fee above the rough
+    /// selection estimate surfaces as `InsufficientFunds`, not as an
+    /// unbalanced tx. The returned [`UnsignedTx::fee`] is the EFFECTIVE fee
+    /// (the staged value, including any folded leftover).
     fn converge(&self) -> Result<UnsignedTx, TxBuildError> {
         let total_input = self.total_input;
         let output_lovelace = self.output_lovelace;
         let min_change_lovelace = self.min_change_lovelace;
 
-        super::converge_fee(
+        let mut unsigned = super::converge_fee(
             |fee| {
-                let change = total_input.saturating_sub(output_lovelace + fee);
+                let change = total_input
+                    .checked_sub(output_lovelace)
+                    .and_then(|v| v.checked_sub(fee))
+                    .ok_or(TxBuildError::InsufficientFunds {
+                        needed: output_lovelace + fee,
+                        available: total_input,
+                    })?;
 
                 let mut all_outputs = self.outputs.clone();
-                if change >= min_change_lovelace {
+                let effective_fee = if change >= min_change_lovelace {
                     all_outputs.push(create_ada_output(self.change_address.clone(), change));
-                }
+                    fee
+                } else {
+                    // Sub-floor leftover can't form a valid change output —
+                    // absorb it into the fee so the tx stays balanced. Bounded
+                    // by the floor (~1 ADA); callers avoid the band by adding
+                    // input headroom.
+                    fee + change
+                };
 
                 assemble_tx(
                     &self.inputs,
@@ -449,12 +474,18 @@ impl PreparedTx {
                     &self.collateral_input,
                     self.max_script_kind,
                     self.network_id,
-                    fee,
+                    effective_fee,
                 )
             },
             300_000,
             &self.params,
-        )
+        )?;
+        // Report the staged (effective) fee — converge_fee returns its converged
+        // base, which under-reports when a leftover was folded in above.
+        if let Some(staged) = unsigned.staging.fee {
+            unsigned.fee = staged;
+        }
+        Ok(unsigned)
     }
 }
 
@@ -652,6 +683,97 @@ mod tests {
         let unsigned = result.unwrap();
         assert!(unsigned.fee > 0);
         assert!(unsigned.fee < 1_000_000);
+    }
+
+    /// Σ inputs must equal Σ outputs + staged fee — the balance invariant.
+    fn assert_balanced(unsigned: &UnsignedTx, input_lovelace: u64) {
+        let out: u64 = unsigned
+            .staging
+            .outputs
+            .iter()
+            .flatten()
+            .map(|o| o.lovelace)
+            .sum();
+        let fee = unsigned.staging.fee.expect("fee staged");
+        assert_eq!(
+            input_lovelace,
+            out + fee,
+            "unbalanced: in={input_lovelace} out={out} fee={fee}"
+        );
+        assert_eq!(unsigned.fee, fee, "UnsignedTx.fee must be the staged fee");
+    }
+
+    /// A leftover below the pure-ADA floor must FOLD INTO THE FEE, not vanish
+    /// (the old behavior dropped it → ValueNotConservedUTxO at the node).
+    #[test]
+    fn sub_floor_leftover_folds_into_fee() {
+        let deps = test_deps();
+        let to_addr = deps.from_address.clone();
+        let input = deps.utxos[0].clone(); // 50 ADA
+        let floor = deps.params.min_pure_utxo();
+
+        // Pay out so the leftover after a ~0.17 ADA fee sits WELL below the
+        // floor (~0.4 ADA leftover).
+        let pay = 50_000_000 - 600_000;
+        let unsigned = TxBuilder::new(deps)
+            .input(&input)
+            .unwrap()
+            .pay_to(&to_addr, pay)
+            .build()
+            .unwrap();
+        assert_balanced(&unsigned, 50_000_000);
+        // No change output (only the payment), the leftover rode the fee.
+        assert_eq!(unsigned.staging.outputs.iter().flatten().count(), 1);
+        assert!(unsigned.fee < floor + 600_000);
+    }
+
+    /// A leftover in the old trap band (above the bogus 188-based threshold,
+    /// below the real 228-based floor) must also fold — the old code emitted a
+    /// sub-minimum change output here (BabbageOutputTooSmallUTxO).
+    #[test]
+    fn old_trap_band_leftover_folds_not_emitted() {
+        let deps = test_deps();
+        let to_addr = deps.from_address.clone();
+        let input = deps.utxos[0].clone(); // 50 ADA
+        let floor = deps.params.min_pure_utxo(); // 228-based, ~983k
+        let bogus = 188 * deps.params.coins_per_utxo_byte; // ~810k
+        assert!(bogus < floor);
+
+        // Target a leftover-after-fee of ~900k — inside (bogus, floor).
+        let pay = 50_000_000 - 900_000 - 170_000;
+        let unsigned = TxBuilder::new(deps)
+            .input(&input)
+            .unwrap()
+            .pay_to(&to_addr, pay)
+            .build()
+            .unwrap();
+        assert_balanced(&unsigned, 50_000_000);
+        for o in unsigned.staging.outputs.iter().flatten() {
+            assert!(
+                o.lovelace == pay || o.lovelace >= floor,
+                "no output may sit below the pure-ADA floor: {}",
+                o.lovelace
+            );
+        }
+    }
+
+    /// A converged fee that exceeds the inputs must fail CLEANLY — the old
+    /// saturating math sent an unbalanced tx instead.
+    #[test]
+    fn insufficient_after_convergence_is_clean_error() {
+        let mut deps = test_deps();
+        deps.utxos[0].lovelace = 2_050_000; // barely above the payment
+        let to_addr = deps.from_address.clone();
+        let input = deps.utxos[0].clone();
+        let result = TxBuilder::new(deps)
+            .input(&input)
+            .unwrap()
+            .pay_to(&to_addr, 2_000_000)
+            .build();
+        assert!(
+            matches!(result, Err(TxBuildError::InsufficientFunds { .. })),
+            "expected InsufficientFunds, got {result:?}"
+        );
     }
 
     #[test]

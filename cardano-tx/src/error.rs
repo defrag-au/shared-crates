@@ -48,6 +48,44 @@ impl SubmissionResult {
     }
 }
 
+/// Extract the `(tx_hash, output_index)` inputs the ledger rejected as
+/// `BadInputsUTxO` — inputs the chain says aren't in the UTxO set (already spent
+/// / never existed). A consumer that keeps a local UTxO ledger uses these to mark
+/// the offending rows `spent`, so it stops re-selecting a stale UTxO (the
+/// self-heal for an over-counting ledger). Lenient parse of the node's
+/// CBOR-diagnostic error text — `… SafeHash "<64-hex>"} ) (TxIx {unTxIx = <n>} …`
+/// — tolerant of JSON-escaped quotes. Empty when the error isn't a `BadInputsUTxO`.
+pub fn extract_bad_input_refs(error: &str) -> Vec<(String, u32)> {
+    if !error.contains("BadInputsUTxO") {
+        return Vec::new();
+    }
+    let mut refs = Vec::new();
+    for (i, _) in error.match_indices("SafeHash") {
+        let after = &error[i + "SafeHash".len()..];
+        // First run of 64 hex chars after `SafeHash` (skips the ` "` / ` \"`).
+        let tx_hash: String = after
+            .chars()
+            .skip_while(|c| !c.is_ascii_hexdigit())
+            .take_while(|c| c.is_ascii_hexdigit())
+            .collect();
+        if tx_hash.len() != 64 {
+            continue;
+        }
+        // The matching `unTxIx = <n>` for THIS input (the first one after it).
+        if let Some(tix) = after.find("unTxIx") {
+            let digits: String = after[tix..]
+                .chars()
+                .skip_while(|c| !c.is_ascii_digit())
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+            if let Ok(ix) = digits.parse::<u32>() {
+                refs.push((tx_hash, ix));
+            }
+        }
+    }
+    refs
+}
+
 /// Errors from transaction building operations.
 #[derive(Debug, thiserror::Error)]
 pub enum TxBuildError {
@@ -135,6 +173,30 @@ mod tests {
             message: "BadInputsUTxO: input not found".to_string(),
         };
         assert!(result.is_permanent_rejection());
+    }
+
+    #[test]
+    fn test_extract_bad_input_refs() {
+        // The real shape from a Maestro submit rejection (JSON-escaped quotes).
+        let err = r#"["ConwayUtxowFailure (UtxoFailure (BadInputsUTxO (NonEmptySet (fromList [TxIn (TxId {unTxId = SafeHash \"385a530b03a9f05000e493053775c283634781279bd5763aa331f086b221a373\"}) (TxIx {unTxIx = 0})]))))"]"#;
+        let refs = extract_bad_input_refs(err);
+        assert_eq!(
+            refs,
+            vec![(
+                "385a530b03a9f05000e493053775c283634781279bd5763aa331f086b221a373".to_string(),
+                0
+            )]
+        );
+        // Two inputs, plain quotes, different indices.
+        let (h1, h2) = ("a".repeat(64), "b".repeat(64));
+        let two = format!(
+            "BadInputsUTxO fromList [TxIn (TxId {{unTxId = SafeHash \"{h1}\"}}) (TxIx {{unTxIx = 2}}), \
+             TxIn (TxId {{unTxId = SafeHash \"{h2}\"}}) (TxIx {{unTxIx = 7}})]"
+        );
+        let refs2 = extract_bad_input_refs(&two);
+        assert_eq!(refs2, vec![(h1, 2), (h2, 7)]);
+        // Not a BadInputs error → empty.
+        assert!(extract_bad_input_refs("FeeTooSmallUTxO ...").is_empty());
     }
 
     #[test]

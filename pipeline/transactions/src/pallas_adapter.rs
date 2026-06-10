@@ -91,10 +91,7 @@ impl std::error::Error for PallasAdapterError {}
 /// empty string (matches the upstream `RawTxData` shape, which has
 /// always been resilient to malformed addresses).
 pub fn tx_output_from_pallas(out: &MultiEraOutput<'_>) -> TxOutput {
-    let address = out
-        .address()
-        .map(|a| a.to_string())
-        .unwrap_or_default();
+    let address = out.address().map(|a| a.to_string()).unwrap_or_default();
     let amount_lovelace = out.value().coin();
     let assets = collect_assets(out);
     let datum = tx_datum_from_pallas_output(out);
@@ -349,11 +346,10 @@ mod tests {
             TxDatum::Bytes { hash, bytes } => {
                 assert_eq!(bytes, "80");
                 assert_eq!(hash.len(), 64); // 32-byte hash hex-encoded
-                // The Blake2b-256 of `[0x80]` is deterministic;
-                // this verifies we're hashing the bytes we got,
-                // not something derived.
-                let recomputed =
-                    pallas_crypto::hash::Hasher::<256>::hash(&[0x80]);
+                                            // The Blake2b-256 of `[0x80]` is deterministic;
+                                            // this verifies we're hashing the bytes we got,
+                                            // not something derived.
+                let recomputed = pallas_crypto::hash::Hasher::<256>::hash(&[0x80]);
                 assert_eq!(hash, hex::encode(recomputed));
             }
             other => panic!("expected Bytes, got {other:?}"),

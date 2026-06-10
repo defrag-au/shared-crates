@@ -47,6 +47,19 @@ pub struct OrderEventRow {
     pub at: i64,
 }
 
+/// One mint (fulfilment) tx for an order — the N side of 1→N, shown in the
+/// detail drawer. Surfaced because the `submitted` events that would carry the
+/// mint tx aren't emitted today; the mint txs live in the allocation ledger.
+#[derive(Clone, Debug)]
+pub struct FulfilmentRow {
+    /// Full mint tx hash — truncated for display, copied in full on click.
+    pub tx_hash: String,
+    /// Units minted in this tx.
+    pub minted: u32,
+    /// `submitted` / `confirmed` / `failed`.
+    pub status: String,
+}
+
 /// Order lifecycle status as a typed enum. The wire status set isn't frozen, so
 /// `Custom(String)` keeps it open — a legacy (`reserved` / `minting`) or future
 /// state still round-trips through [`OrderStatus::as_str`] and renders (as a
@@ -173,6 +186,9 @@ pub struct OrderRow {
     pub events: Option<Vec<OrderEventRow>>,
     /// Failure / refund note from the order detail, shown in the drawer.
     pub note: Option<String>,
+    /// The order's mint (fulfilment) txs — loaded with the detail, shown above
+    /// the events timeline. Empty until detail is fetched / minting starts.
+    pub fulfilments: Vec<FulfilmentRow>,
 }
 
 impl OrderRow {
@@ -198,6 +214,7 @@ impl OrderRow {
             detail_loading: false,
             events: None,
             note: None,
+            fulfilments: Vec::new(),
         }
     }
 }
@@ -673,12 +690,17 @@ fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
             // `ErrorNote` distils it to the human reason + a show-raw toggle.
             ErrorNote::new(note).show(ui);
         }
+        // The mint (fulfilment) txs — the operator's "what minted this order"
+        // answer, above the (often sparse) events timeline.
+        render_mints(ui, &o.fulfilments);
         if events.is_empty() {
-            ui.label(
-                RichText::new("no events recorded")
-                    .small()
-                    .color(Color32::from_gray(140)),
-            );
+            if o.fulfilments.is_empty() {
+                ui.label(
+                    RichText::new("no events recorded")
+                        .small()
+                        .color(Color32::from_gray(140)),
+                );
+            }
             return;
         }
         for e in events {
@@ -710,6 +732,49 @@ fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
             });
         }
     });
+}
+
+/// The order's mint (fulfilment) txs as a labelled block above the events
+/// timeline. Each tx: a status chip, its unit count, and a click-to-copy hash.
+fn render_mints(ui: &mut Ui, fulfilments: &[FulfilmentRow]) {
+    if fulfilments.is_empty() {
+        return;
+    }
+    ui.add_space(2.0);
+    ui.label(
+        RichText::new(format!("mints · {} tx", fulfilments.len()))
+            .small()
+            .strong()
+            .color(Color32::from_gray(170)),
+    );
+    for f in fulfilments {
+        ui.horizontal(|ui| {
+            let (variant, label) = mint_status_chip(&f.status);
+            Chip::new(label).variant(variant).show(ui);
+            ui.label(
+                RichText::new(format!("×{}", f.minted))
+                    .small()
+                    .color(Color32::from_gray(180)),
+            );
+            copy_label(
+                ui,
+                &f.tx_hash,
+                format!("tx {}", truncate_middle(&f.tx_hash, 8, 6)),
+                "mint tx",
+                Color32::from_gray(160),
+            );
+        });
+    }
+    ui.add_space(4.0);
+}
+
+/// Chip variant + label for a `mint_log` status.
+fn mint_status_chip(status: &str) -> (ChipVariant, &str) {
+    match status {
+        "confirmed" => (ChipVariant::Success, "confirmed"),
+        "failed" => (ChipVariant::Danger, "failed"),
+        _ => (ChipVariant::Info, "submitted"),
+    }
 }
 
 /// A monospace, click-to-copy label. Copies `full`, displays `display`.

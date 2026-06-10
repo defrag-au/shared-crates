@@ -12,6 +12,11 @@
 //! - [`connect`] — `enable()` (wallet popup)
 //! - [`reward_address`] — `getRewardAddresses()` (hex)
 //! - [`balance`] — `getBalance()` (hex-encoded CBOR Value)
+//! - [`utxos`] — `getUtxos()` (JSON array of hex CBOR UTxOs; see
+//!   [`parse_utxos`])
+//! - [`change_address`] — `getChangeAddress()` (hex)
+//! - [`sign_tx`] — CIP-30 `signTx` (unsigned tx hex → witness-set hex)
+//! - [`submit_tx`] — CIP-30 `submitTx` (signed tx hex → tx hash)
 //! - [`sign_data`] — CIP-30 `signData` (hex payload → COSE_Sign1 hex)
 //! - [`disconnect`] — drops the cached JS-side api reference
 //! - [`poll`] / [`PollResult`] — call each frame on the [`ReqId`] returned
@@ -68,6 +73,15 @@ pub fn hex_to_bech32(hex: &str) -> String {
         .unwrap_or_else(|_| hex.to_string())
 }
 
+/// Parse the resolved `data` payload of a [`bridge::utxos`] poll — a JSON
+/// array of hex-encoded CBOR `TransactionUnspentOutput` strings. Returns
+/// an empty vec on a malformed payload (the wallet returned no UTxOs, or
+/// the shape drifted), so callers can treat "no spendable inputs" and
+/// "couldn't parse" uniformly.
+pub fn parse_utxos(data: &str) -> Vec<String> {
+    serde_json::from_str(data).unwrap_or_default()
+}
+
 /// `true` only on WASM builds where the wallet bridge can actually
 /// reach `window.cardano`. Native consumers use this to short-circuit
 /// flows that would otherwise step through phantom polling.
@@ -75,11 +89,16 @@ pub const AVAILABLE: bool = cfg!(target_arch = "wasm32");
 
 /// Plugin version handshake. miniquad's `gl.js` looks for an export
 /// named `<plugin>_crate_version` and compares it to the plugin's JS
-/// `version` field. `wallet.js` declares `version: 1`, so we return 1.
+/// `version` field. `wallet.js` declares `version: 2`, so we return 2.
+///
+/// Bumped 1 → 2 when the tx-signing surface (`utxos` / `change_address`
+/// / `sign_tx` / `submit_tx`) was added: a consumer carrying a stale
+/// `wallet.js` then fails the handshake loudly rather than link-erroring
+/// on the missing imports. Re-stamp [`PLUGIN_JS`] (build.rs) to clear it.
 ///
 /// Only emitted on wasm32 — on native the symbol is meaningless.
 #[cfg(target_arch = "wasm32")]
 #[no_mangle]
 extern "C" fn wallet_crate_version() -> u32 {
-    1
+    2
 }

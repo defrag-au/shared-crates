@@ -77,7 +77,9 @@ pub mod grouped_section;
 pub mod offer_tile;
 
 // Mint configuration
+pub mod mint_checkout;
 pub mod phase_card;
+pub mod quantity_stepper;
 
 // Wallet
 pub mod fungibles_row;

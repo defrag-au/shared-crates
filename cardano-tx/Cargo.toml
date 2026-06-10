@@ -28,6 +28,9 @@ serde_json = { workspace = true }
 hex = "0.4"
 thiserror = { workspace = true }
 tracing = { workspace = true }
+# Object-safe async trait (`dyn SubmitProvider`) so an ordered fallback list can
+# hold heterogeneous providers (mitos + maestro). `?Send` form is wasm-safe.
+async-trait = "0.1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }

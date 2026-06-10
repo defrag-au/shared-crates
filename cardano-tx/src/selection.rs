@@ -96,7 +96,7 @@ pub fn select_utxo_for_amount<'a>(
     // asset case may need a larger min-ADA at TX-build time but the
     // selection threshold itself stays consistent so callers see stable
     // behaviour.
-    let min_change_utxo = 228 * config.params.coins_per_utxo_byte;
+    let min_change_utxo = config.params.min_pure_utxo();
     let required = amount + estimated_fee + min_change_utxo;
     let has_sufficient = |u: &&UtxoApi| u.lovelace >= required;
 
@@ -225,7 +225,7 @@ pub fn select_utxos_for_amount(
     estimated_fee: u64,
     params: &TxBuildParams,
 ) -> Result<Vec<UtxoApi>, TxBuildError> {
-    let min_change_utxo = 228 * params.coins_per_utxo_byte;
+    let min_change_utxo = params.min_pure_utxo();
     let required = amount + estimated_fee + min_change_utxo;
 
     // First try: single UTxO (cheapest TX)
@@ -291,6 +291,13 @@ pub fn estimate_simple_fee(params: &TxBuildParams) -> u64 {
     let tx_size_estimate = 300u64;
     params.min_fee_coefficient * tx_size_estimate + params.min_fee_constant
 }
+
+/// Per-input lovelace headroom added to a SELECTION target for each input a
+/// build might consume. Deliberately generous (~25x the real ~43-byte input
+/// cost): it only inflates the target the selector covers — the converged fee
+/// is exact, and the surplus returns as change. One named constant; the
+/// builders used to hand-copy a magic `50_000` into every selection loop.
+pub const PER_INPUT_FEE_HEADROOM: u64 = 50_000;
 
 #[cfg(test)]
 mod tests {

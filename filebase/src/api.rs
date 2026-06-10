@@ -91,10 +91,7 @@ impl FilebaseApi {
     ///
     /// The response's `count` is the full filtered total regardless of how
     /// small `limit` is, so a `limit` of 1 is enough for a pure count query.
-    pub async fn list_pins(
-        &self,
-        query: &PinListQuery,
-    ) -> Result<PinListResponse, FilebaseError> {
+    pub async fn list_pins(&self, query: &PinListQuery) -> Result<PinListResponse, FilebaseError> {
         let mut url = format!("{BASE_URL}/pins?limit={}", query.limit);
         if let Some(s) = &query.status {
             url.push_str("&status=");

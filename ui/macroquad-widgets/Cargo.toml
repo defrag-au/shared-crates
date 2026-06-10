@@ -1,0 +1,14 @@
+[package]
+name = "macroquad-widgets"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# VM-driven, immediate-mode widgets for macroquad buyer-facing surfaces (the
+# txmints mint app et al). Pure rendering — widgets take a `Painter` (font +
+# this frame's tap) and a plain VM, and return actions; no async, no I/O, no
+# backend types. Mirrors the egui-widgets split (VM in, actions out) so the
+# same projection pattern works on both renderers. Compiles native + wasm32.
+
+[dependencies]
+macroquad = "0.4"

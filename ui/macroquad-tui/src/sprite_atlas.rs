@@ -255,7 +255,8 @@ mod tests {
                 "b/1": [3, 7, 5]
             }
         }"#;
-        let atlas = ShardedAtlas::from_index_json(json, |n| format!("shard-{n}.jpg"), FilterMode::Linear);
+        let atlas =
+            ShardedAtlas::from_index_json(json, |n| format!("shard-{n}.jpg"), FilterMode::Linear);
         assert_eq!(atlas.shard_count(), 4);
         assert!(atlas.contains("a/1"));
         assert!(atlas.contains("b/1"));

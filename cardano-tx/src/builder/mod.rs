@@ -59,6 +59,67 @@ pub struct SignedTx {
     pub tx_cbor_hex: String,
 }
 
+/// A UTxO reference (`tx_hash#index`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UtxoRef {
+    pub tx_hash: String,
+    pub output_index: u32,
+}
+
+/// One output a built tx creates — address + value + whether it carries native
+/// assets, with its position (output index).
+#[derive(Debug, Clone)]
+pub struct TxOutputRef {
+    pub output_index: u32,
+    /// Bech32 destination. A caller maintaining a wallet ledger keeps only the
+    /// outputs whose address is its own wallet (change / parcels / self-sends).
+    pub address: String,
+    pub lovelace: u64,
+    pub has_assets: bool,
+}
+
+/// The ledger-relevant **effects** of a built transaction: exactly what it spends
+/// (`spent`) and exactly what it creates (`outputs`). Because a built tx is
+/// deterministic, these are exact and known BEFORE submit — so a caller can
+/// maintain a local wallet-UTxO ledger with no chain round-trip (mark `spent`
+/// consumed, insert the self-`outputs` as new UTxOs). See
+/// `cnft.dev-workers/docs/design/WALLET_UTXO_LEDGER.md`.
+#[derive(Debug, Clone)]
+pub struct TxEffects {
+    pub tx_hash: String,
+    pub spent: Vec<UtxoRef>,
+    pub outputs: Vec<TxOutputRef>,
+}
+
+/// Read the spent-input refs off a staged tx (clean `tx_hash#index`).
+fn staging_spent(staging: &StagingTransaction) -> Vec<UtxoRef> {
+    staging
+        .inputs
+        .iter()
+        .flatten()
+        .map(|i| UtxoRef {
+            tx_hash: hex::encode(i.tx_hash.0),
+            output_index: i.txo_index as u32,
+        })
+        .collect()
+}
+
+/// Read the created outputs off a staged tx (address + value + asset flag, indexed).
+fn staging_outputs(staging: &StagingTransaction) -> Vec<TxOutputRef> {
+    staging
+        .outputs
+        .iter()
+        .flatten()
+        .enumerate()
+        .map(|(ix, o)| TxOutputRef {
+            output_index: ix as u32,
+            address: o.address.0.to_bech32().unwrap_or_default(),
+            lovelace: o.lovelace,
+            has_assets: o.assets.is_some(),
+        })
+        .collect()
+}
+
 impl UnsignedTx {
     /// Build the Conway-era tx + sign it with an Ed25519 key, returning
     /// the hex tx hash and CBOR. The staging tx already carries `fee` +
@@ -83,6 +144,66 @@ impl UnsignedTx {
             tx_hash: hex::encode(signed.tx_hash.0),
             tx_cbor_hex: hex::encode(&signed.tx_bytes),
         })
+    }
+
+    /// Build + sign with MULTIPLE keys — for a tx whose inputs span more than one of
+    /// the engine's addresses (e.g. a Mode-B refund spending un-split payments at the
+    /// deposit address `D` AND orphaned parcels at the operational address `O`). One
+    /// vkey witness per key; pass only the keys actually required. See
+    /// `cnft.dev-workers/docs/design/WALLET_UTXO_LEDGER.md`.
+    pub fn build_and_sign_multi(
+        self,
+        secret_keys: &[&pallas_crypto::key::ed25519::SecretKey],
+    ) -> Result<SignedTx, TxBuildError> {
+        use pallas_txbuilder::BuildConway;
+        let built = self
+            .staging
+            .build_conway_raw()
+            .map_err(|e| TxBuildError::BuildFailed(e.to_string()))?;
+        let signed = crate::sign::sign_transaction_multi(built, secret_keys)?;
+        Ok(SignedTx {
+            tx_hash: hex::encode(signed.tx_hash.0),
+            tx_cbor_hex: hex::encode(&signed.tx_bytes),
+        })
+    }
+
+    /// Build + sign AND return the tx's [`TxEffects`] (spent inputs + created
+    /// outputs) for a caller maintaining a local wallet-UTxO ledger. The spent /
+    /// output sets are read off the staged tx before assembly, so they exactly
+    /// match what lands on chain. Use this on every flow whose inputs are selected
+    /// internally (send / refund / dust / split); the mint builder surfaces its own
+    /// `ChangeUtxo` so it doesn't need this.
+    pub fn build_and_sign_tracked(
+        self,
+        secret_key: &pallas_crypto::key::ed25519::SecretKey,
+    ) -> Result<(SignedTx, TxEffects), TxBuildError> {
+        let spent = staging_spent(&self.staging);
+        let outputs = staging_outputs(&self.staging);
+        let signed = self.build_and_sign(secret_key)?;
+        let effects = TxEffects {
+            tx_hash: signed.tx_hash.clone(),
+            spent,
+            outputs,
+        };
+        Ok((signed, effects))
+    }
+
+    /// [`build_and_sign_multi`] + the tx's [`TxEffects`] — the multi-key analogue of
+    /// [`build_and_sign_tracked`], for a wallet-ledger caller whose tx spends inputs
+    /// across more than one of its addresses (e.g. the Mode-B refund over `D` + `O`).
+    pub fn build_and_sign_multi_tracked(
+        self,
+        secret_keys: &[&pallas_crypto::key::ed25519::SecretKey],
+    ) -> Result<(SignedTx, TxEffects), TxBuildError> {
+        let spent = staging_spent(&self.staging);
+        let outputs = staging_outputs(&self.staging);
+        let signed = self.build_and_sign_multi(secret_keys)?;
+        let effects = TxEffects {
+            tx_hash: signed.tx_hash.clone(),
+            spent,
+            outputs,
+        };
+        Ok((signed, effects))
     }
 }
 

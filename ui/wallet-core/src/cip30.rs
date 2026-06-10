@@ -357,9 +357,9 @@ impl WalletApi {
         let result_array = js_sys::Array::from(&result);
         let mut witnesses = Vec::with_capacity(tx_hexes.len());
         for val in result_array.iter() {
-            let hex = val
-                .as_string()
-                .ok_or_else(|| WalletError::SigningFailed("Invalid witness in batch response".into()))?;
+            let hex = val.as_string().ok_or_else(|| {
+                WalletError::SigningFailed("Invalid witness in batch response".into())
+            })?;
             witnesses.push(hex);
         }
         Ok(witnesses)

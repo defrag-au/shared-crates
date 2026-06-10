@@ -21,6 +21,11 @@ use crate::selection;
 ///
 /// Selects a single UTxO (preferring pure ADA), constructs a two-output TX
 /// (recipient + change), and converges the fee.
+#[deprecated(
+    note = "use cardano_tx::plan::TxPlan — the hardened v2 path (witness-aware fees, \
+            validity bounds, duplicate-input guard, automatic asset value-balance). \
+            Recipe: .select_from(pool, SmallestSufficient).pay_to(addr, amount).build(). See CARDANO_TX_BUILDER_V2.md."
+)]
 pub fn build_send_lovelace(
     deps: &TxDeps,
     to_addr: &Address,
@@ -82,6 +87,11 @@ pub fn build_send_lovelace(
 ///
 /// Selects all UTxOs with extractable ADA, sends max ADA to recipient,
 /// and creates change outputs for UTxOs with native assets (min ADA + assets back to self).
+#[deprecated(
+    note = "use cardano_tx::plan::TxPlan — the hardened v2 path (witness-aware fees, \
+            validity bounds, duplicate-input guard, automatic asset value-balance). \
+            Recipe: .must_spend(all).sweep_to(addr).rehome_assets().build(). See CARDANO_TX_BUILDER_V2.md."
+)]
 pub fn build_send_max(deps: &TxDeps, to_addr: &Address) -> Result<UnsignedTx, TxBuildError> {
     let selected_utxos = selection::select_all_utxos_for_max(&deps.utxos, &deps.params)?;
 
@@ -124,8 +134,8 @@ pub fn build_send_max(deps: &TxDeps, to_addr: &Address) -> Result<UnsignedTx, Tx
         .collect();
 
     // Rough fee includes per-input overhead
-    let rough_fee =
-        selection::estimate_simple_fee(&deps.params) + (selected_cloned.len() as u64 * 50_000);
+    let rough_fee = selection::estimate_simple_fee(&deps.params)
+        + (selected_cloned.len() as u64 * selection::PER_INPUT_FEE_HEADROOM);
 
     converge_fee(
         |fee| {
@@ -163,6 +173,11 @@ pub fn build_send_max(deps: &TxDeps, to_addr: &Address) -> Result<UnsignedTx, Tx
 ///
 /// Finds UTxOs containing the requested assets, selects additional UTxOs if needed
 /// for fees, and builds recipient + change outputs.
+#[deprecated(
+    note = "use cardano_tx::plan::TxPlan — the hardened v2 path (witness-aware fees, \
+            validity bounds, duplicate-input guard, automatic asset value-balance). \
+            Recipe: .select_from(pool, SmallestSufficient).send_assets_to(addr, assets).build(). See CARDANO_TX_BUILDER_V2.md."
+)]
 pub fn build_send_assets(
     deps: &TxDeps,
     to_addr: &Address,
@@ -201,8 +216,8 @@ pub fn build_send_assets(
     );
 
     // 7. Rough fee estimate
-    let rough_fee =
-        selection::estimate_simple_fee(&deps.params) + (input_utxos.len() as u64 * 50_000);
+    let rough_fee = selection::estimate_simple_fee(&deps.params)
+        + (input_utxos.len() as u64 * selection::PER_INPUT_FEE_HEADROOM);
 
     // 8. Check if we need additional UTxOs for fees
     let total_required = min_ada_for_assets
@@ -243,9 +258,19 @@ pub fn build_send_assets(
             let refs: Vec<&UtxoApi> = final_utxos.iter().collect();
             let mut tx = add_utxo_inputs(StagingTransaction::new(), &refs)?;
 
-            // Calculate change lovelace
-            let remaining = input_lovelace - min_ada_for_assets - fee;
-            let change = remaining.max(min_ada_for_change);
+            // Change lovelace — checked: a converged fee above the rough
+            // estimate must surface as InsufficientFunds, not wrap; and change
+            // below the asset-change minimum cannot be conjured by forcing it
+            // (that would emit an output the inputs don't fund →
+            // ValueNotConservedUTxO after the build work).
+            let change = input_lovelace
+                .checked_sub(min_ada_for_assets)
+                .and_then(|v| v.checked_sub(fee))
+                .filter(|v| *v >= min_ada_for_change)
+                .ok_or(TxBuildError::InsufficientFunds {
+                    needed: min_ada_for_assets + fee + min_ada_for_change,
+                    available: input_lovelace,
+                })?;
 
             let mut co = final_change_output.clone();
             co.lovelace = change;
@@ -267,6 +292,11 @@ pub fn build_send_assets(
 ///
 /// Packs all native assets from consumed inputs into one output with minimum ADA.
 /// Remaining pure ADA goes into a second output. Both outputs go back to self.
+#[deprecated(
+    note = "use cardano_tx::plan::TxPlan — the hardened v2 path (witness-aware fees, \
+            validity bounds, duplicate-input guard, automatic asset value-balance). \
+            Recipe: .must_spend(largest_n).sweep_to(self_addr).rehome_assets().build(). See CARDANO_TX_BUILDER_V2.md."
+)]
 pub fn build_consolidate(deps: &TxDeps, max_inputs: u32) -> Result<UnsignedTx, TxBuildError> {
     if deps.utxos.len() <= 1 {
         return Err(TxBuildError::BuildFailed(
@@ -303,7 +333,8 @@ pub fn build_consolidate(deps: &TxDeps, max_inputs: u32) -> Result<UnsignedTx, T
     let from_address = deps.from_address.clone();
     let network_id = deps.network_id;
 
-    let rough_fee = selection::estimate_simple_fee(&deps.params) + (selected.len() as u64 * 50_000);
+    let rough_fee = selection::estimate_simple_fee(&deps.params)
+        + (selected.len() as u64 * selection::PER_INPUT_FEE_HEADROOM);
 
     converge_fee(
         |fee| {
@@ -378,6 +409,11 @@ pub fn build_consolidate(deps: &TxDeps, max_inputs: u32) -> Result<UnsignedTx, T
 /// reference (CIP-68) or arbitrary native assets the operator put
 /// there; refuel must not consume either. The filter is conservative:
 /// it's better to fail loudly than to accidentally burn an asset.
+#[deprecated(
+    note = "use cardano_tx::plan::TxPlan — the hardened v2 path (witness-aware fees, \
+            validity bounds, duplicate-input guard, automatic asset value-balance). \
+            Recipe: .select_from(pool, LargestFirst).pay_many(n x (self_addr, slot_size)).build(). See CARDANO_TX_BUILDER_V2.md."
+)]
 pub fn build_fan_out(
     deps: &TxDeps,
     slot_size: u64,
@@ -423,7 +459,8 @@ pub fn build_fan_out(
     let mut selected: Vec<&UtxoApi> = Vec::new();
     let mut input_lovelace: u64 = 0;
     for u in &spendable {
-        let projected_fee = base_fee + (selected.len() as u64 + 1) * 50_000;
+        let projected_fee =
+            base_fee + (selected.len() as u64 + 1) * selection::PER_INPUT_FEE_HEADROOM;
         let needed = total_outputs_lovelace
             .saturating_add(projected_fee)
             .saturating_add(min_change_cushion);
@@ -433,7 +470,7 @@ pub fn build_fan_out(
             break;
         }
     }
-    let final_fee_estimate = base_fee + (selected.len() as u64 * 50_000);
+    let final_fee_estimate = base_fee + (selected.len() as u64 * selection::PER_INPUT_FEE_HEADROOM);
     let needed_lovelace = total_outputs_lovelace
         .saturating_add(final_fee_estimate)
         .saturating_add(min_change_cushion);
@@ -510,6 +547,11 @@ pub fn build_fan_out(
 /// two-round fee convergence around the change output. The
 /// `min_change_cushion` guarantees any emitted change clears the pure-ADA
 /// minimum.
+#[deprecated(
+    note = "use cardano_tx::plan::TxPlan — the hardened v2 path (witness-aware fees, \
+            validity bounds, duplicate-input guard, automatic asset value-balance). \
+            Recipe: .select_from(pool, SmallestSufficient).pay_many(outs).metadata(md).build(). See CARDANO_TX_BUILDER_V2.md."
+)]
 pub fn build_send_many(
     deps: &TxDeps,
     outputs: &[(Address, u64)],
@@ -523,7 +565,7 @@ pub fn build_send_many(
 
     // Each output must clear the pure-ADA min UTxO or the ledger rejects
     // after the fee is paid.
-    let min_pure_utxo = 228 * deps.params.coins_per_utxo_byte;
+    let min_pure_utxo = deps.params.min_pure_utxo();
     for (i, (_addr, amount)) in outputs.iter().enumerate() {
         if *amount < min_pure_utxo {
             return Err(TxBuildError::BuildFailed(format!(
@@ -564,7 +606,8 @@ pub fn build_send_many(
     let mut selected: Vec<&UtxoApi> = Vec::new();
     let mut input_lovelace: u64 = 0;
     for u in &spendable {
-        let projected_fee = base_fee + (selected.len() as u64 + 1) * 50_000;
+        let projected_fee =
+            base_fee + (selected.len() as u64 + 1) * selection::PER_INPUT_FEE_HEADROOM;
         let needed = total_outputs_lovelace
             .saturating_add(projected_fee)
             .saturating_add(min_change_cushion);
@@ -574,7 +617,7 @@ pub fn build_send_many(
             break;
         }
     }
-    let final_fee_estimate = base_fee + (selected.len() as u64 * 50_000);
+    let final_fee_estimate = base_fee + (selected.len() as u64 * selection::PER_INPUT_FEE_HEADROOM);
     let needed_lovelace = total_outputs_lovelace
         .saturating_add(final_fee_estimate)
         .saturating_add(min_change_cushion);
@@ -620,6 +663,122 @@ pub fn build_send_many(
         final_fee_estimate,
         &deps.params,
     )
+}
+
+/// One split tx in the parcel-funding chain (`MINT_PARCEL_FUNDING.md`): carve
+/// `source` — the buyer payment, or the prior split's change — into `parcel_count`
+/// equal pure-ADA parcels back to self, plus an optional buyer `refund` output
+/// (CIP-674-tagged via `metadata`).
+///
+/// `source` is ALWAYS the first input, so the funding chain is traceable
+/// (payment → split → parcels) and never silently funded from float instead.
+/// EVERY `extra_float` UTxO is spent and folds into the change — the caller passes
+/// a bounded batch of small wallet UTxOs to ROLL UP dust into this tx's single
+/// change output (N dust → 1) for free; pass `&[]` for none. (Caller bounds the
+/// batch to keep the tx under the size limit.)
+///
+/// No change cushion is reserved: when the leftover after parcels + fee is below
+/// the min-UTxO floor (the self-funding case — the caller carved the payment into
+/// parcels holding back only the fee), it's **folded into the fee** (sub-min-UTxO
+/// amounts only, so the give-up is bounded) and no change UTxO is emitted — the
+/// payment funds its own split with zero operator float. A large leftover (an intermediate split, whose change funds the
+/// next batch) is emitted as a normal change output. Returns that change's
+/// tx-relative index + value ([`ChangeOutput`]) so the next split chains off it
+/// deterministically (the tx hash is fixed the moment it's signed); `lovelace` is
+/// `0` when the leftover was folded (a final split with no chainable change).
+#[allow(clippy::too_many_arguments)]
+pub fn build_parcel_split(
+    deps: &TxDeps,
+    source: &UtxoApi,
+    extra_float: &[UtxoApi],
+    parcel_size: u64,
+    parcel_count: u32,
+    refund: Option<(&Address, u64)>,
+    metadata: Option<&serde_json::Value>,
+) -> Result<(UnsignedTx, super::mint::ChangeOutput), TxBuildError> {
+    if parcel_count == 0 {
+        return Err(TxBuildError::BuildFailed(
+            "build_parcel_split: parcel_count must be > 0".to_string(),
+        ));
+    }
+    let min_pure_utxo = deps.params.min_pure_utxo();
+    if parcel_size < min_pure_utxo {
+        return Err(TxBuildError::BuildFailed(format!(
+            "build_parcel_split: parcel_size {parcel_size} < min_pure_utxo {min_pure_utxo}"
+        )));
+    }
+    if let Some((_, amt)) = refund {
+        if amt < min_pure_utxo {
+            return Err(TxBuildError::BuildFailed(format!(
+                "build_parcel_split: refund {amt} < min_pure_utxo {min_pure_utxo}"
+            )));
+        }
+    }
+
+    // Inputs: `source` ALWAYS first (the assigned funding UTxO — the buyer payment,
+    // a `claim_float`'d float UTxO, or a prior split's change — spent so the funding
+    // chain stays traceable), then ALL pure-ADA `extra_float` (claimed-float spill /
+    // dust rollup; script-ref + asset UTxOs filtered, never the source itself). The
+    // source is sized to its own parcels + fee UP FRONT (paid = the payment;
+    // zero-cost = `claim_float`), so the split SELF-FUNDS with no pool selection.
+    let mut must_spend: Vec<&UtxoApi> = vec![source];
+    must_spend.extend(extra_float.iter().filter(|u| {
+        u.assets.is_empty()
+            && !u.has_tag(UtxoTag::HasScriptRef)
+            && !(u.tx_hash == source.tx_hash && u.output_index == source.output_index)
+    }));
+
+    // Build over the v2 `TxPlan` in `fold_change` mode: must-spend the assigned
+    // source(s), pay the UNIFORM parcels (+ optional refund) to `O`, then converge a
+    // chain-link change OR fold a sub-floor leftover into the fee. No `select_from`,
+    // so the default `ManualOnly` strategy errors with `InsufficientFunds` if the
+    // source can't cover parcels + fee (the caller defers rather than underpay).
+    let mut plan = crate::plan::TxPlan::new(
+        deps.from_address.clone(),
+        deps.network_id,
+        deps.params.clone(),
+    )
+    .must_spend(must_spend)
+    .fold_change();
+    for _ in 0..parcel_count {
+        plan = plan.pay_to(deps.from_address.clone(), parcel_size);
+    }
+    if let Some((addr, lov)) = refund {
+        plan = plan.pay_to(addr.clone(), lov);
+    }
+    if let Some(md) = metadata {
+        plan = plan.metadata(md.clone());
+    }
+    let unsigned = plan.build()?;
+
+    // Chain link = the change UTxO (after the parcels + the optional refund) when one
+    // was emitted (a leftover that cleared the min-UTxO floor); `0` lovelace when the
+    // leftover was folded into the fee (a final, self-funded split). Read it off the
+    // built tx so the recorded value always matches what was emitted.
+    let change_index = parcel_count + u32::from(refund.is_some());
+    let n_outputs = unsigned
+        .staging
+        .outputs
+        .as_ref()
+        .map(|o| o.len() as u32)
+        .unwrap_or(0);
+    let change_lovelace = if n_outputs > change_index {
+        unsigned
+            .staging
+            .outputs
+            .as_ref()
+            .and_then(|o| o.last())
+            .map(|o| o.lovelace)
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    let change = super::mint::ChangeOutput {
+        output_index: change_index,
+        lovelace: change_lovelace,
+        has_assets: false,
+    };
+    Ok((unsigned, change))
 }
 
 // ============================================================================
@@ -751,6 +910,7 @@ pub(crate) fn to_maestro_params(
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // the deprecated recipes keep their tests until removal
 mod tests {
     use super::*;
     use cardano_assets::{AssetQuantity, UtxoApi};
@@ -981,6 +1141,231 @@ mod tests {
             network_id: 0,
         };
         assert!(build_fan_out(&deps, 10_000_000, 0, None).is_err());
+    }
+
+    // ── build_parcel_split (parcel funding + chaining) ────────────────
+
+    #[test]
+    fn test_build_parcel_split_carves_source_and_returns_change() {
+        // 200 ADA payment → 5 × 10 ADA parcels + change; source alone covers it.
+        let deps = TxDeps {
+            utxos: vec![],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let source = make_utxo(200_000_000);
+        let (unsigned, change) =
+            build_parcel_split(&deps, &source, &[], 10_000_000, 5, None, None).unwrap();
+        // 5 parcels + 1 change output, single input (the source).
+        assert_eq!(unsigned.staging.outputs.as_ref().map(|o| o.len()), Some(6));
+        assert_eq!(unsigned.staging.inputs.as_ref().map(|i| i.len()), Some(1));
+        // Change is the last output; value = 200 − 50 − fee (≈ 149.7 ADA).
+        assert_eq!(change.output_index, 5);
+        assert!(change.lovelace > 149_000_000 && change.lovelace < 150_000_000);
+        // The returned change value reconciles exactly: input − parcels − fee.
+        assert_eq!(change.lovelace, 200_000_000 - 50_000_000 - unsigned.fee);
+    }
+
+    #[test]
+    fn test_build_parcel_split_always_spends_source() {
+        // Source is SMALL (15 ADA) but a much bigger float (500 ADA) exists. A
+        // greedy builder would fund from the 500 ADA alone (1 input); the parcel
+        // split MUST spend the source for traceability → source + float = 2 inputs.
+        let deps = TxDeps {
+            utxos: vec![],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let source = make_utxo(15_000_000);
+        let float = vec![make_utxo(500_000_000)];
+        let (unsigned, _change) =
+            build_parcel_split(&deps, &source, &float, 10_000_000, 3, None, None).unwrap();
+        assert_eq!(
+            unsigned.staging.inputs.as_ref().map(|i| i.len()),
+            Some(2),
+            "source must be spent alongside the float, not skipped for the bigger UTxO"
+        );
+    }
+
+    #[test]
+    fn test_build_parcel_split_with_refund_and_metadata() {
+        // 3 parcels + a buyer refund output + CIP-674 tag. Change index sits after
+        // the parcels AND the refund.
+        let deps = TxDeps {
+            utxos: vec![],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let source = make_utxo(200_000_000);
+        let buyer = other_address();
+        let mut cip674 = serde_json::Map::new();
+        cip674.insert(
+            "msg".to_string(),
+            serde_json::Value::Array(vec![serde_json::Value::String("refund:abc".to_string())]),
+        );
+        let mut root = serde_json::Map::new();
+        root.insert("674".to_string(), serde_json::Value::Object(cip674));
+        let meta = serde_json::Value::Object(root);
+        let (unsigned, change) = build_parcel_split(
+            &deps,
+            &source,
+            &[],
+            10_000_000,
+            3,
+            Some((&buyer, 20_000_000)),
+            Some(&meta),
+        )
+        .unwrap();
+        // 3 parcels + 1 refund + 1 change = 5 outputs; change after parcels+refund.
+        assert_eq!(unsigned.staging.outputs.as_ref().map(|o| o.len()), Some(5));
+        assert_eq!(change.output_index, 4);
+        assert!(
+            unsigned.staging.auxiliary_data.is_some(),
+            "CIP-674 aux data present"
+        );
+    }
+
+    #[test]
+    fn test_build_parcel_split_self_funds_absorbing_dust_into_fee() {
+        // The self-funding case: the source covers the parcels with only a
+        // sub-floor remainder left over (the caller carved the payment into
+        // parcels holding back just the fee reserve). No standalone change UTxO is
+        // emitted — the leftover is paid as fee — so the split needs NO operator
+        // float, and the parcels stay UNIFORM so each recorded size matches the
+        // on-chain UTxO (the mint funds from it exactly).
+        let deps = TxDeps {
+            utxos: vec![],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        // 5 × 10 ADA parcels = 50 ADA; source is 50 ADA + 0.8 ADA — enough for the
+        // parcels + fee, leaving a sub-floor remainder (< min-UTxO).
+        let source = make_utxo(50_800_000);
+        let (unsigned, change) =
+            build_parcel_split(&deps, &source, &[], 10_000_000, 5, None, None).unwrap();
+        // 5 parcels, NO change output (leftover absorbed into fee), single input.
+        assert_eq!(
+            unsigned.staging.outputs.as_ref().map(|o| o.len()),
+            Some(5),
+            "the sub-floor remainder must be absorbed into the fee, not a 6th change output"
+        );
+        assert_eq!(unsigned.staging.inputs.as_ref().map(|i| i.len()), Some(1));
+        // No chainable change — this is a final, self-funded split.
+        assert_eq!(change.lovelace, 0);
+        // Parcels stay UNIFORM (no dust folded into any output) so the recorded
+        // size matches the on-chain UTxO.
+        let out_sum: u64 = unsigned
+            .staging
+            .outputs
+            .as_ref()
+            .map(|os| os.iter().map(|o| o.lovelace).sum())
+            .unwrap_or(0);
+        assert_eq!(out_sum, 50_000_000, "5 × 10 ADA parcels, uniform");
+        let all_uniform = unsigned
+            .staging
+            .outputs
+            .as_ref()
+            .map(|os| os.iter().all(|o| o.lovelace == 10_000_000))
+            .unwrap_or(false);
+        assert!(all_uniform, "every parcel is exactly the flat parcel size");
+        // The leftover (input − parcels) is the fee; value is conserved.
+        assert_eq!(unsigned.fee, 800_000);
+        assert_eq!(out_sum + unsigned.fee, 50_800_000);
+    }
+
+    #[test]
+    fn test_build_parcel_split_rolls_up_dust_into_change() {
+        // Dust rollup: the source covers parcels + fee on its own; the extra_float
+        // dust UTxOs are ALL spent and collapse into the single change output (N
+        // dust → 1), no extra tx.
+        let deps = TxDeps {
+            utxos: vec![],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let source = make_utxo(200_000_000); // 200 ADA — covers 5×10 + fee alone
+        let dust = vec![
+            make_utxo(1_500_000),
+            make_utxo(1_400_000),
+            make_utxo(1_600_000),
+        ];
+        let (unsigned, change) =
+            build_parcel_split(&deps, &source, &dust, 10_000_000, 5, None, None).unwrap();
+        // 1 source + 3 dust = 4 inputs (every dust UTxO spent).
+        assert_eq!(unsigned.staging.inputs.as_ref().map(|i| i.len()), Some(4));
+        // 5 parcels + 1 change.
+        assert_eq!(unsigned.staging.outputs.as_ref().map(|o| o.len()), Some(6));
+        assert_eq!(change.output_index, 5);
+        // Change consolidates the source leftover + ALL the dust: input − parcels − fee.
+        let input = 200_000_000u64 + 1_500_000 + 1_400_000 + 1_600_000;
+        assert_eq!(change.lovelace, input - 50_000_000 - unsigned.fee);
+    }
+
+    #[test]
+    fn test_build_parcel_split_self_funds_from_assigned_set() {
+        // A `claim_float`'d set: the source UTxO alone is only ~parcels-worth (12 ADA
+        // = 3 × 4 ADA), but the claim also assigned a spill UTxO (8 ADA), passed as
+        // `extra_float`. BOTH are must-spent → the split self-funds with a real fee
+        // and the leftover returns to `O` as change. No pool selection — the assigned
+        // set was sized up front. (This is the fragmented-float case the old builder
+        // floored to fee=0; now the source is pre-sized so it never arises.)
+        let deps = TxDeps {
+            utxos: vec![],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let source = make_utxo(12_000_000);
+        let spill = vec![make_utxo(8_000_000)];
+        let (unsigned, change) =
+            build_parcel_split(&deps, &source, &spill, 4_000_000, 3, None, None).unwrap();
+        // Real fee, never floored to 0.
+        assert!(
+            unsigned.fee >= 165_000,
+            "fee must be a real min fee, not 0 (got {})",
+            unsigned.fee
+        );
+        // Source + spill both spent.
+        assert_eq!(unsigned.staging.inputs.as_ref().map(|i| i.len()), Some(2));
+        // 3 uniform parcels at the flat size.
+        let parcels = unsigned
+            .staging
+            .outputs
+            .as_ref()
+            .map(|os| os.iter().filter(|o| o.lovelace == 4_000_000).count())
+            .unwrap_or(0);
+        assert_eq!(parcels, 3, "parcels stay uniform");
+        // 20 − 12 − fee ≈ 7.8 ADA leftover clears the floor → emitted as change.
+        assert!(
+            change.lovelace > 7_000_000 && change.lovelace < 8_000_000,
+            "leftover emitted as chain-link change (got {})",
+            change.lovelace
+        );
+    }
+
+    #[test]
+    fn test_build_parcel_split_insufficient_source_fails_cleanly() {
+        // The guard: an assigned source that can't cover parcels + the min fee fails
+        // with `InsufficientFunds` — NOT a fee=0 tx the node rejects (FeeTooSmallUTxO
+        // / ValueNotConservedUTxO). With `claim_float` sizing the source up front this
+        // is a defensive backstop, but it must never emit an underpaying tx.
+        let deps = TxDeps {
+            utxos: vec![],
+            params: test_params(),
+            from_address: test_address(),
+            network_id: 0,
+        };
+        let source = make_utxo(12_000_000); // == 3 × 4 ADA parcels, no fee headroom
+        let err = build_parcel_split(&deps, &source, &[], 4_000_000, 3, None, None);
+        assert!(
+            matches!(err, Err(TxBuildError::InsufficientFunds { .. })),
+            "expected InsufficientFunds, got {err:?}"
+        );
     }
 
     // ── build_send_many (refund / settlement payout txs) ──────────────
