@@ -38,19 +38,21 @@ pub struct TxBuildParams {
     pub ref_script_size: u64,
 }
 
+/// Charged size (bytes) of a worst-case PURE-ADA output under the Babbage
+/// `coinsPerUTxOByte` min-UTxO formula: the ledger's fixed 160-byte UTxO
+/// overhead + ~68 serialized output bytes (Shelley base address + max-width
+/// coin). `min lovelace = PURE_ADA_OUTPUT_CHARGED_BYTES × coinsPerUTxOByte`.
+/// ONE definition — this was a hand-copied `228` at every call site, where a
+/// single drifted copy (one site had `188`) meant sub-minimum outputs rejected
+/// `BabbageOutputTooSmallUTxO` at submit, after the build work.
+pub const PURE_ADA_OUTPUT_CHARGED_BYTES: u64 = 228;
+
 impl TxBuildParams {
     /// The pure-ADA minimum UTxO value under these params — the floor every
     /// asset-less output must clear or the ledger rejects the tx
-    /// (`BabbageOutputTooSmallUTxO`) after the build work is done.
-    ///
-    /// `228` is the serialized size (bytes) of a worst-case pure-ADA output
-    /// (Shelley address + max-width coin) plus the ledger's fixed
-    /// 160-byte overhead, per the Babbage `coinsPerUTxOByte` formula. ONE
-    /// definition — the builders used to hand-copy `228 * coins_per_utxo_byte`
-    /// at every call site, where a single drifted copy meant sub-minimum
-    /// outputs rejected at submit.
+    /// (`BabbageOutputTooSmallUTxO`). See [`PURE_ADA_OUTPUT_CHARGED_BYTES`].
     pub fn min_pure_utxo(&self) -> u64 {
-        228 * self.coins_per_utxo_byte
+        PURE_ADA_OUTPUT_CHARGED_BYTES * self.coins_per_utxo_byte
     }
 }
 

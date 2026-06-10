@@ -96,7 +96,7 @@ pub fn select_utxo_for_amount<'a>(
     // asset case may need a larger min-ADA at TX-build time but the
     // selection threshold itself stays consistent so callers see stable
     // behaviour.
-    let min_change_utxo = 228 * config.params.coins_per_utxo_byte;
+    let min_change_utxo = config.params.min_pure_utxo();
     let required = amount + estimated_fee + min_change_utxo;
     let has_sufficient = |u: &&UtxoApi| u.lovelace >= required;
 
@@ -225,7 +225,7 @@ pub fn select_utxos_for_amount(
     estimated_fee: u64,
     params: &TxBuildParams,
 ) -> Result<Vec<UtxoApi>, TxBuildError> {
-    let min_change_utxo = 228 * params.coins_per_utxo_byte;
+    let min_change_utxo = params.min_pure_utxo();
     let required = amount + estimated_fee + min_change_utxo;
 
     // First try: single UTxO (cheapest TX)
