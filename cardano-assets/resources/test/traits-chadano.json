@@ -1,0 +1,29 @@
+{
+  "assetKind": "citizen",
+  "collection": "Chadano Citizens",
+  "description": "Chadano Citizen #1396 from the Chadano Citizens collection.",
+  "files": [
+    {
+      "mediaType": "image/jpeg",
+      "name": "Chadano Citizens Citizen",
+      "src": "ipfs://QmQY9xUyfSKYfYybDP9226MEJ4fnLpzS6Z8HYv1SXyv7Xv"
+    }
+  ],
+  "image": "ipfs://QmZJVVpJvsLcaERfhrXEPyWV8MGBTWWoYoUtYZ3TFmeozx",
+  "mediaType": "image/jpeg",
+  "name": "Chadano Citizen #1396",
+  "phaseSupply": 1500,
+  "serialNumber": 1396,
+  "totalSupply": 1500,
+  "traits": [
+    { "trait_type": "Skin Tone", "value": "Light Skin" },
+    { "trait_type": "Background", "value": "Crimson" },
+    { "trait_type": "Body", "value": "Base Body" },
+    { "trait_type": "Outfit", "value": "Blue Blazer" },
+    { "trait_type": "Facial Hair", "value": "Clean Shaven Smile" },
+    { "trait_type": "Eyes", "value": "Black Stern Eyes" },
+    { "trait_type": "Hair", "value": "Black Mop Top" },
+    { "trait_type": "Sunglasses", "value": "Red Cool Shades" },
+    { "trait_type": "Hand Accessories", "value": "Commercial Here Tumbler" }
+  ]
+}

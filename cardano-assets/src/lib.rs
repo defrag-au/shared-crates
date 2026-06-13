@@ -352,6 +352,9 @@ pub struct UnsigData {
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct CodifiedTrait {
+    // `trait_type` is the OpenSea-standard key (used by e.g. Chadano Citizens);
+    // `name` is the original gophers-style key. Both normalise to the same trait.
+    #[serde(alias = "trait_type")]
     pub name: String,
     pub value: String,
     #[serde(default)]
@@ -1631,6 +1634,59 @@ mod tests {
                 panic!("failed decoding: {err:?}");
             }
         }
+    }
+
+    #[test]
+    fn test_chadano_trait_type_codified() {
+        // Chadano Citizens use the OpenSea-standard `trait_type`/`value` array
+        // shape. This must match the CodifiedTraits variant (via the `trait_type`
+        // alias) and NOT fall through to AttributeArray, which would otherwise
+        // collapse every object into bogus `trait_type`/`value` keys.
+        match serde_json::from_str::<AssetMetadata>(test_case!("traits-chadano.json")) {
+            Ok(metadata) => match metadata {
+                AssetMetadata::CodifiedTraits {
+                    name,
+                    media_type,
+                    traits,
+                    ..
+                } => {
+                    assert_eq!(name, "Chadano Citizen #1396");
+                    assert_eq!(media_type, Some("image/jpeg".to_string()));
+                    assert_eq!(
+                        traits,
+                        vec![
+                            CodifiedTrait::new("Skin Tone", "Light Skin"),
+                            CodifiedTrait::new("Background", "Crimson"),
+                            CodifiedTrait::new("Body", "Base Body"),
+                            CodifiedTrait::new("Outfit", "Blue Blazer"),
+                            CodifiedTrait::new("Facial Hair", "Clean Shaven Smile"),
+                            CodifiedTrait::new("Eyes", "Black Stern Eyes"),
+                            CodifiedTrait::new("Hair", "Black Mop Top"),
+                            CodifiedTrait::new("Sunglasses", "Red Cool Shades"),
+                            CodifiedTrait::new("Hand Accessories", "Commercial Here Tumbler"),
+                        ]
+                    );
+                }
+                other => panic!("expected CodifiedTraits, got {other:?}"),
+            },
+            Err(err) => {
+                panic!("failed decoding: {err:?}");
+            }
+        }
+
+        // And verify the end-to-end Asset projection exposes the traits as a map.
+        let asset: Asset = serde_json::from_str::<AssetMetadata>(test_case!("traits-chadano.json"))
+            .unwrap()
+            .into();
+        assert_eq!(asset.name, "Chadano Citizen #1396");
+        assert_eq!(
+            asset.traits.get("Background"),
+            Some(&vec!["Crimson".to_string()])
+        );
+        assert_eq!(
+            asset.traits.get("Hand Accessories"),
+            Some(&vec!["Commercial Here Tumbler".to_string()])
+        );
     }
 
     #[test]
