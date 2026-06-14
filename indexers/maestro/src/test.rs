@@ -656,7 +656,10 @@ mod tests {
                         "originalPolicy",
                         "33568ad11f93b3e79ae8dee5ad928ded72adcea719e92108caf1521b",
                     ),
-                    ("artist", "@netanelchn"),
+                    // v2: `artist` (@netanelchn) is a facet — captured for
+                    // data collection, not surfaced as a collection-
+                    // ownership trait. (`upgradedFrom`/`originalPolicy`
+                    // are unknown → visual traits, kept.)
                 ])
                 .into_traits();
                 let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
@@ -939,13 +942,13 @@ mod tests {
                     "ipfs://QmTeADGJVJSmzpa2AceMdZBDwzMf3w4BLAgqwx5ZZbw4cm"
                 );
 
-                // Check traits
+                // Check traits. The algorithmic properties
+                // (num_props/colors/distributions/…) are the unsig visual
+                // traits; `series` (facet) and `index` (provenance) are
+                // classified out of the trait surface by the registry.
                 let traits = asset.traits.inner();
-                assert_eq!(
-                    traits.get("series"),
-                    Some(&vec!["unsigned_algorithms".to_string()])
-                );
-                assert_eq!(traits.get("index"), Some(&vec!["12948".to_string()]));
+                assert_eq!(traits.get("series"), None);
+                assert_eq!(traits.get("index"), None);
                 assert_eq!(traits.get("num_props"), Some(&vec!["5".to_string()]));
                 assert_eq!(
                     traits.get("colors"),
@@ -1026,7 +1029,9 @@ mod tests {
                     Some(&vec!["PlainPlexi".to_string()])
                 );
                 assert_eq!(traits.get("Gender"), Some(&vec!["Female".to_string()]));
-                assert_eq!(traits.get("number"), Some(&vec!["78".to_string()]));
+                // v2: `number` (provenance) is dropped from the trait
+                // surface; `rarity` is a surfaced facet, kept.
+                assert_eq!(traits.get("number"), None);
                 assert_eq!(traits.get("rarity"), Some(&vec!["Common".to_string()]));
             }
             Err(err) => {
