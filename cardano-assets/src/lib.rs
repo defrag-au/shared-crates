@@ -16,6 +16,7 @@ pub mod cip25;
 #[cfg(feature = "cip68")]
 pub mod cip68;
 pub mod collection;
+pub mod extract;
 #[cfg(feature = "cip14")]
 pub mod fingerprint;
 pub mod policy_id;
@@ -42,6 +43,7 @@ pub use cip25::{cip25_metadata_json, cip25_metadata_value, decode_cip25_metadata
 #[cfg(feature = "cip68")]
 pub use cip68::{decode_cip68_datum, Cip68Error};
 pub use collection::*;
+pub use extract::{asset_from_metadata_json, extract_traits, AssetEnvelope, ENVELOPE_KEYS};
 #[cfg(feature = "cip14")]
 pub use fingerprint::{Fingerprint, FingerprintError};
 pub use policy_id::{PolicyId, PolicyIdError};
