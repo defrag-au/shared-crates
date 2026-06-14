@@ -8,21 +8,22 @@
 //! known v1 bugs, each spelled out so any future drift is caught and
 //! every behavioural difference is reviewed rather than silent.
 //!
-//! This is the safety net for the incremental refactor: as long as the
-//! `SameAsV1` set stays green, v2 is behaviour-preserving for every
-//! shape we have a real on-chain sample of; the correction set documents
-//! exactly where (and why) v2 deviates.
+//! **Exhaustiveness is enforced.** `corpus_is_exhaustive` walks
+//! `resources/test/` and fails if any fixture is neither in the corpus
+//! below nor in `NON_METADATA_FIXTURES` (with a reason). So a new
+//! fixture can't silently go unverified under v2 — you must classify it.
 
 use cardano_assets::{asset_from_metadata_json, Asset, AssetMetadata, Traits};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
+fn fixtures_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/test")
+}
+
 fn fixture(name: &str) -> String {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("resources/test")
-        .join(name);
-    fs::read_to_string(path).unwrap_or_else(|e| panic!("read {name}: {e}"))
+    fs::read_to_string(fixtures_dir().join(name)).unwrap_or_else(|e| panic!("read {name}: {e}"))
 }
 
 fn sorted(t: &Traits) -> BTreeMap<String, Vec<String>> {
@@ -61,10 +62,11 @@ enum Expect {
     },
 }
 
-#[test]
-fn extractor_corpus() {
+/// Every per-asset metadata fixture and its v2 expectation. The single
+/// source of truth for what the v2 extractor must produce.
+fn corpus_cases() -> Vec<(&'static str, Expect)> {
     use Expect::*;
-    let cases: &[(&str, Expect)] = &[
+    vec![
         // ---- behaviour-preserving: identical to v1 -------------------
         ("traits-chadano.json", SameAsV1), // codified {trait_type,value}
         ("traits-gopher.json", SameAsV1),  // codified {name,value,display}
@@ -80,6 +82,12 @@ fn extractor_corpus() {
         // `series` is a sibling of the `attributes` slot — metadata, not
         // a visual trait. v1 folded it in via merge_extra_fields.
         ("derpbird07490.json", V1Minus(&["series"])),
+        // Asset-shaped fixtures (carry an `id`): a flat `traits` map with
+        // `id` as a sibling. v1 flattened `id` in as a trait; v2 reads
+        // the map slot and drops the `id` sibling. Same content in both
+        // (https_image is the Pirate #84 record with an https image).
+        ("5069726174653834.json", V1Minus(&["id"])),
+        ("https_image.json", V1Minus(&["id"])),
         // The big one: a numeric `Rank: 1` inside `attributes` made the
         // v1 `Attributed` variant fail to deserialize, so it fell through
         // to `FlattenedMixed`, which DROPPED the whole attributes object
@@ -102,9 +110,7 @@ fn extractor_corpus() {
         // BlockGen authority tokens have no `name` (v1 -> `Untitled` ->
         // empty traits) but DO carry `properties: {type: master}`, a
         // structured slot. v2 surfaces it and ignores the envelope
-        // siblings (artist/medium/vendor/projectPolicyId). This is the
-        // only case where v2 yields traits v1 did not — review before
-        // cutover if authority tokens should stay trait-less.
+        // siblings (artist/medium/vendor/projectPolicyId).
         (
             "blockgen-auth-master.json",
             Exact {
@@ -176,9 +182,32 @@ fn extractor_corpus() {
                 note: "attributes slot + promoted Rarity sibling, metadata siblings dropped",
             },
         ),
-    ];
+    ]
+}
 
-    for (name, expect) in cases {
+/// Fixtures in `resources/test/` that are deliberately NOT per-asset
+/// metadata, so they're out of scope for the v2 extractor. Listed here
+/// (with a reason) so `corpus_is_exhaustive` can prove the corpus covers
+/// everything else — nothing is silently skipped.
+const NON_METADATA_FIXTURES: &[(&str, &str)] = &[
+    (
+        "blackflag-traits.json",
+        "collection trait-summary (parsed as TraitSummarySorted), not per-asset metadata",
+    ),
+    (
+        "swatch_tagged_union.json",
+        "empty/invalid fixture (decode error expected)",
+    ),
+    (
+        "ug_mint.json",
+        "CIP-25 mint-tx CBOR aux-data (decode_cip25 test input), not asset-metadata JSON",
+    ),
+];
+
+#[test]
+fn extractor_corpus() {
+    use Expect::*;
+    for (name, expect) in corpus_cases() {
         let raw = fixture(name);
         let v2 = v2_traits(&raw);
         match expect {
@@ -187,7 +216,7 @@ fn extractor_corpus() {
             }
             V1Minus(removed) => {
                 let mut want = v1_traits(&raw);
-                for k in *removed {
+                for k in removed {
                     assert!(want.remove(*k).is_some(), "{name}: v1 lacked key {k:?}");
                 }
                 assert_eq!(v2, want, "{name}: v2 must equal v1 minus {removed:?}");
@@ -197,6 +226,34 @@ fn extractor_corpus() {
             }
         }
     }
+}
+
+/// Guard: every `*.json` fixture on disk must be accounted for — either
+/// pinned in `corpus_cases()` or listed in `NON_METADATA_FIXTURES`. A
+/// fixture added without classifying it fails here, so the v2 corpus
+/// can never silently fall behind the fixture set.
+#[test]
+fn corpus_is_exhaustive() {
+    let covered: std::collections::HashSet<&str> = corpus_cases().iter().map(|(n, _)| *n).collect();
+    let skipped: std::collections::HashSet<&str> =
+        NON_METADATA_FIXTURES.iter().map(|(n, _)| *n).collect();
+
+    let mut unclassified = Vec::new();
+    for entry in fs::read_dir(fixtures_dir()).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().map(|x| x == "json").unwrap_or(false) {
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            if !covered.contains(name.as_str()) && !skipped.contains(name.as_str()) {
+                unclassified.push(name);
+            }
+        }
+    }
+    unclassified.sort();
+    assert!(
+        unclassified.is_empty(),
+        "fixtures not covered by the v2 corpus (add to corpus_cases() or \
+         NON_METADATA_FIXTURES): {unclassified:?}"
+    );
 }
 
 /// SpaceBudz-style CIP-68: `traits` is a value-only string array (kept
