@@ -69,16 +69,35 @@ fn corpus_cases() -> Vec<(&'static str, Expect)> {
     vec![
         // ---- behaviour-preserving: identical to v1 -------------------
         ("traits-chadano.json", SameAsV1), // codified {trait_type,value}
-        ("traits-gopher.json", SameAsV1),  // codified {name,value,display}
         ("traits-mallards.json", SameAsV1), // array of single-key objects
-        ("traits-anscestors.json", SameAsV1), // flat top-level keys
+        ("traits-anscestors.json", SameAsV1), // flat top-level keys ("Type" is a visual trait)
         ("traits-toolhead.json", SameAsV1), // nested attributes map (single+multi)
-        ("traits-wiseowl.json", SameAsV1), // flat, chunked image
-        // ---- intentional corrections of v1 bugs ----------------------
-        // v1 `Flattened` doesn't declare `collection`, so the collection
-        // name leaked in as a per-asset trait.
+        ("traits-wiseowl.json", SameAsV1), // flat, chunked image ("type" visual)
+        // ---- registry-driven corrections (field classification) ------
+        // v1 leaked the collection name (`collection`/`Collection`) as a
+        // per-asset trait; the registry classifies it as a facet (dropped
+        // from the trait surface).
         ("bankcard2500.json", V1Minus(&["collection"])),
-        ("traits-oldmoney.json", V1Minus(&["Collection"])),
+        // oldmoney leaked a pile of facet/provenance fields as traits:
+        // `Collection`/`Series` (facets), `Number`/`Note Number`/`Plate
+        // Number`/`Serial Number` (provenance identifiers). Registry drops
+        // them from the trait surface; the visual traits (Base, Blood, …)
+        // stay.
+        (
+            "traits-oldmoney.json",
+            V1Minus(&[
+                "Collection",
+                "Number",
+                "Note Number",
+                "Plate Number",
+                "Serial Number",
+                "Series",
+            ]),
+        ),
+        // gopher's codified traits redundantly include `Name` (the display
+        // name); the registry classifies `name` as envelope → dropped from
+        // the trait surface even inside a slot.
+        ("traits-gopher.json", V1Minus(&["Name"])),
         // `series` is a sibling of the `attributes` slot — metadata, not
         // a visual trait. v1 folded it in via merge_extra_fields.
         ("derpbird07490.json", V1Minus(&["series"])),

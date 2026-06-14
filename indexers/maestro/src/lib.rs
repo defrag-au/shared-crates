@@ -2,7 +2,8 @@
 
 use async_stream::stream;
 use cardano_assets::{
-    Asset, AssetMetadata, AssetMetadata68, AssetWithId, ExtractedCid, MetadataKind, NftPurpose,
+    asset_from_metadata_value, Asset, AssetMetadata, AssetMetadata68, AssetWithId, ExtractedCid,
+    MetadataKind, NftPurpose,
 };
 use chrono::Utc;
 use futures_core::stream::Stream;
@@ -66,50 +67,74 @@ impl From<MaestroError> for worker::Error {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct AssetStandards {
     pub cip25_metadata: Option<AssetMetadata>,
     pub cip68_metadata: Option<AssetMetadata68>,
+    /// Raw JSON of each metadata field, retained alongside the typed
+    /// forms above. Trait extraction (`TryFrom<AssetStandards> for
+    /// Asset`) runs the v2 `cardano_assets::asset_from_metadata_value`
+    /// extractor over THIS original document — not the typed
+    /// `AssetMetadata`, which would re-introduce the v1 shape mis-matches
+    /// v2 exists to fix. The typed fields stay for CID / purpose / import
+    /// (which need the variant-matched enum). Typed parse is lenient
+    /// (`None` on failure) so a shape v1 can't match doesn't drop the
+    /// asset — v2 still extracts traits from the raw.
+    cip25_raw: Option<serde_json::Value>,
+    cip68_raw: Option<serde_json::Value>,
+}
+
+impl<'de> Deserialize<'de> for AssetStandards {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Raw {
+            #[serde(default)]
+            cip25_metadata: Option<Value>,
+            #[serde(default)]
+            cip68_metadata: Option<Value>,
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        let cip25_metadata = raw
+            .cip25_metadata
+            .as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
+        let cip68_metadata = raw
+            .cip68_metadata
+            .as_ref()
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
+        Ok(AssetStandards {
+            cip25_metadata,
+            cip68_metadata,
+            cip25_raw: raw.cip25_metadata,
+            cip68_raw: raw.cip68_metadata,
+        })
+    }
 }
 
 impl TryFrom<AssetStandards> for Asset {
     type Error = MaestroError;
     fn try_from(value: AssetStandards) -> Result<Self, Self::Error> {
-        tracing::debug!("TryFrom<AssetStandards> for Asset:");
-        tracing::debug!(
-            "  cip68_metadata present: {}",
-            value.cip68_metadata.is_some()
-        );
-        tracing::debug!(
-            "  cip25_metadata present: {}",
-            value.cip25_metadata.is_some()
-        );
-
-        if let Some(ref cip25) = value.cip25_metadata {
-            tracing::debug!("  cip25_metadata content: {:#?}", cip25);
-        }
-
-        match (value.cip68_metadata, value.cip25_metadata) {
-            (Some(cip68), _) => {
-                tracing::debug!("  Using cip68 metadata");
-                Ok(Asset::from(cip68.metadata))
-            }
-            (_, Some(metadata)) => {
-                tracing::debug!("  Using cip25 metadata");
-                let asset = Asset::from(metadata);
-                tracing::debug!(
-                    "  Converted to asset: name='{}', image='{}', traits={:#?}",
-                    asset.name,
-                    asset.image,
-                    asset.traits
-                );
-                Ok(asset)
-            }
-            (_, _) => {
-                tracing::debug!("  No metadata found!");
-                Err(MaestroError::NoMetadata)
+        // Extract traits via the v2 `asset_from_metadata_value` extractor
+        // over the RAW metadata JSON, so results match the
+        // collection-ownership / mitos path (which also runs v2). Prefer
+        // CIP-68 (the ref-token datum metadata, nested under `metadata`)
+        // over CIP-25 mint metadata.
+        if let Some(cip68_raw) = &value.cip68_raw {
+            if let Some(meta) = cip68_raw.get("metadata") {
+                if let Ok(asset) = asset_from_metadata_value(meta.clone()) {
+                    tracing::debug!("Using cip68 metadata (v2): name='{}'", asset.name);
+                    return Ok(asset);
+                }
             }
         }
+        if let Some(cip25_raw) = value.cip25_raw {
+            if let Ok(asset) = asset_from_metadata_value(cip25_raw) {
+                tracing::debug!("Using cip25 metadata (v2): name='{}'", asset.name);
+                return Ok(asset);
+            }
+        }
+        tracing::debug!("No (parseable) metadata found");
+        Err(MaestroError::NoMetadata)
     }
 }
 
@@ -1842,4 +1867,72 @@ pub(crate) fn strip_control_chars(input: &str) -> String {
             !(c.is_control() && c != '\n' && c != '\r' && c != '\t')
         })
         .collect()
+}
+
+#[cfg(test)]
+mod trait_parity_tests {
+    use super::*;
+
+    // Maestro-derived traits must equal the v2 extractor run directly on
+    // the same metadata JSON — proving the get_all_assets bootstrap path
+    // can't drift from collection-ownership / the mitos path (both v2).
+
+    #[test]
+    fn cip25_traits_match_v2_extractor() {
+        // OpenSea-style `trait_type` array — a shape v1 mis-matched.
+        let meta = r#"{
+            "name": "X #1",
+            "image": "ipfs://img",
+            "traits": [
+                {"trait_type": "Background", "value": "Crimson"},
+                {"trait_type": "Body", "value": "Base"}
+            ]
+        }"#;
+        let standards: AssetStandards =
+            serde_json::from_str(&format!(r#"{{"cip25_metadata": {meta}}}"#)).unwrap();
+        let via_maestro = Asset::try_from(standards).expect("maestro asset");
+        let via_v2 = cardano_assets::asset_from_metadata_json(meta).expect("v2 asset");
+        assert_eq!(via_maestro.name, via_v2.name);
+        assert_eq!(via_maestro.traits, via_v2.traits);
+        assert!(via_maestro.traits.contains_key("Background"));
+    }
+
+    #[test]
+    fn cip68_traits_match_v2_extractor() {
+        // CIP-68: metadata nested under `metadata` (AssetMetadata68 shape);
+        // numeric `Rank` must be coerced, not drop the trait set.
+        let inner =
+            r#"{"name": "Y #2", "image": "ipfs://i", "attributes": {"Rank": 1, "Color": "Blue"}}"#;
+        let standards: AssetStandards = serde_json::from_str(&format!(
+            r#"{{"cip68_metadata": {{"purpose": "reference_nft", "version": 1, "metadata": {inner}}}}}"#
+        ))
+        .unwrap();
+        let via_maestro = Asset::try_from(standards).expect("maestro asset");
+        let via_v2 = cardano_assets::asset_from_metadata_json(inner).expect("v2 asset");
+        assert_eq!(via_maestro.traits, via_v2.traits);
+        assert!(via_maestro.traits.contains_key("Rank"));
+    }
+
+    #[test]
+    fn cip68_preferred_over_cip25() {
+        // Both present → CIP-68 wins (preserves prior precedence).
+        let cip25 = r#"{"name":"from25","image":"ipfs://a","traits":{"K":"v25"}}"#;
+        let cip68_inner = r#"{"name":"from68","image":"ipfs://b","attributes":{"K":"v68"}}"#;
+        let standards: AssetStandards = serde_json::from_str(&format!(
+            r#"{{"cip25_metadata": {cip25}, "cip68_metadata": {{"purpose":"reference_nft","version":1,"metadata": {cip68_inner}}}}}"#
+        )).unwrap();
+        let asset = Asset::try_from(standards).expect("asset");
+        assert_eq!(asset.name, "from68");
+        assert_eq!(asset.traits.get("K"), Some(&vec!["v68".to_string()]));
+    }
+
+    #[test]
+    fn typed_fields_survive_for_cid_and_purpose() {
+        // The typed AssetMetadata is still populated (CID / purpose paths
+        // depend on it) even though traits now come from the raw via v2.
+        let meta = r#"{"name":"Z","image":"ipfs://QmZ","traits":{"A":"b"}}"#;
+        let standards: AssetStandards =
+            serde_json::from_str(&format!(r#"{{"cip25_metadata": {meta}}}"#)).unwrap();
+        assert!(standards.cip25_metadata.is_some(), "typed cip25 retained");
+    }
 }

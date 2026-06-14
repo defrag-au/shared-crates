@@ -164,7 +164,9 @@ mod tests {
                     ("Mouth", "Happy Mouth"),
                     ("Outfit", "Corpo Nepo Outfit"),
                     ("Skill", "None"),
-                    ("tokenId", "4471"), // Extra field included as trait
+                    // v2: `tokenId` dropped — a metadata sibling of the
+                    // attributes slot, not a visual trait (v1 leaked it
+                    // via merge_extra_fields).
                 ])
                 .into_traits();
                 let asset: Asset = nft.data.asset_standards.try_into().unwrap();
@@ -654,7 +656,10 @@ mod tests {
                         "originalPolicy",
                         "33568ad11f93b3e79ae8dee5ad928ded72adcea719e92108caf1521b",
                     ),
-                    ("artist", "@netanelchn"),
+                    // v2: `artist` (@netanelchn) is a facet — captured for
+                    // data collection, not surfaced as a collection-
+                    // ownership trait. (`upgradedFrom`/`originalPolicy`
+                    // are unknown → visual traits, kept.)
                 ])
                 .into_traits();
                 let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
@@ -687,13 +692,9 @@ mod tests {
                     ("Palette", "P4"),
                     ("Rows", "Narrow"),
                     ("Waves", "W1"),
-                    // Extra metadata fields merged as traits
-                    ("artist", "Charles Machin - @CM_GenArt"),
-                    ("authNFT", "asset13as3a4t954ru7vhzy6pldse3qu8e7la2xgsr7u"),
-                    ("seed", "13719"),
-                    ("vendor", "BlockGen.art"),
-                    ("piece", "109"),
-                    ("medium", "Fully On-Chain BlockGen.Art Canvas"),
+                    // v2: the BlockGen metadata siblings (artist, authNFT,
+                    // seed, vendor, piece, medium) are dropped — they're
+                    // siblings of the `properties` slot, not visual traits.
                 ])
                 .into_traits();
                 let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
@@ -881,7 +882,8 @@ mod tests {
                     ("Power Level", "Undetermined"),
                     ("Rarity", "Common"),
                     ("Tail", "Redneck"),
-                    ("series", "2"), // Extra field included as trait
+                    // v2: `series` dropped — metadata sibling of the
+                    // attributes slot, not a visual trait.
                 ])
                 .into_traits();
                 let asset: Asset = deserialized.data.asset_standards.try_into().unwrap();
@@ -940,13 +942,13 @@ mod tests {
                     "ipfs://QmTeADGJVJSmzpa2AceMdZBDwzMf3w4BLAgqwx5ZZbw4cm"
                 );
 
-                // Check traits
+                // Check traits. The algorithmic properties
+                // (num_props/colors/distributions/…) are the unsig visual
+                // traits; `series` (facet) and `index` (provenance) are
+                // classified out of the trait surface by the registry.
                 let traits = asset.traits.inner();
-                assert_eq!(
-                    traits.get("series"),
-                    Some(&vec!["unsigned_algorithms".to_string()])
-                );
-                assert_eq!(traits.get("index"), Some(&vec!["12948".to_string()]));
+                assert_eq!(traits.get("series"), None);
+                assert_eq!(traits.get("index"), None);
                 assert_eq!(traits.get("num_props"), Some(&vec!["5".to_string()]));
                 assert_eq!(
                     traits.get("colors"),
@@ -1027,7 +1029,9 @@ mod tests {
                     Some(&vec!["PlainPlexi".to_string()])
                 );
                 assert_eq!(traits.get("Gender"), Some(&vec!["Female".to_string()]));
-                assert_eq!(traits.get("number"), Some(&vec!["78".to_string()]));
+                // v2: `number` (provenance) is dropped from the trait
+                // surface; `rarity` is a surfaced facet, kept.
+                assert_eq!(traits.get("number"), None);
                 assert_eq!(traits.get("rarity"), Some(&vec!["Common".to_string()]));
             }
             Err(err) => {
