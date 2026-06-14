@@ -1,0 +1,49 @@
+{
+  "Artist": "zigor",
+  "Artist Website": "https://lynkfire.com/zigor",
+  "Id": "1 of 10000",
+  "Rarity": "Eggcellent",
+  "attributes": {
+    "Body Color": "B",
+    "Ears": "Bush",
+    "Ears Color": "C",
+    "Faces": "Ummm",
+    "Faces Color": "A",
+    "Horns": "Dead Cat",
+    "Horns Color": "C",
+    "Items": "None",
+    "Material": "BubbleGum",
+    "Medallion": "Cuadrado",
+    "Medallion Color": "C",
+    "Name-Size": "7",
+    "On Top": "Dino",
+    "On Top Color": "C",
+    "Scene": "Plantibolas",
+    "Scene Color": "Cold Winter",
+    "Tails": "Mono",
+    "Tails Color": "A",
+    "Used Slots": "6"
+  },
+  "description": [
+    "Funplastic is the generative collection of 10k exclusive",
+    "figurines created by Zigor for Benjamin Group. Half of the",
+    "artist's royalties go towards cleaning plastics from the ocean."
+  ],
+  "files": [
+    {
+      "mediaType": "image/png",
+      "name": "Quitepe",
+      "src": "ipfs://QmWJ4dS1PAHaPCJ3otKBT35FeRwsvLRuha5rWqJk22wYUc"
+    },
+    {
+      "mediaType": "image/jpg",
+      "name": "Instructions",
+      "src": "ipfs://QmZeWT5FYsaV7vY13idqaDLE2wmnvVJLk1Jkfm8djoGbkt"
+    }
+  ],
+  "image": "ipfs://QmWJ4dS1PAHaPCJ3otKBT35FeRwsvLRuha5rWqJk22wYUc",
+  "mediaType": "image/png",
+  "name": "Quitepe",
+  "royalties": "12%",
+  "twitter": "https://twitter.com/BenjaminsGroup"
+}
