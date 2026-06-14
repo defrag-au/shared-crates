@@ -22,7 +22,7 @@
 //! whole fixture corpus before any cutover. See
 //! `tests/extract_corpus.rs`.
 
-use crate::{Asset, AssetFile, PrimitiveOrList, Traits};
+use crate::{Asset, AssetFile, PrimitiveOrList, Traits, UnsigData};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -65,7 +65,7 @@ const PROMOTE_KEYS: &[&str] = &["rarity", "tier"];
 /// other field lands in `rest` for trait extraction.
 #[derive(Deserialize, Debug, Clone)]
 pub struct AssetEnvelope {
-    #[serde(default, alias = "Name")]
+    #[serde(default, alias = "Name", alias = "title")]
     pub name: Option<String>,
     #[serde(default)]
     pub image: Option<PrimitiveOrList<String>>,
@@ -123,6 +123,16 @@ pub fn asset_from_metadata_json(json: &str) -> Result<Asset, serde_json::Error> 
     Ok(envelope.into_asset())
 }
 
+/// As [`asset_from_metadata_json`], but from an already-parsed
+/// `serde_json::Value`. For callers that hold the raw metadata as a
+/// `Value` (e.g. an indexer response) — avoids a re-serialize round-trip
+/// and, critically, lets them feed the *original* document to v2 rather
+/// than laundering it through the v1 `AssetMetadata` enum first.
+pub fn asset_from_metadata_value(value: serde_json::Value) -> Result<Asset, serde_json::Error> {
+    let envelope: AssetEnvelope = serde_json::from_value(value)?;
+    Ok(envelope.into_asset())
+}
+
 /// The structured shapes a trait slot can take. A value-only string
 /// array (`["A","B"]`) is deliberately NOT a structured slot — it is
 /// treated as a flat multi-value field, matching how v1 surfaced
@@ -175,6 +185,31 @@ fn classify_slot(value: &serde_json::Value) -> Option<SlotShape> {
 /// from it (sibling scalars are envelope/metadata noise). Otherwise all
 /// non-envelope scalar/array fields are treated as flat traits.
 pub fn extract_traits(rest: &HashMap<String, serde_json::Value>) -> Traits {
+    // Bespoke: unsigned_algorithms. Its traits are *algorithmic*
+    // (index, num_props, and the per-pixel colors/distributions under
+    // `unsigs.properties`) rather than plain key/values, so the generic
+    // shape-dispatch can't recover them. Detect the `unsigs` structure
+    // and delegate to the shared builder — identical to the v1 path, so
+    // both the maestro fallback and the mitos/v2 path yield the rich set.
+    if let Some(unsigs) = rest
+        .get("unsigs")
+        .and_then(|v| serde_json::from_value::<UnsigData>(v.clone()).ok())
+    {
+        let series = rest
+            .get("series")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        let source_key = rest
+            .get("source_key")
+            .map(json_to_strings)
+            .unwrap_or_default();
+        let source_tx_id = rest
+            .get("source_tx_id")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        return unsig_traits(&unsigs, series, source_key, source_tx_id);
+    }
+
     for slot in SLOT_KEYS {
         if let Some((_, value)) = rest.iter().find(|(k, _)| k.to_lowercase() == *slot) {
             if let Some(shape) = classify_slot(value) {
@@ -185,6 +220,32 @@ pub fn extract_traits(rest: &HashMap<String, serde_json::Value>) -> Traits {
         }
     }
     flat_extract(rest)
+}
+
+/// Build the trait set for an unsigned_algorithms asset from its
+/// `unsigs` structure + the sibling provenance fields. Shared by the v1
+/// `From<AssetMetadata>` path and the v2 extractor so the two can't
+/// drift. Mirrors the original v1 logic exactly.
+pub(crate) fn unsig_traits(
+    unsigs: &UnsigData,
+    series: Option<String>,
+    source_key: Vec<String>,
+    source_tx_id: Option<String>,
+) -> Traits {
+    let mut traits = Traits::new();
+    if let Some(s) = series {
+        traits.insert_single("series".to_string(), s);
+    }
+    traits.insert_multi("source_key".to_string(), source_key);
+    if let Some(tx_id) = source_tx_id {
+        traits.insert_single("source_tx_id".to_string(), tx_id);
+    }
+    traits.insert_single("index".to_string(), unsigs.index.to_string());
+    traits.insert_single("num_props".to_string(), unsigs.num_props.to_string());
+    for (key, values) in unsigs.properties.inner() {
+        traits.insert_multi(key.clone(), values.clone());
+    }
+    traits
 }
 
 /// Fold any [`PROMOTE_KEYS`] siblings of a structured slot into the
@@ -249,7 +310,10 @@ fn extract_slot(shape: SlotShape, value: &serde_json::Value) -> Traits {
 fn flat_extract(rest: &HashMap<String, serde_json::Value>) -> Traits {
     let mut traits = Traits::new();
     for (key, val) in rest {
-        if ENVELOPE_KEYS.contains(&key.to_lowercase().as_str()) {
+        // Trim before the envelope check so data-quality warts like a
+        // leading-space key (" Project") still match an envelope key and
+        // get excluded rather than leaking in as a trait.
+        if ENVELOPE_KEYS.contains(&key.trim().to_lowercase().as_str()) {
             continue;
         }
         insert_if_present(&mut traits, key.clone(), val);

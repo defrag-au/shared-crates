@@ -43,7 +43,10 @@ pub use cip25::{cip25_metadata_json, cip25_metadata_value, decode_cip25_metadata
 #[cfg(feature = "cip68")]
 pub use cip68::{decode_cip68_datum, Cip68Error};
 pub use collection::*;
-pub use extract::{asset_from_metadata_json, extract_traits, AssetEnvelope, ENVELOPE_KEYS};
+pub use extract::{
+    asset_from_metadata_json, asset_from_metadata_value, extract_traits, AssetEnvelope,
+    ENVELOPE_KEYS,
+};
 #[cfg(feature = "cip14")]
 pub use fingerprint::{Fingerprint, FingerprintError};
 pub use policy_id::{PolicyId, PolicyIdError};
@@ -930,28 +933,10 @@ impl From<AssetMetadata> for Asset {
                 source_tx_id,
                 ..
             } => {
-                // Convert unsigs data to traits
-                let mut traits = Traits::new();
-
-                // Add series, source_key, source_tx_id as traits
-                if let Some(s) = series {
-                    traits.insert_single("series".to_string(), s);
-                }
-
-                traits.insert_multi("source_key".to_string(), source_key);
-                if let Some(tx_id) = source_tx_id {
-                    traits.insert_single("source_tx_id".to_string(), tx_id);
-                }
-
-                // Add unsigs index and num_props
-                traits.insert_single("index".to_string(), unsigs.index.to_string());
-                traits.insert_single("num_props".to_string(), unsigs.num_props.to_string());
-
-                // Merge properties traits into main traits
-                for (key, values) in unsigs.properties.inner() {
-                    traits.insert_multi(key.clone(), values.clone());
-                }
-
+                // Shared with the v2 extractor (`extract::unsig_traits`)
+                // so the two paths can't drift on this bespoke shape.
+                let traits =
+                    crate::extract::unsig_traits(&unsigs, series, source_key, source_tx_id);
                 Self {
                     name: title,
                     image: image.dechunked(),
