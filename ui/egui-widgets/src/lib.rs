@@ -42,6 +42,7 @@ pub mod seven_segment;
 pub mod sparkline;
 pub mod supply_bar;
 pub mod swap_modal;
+pub mod tag_list;
 pub mod theme;
 pub mod timestamp;
 pub mod toast;
@@ -155,6 +156,7 @@ pub use screenshot::ScreenshotButton;
 pub use seven_segment::SevenSegmentDisplay;
 pub use sparkline::Sparkline;
 pub use supply_bar::SupplyBar;
+pub use tag_list::{TagList, TagListResponse};
 pub use swap_modal::{
     CultureBuy, SwapModal, SwapModalAction, SwapModalConfig, SwapModalTheme, SwapPreviewData,
     SwapProgress,

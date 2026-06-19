@@ -85,6 +85,7 @@ mod app {
         CollectionList,
         // Mint configuration
         Chip,
+        TagList,
         PropertyList,
         IdPill,
         PhaseCard,
@@ -107,6 +108,7 @@ mod app {
                 Self::Marquee,
                 Self::Buttons,
                 Self::Chip,
+                Self::TagList,
                 Self::IdPill,
                 Self::PropertyList,
                 Self::ButtonGroup,
@@ -241,6 +243,7 @@ mod app {
                 Self::WalletList => "Wallet List",
                 Self::CollectionList => "Collection List",
                 Self::Chip => "Chip",
+                Self::TagList => "Tag List",
                 Self::PropertyList => "Property List",
                 Self::IdPill => "ID Pill",
                 Self::Timestamp => "Timestamp",
@@ -260,6 +263,7 @@ mod app {
                 | Self::Marquee
                 | Self::Buttons
                 | Self::Chip
+                | Self::TagList
                 | Self::Timestamp
                 | Self::ErrorNote
                 | Self::IdPill
@@ -476,6 +480,9 @@ mod app {
                 Self::Chip => {
                     "Small filled-tag label with semantic variants (Success / Warning / Danger / Tag / Info / Muted) + optional × remove affordance"
                 }
+                Self::TagList => {
+                    "Wrapping row of removable chips with an optional clear-all button — for active filters / selected facets"
+                }
                 Self::PropertyList => {
                     "Compact label/value grid for read-only key data — phase summaries, wallet readouts, payment audit"
                 }
@@ -533,6 +540,7 @@ mod app {
         marquee_messages: Vec<egui_widgets::MarqueeItem>,
         progress_bar_state: stories::progress_bar::ProgressBarState,
         bullet_bar_state: stories::bullet_bar::BulletBarState,
+        tag_list_state: stories::tag_list::TagListState,
         sparkline_state: stories::sparkline::SparklineState,
         seven_segment_state: stories::seven_segment::SevenSegmentState,
         flip_counter_state: stories::flip_counter::FlipCounterState,
@@ -610,6 +618,7 @@ mod app {
                 }],
                 progress_bar_state: stories::progress_bar::ProgressBarState::default(),
                 bullet_bar_state: stories::bullet_bar::BulletBarState::default(),
+                tag_list_state: stories::tag_list::TagListState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 seven_segment_state: stories::seven_segment::SevenSegmentState::default(),
                 flip_counter_state: stories::flip_counter::FlipCounterState::default(),
@@ -912,6 +921,9 @@ mod app {
                                 stories::collection_list::show(ui, &mut self.collection_list_state)
                             }
                             Story::Chip => stories::chip::show(ui),
+                            Story::TagList => {
+                                stories::tag_list::show(ui, &mut self.tag_list_state)
+                            }
                             Story::PropertyList => stories::property_list::show(ui),
                             Story::IdPill => stories::id_pill::show(ui),
                             Story::PhaseCard => stories::phase_card::show(ui),
@@ -965,3 +977,4 @@ mod app {
         });
     }
 }
+

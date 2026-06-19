@@ -25,6 +25,7 @@ pub mod seven_segment;
 pub mod sparkline;
 pub mod supply_bar;
 pub mod swap;
+pub mod tag_list;
 pub mod tcg_card;
 pub mod timestamp;
 pub mod trait_filter;
