@@ -90,6 +90,8 @@ mod app {
         RelationshipEditor,
         NamedGroupList,
         RarityTargetEditor,
+        PaletteEditor,
+        SlotTable,
         PropertyList,
         IdPill,
         PhaseCard,
@@ -117,6 +119,8 @@ mod app {
                 Self::RelationshipEditor,
                 Self::NamedGroupList,
                 Self::RarityTargetEditor,
+                Self::PaletteEditor,
+                Self::SlotTable,
                 Self::IdPill,
                 Self::PropertyList,
                 Self::ButtonGroup,
@@ -256,6 +260,8 @@ mod app {
                 Self::RelationshipEditor => "Relationship Editor",
                 Self::NamedGroupList => "Named Group List",
                 Self::RarityTargetEditor => "Rarity Target Editor",
+                Self::PaletteEditor => "Palette Editor",
+                Self::SlotTable => "Slot Table",
                 Self::PropertyList => "Property List",
                 Self::IdPill => "ID Pill",
                 Self::Timestamp => "Timestamp",
@@ -280,6 +286,8 @@ mod app {
                 | Self::RelationshipEditor
                 | Self::NamedGroupList
                 | Self::RarityTargetEditor
+                | Self::PaletteEditor
+                | Self::SlotTable
                 | Self::Timestamp
                 | Self::ErrorNote
                 | Self::IdPill
@@ -511,6 +519,12 @@ mod app {
                 Self::RarityTargetEditor => {
                     "Labelled 0–100% target sliders with a running-total-vs-budget cue — per-trait None% and per-value rarity targets"
                 }
+                Self::PaletteEditor => {
+                    "Colorization palettes — base color + weighted variant colors (the [processing.techniques.colorization] config)"
+                }
+                Self::SlotTable => {
+                    "Slot list with enable / required toggles + z-order — disabled_traits, defaults.required, z_index_overrides"
+                }
                 Self::PropertyList => {
                     "Compact label/value grid for read-only key data — phase summaries, wallet readouts, payment audit"
                 }
@@ -573,6 +587,8 @@ mod app {
         relationship_editor_state: stories::relationship_editor::RelationshipEditorState,
         named_group_list_state: stories::named_group_list::NamedGroupListState,
         rarity_target_editor_state: stories::rarity_target_editor::RarityTargetEditorState,
+        palette_editor_state: stories::palette_editor::PaletteEditorState,
+        slot_table_state: stories::slot_table::SlotTableState,
         sparkline_state: stories::sparkline::SparklineState,
         seven_segment_state: stories::seven_segment::SevenSegmentState,
         flip_counter_state: stories::flip_counter::FlipCounterState,
@@ -658,6 +674,8 @@ mod app {
                 named_group_list_state: stories::named_group_list::NamedGroupListState::default(),
                 rarity_target_editor_state:
                     stories::rarity_target_editor::RarityTargetEditorState::default(),
+                palette_editor_state: stories::palette_editor::PaletteEditorState::default(),
+                slot_table_state: stories::slot_table::SlotTableState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 seven_segment_state: stories::seven_segment::SevenSegmentState::default(),
                 flip_counter_state: stories::flip_counter::FlipCounterState::default(),
@@ -979,6 +997,12 @@ mod app {
                                 ui,
                                 &mut self.rarity_target_editor_state,
                             ),
+                            Story::PaletteEditor => {
+                                stories::palette_editor::show(ui, &mut self.palette_editor_state)
+                            }
+                            Story::SlotTable => {
+                                stories::slot_table::show(ui, &mut self.slot_table_state)
+                            }
                             Story::PropertyList => stories::property_list::show(ui),
                             Story::IdPill => stories::id_pill::show(ui),
                             Story::PhaseCard => stories::phase_card::show(ui),
