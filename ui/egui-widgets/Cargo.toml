@@ -8,10 +8,11 @@ default = ["cardano"]
 image-editor = ["dep:ab_glyph"]
 cardano = ["dep:cardano-assets", "dep:wallet-core", "dep:wallet-pallas"]
 
+# egui_inbox is only used by the wasm `file_upload` widget + a re-export, so it
+# moved to the wasm-only deps below (native consumers don't pull it).
 [dependencies]
 egui = { workspace = true }
 egui_extras = { workspace = true }
-egui_inbox = { workspace = true }
 image = { workspace = true, features = ["jpeg"] }
 cardano-assets = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
@@ -21,6 +22,7 @@ voronoice = "0.2"
 ab_glyph = { version = "0.2", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+egui_inbox = { workspace = true }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 web-sys = { workspace = true, features = [

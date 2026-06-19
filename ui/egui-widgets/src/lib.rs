@@ -1,3 +1,4 @@
+#[cfg(target_arch = "wasm32")]
 pub use egui_inbox;
 
 pub mod animated_counter;
@@ -70,11 +71,12 @@ pub mod split_allocation_bar;
 pub mod data_table;
 pub mod exposure_bar;
 
+// Generic coverage bar (no cardano deps — usable everywhere, e.g. rarity tuning).
+pub mod coverage_delta_bar;
+
 // Cardano-specific widgets (feature-gated)
 #[cfg(feature = "cardano")]
 pub mod asset_strip;
-#[cfg(feature = "cardano")]
-pub mod coverage_delta_bar;
 #[cfg(feature = "cardano")]
 pub mod fee_report;
 #[cfg(feature = "cardano")]
@@ -200,7 +202,6 @@ pub use exposure_bar::{ltv_risk_color, ExposureBarConfig, ExposureSegment};
 // Cardano-specific re-exports
 #[cfg(feature = "cardano")]
 pub use asset_strip::{AssetStripConfig, AssetStripItem, AssetStripResponse};
-#[cfg(feature = "cardano")]
 pub use coverage_delta_bar::CoverageDeltaConfig;
 #[cfg(feature = "cardano")]
 pub use fee_report::{FeeReportConfig, FeeReportData, SideFeeData};
