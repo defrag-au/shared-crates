@@ -3,6 +3,7 @@ pub use egui_inbox;
 
 pub mod animated_counter;
 pub mod asset_card;
+pub mod bullet_bar;
 pub mod button_group;
 pub mod buttons;
 pub mod card_browser;
@@ -202,6 +203,7 @@ pub use exposure_bar::{ltv_risk_color, ExposureBarConfig, ExposureSegment};
 // Cardano-specific re-exports
 #[cfg(feature = "cardano")]
 pub use asset_strip::{AssetStripConfig, AssetStripItem, AssetStripResponse};
+pub use bullet_bar::BulletBar;
 pub use coverage_delta_bar::CoverageDeltaConfig;
 #[cfg(feature = "cardano")]
 pub use fee_report::{FeeReportConfig, FeeReportData, SideFeeData};

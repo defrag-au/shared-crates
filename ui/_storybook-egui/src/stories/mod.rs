@@ -1,5 +1,6 @@
 pub mod asset_card;
 pub mod async_data;
+pub mod bullet_bar;
 pub mod buttons;
 pub mod card_browser;
 pub mod collection_list;

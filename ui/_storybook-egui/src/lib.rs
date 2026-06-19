@@ -22,6 +22,7 @@ mod app {
         Marquee,
         Buttons,
         ProgressBar,
+        BulletBar,
         Sparkline,
         MetricCard,
         SevenSegment,
@@ -113,6 +114,7 @@ mod app {
                 Self::Timestamp,
                 Self::ErrorNote,
                 Self::ProgressBar,
+                Self::BulletBar,
                 Self::Sparkline,
                 Self::MetricCard,
                 Self::SevenSegment,
@@ -186,6 +188,7 @@ mod app {
                 Self::Marquee => "Marquee",
                 Self::Buttons => "Buttons",
                 Self::ProgressBar => "Progress Bar",
+                Self::BulletBar => "Bullet Bar",
                 Self::Sparkline => "Sparkline",
                 Self::MetricCard => "Metric Card",
                 Self::SevenSegment => "Seven Segment",
@@ -264,6 +267,7 @@ mod app {
                 | Self::ButtonGroup
                 | Self::Toast => "Primitives",
                 Self::ProgressBar
+                | Self::BulletBar
                 | Self::Sparkline
                 | Self::MetricCard
                 | Self::SevenSegment
@@ -324,6 +328,7 @@ mod app {
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
                 Self::ProgressBar => "Determinate and countdown progress bars with custom colors",
+                Self::BulletBar => "Value fill with a target marker (bullet graph) — actual vs target",
                 Self::Sparkline => {
                     "Inline line chart with fill gradient, mean line, and hover inspection"
                 }
@@ -527,6 +532,7 @@ mod app {
         marquee: egui_widgets::Marquee,
         marquee_messages: Vec<egui_widgets::MarqueeItem>,
         progress_bar_state: stories::progress_bar::ProgressBarState,
+        bullet_bar_state: stories::bullet_bar::BulletBarState,
         sparkline_state: stories::sparkline::SparklineState,
         seven_segment_state: stories::seven_segment::SevenSegmentState,
         flip_counter_state: stories::flip_counter::FlipCounterState,
@@ -603,6 +609,7 @@ mod app {
                     color: ACCENT,
                 }],
                 progress_bar_state: stories::progress_bar::ProgressBarState::default(),
+                bullet_bar_state: stories::bullet_bar::BulletBarState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 seven_segment_state: stories::seven_segment::SevenSegmentState::default(),
                 flip_counter_state: stories::flip_counter::FlipCounterState::default(),
@@ -716,12 +723,15 @@ mod app {
     }
 
     impl eframe::App for StorybookApp {
-        fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // eframe 0.34 made `ui` the required App method (was `update` in 0.33);
+        // panels nest via `show_inside(ui, …)` instead of `show(ctx, …)`.
+        fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+            let ctx = ui.ctx().clone();
             egui::SidePanel::left("stories")
                 .default_width(180.0)
                 .resizable(false)
                 .frame(egui::Frame::side_top_panel(&ctx.style()).fill(BG_SIDEBAR))
-                .show(ctx, |ui| {
+                .show_inside(ui, |ui| {
                     ui.add_space(8.0);
                     ui.heading(egui::RichText::new("egui Widgets").color(ACCENT));
                     ui.separator();
@@ -732,7 +742,7 @@ mod app {
 
             egui::CentralPanel::default()
                 .frame(egui::Frame::central_panel(&ctx.style()).fill(BG_MAIN))
-                .show(ctx, |ui| {
+                .show_inside(ui, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         ui.heading(self.current_story.label());
                         ui.label(
@@ -756,6 +766,9 @@ mod app {
                             Story::Buttons => stories::buttons::show(ui),
                             Story::ProgressBar => {
                                 stories::progress_bar::show(ui, &mut self.progress_bar_state)
+                            }
+                            Story::BulletBar => {
+                                stories::bullet_bar::show(ui, &mut self.bullet_bar_state)
                             }
                             Story::Sparkline => {
                                 stories::sparkline::show(ui, &mut self.sparkline_state)
@@ -810,7 +823,7 @@ mod app {
                                 &mut self.wallet_connector,
                             ),
                             Story::SwapModal => stories::swap::show(
-                                ctx,
+                                &ctx,
                                 ui,
                                 &mut self.swap_modal,
                                 &mut self.swap_progress,
@@ -830,7 +843,7 @@ mod app {
                                 stories::tx_estimate::show(ui, &mut self.tx_estimate_state)
                             }
                             Story::WalletAssetPicker => stories::wallet_asset_picker::show(
-                                ctx,
+                                &ctx,
                                 ui,
                                 &mut self.wallet_asset_picker_state,
                             ),
