@@ -86,6 +86,7 @@ mod app {
         // Mint configuration
         Chip,
         TagList,
+        TokenMultiselect,
         PropertyList,
         IdPill,
         PhaseCard,
@@ -109,6 +110,7 @@ mod app {
                 Self::Buttons,
                 Self::Chip,
                 Self::TagList,
+                Self::TokenMultiselect,
                 Self::IdPill,
                 Self::PropertyList,
                 Self::ButtonGroup,
@@ -244,6 +246,7 @@ mod app {
                 Self::CollectionList => "Collection List",
                 Self::Chip => "Chip",
                 Self::TagList => "Tag List",
+                Self::TokenMultiselect => "Token Multiselect",
                 Self::PropertyList => "Property List",
                 Self::IdPill => "ID Pill",
                 Self::Timestamp => "Timestamp",
@@ -264,6 +267,7 @@ mod app {
                 | Self::Buttons
                 | Self::Chip
                 | Self::TagList
+                | Self::TokenMultiselect
                 | Self::Timestamp
                 | Self::ErrorNote
                 | Self::IdPill
@@ -483,6 +487,9 @@ mod app {
                 Self::TagList => {
                     "Wrapping row of removable chips with an optional clear-all button — for active filters / selected facets"
                 }
+                Self::TokenMultiselect => {
+                    "Pick a subset from a known option set — selected as removable chips + an 'add' menu of the rest (group/member/required-slot pickers)"
+                }
                 Self::PropertyList => {
                     "Compact label/value grid for read-only key data — phase summaries, wallet readouts, payment audit"
                 }
@@ -541,6 +548,7 @@ mod app {
         progress_bar_state: stories::progress_bar::ProgressBarState,
         bullet_bar_state: stories::bullet_bar::BulletBarState,
         tag_list_state: stories::tag_list::TagListState,
+        token_multiselect_state: stories::token_multiselect::TokenMultiselectState,
         sparkline_state: stories::sparkline::SparklineState,
         seven_segment_state: stories::seven_segment::SevenSegmentState,
         flip_counter_state: stories::flip_counter::FlipCounterState,
@@ -619,6 +627,8 @@ mod app {
                 progress_bar_state: stories::progress_bar::ProgressBarState::default(),
                 bullet_bar_state: stories::bullet_bar::BulletBarState::default(),
                 tag_list_state: stories::tag_list::TagListState::default(),
+                token_multiselect_state: stories::token_multiselect::TokenMultiselectState::default(
+                ),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 seven_segment_state: stories::seven_segment::SevenSegmentState::default(),
                 flip_counter_state: stories::flip_counter::FlipCounterState::default(),
@@ -924,6 +934,10 @@ mod app {
                             Story::TagList => {
                                 stories::tag_list::show(ui, &mut self.tag_list_state)
                             }
+                            Story::TokenMultiselect => stories::token_multiselect::show(
+                                ui,
+                                &mut self.token_multiselect_state,
+                            ),
                             Story::PropertyList => stories::property_list::show(ui),
                             Story::IdPill => stories::id_pill::show(ui),
                             Story::PhaseCard => stories::phase_card::show(ui),

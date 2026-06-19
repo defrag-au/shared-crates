@@ -44,6 +44,7 @@ pub mod supply_bar;
 pub mod swap_modal;
 pub mod tag_list;
 pub mod theme;
+pub mod token_multiselect;
 pub mod timestamp;
 pub mod toast;
 pub mod trait_filter;
@@ -157,6 +158,7 @@ pub use seven_segment::SevenSegmentDisplay;
 pub use sparkline::Sparkline;
 pub use supply_bar::SupplyBar;
 pub use tag_list::{TagList, TagListResponse};
+pub use token_multiselect::{TokenMultiselect, TokenMultiselectResponse};
 pub use swap_modal::{
     CultureBuy, SwapModal, SwapModalAction, SwapModalConfig, SwapModalTheme, SwapPreviewData,
     SwapProgress,

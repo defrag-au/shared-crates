@@ -27,6 +27,7 @@ pub mod supply_bar;
 pub mod swap;
 pub mod tag_list;
 pub mod tcg_card;
+pub mod token_multiselect;
 pub mod timestamp;
 pub mod trait_filter;
 #[cfg(target_arch = "wasm32")]
