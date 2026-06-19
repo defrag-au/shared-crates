@@ -171,6 +171,7 @@ pub fn select_all_utxos_for_max<'a>(
                     script_execution_prices: None,
                     max_execution_units_per_transaction: None,
                     max_transaction_size: None,
+                    plutus_cost_models: None,
                 },
                 &asset_ids,
                 &crate::OutputParams { datum_size: None },

@@ -87,6 +87,9 @@ mod app {
         Chip,
         TagList,
         TokenMultiselect,
+        RelationshipEditor,
+        NamedGroupList,
+        RarityTargetEditor,
         PropertyList,
         IdPill,
         PhaseCard,
@@ -111,6 +114,9 @@ mod app {
                 Self::Chip,
                 Self::TagList,
                 Self::TokenMultiselect,
+                Self::RelationshipEditor,
+                Self::NamedGroupList,
+                Self::RarityTargetEditor,
                 Self::IdPill,
                 Self::PropertyList,
                 Self::ButtonGroup,
@@ -247,6 +253,9 @@ mod app {
                 Self::Chip => "Chip",
                 Self::TagList => "Tag List",
                 Self::TokenMultiselect => "Token Multiselect",
+                Self::RelationshipEditor => "Relationship Editor",
+                Self::NamedGroupList => "Named Group List",
+                Self::RarityTargetEditor => "Rarity Target Editor",
                 Self::PropertyList => "Property List",
                 Self::IdPill => "ID Pill",
                 Self::Timestamp => "Timestamp",
@@ -268,6 +277,9 @@ mod app {
                 | Self::Chip
                 | Self::TagList
                 | Self::TokenMultiselect
+                | Self::RelationshipEditor
+                | Self::NamedGroupList
+                | Self::RarityTargetEditor
                 | Self::Timestamp
                 | Self::ErrorNote
                 | Self::IdPill
@@ -490,6 +502,15 @@ mod app {
                 Self::TokenMultiselect => {
                     "Pick a subset from a known option set — selected as removable chips + an 'add' menu of the rest (group/member/required-slot pickers)"
                 }
+                Self::RelationshipEditor => {
+                    "Directed source → target edges over an option set — variant_flow / dependencies / slot-locks (and the wires in the node-graph view)"
+                }
+                Self::NamedGroupList => {
+                    "Named groups with member multiselects + an optional flag — exclusive groups / bundled sets / linked traits"
+                }
+                Self::RarityTargetEditor => {
+                    "Labelled 0–100% target sliders with a running-total-vs-budget cue — per-trait None% and per-value rarity targets"
+                }
                 Self::PropertyList => {
                     "Compact label/value grid for read-only key data — phase summaries, wallet readouts, payment audit"
                 }
@@ -549,6 +570,9 @@ mod app {
         bullet_bar_state: stories::bullet_bar::BulletBarState,
         tag_list_state: stories::tag_list::TagListState,
         token_multiselect_state: stories::token_multiselect::TokenMultiselectState,
+        relationship_editor_state: stories::relationship_editor::RelationshipEditorState,
+        named_group_list_state: stories::named_group_list::NamedGroupListState,
+        rarity_target_editor_state: stories::rarity_target_editor::RarityTargetEditorState,
         sparkline_state: stories::sparkline::SparklineState,
         seven_segment_state: stories::seven_segment::SevenSegmentState,
         flip_counter_state: stories::flip_counter::FlipCounterState,
@@ -629,6 +653,11 @@ mod app {
                 tag_list_state: stories::tag_list::TagListState::default(),
                 token_multiselect_state: stories::token_multiselect::TokenMultiselectState::default(
                 ),
+                relationship_editor_state:
+                    stories::relationship_editor::RelationshipEditorState::default(),
+                named_group_list_state: stories::named_group_list::NamedGroupListState::default(),
+                rarity_target_editor_state:
+                    stories::rarity_target_editor::RarityTargetEditorState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 seven_segment_state: stories::seven_segment::SevenSegmentState::default(),
                 flip_counter_state: stories::flip_counter::FlipCounterState::default(),
@@ -937,6 +966,18 @@ mod app {
                             Story::TokenMultiselect => stories::token_multiselect::show(
                                 ui,
                                 &mut self.token_multiselect_state,
+                            ),
+                            Story::RelationshipEditor => stories::relationship_editor::show(
+                                ui,
+                                &mut self.relationship_editor_state,
+                            ),
+                            Story::NamedGroupList => stories::named_group_list::show(
+                                ui,
+                                &mut self.named_group_list_state,
+                            ),
+                            Story::RarityTargetEditor => stories::rarity_target_editor::show(
+                                ui,
+                                &mut self.rarity_target_editor_state,
                             ),
                             Story::PropertyList => stories::property_list::show(ui),
                             Story::IdPill => stories::id_pill::show(ui),
