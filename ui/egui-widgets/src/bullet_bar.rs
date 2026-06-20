@@ -133,10 +133,8 @@ impl BulletBar {
             ui.add_space(2.0);
         }
 
-        let (rect, response) = ui.allocate_exact_size(
-            Vec2::new(ui.available_width(), self.height),
-            Sense::hover(),
-        );
+        let (rect, response) =
+            ui.allocate_exact_size(Vec2::new(ui.available_width(), self.height), Sense::hover());
         let painter = ui.painter_at(rect);
         let rounding = CornerRadius::same(self.rounding);
 
@@ -168,9 +166,6 @@ impl BulletBar {
             Stroke::new(2.0, self.target_color),
         );
 
-        response.on_hover_text(format!(
-            "{:.1} / target {:.1}",
-            value, target
-        ))
+        response.on_hover_text(format!("{:.1} / target {:.1}", value, target))
     }
 }

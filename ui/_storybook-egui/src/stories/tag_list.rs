@@ -23,7 +23,11 @@ impl Default for TagListState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut TagListState) {
-    ui.label(egui::RichText::new("Tag List").color(theme::ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Tag List")
+            .color(theme::ACCENT)
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "A wrapping row of removable chips with an optional clear-all button — \

@@ -155,7 +155,7 @@ pub fn show(
         .max_height(config.max_height)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
         .frame(
-            egui::Frame::window(&ctx.style())
+            egui::Frame::window(&ctx.global_style())
                 .fill(theme::BG_PRIMARY)
                 .stroke(egui::Stroke::new(1.0, theme::BG_HIGHLIGHT))
                 .corner_radius(CornerRadius::same(8))

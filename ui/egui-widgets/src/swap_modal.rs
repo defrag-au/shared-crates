@@ -221,7 +221,7 @@ impl SwapModal {
             .default_width(340.0)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .frame(
-                egui::Frame::window(&ctx.style())
+                egui::Frame::window(&ctx.global_style())
                     .fill(self.config.theme.bg)
                     .inner_margin(16.0),
             )

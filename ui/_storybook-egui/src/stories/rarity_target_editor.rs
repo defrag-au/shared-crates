@@ -54,5 +54,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut RarityTargetEditorState) {
     }
     ui.add_space(8.0);
 
-    RarityTargetEditor::new(&mut state.rows).budget(100.0).show(ui);
+    RarityTargetEditor::new(&mut state.rows)
+        .budget(100.0)
+        .show(ui);
 }

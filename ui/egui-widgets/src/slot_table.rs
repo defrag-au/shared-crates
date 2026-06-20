@@ -22,10 +22,7 @@ pub struct SlotTable<'a> {
 
 impl<'a> SlotTable<'a> {
     pub fn new(rows: &'a mut [SlotRow]) -> Self {
-        Self {
-            rows,
-            show_z: true,
-        }
+        Self { rows, show_z: true }
     }
 
     /// Show the z-order column (default true).
@@ -63,19 +60,14 @@ impl<'a> SlotTable<'a> {
                     if ui.checkbox(&mut row.enabled, "").changed() {
                         changed = true;
                     }
-                    let req = ui.add_enabled(
-                        row.enabled,
-                        egui::Checkbox::new(&mut row.required, ""),
-                    );
+                    let req =
+                        ui.add_enabled(row.enabled, egui::Checkbox::new(&mut row.required, ""));
                     if req.changed() {
                         changed = true;
                     }
                     if show_z
                         && ui
-                            .add(
-                                egui::TextEdit::singleline(&mut row.z_order)
-                                    .desired_width(54.0),
-                            )
+                            .add(egui::TextEdit::singleline(&mut row.z_order).desired_width(54.0))
                             .changed()
                     {
                         changed = true;

@@ -978,9 +978,7 @@ mod app {
                                 stories::collection_list::show(ui, &mut self.collection_list_state)
                             }
                             Story::Chip => stories::chip::show(ui),
-                            Story::TagList => {
-                                stories::tag_list::show(ui, &mut self.tag_list_state)
-                            }
+                            Story::TagList => stories::tag_list::show(ui, &mut self.tag_list_state),
                             Story::TokenMultiselect => stories::token_multiselect::show(
                                 ui,
                                 &mut self.token_multiselect_state,
@@ -1056,4 +1054,3 @@ mod app {
         });
     }
 }
-

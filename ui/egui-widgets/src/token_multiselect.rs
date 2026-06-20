@@ -99,10 +99,14 @@ impl<'a> TokenMultiselect<'a> {
                 let cy = rect.center().y;
                 let h = ICON * 0.35;
                 let stroke = Stroke::new(1.2, x_color(fg, r.hovered()));
-                painter
-                    .line_segment([egui::pos2(cx - h, cy - h), egui::pos2(cx + h, cy + h)], stroke);
-                painter
-                    .line_segment([egui::pos2(cx - h, cy + h), egui::pos2(cx + h, cy - h)], stroke);
+                painter.line_segment(
+                    [egui::pos2(cx - h, cy - h), egui::pos2(cx + h, cy + h)],
+                    stroke,
+                );
+                painter.line_segment(
+                    [egui::pos2(cx - h, cy + h), egui::pos2(cx + h, cy - h)],
+                    stroke,
+                );
                 if r.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                     resp.removed = Some(i);
                 }
@@ -115,7 +119,7 @@ impl<'a> TokenMultiselect<'a> {
                     for opt in &remaining {
                         if ui.button(opt.as_str()).clicked() {
                             chosen = Some((*opt).clone());
-                            ui.close_menu();
+                            ui.close();
                         }
                     }
                     chosen

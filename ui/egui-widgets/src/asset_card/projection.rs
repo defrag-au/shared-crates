@@ -1,6 +1,6 @@
 use egui::Pos2;
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct TiltState {
     pub current_x: f32,
     pub current_y: f32,
