@@ -92,5 +92,7 @@ pub mod quantity_stepper;
 // Wallet
 pub mod fungibles_row;
 pub mod persona_strip;
+pub mod collection_composition;
+pub mod variant_split;
 pub mod wallet_identity_header;
 pub mod wallet_list;

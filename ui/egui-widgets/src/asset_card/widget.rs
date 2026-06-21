@@ -20,8 +20,8 @@
 use egui::{Color32, Pos2, Rect, Sense, Vec2};
 
 use super::effects::{
-    AuroraCurtain, BrushedMetal, CardEffect, DiffractionGrating, Glitter, PrismaticDispersion,
-    StreakHolo, ThinFilmIridescence,
+    AuroraCurtain, BrushedMetal, CardEffect, DiffractionGrating, EffectVertex, Glitter,
+    PrismaticDispersion, StreakHolo, ThinFilmIridescence,
 };
 use super::geometry::{base_outline, expand_outline};
 use super::mesh::{
@@ -83,14 +83,20 @@ impl CardEffectKind {
         super::EFFECT_NAMES[self.index()]
     }
 
-    /// Instantiate the concrete effect with its tuned default parameters.
+    /// Instantiate the concrete effect with its default parameters.
+    ///
+    /// These are tuned for *restraint* — a tasteful foil that reads as a sheen
+    /// rather than a light show (informed by simeydotme's Pokémon-cards-css and
+    /// Alan Zucconi's iridescence work). The "amount" knobs (shimmer/overlay/
+    /// intensity/brightness) sit roughly half of a naive maximum; dial the whole
+    /// treatment globally with [`AssetCard::strength`] rather than re-tuning here.
     pub fn build(self) -> Box<dyn CardEffect> {
         match self {
             CardEffectKind::StreakHolo => Box::new(StreakHolo {
                 hue_range: 60.0,
                 shimmer_width: 0.15,
-                shimmer_intensity: 0.4,
-                overlay_opacity: 0.2,
+                shimmer_intensity: 0.2,
+                overlay_opacity: 0.1,
             }),
             CardEffectKind::ThinFilm => Box::new(ThinFilmIridescence {
                 iri_min: 250.0,
@@ -102,12 +108,12 @@ impl CardEffectKind {
                 grating_spacing: 1500.0,
                 grating_angle: 0.0,
                 max_orders: 4,
-                intensity: 1.5,
+                intensity: 0.6,
             }),
             CardEffectKind::Glitter => Box::new(Glitter {
                 grid_scale: 40.0,
                 sparkle_sharpness: 150.0,
-                sparkle_threshold: 0.3,
+                sparkle_threshold: 0.5,
                 z_depth: 0.6,
             }),
             CardEffectKind::BrushedMetal => Box::new(BrushedMetal {
@@ -123,13 +129,13 @@ impl CardEffectKind {
                 freq2: 5.0,
                 curtain_sharpness: 4.0,
                 vertical_falloff: 1.5,
-                brightness: 1.0,
+                brightness: 0.5,
             }),
             CardEffectKind::Prismatic => Box::new(PrismaticDispersion {
                 dispersion: 0.08,
                 spread: 0.1,
                 facet_scale: 8.0,
-                intensity: 1.5,
+                intensity: 0.6,
             }),
         }
     }
@@ -182,6 +188,7 @@ pub struct AssetCard<'a> {
     glow: f32,
     show_spark: bool,
     placeholder: Color32,
+    strength: f32,
 }
 
 impl<'a> AssetCard<'a> {
@@ -200,6 +207,7 @@ impl<'a> AssetCard<'a> {
             glow: 6.0,
             show_spark: true,
             placeholder: Color32::from_rgb(30, 30, 48),
+            strength: 0.7,
         }
     }
 
@@ -244,6 +252,16 @@ impl<'a> AssetCard<'a> {
     /// Placeholder fill drawn while art loads / when there is no art.
     pub fn placeholder(mut self, color: Color32) -> Self {
         self.placeholder = color;
+        self
+    }
+
+    /// Global holographic-overlay strength, `0.0` (off) … `1.0` (full effect at
+    /// the most glancing tilt). Default `0.7`. This is the single dial for
+    /// toning the foil up/down across a whole surface — combined with the
+    /// tilt-based fade, a flat card stays subtle and the holo grows as it tilts.
+    /// Clamped to `[0, 1]`.
+    pub fn strength(mut self, strength: f32) -> Self {
+        self.strength = strength.clamp(0.0, 1.0);
         self
     }
 
@@ -337,11 +355,22 @@ impl<'a> AssetCard<'a> {
             None => draw_quad(&painter, quad, self.placeholder),
         }
 
-        // 6. Holographic overlay (on hover, when an effect is set).
+        // 6. Holographic overlay (on hover, when an effect is set). Faded by the
+        //    global `strength` knob AND by tilt magnitude — so a near-flat card
+        //    reads as a subtle sheen and the holo "pops" only at glancing angles
+        //    (a Fresnel-like gate, the trick that makes real foil feel tasteful).
         if let Some(kind) = self.effect {
             if let Some(hover) = response.hover_pos() {
                 let mu = ((hover.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
                 let mv = ((hover.y - rect.top()) / rect.height()).clamp(0.0, 1.0);
+                let max_rad = self.max_tilt_deg.to_radians().max(1e-3);
+                let tilt_norm = ((ax * ax + ay * ay).sqrt() / max_rad).clamp(0.0, 1.0);
+                let alpha = self.strength * (0.25 + 0.75 * tilt_norm);
+                let effect = kind.build();
+                let scaled = ScaledEffect {
+                    inner: &*effect,
+                    alpha,
+                };
                 draw_effect_quad(
                     &painter,
                     rect,
@@ -351,7 +380,7 @@ impl<'a> AssetCard<'a> {
                     self.perspective,
                     mu,
                     mv,
-                    &*kind.build(),
+                    &scaled,
                 );
             }
         }
@@ -368,6 +397,43 @@ impl<'a> AssetCard<'a> {
             );
             ui.ctx().request_repaint();
         }
+    }
+}
+
+/// Wraps a [`CardEffect`], fading every overlay colour toward transparent by
+/// `alpha` (`0.0` = off … `1.0` = unchanged). Effect colours are premultiplied,
+/// so scaling all four channels uniformly is a correct linear fade — used to
+/// apply the card's global `strength` and tilt gate without touching the
+/// per-effect maths or the mesh primitives.
+struct ScaledEffect<'a> {
+    inner: &'a dyn CardEffect,
+    alpha: f32,
+}
+
+impl CardEffect for ScaledEffect<'_> {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn compute_colors(
+        &self,
+        vertices: &[EffectVertex],
+        mouse_u: f32,
+        mouse_v: f32,
+    ) -> Vec<Color32> {
+        let k = self.alpha.clamp(0.0, 1.0);
+        self.inner
+            .compute_colors(vertices, mouse_u, mouse_v)
+            .into_iter()
+            .map(|c| {
+                Color32::from_rgba_premultiplied(
+                    (c.r() as f32 * k) as u8,
+                    (c.g() as f32 * k) as u8,
+                    (c.b() as f32 * k) as u8,
+                    (c.a() as f32 * k) as u8,
+                )
+            })
+            .collect()
     }
 }
 

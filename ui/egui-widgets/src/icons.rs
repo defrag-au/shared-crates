@@ -21,8 +21,19 @@ pub fn phosphor_family() -> FontFamily {
     FontFamily::Name(PHOSPHOR_FAMILY_NAME.into())
 }
 
-/// Register the Phosphor icon font with the egui context.
-/// Safe to call multiple times — only installs once per process.
+/// Name of the bundled broad-coverage fallback font.
+pub const FALLBACK_FAMILY_NAME: &str = "dejavu-fallback";
+
+/// Register the bundled fonts with the egui context: the **Phosphor** icon font (its
+/// own family, referenced via [`PhosphorIcon`]) and **DejaVu Sans** as a broad-coverage
+/// *fallback* appended to both standard families. egui has no automatic font fallback,
+/// so without this any glyph the primary font lacks (accented/international text, maths,
+/// symbols) renders as a `□` tofu box — appending DejaVu (which covers Latin-ext, Greek,
+/// Cyrillic, arrows, maths and many symbols) catches them. Intentional icons should
+/// still use [`PhosphorIcon`]; this is the safety net for arbitrary *data* strings.
+///
+/// Safe to call multiple times — only installs once per process. Call before
+/// [`crate::theme::configure_style`].
 pub fn install_phosphor_font(ctx: &egui::Context) {
     if FONT_INSTALLED.swap(true, Ordering::Relaxed) {
         return;
@@ -30,20 +41,42 @@ pub fn install_phosphor_font(ctx: &egui::Context) {
 
     let mut fonts = egui::FontDefinitions::default();
 
+    // Phosphor icons — its own family, selected explicitly by `PhosphorIcon::*`.
     fonts.font_data.insert(
         PHOSPHOR_FAMILY_NAME.to_owned(),
         std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
             "../fonts/Phosphor.ttf"
         ))),
     );
-
     fonts
         .families
         .entry(FontFamily::Name(PHOSPHOR_FAMILY_NAME.into()))
         .or_default()
         .push(PHOSPHOR_FAMILY_NAME.to_owned());
 
+    // DejaVu Sans — broad-coverage fallback APPENDED (lowest priority) to both standard
+    // families, so the primary font wins for normal text and DejaVu only fills its gaps.
+    fonts.font_data.insert(
+        FALLBACK_FAMILY_NAME.to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+            "../fonts/DejaVuSans.ttf"
+        ))),
+    );
+    for family in [FontFamily::Proportional, FontFamily::Monospace] {
+        fonts
+            .families
+            .entry(family)
+            .or_default()
+            .push(FALLBACK_FAMILY_NAME.to_owned());
+    }
+
     ctx.set_fonts(fonts);
+}
+
+/// Alias for [`install_phosphor_font`] — installs all bundled fonts (Phosphor icons +
+/// the DejaVu coverage fallback). Prefer this name in new code.
+pub fn install_fonts(ctx: &egui::Context) {
+    install_phosphor_font(ctx);
 }
 
 /// Returns true if the font has already been installed.

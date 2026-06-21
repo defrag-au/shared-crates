@@ -113,6 +113,17 @@ shape: builder → `.show(ui) -> Response { actions: Vec<…> }`.
   progress with gain/loss regions. **Trait-coverage trade impact.**
 - **`split_allocation_bar`** → `AllocationSegment` — Stacked bar
   segmented by DEX with % labels. **Split-routing allocation display.**
+- **`variant_split`** → `VariantSegment` + `VariantSplitConfig` — Derived
+  variant distribution for a `variant_flow` source slot: coloured shares +
+  per-variant asset counts + a dotted uniform baseline, with a generated
+  "why" caption. **Explaining cardinality-weighted CSP splits (why a
+  variant isn't 50/50).**
+- **`collection_composition`** → `CollectionComposition` (+ `CompositionLayer`
+  / `CompositionFlow` / `CompositionStat` / `CompositionConfig`) — Promotable
+  "how this collection generates" infographic: z-ordered layer stack (front
+  on top) with per-layer presence bar, option count, variant badges, and
+  curved `variant_flow` connectors in a gutter, under a headline stats band.
+  **A read-only collection overview you could screenshot to promote it.**
 - **`price_impact_curve`** → `ImpactCurvePool` — AMM impact curves per
   pool with optimizer allocation overlay. **Split-routing optimisation
   rationale.**

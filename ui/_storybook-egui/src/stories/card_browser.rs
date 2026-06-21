@@ -22,6 +22,7 @@ pub struct CardBrowserStoryState {
     pub text_lines: u8,
     pub detail_width: f32,
     pub spacing: f32,
+    pub holo_strength: f32,
     pub items: Vec<DemoItem>,
 }
 
@@ -34,6 +35,7 @@ impl Default for CardBrowserStoryState {
             text_lines: 3,
             detail_width: 360.0,
             spacing: 8.0,
+            holo_strength: 0.7,
             items: build_preset_items(0),
         }
     }
@@ -310,6 +312,7 @@ fn render_asset_card_3d(
     ui: &mut egui::Ui,
     ctx: &card_browser::CardRenderContext,
     item: &mut DemoItem,
+    holo_strength: f32,
 ) {
     // Holo overlay only for Rare+ (matches glow/spark gating); pick the effect
     // by the asset's slot.
@@ -318,6 +321,7 @@ fn render_asset_card_3d(
     AssetCard::new(CardImage::from_url_opt(item.image_url.as_deref()))
         .rarity(item.rarity)
         .effect(effect)
+        .strength(holo_strength)
         .paint(ui, ctx.thumb_rect, &ctx.response, &mut item.card_state);
 }
 
@@ -431,6 +435,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
         }
     });
 
+    // Global holo-strength dial (AssetCard 3D preset only).
+    if state.preset == 3 {
+        ui.add(egui::Slider::new(&mut state.holo_strength, 0.0..=1.0).text("Holo strength"));
+    }
+
     // Summary
     ui.add_space(4.0);
     let selected_label = state
@@ -468,6 +477,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
     // The AssetCard widget self-animates tilt + spark (and requests repaints),
     // so the 3D preset needs no manual per-frame advance here.
     let preset = state.preset;
+    let holo_strength = state.holo_strength;
 
     // Show the browser
     card_browser::show(
@@ -478,7 +488,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
         // Card renderer
         |ui, ctx, item| {
             if preset == 3 {
-                render_asset_card_3d(ui, ctx, item);
+                render_asset_card_3d(ui, ctx, item, holo_strength);
             } else {
                 render_flat_card(ui, ctx, item, &config);
             }

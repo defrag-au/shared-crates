@@ -13,6 +13,7 @@ cardano = ["dep:cardano-assets", "dep:wallet-core", "dep:wallet-pallas"]
 [dependencies]
 egui = { workspace = true }
 egui_extras = { workspace = true }
+ehttp = "0.7"
 image = { workspace = true, features = ["jpeg"] }
 cardano-assets = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }

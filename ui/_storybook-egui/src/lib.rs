@@ -60,6 +60,8 @@ mod app {
         RouteSummary,
         PoolLiquidity,
         PriceImpactCurve,
+        VariantSplit,
+        CollectionComposition,
         // Loan dashboard
         ExposureBar,
         DataTable,
@@ -166,6 +168,8 @@ mod app {
                 Self::RouteSummary,
                 Self::PoolLiquidity,
                 Self::PriceImpactCurve,
+                Self::VariantSplit,
+                Self::CollectionComposition,
                 // Loan dashboard
                 Self::ExposureBar,
                 Self::DataTable,
@@ -239,6 +243,8 @@ mod app {
                 Self::RouteSummary => "Route Summary",
                 Self::PoolLiquidity => "Pool Liquidity",
                 Self::PriceImpactCurve => "Price Impact Curve",
+                Self::VariantSplit => "Variant Split",
+                Self::CollectionComposition => "Collection Composition",
                 Self::ExposureBar => "Exposure Bar",
                 Self::DataTable => "Data Table",
                 Self::SupplyBar => "Supply Bar",
@@ -334,6 +340,7 @@ mod app {
                 | Self::RouteSummary
                 | Self::PoolLiquidity
                 | Self::PriceImpactCurve => "DEX Split Swap",
+                Self::VariantSplit | Self::CollectionComposition => "Collection CSP",
                 Self::ExposureBar | Self::DataTable => "Loan Dashboard",
                 Self::SupplyBar | Self::OrderList => "Mint Dashboard",
                 Self::FileUpload => "Utility",
@@ -454,6 +461,12 @@ mod app {
                 }
                 Self::PriceImpactCurve => {
                     "AMM price impact curves per pool — visualizes why split routing minimizes slippage"
+                }
+                Self::VariantSplit => {
+                    "Derived variant distribution for a variant_flow source — share weighted by downstream asset capacity, with the uniform baseline for contrast"
+                }
+                Self::CollectionComposition => {
+                    "Promotable infographic of how a collection generates: z-ordered layer stack with presence/options/variant badges + variant_flow connectors, under a stats band"
                 }
                 Self::ExposureBar => {
                     "Stacked horizontal bar showing total ADA exposure by collateral token, colored by LTV risk"
@@ -655,6 +668,20 @@ mod app {
                 egui_widgets::image_loader::browser::BrowserImageLoader::default(),
             ));
             egui_widgets::install_phosphor_font(&cc.egui_ctx);
+            // Inter as the primary proportional face (from the font bucket), in front of
+            // the bundled default + DejaVu fallback. Async fetch; swaps in once it lands.
+            egui_widgets::fonts::load_remote_font(
+                &cc.egui_ctx,
+                egui_widgets::fonts::r2::INTER_REGULAR,
+                egui::FontFamily::Proportional,
+                egui::epaint::text::FontPriority::Highest,
+            );
+            egui_widgets::fonts::load_remote_font(
+                &cc.egui_ctx,
+                egui_widgets::fonts::r2::INTER_BOLD,
+                egui::FontFamily::Proportional,
+                egui::epaint::text::FontPriority::Highest,
+            );
 
             Self {
                 current_story: Story::Distribution,
@@ -942,6 +969,10 @@ mod app {
                             Story::RouteSummary => stories::route_summary::show(ui),
                             Story::PoolLiquidity => stories::pool_liquidity::show(ui),
                             Story::PriceImpactCurve => stories::price_impact_curve::show(ui),
+                            Story::VariantSplit => stories::variant_split::show(ui),
+                            Story::CollectionComposition => {
+                                stories::collection_composition::show(ui)
+                            }
                             // Loan dashboard
                             Story::ExposureBar => stories::exposure_bar::show(ui),
                             Story::SupplyBar => stories::supply_bar::show(ui),

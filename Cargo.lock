@@ -1294,6 +1294,7 @@ dependencies = [
  "egui",
  "egui_extras",
  "egui_inbox",
+ "ehttp",
  "i_overlay",
  "image 0.25.10",
  "js-sys",

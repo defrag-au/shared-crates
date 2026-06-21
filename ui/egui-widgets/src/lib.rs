@@ -8,6 +8,7 @@ pub mod button_group;
 pub mod buttons;
 pub mod card_browser;
 pub mod chip;
+pub mod collection_composition;
 pub mod collection_list;
 pub mod distribution_waterfall;
 pub mod donut_chart;
@@ -53,7 +54,9 @@ pub mod timestamp;
 pub mod toast;
 pub mod token_multiselect;
 pub mod trait_filter;
+pub mod fonts;
 pub mod utils;
+pub mod variant_split;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
