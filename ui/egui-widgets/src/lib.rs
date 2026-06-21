@@ -16,6 +16,7 @@ pub mod error_note;
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
 pub mod flip_counter;
+pub mod fonts;
 pub mod fungibles_row;
 pub mod grouped_section;
 pub mod icons;
@@ -54,7 +55,7 @@ pub mod timestamp;
 pub mod toast;
 pub mod token_multiselect;
 pub mod trait_filter;
-pub mod fonts;
+pub mod typeahead_search;
 pub mod utils;
 pub mod variant_split;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
@@ -81,6 +82,9 @@ pub mod split_allocation_bar;
 // Loan dashboard widgets
 pub mod data_table;
 pub mod exposure_bar;
+
+// Ranked-list dashboards (holders, leaderboards, top traders)
+pub mod leaderboard_table;
 
 // Generic coverage bar (no cardano deps — usable everywhere, e.g. rarity tuning).
 pub mod coverage_delta_bar;
@@ -180,6 +184,9 @@ pub use timestamp::{format_iso8601, Timestamp};
 pub use toast::{show_toasts, Toast, ToastKind, ToastQueue, DEFAULT_DURATION_FRAMES};
 pub use token_multiselect::{TokenMultiselect, TokenMultiselectResponse};
 pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
+pub use typeahead_search::{
+    filter_options, TypeaheadOption, TypeaheadResponse, TypeaheadSearch,
+};
 pub use utils::{
     format_ada, format_duration, format_lovelace, format_number, format_percent, section_heading,
     stat_card, truncate_hex,
@@ -216,6 +223,7 @@ pub use data_table::{
     DataRowItem, DataRowStatus, DataTableConfig, DataTableResponse, DataTableState,
 };
 pub use exposure_bar::{ltv_risk_color, ExposureBarConfig, ExposureSegment};
+pub use leaderboard_table::{LeaderboardRow, LeaderboardTable};
 
 // Cardano-specific re-exports
 #[cfg(feature = "cardano")]

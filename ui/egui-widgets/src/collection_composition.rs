@@ -20,15 +20,16 @@ use crate::theme;
 pub struct ValueShare {
     /// Within-slot share, `0.0..=100.0` (sums to ~100 across the slot's values).
     pub pct: f32,
-    /// Asset id / name, shown in the hover preview caption.
+    /// Display name, shown in the hover preview caption.
     pub label: String,
-    /// Thumbnail for the hover preview (studio); `None` → a placeholder box.
-    pub texture: Option<egui::TextureId>,
+    /// Opaque key (e.g. asset path), surfaced via [`CompositionResponse::hovered`] so the
+    /// caller can render a preview / fetch a thumbnail for the hovered value.
+    pub id: String,
 }
 
-/// One z-ordered layer of the collection.
+/// One layer of the collection. The caller supplies layers already in render order
+/// (front-most first); the widget does not re-sort them.
 pub struct CompositionLayer {
-    pub z_label: String,
     pub name: String,
     /// How often this layer is present, `0.0..=100.0` (100 = always).
     pub present_pct: f32,
@@ -82,61 +83,93 @@ impl Default for CompositionConfig {
     }
 }
 
-struct Hover {
-    layer: String,
-    label: String,
-    pct: f32,
-    texture: Option<egui::TextureId>,
+/// The value currently under the cursor, so the caller can render a preview for it.
+pub struct Hovered {
+    pub id: String,
+    pub layer: String,
+    pub label: String,
+    pub pct: f32,
 }
 
 // ============================================================================
 // Widget
 // ============================================================================
 
-/// Render the composition infographic. Returns the overall `Response`.
-pub fn show(ui: &mut Ui, comp: &CollectionComposition, cfg: &CompositionConfig) -> egui::Response {
-    ui.scope(|ui| {
-        let area = ui.available_rect_before_wrap();
-
-        ui.label(egui::RichText::new(&comp.title).color(theme::TEXT_PRIMARY).strong().size(18.0));
-
-        if !comp.stats.is_empty() {
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                for (i, s) in comp.stats.iter().enumerate() {
-                    if i > 0 {
-                        ui.add_space(18.0);
-                    }
-                    ui.vertical(|ui| {
-                        ui.label(egui::RichText::new(&s.value).color(theme::ACCENT).strong().size(18.0));
-                        ui.label(egui::RichText::new(&s.label).color(theme::TEXT_MUTED).size(10.5));
-                    });
-                }
-            });
-        }
-
-        ui.add_space(10.0);
-        ui.label(
-            egui::RichText::new("Layer stack — how each token is assembled (front on top)")
-                .color(theme::TEXT_MUTED)
-                .size(10.5),
-        );
-        ui.add_space(4.0);
-
-        let hover = layer_stack(ui, comp, cfg);
-        if let Some(h) = hover {
-            draw_preview(ui.painter(), area, &h);
-        }
-    })
-    .response
+/// The layer-stack's response plus the value currently hovered (if any), so the caller
+/// can render a preview for it (e.g. via its own thumbnail cache).
+pub struct CompositionResponse {
+    pub response: egui::Response,
+    pub hovered: Option<Hovered>,
 }
 
-fn layer_stack(ui: &mut Ui, comp: &CollectionComposition, cfg: &CompositionConfig) -> Option<Hover> {
-    // Front (highest z) on top.
-    let mut order: Vec<usize> = (0..comp.layers.len()).collect();
-    let zkey = |s: &str| s.split(':').next().unwrap_or("0").trim().parse::<u32>().unwrap_or(0);
-    order.sort_by(|&a, &b| zkey(&comp.layers[b].z_label).cmp(&zkey(&comp.layers[a].z_label)));
+/// Render the composition header — title + headline stats + the legend caption. Keep this
+/// OUTSIDE the scroll area (with the preview) so it (and the hover preview) stay visible
+/// while the layer stack scrolls.
+pub fn show_header(ui: &mut Ui, comp: &CollectionComposition) {
+    ui.label(
+        egui::RichText::new(&comp.title)
+            .color(theme::TEXT_PRIMARY)
+            .strong()
+            .size(18.0),
+    );
 
+    if !comp.stats.is_empty() {
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            for (i, s) in comp.stats.iter().enumerate() {
+                if i > 0 {
+                    ui.add_space(18.0);
+                }
+                ui.vertical(|ui| {
+                    ui.label(
+                        egui::RichText::new(&s.value)
+                            .color(theme::ACCENT)
+                            .strong()
+                            .size(18.0),
+                    );
+                    ui.label(
+                        egui::RichText::new(&s.label)
+                            .color(theme::TEXT_MUTED)
+                            .size(10.5),
+                    );
+                });
+            }
+        });
+    }
+
+    ui.add_space(10.0);
+    ui.label(
+        egui::RichText::new(
+            "Layer stack, front on top — the % is how often the layer appears in a token; \
+             cells are its values, with weights shown only where overridden.",
+        )
+        .color(theme::TEXT_MUTED)
+        .size(10.5),
+    );
+}
+
+/// Render the z-ordered layer stack (intended for inside a scroll area). Returns the
+/// value under the cursor so the caller can render a preview for it.
+pub fn show_stack(
+    ui: &mut Ui,
+    comp: &CollectionComposition,
+    cfg: &CompositionConfig,
+) -> CompositionResponse {
+    let mut hovered = None;
+    let response = ui
+        .scope(|ui| {
+            hovered = layer_stack(ui, comp, cfg);
+        })
+        .response;
+    CompositionResponse { response, hovered }
+}
+
+fn layer_stack(
+    ui: &mut Ui,
+    comp: &CollectionComposition,
+    cfg: &CompositionConfig,
+) -> Option<Hovered> {
+    // Layers are rendered in the order given (caller sorts front-most first).
     let avail_w = ui.available_width();
     let pointer = ui.input(|i| i.pointer.hover_pos());
     let value_x_off = cfg.left_col;
@@ -146,10 +179,9 @@ fn layer_stack(ui: &mut Ui, comp: &CollectionComposition, cfg: &CompositionConfi
 
     let mut y_name: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
     let mut row_left = 0.0_f32;
-    let mut hovered: Option<Hover> = None;
+    let mut hovered: Option<Hovered> = None;
 
-    for &i in &order {
-        let layer = &comp.layers[i];
+    for (i, layer) in comp.layers.iter().enumerate() {
         let n = layer.values.len();
         let lines = if n == 0 { 1 } else { n.div_ceil(per_line) };
         let row_h = (lines as f32 * cfg.cell_pitch.y + pad).max(cfg.row_min_height);
@@ -163,33 +195,73 @@ fn layer_stack(ui: &mut Ui, comp: &CollectionComposition, cfg: &CompositionConfi
         }
         let p = ui.painter();
         if i % 2 == 0 {
-            p.rect_filled(rect, CornerRadius::same(4), theme::BG_SECONDARY.gamma_multiply(0.5));
+            p.rect_filled(
+                rect,
+                CornerRadius::same(4),
+                theme::BG_SECONDARY.gamma_multiply(0.5),
+            );
         }
 
-        // Left column: z, name, variant badges, presence %.
-        let mut x = rect.left() + cfg.gutter;
-        p.text(Pos2::new(x, name_y), Align2::LEFT_CENTER, &layer.z_label, FontId::monospace(11.0), theme::TEXT_MUTED);
-        x += 26.0;
-        p.text(Pos2::new(x, name_y), Align2::LEFT_CENTER, &layer.name, FontId::proportional(13.0), theme::TEXT_PRIMARY);
-        let mut bx = rect.left() + cfg.gutter + 26.0 + 118.0;
+        // Left column: name, variant badges, presence %.
+        let x = rect.left() + cfg.gutter;
+        p.text(
+            Pos2::new(x, name_y),
+            Align2::LEFT_CENTER,
+            &layer.name,
+            FontId::proportional(13.0),
+            theme::TEXT_PRIMARY,
+        );
+        let mut bx = rect.left() + cfg.gutter + 144.0;
         for (vi, v) in layer.variants.iter().enumerate() {
             let badge = Rect::from_min_size(Pos2::new(bx, name_y - 8.0), Vec2::new(20.0, 16.0));
-            p.rect_filled(badge, CornerRadius::same(4), variant_color(vi).gamma_multiply(0.30));
-            p.text(badge.center(), Align2::CENTER_CENTER, v, FontId::proportional(10.0), variant_color(vi));
+            p.rect_filled(
+                badge,
+                CornerRadius::same(4),
+                variant_color(vi).gamma_multiply(0.30),
+            );
+            p.text(
+                badge.center(),
+                Align2::CENTER_CENTER,
+                v,
+                FontId::proportional(10.0),
+                variant_color(vi),
+            );
             bx += 24.0;
         }
-        let present_col = if layer.present_pct >= 99.5 { theme::SUCCESS } else { theme::ACCENT };
+        let present_col = if layer.present_pct >= 99.5 {
+            theme::SUCCESS
+        } else {
+            theme::ACCENT
+        };
+        // Show 2 decimals for present-but-rare layers (e.g. 0.18%) so they don't read 0%.
+        let present_txt = if layer.present_pct > 0.0 && layer.present_pct < 1.0 {
+            format!("{:.2}%", layer.present_pct)
+        } else {
+            format!("{:.0}%", layer.present_pct)
+        };
         p.text(
             Pos2::new(rect.left() + cfg.left_col - 12.0, name_y),
             Align2::RIGHT_CENTER,
-            format!("{:.0}%", layer.present_pct),
+            present_txt,
             FontId::proportional(11.0),
             present_col,
         );
 
         // Value grid — all values, sorted by share desc, left-aligned, wrapping.
         let mut vals: Vec<&ValueShare> = layer.values.iter().collect();
-        vals.sort_by(|a, b| b.pct.partial_cmp(&a.pct).unwrap_or(std::cmp::Ordering::Equal));
+        vals.sort_by(|a, b| {
+            b.pct
+                .partial_cmp(&a.pct)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        // Even distribution → no per-cell %s (just the count of cells); only overrides
+        // (a non-uniform spread) show their weights.
+        let spread = vals
+            .first()
+            .zip(vals.last())
+            .map(|(a, b)| a.pct - b.pct)
+            .unwrap_or(0.0);
+        let is_even = vals.len() <= 1 || spread <= 1.5;
         for (vi, v) in vals.iter().enumerate() {
             let col = vi % per_line;
             let line = vi / per_line;
@@ -205,17 +277,32 @@ fn layer_stack(ui: &mut Ui, comp: &CollectionComposition, cfg: &CompositionConfi
             p.rect_stroke(
                 cell,
                 CornerRadius::same(4),
-                Stroke::new(if hot { 1.5 } else { 1.0 }, if hot { theme::ACCENT } else { theme::BORDER }),
+                Stroke::new(
+                    if hot { 1.5 } else { 1.0 },
+                    if hot { theme::ACCENT } else { theme::BORDER },
+                ),
                 egui::StrokeKind::Inside,
             );
-            let txt = if v.pct < 0.95 { "<1".to_string() } else { format!("{:.0}", v.pct) };
-            p.text(cell.center(), Align2::CENTER_CENTER, txt, FontId::proportional(9.0), theme::TEXT_SECONDARY);
+            if !is_even {
+                let txt = if v.pct < 0.95 {
+                    "<1".to_string()
+                } else {
+                    format!("{:.0}", v.pct)
+                };
+                p.text(
+                    cell.center(),
+                    Align2::CENTER_CENTER,
+                    txt,
+                    FontId::proportional(9.0),
+                    theme::TEXT_SECONDARY,
+                );
+            }
             if hot {
-                hovered = Some(Hover {
+                hovered = Some(Hovered {
+                    id: v.id.clone(),
                     layer: layer.name.clone(),
                     label: v.label.clone(),
                     pct: v.pct,
-                    texture: v.texture,
                 });
             }
         }
@@ -225,45 +312,24 @@ fn layer_stack(ui: &mut Ui, comp: &CollectionComposition, cfg: &CompositionConfi
     let gutter_right = row_left + cfg.gutter - 8.0;
     let spine_x = row_left + 8.0;
     for group in flow_groups(&comp.flow) {
-        let mut ys: Vec<f32> = group.iter().filter_map(|n| y_name.get(n).copied()).collect();
+        let mut ys: Vec<f32> = group
+            .iter()
+            .filter_map(|n| y_name.get(n).copied())
+            .collect();
         if ys.len() < 2 {
             continue;
         }
         ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        draw_bracket(ui.painter(), spine_x, gutter_right, &ys, theme::ACCENT_CYAN.gamma_multiply(0.85));
+        draw_bracket(
+            ui.painter(),
+            spine_x,
+            gutter_right,
+            &ys,
+            theme::ACCENT_CYAN.gamma_multiply(0.85),
+        );
     }
 
     hovered
-}
-
-/// Hover preview pinned to the top-right of the control.
-fn draw_preview(painter: &egui::Painter, area: Rect, h: &Hover) {
-    let size = 104.0;
-    let box_rect = Rect::from_min_size(Pos2::new(area.right() - size, area.top()), Vec2::splat(size));
-    painter.rect_filled(box_rect, CornerRadius::same(8), theme::BG_HIGHLIGHT);
-    painter.rect_stroke(box_rect, CornerRadius::same(8), Stroke::new(1.0, theme::ACCENT), egui::StrokeKind::Inside);
-    match h.texture {
-        Some(tex) => {
-            let img = box_rect.shrink(6.0);
-            painter.image(tex, img, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
-        }
-        None => {
-            painter.text(
-                box_rect.center(),
-                Align2::CENTER_CENTER,
-                "preview",
-                FontId::proportional(11.0),
-                theme::TEXT_MUTED,
-            );
-        }
-    }
-    painter.text(
-        Pos2::new(box_rect.center().x, box_rect.bottom() + 12.0),
-        Align2::CENTER_CENTER,
-        format!("{} · {} · {:.0}%", h.layer, h.label, h.pct),
-        FontId::proportional(10.0),
-        theme::TEXT_SECONDARY,
-    );
 }
 
 /// Connected components of the flow graph — each is a set of coupled slot names.

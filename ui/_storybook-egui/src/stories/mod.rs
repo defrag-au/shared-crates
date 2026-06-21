@@ -35,6 +35,7 @@ pub mod tcg_card;
 pub mod timestamp;
 pub mod token_multiselect;
 pub mod trait_filter;
+pub mod typeahead_search;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
 pub mod wallet_editor;
@@ -50,6 +51,9 @@ pub mod split_allocation_bar;
 // Loan dashboard widgets
 pub mod data_table;
 pub mod exposure_bar;
+
+// Ranked-list dashboards
+pub mod leaderboard_table;
 
 // Utility widgets
 #[cfg(target_arch = "wasm32")]
@@ -90,9 +94,9 @@ pub mod phase_card;
 pub mod quantity_stepper;
 
 // Wallet
+pub mod collection_composition;
 pub mod fungibles_row;
 pub mod persona_strip;
-pub mod collection_composition;
 pub mod variant_split;
 pub mod wallet_identity_header;
 pub mod wallet_list;

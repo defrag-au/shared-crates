@@ -33,7 +33,11 @@ fn card(ui: &mut egui::Ui, title: &str, slot: &str, segments: &[VariantSegment])
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("VariantSplit Widget").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("VariantSplit Widget")
+            .color(ACCENT)
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Explains a variant_flow source slot's DERIVED distribution: each variant's \
@@ -59,7 +63,11 @@ pub fn show(ui: &mut egui::Ui) {
             ui,
             "Three variants, uneven capacity",
             "body",
-            &[seg("forest", 0.55, 22, 0), seg("desert", 0.30, 12, 1), seg("tundra", 0.15, 6, 2)],
+            &[
+                seg("forest", 0.55, 22, 0),
+                seg("desert", 0.30, 12, 1),
+                seg("tundra", 0.15, 6, 2),
+            ],
         );
 
         // Balanced — equal capacity lands near the uniform baseline (ticks align).

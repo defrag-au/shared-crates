@@ -65,6 +65,8 @@ mod app {
         // Loan dashboard
         ExposureBar,
         DataTable,
+        // Ranked-list dashboards
+        LeaderboardTable,
         // Mint dashboard
         SupplyBar,
         OrderList,
@@ -89,6 +91,7 @@ mod app {
         Chip,
         TagList,
         TokenMultiselect,
+        TypeaheadSearch,
         RelationshipEditor,
         NamedGroupList,
         RarityTargetEditor,
@@ -118,6 +121,7 @@ mod app {
                 Self::Chip,
                 Self::TagList,
                 Self::TokenMultiselect,
+                Self::TypeaheadSearch,
                 Self::RelationshipEditor,
                 Self::NamedGroupList,
                 Self::RarityTargetEditor,
@@ -173,6 +177,8 @@ mod app {
                 // Loan dashboard
                 Self::ExposureBar,
                 Self::DataTable,
+                // Ranked-list dashboards
+                Self::LeaderboardTable,
                 // Mint dashboard
                 Self::SupplyBar,
                 Self::OrderList,
@@ -247,6 +253,7 @@ mod app {
                 Self::CollectionComposition => "Collection Composition",
                 Self::ExposureBar => "Exposure Bar",
                 Self::DataTable => "Data Table",
+                Self::LeaderboardTable => "Leaderboard Table",
                 Self::SupplyBar => "Supply Bar",
                 Self::OrderList => "Order List",
                 Self::FileUpload => "File Upload",
@@ -263,6 +270,7 @@ mod app {
                 Self::Chip => "Chip",
                 Self::TagList => "Tag List",
                 Self::TokenMultiselect => "Token Multiselect",
+                Self::TypeaheadSearch => "Typeahead Search",
                 Self::RelationshipEditor => "Relationship Editor",
                 Self::NamedGroupList => "Named Group List",
                 Self::RarityTargetEditor => "Rarity Target Editor",
@@ -289,6 +297,7 @@ mod app {
                 | Self::Chip
                 | Self::TagList
                 | Self::TokenMultiselect
+                | Self::TypeaheadSearch
                 | Self::RelationshipEditor
                 | Self::NamedGroupList
                 | Self::RarityTargetEditor
@@ -342,6 +351,7 @@ mod app {
                 | Self::PriceImpactCurve => "DEX Split Swap",
                 Self::VariantSplit | Self::CollectionComposition => "Collection CSP",
                 Self::ExposureBar | Self::DataTable => "Loan Dashboard",
+                Self::LeaderboardTable => "Ranked Lists",
                 Self::SupplyBar | Self::OrderList => "Mint Dashboard",
                 Self::FileUpload => "Utility",
                 Self::ImageTextEditor => "Media",
@@ -474,6 +484,9 @@ mod app {
                 Self::DataTable => {
                     "Dense row-based table with column headers, LTV micro-bars, selection, and detail panel"
                 }
+                Self::LeaderboardTable => {
+                    "Dense, virtual-scrolled ranked table — rank, identity (accent for handles), semantic badge, pre-formatted value, and share. For holders / leaderboards / top traders"
+                }
                 Self::SupplyBar => {
                     "Two-band mint supply bar: minted (fulfilled) + ordered backlog, with oversubscription handling"
                 }
@@ -522,6 +535,9 @@ mod app {
                 }
                 Self::TokenMultiselect => {
                     "Pick a subset from a known option set — selected as removable chips + an 'add' menu of the rest (group/member/required-slot pickers)"
+                }
+                Self::TypeaheadSearch => {
+                    "Search box with a keyboard-navigable result dropdown — up/down/enter + click, icon + verified/rug badges. Server-ranked or `filter_options`-filtered. Used by the holder-map token-search landing"
                 }
                 Self::RelationshipEditor => {
                     "Directed source → target edges over an option set — variant_flow / dependencies / slot-locks (and the wires in the node-graph view)"
@@ -982,6 +998,7 @@ mod app {
                             Story::DataTable => {
                                 stories::data_table::show(ui, &mut self.data_table_state)
                             }
+                            Story::LeaderboardTable => stories::leaderboard_table::show(ui),
                             Story::FileUpload => {
                                 stories::file_upload::show(ui, &mut self.file_upload_state)
                             }
@@ -1014,6 +1031,7 @@ mod app {
                                 ui,
                                 &mut self.token_multiselect_state,
                             ),
+                            Story::TypeaheadSearch => stories::typeahead_search::show(ui),
                             Story::RelationshipEditor => stories::relationship_editor::show(
                                 ui,
                                 &mut self.relationship_editor_state,

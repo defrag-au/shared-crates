@@ -19,7 +19,11 @@ use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
 fn even(n: usize) -> Vec<ValueShare> {
     let each = 100.0 / n as f32;
     (0..n)
-        .map(|i| ValueShare { pct: each, label: format!("#{}", i + 1), texture: None })
+        .map(|i| ValueShare {
+            pct: each,
+            label: format!("#{}", i + 1),
+            id: String::new(),
+        })
         .collect()
 }
 
@@ -27,19 +31,29 @@ fn even(n: usize) -> Vec<ValueShare> {
 /// slot — the squashua-chicken case.
 fn linear_curve(n: usize) -> Vec<ValueShare> {
     let weights: Vec<f32> = (0..n)
-        .map(|i| if n <= 1 { 10.0 } else { 10.0 - 9.0 * i as f32 / (n - 1) as f32 })
+        .map(|i| {
+            if n <= 1 {
+                10.0
+            } else {
+                10.0 - 9.0 * i as f32 / (n - 1) as f32
+            }
+        })
         .collect();
     let total: f32 = weights.iter().sum();
     weights
         .iter()
         .enumerate()
-        .map(|(i, &w)| ValueShare { pct: w / total * 100.0, label: format!("#{}", i + 1), texture: None })
+        .map(|(i, &w)| ValueShare {
+            pct: w / total * 100.0,
+            label: format!("#{}", i + 1),
+            id: String::new(),
+        })
         .collect()
 }
 
-fn layer(z: &str, name: &str, present: f32, variants: &[&str], values: Vec<ValueShare>) -> CompositionLayer {
+// Layers are passed to the widget front-most first (it renders in order, no re-sort).
+fn layer(name: &str, present: f32, variants: &[&str], values: Vec<ValueShare>) -> CompositionLayer {
     CompositionLayer {
-        z_label: z.into(),
         name: name.into(),
         present_pct: present,
         option_count: values.len(),
@@ -55,13 +69,19 @@ fn card(ui: &mut egui::Ui, comp: &CollectionComposition) {
         .inner_margin(16.0)
         .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
         .show(ui, |ui| {
-            collection_composition::show(ui, comp, &CompositionConfig::default());
+            collection_composition::show_header(ui, comp);
+            ui.separator();
+            let _ = collection_composition::show_stack(ui, comp, &CompositionConfig::default());
         });
     ui.add_space(16.0);
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("CollectionComposition Widget").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("CollectionComposition Widget")
+            .color(ACCENT)
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "All values shown as % cells (within-slot share): uniform = even, tapered = \
@@ -81,24 +101,43 @@ pub fn show(ui: &mut egui::Ui) {
                 &CollectionComposition {
                     title: "Hodlcroft (even distribution)".into(),
                     stats: vec![
-                        CompositionStat { value: "10".into(), label: "traits".into() },
-                        CompositionStat { value: "8".into(), label: "layers".into() },
-                        CompositionStat { value: "~4.5B".into(), label: "combinations".into() },
-                        CompositionStat { value: "skin b · 19%".into(), label: "rarest variant".into() },
+                        CompositionStat {
+                            value: "10".into(),
+                            label: "traits".into(),
+                        },
+                        CompositionStat {
+                            value: "8".into(),
+                            label: "layers".into(),
+                        },
+                        CompositionStat {
+                            value: "~4.5B".into(),
+                            label: "combinations".into(),
+                        },
+                        CompositionStat {
+                            value: "skin b · 19%".into(),
+                            label: "rarest variant".into(),
+                        },
                     ],
+                    // Front-most first.
                     layers: vec![
-                        layer("01", "backgrounds", 100.0, &[], even(4)),
-                        layer("02", "skin", 100.0, &["a", "b"], even(8)),
-                        layer("07", "neck", 80.0, &[], even(3)),
-                        layer("08", "eyes", 100.0, &[], even(31)),
-                        layer("09", "clothes", 100.0, &["a", "b"], even(33)),
-                        layer("10", "mouth", 100.0, &[], even(35)),
-                        layer("12", "eyewear", 20.0, &[], even(7)),
-                        layer("14", "headwear", 90.0, &[], even(33)),
+                        layer("headwear", 90.0, &[], even(33)),
+                        layer("eyewear", 20.0, &[], even(7)),
+                        layer("mouth", 100.0, &[], even(35)),
+                        layer("clothes", 100.0, &["a", "b"], even(33)),
+                        layer("eyes", 100.0, &[], even(31)),
+                        layer("neck", 80.0, &[], even(3)),
+                        layer("skin", 100.0, &["a", "b"], even(8)),
+                        layer("backgrounds", 100.0, &[], even(4)),
                     ],
                     flow: vec![
-                        CompositionFlow { from: "skin".into(), to: "clothes".into() },
-                        CompositionFlow { from: "skin".into(), to: "neck".into() },
+                        CompositionFlow {
+                            from: "skin".into(),
+                            to: "clothes".into(),
+                        },
+                        CompositionFlow {
+                            from: "skin".into(),
+                            to: "neck".into(),
+                        },
                     ],
                 },
             );
@@ -109,19 +148,32 @@ pub fn show(ui: &mut egui::Ui) {
                 &CollectionComposition {
                     title: "Squashua Chicken (per-asset weights)".into(),
                     stats: vec![
-                        CompositionStat { value: "11".into(), label: "traits".into() },
-                        CompositionStat { value: "16".into(), label: "layers".into() },
-                        CompositionStat { value: "~2.1B".into(), label: "combinations".into() },
-                        CompositionStat { value: "1/1s · 0.2%".into(), label: "rarest".into() },
+                        CompositionStat {
+                            value: "11".into(),
+                            label: "traits".into(),
+                        },
+                        CompositionStat {
+                            value: "16".into(),
+                            label: "layers".into(),
+                        },
+                        CompositionStat {
+                            value: "~2.1B".into(),
+                            label: "combinations".into(),
+                        },
+                        CompositionStat {
+                            value: "1/1s · 0.2%".into(),
+                            label: "rarest".into(),
+                        },
                     ],
+                    // Front-most first.
                     layers: vec![
-                        layer("01", "Background", 100.0, &[], linear_curve(16)),
-                        layer("02", "Back", 20.0, &[], linear_curve(7)),
-                        layer("03", "Bodies - Basic", 100.0, &[], linear_curve(11)),
-                        layer("04", "Lower Clothes", 65.0, &[], linear_curve(9)),
-                        layer("06", "Necklace", 20.0, &[], linear_curve(7)),
-                        layer("08", "Hat", 70.0, &[], linear_curve(18)),
-                        layer("09", "Eyes-Beak", 100.0, &[], linear_curve(26)),
+                        layer("Eyes-Beak", 100.0, &[], linear_curve(26)),
+                        layer("Hat", 70.0, &[], linear_curve(18)),
+                        layer("Necklace", 20.0, &[], linear_curve(7)),
+                        layer("Lower Clothes", 65.0, &[], linear_curve(9)),
+                        layer("Bodies - Basic", 100.0, &[], linear_curve(11)),
+                        layer("Back", 20.0, &[], linear_curve(7)),
+                        layer("Background", 100.0, &[], linear_curve(16)),
                     ],
                     flow: vec![],
                 },

@@ -88,8 +88,10 @@ pub fn show(
 
     let n = segments.iter().filter(|s| s.share > 0.0).count().max(1);
     let available_width = ui.available_width();
-    let (rect, response) =
-        ui.allocate_exact_size(Vec2::new(available_width, config.bar_height), Sense::hover());
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(available_width, config.bar_height),
+        Sense::hover(),
+    );
 
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
@@ -103,7 +105,8 @@ pub fn show(
                 continue;
             }
             let w = rect.width() * seg.share;
-            let seg_rect = Rect::from_min_size(egui::pos2(x, rect.min.y), Vec2::new(w, rect.height()));
+            let seg_rect =
+                Rect::from_min_size(egui::pos2(x, rect.min.y), Vec2::new(w, rect.height()));
             let is_first = i == 0 || segments[..i].iter().all(|s| s.share <= 0.0);
             let is_last =
                 i == segments.len() - 1 || segments[i + 1..].iter().all(|s| s.share <= 0.0);
@@ -158,9 +161,13 @@ pub fn show(
                 ui.painter().circle_filled(dot.center(), 4.0, seg.color);
             }
             ui.label(
-                RichText::new(format!("{} {}%", seg.variant, (seg.share * 100.0).round() as u32))
-                    .color(theme::TEXT_SECONDARY)
-                    .size(config.label_size),
+                RichText::new(format!(
+                    "{} {}%",
+                    seg.variant,
+                    (seg.share * 100.0).round() as u32
+                ))
+                .color(theme::TEXT_SECONDARY)
+                .size(config.label_size),
             );
             ui.label(
                 RichText::new(format!("· {} assets", seg.asset_count))
@@ -174,7 +181,12 @@ pub fn show(
     // Caption: the "why", generated from the data.
     if let Some(cap) = why_caption(segments, config.show_uniform_baseline && n > 1) {
         ui.add_space(2.0);
-        ui.label(RichText::new(cap).color(theme::TEXT_MUTED).size(config.caption_size).italics());
+        ui.label(
+            RichText::new(cap)
+                .color(theme::TEXT_MUTED)
+                .size(config.caption_size)
+                .italics(),
+        );
     }
 
     response
@@ -187,7 +199,9 @@ fn why_caption(segments: &[VariantSegment], has_baseline: bool) -> Option<String
     if live.len() < 2 {
         return None;
     }
-    let top = live.iter().max_by(|a, b| a.share.partial_cmp(&b.share).unwrap())?;
+    let top = live
+        .iter()
+        .max_by(|a, b| a.share.partial_cmp(&b.share).unwrap())?;
     let uniform = 1.0 / live.len() as f32;
     let skew = top.share - uniform;
     if has_baseline && skew > 0.02 {
