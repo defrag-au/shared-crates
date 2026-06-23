@@ -158,9 +158,23 @@ impl<'a> TypeaheadSearch<'a> {
     }
 
     /// Render the search box and dropdown.
+    ///
+    /// Forces a vertical layout internally so the input row and the results
+    /// dropdown always stack top-to-bottom, even when the widget is placed
+    /// inside a horizontal parent layout.
     pub fn show(self, ui: &mut Ui) -> TypeaheadResponse {
+        let mut result = TypeaheadResponse::default();
+        ui.vertical(|ui| {
+            result = self.show_impl(ui);
+        });
+        result
+    }
+
+    fn show_impl(self, ui: &mut Ui) -> TypeaheadResponse {
         let mut out = TypeaheadResponse::default();
-        let row_height = 34.0;
+        // Tall enough for an icon + a two-line title/subtitle without the
+        // subtitle clipping into the next row.
+        let row_height = 46.0;
 
         // ── Input row: magnifier + single-line edit ──────────────────────
         let edit_id = ui.make_persistent_id((self.id_salt, "edit"));
