@@ -2,10 +2,7 @@
 
 use egui::{Color32, Pos2, Rect, Vec2};
 use egui_widgets::asset_card::{
-    base_outline, draw_colored_ring, draw_effect_quad, draw_quad, draw_spark_streak,
-    draw_textured_quad, expand_outline, project_points, rarity_color, rarity_glow, update_tilt,
-    AuroraCurtain, BrushedMetal, CardEffect, CardMask, DiffractionGrating, Glitter,
-    PrismaticDispersion, StreakHolo, ThinFilmIridescence, TiltState, EFFECT_NAMES, RARITIES,
+    AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES, RARITIES,
 };
 use egui_widgets::card_browser::{self, CardBrowserConfig, CardBrowserState};
 
@@ -25,6 +22,7 @@ pub struct CardBrowserStoryState {
     pub text_lines: u8,
     pub detail_width: f32,
     pub spacing: f32,
+    pub holo_strength: f32,
     pub items: Vec<DemoItem>,
 }
 
@@ -37,6 +35,7 @@ impl Default for CardBrowserStoryState {
             text_lines: 3,
             detail_width: 360.0,
             spacing: 8.0,
+            holo_strength: 0.7,
             items: build_preset_items(0),
         }
     }
@@ -57,80 +56,14 @@ pub struct DemoItem {
     /// IIIF image URL for the thumbnail.
     pub image_url: Option<String>,
     // AssetCard 3D state (only used by preset 3)
-    pub tilt: TiltState,
     pub rarity: usize,
     pub effect_index: usize,
-    pub spark_phase: f32,
+    pub card_state: AssetCardState,
 }
 
 /// Build a IIIF thumbnail URL from a hex asset name.
 fn iiif_url(asset_hex: &str, size: u32) -> String {
     format!("{IIIF_BASE}/{POLICY_ID}:{asset_hex}/full/{size},/0/default.jpg")
-}
-
-/// Try to load an image texture, returning the TextureId if ready.
-fn try_load_texture(ctx: &egui::Context, url: &str) -> Option<egui::TextureId> {
-    ctx.try_load_texture(
-        url,
-        egui::TextureOptions::LINEAR,
-        egui::load::SizeHint::default(),
-    )
-    .ok()
-    .and_then(|poll| match poll {
-        egui::load::TexturePoll::Ready { texture } => Some(texture.id),
-        _ => None,
-    })
-}
-
-/// Construct a CardEffect with default parameters from an index.
-fn build_default_effect(index: usize) -> Box<dyn CardEffect> {
-    match index {
-        1 => Box::new(ThinFilmIridescence {
-            iri_min: 250.0,
-            iri_range: 400.0,
-            fresnel_power: 5.0,
-            intensity: 0.3,
-        }),
-        2 => Box::new(DiffractionGrating {
-            grating_spacing: 1500.0,
-            grating_angle: 0.0,
-            max_orders: 4,
-            intensity: 1.5,
-        }),
-        3 => Box::new(Glitter {
-            grid_scale: 40.0,
-            sparkle_sharpness: 150.0,
-            sparkle_threshold: 0.3,
-            z_depth: 0.6,
-        }),
-        4 => Box::new(BrushedMetal {
-            roughness_along: 0.05,
-            roughness_perp: 0.8,
-            brush_angle: 0.0,
-            metal_r: 0.75,
-            metal_g: 0.78,
-            metal_b: 0.82,
-        }),
-        5 => Box::new(AuroraCurtain {
-            freq1: 8.0,
-            freq2: 5.0,
-            curtain_sharpness: 4.0,
-            vertical_falloff: 1.5,
-            brightness: 1.0,
-        }),
-        6 => Box::new(PrismaticDispersion {
-            dispersion: 0.08,
-            spread: 0.1,
-            facet_scale: 8.0,
-            intensity: 1.5,
-        }),
-        _ => Box::new(StreakHolo {
-            hue_range: 60.0,
-            shimmer_width: 0.15,
-            shimmer_intensity: 0.4,
-            overlay_opacity: 0.2,
-        }),
-    }
 }
 
 // Real Hodlcroft Pirates assets (50 hex asset names from asset_ids.csv)
@@ -234,10 +167,9 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                         Color32::from_rgb(224, 175, 104)
                     },
                     image_url: Some(iiif_url(hex, 400)),
-                    tilt: TiltState::default(),
                     rarity: 0,
                     effect_index: 0,
-                    spark_phase: 0.0,
+                    card_state: AssetCardState::default(),
                 }
             })
             .collect(),
@@ -278,10 +210,9 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                         Color32::from_rgb(96, 104, 128)
                     },
                     image_url: Some(iiif_url(hex, 400)),
-                    tilt: TiltState::default(),
                     rarity: 0,
                     effect_index: 0,
-                    spark_phase: 0.0,
+                    card_state: AssetCardState::default(),
                 }
             })
             .collect(),
@@ -310,10 +241,12 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                     ],
                     accent: RARITIES[rarity].1,
                     image_url: Some(iiif_url(hex, 400)),
-                    tilt: TiltState::default(),
                     rarity,
                     effect_index,
-                    spark_phase: (i as f32 * 0.137) % 1.0,
+                    card_state: AssetCardState {
+                        spark_phase: (i as f32 * 0.137) % 1.0,
+                        ..Default::default()
+                    },
                 }
             })
             .collect(),
@@ -331,10 +264,9 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                 ],
                 accent: Color32::from_rgb(125, 207, 255),
                 image_url: None,
-                tilt: TiltState::default(),
                 rarity: 0,
                 effect_index: 0,
-                spark_phase: 0.0,
+                card_state: AssetCardState::default(),
             },
             DemoItem {
                 name: "Item B".into(),
@@ -348,10 +280,9 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                 ],
                 accent: Color32::from_rgb(125, 207, 255),
                 image_url: None,
-                tilt: TiltState::default(),
                 rarity: 0,
                 effect_index: 0,
-                spark_phase: 0.0,
+                card_state: AssetCardState::default(),
             },
             DemoItem {
                 name: "Item C".into(),
@@ -362,10 +293,9 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                 detail_lines: vec![("Type".into(), "Standard".into())],
                 accent: Color32::from_rgb(96, 104, 128),
                 image_url: None,
-                tilt: TiltState::default(),
                 rarity: 0,
                 effect_index: 0,
-                spark_phase: 0.0,
+                card_state: AssetCardState::default(),
             },
         ],
     }
@@ -375,98 +305,24 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
 // AssetCard 3D rendering within CardBrowser
 // ============================================================================
 
-/// Render a card using the AssetCard 3D pipeline (tilt, rarity border, holographic effects).
+/// Render a card using the reusable `AssetCard` widget (tilt, rarity border,
+/// glow, holographic effect overlay, spark streak — all encapsulated). This is
+/// the same surface-fx any frontend gets by dropping `AssetCard` into a tile.
 fn render_asset_card_3d(
     ui: &mut egui::Ui,
     ctx: &card_browser::CardRenderContext,
     item: &mut DemoItem,
+    holo_strength: f32,
 ) {
-    let painter = ui.painter_at(ctx.rect.expand(6.0));
-    let center = ctx.thumb_rect.center();
-    let half = ctx.thumb_rect.width() / 2.0;
-    let perspective = 800.0;
+    // Holo overlay only for Rare+ (matches glow/spark gating); pick the effect
+    // by the asset's slot.
+    let effect = (item.rarity >= 2).then(|| CardEffectKind::from_index(item.effect_index));
 
-    // Update tilt from hover position
-    let (ax, ay) = update_tilt(&ctx.response, center, half, &mut item.tilt, 0.1, 15.0);
-    if item.tilt.current_x.abs() > 0.001 || item.tilt.current_y.abs() > 0.001 {
-        ui.ctx().request_repaint();
-    }
-
-    // Base outline (no badge) — clean square border
-    let outline = base_outline(center, half, CardMask::Square);
-    let border_outer = expand_outline(&outline, 3.0);
-    let proj_outline = project_points(&outline, center, ax, ay, perspective);
-    let proj_border = project_points(&border_outer, center, ax, ay, perspective);
-
-    // Glow ring (rarity >= 2)
-    if let Some(glow) = rarity_glow(item.rarity) {
-        let glow_outer = expand_outline(&outline, 6.0);
-        let proj_glow = project_points(&glow_outer, center, ax, ay, perspective);
-        draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
-    }
-
-    // Rarity border
-    draw_colored_ring(
-        &painter,
-        &proj_outline,
-        &proj_border,
-        rarity_color(item.rarity),
-    );
-
-    // Art quad (textured or fallback)
-    let corners = [
-        ctx.thumb_rect.left_top(),
-        ctx.thumb_rect.right_top(),
-        ctx.thumb_rect.right_bottom(),
-        ctx.thumb_rect.left_bottom(),
-    ];
-    let projected = project_points(&corners, center, ax, ay, perspective);
-    let proj4: [Pos2; 4] = [projected[0], projected[1], projected[2], projected[3]];
-
-    if let Some(tex) = item
-        .image_url
-        .as_deref()
-        .and_then(|url| try_load_texture(ui.ctx(), url))
-    {
-        draw_textured_quad(&painter, proj4, tex, Color32::WHITE);
-    } else {
-        draw_quad(&painter, proj4, Color32::from_rgb(30, 30, 48));
-        if item.image_url.is_some() {
-            ui.ctx().request_repaint();
-        }
-    }
-
-    // Holographic effect overlay (rarity >= 2, when hovered)
-    if item.rarity >= 2 {
-        if let Some(hover_pos) = ctx.response.hover_pos() {
-            let mu =
-                ((hover_pos.x - ctx.thumb_rect.left()) / ctx.thumb_rect.width()).clamp(0.0, 1.0);
-            let mv =
-                ((hover_pos.y - ctx.thumb_rect.top()) / ctx.thumb_rect.height()).clamp(0.0, 1.0);
-            let effect = build_default_effect(item.effect_index);
-            draw_effect_quad(
-                &painter,
-                ctx.thumb_rect,
-                center,
-                ax,
-                ay,
-                perspective,
-                mu,
-                mv,
-                &*effect,
-            );
-        }
-    }
-
-    // Spark streak (rarity >= 2)
-    if item.rarity >= 2 {
-        draw_spark_streak(
-            &painter,
-            &proj_outline,
-            item.spark_phase,
-            rarity_color(item.rarity),
-        );
-    }
+    AssetCard::new(CardImage::from_url_opt(item.image_url.as_deref()))
+        .rarity(item.rarity)
+        .effect(effect)
+        .strength(holo_strength)
+        .paint(ui, ctx.thumb_rect, &ctx.response, &mut item.card_state);
 }
 
 /// Render flat card content (IIIF thumbnail + badge + text).
@@ -579,6 +435,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
         }
     });
 
+    // Global holo-strength dial (AssetCard 3D preset only).
+    if state.preset == 3 {
+        ui.add(egui::Slider::new(&mut state.holo_strength, 0.0..=1.0).text("Holo strength"));
+    }
+
     // Summary
     ui.add_space(4.0);
     let selected_label = state
@@ -613,17 +474,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
             .size(10.0),
     );
 
-    // Advance spark animations for AssetCard 3D preset
+    // The AssetCard widget self-animates tilt + spark (and requests repaints),
+    // so the 3D preset needs no manual per-frame advance here.
     let preset = state.preset;
-    if preset == 3 {
-        let dt = ui.input(|i| i.stable_dt).min(0.1);
-        for item in &mut state.items {
-            if item.rarity >= 2 {
-                item.spark_phase = (item.spark_phase + dt * 0.3) % 1.0;
-            }
-        }
-        ui.ctx().request_repaint();
-    }
+    let holo_strength = state.holo_strength;
 
     // Show the browser
     card_browser::show(
@@ -634,7 +488,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
         // Card renderer
         |ui, ctx, item| {
             if preset == 3 {
-                render_asset_card_3d(ui, ctx, item);
+                render_asset_card_3d(ui, ctx, item, holo_strength);
             } else {
                 render_flat_card(ui, ctx, item, &config);
             }

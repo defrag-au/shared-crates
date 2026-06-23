@@ -52,6 +52,7 @@ fn main() {
         price_step: Some((721, 10_000_000)),
         min_fee_ref_script_cost_per_byte: 15,
         ref_script_size: 0,
+        cost_models: cardano_tx::builder::cost_models::PlutusCostModels::EMPTY,
     };
 
     let deps = TxDeps {

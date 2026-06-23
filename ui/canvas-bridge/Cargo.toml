@@ -7,7 +7,7 @@ description = "FBO-based bridge for compositing femtovg canvas rendering into eg
 
 [dependencies]
 egui = { workspace = true }
-egui_glow = "0.33"
+egui_glow = "0.34"
 
 # Raw WebGL2 for FBO management (avoids glow slotmap conflicts)
 js-sys = { workspace = true }

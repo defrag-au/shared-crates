@@ -58,6 +58,8 @@ fn main() {
         price_step: Some((721, 10_000_000)),
         min_fee_ref_script_cost_per_byte: 15,
         ref_script_size: 2_557, // Wayup PlutusV2 script: 2560 CBOR bytes - 3-byte bytestring header
+        // Empty → falls back to the bundled (current) V2 cost model constant.
+        cost_models: cardano_tx::builder::cost_models::PlutusCostModels::EMPTY,
     };
 
     let deps = TxDeps {

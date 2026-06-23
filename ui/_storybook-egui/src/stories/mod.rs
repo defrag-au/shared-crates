@@ -1,5 +1,6 @@
 pub mod asset_card;
 pub mod async_data;
+pub mod bullet_bar;
 pub mod buttons;
 pub mod card_browser;
 pub mod collection_list;
@@ -13,20 +14,28 @@ pub mod marquee;
 pub mod mesh_playground;
 pub mod metric_card;
 pub mod mnemonic_display;
+pub mod named_group_list;
 pub mod order_list;
+pub mod palette_editor;
 pub mod perspective_text;
 pub mod pip_row;
 pub mod printing_timeline;
 pub mod progress_bar;
 pub mod radar_chart;
 pub mod range_bar;
+pub mod rarity_target_editor;
+pub mod relationship_editor;
 pub mod seven_segment;
+pub mod slot_table;
 pub mod sparkline;
 pub mod supply_bar;
 pub mod swap;
+pub mod tag_list;
 pub mod tcg_card;
 pub mod timestamp;
+pub mod token_multiselect;
 pub mod trait_filter;
+pub mod typeahead_search;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
 pub mod wallet_editor;
@@ -42,6 +51,9 @@ pub mod split_allocation_bar;
 // Loan dashboard widgets
 pub mod data_table;
 pub mod exposure_bar;
+
+// Ranked-list dashboards
+pub mod leaderboard_table;
 
 // Utility widgets
 #[cfg(target_arch = "wasm32")]
@@ -82,7 +94,9 @@ pub mod phase_card;
 pub mod quantity_stepper;
 
 // Wallet
+pub mod collection_composition;
 pub mod fungibles_row;
 pub mod persona_strip;
+pub mod variant_split;
 pub mod wallet_identity_header;
 pub mod wallet_list;

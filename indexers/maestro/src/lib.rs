@@ -669,6 +669,30 @@ pub struct ProtocolParameters {
     /// optional in older networks.
     #[serde(default)]
     pub max_transaction_size: Option<ByteSize>,
+    /// Per-language Plutus cost models. Required to compute the
+    /// `script_data_hash` (language view) for any Plutus-spending tx — a stale
+    /// or absent model yields `PPViewHashesDontMatch` at submit. Cost models
+    /// change at protocol updates (both values and parameter counts), so they
+    /// must be sourced live rather than hardcoded. `None` on pre-Alonzo
+    /// networks / responses that omit the field.
+    #[serde(default)]
+    pub plutus_cost_models: Option<PlutusCostModels>,
+}
+
+/// Per-language Plutus cost models, as returned by Maestro under the
+/// `plutus_cost_models` protocol-parameter key. Each language's model is an
+/// ordered list of integer coefficients in the ledger's canonical parameter
+/// order — fed verbatim into the script-integrity-hash language view. Values
+/// sit well within JS safe-integer range, so plain `i64` deserialization is
+/// safe here (no `wasm-safe-serde` needed).
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+pub struct PlutusCostModels {
+    #[serde(default)]
+    pub plutus_v1: Option<Vec<i64>>,
+    #[serde(default)]
+    pub plutus_v2: Option<Vec<i64>>,
+    #[serde(default)]
+    pub plutus_v3: Option<Vec<i64>>,
 }
 
 /// Plutus execution-unit budget, returned by Maestro under the

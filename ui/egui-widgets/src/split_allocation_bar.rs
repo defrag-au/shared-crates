@@ -174,7 +174,9 @@ pub fn show(
     // Legend row
     if config.show_legend {
         ui.add_space(4.0);
-        ui.horizontal(|ui| {
+        // Wrap so long legends (e.g. many trait values) reflow within a narrow
+        // container instead of forcing the parent panel wider.
+        ui.horizontal_wrapped(|ui| {
             for seg in segments {
                 if seg.fraction <= 0.0 {
                     continue;

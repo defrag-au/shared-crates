@@ -4,6 +4,8 @@
 //! transactions. Consumers convert from their source-specific types (Maestro,
 //! Blockfrost, Koios, etc.) into this common representation.
 
+use crate::builder::cost_models::PlutusCostModels;
+
 /// Minimum protocol parameters needed for transaction building.
 ///
 /// These values come from the Cardano node's protocol parameters and are
@@ -36,6 +38,13 @@ pub struct TxBuildParams {
     /// Total size in bytes of all scripts in reference inputs.
     /// Set by the caller when building Plutus TXs with reference scripts.
     pub ref_script_size: u64,
+    /// Per-language Plutus cost models from the node's current protocol
+    /// parameters. Folded into the script-integrity hash by script-spending
+    /// builders; MUST match the node or the tx is rejected with
+    /// `PPViewHashesDontMatch`. Empty by default — resolvers fall back to the
+    /// bundled [`crate::builder::cost_models`] constants when a language is
+    /// absent.
+    pub cost_models: PlutusCostModels,
 }
 
 /// Charged size (bytes) of a worst-case PURE-ADA output under the Babbage
@@ -75,7 +84,21 @@ impl From<&maestro::ProtocolParameters> for TxBuildParams {
             price_step,
             min_fee_ref_script_cost_per_byte: 15,
             ref_script_size: 0,
+            cost_models: PlutusCostModels::from(pp),
         }
+    }
+}
+
+impl From<&maestro::ProtocolParameters> for PlutusCostModels {
+    fn from(pp: &maestro::ProtocolParameters) -> Self {
+        pp.plutus_cost_models
+            .as_ref()
+            .map(|cm| Self {
+                plutus_v1: cm.plutus_v1.clone(),
+                plutus_v2: cm.plutus_v2.clone(),
+                plutus_v3: cm.plutus_v3.clone(),
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -97,6 +120,7 @@ mod tests {
             }),
             max_execution_units_per_transaction: None,
             max_transaction_size: None,
+            plutus_cost_models: None,
         };
 
         let params = TxBuildParams::from(&maestro_params);

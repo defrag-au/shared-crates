@@ -22,6 +22,7 @@ mod app {
         Marquee,
         Buttons,
         ProgressBar,
+        BulletBar,
         Sparkline,
         MetricCard,
         SevenSegment,
@@ -59,9 +60,13 @@ mod app {
         RouteSummary,
         PoolLiquidity,
         PriceImpactCurve,
+        VariantSplit,
+        CollectionComposition,
         // Loan dashboard
         ExposureBar,
         DataTable,
+        // Ranked-list dashboards
+        LeaderboardTable,
         // Mint dashboard
         SupplyBar,
         OrderList,
@@ -84,6 +89,14 @@ mod app {
         CollectionList,
         // Mint configuration
         Chip,
+        TagList,
+        TokenMultiselect,
+        TypeaheadSearch,
+        RelationshipEditor,
+        NamedGroupList,
+        RarityTargetEditor,
+        PaletteEditor,
+        SlotTable,
         PropertyList,
         IdPill,
         PhaseCard,
@@ -106,6 +119,14 @@ mod app {
                 Self::Marquee,
                 Self::Buttons,
                 Self::Chip,
+                Self::TagList,
+                Self::TokenMultiselect,
+                Self::TypeaheadSearch,
+                Self::RelationshipEditor,
+                Self::NamedGroupList,
+                Self::RarityTargetEditor,
+                Self::PaletteEditor,
+                Self::SlotTable,
                 Self::IdPill,
                 Self::PropertyList,
                 Self::ButtonGroup,
@@ -113,6 +134,7 @@ mod app {
                 Self::Timestamp,
                 Self::ErrorNote,
                 Self::ProgressBar,
+                Self::BulletBar,
                 Self::Sparkline,
                 Self::MetricCard,
                 Self::SevenSegment,
@@ -150,9 +172,13 @@ mod app {
                 Self::RouteSummary,
                 Self::PoolLiquidity,
                 Self::PriceImpactCurve,
+                Self::VariantSplit,
+                Self::CollectionComposition,
                 // Loan dashboard
                 Self::ExposureBar,
                 Self::DataTable,
+                // Ranked-list dashboards
+                Self::LeaderboardTable,
                 // Mint dashboard
                 Self::SupplyBar,
                 Self::OrderList,
@@ -186,6 +212,7 @@ mod app {
                 Self::Marquee => "Marquee",
                 Self::Buttons => "Buttons",
                 Self::ProgressBar => "Progress Bar",
+                Self::BulletBar => "Bullet Bar",
                 Self::Sparkline => "Sparkline",
                 Self::MetricCard => "Metric Card",
                 Self::SevenSegment => "Seven Segment",
@@ -222,8 +249,11 @@ mod app {
                 Self::RouteSummary => "Route Summary",
                 Self::PoolLiquidity => "Pool Liquidity",
                 Self::PriceImpactCurve => "Price Impact Curve",
+                Self::VariantSplit => "Variant Split",
+                Self::CollectionComposition => "Collection Composition",
                 Self::ExposureBar => "Exposure Bar",
                 Self::DataTable => "Data Table",
+                Self::LeaderboardTable => "Leaderboard Table",
                 Self::SupplyBar => "Supply Bar",
                 Self::OrderList => "Order List",
                 Self::FileUpload => "File Upload",
@@ -238,6 +268,14 @@ mod app {
                 Self::WalletList => "Wallet List",
                 Self::CollectionList => "Collection List",
                 Self::Chip => "Chip",
+                Self::TagList => "Tag List",
+                Self::TokenMultiselect => "Token Multiselect",
+                Self::TypeaheadSearch => "Typeahead Search",
+                Self::RelationshipEditor => "Relationship Editor",
+                Self::NamedGroupList => "Named Group List",
+                Self::RarityTargetEditor => "Rarity Target Editor",
+                Self::PaletteEditor => "Palette Editor",
+                Self::SlotTable => "Slot Table",
                 Self::PropertyList => "Property List",
                 Self::IdPill => "ID Pill",
                 Self::Timestamp => "Timestamp",
@@ -257,6 +295,14 @@ mod app {
                 | Self::Marquee
                 | Self::Buttons
                 | Self::Chip
+                | Self::TagList
+                | Self::TokenMultiselect
+                | Self::TypeaheadSearch
+                | Self::RelationshipEditor
+                | Self::NamedGroupList
+                | Self::RarityTargetEditor
+                | Self::PaletteEditor
+                | Self::SlotTable
                 | Self::Timestamp
                 | Self::ErrorNote
                 | Self::IdPill
@@ -264,6 +310,7 @@ mod app {
                 | Self::ButtonGroup
                 | Self::Toast => "Primitives",
                 Self::ProgressBar
+                | Self::BulletBar
                 | Self::Sparkline
                 | Self::MetricCard
                 | Self::SevenSegment
@@ -302,7 +349,9 @@ mod app {
                 | Self::RouteSummary
                 | Self::PoolLiquidity
                 | Self::PriceImpactCurve => "DEX Split Swap",
+                Self::VariantSplit | Self::CollectionComposition => "Collection CSP",
                 Self::ExposureBar | Self::DataTable => "Loan Dashboard",
+                Self::LeaderboardTable => "Ranked Lists",
                 Self::SupplyBar | Self::OrderList => "Mint Dashboard",
                 Self::FileUpload => "Utility",
                 Self::ImageTextEditor => "Media",
@@ -324,6 +373,7 @@ mod app {
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
                 Self::ProgressBar => "Determinate and countdown progress bars with custom colors",
+                Self::BulletBar => "Value fill with a target marker (bullet graph) — actual vs target",
                 Self::Sparkline => {
                     "Inline line chart with fill gradient, mean line, and hover inspection"
                 }
@@ -422,11 +472,20 @@ mod app {
                 Self::PriceImpactCurve => {
                     "AMM price impact curves per pool — visualizes why split routing minimizes slippage"
                 }
+                Self::VariantSplit => {
+                    "Derived variant distribution for a variant_flow source — share weighted by downstream asset capacity, with the uniform baseline for contrast"
+                }
+                Self::CollectionComposition => {
+                    "Promotable infographic of how a collection generates: z-ordered layer stack with presence/options/variant badges + variant_flow connectors, under a stats band"
+                }
                 Self::ExposureBar => {
                     "Stacked horizontal bar showing total ADA exposure by collateral token, colored by LTV risk"
                 }
                 Self::DataTable => {
                     "Dense row-based table with column headers, LTV micro-bars, selection, and detail panel"
+                }
+                Self::LeaderboardTable => {
+                    "Dense, virtual-scrolled ranked table — rank, identity (accent for handles), semantic badge, pre-formatted value, and share. For holders / leaderboards / top traders"
                 }
                 Self::SupplyBar => {
                     "Two-band mint supply bar: minted (fulfilled) + ordered backlog, with oversubscription handling"
@@ -470,6 +529,30 @@ mod app {
                 }
                 Self::Chip => {
                     "Small filled-tag label with semantic variants (Success / Warning / Danger / Tag / Info / Muted) + optional × remove affordance"
+                }
+                Self::TagList => {
+                    "Wrapping row of removable chips with an optional clear-all button — for active filters / selected facets"
+                }
+                Self::TokenMultiselect => {
+                    "Pick a subset from a known option set — selected as removable chips + an 'add' menu of the rest (group/member/required-slot pickers)"
+                }
+                Self::TypeaheadSearch => {
+                    "Search box with a keyboard-navigable result dropdown — up/down/enter + click, icon + verified/rug badges. Server-ranked or `filter_options`-filtered. Used by the holder-map token-search landing"
+                }
+                Self::RelationshipEditor => {
+                    "Directed source → target edges over an option set — variant_flow / dependencies / slot-locks (and the wires in the node-graph view)"
+                }
+                Self::NamedGroupList => {
+                    "Named groups with member multiselects + an optional flag — exclusive groups / bundled sets / linked traits"
+                }
+                Self::RarityTargetEditor => {
+                    "Labelled 0–100% target sliders with a running-total-vs-budget cue — per-trait None% and per-value rarity targets"
+                }
+                Self::PaletteEditor => {
+                    "Colorization palettes — base color + weighted variant colors (the [processing.techniques.colorization] config)"
+                }
+                Self::SlotTable => {
+                    "Slot list with enable / required toggles + z-order — disabled_traits, defaults.required, z_index_overrides"
                 }
                 Self::PropertyList => {
                     "Compact label/value grid for read-only key data — phase summaries, wallet readouts, payment audit"
@@ -527,6 +610,14 @@ mod app {
         marquee: egui_widgets::Marquee,
         marquee_messages: Vec<egui_widgets::MarqueeItem>,
         progress_bar_state: stories::progress_bar::ProgressBarState,
+        bullet_bar_state: stories::bullet_bar::BulletBarState,
+        tag_list_state: stories::tag_list::TagListState,
+        token_multiselect_state: stories::token_multiselect::TokenMultiselectState,
+        relationship_editor_state: stories::relationship_editor::RelationshipEditorState,
+        named_group_list_state: stories::named_group_list::NamedGroupListState,
+        rarity_target_editor_state: stories::rarity_target_editor::RarityTargetEditorState,
+        palette_editor_state: stories::palette_editor::PaletteEditorState,
+        slot_table_state: stories::slot_table::SlotTableState,
         sparkline_state: stories::sparkline::SparklineState,
         seven_segment_state: stories::seven_segment::SevenSegmentState,
         flip_counter_state: stories::flip_counter::FlipCounterState,
@@ -593,6 +684,20 @@ mod app {
                 egui_widgets::image_loader::browser::BrowserImageLoader::default(),
             ));
             egui_widgets::install_phosphor_font(&cc.egui_ctx);
+            // Inter as the primary proportional face (from the font bucket), in front of
+            // the bundled default + DejaVu fallback. Async fetch; swaps in once it lands.
+            egui_widgets::fonts::load_remote_font(
+                &cc.egui_ctx,
+                egui_widgets::fonts::r2::INTER_REGULAR,
+                egui::FontFamily::Proportional,
+                egui::epaint::text::FontPriority::Highest,
+            );
+            egui_widgets::fonts::load_remote_font(
+                &cc.egui_ctx,
+                egui_widgets::fonts::r2::INTER_BOLD,
+                egui::FontFamily::Proportional,
+                egui::epaint::text::FontPriority::Highest,
+            );
 
             Self {
                 current_story: Story::Distribution,
@@ -603,6 +708,17 @@ mod app {
                     color: ACCENT,
                 }],
                 progress_bar_state: stories::progress_bar::ProgressBarState::default(),
+                bullet_bar_state: stories::bullet_bar::BulletBarState::default(),
+                tag_list_state: stories::tag_list::TagListState::default(),
+                token_multiselect_state: stories::token_multiselect::TokenMultiselectState::default(
+                ),
+                relationship_editor_state:
+                    stories::relationship_editor::RelationshipEditorState::default(),
+                named_group_list_state: stories::named_group_list::NamedGroupListState::default(),
+                rarity_target_editor_state:
+                    stories::rarity_target_editor::RarityTargetEditorState::default(),
+                palette_editor_state: stories::palette_editor::PaletteEditorState::default(),
+                slot_table_state: stories::slot_table::SlotTableState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 seven_segment_state: stories::seven_segment::SevenSegmentState::default(),
                 flip_counter_state: stories::flip_counter::FlipCounterState::default(),
@@ -716,12 +832,15 @@ mod app {
     }
 
     impl eframe::App for StorybookApp {
-        fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // eframe 0.34 made `ui` the required App method (was `update` in 0.33);
+        // panels nest via `show_inside(ui, …)` instead of `show(ctx, …)`.
+        fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+            let ctx = ui.ctx().clone();
             egui::SidePanel::left("stories")
                 .default_width(180.0)
                 .resizable(false)
                 .frame(egui::Frame::side_top_panel(&ctx.style()).fill(BG_SIDEBAR))
-                .show(ctx, |ui| {
+                .show_inside(ui, |ui| {
                     ui.add_space(8.0);
                     ui.heading(egui::RichText::new("egui Widgets").color(ACCENT));
                     ui.separator();
@@ -732,7 +851,7 @@ mod app {
 
             egui::CentralPanel::default()
                 .frame(egui::Frame::central_panel(&ctx.style()).fill(BG_MAIN))
-                .show(ctx, |ui| {
+                .show_inside(ui, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         ui.heading(self.current_story.label());
                         ui.label(
@@ -756,6 +875,9 @@ mod app {
                             Story::Buttons => stories::buttons::show(ui),
                             Story::ProgressBar => {
                                 stories::progress_bar::show(ui, &mut self.progress_bar_state)
+                            }
+                            Story::BulletBar => {
+                                stories::bullet_bar::show(ui, &mut self.bullet_bar_state)
                             }
                             Story::Sparkline => {
                                 stories::sparkline::show(ui, &mut self.sparkline_state)
@@ -810,7 +932,7 @@ mod app {
                                 &mut self.wallet_connector,
                             ),
                             Story::SwapModal => stories::swap::show(
-                                ctx,
+                                &ctx,
                                 ui,
                                 &mut self.swap_modal,
                                 &mut self.swap_progress,
@@ -830,7 +952,7 @@ mod app {
                                 stories::tx_estimate::show(ui, &mut self.tx_estimate_state)
                             }
                             Story::WalletAssetPicker => stories::wallet_asset_picker::show(
-                                ctx,
+                                &ctx,
                                 ui,
                                 &mut self.wallet_asset_picker_state,
                             ),
@@ -863,6 +985,10 @@ mod app {
                             Story::RouteSummary => stories::route_summary::show(ui),
                             Story::PoolLiquidity => stories::pool_liquidity::show(ui),
                             Story::PriceImpactCurve => stories::price_impact_curve::show(ui),
+                            Story::VariantSplit => stories::variant_split::show(ui),
+                            Story::CollectionComposition => {
+                                stories::collection_composition::show(ui)
+                            }
                             // Loan dashboard
                             Story::ExposureBar => stories::exposure_bar::show(ui),
                             Story::SupplyBar => stories::supply_bar::show(ui),
@@ -872,6 +998,7 @@ mod app {
                             Story::DataTable => {
                                 stories::data_table::show(ui, &mut self.data_table_state)
                             }
+                            Story::LeaderboardTable => stories::leaderboard_table::show(ui),
                             Story::FileUpload => {
                                 stories::file_upload::show(ui, &mut self.file_upload_state)
                             }
@@ -899,6 +1026,30 @@ mod app {
                                 stories::collection_list::show(ui, &mut self.collection_list_state)
                             }
                             Story::Chip => stories::chip::show(ui),
+                            Story::TagList => stories::tag_list::show(ui, &mut self.tag_list_state),
+                            Story::TokenMultiselect => stories::token_multiselect::show(
+                                ui,
+                                &mut self.token_multiselect_state,
+                            ),
+                            Story::TypeaheadSearch => stories::typeahead_search::show(ui),
+                            Story::RelationshipEditor => stories::relationship_editor::show(
+                                ui,
+                                &mut self.relationship_editor_state,
+                            ),
+                            Story::NamedGroupList => stories::named_group_list::show(
+                                ui,
+                                &mut self.named_group_list_state,
+                            ),
+                            Story::RarityTargetEditor => stories::rarity_target_editor::show(
+                                ui,
+                                &mut self.rarity_target_editor_state,
+                            ),
+                            Story::PaletteEditor => {
+                                stories::palette_editor::show(ui, &mut self.palette_editor_state)
+                            }
+                            Story::SlotTable => {
+                                stories::slot_table::show(ui, &mut self.slot_table_state)
+                            }
                             Story::PropertyList => stories::property_list::show(ui),
                             Story::IdPill => stories::id_pill::show(ui),
                             Story::PhaseCard => stories::phase_card::show(ui),

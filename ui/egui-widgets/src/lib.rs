@@ -1,11 +1,14 @@
+#[cfg(target_arch = "wasm32")]
 pub use egui_inbox;
 
 pub mod animated_counter;
 pub mod asset_card;
+pub mod bullet_bar;
 pub mod button_group;
 pub mod buttons;
 pub mod card_browser;
 pub mod chip;
+pub mod collection_composition;
 pub mod collection_list;
 pub mod distribution_waterfall;
 pub mod donut_chart;
@@ -13,6 +16,7 @@ pub mod error_note;
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
 pub mod flip_counter;
+pub mod fonts;
 pub mod fungibles_row;
 pub mod grouped_section;
 pub mod icons;
@@ -23,8 +27,10 @@ pub mod marquee;
 pub mod metric_card;
 pub mod mint_checkout;
 pub mod mnemonic_display;
+pub mod named_group_list;
 pub mod offer_tile;
 pub mod order_list;
+pub mod palette_editor;
 pub mod persona_strip;
 pub mod phase_card;
 pub mod pip_row;
@@ -34,17 +40,24 @@ pub mod property_list;
 pub mod quantity_stepper;
 pub mod radar_chart;
 pub mod range_bar;
+pub mod rarity_target_editor;
+pub mod relationship_editor;
 pub mod relative_time;
 pub mod screenshot;
 pub mod seven_segment;
+pub mod slot_table;
 pub mod sparkline;
 pub mod supply_bar;
 pub mod swap_modal;
+pub mod tag_list;
 pub mod theme;
 pub mod timestamp;
 pub mod toast;
+pub mod token_multiselect;
 pub mod trait_filter;
+pub mod typeahead_search;
 pub mod utils;
+pub mod variant_split;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
@@ -70,11 +83,15 @@ pub mod split_allocation_bar;
 pub mod data_table;
 pub mod exposure_bar;
 
+// Ranked-list dashboards (holders, leaderboards, top traders)
+pub mod leaderboard_table;
+
+// Generic coverage bar (no cardano deps — usable everywhere, e.g. rarity tuning).
+pub mod coverage_delta_bar;
+
 // Cardano-specific widgets (feature-gated)
 #[cfg(feature = "cardano")]
 pub mod asset_strip;
-#[cfg(feature = "cardano")]
-pub mod coverage_delta_bar;
 #[cfg(feature = "cardano")]
 pub mod fee_report;
 #[cfg(feature = "cardano")]
@@ -133,10 +150,12 @@ pub use mint_checkout::{
     BundleOffer, CheckoutState, Eligibility, MintCheckout, MintCheckoutAction,
     MintCheckoutResponse, MintCheckoutVm,
 };
+pub use named_group_list::{NamedGroup, NamedGroupList};
 pub use order_list::{
     FulfilmentRow, OrderEventRow, OrderList, OrderListAction, OrderListResponse, OrderRow,
     OrderStatus,
 };
+pub use palette_editor::{Palette, PaletteEditor, PaletteVariant};
 pub use persona_strip::{PersonaStrip, PersonaStripConfig};
 pub use phase_card::{GateChip, PhaseCard, PhaseCardAction, PhaseCardResponse, PhaseCardRow};
 pub use pip_row::{
@@ -147,19 +166,27 @@ pub use property_list::{PropertyLabelAlign, PropertyList};
 pub use quantity_stepper::{QuantityStepper, QuantityStepperResponse};
 pub use radar_chart::{RadarChartConfig, RadarPoint};
 pub use range_bar::{RangeBarConfig, RangePoint};
+pub use rarity_target_editor::{RarityRow, RarityTargetEditor};
+pub use relationship_editor::{RelationshipEditor, RelationshipEditorResponse};
 pub use relative_time::{relative_label, RelativeTime};
 pub use screenshot::ScreenshotButton;
 pub use seven_segment::SevenSegmentDisplay;
+pub use slot_table::{SlotRow, SlotTable};
 pub use sparkline::Sparkline;
 pub use supply_bar::SupplyBar;
 pub use swap_modal::{
     CultureBuy, SwapModal, SwapModalAction, SwapModalConfig, SwapModalTheme, SwapPreviewData,
     SwapProgress,
 };
+pub use tag_list::{TagList, TagListResponse};
 pub use theme::{rarity_rank_color, FontStrategy};
 pub use timestamp::{format_iso8601, Timestamp};
 pub use toast::{show_toasts, Toast, ToastKind, ToastQueue, DEFAULT_DURATION_FRAMES};
+pub use token_multiselect::{TokenMultiselect, TokenMultiselectResponse};
 pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
+pub use typeahead_search::{
+    filter_options, TypeaheadOption, TypeaheadResponse, TypeaheadSearch,
+};
 pub use utils::{
     format_ada, format_duration, format_lovelace, format_number, format_percent, section_heading,
     stat_card, truncate_hex,
@@ -196,11 +223,12 @@ pub use data_table::{
     DataRowItem, DataRowStatus, DataTableConfig, DataTableResponse, DataTableState,
 };
 pub use exposure_bar::{ltv_risk_color, ExposureBarConfig, ExposureSegment};
+pub use leaderboard_table::{LeaderboardRow, LeaderboardTable};
 
 // Cardano-specific re-exports
 #[cfg(feature = "cardano")]
 pub use asset_strip::{AssetStripConfig, AssetStripItem, AssetStripResponse};
-#[cfg(feature = "cardano")]
+pub use bullet_bar::BulletBar;
 pub use coverage_delta_bar::CoverageDeltaConfig;
 #[cfg(feature = "cardano")]
 pub use fee_report::{FeeReportConfig, FeeReportData, SideFeeData};

@@ -9,6 +9,7 @@ pub mod geometry;
 pub mod mesh;
 pub mod overlay;
 pub mod projection;
+pub mod widget;
 
 // Effects
 pub use effects::{
@@ -33,3 +34,6 @@ pub use mesh::{
 
 // Overlay
 pub use overlay::{draw_tile_overlay, rarity_color, rarity_glow, CardMask, RARITIES};
+
+// High-level reusable widget
+pub use widget::{AssetCard, AssetCardState, CardEffectKind, CardImage};

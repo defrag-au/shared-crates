@@ -992,11 +992,15 @@ pub fn build_cancel_offer_tx(
     deps: &super::TxDeps,
     req: &CancelOfferRequest,
 ) -> Result<super::UnsignedTx, TxBuildError> {
-    use crate::builder::cost_models::PLUTUS_V2_COST_MODEL;
     use crate::helpers::output::{build_change_output, create_ada_output};
     use crate::selection;
     use pallas_crypto::hash::Hash;
     use pallas_txbuilder::{ExUnits, Input, ScriptKind, StagingTransaction};
+
+    // The node's *current* PlutusV2 cost model (live from protocol params), so
+    // the script-integrity hash matches at submit. Falls back to the bundled
+    // constant only when params carry no V2 model. See [`PPViewHashesDontMatch`].
+    let v2_cost_model = deps.params.cost_models.v2();
 
     let estimated_fee = selection::estimate_simple_fee(&deps.params);
 
@@ -1071,7 +1075,7 @@ pub fn build_cancel_offer_tx(
                             .unwrap_or(CANCEL_PRELIMINARY_EX_UNITS_STEPS),
                     }),
                 )
-                .language_view(ScriptKind::PlutusV2, PLUTUS_V2_COST_MODEL.to_vec())
+                .language_view(ScriptKind::PlutusV2, v2_cost_model.clone())
                 .disclosed_signer(Hash::from(owner_pkh_bytes))
                 .collateral_input(fee_input.clone());
 
@@ -1145,7 +1149,6 @@ pub fn build_cancel_offers_tx_with(
     requests: &[CancelOfferRequest],
     contract: &CancelContract,
 ) -> Result<super::UnsignedTx, TxBuildError> {
-    use crate::builder::cost_models::PLUTUS_V2_COST_MODEL;
     use crate::helpers::output::{build_change_output, create_ada_output};
     use crate::selection;
     use pallas_crypto::hash::Hash;
@@ -1154,6 +1157,11 @@ pub fn build_cancel_offers_tx_with(
     if requests.is_empty() {
         return Err(TxBuildError::BuildFailed("No cancel requests".into()));
     }
+
+    // The node's *current* PlutusV2 cost model (live from protocol params), so
+    // the script-integrity hash matches at submit. Falls back to the bundled
+    // constant only when params carry no V2 model. See [`PPViewHashesDontMatch`].
+    let v2_cost_model = deps.params.cost_models.v2();
 
     let estimated_fee = selection::estimate_simple_fee(&deps.params);
 
@@ -1276,7 +1284,7 @@ pub fn build_cancel_offers_tx_with(
             tx = tx
                 .input(fee_input.clone())
                 .reference_input(ref_input.clone())
-                .language_view(ScriptKind::PlutusV2, PLUTUS_V2_COST_MODEL.to_vec())
+                .language_view(ScriptKind::PlutusV2, v2_cost_model.clone())
                 .disclosed_signer(Hash::from(owner_pkh_bytes))
                 .collateral_input(fee_input.clone());
 
