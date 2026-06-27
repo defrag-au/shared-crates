@@ -132,7 +132,7 @@ impl UnsignedTx {
     /// just to turn an [`UnsignedTx`] into submittable bytes.
     pub fn build_and_sign(
         self,
-        secret_key: &pallas_crypto::key::ed25519::SecretKey,
+        secret_key: &pallas_crypto::key::ed25519::SecretKeyExtended,
     ) -> Result<SignedTx, TxBuildError> {
         use pallas_txbuilder::BuildConway;
         let built = self
@@ -153,7 +153,7 @@ impl UnsignedTx {
     /// `cnft.dev-workers/docs/design/WALLET_UTXO_LEDGER.md`.
     pub fn build_and_sign_multi(
         self,
-        secret_keys: &[&pallas_crypto::key::ed25519::SecretKey],
+        secret_keys: &[&pallas_crypto::key::ed25519::SecretKeyExtended],
     ) -> Result<SignedTx, TxBuildError> {
         use pallas_txbuilder::BuildConway;
         let built = self
@@ -175,7 +175,7 @@ impl UnsignedTx {
     /// `ChangeUtxo` so it doesn't need this.
     pub fn build_and_sign_tracked(
         self,
-        secret_key: &pallas_crypto::key::ed25519::SecretKey,
+        secret_key: &pallas_crypto::key::ed25519::SecretKeyExtended,
     ) -> Result<(SignedTx, TxEffects), TxBuildError> {
         let spent = staging_spent(&self.staging);
         let outputs = staging_outputs(&self.staging);
@@ -193,7 +193,7 @@ impl UnsignedTx {
     /// across more than one of its addresses (e.g. the Mode-B refund over `D` + `O`).
     pub fn build_and_sign_multi_tracked(
         self,
-        secret_keys: &[&pallas_crypto::key::ed25519::SecretKey],
+        secret_keys: &[&pallas_crypto::key::ed25519::SecretKeyExtended],
     ) -> Result<(SignedTx, TxEffects), TxBuildError> {
         let spent = staging_spent(&self.staging);
         let outputs = staging_outputs(&self.staging);

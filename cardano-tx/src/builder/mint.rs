@@ -1434,7 +1434,12 @@ mod tests {
             &payouts,
         )
         .expect("inline mint builds");
-        let sk = pallas_crypto::key::ed25519::SecretKey::from([1u8; 32]);
+        let sk = {
+            let mut kb = [1u8; 64];
+            kb[0] &= 0b1111_1000;
+            kb[31] = (kb[31] & 0b0011_1111) | 0b0100_0000;
+            pallas_crypto::key::ed25519::SecretKeyExtended::from_bytes(kb).expect("valid xprv key")
+        };
         let signed = unsigned.build_and_sign(&sk).expect("sign");
         signed.tx_cbor_hex.len() / 2 // hex → bytes
     }
@@ -1515,7 +1520,13 @@ mod tests {
                 &payouts,
             )
             .ok()?;
-            let sk = pallas_crypto::key::ed25519::SecretKey::from([1u8; 32]);
+            let sk = {
+                let mut kb = [1u8; 64];
+                kb[0] &= 0b1111_1000;
+                kb[31] = (kb[31] & 0b0011_1111) | 0b0100_0000;
+                pallas_crypto::key::ed25519::SecretKeyExtended::from_bytes(kb)
+                    .expect("valid xprv key")
+            };
             let signed = unsigned.build_and_sign(&sk).ok()?;
             Some(signed.tx_cbor_hex.len() / 2)
         }

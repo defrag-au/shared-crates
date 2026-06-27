@@ -2,15 +2,21 @@
 //!
 //! Ed25519 signing for built transactions. No IO — just cryptography.
 
-use pallas_crypto::key::ed25519::SecretKey;
+use pallas_crypto::key::ed25519::SecretKeyExtended;
 use pallas_txbuilder::BuiltTransaction;
 
 use crate::error::TxBuildError;
 
-/// Sign a built transaction with an Ed25519 secret key.
+/// Sign a built transaction with an Ed25519-BIP32 *extended* secret key.
+///
+/// Cardano HD wallets (CIP-1852 / Icarus) derive extended keys, so the signing
+/// surface takes [`SecretKeyExtended`]. pallas's `BuiltTransaction::sign` is
+/// generic over its (crate-private) signer trait and implements it for both the
+/// plain and the extended key — every caller here signs with HD-derived keys,
+/// so we standardise on extended.
 pub fn sign_transaction(
     tx: BuiltTransaction,
-    secret_key: &SecretKey,
+    secret_key: &SecretKeyExtended,
 ) -> Result<BuiltTransaction, TxBuildError> {
     tx.sign(secret_key)
         .map_err(|e| TxBuildError::SignFailed(format!("{e}")))
@@ -25,11 +31,11 @@ pub fn sign_transaction(
 /// ~101 wasted bytes, not an error. An empty slice returns the tx unsigned.
 pub fn sign_transaction_multi(
     tx: BuiltTransaction,
-    secret_keys: &[&SecretKey],
+    secret_keys: &[&SecretKeyExtended],
 ) -> Result<BuiltTransaction, TxBuildError> {
     let mut tx = tx;
     for sk in secret_keys {
-        // `sk` is `&&SecretKey` (iterating `&[&SecretKey]`); `.sign` wants `&S`.
+        // `sk` is `&&SecretKeyExtended`; `.sign` wants `&S`.
         tx = tx
             .sign(*sk)
             .map_err(|e| TxBuildError::SignFailed(format!("{e}")))?;
