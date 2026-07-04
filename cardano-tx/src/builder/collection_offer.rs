@@ -1149,6 +1149,34 @@ pub fn build_cancel_offers_tx_with(
     requests: &[CancelOfferRequest],
     contract: &CancelContract,
 ) -> Result<super::UnsignedTx, TxBuildError> {
+    build_cancel_offers_tx_inner(deps, requests, contract, None)
+}
+
+/// As [`build_cancel_offers_tx_with`], but with a dedicated collateral UTxO
+/// instead of doubling the fee input as collateral.
+///
+/// Needed for chained carts: a chained TX's fee input is the *predicted*
+/// change of the previous unsubmitted TX, and wallets resolve collateral
+/// against the chain — phantom collateral makes the whole batch unsignable
+/// (Eternl `signTxs`: "Could not resolve transaction input UTxOs"). The
+/// caller reserves one confirmed wallet UTxO (excluded from funding) and
+/// passes it here for every cancel TX in the batch; collateral is only
+/// consumed on script failure, so sharing it across the chain is safe.
+pub fn build_cancel_offers_tx_with_collateral(
+    deps: &super::TxDeps,
+    requests: &[CancelOfferRequest],
+    contract: &CancelContract,
+    collateral_utxo: &UtxoApi,
+) -> Result<super::UnsignedTx, TxBuildError> {
+    build_cancel_offers_tx_inner(deps, requests, contract, Some(collateral_utxo))
+}
+
+fn build_cancel_offers_tx_inner(
+    deps: &super::TxDeps,
+    requests: &[CancelOfferRequest],
+    contract: &CancelContract,
+    dedicated_collateral: Option<&UtxoApi>,
+) -> Result<super::UnsignedTx, TxBuildError> {
     use crate::helpers::output::{build_change_output, create_ada_output};
     use crate::selection;
     use pallas_crypto::hash::Hash;
@@ -1165,13 +1193,22 @@ pub fn build_cancel_offers_tx_with(
 
     let estimated_fee = selection::estimate_simple_fee(&deps.params);
 
-    // Select a wallet UTxO to pay the fee (also serves as collateral).
-    // Default config prefers pure ADA but falls back to asset-bearing
-    // UTxOs; the asset-bearing case is handled below by routing assets
-    // through the regular output (success) and `collateral_output`
-    // (script-fail).
+    // Select a wallet UTxO to pay the fee (doubles as collateral unless a
+    // dedicated collateral UTxO is provided). Default config prefers pure
+    // ADA but falls back to asset-bearing UTxOs; the asset-bearing case is
+    // handled below by routing assets through the regular output (success)
+    // and `collateral_output` (script-fail).
+    let fee_candidates: Vec<UtxoApi> = match dedicated_collateral {
+        Some(c) => deps
+            .utxos
+            .iter()
+            .filter(|u| !(u.tx_hash == c.tx_hash && u.output_index == c.output_index))
+            .cloned()
+            .collect(),
+        None => deps.utxos.clone(),
+    };
     let fee_utxo = selection::select_utxo_for_amount(
-        &deps.utxos,
+        &fee_candidates,
         0,
         estimated_fee,
         &selection::UtxoSelectionConfig::new(&deps.params),
@@ -1200,6 +1237,19 @@ pub fn build_cancel_offers_tx_with(
         .try_into()
         .map_err(|_| TxBuildError::InvalidHex("fee tx hash".into()))?;
     let fee_input = Input::new(Hash::from(fee_tx_bytes), fee_utxo.output_index as u64);
+
+    // Collateral: the dedicated UTxO when provided, else the fee input.
+    let collateral_utxo = dedicated_collateral.cloned();
+    let collateral_input = match &collateral_utxo {
+        Some(c) => {
+            let bytes: [u8; 32] = hex::decode(&c.tx_hash)
+                .map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?
+                .try_into()
+                .map_err(|_| TxBuildError::InvalidHex("collateral tx hash".into()))?;
+            Input::new(Hash::from(bytes), u64::from(c.output_index))
+        }
+        None => fee_input.clone(),
+    };
 
     // Parse all CO inputs
     let mut script_inputs: Vec<Input> = Vec::with_capacity(requests.len());
@@ -1286,7 +1336,7 @@ pub fn build_cancel_offers_tx_with(
                 .reference_input(ref_input.clone())
                 .language_view(ScriptKind::PlutusV2, v2_cost_model.clone())
                 .disclosed_signer(Hash::from(owner_pkh_bytes))
-                .collateral_input(fee_input.clone());
+                .collateral_input(collateral_input.clone());
 
             // Include datums in witness set
             for datum in &datums {
@@ -1295,10 +1345,10 @@ pub fn build_cancel_offers_tx_with(
 
             // Single output: all CO value + fee UTxO value - fee.
             // When the fee UTxO carries native assets, those assets must
-            // appear in the regular output (success path) and in
-            // `collateral_output` (failure path) — Conway rejects TXs whose
-            // collateral inputs hold assets without a return output to
-            // receive them.
+            // appear in the regular output (success path) and — when it is
+            // also the collateral — in `collateral_output` (failure path);
+            // Conway rejects TXs whose collateral inputs hold assets
+            // without a return output to receive them.
             if fee_utxo.assets.is_empty() {
                 tx = tx.output(create_ada_output(from_address.clone(), output_value));
             } else {
@@ -1306,20 +1356,33 @@ pub fn build_cancel_offers_tx_with(
                 let main_output =
                     build_change_output(from_address.clone(), output_value, &fee_utxo_refs, None)?;
                 tx = tx.output(main_output);
+            }
 
-                // Reserve a generous lovelace budget for total_collateral
-                // (~5 ADA). At typical cancel fees (~1.5 ADA × 150%
-                // collateral_percent ≈ 2.25 ADA) this is plenty; the rest of
-                // the fee UTxO's lovelace plus all of its assets flow back
-                // to the user via collateral_return if the script fails.
-                const COLLATERAL_RESERVE_LOVELACE: u64 = 5_000_000;
-                let collateral_return_lovelace = fee_utxo
-                    .lovelace
-                    .saturating_sub(COLLATERAL_RESERVE_LOVELACE);
+            // Collateral return. Reserve a generous lovelace budget for
+            // total_collateral (~5 ADA). At typical cancel fees (~1.5 ADA ×
+            // 150% collateral_percent ≈ 2.25 ADA) this is plenty; the rest
+            // of the collateral UTxO's lovelace plus all of its assets flow
+            // back to the user via collateral_return if the script fails.
+            //
+            // Legacy (fee input doubles as collateral): only emitted when
+            // the fee UTxO carries assets, preserving the established TX
+            // shape. Dedicated collateral: emitted whenever the remainder
+            // clears min-ADA, so a large reserved UTxO is never fully
+            // forfeited on script failure.
+            const COLLATERAL_RESERVE_LOVELACE: u64 = 5_000_000;
+            let return_source = match &collateral_utxo {
+                Some(c) => {
+                    let remainder = c.lovelace.saturating_sub(COLLATERAL_RESERVE_LOVELACE);
+                    (!c.assets.is_empty() || remainder >= 2_000_000).then_some(c)
+                }
+                None => (!fee_utxo.assets.is_empty()).then_some(&fee_utxo),
+            };
+            if let Some(source) = return_source {
+                let source_refs: [&UtxoApi; 1] = [source];
                 let collateral_return = build_change_output(
                     from_address.clone(),
-                    collateral_return_lovelace,
-                    &fee_utxo_refs,
+                    source.lovelace.saturating_sub(COLLATERAL_RESERVE_LOVELACE),
+                    &source_refs,
                     None,
                 )?;
                 tx = tx.collateral_output(collateral_return);
@@ -1357,6 +1420,117 @@ mod tests {
         // Below threshold: fee should be minimum 2 ADA
         assert_eq!(calculate_marketplace_fee(5_000_000), 2_000_000);
         assert_eq!(calculate_marketplace_fee(10_000_000), 2_000_000);
+    }
+
+    /// Dedicated collateral (chained carts): the reserved UTxO must be the
+    /// sole collateral input, must NOT fund the TX (fee input stays a
+    /// different UTxO), and must get a collateral-return output so a large
+    /// reserved UTxO is never fully forfeited on script failure. Without a
+    /// confirmed collateral, a chained TX's collateral would be the
+    /// predicted change of its unsubmitted parent — unresolvable by the
+    /// wallet at signing time (Eternl signTxs: "Could not resolve
+    /// transaction input UTxOs").
+    #[test]
+    fn test_cancel_batch_dedicated_collateral() {
+        use crate::params::TxBuildParams;
+        use pallas_addresses::Address;
+
+        let addr = Address::from_bech32(
+            "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3jcu5d8ps7zex2k2xt3uqxgjqnnj83ws8lhrn648jjxtwq2ytjqp"
+        ).unwrap();
+        let funding = UtxoApi {
+            tx_hash: "a".repeat(64),
+            output_index: 0,
+            lovelace: 50_000_000,
+            assets: vec![],
+            tags: vec![],
+        };
+        let collateral = UtxoApi {
+            tx_hash: "b".repeat(64),
+            output_index: 3,
+            lovelace: 12_000_000,
+            assets: vec![],
+            tags: vec![],
+        };
+        let deps = super::super::TxDeps {
+            utxos: vec![funding.clone(), collateral.clone()],
+            params: TxBuildParams {
+                min_fee_coefficient: 44,
+                min_fee_constant: 155_381,
+                coins_per_utxo_byte: 4310,
+                max_tx_size: 16_384,
+                max_value_size: 5_000,
+                price_mem: Some((577, 10_000)),
+                price_step: Some((721, 10_000_000)),
+                ..Default::default()
+            },
+            from_address: addr,
+            network_id: 0,
+        };
+        let reqs = [CancelOfferRequest {
+            co_tx_hash: "c".repeat(64),
+            co_output_index: 1,
+            co_lovelace: 10_000_000,
+            owner_pkh: "d".repeat(56),
+            datum_cbor_hex: None,
+            ex_units_mem: None,
+            ex_units_steps: None,
+        }];
+
+        let unsigned = build_cancel_offers_tx_with_collateral(
+            &deps,
+            &reqs,
+            &CancelContract::wayup(),
+            &collateral,
+        )
+        .expect("build with dedicated collateral");
+
+        let staging = &unsigned.staging;
+        let coll_inputs = staging.collateral_inputs.as_ref().expect("collateral set");
+        assert_eq!(coll_inputs.len(), 1);
+        assert_eq!(hex::encode(coll_inputs[0].tx_hash.0), collateral.tx_hash);
+        assert_eq!(coll_inputs[0].txo_index, u64::from(collateral.output_index));
+
+        // The collateral UTxO must not appear among the spending inputs —
+        // the fee comes from the other (funding) UTxO.
+        let inputs = staging.inputs.as_ref().expect("inputs set");
+        assert!(
+            !inputs
+                .iter()
+                .any(|i| hex::encode(i.tx_hash.0) == collateral.tx_hash),
+            "collateral must not double as a spending input"
+        );
+        assert!(
+            inputs
+                .iter()
+                .any(|i| hex::encode(i.tx_hash.0) == funding.tx_hash),
+            "fee must be funded from the non-collateral UTxO"
+        );
+
+        // Return output protects the reserved UTxO on script failure:
+        // everything above the ~5 ADA total_collateral budget flows back.
+        let coll_return = staging
+            .collateral_output
+            .as_ref()
+            .expect("collateral return output");
+        assert_eq!(coll_return.lovelace, collateral.lovelace - 5_000_000);
+
+        // Legacy shape untouched: without a dedicated collateral the fee
+        // input doubles as collateral and a pure-ADA fee UTxO emits no
+        // collateral return.
+        let legacy = build_cancel_offers_tx_with(&deps, &reqs, &CancelContract::wayup())
+            .expect("legacy build");
+        let legacy_coll = legacy
+            .staging
+            .collateral_inputs
+            .as_ref()
+            .expect("collateral set");
+        let legacy_inputs = legacy.staging.inputs.as_ref().expect("inputs set");
+        assert!(legacy_inputs.iter().any(|i| {
+            hex::encode(i.tx_hash.0) == hex::encode(legacy_coll[0].tx_hash.0)
+                && i.txo_index == legacy_coll[0].txo_index
+        }));
+        assert!(legacy.staging.collateral_output.is_none());
     }
 
     #[test]
