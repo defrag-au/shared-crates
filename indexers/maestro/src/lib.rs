@@ -485,6 +485,34 @@ struct DatumsByHashesResponse {
     data: std::collections::HashMap<String, DatumData>,
 }
 
+/// One resolved output from `POST /transactions/outputs`.
+#[derive(Deserialize, Debug)]
+pub struct ResolvedTxOut {
+    pub tx_hash: String,
+    pub index: u32,
+    pub address: String,
+    pub datum: Option<ResolvedTxOutDatum>,
+}
+
+/// Datum attachment on a resolved output. `kind` is `"hash"` or `"inline"`
+/// — the distinction matters for spending: witness-set datums are only
+/// legal for hash-datum inputs (supplying one for an inline-datum input is
+/// rejected by the ledger with `NotAllowedSupplementalDatums`).
+#[derive(Deserialize, Debug)]
+pub struct ResolvedTxOutDatum {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub hash: Option<String>,
+    /// Hex-encoded CBOR. Present for inline datums; for hash datums only
+    /// when `resolve_datums=true` and Maestro knows the preimage.
+    pub bytes: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ResolveTxOutputsResponse {
+    data: Vec<ResolvedTxOut>,
+}
+
 /// Minimal view of `GET /transactions/{tx_hash}`. Only the fields any
 /// caller in the workspace actually reads — keeping the struct narrow
 /// shields us from upstream additions (Maestro adds fields freely; serde
@@ -1076,6 +1104,26 @@ impl MaestroApi {
             MaestroError::Deserialization(format!("Failed to serialize datum hashes: {e}"))
         })?;
         let response: DatumsByHashesResponse = self.post_url(url, &body).await?;
+        Ok(response.data)
+    }
+
+    /// Resolve transaction outputs by `"tx_hash#index"` reference in one
+    /// call (`POST /transactions/outputs`), datums resolved. With
+    /// `allow_spent`, already-spent outputs are included rather than
+    /// silently dropped from the result.
+    pub async fn resolve_transaction_outputs(
+        &self,
+        refs: &[String],
+        allow_spent: bool,
+    ) -> Result<Vec<ResolvedTxOut>, MaestroError> {
+        let url = format!(
+            "https://{}/transactions/outputs?resolve_datums=true&allow_spent={allow_spent}",
+            self.base_url
+        );
+        let body = serde_json::to_value(refs).map_err(|e| {
+            MaestroError::Deserialization(format!("Failed to serialize output refs: {e}"))
+        })?;
+        let response: ResolveTxOutputsResponse = self.post_url(url, &body).await?;
         Ok(response.data)
     }
 
@@ -1795,10 +1843,33 @@ impl MaestroApi {
     ) -> Result<T, MaestroError> {
         use http_client::HttpMethod;
 
-        let response_details = self
-            .client
-            .request_text_with_details(HttpMethod::POST, &url, Some(body))
-            .await?;
+        // Retry 429 with backoff, mirroring `get_url_with_retry`. Safe here
+        // because every `post_url` caller is idempotent (resolve outputs,
+        // datums-by-hash, evaluate) — transaction submission does NOT go
+        // through this path (it uses a raw `Fetch`), so this never re-sends
+        // a state-changing POST.
+        const MAX_RETRIES: u32 = 3;
+        let mut attempt = 0;
+        let response_details = loop {
+            let details = self
+                .client
+                .request_text_with_details(HttpMethod::POST, &url, Some(body))
+                .await?;
+            if details.status_code == 429 && attempt < MAX_RETRIES {
+                let delay_ms = details
+                    .retry_after_seconds()
+                    .map(|s| s * 1000)
+                    .unwrap_or_else(|| 1000 * (1 << attempt));
+                warn!(
+                    "Rate limited on POST attempt {} for URL: {url}, retrying after {delay_ms}ms",
+                    attempt + 1
+                );
+                worker_utils::sleep::sleep(delay_ms as i32).await;
+                attempt += 1;
+                continue;
+            }
+            break details;
+        };
 
         match response_details.status_code {
             status if (200..300).contains(&status) => {

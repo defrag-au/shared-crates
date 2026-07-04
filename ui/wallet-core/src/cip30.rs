@@ -354,7 +354,23 @@ impl WalletApi {
         }
 
         let result = sign_txs_js(&self.api, &array, partial_sign).await?;
+        // Guard against a non-array return: `js_sys::Array::from` on a bare
+        // string char-splits it into single-char "witnesses" of the wrong
+        // length, which would then be silently assembled as garbage. Require
+        // an actual array of the expected length.
+        if !result.is_array() {
+            return Err(WalletError::SigningFailed(
+                "signTxs did not return an array".into(),
+            ));
+        }
         let result_array = js_sys::Array::from(&result);
+        if result_array.length() as usize != tx_hexes.len() {
+            return Err(WalletError::SigningFailed(format!(
+                "signTxs returned {} witnesses for {} txs",
+                result_array.length(),
+                tx_hexes.len()
+            )));
+        }
         let mut witnesses = Vec::with_capacity(tx_hexes.len());
         for val in result_array.iter() {
             let hex = val.as_string().ok_or_else(|| {
