@@ -1149,7 +1149,7 @@ pub fn build_cancel_offers_tx_with(
     requests: &[CancelOfferRequest],
     contract: &CancelContract,
 ) -> Result<super::UnsignedTx, TxBuildError> {
-    build_cancel_offers_tx_inner(deps, requests, contract, None)
+    build_cancel_offers_tx_inner(deps, requests, contract, None, None)
 }
 
 /// As [`build_cancel_offers_tx_with`], but with a dedicated collateral UTxO
@@ -1168,7 +1168,22 @@ pub fn build_cancel_offers_tx_with_collateral(
     contract: &CancelContract,
     collateral_utxo: &UtxoApi,
 ) -> Result<super::UnsignedTx, TxBuildError> {
-    build_cancel_offers_tx_inner(deps, requests, contract, Some(collateral_utxo))
+    build_cancel_offers_tx_inner(deps, requests, contract, Some(collateral_utxo), None)
+}
+
+/// As [`build_cancel_offers_tx_with`] (fee input doubles as collateral),
+/// but additionally splits `split_lovelace` off the change into its own
+/// pure-ADA output — a collateral bootstrap for wallets that have no UTxO
+/// suitable as dedicated collateral. The split output can't collateralise
+/// *this* chain (it's unconfirmed until this TX lands), but once confirmed
+/// every future cart reserves it via the dedicated-collateral path.
+pub fn build_cancel_offers_tx_bootstrap(
+    deps: &super::TxDeps,
+    requests: &[CancelOfferRequest],
+    contract: &CancelContract,
+    split_lovelace: u64,
+) -> Result<super::UnsignedTx, TxBuildError> {
+    build_cancel_offers_tx_inner(deps, requests, contract, None, Some(split_lovelace))
 }
 
 fn build_cancel_offers_tx_inner(
@@ -1176,6 +1191,7 @@ fn build_cancel_offers_tx_inner(
     requests: &[CancelOfferRequest],
     contract: &CancelContract,
     dedicated_collateral: Option<&UtxoApi>,
+    collateral_split: Option<u64>,
 ) -> Result<super::UnsignedTx, TxBuildError> {
     use crate::helpers::output::{build_change_output, create_ada_output};
     use crate::selection;
@@ -1296,11 +1312,12 @@ fn build_cancel_offers_tx_inner(
 
     super::converge_fee_with_witnesses(
         |fee| {
+            let split = collateral_split.unwrap_or(0);
             let output_value =
                 total_input
-                    .checked_sub(fee)
+                    .checked_sub(fee + split)
                     .ok_or(TxBuildError::InsufficientFunds {
-                        needed: fee,
+                        needed: fee + split,
                         available: total_input,
                     })?;
 
@@ -1356,6 +1373,14 @@ fn build_cancel_offers_tx_inner(
                 let main_output =
                     build_change_output(from_address.clone(), output_value, &fee_utxo_refs, None)?;
                 tx = tx.output(main_output);
+            }
+
+            // Collateral bootstrap: a dedicated pure-ADA output the wallet
+            // can use as confirmed collateral for future carts. Appended
+            // after the main change so the change output's index — and with
+            // it the caller's chained-change prediction — is unchanged.
+            if split > 0 {
+                tx = tx.output(create_ada_output(from_address.clone(), split));
             }
 
             // Collateral return. Reserve a generous lovelace budget for
@@ -1531,6 +1556,46 @@ mod tests {
                 && i.txo_index == legacy_coll[0].txo_index
         }));
         assert!(legacy.staging.collateral_output.is_none());
+
+        // Bootstrap: legacy collateral (fee input, confirmed) plus a
+        // dedicated pure-ADA split appended AFTER the main change, so the
+        // change output's index — and the caller's chained-change
+        // prediction — is unchanged. Value conservation: change shrinks by
+        // exactly the split.
+        let split = 10_000_000u64;
+        let boot = build_cancel_offers_tx_bootstrap(&deps, &reqs, &CancelContract::wayup(), split)
+            .expect("bootstrap build");
+        let outputs = boot.staging.outputs.as_ref().expect("outputs set");
+        assert_eq!(outputs.len(), 2, "main change + collateral split");
+        assert_eq!(outputs[1].lovelace, split, "split appended after change");
+        // Value conservation: outputs + fee == CO value + fee UTxO value.
+        let boot_inputs = boot.staging.inputs.as_ref().expect("inputs set");
+        let fee_input_lovelace = boot_inputs
+            .iter()
+            .find_map(|i| {
+                let h = hex::encode(i.tx_hash.0);
+                [&funding, &collateral]
+                    .into_iter()
+                    .find(|u| u.tx_hash == h && u64::from(u.output_index) == i.txo_index)
+                    .map(|u| u.lovelace)
+            })
+            .expect("fee input is one of the wallet UTxOs");
+        assert_eq!(
+            outputs[0].lovelace + split + boot.fee,
+            reqs[0].co_lovelace + fee_input_lovelace,
+        );
+        let boot_coll = boot
+            .staging
+            .collateral_inputs
+            .as_ref()
+            .expect("collateral set");
+        assert!(
+            boot_inputs.iter().any(|i| {
+                hex::encode(i.tx_hash.0) == hex::encode(boot_coll[0].tx_hash.0)
+                    && i.txo_index == boot_coll[0].txo_index
+            }),
+            "bootstrap keeps legacy fee-input-as-collateral"
+        );
     }
 
     #[test]
