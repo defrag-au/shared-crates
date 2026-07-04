@@ -1149,7 +1149,32 @@ pub fn build_cancel_offers_tx_with(
     requests: &[CancelOfferRequest],
     contract: &CancelContract,
 ) -> Result<super::UnsignedTx, TxBuildError> {
-    build_cancel_offers_tx_inner(deps, requests, contract, None, None)
+    build_cancel_offers_tx_opts(deps, requests, contract, &CancelTxOptions::default())
+}
+
+/// Structural options for a multi-cancel TX build.
+#[derive(Default)]
+pub struct CancelTxOptions<'a> {
+    /// Collateral from this confirmed UTxO instead of the fee input.
+    /// Required for chained carts — see [`build_cancel_offers_tx_with_collateral`].
+    pub dedicated_collateral: Option<&'a UtxoApi>,
+    /// Extra pure-ADA outputs split off the change, one output per entry,
+    /// appended AFTER the main change output (so the change index — and any
+    /// chained-change prediction keyed to it — is unchanged). Used for the
+    /// collateral bootstrap and for fee-parcel replenishment: small
+    /// confirmed UTxOs are what let future carts fund every TX without
+    /// chaining, and thus sign in a single CIP-103 dialog.
+    pub change_splits: &'a [u64],
+}
+
+/// As [`build_cancel_offers_tx_with`], parameterised by [`CancelTxOptions`].
+pub fn build_cancel_offers_tx_opts(
+    deps: &super::TxDeps,
+    requests: &[CancelOfferRequest],
+    contract: &CancelContract,
+    opts: &CancelTxOptions,
+) -> Result<super::UnsignedTx, TxBuildError> {
+    build_cancel_offers_tx_inner(deps, requests, contract, opts)
 }
 
 /// As [`build_cancel_offers_tx_with`], but with a dedicated collateral UTxO
@@ -1168,7 +1193,15 @@ pub fn build_cancel_offers_tx_with_collateral(
     contract: &CancelContract,
     collateral_utxo: &UtxoApi,
 ) -> Result<super::UnsignedTx, TxBuildError> {
-    build_cancel_offers_tx_inner(deps, requests, contract, Some(collateral_utxo), None)
+    build_cancel_offers_tx_opts(
+        deps,
+        requests,
+        contract,
+        &CancelTxOptions {
+            dedicated_collateral: Some(collateral_utxo),
+            change_splits: &[],
+        },
+    )
 }
 
 /// As [`build_cancel_offers_tx_with`] (fee input doubles as collateral),
@@ -1183,16 +1216,24 @@ pub fn build_cancel_offers_tx_bootstrap(
     contract: &CancelContract,
     split_lovelace: u64,
 ) -> Result<super::UnsignedTx, TxBuildError> {
-    build_cancel_offers_tx_inner(deps, requests, contract, None, Some(split_lovelace))
+    build_cancel_offers_tx_opts(
+        deps,
+        requests,
+        contract,
+        &CancelTxOptions {
+            dedicated_collateral: None,
+            change_splits: &[split_lovelace],
+        },
+    )
 }
 
 fn build_cancel_offers_tx_inner(
     deps: &super::TxDeps,
     requests: &[CancelOfferRequest],
     contract: &CancelContract,
-    dedicated_collateral: Option<&UtxoApi>,
-    collateral_split: Option<u64>,
+    opts: &CancelTxOptions,
 ) -> Result<super::UnsignedTx, TxBuildError> {
+    let dedicated_collateral = opts.dedicated_collateral;
     use crate::helpers::output::{build_change_output, create_ada_output};
     use crate::selection;
     use pallas_crypto::hash::Hash;
@@ -1312,7 +1353,7 @@ fn build_cancel_offers_tx_inner(
 
     super::converge_fee_with_witnesses(
         |fee| {
-            let split = collateral_split.unwrap_or(0);
+            let split: u64 = opts.change_splits.iter().sum();
             let output_value =
                 total_input
                     .checked_sub(fee + split)
@@ -1375,12 +1416,14 @@ fn build_cancel_offers_tx_inner(
                 tx = tx.output(main_output);
             }
 
-            // Collateral bootstrap: a dedicated pure-ADA output the wallet
-            // can use as confirmed collateral for future carts. Appended
-            // after the main change so the change output's index — and with
-            // it the caller's chained-change prediction — is unchanged.
-            if split > 0 {
-                tx = tx.output(create_ada_output(from_address.clone(), split));
+            // Change splits (collateral bootstrap / fee-parcel
+            // replenishment): dedicated pure-ADA outputs the wallet can use
+            // as confirmed collateral or per-TX fee funding in future
+            // carts. One output per entry, appended after the main change
+            // so the change output's index — and with it the caller's
+            // chained-change prediction — is unchanged.
+            for &s in opts.change_splits {
+                tx = tx.output(create_ada_output(from_address.clone(), s));
             }
 
             // Collateral return. Reserve a generous lovelace budget for

@@ -485,6 +485,34 @@ struct DatumsByHashesResponse {
     data: std::collections::HashMap<String, DatumData>,
 }
 
+/// One resolved output from `POST /transactions/outputs`.
+#[derive(Deserialize, Debug)]
+pub struct ResolvedTxOut {
+    pub tx_hash: String,
+    pub index: u32,
+    pub address: String,
+    pub datum: Option<ResolvedTxOutDatum>,
+}
+
+/// Datum attachment on a resolved output. `kind` is `"hash"` or `"inline"`
+/// — the distinction matters for spending: witness-set datums are only
+/// legal for hash-datum inputs (supplying one for an inline-datum input is
+/// rejected by the ledger with `NotAllowedSupplementalDatums`).
+#[derive(Deserialize, Debug)]
+pub struct ResolvedTxOutDatum {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub hash: Option<String>,
+    /// Hex-encoded CBOR. Present for inline datums; for hash datums only
+    /// when `resolve_datums=true` and Maestro knows the preimage.
+    pub bytes: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ResolveTxOutputsResponse {
+    data: Vec<ResolvedTxOut>,
+}
+
 /// Minimal view of `GET /transactions/{tx_hash}`. Only the fields any
 /// caller in the workspace actually reads — keeping the struct narrow
 /// shields us from upstream additions (Maestro adds fields freely; serde
@@ -1076,6 +1104,26 @@ impl MaestroApi {
             MaestroError::Deserialization(format!("Failed to serialize datum hashes: {e}"))
         })?;
         let response: DatumsByHashesResponse = self.post_url(url, &body).await?;
+        Ok(response.data)
+    }
+
+    /// Resolve transaction outputs by `"tx_hash#index"` reference in one
+    /// call (`POST /transactions/outputs`), datums resolved. With
+    /// `allow_spent`, already-spent outputs are included rather than
+    /// silently dropped from the result.
+    pub async fn resolve_transaction_outputs(
+        &self,
+        refs: &[String],
+        allow_spent: bool,
+    ) -> Result<Vec<ResolvedTxOut>, MaestroError> {
+        let url = format!(
+            "https://{}/transactions/outputs?resolve_datums=true&allow_spent={allow_spent}",
+            self.base_url
+        );
+        let body = serde_json::to_value(refs).map_err(|e| {
+            MaestroError::Deserialization(format!("Failed to serialize output refs: {e}"))
+        })?;
+        let response: ResolveTxOutputsResponse = self.post_url(url, &body).await?;
         Ok(response.data)
     }
 
