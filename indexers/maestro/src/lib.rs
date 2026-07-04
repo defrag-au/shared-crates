@@ -1843,10 +1843,33 @@ impl MaestroApi {
     ) -> Result<T, MaestroError> {
         use http_client::HttpMethod;
 
-        let response_details = self
-            .client
-            .request_text_with_details(HttpMethod::POST, &url, Some(body))
-            .await?;
+        // Retry 429 with backoff, mirroring `get_url_with_retry`. Safe here
+        // because every `post_url` caller is idempotent (resolve outputs,
+        // datums-by-hash, evaluate) — transaction submission does NOT go
+        // through this path (it uses a raw `Fetch`), so this never re-sends
+        // a state-changing POST.
+        const MAX_RETRIES: u32 = 3;
+        let mut attempt = 0;
+        let response_details = loop {
+            let details = self
+                .client
+                .request_text_with_details(HttpMethod::POST, &url, Some(body))
+                .await?;
+            if details.status_code == 429 && attempt < MAX_RETRIES {
+                let delay_ms = details
+                    .retry_after_seconds()
+                    .map(|s| s * 1000)
+                    .unwrap_or_else(|| 1000 * (1 << attempt));
+                warn!(
+                    "Rate limited on POST attempt {} for URL: {url}, retrying after {delay_ms}ms",
+                    attempt + 1
+                );
+                worker_utils::sleep::sleep(delay_ms as i32).await;
+                attempt += 1;
+                continue;
+            }
+            break details;
+        };
 
         match response_details.status_code {
             status if (200..300).contains(&status) => {

@@ -1323,9 +1323,13 @@ fn build_cancel_offers_tx_inner(
         total_co_lovelace += req.co_lovelace;
 
         if let Some(ref hex) = req.datum_cbor_hex {
-            if let Ok(bytes) = hex::decode(hex) {
-                datums.push(bytes);
-            }
+            // A hash-datum CO REQUIRES its datum in the witness set; a
+            // malformed hex here would silently drop it and the TX would
+            // fail on chain with `MissingRequiredDatums`. Fail the build
+            // loudly instead of swallowing the decode error.
+            let bytes = hex::decode(hex)
+                .map_err(|e| TxBuildError::InvalidHex(format!("datum_cbor_hex: {e}")))?;
+            datums.push(bytes);
         }
     }
 
@@ -1361,6 +1365,26 @@ fn build_cancel_offers_tx_inner(
                         needed: fee + split,
                         available: total_input,
                     })?;
+
+            // Every output must clear min-ADA or the ledger rejects the TX
+            // at submit (`OutputTooSmallUTxO`) — a failure that would sign
+            // fine and only surface on chain. Guard the main return output
+            // and each change split (parcel / collateral) here so an
+            // over-large split total, or a tiny split, fails the build
+            // loudly instead. Report as InsufficientFunds: the wallet needs
+            // more headroom for the requested splits.
+            let min_ada = deps.params.min_pure_utxo();
+            if output_value < min_ada {
+                return Err(TxBuildError::InsufficientFunds {
+                    needed: fee + split + min_ada,
+                    available: total_input,
+                });
+            }
+            if let Some(&bad) = opts.change_splits.iter().find(|&&s| s < min_ada) {
+                return Err(TxBuildError::BuildFailed(format!(
+                    "change split {bad} below min-ADA {min_ada}"
+                )));
+            }
 
             let mut tx = StagingTransaction::new();
 
