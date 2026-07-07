@@ -112,14 +112,14 @@ web-sys = { version = "0.3", features = [
 ] }
 # Cardano primitives
 hex = "0.4"
-pallas-addresses = "1.0.0-alpha.6"
-pallas-codec = "1.0.0-alpha.6"
-pallas-crypto = "1.0.0-alpha.6"
-pallas-primitives = "1.0.0-alpha.6"
-pallas-traverse = "1.0.0-alpha.6"
-pallas-txbuilder = "1.0.0-alpha.6"
-pallas-utxorpc = "1.0.0-alpha.6"
-utxorpc-spec = "0.18"
+pallas-addresses = "1.1.1"
+pallas-codec = "1.1.1"
+pallas-crypto = "1.1.1"
+pallas-primitives = "1.1.1"
+pallas-traverse = "1.1.1"
+pallas-txbuilder = "1.1.1"
+pallas-utxorpc = "1.1.1"
+utxorpc-spec = "0.19"
 
 thiserror = "1"
 futures = "0.3"
