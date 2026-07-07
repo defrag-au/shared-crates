@@ -2,7 +2,7 @@
 //!
 //! Cost models are required for computing `script_data_hash` in Plutus
 //! transactions. The language view (cost model) must be included when calling
-//! `StagingTransaction::language_view()`, and it MUST match the node's current
+//! `StagingTransaction::add_language()`, and it MUST match the node's current
 //! protocol parameters *exactly* — otherwise the ledger rejects the tx with
 //! `PPViewHashesDontMatch` (the supplied script-integrity hash differs from the
 //! one the node recomputes from its own cost models).

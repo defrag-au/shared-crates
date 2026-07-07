@@ -1075,7 +1075,7 @@ pub fn build_cancel_offer_tx(
                             .unwrap_or(CANCEL_PRELIMINARY_EX_UNITS_STEPS),
                     }),
                 )
-                .language_view(ScriptKind::PlutusV2, v2_cost_model.clone())
+                .add_language(ScriptKind::PlutusV2, v2_cost_model.clone())
                 .disclosed_signer(Hash::from(owner_pkh_bytes))
                 .collateral_input(fee_input.clone());
 
@@ -1416,7 +1416,7 @@ fn build_cancel_offers_tx_inner(
             tx = tx
                 .input(fee_input.clone())
                 .reference_input(ref_input.clone())
-                .language_view(ScriptKind::PlutusV2, v2_cost_model.clone())
+                .add_language(ScriptKind::PlutusV2, v2_cost_model.clone())
                 .disclosed_signer(Hash::from(owner_pkh_bytes))
                 .collateral_input(collateral_input.clone());
 

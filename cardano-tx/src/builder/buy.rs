@@ -142,7 +142,7 @@ pub fn build_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<UnsignedT
         }
 
         // 6. Add language view (PlutusV2 cost model)
-        tx = tx.language_view(ScriptKind::PlutusV2, PLUTUS_V2_COST_MODEL.to_vec());
+        tx = tx.add_language(ScriptKind::PlutusV2, PLUTUS_V2_COST_MODEL.to_vec());
 
         // 7. Add disclosed signer (buyer's payment key hash)
         tx = tx.disclosed_signer(Hash::from(buyer_pkh));

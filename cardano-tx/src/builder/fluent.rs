@@ -608,7 +608,7 @@ fn assemble_tx(
             ScriptKind::PlutusV3 => PLUTUS_V3_COST_MODEL.to_vec(),
             _ => PLUTUS_V3_COST_MODEL.to_vec(),
         };
-        tx = tx.language_view(kind, cost_model);
+        tx = tx.add_language(kind, cost_model);
     }
 
     // 10. Fee + network

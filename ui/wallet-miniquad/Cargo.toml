@@ -25,8 +25,8 @@ serde_json = { workspace = true }
 # bech32 inference of the right hrp via the address header byte) and
 # CBOR walking of the CIP-30 balance Value. Confirmed building cleanly
 # on wasm32-unknown-unknown without wasm-bindgen.
-pallas-addresses = "0.32"
-pallas-codec = "0.32"
+pallas-addresses = { workspace = true }
+pallas-codec = { workspace = true }
 
 # Plugin bridge — JsObject for promise-bridged string + buffer
 # transport between Rust and the wallet.js plugin.
