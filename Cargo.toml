@@ -3,6 +3,7 @@ members = [
     "address-registry",
     "anvil-api",
     "asset-intents",
+    "authorizations",
     "cardano-tx",
     "cardano-assets",
     "mint-manifest",
@@ -143,6 +144,7 @@ image = { version = "0.25", default-features = false }
 # Internal path deps usable as workspace deps
 address-registry = { path = "address-registry" }
 asset-intents = { path = "asset-intents" }
+authorizations = { path = "authorizations" }
 cardano-assets = { path = "cardano-assets" }
 cardano-tx = { path = "cardano-tx" }
 worker_utils = { path = "worker-utils" }

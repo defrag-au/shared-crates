@@ -54,15 +54,11 @@ pub fn show(ui: &mut egui::Ui) {
         .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
         .show(ui, |ui| {
             ui.set_max_width(ui.available_width().min(460.0));
-            let resp = TypeaheadSearch::new(
-                "typeahead_story",
-                &mut st.query,
-                &shown,
-                &mut st.highlight,
-            )
-            .placeholder("Search tokens by name or ticker…")
-            .empty_text("No tokens match that search")
-            .show(ui);
+            let resp =
+                TypeaheadSearch::new("typeahead_story", &mut st.query, &shown, &mut st.highlight)
+                    .placeholder("Search tokens by name or ticker…")
+                    .empty_text("No tokens match that search")
+                    .show(ui);
 
             if let Some(id) = resp.chosen {
                 st.chosen = Some(id);
@@ -83,15 +79,45 @@ pub fn show(ui: &mut egui::Ui) {
 
 fn sample_options() -> Vec<TypeaheadOption> {
     let seed: &[(&str, &str, &str, Option<(&str, ChipVariant)>)] = &[
-        ("snek", "Snek", "$SNEK · 279c909f…", Some(("VERIFIED", ChipVariant::Success))),
-        ("hosky", "Hosky", "$HOSKY · a0028f35…", Some(("VERIFIED", ChipVariant::Success))),
-        ("min", "Minswap", "$MIN · 29d2227…", Some(("VERIFIED", ChipVariant::Success))),
+        (
+            "snek",
+            "Snek",
+            "$SNEK · 279c909f…",
+            Some(("VERIFIED", ChipVariant::Success)),
+        ),
+        (
+            "hosky",
+            "Hosky",
+            "$HOSKY · a0028f35…",
+            Some(("VERIFIED", ChipVariant::Success)),
+        ),
+        (
+            "min",
+            "Minswap",
+            "$MIN · 29d2227…",
+            Some(("VERIFIED", ChipVariant::Success)),
+        ),
         ("aliens", "Aliens", "$ALIENS · 16657df3…", None),
         ("angels", "Angels", "$ANGELS · b6a7467e…", None),
         ("supersnek", "Super Snek", "fair launch · 4f3a91c2…", None),
-        ("copycat", "Snekk", "copy mint · 9912ab44…", Some(("RUG", ChipVariant::Danger))),
-        ("wmt", "World Mobile Token", "$WMT · 1d7f33bd…", Some(("VERIFIED", ChipVariant::Success))),
-        ("iag", "IAGON", "$IAG · 5d16cc1a…", Some(("VERIFIED", ChipVariant::Success))),
+        (
+            "copycat",
+            "Snekk",
+            "copy mint · 9912ab44…",
+            Some(("RUG", ChipVariant::Danger)),
+        ),
+        (
+            "wmt",
+            "World Mobile Token",
+            "$WMT · 1d7f33bd…",
+            Some(("VERIFIED", ChipVariant::Success)),
+        ),
+        (
+            "iag",
+            "IAGON",
+            "$IAG · 5d16cc1a…",
+            Some(("VERIFIED", ChipVariant::Success)),
+        ),
         ("book", "Book.io", "$BOOK · 0a4f6f9e…", None),
     ];
 

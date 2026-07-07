@@ -18,6 +18,7 @@ pub mod file_upload;
 pub mod flip_counter;
 pub mod fonts;
 pub mod fungibles_row;
+pub mod gated;
 pub mod grouped_section;
 pub mod icons;
 pub mod id_pill;
@@ -184,9 +185,7 @@ pub use timestamp::{format_iso8601, Timestamp};
 pub use toast::{show_toasts, Toast, ToastKind, ToastQueue, DEFAULT_DURATION_FRAMES};
 pub use token_multiselect::{TokenMultiselect, TokenMultiselectResponse};
 pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
-pub use typeahead_search::{
-    filter_options, TypeaheadOption, TypeaheadResponse, TypeaheadSearch,
-};
+pub use typeahead_search::{filter_options, TypeaheadOption, TypeaheadResponse, TypeaheadSearch};
 pub use utils::{
     format_ada, format_duration, format_lovelace, format_number, format_percent, section_heading,
     stat_card, truncate_hex,

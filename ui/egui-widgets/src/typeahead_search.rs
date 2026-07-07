@@ -309,8 +309,10 @@ fn row(
     height: f32,
     accent: Color32,
 ) -> egui::Response {
-    let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::click());
+    let (rect, response) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), height),
+        egui::Sense::click(),
+    );
 
     if highlighted || response.hovered() {
         ui.painter().rect_filled(rect, 6.0, theme::BG_HIGHLIGHT);

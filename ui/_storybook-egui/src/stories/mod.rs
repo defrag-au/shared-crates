@@ -9,6 +9,7 @@ pub mod distribution_waterfall;
 pub mod error_note;
 pub mod flip_counter;
 pub mod formatting;
+pub mod gated;
 pub mod icon_gallery;
 pub mod marquee;
 pub mod mesh_playground;

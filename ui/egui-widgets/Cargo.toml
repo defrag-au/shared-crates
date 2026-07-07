@@ -11,6 +11,7 @@ cardano = ["dep:cardano-assets", "dep:wallet-core", "dep:wallet-pallas"]
 # egui_inbox is only used by the wasm `file_upload` widget + a re-export, so it
 # moved to the wasm-only deps below (native consumers don't pull it).
 [dependencies]
+authorizations = { workspace = true }
 egui = { workspace = true }
 egui_extras = { workspace = true }
 ehttp = "0.7"

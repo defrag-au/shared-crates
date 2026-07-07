@@ -1,0 +1,18 @@
+[package]
+name = "authorizations"
+version = "0.1.0"
+edition = "2021"
+description = "Entitlement model, feature registry, and session-claim verification shared by workers and frontends"
+license = "MIT"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# Same JWT stack as augminted-bots' bot-jwt (HS256, pure Rust, wasm-safe) so
+# augie-minted tokens verify here without translation.
+jwt-compact = { version = "0.8.0", default-features = false, features = ["clock"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "wasmbind"] }
+thiserror = "1"
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -104,6 +104,7 @@ mod app {
         Toast,
         Timestamp,
         ErrorNote,
+        Gated,
         QuantityStepper,
         MintCheckout,
     }
@@ -133,6 +134,7 @@ mod app {
                 Self::Toast,
                 Self::Timestamp,
                 Self::ErrorNote,
+                Self::Gated,
                 Self::ProgressBar,
                 Self::BulletBar,
                 Self::Sparkline,
@@ -280,6 +282,7 @@ mod app {
                 Self::IdPill => "ID Pill",
                 Self::Timestamp => "Timestamp",
                 Self::ErrorNote => "Error Note",
+                Self::Gated => "Gated",
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
                 Self::Toast => "Toast",
@@ -305,6 +308,7 @@ mod app {
                 | Self::SlotTable
                 | Self::Timestamp
                 | Self::ErrorNote
+                | Self::Gated
                 | Self::IdPill
                 | Self::PropertyList
                 | Self::ButtonGroup
@@ -369,6 +373,7 @@ mod app {
                 Self::Formatting => "Shared formatters: ADA, lovelace, percent, number, duration, hex truncation",
                 Self::Timestamp => "Consistent ISO-8601 timestamp atom — fixed monospace size, optional badge, full + relative on hover",
                 Self::ErrorNote => "Distils Debug-wrapped / escaped-JSON error blobs to the human reason + HTTP status, with a show-raw toggle",
+                Self::Gated => "Entitlement-gated rendering — locked card/chip affordances driven by the shared authorizations Feature registry",
                 Self::Distribution => "Concentric orbital rings supply distribution chart",
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
@@ -864,6 +869,7 @@ mod app {
                             Story::Formatting => stories::formatting::show(ui),
                             Story::Timestamp => stories::timestamp::show(ui),
                             Story::ErrorNote => stories::error_note::show(ui),
+                            Story::Gated => stories::gated::show(ui),
                             Story::Distribution => {
                                 stories::distribution::show(ui, &mut self.distribution_chart)
                             }
