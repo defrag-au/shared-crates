@@ -71,14 +71,17 @@ pub async fn handle_callback(
         Err(e) => return Response::error(format!("token exchange failed: {e}"), 502),
     };
 
-    // 2. User id.
-    let user_id =
+    // 2. Identity (id + display name + avatar for the UI).
+    let user =
         match discord_get::<DiscordUser>(&access_token, "https://discord.com/api/v10/users/@me")
             .await
         {
-            Ok(u) => u.id,
+            Ok(u) => u,
             Err(e) => return Response::error(format!("identify failed: {e}"), 502),
         };
+    let user_id = user.id.clone();
+    // Prefer the global (display) name, fall back to username.
+    let display_name = user.global_name.clone().or_else(|| user.username.clone());
 
     // 3. Roles per configured guild (config = allowlist). A guild the user
     //    isn't in / that the endpoint refuses just contributes no roles.
@@ -96,8 +99,8 @@ pub async fn handle_callback(
         }
     }
 
-    // 4. Resolve entitlements.
-    let entitlements = config.resolve(&roles_by_guild);
+    // 4. Resolve entitlements (role grants + direct per-user admin grants).
+    let entitlements = config.resolve(&user_id, &roles_by_guild);
     // The guild the session was granted through (first that contributed),
     // for provenance only.
     let granted_via = config
@@ -111,6 +114,8 @@ pub async fn handle_callback(
         sub: user_id,
         guild: granted_via,
         tier: None,
+        name: display_name,
+        avatar: user.avatar.clone(),
         ent: entitlements.join(" "),
     };
     let token = match mint_token(claims, settings.session_secret, settings.ttl) {
@@ -195,6 +200,12 @@ struct TokenResponse {
 #[derive(serde::Deserialize)]
 struct DiscordUser {
     id: String,
+    #[serde(default)]
+    username: Option<String>,
+    #[serde(default)]
+    global_name: Option<String>,
+    #[serde(default)]
+    avatar: Option<String>,
 }
 
 #[derive(serde::Deserialize)]

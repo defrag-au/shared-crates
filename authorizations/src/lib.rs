@@ -135,6 +135,12 @@ pub struct SessionClaims {
     /// enforcement reads `ent`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<String>,
+    /// Display name (Discord global name or username). Display only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Discord avatar hash (build a CDN URL with `sub` + this). Display only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
     /// Space-delimited entitlement ids (RFC 8693 scope-string style).
     #[serde(default)]
     pub ent: String,
@@ -262,6 +268,8 @@ mod tests {
             sub: "user123".into(),
             guild: Some("guild1".into()),
             tier: Some("collector".into()),
+            name: Some("tester".into()),
+            avatar: None,
             ent: ent.into(),
         }
     }

@@ -1,3 +1,4 @@
+pub mod access_gate;
 pub mod asset_card;
 pub mod async_data;
 pub mod bullet_bar;
@@ -98,6 +99,7 @@ pub mod quantity_stepper;
 pub mod collection_composition;
 pub mod fungibles_row;
 pub mod persona_strip;
+pub mod user_badge;
 pub mod variant_split;
 pub mod wallet_identity_header;
 pub mod wallet_list;

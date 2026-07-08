@@ -29,8 +29,38 @@ pub struct Session {
     pub auth_header: Option<(String, String)>,
     /// True only when the session was loaded from a URL fragment THIS
     /// page-load (a fresh login redirect), vs restored from localStorage.
-    /// Lets the app route the user back to the gated feature after login.
     pub fresh_login: bool,
+    /// Discord identity (from the JWT `name`/`avatar`/`sub` claims), for
+    /// the "logged in as" UI. `None` for anonymous / debug sessions.
+    pub identity: Option<Identity>,
+}
+
+/// The Discord identity carried in a session, for display.
+#[derive(Clone, Debug)]
+pub struct Identity {
+    pub user_id: String,
+    pub name: Option<String>,
+    pub avatar_hash: Option<String>,
+}
+
+impl Identity {
+    /// CDN avatar URL, or `None` when the user has no custom avatar (the
+    /// caller can fall back to a default badge).
+    pub fn avatar_url(&self) -> Option<String> {
+        let hash = self.avatar_hash.as_ref()?;
+        let ext = if hash.starts_with("a_") { "gif" } else { "png" };
+        Some(format!(
+            "https://cdn.discordapp.com/avatars/{}/{hash}.{ext}?size=64",
+            self.user_id
+        ))
+    }
+
+    /// Best display label: name, else a short user-id.
+    pub fn label(&self) -> String {
+        self.name
+            .clone()
+            .unwrap_or_else(|| format!("user {}", &self.user_id))
+    }
 }
 
 impl Session {
@@ -69,12 +99,18 @@ impl Session {
     }
 
     fn from_jwt(jwt: &str) -> Self {
-        let ent = decode_ent_claim(jwt).unwrap_or_default();
+        let payload = decode_payload(jwt).unwrap_or_default();
+        let identity = (!payload.sub.is_empty()).then(|| Identity {
+            user_id: payload.sub,
+            name: payload.name,
+            avatar_hash: payload.avatar,
+        });
         Self {
-            entitlements: EntitlementSet::from_scope_string(&ent),
+            entitlements: EntitlementSet::from_scope_string(&payload.ent),
             authenticated: true,
             auth_header: Some(("Authorization".into(), format!("Bearer {jwt}"))),
             fresh_login: false,
+            identity,
         }
     }
 
@@ -86,6 +122,7 @@ impl Session {
             authenticated: true,
             auth_header: Some(("X-Debug-Token".into(), token.to_string())),
             fresh_login: false,
+            identity: None,
         }
     }
 
@@ -108,16 +145,25 @@ pub fn begin_login(client_id: &str, redirect_uri: &str, scopes: &[&str]) {
     }
 }
 
-/// Extract the `ent` claim from a JWT payload without verifying it.
-fn decode_ent_claim(jwt: &str) -> Option<String> {
+/// The display-relevant JWT claims (decoded WITHOUT verifying — the server
+/// verifies; the frontend only needs these to render).
+#[derive(Default, serde::Deserialize)]
+struct Payload {
+    #[serde(default)]
+    sub: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    avatar: Option<String>,
+    #[serde(default)]
+    ent: String,
+}
+
+/// Decode a JWT payload without verifying its signature.
+fn decode_payload(jwt: &str) -> Option<Payload> {
     let payload_b64 = jwt.split('.').nth(1)?;
     let json = base64url_decode(payload_b64)?;
-    #[derive(serde::Deserialize)]
-    struct Payload {
-        #[serde(default)]
-        ent: String,
-    }
-    serde_json::from_slice::<Payload>(&json).ok().map(|p| p.ent)
+    serde_json::from_slice::<Payload>(&json).ok()
 }
 
 fn base64url_decode(s: &str) -> Option<Vec<u8>> {

@@ -105,6 +105,8 @@ mod app {
         Timestamp,
         ErrorNote,
         Gated,
+        AccessGate,
+        UserBadge,
         QuantityStepper,
         MintCheckout,
     }
@@ -135,6 +137,8 @@ mod app {
                 Self::Timestamp,
                 Self::ErrorNote,
                 Self::Gated,
+                Self::AccessGate,
+                Self::UserBadge,
                 Self::ProgressBar,
                 Self::BulletBar,
                 Self::Sparkline,
@@ -283,6 +287,8 @@ mod app {
                 Self::Timestamp => "Timestamp",
                 Self::ErrorNote => "Error Note",
                 Self::Gated => "Gated",
+                Self::AccessGate => "Access Gate",
+                Self::UserBadge => "User Badge",
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
                 Self::Toast => "Toast",
@@ -309,6 +315,8 @@ mod app {
                 | Self::Timestamp
                 | Self::ErrorNote
                 | Self::Gated
+                | Self::AccessGate
+                | Self::UserBadge
                 | Self::IdPill
                 | Self::PropertyList
                 | Self::ButtonGroup
@@ -374,6 +382,8 @@ mod app {
                 Self::Timestamp => "Consistent ISO-8601 timestamp atom — fixed monospace size, optional badge, full + relative on hover",
                 Self::ErrorNote => "Distils Debug-wrapped / escaped-JSON error blobs to the human reason + HTTP status, with a show-raw toggle",
                 Self::Gated => "Entitlement-gated rendering — locked card/chip affordances driven by the shared authorizations Feature registry",
+                Self::AccessGate => "App-level access screen: sign-in prompt + requirements (join links) for gated tools",
+                Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
                 Self::Distribution => "Concentric orbital rings supply distribution chart",
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
@@ -870,6 +880,8 @@ mod app {
                             Story::Timestamp => stories::timestamp::show(ui),
                             Story::ErrorNote => stories::error_note::show(ui),
                             Story::Gated => stories::gated::show(ui),
+                            Story::AccessGate => stories::access_gate::show(ui),
+                            Story::UserBadge => stories::user_badge::show(ui),
                             Story::Distribution => {
                                 stories::distribution::show(ui, &mut self.distribution_chart)
                             }

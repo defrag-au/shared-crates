@@ -20,4 +20,13 @@ crate::features! {
         name: "Visual Search",
         locked_hint: "Hold a qualifying role in a partner Discord — sign in to unlock",
     };
+    /// Operator control surface — add/edit/delete tracked collections,
+    /// trigger syncs, and the visual-analysis tooling. Granted to specific
+    /// Discord accounts via the gate config; the operator `X-Debug-Token`
+    /// bypasses it for shell/CLI ops.
+    pub const ADMIN = {
+        id: "admin.access",
+        name: "Admin",
+        locked_hint: "Operator access — granted to specific Discord accounts",
+    };
 }

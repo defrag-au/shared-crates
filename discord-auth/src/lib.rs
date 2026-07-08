@@ -69,6 +69,29 @@ pub mod scopes {
 pub struct GuildRoleConfig {
     #[serde(default, rename = "server")]
     pub servers: Vec<ServerConfig>,
+    /// Direct per-user grants, matched by Discord user id independent of any
+    /// server role. The operator/admin surface: a specific account gets a
+    /// feature (e.g. `admin.access`) without needing a role in a guild.
+    #[serde(default, rename = "admin")]
+    pub admins: Vec<AdminGrant>,
+}
+
+/// A grant keyed to a specific Discord account rather than a server role —
+/// the way operators/admins are named. Checked into the config alongside the
+/// server grants, so who is an admin is reviewed + versioned + shipped.
+///
+/// ```toml
+/// [[admin]]
+/// user_id = "179744071361757184"
+/// features = ["admin.access"]
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdminGrant {
+    /// The Discord user id (the JWT/OAuth `sub`).
+    pub user_id: String,
+    /// Entitlement ids this account is granted (must match
+    /// `authorizations::Feature` ids).
+    pub features: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -86,12 +109,17 @@ pub struct ServerConfig {
 
 /// A community a user could join to gain a feature — shown on the
 /// requirements screen. Derived from the config; safe to expose publicly
-/// (no role ids, just where to go).
+/// (only display names, no role ids, just where to go).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AccessProvider {
     pub label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub invite_url: Option<String>,
+    /// Human-readable prompts describing what to do to qualify (from the
+    /// grants' `requirement`). One per feature-granting grant, deduped.
+    /// Empty when the config didn't describe them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requirements: Vec<String>,
 }
 
 /// Response shape for a "what unlocks this feature" endpoint — shared by
@@ -122,6 +150,13 @@ pub struct RoleGrant {
     /// `match_mode`) — a partner typically lists the set of roles it wants
     /// to grant access, growing it over time without touching code.
     pub roles: Vec<String>,
+    /// Optional human-readable prompt describing what to do to qualify —
+    /// shown on the requirements screen (role ids are opaque). Can explain
+    /// *how* to earn the role, not just its name, e.g. "Hold the Deckhand
+    /// role — verify an OG NFT in #verify". Purely cosmetic; matching is
+    /// always by id.
+    #[serde(default)]
+    pub requirement: Option<String>,
     /// Match semantics for `roles`. TOML key `match`; defaults to `any`.
     #[serde(default, rename = "match")]
     pub match_mode: MatchMode,
@@ -155,18 +190,46 @@ impl GuildRoleConfig {
                     .iter()
                     .any(|g| g.features.iter().any(|f| f == feature_id))
             })
-            .map(|s| AccessProvider {
-                label: s.label.clone().unwrap_or_else(|| s.guild_id.clone()),
-                invite_url: s.invite_url.clone(),
+            .map(|s| {
+                // Collect the requirement prompt of every grant that confers
+                // this feature, deduped in first-seen order.
+                let mut requirements: Vec<String> = Vec::new();
+                for g in &s.grants {
+                    if g.features.iter().any(|f| f == feature_id) {
+                        if let Some(req) = &g.requirement {
+                            if !requirements.contains(req) {
+                                requirements.push(req.clone());
+                            }
+                        }
+                    }
+                }
+                AccessProvider {
+                    label: s.label.clone().unwrap_or_else(|| s.guild_id.clone()),
+                    invite_url: s.invite_url.clone(),
+                    requirements,
+                }
             })
             .collect()
     }
 
-    /// Resolve the user's granted entitlement ids from their role ids per
-    /// guild. Deduped and sorted (stable `ent` claim). A guild the user
-    /// isn't in, or has no qualifying role in, contributes nothing.
-    pub fn resolve(&self, roles_by_guild: &HashMap<String, Vec<String>>) -> Vec<String> {
+    /// Resolve the user's granted entitlement ids from their Discord id +
+    /// their role ids per guild. Deduped and sorted (stable `ent` claim).
+    /// A guild the user isn't in, or has no qualifying role in, contributes
+    /// nothing; `[[admin]]` grants matching `user_id` contribute regardless
+    /// of guild membership.
+    pub fn resolve(
+        &self,
+        user_id: &str,
+        roles_by_guild: &HashMap<String, Vec<String>>,
+    ) -> Vec<String> {
         let mut ents: BTreeSet<String> = BTreeSet::new();
+        // Direct per-user (admin) grants.
+        for admin in &self.admins {
+            if admin.user_id == user_id {
+                ents.extend(admin.features.iter().cloned());
+            }
+        }
+        // Server role grants.
         for server in &self.servers {
             let Some(user_roles) = roles_by_guild.get(&server.guild_id) else {
                 continue;
@@ -253,6 +316,10 @@ guild_id = "g2"
   [[server.grant]]
   roles = ["member"]
   features = ["tools.visual-search"]
+
+[[admin]]
+user_id = "admin-uid"
+features = ["admin.access"]
 "#;
 
     fn config() -> GuildRoleConfig {
@@ -275,7 +342,10 @@ guild_id = "g2"
         let mut roles = HashMap::new();
         // Holding just "deckhand" (one of the any-of set) qualifies.
         roles.insert("g1".to_string(), vec!["deckhand".to_string()]);
-        assert_eq!(c.resolve(&roles), vec!["tools.visual-search".to_string()]);
+        assert_eq!(
+            c.resolve("u1", &roles),
+            vec!["tools.visual-search".to_string()]
+        );
     }
 
     #[test]
@@ -286,7 +356,7 @@ guild_id = "g2"
         roles.insert("g2".to_string(), vec!["member".to_string()]);
         // og grants visual-search + pricing; g2 member grants visual-search.
         assert_eq!(
-            c.resolve(&roles),
+            c.resolve("u1", &roles),
             vec![
                 "tools.pricing".to_string(),
                 "tools.visual-search".to_string()
@@ -295,19 +365,32 @@ guild_id = "g2"
     }
 
     #[test]
+    fn admin_grant_resolves_by_user_id_without_any_roles() {
+        let c = config();
+        let empty = HashMap::new();
+        // The named admin id gets admin.access with no guild roles at all.
+        assert_eq!(
+            c.resolve("admin-uid", &empty),
+            vec!["admin.access".to_string()]
+        );
+        // A different id gets nothing from the admin table.
+        assert!(c.resolve("someone-else", &empty).is_empty());
+    }
+
+    #[test]
     fn all_of_requires_every_role() {
         let c = config();
         // Only one of the two required roles → the all-of grant misses.
         let mut one = HashMap::new();
         one.insert("g1".to_string(), vec!["founder".to_string()]);
-        assert!(c.resolve(&one).is_empty());
+        assert!(c.resolve("u1", &one).is_empty());
         // Both → grant applies.
         let mut both = HashMap::new();
         both.insert(
             "g1".to_string(),
             vec!["founder".to_string(), "verified".to_string()],
         );
-        assert_eq!(c.resolve(&both), vec!["tools.pricing".to_string()]);
+        assert_eq!(c.resolve("u1", &both), vec!["tools.pricing".to_string()]);
     }
 
     #[test]
@@ -315,11 +398,11 @@ guild_id = "g2"
         let c = config();
         let mut roles = HashMap::new();
         roles.insert("g1".to_string(), vec!["random-role".to_string()]);
-        assert!(c.resolve(&roles).is_empty());
+        assert!(c.resolve("u1", &roles).is_empty());
         // A guild not in config is ignored even with matching-looking roles.
         let mut other = HashMap::new();
         other.insert("g99".to_string(), vec!["holder".to_string()]);
-        assert!(c.resolve(&other).is_empty());
+        assert!(c.resolve("u1", &other).is_empty());
     }
 
     #[test]

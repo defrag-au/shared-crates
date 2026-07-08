@@ -1,6 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 pub use egui_inbox;
 
+pub mod access_gate;
 pub mod animated_counter;
 pub mod asset_card;
 pub mod bullet_bar;
@@ -57,6 +58,7 @@ pub mod toast;
 pub mod token_multiselect;
 pub mod trait_filter;
 pub mod typeahead_search;
+pub mod user_badge;
 pub mod utils;
 pub mod variant_split;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
