@@ -100,7 +100,7 @@ impl Session {
 
     fn from_jwt(jwt: &str) -> Self {
         let payload = decode_payload(jwt).unwrap_or_default();
-        let identity = (!payload.sub.is_empty()).then(|| Identity {
+        let identity = (!payload.sub.is_empty()).then_some(Identity {
             user_id: payload.sub,
             name: payload.name,
             avatar_hash: payload.avatar,
@@ -168,7 +168,7 @@ fn decode_payload(jwt: &str) -> Option<Payload> {
 
 fn base64url_decode(s: &str) -> Option<Vec<u8>> {
     let mut b64: String = s.replace('-', "+").replace('_', "/");
-    while b64.len() % 4 != 0 {
+    while !b64.len().is_multiple_of(4) {
         b64.push('=');
     }
     let decoded = web_sys::window()?.atob(&b64).ok()?;

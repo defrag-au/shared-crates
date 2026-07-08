@@ -189,7 +189,7 @@ async fn discord_get<T: serde::de::DeserializeOwned>(access_token: &str, url: &s
             resp.status_code()
         )));
     }
-    Ok(resp.json().await?)
+    resp.json().await
 }
 
 #[derive(serde::Deserialize)]
