@@ -125,6 +125,22 @@ pub async fn handle_callback(
     Ok(Response::empty()?.with_status(302).with_headers(headers))
 }
 
+/// Begin login: 302-redirect the browser to Discord's authorize URL. The
+/// worker owns all OAuth config (client id, redirect, scopes), so the
+/// frontend's "Login with Discord" affordance is just a link to the route
+/// that calls this — no client id or redirect needs to live in the app.
+pub fn handle_login(
+    client_id: &str,
+    redirect_uri: &str,
+    scopes: &[&str],
+    state: &str,
+) -> Result<Response> {
+    let url = crate::authorize_url(client_id, redirect_uri, scopes, state);
+    let headers = Headers::new();
+    headers.set("Location", &url)?;
+    Ok(Response::empty()?.with_status(302).with_headers(headers))
+}
+
 /// POST the authorization-code grant to Discord's token endpoint
 /// (form-urlencoded, as Discord requires) and return the access token.
 async fn exchange_code(code: &str, settings: &CallbackSettings<'_>) -> Result<String> {

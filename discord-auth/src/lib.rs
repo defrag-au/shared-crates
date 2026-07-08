@@ -58,10 +58,11 @@ pub mod scopes {
 /// guild_id = "111111111111111111"
 /// label = "SpaceBudz"
 ///   [[server.grant]]
-///   role_id = "222222222222222222"   # Holder
+///   roles = ["222222222222222222", "333333333333333333"]  # any of these
 ///   features = ["tools.visual-search"]
 ///   [[server.grant]]
-///   role_id = "333333333333333333"   # OG
+///   roles = ["444444444444444444"]        # OG
+///   match = "all"                         # require every listed role
 ///   features = ["tools.visual-search", "tools.pricing"]
 /// ```
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -79,11 +80,28 @@ pub struct ServerConfig {
     pub grants: Vec<RoleGrant>,
 }
 
+/// How a grant's `roles` are matched against the user's roles.
+#[derive(Debug, Clone, Copy, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MatchMode {
+    /// Holding ANY of the listed roles qualifies (the default).
+    #[default]
+    Any,
+    /// The user must hold EVERY listed role.
+    All,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct RoleGrant {
-    pub role_id: String,
-    /// Entitlement ids this role grants (must match `authorizations::Feature`
-    /// ids, e.g. `"tools.visual-search"`).
+    /// Role ids that satisfy this grant. Matched any-of by default (see
+    /// `match_mode`) — a partner typically lists the set of roles it wants
+    /// to grant access, growing it over time without touching code.
+    pub roles: Vec<String>,
+    /// Match semantics for `roles`. TOML key `match`; defaults to `any`.
+    #[serde(default, rename = "match")]
+    pub match_mode: MatchMode,
+    /// Entitlement ids this grant confers (must match
+    /// `authorizations::Feature` ids, e.g. `"tools.visual-search"`).
     pub features: Vec<String>,
 }
 
@@ -110,7 +128,11 @@ impl GuildRoleConfig {
                 continue;
             };
             for grant in &server.grants {
-                if user_roles.iter().any(|r| r == &grant.role_id) {
+                let qualifies = match grant.match_mode {
+                    MatchMode::Any => grant.roles.iter().any(|r| user_roles.contains(r)),
+                    MatchMode::All => grant.roles.iter().all(|r| user_roles.contains(r)),
+                };
+                if qualifies {
                     ents.extend(grant.features.iter().cloned());
                 }
             }
@@ -168,17 +190,24 @@ mod tests {
 [[server]]
 guild_id = "g1"
 label = "Alpha"
+  # Any of several roles (default match) grants visual-search.
   [[server.grant]]
-  role_id = "holder"
+  roles = ["holder", "deckhand"]
   features = ["tools.visual-search"]
+  # A distinct grant with extra features.
   [[server.grant]]
-  role_id = "og"
+  roles = ["og"]
   features = ["tools.visual-search", "tools.pricing"]
+  # All-of: requires BOTH roles.
+  [[server.grant]]
+  roles = ["founder", "verified"]
+  match = "all"
+  features = ["tools.pricing"]
 
 [[server]]
 guild_id = "g2"
   [[server.grant]]
-  role_id = "member"
+  roles = ["member"]
   features = ["tools.visual-search"]
 "#;
 
@@ -191,6 +220,18 @@ guild_id = "g2"
         let c = config();
         assert_eq!(c.servers.len(), 2);
         assert_eq!(c.guild_ids(), vec!["g1", "g2"]);
+        // Default match mode is Any.
+        assert_eq!(c.servers[0].grants[0].match_mode, MatchMode::Any);
+        assert_eq!(c.servers[0].grants[2].match_mode, MatchMode::All);
+    }
+
+    #[test]
+    fn any_of_matches_on_a_single_listed_role() {
+        let c = config();
+        let mut roles = HashMap::new();
+        // Holding just "deckhand" (one of the any-of set) qualifies.
+        roles.insert("g1".to_string(), vec!["deckhand".to_string()]);
+        assert_eq!(c.resolve(&roles), vec!["tools.visual-search".to_string()]);
     }
 
     #[test]
@@ -207,6 +248,22 @@ guild_id = "g2"
                 "tools.visual-search".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn all_of_requires_every_role() {
+        let c = config();
+        // Only one of the two required roles → the all-of grant misses.
+        let mut one = HashMap::new();
+        one.insert("g1".to_string(), vec!["founder".to_string()]);
+        assert!(c.resolve(&one).is_empty());
+        // Both → grant applies.
+        let mut both = HashMap::new();
+        both.insert(
+            "g1".to_string(),
+            vec!["founder".to_string(), "verified".to_string()],
+        );
+        assert_eq!(c.resolve(&both), vec!["tools.pricing".to_string()]);
     }
 
     #[test]

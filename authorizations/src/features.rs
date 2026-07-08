@@ -11,6 +11,6 @@ crate::features! {
     pub const VISUAL_SEARCH = {
         id: "tools.visual-search",
         name: "Visual Search",
-        locked_hint: "Collector-gated — run /collector in a partner Discord to unlock",
+        locked_hint: "Hold a qualifying role in a partner Discord — sign in to unlock",
     };
 }

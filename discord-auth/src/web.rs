@@ -27,6 +27,10 @@ pub struct Session {
     pub authenticated: bool,
     /// `(header_name, header_value)` to attach to gated requests, if any.
     pub auth_header: Option<(String, String)>,
+    /// True only when the session was loaded from a URL fragment THIS
+    /// page-load (a fresh login redirect), vs restored from localStorage.
+    /// Lets the app route the user back to the gated feature after login.
+    pub fresh_login: bool,
 }
 
 impl Session {
@@ -40,12 +44,18 @@ impl Session {
                 if let Some(jwt) = part.strip_prefix("session=") {
                     store(SESSION_KEY, jwt);
                     clear_fragment();
-                    return Self::from_jwt(jwt);
+                    return Self {
+                        fresh_login: true,
+                        ..Self::from_jwt(jwt)
+                    };
                 }
                 if let Some(tok) = part.strip_prefix("debug=") {
                     store(DEBUG_KEY, tok);
                     clear_fragment();
-                    return Self::from_debug(tok);
+                    return Self {
+                        fresh_login: true,
+                        ..Self::from_debug(tok)
+                    };
                 }
             }
         }
@@ -64,6 +74,7 @@ impl Session {
             entitlements: EntitlementSet::from_scope_string(&ent),
             authenticated: true,
             auth_header: Some(("Authorization".into(), format!("Bearer {jwt}"))),
+            fresh_login: false,
         }
     }
 
@@ -74,6 +85,7 @@ impl Session {
             entitlements: EntitlementSet::from_scope_string("*"),
             authenticated: true,
             auth_header: Some(("X-Debug-Token".into(), token.to_string())),
+            fresh_login: false,
         }
     }
 
