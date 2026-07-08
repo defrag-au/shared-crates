@@ -7,6 +7,13 @@
 //! a `gated()` wrapper at the widget.
 
 crate::features! {
+    /// Base entitlement — access to the tool at all. Gates the whole app;
+    /// every qualifying partner role grants it.
+    pub const APP_ACCESS = {
+        id: "app.access",
+        name: "Collection Explorer",
+        locked_hint: "Access is granted through partner communities — hold a qualifying role to unlock",
+    };
     /// Perceptual-hash reverse image search over indexed collections.
     pub const VISUAL_SEARCH = {
         id: "tools.visual-search",

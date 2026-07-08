@@ -76,8 +76,33 @@ pub struct ServerConfig {
     pub guild_id: String,
     #[serde(default)]
     pub label: Option<String>,
+    /// Optional Discord invite URL, surfaced on the requirements screen so
+    /// a logged-in-but-unqualified user knows where to go.
+    #[serde(default)]
+    pub invite_url: Option<String>,
     #[serde(default, rename = "grant")]
     pub grants: Vec<RoleGrant>,
+}
+
+/// A community a user could join to gain a feature — shown on the
+/// requirements screen. Derived from the config; safe to expose publicly
+/// (no role ids, just where to go).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AccessProvider {
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invite_url: Option<String>,
+}
+
+/// Response shape for a "what unlocks this feature" endpoint — shared by
+/// the worker (serialize) and the frontend requirements screen
+/// (deserialize).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AuthRequirements {
+    /// The feature id the providers unlock.
+    pub feature: String,
+    /// Communities that grant it.
+    pub providers: Vec<AccessProvider>,
 }
 
 /// How a grant's `roles` are matched against the user's roles.
@@ -116,6 +141,25 @@ impl GuildRoleConfig {
     /// only these servers are ever queried.
     pub fn guild_ids(&self) -> Vec<&str> {
         self.servers.iter().map(|s| s.guild_id.as_str()).collect()
+    }
+
+    /// Communities whose roles grant `feature_id` — for the requirements
+    /// screen ("join one of these to gain access"). A server with no label
+    /// falls back to its guild id. Exposes only label + invite (no role
+    /// ids), so it's safe to serve publicly.
+    pub fn access_providers(&self, feature_id: &str) -> Vec<AccessProvider> {
+        self.servers
+            .iter()
+            .filter(|s| {
+                s.grants
+                    .iter()
+                    .any(|g| g.features.iter().any(|f| f == feature_id))
+            })
+            .map(|s| AccessProvider {
+                label: s.label.clone().unwrap_or_else(|| s.guild_id.clone()),
+                invite_url: s.invite_url.clone(),
+            })
+            .collect()
     }
 
     /// Resolve the user's granted entitlement ids from their role ids per
