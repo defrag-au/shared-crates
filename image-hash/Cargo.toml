@@ -1,0 +1,13 @@
+[package]
+name = "image-hash"
+version = "0.1.0"
+edition = "2021"
+description = "Perceptual hashing (dHash) + banded indexing for visual asset search"
+license = "MIT"
+
+[dependencies]
+# Pure-Rust decode/resize — wasm32-safe (no SIMD/threads), same crate the
+# egui widgets already use.
+image = { workspace = true, features = ["jpeg", "png", "webp"] }
+
+[dev-dependencies]
