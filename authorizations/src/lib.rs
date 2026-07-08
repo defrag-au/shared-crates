@@ -156,10 +156,7 @@ impl SessionClaims {
     /// what was missing and how to get it).
     pub fn require<'f>(&self, feature: &'f Feature) -> Result<Grant<'f>, Denied<'f>> {
         if self.entitlements().grants(feature) {
-            Ok(Grant {
-                feature,
-                _proof: (),
-            })
+            Ok(Grant { feature })
         } else {
             Err(Denied { feature })
         }
@@ -170,19 +167,20 @@ impl SessionClaims {
 /// mintable via [`SessionClaims::require`] (or [`Grant::for_test`] in
 /// tests) — gated functions take it as a parameter so "forgot to check"
 /// is a compile error, not a code-review hope.
+///
+/// `#[non_exhaustive]` is what makes it unforgeable: outside this crate a
+/// `Grant` can't be built with a struct literal, so the only way to hold one
+/// is to have gone through [`SessionClaims::require`] (or [`Grant::for_test`]).
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct Grant<'f> {
     pub feature: &'f Feature,
-    _proof: (),
 }
 
 impl<'f> Grant<'f> {
     /// Test-only constructor so gated internals stay unit-testable.
     pub fn for_test(feature: &'f Feature) -> Self {
-        Self {
-            feature,
-            _proof: (),
-        }
+        Self { feature }
     }
 }
 
