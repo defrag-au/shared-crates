@@ -100,11 +100,7 @@ pub fn locked_card(ui: &mut Ui, gate: &GateState, feature: &Feature) {
         .fill(ui.visuals().faint_bg_color)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(PhosphorIcon::Lock.codepoint())
-                        .size(18.0)
-                        .color(Color32::from_rgb(224, 175, 104)),
-                );
+                ui.label(PhosphorIcon::Lock.rich_text(18.0, Color32::from_rgb(224, 175, 104)));
                 ui.vertical(|ui| {
                     ui.label(RichText::new(feature.name).strong());
                     ui.label(
@@ -129,15 +125,20 @@ pub fn locked_card(ui: &mut Ui, gate: &GateState, feature: &Feature) {
 /// modal).
 pub fn locked_chip(ui: &mut Ui, feature: &Feature) -> egui::Response {
     install_phosphor_font(ui.ctx());
-    ui.add_enabled(
-        false,
-        egui::Button::new(format!(
-            "{} {}",
-            PhosphorIcon::Lock.codepoint(),
-            feature.name
-        )),
-    )
-    .on_disabled_hover_text(feature.locked_hint)
+    // A button label is single-font, so the Phosphor glyph and the latin
+    // name can't share one string — compose a chip-shaped frame instead.
+    let weak = ui.visuals().weak_text_color();
+    egui::Frame::group(ui.style())
+        .fill(ui.visuals().faint_bg_color)
+        .inner_margin(egui::Margin::symmetric(6, 2))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(PhosphorIcon::Lock.rich_text(12.0, weak));
+                ui.label(RichText::new(feature.name).size(12.0).color(weak));
+            });
+        })
+        .response
+        .on_hover_text(feature.locked_hint)
 }
 
 #[cfg(test)]

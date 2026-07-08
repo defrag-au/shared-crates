@@ -1,0 +1,28 @@
+[package]
+name = "discord-auth"
+version = "0.1.0"
+edition = "2021"
+description = "Reusable Discord-OAuth role gating: config-driven guild-role → entitlement resolution, a worker callback mixin, and a frontend session helper"
+license = "MIT"
+
+[features]
+default = []
+# Server-side OAuth callback handler (Cloudflare Workers).
+worker = ["dep:worker_stack"]
+# Frontend session loading + login redirect (wasm/browser).
+web = ["dep:web-sys", "dep:wasm-bindgen", "dep:js-sys"]
+
+[dependencies]
+authorizations = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+toml = { version = "0.8", default-features = false, features = ["parse"] }
+
+worker_stack = { workspace = true, optional = true }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+web-sys = { workspace = true, optional = true, features = [
+    "Window", "Location", "History", "Storage",
+] }
+wasm-bindgen = { workspace = true, optional = true }
+js-sys = { workspace = true, optional = true }
