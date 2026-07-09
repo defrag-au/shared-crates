@@ -14,6 +14,10 @@ pub struct ListingCard {
     pub gap_fill_count: Option<usize>,
     /// Optional tooltip text describing which traits are filled.
     pub gap_fill_tooltip: Option<String>,
+    /// When set, this listing is one member of a multi-asset bundle of this
+    /// size; `price_lovelace` is then the **whole-bundle total**. Rendered with
+    /// a distinct "Bundle ×N" banner.
+    pub bundle_size: Option<u32>,
 }
 
 /// Configuration for the listing grid layout and colors.
@@ -188,27 +192,37 @@ impl ListingGrid {
                     price_color,
                 );
 
-                // Gap-fill banner (above price banner)
-                if let Some(count) = listing.gap_fill_count {
-                    if count > 0 {
-                        let gap_banner_rect = egui::Rect::from_min_size(
-                            egui::pos2(rect.min.x, banner_rect.min.y - banner_h),
-                            Vec2::new(cfg.card_width, banner_h),
-                        );
-                        ui.painter().rect_filled(
-                            gap_banner_rect,
-                            0,
+                // Secondary banner (above price banner): gap-fill count, or —
+                // for bundle members — a "Bundle ×N" flag so the whole-bundle
+                // price reads unambiguously. Bundles never appear in the
+                // gap-fill view, so the two are mutually exclusive here.
+                let secondary_banner: Option<(String, Color32)> =
+                    if let Some(count) = listing.gap_fill_count.filter(|c| *c > 0) {
+                        Some((
+                            format!("Fills {count}"),
                             Color32::from_rgba_premultiplied(158, 206, 106, 220),
-                        );
-                        let banner_text = format!("Fills {count}");
-                        ui.painter().text(
-                            gap_banner_rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            banner_text,
-                            egui::FontId::monospace(10.0),
-                            Color32::from_rgb(26, 27, 38),
-                        );
-                    }
+                        ))
+                    } else {
+                        listing.bundle_size.map(|n| {
+                            (
+                                format!("Bundle x{n}"),
+                                Color32::from_rgba_premultiplied(224, 175, 104, 230),
+                            )
+                        })
+                    };
+                if let Some((banner_text, banner_color)) = secondary_banner {
+                    let secondary_rect = egui::Rect::from_min_size(
+                        egui::pos2(rect.min.x, banner_rect.min.y - banner_h),
+                        Vec2::new(cfg.card_width, banner_h),
+                    );
+                    ui.painter().rect_filled(secondary_rect, 0, banner_color);
+                    ui.painter().text(
+                        secondary_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        banner_text,
+                        egui::FontId::monospace(10.0),
+                        Color32::from_rgb(26, 27, 38),
+                    );
                 }
 
                 // Dim overlay for non-fillers
@@ -230,11 +244,15 @@ impl ListingGrid {
                     }
                 }
 
-                // Tooltip with name + gap info
+                // Tooltip with name + gap/bundle info
+                let price_line = match listing.bundle_size {
+                    Some(n) => format!("{price_ada:.0} ADA (bundle of {n}, total)"),
+                    None => format!("{price_ada:.0} ADA"),
+                };
                 if let Some(ref tooltip) = listing.gap_fill_tooltip {
-                    resp.on_hover_text(format!("{}\n{price_ada:.0} ADA\n{tooltip}", listing.name));
+                    resp.on_hover_text(format!("{}\n{price_line}\n{tooltip}", listing.name));
                 } else {
-                    resp.on_hover_text(format!("{}\n{price_ada:.0} ADA", listing.name));
+                    resp.on_hover_text(format!("{}\n{price_line}", listing.name));
                 }
             }
 
