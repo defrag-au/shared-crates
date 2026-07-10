@@ -28,6 +28,7 @@ base64 = "0.22"
 
 # Worker-specific deps (for CF Workers indexer layer)
 maestro = { workspace = true, features = ["transactions"], optional = true }
+koios = { path = "../../indexers/koios", optional = true }
 worker = { version = "=0.7.4", optional = true }
 
 [dev-dependencies]
@@ -38,5 +39,5 @@ test_utils = { workspace = true }
 
 [features]
 default = []
-# Enable CF Workers indexer layer (Maestro, worker::Env, IndexerPool, TxClassifier)
-indexers = ["dep:maestro", "dep:worker"]
+# Enable CF Workers indexer layer (Maestro + Koios, worker::Env, IndexerPool, TxClassifier)
+indexers = ["dep:maestro", "dep:koios", "dep:worker"]

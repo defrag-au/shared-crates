@@ -6478,6 +6478,7 @@ dependencies = [
  "datum-parsing",
  "dotenvy",
  "hex",
+ "koios",
  "maestro",
  "once_cell",
  "pallas-addresses",

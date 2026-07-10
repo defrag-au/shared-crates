@@ -4,6 +4,7 @@ use tracing::{info, warn};
 use worker::Env;
 
 // Re-export submodules
+pub mod koios;
 pub mod maestro;
 pub mod webhook_blockfrost;
 pub mod webhook_oura;
@@ -15,9 +16,19 @@ pub use transactions::{MintOperation, RawTxData, TxDatum, TxInput, TxOutput};
 pub use webhook_blockfrost::*;
 pub use webhook_oura::*;
 
-/// Maestro blockchain indexer for transaction data
+/// Which indexer serves transaction detail. Selected at runtime (env
+/// `CLASSIFIER_INDEXER`) so Koios can be A/B'd against Maestro.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexerProvider {
+    Maestro,
+    Koios,
+}
+
+/// Blockchain indexer pool for transaction data (Maestro + Koios).
 pub struct IndexerPool {
     maestro: maestro::MaestroApi,
+    koios: ::koios::KoiosApi,
+    provider: IndexerProvider,
 }
 
 /// Returns true if the given Shelley-style address has a *script* payment credential.
@@ -41,7 +52,9 @@ fn try_is_script_address(addr: &str) -> Result<bool, Box<dyn std::error::Error>>
 }
 
 impl IndexerPool {
-    /// Create indexer pool from environment
+    /// Create indexer pool from environment. Both indexers are initialised; the
+    /// active one is chosen by env `CLASSIFIER_INDEXER` (`koios` → Koios, any
+    /// other value / unset → Maestro).
     pub async fn from_env(env: &Env, network: &str) -> Result<Self, TxClassifierError> {
         let maestro = maestro::MaestroApi::for_env_with_network(env, network)
             .await
@@ -51,14 +64,34 @@ impl IndexerPool {
                 ))
             })?;
 
-        info!("✅ Maestro indexer initialized");
+        let koios = ::koios::KoiosApi::for_env(env).await.map_err(|e| {
+            TxClassifierError::ClassificationFailed(format!(
+                "Failed to initialize Koios indexer: {e:?}"
+            ))
+        })?;
 
-        Ok(Self { maestro })
+        let provider = match env.var("CLASSIFIER_INDEXER").ok().map(|v| v.to_string()) {
+            Some(v) if v.eq_ignore_ascii_case("koios") => IndexerProvider::Koios,
+            _ => IndexerProvider::Maestro,
+        };
+
+        info!("✅ Indexer pool initialized (provider: {provider:?})");
+
+        Ok(Self {
+            maestro,
+            koios,
+            provider,
+        })
     }
 
-    /// Create indexer pool with Maestro API
+    /// Create indexer pool with a Maestro API (Koios defaults to the keyless
+    /// free tier; provider defaults to Maestro).
     pub fn new(maestro: maestro::MaestroApi) -> Self {
-        Self { maestro }
+        Self {
+            maestro,
+            koios: ::koios::KoiosApi::default(),
+            provider: IndexerProvider::Maestro,
+        }
     }
 
     /// Create a mock indexer pool for testing (requires maestro feature)
@@ -67,20 +100,39 @@ impl IndexerPool {
         // Create a mock Maestro API with empty API key for testing
         let maestro = maestro::MaestroApi::new("".to_string(), "".to_string());
 
-        Self { maestro }
+        Self {
+            maestro,
+            koios: ::koios::KoiosApi::default(),
+            provider: IndexerProvider::Maestro,
+        }
     }
 
-    /// Get transaction data from Maestro
-    pub async fn get_transaction(&self, tx_hash: &str) -> Result<RawTxData, TxClassifierError> {
-        info!("Fetching transaction data for: {}", tx_hash);
+    /// The active transaction-detail provider.
+    pub fn provider(&self) -> IndexerProvider {
+        self.provider
+    }
 
-        match maestro::get_tx_from_maestro(&self.maestro, tx_hash).await {
+    /// Get transaction data from the active provider (Maestro or Koios).
+    pub async fn get_transaction(&self, tx_hash: &str) -> Result<RawTxData, TxClassifierError> {
+        info!(
+            "Fetching transaction data for {tx_hash} via {:?}",
+            self.provider
+        );
+
+        let result = match self.provider {
+            IndexerProvider::Maestro => {
+                maestro::get_tx_from_maestro(&self.maestro, tx_hash).await
+            }
+            IndexerProvider::Koios => koios::get_tx_from_koios(&self.koios, tx_hash).await,
+        };
+
+        match result {
             Ok(raw_tx_data) => {
-                info!("✅ Maestro successfully fetched transaction {}", tx_hash);
+                info!("✅ {:?} fetched transaction {tx_hash}", self.provider);
                 Ok(raw_tx_data)
             }
             Err(e) => {
-                warn!("❌ Maestro failed for {}: {:?}", tx_hash, e);
+                warn!("❌ {:?} failed for {tx_hash}: {e:?}", self.provider);
                 Err(TxClassifierError::TransactionNotFound(tx_hash.to_string()))
             }
         }
