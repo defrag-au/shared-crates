@@ -1,6 +1,7 @@
 pub mod builder;
 pub mod dex;
 pub mod error;
+pub mod evaluate;
 pub mod fee;
 pub mod helpers;
 pub mod intents;

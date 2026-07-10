@@ -219,17 +219,19 @@ impl TxBuilder {
         prepared.converge()
     }
 
-    /// Build with script evaluation via Maestro.
+    /// Build with script evaluation via the injected [`TxEvaluator`](crate::evaluate::TxEvaluator).
     ///
     /// 1. Build with estimated ExUnits (from the `ScriptInput`/`MintEntry` values)
-    /// 2. Evaluate the TX via Maestro to get real execution units
+    /// 2. Evaluate the TX via the provider (Maestro, Koios/Ogmios, …) for real units
     /// 3. Patch the redeemers with actual ExUnits and rebuild
     ///
     /// This produces accurate fees that include the script execution cost.
-    pub async fn build_evaluated(
-        self,
-        maestro: &maestro::MaestroApi,
-    ) -> Result<UnsignedTx, TxBuildError> {
+    /// The provider is any [`TxEvaluator`](crate::evaluate::TxEvaluator); passing a
+    /// `&maestro::MaestroApi` keeps the previous behaviour unchanged.
+    pub async fn build_evaluated<E>(self, evaluator: &E) -> Result<UnsignedTx, TxBuildError>
+    where
+        E: crate::evaluate::TxEvaluator + ?Sized,
+    {
         let mut prepared = self.prepare()?;
 
         // Round 1: build with estimated ExUnits
@@ -243,14 +245,14 @@ impl TxBuilder {
             .map_err(|e| TxBuildError::BuildFailed(format!("build_conway_raw failed: {e}")))?;
         let tx_cbor_hex = hex::encode(&built.tx_bytes.0);
 
-        // Evaluate via Maestro
-        let eval_results = maestro
-            .evaluate_transaction(&tx_cbor_hex, None::<&[maestro::AdditionalUtxo]>)
-            .await
-            .map_err(|e| TxBuildError::BuildFailed(format!("Maestro evaluate failed: {e}")))?;
+        // Evaluate script execution costs via the injected provider (Maestro,
+        // Koios/Ogmios, …) to get the real per-redeemer ExUnits.
+        let eval_results = evaluator.evaluate(&tx_cbor_hex).await.map_err(|e| {
+            TxBuildError::BuildFailed(format!("{} evaluate failed: {e}", evaluator.name()))
+        })?;
 
         // Patch spend redeemer ExUnits (redeemer_tag = "spend")
-        // Maestro returns redeemer_index which maps to sorted input order.
+        // The evaluator returns redeemer_index which maps to sorted input order.
         // Our inputs list is in insertion order, which should match the sorted
         // order after assemble_tx. We match by index.
         let mut spend_idx = 0u64;
