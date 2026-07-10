@@ -1,0 +1,28 @@
+[package]
+name = "koios"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+# Provide `impl cardano_tx::evaluate::TxEvaluator for KoiosApi` so a tx builder
+# can source script ExUnits from Koios's Ogmios `evaluateTransaction`. Off by
+# default so pure-indexer consumers don't pull the tx-builder crate.
+evaluator = ["dep:cardano-tx", "dep:async-trait"]
+
+[dependencies]
+http-client = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+wasm_safe_serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = "3"
+worker_stack = { workspace = true }
+worker_utils = { workspace = true }
+tracing = { workspace = true }
+nom = "7"
+cardano-tx = { workspace = true, optional = true }
+async-trait = { version = "0.1", optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "time"] }
+test_utils = { workspace = true }
