@@ -52,30 +52,52 @@ fn try_is_script_address(addr: &str) -> Result<bool, Box<dyn std::error::Error>>
 }
 
 impl IndexerPool {
-    /// Create indexer pool from environment. Both indexers are initialised; the
-    /// active one is chosen by env `CLASSIFIER_INDEXER` (`koios` → Koios, any
-    /// other value / unset → Maestro).
+    /// Create indexer pool from environment.
+    ///
+    /// Provider selection is network-aware:
+    /// - **mainnet** → the `CLASSIFIER_INDEXER` env switch (`koios` → Koios,
+    ///   else Maestro default), so Koios can be A/B'd against Maestro.
+    /// - **preprod/testnet/preview** → always **Koios** — Maestro's testnet path
+    ///   is gated (402) and preprod is served by mitos-native infra + Koios
+    ///   (the same `KOIOS_API_KEY` works across all environments).
+    ///
+    /// The Koios client targets the network-appropriate host automatically.
     pub async fn from_env(env: &Env, network: &str) -> Result<Self, TxClassifierError> {
-        let maestro = maestro::MaestroApi::for_env_with_network(env, network)
+        let koios = ::koios::KoiosApi::for_env_with_network(env, network)
             .await
             .map_err(|e| {
                 TxClassifierError::ClassificationFailed(format!(
-                    "Failed to initialize Maestro indexer: {e:?}"
+                    "Failed to initialize Koios indexer: {e:?}"
                 ))
             })?;
 
-        let koios = ::koios::KoiosApi::for_env(env).await.map_err(|e| {
-            TxClassifierError::ClassificationFailed(format!(
-                "Failed to initialize Koios indexer: {e:?}"
-            ))
-        })?;
-
-        let provider = match env.var("CLASSIFIER_INDEXER").ok().map(|v| v.to_string()) {
-            Some(v) if v.eq_ignore_ascii_case("koios") => IndexerProvider::Koios,
-            _ => IndexerProvider::Maestro,
+        let provider = if network == "cardano:mainnet" {
+            match env.var("CLASSIFIER_INDEXER").ok().map(|v| v.to_string()) {
+                Some(v) if v.eq_ignore_ascii_case("koios") => IndexerProvider::Koios,
+                _ => IndexerProvider::Maestro,
+            }
+        } else {
+            IndexerProvider::Koios
         };
 
-        info!("✅ Indexer pool initialized (provider: {provider:?})");
+        // Maestro is only reachable when it's the active provider. Off-mainnet
+        // (or when its testnet key is absent) init can fail — that's fatal only
+        // if Maestro is actually selected; otherwise keep a keyless placeholder
+        // that is never called.
+        let maestro = match maestro::MaestroApi::for_env_with_network(env, network).await {
+            Ok(m) => m,
+            Err(e) if provider == IndexerProvider::Maestro => {
+                return Err(TxClassifierError::ClassificationFailed(format!(
+                    "Failed to initialize Maestro indexer: {e:?}"
+                )));
+            }
+            Err(e) => {
+                warn!("Maestro indexer unavailable ({e:?}); using {provider:?}");
+                maestro::MaestroApi::new(String::new(), "mainnet.gomaestro-api.org/v1".to_string())
+            }
+        };
+
+        info!("✅ Indexer pool initialized (provider: {provider:?}, network: {network})");
 
         Ok(Self {
             maestro,

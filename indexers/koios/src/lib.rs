@@ -20,6 +20,17 @@ use worker_stack::worker::{self, Env, RouteContext};
 
 const BASE_URL: &str = "https://api.koios.rest/api/v1";
 
+/// Koios API base URL for a Cardano network. The **same API key works across
+/// all environments** — only the host differs. Unknown/mainnet fall back to the
+/// mainnet endpoint.
+pub(crate) fn koios_base_url(network: &str) -> String {
+    match network {
+        "cardano:preprod" | "cardano:testnet" => "https://preprod.koios.rest/api/v1".to_string(),
+        "cardano:preview" => "https://preview.koios.rest/api/v1".to_string(),
+        _ => BASE_URL.to_string(),
+    }
+}
+
 /// Koios caps a single response page at 1000 rows; paginated reads walk
 /// `offset` in these increments until a short page signals the end.
 const KOIOS_PAGE_LIMIT: u32 = 1000;
@@ -513,6 +524,7 @@ impl QueryOptions {
 
 pub struct KoiosApi {
     client: HttpClient,
+    base_url: String,
 }
 
 pub struct KupoApi {
@@ -614,6 +626,7 @@ impl Default for KoiosApi {
     fn default() -> Self {
         Self {
             client: HttpClient::new(),
+            base_url: BASE_URL.to_string(),
         }
     }
 }
@@ -625,25 +638,36 @@ impl KoiosApi {
         Self::for_env(&ctx.env).await
     }
 
-    /// Build a client from the worker `Env`.
+    /// Build a mainnet client from the worker `Env`.
     ///
     /// Reads `KOIOS_API_KEY` via [`worker_utils::secrets::get_secret`]
     /// (Secrets Store first, then `env.secret` for local dev). When a
     /// non-empty key is present it authenticates with a bearer token
     /// (paid tier); otherwise it falls back to the keyless free tier.
     pub async fn for_env(env: &Env) -> worker::Result<Self> {
+        Self::for_env_with_network(env, "cardano:mainnet").await
+    }
+
+    /// Build a client targeting a specific Cardano network. The **same
+    /// `KOIOS_API_KEY` authenticates every environment** — only the host
+    /// differs (mainnet → `api.koios.rest`, preprod/testnet →
+    /// `preprod.koios.rest`, preview → `preview.koios.rest`).
+    pub async fn for_env_with_network(env: &Env, network: &str) -> worker::Result<Self> {
         let client = match worker_utils::secrets::get_secret(env, "KOIOS_API_KEY").await {
             Ok(key) if !key.is_empty() => HttpClient::with_bearer_token(key),
             _ => HttpClient::new(),
         };
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            base_url: koios_base_url(network),
+        })
     }
 
     pub async fn get_stake_addresses(
         &self,
         stake_address: &str,
     ) -> Result<Vec<KoiosStakeData>, KoiosError> {
-        let url = format!("{BASE_URL}/account_addresses");
+        let url = format!("{}/account_addresses", self.base_url);
         self.post_json(
             &url,
             &StakeAddressesRequest {
@@ -654,7 +678,7 @@ impl KoiosApi {
     }
 
     pub async fn get_stake_utxos(&self, stake_address: &str) -> Result<Vec<TxRecord>, KoiosError> {
-        let url = format!("{BASE_URL}/account_utxos");
+        let url = format!("{}/account_utxos", self.base_url);
         self.post_json(
             &url,
             &AccountUtxoRequest {
@@ -681,7 +705,7 @@ impl KoiosApi {
         addresses: &[String],
         options: Option<&QueryOptions>,
     ) -> Result<Vec<TxSummary>, KoiosError> {
-        let url = format!("{BASE_URL}/address_txs");
+        let url = format!("{}/address_txs", self.base_url);
         self.post_json_with_options(
             &url,
             &AddressTxsRequest {
@@ -696,7 +720,7 @@ impl KoiosApi {
         &self,
         hashes: &[String],
     ) -> Result<Vec<KoiosTransaction>, KoiosError> {
-        let url = format!("{BASE_URL}/tx_info?order=block_height.desc");
+        let url = format!("{}/tx_info?order=block_height.desc", self.base_url);
         self.post_json(
             &url,
             &TxInfoRequest {
@@ -713,7 +737,7 @@ impl KoiosApi {
         &self,
         assets: &[(String, String)],
     ) -> Result<Vec<KoiosAssetInfo>, KoiosError> {
-        let url = format!("{BASE_URL}/asset_info");
+        let url = format!("{}/asset_info", self.base_url);
         self.post_json(
             &url,
             &AssetInfoRequest {
@@ -730,7 +754,7 @@ impl KoiosApi {
         &self,
         addresses: &[String],
     ) -> Result<Vec<KoiosUtxo>, KoiosError> {
-        let url = format!("{BASE_URL}/address_utxos");
+        let url = format!("{}/address_utxos", self.base_url);
         self.post_paginated(
             &url,
             &AddressUtxosRequest {
@@ -754,7 +778,7 @@ impl KoiosApi {
         &self,
         credentials: &[String],
     ) -> Result<Vec<KoiosUtxo>, KoiosError> {
-        let url = format!("{BASE_URL}/credential_utxos");
+        let url = format!("{}/credential_utxos", self.base_url);
         self.post_paginated(
             &url,
             &CredentialUtxosRequest {
@@ -782,7 +806,7 @@ impl KoiosApi {
         &self,
         stake_addresses: &[String],
     ) -> Result<Vec<KoiosAccountAsset>, KoiosError> {
-        let url = format!("{BASE_URL}/account_assets");
+        let url = format!("{}/account_assets", self.base_url);
         self.post_paginated(
             &url,
             &AccountAssetsRequest {
@@ -810,7 +834,7 @@ impl KoiosApi {
         &self,
         policy_id: &str,
     ) -> Result<Vec<KoiosPolicyAssetInfo>, KoiosError> {
-        let url = format!("{BASE_URL}/policy_asset_info?_asset_policy={policy_id}");
+        let url = format!("{}/policy_asset_info?_asset_policy={policy_id}", self.base_url);
         self.get_json(&url).await
     }
 
@@ -819,7 +843,7 @@ impl KoiosApi {
         policy_id: &str,
         options: Option<&QueryOptions>,
     ) -> Result<Vec<PolicyAssetMint>, KoiosError> {
-        let url = format!("{BASE_URL}/policy_asset_mints?_asset_policy={policy_id}");
+        let url = format!("{}/policy_asset_mints?_asset_policy={policy_id}", self.base_url);
         self.get_json_with_options(&url, options).await
     }
 
@@ -829,7 +853,7 @@ impl KoiosApi {
         policy_id: &str,
         options: Option<&QueryOptions>,
     ) -> Result<serde_json::Value, KoiosError> {
-        let url = format!("{BASE_URL}/policy_asset_mints?_asset_policy={policy_id}");
+        let url = format!("{}/policy_asset_mints?_asset_policy={policy_id}", self.base_url);
         self.get_json_with_options(&url, options).await
     }
 

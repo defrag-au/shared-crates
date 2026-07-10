@@ -12,7 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{KoiosApi, KoiosError, BASE_URL};
+use crate::{KoiosApi, KoiosError};
 
 /// Real execution-unit budget for one redeemer, mapped from Ogmios onto the
 /// Maestro-compatible tag/index shape a tx builder patches against.
@@ -92,7 +92,7 @@ impl KoiosApi {
         &self,
         tx_cbor_hex: &str,
     ) -> Result<Vec<KoiosRedeemerBudget>, KoiosError> {
-        let url = format!("{BASE_URL}/ogmios");
+        let url = format!("{}/ogmios", self.base_url);
         let request = OgmiosRequest {
             jsonrpc: "2.0",
             method: "evaluateTransaction",

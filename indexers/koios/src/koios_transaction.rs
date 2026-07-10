@@ -83,27 +83,12 @@ pub struct KoisUtxo {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct KoiosInlineDatum {
+    /// Raw datum CBOR (hex) — the canonical, schema-independent form.
     pub bytes: Option<String>,
-    pub value: Option<KoiosPlutusData>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct KoiosPlutusData {
-    pub constructor: u32,
-    pub fields: Vec<KoiosPlutusField>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum KoiosPlutusField {
-    Int { int: i64 },
-    BytesList { list: Vec<KoiosBytes> },
-    BytesListDeprecated { bytes: String },
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct KoiosBytes {
-    pub bytes: String,
+    /// Koios's Plutus-JSON rendering of the datum. Kept untyped: Plutus data is
+    /// arbitrarily nested (constructors, maps, lists, ints, bytes), so a rigid
+    /// enum can't model it — decode `bytes` via pallas when structure is needed.
+    pub value: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
