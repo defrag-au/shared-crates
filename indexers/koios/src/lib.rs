@@ -129,6 +129,15 @@ pub struct AccountAssetsRequest {
     pub stakes: Vec<String>,
 }
 
+#[derive(Serialize, Debug, Clone)]
+pub struct UtxoRefsRequest {
+    /// UTxO references in the form `"tx_hash#index"`.
+    #[serde(rename = "_utxo_refs")]
+    pub utxo_refs: Vec<String>,
+    #[serde(rename = "_extended")]
+    pub extended: bool,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TxSummary {
     pub tx_hash: String,
@@ -769,6 +778,25 @@ impl KoiosApi {
     /// [`Self::get_address_utxos_batch`]).
     pub async fn get_address_utxos(&self, address: &str) -> Result<Vec<KoiosUtxo>, KoiosError> {
         self.get_address_utxos_batch(&[address.to_string()]).await
+    }
+
+    /// Resolve a set of UTxO references (`"tx_hash#index"`) to their full
+    /// extended UTxOs (`POST /utxo_info`, `_extended=true`) — the direct
+    /// equivalent of Maestro's `/transactions/outputs`. Only *unspent* UTxOs
+    /// are returned; spent references are omitted.
+    pub async fn get_utxo_info(&self, utxo_refs: &[String]) -> Result<Vec<KoiosUtxo>, KoiosError> {
+        if utxo_refs.is_empty() {
+            return Ok(Vec::new());
+        }
+        let url = format!("{}/utxo_info", self.base_url);
+        self.post_paginated(
+            &url,
+            &UtxoRefsRequest {
+                utxo_refs: utxo_refs.to_vec(),
+                extended: true,
+            },
+        )
+        .await
     }
 
     /// Extended UTxOs for one or more **hex** payment credentials
