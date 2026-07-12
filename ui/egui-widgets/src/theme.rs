@@ -186,22 +186,22 @@ pub fn configure_style(ctx: &egui::Context, fonts: FontStrategy) {
     visuals.faint_bg_color = BG_SECONDARY;
 
     visuals.widgets.noninteractive.bg_fill = BG_SECONDARY;
-    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, TEXT_SECONDARY);
-    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, BORDER);
+    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT_SECONDARY);
+    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER);
 
     visuals.widgets.inactive.bg_fill = BG_SECONDARY;
-    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, TEXT_SECONDARY);
-    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, BORDER);
+    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT_SECONDARY);
+    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER);
 
     visuals.widgets.hovered.bg_fill = BG_HIGHLIGHT;
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0, ACCENT);
+    visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
+    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT);
 
     visuals.widgets.active.bg_fill = BG_HIGHLIGHT;
-    visuals.widgets.active.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
+    visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
 
     visuals.selection.bg_fill = Color32::from_rgba_premultiplied(122, 162, 247, 40);
-    visuals.selection.stroke = Stroke::new(1.0, ACCENT);
+    visuals.selection.stroke = Stroke::new(1.0_f32, ACCENT);
 
     style.visuals = visuals;
 

@@ -222,7 +222,7 @@ fn draw_header(ui: &mut Ui, config: &DataTableConfig) {
     painter.hline(
         rect.min.x..=rect.max.x,
         rect.max.y,
-        egui::Stroke::new(1.0, theme::BG_HIGHLIGHT),
+        egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT),
     );
 }
 

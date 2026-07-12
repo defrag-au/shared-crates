@@ -65,7 +65,7 @@ pub fn show(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConfig) {
         .fill(theme::BG_SECONDARY)
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui::Stroke::new(1.0, theme::BORDER))
+        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
         .show(ui, |ui| {
             if has_breakdown {
                 draw_detailed(ui, data, config);

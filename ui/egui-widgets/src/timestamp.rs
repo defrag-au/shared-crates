@@ -101,7 +101,7 @@ impl Widget for Timestamp {
         let resp = if self.badge {
             Frame::new()
                 .fill(Color32::from_gray(30))
-                .stroke(Stroke::new(1.0, Color32::from_gray(55)))
+                .stroke(Stroke::new(1.0_f32, Color32::from_gray(55)))
                 .corner_radius(CornerRadius::same(4))
                 .inner_margin(Margin::symmetric(6, 1))
                 .show(ui, |ui| ui.label(rich))

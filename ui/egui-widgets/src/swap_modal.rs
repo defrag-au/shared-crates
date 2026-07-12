@@ -298,7 +298,7 @@ impl SwapModal {
                     } else {
                         egui::Button::new(RichText::new(&btn_label).color(accent).size(12.0))
                             .fill(Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::new(1.0, accent))
+                            .stroke(egui::Stroke::new(1.0_f32, accent))
                             .corner_radius(6.0)
                             .min_size(egui::vec2(btn_width, 36.0))
                     };
@@ -320,7 +320,7 @@ impl SwapModal {
                 } else {
                     egui::Button::new(RichText::new("Custom").color(accent).size(12.0))
                         .fill(Color32::TRANSPARENT)
-                        .stroke(egui::Stroke::new(1.0, accent))
+                        .stroke(egui::Stroke::new(1.0_f32, accent))
                         .corner_radius(6.0)
                         .min_size(egui::vec2(btn_width, 36.0))
                 };
@@ -372,7 +372,7 @@ impl SwapModal {
                 } else {
                     egui::Button::new(RichText::new(label).color(text_muted).size(10.0))
                         .fill(Color32::TRANSPARENT)
-                        .stroke(egui::Stroke::new(1.0, text_muted))
+                        .stroke(egui::Stroke::new(1.0_f32, text_muted))
                         .corner_radius(4.0)
                         .min_size(egui::vec2(36.0, 22.0))
                 };

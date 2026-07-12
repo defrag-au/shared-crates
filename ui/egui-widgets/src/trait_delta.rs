@@ -108,7 +108,7 @@ fn draw_chips(
                 .fill(bg)
                 .corner_radius(4.0)
                 .inner_margin(egui::Margin::symmetric(6, 2))
-                .stroke(egui::Stroke::new(1.0, color.linear_multiply(0.3)))
+                .stroke(egui::Stroke::new(1.0_f32, color.linear_multiply(0.3)))
                 .show(ui, |ui| {
                     ui.label(chip_text);
                 });

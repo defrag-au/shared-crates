@@ -517,7 +517,7 @@ fn render_card(
     let fill = if archived { ROW_BG_ARCHIVED } else { ROW_BG };
     Frame::new()
         .fill(fill)
-        .stroke(Stroke::new(1.0, ROW_STROKE))
+        .stroke(Stroke::new(1.0_f32, ROW_STROKE))
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::symmetric(14, 12))
         .show(ui, |ui| {
@@ -727,7 +727,7 @@ fn render_list_row(
     let fill = if archived { ROW_BG_ARCHIVED } else { ROW_BG };
     Frame::new()
         .fill(fill)
-        .stroke(Stroke::new(1.0, ROW_STROKE))
+        .stroke(Stroke::new(1.0_f32, ROW_STROKE))
         .corner_radius(CornerRadius::same(4))
         .inner_margin(Margin::symmetric(10, 7))
         .show(ui, |ui| {

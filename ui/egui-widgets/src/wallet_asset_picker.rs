@@ -157,7 +157,7 @@ pub fn show(
         .frame(
             egui::Frame::window(&ctx.global_style())
                 .fill(theme::BG_PRIMARY)
-                .stroke(egui::Stroke::new(1.0, theme::BG_HIGHLIGHT))
+                .stroke(egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT))
                 .corner_radius(CornerRadius::same(8))
                 .inner_margin(16.0),
         )
@@ -520,11 +520,11 @@ fn draw_picker_card(
 
     // Border — already offered (muted), rarity, or default
     let (border_color, border_width) = if already_offered {
-        (theme::TEXT_MUTED, 1.0)
+        (theme::TEXT_MUTED, 1.0_f32)
     } else if let Some(rank) = asset.rarity_rank {
         let total = asset.total_ranked.unwrap_or(10000);
         let color = theme::rarity_rank_color(rank, total);
-        let width = if hovered { 2.0 } else { 1.5 };
+        let width = if hovered { 2.0_f32 } else { 1.5_f32 };
         (color, width)
     } else {
         let color = if hovered {
@@ -532,7 +532,7 @@ fn draw_picker_card(
         } else {
             theme::BG_HIGHLIGHT
         };
-        (color, 1.0)
+        (color, 1.0_f32)
     };
     painter.rect_stroke(
         card_rect,

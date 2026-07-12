@@ -139,7 +139,7 @@ fn asset_list(input: &str) -> IResult<&str, Vec<KoiosAsset>> {
                 asset_name: name.clone(),
                 quantity: qty,
                 // TODO: properly compute the fingerprint, for now we'll fake it
-                fingerprint: format!("{}{}", &policy, &name),
+                fingerprint: format!("{}{}", policy, name),
             }));
         }
         (rest, all)

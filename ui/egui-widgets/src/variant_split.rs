@@ -141,7 +141,7 @@ pub fn show(
                 while y < bot {
                     painter.line_segment(
                         [egui::pos2(tx, y), egui::pos2(tx, (y + 3.0).min(bot))],
-                        Stroke::new(1.0, theme::TEXT_PRIMARY.gamma_multiply(0.5)),
+                        Stroke::new(1.0_f32, theme::TEXT_PRIMARY.gamma_multiply(0.5)),
                     );
                     y += 6.0;
                 }

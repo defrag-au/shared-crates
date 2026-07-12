@@ -470,7 +470,7 @@ fn filter_chip(ui: &mut Ui, label: &str, count: usize, accent: Color32, selected
     let (fill, stroke, text) = if selected {
         (
             Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 55),
-            Stroke::new(1.0, accent),
+            Stroke::new(1.0_f32, accent),
             Color32::from_gray(235),
         )
     } else {
@@ -533,7 +533,7 @@ fn status_badge(ui: &mut Ui, status: &OrderStatus, inner_w: f32) {
         .corner_radius(CornerRadius::same(3))
         .inner_margin(Margin::symmetric(5, 1));
     if let Some(b) = border {
-        frame = frame.stroke(Stroke::new(1.0, b));
+        frame = frame.stroke(Stroke::new(1.0_f32, b));
     }
     // `add_sized` centres the label in an exact `inner_w × line_height` box (both
     // axes) — reliable, unlike `vertical_centered`, which left-biased the text.

@@ -237,14 +237,14 @@ pub fn show<T>(
                             ui.painter().rect_stroke(
                                 rect,
                                 config.rounding,
-                                Stroke::new(3.0, config.border_selected),
+                                Stroke::new(3.0_f32, config.border_selected),
                                 egui::StrokeKind::Inside,
                             );
                         } else {
                             ui.painter().rect_stroke(
                                 rect,
                                 config.rounding,
-                                Stroke::new(1.0, config.border_color),
+                                Stroke::new(1.0_f32, config.border_color),
                                 egui::StrokeKind::Inside,
                             );
                         }

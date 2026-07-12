@@ -77,7 +77,7 @@ pub fn show(ui: &mut Ui, pools: &[PoolInfo], config: &PoolLiquidityConfig) {
             .fill(theme::BG_SECONDARY)
             .corner_radius(6.0)
             .inner_margin(10.0)
-            .stroke(egui::Stroke::new(1.0, theme::BORDER))
+            .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
             .show(ui, |ui| {
                 draw_pool_card(ui, pool, max_reserves, config);
             });

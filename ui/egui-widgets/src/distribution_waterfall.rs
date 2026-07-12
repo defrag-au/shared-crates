@@ -162,7 +162,7 @@ impl DistributionWaterfall {
         painter.rect_stroke(
             rect,
             3.0,
-            Stroke::new(0.5, theme::BG_HIGHLIGHT),
+            Stroke::new(0.5_f32, theme::BG_HIGHLIGHT),
             StrokeKind::Inside,
         );
     }
@@ -248,7 +248,7 @@ fn badge(ui: &mut Ui, text: &str, color: Color32) {
             color.b(),
             36,
         ))
-        .stroke(Stroke::new(1.0, color))
+        .stroke(Stroke::new(1.0_f32, color))
         .corner_radius(egui::CornerRadius::same(3))
         .inner_margin(egui::Margin::symmetric(5, 1))
         .show(ui, |ui| {

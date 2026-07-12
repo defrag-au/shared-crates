@@ -156,7 +156,7 @@ impl FlipCounter {
         let half_h = self.card_height / 2.0;
         let font_size = self.card_height * 0.55;
         let corner = 4.0;
-        let border_stroke = egui::Stroke::new(1.0, self.border_color);
+        let border_stroke = egui::Stroke::new(1.0_f32, self.border_color);
 
         // Pre-compute font texture UV normalizer once per frame
         let font_tex_size = ui.ctx().fonts(|f| f.font_image_size());
@@ -312,7 +312,7 @@ impl FlipCounter {
                     Pos2::new(card_x, hinge_y),
                     Pos2::new(card_x + slot_w, hinge_y),
                 ],
-                egui::Stroke::new(1.5, self.divider_color),
+                egui::Stroke::new(1.5_f32, self.divider_color),
             );
 
             card_x += slot_w;

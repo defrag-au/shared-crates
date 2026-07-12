@@ -143,7 +143,7 @@ pub fn show(
                         Pos2::new(first_x, timeline_y),
                         Pos2::new(last_x, timeline_y),
                     ],
-                    Stroke::new(2.0, config.line_color),
+                    Stroke::new(2.0_f32, config.line_color),
                 );
             }
 
@@ -183,7 +183,7 @@ pub fn show(
                     painter.circle_stroke(
                         dot_center,
                         config.dot_radius + 3.0,
-                        Stroke::new(1.5, dot_color),
+                        Stroke::new(1.5_f32, dot_color),
                     );
                 }
 

@@ -192,7 +192,7 @@ pub fn show(ui: &mut egui::Ui, points: &[RangePoint], config: &RangeBarConfig) {
                 Pos2::new(x, bar_y),
                 Pos2::new(x, bar_y + config.bar_height + config.tick_height),
             ],
-            Stroke::new(2.0, point.color),
+            Stroke::new(2.0_f32, point.color),
         );
 
         // Dot on bar center

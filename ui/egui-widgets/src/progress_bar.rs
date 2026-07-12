@@ -42,7 +42,7 @@ impl ProgressBar {
             show_percentage: false,
             fill_color: theme::ACCENT,
             track_color: theme::BG_SECONDARY,
-            border: Some(Stroke::new(1.0, theme::BORDER)),
+            border: Some(Stroke::new(1.0_f32, theme::BORDER)),
             height: 16.0,
             rounding: 4,
         }

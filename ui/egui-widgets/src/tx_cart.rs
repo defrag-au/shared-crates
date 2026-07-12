@@ -408,7 +408,7 @@ pub fn show_items(
             ui.painter().rect_stroke(
                 card_rect.expand(2.0),
                 egui::CornerRadius::same(6),
-                egui::Stroke::new(0.5, theme::BORDER),
+                egui::Stroke::new(0.5_f32, theme::BORDER),
                 egui::StrokeKind::Outside,
             );
 

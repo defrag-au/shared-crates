@@ -98,7 +98,7 @@ impl<'a> MnemonicDisplay<'a> {
         if style.show_warning {
             Frame::new()
                 .fill(Color32::from_rgb(50, 35, 10))
-                .stroke(Stroke::new(1.0, Color32::from_rgb(180, 140, 60)))
+                .stroke(Stroke::new(1.0_f32, Color32::from_rgb(180, 140, 60)))
                 .corner_radius(CornerRadius::same(4))
                 .inner_margin(Margin::symmetric(12, 8))
                 .show(ui, |ui| {
@@ -127,7 +127,7 @@ impl<'a> MnemonicDisplay<'a> {
         // ── Words grid ───────────────────────────────────────────────────
         Frame::new()
             .fill(Color32::from_rgb(16, 16, 24))
-            .stroke(Stroke::new(1.0, Color32::from_rgb(40, 40, 56)))
+            .stroke(Stroke::new(1.0_f32, Color32::from_rgb(40, 40, 56)))
             .corner_radius(CornerRadius::same(6))
             .inner_margin(Margin::same(14))
             .show(ui, |ui| {
@@ -191,7 +191,7 @@ pub struct MnemonicDisplayOutput {
 fn render_word_cell(ui: &mut Ui, number: usize, word: &str, width: f32) {
     Frame::new()
         .fill(Color32::from_rgb(24, 24, 36))
-        .stroke(Stroke::new(1.0, Color32::from_rgb(50, 50, 70)))
+        .stroke(Stroke::new(1.0_f32, Color32::from_rgb(50, 50, 70)))
         .corner_radius(CornerRadius::same(3))
         .inner_margin(Margin::symmetric(8, 5))
         .show(ui, |ui| {

@@ -70,7 +70,7 @@ impl<'a> TagList<'a> {
                 let cr = CornerRadius::same(3);
                 painter.rect_filled(rect, cr, bg);
                 if let Some(b) = border {
-                    painter.rect_stroke(rect, cr, Stroke::new(1.0, b), egui::StrokeKind::Inside);
+                    painter.rect_stroke(rect, cr, Stroke::new(1.0_f32, b), egui::StrokeKind::Inside);
                 }
                 painter.galley(
                     egui::pos2(rect.left() + PAD.x, rect.center().y - galley.size().y / 2.0),
@@ -81,7 +81,7 @@ impl<'a> TagList<'a> {
                 let cx = rect.right() - PAD.x - ICON / 2.0;
                 let cy = rect.center().y;
                 let h = ICON * 0.35;
-                let stroke = Stroke::new(1.2, x_color(fg, r.hovered()));
+                let stroke = Stroke::new(1.2_f32, x_color(fg, r.hovered()));
                 painter.line_segment(
                     [egui::pos2(cx - h, cy - h), egui::pos2(cx + h, cy + h)],
                     stroke,

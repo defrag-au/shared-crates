@@ -264,7 +264,7 @@ impl<'a> MintCheckout<'a> {
 fn price_card(ui: &mut Ui, label: &str, value: &str, value_color: Color32) {
     egui::Frame::new()
         .fill(theme::BG_HIGHLIGHT)
-        .stroke(egui::Stroke::new(1.0, theme::BORDER))
+        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
         .corner_radius(8.0)
         .inner_margin(12.0)
         .show(ui, |ui| {
@@ -287,7 +287,7 @@ fn bundle_card(ui: &mut Ui, bundle: &BundleOffer, unit: u64, busy: bool, accent:
 
     egui::Frame::new()
         .fill(theme::BG_SECONDARY)
-        .stroke(egui::Stroke::new(1.0, theme::BORDER))
+        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
         .corner_radius(8.0)
         .inner_margin(10.0)
         .show(ui, |ui| {

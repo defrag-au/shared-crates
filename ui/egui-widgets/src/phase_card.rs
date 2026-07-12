@@ -166,7 +166,7 @@ impl<'a> PhaseCard<'a> {
     fn show_inner(self, ui: &mut Ui, response: &mut PhaseCardResponse) {
         Frame::new()
             .fill(Color32::from_rgb(22, 24, 32))
-            .stroke(Stroke::new(1.0, Color32::from_rgb(40, 44, 60)))
+            .stroke(Stroke::new(1.0_f32, Color32::from_rgb(40, 44, 60)))
             .corner_radius(CornerRadius::same(6))
             .inner_margin(Margin::same(10))
             .show(ui, |ui| {

@@ -717,7 +717,7 @@ impl ShelfConfig {
                     Pos2::new(rect.left(), shelf_rect.bottom()),
                     Pos2::new(rect.right(), shelf_rect.bottom()),
                 ],
-                Stroke::new(0.5, Color32::from_rgba_premultiplied(80, 80, 100, 40)),
+                Stroke::new(0.5_f32, Color32::from_rgba_premultiplied(80, 80, 100, 40)),
             );
         }
 
@@ -783,15 +783,15 @@ impl ShelfConfig {
                 .is_some_and(|s| *s == block.utxo_ref);
 
             let (border_color, border_width) = if is_selected {
-                (theme::ACCENT, 2.5)
+                (theme::ACCENT, 2.5_f32)
             } else if is_policy_highlighted && block.tier != ShelfTier::Dust {
                 let c = new_hovered_policy
                     .as_ref()
                     .map(|p| policy_color(p))
                     .unwrap_or(theme::ACCENT);
-                (c, 1.0)
+                (c, 1.0_f32)
             } else {
-                (Color32::TRANSPARENT, 0.0)
+                (Color32::TRANSPARENT, 0.0_f32)
             };
             if border_color != Color32::TRANSPARENT {
                 painter.rect_stroke(

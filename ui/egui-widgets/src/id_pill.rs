@@ -257,7 +257,7 @@ impl<'a> IdPill<'a> {
         let stroke = Color32::from_rgb(48, 52, 64);
         egui::Frame::new()
             .fill(fill)
-            .stroke(egui::Stroke::new(1.0, stroke))
+            .stroke(egui::Stroke::new(1.0_f32, stroke))
             .corner_radius(egui::CornerRadius::same(4))
             .inner_margin(egui::Margin::symmetric(8, 6))
             .show(ui, |ui| {

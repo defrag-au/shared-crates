@@ -154,7 +154,7 @@ impl<'a> Chip<'a> {
             .corner_radius(CornerRadius::same(3))
             .inner_margin(Margin::symmetric(5, 1));
         if let Some(b) = border {
-            frame = frame.stroke(Stroke::new(1.0, b));
+            frame = frame.stroke(Stroke::new(1.0_f32, b));
         }
         let inner = frame.show(ui, |ui| {
             ui.horizontal(|ui| {

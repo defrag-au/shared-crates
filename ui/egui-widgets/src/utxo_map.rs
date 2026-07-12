@@ -527,7 +527,7 @@ impl UtxoMapConfig {
                     painter.add(Shape::convex_polygon(
                         screen_verts,
                         fill,
-                        Stroke::new(0.5, self.border_color),
+                        Stroke::new(0.5_f32, self.border_color),
                     ));
                 }
 
@@ -547,7 +547,7 @@ impl UtxoMapConfig {
                             painter.add(Shape::convex_polygon(
                                 screen_verts,
                                 brighten(policy_color(&cell.policy_id), 1.3),
-                                Stroke::new(2.0, theme::ACCENT),
+                                Stroke::new(2.0_f32, theme::ACCENT),
                             ));
                         }
                     }

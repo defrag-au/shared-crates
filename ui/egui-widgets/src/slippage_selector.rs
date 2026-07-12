@@ -187,7 +187,7 @@ fn toggle_button<'a>(label: &'a str, selected: bool, accent: Color32) -> egui::B
     } else {
         egui::Button::new(RichText::new(label).color(theme::TEXT_MUTED).size(10.0))
             .fill(Color32::TRANSPARENT)
-            .stroke(egui::Stroke::new(1.0, theme::TEXT_MUTED))
+            .stroke(egui::Stroke::new(1.0_f32, theme::TEXT_MUTED))
             .corner_radius(4.0)
             .min_size(egui::vec2(36.0, 22.0))
     }
