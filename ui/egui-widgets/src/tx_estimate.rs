@@ -105,7 +105,7 @@ pub fn show(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimateConfig)
             right: content_margin.right,
             ..Default::default()
         })
-        .stroke(egui::Stroke::new(1.0, theme::BORDER))
+        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
@@ -230,7 +230,7 @@ fn draw_cost_lines(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimate
     let y = rect.min.y;
     ui.painter().line_segment(
         [egui::pos2(rect.min.x, y), egui::pos2(rect.max.x, y)],
-        egui::Stroke::new(1.0, theme::BORDER),
+        egui::Stroke::new(1.0_f32, theme::BORDER),
     );
     ui.add_space(4.0);
 

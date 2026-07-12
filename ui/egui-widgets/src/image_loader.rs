@@ -75,7 +75,7 @@ impl CachedSpinner {
             .collect();
         Self {
             points,
-            stroke: Stroke::new(3.0, color),
+            stroke: Stroke::new(3.0_f32, color),
         }
     }
 

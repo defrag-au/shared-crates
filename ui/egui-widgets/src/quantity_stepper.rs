@@ -99,7 +99,7 @@ impl QuantityStepper {
             // [n] readout — fixed box, centred, same height as the buttons.
             egui::Frame::new()
                 .fill(theme::BG_PRIMARY)
-                .stroke(egui::Stroke::new(1.0, theme::BORDER))
+                .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
                 .corner_radius(6.0)
                 .show(ui, |ui| {
                     ui.allocate_ui_with_layout(

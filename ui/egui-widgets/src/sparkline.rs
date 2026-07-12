@@ -223,7 +223,7 @@ impl<'a> Sparkline<'a> {
                     let end_x = (x + dash_len).min(plot_rect.right());
                     painter.line_segment(
                         [Pos2::new(x, mean_y), Pos2::new(end_x, mean_y)],
-                        Stroke::new(1.0, theme::TEXT_MUTED),
+                        Stroke::new(1.0_f32, theme::TEXT_MUTED),
                     );
                     x += dash_len + gap_len;
                 }
@@ -239,7 +239,7 @@ impl<'a> Sparkline<'a> {
             if self.show_endpoint {
                 if let Some(&last) = points.last() {
                     painter.circle_filled(last, 3.0, self.line_color);
-                    painter.circle_stroke(last, 3.0, Stroke::new(1.0, theme::BG_PRIMARY));
+                    painter.circle_stroke(last, 3.0, Stroke::new(1.0_f32, theme::BG_PRIMARY));
                 }
             }
 
@@ -253,7 +253,7 @@ impl<'a> Sparkline<'a> {
 
                     // Highlight dot
                     painter.circle_filled(point, 4.0, self.line_color);
-                    painter.circle_stroke(point, 4.0, Stroke::new(1.5, theme::TEXT_PRIMARY));
+                    painter.circle_stroke(point, 4.0, Stroke::new(1.5_f32, theme::TEXT_PRIMARY));
 
                     // Vertical crosshair
                     painter.line_segment(
@@ -261,7 +261,7 @@ impl<'a> Sparkline<'a> {
                             Pos2::new(point.x, plot_rect.top()),
                             Pos2::new(point.x, plot_rect.bottom()),
                         ],
-                        Stroke::new(0.5, theme::TEXT_MUTED),
+                        Stroke::new(0.5_f32, theme::TEXT_MUTED),
                     );
 
                     // Value tooltip

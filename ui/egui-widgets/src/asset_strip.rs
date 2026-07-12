@@ -188,7 +188,7 @@ pub fn show(
         painter.rect_stroke(
             card_rect,
             rounding,
-            egui::Stroke::new(1.0, theme::BG_HIGHLIGHT),
+            egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT),
             egui::StrokeKind::Inside,
         );
     }

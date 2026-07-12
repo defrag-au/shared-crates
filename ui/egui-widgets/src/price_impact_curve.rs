@@ -146,7 +146,7 @@ pub fn show(
     painter.rect_stroke(
         rect,
         rounding,
-        Stroke::new(1.0, theme::BORDER),
+        Stroke::new(1.0_f32, theme::BORDER),
         egui::StrokeKind::Outside,
     );
 
@@ -204,7 +204,7 @@ pub fn show(
                     let end_x = (x + dash_len).min(plot_rect.right());
                     painter.line_segment(
                         [Pos2::new(x, y), Pos2::new(end_x, y)],
-                        Stroke::new(0.5, theme::BG_HIGHLIGHT),
+                        Stroke::new(0.5_f32, theme::BG_HIGHLIGHT),
                     );
                     x += dash_len + gap_len;
                 }
@@ -238,7 +238,7 @@ pub fn show(
                     Pos2::new(x, plot_rect.bottom()),
                     Pos2::new(x, plot_rect.bottom() + 3.0),
                 ],
-                Stroke::new(0.5, theme::TEXT_MUTED),
+                Stroke::new(0.5_f32, theme::TEXT_MUTED),
             );
 
             // Label
@@ -272,7 +272,7 @@ pub fn show(
             Pos2::new(plot_rect.left(), plot_rect.bottom()),
             Pos2::new(plot_rect.right(), plot_rect.bottom()),
         ],
-        Stroke::new(1.0, theme::BORDER),
+        Stroke::new(1.0_f32, theme::BORDER),
     );
 
     // ── Draw curves ────────────────────────────────────────────────────
@@ -328,7 +328,7 @@ pub fn show(
         }
 
         // Curve line
-        let line_stroke = Stroke::new(2.0, pool.color);
+        let line_stroke = Stroke::new(2.0_f32, pool.color);
         for window in points.windows(2) {
             painter.line_segment([window[0], window[1]], line_stroke);
         }
@@ -345,7 +345,7 @@ pub fn show(
 
             // Outer ring + filled dot
             painter.circle_filled(marker_pos, 5.0, pool.color);
-            painter.circle_stroke(marker_pos, 5.0, Stroke::new(1.5, theme::BG_PRIMARY));
+            painter.circle_stroke(marker_pos, 5.0, Stroke::new(1.5_f32, theme::BG_PRIMARY));
 
             // Label next to marker
             let impact_pct = impact_at_alloc * 100.0;
@@ -386,7 +386,7 @@ pub fn show(
                 let end_x = (x + dash_len).min(plot_rect.right());
                 painter.line_segment(
                     [Pos2::new(x, ref_y), Pos2::new(end_x, ref_y)],
-                    Stroke::new(1.0, theme::TEXT_MUTED),
+                    Stroke::new(1.0_f32, theme::TEXT_MUTED),
                 );
                 x += dash_len + gap_len;
             }
@@ -417,7 +417,7 @@ pub fn show(
                         Pos2::new(hover_pos.x, plot_rect.top()),
                         Pos2::new(hover_pos.x, plot_rect.bottom()),
                     ],
-                    Stroke::new(0.5, theme::TEXT_MUTED),
+                    Stroke::new(0.5_f32, theme::TEXT_MUTED),
                 );
 
                 // Find impact for each pool at this x position and show tooltip
@@ -484,14 +484,14 @@ pub fn show(
                             Pos2::new(dash_rect.left(), y),
                             Pos2::new(dash_rect.left() + 6.0, y),
                         ],
-                        Stroke::new(1.5, theme::TEXT_MUTED),
+                        Stroke::new(1.5_f32, theme::TEXT_MUTED),
                     );
                     painter.line_segment(
                         [
                             Pos2::new(dash_rect.left() + 10.0, y),
                             Pos2::new(dash_rect.right(), y),
                         ],
-                        Stroke::new(1.5, theme::TEXT_MUTED),
+                        Stroke::new(1.5_f32, theme::TEXT_MUTED),
                     );
                 }
 

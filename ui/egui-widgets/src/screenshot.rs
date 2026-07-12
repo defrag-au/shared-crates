@@ -120,7 +120,7 @@ fn draw_copy_icon(ui: &mut egui::Ui, rect: Rect) {
     let c = rect.center();
     let s = rect.width() * 0.3;
 
-    let stroke = Stroke::new(1.2, Color32::from_rgb(140, 148, 172));
+    let stroke = Stroke::new(1.2_f32, Color32::from_rgb(140, 148, 172));
 
     // Back rectangle (offset up-left)
     let back = Rect::from_center_size(
@@ -145,7 +145,7 @@ fn draw_checkmark(ui: &mut egui::Ui, rect: Rect) {
     let s = rect.width() * 0.25;
 
     let color = Color32::from_rgb(158, 206, 106);
-    let stroke = Stroke::new(2.0, color);
+    let stroke = Stroke::new(2.0_f32, color);
 
     let points = [
         egui::pos2(c.x - s, c.y),

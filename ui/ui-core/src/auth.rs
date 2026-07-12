@@ -105,7 +105,7 @@ impl AuthState {
     /// - `AuthError` if token cannot be decoded
     /// - `Anonymous` if no token provided
     pub fn from_token(token: Option<String>) -> Self {
-        match token.and_then(|t| if t.is_empty() { None } else { Some(t) }) {
+        match token.filter(|t| !t.is_empty()) {
             Some(token) => match AuthContext::from_token(token) {
                 Some(ctx) => {
                     if ctx.is_expired() {

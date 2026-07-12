@@ -273,7 +273,7 @@ pub fn show(
     } else {
         theme::BG_HIGHLIGHT
     };
-    let border_width = if hovered { 2.0 } else { 1.5 };
+    let border_width = if hovered { 2.0_f32 } else { 1.5_f32 };
     painter.rect_stroke(
         card_rect,
         rounding,
@@ -500,7 +500,7 @@ pub fn show_add_card(ui: &mut egui::Ui, config: &OfferSlotConfig) -> bool {
 
 /// Draw a dashed rectangle outline.
 fn draw_dashed_rect(painter: &egui::Painter, rect: egui::Rect, rounding: f32, color: Color32) {
-    let stroke = egui::Stroke::new(1.0, color);
+    let stroke = egui::Stroke::new(1.0_f32, color);
     let dash = 5.0;
     let gap = 3.0;
 

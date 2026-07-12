@@ -367,7 +367,7 @@ fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
     let mut closed = false;
     Frame::new()
         .fill(fill)
-        .stroke(Stroke::new(1.0, stroke))
+        .stroke(Stroke::new(1.0_f32, stroke))
         .corner_radius(CornerRadius::same(6))
         .inner_margin(Margin::symmetric(12, 8))
         .show(ui, |ui| {

@@ -101,7 +101,7 @@ impl<'a> MetricCard<'a> {
             .fill(self.bg_color)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, self.border_color));
+            .stroke(egui::Stroke::new(1.0_f32, self.border_color));
 
         let add_contents = |ui: &mut Ui| {
             // Force vertical layout — cards may be placed inside ui.horizontal()
@@ -176,7 +176,7 @@ impl<'a> MetricCard<'a> {
                                         egui::pos2(center.x - size / 2.0, center.y),
                                         egui::pos2(center.x + size / 2.0, center.y),
                                     ],
-                                    egui::Stroke::new(1.5, color),
+                                    egui::Stroke::new(1.5_f32, color),
                                 );
                             }
                         }

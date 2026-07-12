@@ -59,7 +59,7 @@ impl Identity {
     pub fn label(&self) -> String {
         self.name
             .clone()
-            .unwrap_or_else(|| format!("user {}", &self.user_id))
+            .unwrap_or_else(|| format!("user {}", self.user_id))
     }
 }
 

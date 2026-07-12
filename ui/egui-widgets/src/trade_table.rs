@@ -249,7 +249,7 @@ fn draw_divider(ui: &mut egui::Ui, lock_state: &LockState) {
             egui::pos2(divider_rect.min.x, mid_y),
             egui::pos2(divider_rect.max.x, mid_y),
         ],
-        egui::Stroke::new(1.0, line_color),
+        egui::Stroke::new(1.0_f32, line_color),
     );
 
     // Center icon: handshake when both locked, arrows otherwise

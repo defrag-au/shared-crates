@@ -87,7 +87,7 @@ pub fn show(ui: &mut egui::Ui, points: &[RadarPoint], size: f32, config: &RadarC
     };
 
     // Concentric web rings
-    let web_stroke = Stroke::new(0.5, config.web_color);
+    let web_stroke = Stroke::new(0.5_f32, config.web_color);
     for r in 1..=config.ring_count {
         let frac = r as f32 / config.ring_count as f32;
         let ring_pts: Vec<Pos2> = (0..n).map(|i| axis_point(i, frac)).collect();

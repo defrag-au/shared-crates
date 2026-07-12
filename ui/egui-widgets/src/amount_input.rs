@@ -128,7 +128,7 @@ pub fn show(
             } else {
                 egui::Button::new(RichText::new("MAX").color(config.accent).size(10.0))
                     .fill(Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::new(1.0, config.accent))
+                    .stroke(egui::Stroke::new(1.0_f32, config.accent))
                     .corner_radius(4.0)
                     .min_size(egui::vec2(40.0, 28.0))
             };
@@ -217,7 +217,7 @@ fn toggle_button(label: &str, selected: bool, accent: Color32) -> egui::Button<'
     } else {
         egui::Button::new(RichText::new(label).color(accent).size(11.0))
             .fill(Color32::TRANSPARENT)
-            .stroke(egui::Stroke::new(1.0, accent))
+            .stroke(egui::Stroke::new(1.0_f32, accent))
             .corner_radius(4.0)
             .min_size(egui::vec2(70.0, 28.0))
     }

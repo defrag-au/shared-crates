@@ -483,7 +483,7 @@ fn render_row(
 
     Frame::new()
         .fill(fill)
-        .stroke(Stroke::new(1.0, stroke))
+        .stroke(Stroke::new(1.0_f32, stroke))
         .corner_radius(CornerRadius::same(4))
         .inner_margin(Margin::symmetric(10, 7))
         .show(ui, |ui| {
@@ -624,7 +624,7 @@ fn render_card(
 
     Frame::new()
         .fill(fill)
-        .stroke(Stroke::new(1.0, stroke))
+        .stroke(Stroke::new(1.0_f32, stroke))
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::symmetric(14, 12))
         .show(ui, |ui| {

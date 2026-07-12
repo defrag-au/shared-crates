@@ -296,7 +296,7 @@ pub fn show(
                 egui::Frame::new()
                     .fill(theme::BG_SECONDARY)
                     .corner_radius(4.0)
-                    .stroke(egui::Stroke::new(1.0, theme::BG_HIGHLIGHT))
+                    .stroke(egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT))
                     .inner_margin(6.0)
                     .show(ui, |ui| {
                         ui.set_max_width(input_rect.width().max(200.0));
@@ -329,7 +329,7 @@ pub fn show(
                 egui::Frame::new()
                     .fill(theme::BG_SECONDARY)
                     .corner_radius(4.0)
-                    .stroke(egui::Stroke::new(1.0, theme::BG_HIGHLIGHT))
+                    .stroke(egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT))
                     .inner_margin(6.0)
                     .show(ui, |ui| {
                         ui.label(

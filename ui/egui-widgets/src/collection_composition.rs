@@ -278,7 +278,7 @@ fn layer_stack(
                 cell,
                 CornerRadius::same(4),
                 Stroke::new(
-                    if hot { 1.5 } else { 1.0 },
+                    if hot { 1.5_f32 } else { 1.0_f32 },
                     if hot { theme::ACCENT } else { theme::BORDER },
                 ),
                 egui::StrokeKind::Inside,
@@ -368,7 +368,7 @@ fn draw_bracket(painter: &egui::Painter, spine_x: f32, right: f32, ys: &[f32], c
     let top = ys[0];
     let bot = ys[ys.len() - 1];
     let r = 6.0_f32;
-    let stroke = Stroke::new(1.6, color);
+    let stroke = Stroke::new(1.6_f32, color);
 
     let mut path = vec![Pos2::new(right, top), Pos2::new(spine_x + r, top)];
     arc(&mut path, Pos2::new(spine_x + r, top + r), r, 270.0, 180.0);

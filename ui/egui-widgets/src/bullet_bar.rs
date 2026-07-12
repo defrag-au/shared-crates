@@ -163,7 +163,7 @@ impl BulletBar {
                 egui::pos2(tx, rect.min.y - 2.0),
                 egui::pos2(tx, rect.max.y + 2.0),
             ],
-            Stroke::new(2.0, self.target_color),
+            Stroke::new(2.0_f32, self.target_color),
         );
 
         response.on_hover_text(format!("{:.1} / target {:.1}", value, target))

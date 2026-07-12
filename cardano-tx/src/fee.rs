@@ -56,7 +56,7 @@ pub fn estimate_tx_size(tx: &StagingTransaction, num_witnesses: u32) -> u64 {
             // Native assets: policy ID (28) + asset name (variable) + amount + overhead
             if let Some(ref assets) = output.assets {
                 // OutputAssets implements Deref to HashMap
-                for (_policy_id, asset_map) in assets.iter() {
+                for asset_map in assets.values() {
                     size += 28; // Policy ID
                     size += 3; // Map overhead
                     for (asset_name, amount) in asset_map {
@@ -98,7 +98,7 @@ pub fn estimate_tx_size(tx: &StagingTransaction, num_witnesses: u32) -> u64 {
     // Minting: if present
     if let Some(ref mint) = tx.mint {
         // MintAssets implements Deref to HashMap
-        for (_policy_id, asset_map) in mint.iter() {
+        for asset_map in mint.values() {
             size += 28; // Policy ID
             for (asset_name, amount) in asset_map {
                 size += asset_name.0.len() as u64; // Asset name (Bytes.0 is Vec<u8>)
@@ -207,7 +207,7 @@ fn execution_fee_from_redeemers(
     };
 
     let mut total: u128 = 0;
-    for (_purpose, (_data, opt_eu)) in redeemers.iter() {
+    for (_data, opt_eu) in redeemers.values() {
         if let Some(eu) = opt_eu {
             // Use u128 to avoid overflow on large execution units
             // Ceil each division to ensure we never underpay

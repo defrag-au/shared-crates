@@ -312,7 +312,7 @@ pub fn show(
                         ui.painter().rect_stroke(
                             pip_rect.expand(1.0),
                             *pip_rounding + 1.0,
-                            Stroke::new(1.0, PIP_HIGHLIGHT_COLOR),
+                            Stroke::new(1.0_f32, PIP_HIGHLIGHT_COLOR),
                             egui::StrokeKind::Outside,
                         );
                     }
@@ -384,7 +384,7 @@ pub fn show(
                 Pos2::new(hover_x, bar_rect.top()),
                 Pos2::new(hover_x, bar_rect.bottom()),
             ],
-            Stroke::new(0.5, CROSSHAIR_COLOR),
+            Stroke::new(0.5_f32, CROSSHAIR_COLOR),
         );
     }
 
@@ -451,7 +451,7 @@ fn draw_density(
             ui.painter().rect_stroke(
                 bin_rect,
                 0.0,
-                Stroke::new(1.0, BIN_HIGHLIGHT_COLOR),
+                Stroke::new(1.0_f32, BIN_HIGHLIGHT_COLOR),
                 egui::StrokeKind::Inside,
             );
         }

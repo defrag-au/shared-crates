@@ -68,7 +68,7 @@ pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
         .fill(theme::BG_SECONDARY)
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui::Stroke::new(1.0, theme::BORDER))
+        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
         .show(ui, |ui| {
             // Per-leg rows
             for leg in &data.legs {
@@ -113,7 +113,7 @@ pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
             let y = rect.min.y;
             ui.painter().line_segment(
                 [egui::pos2(rect.min.x, y), egui::pos2(rect.max.x, y)],
-                egui::Stroke::new(1.0, theme::BORDER),
+                egui::Stroke::new(1.0_f32, theme::BORDER),
             );
             ui.add_space(6.0);
 
