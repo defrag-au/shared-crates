@@ -196,6 +196,27 @@ pub fn assemble_signed_tx(
     Ok(hex::encode(signed_bytes))
 }
 
+/// Compute the deterministic transaction hash (blake2b-256 of the tx body
+/// CBOR) from a hex-encoded transaction.
+///
+/// This is the on-chain `tx_hash` — the same value an indexer reports once
+/// the tx lands — so callers can know it *before* submission (e.g. to register
+/// a pending tx, or to return it from a submit path where the submitter only
+/// reports accept/duplicate). Works for both unsigned and signed CBOR: the
+/// hash covers only the tx body, which witnesses don't alter.
+pub fn compute_tx_hash(tx_hex: &str) -> Result<String, PallasError> {
+    use pallas_crypto::hash::Hasher;
+
+    let tx_bytes = hex::decode(tx_hex)?;
+    let tx: Tx =
+        minicbor::decode(&tx_bytes).map_err(|e| PallasError::TransactionParse(e.to_string()))?;
+
+    // `KeepRaw` preserves the body's original CBOR bytes, so hashing
+    // `raw_cbor()` yields the canonical tx id without a re-encode round-trip.
+    let hash = Hasher::<256>::hash(tx.transaction_body.raw_cbor());
+    Ok(hex::encode(hash))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,6 +358,53 @@ mod tests {
         let signed_hex = assemble_signed_tx(&unsigned_hex, &ws_hex).unwrap();
         let signed_info = parse_transaction(&signed_hex).unwrap();
         assert_eq!(signed_info.vkey_witness_count, 2);
+    }
+
+    #[test]
+    fn test_compute_tx_hash_is_invariant_under_signing() {
+        // Build a minimal unsigned TX (no witnesses).
+        let mut enc = minicbor::Encoder::new(Vec::new());
+        enc.array(4).unwrap();
+        enc.map(3).unwrap();
+        enc.u32(0).unwrap();
+        enc.array(1).unwrap();
+        enc.array(2).unwrap();
+        enc.bytes(&[0xaa; 32]).unwrap();
+        enc.u32(0).unwrap();
+        enc.u32(1).unwrap();
+        enc.array(1).unwrap();
+        enc.map(2).unwrap();
+        enc.u32(0).unwrap();
+        enc.bytes(&[0x01; 57]).unwrap();
+        enc.u32(1).unwrap();
+        enc.u64(2_000_000).unwrap();
+        enc.u32(2).unwrap();
+        enc.u64(200_000).unwrap();
+        enc.map(0).unwrap();
+        enc.bool(true).unwrap();
+        enc.null().unwrap();
+        let unsigned_hex = hex::encode(enc.into_writer());
+
+        // A CIP-30 witness set with one vkey witness.
+        let mut ws_enc = minicbor::Encoder::new(Vec::new());
+        ws_enc.map(1).unwrap();
+        ws_enc.u32(0).unwrap();
+        ws_enc.array(1).unwrap();
+        ws_enc.array(2).unwrap();
+        ws_enc.bytes(&[0xcc; 32]).unwrap();
+        ws_enc.bytes(&[0xdd; 64]).unwrap();
+        let ws_hex = hex::encode(ws_enc.into_writer());
+
+        let signed_hex = assemble_signed_tx(&unsigned_hex, &ws_hex).unwrap();
+
+        let unsigned_hash = compute_tx_hash(&unsigned_hex).unwrap();
+        let signed_hash = compute_tx_hash(&signed_hex).unwrap();
+
+        // 32-byte blake2b → 64 hex chars, deterministic, and unchanged by
+        // adding witnesses (the hash covers only the tx body).
+        assert_eq!(unsigned_hash.len(), 64);
+        assert_eq!(unsigned_hash, signed_hash);
+        assert_eq!(unsigned_hash, compute_tx_hash(&unsigned_hex).unwrap());
     }
 
     #[test]

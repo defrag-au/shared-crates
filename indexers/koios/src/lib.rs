@@ -1,6 +1,7 @@
 pub mod koios_account_utxos;
 pub mod koios_assets;
 pub mod koios_evaluate;
+pub mod koios_params;
 mod koios_serde;
 pub mod koios_transaction;
 pub mod koios_utils;
@@ -9,6 +10,7 @@ pub mod koios_utxos;
 use http_client::{HttpClient, HttpError};
 use koios_account_utxos::TxRecord;
 pub use koios_evaluate::KoiosRedeemerBudget;
+pub use koios_params::KoiosProtocolParams;
 use koios_serde::as_f64;
 use koios_transaction::KoiosTransaction;
 pub use koios_utxos::{KoiosAccountAsset, KoiosInlineDatum, KoiosUtxo, KoiosUtxoAsset, UtxoAmount};
@@ -23,7 +25,7 @@ const BASE_URL: &str = "https://api.koios.rest/api/v1";
 /// Koios API base URL for a Cardano network. The **same API key works across
 /// all environments** — only the host differs. Unknown/mainnet fall back to the
 /// mainnet endpoint.
-pub(crate) fn koios_base_url(network: &str) -> String {
+pub fn koios_base_url(network: &str) -> String {
     match network {
         "cardano:preprod" | "cardano:testnet" => "https://preprod.koios.rest/api/v1".to_string(),
         "cardano:preview" => "https://preview.koios.rest/api/v1".to_string(),
@@ -136,6 +138,24 @@ pub struct UtxoRefsRequest {
     pub utxo_refs: Vec<String>,
     #[serde(rename = "_extended")]
     pub extended: bool,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct DatumInfoRequest {
+    #[serde(rename = "_datum_hashes")]
+    pub datum_hashes: Vec<String>,
+}
+
+/// A datum resolved by hash (`POST /datum_info`) — the CBOR preimage plus its
+/// Plutus-JSON rendering.
+#[derive(Debug, Clone, Deserialize)]
+pub struct KoiosDatumInfo {
+    pub hash: String,
+    /// Raw datum CBOR (hex), if the node holds the preimage.
+    #[serde(default)]
+    pub bytes: Option<String>,
+    #[serde(default)]
+    pub value: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -794,6 +814,25 @@ impl KoiosApi {
             &UtxoRefsRequest {
                 utxo_refs: utxo_refs.to_vec(),
                 extended: true,
+            },
+        )
+        .await
+    }
+
+    /// Resolve datums by hash (`POST /datum_info`) — returns the CBOR preimage
+    /// (`bytes`) for each hash the node holds. Used to witness hash-kind datums.
+    pub async fn get_datum_info(
+        &self,
+        datum_hashes: &[String],
+    ) -> Result<Vec<KoiosDatumInfo>, KoiosError> {
+        if datum_hashes.is_empty() {
+            return Ok(Vec::new());
+        }
+        let url = format!("{}/datum_info", self.base_url);
+        self.post_paginated(
+            &url,
+            &DatumInfoRequest {
+                datum_hashes: datum_hashes.to_vec(),
             },
         )
         .await

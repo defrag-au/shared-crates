@@ -11,6 +11,7 @@ default = []
 evaluator = ["dep:cardano-tx", "dep:async-trait"]
 
 [dependencies]
+cardano-assets = { workspace = true }
 http-client = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 wasm_safe_serde = { workspace = true }

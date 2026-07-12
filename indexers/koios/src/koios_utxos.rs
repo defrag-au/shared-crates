@@ -134,6 +134,73 @@ impl KoiosUtxo {
     pub fn datum_bytes(&self) -> Option<&str> {
         self.inline_datum.as_ref().map(|d| d.bytes.as_str())
     }
+
+    /// True if this UTxO sits at a script payment address (marketplace
+    /// "franken" address, plutus-locked, etc.). Mirrors the bech32 prefix
+    /// check jpg-store-mirror uses.
+    #[must_use]
+    fn is_script_address(&self) -> bool {
+        self.address.starts_with("addr1w")
+            || self.address.starts_with("addr1x")
+            || self.address.starts_with("addr1z")
+            || self.address.starts_with("addr_test1w")
+            || self.address.starts_with("addr_test1x")
+            || self.address.starts_with("addr_test1z")
+    }
+}
+
+/// Convert a Koios extended UTxO into the shared `cardano_assets::UtxoApi`
+/// used across the tx-building workers. This is the Koios counterpart to
+/// maestro's `From<AddressUtxo> for UtxoApi`, so call sites migrating off
+/// Maestro keep the same `.into()` ergonomics.
+///
+/// Native assets whose unit fails to parse into an `AssetId` are skipped
+/// (matching the `filter_map(|a| a.unit.parse().ok())` convention elsewhere).
+/// `tags` are derived from the UTxO's on-chain shape so downstream selection
+/// (collateral, change) can exclude datum-/script-bearing UTxOs.
+impl From<&KoiosUtxo> for cardano_assets::UtxoApi {
+    fn from(u: &KoiosUtxo) -> Self {
+        let assets = u
+            .asset_list
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .filter_map(|a| {
+                a.unit()
+                    .parse::<cardano_assets::AssetId>()
+                    .ok()
+                    .map(|asset_id| cardano_assets::AssetQuantity {
+                        asset_id,
+                        quantity: a.quantity,
+                    })
+            })
+            .collect();
+
+        let mut tags = Vec::new();
+        if u.datum_hash.is_some() || u.inline_datum.is_some() {
+            tags.push(cardano_assets::UtxoTag::HasDatum);
+        }
+        if u.reference_script.is_some() {
+            tags.push(cardano_assets::UtxoTag::HasScriptRef);
+        }
+        if u.is_script_address() {
+            tags.push(cardano_assets::UtxoTag::ScriptAddress);
+        }
+
+        cardano_assets::UtxoApi {
+            tx_hash: u.tx_hash.clone(),
+            output_index: u.tx_index,
+            lovelace: u.value,
+            assets,
+            tags,
+        }
+    }
+}
+
+impl From<KoiosUtxo> for cardano_assets::UtxoApi {
+    fn from(u: KoiosUtxo) -> Self {
+        (&u).into()
+    }
 }
 
 /// A single asset holding from `/account_assets`, tagged with its owning

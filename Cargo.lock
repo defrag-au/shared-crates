@@ -2797,6 +2797,7 @@ name = "koios"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "cardano-assets",
  "cardano-tx",
  "http-client",
  "nom",
