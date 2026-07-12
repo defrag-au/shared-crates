@@ -6,7 +6,7 @@
 //!
 //! The transaction requires VKey witnesses from both parties (CIP-30 partial signing).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use cardano_assets::{AssetId, UtxoApi};
 use pallas_addresses::Address;
@@ -18,10 +18,13 @@ use crate::helpers::input::add_utxo_inputs;
 use crate::helpers::output::{add_assets_from_map, create_ada_output};
 use crate::helpers::utxo_query::{collect_utxo_native_assets, total_utxo_lovelace};
 use crate::params::TxBuildParams;
+use crate::select::{select, Selection, Strategy};
 
 /// One side of an atomic swap.
 pub struct SwapSide {
-    /// UTxOs available from this party (pre-selected to cover offered assets).
+    /// This party's available UTxO pool. `build_atomic_swap` selects a minimal
+    /// covering subset (the UTxOs holding the offered assets + an ADA top-up) —
+    /// pass the full wallet set; it is not consumed wholesale.
     pub utxos: Vec<UtxoApi>,
     /// Payment address for this party's receive output and change.
     pub address: Address,
@@ -60,6 +63,11 @@ pub struct SwapCostBreakdown {
 /// via its dummy-sign approach, so we add the marginal cost of each extra signer.
 const EXTRA_WITNESS_BYTES: u64 = 100;
 
+/// Generous flat network-fee headroom (lovelace) added to each side's coin-selection
+/// target. The exact fee is computed by `converge_fee`; over-selecting here only
+/// returns as change, so ~1 ADA is a safe upper bound for a native multi-sig swap.
+const SELECTION_FEE_ESTIMATE: u64 = 1_000_000;
+
 /// Build an atomic swap transaction between two parties.
 ///
 /// # Arguments
@@ -84,22 +92,45 @@ pub fn build_atomic_swap(
         return Err(TxBuildError::NoSuitableUtxo);
     }
 
-    let a_utxo_refs: Vec<&UtxoApi> = a.utxos.iter().collect();
-    let b_utxo_refs: Vec<&UtxoApi> = b.utxos.iter().collect();
-
-    let a_total_lovelace = total_utxo_lovelace(&a_utxo_refs);
-    let b_total_lovelace = total_utxo_lovelace(&b_utxo_refs);
-
-    // Collect all native assets from each side's UTxOs
-    let a_all_assets = collect_utxo_native_assets(&a_utxo_refs, None);
-    let b_all_assets = collect_utxo_native_assets(&b_utxo_refs, None);
-
-    // Calculate assets each side keeps (all assets minus what they offered)
-    let a_kept_assets = subtract_assets(&a_all_assets, &a.offered_assets);
-    let b_kept_assets = subtract_assets(&b_all_assets, &b.offered_assets);
-
     // Fee output amount (0 if no fee)
     let fee_output_amount = fee_output.as_ref().map(|(_, amt)| *amt).unwrap_or(0);
+
+    // Compute min UTxO for each receive output based on actual assets being delivered.
+    // Each party funds the output that delivers their offered assets to the peer.
+    let a_offered_ids: Vec<AssetId> = a.offered_assets.keys().cloned().collect();
+    let b_offered_ids: Vec<AssetId> = b.offered_assets.keys().cloned().collect();
+    let a_min_utxo = min_utxo_for_assets(params, &a_offered_ids);
+    let b_min_utxo = min_utxo_for_assets(params, &b_offered_ids);
+
+    let a_receive_min = a.ada_lovelace.max(a_min_utxo);
+    let b_receive_min = b.ada_lovelace.max(b_min_utxo);
+
+    // ── Coin selection ───────────────────────────────────────────────────
+    // Select a minimal input set per side instead of consuming the whole wallet:
+    // must-spend the UTxOs that hold the offered assets, then top up ADA to cover
+    // that side's outflow (receive-output funding + fee share + platform-fee share).
+    // A generous flat fee estimate is fine — `converge_fee` computes the exact fee
+    // below and any surplus returns as change; we only ever *reduce* input count.
+    let a_platform_share = fee_output_amount / 2;
+    let b_platform_share = fee_output_amount - a_platform_share;
+    let a_fee_share = SELECTION_FEE_ESTIMATE / 2 + SELECTION_FEE_ESTIMATE % 2;
+    let b_fee_share = SELECTION_FEE_ESTIMATE / 2;
+    let a_target = a_receive_min + a_fee_share + a_platform_share;
+    let b_target = b_receive_min + b_fee_share + b_platform_share;
+
+    let a_selected = select_side_inputs(a, a_target)?;
+    let b_selected = select_side_inputs(b, b_target)?;
+
+    let a_total_lovelace = total_utxo_lovelace(&a_selected);
+    let b_total_lovelace = total_utxo_lovelace(&b_selected);
+
+    // Collect all native assets from each side's *selected* UTxOs
+    let a_all_assets = collect_utxo_native_assets(&a_selected, None);
+    let b_all_assets = collect_utxo_native_assets(&b_selected, None);
+
+    // Calculate assets each side keeps (assets in selected UTxOs minus what they offered)
+    let a_kept_assets = subtract_assets(&a_all_assets, &a.offered_assets);
+    let b_kept_assets = subtract_assets(&b_all_assets, &b.offered_assets);
 
     // Extra witness cost: 1 extra signer beyond what converge_fee accounts for
     let extra_witness_fee = EXTRA_WITNESS_BYTES * params.min_fee_coefficient;
@@ -115,16 +146,6 @@ pub fn build_atomic_swap(
     let b_ada = b.ada_lovelace;
     let a_kept = a_kept_assets.clone();
     let b_kept = b_kept_assets.clone();
-
-    // Compute min UTxO for each receive output based on actual assets being delivered.
-    // Each party funds the output that delivers their offered assets to the peer.
-    let a_offered_ids: Vec<AssetId> = a.offered_assets.keys().cloned().collect();
-    let b_offered_ids: Vec<AssetId> = b.offered_assets.keys().cloned().collect();
-    let a_min_utxo = min_utxo_for_assets(params, &a_offered_ids);
-    let b_min_utxo = min_utxo_for_assets(params, &b_offered_ids);
-
-    let a_receive_min = a.ada_lovelace.max(a_min_utxo);
-    let b_receive_min = b.ada_lovelace.max(b_min_utxo);
 
     let params_clone = params.clone();
     let unsigned = converge_fee(
@@ -158,8 +179,12 @@ pub fn build_atomic_swap(
                     available: b_total_lovelace,
                 })?;
 
-            // Build the transaction
-            let all_inputs: Vec<&UtxoApi> = a.utxos.iter().chain(b.utxos.iter()).collect();
+            // Build the transaction from the pre-selected minimal input set
+            let all_inputs: Vec<&UtxoApi> = a_selected
+                .iter()
+                .copied()
+                .chain(b_selected.iter().copied())
+                .collect();
             let mut tx = add_utxo_inputs(StagingTransaction::new(), &all_inputs)?;
 
             // Output 1: Party A receives B's offered assets + B's ADA sweetener
@@ -456,6 +481,85 @@ fn subtract_assets(
     kept
 }
 
+/// Select a minimal input set for one swap side: the UTxOs holding the offered
+/// assets (must-spend), topped up with the smallest pure-ADA UTxO(s) needed to
+/// cover `target_lovelace`. Replaces the old whole-wallet input sweep — the pool
+/// top-up draws only pure-ADA UTxOs (see [`crate::select::select`]), so no
+/// unrelated assets get dragged into the transaction as change.
+fn select_side_inputs(
+    side: &SwapSide,
+    target_lovelace: u64,
+) -> Result<Vec<&UtxoApi>, TxBuildError> {
+    // A swap draws from the party's whole pool — nothing is earmarked/excluded.
+    // Must be `'static` so the returned refs borrow only from `side.utxos`, not a
+    // local (the `Selection` unifies all three borrows under one lifetime).
+    static EMPTY_EXCLUDE: std::sync::OnceLock<HashSet<(String, u32)>> = std::sync::OnceLock::new();
+    let exclude = EMPTY_EXCLUDE.get_or_init(HashSet::new);
+
+    let must_spend = utxos_covering_offered(&side.utxos, &side.offered_assets)?;
+    let sel = Selection {
+        must_spend,
+        pool: &side.utxos,
+        exclude,
+        strategy: Strategy::SmallestSufficient,
+    };
+    select(&sel, target_lovelace).map_err(|e| match e {
+        crate::select::SelectError::Insufficient { target, available } => {
+            TxBuildError::InsufficientFunds {
+                needed: target,
+                available,
+            }
+        }
+        // A duplicate must-spend would only arise from a genuinely malformed UTxO
+        // pool (same ref twice); surface it as "no suitable UTxO" rather than a
+        // funds shortfall.
+        crate::select::SelectError::DuplicateMustSpend { .. } => TxBuildError::NoSuitableUtxo,
+    })
+}
+
+/// Greedily pick the UTxOs that hold a side's offered assets, accumulating UTxOs
+/// per asset until the offered quantity is covered (an NFT = one UTxO; a fungible
+/// token = however many UTxOs sum to the offered quantity). Returns
+/// [`TxBuildError::NoSuitableUtxo`] if the pool can't cover an offered asset.
+fn utxos_covering_offered<'a>(
+    utxos: &'a [UtxoApi],
+    offered: &HashMap<AssetId, u64>,
+) -> Result<Vec<&'a UtxoApi>, TxBuildError> {
+    if offered.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Remaining quantity still needed per offered asset.
+    let mut needed: HashMap<AssetId, u64> = offered.clone();
+    let mut chosen: Vec<&'a UtxoApi> = Vec::new();
+    let mut chosen_refs: HashSet<(&'a str, u32)> = HashSet::new();
+
+    for utxo in utxos {
+        // Only take this UTxO if it still contributes to an uncovered offered asset.
+        let contributes = utxo
+            .assets
+            .iter()
+            .any(|aq| needed.get(&aq.asset_id).is_some_and(|&rem| rem > 0));
+        if !contributes {
+            continue;
+        }
+        if chosen_refs.insert((utxo.tx_hash.as_str(), utxo.output_index)) {
+            for aq in &utxo.assets {
+                if let Some(rem) = needed.get_mut(&aq.asset_id) {
+                    *rem = rem.saturating_sub(aq.quantity);
+                }
+            }
+            chosen.push(utxo);
+        }
+    }
+
+    if needed.values().any(|&rem| rem > 0) {
+        return Err(TxBuildError::NoSuitableUtxo);
+    }
+
+    Ok(chosen)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -704,6 +808,124 @@ mod tests {
             swap.costs.a_net_ada > -5_000_000,
             "net ADA unreasonably negative (change overhead leaked?): {}",
             swap.costs.a_net_ada
+        );
+    }
+
+    #[test]
+    fn test_coin_selection_bounds_inputs() {
+        // Party offers one NFT held in a single UTxO, but the wallet also holds
+        // 50 unrelated pure-ADA UTxOs. Selection must NOT sweep them all.
+        let nft = make_asset_id("OfferedNFT");
+        let mut utxos = vec![make_utxo(
+            &"f".repeat(64),
+            3_000_000,
+            vec![(nft.clone(), 1)],
+        )];
+        for i in 0..50u32 {
+            utxos.push(make_utxo(&format!("{i:064x}"), 2_000_000, vec![]));
+        }
+        let side = SwapSide {
+            utxos,
+            address: Address::from_bech32(TEST_ADDR_A).unwrap(),
+            offered_assets: HashMap::from([(nft.clone(), 1)]),
+            ada_lovelace: 0,
+        };
+        // The NFT UTxO alone (3 ADA) already covers the small target → 1 input.
+        let selected = select_side_inputs(&side, 2_500_000).unwrap();
+        assert_eq!(selected.len(), 1, "expected only the offered-asset UTxO");
+        assert!(selected[0].assets.iter().any(|aq| aq.asset_id == nft));
+    }
+
+    #[test]
+    fn test_coin_selection_tops_up_ada() {
+        // NFT sits in a UTxO with only 1 ADA — selection must add ADA UTxOs to
+        // reach the target, but still far fewer than the whole wallet.
+        let nft = make_asset_id("OfferedNFT");
+        let mut utxos = vec![make_utxo(
+            &"f".repeat(64),
+            1_000_000,
+            vec![(nft.clone(), 1)],
+        )];
+        for i in 0..8u32 {
+            utxos.push(make_utxo(&format!("{i:064x}"), 2_000_000, vec![]));
+        }
+        let side = SwapSide {
+            utxos,
+            address: Address::from_bech32(TEST_ADDR_A).unwrap(),
+            offered_assets: HashMap::from([(nft.clone(), 1)]),
+            ada_lovelace: 0,
+        };
+        let selected = select_side_inputs(&side, 4_000_000).unwrap();
+        assert!(
+            (2..6).contains(&selected.len()),
+            "expected a small topped-up set, got {}",
+            selected.len()
+        );
+        assert!(selected
+            .iter()
+            .any(|u| u.assets.iter().any(|aq| aq.asset_id == nft)));
+        let total: u64 = selected.iter().map(|u| u.lovelace).sum();
+        assert!(total >= 4_000_000);
+    }
+
+    #[test]
+    fn test_utxos_covering_offered_fungible_accumulates() {
+        // A fungible offer of 100 spread across two 60-qty UTxOs needs both.
+        let ft = make_asset_id("TOKEN");
+        let utxos = vec![
+            make_utxo(&"a".repeat(64), 2_000_000, vec![(ft.clone(), 60)]),
+            make_utxo(&"b".repeat(64), 2_000_000, vec![(ft.clone(), 60)]),
+            make_utxo(&"c".repeat(64), 2_000_000, vec![]),
+        ];
+        let offered = HashMap::from([(ft.clone(), 100)]);
+        let covering = utxos_covering_offered(&utxos, &offered).unwrap();
+        assert_eq!(covering.len(), 2, "need both token UTxOs to cover qty 100");
+    }
+
+    #[test]
+    fn test_swap_ignores_unrelated_utxos() {
+        // Each side offers one NFT (in one UTxO) but holds 40 unrelated ADA UTxOs.
+        // Fee scales with tx size, so a bounded fee proves inputs weren't swept.
+        let nft_a = make_asset_id("PirateA");
+        let nft_b = make_asset_id("PirateB");
+
+        let mut a_utxos = vec![make_utxo(
+            &"a".repeat(64),
+            5_000_000,
+            vec![(nft_a.clone(), 1)],
+        )];
+        let mut b_utxos = vec![make_utxo(
+            &"b".repeat(64),
+            5_000_000,
+            vec![(nft_b.clone(), 1)],
+        )];
+        for i in 0..40u32 {
+            a_utxos.push(make_utxo(&format!("a{i:063x}"), 2_000_000, vec![]));
+            b_utxos.push(make_utxo(&format!("b{i:063x}"), 2_000_000, vec![]));
+        }
+
+        let sides = [
+            SwapSide {
+                utxos: a_utxos,
+                address: Address::from_bech32(TEST_ADDR_A).unwrap(),
+                offered_assets: HashMap::from([(nft_a.clone(), 1)]),
+                ada_lovelace: 0,
+            },
+            SwapSide {
+                utxos: b_utxos,
+                address: Address::from_bech32(TEST_ADDR_B).unwrap(),
+                offered_assets: HashMap::from([(nft_b.clone(), 1)]),
+                ada_lovelace: 0,
+            },
+        ];
+
+        let swap = build_atomic_swap(&sides, None, &test_params(), 0).unwrap();
+        // Each NFT UTxO (5 ADA) covers its side's small target alone → ~2 inputs.
+        // If all 82 UTxOs were swept in, the size-driven fee would balloon.
+        assert!(
+            swap.unsigned.fee < 300_000,
+            "fee too high — inputs not minimised: {}",
+            swap.unsigned.fee
         );
     }
 }
