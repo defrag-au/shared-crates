@@ -393,7 +393,11 @@ impl ImageTextEditor {
                 ];
                 for (ci, corner) in corners.iter().enumerate() {
                     painter.circle_filled(*corner, handle_radius, Color32::from_rgb(100, 180, 255));
-                    painter.circle_stroke(*corner, handle_radius, Stroke::new(1.0_f32, Color32::WHITE));
+                    painter.circle_stroke(
+                        *corner,
+                        handle_radius,
+                        Stroke::new(1.0_f32, Color32::WHITE),
+                    );
 
                     let handle_rect =
                         Rect::from_center_size(*corner, egui::vec2(hit_size, hit_size));

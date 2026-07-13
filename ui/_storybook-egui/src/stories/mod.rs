@@ -68,6 +68,7 @@ pub mod coverage_delta_bar;
 pub mod fee_report;
 pub mod managed_wallet_utxos;
 pub mod signing_status;
+pub mod trade_flow;
 pub mod trade_table;
 pub mod trait_delta;
 pub mod tx_estimate;

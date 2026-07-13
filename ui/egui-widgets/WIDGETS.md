@@ -199,6 +199,9 @@ generalise them into other contexts.
   per-item counts + providers + batch execute.
 - **`tx_estimate`** → `TxEstimateData` — Per-wallet ADA cost breakdown
   during trade negotiation.
+- **`trade_flow`** → `TradeFlowData` + `FlowAsset` — Plain give / get / net
+  view of a swap; names pass-through amounts so a hardware wallet's inflated
+  "send" reads as explained, not surprising.
 - **`trait_delta`** → `TraitItem` — Gains (+green) / losses (-red)
   trait chips for trade swaps.
 - **`printing_timeline`** → `PrintingTimelineConfig` — Horizontal

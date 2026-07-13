@@ -49,6 +49,7 @@ mod app {
         SigningStatus,
         FeeReport,
         TxEstimate,
+        TradeFlow,
         WalletAssetPicker,
         UtxoMap,
         ManagedWalletUtxos,
@@ -167,6 +168,7 @@ mod app {
                 Self::SigningStatus,
                 Self::FeeReport,
                 Self::TxEstimate,
+                Self::TradeFlow,
                 Self::WalletAssetPicker,
                 Self::UtxoMap,
                 Self::ManagedWalletUtxos,
@@ -245,6 +247,7 @@ mod app {
                 Self::SigningStatus => "Signing Status",
                 Self::FeeReport => "Fee Report",
                 Self::TxEstimate => "TX Estimate",
+                Self::TradeFlow => "Trade Flow",
                 Self::WalletAssetPicker => "Wallet Asset Picker",
                 Self::UtxoMap => "UTxO Shelf",
                 Self::ManagedWalletUtxos => "Managed Wallet UTxOs",
@@ -348,6 +351,7 @@ mod app {
                 | Self::SigningStatus
                 | Self::FeeReport
                 | Self::TxEstimate
+                | Self::TradeFlow
                 | Self::WalletAssetPicker => "Trade Desk",
                 Self::UtxoMap
                 | Self::ManagedWalletUtxos
@@ -453,6 +457,9 @@ mod app {
                 }
                 Self::TxEstimate => {
                     "Per-wallet transaction estimate with platform fee, network fee, min UTxO, and net ADA"
+                }
+                Self::TradeFlow => {
+                    "Give / get / net view of a swap; flags UTxO rebalancing so a hardware wallet's inflated 'send' reads as an explained mechanic"
                 }
                 Self::WalletAssetPicker => {
                     "Modal asset browser with accordion policy groups and card grid selection"
@@ -657,6 +664,7 @@ mod app {
         asset_strip_state: stories::asset_strip::AssetStripStoryState,
         fee_report_state: stories::fee_report::FeeReportStoryState,
         tx_estimate_state: stories::tx_estimate::TxEstimateStoryState,
+        trade_flow_state: stories::trade_flow::TradeFlowStoryState,
         signing_status_state: stories::signing_status::SigningStatusStoryState,
         trade_table_state: stories::trade_table::TradeTableStoryState,
         wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
@@ -776,6 +784,7 @@ mod app {
                 asset_strip_state: stories::asset_strip::AssetStripStoryState::default(),
                 fee_report_state: stories::fee_report::FeeReportStoryState::default(),
                 tx_estimate_state: stories::tx_estimate::TxEstimateStoryState::default(),
+                trade_flow_state: stories::trade_flow::TradeFlowStoryState::default(),
                 signing_status_state: stories::signing_status::SigningStatusStoryState::default(),
                 trade_table_state: stories::trade_table::TradeTableStoryState::default(),
                 wallet_asset_picker_state:
@@ -968,6 +977,9 @@ mod app {
                             }
                             Story::TxEstimate => {
                                 stories::tx_estimate::show(ui, &mut self.tx_estimate_state)
+                            }
+                            Story::TradeFlow => {
+                                stories::trade_flow::show(ui, &mut self.trade_flow_state)
                             }
                             Story::WalletAssetPicker => stories::wallet_asset_picker::show(
                                 &ctx,
