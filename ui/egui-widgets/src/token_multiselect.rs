@@ -88,7 +88,12 @@ impl<'a> TokenMultiselect<'a> {
                 let cr = CornerRadius::same(3);
                 painter.rect_filled(rect, cr, bg);
                 if let Some(b) = border {
-                    painter.rect_stroke(rect, cr, Stroke::new(1.0_f32, b), egui::StrokeKind::Inside);
+                    painter.rect_stroke(
+                        rect,
+                        cr,
+                        Stroke::new(1.0_f32, b),
+                        egui::StrokeKind::Inside,
+                    );
                 }
                 painter.galley(
                     egui::pos2(rect.left() + PAD.x, rect.center().y - galley.size().y / 2.0),

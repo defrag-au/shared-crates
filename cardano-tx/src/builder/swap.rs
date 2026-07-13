@@ -62,6 +62,12 @@ pub struct SwapCostBreakdown {
     pub a_net_ada: i64,
     /// Net ADA gain/loss for Party B.
     pub b_net_ada: i64,
+    /// Party A's own ADA that passes through the tx and returns to them as change.
+    /// Not a cost — but it appears as the *counterparty's* "send" on a hardware
+    /// wallet, so surfacing it lets the UI explain that inflated figure.
+    pub a_passthrough: u64,
+    /// Party B's own ADA that passes through the tx and returns to them as change.
+    pub b_passthrough: u64,
 }
 
 /// A swap requires a vkey witness from BOTH parties (CIP-30 partial signing).
@@ -195,27 +201,32 @@ pub fn build_atomic_swap(
                 .collect();
             let mut tx = add_utxo_inputs(StagingTransaction::new(), &all_inputs)?;
 
+            // Keep each party's *payment* output separate from their *change*
+            // output. A buyer's payment then shows as a discrete, recognisable
+            // output line on a hardware wallet (Ledger); a merged payment+change
+            // output displays as one inflated "send" the buyer can't verify.
+
             // Output 1: Party A receives B's offered assets + B's ADA sweetener
             tx = add_receive_output(tx, a_addr.clone(), &b_offered, b_ada, b_min_utxo)?;
 
             // Output 2: Party B receives A's offered assets + A's ADA sweetener
             tx = add_receive_output(tx, b_addr.clone(), &a_offered, a_ada, a_min_utxo)?;
 
-            // Outputs 3+: Party A's change (split if needed)
+            // Party A's change (split if needed)
             if a_change > 0 || !a_kept.is_empty() {
                 let (new_tx, _) =
                     add_split_change_outputs(tx, a_addr.clone(), a_change, &a_kept, &params_clone)?;
                 tx = new_tx;
             }
 
-            // Outputs N+: Party B's change (split if needed)
+            // Party B's change (split if needed)
             if b_change > 0 || !b_kept.is_empty() {
                 let (new_tx, _) =
                     add_split_change_outputs(tx, b_addr.clone(), b_change, &b_kept, &params_clone)?;
                 tx = new_tx;
             }
 
-            // Final output: Optional orchestration fee to community wallet
+            // Optional orchestration fee to community wallet
             if let Some((ref fee_addr, fee_amount)) = fee_output_clone {
                 if fee_amount > 0 {
                     tx = tx.output(create_ada_output(fee_addr.clone(), fee_amount));
@@ -249,6 +260,12 @@ pub fn build_atomic_swap(
         - b_network_share as i64
         - b_platform_share as i64;
 
+    // Each side's own ADA that returns to them as change (= inputs - their outflow).
+    let a_passthrough =
+        a_total_lovelace.saturating_sub(a_ada + a_wrapper + a_network_share + a_platform_share);
+    let b_passthrough =
+        b_total_lovelace.saturating_sub(b_ada + b_wrapper + b_network_share + b_platform_share);
+
     Ok(SwapBuildResult {
         unsigned,
         costs: SwapCostBreakdown {
@@ -260,6 +277,8 @@ pub fn build_atomic_swap(
             b_min_utxo_cost: b_wrapper,
             a_net_ada,
             b_net_ada,
+            a_passthrough,
+            b_passthrough,
         },
     })
 }
@@ -737,6 +756,45 @@ mod tests {
             swap.unsigned.fee >= min_fee,
             "fee {} is below the 2-witness minimum {min_fee}",
             swap.unsigned.fee
+        );
+    }
+
+    #[test]
+    fn test_swap_keeps_payment_separate_from_change() {
+        // A sells an NFT for 2500 ADA. Each party's payment output is kept SEPARATE
+        // from their change output (4 outputs total, not a merged 2) so the buyer's
+        // payment shows as a discrete, verifiable line on a hardware wallet — do not
+        // consolidate these, it produces one inflated "send" a Ledger can't verify.
+        let nft = make_asset_id("ForSale");
+        let sides = [
+            SwapSide {
+                utxos: vec![make_utxo(
+                    &"a".repeat(64),
+                    3_000_000,
+                    vec![(nft.clone(), 1)],
+                )],
+                address: Address::from_bech32(TEST_ADDR_A).unwrap(),
+                offered_assets: HashMap::from([(nft.clone(), 1)]),
+                ada_lovelace: 0,
+            },
+            SwapSide {
+                utxos: vec![make_utxo(&"b".repeat(64), 2_600_000_000, vec![])],
+                address: Address::from_bech32(TEST_ADDR_B).unwrap(),
+                offered_assets: HashMap::new(),
+                ada_lovelace: 2_500_000_000,
+            },
+        ];
+        let swap = build_atomic_swap(&sides, None, &test_params(), 0).unwrap();
+        let output_count = swap
+            .unsigned
+            .staging
+            .outputs
+            .as_ref()
+            .map(|o| o.len())
+            .unwrap_or(0);
+        assert_eq!(
+            output_count, 4,
+            "payment and change must stay as separate outputs per party"
         );
     }
 

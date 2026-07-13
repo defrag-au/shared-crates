@@ -56,6 +56,7 @@ pub mod theme;
 pub mod timestamp;
 pub mod toast;
 pub mod token_multiselect;
+pub mod trade_flow;
 pub mod trait_filter;
 pub mod typeahead_search;
 pub mod user_badge;
@@ -186,6 +187,7 @@ pub use theme::{rarity_rank_color, FontStrategy};
 pub use timestamp::{format_iso8601, Timestamp};
 pub use toast::{show_toasts, Toast, ToastKind, ToastQueue, DEFAULT_DURATION_FRAMES};
 pub use token_multiselect::{TokenMultiselect, TokenMultiselectResponse};
+pub use trade_flow::{FlowAsset, TradeFlowConfig, TradeFlowData};
 pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
 pub use typeahead_search::{filter_options, TypeaheadOption, TypeaheadResponse, TypeaheadSearch};
 pub use utils::{
