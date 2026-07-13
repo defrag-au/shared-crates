@@ -12,7 +12,7 @@ use cardano_assets::{AssetId, UtxoApi};
 use pallas_addresses::Address;
 use pallas_txbuilder::StagingTransaction;
 
-use super::{converge_fee, UnsignedTx};
+use super::{converge_fee_with_witnesses, UnsignedTx};
 use crate::error::TxBuildError;
 use crate::helpers::input::add_utxo_inputs;
 use crate::helpers::output::{add_assets_from_map, create_ada_output};
@@ -44,13 +44,19 @@ pub struct SwapBuildResult {
 /// Detailed cost breakdown for an atomic swap, one entry per side.
 #[derive(Debug)]
 pub struct SwapCostBreakdown {
-    /// Total network TX fee (split between parties).
+    /// Total network TX fee.
     pub network_fee: u64,
+    /// Network fee borne by Party A (an even split of `network_fee`; A absorbs the
+    /// rounding remainder).
+    pub a_network_fee: u64,
+    /// Network fee borne by Party B (an even split of `network_fee`).
+    pub b_network_fee: u64,
     /// Total platform/orchestration fee.
     pub platform_fee: u64,
-    /// Min UTxO lovelace Party A must fund for the output carrying their assets to B.
+    /// Min-UTxO lovelace Party A funds for the assets A *receives* (the wrapper
+    /// lands in A's own wallet and is recoverable). 0 when A receives only ADA.
     pub a_min_utxo_cost: u64,
-    /// Min UTxO lovelace Party B must fund for the output carrying their assets to A.
+    /// Min-UTxO lovelace Party B funds for the assets B *receives*.
     pub b_min_utxo_cost: u64,
     /// Net ADA gain/loss for Party A (positive = gains ADA, negative = loses ADA).
     pub a_net_ada: i64,
@@ -58,10 +64,8 @@ pub struct SwapCostBreakdown {
     pub b_net_ada: i64,
 }
 
-/// Additional fee per VKey witness beyond the first (bytes × min_fee_coefficient).
-/// Each VKey witness is ~100 bytes CBOR. `converge_fee` accounts for one witness
-/// via its dummy-sign approach, so we add the marginal cost of each extra signer.
-const EXTRA_WITNESS_BYTES: u64 = 100;
+/// A swap requires a vkey witness from BOTH parties (CIP-30 partial signing).
+const SWAP_WITNESSES: u32 = 2;
 
 /// Generous flat network-fee headroom (lovelace) added to each side's coin-selection
 /// target. The exact fee is computed by `converge_fee`; over-selecting here only
@@ -102,21 +106,31 @@ pub fn build_atomic_swap(
     let a_min_utxo = min_utxo_for_assets(params, &a_offered_ids);
     let b_min_utxo = min_utxo_for_assets(params, &b_offered_ids);
 
-    let a_receive_min = a.ada_lovelace.max(a_min_utxo);
-    let b_receive_min = b.ada_lovelace.max(b_min_utxo);
+    let a_ada = a.ada_lovelace;
+    let b_ada = b.ada_lovelace;
+
+    // ── Cost allocation ──────────────────────────────────────────────────
+    // Min-UTxO wrapper: the mandatory ADA that must ride with an asset lands in
+    // the *recipient's* wallet (and is recoverable when they later move it), so
+    // the recipient funds it — not the sender. A sender's ADA sweetener already
+    // covers part of the receive output; the recipient funds only the shortfall
+    // up to min-UTxO. This lets an asset seller receive clean proceeds instead of
+    // subsidising the buyer's min-UTxO.
+    let a_wrapper = b_min_utxo.saturating_sub(b_ada); // A receives B's assets
+    let b_wrapper = a_min_utxo.saturating_sub(a_ada); // B receives A's assets
+
+    let a_platform_share = fee_output_amount / 2;
+    let b_platform_share = fee_output_amount - a_platform_share;
 
     // ── Coin selection ───────────────────────────────────────────────────
     // Select a minimal input set per side instead of consuming the whole wallet:
     // must-spend the UTxOs that hold the offered assets, then top up ADA to cover
-    // that side's outflow (receive-output funding + fee share + platform-fee share).
-    // A generous flat fee estimate is fine — `converge_fee` computes the exact fee
-    // below and any surplus returns as change; we only ever *reduce* input count.
-    let a_platform_share = fee_output_amount / 2;
-    let b_platform_share = fee_output_amount - a_platform_share;
-    let a_fee_share = SELECTION_FEE_ESTIMATE / 2 + SELECTION_FEE_ESTIMATE % 2;
-    let b_fee_share = SELECTION_FEE_ESTIMATE / 2;
-    let a_target = a_receive_min + a_fee_share + a_platform_share;
-    let b_target = b_receive_min + b_fee_share + b_platform_share;
+    // that side's outflow (ADA sweetener + wrapper it funds + fee share + platform
+    // share). A generous flat fee estimate is fine — `converge_fee` computes the
+    // exact fee below and any surplus returns as change.
+    let (a_fee_est, b_fee_est) = split_network_fee(SELECTION_FEE_ESTIMATE);
+    let a_target = a_ada + a_wrapper + a_fee_est + a_platform_share;
+    let b_target = b_ada + b_wrapper + b_fee_est + b_platform_share;
 
     let a_selected = select_side_inputs(a, a_target)?;
     let b_selected = select_side_inputs(b, b_target)?;
@@ -132,52 +146,46 @@ pub fn build_atomic_swap(
     let a_kept_assets = subtract_assets(&a_all_assets, &a.offered_assets);
     let b_kept_assets = subtract_assets(&b_all_assets, &b.offered_assets);
 
-    // Extra witness cost: 1 extra signer beyond what converge_fee accounts for
-    let extra_witness_fee = EXTRA_WITNESS_BYTES * params.min_fee_coefficient;
-
-    // Each side pays half the TX fee + half the orchestration fee
-    // (Fee is split evenly; the orchestration fee is already accounted for in fee_output)
+    // Each side pays half the network fee + half the orchestration fee.
     let fee_output_clone = fee_output.clone();
     let a_addr = a.address.clone();
     let b_addr = b.address.clone();
     let a_offered = a.offered_assets.clone();
     let b_offered = b.offered_assets.clone();
-    let a_ada = a.ada_lovelace;
-    let b_ada = b.ada_lovelace;
     let a_kept = a_kept_assets.clone();
     let b_kept = b_kept_assets.clone();
 
     let params_clone = params.clone();
-    let unsigned = converge_fee(
+    // Size the fee for BOTH parties' witnesses — `converge_fee` (1 witness) would
+    // undersize the 2-signature swap and the node would reject it as below the
+    // minimum fee.
+    let unsigned = converge_fee_with_witnesses(
         move |fee| {
-            let total_fee = fee + extra_witness_fee;
-            // Split TX fee evenly between parties
-            let fee_per_side = total_fee / 2;
-            let fee_remainder = total_fee % 2; // Party A absorbs the rounding remainder
+            // Network fee split evenly between the two parties.
+            let (a_fee_share, b_fee_share) = split_network_fee(fee);
 
-            // Party A's change = total input - receive output they fund (B gets A's assets)
-            //                    - fee share - orchestration fee share
-            // A funds the output that delivers A's offered assets to B (a_receive_min ADA)
-            let a_change = a_total_lovelace
-                .checked_sub(a_receive_min)
-                .and_then(|v| v.checked_sub(fee_per_side + fee_remainder))
-                .and_then(|v| v.checked_sub(fee_output_amount / 2))
-                .ok_or(TxBuildError::InsufficientFunds {
-                    needed: a_receive_min + fee_per_side + fee_remainder + fee_output_amount / 2,
-                    available: a_total_lovelace,
-                })?;
+            // Party A's outflow = ADA sweetener A gives + the min-UTxO wrapper A
+            //   funds for the assets A receives + A's fee share + A's platform share.
+            //   A's own asset-input ADA (freed when A's offered UTxO is spent) returns
+            //   to A as change — A no longer funds the wrapper for what it sends.
+            let a_outflow = a_ada + a_wrapper + a_fee_share + a_platform_share;
+            let a_change =
+                a_total_lovelace
+                    .checked_sub(a_outflow)
+                    .ok_or(TxBuildError::InsufficientFunds {
+                        needed: a_outflow,
+                        available: a_total_lovelace,
+                    })?;
 
-            // Party B's change = total input - receive output they fund (A gets B's assets)
-            //                    - fee share - orchestration fee share
-            let b_change = b_total_lovelace
-                .checked_sub(b_receive_min)
-                .and_then(|v| v.checked_sub(fee_per_side))
-                .and_then(|v| v.checked_sub(fee_output_amount - fee_output_amount / 2))
-                .ok_or(TxBuildError::InsufficientFunds {
-                    needed: b_receive_min + fee_per_side + fee_output_amount
-                        - fee_output_amount / 2,
-                    available: b_total_lovelace,
-                })?;
+            // Party B's outflow, symmetric.
+            let b_outflow = b_ada + b_wrapper + b_fee_share + b_platform_share;
+            let b_change =
+                b_total_lovelace
+                    .checked_sub(b_outflow)
+                    .ok_or(TxBuildError::InsufficientFunds {
+                        needed: b_outflow,
+                        available: b_total_lovelace,
+                    })?;
 
             // Build the transaction from the pre-selected minimal input set
             let all_inputs: Vec<&UtxoApi> = a_selected
@@ -214,47 +222,55 @@ pub fn build_atomic_swap(
                 }
             }
 
-            Ok(tx.fee(total_fee).network_id(network_id))
+            Ok(tx.fee(fee).network_id(network_id))
         },
         300_000, // Initial fee estimate (generous for multi-input/output TX)
         params,
+        SWAP_WITNESSES,
     )?;
 
-    // Compute cost breakdown from the converged fee
+    // Compute cost breakdown from the converged fee (already sized for both witnesses)
     let network_fee = unsigned.fee;
-    let total_fee_with_witness = network_fee + extra_witness_fee;
-    let fee_per_side = total_fee_with_witness / 2;
-    let fee_remainder = total_fee_with_witness % 2;
+    let (a_network_share, b_network_share) = split_network_fee(network_fee);
 
-    let a_platform_share = fee_output_amount / 2;
-    let b_platform_share = fee_output_amount - a_platform_share;
-    let a_network_share = fee_per_side + fee_remainder;
-    let b_network_share = fee_per_side;
-
-    // Net ADA = received from peer - sent to peer - min UTxO cost - network fee - platform fee
-    // Note: change output splitting is NOT a cost — that ADA stays in your wallet.
+    // Net ADA = ADA received from peer - ADA sweetener given - min-UTxO wrapper the
+    // party funds for assets it *receives* - its network fee - its platform fee.
+    // The wrapper is locked in the party's own wallet (recoverable), but counted as
+    // a cost here since it isn't liquid. Change splitting is NOT a cost — that ADA
+    // stays in the wallet.
     let a_net_ada = b_ada as i64
         - a_ada as i64
-        - a_min_utxo as i64
+        - a_wrapper as i64
         - a_network_share as i64
         - a_platform_share as i64;
     let b_net_ada = a_ada as i64
         - b_ada as i64
-        - b_min_utxo as i64
+        - b_wrapper as i64
         - b_network_share as i64
         - b_platform_share as i64;
 
     Ok(SwapBuildResult {
         unsigned,
         costs: SwapCostBreakdown {
-            network_fee: total_fee_with_witness,
+            network_fee,
+            a_network_fee: a_network_share,
+            b_network_fee: b_network_share,
             platform_fee: fee_output_amount,
-            a_min_utxo_cost: a_min_utxo,
-            b_min_utxo_cost: b_min_utxo,
+            a_min_utxo_cost: a_wrapper,
+            b_min_utxo_cost: b_wrapper,
             a_net_ada,
             b_net_ada,
         },
     })
+}
+
+/// Split the network fee evenly between the two parties (Party A absorbs the
+/// rounding remainder). The min-UTxO wrapper is already allocated to the asset
+/// recipient separately, so an even fee split still leaves an NFT seller with
+/// essentially their full sale price (they bear only ~half the ~0.18 ADA fee).
+/// Returns `(a_share, b_share)` with `a_share + b_share == total_fee`.
+fn split_network_fee(total_fee: u64) -> (u64, u64) {
+    (total_fee / 2 + total_fee % 2, total_fee / 2)
 }
 
 /// Create a receive output with offered assets and ADA sweetener.
@@ -670,14 +686,115 @@ mod tests {
         assert!(result.is_ok(), "swap with sweetener failed: {result:?}");
 
         let swap = result.unwrap();
-        // Party A offers NFT (has min UTxO cost), Party B offers pure ADA (no min UTxO)
-        assert!(swap.costs.a_min_utxo_cost > 0);
-        assert_eq!(swap.costs.b_min_utxo_cost, 0);
-        // Party A receives 5 ADA sweetener, net should be positive
+        // Min-UTxO is funded by the *recipient* of the assets:
+        //  - Party A receives only ADA (B's sweetener) → funds no wrapper.
+        //  - Party B receives A's NFT → funds its min-UTxO wrapper.
+        assert_eq!(swap.costs.a_min_utxo_cost, 0);
+        assert!(swap.costs.b_min_utxo_cost > 0);
+        // Party A receives a 5 ADA sweetener with no costs → net positive.
         assert!(
             swap.costs.a_net_ada > 0,
             "seller should profit: {}",
             swap.costs.a_net_ada
+        );
+    }
+
+    #[test]
+    fn test_swap_fee_covers_two_witnesses() {
+        // Regression: the fee must be >= the node's minimum for a *2-signature* tx.
+        // The builder previously sized for 1 witness + a too-small fudge, so the
+        // node rejected the tx as "fee below the minimum fee required".
+        let nft_a = make_asset_id("A");
+        let nft_b = make_asset_id("B");
+        let sides = [
+            SwapSide {
+                utxos: vec![make_utxo(
+                    &"a".repeat(64),
+                    10_000_000,
+                    vec![(nft_a.clone(), 1)],
+                )],
+                address: Address::from_bech32(TEST_ADDR_A).unwrap(),
+                offered_assets: HashMap::from([(nft_a.clone(), 1)]),
+                ada_lovelace: 0,
+            },
+            SwapSide {
+                utxos: vec![make_utxo(
+                    &"b".repeat(64),
+                    10_000_000,
+                    vec![(nft_b.clone(), 1)],
+                )],
+                address: Address::from_bech32(TEST_ADDR_B).unwrap(),
+                offered_assets: HashMap::from([(nft_b.clone(), 1)]),
+                ada_lovelace: 0,
+            },
+        ];
+        let params = test_params();
+        let swap = build_atomic_swap(&sides, None, &params, 0).unwrap();
+
+        // The converged fee must cover the fully-signed (2-witness) transaction.
+        let min_fee = crate::fee::calculate_fee_with_witnesses(&swap.unsigned.staging, &params, 2);
+        assert!(
+            swap.unsigned.fee >= min_fee,
+            "fee {} is below the 2-witness minimum {min_fee}",
+            swap.unsigned.fee
+        );
+    }
+
+    #[test]
+    fn test_nft_sale_cost_allocation() {
+        // A sells an NFT; B pays 2500 ADA. The buyer funds the NFT's min-UTxO
+        // wrapper (it lands in the buyer's wallet), and the network fee is split
+        // evenly — so the seller nets the price minus only their half of the fee.
+        let nft = make_asset_id("ForSale");
+        let price = 2_500_000_000u64;
+        let sides = [
+            SwapSide {
+                utxos: vec![make_utxo(
+                    &"a".repeat(64),
+                    3_000_000,
+                    vec![(nft.clone(), 1)],
+                )],
+                address: Address::from_bech32(TEST_ADDR_A).unwrap(),
+                offered_assets: HashMap::from([(nft.clone(), 1)]),
+                ada_lovelace: 0,
+            },
+            SwapSide {
+                // Buyer's 2500 ADA across a couple of UTxOs + headroom for fee/wrapper.
+                utxos: vec![
+                    make_utxo(&"b".repeat(64), 2_000_000_000, vec![]),
+                    make_utxo(&"c".repeat(64), 510_000_000, vec![]),
+                ],
+                address: Address::from_bech32(TEST_ADDR_B).unwrap(),
+                offered_assets: HashMap::new(),
+                ada_lovelace: price,
+            },
+        ];
+
+        let swap = build_atomic_swap(&sides, None, &test_params(), 0).unwrap();
+
+        // Seller (A) funds no wrapper — the ADA lands cleanly.
+        assert_eq!(swap.costs.a_min_utxo_cost, 0, "seller funds no wrapper");
+        // Buyer (B) funds the NFT's min-UTxO wrapper (lands in the buyer's wallet).
+        assert!(
+            swap.costs.b_min_utxo_cost > 0,
+            "buyer funds the NFT wrapper"
+        );
+        // Network fee split evenly between the two parties.
+        assert_eq!(
+            swap.costs.a_network_fee + swap.costs.b_network_fee,
+            swap.costs.network_fee,
+            "fee shares sum to the total"
+        );
+        assert_eq!(
+            swap.costs.a_network_fee,
+            swap.costs.network_fee / 2 + swap.costs.network_fee % 2,
+            "seller bears half the fee (plus remainder)"
+        );
+        // Seller receives the price minus only their half of the network fee.
+        assert_eq!(
+            swap.costs.a_net_ada,
+            price as i64 - swap.costs.a_network_fee as i64,
+            "seller nets price minus half the fee"
         );
     }
 
