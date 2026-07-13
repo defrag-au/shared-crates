@@ -105,7 +105,7 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
     });
     ui.add_space(8.0);
 
-    // You give →
+    // You give
     flow_row(
         ui,
         "You give",
@@ -113,7 +113,7 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
         ChipVariant::Danger,
         &data.you_give,
         data.you_give_ada,
-        &format!("Leaves your wallet → {}", data.peer_label),
+        &format!("Leaves your wallet -> {}", data.peer_label),
         config,
     );
 
@@ -125,7 +125,7 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
     });
     ui.add_space(2.0);
 
-    // You get ←
+    // You get
     flow_row(
         ui,
         "You get",
