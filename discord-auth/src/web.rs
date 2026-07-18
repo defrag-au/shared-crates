@@ -33,6 +33,9 @@ pub struct Session {
     /// Discord identity (from the JWT `name`/`avatar`/`sub` claims), for
     /// the "logged in as" UI. `None` for anonymous / debug sessions.
     pub identity: Option<Identity>,
+    /// JWT `exp` claim, unix seconds. `None` for debug/anonymous sessions.
+    /// Apps can use this to prompt re-login before a request bounces.
+    pub expires_at: Option<u64>,
 }
 
 /// The Discord identity carried in a session, for display.
@@ -100,6 +103,17 @@ impl Session {
 
     fn from_jwt(jwt: &str) -> Self {
         let payload = decode_payload(jwt).unwrap_or_default();
+
+        // An expired token would authenticate the UI (unlocking gated
+        // controls) only for every request to bounce off the server's
+        // strict `exp` validation. Treat it as logged-out instead: drop
+        // the stored token and return to anonymous so the app shows the
+        // login gate rather than a wall of 401s.
+        if payload.exp.is_some_and(|exp| now_secs() >= exp) {
+            remove(SESSION_KEY);
+            return Self::default();
+        }
+
         let identity = (!payload.sub.is_empty()).then_some(Identity {
             user_id: payload.sub,
             name: payload.name,
@@ -111,6 +125,7 @@ impl Session {
             auth_header: Some(("Authorization".into(), format!("Bearer {jwt}"))),
             fresh_login: false,
             identity,
+            expires_at: payload.exp,
         }
     }
 
@@ -123,6 +138,7 @@ impl Session {
             auth_header: Some(("X-Debug-Token".into(), token.to_string())),
             fresh_login: false,
             identity: None,
+            expires_at: None,
         }
     }
 
@@ -146,7 +162,8 @@ pub fn begin_login(client_id: &str, redirect_uri: &str, scopes: &[&str]) {
 }
 
 /// The display-relevant JWT claims (decoded WITHOUT verifying — the server
-/// verifies; the frontend only needs these to render).
+/// verifies; the frontend only needs these to render, and `exp` to avoid
+/// presenting a token the server will reject anyway).
 #[derive(Default, serde::Deserialize)]
 struct Payload {
     #[serde(default)]
@@ -157,6 +174,15 @@ struct Payload {
     avatar: Option<String>,
     #[serde(default)]
     ent: String,
+    /// Standard JWT expiry, unix seconds.
+    #[serde(default)]
+    exp: Option<u64>,
+}
+
+/// Current wall-clock time in unix seconds (browser clock — good enough
+/// for a pre-flight expiry check; the server remains authoritative).
+fn now_secs() -> u64 {
+    (js_sys::Date::now() / 1000.0) as u64
 }
 
 /// Decode a JWT payload without verifying its signature.
