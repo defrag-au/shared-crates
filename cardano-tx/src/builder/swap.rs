@@ -430,7 +430,8 @@ fn split_assets_for_change(
 
 /// Estimate the CBOR-encoded size of the *value* portion of an output
 /// carrying the given asset map. Used for `max_value_size` checks.
-fn estimate_value_size_from_map(assets: &HashMap<AssetId, u64>) -> u64 {
+/// `pub(crate)`: shared with the debag builder's group-splitting.
+pub(crate) fn estimate_value_size_from_map(assets: &HashMap<AssetId, u64>) -> u64 {
     if assets.is_empty() {
         return 6; // lovelace only
     }
@@ -475,7 +476,8 @@ fn estimate_value_size_inner(policies: &HashMap<&str, Vec<&AssetId>>) -> u64 {
 ///
 /// Uses the Babbage/Conway formula: `(160 + |serialized_output|) × coinsPerUTxOByte`
 /// with a 10% safety margin. Returns 0 for pure-ADA outputs (no assets).
-fn min_utxo_for_assets(params: &TxBuildParams, assets: &[AssetId]) -> u64 {
+/// `pub(crate)`: shared with the debag builder's output sizing.
+pub(crate) fn min_utxo_for_assets(params: &TxBuildParams, assets: &[AssetId]) -> u64 {
     if assets.is_empty() {
         return 0;
     }
@@ -556,6 +558,15 @@ fn select_side_inputs(
 /// per asset until the offered quantity is covered (an NFT = one UTxO; a fungible
 /// token = however many UTxOs sum to the offered quantity). Returns
 /// [`TxBuildError::NoSuitableUtxo`] if the pool can't cover an offered asset.
+///
+/// Candidate UTxOs are considered **fewest-assets-first**, so when an offered
+/// asset is available in more than one UTxO we spend the *least-cluttered* one and
+/// drag the fewest unrelated ("kept") assets into change — which is what a hardware
+/// wallet re-outputs as a fresh multi-asset "bag" during signing. Deterministic
+/// tiebreak on `(tx_hash, output_index)` keeps the built tx hash stable. Note this
+/// can only help when an offered asset genuinely exists in multiple UTxOs (a
+/// fungible token spread out, or an NFT not trapped in a single bag); an NFT that
+/// lives only inside one bag has no alternative and the whole bag is still spent.
 fn utxos_covering_offered<'a>(
     utxos: &'a [UtxoApi],
     offered: &HashMap<AssetId, u64>,
@@ -569,7 +580,18 @@ fn utxos_covering_offered<'a>(
     let mut chosen: Vec<&'a UtxoApi> = Vec::new();
     let mut chosen_refs: HashSet<(&'a str, u32)> = HashSet::new();
 
-    for utxo in utxos {
+    // Prefer the least-cluttered UTxOs so unrelated assets aren't dragged into
+    // change. Stable, deterministic order (no map-iteration/clock leakage).
+    let mut ordered: Vec<&'a UtxoApi> = utxos.iter().collect();
+    ordered.sort_by(|a, b| {
+        a.assets
+            .len()
+            .cmp(&b.assets.len())
+            .then_with(|| a.tx_hash.cmp(&b.tx_hash))
+            .then_with(|| a.output_index.cmp(&b.output_index))
+    });
+
+    for utxo in ordered {
         // Only take this UTxO if it still contributes to an uncovered offered asset.
         let contributes = utxo
             .assets
@@ -1055,6 +1077,34 @@ mod tests {
         let offered = HashMap::from([(ft.clone(), 100)]);
         let covering = utxos_covering_offered(&utxos, &offered).unwrap();
         assert_eq!(covering.len(), 2, "need both token UTxOs to cover qty 100");
+    }
+
+    #[test]
+    fn test_utxos_covering_offered_prefers_least_baggage() {
+        // The offered NFT exists in BOTH a fat "bag" UTxO (bundled with 250
+        // unrelated tokens) and a clean single-asset UTxO. Least-baggage selection
+        // must take the clean UTxO so those 250 tokens never land in change.
+        let nft = make_asset_id("Offered");
+        let mut bag_assets = vec![(nft.clone(), 1)];
+        for i in 0..250u32 {
+            bag_assets.push((make_asset_id(&format!("Filler{i}")), 1));
+        }
+        let utxos = vec![
+            make_utxo(&"a".repeat(64), 400_000_000, bag_assets),
+            make_utxo(&"b".repeat(64), 2_000_000, vec![(nft.clone(), 1)]),
+        ];
+        let offered = HashMap::from([(nft.clone(), 1)]);
+        let covering = utxos_covering_offered(&utxos, &offered).unwrap();
+        assert_eq!(covering.len(), 1, "one UTxO covers the single NFT");
+        assert_eq!(
+            covering[0].assets.len(),
+            1,
+            "must pick the clean UTxO, not the 251-asset bag",
+        );
+        // And confirm no unrelated assets are kept from the chosen input.
+        let all = collect_utxo_native_assets(&covering, None);
+        let kept = subtract_assets(&all, &offered);
+        assert!(kept.is_empty(), "no baggage dragged into change: {kept:?}");
     }
 
     #[test]

@@ -142,22 +142,9 @@ pub struct ShelfData {
     pub spendable_lovelace: u64,
 }
 
-/// Estimate min-UTxO lovelace for an output based on its asset count and policy count.
-///
-/// Uses the Babbage/Conway formula: `coinsPerUTxOByte * (160 + output_size_estimate)`.
-fn estimate_min_lovelace(coins_per_utxo_byte: u64, num_assets: usize, num_policies: usize) -> u64 {
-    const FIXED_OVERHEAD: u64 = 160; // base output size in bytes
-
-    if num_assets == 0 {
-        // Pure ADA output: ~27 bytes address + 8 bytes value
-        return coins_per_utxo_byte * FIXED_OVERHEAD;
-    }
-
-    // Each policy adds ~28 bytes (policy hash), each asset adds ~12 bytes (name + quantity)
-    let policy_bytes = num_policies as u64 * 28;
-    let asset_bytes = num_assets as u64 * 12;
-    coins_per_utxo_byte * (FIXED_OVERHEAD + policy_bytes + asset_bytes)
-}
+/// Estimate min-UTxO lovelace for an output — canonical rule in
+/// `cardano_assets::utxo_health` (shared with the defrackit planner).
+use cardano_assets::utxo_health::estimate_min_lovelace;
 
 /// Immutable per-frame configuration.
 pub struct ShelfConfig {
@@ -223,12 +210,30 @@ pub struct ShelfResponse {
 // Classification
 // ============================================================================
 
-const COLLATERAL_THRESHOLD: u64 = 5_000_000;
-/// Upper bound for collateral — above this, ADA is more useful as Liquid.
-const COLLATERAL_CEILING: u64 = 15_000_000;
-const DUST_THRESHOLD: u64 = 1_500_000;
+/// Map the canonical health tier to the widget's shelf tier (1:1 — the widget
+/// type adds only presentation: labels, descriptions, colours).
+impl From<cardano_assets::utxo_health::UtxoTier> for ShelfTier {
+    fn from(t: cardano_assets::utxo_health::UtxoTier) -> Self {
+        use cardano_assets::utxo_health::UtxoTier as T;
+        match t {
+            T::Collateral => Self::Collateral,
+            T::ScriptLocked => Self::ScriptLocked,
+            T::Liquid => Self::Liquid,
+            T::Clean => Self::Clean,
+            T::Cluttered => Self::Cluttered,
+            T::Bloated => Self::Bloated,
+            T::Dust => Self::Dust,
+        }
+    }
+}
 
 /// Classify raw CIP-30 UTxOs into shelf tiers.
+///
+/// Tier rules live in `cardano_assets::utxo_health::classify_wallet` — the
+/// same wallet-context implementation the defrackit planner uses, so diagnosis
+/// and plan agree by construction (near-min UTxOs with no merge partner rank as
+/// Clean, not Dust). This wrapper adds only display grouping (policy segments,
+/// spendable-ADA totals, sort order).
 ///
 /// `coins_per_utxo_byte` is the Cardano protocol parameter (`coinsPerUTxOByte`,
 /// mainnet = 4310) used to estimate min-UTxO requirements for spendable ADA calculation.
@@ -238,9 +243,10 @@ pub fn classify_utxos(
 ) -> ShelfData {
     let mut shelf_utxos = Vec::with_capacity(utxos.len());
     let mut total_lovelace: u64 = 0;
+    let tiers = cardano_assets::utxo_health::classify_wallet(utxos);
 
-    // Pass 1: provisional classification
-    for utxo in utxos {
+    // Pass 1: classification + display grouping
+    for (utxo, tier) in utxos.iter().zip(tiers) {
         let utxo_ref = format!("{}#{}", utxo.tx_hash, utxo.output_index);
         total_lovelace += utxo.lovelace;
 
@@ -250,33 +256,17 @@ pub fn classify_utxos(
             *by_policy.entry(aq.asset_id.policy_id.as_str()).or_default() += 1;
         }
 
-        let is_script = utxo.has_tag(cardano_assets::utxo::UtxoTag::HasDatum)
-            || utxo.has_tag(cardano_assets::utxo::UtxoTag::HasScriptRef)
-            || utxo.has_tag(cardano_assets::utxo::UtxoTag::ScriptAddress);
+        let tier = ShelfTier::from(tier);
 
-        let tier = if is_script {
-            // Script-locked UTxOs (DEX orders, marketplace listings, staking) — not freely spendable
-            ShelfTier::ScriptLocked
-        } else if utxo.assets.is_empty() {
-            if utxo.lovelace >= COLLATERAL_THRESHOLD && utxo.lovelace <= COLLATERAL_CEILING {
-                ShelfTier::Collateral
-            } else {
-                ShelfTier::Liquid
-            }
-        } else if utxo.lovelace <= DUST_THRESHOLD {
-            ShelfTier::Dust
-        } else {
-            match by_policy.len() {
-                1 => ShelfTier::Clean,
-                2 | 3 => ShelfTier::Cluttered,
-                _ => ShelfTier::Bloated,
-            }
-        };
-
-        let policies: Vec<(String, u64)> = by_policy
+        // Dominant policy first (largest holding, then policy id). This must
+        // be deterministic: `policies.first()` is the within-tier sort key and
+        // the segment render order — raw HashMap order would reshuffle the
+        // shelf on every rescan.
+        let mut policies: Vec<(String, u64)> = by_policy
             .into_iter()
             .map(|(pid, count)| (pid.to_string(), count))
             .collect();
+        policies.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
         shelf_utxos.push(ShelfUtxo {
             utxo_ref,
@@ -308,7 +298,11 @@ pub fn classify_utxos(
         a.tier.cmp(&b.tier).then_with(|| {
             let pa = a.policies.first().map(|(p, _)| p.as_str()).unwrap_or("");
             let pb = b.policies.first().map(|(p, _)| p.as_str()).unwrap_or("");
-            pa.cmp(pb).then(b.lovelace.cmp(&a.lovelace))
+            pa.cmp(pb)
+                .then(b.lovelace.cmp(&a.lovelace))
+                // Full determinism: don't let equal-ADA UTxOs fall back to
+                // wallet-provided arrival order.
+                .then_with(|| a.utxo_ref.cmp(&b.utxo_ref))
         })
     });
 
@@ -962,25 +956,47 @@ mod tests {
 
     #[test]
     fn test_classify_dust() {
+        // Wallet-context rules: dust needs a spendable same-policy merge
+        // partner to classify Dust (a lone dust UTxO demotes to Clean —
+        // there's nothing to merge it into).
         let data = classify_utxos(
-            &[asset_utxo(1_200_000, &[("policy_a", 1)])],
+            &[
+                asset_utxo(1_200_000, &[("policy_a", 1)]),
+                asset_utxo(2_000_000, &[("policy_a", 1)]),
+            ],
             TEST_COINS_PER_UTXO_BYTE,
         );
-        assert_eq!(data.utxos[0].tier, ShelfTier::Dust);
+        let dust = data.utxos.iter().find(|u| u.lovelace == 1_200_000).unwrap();
+        assert_eq!(dust.tier, ShelfTier::Dust);
     }
 
     #[test]
     fn test_classify_dust_threshold_boundary() {
-        // Exactly at threshold — still dust
+        let partner = asset_utxo(2_000_000, &[("policy_a", 1)]);
+
+        // Exactly at threshold — still dust (merge partner present)
         let data = classify_utxos(
-            &[asset_utxo(1_500_000, &[("policy_a", 1)])],
+            &[asset_utxo(1_500_000, &[("policy_a", 1)]), partner.clone()],
             TEST_COINS_PER_UTXO_BYTE,
         );
-        assert_eq!(data.utxos[0].tier, ShelfTier::Dust);
+        let at = data.utxos.iter().find(|u| u.lovelace == 1_500_000).unwrap();
+        assert_eq!(at.tier, ShelfTier::Dust);
 
-        // Just above threshold — clean
+        // Just above threshold — clean even with a partner present
         let data = classify_utxos(
-            &[asset_utxo(1_500_001, &[("policy_a", 1)])],
+            &[asset_utxo(1_500_001, &[("policy_a", 1)]), partner],
+            TEST_COINS_PER_UTXO_BYTE,
+        );
+        let above = data.utxos.iter().find(|u| u.lovelace == 1_500_001).unwrap();
+        assert_eq!(above.tier, ShelfTier::Clean);
+    }
+
+    #[test]
+    fn test_classify_lone_dust_demotes_to_clean() {
+        // No same-policy partner anywhere in the wallet → nothing to merge
+        // into, so the sub-threshold UTxO is just a small Clean holding.
+        let data = classify_utxos(
+            &[asset_utxo(1_200_000, &[("policy_a", 1)])],
             TEST_COINS_PER_UTXO_BYTE,
         );
         assert_eq!(data.utxos[0].tier, ShelfTier::Clean);

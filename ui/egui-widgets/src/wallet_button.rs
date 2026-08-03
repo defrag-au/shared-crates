@@ -144,7 +144,7 @@ impl WalletButton {
                         .size(11.0),
                 )
                 .fill(Color32::TRANSPARENT)
-                .stroke(egui::Stroke::new(0.5, theme.text_muted))
+                .stroke(egui::Stroke::new(0.5_f32, theme.text_muted))
                 .corner_radius(4.0),
             );
 
@@ -248,7 +248,7 @@ impl WalletButton {
             .add_clickable(
                 egui::Button::new(RichText::new("Disconnect").color(text_muted).size(10.0))
                     .fill(Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::new(0.5, text_muted))
+                    .stroke(egui::Stroke::new(0.5_f32, text_muted))
                     .corner_radius(3.0),
             )
             .clicked()

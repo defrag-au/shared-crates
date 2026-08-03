@@ -28,6 +28,7 @@ pub mod token_type;
 pub mod traits;
 pub mod tx_hash;
 pub mod utxo;
+pub mod utxo_health;
 
 #[cfg(feature = "tag-datum")]
 pub use tag_datum::UtxoTagDatum;
