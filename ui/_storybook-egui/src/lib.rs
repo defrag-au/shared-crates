@@ -25,6 +25,7 @@ mod app {
         BulletBar,
         Sparkline,
         MetricCard,
+        StatStrip,
         SevenSegment,
         FlipCounter,
         AsyncData,
@@ -36,6 +37,8 @@ mod app {
         RadarChart,
         RangeBar,
         PipRow,
+        PriceTimeline,
+        FocusList,
         CardBrowser,
         IconGallery,
         WalletButton,
@@ -144,6 +147,7 @@ mod app {
                 Self::BulletBar,
                 Self::Sparkline,
                 Self::MetricCard,
+                Self::StatStrip,
                 Self::SevenSegment,
                 Self::FlipCounter,
                 Self::AsyncData,
@@ -155,6 +159,8 @@ mod app {
                 Self::RadarChart,
                 Self::RangeBar,
                 Self::PipRow,
+                Self::PriceTimeline,
+                Self::FocusList,
                 Self::CardBrowser,
                 Self::IconGallery,
                 Self::WalletButton,
@@ -223,6 +229,7 @@ mod app {
                 Self::BulletBar => "Bullet Bar",
                 Self::Sparkline => "Sparkline",
                 Self::MetricCard => "Metric Card",
+                Self::StatStrip => "Stat Strip",
                 Self::SevenSegment => "Seven Segment",
                 Self::FlipCounter => "Flip Counter",
                 Self::AsyncData => "Async Data",
@@ -234,6 +241,8 @@ mod app {
                 Self::RadarChart => "Radar Chart",
                 Self::RangeBar => "Range Bar",
                 Self::PipRow => "Pip Row",
+                Self::PriceTimeline => "Price Timeline",
+                Self::FocusList => "Focus List",
                 Self::CardBrowser => "Card Browser",
                 Self::IconGallery => "Icon Gallery",
                 Self::WalletButton => "Wallet Button",
@@ -328,6 +337,7 @@ mod app {
                 | Self::BulletBar
                 | Self::Sparkline
                 | Self::MetricCard
+                | Self::StatStrip
                 | Self::SevenSegment
                 | Self::FlipCounter
                 | Self::AsyncData
@@ -339,6 +349,8 @@ mod app {
                 | Self::RadarChart
                 | Self::RangeBar
                 | Self::PipRow
+                | Self::PriceTimeline
+                | Self::FocusList
                 | Self::CardBrowser
                 | Self::IconGallery
                 | Self::TraitFilter => "Data Visualization",
@@ -399,6 +411,9 @@ mod app {
                 Self::MetricCard => {
                     "Dashboard stat card with trend indicators and embedded sparklines"
                 }
+                Self::StatStrip => {
+                    "Row of windowed stat cards — one metric across 24h/7d/30d, with an empty-window note"
+                }
                 Self::SevenSegment => "Retro LED-style 7-segment display with animated counter",
                 Self::FlipCounter => "Split-flap airport board style counter with flip animations",
                 Self::AsyncData => "egui_inbox driving widgets from simulated API polling",
@@ -425,6 +440,12 @@ mod app {
                 }
                 Self::PipRow => {
                     "Label + horizontal pip bar for distributions, market depth, and ranked data"
+                }
+                Self::PriceTimeline => {
+                    "Time-axis price scatter with reference lines/bands, log y, and hover inspection"
+                }
+                Self::FocusList => {
+                    "Fixed-geometry master-detail list for tooltips: sliding highlight + detail pane"
                 }
                 Self::CardBrowser => {
                     "Master-detail card grid with selection, detail panel, and caller-driven rendering"
@@ -652,6 +673,8 @@ mod app {
         radar_chart_state: stories::radar_chart::RadarChartState,
         range_bar_state: stories::range_bar::RangeBarState,
         pip_row_state: stories::pip_row::PipRowState,
+        price_timeline_state: stories::price_timeline::PriceTimelineState,
+        focus_list_state: stories::focus_list::FocusListState,
         card_browser_state: stories::card_browser::CardBrowserStoryState,
         icon_gallery_state: stories::icon_gallery::IconGalleryState,
         trait_filter_state: stories::trait_filter::TraitFilterStoryState,
@@ -755,6 +778,8 @@ mod app {
                 radar_chart_state: stories::radar_chart::RadarChartState::default(),
                 range_bar_state: stories::range_bar::RangeBarState::default(),
                 pip_row_state: stories::pip_row::PipRowState::default(),
+                price_timeline_state: stories::price_timeline::PriceTimelineState::default(),
+                focus_list_state: stories::focus_list::FocusListState::default(),
                 card_browser_state: stories::card_browser::CardBrowserStoryState::default(),
                 icon_gallery_state: stories::icon_gallery::IconGalleryState::default(),
                 trait_filter_state: stories::trait_filter::TraitFilterStoryState::default(),
@@ -910,6 +935,7 @@ mod app {
                                 stories::sparkline::show(ui, &mut self.sparkline_state)
                             }
                             Story::MetricCard => stories::metric_card::show(ui),
+                            Story::StatStrip => stories::stat_strip::show(ui),
                             Story::SevenSegment => {
                                 stories::seven_segment::show(ui, &mut self.seven_segment_state)
                             }
@@ -941,6 +967,12 @@ mod app {
                                 stories::range_bar::show(ui, &mut self.range_bar_state)
                             }
                             Story::PipRow => stories::pip_row::show(ui, &mut self.pip_row_state),
+                            Story::PriceTimeline => {
+                                stories::price_timeline::show(ui, &mut self.price_timeline_state)
+                            }
+                            Story::FocusList => {
+                                stories::focus_list::show(ui, &mut self.focus_list_state)
+                            }
                             Story::CardBrowser => {
                                 stories::card_browser::show(ui, &mut self.card_browser_state)
                             }

@@ -8,6 +8,19 @@ use egui::{Color32, CornerRadius, Pos2, RichText, Sense, Stroke, Ui, Vec2};
 use crate::theme;
 
 /// Configuration for a sparkline chart.
+/// How the sparkline responds to hover.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum SparkHoverStyle {
+    /// Crosshair highlight plus the built-in nearest-value tooltip.
+    #[default]
+    Values,
+    /// Crosshair highlight only — no tooltip, so the caller can render its own
+    /// (e.g. the fills behind the hovered bucket).
+    CrosshairOnly,
+    /// No hover affordance at all.
+    None,
+}
+
 pub struct Sparkline<'a> {
     /// Data points (y-values in order, equally spaced on x-axis).
     data: &'a [f64],
@@ -33,6 +46,8 @@ pub struct Sparkline<'a> {
     bg_color: Color32,
     /// Corner rounding.
     rounding: u8,
+    /// How hover is handled (crosshair / tooltip / inert).
+    hover_style: SparkHoverStyle,
 }
 
 impl<'a> Sparkline<'a> {
@@ -51,7 +66,15 @@ impl<'a> Sparkline<'a> {
             show_endpoint: true,
             bg_color: theme::BG_SECONDARY,
             rounding: 4,
+            hover_style: SparkHoverStyle::default(),
         }
+    }
+
+    /// Set how the sparkline responds to hover (default
+    /// [`SparkHoverStyle::Values`]).
+    pub fn hover_style(mut self, style: SparkHoverStyle) -> Self {
+        self.hover_style = style;
+        self
     }
 
     /// Set the line color.
@@ -243,36 +266,44 @@ impl<'a> Sparkline<'a> {
                 }
             }
 
-            // Hover: show nearest value
-            if let Some(hover_pos) = response.hover_pos() {
-                let rel_x = (hover_pos.x - plot_rect.left()) / plot_rect.width();
-                let idx = (rel_x * (n - 1) as f32).round() as usize;
-                if idx < n {
-                    let val = self.data[idx];
-                    let point = points[idx];
+            // Hover: crosshair highlight + (optionally) the nearest-value tooltip.
+            if self.hover_style != SparkHoverStyle::None {
+                if let Some(hover_pos) = response.hover_pos() {
+                    let rel_x = (hover_pos.x - plot_rect.left()) / plot_rect.width();
+                    let idx = (rel_x * (n - 1) as f32).round() as usize;
+                    if idx < n {
+                        let val = self.data[idx];
+                        let point = points[idx];
 
-                    // Highlight dot
-                    painter.circle_filled(point, 4.0, self.line_color);
-                    painter.circle_stroke(point, 4.0, Stroke::new(1.5_f32, theme::TEXT_PRIMARY));
+                        // Highlight dot
+                        painter.circle_filled(point, 4.0, self.line_color);
+                        painter.circle_stroke(
+                            point,
+                            4.0,
+                            Stroke::new(1.5_f32, theme::TEXT_PRIMARY),
+                        );
 
-                    // Vertical crosshair
-                    painter.line_segment(
-                        [
-                            Pos2::new(point.x, plot_rect.top()),
-                            Pos2::new(point.x, plot_rect.bottom()),
-                        ],
-                        Stroke::new(0.5_f32, theme::TEXT_MUTED),
-                    );
+                        // Vertical crosshair
+                        painter.line_segment(
+                            [
+                                Pos2::new(point.x, plot_rect.top()),
+                                Pos2::new(point.x, plot_rect.bottom()),
+                            ],
+                            Stroke::new(0.5_f32, theme::TEXT_MUTED),
+                        );
 
-                    // Value tooltip
-                    let text = if val.abs() >= 1_000_000.0 {
-                        format!("{:.1}M", val / 1_000_000.0)
-                    } else if val.abs() >= 1_000.0 {
-                        format!("{:.1}K", val / 1_000.0)
-                    } else {
-                        format!("{val:.1}")
-                    };
-                    response.clone().on_hover_text(text);
+                        // Built-in value tooltip (unless the caller owns it).
+                        if self.hover_style == SparkHoverStyle::Values {
+                            let text = if val.abs() >= 1_000_000.0 {
+                                format!("{:.1}M", val / 1_000_000.0)
+                            } else if val.abs() >= 1_000.0 {
+                                format!("{:.1}K", val / 1_000.0)
+                            } else {
+                                format!("{val:.1}")
+                            };
+                            response.clone().on_hover_text(text);
+                        }
+                    }
                 }
             }
         } else if ui.is_rect_visible(rect) {

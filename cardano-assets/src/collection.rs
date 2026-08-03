@@ -65,6 +65,16 @@ pub struct CollectionSocials {
     pub website: Option<String>,
 }
 
+/// Deserialize a possibly-null-or-missing number as `f64`, defaulting to `0.0`.
+/// Anvil sends `royaltyPct: null` (or omits it) for collections with no royalty
+/// configured, which a bare `f64` field rejects.
+fn de_f64_null_default<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<f64>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 /// Collection information for a CNFT collection
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollectionDetails {
@@ -75,7 +85,7 @@ pub struct CollectionDetails {
     pub description: Option<String>,
     #[serde(alias = "royaltyAddress")]
     pub royalty_address: Option<String>,
-    #[serde(alias = "royaltyPct")]
+    #[serde(alias = "royaltyPct", default, deserialize_with = "de_f64_null_default")]
     pub royalty_percentage: f64,
     pub image: Option<String>,
     pub banner: Option<String>,
@@ -85,6 +95,22 @@ pub struct CollectionDetails {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn royalty_percentage_tolerates_null_and_missing() {
+        // Anvil returns `null` (or omits) royaltyPct for royalty-free collections.
+        let null: CollectionDetails =
+            serde_json::from_str(r#"{"policyId":"p","name":"n","royaltyPct":null}"#).unwrap();
+        assert_eq!(null.royalty_percentage, 0.0);
+
+        let missing: CollectionDetails =
+            serde_json::from_str(r#"{"policyId":"p","name":"n"}"#).unwrap();
+        assert_eq!(missing.royalty_percentage, 0.0);
+
+        let present: CollectionDetails =
+            serde_json::from_str(r#"{"policyId":"p","name":"n","royaltyPct":2.5}"#).unwrap();
+        assert_eq!(present.royalty_percentage, 2.5);
+    }
 
     #[test]
     fn test_marketplace_deserialization() {

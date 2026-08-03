@@ -17,6 +17,7 @@ pub mod error_note;
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
 pub mod flip_counter;
+pub mod focus_list;
 pub mod fonts;
 pub mod fungibles_row;
 pub mod gated;
@@ -36,6 +37,7 @@ pub mod palette_editor;
 pub mod persona_strip;
 pub mod phase_card;
 pub mod pip_row;
+pub mod price_timeline;
 pub mod printing_timeline;
 pub mod progress_bar;
 pub mod property_list;
@@ -49,6 +51,7 @@ pub mod screenshot;
 pub mod seven_segment;
 pub mod slot_table;
 pub mod sparkline;
+pub mod stat_strip;
 pub mod supply_bar;
 pub mod swap_modal;
 pub mod tag_list;
@@ -176,7 +179,8 @@ pub use relative_time::{relative_label, RelativeTime};
 pub use screenshot::ScreenshotButton;
 pub use seven_segment::SevenSegmentDisplay;
 pub use slot_table::{SlotRow, SlotTable};
-pub use sparkline::Sparkline;
+pub use sparkline::{SparkHoverStyle, Sparkline};
+pub use stat_strip::{StatRange, StatStrip, StatWindow};
 pub use supply_bar::SupplyBar;
 pub use swap_modal::{
     CultureBuy, SwapModal, SwapModalAction, SwapModalConfig, SwapModalTheme, SwapPreviewData,

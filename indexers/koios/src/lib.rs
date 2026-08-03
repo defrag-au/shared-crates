@@ -108,6 +108,22 @@ pub struct AssetInfoRequest {
     pub assets: Vec<(String, String)>,
 }
 
+/// Batch confirmation check (`POST /tx_status`) — one request for many tx
+/// hashes, far lighter than `/tx_info`.
+#[derive(Serialize, Debug, Clone)]
+pub struct TxStatusRequest {
+    #[serde(rename = "_tx_hashes")]
+    pub hashes: Vec<String>,
+}
+
+/// One row of `/tx_status`. `num_confirmations` is `null` (→ `None`) until the
+/// tx is in a block, then the depth in blocks.
+#[derive(Deserialize, Debug, Clone)]
+pub struct TxStatus {
+    pub tx_hash: String,
+    pub num_confirmations: Option<u64>,
+}
+
 #[derive(Serialize, Debug, Clone)]
 pub struct AddressUtxosRequest {
     #[serde(rename = "_addresses")]
@@ -762,6 +778,20 @@ impl KoiosApi {
         .await
     }
 
+    /// Batch confirmation depths for many tx hashes in one request
+    /// (`POST /tx_status`). A hash absent from the response, or present with
+    /// `num_confirmations == None`, is not yet on-chain.
+    pub async fn get_tx_status(&self, hashes: &[String]) -> Result<Vec<TxStatus>, KoiosError> {
+        let url = format!("{}/tx_status", self.base_url);
+        self.post_json(
+            &url,
+            &TxStatusRequest {
+                hashes: hashes.to_vec(),
+            },
+        )
+        .await
+    }
+
     pub async fn get_policy_assets(
         &self,
         assets: &[(String, String)],
@@ -901,7 +931,10 @@ impl KoiosApi {
         &self,
         policy_id: &str,
     ) -> Result<Vec<KoiosPolicyAssetInfo>, KoiosError> {
-        let url = format!("{}/policy_asset_info?_asset_policy={policy_id}", self.base_url);
+        let url = format!(
+            "{}/policy_asset_info?_asset_policy={policy_id}",
+            self.base_url
+        );
         self.get_json(&url).await
     }
 
@@ -910,7 +943,10 @@ impl KoiosApi {
         policy_id: &str,
         options: Option<&QueryOptions>,
     ) -> Result<Vec<PolicyAssetMint>, KoiosError> {
-        let url = format!("{}/policy_asset_mints?_asset_policy={policy_id}", self.base_url);
+        let url = format!(
+            "{}/policy_asset_mints?_asset_policy={policy_id}",
+            self.base_url
+        );
         self.get_json_with_options(&url, options).await
     }
 
@@ -920,7 +956,10 @@ impl KoiosApi {
         policy_id: &str,
         options: Option<&QueryOptions>,
     ) -> Result<serde_json::Value, KoiosError> {
-        let url = format!("{}/policy_asset_mints?_asset_policy={policy_id}", self.base_url);
+        let url = format!(
+            "{}/policy_asset_mints?_asset_policy={policy_id}",
+            self.base_url
+        );
         self.get_json_with_options(&url, options).await
     }
 

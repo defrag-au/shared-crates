@@ -105,6 +105,20 @@ impl OwnershipClient {
         Ok(body)
     }
 
+    async fn post_json_value(
+        &self,
+        url: &str,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, Error> {
+        let resp = self.client.post(url).json(body).send().await?;
+        let status = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        if status >= 400 {
+            return Err(Error::Http { status, body: text });
+        }
+        Ok(serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text)))
+    }
+
     // ========================================================================
     // Public Query API
     // ========================================================================
@@ -282,6 +296,39 @@ impl OwnershipClient {
 
     pub async fn validate(&self) -> Result<ValidateResponse, Error> {
         let url = format!("{}/admin/validate", self.base_url);
+        self.get_json(&url).await
+    }
+
+    /// Effective per-policy pricing config (strategy + premium categories).
+    /// Passed through as JSON — the schema is owned by the workers service
+    /// (`shared_types::ownership::PricingConfig`); callers that need typed
+    /// access deserialize on their side.
+    pub async fn get_pricing_config(&self, policy_id: &str) -> Result<serde_json::Value, Error> {
+        let url = format!(
+            "{}/admin/policies/{policy_id}/pricing-config",
+            self.base_url
+        );
+        self.get_json(&url).await
+    }
+
+    /// Set (or reset) the per-policy pricing config. `body` is the full
+    /// request payload: `{"config": {...}}` or `{"reset_to_default": true}`.
+    pub async fn set_pricing_config(
+        &self,
+        policy_id: &str,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, Error> {
+        let url = format!(
+            "{}/admin/policies/{policy_id}/pricing-config",
+            self.base_url
+        );
+        self.post_json_value(&url, body).await
+    }
+
+    /// Public sales summary: realized-sales shape, effective pricing config
+    /// and resolved ladder rungs (JSON passthrough, same reasoning as above).
+    pub async fn get_sales_summary(&self, policy_id: &str) -> Result<serde_json::Value, Error> {
+        let url = format!("{}/api/sales-summary/{policy_id}", self.base_url);
         self.get_json(&url).await
     }
 

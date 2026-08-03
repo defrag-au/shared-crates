@@ -59,6 +59,10 @@ row of data. These compose primitives internally.
 
 - **`metric_card`** → `MetricCard` — Label + large value + optional trend
   + optional sparkline. **Dashboard KPIs.**
+- **`stat_strip`** → `StatStrip` / `StatWindow` — Horizontal row of
+  `MetricCard`s: one metric across time windows (24h/7d/30d), each with a
+  headline + detail line, empty windows show a shared note. **Windowed
+  activity summaries (sales stats).**
 - **`phase_card`** → `PhaseCard` — Read-only mint phase: header (name +
   status + priority + Edit/Delete), Price/Window/Per-wallet via
   `PropertyList`, gate chips with × remove. **Mint configuration UI.**
