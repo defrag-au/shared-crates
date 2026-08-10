@@ -166,6 +166,11 @@ pub struct DatumInfoRequest {
 /// Plutus-JSON rendering.
 #[derive(Debug, Clone, Deserialize)]
 pub struct KoiosDatumInfo {
+    /// Koios wires this as `datum_hash` (matching the `_datum_hashes`
+    /// request key), *not* `hash` — deserialising it as `hash` fails the
+    /// whole batch with `missing field \`hash\``. The alias keeps the bare
+    /// `hash` spelling accepted in case a mirror/proxy emits it.
+    #[serde(rename = "datum_hash", alias = "hash")]
     pub hash: String,
     /// Raw datum CBOR (hex), if the node holds the preimage.
     #[serde(default)]
@@ -1104,6 +1109,41 @@ mod tests {
     async fn rate_limit_delay() {
         // Koios free tier has rate limits, wait 1 second between requests
         sleep(Duration::from_millis(1000)).await;
+    }
+
+    /// `/datum_info` rows key the hash as `datum_hash`. Captured from a
+    /// live response — the previous `hash` spelling failed the whole
+    /// batch with `missing field \`hash\``, which surfaced downstream as
+    /// an unbuildable cancel-offer cart.
+    #[test]
+    fn test_datum_info_deserialises_koios_wire_shape() {
+        let body = r#"[
+          {"datum_hash":"14420b67fb7c9ef762b9658d88108a6f76b4af2a72f66dbf828d2bb0adb2b015",
+           "creation_tx_hash":"73c1524c4a0e0c921d7ac4b4388cb5a1e6b1757b515e4189df788e28953fce98",
+           "bytes":"d8799f581ccba51a2e5bff",
+           "value":{"constructor":0}}
+        ]"#;
+        let rows: Vec<KoiosDatumInfo> = serde_json::from_str(body).expect("datum_info wire shape");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].hash,
+            "14420b67fb7c9ef762b9658d88108a6f76b4af2a72f66dbf828d2bb0adb2b015"
+        );
+        assert_eq!(rows[0].bytes.as_deref(), Some("d8799f581ccba51a2e5bff"));
+    }
+
+    /// The bare `hash` spelling stays accepted via alias, so a mirror or
+    /// proxy emitting the older shape doesn't break resolution.
+    #[test]
+    fn test_datum_info_accepts_bare_hash_alias() {
+        let body =
+            r#"[{"hash":"ec3131073f6c9c0ad76835c886fc467a796f50343b1630e5d50dc92e87c772d2"}]"#;
+        let rows: Vec<KoiosDatumInfo> = serde_json::from_str(body).expect("bare hash alias");
+        assert_eq!(
+            rows[0].hash,
+            "ec3131073f6c9c0ad76835c886fc467a796f50343b1630e5d50dc92e87c772d2"
+        );
+        assert!(rows[0].bytes.is_none());
     }
 
     #[test]

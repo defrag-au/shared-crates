@@ -342,6 +342,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "augie-plugin"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "authorizations"
 version = "0.1.0"
 dependencies = [
