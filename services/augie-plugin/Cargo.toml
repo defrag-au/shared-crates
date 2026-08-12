@@ -1,0 +1,12 @@
+[package]
+name = "augie-plugin"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Wire protocol for services that advertise Discord commands to the Augie bot host"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
