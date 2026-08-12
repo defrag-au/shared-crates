@@ -27,6 +27,15 @@ pub struct CommandResponse {
     /// message is milder than an accidentally-hidden one.
     #[serde(default)]
     pub ephemeral: bool,
+
+    /// Replace the message the component was attached to, rather than posting
+    /// a new one. Only meaningful on a [`crate::ComponentInvocation`] reply —
+    /// ignored on a command reply, where there is no prior message.
+    ///
+    /// Pagination wants this: without it every page click leaves another copy
+    /// of the embed in the channel.
+    #[serde(default)]
+    pub update_message: bool,
 }
 
 impl CommandResponse {
@@ -60,6 +69,13 @@ impl CommandResponse {
 
     pub fn ephemeral(mut self) -> Self {
         self.ephemeral = true;
+        self
+    }
+
+    /// Replace the message the clicked component belongs to. See
+    /// [`CommandResponse::update_message`].
+    pub fn updating(mut self) -> Self {
+        self.update_message = true;
         self
     }
 

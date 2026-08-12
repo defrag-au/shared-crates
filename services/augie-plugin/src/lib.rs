@@ -36,10 +36,12 @@
 //! where a `u64` silently loses precision through JS. Parse at the edge if you
 //! need an integer.
 
+mod address;
 mod invocation;
 mod manifest;
 mod response;
 
+pub use address::*;
 pub use invocation::*;
 pub use manifest::*;
 pub use response::*;
