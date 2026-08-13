@@ -11,10 +11,11 @@
 
 use macroquad::prelude::*;
 use macroquad_widgets::{
-    frame_tap, mint_checkout, order_fulfilment, quantity_stepper, theme, wallet_connect, Button,
-    ButtonVariant, CheckoutAction, CheckoutState, Eligibility, FulfilmentAction, FulfilmentStatus,
-    FulfilmentTx, MintCheckoutVm, OrderFulfilmentVm, OrderStatus, Painter, QuantityStepperVm,
-    StepperAction, Theme, WalletAction, WalletConnectVm, WalletItem, WalletState,
+    frame_tap, mint_checkout, order_fulfilment, quantity_stepper, theme, wallet_connect,
+    wallet_list, Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility,
+    FulfilmentAction, FulfilmentStatus, FulfilmentTx, MintCheckoutVm, OrderFulfilmentVm,
+    OrderStatus, Painter, QuantityStepperVm, StepperAction, Theme, WalletAction, WalletConnectVm,
+    WalletItem, WalletListAction, WalletListState, WalletListVm, WalletRow, WalletState,
 };
 
 const SIDEBAR_W: f32 = 210.0;
@@ -69,6 +70,7 @@ enum Body {
     Buttons,
     Stepper(u32),
     Wallet(WalletConnectVm),
+    WalletList(WalletListVm),
     Checkout(MintCheckoutVm),
     Fulfilment(Fulfilment),
 }
@@ -80,6 +82,7 @@ enum Kind {
     Buttons,
     Stepper,
     Wallet,
+    WalletList,
     Checkout,
     Fulfilment,
 }
@@ -134,6 +137,14 @@ impl Story {
         }
     }
 
+    fn wallet_list(category: &'static str, name: &'static str, vm: WalletListVm) -> Self {
+        Self {
+            category,
+            name,
+            body: Body::WalletList(vm),
+        }
+    }
+
     fn checkout(category: &'static str, name: &'static str, vm: MintCheckoutVm) -> Self {
         Self {
             category,
@@ -147,6 +158,7 @@ impl Story {
             Body::Buttons => Kind::Buttons,
             Body::Stepper(_) => Kind::Stepper,
             Body::Wallet(_) => Kind::Wallet,
+            Body::WalletList(_) => Kind::WalletList,
             Body::Checkout(_) => Kind::Checkout,
             Body::Fulfilment(_) => Kind::Fulfilment,
         }
@@ -230,6 +242,52 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
             "wallet",
             "error",
             WalletState::Error("user declined the connection".into()),
+        ),
+        Story::wallet_list(
+            "wallet list",
+            "several linked",
+            WalletListVm::new(WalletListState::Ready(vec![
+                WalletRow::new(STAKE_ADDR).with_handle("damo"),
+                WalletRow::new("stake1u9xk4d2rlq7zvnp3m8ftw0hs6yc4jg5zx2vqde7n0aum4tsp3wxyz")
+                    .with_handle("vault"),
+                WalletRow::new("stake1uy7d3n0qkfz2xw8ta5rmv6jc9phe4bgs0ld2u3xqvn8m6kcz9plkr"),
+            ])),
+        ),
+        Story::wallet_list(
+            "wallet list",
+            "one linked",
+            WalletListVm::new(WalletListState::Ready(vec![
+                WalletRow::new(STAKE_ADDR).with_handle("damo")
+            ])),
+        ),
+        // Mid-unlink: that row's controls are disabled so a second click can't
+        // race the first, while the others stay live.
+        Story::wallet_list(
+            "wallet list",
+            "unlink in flight",
+            WalletListVm::new(WalletListState::Ready(vec![
+                WalletRow::new(STAKE_ADDR).with_handle("damo"),
+                WalletRow::new("stake1u9xk4d2rlq7zvnp3m8ftw0hs6yc4jg5zx2vqde7n0aum4tsp3wxyz")
+                    .with_handle("vault"),
+            ]))
+            .busy(1),
+        ),
+        Story::wallet_list(
+            "wallet list",
+            "loading",
+            WalletListVm::new(WalletListState::Loading),
+        ),
+        Story::wallet_list(
+            "wallet list",
+            "none linked",
+            WalletListVm::new(WalletListState::Empty),
+        ),
+        Story::wallet_list(
+            "wallet list",
+            "error",
+            WalletListVm::new(WalletListState::Error(
+                "couldn't reach the auth service".into(),
+            )),
         ),
         Story::checkout(
             "checkout",
@@ -526,6 +584,7 @@ impl Storybook {
             }
             Kind::Stepper => self.draw_stepper(p, sel, x0, y),
             Kind::Wallet => self.draw_wallet(p, sel, x0, y, col_w),
+            Kind::WalletList => self.draw_wallet_list(p, sel, x0, y, col_w),
             Kind::Checkout => self.draw_checkout(p, sel, x0, y, col_w),
             Kind::Fulfilment => self.draw_fulfilment(p, sel, x0, y, col_w),
         }
@@ -560,6 +619,22 @@ impl Storybook {
             13.0,
             p.theme.muted,
         );
+    }
+
+    fn draw_wallet_list(&mut self, p: &Painter, sel: usize, x: f32, y: f32, w: f32) {
+        let action = match &self.stories[sel].body {
+            Body::WalletList(vm) => wallet_list(p, vm, x, y, w).action,
+            _ => return,
+        };
+        if let Some(a) = action {
+            self.last_action = Some(match a {
+                WalletListAction::LinkAnother => "action: LinkAnother".into(),
+                WalletListAction::Unlink(addr) => format!("action: Unlink({addr})"),
+                WalletListAction::MoveUp(i) => format!("action: MoveUp({i})"),
+                WalletListAction::MoveDown(i) => format!("action: MoveDown({i})"),
+                WalletListAction::Retry => "action: Retry".into(),
+            });
+        }
     }
 
     fn draw_wallet(&mut self, p: &Painter, sel: usize, x: f32, y: f32, w: f32) {

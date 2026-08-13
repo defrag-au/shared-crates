@@ -45,6 +45,24 @@ pub struct CommandInvocation {
 
     /// Discord application ID, needed to address the follow-up webhook.
     pub application_id: String,
+
+    /// A short-lived identity token for the invoking user, minted by Augie.
+    ///
+    /// Present only when the command declared
+    /// [`crate::PluginCommand::needs_identity`] — a plugin that doesn't need
+    /// one shouldn't be handed a bearer credential it might log.
+    ///
+    /// **The point is that Augie mints it, not the plugin.** Identity is
+    /// Augie's to assert: it holds the signing key and it is the only party
+    /// that saw the Discord interaction. A plugin minting its own would mean
+    /// every plugin needing the secret, which is the hole this avoids.
+    ///
+    /// The token's signed action is the command name, so a surface it's handed
+    /// to can route on a *tamper-proof* intent rather than an unsigned query
+    /// parameter. Typical use is embedding it in a link so the destination
+    /// opens already authenticated instead of bouncing through OAuth.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_token: Option<String>,
 }
 
 /// A button click or select-menu submission.
@@ -174,6 +192,7 @@ mod tests {
             permission_class: PermissionClass::Admin,
             interaction_token: "tok".to_string(),
             application_id: "1372830411196993578".to_string(),
+            identity_token: None,
         }
     }
 

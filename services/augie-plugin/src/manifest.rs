@@ -55,6 +55,36 @@ pub struct PluginCommand {
     #[serde(default)]
     pub needs_defer: bool,
 
+    /// Whether replies are visible only to the invoking user.
+    ///
+    /// **This has to be advertised, not just set on the response.** When
+    /// `needs_defer` is true Augie must ACK before it has called the plugin,
+    /// and Discord fixes ephemerality at that ACK — a later `CommandResponse`
+    /// with `ephemeral: true` cannot demote an already-public message. So a
+    /// deferred command that only set the response flag would leak into the
+    /// channel, silently and only in production.
+    ///
+    /// Defaults to `false` to match [`crate::CommandResponse`]'s default and
+    /// to keep existing manifests behaving exactly as before: an
+    /// accidentally-public message is the milder failure in general. Commands
+    /// answering about the caller's own private data should set it.
+    #[serde(default)]
+    pub ephemeral: bool,
+
+    /// Ask Augie to mint an identity token for the invoking user and pass it on
+    /// [`crate::CommandInvocation::identity_token`].
+    ///
+    /// **Opt-in, and default off.** A bearer credential handed to a service
+    /// that has no use for it is pure downside — one more place it can be
+    /// logged, forwarded or leaked — so a command asks only when it genuinely
+    /// needs to hand the user onward already authenticated.
+    ///
+    /// The usual reason is a link button: without a token the destination has
+    /// to re-authenticate the user itself, and an OAuth bounce from a Discord
+    /// button someone just clicked is friction they'll read as brokenness.
+    #[serde(default)]
+    pub needs_identity: bool,
+
     /// Per-user cooldown. Deliberately a flat number rather than mirroring
     /// `bot_config::CooldownPolicy`: the richer rate-limit shapes are Augie's
     /// own vocabulary, and a plugin wanting one can be given it in guild
@@ -172,6 +202,8 @@ mod tests {
             subcommands: subs,
             permission: PermissionClass::Everyone,
             needs_defer: true,
+            ephemeral: false,
+            needs_identity: false,
             cooldown_seconds: None,
         }
     }

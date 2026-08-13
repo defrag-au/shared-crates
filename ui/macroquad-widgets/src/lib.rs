@@ -13,6 +13,7 @@ mod mint_checkout;
 mod order_fulfilment;
 mod quantity_stepper;
 mod wallet_connect;
+mod wallet_list;
 
 pub use button::{Button, ButtonVariant};
 pub use mint_checkout::{
@@ -27,4 +28,7 @@ pub use quantity_stepper::{quantity_stepper, QuantityStepperVm, StepperAction, S
 pub use theme::Theme;
 pub use wallet_connect::{
     wallet_connect, WalletAction, WalletConnectVm, WalletItem, WalletResponse, WalletState,
+};
+pub use wallet_list::{
+    wallet_list, WalletListAction, WalletListResponse, WalletListState, WalletListVm, WalletRow,
 };
