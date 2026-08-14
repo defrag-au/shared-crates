@@ -213,7 +213,10 @@ mod tests {
         let manifest = ServiceManifest {
             service: "holder-map".to_string(),
             version: "1".to_string(),
-            commands: vec![cmd("comp", vec![cmd("create", vec![]), cmd("draw", vec![])])],
+            commands: vec![cmd(
+                "comp",
+                vec![cmd("create", vec![]), cmd("draw", vec![])],
+            )],
         };
 
         assert_eq!(

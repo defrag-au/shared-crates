@@ -179,7 +179,10 @@ mod tests {
             subcommand: sub.map(str::to_string),
             options: HashMap::from([
                 ("min_ada".to_string(), OptionValue::Integer(51)),
-                ("name".to_string(), OptionValue::String("Area 51".to_string())),
+                (
+                    "name".to_string(),
+                    OptionValue::String("Area 51".to_string()),
+                ),
             ]),
             user: InvokingUser {
                 id: "179744071361757184".to_string(),
@@ -205,7 +208,10 @@ mod tests {
     #[test]
     fn option_accessors_are_type_checked() {
         let inv = invocation(Some("create"));
-        assert_eq!(inv.option("min_ada").and_then(OptionValue::as_i64), Some(51));
+        assert_eq!(
+            inv.option("min_ada").and_then(OptionValue::as_i64),
+            Some(51)
+        );
         // An integer option must not masquerade as a string.
         assert_eq!(inv.option("min_ada").and_then(OptionValue::as_str), None);
         assert_eq!(

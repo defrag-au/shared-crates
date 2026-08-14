@@ -85,7 +85,11 @@ pub struct CollectionDetails {
     pub description: Option<String>,
     #[serde(alias = "royaltyAddress")]
     pub royalty_address: Option<String>,
-    #[serde(alias = "royaltyPct", default, deserialize_with = "de_f64_null_default")]
+    #[serde(
+        alias = "royaltyPct",
+        default,
+        deserialize_with = "de_f64_null_default"
+    )]
     pub royalty_percentage: f64,
     pub image: Option<String>,
     pub banner: Option<String>,

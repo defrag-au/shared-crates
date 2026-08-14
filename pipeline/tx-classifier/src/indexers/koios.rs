@@ -38,19 +38,25 @@ pub async fn get_tx_from_koios(
 }
 
 /// Convert a Koios `/tx_info` transaction into the pipeline's [`RawTxData`].
-pub fn convert_koios_tx_to_raw_data(
-    tx: &KoiosTransaction,
-) -> Result<RawTxData, TxClassifierError> {
+pub fn convert_koios_tx_to_raw_data(tx: &KoiosTransaction) -> Result<RawTxData, TxClassifierError> {
     let inputs = tx.inputs.iter().map(koios_utxo_to_input).collect();
     let outputs = tx.outputs.iter().map(koios_utxo_to_output).collect();
-    let collateral_inputs = tx.collateral_inputs.iter().map(koios_utxo_to_input).collect();
+    let collateral_inputs = tx
+        .collateral_inputs
+        .iter()
+        .map(koios_utxo_to_input)
+        .collect();
     // Koios returns a single optional collateral return output.
     let collateral_outputs = tx
         .collateral_output
         .iter()
         .map(koios_utxo_to_output)
         .collect();
-    let reference_inputs = tx.reference_inputs.iter().map(koios_utxo_to_input).collect();
+    let reference_inputs = tx
+        .reference_inputs
+        .iter()
+        .map(koios_utxo_to_input)
+        .collect();
 
     // Mint/burn from the typed `assets_minted` list (quantity is signed: a
     // negative value is a burn).
@@ -127,7 +133,12 @@ fn koios_utxo_to_output(utxo: &KoisUtxo) -> TxOutput {
 fn koios_assets_to_map(utxo: &KoisUtxo) -> HashMap<String, u64> {
     (&utxo.asset_list)
         .into_iter()
-        .map(|a| (format!("{}{}", a.policy_id, a.asset_name), a.quantity as u64))
+        .map(|a| {
+            (
+                format!("{}{}", a.policy_id, a.asset_name),
+                a.quantity as u64,
+            )
+        })
         .collect()
 }
 
