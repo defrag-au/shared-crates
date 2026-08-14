@@ -165,10 +165,12 @@ impl FromStr for AssetUri {
 
 /// A width the image pipeline keeps warm.
 ///
-/// Deliberately an enum rather than a free integer. Only these two widths are
-/// pre-generated; any other value silently trades a cache hit for an on-demand
-/// resize on every single render, which is the kind of cost that never shows up
-/// as an error and never gets noticed.
+/// Deliberately an enum rather than a free integer. The image service will
+/// render *any* width on request, so an arbitrary value is not an error — it is
+/// a 2-3 second on-demand render for the first caller, versus a warm hit for
+/// these two. That is exactly the kind of cost that never surfaces as a failure
+/// and so never gets noticed; restricting the type makes it a deliberate choice
+/// to add a width rather than an accident.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ImageSize {
