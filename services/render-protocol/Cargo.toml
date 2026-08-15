@@ -1,0 +1,14 @@
+[package]
+name = "render-protocol"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Wire protocol for asking a graphics service to render markup to an image"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+# `cip14` gates the CIP-14 `Fingerprint` type — the whole point of `asset://`.
+cardano-assets = { path = "../../cardano-assets", features = ["cip14"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

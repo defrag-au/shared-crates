@@ -20,6 +20,20 @@ crate::features! {
         name: "Visual Search",
         locked_hint: "Hold a qualifying role in a partner Discord — sign in to unlock",
     };
+    /// Market scenario modelling — re-price a collection's listing book
+    /// against a hypothetical floor to surface what becomes under-priced if
+    /// the floor moves.
+    ///
+    /// **Deliberately granted to nobody yet.** The capability is built and
+    /// enforced, but which holding earns it is an open decision, so today only
+    /// wildcard (`*`) operator tokens see it. Naming the entitlement now means
+    /// turning it on later is a gate-config change, not a code change — and
+    /// nothing ships to general users in the meantime.
+    pub const MARKET_SCENARIOS = {
+        id: "tools.market-scenarios",
+        name: "Market Scenarios",
+        locked_hint: "Advanced market tooling — access tier not yet assigned",
+    };
     /// Operator control surface — add/edit/delete tracked collections,
     /// trigger syncs, and the visual-analysis tooling. Granted to specific
     /// Discord accounts via the gate config; the operator `X-Debug-Token`

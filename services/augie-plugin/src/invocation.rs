@@ -45,6 +45,39 @@ pub struct CommandInvocation {
 
     /// Discord application ID, needed to address the follow-up webhook.
     pub application_id: String,
+
+    /// Per-guild configuration for this plugin, verbatim from the guild's
+    /// opt-in block.
+    ///
+    /// Augie neither reads nor validates these values — it is a pass-through,
+    /// which is what keeps the protocol Discord-only. A collection service can
+    /// receive `policy_id` and a token service `contract`, without either
+    /// concept appearing in this type.
+    ///
+    /// This exists so a plugin does not have to keep its own copy of what the
+    /// guild config already knows. A duplicated table in the plugin drifts the
+    /// moment a guild is added in one place and not the other; passing it at
+    /// invocation time means there is one place to edit.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub config: HashMap<String, String>,
+
+    /// A short-lived identity token for the invoking user, minted by Augie.
+    ///
+    /// Present only when the command declared
+    /// [`crate::PluginCommand::needs_identity`] — a plugin that doesn't need
+    /// one shouldn't be handed a bearer credential it might log.
+    ///
+    /// **The point is that Augie mints it, not the plugin.** Identity is
+    /// Augie's to assert: it holds the signing key and it is the only party
+    /// that saw the Discord interaction. A plugin minting its own would mean
+    /// every plugin needing the secret, which is the hole this avoids.
+    ///
+    /// The token's signed action is the command name, so a surface it's handed
+    /// to can route on a *tamper-proof* intent rather than an unsigned query
+    /// parameter. Typical use is embedding it in a link so the destination
+    /// opens already authenticated instead of bouncing through OAuth.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_token: Option<String>,
 }
 
 /// A button click or select-menu submission.
@@ -70,6 +103,12 @@ pub struct ComponentInvocation {
     pub permission_class: PermissionClass,
     pub interaction_token: String,
     pub application_id: String,
+
+    /// Same pass-through config as [`CommandInvocation::config`]. A component
+    /// callback has to resolve the same guild context the command did, or page
+    /// 2 of a reply answers about something else.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub config: HashMap<String, String>,
 }
 
 /// The Discord user who triggered an invocation.
@@ -161,7 +200,10 @@ mod tests {
             subcommand: sub.map(str::to_string),
             options: HashMap::from([
                 ("min_ada".to_string(), OptionValue::Integer(51)),
-                ("name".to_string(), OptionValue::String("Area 51".to_string())),
+                (
+                    "name".to_string(),
+                    OptionValue::String("Area 51".to_string()),
+                ),
             ]),
             user: InvokingUser {
                 id: "179744071361757184".to_string(),
@@ -174,6 +216,8 @@ mod tests {
             permission_class: PermissionClass::Admin,
             interaction_token: "tok".to_string(),
             application_id: "1372830411196993578".to_string(),
+            config: HashMap::new(),
+            identity_token: None,
         }
     }
 
@@ -186,7 +230,10 @@ mod tests {
     #[test]
     fn option_accessors_are_type_checked() {
         let inv = invocation(Some("create"));
-        assert_eq!(inv.option("min_ada").and_then(OptionValue::as_i64), Some(51));
+        assert_eq!(
+            inv.option("min_ada").and_then(OptionValue::as_i64),
+            Some(51)
+        );
         // An integer option must not masquerade as a string.
         assert_eq!(inv.option("min_ada").and_then(OptionValue::as_str), None);
         assert_eq!(

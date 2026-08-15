@@ -142,9 +142,7 @@ impl IndexerPool {
         );
 
         let result = match self.provider {
-            IndexerProvider::Maestro => {
-                maestro::get_tx_from_maestro(&self.maestro, tx_hash).await
-            }
+            IndexerProvider::Maestro => maestro::get_tx_from_maestro(&self.maestro, tx_hash).await,
             IndexerProvider::Koios => koios::get_tx_from_koios(&self.koios, tx_hash).await,
         };
 

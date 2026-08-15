@@ -64,6 +64,11 @@ pub mod scopes {
 ///   roles = ["444444444444444444"]        # OG
 ///   match = "all"                         # require every listed role
 ///   features = ["tools.visual-search", "tools.pricing"]
+///
+/// [[server]]
+/// guild_id = "555555555555555555"
+/// label = "Private"
+/// unlisted = true                         # grants, but never advertised
 /// ```
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct GuildRoleConfig {
@@ -103,6 +108,14 @@ pub struct ServerConfig {
     /// a logged-in-but-unqualified user knows where to go.
     #[serde(default)]
     pub invite_url: Option<String>,
+    /// Never advertise this server on the requirements screen, even though its
+    /// roles grant features. For private/invite-only communities: granting
+    /// access and telling the world to come join are separate decisions, and
+    /// omitting `invite_url` alone still lists the server by name. `unlisted`
+    /// removes it from [`GuildRoleConfig::access_providers`] entirely; role
+    /// resolution for members is unaffected.
+    #[serde(default)]
+    pub unlisted: bool,
     #[serde(default, rename = "grant")]
     pub grants: Vec<RoleGrant>,
 }
@@ -182,9 +195,13 @@ impl GuildRoleConfig {
     /// screen ("join one of these to gain access"). A server with no label
     /// falls back to its guild id. Exposes only label + invite (no role
     /// ids), so it's safe to serve publicly.
+    ///
+    /// `unlisted` servers are omitted: they still grant, they're just never
+    /// held out as somewhere to go.
     pub fn access_providers(&self, feature_id: &str) -> Vec<AccessProvider> {
         self.servers
             .iter()
+            .filter(|s| !s.unlisted)
             .filter(|s| {
                 s.grants
                     .iter()
@@ -317,6 +334,15 @@ guild_id = "g2"
   roles = ["member"]
   features = ["tools.visual-search"]
 
+[[server]]
+guild_id = "g3"
+label = "Private"
+unlisted = true
+  [[server.grant]]
+  roles = ["insider"]
+  requirement = "Hold the insider role"
+  features = ["tools.visual-search"]
+
 [[admin]]
 user_id = "admin-uid"
 features = ["admin.access"]
@@ -326,11 +352,32 @@ features = ["admin.access"]
         GuildRoleConfig::from_toml(CFG).unwrap()
     }
 
+    /// An unlisted server still grants — it is only hidden from the
+    /// requirements screen, so a private community can confer access without
+    /// being advertised as somewhere to go.
+    #[test]
+    fn unlisted_server_grants_but_is_never_advertised() {
+        let c = config();
+        let providers = c.access_providers("tools.visual-search");
+        let labels: Vec<&str> = providers.iter().map(|p| p.label.as_str()).collect();
+        assert!(labels.contains(&"Alpha"));
+        assert!(
+            !labels.contains(&"Private"),
+            "unlisted server must not appear on the requirements screen"
+        );
+
+        // Resolution is unaffected: an insider still gets the feature.
+        let mut roles = HashMap::new();
+        roles.insert("g3".to_string(), vec!["insider".to_string()]);
+        let granted = c.resolve("someone", &roles);
+        assert!(granted.iter().any(|f| f == "tools.visual-search"));
+    }
+
     #[test]
     fn parses_and_lists_guilds() {
         let c = config();
-        assert_eq!(c.servers.len(), 2);
-        assert_eq!(c.guild_ids(), vec!["g1", "g2"]);
+        assert_eq!(c.servers.len(), 3);
+        assert_eq!(c.guild_ids(), vec!["g1", "g2", "g3"]);
         // Default match mode is Any.
         assert_eq!(c.servers[0].grants[0].match_mode, MatchMode::Any);
         assert_eq!(c.servers[0].grants[2].match_mode, MatchMode::All);

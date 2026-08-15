@@ -37,6 +37,12 @@ pub struct CardBrowserConfig {
     pub rounding: f32,
     /// Scroll area ID salt (must be unique if multiple browsers on one page).
     pub scroll_id: &'static str,
+    /// Lay the grid out at its natural height instead of inside its own scroll
+    /// area. For a bounded grid embedded in an already-scrolling page, where a
+    /// nested scrollbar is the wrong affordance — the section should simply be
+    /// as tall as its contents. `near_bottom` is then always true, since all
+    /// items are on screen.
+    pub grow_to_content: bool,
     /// Card background color (normal).
     pub bg_card: Color32,
     /// Card background color (hovered).
@@ -83,6 +89,7 @@ impl Default for CardBrowserConfig {
             spacing: 8.0,
             rounding: 6.0,
             scroll_id: "card_browser",
+            grow_to_content: false,
             bg_card: theme::BG_PRIMARY,
             bg_card_hover: theme::BG_HIGHLIGHT,
             bg_card_selected: Color32::from_rgb(40, 45, 55),
@@ -205,7 +212,7 @@ pub fn show<T>(
                 scroll = scroll.vertical_scroll_offset(new_offset);
             }
 
-            let scroll_output = scroll.show(ui, |ui| {
+            let mut grid = |ui: &mut egui::Ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::splat(config.spacing);
                     let spinner = CachedSpinner::new(ui, 12.0, config.text_muted);
@@ -285,17 +292,26 @@ pub fn show<T>(
                         }
                     }
                 });
-            });
+            };
 
-            // Detect near-bottom: within ~2 card rows of the content bottom
-            let content_height = scroll_output.content_size.y;
-            let viewport_height = scroll_output.inner_rect.height();
-            let offset = scroll_output.state.offset.y;
-            let threshold = (config.card_height() + config.spacing) * 2.0;
-            if content_height > viewport_height
-                && offset + viewport_height >= content_height - threshold
-            {
+            if config.grow_to_content {
+                // Every item is laid out and visible, so any lazy loader
+                // watching `near_bottom` should fetch the next page.
+                grid(ui);
                 response.near_bottom = true;
+            } else {
+                let scroll_output = scroll.show(ui, &mut grid);
+
+                // Detect near-bottom: within ~2 card rows of the content bottom
+                let content_height = scroll_output.content_size.y;
+                let viewport_height = scroll_output.inner_rect.height();
+                let offset = scroll_output.state.offset.y;
+                let threshold = (config.card_height() + config.spacing) * 2.0;
+                if content_height > viewport_height
+                    && offset + viewport_height >= content_height - threshold
+                {
+                    response.near_bottom = true;
+                }
             }
         });
 

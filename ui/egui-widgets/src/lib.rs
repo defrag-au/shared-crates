@@ -25,6 +25,7 @@ pub mod grouped_section;
 pub mod icons;
 pub mod id_pill;
 pub mod image_loader;
+pub mod leaderboard;
 pub mod listing_grid;
 pub mod marquee;
 pub mod metric_card;

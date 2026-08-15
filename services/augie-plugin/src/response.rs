@@ -5,6 +5,7 @@
 //! nothing else. Each host converts to its own twilight version at the edge;
 //! see the crate docs for why twilight types can't live on this wire.
 
+use render_protocol::RenderRequest;
 use serde::{Deserialize, Serialize};
 
 /// A plugin's reply to an invocation.
@@ -27,6 +28,27 @@ pub struct CommandResponse {
     /// message is milder than an accidentally-hidden one.
     #[serde(default)]
     pub ephemeral: bool,
+
+    /// A graphic to render and attach to this reply.
+    ///
+    /// **The host renders it, not the plugin.** This is not a stylistic choice:
+    /// [`PluginEmbed`] can only reference an image by URL, and a plugin has no
+    /// way to attach bytes — so a plugin wanting a graphic would otherwise have
+    /// to host it at a public, guessable URL. Describing the graphic as markup
+    /// and letting the host render and attach it keeps the image private to the
+    /// message (ephemeral replies included) and keeps the rasteriser, fonts and
+    /// image pipeline in one service instead of every plugin.
+    ///
+    /// The attachment is named `render.png`; reference it from an embed as
+    /// `attachment://render.png` if you want it inside an embed rather than
+    /// beneath the message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub render: Option<RenderRequest>,
+
+    /// Components V2 layout. See [`PluginBlock`] — mutually exclusive with
+    /// `content` and `embeds`, which the host drops when this is set.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layout: Vec<PluginBlock>,
 
     /// Replace the message the component was attached to, rather than posting
     /// a new one. Only meaningful on a [`crate::ComponentInvocation`] reply —
@@ -255,5 +277,86 @@ mod tests {
         let json = serde_json::to_string(&button).unwrap();
         assert!(json.contains(r#""type":"button""#), "{json}");
         assert!(json.contains(r#""style":"danger""#), "{json}");
+    }
+}
+
+/// Components V2 layout.
+///
+/// # Mutually exclusive with `content` and `embeds`
+///
+/// Discord refuses a message that carries both, and the `IS_COMPONENTS_V2` flag
+/// **cannot be removed once set** on a message. A plugin therefore picks one
+/// vocabulary per reply: set `layout` for V2, or `content`/`embeds` for the
+/// classic shape. The host ignores `content`/`embeds` when `layout` is present
+/// rather than sending a message Discord will reject.
+///
+/// The trade is real: V2 gives grouped containers, accent colours and inline
+/// galleries, but loses embeds and cannot be mixed. It is worth it when the
+/// reply is a composed card; it is not worth it for a line of text.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PluginBlock {
+    /// A visually grouped card with an optional accent bar.
+    Container {
+        /// RGB accent bar. A tier colour or brand colour reads as deliberate
+        /// where the default grey reads as unstyled.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        accent_color: Option<u32>,
+        blocks: Vec<PluginBlock>,
+    },
+
+    /// Markdown text. The V2 replacement for `content` — headings (`##`), bold
+    /// and links all work.
+    Text { content: String },
+
+    /// Images shown inline. `attachment://name` addresses a file on the same
+    /// message, which is how a rendered graphic is placed inside a container.
+    Gallery { items: Vec<GalleryItem> },
+
+    /// Text with a small image beside it.
+    ///
+    /// The compact alternative to [`PluginBlock::Gallery`]: Discord sizes a
+    /// gallery by how many items it holds, so a one-item gallery renders
+    /// full-width no matter how small the source image is. A section's
+    /// thumbnail is small by construction, which is what you want when the
+    /// image is illustrating a line of text rather than being the point.
+    Section {
+        /// Lines of markdown shown beside the thumbnail.
+        text: Vec<String>,
+        thumbnail: GalleryItem,
+    },
+
+    /// A horizontal rule between sections.
+    Separator {
+        #[serde(default = "default_true")]
+        divider: bool,
+    },
+
+    /// Buttons and selects, exactly as in the classic vocabulary.
+    Row(PluginActionRow),
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GalleryItem {
+    /// `attachment://name.png` for a file on this message, or an https URL.
+    pub url: String,
+
+    /// Alt text. Worth setting — a gallery with no description is unreadable
+    /// to anyone using a screen reader.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+impl GalleryItem {
+    /// An image attached to this same message.
+    pub fn attachment(name: &str, description: impl Into<String>) -> Self {
+        Self {
+            url: format!("attachment://{name}"),
+            description: Some(description.into()),
+        }
     }
 }

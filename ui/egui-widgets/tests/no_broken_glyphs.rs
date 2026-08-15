@@ -33,6 +33,12 @@ const DENY: &[(char, &str)] = &[
     ('\u{2717}', "ballot x"),
     ('\u{2718}', "heavy ballot x"),
     ('\u{2212}', "minus sign (use ASCII '-')"),
+    // Emoji: the bundled fonts carry no colour-emoji coverage either, so a
+    // medal renders as tofu just like an arrow does.
+    ('\u{1F947}', "1st place medal"),
+    ('\u{1F948}', "2nd place medal"),
+    ('\u{1F949}', "3rd place medal"),
+    ('\u{1F3C6}', "trophy"),
 ];
 
 /// Truncate a line at the first `//` that is NOT inside a string literal, so

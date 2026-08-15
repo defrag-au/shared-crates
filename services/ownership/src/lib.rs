@@ -325,6 +325,20 @@ impl OwnershipClient {
         self.post_json_value(&url, body).await
     }
 
+    /// Evaluate a pricing strategy against the live listing book without storing
+    /// it. `body` is a `PricingPlanRequest` — the same `PricingConfig` shape
+    /// [`Self::set_pricing_config`] takes, plus scenario knobs (`anchor_lovelace`
+    /// to price off a hypothetical floor, `royalty_pct` for round-trip
+    /// economics). Read-only; nothing is persisted.
+    pub async fn pricing_plan(
+        &self,
+        policy_id: &str,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, Error> {
+        let url = format!("{}/admin/policies/{policy_id}/pricing-plan", self.base_url);
+        self.post_json_value(&url, body).await
+    }
+
     /// Public sales summary: realized-sales shape, effective pricing config
     /// and resolved ladder rungs (JSON passthrough, same reasoning as above).
     pub async fn get_sales_summary(&self, policy_id: &str) -> Result<serde_json::Value, Error> {
