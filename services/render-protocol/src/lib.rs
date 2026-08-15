@@ -97,30 +97,85 @@ pub enum OutputFormat {
     },
 }
 
-/// An asset image reference: `asset://{fingerprint}/{size}`.
+/// How an asset image is named.
+///
+/// Both forms are accepted because they are not interchangeable in practice.
+/// The image service stores by fingerprint but *resolves* a fingerprint through
+/// an identity index (D1 → Cardanoscan), so fingerprint addressing only works
+/// for collections that index has reached. `policy:hex` needs no lookup and
+/// works for every collection — including ones indexed later.
+///
+/// A caller that has a fingerprint should send it; a caller that has the policy
+/// and asset name should send those rather than deriving a fingerprint the
+/// service may not be able to reverse.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AssetIdentifier {
+    /// CIP-14 fingerprint. Requires the image service's identity index to know it.
+    Fingerprint(Fingerprint),
+    /// Policy id and asset name, both hex. Always resolvable.
+    PolicyAsset {
+        policy_id: String,
+        asset_name_hex: String,
+    },
+}
+
+impl AssetIdentifier {
+    /// The identifier as the image service expects it in a request path.
+    pub fn as_path_segment(&self) -> String {
+        match self {
+            Self::Fingerprint(fp) => fp.as_str().to_string(),
+            Self::PolicyAsset {
+                policy_id,
+                asset_name_hex,
+            } => format!("{policy_id}:{asset_name_hex}"),
+        }
+    }
+}
+
+impl fmt::Display for AssetIdentifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.as_path_segment())
+    }
+}
+
+/// An asset image reference: `asset://{identifier}/{size}`, where the
+/// identifier is a CIP-14 fingerprint or `policy_id:asset_name_hex`.
 ///
 /// Used as the `src` of an `<img>` in the markup. The renderer resolves it;
 /// the sender never supplies a URL.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssetUri {
-    pub fingerprint: Fingerprint,
+    pub identifier: AssetIdentifier,
     pub size: ImageSize,
 }
 
 impl AssetUri {
-    pub fn new(fingerprint: Fingerprint, size: ImageSize) -> Self {
-        Self { fingerprint, size }
+    pub fn fingerprint(fingerprint: Fingerprint, size: ImageSize) -> Self {
+        Self {
+            identifier: AssetIdentifier::Fingerprint(fingerprint),
+            size,
+        }
+    }
+
+    pub fn policy_asset(
+        policy_id: impl Into<String>,
+        asset_name_hex: impl Into<String>,
+        size: ImageSize,
+    ) -> Self {
+        Self {
+            identifier: AssetIdentifier::PolicyAsset {
+                policy_id: policy_id.into(),
+                asset_name_hex: asset_name_hex.into(),
+            },
+            size,
+        }
     }
 }
 
 impl fmt::Display for AssetUri {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "asset://{}/{}",
-            self.fingerprint.as_str(),
-            self.size.pixels()
-        )
+        write!(f, "asset://{}/{}", self.identifier, self.size.pixels())
     }
 }
 
@@ -154,11 +209,158 @@ impl FromStr for AssetUri {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let rest = s.strip_prefix("asset://").ok_or(AssetUriError::MissingScheme)?;
-        let (fp, size) = rest.split_once('/').ok_or(AssetUriError::MissingSize)?;
+        // Split on the LAST slash: neither identifier form contains one, but a
+        // future form might, and the size is always the final segment.
+        let (id, size) = rest.rsplit_once('/').ok_or(AssetUriError::MissingSize)?;
+
+        let identifier = match id.split_once(':') {
+            Some((policy_id, asset_name_hex)) => {
+                // Both halves land in a URL the renderer builds, so anything
+                // that isn't hex is rejected rather than passed through.
+                let hex_ok = |v: &str| !v.is_empty() && v.chars().all(|c| c.is_ascii_hexdigit());
+                if policy_id.len() != 56 || !hex_ok(policy_id) || !hex_ok(asset_name_hex) {
+                    return Err(AssetUriError::InvalidFingerprint);
+                }
+                AssetIdentifier::PolicyAsset {
+                    policy_id: policy_id.to_string(),
+                    asset_name_hex: asset_name_hex.to_string(),
+                }
+            }
+            None => AssetIdentifier::Fingerprint(
+                Fingerprint::new(id).map_err(|_| AssetUriError::InvalidFingerprint)?,
+            ),
+        };
 
         Ok(Self {
-            fingerprint: Fingerprint::new(fp).map_err(|_| AssetUriError::InvalidFingerprint)?,
+            identifier,
             size: size.parse()?,
+        })
+    }
+}
+
+/// A Discord avatar reference: `avatar://{user_id}/{hash}`.
+///
+/// A second scheme rather than allowing `https://cdn.discordapp.com/...` in the
+/// markup, so the rule stays absolute: markup never contains a fetchable URL.
+/// An allowlisted host would be less code, but "no URLs except this one" is a
+/// category that grows, where a scheme the renderer resolves does not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AvatarUri {
+    pub user_id: String,
+    /// Discord's avatar hash. `None` renders the default avatar.
+    pub hash: Option<String>,
+}
+
+impl AvatarUri {
+    pub fn new(user_id: impl Into<String>, hash: Option<String>) -> Self {
+        Self {
+            user_id: user_id.into(),
+            hash,
+        }
+    }
+}
+
+impl fmt::Display for AvatarUri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // `default` rather than omitting the segment, so the URI always has the
+        // same shape and the parser never has to guess.
+        write!(
+            f,
+            "avatar://{}/{}",
+            self.user_id,
+            self.hash.as_deref().unwrap_or("default")
+        )
+    }
+}
+
+impl FromStr for AvatarUri {
+    type Err = AssetUriError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let rest = s
+            .strip_prefix("avatar://")
+            .ok_or(AssetUriError::MissingScheme)?;
+        let (user_id, hash) = rest.split_once('/').ok_or(AssetUriError::MissingSize)?;
+
+        // Snowflake and hex-hash only: both become path segments in a URL the
+        // renderer builds, so anything else is a path-traversal attempt.
+        if user_id.is_empty() || !user_id.chars().all(|c| c.is_ascii_digit()) {
+            return Err(AssetUriError::InvalidFingerprint);
+        }
+        if hash != "default" && (hash.is_empty() || !hash.chars().all(|c| c.is_ascii_alphanumeric()))
+        {
+            return Err(AssetUriError::InvalidFingerprint);
+        }
+
+        Ok(Self {
+            user_id: user_id.to_string(),
+            hash: (hash != "default").then(|| hash.to_string()),
+        })
+    }
+}
+
+/// Artwork we own, in object storage: `r2://{binding}/{key}`.
+///
+/// One scheme for every kind of art we host — tier emblems, overlays, ship
+/// templates, badges — rather than one scheme per kind doing the same thing
+/// with a different prefix.
+///
+/// `binding` is the renderer's R2 **binding name**, not a bucket name, and that
+/// is what bounds it: a binding the worker doesn't declare simply fails to
+/// resolve, so the wrangler config is the allowlist. There is no separate map
+/// to keep in step with reality.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct R2Uri {
+    pub binding: String,
+    pub key: String,
+}
+
+impl R2Uri {
+    pub fn new(binding: impl Into<String>, key: impl Into<String>) -> Self {
+        Self {
+            binding: binding.into(),
+            key: key.into(),
+        }
+    }
+}
+
+impl fmt::Display for R2Uri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "r2://{}/{}", self.binding, self.key)
+    }
+}
+
+impl FromStr for R2Uri {
+    type Err = AssetUriError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let rest = s.strip_prefix("r2://").ok_or(AssetUriError::MissingScheme)?;
+        let (binding, key) = rest.split_once('/').ok_or(AssetUriError::MissingSize)?;
+
+        // Cloudflare binding names are SCREAMING_SNAKE_CASE. Requiring the
+        // shape means a typo fails to parse rather than becoming a lookup for a
+        // binding that will never exist.
+        if binding.is_empty()
+            || !binding
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        {
+            return Err(AssetUriError::InvalidFingerprint);
+        }
+
+        // The key is a path and may contain slashes, but must not climb: `..`
+        // in an object key is meaningless to R2 but meaningful to anything that
+        // later maps keys onto a filesystem or a URL.
+        if key.is_empty()
+            || key.starts_with('/')
+            || key.split('/').any(|segment| segment == ".." || segment.is_empty())
+        {
+            return Err(AssetUriError::InvalidFingerprint);
+        }
+
+        Ok(Self {
+            binding: binding.to_string(),
+            key: key.to_string(),
         })
     }
 }
@@ -212,7 +414,7 @@ mod tests {
 
     #[test]
     fn asset_uri_round_trips() {
-        let uri = AssetUri::new(Fingerprint::new(FP).unwrap(), ImageSize::Thumb);
+        let uri = AssetUri::fingerprint(Fingerprint::new(FP).unwrap(), ImageSize::Thumb);
 
         assert_eq!(uri.to_string(), format!("asset://{FP}/400"));
         assert_eq!(uri.to_string().parse::<AssetUri>().unwrap(), uri);
@@ -248,5 +450,140 @@ mod tests {
         let req: RenderRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.format, OutputFormat::Png);
         assert_eq!(<(u32, u32)>::from(req.viewport), (400, 240));
+    }
+}
+
+#[cfg(test)]
+mod avatar_tests {
+    use super::*;
+
+    #[test]
+    fn avatar_round_trips() {
+        let uri = AvatarUri::new("179744071361757184", Some("a1b2c3d4".to_string()));
+        assert_eq!(uri.to_string(), "avatar://179744071361757184/a1b2c3d4");
+        assert_eq!(uri.to_string().parse::<AvatarUri>().unwrap(), uri);
+    }
+
+    /// A user with no avatar still produces a well-formed URI, so the renderer
+    /// never has to handle a missing segment.
+    #[test]
+    fn a_missing_hash_becomes_default() {
+        let uri = AvatarUri::new("179744071361757184", None);
+        assert_eq!(uri.to_string(), "avatar://179744071361757184/default");
+        assert_eq!(uri.to_string().parse::<AvatarUri>().unwrap().hash, None);
+    }
+
+    /// Both segments land in a URL the renderer builds, so traversal attempts
+    /// must not parse.
+    #[test]
+    fn path_traversal_is_rejected() {
+        assert!("avatar://../../etc/passwd".parse::<AvatarUri>().is_err());
+        assert!("avatar://123/..%2f..%2fx".parse::<AvatarUri>().is_err());
+        assert!("avatar://not-a-snowflake/abc".parse::<AvatarUri>().is_err());
+    }
+
+    #[test]
+    fn an_asset_uri_is_not_an_avatar() {
+        assert_eq!(
+            "asset://asset1rjklcrnsdzqp65wjgrg55sy9723kw09mlgvlc3/400".parse::<AvatarUri>(),
+            Err(AssetUriError::MissingScheme)
+        );
+    }
+}
+
+#[cfg(test)]
+mod policy_asset_tests {
+    use super::*;
+
+    const POLICY: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
+    const NAME: &str = "50697261746531353039";
+
+    #[test]
+    fn policy_asset_round_trips() {
+        let uri = AssetUri::policy_asset(POLICY, NAME, ImageSize::Thumb);
+        assert_eq!(uri.to_string(), format!("asset://{POLICY}:{NAME}/400"));
+        assert_eq!(uri.to_string().parse::<AssetUri>().unwrap(), uri);
+    }
+
+    /// The two forms must stay distinguishable — a fingerprint has no colon.
+    #[test]
+    fn the_two_forms_parse_to_different_identifiers() {
+        let fp = "asset1rjklcrnsdzqp65wjgrg55sy9723kw09mlgvlc3";
+        assert!(matches!(
+            format!("asset://{fp}/400").parse::<AssetUri>().unwrap().identifier,
+            AssetIdentifier::Fingerprint(_)
+        ));
+        assert!(matches!(
+            format!("asset://{POLICY}:{NAME}/400")
+                .parse::<AssetUri>()
+                .unwrap()
+                .identifier,
+            AssetIdentifier::PolicyAsset { .. }
+        ));
+    }
+
+    /// Both halves become URL path segments, so non-hex must not parse.
+    #[test]
+    fn non_hex_identifiers_are_rejected() {
+        assert!(format!("asset://{POLICY}:../../etc/x/400").parse::<AssetUri>().is_err());
+        assert!("asset://short:abcd/400".parse::<AssetUri>().is_err());
+        assert!(format!("asset://{POLICY}:zzzz/400").parse::<AssetUri>().is_err());
+    }
+
+    #[test]
+    fn the_path_segment_is_what_the_image_service_expects() {
+        assert_eq!(
+            AssetUri::policy_asset(POLICY, NAME, ImageSize::Thumb)
+                .identifier
+                .as_path_segment(),
+            format!("{POLICY}:{NAME}")
+        );
+    }
+}
+
+#[cfg(test)]
+mod r2_tests {
+    use super::*;
+
+    const KEY: &str = "world/blackflag/tiers/icons/beards_bandits.png";
+
+    #[test]
+    fn r2_uri_round_trips() {
+        let uri = R2Uri::new("STORAGE", KEY);
+        assert_eq!(uri.to_string(), format!("r2://STORAGE/{KEY}"));
+        assert_eq!(uri.to_string().parse::<R2Uri>().unwrap(), uri);
+    }
+
+    /// A key is a path and legitimately contains slashes.
+    #[test]
+    fn nested_keys_survive() {
+        let uri: R2Uri = format!("r2://STORAGE/{KEY}").parse().unwrap();
+        assert_eq!(uri.binding, "STORAGE");
+        assert_eq!(uri.key, KEY);
+    }
+
+    /// `..` is meaningless to R2 but meaningful to anything that later maps a
+    /// key onto a path or a URL, so it is refused at the boundary.
+    #[test]
+    fn traversal_is_rejected() {
+        assert!("r2://STORAGE/../secrets".parse::<R2Uri>().is_err());
+        assert!("r2://STORAGE/a/../../b".parse::<R2Uri>().is_err());
+        assert!("r2://STORAGE//leading".parse::<R2Uri>().is_err());
+        assert!("r2://STORAGE/".parse::<R2Uri>().is_err());
+    }
+
+    /// Binding names are SCREAMING_SNAKE_CASE; a lowercase bucket name is a
+    /// confusion worth catching at parse rather than as a failed lookup.
+    #[test]
+    fn a_bucket_name_is_not_a_binding_name() {
+        assert!(format!("r2://augminted-dev/{KEY}").parse::<R2Uri>().is_err());
+    }
+
+    #[test]
+    fn other_schemes_are_not_r2() {
+        assert_eq!(
+            "asset://abc:def/400".parse::<R2Uri>(),
+            Err(AssetUriError::MissingScheme)
+        );
     }
 }

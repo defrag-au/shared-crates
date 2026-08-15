@@ -38,6 +38,7 @@ mod app {
         RangeBar,
         PipRow,
         PriceTimeline,
+        Leaderboard,
         FocusList,
         CardBrowser,
         IconGallery,
@@ -160,6 +161,7 @@ mod app {
                 Self::RangeBar,
                 Self::PipRow,
                 Self::PriceTimeline,
+                Self::Leaderboard,
                 Self::FocusList,
                 Self::CardBrowser,
                 Self::IconGallery,
@@ -242,6 +244,7 @@ mod app {
                 Self::RangeBar => "Range Bar",
                 Self::PipRow => "Pip Row",
                 Self::PriceTimeline => "Price Timeline",
+                Self::Leaderboard => "Leaderboard",
                 Self::FocusList => "Focus List",
                 Self::CardBrowser => "Card Browser",
                 Self::IconGallery => "Icon Gallery",
@@ -350,6 +353,7 @@ mod app {
                 | Self::RangeBar
                 | Self::PipRow
                 | Self::PriceTimeline
+                | Self::Leaderboard
                 | Self::FocusList
                 | Self::CardBrowser
                 | Self::IconGallery
@@ -443,6 +447,9 @@ mod app {
                 }
                 Self::PriceTimeline => {
                     "Time-axis price scatter with reference lines/bands, log y, and hover inspection"
+                }
+                Self::Leaderboard => {
+                    "Ranked standings with medals, a share bar, and supporting stats"
                 }
                 Self::FocusList => {
                     "Fixed-geometry master-detail list for tooltips: sliding highlight + detail pane"
@@ -674,6 +681,7 @@ mod app {
         range_bar_state: stories::range_bar::RangeBarState,
         pip_row_state: stories::pip_row::PipRowState,
         price_timeline_state: stories::price_timeline::PriceTimelineState,
+        leaderboard_state: stories::leaderboard::LeaderboardState,
         focus_list_state: stories::focus_list::FocusListState,
         card_browser_state: stories::card_browser::CardBrowserStoryState,
         icon_gallery_state: stories::icon_gallery::IconGalleryState,
@@ -779,6 +787,7 @@ mod app {
                 range_bar_state: stories::range_bar::RangeBarState::default(),
                 pip_row_state: stories::pip_row::PipRowState::default(),
                 price_timeline_state: stories::price_timeline::PriceTimelineState::default(),
+                leaderboard_state: stories::leaderboard::LeaderboardState::default(),
                 focus_list_state: stories::focus_list::FocusListState::default(),
                 card_browser_state: stories::card_browser::CardBrowserStoryState::default(),
                 icon_gallery_state: stories::icon_gallery::IconGalleryState::default(),
@@ -969,6 +978,9 @@ mod app {
                             Story::PipRow => stories::pip_row::show(ui, &mut self.pip_row_state),
                             Story::PriceTimeline => {
                                 stories::price_timeline::show(ui, &mut self.price_timeline_state)
+                            }
+                            Story::Leaderboard => {
+                                stories::leaderboard::show(ui, &mut self.leaderboard_state)
                             }
                             Story::FocusList => {
                                 stories::focus_list::show(ui, &mut self.focus_list_state)

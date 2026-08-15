@@ -345,6 +345,7 @@ dependencies = [
 name = "augie-plugin"
 version = "0.1.0"
 dependencies = [
+ "render-protocol",
  "serde",
  "serde_json",
 ]
@@ -6945,6 +6946,14 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "wallet-link"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -7,6 +7,9 @@ description = "Wire protocol for services that advertise Discord commands to the
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
+# A plugin describes a graphic it wants; the HOST renders it. See
+# `CommandResponse::render` for why the plugin cannot do this itself.
+render-protocol = { path = "../render-protocol" }
 
 [dev-dependencies]
 serde_json = { workspace = true }

@@ -13,6 +13,7 @@ pub mod focus_list;
 pub mod formatting;
 pub mod gated;
 pub mod icon_gallery;
+pub mod leaderboard;
 pub mod marquee;
 pub mod mesh_playground;
 pub mod metric_card;

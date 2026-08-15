@@ -46,6 +46,21 @@ pub struct CommandInvocation {
     /// Discord application ID, needed to address the follow-up webhook.
     pub application_id: String,
 
+    /// Per-guild configuration for this plugin, verbatim from the guild's
+    /// opt-in block.
+    ///
+    /// Augie neither reads nor validates these values — it is a pass-through,
+    /// which is what keeps the protocol Discord-only. A collection service can
+    /// receive `policy_id` and a token service `contract`, without either
+    /// concept appearing in this type.
+    ///
+    /// This exists so a plugin does not have to keep its own copy of what the
+    /// guild config already knows. A duplicated table in the plugin drifts the
+    /// moment a guild is added in one place and not the other; passing it at
+    /// invocation time means there is one place to edit.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub config: HashMap<String, String>,
+
     /// A short-lived identity token for the invoking user, minted by Augie.
     ///
     /// Present only when the command declared
@@ -88,6 +103,12 @@ pub struct ComponentInvocation {
     pub permission_class: PermissionClass,
     pub interaction_token: String,
     pub application_id: String,
+
+    /// Same pass-through config as [`CommandInvocation::config`]. A component
+    /// callback has to resolve the same guild context the command did, or page
+    /// 2 of a reply answers about something else.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub config: HashMap<String, String>,
 }
 
 /// The Discord user who triggered an invocation.
@@ -195,6 +216,7 @@ mod tests {
             permission_class: PermissionClass::Admin,
             interaction_token: "tok".to_string(),
             application_id: "1372830411196993578".to_string(),
+            config: HashMap::new(),
             identity_token: None,
         }
     }
