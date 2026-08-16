@@ -8,6 +8,7 @@ pub mod bullet_bar;
 pub mod button_group;
 pub mod buttons;
 pub mod card_browser;
+pub mod channel_bands;
 pub mod chip;
 pub mod collection_composition;
 pub mod collection_list;
@@ -90,6 +91,7 @@ pub mod slippage_selector;
 pub mod split_allocation_bar;
 
 // Loan dashboard widgets
+pub mod custody_walk;
 pub mod data_table;
 pub mod exposure_bar;
 
@@ -130,10 +132,18 @@ pub use buttons::UiButtonExt;
 pub use card_browser::{
     CardBrowserConfig, CardBrowserResponse, CardBrowserState, CardRenderContext,
 };
+pub use channel_bands::{
+    assign_colors, fold_to_other, period_total, ChannelBands, ChannelBandsResponse, ChannelSeries,
+    CHANNEL_PALETTE, OTHER_COLOR, OTHER_LABEL,
+};
 pub use chip::{Chip, ChipResponse, ChipVariant};
 pub use collection_list::{
     CollectionControl, CollectionControls, CollectionList, CollectionListAction,
     CollectionListLayout, CollectionListResponse, CollectionRow,
+};
+pub use custody_walk::{
+    summarize as summarize_walk, CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode,
+    WalkNodeKind, WalkSummary,
 };
 pub use distribution_waterfall::{DistributionWaterfall, WaterfallMode, WaterfallParty};
 pub use donut_chart::{

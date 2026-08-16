@@ -57,6 +57,7 @@ pub mod slippage_selector;
 pub mod split_allocation_bar;
 
 // Loan dashboard widgets
+pub mod custody_walk;
 pub mod data_table;
 pub mod exposure_bar;
 
@@ -88,6 +89,7 @@ pub mod tx_cart;
 // label/value grids, button groups). Add new foundation widgets to this
 // group rather than tacking on a new category at the end of the file.
 pub mod button_group;
+pub mod channel_bands;
 pub mod chip;
 pub mod id_pill;
 pub mod property_list;

@@ -96,6 +96,8 @@ mod app {
         Chip,
         PartyBadge,
         FlowLedger,
+        ChannelBands,
+        CustodyWalk,
         TagList,
         TokenMultiselect,
         TypeaheadSearch,
@@ -131,6 +133,8 @@ mod app {
                 Self::Chip,
                 Self::PartyBadge,
                 Self::FlowLedger,
+                Self::ChannelBands,
+                Self::CustodyWalk,
                 Self::TagList,
                 Self::TokenMultiselect,
                 Self::TypeaheadSearch,
@@ -321,6 +325,8 @@ mod app {
                 Self::Chip => "Chip",
                 Self::PartyBadge => "Party Badge",
                 Self::FlowLedger => "Flow Ledger",
+                Self::ChannelBands => "Channel Bands",
+                Self::CustodyWalk => "Custody Walk",
                 Self::TagList => "Tag List",
                 Self::TokenMultiselect => "Token Multiselect",
                 Self::TypeaheadSearch => "Typeahead Search",
@@ -353,6 +359,8 @@ mod app {
                 | Self::Chip
                 | Self::PartyBadge
                 | Self::FlowLedger
+                | Self::ChannelBands
+                | Self::CustodyWalk
                 | Self::TagList
                 | Self::TokenMultiselect
                 | Self::TypeaheadSearch
@@ -619,6 +627,12 @@ mod app {
                 }
                 Self::FlowLedger => {
                     "A wallet's movements in time order — net amounts only, running balance, per-row channel colour, round trips muted, and a reconciliation footer that says DOES NOT RECONCILE rather than showing a plausible total"
+                }
+                Self::CustodyWalk => {
+                    "Indented UTxO provenance tree for one traced sum — change legs continue past the payee rather than naming it as the source, depth/budget bounds render as real leaves, and the header reads PROVEN (UTxO) vs INFERRED (account chain) and PARTIAL when anything is untraced"
+                }
+                Self::ChannelBands => {
+                    "Stacked composition over a discrete time axis — where money came from per period, with a same-unit reference line. Validated 5-hue palette, colours assigned by identity so filtering never repaints, overflow folds to Other rather than inventing hues"
                 }
                 Self::TagList => {
                     "Wrapping row of removable chips with an optional clear-all button — for active filters / selected facets"
@@ -1176,6 +1190,8 @@ mod app {
                             Story::Chip => stories::chip::show(ui),
                             Story::PartyBadge => stories::party_badge::show(ui),
                             Story::FlowLedger => stories::flow_ledger::show(ui),
+                            Story::ChannelBands => stories::channel_bands::show(ui),
+                            Story::CustodyWalk => stories::custody_walk::show(ui),
                             Story::TagList => stories::tag_list::show(ui, &mut self.tag_list_state),
                             Story::TokenMultiselect => stories::token_multiselect::show(
                                 ui,
