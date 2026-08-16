@@ -91,6 +91,7 @@ pub mod tx_cart;
 pub mod button_group;
 pub mod channel_bands;
 pub mod chip;
+pub mod claim_card;
 pub mod id_pill;
 pub mod property_list;
 pub mod toast;

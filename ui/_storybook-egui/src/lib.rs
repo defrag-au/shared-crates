@@ -98,6 +98,7 @@ mod app {
         FlowLedger,
         ChannelBands,
         CustodyWalk,
+        ClaimCard,
         TagList,
         TokenMultiselect,
         TypeaheadSearch,
@@ -135,6 +136,7 @@ mod app {
                 Self::FlowLedger,
                 Self::ChannelBands,
                 Self::CustodyWalk,
+                Self::ClaimCard,
                 Self::TagList,
                 Self::TokenMultiselect,
                 Self::TypeaheadSearch,
@@ -327,6 +329,7 @@ mod app {
                 Self::FlowLedger => "Flow Ledger",
                 Self::ChannelBands => "Channel Bands",
                 Self::CustodyWalk => "Custody Walk",
+                Self::ClaimCard => "Claim Card",
                 Self::TagList => "Tag List",
                 Self::TokenMultiselect => "Token Multiselect",
                 Self::TypeaheadSearch => "Typeahead Search",
@@ -361,6 +364,7 @@ mod app {
                 | Self::FlowLedger
                 | Self::ChannelBands
                 | Self::CustodyWalk
+                | Self::ClaimCard
                 | Self::TagList
                 | Self::TokenMultiselect
                 | Self::TypeaheadSearch
@@ -628,6 +632,9 @@ mod app {
                 Self::FlowLedger => {
                     "A wallet's movements in time order — net amounts only, running balance, per-row channel colour, round trips muted, and a reconciliation footer that says DOES NOT RECONCILE rather than showing a plausible total"
                 }
+                Self::ClaimCard => {
+                    "A claim, what would refute it, and whether anyone tried. Capture is free — the falsifier gates PROMOTION, not creation: provisional claims get a dashed edge and are never citable, refuted ones are KEPT struck-through with what killed them, and the header counts unsourced assertions the claim rests on"
+                }
                 Self::CustodyWalk => {
                     "Indented UTxO provenance tree for one traced sum — change legs continue past the payee rather than naming it as the source, depth/budget bounds render as real leaves, and the header reads PROVEN (UTxO) vs INFERRED (account chain) and PARTIAL when anything is untraced"
                 }
@@ -815,6 +822,7 @@ mod app {
         // Primitives
         button_group_state: stories::button_group::ButtonGroupState,
         toast_state: stories::toast::ToastState,
+        claim_card_state: stories::claim_card::ClaimCardState,
     }
 
     impl StorybookApp {
@@ -934,6 +942,7 @@ mod app {
                 collection_list_state: stories::collection_list::CollectionListState::default(),
                 button_group_state: stories::button_group::ButtonGroupState::default(),
                 toast_state: stories::toast::ToastState::default(),
+                claim_card_state: stories::claim_card::ClaimCardState::default(),
             }
         }
 
@@ -1192,6 +1201,9 @@ mod app {
                             Story::FlowLedger => stories::flow_ledger::show(ui),
                             Story::ChannelBands => stories::channel_bands::show(ui),
                             Story::CustodyWalk => stories::custody_walk::show(ui),
+                            Story::ClaimCard => {
+                                stories::claim_card::show(ui, &mut self.claim_card_state)
+                            }
                             Story::TagList => stories::tag_list::show(ui, &mut self.tag_list_state),
                             Story::TokenMultiselect => stories::token_multiselect::show(
                                 ui,

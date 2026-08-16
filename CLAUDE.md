@@ -41,6 +41,17 @@ BRAVE="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
 - `--virtual-time-budget=8000` lets wasm boot and the remote font fetch settle. Too low gives a blank canvas.
 - Size the window to the content; the sidebar is ~180px.
 
+### Let the marks carry it — egui is weak at prose
+
+egui has no real text shaping and poor typographic hierarchy, so **blocks of text are the wrong tool**. If a widget is explaining itself in paragraphs, the design is wrong, not the copy. Reach for an encoding instead:
+
+- state → a pip track / progress marks, not a sentence
+- composition → shaped or coloured marks (see `PartyBadge`'s filled/half/hollow basis language, reused as support pips on `ClaimCard`)
+- magnitude → bar height or width, never a number the reader has to compare by eye
+- long-form detail → behind an expand, on hover, or in a side panel
+
+The test: a list of twenty of these should be **scannable**. If reading twenty means reading twenty paragraphs, redesign. Keep at most one line of irreducible text (a title, a statement) and put the rest on demand. Story captions in the storybook are held to the same standard — one or two short lines, not an essay.
+
 ### Story deep links
 
 Stories are addressable as `#/<slug>`, where the slug is derived from the story's `label()` — so a new story is linkable with no extra registration. `#/party-badge`, `#/flow-ledger`, `#/stat-strip`. Clicking in the sidebar updates the hash, so a URL you copy matches what you are looking at. Native builds have no address bar; use `STORYBOOK_STORY=flow-ledger` instead.

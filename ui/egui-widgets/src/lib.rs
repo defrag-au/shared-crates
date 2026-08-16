@@ -10,6 +10,7 @@ pub mod buttons;
 pub mod card_browser;
 pub mod channel_bands;
 pub mod chip;
+pub mod claim_card;
 pub mod collection_composition;
 pub mod collection_list;
 pub mod distribution_waterfall;
@@ -137,6 +138,9 @@ pub use channel_bands::{
     CHANNEL_PALETTE, OTHER_COLOR, OTHER_LABEL,
 };
 pub use chip::{Chip, ChipResponse, ChipVariant};
+pub use claim_card::{
+    unsourced_assertions, weakest_basis, ClaimCard, ClaimSupport, FalsifierStatus,
+};
 pub use collection_list::{
     CollectionControl, CollectionControls, CollectionList, CollectionListAction,
     CollectionListLayout, CollectionListResponse, CollectionRow,
