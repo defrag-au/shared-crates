@@ -23,6 +23,8 @@ members = [
     "worker-utils",
     "asset-rarity",
     "chain-ledger",
+    "chain-ledger-koios",
+    "chain-ledger-case",
     "services/*",
     "indexers/*",
     "ui/scss-macros",

@@ -10,3 +10,6 @@ description = "Chain-agnostic wallet-flow ledger: per-tx net attribution, proven
 # `chain-ledger-koios` / `chain-ledger-solana`; nothing here touches the network.
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -1,0 +1,19 @@
+[package]
+name = "chain-ledger-case"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Case-file schema, records and checksummed export for chain-ledger. No database driver."
+
+# No SQLite driver, deliberately.
+#
+# The same case lives in two places: a local file (rusqlite, native) and a
+# per-case Durable Object (`state.storage().sql()`, wasm). Those cannot share a
+# driver, but they MUST share a schema — so the DDL and the row types live here
+# and each edge binds them to its own executor. A schema defined twice is a
+# schema that drifts.
+[dependencies]
+chain-ledger = { path = "../chain-ledger" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = "0.10"

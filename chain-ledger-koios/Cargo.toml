@@ -1,0 +1,17 @@
+[package]
+name = "chain-ledger-koios"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Koios JSON → chain-ledger model. A format adapter; brings no HTTP client."
+
+# Deliberately no HTTP client and no async runtime.
+#
+# The sibling `koios` crate is worker-oriented (worker_stack, http-client,
+# async), and a native tool driving Koios over blocking `ureq` should not have to
+# pull that in just to normalise a row. Consumers fetch however suits them and
+# hand the rows here, so the same adapter serves a desktop app, a Cloudflare
+# worker, and `chain-forensics`.
+[dependencies]
+chain-ledger = { path = "../chain-ledger" }
+serde_json = { workspace = true }

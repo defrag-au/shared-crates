@@ -99,6 +99,7 @@ mod app {
         ChannelBands,
         CustodyWalk,
         ClaimCard,
+        CapitalFlow,
         TagList,
         TokenMultiselect,
         TypeaheadSearch,
@@ -137,6 +138,7 @@ mod app {
                 Self::ChannelBands,
                 Self::CustodyWalk,
                 Self::ClaimCard,
+                Self::CapitalFlow,
                 Self::TagList,
                 Self::TokenMultiselect,
                 Self::TypeaheadSearch,
@@ -330,6 +332,7 @@ mod app {
                 Self::ChannelBands => "Channel Bands",
                 Self::CustodyWalk => "Custody Walk",
                 Self::ClaimCard => "Claim Card",
+                Self::CapitalFlow => "Capital Flow",
                 Self::TagList => "Tag List",
                 Self::TokenMultiselect => "Token Multiselect",
                 Self::TypeaheadSearch => "Typeahead Search",
@@ -365,6 +368,7 @@ mod app {
                 | Self::ChannelBands
                 | Self::CustodyWalk
                 | Self::ClaimCard
+                | Self::CapitalFlow
                 | Self::TagList
                 | Self::TokenMultiselect
                 | Self::TypeaheadSearch
@@ -632,6 +636,9 @@ mod app {
                 Self::FlowLedger => {
                     "A wallet's movements in time order — net amounts only, running balance, per-row channel colour, round trips muted, and a reconciliation footer that says DOES NOT RECONCILE rather than showing a plausible total"
                 }
+                Self::CapitalFlow => {
+                    "\"They raised X — watch where it went.\" Cumulative destination bands over a real time axis with a draggable playhead and play button; a labelled raise line the stack is free to CROSS, because deployment beyond the raise is a finding rather than an error to clamp"
+                }
                 Self::ClaimCard => {
                     "A claim, what would refute it, and whether anyone tried. Capture is free — the falsifier gates PROMOTION, not creation: provisional claims get a dashed edge and are never citable, refuted ones are KEPT struck-through with what killed them, and the header counts unsourced assertions the claim rests on"
                 }
@@ -823,6 +830,7 @@ mod app {
         button_group_state: stories::button_group::ButtonGroupState,
         toast_state: stories::toast::ToastState,
         claim_card_state: stories::claim_card::ClaimCardState,
+        capital_flow_state: stories::capital_flow::CapitalFlowState,
     }
 
     impl StorybookApp {
@@ -943,6 +951,7 @@ mod app {
                 button_group_state: stories::button_group::ButtonGroupState::default(),
                 toast_state: stories::toast::ToastState::default(),
                 claim_card_state: stories::claim_card::ClaimCardState::default(),
+                capital_flow_state: stories::capital_flow::CapitalFlowState::default(),
             }
         }
 
@@ -1201,6 +1210,9 @@ mod app {
                             Story::FlowLedger => stories::flow_ledger::show(ui),
                             Story::ChannelBands => stories::channel_bands::show(ui),
                             Story::CustodyWalk => stories::custody_walk::show(ui),
+                            Story::CapitalFlow => {
+                                stories::capital_flow::show(ui, &mut self.capital_flow_state)
+                            }
                             Story::ClaimCard => {
                                 stories::claim_card::show(ui, &mut self.claim_card_state)
                             }

@@ -742,6 +742,25 @@ name = "chain-ledger"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "chain-ledger-case"
+version = "0.1.0"
+dependencies = [
+ "chain-ledger",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "chain-ledger-koios"
+version = "0.1.0"
+dependencies = [
+ "chain-ledger",
+ "serde_json",
 ]
 
 [[package]]

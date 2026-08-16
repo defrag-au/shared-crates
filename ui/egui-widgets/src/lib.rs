@@ -7,6 +7,7 @@ pub mod asset_card;
 pub mod bullet_bar;
 pub mod button_group;
 pub mod buttons;
+pub mod capital_flow;
 pub mod card_browser;
 pub mod channel_bands;
 pub mod chip;
@@ -25,6 +26,7 @@ pub mod fonts;
 pub mod fungibles_row;
 pub mod gated;
 pub mod grouped_section;
+pub mod holder_formation;
 pub mod icons;
 pub mod id_pill;
 pub mod image_loader;
@@ -32,6 +34,7 @@ pub mod leaderboard;
 pub mod listing_grid;
 pub mod marquee;
 pub mod metric_card;
+pub mod mint_arrivals;
 pub mod mint_checkout;
 pub mod mnemonic_display;
 pub mod named_group_list;
@@ -130,6 +133,10 @@ pub mod wallet_asset_picker;
 pub use animated_counter::AnimatedCounter;
 pub use button_group::{ButtonGroup, ButtonGroupButton, ButtonGroupResponse};
 pub use buttons::UiButtonExt;
+pub use capital_flow::{
+    bands as capital_bands, cumulative_at, legend as capital_legend, state_at, Band, CapitalFlow,
+    CapitalFlowResponse, CapitalState, FlowEvent,
+};
 pub use card_browser::{
     CardBrowserConfig, CardBrowserResponse, CardBrowserState, CardRenderContext,
 };
@@ -161,6 +168,9 @@ pub use flow_ledger::{
     totals as flow_totals, FlowLedger, FlowLedgerResponse, FlowRow, LedgerTotals,
 };
 pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
+pub use holder_formation::{
+    distribution_at, holdings_at, Acquisition, Distribution, HolderFormation,
+};
 pub use icons::{install_phosphor_font, PhosphorIcon};
 pub use id_pill::{
     stacked_width_for as id_pill_stacked_width_for, IdPill, IdPillLayout, IdPillResponse,
@@ -173,6 +183,7 @@ pub use image_text_editor::{
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
+pub use mint_arrivals::{peak_pile, pile_offset, piles_at, Arrival, MintArrivals};
 pub use mint_checkout::{
     BundleOffer, CheckoutState, Eligibility, MintCheckout, MintCheckoutAction,
     MintCheckoutResponse, MintCheckoutVm,

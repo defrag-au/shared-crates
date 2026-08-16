@@ -32,10 +32,14 @@
 #![forbid(unsafe_code)]
 
 mod attribution;
+pub mod frontier;
 mod model;
 mod walk;
 
 pub use attribution::{movements, net_deltas, round_trips, RoundTrip};
+pub use frontier::{
+    Frontier, Member, Outcome as FrontierOutcome, Role, TerminalReason, Thresholds,
+};
 pub use model::{
     Basis, Chain, Movement, Party, PartyRef, Provenance, TxDelta, TxInput, TxOutput, TxView,
 };
