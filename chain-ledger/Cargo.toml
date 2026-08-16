@@ -1,0 +1,12 @@
+[package]
+name = "chain-ledger"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Chain-agnostic wallet-flow ledger: per-tx net attribution, provenance walks, round-trip detection"
+
+# Deliberately dependency-light and I/O-free so the same model serves an egui
+# app, a Cloudflare worker, and `chain-forensics`. Chain access lives in
+# `chain-ledger-koios` / `chain-ledger-solana`; nothing here touches the network.
+[dependencies]
+serde = { workspace = true, features = ["derive"] }

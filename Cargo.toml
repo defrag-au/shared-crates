@@ -22,6 +22,7 @@ members = [
     "worker-stack",
     "worker-utils",
     "asset-rarity",
+    "chain-ledger",
     "services/*",
     "indexers/*",
     "ui/scss-macros",
