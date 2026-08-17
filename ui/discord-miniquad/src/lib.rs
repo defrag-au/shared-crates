@@ -173,6 +173,13 @@ impl Activity {
     pub fn http_post(&self, url: &str, body_json: &str) -> ReqId {
         bridge::http_post(url, body_json)
     }
+
+    /// Same-origin GET with a bearer token, resolved under the Activity's
+    /// mapped root. Pair with the widget token the exchange returns to call
+    /// the platform's `/api/*` routes as the widget this Activity now is.
+    pub fn http_get(&self, url: &str, bearer: &str) -> ReqId {
+        bridge::http_get(url, bearer)
+    }
 }
 
 #[cfg(test)]

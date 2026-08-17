@@ -22,6 +22,8 @@ pub mod error_note;
 pub mod file_upload;
 pub mod flip_counter;
 pub mod flow_ledger;
+pub mod flow_matrix;
+pub mod flow_ring;
 pub mod focus_list;
 pub mod fonts;
 pub mod fungibles_row;
@@ -44,6 +46,7 @@ pub mod named_group_list;
 pub mod offer_tile;
 pub mod order_list;
 pub mod palette_editor;
+pub mod party_annotator;
 pub mod party_badge;
 pub mod party_finder;
 pub mod persona_strip;
@@ -174,6 +177,8 @@ pub use flip_counter::FlipCounter;
 pub use flow_ledger::{
     FlowLedger, FlowLedgerResponse, FlowRow, LedgerTotals, totals as flow_totals,
 };
+pub use flow_matrix::{FlowMatrix, FlowMatrixResponse, MatrixFlow};
+pub use flow_ring::{FlowRing, FlowRingResponse, RingFlow, RingNode};
 pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
 pub use holder_field::{AssetMove, HolderField, HolderFieldResponse};
 pub use holder_formation::{
@@ -206,6 +211,7 @@ pub use order_list::{
     OrderStatus,
 };
 pub use palette_editor::{Palette, PaletteEditor, PaletteVariant};
+pub use party_annotator::{AnnotationDraft, PartyAnnotator, PartyAnnotatorResponse, basis_color};
 pub use party_badge::{PartyBadge, PartyBasis};
 pub use party_finder::{
     AliasIndex, MatchTier, PartyFinder, PartyFinderResponse, PartyFinderState, WalletIdentity,

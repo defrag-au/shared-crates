@@ -86,6 +86,7 @@ mod imp {
         fn discord_connect(client_id: JsObject) -> i32;
         fn discord_command(cmd: JsObject, args_json: JsObject) -> i32;
         fn discord_http_post(url: JsObject, body: JsObject) -> i32;
+        fn discord_http_get(url: JsObject, bearer: JsObject) -> i32;
         fn discord_poll(req_id: i32) -> JsObject;
     }
 
@@ -115,6 +116,10 @@ mod imp {
 
     pub fn http_post(url: &str, body: &str) -> ReqId {
         ReqId(unsafe { discord_http_post(JsObject::string(url), JsObject::string(body)) })
+    }
+
+    pub fn http_get(url: &str, bearer: &str) -> ReqId {
+        ReqId(unsafe { discord_http_get(JsObject::string(url), JsObject::string(bearer)) })
     }
 
     pub fn poll(id: ReqId) -> PollResult {
@@ -153,6 +158,10 @@ mod imp {
         ReqId(0)
     }
 
+    pub fn http_get(_url: &str, _bearer: &str) -> ReqId {
+        ReqId(0)
+    }
+
     pub fn poll(_id: ReqId) -> PollResult {
         PollResult::Err {
             data: "discord bridge is only available on wasm32".to_string(),
@@ -160,4 +169,4 @@ mod imp {
     }
 }
 
-pub use imp::{command, connect, http_post, launch_context, launch_query, poll};
+pub use imp::{command, connect, http_get, http_post, launch_context, launch_query, poll};

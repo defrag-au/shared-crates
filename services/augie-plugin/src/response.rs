@@ -58,6 +58,22 @@ pub struct CommandResponse {
     /// of the embed in the channel.
     #[serde(default)]
     pub update_message: bool,
+
+    /// Launch the app's Activity instead of posting a message.
+    ///
+    /// The host answers with interaction callback type 12 (`LAUNCH_ACTIVITY`).
+    /// Discord then opens the Activity for the invoking user, and — this is
+    /// the part worth knowing — the callback carries **no payload**: nothing
+    /// in this response reaches the Activity. The Activity learns what it was
+    /// opened for by asking the server after it authenticates, keyed on the
+    /// user and guild Discord hands it. So a plugin setting this should have
+    /// already recorded whatever the Activity needs to find.
+    ///
+    /// Every other field is ignored when this is set; a launch has no message.
+    /// Only meaningful for apps with Activities enabled, and only from an
+    /// interaction — never from a followup.
+    #[serde(default)]
+    pub launch_activity: bool,
 }
 
 impl CommandResponse {
@@ -99,6 +115,16 @@ impl CommandResponse {
     pub fn updating(mut self) -> Self {
         self.update_message = true;
         self
+    }
+
+    /// Launch the app's Activity. See [`CommandResponse::launch_activity`] —
+    /// nothing else in the response is sent, so this is a constructor rather
+    /// than a modifier.
+    pub fn launch_activity() -> Self {
+        Self {
+            launch_activity: true,
+            ..Default::default()
+        }
     }
 
     /// Every `custom_id` in this response, in row order.

@@ -230,6 +230,24 @@
         return id;
     }
 
+    // Same-origin GET with a bearer token — the widget token the exchange
+    // minted, so the Activity can call the platform's `/api/*` routes as the
+    // widget it now is. Same minimal shape as the POST.
+    function discord_http_get(url_js, bearer_js) {
+        const id = newId();
+        const url = consume_js_object(url_js);
+        const bearer = consume_js_object(bearer_js);
+        const headers = bearer ? { Authorization: `Bearer ${bearer}` } : {};
+        fetch(url, { method: 'GET', headers })
+            .then(async (r) => {
+                const text = await r.text();
+                if (r.ok) settle(id, 'ok', text);
+                else settle(id, 'err', `${r.status}: ${text}`);
+            })
+            .catch((e) => settle(id, 'err', errMsg(e)));
+        return id;
+    }
+
     function discord_poll(id) {
         const entry = pending.get(id);
         if (!entry) return js_object(JSON.stringify({ status: 'err', data: 'unknown request' }));
@@ -244,6 +262,7 @@
         importObject.env.discord_connect = discord_connect;
         importObject.env.discord_command = discord_command;
         importObject.env.discord_http_post = discord_http_post;
+        importObject.env.discord_http_get = discord_http_get;
         importObject.env.discord_poll = discord_poll;
     }
 

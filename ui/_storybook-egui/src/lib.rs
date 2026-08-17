@@ -101,6 +101,9 @@ mod app {
         ClaimCard,
         CapitalFlow,
         TimeSpine,
+        FlowMatrix,
+        FlowRing,
+        PartyAnnotator,
         TagList,
         TokenMultiselect,
         TypeaheadSearch,
@@ -141,6 +144,9 @@ mod app {
                 Self::ClaimCard,
                 Self::CapitalFlow,
                 Self::TimeSpine,
+                Self::FlowMatrix,
+                Self::FlowRing,
+                Self::PartyAnnotator,
                 Self::TagList,
                 Self::TokenMultiselect,
                 Self::TypeaheadSearch,
@@ -336,6 +342,9 @@ mod app {
                 Self::ClaimCard => "Claim Card",
                 Self::CapitalFlow => "Capital Flow",
                 Self::TimeSpine => "Time Spine",
+                Self::FlowMatrix => "Flow Matrix",
+                Self::FlowRing => "Flow Ring",
+                Self::PartyAnnotator => "Party Annotator",
                 Self::TagList => "Tag List",
                 Self::TokenMultiselect => "Token Multiselect",
                 Self::TypeaheadSearch => "Typeahead Search",
@@ -373,6 +382,9 @@ mod app {
                 | Self::ClaimCard
                 | Self::CapitalFlow
                 | Self::TimeSpine
+                | Self::FlowMatrix
+                | Self::FlowRing
+                | Self::PartyAnnotator
                 | Self::TagList
                 | Self::TokenMultiselect
                 | Self::TypeaheadSearch
@@ -646,6 +658,15 @@ mod app {
                 Self::TimeSpine => {
                     "ONE time axis for many faces: a playhead that REVEALS, a brush that FILTERS, play/pause — and a shared selection so hovering a holder's pile lights it up everywhere. Dots fly in and settle (keyed tweens; object constancy) while playing; a scrubbed frame settles instantly so a still is readable. The falsifier for 'is egui why this feels flat?'"
                 }
+                Self::FlowMatrix => {
+                    "Who paid whom across MANY wallets at once — the face for when you do NOT yet know where to look. A matrix rather than a node-link graph, because the finding that cracks a multi-wallet case is two wallets paying the SAME counterparty, which is a column here and four edges lost in a hairball there. One unit at a time (raw Cardano quantities are not comparable), diverging out/in, log magnitude, and an unresolved payer gets its own column instead of being dropped"
+                }
+                Self::FlowRing => {
+                    "Value moving between parties, LIVE, on the shared spine. Parties keep fixed seats on concentric rings (inner = the project's own wallets, outer = who they dealt with) and value crosses the middle as particles — ONE DOT PER QUANTUM, so a large payment is a longer train rather than a thicker line. Particle position is a pure function of the playhead, so scrubbing shows value genuinely mid-flight and a still frame is reproducible. Hover for a wallet's inventory at that exact moment; switch nodes off to cut density without moving anything that stays"
+                }
+                Self::PartyAnnotator => {
+                    "Turn an anonymous wallet into a named thing, ON THE RECORD. Entity is WHO is behind it (several wallets share one — that is what makes roll-up possible); label is what to call this one wallet. The basis is the point: a human filling in a form is ASSERTING, so that is the default rather than 'observed', and an assertion with no source is marked UNSOURCED in place instead of being blocked — blocking just pushes the guess into the label field where nothing can flag it"
+                }
                 Self::ClaimCard => {
                     "A claim, what would refute it, and whether anyone tried. Capture is free — the falsifier gates PROMOTION, not creation: provisional claims get a dashed edge and are never citable, refuted ones are KEPT struck-through with what killed them, and the header counts unsourced assertions the claim rests on"
                 }
@@ -839,6 +860,9 @@ mod app {
         claim_card_state: stories::claim_card::ClaimCardState,
         capital_flow_state: stories::capital_flow::CapitalFlowState,
         time_spine_state: stories::time_spine::TimeSpineState,
+        flow_matrix_state: stories::flow_matrix::FlowMatrixState,
+        flow_ring_state: stories::flow_ring::FlowRingState,
+        party_annotator_state: stories::party_annotator::PartyAnnotatorState,
     }
 
     impl StorybookApp {
@@ -961,6 +985,9 @@ mod app {
                 claim_card_state: stories::claim_card::ClaimCardState::default(),
                 capital_flow_state: stories::capital_flow::CapitalFlowState::default(),
                 time_spine_state: stories::time_spine::TimeSpineState::default(),
+                flow_matrix_state: stories::flow_matrix::FlowMatrixState::default(),
+                flow_ring_state: stories::flow_ring::FlowRingState::default(),
+                party_annotator_state: stories::party_annotator::PartyAnnotatorState::default(),
             }
         }
 
@@ -1225,6 +1252,16 @@ mod app {
                             Story::TimeSpine => {
                                 stories::time_spine::show(ui, &mut self.time_spine_state)
                             }
+                            Story::FlowMatrix => {
+                                stories::flow_matrix::show(ui, &mut self.flow_matrix_state)
+                            }
+                            Story::FlowRing => {
+                                stories::flow_ring::show(ui, &mut self.flow_ring_state)
+                            }
+                            Story::PartyAnnotator => stories::party_annotator::show(
+                                ui,
+                                &mut self.party_annotator_state,
+                            ),
                             Story::ClaimCard => {
                                 stories::claim_card::show(ui, &mut self.claim_card_state)
                             }
