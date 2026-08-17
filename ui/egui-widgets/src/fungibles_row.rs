@@ -21,8 +21,8 @@
 
 use egui::{Color32, CornerRadius, FontId, RichText, Sense, Ui, Vec2};
 
-use crate::theme;
 use crate::PhosphorIcon;
+use crate::theme;
 
 /// Styling knobs.
 pub struct FungiblesRowConfig {

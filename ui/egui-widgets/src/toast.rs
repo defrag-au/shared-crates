@@ -62,7 +62,7 @@ use egui::{
 };
 
 use crate::error_note::summarize_error;
-use crate::icons::{install_phosphor_font, PhosphorIcon};
+use crate::icons::{PhosphorIcon, install_phosphor_font};
 
 /// ~3 seconds at 60 fps. Used as the default lifetime for toasts pushed
 /// through the convenience helpers on [`ToastQueue`].

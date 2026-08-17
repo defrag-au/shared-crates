@@ -346,7 +346,9 @@ mod tests {
     /// An observation needs no source, so it must never be flagged.
     #[test]
     fn observed_is_never_flagged_for_a_missing_source() {
-        assert!(!PartyBadge::new("32.6M ADA wallet", PartyBasis::Observed).is_unsourced_assertion());
+        assert!(
+            !PartyBadge::new("32.6M ADA wallet", PartyBasis::Observed).is_unsourced_assertion()
+        );
         assert!(!PartyBadge::new("x", PartyBasis::Derived).is_unsourced_assertion());
     }
 

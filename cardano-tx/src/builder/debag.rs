@@ -863,11 +863,10 @@ pub fn build_debag(
     // Mirror the closure's fold: a sub-min remainder rode out on the last
     // asset group, so that output's actual value exceeds its min.
     let mut group_lovelaces = group_mins.clone();
-    if change_lovelace > 0 && change_lovelace < min_pure {
-        if let Some(last) = group_lovelaces.last_mut() {
+    if change_lovelace > 0 && change_lovelace < min_pure
+        && let Some(last) = group_lovelaces.last_mut() {
             *last += change_lovelace;
         }
-    }
 
     Ok(DebagBuildResult {
         unsigned,

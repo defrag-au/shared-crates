@@ -707,13 +707,12 @@ pub fn build_parcel_split(
             "build_parcel_split: parcel_size {parcel_size} < min_pure_utxo {min_pure_utxo}"
         )));
     }
-    if let Some((_, amt)) = refund {
-        if amt < min_pure_utxo {
+    if let Some((_, amt)) = refund
+        && amt < min_pure_utxo {
             return Err(TxBuildError::BuildFailed(format!(
                 "build_parcel_split: refund {amt} < min_pure_utxo {min_pure_utxo}"
             )));
         }
-    }
 
     // Inputs: `source` ALWAYS first (the assigned funding UTxO — the buyer payment,
     // a `claim_float`'d float UTxO, or a prior split's change — spent so the funding

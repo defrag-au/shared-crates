@@ -154,19 +154,19 @@ pub fn show(
                 let is_selected = state.selected == Some(i);
 
                 // Thumbnail above the dot
-                if config.show_thumbnails {
-                    if let Some(url) = &node.image_url {
-                        let thumb_rect = Rect::from_min_size(
-                            Pos2::new(node_x, rect.top()),
-                            Vec2::new(config.node_width, config.thumb_height),
-                        );
+                if config.show_thumbnails
+                    && let Some(url) = &node.image_url
+                {
+                    let thumb_rect = Rect::from_min_size(
+                        Pos2::new(node_x, rect.top()),
+                        Vec2::new(config.node_width, config.thumb_height),
+                    );
 
-                        // Use egui's built-in image widget
-                        let image = egui::Image::new(url.as_str())
-                            .fit_to_exact_size(Vec2::new(config.node_width, config.thumb_height))
-                            .corner_radius(4.0);
-                        ui.put(thumb_rect, image);
-                    }
+                    // Use egui's built-in image widget
+                    let image = egui::Image::new(url.as_str())
+                        .fit_to_exact_size(Vec2::new(config.node_width, config.thumb_height))
+                        .corner_radius(4.0);
+                    ui.put(thumb_rect, image);
                 }
 
                 // Node dot

@@ -3,6 +3,7 @@ pub use egui_inbox;
 
 pub mod access_gate;
 pub mod animated_counter;
+pub mod arrival_field;
 pub mod asset_card;
 pub mod bullet_bar;
 pub mod button_group;
@@ -37,11 +38,13 @@ pub mod metric_card;
 pub mod mint_arrivals;
 pub mod mint_checkout;
 pub mod mnemonic_display;
+pub mod motion;
 pub mod named_group_list;
 pub mod offer_tile;
 pub mod order_list;
 pub mod palette_editor;
 pub mod party_badge;
+pub mod party_finder;
 pub mod persona_strip;
 pub mod phase_card;
 pub mod pip_row;
@@ -56,6 +59,7 @@ pub mod rarity_target_editor;
 pub mod relationship_editor;
 pub mod relative_time;
 pub mod screenshot;
+pub mod selection;
 pub mod seven_segment;
 pub mod slot_table;
 pub mod sparkline;
@@ -64,6 +68,7 @@ pub mod supply_bar;
 pub mod swap_modal;
 pub mod tag_list;
 pub mod theme;
+pub mod time_spine;
 pub mod timestamp;
 pub mod toast;
 pub mod token_multiselect;
@@ -131,51 +136,52 @@ pub mod utxo_shelf;
 pub mod wallet_asset_picker;
 
 pub use animated_counter::AnimatedCounter;
+pub use arrival_field::{ArrivalField, ArrivalFieldResponse};
 pub use button_group::{ButtonGroup, ButtonGroupButton, ButtonGroupResponse};
 pub use buttons::UiButtonExt;
 pub use capital_flow::{
-    bands as capital_bands, cumulative_at, legend as capital_legend, state_at, Band, CapitalFlow,
-    CapitalFlowResponse, CapitalState, FlowEvent,
+    Band, CapitalFlow, CapitalFlowResponse, CapitalState, FlowEvent, bands as capital_bands,
+    cumulative_at, legend as capital_legend, state_at,
 };
 pub use card_browser::{
     CardBrowserConfig, CardBrowserResponse, CardBrowserState, CardRenderContext,
 };
 pub use channel_bands::{
-    assign_colors, fold_to_other, period_total, ChannelBands, ChannelBandsResponse, ChannelSeries,
-    CHANNEL_PALETTE, OTHER_COLOR, OTHER_LABEL,
+    CHANNEL_PALETTE, ChannelBands, ChannelBandsResponse, ChannelSeries, OTHER_COLOR, OTHER_LABEL,
+    assign_colors, fold_to_other, period_total,
 };
 pub use chip::{Chip, ChipResponse, ChipVariant};
 pub use claim_card::{
-    unsourced_assertions, weakest_basis, ClaimCard, ClaimSupport, FalsifierStatus,
+    ClaimCard, ClaimSupport, FalsifierStatus, unsourced_assertions, weakest_basis,
 };
 pub use collection_list::{
     CollectionControl, CollectionControls, CollectionList, CollectionListAction,
     CollectionListLayout, CollectionListResponse, CollectionRow,
 };
 pub use custody_walk::{
-    summarize as summarize_walk, CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode,
-    WalkNodeKind, WalkSummary,
+    CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode, WalkNodeKind, WalkSummary,
+    summarize as summarize_walk,
 };
 pub use distribution_waterfall::{DistributionWaterfall, WaterfallMode, WaterfallParty};
 pub use donut_chart::{
-    format_value as format_chart_value, legend_row, DistBand, DistributionChart,
+    DistBand, DistributionChart, format_value as format_chart_value, legend_row,
 };
-pub use error_note::{pretty_json, summarize_error, ErrorNote, ErrorSummary};
+pub use error_note::{ErrorNote, ErrorSummary, pretty_json, summarize_error};
 #[cfg(target_arch = "wasm32")]
 pub use file_upload::{FileUploadButton, UploadedFile};
 pub use flip_counter::FlipCounter;
 pub use flow_ledger::{
-    totals as flow_totals, FlowLedger, FlowLedgerResponse, FlowRow, LedgerTotals,
+    FlowLedger, FlowLedgerResponse, FlowRow, LedgerTotals, totals as flow_totals,
 };
 pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
 pub use holder_formation::{
-    distribution_at, holdings_at, Acquisition, Distribution, HolderFormation,
+    Acquisition, Distribution, HolderFormation, distribution_at, distribution_series, holdings_at,
 };
-pub use icons::{install_phosphor_font, PhosphorIcon};
+pub use icons::{PhosphorIcon, install_phosphor_font};
 pub use id_pill::{
-    stacked_width_for as id_pill_stacked_width_for, IdPill, IdPillLayout, IdPillResponse,
+    IdPill, IdPillLayout, IdPillResponse, stacked_width_for as id_pill_stacked_width_for,
 };
-pub use image_loader::{iiif_asset_url, AssetImageSize};
+pub use image_loader::{AssetImageSize, iiif_asset_url};
 #[cfg(feature = "image-editor")]
 pub use image_text_editor::{
     FontChoice, ImageTextEditor, TextEffect, TextOverlay, TextOverlayAnchor,
@@ -183,10 +189,14 @@ pub use image_text_editor::{
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
-pub use mint_arrivals::{peak_pile, pile_offset, piles_at, Arrival, MintArrivals};
+pub use mint_arrivals::{Arrival, MintArrivals, peak_pile, pile_offset, piles_at};
 pub use mint_checkout::{
     BundleOffer, CheckoutState, Eligibility, MintCheckout, MintCheckoutAction,
     MintCheckoutResponse, MintCheckoutVm,
+};
+pub use motion::{
+    Easing, forget as tween_forget, tween, tween_bool, tween_color, tween_from, tween_pos,
+    tween_pos_from, tween_vec,
 };
 pub use named_group_list::{NamedGroup, NamedGroupList};
 pub use order_list::{
@@ -195,6 +205,9 @@ pub use order_list::{
 };
 pub use palette_editor::{Palette, PaletteEditor, PaletteVariant};
 pub use party_badge::{PartyBadge, PartyBasis};
+pub use party_finder::{
+    AliasIndex, MatchTier, PartyFinder, PartyFinderResponse, PartyFinderState, WalletIdentity,
+};
 pub use persona_strip::{PersonaStrip, PersonaStripConfig};
 pub use phase_card::{GateChip, PhaseCard, PhaseCardAction, PhaseCardResponse, PhaseCardRow};
 pub use pip_row::{
@@ -207,8 +220,9 @@ pub use radar_chart::{RadarChartConfig, RadarPoint};
 pub use range_bar::{RangeBarConfig, RangePoint};
 pub use rarity_target_editor::{RarityRow, RarityTargetEditor};
 pub use relationship_editor::{RelationshipEditor, RelationshipEditorResponse};
-pub use relative_time::{relative_label, RelativeTime};
+pub use relative_time::{RelativeTime, relative_label};
 pub use screenshot::ScreenshotButton;
+pub use selection::{DIM as SELECTION_DIM, Selection};
 pub use seven_segment::SevenSegmentDisplay;
 pub use slot_table::{SlotRow, SlotTable};
 pub use sparkline::{SparkHoverStyle, Sparkline};
@@ -219,13 +233,17 @@ pub use swap_modal::{
     SwapProgress,
 };
 pub use tag_list::{TagList, TagListResponse};
-pub use theme::{rarity_rank_color, FontStrategy};
-pub use timestamp::{format_iso8601, Timestamp};
-pub use toast::{show_toasts, Toast, ToastKind, ToastQueue, DEFAULT_DURATION_FRAMES};
+pub use theme::{FontStrategy, rarity_rank_color};
+pub use time_spine::{
+    SpineState, TimeScale, TimeSpine, TimeSpineResponse, TimeView, civil_from_unix,
+    compact_tick_label, format_date, next_tick_step_secs, paint_ticks,
+};
+pub use timestamp::{Timestamp, format_iso8601};
+pub use toast::{DEFAULT_DURATION_FRAMES, Toast, ToastKind, ToastQueue, show_toasts};
 pub use token_multiselect::{TokenMultiselect, TokenMultiselectResponse};
 pub use trade_flow::{FlowAsset, TradeFlowConfig, TradeFlowData};
 pub use trait_filter::{FilterEntry, TraitFilterConfig, TraitFilterResponse, TraitFilterState};
-pub use typeahead_search::{filter_options, TypeaheadOption, TypeaheadResponse, TypeaheadSearch};
+pub use typeahead_search::{TypeaheadOption, TypeaheadResponse, TypeaheadSearch, filter_options};
 pub use utils::{
     format_ada, format_duration, format_lovelace, format_number, format_percent, section_heading,
     stat_card, truncate_hex,
@@ -238,7 +256,7 @@ pub use wallet_editor::{
     WalletEditorState, WalletEntryStatus,
 };
 pub use wallet_identity_header::{
-    truncate_stake, WalletIdentityAction, WalletIdentityConfig, WalletIdentityHeader,
+    WalletIdentityAction, WalletIdentityConfig, WalletIdentityHeader, truncate_stake,
 };
 pub use wallet_list::{
     WalletList, WalletListAction, WalletListLayout, WalletListResponse, WalletListRole,
@@ -255,13 +273,13 @@ pub use route_summary::{RouteLeg, RouteSummaryConfig, RouteSummaryData};
 pub use slippage_selector::{
     SlippagePreset, SlippageSelectorAction, SlippageSelectorConfig, SlippageSelectorState,
 };
-pub use split_allocation_bar::{dex_color, AllocationSegment, SplitAllocationBarConfig};
+pub use split_allocation_bar::{AllocationSegment, SplitAllocationBarConfig, dex_color};
 
 // Loan dashboard re-exports
 pub use data_table::{
     DataRowItem, DataRowStatus, DataTableConfig, DataTableResponse, DataTableState,
 };
-pub use exposure_bar::{ltv_risk_color, ExposureBarConfig, ExposureSegment};
+pub use exposure_bar::{ExposureBarConfig, ExposureSegment, ltv_risk_color};
 pub use leaderboard_table::{LeaderboardRow, LeaderboardTable};
 
 // Cardano-specific re-exports
@@ -288,13 +306,13 @@ pub use trait_delta::{TraitDeltaConfig, TraitItem};
 pub use tx_estimate::{TxEstimateConfig, TxEstimateData, UtxoCost};
 #[cfg(feature = "cardano")]
 pub use utxo_map::{
-    utxos_to_map_data, UtxoCell, UtxoMapAction, UtxoMapConfig, UtxoMapData, UtxoMapResponse,
-    UtxoMapState,
+    UtxoCell, UtxoMapAction, UtxoMapConfig, UtxoMapData, UtxoMapResponse, UtxoMapState,
+    utxos_to_map_data,
 };
 #[cfg(feature = "cardano")]
 pub use utxo_shelf::{
-    classify_utxos, ShelfAction, ShelfConfig, ShelfData, ShelfResponse, ShelfState, ShelfTier,
-    ShelfUtxo,
+    ShelfAction, ShelfConfig, ShelfData, ShelfResponse, ShelfState, ShelfTier, ShelfUtxo,
+    classify_utxos,
 };
 #[cfg(feature = "cardano")]
 pub use wallet_asset_picker::{

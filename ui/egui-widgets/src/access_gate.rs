@@ -146,13 +146,12 @@ impl<'a> AccessGate<'a> {
                                 ui.label(
                                     RichText::new(format!("• {}", p.label)).strong().size(14.0),
                                 );
-                                if let Some(url) = &p.invite_url {
-                                    if ui
+                                if let Some(url) = &p.invite_url
+                                    && ui
                                         .button(RichText::new("join").color(accent).size(11.0))
                                         .clicked()
-                                    {
-                                        action = GateAction::Join(url.clone());
-                                    }
+                                {
+                                    action = GateAction::Join(url.clone());
                                 }
                             });
                             // Human-readable "what to look for" prompts,

@@ -100,6 +100,7 @@ mod app {
         CustodyWalk,
         ClaimCard,
         CapitalFlow,
+        TimeSpine,
         TagList,
         TokenMultiselect,
         TypeaheadSearch,
@@ -139,6 +140,7 @@ mod app {
                 Self::CustodyWalk,
                 Self::ClaimCard,
                 Self::CapitalFlow,
+                Self::TimeSpine,
                 Self::TagList,
                 Self::TokenMultiselect,
                 Self::TypeaheadSearch,
@@ -333,6 +335,7 @@ mod app {
                 Self::CustodyWalk => "Custody Walk",
                 Self::ClaimCard => "Claim Card",
                 Self::CapitalFlow => "Capital Flow",
+                Self::TimeSpine => "Time Spine",
                 Self::TagList => "Tag List",
                 Self::TokenMultiselect => "Token Multiselect",
                 Self::TypeaheadSearch => "Typeahead Search",
@@ -369,6 +372,7 @@ mod app {
                 | Self::CustodyWalk
                 | Self::ClaimCard
                 | Self::CapitalFlow
+                | Self::TimeSpine
                 | Self::TagList
                 | Self::TokenMultiselect
                 | Self::TypeaheadSearch
@@ -639,6 +643,9 @@ mod app {
                 Self::CapitalFlow => {
                     "\"They raised X — watch where it went.\" Cumulative destination bands over a real time axis with a draggable playhead and play button; a labelled raise line the stack is free to CROSS, because deployment beyond the raise is a finding rather than an error to clamp"
                 }
+                Self::TimeSpine => {
+                    "ONE time axis for many faces: a playhead that REVEALS, a brush that FILTERS, play/pause — and a shared selection so hovering a holder's pile lights it up everywhere. Dots fly in and settle (keyed tweens; object constancy) while playing; a scrubbed frame settles instantly so a still is readable. The falsifier for 'is egui why this feels flat?'"
+                }
                 Self::ClaimCard => {
                     "A claim, what would refute it, and whether anyone tried. Capture is free — the falsifier gates PROMOTION, not creation: provisional claims get a dashed edge and are never citable, refuted ones are KEPT struck-through with what killed them, and the header counts unsourced assertions the claim rests on"
                 }
@@ -831,6 +838,7 @@ mod app {
         toast_state: stories::toast::ToastState,
         claim_card_state: stories::claim_card::ClaimCardState,
         capital_flow_state: stories::capital_flow::CapitalFlowState,
+        time_spine_state: stories::time_spine::TimeSpineState,
     }
 
     impl StorybookApp {
@@ -952,6 +960,7 @@ mod app {
                 toast_state: stories::toast::ToastState::default(),
                 claim_card_state: stories::claim_card::ClaimCardState::default(),
                 capital_flow_state: stories::capital_flow::CapitalFlowState::default(),
+                time_spine_state: stories::time_spine::TimeSpineState::default(),
             }
         }
 
@@ -1212,6 +1221,9 @@ mod app {
                             Story::CustodyWalk => stories::custody_walk::show(ui),
                             Story::CapitalFlow => {
                                 stories::capital_flow::show(ui, &mut self.capital_flow_state)
+                            }
+                            Story::TimeSpine => {
+                                stories::time_spine::show(ui, &mut self.time_spine_state)
                             }
                             Story::ClaimCard => {
                                 stories::claim_card::show(ui, &mut self.claim_card_state)

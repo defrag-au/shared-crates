@@ -8,8 +8,8 @@
 //! Feature-gated behind `image-editor`.
 
 use egui::{
-    pos2, Color32, CursorIcon, FontFamily, FontId, Rect, Response, Sense, Stroke, TextureHandle,
-    Ui, Vec2,
+    Color32, CursorIcon, FontFamily, FontId, Rect, Response, Sense, Stroke, TextureHandle, Ui,
+    Vec2, pos2,
 };
 use serde::{Deserialize, Serialize};
 

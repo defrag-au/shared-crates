@@ -143,35 +143,35 @@ fn draw_detailed(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConf
             draw_side_platform_fee(ui, side, config.font_size);
 
             // Network fee
-            if let Some(net_fee) = side.network_fee_share {
-                if net_fee > 0 {
-                    ui.label(
-                        RichText::new("·")
-                            .color(theme::TEXT_MUTED)
-                            .size(config.font_size),
-                    );
-                    ui.label(
-                        RichText::new(format!("Network {}", format_lovelace(net_fee)))
-                            .color(theme::TEXT_MUTED)
-                            .size(config.font_size),
-                    );
-                }
+            if let Some(net_fee) = side.network_fee_share
+                && net_fee > 0
+            {
+                ui.label(
+                    RichText::new("·")
+                        .color(theme::TEXT_MUTED)
+                        .size(config.font_size),
+                );
+                ui.label(
+                    RichText::new(format!("Network {}", format_lovelace(net_fee)))
+                        .color(theme::TEXT_MUTED)
+                        .size(config.font_size),
+                );
             }
 
             // Min UTxO cost
-            if let Some(utxo_cost) = side.min_utxo_cost {
-                if utxo_cost > 0 {
-                    ui.label(
-                        RichText::new("·")
-                            .color(theme::TEXT_MUTED)
-                            .size(config.font_size),
-                    );
-                    ui.label(
-                        RichText::new(format!("UTxO {}", format_lovelace(utxo_cost)))
-                            .color(theme::TEXT_MUTED)
-                            .size(config.font_size),
-                    );
-                }
+            if let Some(utxo_cost) = side.min_utxo_cost
+                && utxo_cost > 0
+            {
+                ui.label(
+                    RichText::new("·")
+                        .color(theme::TEXT_MUTED)
+                        .size(config.font_size),
+                );
+                ui.label(
+                    RichText::new(format!("UTxO {}", format_lovelace(utxo_cost)))
+                        .color(theme::TEXT_MUTED)
+                        .size(config.font_size),
+                );
             }
         });
     }

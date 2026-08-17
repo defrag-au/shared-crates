@@ -107,6 +107,63 @@ impl Basis {
     }
 }
 
+/// A kind of name a party goes by, beyond its key.
+///
+/// A wallet is a stake key to the model, but people hold a payment address or
+/// a `$handle`. Both are observable on-chain, so an importer can record them
+/// and a reader can resolve whatever the user has to hand. Persisted by its
+/// [`AliasKind::as_str`] form; parsed back with `FromStr`. One enum at both
+/// ends of the store, so the two cannot drift.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AliasKind {
+    /// A payment address (bech32 `addr1…`) resolved to this party.
+    Address,
+    /// An ADA Handle held by this party, stored WITHOUT the `$`.
+    Handle,
+}
+
+impl AliasKind {
+    pub const ALL: [Self; 2] = [Self::Address, Self::Handle];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Address => "address",
+            Self::Handle => "handle",
+        }
+    }
+}
+
+impl std::fmt::Display for AliasKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// An alias kind string the model does not know. Kept as an error rather than
+/// mapped to a default so an unknown row is *reported*, never silently binned.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownAliasKind(pub String);
+
+impl std::fmt::Display for UnknownAliasKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown alias kind `{}`", self.0)
+    }
+}
+
+impl std::error::Error for UnknownAliasKind {}
+
+impl std::str::FromStr for AliasKind {
+    type Err = UnknownAliasKind;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|k| k.as_str() == s)
+            .ok_or_else(|| UnknownAliasKind(s.to_string()))
+    }
+}
+
 /// Index of a party within a [`TxView`], so deltas and movements can refer to
 /// parties without cloning keys around.
 pub type PartyRef = usize;
@@ -200,5 +257,24 @@ impl Provenance {
             chain,
             available: chain.has_utxo_provenance(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn alias_kind_round_trips_through_its_stored_form() {
+        for k in AliasKind::ALL {
+            let s = k.as_str();
+            assert_eq!(s.parse::<AliasKind>(), Ok(k), "{s}");
+            assert_eq!(k.to_string(), s);
+        }
+        // An unknown kind is an ERROR, not a silent default.
+        assert_eq!(
+            "twitter".parse::<AliasKind>(),
+            Err(UnknownAliasKind("twitter".into()))
+        );
     }
 }

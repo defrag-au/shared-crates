@@ -99,10 +99,11 @@ impl<'a> TagList<'a> {
                     resp.removed = Some(i);
                 }
             }
-            if let Some(label) = self.clear_label {
-                if !self.tags.is_empty() && ui.button(label).clicked() {
-                    resp.cleared = true;
-                }
+            if let Some(label) = self.clear_label
+                && !self.tags.is_empty()
+                && ui.button(label).clicked()
+            {
+                resp.cleared = true;
             }
         });
         resp
@@ -111,9 +112,5 @@ impl<'a> TagList<'a> {
 
 /// Brighten the × on hover so the remove affordance reads as interactive.
 fn x_color(fg: Color32, hovered: bool) -> Color32 {
-    if hovered {
-        Color32::WHITE
-    } else {
-        fg
-    }
+    if hovered { Color32::WHITE } else { fg }
 }

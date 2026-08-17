@@ -837,20 +837,17 @@ pub fn prepare_cip25_metadata(
     assets: &[(String, i64)],
 ) -> serde_json::Value {
     if metadata_value.get("721").is_some() {
-        if let Some(obj_721) = metadata_value.get("721").and_then(|v| v.as_object()) {
-            if obj_721.is_empty() || obj_721.contains_key("__POLICY_ID__") {
+        if let Some(obj_721) = metadata_value.get("721").and_then(|v| v.as_object())
+            && (obj_721.is_empty() || obj_721.contains_key("__POLICY_ID__")) {
                 let mut metadata_clone = metadata_value.clone();
                 if let Some(obj_721_mut) = metadata_clone
                     .get_mut("721")
                     .and_then(|v| v.as_object_mut())
-                {
-                    if let Some(inner) = obj_721_mut.remove("__POLICY_ID__") {
+                    && let Some(inner) = obj_721_mut.remove("__POLICY_ID__") {
                         obj_721_mut.insert(policy_id_hex.to_string(), inner);
                     }
-                }
                 return metadata_clone;
             }
-        }
         metadata_value.clone()
     } else {
         let mut policy_metadata = serde_json::Map::new();

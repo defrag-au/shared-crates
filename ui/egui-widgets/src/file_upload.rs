@@ -61,8 +61,8 @@ impl FileUploadButton {
     /// Trigger the hidden file input element.
     #[cfg(target_arch = "wasm32")]
     fn trigger_file_picker(&self, accept: &str) {
-        use wasm_bindgen::prelude::*;
         use wasm_bindgen::JsCast;
+        use wasm_bindgen::prelude::*;
 
         let window = match web_sys::window() {
             Some(w) => w,
@@ -118,8 +118,8 @@ fn read_selected_file(
     input: &web_sys::HtmlInputElement,
     sender: egui_inbox::UiInboxSender<UploadedFile>,
 ) {
-    use wasm_bindgen::prelude::*;
     use wasm_bindgen::JsCast;
+    use wasm_bindgen::prelude::*;
 
     let files = match input.files() {
         Some(f) => f,

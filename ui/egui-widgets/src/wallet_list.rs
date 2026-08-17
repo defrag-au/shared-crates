@@ -377,7 +377,7 @@ impl<'a> WalletList<'a> {
 // ─────────────────────────────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)] // honest set of knobs; bundling them
-                                     // into a struct would just move the args.
+// into a struct would just move the args.
 fn render_bucket(
     ui: &mut Ui,
     title: &str,

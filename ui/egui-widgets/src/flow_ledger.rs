@@ -349,7 +349,7 @@ impl<'a> FlowLedger<'a> {
                         } else {
                             neg
                         };
-                        let sign = if r.is_inflow() { "+" } else { "−" };
+                        let sign = if r.is_inflow() { "+" } else { "-" };
                         let text = format!("{sign}{}", (self.format_amount)(r.amount.abs()));
                         let resp =
                             ui.label(RichText::new(text).size(11.0).monospace().color(color));

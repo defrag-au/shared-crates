@@ -259,50 +259,46 @@ impl<'a> Sparkline<'a> {
             }
 
             // Endpoint dot
-            if self.show_endpoint {
-                if let Some(&last) = points.last() {
-                    painter.circle_filled(last, 3.0, self.line_color);
-                    painter.circle_stroke(last, 3.0, Stroke::new(1.0_f32, theme::BG_PRIMARY));
-                }
+            if self.show_endpoint
+                && let Some(&last) = points.last()
+            {
+                painter.circle_filled(last, 3.0, self.line_color);
+                painter.circle_stroke(last, 3.0, Stroke::new(1.0_f32, theme::BG_PRIMARY));
             }
 
             // Hover: crosshair highlight + (optionally) the nearest-value tooltip.
-            if self.hover_style != SparkHoverStyle::None {
-                if let Some(hover_pos) = response.hover_pos() {
-                    let rel_x = (hover_pos.x - plot_rect.left()) / plot_rect.width();
-                    let idx = (rel_x * (n - 1) as f32).round() as usize;
-                    if idx < n {
-                        let val = self.data[idx];
-                        let point = points[idx];
+            if self.hover_style != SparkHoverStyle::None
+                && let Some(hover_pos) = response.hover_pos()
+            {
+                let rel_x = (hover_pos.x - plot_rect.left()) / plot_rect.width();
+                let idx = (rel_x * (n - 1) as f32).round() as usize;
+                if idx < n {
+                    let val = self.data[idx];
+                    let point = points[idx];
 
-                        // Highlight dot
-                        painter.circle_filled(point, 4.0, self.line_color);
-                        painter.circle_stroke(
-                            point,
-                            4.0,
-                            Stroke::new(1.5_f32, theme::TEXT_PRIMARY),
-                        );
+                    // Highlight dot
+                    painter.circle_filled(point, 4.0, self.line_color);
+                    painter.circle_stroke(point, 4.0, Stroke::new(1.5_f32, theme::TEXT_PRIMARY));
 
-                        // Vertical crosshair
-                        painter.line_segment(
-                            [
-                                Pos2::new(point.x, plot_rect.top()),
-                                Pos2::new(point.x, plot_rect.bottom()),
-                            ],
-                            Stroke::new(0.5_f32, theme::TEXT_MUTED),
-                        );
+                    // Vertical crosshair
+                    painter.line_segment(
+                        [
+                            Pos2::new(point.x, plot_rect.top()),
+                            Pos2::new(point.x, plot_rect.bottom()),
+                        ],
+                        Stroke::new(0.5_f32, theme::TEXT_MUTED),
+                    );
 
-                        // Built-in value tooltip (unless the caller owns it).
-                        if self.hover_style == SparkHoverStyle::Values {
-                            let text = if val.abs() >= 1_000_000.0 {
-                                format!("{:.1}M", val / 1_000_000.0)
-                            } else if val.abs() >= 1_000.0 {
-                                format!("{:.1}K", val / 1_000.0)
-                            } else {
-                                format!("{val:.1}")
-                            };
-                            response.clone().on_hover_text(text);
-                        }
+                    // Built-in value tooltip (unless the caller owns it).
+                    if self.hover_style == SparkHoverStyle::Values {
+                        let text = if val.abs() >= 1_000_000.0 {
+                            format!("{:.1}M", val / 1_000_000.0)
+                        } else if val.abs() >= 1_000.0 {
+                            format!("{:.1}K", val / 1_000.0)
+                        } else {
+                            format!("{val:.1}")
+                        };
+                        response.clone().on_hover_text(text);
                     }
                 }
             }

@@ -452,11 +452,7 @@ fn ada(lovelace: u64) -> String {
 }
 
 fn plural(n: usize) -> &'static str {
-    if n == 1 {
-        ""
-    } else {
-        "s"
-    }
+    if n == 1 { "" } else { "s" }
 }
 
 /// Head-truncate a long id (policy_id) to `keep` chars + ellipsis.
@@ -470,8 +466,8 @@ fn truncate(s: &str, keep: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cardano_assets::utxo::AssetQuantity;
     use cardano_assets::AssetId;
+    use cardano_assets::utxo::AssetQuantity;
 
     fn pure(lovelace: u64) -> UtxoApi {
         UtxoApi {

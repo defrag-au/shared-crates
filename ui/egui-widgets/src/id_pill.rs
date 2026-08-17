@@ -28,7 +28,7 @@ use std::borrow::Cow;
 
 use egui::{Align, Color32, Layout, RichText, Ui};
 
-use crate::icons::{install_phosphor_font, PhosphorIcon};
+use crate::icons::{PhosphorIcon, install_phosphor_font};
 
 /// Visual layout pick — `IdPill::layout(…)` consumes one of these.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

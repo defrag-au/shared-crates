@@ -25,6 +25,8 @@
 //! of the distribution is pulling away, whoever happens to be in it. Pinning
 //! bands to identities would answer a different question and hide this one.
 
+use std::collections::HashMap;
+
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
 /// One acquisition: a wallet receiving assets at a moment.
@@ -73,17 +75,58 @@ impl Distribution {
 /// Holdings per wallet at `at`, largest first. Wallets at zero or below are
 /// dropped — someone who sold everything is not a holder.
 pub fn holdings_at(events: &[Acquisition<'_>], at: i64) -> Vec<(String, i64)> {
-    let mut by: Vec<(String, i64)> = Vec::new();
+    // Keyed, not scanned. The linear `by.iter_mut().find(...)` this replaces was
+    // O(events × holders) and allocated a String per new holder — fine for a
+    // fixture, ruinous for a real collection (25k events over ~8k holders).
+    let mut acc: HashMap<&str, i64> = HashMap::with_capacity(events.len().min(4096));
     for e in events.iter().filter(|e| e.timestamp <= at) {
-        match by.iter_mut().find(|(h, _)| h == e.holder) {
-            Some((_, n)) => *n += e.count,
-            None => by.push((e.holder.to_string(), e.count)),
-        }
+        *acc.entry(e.holder).or_insert(0) += e.count;
     }
+    let mut by: Vec<(String, i64)> = acc.into_iter().map(|(h, n)| (h.to_string(), n)).collect();
     by.retain(|(_, n)| *n > 0);
     // Ties broken by name so the ordering is determined by the data alone.
     by.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     by
+}
+
+/// The whole staircase in ONE pass over `events`.
+///
+/// `steps` must be ascending. Returns one [`Distribution`] per step.
+///
+/// Why this exists: the chart needs a Distribution at every sampled instant,
+/// and calling [`distribution_at`] per step re-scans every event and re-sorts
+/// every holder each time — 900 steps over 25k events cost ~850ms PER FRAME on
+/// a real collection. None of those values depend on the playhead (only the
+/// shading does), so the staircase is computed once, streaming.
+pub fn distribution_series(events: &[Acquisition<'_>], steps: &[i64]) -> Vec<Distribution> {
+    let mut acc: HashMap<&str, i64> = HashMap::with_capacity(events.len().min(8192));
+    let mut out = Vec::with_capacity(steps.len());
+    let mut i = 0usize;
+    let mut top: Vec<i64> = Vec::new();
+    for &t in steps {
+        while i < events.len() && events[i].timestamp <= t {
+            *acc.entry(events[i].holder).or_insert(0) += events[i].count;
+            i += 1;
+        }
+        // Top-k by partial selection over holders — no full sort per step.
+        top.clear();
+        top.extend(acc.values().copied().filter(|n| *n > 0));
+        let holders = top.len();
+        let distributed: i64 = top.iter().sum();
+        let k = top.len().min(10);
+        if k > 0 {
+            top.select_nth_unstable_by(k - 1, |a, b| b.cmp(a));
+        }
+        let top10: i64 = top[..k].iter().sum();
+        let top1 = top[..k].iter().copied().max().unwrap_or(0);
+        out.push(Distribution {
+            holders,
+            distributed,
+            top1,
+            top10,
+        });
+    }
+    out
 }
 
 pub fn distribution_at(events: &[Acquisition<'_>], at: i64) -> Distribution {
@@ -170,11 +213,31 @@ impl<'a> HolderFormation<'a> {
         // nothing happened.
         let mut steps: Vec<i64> = self.events.iter().map(|e| e.timestamp).collect();
         steps.dedup();
+        // Sample at most one step per horizontal pixel. Each step costs a full
+        // `distribution_at`, so sampling every distinct instant meant ~20,000
+        // recomputes per frame on a real collection — more steps than the plot
+        // has pixels to draw them in, so the extra work bought nothing at all.
+        // First and last are always kept, so the span is unchanged.
+        // One sample per ~3px. This is a STAIRCASE: at 3px the risers are still
+        // wider than the stroke, so nothing visible is lost, and the sample
+        // count drives the whole cost (see `distribution_series`).
+        let max_steps = ((plot.width() / 3.0).ceil() as usize).max(2);
+        if steps.len() > max_steps {
+            let n = steps.len();
+            let stride = (n as f32 / max_steps as f32).ceil() as usize;
+            let last = steps[n - 1];
+            steps = steps.into_iter().step_by(stride.max(1)).collect();
+            if steps.last() != Some(&last) {
+                steps.push(last);
+            }
+        }
 
+        // One pass for the whole staircase — see `distribution_series`.
+        let series = distribution_series(self.events, &steps);
         let mut prev_x = x_of(t0);
         let mut prev: Option<Distribution> = None;
-        for t in steps.iter().copied() {
-            let d = distribution_at(self.events, t);
+        for (si, t) in steps.iter().copied().enumerate() {
+            let d = series[si].clone();
             let x = x_of(t);
             if let Some(p) = &prev {
                 let future = t > self.playhead;
@@ -349,5 +412,25 @@ mod tests {
         assert_eq!(d.holders, 0);
         assert_eq!(d.distributed, 0);
         assert_eq!(d.top10_share(), 0.0);
+    }
+    /// Real-collection scale — see the `mint_arrivals` twin. `holdings_at` was
+    /// O(events × holders) with a String allocation per new holder, and the
+    /// chart called it once per distinct timestamp.
+    #[test]
+    fn scales_to_a_real_collection() {
+        let holders: Vec<String> = (0..8_000).map(|i| format!("stake1holder{i:05}")).collect();
+        let events: Vec<Acquisition<'_>> = (0..25_728)
+            .map(|i| Acquisition::new(i as i64, holders[i % holders.len()].as_str(), 1))
+            .collect();
+
+        let d = distribution_at(&events, i64::MAX);
+        assert_eq!(d.holders, 8_000);
+        assert_eq!(d.distributed, 25_728);
+        // Sorted desc by holdings: the busiest holder leads.
+        assert!(d.top1 >= 1);
+        assert!(d.top10 >= d.top1);
+        // Half-way through the series, only the elapsed events count.
+        let half = distribution_at(&events, 12_863);
+        assert_eq!(half.distributed, 12_864);
     }
 }

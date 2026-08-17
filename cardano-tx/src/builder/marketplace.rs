@@ -290,8 +290,8 @@ fn extract_constr_fields(
 ) -> Result<Vec<PlutusData>, TxBuildError> {
     match data {
         PlutusData::Constr(constr) => {
-            if let Some(tag) = expected_tag {
-                if constr.tag != (121 + tag) && constr.tag != tag {
+            if let Some(tag) = expected_tag
+                && constr.tag != (121 + tag) && constr.tag != tag {
                     // pallas uses raw CBOR tag (121 = Constructor 0, 122 = Constructor 1, etc.)
                     // but also sometimes the "compact" form
                     let effective_tag = if constr.tag >= 121 && constr.tag <= 127 {
@@ -306,7 +306,6 @@ fn extract_constr_fields(
                         )));
                     }
                 }
-            }
             Ok(constr.fields.iter().cloned().collect())
         }
         _ => Err(TxBuildError::BuildFailed(format!(

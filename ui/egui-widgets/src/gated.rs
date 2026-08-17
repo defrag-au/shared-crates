@@ -20,7 +20,7 @@
 use authorizations::{EntitlementSet, Feature};
 use egui::{Color32, RichText, Ui};
 
-use crate::icons::{install_phosphor_font, PhosphorIcon};
+use crate::icons::{PhosphorIcon, install_phosphor_font};
 
 /// The session's entitlement state as the frontend knows it. Kept as its
 /// own type (rather than a bare `Option<EntitlementSet>`) so apps can store

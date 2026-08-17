@@ -614,10 +614,12 @@ mod tests {
 
         // A provisional claim is not expected to have one.
         assert!(!ClaimCard::new("x").is_unevidenced_verdict());
-        assert!(!ClaimCard::new("x")
-            .falsifier("y")
-            .status(FalsifierStatus::Pending)
-            .is_unevidenced_verdict());
+        assert!(
+            !ClaimCard::new("x")
+                .falsifier("y")
+                .status(FalsifierStatus::Pending)
+                .is_unevidenced_verdict()
+        );
     }
 
     /// Claiming a verdict without ever writing the test down is the loophole

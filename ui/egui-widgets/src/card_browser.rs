@@ -316,42 +316,42 @@ pub fn show<T>(
         });
 
         // RIGHT: detail panel
-        if let Some(sel_idx) = state.selected {
-            if sel_idx < items.len() {
-                ui.add_space(12.0);
-                ui.vertical(|ui| {
-                    ui.set_max_width(config.detail_width);
-                    ui.set_min_width(config.detail_width);
-                    let frame_resp = egui::Frame::new()
-                        .fill(config.bg_detail)
-                        .corner_radius(config.rounding)
-                        .inner_margin(config.detail_margin)
-                        .show(ui, |ui| {
-                            render_detail(ui, sel_idx, &mut items[sel_idx]);
-                        });
-
-                    // Overlay close button at top-right of panel (no vertical space consumed)
-                    let panel_rect = frame_resp.response.rect;
-                    let btn_size = egui::Vec2::splat(20.0);
-                    let btn_rect = egui::Rect::from_min_size(
-                        egui::pos2(panel_rect.max.x - btn_size.x - 4.0, panel_rect.min.y + 4.0),
-                        btn_size,
-                    );
-                    ui.scope_builder(egui::UiBuilder::new().max_rect(btn_rect), |ui| {
-                        if ui
-                            .add(
-                                egui::Button::new(
-                                    crate::PhosphorIcon::X.rich_text(14.0, config.border_selected),
-                                )
-                                .frame(false),
-                            )
-                            .clicked()
-                        {
-                            state.selected = None;
-                        }
+        if let Some(sel_idx) = state.selected
+            && sel_idx < items.len()
+        {
+            ui.add_space(12.0);
+            ui.vertical(|ui| {
+                ui.set_max_width(config.detail_width);
+                ui.set_min_width(config.detail_width);
+                let frame_resp = egui::Frame::new()
+                    .fill(config.bg_detail)
+                    .corner_radius(config.rounding)
+                    .inner_margin(config.detail_margin)
+                    .show(ui, |ui| {
+                        render_detail(ui, sel_idx, &mut items[sel_idx]);
                     });
+
+                // Overlay close button at top-right of panel (no vertical space consumed)
+                let panel_rect = frame_resp.response.rect;
+                let btn_size = egui::Vec2::splat(20.0);
+                let btn_rect = egui::Rect::from_min_size(
+                    egui::pos2(panel_rect.max.x - btn_size.x - 4.0, panel_rect.min.y + 4.0),
+                    btn_size,
+                );
+                ui.scope_builder(egui::UiBuilder::new().max_rect(btn_rect), |ui| {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                crate::PhosphorIcon::X.rich_text(14.0, config.border_selected),
+                            )
+                            .frame(false),
+                        )
+                        .clicked()
+                    {
+                        state.selected = None;
+                    }
                 });
-            }
+            });
         }
     });
 

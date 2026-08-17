@@ -227,11 +227,10 @@ pub fn build_atomic_swap(
             }
 
             // Optional orchestration fee to community wallet
-            if let Some((ref fee_addr, fee_amount)) = fee_output_clone {
-                if fee_amount > 0 {
+            if let Some((ref fee_addr, fee_amount)) = fee_output_clone
+                && fee_amount > 0 {
                     tx = tx.output(create_ada_output(fee_addr.clone(), fee_amount));
                 }
-            }
 
             Ok(tx.fee(fee).network_id(network_id))
         },

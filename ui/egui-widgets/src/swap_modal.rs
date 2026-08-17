@@ -349,10 +349,10 @@ impl SwapModal {
                 );
                 ui.label(RichText::new("ADA").color(text_muted).size(12.0));
 
-                if response.changed() {
-                    if let Some(lovelace) = self.input_lovelace() {
-                        action = SwapModalAction::AmountChanged(lovelace);
-                    }
+                if response.changed()
+                    && let Some(lovelace) = self.input_lovelace()
+                {
+                    action = SwapModalAction::AmountChanged(lovelace);
                 }
             });
         }
@@ -430,12 +430,13 @@ impl SwapModal {
                         })
                         .corner_radius(6.0),
                 );
-                if can_confirm && confirm_btn.clicked() {
-                    if let Some(lovelace) = self.input_lovelace() {
-                        action = SwapModalAction::ConfirmSwap {
-                            input_lovelace: lovelace,
-                        };
-                    }
+                if can_confirm
+                    && confirm_btn.clicked()
+                    && let Some(lovelace) = self.input_lovelace()
+                {
+                    action = SwapModalAction::ConfirmSwap {
+                        input_lovelace: lovelace,
+                    };
                 }
             }
         } else {

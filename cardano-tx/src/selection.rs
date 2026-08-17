@@ -102,29 +102,27 @@ pub fn select_utxo_for_amount<'a>(
 
     // Phase 1: pure-ADA candidates (when preference is on). Smallest
     // sufficient wins.
-    if config.prefer_pure_ada {
-        if let Some(utxo) = utxos
+    if config.prefer_pure_ada
+        && let Some(utxo) = utxos
             .iter()
             .filter(|u| is_pure_ada_utxo(u) && has_sufficient(u))
             .min_by_key(|u| u.lovelace)
         {
             return Ok(utxo);
         }
-    }
 
     // Phase 2: any UTxO. Used when:
     //   - prefer_pure_ada is off (treat all UTxOs equally), or
     //   - prefer_pure_ada is on but no pure-ADA candidate fit AND fallback is
     //     allowed.
-    if !config.prefer_pure_ada || config.allow_asset_fallback {
-        if let Some(utxo) = utxos
+    if (!config.prefer_pure_ada || config.allow_asset_fallback)
+        && let Some(utxo) = utxos
             .iter()
             .filter(|u| has_sufficient(u))
             .min_by_key(|u| u.lovelace)
         {
             return Ok(utxo);
         }
-    }
 
     // No suitable UTxO. Build the most informative error we can.
     if config.prefer_pure_ada && !config.allow_asset_fallback {

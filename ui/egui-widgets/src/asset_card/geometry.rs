@@ -188,10 +188,10 @@ pub fn with_badge(outline: &[Pos2], center: Pos2, half: f32) -> Vec<Pos2> {
 
     let result = card.overlay(&pill, OverlayRule::Union, FillRule::EvenOdd);
 
-    if let Some(shape) = result.first() {
-        if let Some(contour) = shape.first() {
-            return contour.iter().map(|p| Pos2::new(p[0], p[1])).collect();
-        }
+    if let Some(shape) = result.first()
+        && let Some(contour) = shape.first()
+    {
+        return contour.iter().map(|p| Pos2::new(p[0], p[1])).collect();
     }
 
     // Fallback: return original outline unchanged

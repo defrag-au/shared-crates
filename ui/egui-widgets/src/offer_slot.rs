@@ -8,7 +8,7 @@ use egui::{Color32, CornerRadius, Vec2};
 
 use crate::card_browser;
 use crate::icons::PhosphorIcon;
-use crate::image_loader::{iiif_asset_url, AssetImageSize};
+use crate::image_loader::{AssetImageSize, iiif_asset_url};
 use crate::theme;
 
 // ============================================================================
@@ -298,17 +298,17 @@ pub fn show(
                     .size(10.0),
             );
         }
-        if data.is_fungible {
-            if let Some(bal) = data.wallet_balance {
-                ui.label(
-                    egui::RichText::new(format!(
-                        "Balance: {}",
-                        super::wallet_asset_picker::format_quantity(bal)
-                    ))
-                    .color(theme::TEXT_MUTED)
-                    .size(10.0),
-                );
-            }
+        if data.is_fungible
+            && let Some(bal) = data.wallet_balance
+        {
+            ui.label(
+                egui::RichText::new(format!(
+                    "Balance: {}",
+                    super::wallet_asset_picker::format_quantity(bal)
+                ))
+                .color(theme::TEXT_MUTED)
+                .size(10.0),
+            );
         }
     });
 

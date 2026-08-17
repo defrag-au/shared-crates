@@ -35,7 +35,7 @@
 
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Sense, Stroke, Ui};
 
-use crate::icons::{install_phosphor_font, PhosphorIcon};
+use crate::icons::{PhosphorIcon, install_phosphor_font};
 
 /// Semantic palette pick — `Chip::variant(…)` consumes one of these.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

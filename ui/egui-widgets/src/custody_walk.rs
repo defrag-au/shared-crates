@@ -48,7 +48,7 @@
 //! ```
 
 use egui::{
-    epaint::Mesh, Align2, Color32, FontId, Pos2, Rect, Response, RichText, Sense, Shape, Ui, Vec2,
+    Align2, Color32, FontId, Pos2, Rect, Response, RichText, Sense, Shape, Ui, Vec2, epaint::Mesh,
 };
 
 use crate::party_badge::{PartyBadge, PartyBasis};
@@ -79,7 +79,7 @@ impl CustodyStrength {
                  specific units. A fact about the chain, not a reconstruction."
             }
             CustodyStrength::Inferred => {
-                "This chain has no input→output link. The path is reconstructed from \
+                "This chain has no input->output link. The path is reconstructed from \
                  instruction ordering and is INFERENCE — do not describe it as a trace \
                  of specific funds."
             }

@@ -16,7 +16,7 @@ use egui_widgets::{
     HolderFormation, MintArrivals,
 };
 
-const RAISED: i128 = 445_417_000_000;
+pub(crate) const RAISED: i128 = 445_417_000_000;
 const DAY: i64 = 86_400;
 /// 2025-08-01 — roughly when S1 deployment begins.
 const T0: i64 = 1_754_006_400;
@@ -37,7 +37,7 @@ impl Default for CapitalFlowState {
     }
 }
 
-fn ada(v: i128) -> String {
+pub(crate) fn ada(v: i128) -> String {
     let a = v as f64 / 1e6;
     if a >= 1_000.0 {
         format!("{:.0}k ADA", a / 1_000.0)
@@ -48,7 +48,7 @@ fn ada(v: i128) -> String {
 
 /// Days since epoch → `YYYY-MM`. The chart spans a year, so a month is the
 /// resolution a reader can actually hold.
-fn month(ts: i64) -> String {
+pub(crate) fn month(ts: i64) -> String {
     let (mut y, mut d) = (1970i64, ts / DAY);
     loop {
         let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
@@ -110,7 +110,7 @@ fn acquisitions() -> Vec<Acquisition<'static>> {
 }
 
 /// Deployment events, spread across the window in the observed proportions.
-fn events() -> Vec<FlowEvent<'static>> {
+pub(crate) fn events() -> Vec<FlowEvent<'static>> {
     // (destination, share of total deployed, first month, last month)
     const PLAN: &[(&str, f64, i64, i64)] = &[
         ("off-ramp", 0.451, 0, 11),
@@ -138,7 +138,7 @@ fn events() -> Vec<FlowEvent<'static>> {
 }
 
 /// Same shape as `acquisitions`, as per-asset arrivals for the dot field.
-fn arrivals() -> Vec<Arrival<'static>> {
+pub(crate) fn arrivals() -> Vec<Arrival<'static>> {
     acquisitions()
         .into_iter()
         .map(|a| Arrival::new(a.timestamp, a.holder, a.count.max(0) as u32))

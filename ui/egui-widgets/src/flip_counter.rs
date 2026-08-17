@@ -139,11 +139,7 @@ impl FlipCounter {
                 } else {
                     self.card_width
                 };
-                if i > 0 {
-                    w + self.card_gap
-                } else {
-                    w
-                }
+                if i > 0 { w + self.card_gap } else { w }
             })
             .sum();
 

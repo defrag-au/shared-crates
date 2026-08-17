@@ -5,9 +5,9 @@
 //! through their own message channels — this module never spawns tasks.
 
 pub use wallet_core::{
-    on_window_focus, ConnectionState, Network, WalletApi, WalletInfo, WalletProvider,
+    ConnectionState, Network, WalletApi, WalletInfo, WalletProvider, on_window_focus,
 };
-pub use wallet_pallas::{decode_balance, Address, WalletBalance};
+pub use wallet_pallas::{Address, WalletBalance, decode_balance};
 
 /// Result of a successful wallet connection (produced by async connect task).
 pub struct WalletConnectResult {

@@ -28,6 +28,8 @@
 //! maximum, every arrival would rescale the entire field and nothing could be
 //! compared to the frame before it.
 
+use std::collections::HashMap;
+
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 
 /// One asset arriving with a holder.
@@ -67,18 +69,20 @@ pub fn pile_offset(k: u32) -> (f32, f32) {
 /// Arrival order, not size order: sorting by holdings would move a wallet across
 /// the screen as it grew, and the growth is the thing being watched.
 pub fn piles_at<'a>(arrivals: &[Arrival<'a>], at: i64) -> Vec<(&'a str, u32)> {
-    let mut out: Vec<(&str, u32)> = Vec::new();
+    // Index by holder so this stays O(arrivals). The obvious `out.iter()
+    // .position(...)` is O(arrivals × holders) — invisible at fixture scale and
+    // pathological on a real collection (10k arrivals over ~8k holders is ~40M
+    // string compares, EVERY FRAME).
+    let mut index: HashMap<&'a str, usize> = HashMap::with_capacity(arrivals.len());
+    let mut out: Vec<(&'a str, u32)> = Vec::new();
     for a in arrivals {
-        let slot = match out.iter().position(|(h, _)| *h == a.holder) {
-            Some(i) => i,
-            None => {
-                // First appearance fixes the position, even if this arrival is
-                // still in the future — otherwise the layout would reflow as
-                // the playhead moves.
-                out.push((a.holder, 0));
-                out.len() - 1
-            }
-        };
+        let slot = *index.entry(a.holder).or_insert_with(|| {
+            // First appearance fixes the position, even if this arrival is
+            // still in the future — otherwise the layout would reflow as
+            // the playhead moves.
+            out.push((a.holder, 0));
+            out.len() - 1
+        });
         if a.timestamp <= at {
             out[slot].1 += a.count;
         }
@@ -88,14 +92,11 @@ pub fn piles_at<'a>(arrivals: &[Arrival<'a>], at: i64) -> Vec<(&'a str, u32)> {
 
 /// The largest single pile across the whole series — the scale reference.
 pub fn peak_pile(arrivals: &[Arrival<'_>]) -> u32 {
-    let mut totals: Vec<(&str, u32)> = Vec::new();
+    let mut totals: HashMap<&str, u32> = HashMap::with_capacity(arrivals.len());
     for a in arrivals {
-        match totals.iter_mut().find(|(h, _)| *h == a.holder) {
-            Some((_, n)) => *n += a.count,
-            None => totals.push((a.holder, a.count)),
-        }
+        *totals.entry(a.holder).or_insert(0) += a.count;
     }
-    totals.into_iter().map(|(_, n)| n).max().unwrap_or(0)
+    totals.into_values().max().unwrap_or(0)
 }
 
 pub struct MintArrivals<'a> {
@@ -349,5 +350,26 @@ mod tests {
     fn a_whale_pile_dwarfs_the_others_in_radius() {
         let radius = |count: u32| (count as f32).sqrt();
         assert!(radius(400) > radius(4) * 9.0, "100x assets is 10x radius");
+    }
+    /// Real-collection scale. Under the previous O(arrivals × holders) scans
+    /// this was ~40M string compares per call and the widget ran them EVERY
+    /// FRAME; a 10k-asset mint pegged a core. Keep it linear.
+    #[test]
+    fn scales_to_a_real_collection() {
+        let holders: Vec<String> = (0..8_000).map(|i| format!("stake1holder{i:05}")).collect();
+        let arrivals: Vec<Arrival<'_>> = (0..10_001)
+            .map(|i| Arrival::new(i as i64, holders[i % holders.len()].as_str(), 1))
+            .collect();
+
+        let piles = piles_at(&arrivals, i64::MAX);
+        assert_eq!(piles.len(), holders.len(), "one pile per distinct holder");
+        // First appearance fixes position — order must be arrival order.
+        assert_eq!(piles[0].0, holders[0]);
+        assert_eq!(
+            piles.iter().map(|(_, n)| *n as usize).sum::<usize>(),
+            10_001
+        );
+        // 10_001 over 8_000 holders: the first 2_001 get two, the rest one.
+        assert_eq!(peak_pile(&arrivals), 2);
     }
 }

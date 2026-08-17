@@ -8,7 +8,7 @@ use cardano_assets::AssetId;
 use egui::{Color32, CornerRadius, Rect, Vec2};
 
 use crate::card_browser;
-use crate::image_loader::{iiif_asset_url, AssetImageSize};
+use crate::image_loader::{AssetImageSize, iiif_asset_url};
 use crate::theme;
 
 // ============================================================================

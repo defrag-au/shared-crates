@@ -26,7 +26,7 @@ pub trait CardEffect {
     /// Compute overlay colour for each vertex given normalised positions
     /// and the current mouse position (also normalised 0..1).
     fn compute_colors(&self, vertices: &[EffectVertex], mouse_u: f32, mouse_v: f32)
-        -> Vec<Color32>;
+    -> Vec<Color32>;
 }
 
 /// Available effects for the UI selector.
