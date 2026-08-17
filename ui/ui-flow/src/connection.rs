@@ -329,8 +329,13 @@ where
             _action: std::marker::PhantomData,
         }));
 
-        // Notify initial status
-        if let Some(cb) = on_status {
+        // Notify initial status.
+        //
+        // BORROW, never move: these callbacks are `Option<Rc<dyn Fn>>` and each
+        // one is used again by the handlers below. Moving out of the option
+        // here would also make every closure that does it `FnOnce`, which
+        // `Closure::wrap(... as Box<dyn FnMut>)` cannot accept.
+        if let Some(cb) = &on_status {
             cb(ConnectionStatus::Connecting);
         }
 
@@ -351,7 +356,7 @@ where
                     inner.reconnect_attempt = 0;
                 }
 
-                if let Some(cb) = on_status {
+                if let Some(cb) = &on_status {
                     cb(ConnectionStatus::Connected);
                 }
 
@@ -417,7 +422,7 @@ where
                     }
                     Err(e) => {
                         tracing::warn!("Failed to decode server message: {}", e);
-                        if let Some(cb) = on_error {
+                        if let Some(cb) = &on_error {
                             cb(format!("Decode error: {e}"), false);
                         }
                     }
@@ -454,7 +459,7 @@ where
 
                     if close_info.is_auth_failure() {
                         inner.status = ConnectionStatus::AuthFailed;
-                        if let Some(cb) = on_status {
+                        if let Some(cb) = &on_status {
                             cb(ConnectionStatus::AuthFailed);
                         }
                         false
@@ -466,12 +471,12 @@ where
                         if should {
                             inner.status = ConnectionStatus::Reconnecting { attempt };
                             inner.reconnect_attempt = attempt;
-                            if let Some(cb) = on_status {
+                            if let Some(cb) = &on_status {
                                 cb(ConnectionStatus::Reconnecting { attempt });
                             }
                         } else {
                             inner.status = ConnectionStatus::Disconnected;
-                            if let Some(cb) = on_status {
+                            if let Some(cb) = &on_status {
                                 cb(ConnectionStatus::Disconnected);
                             }
                         }
@@ -511,7 +516,7 @@ where
 
             let onerror = Closure::wrap(Box::new(move |_event: JsValue| {
                 tracing::error!("WebSocket error");
-                if let Some(cb) = on_error {
+                if let Some(cb) = &on_error {
                     cb("WebSocket error".into(), false);
                 }
             }) as Box<dyn FnMut(JsValue)>);
