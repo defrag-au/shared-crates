@@ -6,18 +6,20 @@
 //!
 //! - **the spine** drives everything: scrub the tick lane to move the playhead,
 //!   drag in the brush lane to filter, press play and watch;
-//! - **the arrivals field** flies dots into piles as the playhead reveals them
-//!   (only while playing — a scrubbed frame settles instantly), and hovering a
-//!   pile names its holder in the shared selection;
+//! - **the holder field** gives every asset a dot and every holder a pile. A
+//!   dot is keyed by the ASSET, so when custody changes the same dot flies to
+//!   its new pile and the field rebalances — the mint fills it, the
+//!   aftermarket concentrates it. Hovering a pile names its holder in the
+//!   shared selection;
 //! - **capital flow** shares the same playhead, so both faces move together.
 //!
 //! What to look for: does motion + linkage make it stop feeling flat? If yes,
 //! the framework was never the problem. If no, that is evidence for D3.
 
-use crate::stories::capital_flow::{ada, arrivals, events, month, RAISED};
+use crate::stories::capital_flow::{ada, arrivals, events, month, moves, RAISED};
 use crate::TEXT_MUTED;
 use egui_widgets::{
-    capital_bands, format_date, AliasIndex, ArrivalField, CapitalFlow, PartyFinder,
+    capital_bands, format_date, AliasIndex, CapitalFlow, HolderField, MarkKind, PartyFinder,
     PartyFinderState, Selection, SpineState, TimeSpine, WalletIdentity,
 };
 
@@ -72,6 +74,7 @@ fn aliases(arrivals: &[egui_widgets::Arrival<'_>]) -> AliasIndex {
 
 pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineState) {
     let arrivals = arrivals();
+    let moves = moves();
     let events = events();
     let bands = capital_bands(&events);
     if state.aliases.is_none() {
@@ -79,15 +82,17 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineState) {
     }
 
     // Domain from the data — first arrival to last deployment.
-    let lo = arrivals
+    // The domain has to cover the aftermarket too, or every trade sits off the
+    // right-hand end of the spine and the field never reshuffles.
+    let lo = moves
         .iter()
-        .map(|a| a.timestamp)
+        .map(|m| m.timestamp)
         .chain(events.iter().map(|e| e.timestamp))
         .min()
         .unwrap_or(0);
-    let hi = arrivals
+    let hi = moves
         .iter()
-        .map(|a| a.timestamp)
+        .map(|m| m.timestamp)
         .chain(events.iter().map(|e| e.timestamp))
         .max()
         .unwrap_or(1);
@@ -118,18 +123,38 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineState) {
             format_date(t)
         }
     };
+    // Pinning a wallet MARKS ITS MOVES on the spine: acquisitions above the
+    // midline, disposals below. Watching a wallet has to answer "when", and the
+    // axis you brush is where that answer belongs.
+    let watched = state.selection.active().map(|k| k.to_string());
+    let marks: Vec<(i64, MarkKind)> = match &watched {
+        Some(k) => moves
+            .iter()
+            .filter_map(|m| {
+                if m.to == Some(k.as_str()) {
+                    Some((m.timestamp, MarkKind::In))
+                } else if m.from == Some(k.as_str()) {
+                    Some((m.timestamp, MarkKind::Out))
+                } else {
+                    None
+                }
+            })
+            .collect(),
+        None => Vec::new(),
+    };
     let sr = TimeSpine::new(spine)
         .format_tick(&tick)
+        .marks(&marks)
         .height(58.0)
         .show(ui);
     let _ = sr;
 
     ui.add_space(10.0);
 
-    // ── assets out: dots arriving into holders (motion + selection) ───────
-    ui.label(egui::RichText::new("assets out — arriving to holders").strong());
-    let ar = ArrivalField::new(&arrivals, spine, &mut state.selection)
-        .height(300.0)
+    // ── assets out: dots moving between holders (motion + selection) ──────
+    ui.label(egui::RichText::new("assets out — who holds what, over time").strong());
+    let ar = HolderField::new(&moves, spine, &mut state.selection)
+        .height(320.0)
         .show(ui);
 
     ui.add_space(10.0);

@@ -27,6 +27,7 @@ pub mod fonts;
 pub mod fungibles_row;
 pub mod gated;
 pub mod grouped_section;
+pub mod holder_field;
 pub mod holder_formation;
 pub mod icons;
 pub mod id_pill;
@@ -174,6 +175,7 @@ pub use flow_ledger::{
     FlowLedger, FlowLedgerResponse, FlowRow, LedgerTotals, totals as flow_totals,
 };
 pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
+pub use holder_field::{AssetMove, HolderField, HolderFieldResponse};
 pub use holder_formation::{
     Acquisition, Distribution, HolderFormation, distribution_at, distribution_series, holdings_at,
 };
@@ -235,7 +237,7 @@ pub use swap_modal::{
 pub use tag_list::{TagList, TagListResponse};
 pub use theme::{FontStrategy, rarity_rank_color};
 pub use time_spine::{
-    SpineState, TimeScale, TimeSpine, TimeSpineResponse, TimeView, civil_from_unix,
+    MarkKind, SpineState, TimeScale, TimeSpine, TimeSpineResponse, TimeView, civil_from_unix,
     compact_tick_label, format_date, next_tick_step_secs, paint_ticks,
 };
 pub use timestamp::{Timestamp, format_iso8601};

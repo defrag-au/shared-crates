@@ -36,6 +36,12 @@ use egui::{
 
 use crate::motion::{Easing, tween, tween_bool};
 
+/// Colours for [`MarkKind`]. Two categories, so two hues from the catalog's
+/// categorical order — never a red/green pair, which reads as good/bad rather
+/// than in/out.
+const MARK_IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
+const MARK_OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
+
 // ---------------------------------------------------------------------------
 // TimeScale — the mapping (ported from re_time_ruler::TimeRangesUi)
 // ---------------------------------------------------------------------------
@@ -585,12 +591,25 @@ pub struct TimeSpineResponse {
 }
 
 /// The shared time spine: ruler + ticks, playhead, brush lane, play button.
+/// Which way a marked event went for the thing being watched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarkKind {
+    /// Something arrived (an asset acquired, funds received).
+    In,
+    /// Something left.
+    Out,
+}
+
 pub struct TimeSpine<'a> {
     state: &'a mut SpineState,
     format_tick: &'a dyn Fn(i64, i64) -> String,
     /// Optional coverage marks: `(from, to)` bands drawn faintly under the
     /// ruler — e.g. each party's `watched_from` … cursor.
     coverage: &'a [(i64, i64)],
+    /// Event marks for whatever is currently being WATCHED — drawn in the brush
+    /// lane, because "when did this wallet act" and "which interval do I want
+    /// to brush" are the same question.
+    marks: &'a [(i64, MarkKind)],
     height: f32,
     show_play: bool,
 }
@@ -601,6 +620,7 @@ impl<'a> TimeSpine<'a> {
             state,
             format_tick: &compact_tick_label,
             coverage: &[],
+            marks: &[],
             height: 56.0,
             show_play: true,
         }
@@ -613,6 +633,13 @@ impl<'a> TimeSpine<'a> {
 
     pub fn coverage(mut self, bands: &'a [(i64, i64)]) -> Self {
         self.coverage = bands;
+        self
+    }
+
+    /// Mark WHEN the watched thing acted. Drawn in the brush lane so the
+    /// answer to "when did they trade" sits on the axis you drag to isolate it.
+    pub fn marks(mut self, marks: &'a [(i64, MarkKind)]) -> Self {
+        self.marks = marks;
         self
     }
 
@@ -631,6 +658,7 @@ impl<'a> TimeSpine<'a> {
             state,
             format_tick,
             coverage,
+            marks,
             height,
             show_play,
         } = self;
@@ -704,6 +732,30 @@ impl<'a> TimeSpine<'a> {
                     Rangef::new(brush_lane.top() + 2.0, brush_lane.bottom() - 2.0),
                 );
                 painter.rect_filled(r, CornerRadius::ZERO, visuals.faint_bg_color);
+            }
+        }
+
+        // Event marks for the watched party. In above the midline, out below,
+        // so a wallet that only ever accumulated reads differently at a glance
+        // from one that turned over. Drawn before the ticks so the ruler and
+        // the playhead stay on top.
+        if !marks.is_empty() {
+            let mid = brush_lane.center().y;
+            for &(t, kind) in marks {
+                let Some(x) = scale.x_from_time_f32(t as f64) else {
+                    continue;
+                };
+                if x < ruler.left() || x > ruler.right() {
+                    continue;
+                }
+                let (y0, y1, col) = match kind {
+                    MarkKind::In => (mid, brush_lane.top() + 1.0, MARK_IN),
+                    MarkKind::Out => (mid, brush_lane.bottom() - 1.0, MARK_OUT),
+                };
+                painter.line_segment(
+                    [pos2(x, y0), pos2(x, y1)],
+                    Stroke::new(1.0_f32, col.gamma_multiply(0.85)),
+                );
             }
         }
 

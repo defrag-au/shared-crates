@@ -1236,6 +1236,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "discord-miniquad"
+version = "0.1.0"
+dependencies = [
+ "sapp-jsutils",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

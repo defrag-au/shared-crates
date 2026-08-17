@@ -12,8 +12,8 @@
 
 use crate::{ACCENT, TEXT_MUTED};
 use egui_widgets::{
-    capital_bands, capital_legend, cumulative_at, Acquisition, Arrival, CapitalFlow, FlowEvent,
-    HolderFormation, MintArrivals,
+    capital_bands, capital_legend, cumulative_at, Acquisition, Arrival, AssetMove, CapitalFlow,
+    FlowEvent, HolderFormation, MintArrivals,
 };
 
 pub(crate) const RAISED: i128 = 445_417_000_000;
@@ -143,6 +143,61 @@ pub(crate) fn arrivals() -> Vec<Arrival<'static>> {
         .into_iter()
         .map(|a| Arrival::new(a.timestamp, a.holder, a.count.max(0) as u32))
         .collect()
+}
+
+/// Every change of custody: the mint, then a secondary market.
+///
+/// The mint is the arrivals expanded one dot per asset. What follows is the
+/// part the arrivals series could never show — assets changing hands. Shaped
+/// like a real collection's aftermarket: a minority of supply trades, sellers
+/// come disproportionately from the long tail, and buyers skew toward the
+/// already-large, so the field visibly concentrates as the playhead runs.
+pub(crate) fn moves() -> Vec<AssetMove<'static>> {
+    let mut out: Vec<AssetMove<'static>> = Vec::new();
+    // asset -> current holder, so a transfer always leaves the right pile.
+    let mut held: Vec<(&'static str, &'static str)> = Vec::new();
+    let mut n = 0usize;
+    for a in arrivals() {
+        for _ in 0..a.count {
+            let asset: &'static str = Box::leak(format!("asset-{n:04}").into_boxed_str());
+            n += 1;
+            out.push(AssetMove::mint(a.timestamp, asset, a.holder));
+            held.push((asset, a.holder));
+        }
+    }
+    let mint_end = out.iter().map(|m| m.timestamp).max().unwrap_or(T0);
+
+    // Deterministic LCG — a fixture that reshuffles differently every run is
+    // not a fixture. Same seed, same market, every frame.
+    let mut rng = 0x2545_f491_4f6c_dd1du64;
+    let mut next = move || {
+        rng ^= rng << 13;
+        rng ^= rng >> 7;
+        rng ^= rng << 17;
+        rng
+    };
+    let whales = ["whale-0", "whale-1", "whale-2", "whale-3", "whale-4"];
+    for k in 0..900u64 {
+        let i = (next() % held.len() as u64) as usize;
+        let (asset, from) = held[i];
+        // Two thirds of the flow goes to an existing large holder; the rest
+        // scatters back into the tail. That asymmetry IS the concentration.
+        let to: &'static str = if next() % 3 != 0 {
+            whales[(next() % whales.len() as u64) as usize]
+        } else {
+            let j = (next() % held.len() as u64) as usize;
+            held[j].1
+        };
+        if to == from {
+            continue;
+        }
+        // Trades spread over the year after the mint closes.
+        let t = mint_end + DAY / 2 + (k as i64) * 365 * DAY / 900;
+        out.push(AssetMove::transfer(t, asset, from, to));
+        held[i].1 = to;
+    }
+    out.sort_by_key(|m| m.timestamp);
+    out
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut CapitalFlowState) {

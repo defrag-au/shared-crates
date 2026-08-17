@@ -35,6 +35,7 @@ members = [
     "ui/ui-loader-macros",
     "ui/ui-toast",
     "ui/ui-components",
+    "ui/discord-miniquad",
     "ui/wallet-core",
     "ui/wallet-pallas",
     "ui/wallet-leptos",
