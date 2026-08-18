@@ -212,13 +212,19 @@
     // passes "api/token" and it lands on the mapped worker as
     // <root>/api/token. Kept minimal (JSON in, text out) because it exists for
     // exactly one call; a game that needs a real HTTP client should get one.
-    function discord_http_post(url_js, body_js) {
+    // `bearer` may be the empty string — the token exchange runs before there
+    // is any token to send, so an unauthenticated POST is the normal first
+    // call, not a degenerate case.
+    function discord_http_post(url_js, body_js, bearer_js) {
         const id = newId();
         const url = consume_js_object(url_js);
         const body = consume_js_object(body_js);
+        const bearer = consume_js_object(bearer_js);
+        const headers = { 'Content-Type': 'application/json' };
+        if (bearer) headers.Authorization = `Bearer ${bearer}`;
         fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body,
         })
             .then(async (r) => {

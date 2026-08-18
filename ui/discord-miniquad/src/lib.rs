@@ -171,7 +171,16 @@ impl Activity {
     /// Deliberately not a general HTTP client. `Ok { data }` is the response
     /// text on 2xx; `Err { data }` is `"<status>: <body>"` otherwise.
     pub fn http_post(&self, url: &str, body_json: &str) -> ReqId {
-        bridge::http_post(url, body_json)
+        bridge::http_post(url, body_json, "")
+    }
+
+    /// Authenticated JSON POST — the write counterpart to [`Self::http_get`].
+    ///
+    /// Pair with the widget token the exchange returns, so a mutation arrives
+    /// as the signed-in widget. Without it the platform cannot tell *who* is
+    /// committing, and a route that changes state must never guess.
+    pub fn http_post_auth(&self, url: &str, body_json: &str, bearer: &str) -> ReqId {
+        bridge::http_post(url, body_json, bearer)
     }
 
     /// Same-origin GET with a bearer token, resolved under the Activity's

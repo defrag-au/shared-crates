@@ -309,47 +309,20 @@ impl<'a> PartyFinder<'a> {
         let mut chosen = None;
         let mut cleared = false;
 
-        // A pin set elsewhere (a click on a pile) has no "chosen as" name.
+        // A pin dropped elsewhere invalidates the "chosen as" name.
         if state
             .chosen_as
             .as_ref()
-            .is_some_and(|(k, _)| selection.pinned.as_deref() != Some(k.as_str()))
+            .is_some_and(|(k, _)| !selection.is_pinned(k))
         {
             state.chosen_as = None;
         }
 
         ui.horizontal(|ui| {
-            // What's pinned, as a chip with a clear. Named by the identifier it
-            // was chosen BY when it came from this box; otherwise the wallet's
-            // display name.
-            if let Some(pinned) = selection.pinned.clone() {
-                let name = state
-                    .chosen_as
-                    .as_ref()
-                    .map(|(_, as_)| as_.clone())
-                    .or_else(|| index.get(&pinned).map(|e| e.display()))
-                    .unwrap_or_else(|| elide(&pinned));
-                let frame = egui::Frame::new()
-                    .fill(ui.visuals().selection.bg_fill.linear_multiply(0.35))
-                    .stroke(egui::Stroke::new(
-                        1.0_f32,
-                        ui.visuals().selection.stroke.color,
-                    ))
-                    .corner_radius(egui::CornerRadius::same(4))
-                    .inner_margin(egui::Margin::symmetric(6, 3));
-                frame.show(ui, |ui| {
-                    ui.spacing_mut().item_spacing = vec2(6.0, 0.0);
-                    ui.label(egui::RichText::new(name).small().strong());
-                    if ui
-                        .small_button("×")
-                        .on_hover_text("stop watching")
-                        .clicked()
-                    {
-                        selection.clear_pin();
-                        cleared = true;
-                    }
-                });
-            }
+            // NO chip here any more. Pins are a SET now, and a row of them
+            // belongs where it can be full width and stay put — the host draws
+            // it. A finder that also owned the chips forced them to share a
+            // narrow sidebar with the search box, and both were unusable.
 
             // The search box. Options are re-ranked every frame from the query;
             // the index is small (a project's tracked wallets), so that's cheap.
@@ -387,7 +360,9 @@ impl<'a> PartyFinder<'a> {
             let resp = ta.show(ui);
             if let Some(id) = resp.chosen {
                 let (key, matched) = split_row_id(&id);
-                selection.pinned = Some(key.to_string());
+                // ADD to the pinned set — finding a second wallet must not
+                // dismiss the first, since comparing two is the normal case.
+                selection.pin(key);
                 state.chosen_as = Some((key.to_string(), matched.to_string()));
                 state.query.clear();
                 state.highlight = 0;
@@ -520,11 +495,42 @@ mod tests {
         let resp = resp.unwrap();
         assert!(resp.chosen.is_some(), "a click on a result must choose it");
         assert_eq!(
-            sel.pinned.as_deref(),
-            Some("stake1uxf2xjgwe5drvzqa9pabcdefghijklmnopqrstuvwxyz0123456789"),
+            sel.pinned,
+            vec!["stake1uxf2xjgwe5drvzqa9pabcdefghijklmnopqrstuvwxyz0123456789".to_string()],
             "and the choice must land in the SHARED selection, not just the response"
         );
         assert!(state.query.is_empty(), "the box clears for the next search");
+    }
+
+    /// Searching for a second wallet ADDS it. Comparing two is the normal case
+    /// in an investigation, and a finder that replaced the pin made you hold
+    /// the first one in your head.
+    #[test]
+    fn finding_a_second_wallet_keeps_the_first() {
+        let ctx = egui::Context::default();
+        crate::icons::install_fonts(&ctx);
+        let ix = index();
+        let mut sel = Selection::default();
+
+        let mut state = PartyFinderState {
+            query: "mekka".into(),
+            ..Default::default()
+        };
+        run_finder(&ctx, &ix, &mut state, &mut sel, vec![]);
+        for ev in click(pos2(200.0, 20.0)) {
+            run_finder(&ctx, &ix, &mut state, &mut sel, ev);
+        }
+        run_finder(&ctx, &ix, &mut state, &mut sel, key(egui::Key::Enter));
+        assert_eq!(sel.pinned.len(), 1);
+
+        state.query = "whale".into();
+        run_finder(&ctx, &ix, &mut state, &mut sel, vec![]);
+        for ev in click(pos2(200.0, 20.0)) {
+            run_finder(&ctx, &ix, &mut state, &mut sel, ev);
+        }
+        run_finder(&ctx, &ix, &mut state, &mut sel, key(egui::Key::Enter));
+        assert_eq!(sel.pinned.len(), 2, "both wallets are watched");
+        assert!(sel.is_selected(&sel.pinned[0].clone()), "the first is still lit");
     }
 
     /// Enter pins the highlighted result, and the chip is named by the
@@ -549,7 +555,7 @@ mod tests {
             run_finder(&ctx, &ix, &mut state, &mut sel, ev);
         }
         run_finder(&ctx, &ix, &mut state, &mut sel, key(egui::Key::Enter));
-        assert_eq!(sel.pinned.as_deref(), Some("stake1uxwcw3rr36r8q9e5eg"));
+        assert!(sel.is_pinned("stake1uxwcw3rr36r8q9e5eg"));
         assert_eq!(
             state.chosen_as.as_ref().map(|(_, as_)| as_.as_str()),
             Some("$curiousfutures"),

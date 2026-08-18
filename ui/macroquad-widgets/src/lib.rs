@@ -12,6 +12,7 @@ mod button;
 mod mint_checkout;
 mod order_fulfilment;
 mod quantity_stepper;
+mod squad_picker;
 mod wallet_connect;
 mod wallet_list;
 
@@ -25,6 +26,10 @@ pub use order_fulfilment::{
 };
 pub use painter::{draw_rounded_rect, frame_tap, Hit, Painter};
 pub use quantity_stepper::{quantity_stepper, QuantityStepperVm, StepperAction, StepperResponse};
+pub use squad_picker::{
+    squad_picker, SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerResponse,
+    SquadPickerVm,
+};
 pub use theme::Theme;
 pub use wallet_connect::{
     wallet_connect, WalletAction, WalletConnectVm, WalletItem, WalletResponse, WalletState,

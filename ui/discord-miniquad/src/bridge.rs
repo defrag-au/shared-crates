@@ -85,7 +85,7 @@ mod imp {
         fn discord_launch_query(key: JsObject) -> JsObject;
         fn discord_connect(client_id: JsObject) -> i32;
         fn discord_command(cmd: JsObject, args_json: JsObject) -> i32;
-        fn discord_http_post(url: JsObject, body: JsObject) -> i32;
+        fn discord_http_post(url: JsObject, body: JsObject, bearer: JsObject) -> i32;
         fn discord_http_get(url: JsObject, bearer: JsObject) -> i32;
         fn discord_poll(req_id: i32) -> JsObject;
     }
@@ -114,8 +114,16 @@ mod imp {
         ReqId(unsafe { discord_command(JsObject::string(cmd), JsObject::string(args_json)) })
     }
 
-    pub fn http_post(url: &str, body: &str) -> ReqId {
-        ReqId(unsafe { discord_http_post(JsObject::string(url), JsObject::string(body)) })
+    /// `bearer` may be empty — the token exchange POSTs before any token
+    /// exists, so unauthenticated is the normal first call.
+    pub fn http_post(url: &str, body: &str, bearer: &str) -> ReqId {
+        ReqId(unsafe {
+            discord_http_post(
+                JsObject::string(url),
+                JsObject::string(body),
+                JsObject::string(bearer),
+            )
+        })
     }
 
     pub fn http_get(url: &str, bearer: &str) -> ReqId {
@@ -154,7 +162,7 @@ mod imp {
         ReqId(0)
     }
 
-    pub fn http_post(_url: &str, _body: &str) -> ReqId {
+    pub fn http_post(_url: &str, _body: &str, _bearer: &str) -> ReqId {
         ReqId(0)
     }
 

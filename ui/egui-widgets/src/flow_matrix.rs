@@ -333,7 +333,7 @@ impl<'a> FlowMatrix<'a> {
                 )
                 .show(|ui| {
                     ui.set_max_width(320.0);
-                    ui.label(egui::RichText::new(format!("{rn}  →  {cn}")).strong());
+                    ui.label(egui::RichText::new(format!("{rn}  ->  {cn}")).strong());
                     ui.label(
                         egui::RichText::new(format!(
                             "net {net} · gross {gross} {unit_label} over {count} flows"

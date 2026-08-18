@@ -190,28 +190,56 @@ impl<'a> HolderField<'a> {
         // Per asset: who holds it now, and the move that put it there.
         let mut held: Vec<Option<(usize, usize)>> = vec![None; model.assets.len()]; // (party, move idx)
         let mut in_window: Vec<bool> = vec![false; model.assets.len()];
+
+        // A dot's SLOT in its pile is allocated when it ARRIVES and released
+        // when it leaves — never recomputed from the current holdings.
+        //
+        // The obvious implementation (walk the held set, number them 1..n per
+        // party) renumbers every asset after any departure, and since slot maps
+        // to a phyllotaxis position, one asset leaving a 500-dot pile makes all
+        // 500 jump. On real data that is most piles, most of the time, and it
+        // reads as the whole chart being unstable.
+        //
+        // Freed slots go back to a min-heap so the lowest is reused: dots that
+        // stayed put keep their exact position, and the pile stays as compact
+        // as its peak concurrent holdings rather than growing with churn.
+        let mut slot_of: Vec<u32> = vec![0; model.assets.len()];
+        let mut next_slot: Vec<u32> = vec![0; n];
+        let mut free: Vec<std::collections::BinaryHeap<std::cmp::Reverse<u32>>> = (0..n)
+            .map(|_| std::collections::BinaryHeap::new())
+            .collect();
+
         for (mi, m) in model.timeline.iter().enumerate() {
             if m.timestamp > spine.playhead {
                 break;
             }
+            // Leaving its previous pile frees that seat.
+            if let Some((old, _)) = held[m.asset] {
+                free[old].push(std::cmp::Reverse(slot_of[m.asset]));
+            }
             held[m.asset] = m.to.map(|p| (p, mi));
+            if let Some(p) = m.to {
+                slot_of[m.asset] = match free[p].pop() {
+                    Some(std::cmp::Reverse(s)) => s,
+                    None => {
+                        let s = next_slot[p];
+                        next_slot[p] += 1;
+                        s
+                    }
+                };
+            }
             if m.timestamp >= brush_lo && m.timestamp <= brush_hi {
                 in_window[m.asset] = true;
                 moves_in_window += 1;
             }
         }
 
-        // Per-pile running counts, in the order assets landed there.
-        let mut slot_of: Vec<u32> = vec![0; model.assets.len()];
-        let mut running: Vec<u32> = vec![0; n];
         let mut shown: Vec<u32> = vec![0; n];
         for (ai, h) in held.iter().enumerate() {
-            if let Some((p, _)) = h {
-                slot_of[ai] = running[*p];
-                running[*p] += 1;
-                if !brushed || in_window[ai] {
-                    shown[*p] += 1;
-                }
+            if let Some((p, _)) = h
+                && (!brushed || in_window[ai])
+            {
+                shown[*p] += 1;
             }
         }
         let assets_shown: u32 = shown.iter().sum();
@@ -660,24 +688,32 @@ struct Packed {
 struct Placement(Vec<(f32, f32, f32)>);
 
 fn pack(peak: &[u32], field: Rect, id: Id, ctx: &egui::Context) -> Packed {
-    // The PLACEMENT is in unit space and depends only on the pile sizes and the
-    // rect's aspect — not its pixel size. Cache that, and fit it to the rect
-    // each frame (an O(n) rescale). Keying the placement on pixel dimensions
-    // instead means every pixel of a window drag re-runs the packing, which at
-    // real scale is a third of a second per pixel.
-    let aspect = (field.width() / field.height().max(1.0)).clamp(1.0, 8.0);
+    // **A PILE'S POSITION DEPENDS ON THE DATA AND NOTHING ELSE.**
+    //
+    // The placement is computed once in unit space and cached against the pile
+    // sizes ALONE; every frame just fits it to whatever rect exists (an O(n)
+    // rescale). The aspect used for the spiral is captured on that first pack
+    // and reused forever after.
+    //
+    // Keying the cache on the rect's aspect as well — even coarsely bucketed —
+    // meant the layout could be rebuilt by anything that changed the panel's
+    // shape: pinning a wallet makes the watched row appear, which shortens the
+    // viewport, which shifts the aspect, which crossed a bucket and moved every
+    // pile on screen. Selecting something is the single most common action in
+    // this tool, and it must not scramble the picture you are reading.
+    //
+    // The cost of never re-packing is a little letterboxing after a drastic
+    // resize. That is a trade worth making twice over: a resize should not
+    // scramble the chart either.
     let key = id.with((
         "pack",
         peak.len(),
         peak.iter().map(|c| *c as u64).sum::<u64>(),
-        // Coarsely bucketed. A placement packed for a slightly different aspect
-        // just leaves a little slack on one axis once fitted — invisible, and
-        // far cheaper than re-packing on every pixel of a window drag.
-        (aspect * 2.0) as i32,
     ));
     let placed: Vec<(f32, f32, f32)> = match ctx.data(|d| d.get_temp::<Placement>(key)) {
         Some(p) => p.0,
         None => {
+            let aspect = (field.width() / field.height().max(1.0)).clamp(1.0, 8.0);
             let p = spiral_pack(peak, aspect);
             ctx.data_mut(|d| d.insert_temp(key, Placement(p.clone())));
             p
@@ -886,6 +922,131 @@ mod tests {
             assert!(c.x - r >= field.left() - 1.0 && c.x + r <= field.right() + 1.0);
             assert!(c.y - r >= field.top() - 1.0 && c.y + r <= field.bottom() + 1.0);
         }
+    }
+
+    /// **Piles do not move when the panel does.**
+    ///
+    /// Pinning a wallet makes the watched row appear, which shortens the
+    /// viewport. If the packing depended on the rect's aspect, that shifted
+    /// every pile on screen — and selecting something is the most common
+    /// action in the tool. The placement must survive any rect change, so the
+    /// two layouts can only differ by a uniform scale and a translation.
+    #[test]
+    fn a_panel_resize_does_not_move_the_piles() {
+        let ctx = ctx();
+        let peak = vec![340u32, 210, 160, 120, 90, 40, 12, 7, 3];
+        let id = Id::new("stable");
+
+        let wide = pack(&peak, Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 420.0)), id, &ctx);
+        // The exact change a pin causes: same width, less height.
+        let shorter = pack(&peak, Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 360.0)), id, &ctx);
+        // And a drastic one, for good measure.
+        let narrow = pack(&peak, Rect::from_min_size(pos2(0.0, 0.0), vec2(500.0, 500.0)), id, &ctx);
+
+        for other in [&shorter, &narrow] {
+            // Every inter-pile distance must scale by the SAME factor — that is
+            // exactly "the arrangement is unchanged, only fitted differently".
+            let d0 = (wide.centres[0] - wide.centres[1]).length();
+            let o0 = (other.centres[0] - other.centres[1]).length();
+            let ratio = o0 / d0;
+            for i in 0..peak.len() {
+                for j in (i + 1)..peak.len() {
+                    let a = (wide.centres[i] - wide.centres[j]).length();
+                    let b = (other.centres[i] - other.centres[j]).length();
+                    assert!(
+                        (b - a * ratio).abs() < 0.5,
+                        "pile {i}/{j} moved relative to the others: {a} -> {b} (ratio {ratio})"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Slot allocation, in isolation: an asset that STAYS keeps its slot when
+    /// a neighbour leaves the same pile, and the vacated slot is reused rather
+    /// than the pile growing.
+    ///
+    /// This is the property the whole chart's stability rests on. Numbering the
+    /// held set 1..n per party instead renumbers everything after a departure,
+    /// which moved every dot in a 500-dot pile whenever one left.
+    #[test]
+    fn a_departure_does_not_move_the_dots_that_stayed() {
+        // alice holds a1, a2, a3; a1 leaves; a4 arrives.
+        let moves = vec![
+            AssetMove::mint(10, "a1", "alice"),
+            AssetMove::mint(11, "a2", "alice"),
+            AssetMove::mint(12, "a3", "alice"),
+            AssetMove::transfer(20, "a1", "alice", "bob"),
+            AssetMove::mint(30, "a4", "alice"),
+        ];
+        let at = |t: i64| -> std::collections::HashMap<String, u32> { slots_at(&moves, t) };
+
+        let before = at(15);
+        assert_eq!(before["a1"], 0);
+        assert_eq!(before["a2"], 1);
+        assert_eq!(before["a3"], 2);
+
+        // a1 has gone to bob. a2 and a3 must NOT have moved.
+        let after = at(25);
+        assert_eq!(after["a2"], 1, "a2 stayed put");
+        assert_eq!(after["a3"], 2, "a3 stayed put");
+        assert_eq!(after["a1"], 0, "a1 takes slot 0 in bob's empty pile");
+
+        // The seat a1 vacated is reused, so the pile does not sprawl.
+        let refilled = at(35);
+        assert_eq!(refilled["a4"], 0, "a4 reuses alice's freed slot 0");
+        assert_eq!(refilled["a2"], 1, "and still nothing else moved");
+        assert_eq!(refilled["a3"], 2);
+    }
+
+    /// Reproduce the widget's slot allocator over a move list, returning
+    /// `asset -> slot` at time `t`. Mirrors `show`'s scan exactly.
+    fn slots_at(moves: &[AssetMove<'_>], t: i64) -> std::collections::HashMap<String, u32> {
+        let mut parties: Vec<&str> = Vec::new();
+        let mut assets: Vec<&str> = Vec::new();
+        for m in moves {
+            for p in [m.from, m.to].into_iter().flatten() {
+                if !parties.contains(&p) {
+                    parties.push(p);
+                }
+            }
+            if !assets.contains(&m.asset) {
+                assets.push(m.asset);
+            }
+        }
+        let idx = |v: &Vec<&str>, s: &str| v.iter().position(|x| *x == s).unwrap();
+        let mut held: Vec<Option<usize>> = vec![None; assets.len()];
+        let mut slot_of: Vec<u32> = vec![0; assets.len()];
+        let mut next: Vec<u32> = vec![0; parties.len()];
+        let mut free: Vec<std::collections::BinaryHeap<std::cmp::Reverse<u32>>> = (0..parties
+            .len())
+            .map(|_| std::collections::BinaryHeap::new())
+            .collect();
+        for m in moves {
+            if m.timestamp > t {
+                break;
+            }
+            let ai = idx(&assets, m.asset);
+            if let Some(old) = held[ai] {
+                free[old].push(std::cmp::Reverse(slot_of[ai]));
+            }
+            held[ai] = m.to.map(|p| idx(&parties, p));
+            if let Some(p) = held[ai] {
+                slot_of[ai] = match free[p].pop() {
+                    Some(std::cmp::Reverse(s)) => s,
+                    None => {
+                        let s = next[p];
+                        next[p] += 1;
+                        s
+                    }
+                };
+            }
+        }
+        assets
+            .iter()
+            .enumerate()
+            .map(|(i, a)| (a.to_string(), slot_of[i]))
+            .collect()
     }
 
     /// The reshuffle, headless: hold state follows the playhead, and a transfer
