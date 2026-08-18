@@ -160,10 +160,17 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowRingState) {
             "Rings are the CLASSIFICATION, inward: core team, associates (paid by the \
              project), customers, and — outermost, in grey — the wallets nobody has \
              examined yet. Colour means somebody made a call; grey means the work is \
-             still to do. Value crosses the middle as particles, one dot per quantum, so \
-             a large payment is a longer train, not a thicker line. Press play, or scrub: \
-             particle position is a function of the playhead, so a still frame shows \
-             value genuinely in flight.",
+             still to do.\n\n\
+             Chords are TAPERED — wide where the value starts, narrow where it lands — so \
+             direction reads without an arrowhead, and the ink thins exactly where chords \
+             pile onto a hub. Blue runs inward (value arriving at the project), orange \
+             outward (value leaving), grey between seats on one ring (nothing to do with \
+             the project's money). Width is the amount, on a log scale, and the heaviest \
+             chord is drawn last so it lands on top.\n\n\
+             Value also crosses as particles, one dot per quantum, so a large payment is a \
+             longer train rather than a thicker line. Press play, or scrub: particle \
+             position is a function of the playhead, so a still frame shows value \
+             genuinely in flight.",
         )
         .small()
         .color(TEXT_MUTED),

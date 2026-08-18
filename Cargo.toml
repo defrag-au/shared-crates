@@ -46,6 +46,7 @@ members = [
     "ui/miniquad-platform",
     "ui/canvas-bridge",
     "ui/image-core",
+    "ui/mq-flow-probe",
     "ui/egui-widgets",
     "ui/_storybook",
     "ui/_storybook-egui",

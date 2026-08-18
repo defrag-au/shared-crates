@@ -3484,6 +3484,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mq-flow-probe"
+version = "0.1.0"
+dependencies = [
+ "macroquad",
+ "serde_json",
+ "ui-flow",
+]
+
+[[package]]
 name = "multimap"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

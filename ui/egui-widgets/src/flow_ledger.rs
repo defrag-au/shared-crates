@@ -73,6 +73,15 @@ pub struct FlowRow<'a> {
     /// Set when this row's value is the wallet's own money returning — a round
     /// trip, not income. Rendered muted so it cannot be read as revenue.
     pub recycled: bool,
+    /// NON-FUNGIBLE items that moved in the same transaction — positive
+    /// arrived, negative left. Zero means none, and the column stays blank.
+    ///
+    /// On a chain where tokens ride along with value, the money and the goods
+    /// are usually ONE event. Splitting them into two lists is what let a
+    /// wallet be paid and handed supply at the same moment without anybody
+    /// noticing: each list on its own looked unremarkable. Here it is one line
+    /// that reads "paid, AND given the goods".
+    pub items: i32,
 }
 
 impl<'a> FlowRow<'a> {
@@ -88,6 +97,7 @@ impl<'a> FlowRow<'a> {
             tx_id: None,
             channel: None,
             recycled: false,
+            items: 0,
         }
     }
 
@@ -104,6 +114,7 @@ impl<'a> FlowRow<'a> {
             tx_id: None,
             channel: None,
             recycled: false,
+            items: 0,
         }
     }
 
@@ -134,6 +145,12 @@ impl<'a> FlowRow<'a> {
 
     pub fn recycled(mut self, recycled: bool) -> Self {
         self.recycled = recycled;
+        self
+    }
+
+    /// Non-fungible items that moved with this value; signed like `amount`.
+    pub fn items(mut self, items: i32) -> Self {
+        self.items = items;
         self
     }
 
@@ -280,8 +297,17 @@ impl<'a> FlowLedger<'a> {
             .column(Column::exact(6.0)) // channel gutter
             .column(Column::exact(120.0)) // date + time
             .column(Column::exact(110.0)) // net
-            .column(Column::initial(280.0).at_least(160.0).clip(true)) // counterparty
             .sense(Sense::click());
+
+        // Items sits BETWEEN net and counterparty, so value and goods are read
+        // together as one movement rather than at opposite ends of the row.
+        // Only present when something actually carried items — a permanently
+        // blank column is a column that teaches you to stop looking.
+        let any_items = self.rows.iter().any(|r| r.items != 0);
+        if any_items {
+            builder = builder.column(Column::exact(70.0));
+        }
+        builder = builder.column(Column::initial(280.0).at_least(160.0).clip(true));
 
         if self.show_running_balance {
             builder = builder.column(Column::exact(110.0));
@@ -300,6 +326,9 @@ impl<'a> FlowLedger<'a> {
                 head(&mut header, "");
                 head(&mut header, "date");
                 head(&mut header, "net");
+                if any_items {
+                    head(&mut header, "items");
+                }
                 head(&mut header, "counterparty");
                 if self.show_running_balance {
                     head(&mut header, "balance");
@@ -360,6 +389,32 @@ impl<'a> FlowLedger<'a> {
                             );
                         }
                     });
+
+                    if any_items {
+                        row.col(|ui| {
+                            if r.items == 0 {
+                                return;
+                            }
+                            // Same in/out colours as the value column, so a row
+                            // where money and goods travel in OPPOSITE
+                            // directions (a purchase) is instantly distinct from
+                            // one where they travel together (being paid to take
+                            // something).
+                            let color = if r.items > 0 { pos } else { neg };
+                            let sign = if r.items > 0 { "+" } else { "-" };
+                            ui.label(
+                                RichText::new(format!("{sign}{}", r.items.abs()))
+                                    .size(11.0)
+                                    .monospace()
+                                    .color(color),
+                            )
+                            .on_hover_text(if r.items > 0 {
+                                "items received in this transaction"
+                            } else {
+                                "items sent in this transaction"
+                            });
+                        });
+                    }
 
                     row.col(|ui| {
                         let badge = match r.counterparty {

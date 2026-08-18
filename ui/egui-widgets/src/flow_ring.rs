@@ -321,30 +321,63 @@ impl<'a> FlowRing<'a> {
         let in_flight = flying.len();
 
         let heaviest = pairs.values().map(|(q, _)| *q).max().unwrap_or(1).max(1);
-        for ((from, to), (qty, _count)) in &pairs {
-            let (Some(a), Some(b)) = (seats.get(*from), seats.get(*to)) else {
+        // HEAVIEST LAST. `pairs` is a hash map, so iterating it directly drew
+        // chords in arbitrary order: with fifty overlapping curves the one that
+        // moved the most money was as likely to be buried under trivial ones as
+        // to be visible. Sorting is the difference between magnitude being
+        // encoded and magnitude being legible.
+        let mut ordered: Vec<(&str, &str, u64)> = pairs
+            .iter()
+            .map(|((from, to), (q, _))| (*from, *to, *q))
+            .collect();
+        ordered.sort_by_key(|(_, _, q)| *q);
+        // Tapering costs a stroke per segment, so spend segments where there is
+        // room to see them.
+        let segs = if ordered.len() > 160 { 12 } else { 24 };
+
+        for (from, to, qty) in ordered {
+            let (Some(a), Some(b)) = (seats.get(from), seats.get(to)) else {
                 continue;
             };
             // A pinned wallet's own flows stay bright; everything else recedes.
-            let involved = watched.as_deref().is_none_or(|w| w == *from || w == *to);
+            let involved = watched.as_deref().is_none_or(|w| w == from || w == to);
             let alpha = if involved { 1.0 } else { 0.13 };
-            let col = if watched.as_deref() == Some(*to) {
-                IN
-            } else {
-                OUT
+            // Direction is a property of the FLOW, not of what happens to be
+            // selected. The previous rule coloured by "does this end at the
+            // pinned wallet", so with nothing pinned every chord on screen was
+            // drawn as an outflow — including the inbound ones that a reader
+            // most wants to pick out.
+            //
+            // Toward the centre means toward the project: a payment arriving.
+            // Away means value leaving it. Between seats on the same ring it is
+            // neither, and drawn quietly, because it does not concern the
+            // project's own money.
+            let col = match a.ring.cmp(&b.ring) {
+                std::cmp::Ordering::Greater => IN,
+                std::cmp::Ordering::Less => OUT,
+                std::cmp::Ordering::Equal => muted,
             };
             // Weight by share of the heaviest pair, on a log scale — treasury
             // flows span orders of magnitude, so a linear ramp shows one chord.
             let t =
-                ((*qty as f64 + 1.0).ln() / (heaviest as f64 + 1.0).ln()).clamp(0.08, 1.0) as f32;
+                ((qty as f64 + 1.0).ln() / (heaviest as f64 + 1.0).ln()).clamp(0.08, 1.0) as f32;
             let chord = Chord::new(a, b, centre, max_hop, r_outer.max(40.0));
-            painter.add(egui::Shape::line(
-                chord.polyline(28),
-                Stroke::new(
-                    (0.6 + 1.4 * t) * if involved { 1.0 } else { 0.6 },
-                    col.gamma_multiply((0.10 + 0.35 * t) * alpha),
-                ),
-            ));
+            let dim = if involved { 1.0 } else { 0.6 };
+            chord.taper(
+                &painter,
+                segs,
+                Taper {
+                    color: col,
+                    // WIDE AT THE ORIGIN, NARROW AT THE DESTINATION — the
+                    // standard tapered flow line. It states direction without
+                    // an arrowhead (unreadable at this density) and it does a
+                    // second job here: chords converge on a hub, and thinning
+                    // them at the arriving end takes the ink out of the
+                    // starburst that was swallowing the treasury.
+                    width: ((0.8 + 4.2 * t) * dim, 0.35 * dim),
+                    alpha: ((0.16 + 0.5 * t) * alpha, 0.10 * alpha),
+                },
+            );
         }
 
         for f in &flying {
@@ -639,6 +672,14 @@ struct Chord {
     th: [f32; 4],
 }
 
+/// How a tapered flow line ramps from origin `.0` to destination `.1`.
+#[derive(Clone, Copy, Debug)]
+struct Taper {
+    color: Color32,
+    width: (f32, f32),
+    alpha: (f32, f32),
+}
+
 fn cubic(p: [f32; 4], t: f32) -> f32 {
     let u = 1.0 - t;
     u * u * u * p[0] + 3.0 * u * u * t * p[1] + 3.0 * u * t * t * p[2] + t * t * t * p[3]
@@ -686,6 +727,25 @@ impl Chord {
         (0..=segments)
             .map(|i| self.point(i as f32 / segments as f32))
             .collect()
+    }
+
+    /// Stroke the route with width and opacity ramping from origin to
+    /// destination — a tapered flow line.
+    ///
+    /// Drawn segment by segment because egui strokes a whole polyline with one
+    /// `Stroke`; there is no per-vertex width. The segments overlap by one
+    /// point each, so the ramp reads as continuous rather than as a ladder.
+    fn taper(&self, painter: &egui::Painter, segments: usize, t: Taper) {
+        let pts = self.polyline(segments);
+        for (i, pair) in pts.windows(2).enumerate() {
+            let f = (i as f32 + 0.5) / segments as f32;
+            let w = t.width.0 + (t.width.1 - t.width.0) * f;
+            let a = t.alpha.0 + (t.alpha.1 - t.alpha.0) * f;
+            painter.line_segment(
+                [pair[0], pair[1]],
+                Stroke::new(w, t.color.gamma_multiply(a)),
+            );
+        }
     }
 }
 
@@ -807,6 +867,59 @@ mod tests {
 
     fn deepest(c: &Chord) -> f32 {
         radii(c).into_iter().fold(f32::MAX, f32::min)
+    }
+
+    /// Direction belongs to the FLOW, not to whatever happens to be selected.
+    ///
+    /// The old rule coloured a chord `IN` only when it ended at the pinned
+    /// wallet, so with nothing pinned every chord on screen was drawn as an
+    /// outflow — fifty orange curves converging on a treasury that was in fact
+    /// mostly RECEIVING. A reader could not pick out the wallet funding the
+    /// project, which is the first thing anybody looks for.
+    #[test]
+    fn direction_is_read_from_the_rings_not_from_the_selection() {
+        let n = banded();
+        let seats = seat_positions(&n, 3, CENTRE, OUTER);
+        let inward = seats["x0"].ring.cmp(&seats["c0"].ring);
+        let outward = seats["c0"].ring.cmp(&seats["x0"].ring);
+        let lateral = seats["x0"].ring.cmp(&seats["x1"].ring);
+        assert_eq!(
+            inward,
+            std::cmp::Ordering::Greater,
+            "rim -> core must read as value arriving"
+        );
+        assert_eq!(
+            outward,
+            std::cmp::Ordering::Less,
+            "core -> rim must read as value leaving"
+        );
+        assert_eq!(
+            lateral,
+            std::cmp::Ordering::Equal,
+            "same ring is neither, and must not be dressed as project money"
+        );
+    }
+
+    /// Magnitude only reads if the heavy chord is drawn ON TOP. `pairs` is a
+    /// hash map, so iterating it directly buried the biggest flow under
+    /// whichever trivial ones happened to sort after it.
+    #[test]
+    fn chords_are_ordered_lightest_first_so_the_heaviest_lands_on_top() {
+        let mut pairs: std::collections::HashMap<(&str, &str), (u64, usize)> =
+            std::collections::HashMap::new();
+        pairs.insert(("a", "b"), (5, 1));
+        pairs.insert(("c", "d"), (900, 1));
+        pairs.insert(("e", "f"), (40, 1));
+        let mut ordered: Vec<(&str, &str, u64)> = pairs
+            .iter()
+            .map(|((from, to), (q, _))| (*from, *to, *q))
+            .collect();
+        ordered.sort_by_key(|(_, _, q)| *q);
+        assert_eq!(
+            ordered.last().map(|(_, _, q)| *q),
+            Some(900),
+            "the heaviest pair must be drawn last"
+        );
     }
 
     /// A flow to a party with no seat is UNDRAWABLE, and must be counted

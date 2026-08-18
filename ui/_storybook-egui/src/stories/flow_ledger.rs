@@ -52,6 +52,26 @@ pub fn show(ui: &mut egui::Ui) {
             PartyBasis::Observed,
         )
         .tx_id("b21c7d7918c5436d"),
+        // The two shapes worth telling apart, adjacent so the contrast is
+        // visible: money OUT and goods IN is a purchase; money IN and goods IN
+        // is being paid to take something.
+        FlowRow::new(
+            1777794984,
+            -1_450_000_000,
+            "marketplace",
+            PartyBasis::Observed,
+        )
+        .tx_id("77c0a1de4419e832")
+        .items(1),
+        FlowRow::new(
+            1777881000,
+            12_000_000_000,
+            "ops-payments",
+            PartyBasis::Derived,
+        )
+        .channel("holder payout", CH_PROJECT)
+        .tx_id("9a2f77b10ce4d551")
+        .items(97),
         FlowRow::new(
             1777881384,
             -12_420_170_000,
