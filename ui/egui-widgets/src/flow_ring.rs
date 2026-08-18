@@ -319,11 +319,9 @@ impl<'a> FlowRing<'a> {
             // flows span orders of magnitude, so a linear ramp shows one chord.
             let t =
                 ((*qty as f64 + 1.0).ln() / (heaviest as f64 + 1.0).ln()).clamp(0.08, 1.0) as f32;
-            let ctrl = chord_control(*a, *b, centre);
+            let chord = Chord::new(a, b, centre, max_hop, r_outer.max(40.0));
             painter.add(egui::Shape::line(
-                (0..=14)
-                    .map(|i| bezier(*a, ctrl, *b, i as f32 / 14.0))
-                    .collect(),
+                chord.polyline(28),
                 Stroke::new(
                     (0.6 + 1.4 * t) * if involved { 1.0 } else { 0.6 },
                     col.gamma_multiply((0.10 + 0.35 * t) * alpha),
@@ -342,7 +340,9 @@ impl<'a> FlowRing<'a> {
             } else {
                 OUT
             };
-            let ctrl = chord_control(*a, *b, centre);
+            // The SAME route the chord was stroked along, so a train never
+            // peels away from its own line.
+            let chord = Chord::new(a, b, centre, max_hop, r_outer.max(40.0));
             let t = (now - f.timestamp) as f32 / flight as f32;
             let n = ((f.quantity / q) as usize).clamp(1, MAX_DOTS);
             for k in 0..n {
@@ -351,7 +351,7 @@ impl<'a> FlowRing<'a> {
                 if !(0.0..=1.0).contains(&lead) {
                     continue;
                 }
-                let p = bezier(*a, ctrl, *b, lead);
+                let p = chord.point(lead);
                 painter.circle_filled(p, 2.0, col.gamma_multiply(alpha));
                 particles += 1;
             }
@@ -360,7 +360,10 @@ impl<'a> FlowRing<'a> {
         // ── nodes ─────────────────────────────────────────────────────────
         let mut hovered: Option<String> = None;
         for n in nodes {
-            let Some(p) = seats.get(n.key) else { continue };
+            let Some(seat) = seats.get(n.key) else {
+                continue;
+            };
+            let p = &seat.pos;
             let emph = selection.emphasis(n.key);
             let on = n.active;
             let r = if n.hop == 0 { 6.0 } else { 4.0 };
@@ -497,12 +500,25 @@ fn ring_radius(hop: u8, max_hop: u8, outer: f32) -> f32 {
 
 /// Fixed seats: ordered by hop then by the caller's order, spread evenly.
 /// Depends on nothing time-varying, so a wallet keeps its seat all session.
+/// A party's fixed place on the ring, in BOTH coordinate systems.
+///
+/// The polar form is not a convenience — chord routing reasons about which
+/// rings a flow belongs to, and recovering that from a screen position with
+/// `atan2` after the fact loses the ring index entirely.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Seat {
+    pub pos: Pos2,
+    pub ring: u8,
+    pub radius: f32,
+    pub angle: f32,
+}
+
 fn seat_positions<'a>(
     nodes: &'a [RingNode<'a>],
     max_hop: u8,
     centre: Pos2,
     outer: f32,
-) -> std::collections::HashMap<&'a str, Pos2> {
+) -> std::collections::HashMap<&'a str, Seat> {
     let mut out = std::collections::HashMap::new();
     for h in 0..=max_hop {
         let ring: Vec<&RingNode<'_>> = nodes.iter().filter(|n| n.hop == h).collect();
@@ -518,28 +534,140 @@ fn seat_positions<'a>(
             let a = -std::f32::consts::FRAC_PI_2
                 + phase
                 + std::f32::consts::TAU * (i as f32) / count as f32;
-            out.insert(n.key, pos2(centre.x + r * a.cos(), centre.y + r * a.sin()));
+            out.insert(
+                n.key,
+                Seat {
+                    pos: pos2(centre.x + r * a.cos(), centre.y + r * a.sin()),
+                    ring: h,
+                    radius: r,
+                    angle: a,
+                },
+            );
         }
     }
     out
 }
 
-/// Chords bow toward the middle, so the ring's interior carries the traffic
-/// and short hops between neighbours do not overlap the rim.
-fn chord_control(a: Pos2, b: Pos2, centre: Pos2) -> Pos2 {
-    let mid = pos2((a.x + b.x) * 0.5, (a.y + b.y) * 0.5);
-    pos2(
-        mid.x + (centre.x - mid.x) * 0.75,
-        mid.y + (centre.y - mid.y) * 0.75,
-    )
+/// The annulus a ring owns: everything nearer to it than to its neighbours.
+///
+/// Ring 0 owns the hollow core all the way to the centre — not a special case
+/// bolted on, but the same rule applied: the empty disc inside the innermost
+/// ring is the project's own interior, so a flow between two of the project's
+/// wallets may cross it, while nothing else may.
+fn ring_band(hop: u8, max_hop: u8, outer: f32) -> (f32, f32) {
+    if max_hop == 0 {
+        return (0.0, outer);
+    }
+    let r = ring_radius(hop, max_hop, outer);
+    let spacing = outer * 0.66 / max_hop as f32;
+    let lo = if hop == 0 { 0.0 } else { r - spacing * 0.5 };
+    let hi = if hop >= max_hop {
+        outer
+    } else {
+        r + spacing * 0.5
+    };
+    (lo, hi)
 }
 
-fn bezier(a: Pos2, c: Pos2, b: Pos2, t: f32) -> Pos2 {
+/// A chord's route between two seats, confined to the rings it concerns.
+///
+/// ## The rule
+///
+/// **A flow may not pass through a zone it is irrelevant to.** The permitted
+/// annulus spans the bands of the two endpoints' rings and nothing further, so
+/// a rim-to-rim payment stays out in the rim's band instead of diving through
+/// the middle, while a chord between rings 1 and 3 crosses ring 2 — which it
+/// genuinely spans — and never enters ring 0's territory.
+///
+/// The middle is thereby reserved for a real signal: value crossing the centre
+/// means one of the project's own wallets is involved.
+///
+/// ## Four control points, in POLAR space
+///
+/// ```text
+///   P0 = (r_a,    θ_a)      the seat
+///   P1 = (r_duck, θ_a)      straight inward — the departure aims ACROSS
+///   P2 = (r_duck, θ_b)      travel happens at the ducked radius
+///   P3 = (r_b,    θ_b)      the other seat
+/// ```
+///
+/// Two properties fall out of this for free, and both were fought for by hand
+/// in earlier attempts:
+///
+/// - **The region is respected by construction.** A Bézier lies inside the
+///   convex hull of its control points, so `r(t) ≥ min(r_a, r_duck, r_b)` and
+///   `θ(t)` stays between `θ_a` and `θ_b`. No clamping, no sampling guard, and
+///   no way for a path to leak into a ring it has no business in.
+/// - **The departure is radial, so the chord reads as heading ACROSS.** `P1`
+///   sits at `θ_a`, so the initial tangent points straight at the middle. This
+///   is the whole difference from interpolating the angle linearly, which
+///   leaves a seat sideways and traces the annulus — the same radial bounds,
+///   entirely the wrong picture.
+///
+/// ## How far it ducks
+///
+/// `r_duck` is not a constant. A straight line between two seats at radius `R`
+/// separated by `Δθ` has minimum radius `R·cos(Δθ/2)`, which IS "how far in
+/// does this path want to go" — 1 for neighbours, 0 for opposite seats. Taking
+/// `max(floor, avg·cos(Δθ/2))` means a hop between adjacent seats barely
+/// deforms, while opposite seats duck all the way to the band's inner edge and
+/// travel round inside it.
+#[derive(Clone, Copy, Debug)]
+struct Chord {
+    centre: Pos2,
+    /// Control radii and angles, P0..P3.
+    r: [f32; 4],
+    th: [f32; 4],
+}
+
+fn cubic(p: [f32; 4], t: f32) -> f32 {
     let u = 1.0 - t;
-    pos2(
-        u * u * a.x + 2.0 * u * t * c.x + t * t * b.x,
-        u * u * a.y + 2.0 * u * t * c.y + t * t * b.y,
-    )
+    u * u * u * p[0] + 3.0 * u * u * t * p[1] + 3.0 * u * t * t * p[2] + t * t * t * p[3]
+}
+
+impl Chord {
+    fn new(a: &Seat, b: &Seat, centre: Pos2, max_hop: u8, outer: f32) -> Self {
+        // The pair's own territory: from the inner edge of the innermost ring
+        // involved to the outer edge of the outermost.
+        let (floor, _) = ring_band(a.ring.min(b.ring), max_hop, outer);
+
+        // Shortest way round — going the long way to reach a neighbour would
+        // cross the entire diagram.
+        let mut sweep = b.angle - a.angle;
+        while sweep > std::f32::consts::PI {
+            sweep -= std::f32::consts::TAU;
+        }
+        while sweep < -std::f32::consts::PI {
+            sweep += std::f32::consts::TAU;
+        }
+
+        let avg = (a.radius + b.radius) * 0.5;
+        let duck = (avg * (sweep * 0.5).cos()).max(floor);
+
+        Self {
+            centre,
+            r: [a.radius, duck, duck, b.radius],
+            th: [a.angle, a.angle, a.angle + sweep, a.angle + sweep],
+        }
+    }
+
+    /// Point at `t` along the route. `t = 0` is exactly seat `a`, `t = 1` is
+    /// exactly seat `b` — particles ride this, so any drift would peel the
+    /// train off its own line.
+    fn point(&self, t: f32) -> Pos2 {
+        let r = cubic(self.r, t);
+        let th = cubic(self.th, t);
+        pos2(self.centre.x + r * th.cos(), self.centre.y + r * th.sin())
+    }
+
+    /// Polyline for stroking. A ducked route is longer and more curved than the
+    /// old straight dive, so it needs more segments to stop reading as a chain
+    /// of facets.
+    fn polyline(&self, segments: usize) -> Vec<Pos2> {
+        (0..=segments)
+            .map(|i| self.point(i as f32 / segments as f32))
+            .collect()
+    }
 }
 
 fn truncate(s: &str, n: usize) -> String {
@@ -617,6 +745,195 @@ mod tests {
         assert_eq!(ring_tint(9), ring_tint(3));
     }
 
+    /// Four rings of seats, for the chord-routing tests.
+    ///
+    /// The outer ring is deliberately CROWDED (twelve seats, so `x0`/`x1` are
+    /// 30° apart and `x0`/`x6` are opposite). With four seats a "neighbour" is
+    /// a quarter of the way round the diagram, which is not a neighbour at all
+    /// — and a routing rule that only ever sees wide separations cannot show
+    /// that it treats near and far pairs differently.
+    const OPPOSITE: &str = "x6";
+
+    fn banded() -> Vec<RingNode<'static>> {
+        let mut v = Vec::new();
+        for (keys, ring) in [
+            (["c0", "c1", "c2", "c3"], 0u8),
+            (["a0", "a1", "a2", "a3"], 1),
+            (["u0", "u1", "u2", "u3"], 2),
+        ] {
+            for k in keys {
+                v.push(RingNode::new(k, ring));
+            }
+        }
+        for k in [
+            "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11",
+        ] {
+            v.push(RingNode::new(k, 3));
+        }
+        v
+    }
+
+    const CENTRE: Pos2 = pos2(300.0, 300.0);
+    const OUTER: f32 = 200.0;
+
+    fn chord_between(seats: &std::collections::HashMap<&str, Seat>, from: &str, to: &str) -> Chord {
+        Chord::new(&seats[from], &seats[to], CENTRE, 3, OUTER)
+    }
+
+    fn radii(c: &Chord) -> Vec<f32> {
+        (0..=64)
+            .map(|i| (c.point(i as f32 / 64.0) - CENTRE).length())
+            .collect()
+    }
+
+    fn deepest(c: &Chord) -> f32 {
+        radii(c).into_iter().fold(f32::MAX, f32::min)
+    }
+
+    /// THE RULE: a flow may not pass through a zone it is irrelevant to.
+    ///
+    /// Two wallets out on the rim have nothing to do with the project's own
+    /// ring, so their payment must stay outside it — the middle then MEANS
+    /// something, namely that a project wallet is involved.
+    ///
+    /// This is checked on every sample of the worst case (an opposite pair),
+    /// because the earlier attempts all failed exactly here: one pulled every
+    /// control point toward the centre regardless of whose flow it was, and a
+    /// later one relaxed the floor to a fraction so long chords leaked inward.
+    #[test]
+    fn a_rim_to_rim_chord_never_enters_the_inner_rings() {
+        let n = banded();
+        let seats = seat_positions(&n, 3, CENTRE, OUTER);
+        let (lo, hi) = ring_band(3, 3, OUTER);
+        for pair in [("x0", OPPOSITE), ("x0", "x4"), ("x0", "x1"), ("x2", "x9")] {
+            for r in radii(&chord_between(&seats, pair.0, pair.1)) {
+                assert!(
+                    r >= lo - 0.5 && r <= hi + 0.5,
+                    "{}->{} left the rim band at r={r} (band {lo}..{hi})",
+                    pair.0,
+                    pair.1
+                );
+            }
+        }
+    }
+
+    /// A chord spanning rings 1..3 may cross ring 2 — it genuinely spans it —
+    /// but ring 0 is none of its business.
+    #[test]
+    fn a_spanning_chord_crosses_what_it_spans_and_no_further() {
+        let n = banded();
+        let seats = seat_positions(&n, 3, CENTRE, OUTER);
+        let floor = ring_band(1, 3, OUTER).0;
+        let rs = radii(&chord_between(&seats, "a0", "x4"));
+        for r in &rs {
+            assert!(*r >= floor - 0.5, "dipped into ring 0's zone at r={r}");
+        }
+        let r2 = ring_radius(2, 3, OUTER);
+        assert!(
+            rs.iter().any(|r| (*r - r2).abs() < 25.0),
+            "never crossed ring 2, which it spans"
+        );
+    }
+
+    /// The hollow core is the project's own interior, so its wallets — and
+    /// only its wallets — may route across the middle.
+    #[test]
+    fn core_to_core_may_use_the_hollow_centre() {
+        let n = banded();
+        let seats = seat_positions(&n, 3, CENTRE, OUTER);
+        let deep = deepest(&chord_between(&seats, "c0", "c2"));
+        let r0 = ring_radius(0, 3, OUTER);
+        assert!(
+            deep < r0 * 0.5,
+            "an opposite core pair should cut across the hollow, got {deep} vs ring0 {r0}"
+        );
+    }
+
+    /// Heading ACROSS, not around: the chord must LEAVE its seat aiming at the
+    /// middle. Interpolating the angle linearly satisfies every radial bound
+    /// while departing sideways, so the flow appears to take the long way round
+    /// the rim — the same numbers, entirely the wrong picture. Hence a test on
+    /// the departure direction rather than on radius alone.
+    #[test]
+    fn a_chord_departs_radially_rather_than_along_the_rim() {
+        let n = banded();
+        let seats = seat_positions(&n, 3, CENTRE, OUTER);
+        let c = chord_between(&seats, "x0", OPPOSITE);
+        let seat = seats["x0"];
+        // The TANGENT, not a chord across 2% of the path: `dθ/dt` is zero at
+        // `t = 0` by construction (the first two control angles are equal), so
+        // any tangential motion over a finite step is second-order and says
+        // nothing about which way the curve sets off.
+        let step = c.point(0.001) - c.point(0.0);
+        let inward = (CENTRE - seat.pos).normalized();
+        let along = vec2(-inward.y, inward.x);
+        assert!(
+            step.dot(inward) > step.dot(along).abs() * 5.0,
+            "departure is tangential, not across: inward={} along={}",
+            step.dot(inward),
+            step.dot(along).abs()
+        );
+    }
+
+    /// Continuous — a naive radial remap looks right until the outward
+    /// direction flips sign at the centre and the polyline jumps across.
+    #[test]
+    fn a_chord_has_no_jump_in_it() {
+        let n = banded();
+        let seats = seat_positions(&n, 3, CENTRE, OUTER);
+        for pair in [("x0", OPPOSITE), ("c0", "c2"), ("a0", "x4")] {
+            let c = chord_between(&seats, pair.0, pair.1);
+            let pts: Vec<Pos2> = (0..=64).map(|i| c.point(i as f32 / 64.0)).collect();
+            let longest = pts
+                .windows(2)
+                .map(|w| (w[1] - w[0]).length())
+                .fold(0.0_f32, f32::max);
+            assert!(
+                longest < OUTER * 0.25,
+                "{}->{} jumps {longest} in one step",
+                pair.0,
+                pair.1
+            );
+        }
+    }
+
+    /// Deformation is earned by angular distance: a hop between neighbouring
+    /// seats keeps close to its ring instead of swinging across the diagram to
+    /// reach the wallet beside it.
+    #[test]
+    fn neighbours_barely_deform_while_opposites_cut_deep() {
+        let n = banded();
+        let seats = seat_positions(&n, 3, CENTRE, OUTER);
+        let r3 = ring_radius(3, 3, OUTER);
+        let near = deepest(&chord_between(&seats, "x0", "x1"));
+        let far = deepest(&chord_between(&seats, "x0", OPPOSITE));
+        assert!(near > far, "a neighbour hop cut as deep as an opposite one");
+        assert!(
+            r3 - near < (r3 - far) * 0.5,
+            "neighbour arc should stay near its ring: near={near} far={far} ring={r3}"
+        );
+    }
+
+    /// Particles ride this exact path, so an endpoint that drifts would peel
+    /// the train off its own line.
+    #[test]
+    fn a_chord_starts_and_ends_exactly_on_its_seats() {
+        let n = banded();
+        let seats = seat_positions(&n, 3, CENTRE, OUTER);
+        for (from, to) in [("x0", OPPOSITE), ("a0", "x4"), ("c0", "c2"), ("c1", "x3")] {
+            let c = chord_between(&seats, from, to);
+            let (a, b) = (seats[from].pos, seats[to].pos);
+            assert!(
+                (c.point(0.0) - a).length() < 0.01,
+                "{from}->{to} does not start on its seat"
+            );
+            assert!(
+                (c.point(1.0) - b).length() < 0.01,
+                "{from}->{to} does not end on its seat"
+            );
+        }
+    }
+
     /// A seat depends only on (hop, index) — never on what is in view. If a
     /// filter change moved a wallet, the eye could not hold it.
     #[test]
@@ -628,10 +945,10 @@ mod tests {
         let n2: Vec<RingNode<'_>> = n.iter().map(|x| x.active(false)).collect();
         let b = seat_positions(&n2, 1, centre, 200.0);
         for k in ["treasury", "royalty", "payee-a", "payee-b"] {
-            assert_eq!(a[k], b[k], "{k} moved");
+            assert_eq!(a[k].pos, b[k].pos, "{k} moved");
         }
         // Hop 0 sits inside hop 1.
-        assert!((a["treasury"] - centre).length() < (a["payee-a"] - centre).length());
+        assert!((a["treasury"].pos - centre).length() < (a["payee-a"].pos - centre).length());
     }
 
     /// Particles are a pure function of the playhead: before the flow, nothing;

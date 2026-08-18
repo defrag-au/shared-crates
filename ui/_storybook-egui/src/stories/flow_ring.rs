@@ -118,6 +118,33 @@ fn flows() -> Vec<RingFlow<'static>> {
             quantity: 1_500_000_000,
         });
     }
+    // PEER-TO-PEER, out on the rim — the project is not involved at all.
+    //
+    // These are the chords the band routing exists for. Drawn the old way
+    // they dived through the centre and landed on top of the treasury's
+    // traffic, so a payment between two strangers was indistinguishable from
+    // one the project made. Here they stay out in their own band, and the
+    // middle is left to mean something: value crossing it involves a project
+    // wallet.
+    for (k, (from, to)) in [
+        ("exchange-hot", "off-ramp script"),
+        ("payee-h", "payee-j"),
+        ("audit", "legal"),
+        ("artist / Dwess", "infra"),
+        ("payee-i", "exchange-hot"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        for j in 0..4i64 {
+            out.push(RingFlow {
+                timestamp: T0 + (14 + k as i64 * 9 + j * 21) * DAY,
+                from,
+                to,
+                quantity: 3_000_000_000 + (j as u64 % 3) * 6_000_000_000,
+            });
+        }
+    }
     out.sort_by_key(|f| f.timestamp);
     out
 }
