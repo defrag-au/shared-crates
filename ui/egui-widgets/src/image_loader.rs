@@ -4,27 +4,37 @@ use egui::{Color32, Pos2, Rect, Shape, Stroke};
 // IIIF image helpers
 // ============================================================================
 
-const IIIF_BASE_URL: &str = "https://iiif.hodlcroft.com/iiif/3";
-
 /// Standard image sizes served by the IIIF worker.
 ///
 /// Using a fixed set of sizes maximises CDN cache hit rates.
+///
+/// **The widths now come from [`image_core::ImageSize`]**, which is the one
+/// definition in the estate. Six independent copies of this enum existed and
+/// two had drifted — to 1686 and 1626 — which is invisible in behaviour: the
+/// image still arrives, just uncached and slow, forever. This type stays for
+/// the dozen frontends that name it, but it no longer *decides* anything.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AssetImageSize {
-    /// 400px — fast, pre-cached thumbnails for grids and cards.
+    /// Fast, pre-cached thumbnails for grids and cards.
     #[default]
     Thumbnail,
-    /// 1646px — high-resolution for detail views and full-screen.
+    /// High-resolution for detail views and full-screen.
     Large,
+}
+
+impl From<AssetImageSize> for image_core::ImageSize {
+    fn from(size: AssetImageSize) -> Self {
+        match size {
+            AssetImageSize::Thumbnail => Self::Thumb,
+            AssetImageSize::Large => Self::Full,
+        }
+    }
 }
 
 impl AssetImageSize {
     /// Pixel width sent to the IIIF `{size}` parameter.
-    pub const fn pixels(self) -> u32 {
-        match self {
-            Self::Thumbnail => 400,
-            Self::Large => 1646,
-        }
+    pub fn pixels(self) -> u32 {
+        image_core::ImageSize::from(self).px()
     }
 }
 
@@ -34,8 +44,7 @@ impl AssetImageSize {
 /// https://iiif.hodlcroft.com/iiif/3/{policy_id}:{asset_name_hex}/full/{size},/0/default.jpg
 /// ```
 pub fn iiif_asset_url(policy_id: &str, asset_name_hex: &str, size: AssetImageSize) -> String {
-    let px = size.pixels();
-    format!("{IIIF_BASE_URL}/{policy_id}:{asset_name_hex}/full/{px},/0/default.jpg")
+    image_core::iiif_asset_url(policy_id, asset_name_hex, size.into())
 }
 
 /// Build a IIIF thumbnail URL for an asset image.

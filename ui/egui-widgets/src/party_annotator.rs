@@ -1,10 +1,18 @@
-//! `PartyAnnotator` — turn an anonymous wallet into a named thing, on the
-//! record.
+//! `PartyAnnotator` — decide what a wallet IS to the project, on the record.
 //!
-//! Chain analysis produces keys; investigation produces meaning. This is the
-//! form where the second happens: who this wallet belongs to, what kind of
-//! thing it is, and — the part that matters — **on what basis you are saying
-//! so**.
+//! Chain analysis produces keys; investigation produces meaning. The meaning
+//! that matters here is one call: **is this address core team, an associate,
+//! or a customer** — because the whole point of the surrounding tool is to
+//! find the addresses sitting out in the unexamined crowd that actually belong
+//! to the people running the project.
+//!
+//! That classification is the first control on the form and the one that moves
+//! a wallet between rings. Entity, tags and source are detail hung off it.
+//!
+//! **Unclassified is not "customer".** A wallet nobody has looked at and a
+//! wallet judged to be a customer are different claims; the form keeps them
+//! apart, and clicking the current class clears it back to unexamined, because
+//! concluding you were wrong is a legitimate move.
 //!
 //! ## The source rule, made visible rather than enforced
 //!
@@ -30,10 +38,42 @@ use egui::{Color32, Ui};
 use crate::party_badge::PartyBasis;
 use crate::{Chip, ChipVariant};
 
+/// Where a wallet sits relative to the project. Mirrors the app's stored
+/// `Class`; kept here so the widget has no dependency on a storage crate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PartyClass {
+    Core,
+    Associate,
+    Customer,
+}
+
+impl PartyClass {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Core => "core team",
+            Self::Associate => "associate",
+            Self::Customer => "customer",
+        }
+    }
+
+    pub fn hint(self) -> &'static str {
+        match self {
+            Self::Core => "the project itself — treasury, mint wallets, the people running it",
+            Self::Associate => "paid BY the project to do something — artist, dev, marketing",
+            Self::Customer => "bought from the project",
+        }
+    }
+
+    pub const ALL: [Self; 3] = [Self::Core, Self::Associate, Self::Customer];
+}
+
 /// The editable form. The host owns it, loads it from its own store, and
 /// writes it back when [`PartyAnnotatorResponse::save`] comes back true.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnnotationDraft {
+    /// `None` = not yet examined. NOT the same as `Customer`, and the form
+    /// must never quietly turn one into the other.
+    pub class: Option<PartyClass>,
     pub entity: String,
     pub label: String,
     pub tags: Vec<String>,
@@ -46,6 +86,7 @@ pub struct AnnotationDraft {
 impl Default for AnnotationDraft {
     fn default() -> Self {
         Self {
+            class: None,
             entity: String::new(),
             label: String::new(),
             tags: Vec::new(),
@@ -62,7 +103,10 @@ impl Default for AnnotationDraft {
 impl AnnotationDraft {
     /// Something was actually written down.
     pub fn has_content(&self) -> bool {
-        !self.entity.trim().is_empty() || !self.label.trim().is_empty() || !self.tags.is_empty()
+        self.class.is_some()
+            || !self.entity.trim().is_empty()
+            || !self.label.trim().is_empty()
+            || !self.tags.is_empty()
     }
 
     /// A claim with nobody standing behind it.
@@ -170,7 +214,12 @@ impl<'a> PartyAnnotator<'a> {
             // the form must never be ambiguous about is WHICH wallet you are
             // annotating. Let the basis fall to the next line instead.
             ui.horizontal_wrapped(|ui| {
-                ui.label(egui::RichText::new(subject).strong());
+                // The subject is only repeated when the host has not already
+                // named it above — in the shell it has, and the name appearing
+                // twice in one panel is pure noise.
+                if !subject.is_empty() {
+                    ui.label(egui::RichText::new(subject).strong());
+                }
                 {
                     egui::ComboBox::from_id_salt("basis")
                         .selected_text(
@@ -194,10 +243,36 @@ impl<'a> PartyAnnotator<'a> {
                 }
             });
 
-            // 1 · who is behind it.
+            // 1 · WHAT IS THIS WALLET TO THE PROJECT.
+            //
+            // First, because it is the decision the tool exists to support:
+            // spotting an address out in the unexamined ring that actually
+            // belongs to the team, and pulling it in. Everything else on this
+            // form is detail hung off that call.
+            ui.horizontal_wrapped(|ui| {
+                for c in PartyClass::ALL {
+                    let on = draft.class == Some(c);
+                    if ui
+                        .selectable_label(on, c.label())
+                        .on_hover_text(c.hint())
+                        .clicked()
+                    {
+                        // Clicking the current class clears it — back to
+                        // unexamined, which is a legitimate thing to conclude
+                        // you were wrong about.
+                        draft.class = if on { None } else { Some(c) };
+                        changed = true;
+                    }
+                }
+                if draft.class.is_none() {
+                    ui.label(egui::RichText::new("not yet examined").small().color(muted));
+                }
+            });
+
+            // 2 · who is behind it.
             let name = ui.add(
                 egui::TextEdit::singleline(&mut draft.entity)
-                    .hint_text("who is this? — Dwess, MEKKALABS, an exchange…")
+                    .hint_text("who? — Dwess, MEKKALABS…")
                     .desired_width(f32::INFINITY),
             );
             changed |= name.changed();
@@ -221,7 +296,7 @@ impl<'a> PartyAnnotator<'a> {
                     });
                 }
             }
-            // 2 · what kind of thing it is. Chips on the same line as the
+            // 3 · what kind of thing it is. Chips on the same line as the
             // input, and the palette appears only as FILTERED suggestions
             // while typing — a standing wall of every tag ever used is the
             // single biggest source of clutter in a form like this.
@@ -242,11 +317,7 @@ impl<'a> PartyAnnotator<'a> {
                 }
                 let te = ui.add(
                     egui::TextEdit::singleline(&mut draft.tag_input)
-                        .hint_text(if draft.tags.is_empty() {
-                            "tag it — artist, exchange, team…"
-                        } else {
-                            "+ tag"
-                        })
+                        .hint_text(if draft.tags.is_empty() { "tags" } else { "+" })
                         .desired_width(if draft.tags.is_empty() { 200.0 } else { 90.0 }),
                 );
                 // A singleline TextEdit surrenders focus on Enter, so
@@ -279,15 +350,15 @@ impl<'a> PartyAnnotator<'a> {
                 }
             }
 
-            // 3 · how do you know. This IS the basis question for almost every
+            // 4 · how do you know. This IS the basis question for almost every
             // note, so it is asked in plain words rather than as a taxonomy.
             changed |= ui
                 .add(
                     egui::TextEdit::singleline(&mut draft.source)
                         .hint_text(if draft.basis == PartyBasis::Asserted {
-                            "how do you know? — a thread, a message, a document"
+                            "how do you know?"
                         } else {
-                            "source (optional)"
+                            "source"
                         })
                         .desired_width(f32::INFINITY),
                 )
@@ -378,6 +449,29 @@ mod tests {
         assert_eq!(AnnotationDraft::default().basis, PartyBasis::Asserted);
     }
 
+    /// Classification is the primary act, and clearing it is a legitimate
+    /// conclusion — not a way of saying "customer".
+    #[test]
+    fn class_toggles_back_to_unexamined_and_counts_as_content() {
+        let mut d = AnnotationDraft::default();
+        assert_eq!(d.class, None, "a fresh wallet is unexamined");
+        assert!(!d.has_content());
+
+        d.class = Some(PartyClass::Core);
+        assert!(d.has_content(), "classifying IS recording something");
+        assert!(
+            d.is_unsourced_assertion(),
+            "calling something core team with no source is an unsourced claim"
+        );
+
+        d.source = "named in the launch thread".into();
+        assert!(!d.is_unsourced_assertion());
+
+        // Unexamined is reachable again, and is distinct from Customer.
+        d.class = None;
+        assert_ne!(d.class, Some(PartyClass::Customer));
+    }
+
     #[test]
     fn an_unsourced_assertion_is_detected_only_when_something_was_claimed() {
         let mut d = AnnotationDraft::default();
@@ -403,8 +497,10 @@ mod tests {
 
     #[test]
     fn content_detection_ignores_whitespace() {
-        let mut d = AnnotationDraft::default();
-        d.label = "   ".into();
+        let mut d = AnnotationDraft {
+            label: "   ".into(),
+            ..Default::default()
+        };
         assert!(!d.has_content());
         d.tags.push("artist".into());
         assert!(d.has_content());

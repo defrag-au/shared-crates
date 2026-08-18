@@ -213,7 +213,9 @@ pub use order_list::{
     OrderStatus,
 };
 pub use palette_editor::{Palette, PaletteEditor, PaletteVariant};
-pub use party_annotator::{AnnotationDraft, PartyAnnotator, PartyAnnotatorResponse, basis_color};
+pub use party_annotator::{
+    AnnotationDraft, PartyAnnotator, PartyAnnotatorResponse, PartyClass, basis_color,
+};
 pub use party_badge::{PartyBadge, PartyBasis};
 pub use party_finder::{
     AliasIndex, MatchTier, PartyFinder, PartyFinderResponse, PartyFinderState, WalletIdentity,

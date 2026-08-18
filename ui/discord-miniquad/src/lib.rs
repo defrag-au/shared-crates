@@ -40,7 +40,8 @@
 
 mod bridge;
 
-pub use bridge::{launch_query, LaunchContext, PollResult, ReqId};
+pub use bridge::{launch_query, ImagePoll, LaunchContext, PollResult, ReqId};
+use bridge::DecodedSize;
 
 /// The JS half of the bridge, for stamping into a web build.
 ///
@@ -188,6 +189,75 @@ impl Activity {
     /// the platform's `/api/*` routes as the widget this Activity now is.
     pub fn http_get(&self, url: &str, bearer: &str) -> ReqId {
         bridge::http_get(url, bearer)
+    }
+
+    /// Fetch and decode an image using the browser's own decoders.
+    ///
+    /// Poll with [`Self::poll_image`].
+    ///
+    /// # Why not decode in Rust
+    ///
+    /// Because it costs bundle size and buys fewer formats. macroquad ships
+    /// `image` with `png` + `tga` only and exposes no feature to add more;
+    /// pulling in a JPEG decoder cost ~235 KB of wasm here, and WebP would be
+    /// worse — the Rust decoders are patchy and libwebp under wasm is its own
+    /// project. Meanwhile every browser has native JPEG/PNG/WebP/AVIF/GIF
+    /// decoders, in C++, frequently GPU-assisted, for zero bundle bytes.
+    ///
+    /// Worth knowing: macroquad's `Texture2D::from_file_with_format` **panics**
+    /// on a decode failure rather than returning an error, so a single
+    /// unsupported image taken through `load_texture` kills the app. This path
+    /// returns a `Result` and cannot.
+    pub fn decode_image(&self, url: &str) -> ReqId {
+        bridge::decode_image(url)
+    }
+
+    /// Poll a [`Self::decode_image`] request.
+    ///
+    /// Collects the pixels on success, so a completed decode is delivered
+    /// exactly once — polling again yields [`ImagePoll::Err`] rather than the
+    /// same megabytes a second time.
+    pub fn poll_image(&self, id: ReqId) -> ImagePoll {
+        match bridge::poll(id) {
+            PollResult::Pending => ImagePoll::Pending,
+            PollResult::Err { data } => ImagePoll::Err { message: data },
+            PollResult::Ok { data } => match serde_json::from_str::<DecodedSize>(&data) {
+                Err(e) => ImagePoll::Err {
+                    message: format!("unexpected decode reply: {e}: {data}"),
+                },
+                Ok(size) => {
+                    let rgba = bridge::image_bytes(id);
+                    let expected = size.width as usize * size.height as usize * 4;
+                    if rgba.len() != expected {
+                        // Either the buffer was already collected or the
+                        // transfer truncated. Both are "no image", and both
+                        // would otherwise reach the GPU as a malformed upload.
+                        return ImagePoll::Err {
+                            message: format!("expected {expected} bytes of RGBA, got {}", rgba.len()),
+                        };
+                    }
+                    ImagePoll::Ok {
+                        width: size.width,
+                        height: size.height,
+                        rgba,
+                    }
+                }
+            },
+        }
+    }
+
+    /// Ask Discord to dismiss the Activity.
+    ///
+    /// For a task Activity — pick a squad, confirm, done — closing when the
+    /// work lands is the whole shape: leaving a spent screen open makes the
+    /// player find the X themselves and invites a second, stale commit.
+    ///
+    /// Fire-and-forget by protocol: CLOSE is the one frame the client does not
+    /// answer, so there is nothing to poll. Whatever is in flight will never
+    /// settle, so send this only once the work is *done*, not alongside it.
+    /// `code` 1000 is a normal close.
+    pub fn close(&self, code: i32, message: &str) {
+        bridge::close(code, message)
     }
 }
 

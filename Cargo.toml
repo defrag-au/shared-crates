@@ -45,6 +45,7 @@ members = [
     "ui/macroquad-storybook",
     "ui/miniquad-platform",
     "ui/canvas-bridge",
+    "ui/image-core",
     "ui/egui-widgets",
     "ui/_storybook",
     "ui/_storybook-egui",

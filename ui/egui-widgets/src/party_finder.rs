@@ -19,7 +19,7 @@
 //! widget only reads it. [`PartyFinder`] renders through the crate's
 //! presentational [`TypeaheadSearch`], so it looks like every other picker.
 
-use egui::{Color32, Ui, vec2};
+use egui::{Color32, Ui};
 
 use crate::selection::Selection;
 use crate::typeahead_search::{TypeaheadOption, TypeaheadSearch};
@@ -307,7 +307,7 @@ impl<'a> PartyFinder<'a> {
             limit,
         } = self;
         let mut chosen = None;
-        let mut cleared = false;
+        let cleared = false;
 
         // A pin dropped elsewhere invalidates the "chosen as" name.
         if state
@@ -415,6 +415,11 @@ mod tests {
 
     use egui::{Event, PointerButton, Pos2, RawInput, Rect, pos2, vec2};
 
+    /// egui 0.34 deprecates top-level `Panel::show(ctx, …)` in favour of
+    /// `show_inside(ui)`, but exposes no root `Ui` to show them inside — its own
+    /// crate docs still call `.show(ctx, …)`, and it silences the lint
+    /// internally the same way. Revisit when upstream lands the replacement.
+    #[expect(deprecated)]
     fn run_finder(
         ctx: &egui::Context,
         ix: &AliasIndex,

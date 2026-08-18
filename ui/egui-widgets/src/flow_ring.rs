@@ -88,6 +88,14 @@ pub struct FlowRingResponse {
     pub nodes_inactive: usize,
 }
 
+/// Computes a hovered node's holdings at a given instant: `(party, at_unix)` in,
+/// `(label, value)` rows out. See [`FlowRing::inventory`] for why it is a callback.
+///
+/// The `'a` is load-bearing: a bare `dyn Fn` behind a type alias defaults to
+/// `+ 'static`, which would force callers to hand over an owned closure rather
+/// than one borrowing the ledger they already have open.
+pub type InventoryFn<'a> = dyn Fn(&str, i64) -> Vec<(String, String)> + 'a;
+
 pub struct FlowRing<'a> {
     nodes: &'a [RingNode<'a>],
     flows: &'a [RingFlow<'a>],
@@ -98,7 +106,7 @@ pub struct FlowRing<'a> {
     flight: i64,
     height: f32,
     label: Option<&'a dyn Fn(&str) -> String>,
-    inventory: Option<&'a dyn Fn(&str, i64) -> Vec<(String, String)>>,
+    inventory: Option<&'a InventoryFn<'a>>,
 }
 
 const OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
@@ -156,7 +164,7 @@ impl<'a> FlowRing<'a> {
     /// Deliberately a callback: the inventory is the reader's to compute (it
     /// needs the whole ledger), it is only ever needed for the ONE hovered
     /// node, and it must be evaluated at the playhead rather than cached.
-    pub fn inventory(mut self, f: &'a dyn Fn(&str, i64) -> Vec<(String, String)>) -> Self {
+    pub fn inventory(mut self, f: &'a InventoryFn<'a>) -> Self {
         self.inventory = f.into();
         self
     }
@@ -175,8 +183,14 @@ impl<'a> FlowRing<'a> {
             inventory,
         } = self;
 
-        let (rect, response) =
-            ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::click());
+        // Never ask for more than the pane actually has. Taking the caller's
+        // height verbatim let the ring overflow a narrow centre pane and spill
+        // under the sidebar, because the radius is derived from the rect.
+        let avail = ui.available_size();
+        let (rect, response) = ui.allocate_exact_size(
+            vec2(avail.x.max(80.0), height.min(avail.y.max(120.0))),
+            Sense::click(),
+        );
         let painter = ui.painter_at(rect);
         let muted = ui.visuals().weak_text_color();
         let ink = ui.visuals().text_color();
@@ -216,28 +230,68 @@ impl<'a> FlowRing<'a> {
         // ── particles ─────────────────────────────────────────────────────
         let (lo, hi) = spine.filter_range();
         let now = spine.playhead;
-        let mut in_flight = 0usize;
         let mut particles = 0usize;
         let watched = selection.active().map(|s| s.to_string());
+        // A CHORD IS A RELATIONSHIP; A PARTICLE IS AN EVENT.
+        //
+        // Drawing one chord per flow put 5,587 overlapping curves on screen the
+        // moment the playhead reached the end of a real project's timeline —
+        // an orange hairball that said nothing except "these wallets transacted
+        // a lot". Aggregating to one chord per PAIR says the useful thing (who
+        // dealt with whom, how much) in a few dozen strokes, and leaves the
+        // per-event detail to the particles, which are already capped.
+        let mut pairs: std::collections::HashMap<(&str, &str), (u64, usize)> =
+            std::collections::HashMap::new();
+        let mut flying: Vec<&RingFlow<'_>> = Vec::new();
         for f in flows {
-            // Everything that has HAPPENED and is in the filter window draws
-            // its chord; only what is still in the air draws particles.
-            //
-            // Without the standing chord this face opens EMPTY: the spine opens
-            // at the end of the domain, and by then every flow has landed.
-            // Structure at rest, motion on top — the same reason the holder
-            // field keeps its piles when nothing is flying.
             if f.timestamp > now || f.timestamp < lo || f.timestamp > hi {
                 continue;
             }
             if !active.contains(f.from) || !active.contains(f.to) {
                 continue;
             }
+            let e = pairs.entry((f.from, f.to)).or_insert((0, 0));
+            e.0 = e.0.saturating_add(f.quantity);
+            e.1 += 1;
+            if now - f.timestamp <= flight {
+                flying.push(f);
+            }
+        }
+        let in_flight = flying.len();
+
+        let heaviest = pairs.values().map(|(q, _)| *q).max().unwrap_or(1).max(1);
+        for ((from, to), (qty, _count)) in &pairs {
+            let (Some(a), Some(b)) = (seats.get(*from), seats.get(*to)) else {
+                continue;
+            };
+            // A pinned wallet's own flows stay bright; everything else recedes.
+            let involved = watched.as_deref().is_none_or(|w| w == *from || w == *to);
+            let alpha = if involved { 1.0 } else { 0.13 };
+            let col = if watched.as_deref() == Some(*to) {
+                IN
+            } else {
+                OUT
+            };
+            // Weight by share of the heaviest pair, on a log scale — treasury
+            // flows span orders of magnitude, so a linear ramp shows one chord.
+            let t =
+                ((*qty as f64 + 1.0).ln() / (heaviest as f64 + 1.0).ln()).clamp(0.08, 1.0) as f32;
+            let ctrl = chord_control(*a, *b, centre);
+            painter.add(egui::Shape::line(
+                (0..=14)
+                    .map(|i| bezier(*a, ctrl, *b, i as f32 / 14.0))
+                    .collect(),
+                Stroke::new(
+                    (0.6 + 1.4 * t) * if involved { 1.0 } else { 0.6 },
+                    col.gamma_multiply((0.10 + 0.35 * t) * alpha),
+                ),
+            ));
+        }
+
+        for f in &flying {
             let (Some(a), Some(b)) = (seats.get(f.from), seats.get(f.to)) else {
                 continue;
             };
-
-            // A pinned wallet's own flows stay bright; everything else recedes.
             let involved = watched.as_deref().is_none_or(|w| w == f.from || w == f.to);
             let alpha = if involved { 1.0 } else { 0.16 };
             let col = if watched.as_deref() == Some(f.to) {
@@ -245,20 +299,7 @@ impl<'a> FlowRing<'a> {
             } else {
                 OUT
             };
-
             let ctrl = chord_control(*a, *b, centre);
-            // The chord itself, faint — the road the value travelled.
-            painter.add(egui::Shape::line(
-                (0..=12)
-                    .map(|i| bezier(*a, ctrl, *b, i as f32 / 12.0))
-                    .collect(),
-                Stroke::new(1.0_f32, col.gamma_multiply(0.09 * alpha)),
-            ));
-
-            if now - f.timestamp > flight {
-                continue;
-            }
-            in_flight += 1;
             let t = (now - f.timestamp) as f32 / flight as f32;
             let n = ((f.quantity / q) as usize).clamp(1, MAX_DOTS);
             for k in 0..n {

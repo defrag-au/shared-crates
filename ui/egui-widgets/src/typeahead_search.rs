@@ -458,6 +458,11 @@ mod tests {
         }
 
         /// One frame with the given events; returns what the widget reported.
+        ///
+        /// `#[expect(deprecated)]`: egui 0.34 deprecates top-level
+        /// `CentralPanel::show(ctx, …)` without exposing a root `Ui` to use
+        /// `show_inside` against — see the note in `party_finder`'s harness.
+        #[expect(deprecated)]
         fn frame(&mut self, options: &[TypeaheadOption], events: Vec<Event>) -> TypeaheadResponse {
             let mut out = TypeaheadResponse::default();
             let raw = RawInput {

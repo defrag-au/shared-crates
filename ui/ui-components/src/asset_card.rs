@@ -78,10 +78,16 @@ pub enum IiifSize {
 
 impl IiifSize {
     /// Get the IIIF size parameter value
+    ///
+    /// **1646, not 1686.** This read 1686 for some time, which is not a
+    /// derivative the service keeps warm — so every large image through this
+    /// path was resized on the fly and cache-missed on every request. Nothing
+    /// failed; it was simply slow, permanently and invisibly. The authority is
+    /// `image_core::ImageSize`; this enum should be retired into it.
     pub fn pixels(&self) -> u16 {
         match self {
             IiifSize::Thumb => 400,
-            IiifSize::Large => 1686,
+            IiifSize::Large => 1646,
         }
     }
 

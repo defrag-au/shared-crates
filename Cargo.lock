@@ -1400,6 +1400,7 @@ dependencies = [
  "ehttp",
  "i_overlay",
  "image 0.25.10",
+ "image-core",
  "js-sys",
  "log",
  "serde",
@@ -2630,6 +2631,10 @@ dependencies = [
  "zune-core",
  "zune-jpeg",
 ]
+
+[[package]]
+name = "image-core"
+version = "0.1.0"
 
 [[package]]
 name = "image-hash"

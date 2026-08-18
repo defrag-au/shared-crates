@@ -28,6 +28,31 @@ pub enum PollResult {
     Err { data: String },
 }
 
+/// Result of a browser-side image decode.
+///
+/// Carries pixels rather than a `Texture2D` so the crate stays free of GPU
+/// concerns — the caller uploads with `Texture2D::from_rgba8` on whatever
+/// frame suits it.
+pub enum ImagePoll {
+    Pending,
+    Ok {
+        width: u32,
+        height: u32,
+        /// Tightly packed RGBA8, `width * height * 4` bytes.
+        rgba: Vec<u8>,
+    },
+    Err {
+        message: String,
+    },
+}
+
+/// Dimensions the JS side reports once a decode finishes.
+#[derive(Deserialize)]
+pub(crate) struct DecodedSize {
+    pub width: u32,
+    pub height: u32,
+}
+
 /// What Discord passed the iframe at launch, from the query string.
 ///
 /// [`Self::custom_id`] is the passthrough slot: whatever an interaction
@@ -87,6 +112,9 @@ mod imp {
         fn discord_command(cmd: JsObject, args_json: JsObject) -> i32;
         fn discord_http_post(url: JsObject, body: JsObject, bearer: JsObject) -> i32;
         fn discord_http_get(url: JsObject, bearer: JsObject) -> i32;
+        fn discord_close(code: i32, message: JsObject);
+        fn discord_decode_image(url: JsObject) -> i32;
+        fn discord_image_bytes(id: i32) -> JsObject;
         fn discord_poll(req_id: i32) -> JsObject;
     }
 
@@ -130,6 +158,21 @@ mod imp {
         ReqId(unsafe { discord_http_get(JsObject::string(url), JsObject::string(bearer)) })
     }
 
+    pub fn close(code: i32, message: &str) {
+        unsafe { discord_close(code, JsObject::string(message)) }
+    }
+
+    pub fn decode_image(url: &str) -> ReqId {
+        ReqId(unsafe { discord_decode_image(JsObject::string(url)) })
+    }
+
+    pub fn image_bytes(id: ReqId) -> Vec<u8> {
+        let mut out = Vec::new();
+        let js = unsafe { discord_image_bytes(id.0) };
+        js.to_byte_buffer(&mut out);
+        out
+    }
+
     pub fn poll(id: ReqId) -> PollResult {
         serde_json::from_str(&js_to_string(unsafe { discord_poll(id.0) })).unwrap_or(
             PollResult::Err {
@@ -170,6 +213,16 @@ mod imp {
         ReqId(0)
     }
 
+    pub fn close(_code: i32, _message: &str) {}
+
+    pub fn decode_image(_url: &str) -> ReqId {
+        ReqId(0)
+    }
+
+    pub fn image_bytes(_id: ReqId) -> Vec<u8> {
+        Vec::new()
+    }
+
     pub fn poll(_id: ReqId) -> PollResult {
         PollResult::Err {
             data: "discord bridge is only available on wasm32".to_string(),
@@ -177,4 +230,7 @@ mod imp {
     }
 }
 
-pub use imp::{command, connect, http_get, http_post, launch_context, launch_query, poll};
+pub use imp::{
+    close, command, connect, decode_image, http_get, http_post, image_bytes, launch_context,
+    launch_query, poll,
+};

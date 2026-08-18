@@ -1,5 +1,32 @@
 # shared-crates — agent notes
 
+## Before you build a widget: READ THE CATALOGUE
+
+- **`ui/egui-widgets/CATALOG.md`** — ~100 widgets, one line each, alphabetical.
+- **`ui/macroquad-widgets/CATALOG.md`** — the macroquad set (see the runtime-pair note below).
+
+Read the whole relevant file. Do **not** grep instead: grep only finds the name you
+already guessed, which is how `IdPill` (middle-elided identifier + copy button) came to
+be reimplemented, worse and inline, in a project that already depended on this crate.
+A wrapped 60-character stake address shipped for weeks because nobody knew it existed.
+
+Both files are **generated** from each module's own `//!` header by
+`tests/catalog.rs`, and a test asserts the committed copy matches — the same contract
+as `cargo fmt --check`. So:
+
+- Adding a widget means giving it a `//! \`Name\` — one-line purpose.` header. The test
+  **fails** on a module without one; that is deliberate, an undiscoverable widget is a
+  widget that gets built twice.
+- After adding or renaming, regenerate:
+  `UPDATE_CATALOG=1 nix develop -c cargo test -p egui-widgets --test catalog`
+  (and the same with `-p macroquad-widgets`).
+- Keep that first sentence a *summary*. It is cut at the first full stop, so detail
+  belongs in the paragraphs below it, where it does not bloat the index.
+
+The two crates do not interchange — egui-widgets targets wasm-bindgen frontends,
+macroquad-widgets targets miniquad, which has no wasm-bindgen glue. Runtime-specific
+widgets come in pairs on purpose.
+
 ## Toolchain access
 
 Rust toolchain (cargo, clippy, rustfmt, wasm targets, wrangler, node, aiken) is provided **only** inside the Nix devshell defined in `flake.nix`. `cargo` is not on `$PATH` outside the shell.

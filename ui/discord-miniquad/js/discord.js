@@ -236,6 +236,76 @@
         return id;
     }
 
+    // Decoded image pixels waiting to be collected: id -> Uint8Array(RGBA).
+    // Separate from `pending` because that map carries strings; these are
+    // megabytes of pixels and are handed over as a byte buffer instead.
+    const decoded = new Map();
+
+    // Fetch and decode an image using the BROWSER's decoders.
+    //
+    // Every wasm runtime that decodes images in-process pays for it twice: in
+    // bundle size, and in formats it can't read. macroquad ships `image` with
+    // png+tga only, and adding jpeg cost ~235 KB of wasm. WebP would be worse
+    // — the Rust decoders are patchy and libwebp in wasm is genuinely painful.
+    //
+    // The browser already has native decoders for JPEG, PNG, WebP, AVIF and
+    // GIF, written in C++, often GPU-assisted, costing zero bundle bytes. So
+    // decode there and hand Rust the raw RGBA: `createImageBitmap` (which
+    // decodes off the main thread) into an `OffscreenCanvas`, then
+    // `getImageData`.
+    //
+    // Mirrors the approach `egui-widgets`' image_loader already uses on the
+    // wasm-bindgen side; this is the same trick expressed through the miniquad
+    // plugin protocol, since wasm-bindgen can never run under miniquad.
+    function discord_decode_image(url_js) {
+        const id = newId();
+        const url = consume_js_object(url_js);
+        (async () => {
+            try {
+                const res = await fetch(url);
+                if (!res.ok) {
+                    settle(id, 'err', `${res.status}: ${res.statusText}`);
+                    return;
+                }
+                const bitmap = await createImageBitmap(await res.blob());
+                const { width, height } = bitmap;
+                const canvas = new OffscreenCanvas(width, height);
+                const ctx = canvas.getContext('2d', { willReadFrequently: false });
+                ctx.drawImage(bitmap, 0, 0);
+                // Free the decoded bitmap now rather than at GC time; a roster
+                // of these is a lot of retained memory otherwise.
+                bitmap.close();
+                const pixels = ctx.getImageData(0, 0, width, height).data;
+                decoded.set(id, new Uint8Array(pixels.buffer));
+                settle(id, 'ok', JSON.stringify({ width, height }));
+            } catch (e) {
+                settle(id, 'err', errMsg(e));
+            }
+        })();
+        return id;
+    }
+
+    // Hand over the pixels for a completed decode, exactly once.
+    //
+    // Returns an empty buffer if the id is unknown or already collected, which
+    // Rust reads as "no image" rather than as a hang.
+    function discord_image_bytes(id) {
+        const bytes = decoded.get(id) || new Uint8Array(0);
+        decoded.delete(id);
+        return js_object(bytes);
+    }
+
+    // Ask Discord to dismiss the Activity.
+    //
+    // Fire-and-forget: CLOSE is the one frame the client does not answer, so
+    // there is no request id to poll. After this the iframe is going away, and
+    // anything still in flight will never settle.
+    function discord_close(code, message_js) {
+        const message = consume_js_object(message_js);
+        if (!source) return;
+        source.postMessage([OP_CLOSE, { code, message }], origin);
+    }
+
     // Same-origin GET with a bearer token — the widget token the exchange
     // minted, so the Activity can call the platform's `/api/*` routes as the
     // widget it now is. Same minimal shape as the POST.
@@ -269,6 +339,9 @@
         importObject.env.discord_command = discord_command;
         importObject.env.discord_http_post = discord_http_post;
         importObject.env.discord_http_get = discord_http_get;
+        importObject.env.discord_close = discord_close;
+        importObject.env.discord_decode_image = discord_decode_image;
+        importObject.env.discord_image_bytes = discord_image_bytes;
         importObject.env.discord_poll = discord_poll;
     }
 

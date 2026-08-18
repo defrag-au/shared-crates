@@ -308,12 +308,7 @@ pub fn squad_picker(
                 let art_size = (r.w - art * 2.0).min(r.h - SLOT_CAPTION_H - art);
                 draw_art(
                     p,
-                    Rect::new(
-                        r.x + (r.w - art_size) / 2.0,
-                        r.y + art,
-                        art_size,
-                        art_size,
-                    ),
+                    Rect::new(r.x + (r.w - art_size) / 2.0, r.y + art, art_size, art_size),
                     c,
                     false,
                 );
@@ -393,31 +388,45 @@ pub fn squad_picker(
     y += 26.0;
 
     // ── roster ──────────────────────────────────────────────────────────
-    p.text_top(&format!("Roster · {}", vm.candidates.len()), x, y, 16.0, t.fg);
+    p.text_top(
+        &format!("Roster · {}", vm.candidates.len()),
+        x,
+        y,
+        16.0,
+        t.fg,
+    );
 
     let pages = vm.pages(w);
     if pages > 1 {
         // Pager sits on the roster heading line: it belongs to the grid, and a
         // separate row would push the grid down for no gain.
-        let bw = 30.0;
+        // ASCII `<` `>` and a *filled* variant, both deliberately.
+        //
+        // These were `‹` `›` on Ghost, and in the Activity they vanished
+        // entirely: the angle quotes are absent from its subset UI font, and a
+        // Ghost button has no fill, so an un-drawn glyph left nothing at all
+        // on screen. The storybook embeds a full face and so never showed it.
+        // ASCII cannot go missing from any font, and a visible plate means a
+        // failed glyph would degrade to an empty *button* rather than to air.
+        let bw = 34.0;
         let label = format!("{} / {}", vm.page + 1, pages);
         let lw = p.measure(&label, 14.0).width;
         let next_x = x + w - bw;
         let label_x = next_x - GAP - lw;
         let prev_x = label_x - GAP - bw;
 
-        if Button::new("‹")
-            .variant(ButtonVariant::Ghost)
+        if Button::new("<")
+            .variant(ButtonVariant::Tonal)
             .enabled(live && vm.page > 0)
-            .show(p, Rect::new(prev_x, y - 6.0, bw, 28.0))
+            .show(p, Rect::new(prev_x, y - 7.0, bw, 28.0))
         {
             action = Some(SquadPickerAction::Page(vm.page.saturating_sub(1)));
         }
         p.mono(&label, label_x, p.top_baseline(y, 14.0), 14.0, t.muted);
-        if Button::new("›")
-            .variant(ButtonVariant::Ghost)
+        if Button::new(">")
+            .variant(ButtonVariant::Tonal)
             .enabled(live && vm.page + 1 < pages)
-            .show(p, Rect::new(next_x, y - 6.0, bw, 28.0))
+            .show(p, Rect::new(next_x, y - 7.0, bw, 28.0))
         {
             action = Some(SquadPickerAction::Page(vm.page + 1));
         }
@@ -477,12 +486,7 @@ pub fn squad_picker(
             // Thumbnail left, text right — the art is what a player scans for,
             // and a left rail of images reads far faster than a list of names.
             let pad = (CARD_H - THUMB) / 2.0;
-            draw_art(
-                p,
-                Rect::new(r.x + pad, r.y + pad, THUMB, THUMB),
-                c,
-                dim,
-            );
+            draw_art(p, Rect::new(r.x + pad, r.y + pad, THUMB, THUMB), c, dim);
             let tx = r.x + pad + THUMB + 10.0;
             let text_w = r.w - (tx - r.x) - 10.0;
 
@@ -499,7 +503,11 @@ pub fn squad_picker(
                 r.x + r.w - 10.0 - pw,
                 p.top_baseline(r.y + 12.0, 12.0),
                 12.0,
-                if picked { t.accent } else { with_alpha(t.muted, 0.9) },
+                if picked {
+                    t.accent
+                } else {
+                    with_alpha(t.muted, 0.9)
+                },
             );
 
             let sub = match (&c.unavailable, picked) {
@@ -534,9 +542,7 @@ pub fn squad_picker(
     // ── commit ──────────────────────────────────────────────────────────
     let (status, colour) = match &vm.commit {
         _ if !vm.editable => ("Squad is locked for this run.".to_string(), t.muted),
-        SquadCommit::Idle if vm.chosen.is_empty() => {
-            ("Pick at least one.".to_string(), t.muted)
-        }
+        SquadCommit::Idle if vm.chosen.is_empty() => ("Pick at least one.".to_string(), t.muted),
         SquadCommit::Idle => (String::new(), t.muted),
         SquadCommit::Sending => ("Deploying…".to_string(), t.muted),
         SquadCommit::Done(msg) => (msg.clone(), t.accent),
@@ -682,7 +688,7 @@ mod tests {
         SquadPickerVm::new(
             (0..10)
                 .map(|i| {
-                    SquadCandidate::new(format!("a{i}"), format!("Asset #{i}"), 100 - i as i32)
+                    SquadCandidate::new(format!("a{i}"), format!("Asset #{i}"), 100 - i)
                         .with_role(if i % 2 == 0 { "mechanic" } else { "medic" })
                 })
                 .collect(),

@@ -205,12 +205,27 @@ mod tests {
     fn gesture_over(path: &[(f32, f32)]) -> Gesture {
         let mut g = Gestures::new();
         let (sx, sy) = path[0];
-        g.update_from(&[touch(1, TouchPhase::Started, sx, sy)], false, false, Vec2::ZERO);
+        g.update_from(
+            &[touch(1, TouchPhase::Started, sx, sy)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
         for &(x, y) in &path[1..path.len() - 1] {
-            g.update_from(&[touch(1, TouchPhase::Moved, x, y)], false, false, Vec2::ZERO);
+            g.update_from(
+                &[touch(1, TouchPhase::Moved, x, y)],
+                false,
+                false,
+                Vec2::ZERO,
+            );
         }
         let (ex, ey) = path[path.len() - 1];
-        g.update_from(&[touch(1, TouchPhase::Ended, ex, ey)], false, false, Vec2::ZERO)
+        g.update_from(
+            &[touch(1, TouchPhase::Ended, ex, ey)],
+            false,
+            false,
+            Vec2::ZERO,
+        )
     }
 
     #[test]
@@ -218,10 +233,20 @@ mod tests {
         // The whole point of resolving on release: nothing fires while the
         // finger is down, so a drag can still be a drag.
         let mut g = Gestures::new();
-        let down = g.update_from(&[touch(1, TouchPhase::Started, 100.0, 100.0)], false, false, Vec2::ZERO);
+        let down = g.update_from(
+            &[touch(1, TouchPhase::Started, 100.0, 100.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
         assert!(down.tap.is_none(), "a tap must not fire on touch-down");
 
-        let up = g.update_from(&[touch(1, TouchPhase::Ended, 103.0, 101.0)], false, false, Vec2::ZERO);
+        let up = g.update_from(
+            &[touch(1, TouchPhase::Ended, 103.0, 101.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
         assert_eq!(up.tap, Some(vec2(103.0, 101.0)));
         assert!(up.swipe.is_none());
     }
@@ -270,9 +295,24 @@ mod tests {
     fn a_cancelled_touch_does_nothing() {
         // The OS took the gesture — an edge swipe, an incoming call.
         let mut g = Gestures::new();
-        g.update_from(&[touch(1, TouchPhase::Started, 300.0, 200.0)], false, false, Vec2::ZERO);
-        g.update_from(&[touch(1, TouchPhase::Moved, 140.0, 200.0)], false, false, Vec2::ZERO);
-        let out = g.update_from(&[touch(1, TouchPhase::Cancelled, 140.0, 200.0)], false, false, Vec2::ZERO);
+        g.update_from(
+            &[touch(1, TouchPhase::Started, 300.0, 200.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
+        g.update_from(
+            &[touch(1, TouchPhase::Moved, 140.0, 200.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
+        let out = g.update_from(
+            &[touch(1, TouchPhase::Cancelled, 140.0, 200.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
         assert!(out.tap.is_none());
         assert_eq!(out.swipe, None);
     }
@@ -282,7 +322,12 @@ mod tests {
         // A grip adjustment mid-swipe must not restart recognition, or the
         // swipe would be measured from the wrong origin and come up short.
         let mut g = Gestures::new();
-        g.update_from(&[touch(1, TouchPhase::Started, 300.0, 200.0)], false, false, Vec2::ZERO);
+        g.update_from(
+            &[touch(1, TouchPhase::Started, 300.0, 200.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
         g.update_from(
             &[
                 touch(2, TouchPhase::Started, 100.0, 400.0),
@@ -292,7 +337,12 @@ mod tests {
             false,
             Vec2::ZERO,
         );
-        let out = g.update_from(&[touch(1, TouchPhase::Ended, 140.0, 202.0)], false, false, Vec2::ZERO);
+        let out = g.update_from(
+            &[touch(1, TouchPhase::Ended, 140.0, 202.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
         assert_eq!(out.swipe, Some(SwipeDir::Left));
     }
 
