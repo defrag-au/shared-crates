@@ -33,10 +33,20 @@
 use cardano_assets::AssetId;
 use leptos::prelude::*;
 
-/// Default large image size for IIIF requests
-const LARGE_IMAGE_SIZE: u16 = 1686;
-/// Preview image size (loaded first with blur)
-const PREVIEW_IMAGE_SIZE: u16 = 400;
+/// Default large image size for IIIF requests.
+///
+/// Was **1686**, which is not a warm derivative — the service resized it on
+/// the fly and cached nothing, so every modal opened at full resolution was
+/// permanently slower with no visible symptom. The third instance of that
+/// drift found in one sweep, which is why the number now comes from
+/// [`image_core::ImageSize`] rather than being written here.
+///
+/// Yes, this changes what callers fetch — that is the fix, not a side effect.
+/// No caller in any of the three repos passes `size` explicitly, so every one
+/// of them was getting the cold path.
+/// Derived, not written: `px()` is a `const fn`, so this cannot drift from the
+/// one definition again.
+const LARGE_IMAGE_SIZE: u16 = image_core::ImageSize::Full.px() as u16;
 
 /// Modal for displaying an NFT asset in high resolution
 #[component]
@@ -52,7 +62,7 @@ pub fn AssetModal(
     #[prop(into)]
     on_close: Callback<()>,
 
-    /// Image size in pixels (default 1686)
+    /// Image size in pixels. Defaults to the warm full-resolution derivative.
     #[prop(optional, default = LARGE_IMAGE_SIZE)]
     size: u16,
 ) -> impl IntoView {
@@ -60,13 +70,16 @@ pub fn AssetModal(
     let (full_loaded, set_full_loaded) = signal(false);
 
     // Build IIIF URLs for both sizes
-    let base_url = format!(
-        "https://iiif.hodlcroft.com/iiif/3/{}:{}/full",
+    let preview_url = image_core::iiif_asset_url(
         asset_id.policy_id(),
         asset_id.asset_name_hex(),
+        image_core::ImageSize::Thumb,
     );
-    let preview_url = format!("{}/{},/0/default.jpg", base_url, PREVIEW_IMAGE_SIZE);
-    let full_url = format!("{}/{},/0/default.jpg", base_url, size);
+    // `custom_px` because `size` is a caller-supplied width, not one of the two
+    // warm sizes — see LARGE_IMAGE_SIZE.
+    let full_url = image_core::IiifUrl::new(asset_id.policy_id(), asset_id.asset_name_hex())
+        .custom_px(u32::from(size))
+        .build();
 
     // Derive display name - strip CIP-67 and split PascalCase
     let display_name = name.unwrap_or_else(|| {

@@ -36,31 +36,55 @@ impl Default for FlowRingState {
     }
 }
 
+/// The project's own wallets. Ring 0.
 const INNER: [&str; 4] = ["S1 treasury", "royalty (CIP-27)", "ops-payments", "team"];
-const OUTER: [&str; 14] = [
-    "contractor-01",
+
+/// Everyone else, in the four bands the ring encodes.
+///
+/// Deliberately covers ALL FOUR: a fixture that only exercised inner-vs-outer
+/// left two of the ring tints unrendered, so nobody could see the palette it
+/// was chosen for. The outermost band is the big one on purpose — unexamined
+/// is the normal state of a real ledger, and watching it drain is the job.
+const ASSOCIATES: [&str; 4] = ["contractor-01", "artist / Dwess", "infra", "marketing"];
+const CUSTOMERS: [&str; 5] = ["payee-h", "payee-i", "payee-j", "payee-k", "grants"];
+const UNEXAMINED: [&str; 5] = [
     "off-ramp script",
     "exchange-hot",
+    "audit",
+    "legal",
+    "unresolved payer",
+];
+
+/// Every non-core party, in ring order — the flow fixture indexes this.
+const OUTER: [&str; 14] = [
+    "contractor-01",
     "artist / Dwess",
     "infra",
-    "audit",
     "marketing",
-    "legal",
-    "grants",
     "payee-h",
     "payee-i",
     "payee-j",
     "payee-k",
+    "grants",
+    "off-ramp script",
+    "exchange-hot",
+    "audit",
+    "legal",
     "unresolved payer",
 ];
 
 fn nodes(off: &[String]) -> Vec<RingNode<'static>> {
     let mut out: Vec<RingNode<'static>> = Vec::new();
-    for k in INNER {
-        out.push(RingNode::new(k, 0).active(!off.iter().any(|o| o == k)));
-    }
-    for k in OUTER {
-        out.push(RingNode::new(k, 1).active(!off.iter().any(|o| o == k)));
+    let bands: [(&[&str], u8); 4] = [
+        (&INNER, 0),
+        (&ASSOCIATES, 1),
+        (&CUSTOMERS, 2),
+        (&UNEXAMINED, 3),
+    ];
+    for (keys, ring) in bands {
+        for k in keys {
+            out.push(RingNode::new(k, ring).active(!off.iter().any(|o| o == k)));
+        }
     }
     out
 }
@@ -106,10 +130,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowRingState) {
 
     ui.label(
         egui::RichText::new(
-            "Inner ring: the project's own wallets. Outer ring: who they dealt with. Value \
-             crosses the middle as particles — one dot per quantum, so a large payment is a \
-             longer train, not a thicker line. Press play, or scrub: particle position is a \
-             function of the playhead, so a still frame shows value genuinely in flight.",
+            "Rings are the CLASSIFICATION, inward: core team, associates (paid by the \
+             project), customers, and — outermost, in grey — the wallets nobody has \
+             examined yet. Colour means somebody made a call; grey means the work is \
+             still to do. Value crosses the middle as particles, one dot per quantum, so \
+             a large payment is a longer train, not a thicker line. Press play, or scrub: \
+             particle position is a function of the playhead, so a still frame shows \
+             value genuinely in flight.",
         )
         .small()
         .color(TEXT_MUTED),

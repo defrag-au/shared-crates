@@ -43,9 +43,10 @@ impl PreloadAsset {
 
     /// Build the IIIF thumbnail URL (400px thumb)
     pub fn to_url(&self) -> String {
-        format!(
-            "https://iiif.hodlcroft.com/iiif/3/{}:{}/full/400,/0/default.jpg",
-            self.policy_id, self.asset_name_hex
+        image_core::iiif_asset_url(
+            &self.policy_id,
+            &self.asset_name_hex,
+            image_core::ImageSize::Thumb,
         )
     }
 }

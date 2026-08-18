@@ -51,6 +51,14 @@ pub fn iiif_asset_url(policy_id: &str, asset_name_hex: &str, size: AssetImageSiz
 ///
 /// Constructs a IIIF Image API v3 URL that requests a square crop at the
 /// given pixel size in JPEG format.
+///
+/// **Not routed through `image_core::IiifUrl`**, unlike everything else here:
+/// `base_url` is already a *per-asset* base (host + `{policy}:{name_hex}`),
+/// whereas the builder composes that identifier itself from a host root. If a
+/// caller has the policy and hex separately — and it should — use
+/// `image_core::IiifUrl::new(policy, hex).square_fit(size)` instead, which is
+/// byte-identical output. This function has no callers in the estate and is a
+/// deletion candidate.
 pub fn iiif_thumbnail_url(base_url: &str, size: u32) -> String {
     // IIIF pattern: {base}/full/!{w},{h}/0/default.jpg
     // Strip any trailing slash from base

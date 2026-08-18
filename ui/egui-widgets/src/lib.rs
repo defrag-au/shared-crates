@@ -180,7 +180,7 @@ pub use flow_ledger::{
     FlowLedger, FlowLedgerResponse, FlowRow, LedgerTotals, totals as flow_totals,
 };
 pub use flow_matrix::{FlowMatrix, FlowMatrixResponse, MatrixFlow};
-pub use flow_ring::{FlowRing, FlowRingResponse, RingFlow, RingNode};
+pub use flow_ring::{FlowRing, FlowRingResponse, RingFlow, RingNode, ring_tint};
 pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
 pub use holder_field::{AssetMove, HolderField, HolderFieldResponse};
 pub use holder_formation::{

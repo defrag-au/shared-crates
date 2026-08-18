@@ -15,6 +15,7 @@ egui = { workspace = true }
 egui_extras = { workspace = true }
 authorizations = { path = "../../authorizations" }
 egui-widgets = { path = "../egui-widgets", features = ["image-editor"] }
+image-core = { path = "../image-core" }
 cardano-assets = { workspace = true }
 cardano-tx = { path = "../../cardano-tx" }
 wasm-bindgen = { workspace = true }

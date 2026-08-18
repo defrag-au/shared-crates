@@ -114,6 +114,46 @@ const IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
 /// Per-flow particle cap. A single huge payment must not drown the frame.
 const MAX_DOTS: usize = 40;
 
+/// Ring tints, innermost first — a TEAL ordinal ramp plus a neutral outer step.
+///
+/// ## Why teal, and why these exact values
+///
+/// The ring index is ordinal (how close to the project), so it takes one hue in
+/// monotone lightness steps rather than four unrelated hues. The hue is
+/// constrained from two directions: the chords drawn ACROSS these rings are
+/// [`OUT`] orange and [`IN`] blue, and a seat dot must never be mistakable for
+/// a payment.
+///
+/// Both were chosen by running the palette validator, not by eye, over every
+/// pair of {3 ring steps, neutral, orange, blue} on this dark surface —
+/// violet, the obvious first pick, **fails**: it collapses onto the chord blue
+/// under protanopia at ΔE 5.1. Teal clears with worst-pair ΔE 12.4 under CVD
+/// (deutan) and 16.2 under normal vision, against floors of 8 and 15.
+///
+/// ## The last step is deliberately colourless
+///
+/// Unexamined is not a fourth class — it is the ABSENCE of a judgement, which
+/// the store models as `None`. So colour means somebody decided, grey means
+/// nobody has yet, and the work remaining reads as colour draining out of the
+/// view. Grey also sits at 2.32:1 on the surface, under the 3:1 mark floor:
+/// legitimate here only because it is never the sole cue — the sidebar always
+/// prints the address beside it and the ring gives it the outermost band.
+const RING_TINTS: [Color32; 4] = [
+    Color32::from_rgb(0xa5, 0xf3, 0xe4), // core — the project itself
+    Color32::from_rgb(0x19, 0xc2, 0xad), // associates — paid BY the project
+    Color32::from_rgb(0x10, 0x89, 0x7c), // customers — bought from it
+    Color32::from_rgb(0x4d, 0x54, 0x78), // nobody has looked yet
+];
+
+/// The colour for a ring index, saturating at the outermost.
+///
+/// Public because the party list has to paint the same dot: a wallet's colour
+/// is its classification, and two call sites deriving it separately is how a
+/// legend starts lying.
+pub fn ring_tint(ring: u8) -> Color32 {
+    RING_TINTS[(ring as usize).min(RING_TINTS.len() - 1)]
+}
+
 impl<'a> FlowRing<'a> {
     /// `flows` must be sorted by timestamp and already filtered to ONE unit.
     pub fn new(
@@ -210,10 +250,13 @@ impl<'a> FlowRing<'a> {
         // ── rings ─────────────────────────────────────────────────────────
         for h in 0..=max_hop {
             let r = ring_radius(h, max_hop, r_outer.max(40.0));
+            // The band itself is barely there — it is a reference line, and the
+            // seats sitting on it carry the same hue at full strength. Tinting
+            // it hard would put four saturated circles behind every chord.
             painter.circle_stroke(
                 centre,
                 r,
-                Stroke::new(1.0_f32, ui.visuals().faint_bg_color.gamma_multiply(2.0)),
+                Stroke::new(1.0_f32, ring_tint(h).gamma_multiply(0.22)),
             );
         }
 
@@ -321,8 +364,12 @@ impl<'a> FlowRing<'a> {
             let emph = selection.emphasis(n.key);
             let on = n.active;
             let r = if n.hop == 0 { 6.0 } else { 4.0 };
+            // The seat wears its CLASSIFICATION. Emphasis still rides on top as
+            // alpha, so selecting a wallet dims its neighbours without
+            // repainting anyone's identity — colour follows the entity, never
+            // its rank in the current view.
             let col = if on {
-                ink.gamma_multiply(emph)
+                ring_tint(n.hop).gamma_multiply(emph)
             } else {
                 muted.gamma_multiply(0.35)
             };
@@ -550,6 +597,24 @@ mod tests {
             RingNode::new("payee-a", 1),
             RingNode::new("payee-b", 1),
         ]
+    }
+
+    /// The tints are chosen against the chords by a validator, so the thing
+    /// worth pinning in code is that nothing silently reuses a chord colour or
+    /// panics past the last ring.
+    #[test]
+    fn ring_tints_are_distinct_and_never_a_chord_colour() {
+        let tints: Vec<Color32> = (0..4).map(ring_tint).collect();
+        for (i, a) in tints.iter().enumerate() {
+            for b in tints.iter().skip(i + 1) {
+                assert_ne!(a, b, "two rings share a tint");
+            }
+            assert_ne!(*a, OUT, "a seat must not wear the outbound chord colour");
+            assert_ne!(*a, IN, "a seat must not wear the inbound chord colour");
+        }
+        // Past the last ring the outermost tint holds, rather than panicking:
+        // `max_hop` is data-driven and a caller may hand over anything.
+        assert_eq!(ring_tint(9), ring_tint(3));
     }
 
     /// A seat depends only on (hop, index) — never on what is in view. If a

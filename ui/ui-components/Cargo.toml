@@ -18,6 +18,10 @@ leptos = { version = "0.8", features = ["csr"] }
 asset-intents = { workspace = true }
 cardano-assets = { workspace = true }
 
+# IIIF URL + warm-size policy. One definition for the whole estate — see its
+# docs for why the sizes must not be re-spelled per crate.
+image-core = { path = "../image-core" }
+
 # Styling
 scss-macros = { path = "../scss-macros" }
 

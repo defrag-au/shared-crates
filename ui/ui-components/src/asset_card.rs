@@ -12,7 +12,7 @@
 //!
 //! The IIIF image size is automatically selected based on card size:
 //! - xs, sm, md, lg (≤400px): uses 400px IIIF image (cached, fast)
-//! - xl (>400px): uses 1686px IIIF image (high resolution)
+//! - xl (>400px): uses 1646px IIIF image (high resolution)
 //!
 //! ## Overlay Slots
 //!
@@ -63,32 +63,36 @@ use crate::image_card::{CardSize, ImageCard};
 use leptos::children::ChildrenFn;
 use leptos::prelude::*;
 
-/// IIIF base URL for image lookups
-const IIIF_BASE_URL: &str = "https://iiif.hodlcroft.com/iiif/3";
-
 /// IIIF image size variants
+///
+/// **The widths now come from [`image_core::ImageSize`]**, which is the one
+/// definition in the estate. This enum read 1686 for `Large` for some time,
+/// which is not a derivative the service keeps warm — so every large image
+/// through this path was resized on the fly and cache-missed on every request.
+/// Nothing failed; it was simply slow, permanently and invisibly. This type
+/// stays for the callers that name it, but it no longer *decides* anything.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum IiifSize {
     /// 400px width - fast, cached thumbnails
     #[default]
     Thumb,
-    /// 1686px width - high resolution
+    /// 1646px width - high resolution
     Large,
+}
+
+impl From<IiifSize> for image_core::ImageSize {
+    fn from(size: IiifSize) -> Self {
+        match size {
+            IiifSize::Thumb => Self::Thumb,
+            IiifSize::Large => Self::Full,
+        }
+    }
 }
 
 impl IiifSize {
     /// Get the IIIF size parameter value
-    ///
-    /// **1646, not 1686.** This read 1686 for some time, which is not a
-    /// derivative the service keeps warm — so every large image through this
-    /// path was resized on the fly and cache-missed on every request. Nothing
-    /// failed; it was simply slow, permanently and invisibly. The authority is
-    /// `image_core::ImageSize`; this enum should be retired into it.
-    pub fn pixels(&self) -> u16 {
-        match self {
-            IiifSize::Thumb => 400,
-            IiifSize::Large => 1646,
-        }
+    pub fn pixels(&self) -> u32 {
+        image_core::ImageSize::from(*self).px()
     }
 
     /// Select appropriate IIIF size for a given card size
@@ -121,10 +125,7 @@ pub fn generate_iiif_url(asset_id: &str, size: IiifSize) -> Option<String> {
     }
 
     // IIIF format: {policy_id}:{asset_name_hex}
-    Some(format!(
-        "{IIIF_BASE_URL}/{policy_id}:{asset_name}/full/{},/0/default.jpg",
-        size.pixels()
-    ))
+    Some(image_core::iiif_asset_url(policy_id, asset_name, size.into()))
 }
 
 /// Asset card component - wraps ImageCard with IIIF URL generation and overlay slots
@@ -318,8 +319,9 @@ mod tests {
             "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6:506972617465313839"
         ));
 
+        // 1646, not 1686 — the warm derivative. See `image_core::ImageSize`.
         let large_url = generate_iiif_url(asset_id, IiifSize::Large).unwrap();
-        assert!(large_url.contains("/1686,/"));
+        assert!(large_url.contains("/1646,/"));
     }
 
     #[test]

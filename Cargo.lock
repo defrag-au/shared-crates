@@ -5698,6 +5698,7 @@ dependencies = [
  "cardano-assets",
  "console_error_panic_hook",
  "gloo-net",
+ "image-core",
  "js-sys",
  "leptos",
  "serde",
@@ -5874,6 +5875,7 @@ dependencies = [
  "egui_extras",
  "gloo-timers",
  "image 0.25.10",
+ "image-core",
  "js-sys",
  "log",
  "wasm-bindgen",
@@ -6601,6 +6603,7 @@ version = "0.1.0"
 dependencies = [
  "asset-intents",
  "cardano-assets",
+ "image-core",
  "js-sys",
  "leptos",
  "phf",
