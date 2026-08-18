@@ -1258,10 +1258,9 @@ mod app {
                             Story::FlowRing => {
                                 stories::flow_ring::show(ui, &mut self.flow_ring_state)
                             }
-                            Story::PartyAnnotator => stories::party_annotator::show(
-                                ui,
-                                &mut self.party_annotator_state,
-                            ),
+                            Story::PartyAnnotator => {
+                                stories::party_annotator::show(ui, &mut self.party_annotator_state)
+                            }
                             Story::ClaimCard => {
                                 stories::claim_card::show(ui, &mut self.claim_card_state)
                             }

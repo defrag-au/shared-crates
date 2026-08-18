@@ -24,7 +24,7 @@ macroquad = ["dep:quad-net", "dep:miniquad"]
 ui-flow-protocol = { path = "../ui-flow-protocol" }
 
 # Serialization
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 rmp-serde = { workspace = true }
 

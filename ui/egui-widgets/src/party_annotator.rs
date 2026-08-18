@@ -39,7 +39,6 @@ pub struct AnnotationDraft {
     pub tags: Vec<String>,
     pub basis: PartyBasis,
     pub source: String,
-    pub note: String,
     /// Free-text tag being typed.
     pub tag_input: String,
 }
@@ -55,7 +54,6 @@ impl Default for AnnotationDraft {
             // note into a chain fact.
             basis: PartyBasis::Asserted,
             source: String::new(),
-            note: String::new(),
             tag_input: String::new(),
         }
     }
@@ -64,10 +62,7 @@ impl Default for AnnotationDraft {
 impl AnnotationDraft {
     /// Something was actually written down.
     pub fn has_content(&self) -> bool {
-        !self.entity.trim().is_empty()
-            || !self.label.trim().is_empty()
-            || !self.note.trim().is_empty()
-            || !self.tags.is_empty()
+        !self.entity.trim().is_empty() || !self.label.trim().is_empty() || !self.tags.is_empty()
     }
 
     /// A claim with nobody standing behind it.
@@ -311,18 +306,14 @@ impl<'a> PartyAnnotator<'a> {
                 egui::CollapsingHeader::new(egui::RichText::new("more").small().color(muted))
                     .id_salt("more")
                     .show_unindented(ui, |ui| {
+                        // Only the label lives here now. Free-text reasoning
+                        // moved to the COMMENT thread the host renders below
+                        // this form — timestamped and attributable, which a
+                        // single note field could never be.
                         changed |= ui
                             .add(
                                 egui::TextEdit::singleline(&mut draft.label)
                                     .hint_text("label just this wallet")
-                                    .desired_width(f32::INFINITY),
-                            )
-                            .changed();
-                        changed |= ui
-                            .add(
-                                egui::TextEdit::multiline(&mut draft.note)
-                                    .hint_text("what you worked out, and how")
-                                    .desired_rows(2)
                                     .desired_width(f32::INFINITY),
                             )
                             .changed();

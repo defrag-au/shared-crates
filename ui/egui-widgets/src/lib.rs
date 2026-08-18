@@ -2,6 +2,7 @@
 pub use egui_inbox;
 
 pub mod access_gate;
+pub mod activity_lanes;
 pub mod animated_counter;
 pub mod arrival_field;
 pub mod asset_card;
@@ -139,6 +140,7 @@ pub mod utxo_shelf;
 #[cfg(feature = "cardano")]
 pub mod wallet_asset_picker;
 
+pub use activity_lanes::{ActivityLanes, ActivityLanesResponse, Lane};
 pub use animated_counter::AnimatedCounter;
 pub use arrival_field::{ArrivalField, ArrivalFieldResponse};
 pub use button_group::{ButtonGroup, ButtonGroupButton, ButtonGroupResponse};

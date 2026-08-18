@@ -63,7 +63,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PartyAnnotatorState) {
         state.guess.tags = vec!["artist".into()];
         state.derived.label = "royalty (CIP-27)".into();
         state.derived.basis = PartyBasis::Derived;
-        state.derived.note = "777.addr in the policy's own on-mint metadata".into();
+        state.derived.source = "CIP-27 777.addr in the policy's own on-mint metadata".into();
     }
 
     ui.label(
@@ -86,7 +86,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut PartyAnnotatorState) {
         .spacing([18.0, 0.0])
         .show(ui, |ui| {
             ui.vertical(|ui| {
-                ui.label(egui::RichText::new("1 · a fresh wallet").small().color(TEXT_MUTED));
+                ui.label(
+                    egui::RichText::new("1 · a fresh wallet")
+                        .small()
+                        .color(TEXT_MUTED),
+                );
                 let r = PartyAnnotator::new("fresh", "stake1uy0x3e…wfl6ha", &mut state.fresh)
                     .palette(&pal)
                     .entities(&ents)

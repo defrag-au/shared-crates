@@ -612,6 +612,9 @@ pub struct TimeSpine<'a> {
     marks: &'a [(i64, MarkKind)],
     height: f32,
     show_play: bool,
+    /// Extra space reserved left of the ruler, for a caller that draws a row
+    /// of labels beneath (see [`crate::activity_lanes::ActivityLanes`]).
+    left_inset: f32,
 }
 
 impl<'a> TimeSpine<'a> {
@@ -623,7 +626,14 @@ impl<'a> TimeSpine<'a> {
             marks: &[],
             height: 56.0,
             show_play: true,
+            left_inset: 0.0,
         }
+    }
+
+    /// Reserve space left of the ruler so a label column beneath can line up.
+    pub fn left_inset(mut self, px: f32) -> Self {
+        self.left_inset = px.max(0.0);
+        self
     }
 
     pub fn format_tick(mut self, f: &'a dyn Fn(i64, i64) -> String) -> Self {
@@ -661,13 +671,18 @@ impl<'a> TimeSpine<'a> {
             marks,
             height,
             show_play,
+            left_inset,
         } = self;
         state.tick(ui.ctx());
         let mut playhead_changed = state.playing;
         let mut brush_changed = false;
 
         let full_w = ui.available_width();
-        let play_w = if show_play { 30.0 } else { 0.0 };
+        // The ruler starts after the play button AND after any caller-reserved
+        // gutter. `ActivityLanes` needs a label column to the left of the
+        // ruler, and its ticks must sit under the ruler's dates — so BOTH have
+        // to agree on where x starts, which means the spine has to be told.
+        let play_w = if show_play { 30.0 } else { 0.0 } + left_inset;
         let (rect, response) =
             ui.allocate_exact_size(vec2(full_w, height), Sense::click_and_drag());
         let id = response.id;
@@ -676,7 +691,9 @@ impl<'a> TimeSpine<'a> {
 
         // ── play button ────────────────────────────────────────────────────
         if show_play {
-            let brect = Rect::from_min_size(rect.min, vec2(play_w - 6.0, height));
+            // 24 = the button's own 30 minus its 6px gap. NOT `play_w`, which
+            // now also carries the caller's label gutter.
+            let brect = Rect::from_min_size(rect.min, vec2(24.0, height));
             let bresp = ui.interact(brect, id.with("play"), Sense::click());
             if bresp.clicked() {
                 state.toggle_play();

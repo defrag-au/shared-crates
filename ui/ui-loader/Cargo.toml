@@ -26,7 +26,7 @@ macroquad = ["dep:quad-storage", "dep:log"]
 
 [dependencies]
 # Serialization (for Identity) - always needed
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 # === Web feature dependencies (optional) ===
