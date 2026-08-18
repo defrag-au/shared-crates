@@ -188,7 +188,11 @@ mod tests {
         assert_eq!(s.active(), Some("b"));
 
         s.unpin("b");
-        assert_eq!(s.active(), Some("a"), "focus fell back to the remaining pin");
+        assert_eq!(
+            s.active(),
+            Some("a"),
+            "focus fell back to the remaining pin"
+        );
         assert!(!s.is_selected("b"));
 
         s.unpin("a");

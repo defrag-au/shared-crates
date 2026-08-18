@@ -22,6 +22,7 @@
 use macroquad::prelude::*;
 
 use crate::button::{Button, ButtonVariant};
+use crate::gesture::SwipeDir;
 use crate::painter::{draw_rounded_rect, Painter};
 use crate::theme::with_alpha;
 
@@ -40,6 +41,16 @@ pub struct SquadCandidate {
     /// Drawn dimmed with the reason, rather than hidden: a player looking for
     /// a specific asset should find out *why* they can't use it.
     pub unavailable: Option<String>,
+    /// The asset's artwork. `None` until it loads — and it may never load, so
+    /// every drawing path falls back to the serial on a tinted plate rather
+    /// than leaving a hole.
+    ///
+    /// Loading is the host's job (see [`WalletItem::icon`] for the same
+    /// split): this crate has no I/O, and a Discord Activity fetches through
+    /// a proxy that only it knows about.
+    ///
+    /// [`WalletItem::icon`]: crate::WalletItem
+    pub image: Option<Texture2D>,
 }
 
 impl SquadCandidate {
@@ -50,7 +61,13 @@ impl SquadCandidate {
             role: None,
             power,
             unavailable: None,
+            image: None,
         }
+    }
+
+    pub fn with_image(mut self, image: Texture2D) -> Self {
+        self.image = Some(image);
+        self
     }
 
     pub fn with_role(mut self, role: impl Into<String>) -> Self {
@@ -197,6 +214,31 @@ pub enum SquadPickerAction {
     Commit,
 }
 
+impl SquadPickerVm {
+    /// Apply a swipe to the page, if there is anywhere to go.
+    ///
+    /// Lives on the VM rather than inside the widget because the host owns
+    /// gesture state (see [`crate::Gestures`]) — and because a host may want
+    /// to swipe from a larger area than the picker occupies. Swiping *left*
+    /// moves content left, i.e. forward, matching every paged surface a player
+    /// has used.
+    ///
+    /// Returns the new page when it changed, so the caller can report it.
+    pub fn swipe(&mut self, dir: SwipeDir, w: f32) -> Option<usize> {
+        let last = self.pages(w).saturating_sub(1);
+        let next = match dir {
+            SwipeDir::Left if self.page < last => self.page + 1,
+            SwipeDir::Right if self.page > 0 => self.page - 1,
+            // At the end already. Deliberately no wrap: a roster is a list,
+            // not a carousel, and silently jumping to page 1 from the last
+            // page reads as a glitch.
+            _ => return None,
+        };
+        self.page = next;
+        Some(next)
+    }
+}
+
 pub struct SquadPickerResponse {
     pub bottom: f32,
     pub action: Option<SquadPickerAction>,
@@ -207,8 +249,14 @@ pub struct SquadPickerResponse {
 /// instead.
 const MIN_CARD_W: f32 = 150.0;
 const ROWS: usize = 3;
-const SLOT_H: f32 = 84.0;
+/// Tall enough for square art plus a caption line.
+const SLOT_H: f32 = 128.0;
+/// Strip beneath a slot's art, holding the role.
+const SLOT_CAPTION_H: f32 = 22.0;
 const CARD_H: f32 = 68.0;
+/// Roster thumbnail edge; also the inset around slot art.
+const THUMB: f32 = 48.0;
+const ART_PAD: f32 = 8.0;
 const GAP: f32 = 10.0;
 
 pub fn squad_picker(
@@ -254,40 +302,57 @@ pub fn squad_picker(
                 draw_rounded_rect(r.x, r.y, r.w, r.h, 8.0, fill);
                 draw_rounded_rect(r.x, r.y, r.w, 2.0, 1.0, t.accent);
 
+                // Art carries the slot: a filled squad should be recognisable
+                // at a glance as *these four*, which faces do and names don't.
+                let art = ART_PAD;
+                let art_size = (r.w - art * 2.0).min(r.h - SLOT_CAPTION_H - art);
+                draw_art(
+                    p,
+                    Rect::new(
+                        r.x + (r.w - art_size) / 2.0,
+                        r.y + art,
+                        art_size,
+                        art_size,
+                    ),
+                    c,
+                    false,
+                );
+
+                // The caption is the role — what this member is *for* in the
+                // squad, which is the axis a mission actually tests. On hover
+                // it becomes the affordance instead, only while a tap would
+                // do something.
+                let caption = if hit.hover {
+                    "tap to remove"
+                } else {
+                    c.role.as_deref().unwrap_or("no role")
+                };
+                let cap = clip(p, caption, r.w - 12.0, 13.0);
+                let cw = p.measure(&cap, 13.0).width;
+                p.text_top(
+                    &cap,
+                    r.x + (r.w - cw) / 2.0,
+                    r.y + r.h - SLOT_CAPTION_H + 4.0,
+                    13.0,
+                    if hit.hover { t.danger } else { t.accent },
+                );
+
+                // Slot number and power stay as small corner marks — present
+                // for anyone checking, never competing with the art.
                 p.mono(
                     &format!("{}", slot + 1),
-                    r.x + 10.0,
-                    p.top_baseline(r.y + 10.0, 12.0),
-                    12.0,
-                    t.accent,
+                    r.x + 7.0,
+                    p.top_baseline(r.y + 6.0, 11.0),
+                    11.0,
+                    with_alpha(t.accent, 0.8),
                 );
-                let pw = p.measure(&format!("{}", c.power), 13.0).width;
+                let pw = p.measure(&format!("{}", c.power), 11.0).width;
                 p.mono(
                     &format!("{}", c.power),
-                    r.x + r.w - 10.0 - pw,
-                    p.top_baseline(r.y + 10.0, 13.0),
-                    13.0,
-                    t.muted,
-                );
-                p.text_top(
-                    &fit_name(p, &c.name, r.w - 20.0, 15.0),
-                    r.x + 10.0,
-                    r.y + 30.0,
-                    15.0,
-                    t.fg,
-                );
-                p.text_top(
-                    // On hover the sub-line becomes the affordance — it says
-                    // what a tap will do, only while a tap would do it.
-                    &if hit.hover {
-                        "tap to remove".to_string()
-                    } else {
-                        clip(p, c.role.as_deref().unwrap_or("no role"), r.w - 20.0, 13.0)
-                    },
-                    r.x + 10.0,
-                    r.y + 50.0,
-                    13.0,
-                    if hit.hover { t.danger } else { t.muted },
+                    r.x + r.w - 7.0 - pw,
+                    p.top_baseline(r.y + 6.0, 11.0),
+                    11.0,
+                    with_alpha(t.muted, 0.9),
                 );
 
                 if hit.clicked {
@@ -298,9 +363,9 @@ pub fn squad_picker(
                 draw_rounded_rect(r.x, r.y, r.w, r.h, 8.0, with_alpha(t.panel, 0.6));
                 p.mono(
                     &format!("{}", slot + 1),
-                    r.x + 10.0,
-                    p.top_baseline(r.y + 10.0, 12.0),
-                    12.0,
+                    r.x + 7.0,
+                    p.top_baseline(r.y + 6.0, 11.0),
+                    11.0,
                     with_alpha(t.muted, 0.5),
                 );
                 let label = "empty";
@@ -308,7 +373,7 @@ pub fn squad_picker(
                 p.text(
                     label,
                     r.x + (r.w - lw) / 2.0,
-                    p.centre_baseline(r.y, r.h, 14.0),
+                    p.centre_baseline(r.y, r.h - SLOT_CAPTION_H, 14.0),
                     14.0,
                     with_alpha(t.muted, 0.7),
                 );
@@ -409,18 +474,30 @@ pub fn squad_picker(
             let dim = blocked || (full && !picked);
             let ink = if dim { with_alpha(t.fg, 0.45) } else { t.fg };
 
+            // Thumbnail left, text right — the art is what a player scans for,
+            // and a left rail of images reads far faster than a list of names.
+            let pad = (CARD_H - THUMB) / 2.0;
+            draw_art(
+                p,
+                Rect::new(r.x + pad, r.y + pad, THUMB, THUMB),
+                c,
+                dim,
+            );
+            let tx = r.x + pad + THUMB + 10.0;
+            let text_w = r.w - (tx - r.x) - 10.0;
+
             let pw = p.measure(&format!("{}", c.power), 12.0).width;
             p.text_top(
-                &fit_name(p, &c.name, r.w - 20.0 - pw - 6.0, 14.0),
-                r.x + 10.0,
-                r.y + 10.0,
+                &fit_name(p, &c.name, text_w - pw - 6.0, 14.0),
+                tx,
+                r.y + 12.0,
                 14.0,
                 ink,
             );
             p.mono(
                 &format!("{}", c.power),
                 r.x + r.w - 10.0 - pw,
-                p.top_baseline(r.y + 10.0, 12.0),
+                p.top_baseline(r.y + 12.0, 12.0),
                 12.0,
                 if picked { t.accent } else { with_alpha(t.muted, 0.9) },
             );
@@ -431,9 +508,9 @@ pub fn squad_picker(
                 (None, false) => c.role.clone().unwrap_or_else(|| "no role".to_string()),
             };
             p.text_top(
-                &clip(p, &sub, r.w - 20.0, 12.0),
-                r.x + 10.0,
-                r.y + 32.0,
+                &clip(p, &sub, text_w, 12.0),
+                tx,
+                r.y + 34.0,
                 12.0,
                 match (&c.unavailable, picked) {
                     (Some(_), _) => t.warn,
@@ -486,6 +563,63 @@ pub fn squad_picker(
     y += 40.0;
 
     SquadPickerResponse { bottom: y, action }
+}
+
+/// Draw an asset's art in `r`, or a stand-in while it loads.
+///
+/// The stand-in is the serial on a tinted plate, not a spinner or an empty
+/// box: a roster is scanned, and a grid of identical placeholders is unusable,
+/// whereas "#0220" is still the thing the player is looking for. Art arriving
+/// later then improves a screen that already worked.
+///
+/// Aspect-fill would need a clip rect, which macroquad has no high-level form
+/// of, so art is drawn to fit the square. NFT art is square by convention; a
+/// non-square image letterboxes rather than distorting.
+fn draw_art(p: &Painter, r: Rect, c: &SquadCandidate, dim: bool) {
+    let t = p.theme;
+    match &c.image {
+        Some(tex) => {
+            let tint = if dim { with_alpha(WHITE, 0.45) } else { WHITE };
+            let (tw, th) = (tex.width(), tex.height());
+            // Letterbox: scale by the tighter axis and centre.
+            let scale = (r.w / tw).min(r.h / th);
+            let (dw, dh) = (tw * scale, th * scale);
+            draw_texture_ex(
+                tex,
+                r.x + (r.w - dw) / 2.0,
+                r.y + (r.h - dh) / 2.0,
+                tint,
+                DrawTextureParams {
+                    dest_size: Some(vec2(dw, dh)),
+                    ..Default::default()
+                },
+            );
+        }
+        None => {
+            draw_rounded_rect(r.x, r.y, r.w, r.h, 6.0, with_alpha(t.accent, 0.10));
+            let label = serial_of(&c.name);
+            let size = (r.w * 0.30).clamp(11.0, 17.0);
+            let lw = p.measure(label, size).width;
+            p.mono(
+                label,
+                r.x + (r.w - lw) / 2.0,
+                p.centre_baseline(r.y, r.h, size),
+                size,
+                with_alpha(t.muted, if dim { 0.5 } else { 0.9 }),
+            );
+        }
+    }
+}
+
+/// The identifying tail of a name — "#0220" from "Toolhead #0220".
+///
+/// Falls back to the whole name when it has no serial, so a collection that
+/// names its assets differently still gets something meaningful.
+fn serial_of(name: &str) -> &str {
+    match name.rsplit_once(char::is_whitespace) {
+        Some((_, tail)) if is_serial(tail) => tail,
+        _ => name,
+    }
 }
 
 /// Fit a name into `max_w`, keeping the part that identifies it.
@@ -610,6 +744,32 @@ mod tests {
         // summary claiming "mechanic, mechanic" would misread as breadth.
         let vm = vm().chosen(vec!["a0".into(), "a2".into()]);
         assert_eq!(vm.roles(), vec!["mechanic"]);
+    }
+
+    #[test]
+    fn swiping_pages_within_bounds_and_never_wraps() {
+        // 10 candidates on a narrow surface = 2 pages.
+        let mut vm = vm();
+        assert_eq!(vm.pages(NARROW), 2);
+
+        assert_eq!(vm.swipe(SwipeDir::Left, NARROW), Some(1));
+        // Already on the last page — nothing to report, and crucially no wrap
+        // back to the start, which would read as a glitch.
+        assert_eq!(vm.swipe(SwipeDir::Left, NARROW), None);
+        assert_eq!(vm.page, 1);
+
+        assert_eq!(vm.swipe(SwipeDir::Right, NARROW), Some(0));
+        assert_eq!(vm.swipe(SwipeDir::Right, NARROW), None);
+        assert_eq!(vm.page, 0);
+    }
+
+    #[test]
+    fn a_single_page_roster_ignores_swipes() {
+        // Everything fits, so there is nowhere to go and no pager on screen.
+        let mut vm = vm();
+        assert_eq!(vm.pages(WIDE), 1);
+        assert_eq!(vm.swipe(SwipeDir::Left, WIDE), None);
+        assert_eq!(vm.page, 0);
     }
 
     #[test]

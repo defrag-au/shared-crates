@@ -9,6 +9,7 @@ pub mod painter;
 pub mod theme;
 
 mod button;
+mod gesture;
 mod mint_checkout;
 mod order_fulfilment;
 mod quantity_stepper;
@@ -17,6 +18,7 @@ mod wallet_connect;
 mod wallet_list;
 
 pub use button::{Button, ButtonVariant};
+pub use gesture::{Gesture, Gestures, SwipeDir};
 pub use mint_checkout::{
     mint_checkout, CheckoutAction, CheckoutResponse, CheckoutState, Eligibility, MintCheckoutVm,
 };
@@ -24,7 +26,9 @@ pub use order_fulfilment::{
     order_fulfilment, FulfilmentAction, FulfilmentResponse, FulfilmentStatus, FulfilmentTx,
     OrderFulfilmentVm, OrderStatus,
 };
-pub use painter::{draw_rounded_rect, frame_tap, Hit, Painter};
+#[allow(deprecated)]
+pub use painter::frame_tap;
+pub use painter::{draw_rounded_rect, Hit, Painter};
 pub use quantity_stepper::{quantity_stepper, QuantityStepperVm, StepperAction, StepperResponse};
 pub use squad_picker::{
     squad_picker, SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerResponse,

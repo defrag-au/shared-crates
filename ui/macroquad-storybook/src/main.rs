@@ -11,8 +11,9 @@
 
 use macroquad::prelude::*;
 use macroquad_widgets::{
-    frame_tap, mint_checkout, order_fulfilment, quantity_stepper, theme, wallet_connect,
-    wallet_list, Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility,
+    mint_checkout, order_fulfilment, quantity_stepper, theme, wallet_connect,
+    wallet_list, Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility, Gestures,
+    SwipeDir,
     FulfilmentAction, FulfilmentStatus, FulfilmentTx, MintCheckoutVm, OrderFulfilmentVm,
     squad_picker, OrderStatus, Painter, QuantityStepperVm, SquadCandidate, SquadCommit,
     SquadPickerAction, SquadPickerVm, StepperAction, Theme, WalletAction, WalletConnectVm,
@@ -177,6 +178,50 @@ impl Story {
     }
 }
 
+/// Stand-in asset art, generated rather than shipped.
+///
+/// Real art needs a network and a wallet; the point here is to judge *layout*
+/// with something image-shaped in every tile. Each is a distinct two-tone
+/// pattern so a grid of them reads like a grid of different assets rather than
+/// one repeated — which is exactly what makes a picker's spacing testable.
+///
+/// The last one is deliberately left `None` so the missing-art fallback (the
+/// serial on a plate) is always on screen next to real tiles.
+fn placeholder_art(seed: usize) -> Texture2D {
+    const N: usize = 16;
+    let hues = [
+        (0.36, 0.55, 0.85),
+        (0.85, 0.45, 0.40),
+        (0.45, 0.80, 0.55),
+        (0.80, 0.70, 0.35),
+        (0.65, 0.45, 0.85),
+        (0.40, 0.75, 0.80),
+    ];
+    let (r, g, b) = hues[seed % hues.len()];
+    let mut bytes = Vec::with_capacity(N * N * 4);
+    for y in 0..N {
+        for x in 0..N {
+            // A cheap deterministic pattern — blocky, like pixel-art PFPs.
+            let on = ((x / 2) * 7 + (y / 2) * 13 + seed * 5) % 5 < 2;
+            let k = if on { 1.0 } else { 0.45 };
+            let vignette = if x == 0 || y == 0 || x == N - 1 || y == N - 1 {
+                0.5
+            } else {
+                1.0
+            };
+            bytes.push((r * k * vignette * 255.0) as u8);
+            bytes.push((g * k * vignette * 255.0) as u8);
+            bytes.push((b * k * vignette * 255.0) as u8);
+            bytes.push(255);
+        }
+    }
+    let tex = Texture2D::from_rgba8(N as u16, N as u16, &bytes);
+    // Nearest, so the blocky pattern stays crisp when scaled up rather than
+    // turning to mush — and so it reads as art, not as a rendering error.
+    tex.set_filter(FilterMode::Nearest);
+    tex
+}
+
 /// A roster big enough to page, with the awkward cases a real one has: a name
 /// too long for its card, an asset that matched no role, and one that can't be
 /// picked at all.
@@ -200,6 +245,11 @@ fn squad_roster(n: usize) -> Vec<SquadCandidate> {
             }
             if i == 6 {
                 c = c.unavailable("on another run");
+            }
+            // One asset without art, so the fallback is always visible beside
+            // real tiles rather than only in a story nobody opens.
+            if i != 3 {
+                c = c.with_image(placeholder_art(i));
             }
             c
         })
@@ -527,6 +577,9 @@ struct Storybook {
     selected: usize,
     theme_idx: usize,
     last_action: Option<String>,
+    /// A swipe recognised this frame, for whichever story consumes gestures.
+    /// Set by the main loop before `frame`, cleared by the story that uses it.
+    pending_swipe: Option<SwipeDir>,
 }
 
 impl Storybook {
@@ -540,6 +593,7 @@ impl Storybook {
             selected: 0,
             theme_idx: 0,
             last_action: None,
+            pending_swipe: None,
         }
     }
 
@@ -692,6 +746,15 @@ impl Storybook {
         let Body::SquadPicker(vm) = &mut self.stories[sel].body else {
             return;
         };
+
+        // Drag horizontally with the mouse to page, the same gesture a finger
+        // makes on a phone.
+        if let Some(dir) = self.pending_swipe.take() {
+            if let Some(page) = vm.swipe(dir, w) {
+                self.last_action = Some(format!("swipe → page {}", page + 1));
+                return;
+            }
+        }
 
         let r = squad_picker(p, vm, x, y, w);
         if let Some(action) = r.action {
@@ -1012,6 +1075,10 @@ async fn main() {
     let font = load_ttf_font_from_bytes(include_bytes!("../assets/NotoSans-Bold.ttf")).ok();
     let mono = load_ttf_font_from_bytes(include_bytes!("../assets/JetBrainsMono-Regular.ttf")).ok();
     let mut book = Storybook::new();
+    // Gesture recognition rather than `frame_tap`, so a mouse *drag* exercises
+    // the swipe path on desktop — otherwise page-turning could only be tested
+    // on a phone, which is where it would then be discovered broken.
+    let mut gestures = Gestures::new();
 
     let args = args();
     if let Some(want) = &args.story {
@@ -1039,7 +1106,9 @@ async fn main() {
     let mut frames = 0;
     loop {
         let theme = book.current_theme();
-        let p = Painter::new(font.as_ref(), mono.as_ref(), theme, frame_tap());
+        let gesture = gestures.update();
+        let p = Painter::new(font.as_ref(), mono.as_ref(), theme, gesture.tap);
+        book.pending_swipe = gesture.swipe;
 
         // Snapshot mode draws into an offscreen target and reads *that*, not
         // the window. `get_screen_data` reads the front buffer, which an

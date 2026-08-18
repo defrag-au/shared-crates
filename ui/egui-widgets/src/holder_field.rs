@@ -320,6 +320,24 @@ impl<'a> HolderField<'a> {
             layout.radii[i] * (shown[i] as f32 / peak).sqrt() + dot_r
         };
         for i in 0..n {
+            // The RESERVED footprint, drawn whether or not anyone is home.
+            //
+            // Slots are sized by PEAK over the whole series, so the largest
+            // slot belongs to whoever ends up largest — and on real data that
+            // can be a wallet holding NOTHING for two thirds of the timeline.
+            // Drawing nothing for an empty pile left a hole in the middle of
+            // the chart that later filled with 500 dots, and the eye read that
+            // as the mass having moved rather than as a newcomer arriving.
+            //
+            // An outline says "this space is spoken for". Growth then reads as
+            // filling up, which is what actually happened.
+            if layout.radii[i] > 6.0 {
+                painter.circle_stroke(
+                    layout.centres[i],
+                    layout.radii[i],
+                    Stroke::new(1.0_f32, ink.linear_multiply(0.05 * emph[i].max(0.35))),
+                );
+            }
             if shown[i] == 0 {
                 continue;
             }
@@ -937,11 +955,26 @@ mod tests {
         let peak = vec![340u32, 210, 160, 120, 90, 40, 12, 7, 3];
         let id = Id::new("stable");
 
-        let wide = pack(&peak, Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 420.0)), id, &ctx);
+        let wide = pack(
+            &peak,
+            Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 420.0)),
+            id,
+            &ctx,
+        );
         // The exact change a pin causes: same width, less height.
-        let shorter = pack(&peak, Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 360.0)), id, &ctx);
+        let shorter = pack(
+            &peak,
+            Rect::from_min_size(pos2(0.0, 0.0), vec2(900.0, 360.0)),
+            id,
+            &ctx,
+        );
         // And a drastic one, for good measure.
-        let narrow = pack(&peak, Rect::from_min_size(pos2(0.0, 0.0), vec2(500.0, 500.0)), id, &ctx);
+        let narrow = pack(
+            &peak,
+            Rect::from_min_size(pos2(0.0, 0.0), vec2(500.0, 500.0)),
+            id,
+            &ctx,
+        );
 
         for other in [&shorter, &narrow] {
             // Every inter-pile distance must scale by the SAME factor — that is

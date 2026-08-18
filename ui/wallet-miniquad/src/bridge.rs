@@ -56,7 +56,9 @@ mod imp {
     use super::{PollResult, Provider, ReqId};
     use sapp_jsutils::JsObject;
 
-    extern "C" {
+    // `unsafe extern` is edition-2024 syntax — the edition made explicit what
+    // was already implicit. Same ABI, same behaviour.
+    unsafe extern "C" {
         fn wallet_list_providers() -> JsObject;
         fn wallet_connect(name: JsObject) -> i32;
         fn wallet_reward_address() -> i32;

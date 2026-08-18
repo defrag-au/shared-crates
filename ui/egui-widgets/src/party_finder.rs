@@ -530,7 +530,10 @@ mod tests {
         }
         run_finder(&ctx, &ix, &mut state, &mut sel, key(egui::Key::Enter));
         assert_eq!(sel.pinned.len(), 2, "both wallets are watched");
-        assert!(sel.is_selected(&sel.pinned[0].clone()), "the first is still lit");
+        assert!(
+            sel.is_selected(&sel.pinned[0].clone()),
+            "the first is still lit"
+        );
     }
 
     /// Enter pins the highlighted result, and the chip is named by the
