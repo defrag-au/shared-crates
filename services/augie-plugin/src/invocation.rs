@@ -100,6 +100,16 @@ pub struct ComponentInvocation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel_id: Option<String>,
 
+    /// The name this plugin is configured under in the guild.
+    ///
+    /// Augie already knows it — it routed here by it — and a plugin that had
+    /// to guess would be guessing at the key its own callbacks are registered
+    /// against. Needed to ask for a message refresh later
+    /// ([`crate::RefreshMessage`]), which must re-register the layout's
+    /// buttons against this same name.
+    #[serde(default)]
+    pub service: String,
+
     /// The message this component is attached to.
     ///
     /// Needed to edit that message *later*, outside the interaction — see

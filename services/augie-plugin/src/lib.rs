@@ -106,6 +106,17 @@ pub const REFRESH_PATH: &str = "/refresh";
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RefreshMessage {
     pub target: MessageTarget,
+    /// Guild the message lives in, and the plugin's name in that guild's
+    /// config.
+    ///
+    /// Needed because a redrawn layout's buttons must be **re-registered**:
+    /// Augie rewrites each `custom_id` to a generated wire id and stores the
+    /// plugin's address against it, so a button on a refreshed message is
+    /// routable at all. Augie resolves that address from the guild's own
+    /// config rather than taking it from the request — a plugin naming its
+    /// own address would be a plugin choosing where interactions get sent.
+    pub guild_id: String,
+    pub service: String,
     /// The layout to render. `ephemeral` is ignored — a message's ephemerality
     /// is fixed when it is created and cannot be edited.
     pub response: CommandResponse,

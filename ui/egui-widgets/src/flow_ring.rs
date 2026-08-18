@@ -86,6 +86,11 @@ pub struct FlowRingResponse {
     pub particles: usize,
     pub nodes_shown: usize,
     pub nodes_inactive: usize,
+    /// Flows in range that could not be drawn because one end has no seat on
+    /// the ring. NOT the same as switched-off: these parties are absent from
+    /// the diagram entirely, so this is missing coverage rather than a filter
+    /// the reader applied, and a caller should say so out loud.
+    pub flows_unseated: usize,
 }
 
 /// Computes a hovered node's holdings at a given instant: `(party, at_unix)` in,
@@ -286,10 +291,23 @@ impl<'a> FlowRing<'a> {
         let mut pairs: std::collections::HashMap<(&str, &str), (u64, usize)> =
             std::collections::HashMap::new();
         let mut flying: Vec<&RingFlow<'_>> = Vec::new();
+        let mut unseated = 0usize;
         for f in flows {
             if f.timestamp > now || f.timestamp < lo || f.timestamp > hi {
                 continue;
             }
+            // A flow to somebody with no seat cannot be drawn — but it must not
+            // vanish QUIETLY. On a real ledger the tracked parties are a tiny
+            // minority of the counterparties they deal with, so this branch can
+            // swallow most of the data while the ring still looks complete;
+            // that is how a wallet holding 101 of the project's assets managed
+            // to be invisible here. Counted and reported by the caller.
+            if !seats.contains_key(f.from) || !seats.contains_key(f.to) {
+                unseated += 1;
+                continue;
+            }
+            // Switched off by the reader — a deliberate act, reported
+            // separately as `nodes_inactive`, not as missing data.
             if !active.contains(f.from) || !active.contains(f.to) {
                 continue;
             }
@@ -485,6 +503,7 @@ impl<'a> FlowRing<'a> {
             particles,
             nodes_shown: active.len(),
             nodes_inactive: inactive,
+            flows_unseated: unseated,
         }
     }
 }
@@ -788,6 +807,40 @@ mod tests {
 
     fn deepest(c: &Chord) -> f32 {
         radii(c).into_iter().fold(f32::MAX, f32::min)
+    }
+
+    /// A flow to a party with no seat is UNDRAWABLE, and must be counted
+    /// rather than dropped in silence.
+    ///
+    /// This is not a corner case. On the Mekka ledger 698,999 of 703,140 flow
+    /// rows had a counterparty that was never promoted to a party, so the ring
+    /// could render a confident-looking picture built from 0.6% of the data —
+    /// which is how a wallet holding 101 of the project's assets and receiving
+    /// 16,748 ADA from it came to be invisible.
+    #[test]
+    fn flows_to_a_party_with_no_seat_are_counted_not_silently_dropped() {
+        let n = nodes();
+        let flows = [
+            RingFlow {
+                timestamp: 1_000,
+                from: "treasury",
+                to: "payee-a",
+                quantity: 10,
+            },
+            RingFlow {
+                timestamp: 1_000,
+                from: "treasury",
+                to: "nobody-seated-here",
+                quantity: 10,
+            },
+        ];
+        let spine = SpineState::new((0, 10_000));
+        let mut sel = Selection::default();
+        let r = run(&n, &flows, &spine, &mut sel);
+        assert_eq!(
+            r.flows_unseated, 1,
+            "the flow to an unseated party must be reported"
+        );
     }
 
     /// THE RULE: a flow may not pass through a zone it is irrelevant to.
