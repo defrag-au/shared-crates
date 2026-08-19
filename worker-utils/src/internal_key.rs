@@ -10,7 +10,7 @@
 //! It lives beside [`crate::secrets`], which every copy already used to read
 //! the value.
 
-use worker_stack::worker::{Env, Request, Response, Result};
+use worker_stack::worker::{Env, Request, Response};
 
 /// Env var / secret name. One spelling, so a typo can't silently open a door.
 pub const INTERNAL_API_KEY: &str = "INTERNAL_API_KEY";

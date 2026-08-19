@@ -50,12 +50,32 @@ pub enum Role {
     Royalty,
     /// Reached by a receipt from an expanding member.
     Promoted,
+    /// A destination of mint proceeds, observed in the mint transaction's own
+    /// fund split.
+    ///
+    /// Seeded rather than promoted, because the frontier only ever grows along
+    /// OUTBOUND edges from a member: the payer in a mint is the buyer, a
+    /// stranger, so no promotion path reaches the wallets the money lands in.
+    /// Left unseated they have no row, and a UI cannot draw the project's own
+    /// capital coming IN — which is the face the tool exists for.
+    ///
+    /// Deliberately NOT exempt from the terminal rule, unlike the other seeded
+    /// roles. A mint's payees include the minting platform's fee wallet, which
+    /// is custodial-scale; seeding those as exempt took the Mekka frontier from
+    /// 64 parties to 2,826. Not exempt means an artist wallet is watched and
+    /// expands, while a platform wallet is recorded — seated, drawable — and
+    /// frozen the moment its scale shows.
+    MintPayee,
 }
 
 impl Role {
     /// Seeded roles never terminate — see the module doc for why.
+    ///
+    /// [`Role::MintPayee`] is the exception: it is seeded (nothing can promote
+    /// it) but must still be freezable, or one custodial payee recruits the
+    /// whole chain.
     pub fn is_exempt(self) -> bool {
-        !matches!(self, Role::Promoted)
+        !matches!(self, Role::Promoted | Role::MintPayee)
     }
 }
 
@@ -440,6 +460,50 @@ mod tests {
         assert_eq!(m.promoted_by.as_ref(), Some(&t));
         assert_eq!(m.promoted_tx.as_deref(), Some("tx1"));
         assert!(m.expand);
+    }
+
+    /// A mint payee is seeded because nothing can promote it — the payer is the
+    /// buyer, a stranger — but unlike the other seeded roles it must stay
+    /// freezable, or the minting platform's fee wallet recruits the chain.
+    #[test]
+    fn mint_payee_is_seated_but_freezes_at_custodial_scale() {
+        let mut f = frontier();
+        let artist = stake("artist");
+        let platform = stake("platform-fee");
+        f.seed(artist.clone(), Role::MintPayee, 100).unwrap();
+        f.seed(platform.clone(), Role::MintPayee, 100).unwrap();
+
+        // Seated, and therefore drawable, from the moment the mint is seen.
+        assert!(f.is_member(&artist));
+        assert!(f.is_member(&platform));
+        assert!(f.expands(&artist));
+
+        // NOT exempt: enough distinct counterparties and it freezes.
+        for (i, payer) in ["b1", "b2", "b3", "b4"].iter().enumerate() {
+            let out = f.on_movement(&mv(&stake(payer), &platform, &format!("tx{i}")), 200, None);
+            if let Outcome::Frozen(reason) = out {
+                assert_eq!(reason, TerminalReason::Counterparties);
+            }
+        }
+        assert!(
+            !f.expands(&platform),
+            "custodial payee must stop recruiting"
+        );
+        // Still a member — recorded and drawable, just not expanding.
+        assert!(f.is_member(&platform));
+        // The quiet payee is untouched and still expands.
+        assert!(f.expands(&artist));
+    }
+
+    /// The other seeded roles keep their exemption — this is a carve-out for
+    /// `MintPayee`, not a change of policy for `Declared`/`Signer`/`Royalty`.
+    #[test]
+    fn only_promoted_and_mint_payee_are_freezable() {
+        assert!(Role::Declared.is_exempt());
+        assert!(Role::Signer.is_exempt());
+        assert!(Role::Royalty.is_exempt());
+        assert!(!Role::Promoted.is_exempt());
+        assert!(!Role::MintPayee.is_exempt());
     }
 
     #[test]

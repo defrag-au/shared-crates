@@ -108,10 +108,51 @@ pub struct FlowRing<'a> {
     selection: &'a mut Selection,
     unit_label: &'a str,
     quantum: u64,
+    /// Divisor applied ONLY when printing the quantum, never to the dot maths.
+    ///
+    /// Quantities arrive in a unit's smallest indivisible step (lovelace for
+    /// ADA), which is what makes "one dot = one quantum" countable. But the
+    /// label is written in the unit a person uses, so printing the raw number
+    /// beside a human ticker overstates it by the whole scale factor — a real
+    /// bug here read "1 dot = 4,727,675,000 ADA", a tenth of the total supply,
+    /// for what was actually 4,727.7 ₳.
+    unit_scale: f64,
     flight: i64,
     height: f32,
     label: Option<&'a dyn Fn(&str) -> String>,
     inventory: Option<&'a InventoryFn<'a>>,
+}
+
+/// Render the quantum in the unit a reader uses, not the smallest step.
+///
+/// Thousands separators because the failure this replaces was unreadable as
+/// much as it was wrong: a bare ten-digit run gives the eye no scale to fail
+/// on, so "4727675000 ADA" passed review for days.
+fn fmt_quantum(q: u64, scale: f64) -> String {
+    let v = q as f64 / scale;
+    let (decimals, whole) = if v >= 100.0 {
+        (0, v.round())
+    } else if v >= 1.0 {
+        (1, v)
+    } else {
+        (4, v)
+    };
+    let s = format!("{whole:.decimals$}");
+    let (int_part, frac) = s.split_once('.').map_or((s.as_str(), ""), |(i, f)| (i, f));
+    // A trailing `.0` is noise on a value that is already whole.
+    let frac = frac.trim_end_matches('0');
+    let mut grouped = String::new();
+    for (i, c) in int_part.chars().enumerate() {
+        if i > 0 && (int_part.len() - i).is_multiple_of(3) {
+            grouped.push(',');
+        }
+        grouped.push(c);
+    }
+    if frac.is_empty() {
+        grouped
+    } else {
+        format!("{grouped}.{frac}")
+    }
 }
 
 const OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
@@ -175,6 +216,7 @@ impl<'a> FlowRing<'a> {
             selection,
             unit_label,
             quantum: 0,
+            unit_scale: 1.0,
             flight: 3 * 86_400,
             height: 460.0,
             label: None,
@@ -185,6 +227,15 @@ impl<'a> FlowRing<'a> {
     /// Value per dot. Zero (the default) derives one from the data.
     pub fn quantum(mut self, q: u64) -> Self {
         self.quantum = q;
+        self
+    }
+
+    /// Smallest-steps per displayed unit — `1_000_000.0` for lovelace→ADA.
+    ///
+    /// Affects the printed quantum ONLY. Dot counts stay integer maths on the
+    /// raw quantities, so a sub-unit flow still draws its dot.
+    pub fn unit_scale(mut self, s: f64) -> Self {
+        self.unit_scale = if s > 0.0 { s } else { 1.0 };
         self
     }
 
@@ -222,6 +273,7 @@ impl<'a> FlowRing<'a> {
             selection,
             unit_label,
             quantum,
+            unit_scale,
             flight,
             height,
             label,
@@ -515,7 +567,10 @@ impl<'a> FlowRing<'a> {
         painter.text(
             rect.left_top() + vec2(0.0, 2.0),
             Align2::LEFT_TOP,
-            format!("{in_flight} flows in the air · 1 dot = {q} {unit_label}"),
+            format!(
+                "{in_flight} flows in the air · 1 dot = {} {unit_label}",
+                fmt_quantum(q, unit_scale)
+            ),
             egui::TextStyle::Small.resolve(ui.style()),
             muted,
         );
@@ -770,6 +825,20 @@ fn elide(key: &str) -> String {
 mod tests {
     use super::*;
     use egui::{Id, Pos2 as P, Rect as R, vec2};
+
+    /// The bug this guards: quantities are lovelace, the ticker says ADA, and
+    /// the raw number went straight onto the screen — "1 dot = 4727675000 ADA",
+    /// a tenth of the total supply, for a quantum of 4,727.7 ₳.
+    #[test]
+    fn quantum_is_printed_in_the_unit_the_ticker_names() {
+        assert_eq!(fmt_quantum(4_727_675_000, 1_000_000.0), "4,728");
+        assert_eq!(fmt_quantum(4_727_675_000, 1.0), "4,727,675,000");
+        // Sub-unit quanta stay legible rather than rounding to a bare 0.
+        assert_eq!(fmt_quantum(2_500, 1_000_000.0), "0.0025");
+        assert_eq!(fmt_quantum(1_500_000, 1_000_000.0), "1.5");
+        // A scale of zero must not divide by zero — the builder clamps it.
+        assert_eq!(fmt_quantum(42, 1.0), "42");
+    }
 
     fn run(
         nodes: &[RingNode<'_>],
