@@ -1,11 +1,15 @@
 //! Self-expiring cooldowns backed by a KV key's TTL.
 //!
-//! The idiom this replaces is written out by hand in several places already
-//! (`collection-ownership`'s `listings:refreshing:{policy}` flag,
-//! `augminted`'s "just take the heat off for a minute" cache): put a key,
-//! give it a TTL, and treat its presence as "not yet". Expiry is the storage
-//! layer's job, so there is no sweep, no alarm, and no timestamp arithmetic
-//! to get wrong.
+//! Put a key, give it a TTL, and treat its presence as "not yet". Expiry is
+//! the storage layer's job, so there is no sweep, no alarm, and no timestamp
+//! arithmetic to get wrong.
+//!
+//! Lifted from `collection-ownership`'s `listings:refreshing:{policy}` flag
+//! (cnft.dev-workers), which is the one place in either repo that had really
+//! built this. There is a lot of `expiration_ttl` elsewhere, but nearly all
+//! of it is caching or status records — a value someone wants to *read back*.
+//! The distinction matters when deciding what to migrate: this is only for
+//! keys where the answer is the key's own existence.
 //!
 //! # Why KV and not D1
 //!
