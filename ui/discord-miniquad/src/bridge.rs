@@ -113,6 +113,7 @@ mod imp {
         fn discord_http_post(url: JsObject, body: JsObject, bearer: JsObject) -> i32;
         fn discord_http_get(url: JsObject, bearer: JsObject) -> i32;
         fn discord_close(code: i32, message: JsObject);
+        fn discord_page_origin() -> JsObject;
         fn discord_decode_image(url: JsObject) -> i32;
         fn discord_image_bytes(id: i32) -> JsObject;
         fn discord_poll(req_id: i32) -> JsObject;
@@ -160,6 +161,10 @@ mod imp {
 
     pub fn close(code: i32, message: &str) {
         unsafe { discord_close(code, JsObject::string(message)) }
+    }
+
+    pub fn page_origin() -> String {
+        js_to_string(unsafe { discord_page_origin() })
     }
 
     pub fn decode_image(url: &str) -> ReqId {
@@ -215,6 +220,10 @@ mod imp {
 
     pub fn close(_code: i32, _message: &str) {}
 
+    pub fn page_origin() -> String {
+        "native".to_string()
+    }
+
     pub fn decode_image(_url: &str) -> ReqId {
         ReqId(0)
     }
@@ -232,5 +241,5 @@ mod imp {
 
 pub use imp::{
     close, command, connect, decode_image, http_get, http_post, image_bytes, launch_context,
-    launch_query, poll,
+    launch_query, page_origin, poll,
 };

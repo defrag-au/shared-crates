@@ -236,6 +236,17 @@
         return id;
     }
 
+    // The page's own origin.
+    //
+    // Decisive for diagnosing URL mappings: an Activity served through
+    // Discord's proxy is on `<app_id>.discordsays.com`, and only then do the
+    // dev-portal prefix mappings exist. Loaded from its own host instead, the
+    // proxy is not in the request path at all and no mapping can ever apply —
+    // which is indistinguishable from a misconfigured mapping unless you look.
+    function discord_page_origin() {
+        return js_object(window.location.origin);
+    }
+
     // Decoded image pixels waiting to be collected: id -> Uint8Array(RGBA).
     // Separate from `pending` because that map carries strings; these are
     // megabytes of pixels and are handed over as a byte buffer instead.
@@ -340,6 +351,7 @@
         importObject.env.discord_http_post = discord_http_post;
         importObject.env.discord_http_get = discord_http_get;
         importObject.env.discord_close = discord_close;
+        importObject.env.discord_page_origin = discord_page_origin;
         importObject.env.discord_decode_image = discord_decode_image;
         importObject.env.discord_image_bytes = discord_image_bytes;
         importObject.env.discord_poll = discord_poll;

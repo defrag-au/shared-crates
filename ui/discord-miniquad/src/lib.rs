@@ -40,7 +40,7 @@
 
 mod bridge;
 
-pub use bridge::{launch_query, ImagePoll, LaunchContext, PollResult, ReqId};
+pub use bridge::{launch_query, page_origin, ImagePoll, LaunchContext, PollResult, ReqId};
 use bridge::DecodedSize;
 
 /// The JS half of the bridge, for stamping into a web build.
