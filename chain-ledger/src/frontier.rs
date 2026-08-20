@@ -239,6 +239,41 @@ impl Frontier {
         Ok(&self.members[&key])
     }
 
+    /// Seat a declared-terminal party FROM THE START of the walk: recorded,
+    /// never expanding.
+    ///
+    /// `declared_terminal` alone is not enough, because it only governs what
+    /// happens once a party is already a member — and [`Frontier::on_movement`]
+    /// records the RECEIVER of a movement, never the sender. A wallet that only
+    /// ever PAYS the watch set is therefore never seated by contact, no matter
+    /// how much it pays or how often.
+    ///
+    /// Measured: two wallets funding a treasury with 38,870 ₳ across five
+    /// synchronised payments. One was seated only by accident, a third of the
+    /// way into the walk, because it happened to receive from a member once.
+    /// The other was never seated at all, so nothing about it was recorded —
+    /// including who funded IT, which was the entire question.
+    ///
+    /// Seeding it as an ordinary wallet is not the alternative: that makes it
+    /// expand, and two active wallets took the same frontier from 180 parties
+    /// to 6,424. This gives coverage without recruitment — the party is watched
+    /// from `slot`, its flows are booked, and it promotes nobody.
+    pub fn seed_terminal(&mut self, party: Party, slot: u64) -> &Member {
+        let key = party.clone();
+        let m = self.members.entry(key.clone()).or_insert_with(|| {
+            let mut m = Member::new(party, Role::Declared, slot);
+            m.expand = false;
+            m.terminal_reason = Some(TerminalReason::Declared);
+            m
+        });
+        // Idempotent, and never RAISES the coverage floor: re-seeding must not
+        // silently narrow the window a reader has already been shown.
+        if m.watched_from_slot > slot {
+            m.watched_from_slot = slot;
+        }
+        &self.members[&key]
+    }
+
     pub fn is_member(&self, p: &Party) -> bool {
         self.members.contains_key(p)
     }
@@ -493,6 +528,46 @@ mod tests {
         assert!(f.is_member(&platform));
         // The quiet payee is untouched and still expands.
         assert!(f.expands(&artist));
+    }
+
+    /// A wallet that only ever PAYS the watch set is never seated by contact,
+    /// because `on_movement` records the receiver. `seed_terminal` is the only
+    /// way it becomes visible — and it must not thereby start recruiting.
+    #[test]
+    fn a_terminal_seed_is_watched_from_the_floor_and_promotes_nobody() {
+        let mut f = frontier();
+        let funder = stake("pays-us-and-never-receives");
+        let stranger = stake("stranger");
+        f.seed_terminal(funder.clone(), 100);
+
+        let m = f.member(&funder).expect("seated at seed time");
+        assert_eq!(
+            m.watched_from_slot, 100,
+            "covered from the floor, not on contact"
+        );
+        assert!(m.is_terminal());
+        assert_eq!(m.terminal_reason, Some(TerminalReason::Declared));
+        assert!(!f.expands(&funder), "recorded, never expanding");
+
+        // Its own payments must NOT recruit — that is what took a real frontier
+        // from 180 parties to 6,424.
+        assert_eq!(
+            f.on_movement(&mv(&funder, &stranger, "tx1"), 150, None),
+            Outcome::Ignored
+        );
+        assert!(!f.is_member(&stranger));
+    }
+
+    /// Re-seeding must not narrow coverage a reader has already been shown.
+    #[test]
+    fn re_seeding_a_terminal_keeps_the_earliest_slot() {
+        let mut f = frontier();
+        let p = stake("funder");
+        f.seed_terminal(p.clone(), 500);
+        f.seed_terminal(p.clone(), 900);
+        assert_eq!(f.member(&p).unwrap().watched_from_slot, 500);
+        f.seed_terminal(p.clone(), 100);
+        assert_eq!(f.member(&p).unwrap().watched_from_slot, 100);
     }
 
     /// The other seeded roles keep their exemption — this is a carve-out for

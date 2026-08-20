@@ -1,0 +1,13 @@
+[package]
+name = "macroquad-wallet-flow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Host-owned CIP-30 connect flow for macroquad apps. Drives wallet-miniquad's request→poll bridge into macroquad-widgets' stateless WalletConnectVm, so every macroquad surface connects a wallet identically."
+
+[dependencies]
+macroquad = "0.4"
+macroquad-widgets = { workspace = true }
+wallet-miniquad = { workspace = true }

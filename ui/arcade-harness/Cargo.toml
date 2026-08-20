@@ -1,0 +1,15 @@
+[package]
+name = "arcade-harness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Macroquad harness for `arcade-core` games: title → play → record → game-over → verify, generic over any ArcadeGame via InputMapper + GameRenderer."
+
+[dependencies]
+arcade-core = { workspace = true }
+# Direct, not a workspace dep — matches the sibling macroquad crates
+# (macroquad-tui, macroquad-widgets), which all pin 0.4 the same way.
+macroquad = "0.4"
+serde_json = { workspace = true }

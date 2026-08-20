@@ -1,0 +1,11 @@
+[package]
+name = "arcade-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Replay verification for deterministic games: the ArcadeGame trait, a delta-encoded recording format, and a headless verifier. Pure serde — the same crate serves a macroquad client, a Cloudflare worker, and a native replay."
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
