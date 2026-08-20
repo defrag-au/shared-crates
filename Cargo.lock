@@ -243,7 +243,11 @@ name = "arcade-harness"
 version = "0.1.0"
 dependencies = [
  "arcade-core",
+ "discord-miniquad",
  "macroquad",
+ "miniquad-platform",
+ "quad-net",
+ "serde",
  "serde_json",
 ]
 

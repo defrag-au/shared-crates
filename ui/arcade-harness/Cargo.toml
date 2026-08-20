@@ -5,11 +5,28 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Macroquad harness for `arcade-core` games: title → play → record → game-over → verify, generic over any ArcadeGame via InputMapper + GameRenderer."
+description = "Macroquad shell for `arcade-core` games: connect → sign in → seed → play → record → submit, generic over any ArcadeGame via InputMapper + GameRenderer."
+
+[features]
+# Both surfaces by default, and a game binary is expected to keep both: the
+# same wasm serves a Discord Activity and a plain browser tab, choosing at
+# runtime by whether the Activity handshake answers. Two builds of one game to
+# reach one audience is worse than the few KB the unused backend costs.
+default = ["discord", "web"]
+discord = ["dep:discord-miniquad"]
+web = ["dep:quad-net", "dep:miniquad-platform"]
 
 [dependencies]
 arcade-core = { workspace = true }
 # Direct, not a workspace dep — matches the sibling macroquad crates
 # (macroquad-tui, macroquad-widgets), which all pin 0.4 the same way.
 macroquad = "0.4"
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+
+# ── surface backends ──
+discord-miniquad = { path = "../discord-miniquad", optional = true }
+# The browser-tab backend: quad-net for HTTP, miniquad-platform to read the
+# handoff token off the page URL (there is no web-sys under miniquad).
+quad-net = { git = "https://github.com/not-fl3/quad-net", rev = "31796d4e", optional = true }
+miniquad-platform = { path = "../miniquad-platform", optional = true }
