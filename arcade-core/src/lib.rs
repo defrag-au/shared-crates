@@ -15,7 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The core trait every adacade game must implement.
+/// The core trait every replay-verified game must implement.
 ///
 /// The game must be fully deterministic: `new(seed)` + sequence of
 /// `tick(input)` calls must always produce the same `score()`.
