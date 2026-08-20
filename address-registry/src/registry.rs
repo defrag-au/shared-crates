@@ -121,9 +121,18 @@ pub static ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
 };
 
 /// Address prefixes for scripts that use variable staking credentials.
-/// These are type 4 (addr1z) addresses where the script hash is constant but the
-/// staking credential varies (per-seller for marketplaces, per-pool for DEXes).
-/// The prefix covers the payment credential portion.
+/// These are addr1z (script payment + key staking) addresses where the script
+/// hash is constant but the staking credential varies. The prefix covers the
+/// payment credential portion.
+///
+/// WHOSE stake varies matters enormously to consumers: for pool contracts it
+/// is the venue's own per-pool credential, but for ORDER and LISTING contracts
+/// it is the CUSTOMER's — Splash orders, Minswap orders and Wayup listings all
+/// carry the ordinary wallet's staking credential on the script address so the
+/// user keeps their delegation. A consumer that groups addresses by stake key
+/// and then names the stake after a prefix hit will label every customer as
+/// the venue. Use [`lookup_address_match`] to learn that a hit came from this
+/// table and treat the stake credential as unidentified.
 static ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[
     // Wayup marketplace — per-seller staking credential variants
     (
@@ -135,7 +144,8 @@ static ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[
             fee_calculation: wayup_fee_calculation,
         }),
     ),
-    // Splash DEX — per-pool staking credential variants (addr1z type 4)
+    // Splash DEX ORDER contract — the staking credential is the CUSTOMER's
+    // (canonical constant: mitos-dex-decode `splash::ORDER_SCRIPT_ADDR_PREFIX`)
     (
         "addr1z9ryamhgnuz6lau86sqytte2gz5rlktv2yce05e0h3207q",
         AC::Script(SC::Exchange { label: "Splash" }),
@@ -150,7 +160,8 @@ static ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[
         "addr1z8snz7c4974vzdpxu65ruphl3zjdvtxw8strf2c2tmqnxz",
         AC::Script(SC::Exchange { label: "Minswap" }),
     ),
-    // Minswap V2 order contract (script hash: a65ca58a4e9c755fa830173d2a5caed458ac0c73f97db7faae2e7e3b)
+    // Minswap V2 ORDER contract — the staking credential is the CUSTOMER's
+    // (script hash: a65ca58a4e9c755fa830173d2a5caed458ac0c73f97db7faae2e7e3b)
     (
         "addr1zxn9efv2f6w82hagxqtn62ju4m293tqvw0uhmdl64ch8uw",
         AC::Script(SC::Exchange { label: "Minswap" }),
@@ -224,6 +235,59 @@ pub fn lookup_address_for_network(
     }
 
     None
+}
+
+/// How a [`lookup_address_match`] hit was found — and therefore how much of
+/// the address the registry actually identified.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchKind {
+    /// A full-address entry: the whole address, staking credential included,
+    /// belongs to the registered entity.
+    Exact,
+    /// A payment-credential prefix from [`ADDRESS_PREFIX_REGISTRY`]: only the
+    /// SCRIPT is identified. The staking credential riding on the address may
+    /// be the venue's (pool contracts) or an ordinary customer's (order and
+    /// listing contracts keep the user's delegation) — the registry cannot
+    /// tell you which, so an entity keyed by that stake credential must NOT
+    /// inherit the venue's name from this hit alone.
+    VariableStakePrefix,
+}
+
+/// [`lookup_address_for_network`], but reporting whether the hit identified
+/// the full address or only its payment-credential script.
+pub fn lookup_address_match(
+    address: &str,
+    network: RegistryNetwork,
+) -> Option<(&'static AddressCategory, MatchKind)> {
+    let (registry, prefixes) = match network {
+        RegistryNetwork::Mainnet => (&ADDRESS_REGISTRY, ADDRESS_PREFIX_REGISTRY),
+        RegistryNetwork::Testnet => (&TESTNET_ADDRESS_REGISTRY, TESTNET_ADDRESS_PREFIX_REGISTRY),
+    };
+    if let Some(cat) = registry.get(address) {
+        return Some((cat, MatchKind::Exact));
+    }
+    prefixes
+        .iter()
+        .find(|(prefix, _)| address.starts_with(prefix))
+        .map(|(_, category)| (category, MatchKind::VariableStakePrefix))
+}
+
+/// Whether a bech32 Shelley address pays to a SCRIPT rather than a key.
+///
+/// Purely textual: the first data character after the `addr1`/`addr_test1`
+/// separator encodes the CIP-19 header's address type (first five bits are
+/// the four type bits plus the network nibble's high bit, and the bech32
+/// charset maps that to `type * 2`). Script-payment types 1/3/5/7 land on
+/// `z`/`x`/`2`/`w`; key-payment types 0/2/4/6 land on `q`/`y`/`g`/`v`.
+/// Byron/stake addresses and malformed strings return `false`.
+pub fn payment_credential_is_script(address: &str) -> bool {
+    let data = address
+        .strip_prefix("addr1")
+        .or_else(|| address.strip_prefix("addr_test1"));
+    matches!(
+        data.and_then(|d| d.chars().next()),
+        Some('z' | 'x' | '2' | 'w')
+    )
 }
 
 /// Registry of known script addresses (smart contracts) and their purposes
@@ -645,4 +709,46 @@ pub fn all_known_addresses() -> Vec<&'static str> {
         addrs.push(prefix);
     }
     addrs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A Splash ORDER address carries the customer's staking credential — the
+    /// registry identifies the script, and must SAY it identified only the
+    /// script, or the customer's stake key gets named after the DEX. This is
+    /// not hypothetical: 168 Mekka counterparties were labelled "Splash".
+    #[test]
+    fn a_prefix_hit_declares_it_only_identified_the_script() {
+        let customer_order =
+            "addr1z9ryamhgnuz6lau86sqytte2gz5rlktv2yce05e0h3207qdhc9k425ezp5cw8a3ssg7swp6fjdmnp3y8vcuka3fjr7mgqw6ke7p";
+        let (cat, kind) = lookup_address_match(customer_order, RegistryNetwork::Mainnet).unwrap();
+        assert!(matches!(
+            cat,
+            AddressCategory::Script(ScriptCategory::Exchange { label: "Splash" })
+        ));
+        assert_eq!(kind, MatchKind::VariableStakePrefix);
+    }
+
+    #[test]
+    fn a_full_address_entry_is_an_exact_match() {
+        let minswap_batcher = "addr1w8p79rpkcdz8x9d6tft0x0dx5mwuzac2sa4gm8cvkw5hcnqst2ctf";
+        let (_, kind) = lookup_address_match(minswap_batcher, RegistryNetwork::Mainnet).unwrap();
+        assert_eq!(kind, MatchKind::Exact);
+    }
+
+    #[test]
+    fn script_payment_detection_reads_the_type_character() {
+        // script payment: types 1 (z), 3 (x), 7 (w)
+        assert!(payment_credential_is_script("addr1z9ryamhgnuz6lau86sq"));
+        assert!(payment_credential_is_script("addr1xxgx3far7qygq0k6epa"));
+        assert!(payment_credential_is_script("addr1w8p79rpkcdz8x9d6tft"));
+        // key payment: types 0 (q), 6 (v)
+        assert!(!payment_credential_is_script("addr1qy9mg28evkzcfghlrg8"));
+        assert!(!payment_credential_is_script("addr1v877gsrkj9t2j64yc06"));
+        // not a payment address at all
+        assert!(!payment_credential_is_script("stake1uxmaqke42j9q6v83lv"));
+        assert!(!payment_credential_is_script(""));
+    }
 }

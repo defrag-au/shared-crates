@@ -430,13 +430,22 @@ impl<'a> FlowRing<'a> {
             // most wants to pick out.
             //
             // Toward the centre means toward the project: a payment arriving.
-            // Away means value leaving it. Between seats on the same ring it is
-            // neither, and drawn quietly, because it does not concern the
-            // project's own money.
+            // Away means value leaving it. Between seats on the SAME ring
+            // there is no radial direction, so the chord wears that ring's own
+            // tint — internal to the classification, in its colour. This
+            // matters most at ring 0: an earlier rule drew all same-ring
+            // chords in muted grey with a comment claiming they "do not
+            // concern the project's own money", which is exactly backwards
+            // there — royalties→ops IS the project's own money moving, and
+            // classifying a wallet core was silently greying out its most
+            // internal relationships. On the outer rings the tints are quiet
+            // anyway, so customer↔customer chatter stays quiet. Direction
+            // within the pair is carried by the taper (wide origin, narrow
+            // destination), as it always was.
             let col = match a.ring.cmp(&b.ring) {
                 std::cmp::Ordering::Greater => IN,
                 std::cmp::Ordering::Less => OUT,
-                std::cmp::Ordering::Equal => muted,
+                std::cmp::Ordering::Equal => ring_tint(a.ring),
             };
             // Weight by share of the heaviest pair, on a log scale — treasury
             // flows span orders of magnitude, so a linear ramp shows one chord.

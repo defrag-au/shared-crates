@@ -42,29 +42,62 @@ use crate::{Chip, ChipVariant};
 /// `Class`; kept here so the widget has no dependency on a storage crate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PartyClass {
+    /// A founder's PERSONAL wallet — distinct from `Core` because the
+    /// distinction is the investigation: value moving core→core is the
+    /// project operating, value moving core→founder is the project's money
+    /// becoming a person's. A tool that files the founder under "core team"
+    /// cannot ask whether the project paid its founder, and one that watches
+    /// the founder receive payroll-shaped transfers will forever propose
+    /// "associate" — both wallets are insiders, but one of them is the
+    /// question.
+    Founder,
     Core,
     Associate,
     Customer,
+    /// Examined and judged irrelevant to this investigation. A VERDICT, not a
+    /// place: unlike the other classes it takes no ring seat and hides from
+    /// the lists — but it is a dismissal, not an erasure. The evidence keeps
+    /// running against it, and a dismissed wallet that later scores strongly
+    /// comes back as a disagreement. Distinct from unexamined (`None`):
+    /// "nobody has looked" and "somebody looked and waved it off" must never
+    /// be confusable, because only one of them is finished work.
+    Ignored,
 }
 
 impl PartyClass {
     pub fn label(self) -> &'static str {
         match self {
+            Self::Founder => "founder",
             Self::Core => "core team",
             Self::Associate => "associate",
             Self::Customer => "customer",
+            Self::Ignored => "ignore",
         }
     }
 
     pub fn hint(self) -> &'static str {
         match self {
+            Self::Founder => {
+                "a founder's PERSONAL wallet — value arriving here is the project's money \
+                 becoming a person's, which is the question this tool exists to ask"
+            }
             Self::Core => "the project itself — treasury, mint wallets, the people running it",
             Self::Associate => "paid BY the project to do something — artist, dev, marketing",
             Self::Customer => "bought from the project",
+            Self::Ignored => {
+                "examined, judged irrelevant — hidden from the list and ring. Not erased: \
+                 strong evidence against a dismissal comes back as a disagreement"
+            }
         }
     }
 
-    pub const ALL: [Self; 3] = [Self::Core, Self::Associate, Self::Customer];
+    pub const ALL: [Self; 5] = [
+        Self::Founder,
+        Self::Core,
+        Self::Associate,
+        Self::Customer,
+        Self::Ignored,
+    ];
 }
 
 /// The editable form. The host owns it, loads it from its own store, and
