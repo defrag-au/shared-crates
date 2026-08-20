@@ -15,6 +15,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod api;
+
 /// The core trait every replay-verified game must implement.
 ///
 /// The game must be fully deterministic: `new(seed)` + sequence of
