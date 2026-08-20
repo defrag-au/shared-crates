@@ -233,6 +233,10 @@ pub struct FlowLedger<'a> {
     show_running_balance: bool,
     row_height: f32,
     max_height: Option<f32>,
+    /// Turns a row's `tx_id` into somewhere it can be inspected — a block
+    /// explorer. Supplied by the host because the chain, network and preferred
+    /// explorer are all its business, not the widget's.
+    explorer: Option<&'a dyn Fn(&str) -> String>,
 }
 
 impl<'a> FlowLedger<'a> {
@@ -247,7 +251,19 @@ impl<'a> FlowLedger<'a> {
             show_running_balance: true,
             row_height: 22.0,
             max_height: None,
+            explorer: None,
         }
+    }
+
+    /// Give each row with a `tx_id` a button that opens it on a block explorer.
+    ///
+    /// A ledger row is a DERIVED claim — this walk's reading of a transaction.
+    /// One click to the transaction itself is what lets a reader check the
+    /// claim instead of taking it, and it is the handoff point to any other
+    /// tool. Without it the `tx_id` was collected, carried, and then dropped.
+    pub fn explorer(mut self, url_for: &'a dyn Fn(&str) -> String) -> Self {
+        self.explorer = Some(url_for);
+        self
     }
 
     /// Balance before the first row — needed when the rows are a window rather
@@ -312,6 +328,12 @@ impl<'a> FlowLedger<'a> {
         if self.show_running_balance {
             builder = builder.column(Column::exact(110.0));
         }
+        // Same rule as the items column: only present when there is something
+        // to open, so it never becomes a column you learn to ignore.
+        let any_tx = self.explorer.is_some() && self.rows.iter().any(|r| r.tx_id.is_some());
+        if any_tx {
+            builder = builder.column(Column::exact(28.0));
+        }
         if let Some(h) = self.max_height {
             builder = builder.max_scroll_height(h);
         }
@@ -332,6 +354,9 @@ impl<'a> FlowLedger<'a> {
                 head(&mut header, "counterparty");
                 if self.show_running_balance {
                     head(&mut header, "balance");
+                }
+                if any_tx {
+                    head(&mut header, "tx");
                 }
             })
             .body(|body| {
@@ -445,6 +470,26 @@ impl<'a> FlowLedger<'a> {
                                     .monospace()
                                     .color(muted),
                             );
+                        });
+                    }
+
+                    if any_tx {
+                        row.col(|ui| {
+                            let (Some(url_for), Some(tx)) = (self.explorer, r.tx_id) else {
+                                return;
+                            };
+                            crate::icons::install_phosphor_font(ui.ctx());
+                            if ui
+                                .small_button(
+                                    crate::icons::PhosphorIcon::Eye
+                                        .rich_text(11.0, muted)
+                                        .small(),
+                                )
+                                .on_hover_text(format!("Open {tx} on a block explorer"))
+                                .clicked()
+                            {
+                                ui.ctx().open_url(egui::OpenUrl::new_tab(url_for(tx)));
+                            }
                         });
                     }
 

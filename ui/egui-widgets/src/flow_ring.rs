@@ -123,6 +123,35 @@ pub struct FlowRing<'a> {
     inventory: Option<&'a InventoryFn<'a>>,
 }
 
+/// The one seat a pointer is over: nearest within its hit radius, or none.
+///
+/// Pure so it can be tested without a layout — the bug it fixes was invisible
+/// through the widget, because whether two seats overlapped depended on how
+/// many nodes the ring happened to be packing.
+fn nearest_seat<'a>(
+    at: Pos2,
+    candidates: impl Iterator<Item = (&'a str, f32, Pos2)>,
+) -> Option<&'a str> {
+    candidates
+        .filter_map(|(key, r, p)| {
+            let d = (at - p).length();
+            (d <= r + HOVER_SLOP).then_some((key, d))
+        })
+        // `total_cmp`, not `partial_cmp().unwrap()`: a NaN distance from a
+        // degenerate layout would panic the frame rather than simply not match.
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(key, _)| key)
+}
+
+/// Drawn radius of a seat. Hop 0 is the project itself and reads as the anchor.
+fn seat_radius(n: &RingNode<'_>) -> f32 {
+    if n.hop == 0 { 6.0 } else { 4.0 }
+}
+
+/// Extra pointer forgiveness around a seat, in points. Generous enough to make
+/// a 4px dot clickable, which is also why seats can contend for one pointer.
+const HOVER_SLOP: f32 = 7.0;
+
 /// Render the quantum in the unit a reader uses, not the smallest step.
 ///
 /// Thousands separators because the failure this replaces was unreadable as
@@ -461,6 +490,23 @@ impl<'a> FlowRing<'a> {
         }
 
         // ── nodes ─────────────────────────────────────────────────────────
+        //
+        // AT MOST ONE SEAT IS HOVERED, and it is the nearest to the cursor.
+        //
+        // Seats on a crowded outer ring overlap their own hit radius, so a test
+        // applied per-node inside the draw loop matched several at once: every
+        // match drew a highlight ring, and `hovered` ended up as whichever came
+        // last in iteration order — an arbitrary winner that changed with the
+        // node list rather than with the pointer. Resolve the winner FIRST,
+        // then draw.
+        let nearest: Option<&str> = response.hover_pos().and_then(|h| {
+            nearest_seat(
+                h,
+                nodes
+                    .iter()
+                    .filter_map(|n| seats.get(n.key).map(|s| (n.key, seat_radius(n), s.pos))),
+            )
+        });
         let mut hovered: Option<String> = None;
         for n in nodes {
             let Some(seat) = seats.get(n.key) else {
@@ -469,7 +515,7 @@ impl<'a> FlowRing<'a> {
             let p = &seat.pos;
             let emph = selection.emphasis(n.key);
             let on = n.active;
-            let r = if n.hop == 0 { 6.0 } else { 4.0 };
+            let r = seat_radius(n);
             // The seat wears its CLASSIFICATION. Emphasis still rides on top as
             // alpha, so selecting a wallet dims its neighbours without
             // repainting anyone's identity — colour follows the entity, never
@@ -480,10 +526,7 @@ impl<'a> FlowRing<'a> {
                 muted.gamma_multiply(0.35)
             };
             painter.circle_filled(*p, r, col);
-            if response
-                .hover_pos()
-                .is_some_and(|h| (h - *p).length() <= r + 7.0)
-            {
+            if nearest == Some(n.key) {
                 hovered = Some(n.key.to_string());
                 painter.circle_stroke(*p, r + 4.0, Stroke::new(1.5_f32, ink));
             }
@@ -825,6 +868,50 @@ fn elide(key: &str) -> String {
 mod tests {
     use super::*;
     use egui::{Id, Pos2 as P, Rect as R, vec2};
+
+    /// Seats on a crowded outer ring overlap their own hit radius. The old test
+    /// ran per-node inside the draw loop, so several matched at once, each drew
+    /// a highlight, and the winner was whichever came LAST in iteration order.
+    #[test]
+    fn hover_picks_exactly_one_seat_the_nearest() {
+        // Three seats 4px apart — every one inside the others' slop.
+        let seats = [
+            ("far", 4.0, P::new(100.0, 100.0)),
+            ("near", 4.0, P::new(104.0, 100.0)),
+            ("mid", 4.0, P::new(108.0, 100.0)),
+        ];
+        let pick = nearest_seat(P::new(104.0, 100.0), seats.iter().copied());
+        assert_eq!(
+            pick,
+            Some("near"),
+            "the seat under the cursor, not the last"
+        );
+
+        // Order must not decide it.
+        let mut reversed = seats;
+        reversed.reverse();
+        assert_eq!(
+            nearest_seat(P::new(104.0, 100.0), reversed.iter().copied()),
+            Some("near"),
+            "iteration order must not change the answer"
+        );
+
+        // Outside every hit radius = nothing hovered.
+        assert_eq!(
+            nearest_seat(P::new(400.0, 400.0), seats.iter().copied()),
+            None
+        );
+
+        // A hop-0 seat is larger, so its reach is larger too.
+        assert_eq!(
+            nearest_seat(P::new(0.0, 12.0), [("core", 6.0, P::ZERO)].iter().copied()),
+            Some("core")
+        );
+        assert_eq!(
+            nearest_seat(P::new(0.0, 12.0), [("rim", 4.0, P::ZERO)].iter().copied()),
+            None
+        );
+    }
 
     /// The bug this guards: quantities are lovelace, the ticker says ADA, and
     /// the raw number went straight onto the screen — "1 dot = 4727675000 ADA",

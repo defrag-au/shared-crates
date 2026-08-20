@@ -71,22 +71,22 @@ pub fn build_cip25_mint(
 
     let to_addr = recipient.unwrap_or(&deps.from_address);
 
-    // Build list of AssetIds for min ADA calculation (only minted, not burned)
-    let minted_asset_ids: Vec<AssetId> = assets
+    // Assets landing in the mint output, with quantities (burns excluded). The
+    // quantity is part of the output's CBOR, so a fungible mint needs more min-ADA
+    // than an NFT — see `calculate_min_ada_with_params`.
+    let minted_amounts: Vec<crate::AssetAmount> = assets
         .iter()
+        .filter(|(_, qty)| *qty > 0)
         .filter_map(|(name, qty)| {
-            if *qty > 0 {
-                let asset_name_hex = normalize_asset_name_to_hex(name);
-                format!("{policy_id_hex}.{asset_name_hex}").parse().ok()
-            } else {
-                None
-            }
+            let asset_name_hex = normalize_asset_name_to_hex(name);
+            let id: AssetId = format!("{policy_id_hex}.{asset_name_hex}").parse().ok()?;
+            Some((id, *qty as u64))
         })
         .collect();
 
     let min_ada = crate::calculate_min_ada_with_params(
         &super::send::to_maestro_params(&deps.params),
-        &minted_asset_ids,
+        &minted_amounts,
         &crate::OutputParams { datum_size: None },
     );
 
@@ -387,16 +387,17 @@ pub fn build_cip25_mint_multi_with_change_and_refunds(
     // Per-recipient min-ADA (summed across outputs).
     let mut per_group_min_ada: Vec<u64> = Vec::with_capacity(groups.len());
     for (_key, _addr, items) in &groups {
-        let asset_ids: Vec<AssetId> = items
+        let amounts: Vec<crate::AssetAmount> = items
             .iter()
-            .filter_map(|(name, _)| {
+            .filter_map(|(name, quantity)| {
                 let hex = normalize_asset_name_to_hex(name);
-                format!("{policy_id_hex}.{hex}").parse().ok()
+                let id: AssetId = format!("{policy_id_hex}.{hex}").parse().ok()?;
+                Some((id, *quantity))
             })
             .collect();
         per_group_min_ada.push(crate::calculate_min_ada_with_params(
             &maestro_params,
-            &asset_ids,
+            &amounts,
             &crate::OutputParams { datum_size: None },
         ));
     }
@@ -838,16 +839,18 @@ pub fn prepare_cip25_metadata(
 ) -> serde_json::Value {
     if metadata_value.get("721").is_some() {
         if let Some(obj_721) = metadata_value.get("721").and_then(|v| v.as_object())
-            && (obj_721.is_empty() || obj_721.contains_key("__POLICY_ID__")) {
-                let mut metadata_clone = metadata_value.clone();
-                if let Some(obj_721_mut) = metadata_clone
-                    .get_mut("721")
-                    .and_then(|v| v.as_object_mut())
-                    && let Some(inner) = obj_721_mut.remove("__POLICY_ID__") {
-                        obj_721_mut.insert(policy_id_hex.to_string(), inner);
-                    }
-                return metadata_clone;
+            && (obj_721.is_empty() || obj_721.contains_key("__POLICY_ID__"))
+        {
+            let mut metadata_clone = metadata_value.clone();
+            if let Some(obj_721_mut) = metadata_clone
+                .get_mut("721")
+                .and_then(|v| v.as_object_mut())
+                && let Some(inner) = obj_721_mut.remove("__POLICY_ID__")
+            {
+                obj_721_mut.insert(policy_id_hex.to_string(), inner);
             }
+            return metadata_clone;
+        }
         metadata_value.clone()
     } else {
         let mut policy_metadata = serde_json::Map::new();
@@ -1291,28 +1294,32 @@ mod tests {
             quantity: 0,
             recipient: test_recipient(1),
         }];
-        assert!(build_cip25_mint_multi(
-            &deps_with(10_000_000),
-            &test_policy(),
-            &mints,
-            None,
-            None,
-            None
-        )
-        .is_err());
+        assert!(
+            build_cip25_mint_multi(
+                &deps_with(10_000_000),
+                &test_policy(),
+                &mints,
+                None,
+                None,
+                None
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn test_build_cip25_mint_multi_empty_errors() {
-        assert!(build_cip25_mint_multi(
-            &deps_with(10_000_000),
-            &test_policy(),
-            &[],
-            None,
-            None,
-            None
-        )
-        .is_err());
+        assert!(
+            build_cip25_mint_multi(
+                &deps_with(10_000_000),
+                &test_policy(),
+                &[],
+                None,
+                None,
+                None
+            )
+            .is_err()
+        );
     }
 
     /// `extra_self_outputs` adds pool-slot UTxOs back to `from_address` and the change

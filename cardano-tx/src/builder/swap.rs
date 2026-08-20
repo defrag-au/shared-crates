@@ -12,13 +12,13 @@ use cardano_assets::{AssetId, UtxoApi};
 use pallas_addresses::Address;
 use pallas_txbuilder::StagingTransaction;
 
-use super::{converge_fee_with_witnesses, UnsignedTx};
+use super::{UnsignedTx, converge_fee_with_witnesses};
 use crate::error::TxBuildError;
 use crate::helpers::input::add_utxo_inputs;
 use crate::helpers::output::{add_assets_from_map, create_ada_output};
 use crate::helpers::utxo_query::{collect_utxo_native_assets, total_utxo_lovelace};
 use crate::params::TxBuildParams;
-use crate::select::{select, Selection, Strategy};
+use crate::select::{Selection, Strategy, select};
 
 /// One side of an atomic swap.
 pub struct SwapSide {
@@ -228,9 +228,10 @@ pub fn build_atomic_swap(
 
             // Optional orchestration fee to community wallet
             if let Some((ref fee_addr, fee_amount)) = fee_output_clone
-                && fee_amount > 0 {
-                    tx = tx.output(create_ada_output(fee_addr.clone(), fee_amount));
-                }
+                && fee_amount > 0
+            {
+                tx = tx.output(create_ada_output(fee_addr.clone(), fee_amount));
+            }
 
             Ok(tx.fee(fee).network_id(network_id))
         },
@@ -431,19 +432,11 @@ fn split_assets_for_change(
 /// carrying the given asset map. Used for `max_value_size` checks.
 /// `pub(crate)`: shared with the debag builder's group-splitting.
 pub(crate) fn estimate_value_size_from_map(assets: &HashMap<AssetId, u64>) -> u64 {
-    if assets.is_empty() {
-        return 6; // lovelace only
-    }
-
-    let mut policies: HashMap<&str, Vec<&AssetId>> = HashMap::new();
-    for asset_id in assets.keys() {
-        policies
-            .entry(&asset_id.policy_id)
-            .or_default()
-            .push(asset_id);
-    }
-
-    estimate_value_size_inner(&policies)
+    // Delegates to the canonical estimator: the map has the quantities, and a
+    // quantity is 1-9 CBOR bytes, not the flat 1 this used to assume.
+    let amounts: Vec<crate::AssetAmount> =
+        assets.iter().map(|(id, qty)| (id.clone(), *qty)).collect();
+    crate::utxo::value_size(&amounts)
 }
 
 /// Estimate the CBOR-encoded size of the *value* portion of an output
@@ -1057,9 +1050,11 @@ mod tests {
             "expected a small topped-up set, got {}",
             selected.len()
         );
-        assert!(selected
-            .iter()
-            .any(|u| u.assets.iter().any(|aq| aq.asset_id == nft)));
+        assert!(
+            selected
+                .iter()
+                .any(|u| u.assets.iter().any(|aq| aq.asset_id == nft))
+        );
         let total: u64 = selected.iter().map(|u| u.lovelace).sum();
         assert!(total >= 4_000_000);
     }

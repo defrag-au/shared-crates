@@ -31,18 +31,17 @@
 //! - **No duplicate inputs**: a repeated must-spend ref fails at plan time
 //!   ([`SelectError::DuplicateMustSpend`]), not at the ledger.
 
-use cardano_assets::AssetId;
 use pallas_addresses::Address;
 use pallas_txbuilder::{Output, StagingTransaction};
 use std::collections::{BTreeMap, HashSet};
 
-use crate::builder::{converge_fee_with_witnesses, UnsignedTx};
+use crate::builder::{UnsignedTx, converge_fee_with_witnesses};
 use crate::error::TxBuildError;
 use crate::helpers::input::add_input_ref;
 use crate::helpers::output::{add_assets_to_output, create_ada_output};
 use crate::params::TxBuildParams;
-use crate::select::{select, SelectError, Selectable, Selection, Strategy};
-use crate::selection::{estimate_simple_fee, PER_INPUT_FEE_HEADROOM};
+use crate::select::{SelectError, Selectable, Selection, Strategy, select};
+use crate::selection::{PER_INPUT_FEE_HEADROOM, estimate_simple_fee};
 
 /// Lovelace headroom kept as change so a selected build never emits a
 /// sub-min-UTxO change output; also absorbs per-input fee growth (the converge
@@ -50,7 +49,10 @@ use crate::selection::{estimate_simple_fee, PER_INPUT_FEE_HEADROOM};
 const MIN_CHANGE_CUSHION: u64 = 1_500_000;
 
 /// One requested native-asset transfer: `(asset, quantity)`.
-pub type AssetAmount = (AssetId, u64);
+///
+/// Same type the min-UTxO calculation takes — the quantity travels with the
+/// asset all the way to the size estimate, because it is encoded in the output.
+pub use crate::utxo::AssetAmount;
 
 /// A fluent plan for a value transaction with pluggable input selection.
 pub struct TxPlan<'a, U: Selectable> {
@@ -352,35 +354,37 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         }
 
         // Concrete asset outputs (auto min-ADA per bundle) + the asset change.
+        // Each recipient's assets may need SEVERAL outputs: the ledger caps an
+        // output's value at `maxValueSize`, so a wallet holding hundreds of
+        // assets cannot be emptied into one.
         let mut asset_outs: Vec<(Output, u64)> = Vec::new();
         for (addr, assets) in &self.asset_outputs {
-            let ids: Vec<AssetId> = assets.iter().map(|(id, _)| id.clone()).collect();
-            let lovelace = min_ada_for_assets(&self.params, &ids);
-            asset_outs.push((
-                build_asset_output(addr.clone(), lovelace, assets)?,
+            for bundle in split_for_outputs(&self.params, assets) {
+                let lovelace = min_ada_for_assets(&self.params, &bundle);
+                asset_outs.push((
+                    build_asset_output(addr.clone(), lovelace, &bundle)?,
+                    lovelace,
+                ));
+            }
+        }
+        let mut asset_change: Vec<(Output, u64)> = Vec::new();
+        for bundle in split_for_outputs(&self.params, &residual) {
+            let lovelace = min_ada_for_assets(&self.params, &bundle);
+            asset_change.push((
+                build_asset_output(self.change_address.clone(), lovelace, &bundle)?,
                 lovelace,
             ));
         }
-        let asset_change: Option<(Output, u64)> = if residual.is_empty() {
-            None
-        } else {
-            let ids: Vec<AssetId> = residual.iter().map(|(id, _)| id.clone()).collect();
-            let lovelace = min_ada_for_assets(&self.params, &ids);
-            Some((
-                build_asset_output(self.change_address.clone(), lovelace, &residual)?,
-                lovelace,
-            ))
-        };
 
         let total_pure_outputs: u64 = self.outputs.iter().map(|(_, l)| *l).sum();
         let total_asset_lovelace: u64 = asset_outs.iter().map(|(_, l)| *l).sum::<u64>()
-            + asset_change.as_ref().map(|(_, l)| *l).unwrap_or(0);
+            + asset_change.iter().map(|(_, l)| *l).sum::<u64>();
         // Target estimate only (the converged fee is exact): base + metadata +
         // a rough per-asset-output weight + per-input headroom for the inputs
         // already committed.
         let fee_estimate = estimate_simple_fee(&self.params)
             + metadata_bytes.as_ref().map_or(0, |b| b.len() as u64)
-            + (asset_outs.len() as u64 + u64::from(asset_change.is_some())) * 5_000
+            + (asset_outs.len() + asset_change.len()) as u64 * 5_000
             + must_spend.len() as u64 * PER_INPUT_FEE_HEADROOM;
         let target = total_pure_outputs
             .saturating_add(total_asset_lovelace)
@@ -417,10 +421,7 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
                 for (addr, amount) in &outputs {
                     tx = tx.output(create_ada_output(addr.clone(), *amount));
                 }
-                for (out, _) in &asset_outs {
-                    tx = tx.output(out.clone());
-                }
-                if let Some((out, _)) = &asset_change {
+                for (out, _) in asset_outs.iter().chain(&asset_change) {
                     tx = tx.output(out.clone());
                 }
                 if let Some(bytes) = &metadata_bytes {
@@ -588,21 +589,21 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
             ));
         }
 
-        // Aggregated asset re-home output (errors on an opaque asset input —
-        // we will not build a tx that drops assets).
+        // Asset re-home outputs (errors on an opaque asset input — we will not
+        // build a tx that drops assets). Split across as many outputs as the
+        // `maxValueSize` cap requires: a wallet with hundreds of assets has more
+        // value than one output can legally carry.
         let rehomed = aggregate_input_assets(&asset_inputs)?;
-        let asset_home: Option<(Output, u64)> = if rehomed.is_empty() {
-            None
-        } else {
-            let bundle: Vec<AssetAmount> = rehomed.values().cloned().collect();
-            let ids: Vec<AssetId> = bundle.iter().map(|(id, _)| id.clone()).collect();
-            let lovelace = min_ada_for_assets(&self.params, &ids);
-            Some((
-                build_asset_output(self.change_address.clone(), lovelace, &bundle)?,
+        let bundle: Vec<AssetAmount> = rehomed.values().cloned().collect();
+        let mut asset_home: Vec<(Output, u64)> = Vec::new();
+        for chunk in split_for_outputs(&self.params, &bundle) {
+            let lovelace = min_ada_for_assets(&self.params, &chunk);
+            asset_home.push((
+                build_asset_output(self.change_address.clone(), lovelace, &chunk)?,
                 lovelace,
-            ))
-        };
-        let asset_home_lovelace = asset_home.as_ref().map(|(_, l)| *l).unwrap_or(0);
+            ));
+        }
+        let asset_home_lovelace: u64 = asset_home.iter().map(|(_, l)| *l).sum();
 
         let total: u64 = pure
             .iter()
@@ -618,7 +619,7 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         let min_pure_utxo = self.params.min_pure_utxo();
         let fee_estimate = estimate_simple_fee(&self.params)
             + metadata_bytes.as_ref().map_or(0, |b| b.len() as u64)
-            + u64::from(asset_home.is_some()) * 5_000;
+            + asset_home.len() as u64 * 5_000;
         let network_id = self.network_id;
         let params = self.params;
         let (valid_from, valid_until) = (self.valid_from, self.valid_until);
@@ -642,7 +643,7 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
                     )));
                 }
                 tx = tx.output(create_ada_output(target.clone(), out));
-                if let Some((home, _)) = &asset_home {
+                for (home, _) in &asset_home {
                     tx = tx.output(home.clone());
                 }
                 if let Some(bytes) = &metadata_bytes {
@@ -720,11 +721,23 @@ fn aggregate_input_assets<U: Selectable>(
     Ok(out)
 }
 
-/// The min-UTxO lovelace for an output carrying `ids` (no datum).
-fn min_ada_for_assets(params: &TxBuildParams, ids: &[AssetId]) -> u64 {
+/// Split `assets` into per-output bundles that respect `maxValueSize`.
+///
+/// One output can only legally carry ~5000 bytes of value, so emptying a wallet
+/// with hundreds of assets needs several. Returns an empty vec for no assets, so
+/// callers can loop unconditionally.
+fn split_for_outputs(params: &TxBuildParams, assets: &[AssetAmount]) -> Vec<Vec<AssetAmount>> {
+    crate::utxo::split_by_value_size(assets, params.max_value_size)
+}
+
+/// The min-UTxO lovelace for an output carrying `assets` (no datum).
+///
+/// Takes the quantities, not just the ids: they are encoded inline in the output
+/// and a fungible balance can be several bytes wider than an NFT's `01`.
+fn min_ada_for_assets(params: &TxBuildParams, assets: &[AssetAmount]) -> u64 {
     crate::calculate_min_ada_with_params(
         &crate::builder::send::to_maestro_params(params),
-        ids,
+        assets,
         &crate::OutputParams { datum_size: None },
     )
 }
@@ -771,7 +784,7 @@ fn apply_validity(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cardano_assets::{AssetQuantity, UtxoApi};
+    use cardano_assets::{AssetId, AssetQuantity, UtxoApi};
 
     fn params() -> TxBuildParams {
         TxBuildParams {
@@ -915,6 +928,60 @@ mod tests {
             .build()
             .unwrap();
         assert_eq!(sweep.staging.invalid_from_slot, Some(99));
+    }
+
+    /// A wallet holding more assets than fit in one output must sweep into
+    /// SEVERAL asset outputs. Packing them into one is `OutputTooBigUTxO` — a
+    /// permanent rejection that strands the wallet.
+    #[test]
+    fn sweep_splits_oversized_asset_holdings_across_outputs() {
+        // 240 NFTs with 32-byte names across 4 policies: well past 5000 bytes.
+        let mut world = vec![ada("aa", 0, 400_000_000)];
+        for p in 0..4u32 {
+            let policy = format!("{:02x}", 0xa0 + p).repeat(28);
+            for i in 0..60u32 {
+                let mut u = ada("bb", p * 60 + i + 1, 2_000_000);
+                u.assets.push(AssetQuantity {
+                    asset_id: AssetId::new_unchecked(policy.clone(), format!("{i:064x}")),
+                    quantity: 1,
+                });
+                world.push(u);
+            }
+        }
+
+        let unsigned = TxPlan::new(addr(), 0, params())
+            .must_spend(world.iter())
+            .sweep_to(addr())
+            .rehome_assets()
+            .build()
+            .expect("sweep must build");
+
+        let asset_outputs: Vec<_> = unsigned
+            .staging
+            .outputs
+            .as_ref()
+            .expect("outputs")
+            .iter()
+            .filter(|o| o.assets.as_ref().is_some_and(|a| !a.is_empty()))
+            .collect();
+
+        assert!(
+            asset_outputs.len() > 1,
+            "240 assets must span several outputs, got {}",
+            asset_outputs.len()
+        );
+
+        // Nothing may be dropped on the way out — this is a wallet being emptied.
+        let total_assets: usize = asset_outputs
+            .iter()
+            .map(|o| {
+                o.assets
+                    .as_ref()
+                    .map(|policies| policies.values().map(|names| names.len()).sum::<usize>())
+                    .unwrap_or(0)
+            })
+            .sum();
+        assert_eq!(total_assets, 240, "every asset must reach an output");
     }
 
     #[test]
