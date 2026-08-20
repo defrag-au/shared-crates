@@ -114,11 +114,10 @@ pub fn Button(
     };
 
     let handle_click = move |_| {
-        if !is_disabled() {
-            if let Some(cb) = on_click {
+        if !is_disabled()
+            && let Some(cb) = on_click {
                 cb.run(());
             }
-        }
     };
 
     view! {

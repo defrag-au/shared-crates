@@ -604,9 +604,9 @@ mod tests {
         let bundles = split_by_value_size(&all, MAX_VALUE_SIZE);
 
         let mut flattened: Vec<_> = bundles.into_iter().flatten().collect();
-        flattened.sort_by(|a, b| a.0.concatenated().cmp(&b.0.concatenated()));
+        flattened.sort_by_key(|a| a.0.concatenated());
         let mut expected = all.clone();
-        expected.sort_by(|a, b| a.0.concatenated().cmp(&b.0.concatenated()));
+        expected.sort_by_key(|a| a.0.concatenated());
 
         assert_eq!(flattened, expected, "assets must survive the split intact");
     }

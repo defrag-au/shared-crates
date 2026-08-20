@@ -285,11 +285,10 @@ where
 
     // Close handlers
     let handle_keydown = move |ev: web_sys::KeyboardEvent| {
-        if ev.key() == "Escape" {
-            if let Some(cb) = on_close {
+        if ev.key() == "Escape"
+            && let Some(cb) = on_close {
                 cb.run(());
             }
-        }
     };
 
     let handle_backdrop_click = move |_| {

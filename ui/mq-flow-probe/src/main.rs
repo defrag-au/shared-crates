@@ -148,7 +148,7 @@ fn draw(log: &Log, url: &str, connection: Option<&Connection>) {
     // `y` is threaded through explicitly rather than captured: a closure
     // holding `&mut y` blocks the `y += …` spacing nudges between sections.
     let mut y = 60.0;
-    let mut line = |y: &mut f32, text: &str, size: f32, colour: Color| {
+    let line = |y: &mut f32, text: &str, size: f32, colour: Color| {
         draw_text(text, x, *y, size, colour);
         *y += size * 1.35;
     };

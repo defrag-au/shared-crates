@@ -91,11 +91,10 @@ pub fn MemoryCard(
     };
 
     let handle_click = move |_| {
-        if !disabled.get() && !matched.get() {
-            if let Some(cb) = on_click {
+        if !disabled.get() && !matched.get()
+            && let Some(cb) = on_click {
                 cb.run(());
             }
-        }
     };
 
     // Convert matched_by to memo for reactive access
