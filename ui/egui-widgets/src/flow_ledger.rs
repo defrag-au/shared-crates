@@ -70,6 +70,8 @@ pub struct FlowRow<'a> {
     pub tx_id: Option<&'a str>,
     /// Funding channel this row belongs to, with its colour.
     pub channel: Option<(&'a str, Color32)>,
+    /// A short fact about the movement — see [`FlowRow::sale`].
+    pub sale: Option<&'a str>,
     /// Set when this row's value is the wallet's own money returning — a round
     /// trip, not income. Rendered muted so it cannot be read as revenue.
     pub recycled: bool,
@@ -96,6 +98,7 @@ impl<'a> FlowRow<'a> {
             stakeless: false,
             tx_id: None,
             channel: None,
+            sale: None,
             recycled: false,
             items: 0,
         }
@@ -113,6 +116,7 @@ impl<'a> FlowRow<'a> {
             stakeless: false,
             tx_id: None,
             channel: None,
+            sale: None,
             recycled: false,
             items: 0,
         }
@@ -140,6 +144,18 @@ impl<'a> FlowRow<'a> {
 
     pub fn channel(mut self, name: &'a str, color: Color32) -> Self {
         self.channel = Some((name, color));
+        self
+    }
+
+    /// A short fact about the movement itself — "sold 55 ₳ · jpg".
+    ///
+    /// Its own column rather than a [`FlowRow::channel`]: a channel is CLUSTER
+    /// MEMBERSHIP, drawn as a coloured dot with the name only in a tooltip,
+    /// which is right for "these wallets are one group" and useless for a price
+    /// you need to read. Carrying a sale that way made the venue technically
+    /// present and practically invisible.
+    pub fn sale(mut self, label: &'a str) -> Self {
+        self.sale = Some(label);
         self
     }
 
@@ -323,6 +339,13 @@ impl<'a> FlowLedger<'a> {
         if any_items {
             builder = builder.column(Column::exact(70.0));
         }
+        // Beside items, so value / goods / "what this was" read as one thought.
+        // NOT clipped and NOT inside the counterparty column, which is — a
+        // price truncated to nothing is worse than no column.
+        let any_sale = self.rows.iter().any(|r| r.sale.is_some());
+        if any_sale {
+            builder = builder.column(Column::exact(130.0));
+        }
         builder = builder.column(Column::initial(280.0).at_least(160.0).clip(true));
 
         if self.show_running_balance {
@@ -350,6 +373,9 @@ impl<'a> FlowLedger<'a> {
                 head(&mut header, "net");
                 if any_items {
                     head(&mut header, "items");
+                }
+                if any_sale {
+                    head(&mut header, "sale");
                 }
                 head(&mut header, "counterparty");
                 if self.show_running_balance {
@@ -438,6 +464,28 @@ impl<'a> FlowLedger<'a> {
                             } else {
                                 "items sent in this transaction"
                             });
+                        });
+                    }
+
+                    if any_sale {
+                        row.col(|ui| {
+                            let Some(label) = r.sale else {
+                                return;
+                            };
+                            // Gold: outside the in/out green and red, which
+                            // encode DIRECTION. A sale is a fact about the
+                            // movement, not a direction of it.
+                            ui.label(
+                                RichText::new(label)
+                                    .size(11.0)
+                                    .color(Color32::from_rgb(0xc9, 0xa2, 0x27)),
+                            )
+                            .on_hover_text(
+                                "Recorded by a marketplace. The price is the SALE, not this \
+                                 wallet's share of it — a seller nets it minus royalty and \
+                                 venue fee. A blank cell means NO venue event, which includes \
+                                 every peer-to-peer trade: it does not mean 'not sold'.",
+                            );
                         });
                     }
 

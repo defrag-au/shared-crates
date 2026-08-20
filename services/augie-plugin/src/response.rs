@@ -74,6 +74,83 @@ pub struct CommandResponse {
     /// interaction — never from a followup.
     #[serde(default)]
     pub launch_activity: bool,
+
+    /// Hand the caller off to a surface only the host can open.
+    ///
+    /// See [`WellKnownCommand`]. Set this when the plugin's answer is "you
+    /// can't do this yet, and the next step isn't mine to render".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handoff: Option<WellKnownCommand>,
+}
+
+/// A surface every deployment has, that the host opens on a plugin's behalf.
+///
+/// # Why a closed set and not a URL
+///
+/// A handoff carries a *minted identity token* — the host signs a claim about
+/// who the caller is and puts it in a link. If a plugin could name an
+/// arbitrary target, any plugin could point a user, carrying that token, at
+/// any surface it liked. The set is closed so the host stays the authority on
+/// what identity gets minted for.
+///
+/// # Why these are "well known"
+///
+/// Some surfaces are platform-wide: every guild that plays anything needs
+/// wallet linking. Making each one declare `[command.link-wallet]` is config
+/// burden with no decision in it — the answer is the same everywhere until
+/// someone deliberately differs.
+///
+/// So the host resolves in two steps:
+///
+/// 1. The guild's own `[command.{name}]`, if it declares one. Existing ad-hoc
+///    config keeps working untouched, and a guild pointing players at a
+///    bespoke funnel still gets that.
+/// 2. Otherwise the built-in default below, with the destination read from a
+///    host environment variable — so dev links against dev.
+///
+/// A plugin never sees which applied.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WellKnownCommand {
+    /// The caller has no linked wallet and needs one.
+    LinkWallet,
+}
+
+impl WellKnownCommand {
+    /// The guild command that overrides this default, if declared.
+    pub fn command_name(&self) -> &'static str {
+        match self {
+            Self::LinkWallet => "link-wallet",
+        }
+    }
+
+    /// The widget action the target expects.
+    pub fn default_action(&self) -> &'static str {
+        match self {
+            Self::LinkWallet => "link_wallet",
+        }
+    }
+
+    /// Host environment variable naming the destination.
+    ///
+    /// Not a compiled-in URL: a default that is right in production and wrong
+    /// in dev would send test users at the live linker, which is worse than
+    /// having no default at all.
+    pub fn target_var(&self) -> &'static str {
+        match self {
+            Self::LinkWallet => "WALLET_LINK_URL",
+        }
+    }
+
+    /// Copy used when neither the guild nor the plugin supplied any.
+    pub fn default_message(&self) -> &'static str {
+        match self {
+            Self::LinkWallet => {
+                "🔗 **Link your wallet**\n\nConnect a Cardano wallet to prove ownership. \
+                 You'll be asked to sign a message — this costs nothing and never moves funds."
+            }
+        }
+    }
 }
 
 impl CommandResponse {
@@ -123,6 +200,22 @@ impl CommandResponse {
     pub fn launch_activity() -> Self {
         Self {
             launch_activity: true,
+            ..Default::default()
+        }
+    }
+
+    /// Hand off to a host-owned surface, with copy explaining why.
+    ///
+    /// The content becomes the button's message — a plugin knows *why* the
+    /// user is here ("you need a wallet to deploy your own crew"), which is
+    /// more useful than the generic prompt someone gets for asking to link
+    /// one. It is also the whole reply if the host cannot open the surface at
+    /// all, so it should stand on its own in words.
+    pub fn handoff(handoff: WellKnownCommand, content: impl Into<String>) -> Self {
+        Self {
+            content: Some(content.into()),
+            handoff: Some(handoff),
+            ephemeral: true,
             ..Default::default()
         }
     }
@@ -259,6 +352,39 @@ pub struct SelectOption {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The command name is the join between a well-known default and a guild's
+    /// ad-hoc override — augie looks up `[command.{name}]` by exactly this
+    /// string. If it drifted from the TOML, every guild's override would be
+    /// silently ignored in favour of the default, which is the failure mode
+    /// this whole two-step exists to avoid.
+    #[test]
+    fn a_well_known_command_names_the_config_key_that_overrides_it() {
+        assert_eq!(WellKnownCommand::LinkWallet.command_name(), "link-wallet");
+        assert_eq!(WellKnownCommand::LinkWallet.default_action(), "link_wallet");
+    }
+
+    /// The destination comes from the host environment, never compiled in — a
+    /// default that is right in production and wrong in dev would point test
+    /// users at the live linker.
+    #[test]
+    fn the_destination_is_an_env_var_not_a_url() {
+        let var = WellKnownCommand::LinkWallet.target_var();
+        assert_eq!(var, "WALLET_LINK_URL");
+        assert!(!var.contains("://"), "must name a variable, not a URL");
+    }
+
+    /// The plugin's copy is what the user reads, so a handoff without one is a
+    /// blank message if the host cannot open the surface.
+    #[test]
+    fn a_handoff_carries_standalone_copy_and_is_private() {
+        let response = CommandResponse::handoff(WellKnownCommand::LinkWallet, "connect a wallet");
+        assert_eq!(response.handoff, Some(WellKnownCommand::LinkWallet));
+        assert_eq!(response.content.as_deref(), Some("connect a wallet"));
+        // A linked wallet ties an on-chain address to a Discord identity; the
+        // channel is not entitled to watch someone being asked for one.
+        assert!(response.ephemeral);
+    }
 
     #[test]
     fn custom_ids_skips_link_buttons() {
