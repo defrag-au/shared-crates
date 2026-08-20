@@ -50,6 +50,20 @@ pub trait InputMapper<G: ArcadeGame> {
     fn capture(&self) -> Option<G::Input>;
 }
 
+/// "Go" on the title and game-over screens.
+///
+/// Space, a click, or a touch. The touch case is not a nicety: a Discord
+/// Activity runs on mobile, where a screen that only says PRESS SPACE is a
+/// dead end with no way to discover that it is one.
+///
+/// `TouchPhase::Started` rather than "any touch present", so holding a finger
+/// down does not skip through the game-over screen the moment it appears.
+fn confirm_pressed() -> bool {
+    is_key_pressed(KeyCode::Space)
+        || is_mouse_button_pressed(MouseButton::Left)
+        || touches().iter().any(|t| t.phase == TouchPhase::Started)
+}
+
 /// What the player is waiting on before a run can start.
 pub struct TitleStatus<'a> {
     /// Connection progress, or why there is no server.
@@ -142,7 +156,7 @@ pub trait GameRenderer<G: ArcadeGame> {
 
         let pulse = (get_time() * 2.0).sin() as f32 * 0.5 + 0.5;
         draw_text(
-            "PRESS SPACE TO START",
+            "PRESS SPACE OR TAP TO START",
             cx - 110.0,
             cy + 30.0,
             22.0,
@@ -215,7 +229,7 @@ pub trait GameRenderer<G: ArcadeGame> {
 
         let pulse = (get_time() * 2.0).sin() as f32 * 0.5 + 0.5;
         draw_text(
-            "PRESS SPACE TO PLAY AGAIN",
+            "PRESS SPACE OR TAP TO PLAY AGAIN",
             cx - 130.0,
             cy + 120.0,
             20.0,
@@ -311,7 +325,7 @@ pub async fn run_game<G, B, R, I>(
                 // begun a frame before the token arrives has no challenge and
                 // cannot be submitted, and the player would only find that out
                 // after playing it.
-                if is_key_pressed(KeyCode::Space) {
+                if confirm_pressed() {
                     accumulator = 0.0;
                     match &state {
                         BackendState::Connecting(_) => Phase::Title { error: None },
@@ -465,7 +479,7 @@ pub async fn run_game<G, B, R, I>(
                 // Not while a submission is in flight: leaving the screen would
                 // discard the result the player is waiting to see.
                 let settled = !matches!(submission, SubmissionState::Submitting);
-                if settled && is_key_pressed(KeyCode::Space) {
+                if settled && confirm_pressed() {
                     Phase::Title { error: None }
                 } else {
                     Phase::GameOver {

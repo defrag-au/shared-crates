@@ -34,11 +34,13 @@
 mod attribution;
 pub mod counterparty;
 pub mod frontier;
+pub mod interest;
 mod model;
 mod walk;
 
 pub use attribution::{movements, net_deltas, round_trips, RoundTrip};
 pub use counterparty::{CounterpartyKind, ProviderCapability, UnknownCapability};
+pub use interest::{Confidence, Signal, UnknownSignal, Weights};
 pub use frontier::{
     Frontier, Member, Outcome as FrontierOutcome, Role, TerminalReason, Thresholds,
 };
