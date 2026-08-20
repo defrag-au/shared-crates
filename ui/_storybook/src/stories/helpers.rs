@@ -7,13 +7,16 @@ use leptos::prelude::*;
 // IIIF Image URL Helper
 // ============================================================================
 
-const IIIF_BASE_URL: &str = "https://iiif.hodlcroft.com/iiif/3";
-
 /// Generate an IIIF image URL for an asset
 ///
 /// # Arguments
 /// * `asset_id` - The asset identifier (policy_id + asset_name_hex)
 /// * `size` - Image width in pixels (height scales proportionally)
+///
+/// Stories ask for small icon widths (32, 48) which the service does **not**
+/// keep warm, so this goes through [`image_core::IiifUrl::custom_px`] — cold on
+/// every request, which is acceptable for a dev-only storybook and would not be
+/// in a shipping surface. Real surfaces want [`image_core::ImageSize`].
 ///
 /// # Example
 /// ```ignore
@@ -21,10 +24,9 @@ const IIIF_BASE_URL: &str = "https://iiif.hodlcroft.com/iiif/3";
 /// // Returns: https://iiif.hodlcroft.com/iiif/3/{policy_id}:{asset_name_hex}/full/256,/0/default.jpg
 /// ```
 pub fn resolve_iiif_image(asset_id: &AssetId, size: u16) -> String {
-    format!(
-        "{IIIF_BASE_URL}/{}:{}/full/{size},/0/default.jpg",
-        asset_id.policy_id, asset_id.asset_name_hex
-    )
+    image_core::IiifUrl::new(&asset_id.policy_id, &asset_id.asset_name_hex)
+        .custom_px(u32::from(size))
+        .build()
 }
 
 /// Render an attribute documentation card

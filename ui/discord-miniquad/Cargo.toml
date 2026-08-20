@@ -1,0 +1,19 @@
+[package]
+name = "discord-miniquad"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Discord Activities (Embedded App RPC) for miniquad WASM apps. Speaks the postMessage protocol directly — no Embedded App SDK, no wasm-bindgen. JS plugin + Rust shim; promise→poll bridging across frames. Sibling of wallet-miniquad for the same runtime."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Plugin bridge — JsObject string transport between Rust and discord.js.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+sapp-jsutils = "0.1"

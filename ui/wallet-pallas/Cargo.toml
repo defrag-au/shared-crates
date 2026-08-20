@@ -24,7 +24,7 @@ pallas-primitives = { workspace = true }
 pallas-crypto = { workspace = true }
 
 # Serialization
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 hex = "0.4"
 
 # Error handling

@@ -1,0 +1,16 @@
+[package]
+name = "image-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Runtime-agnostic image loading policy: IIIF URLs, warm sizes, and the fetch queue/cache. No wasm-bindgen, no miniquad, no GPU."
+
+# Deliberately dependency-free.
+#
+# This crate is the shared half of a pure-core / thin-edge pair (the shape
+# CLAUDE.md prescribes and `wallet-core`/`wallet-miniquad` only half achieved).
+# Every runtime — egui via web-sys, macroquad via the miniquad plugin protocol,
+# even a Cloudflare worker — must be able to depend on it, so it can carry no
+# runtime, no I/O and no GPU types. That constraint is the feature: it is also
+# what lets the whole thing be unit-tested natively.
+[dependencies]

@@ -16,7 +16,7 @@
 
 use egui::{Color32, RichText, Sense, Ui, Vec2};
 
-use crate::icons::{install_phosphor_font, PhosphorIcon};
+use crate::icons::{PhosphorIcon, install_phosphor_font};
 
 /// What the user did with the badge this frame.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

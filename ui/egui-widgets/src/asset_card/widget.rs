@@ -27,8 +27,8 @@ use super::geometry::{base_outline, expand_outline};
 use super::mesh::{
     draw_colored_ring, draw_effect_quad, draw_quad, draw_spark_streak, draw_textured_quad,
 };
-use super::overlay::{rarity_color, rarity_glow, CardMask};
-use super::projection::{project_points, update_tilt, TiltState};
+use super::overlay::{CardMask, rarity_color, rarity_glow};
+use super::projection::{TiltState, project_points, update_tilt};
 
 /// Runtime-selectable holographic effect kind.
 ///
@@ -359,30 +359,30 @@ impl<'a> AssetCard<'a> {
         //    global `strength` knob AND by tilt magnitude — so a near-flat card
         //    reads as a subtle sheen and the holo "pops" only at glancing angles
         //    (a Fresnel-like gate, the trick that makes real foil feel tasteful).
-        if let Some(kind) = self.effect {
-            if let Some(hover) = response.hover_pos() {
-                let mu = ((hover.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
-                let mv = ((hover.y - rect.top()) / rect.height()).clamp(0.0, 1.0);
-                let max_rad = self.max_tilt_deg.to_radians().max(1e-3);
-                let tilt_norm = ((ax * ax + ay * ay).sqrt() / max_rad).clamp(0.0, 1.0);
-                let alpha = self.strength * (0.25 + 0.75 * tilt_norm);
-                let effect = kind.build();
-                let scaled = ScaledEffect {
-                    inner: &*effect,
-                    alpha,
-                };
-                draw_effect_quad(
-                    &painter,
-                    rect,
-                    center,
-                    ax,
-                    ay,
-                    self.perspective,
-                    mu,
-                    mv,
-                    &scaled,
-                );
-            }
+        if let Some(kind) = self.effect
+            && let Some(hover) = response.hover_pos()
+        {
+            let mu = ((hover.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
+            let mv = ((hover.y - rect.top()) / rect.height()).clamp(0.0, 1.0);
+            let max_rad = self.max_tilt_deg.to_radians().max(1e-3);
+            let tilt_norm = ((ax * ax + ay * ay).sqrt() / max_rad).clamp(0.0, 1.0);
+            let alpha = self.strength * (0.25 + 0.75 * tilt_norm);
+            let effect = kind.build();
+            let scaled = ScaledEffect {
+                inner: &*effect,
+                alpha,
+            };
+            draw_effect_quad(
+                &painter,
+                rect,
+                center,
+                ax,
+                ay,
+                self.perspective,
+                mu,
+                mv,
+                &scaled,
+            );
         }
 
         // 7. Travelling spark streak (Rare+), self-animating.

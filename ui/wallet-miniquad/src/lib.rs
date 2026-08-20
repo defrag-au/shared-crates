@@ -98,7 +98,7 @@ pub const AVAILABLE: bool = cfg!(target_arch = "wasm32");
 ///
 /// Only emitted on wasm32 — on native the symbol is meaningless.
 #[cfg(target_arch = "wasm32")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn wallet_crate_version() -> u32 {
     2
 }

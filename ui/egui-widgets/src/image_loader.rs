@@ -4,27 +4,37 @@ use egui::{Color32, Pos2, Rect, Shape, Stroke};
 // IIIF image helpers
 // ============================================================================
 
-const IIIF_BASE_URL: &str = "https://iiif.hodlcroft.com/iiif/3";
-
 /// Standard image sizes served by the IIIF worker.
 ///
 /// Using a fixed set of sizes maximises CDN cache hit rates.
+///
+/// **The widths now come from [`image_core::ImageSize`]**, which is the one
+/// definition in the estate. Six independent copies of this enum existed and
+/// two had drifted — to 1686 and 1626 — which is invisible in behaviour: the
+/// image still arrives, just uncached and slow, forever. This type stays for
+/// the dozen frontends that name it, but it no longer *decides* anything.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AssetImageSize {
-    /// 400px — fast, pre-cached thumbnails for grids and cards.
+    /// Fast, pre-cached thumbnails for grids and cards.
     #[default]
     Thumbnail,
-    /// 1646px — high-resolution for detail views and full-screen.
+    /// High-resolution for detail views and full-screen.
     Large,
+}
+
+impl From<AssetImageSize> for image_core::ImageSize {
+    fn from(size: AssetImageSize) -> Self {
+        match size {
+            AssetImageSize::Thumbnail => Self::Thumb,
+            AssetImageSize::Large => Self::Full,
+        }
+    }
 }
 
 impl AssetImageSize {
     /// Pixel width sent to the IIIF `{size}` parameter.
-    pub const fn pixels(self) -> u32 {
-        match self {
-            Self::Thumbnail => 400,
-            Self::Large => 1646,
-        }
+    pub fn pixels(self) -> u32 {
+        image_core::ImageSize::from(self).px()
     }
 }
 
@@ -34,14 +44,21 @@ impl AssetImageSize {
 /// https://iiif.hodlcroft.com/iiif/3/{policy_id}:{asset_name_hex}/full/{size},/0/default.jpg
 /// ```
 pub fn iiif_asset_url(policy_id: &str, asset_name_hex: &str, size: AssetImageSize) -> String {
-    let px = size.pixels();
-    format!("{IIIF_BASE_URL}/{policy_id}:{asset_name_hex}/full/{px},/0/default.jpg")
+    image_core::iiif_asset_url(policy_id, asset_name_hex, size.into())
 }
 
 /// Build a IIIF thumbnail URL for an asset image.
 ///
 /// Constructs a IIIF Image API v3 URL that requests a square crop at the
 /// given pixel size in JPEG format.
+///
+/// **Not routed through `image_core::IiifUrl`**, unlike everything else here:
+/// `base_url` is already a *per-asset* base (host + `{policy}:{name_hex}`),
+/// whereas the builder composes that identifier itself from a host root. If a
+/// caller has the policy and hex separately — and it should — use
+/// `image_core::IiifUrl::new(policy, hex).square_fit(size)` instead, which is
+/// byte-identical output. This function has no callers in the estate and is a
+/// deletion candidate.
 pub fn iiif_thumbnail_url(base_url: &str, size: u32) -> String {
     // IIIF pattern: {base}/full/!{w},{h}/0/default.jpg
     // Strip any trailing slash from base
@@ -104,8 +121,8 @@ impl CachedSpinner {
 /// `OffscreenCanvas` + `getImageData()`.
 #[cfg(target_arch = "wasm32")]
 pub mod browser {
-    use egui::load::{BytesPoll, ImageLoadResult, ImagePoll, LoadError, SizeHint};
     use egui::ColorImage;
+    use egui::load::{BytesPoll, ImageLoadResult, ImagePoll, LoadError, SizeHint};
     use std::sync::{Arc, Mutex};
     use std::task::Poll;
     use wasm_bindgen::JsCast;

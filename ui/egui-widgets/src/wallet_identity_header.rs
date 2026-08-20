@@ -24,8 +24,8 @@
 
 use egui::{Color32, RichText, Ui};
 
-use crate::theme;
 use crate::PhosphorIcon;
+use crate::theme;
 
 /// Click events the header can produce.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

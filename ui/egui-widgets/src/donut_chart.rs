@@ -1,3 +1,6 @@
+//! `DistributionChart` — a donut of banded shares with a legend and hover
+//! tooltip, for "how is this split" questions.
+
 use egui::{Color32, Pos2, Response, Sense, Stroke, Ui, Vec2};
 
 /// A single band in the distribution chart.

@@ -132,10 +132,11 @@ impl<'a> TokenMultiselect<'a> {
                 resp.added = menu.inner.flatten();
             }
 
-            if let Some(label) = self.clear_label {
-                if !self.selected.is_empty() && ui.button(label).clicked() {
-                    resp.cleared = true;
-                }
+            if let Some(label) = self.clear_label
+                && !self.selected.is_empty()
+                && ui.button(label).clicked()
+            {
+                resp.cleared = true;
             }
         });
 
@@ -144,9 +145,5 @@ impl<'a> TokenMultiselect<'a> {
 }
 
 fn x_color(fg: Color32, hovered: bool) -> Color32 {
-    if hovered {
-        Color32::WHITE
-    } else {
-        fg
-    }
+    if hovered { Color32::WHITE } else { fg }
 }

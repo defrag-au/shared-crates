@@ -102,28 +102,26 @@ pub fn select_utxo_for_amount<'a>(
 
     // Phase 1: pure-ADA candidates (when preference is on). Smallest
     // sufficient wins.
-    if config.prefer_pure_ada {
-        if let Some(utxo) = utxos
+    if config.prefer_pure_ada
+        && let Some(utxo) = utxos
             .iter()
             .filter(|u| is_pure_ada_utxo(u) && has_sufficient(u))
             .min_by_key(|u| u.lovelace)
-        {
-            return Ok(utxo);
-        }
+    {
+        return Ok(utxo);
     }
 
     // Phase 2: any UTxO. Used when:
     //   - prefer_pure_ada is off (treat all UTxOs equally), or
     //   - prefer_pure_ada is on but no pure-ADA candidate fit AND fallback is
     //     allowed.
-    if !config.prefer_pure_ada || config.allow_asset_fallback {
-        if let Some(utxo) = utxos
+    if (!config.prefer_pure_ada || config.allow_asset_fallback)
+        && let Some(utxo) = utxos
             .iter()
             .filter(|u| has_sufficient(u))
             .min_by_key(|u| u.lovelace)
-        {
-            return Ok(utxo);
-        }
+    {
+        return Ok(utxo);
     }
 
     // No suitable UTxO. Build the most informative error we can.
@@ -158,7 +156,11 @@ pub fn select_all_utxos_for_max<'a>(
     let usable: Vec<&UtxoApi> = utxos
         .iter()
         .filter(|utxo| {
-            let asset_ids: Vec<_> = utxo.assets.iter().map(|a| a.asset_id.clone()).collect();
+            let held: Vec<_> = utxo
+                .assets
+                .iter()
+                .map(|a| (a.asset_id.clone(), a.quantity))
+                .collect();
             let min_required = crate::calculate_min_ada_with_params(
                 &maestro::ProtocolParameters {
                     min_fee_coefficient: params.min_fee_coefficient,
@@ -173,7 +175,7 @@ pub fn select_all_utxos_for_max<'a>(
                     max_transaction_size: None,
                     plutus_cost_models: None,
                 },
-                &asset_ids,
+                &held,
                 &crate::OutputParams { datum_size: None },
             );
             utxo.lovelace > min_required

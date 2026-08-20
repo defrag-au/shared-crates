@@ -8,13 +8,11 @@ use pallas_addresses::Address;
 use pallas_txbuilder::StagingTransaction;
 use std::collections::HashSet;
 
-use super::{converge_fee, TxDeps, UnsignedTx};
+use super::{TxDeps, UnsignedTx, converge_fee};
 use crate::error::TxBuildError;
 use crate::helpers::input::{add_utxo_input, add_utxo_inputs};
 use crate::helpers::output::{build_change_output, create_ada_output};
-use crate::helpers::utxo_query::{
-    collect_asset_ids, collect_utxo_native_assets, total_utxo_lovelace,
-};
+use crate::helpers::utxo_query::{collect_utxo_native_assets, total_utxo_lovelace};
 use crate::selection;
 
 /// Build a transaction sending a specific amount of lovelace.
@@ -104,10 +102,14 @@ pub fn build_send_max(deps: &TxDeps, to_addr: &Address) -> Result<UnsignedTx, Tx
         total_input_ada += utxo.lovelace;
 
         if !utxo.assets.is_empty() {
-            let asset_ids: Vec<AssetId> = utxo.assets.iter().map(|a| a.asset_id.clone()).collect();
+            let held: Vec<_> = utxo
+                .assets
+                .iter()
+                .map(|a| (a.asset_id.clone(), a.quantity))
+                .collect();
             let min_ada = crate::calculate_min_ada_with_params(
                 &to_maestro_params(&deps.params),
-                &asset_ids,
+                &held,
                 &crate::OutputParams { datum_size: None },
             );
             total_reserved_for_assets += min_ada;
@@ -196,10 +198,12 @@ pub fn build_send_assets(
     // 2. Calculate totals
     let mut input_lovelace: u64 = input_utxos.iter().map(|u| u.lovelace).sum();
 
-    // 3. Calculate minimum ADA for output with assets
+    // 3. Calculate minimum ADA for output with assets. This builder's contract is
+    // one unit per listed asset (NFT semantics) — see `build_recipient_output_with_assets`.
+    let sent_amounts: Vec<_> = assets.iter().map(|id| (id.clone(), 1u64)).collect();
     let min_ada_for_assets = crate::calculate_min_ada_with_params(
         &to_maestro_params(&deps.params),
-        assets,
+        &sent_amounts,
         &crate::OutputParams { datum_size: None },
     );
 
@@ -208,10 +212,12 @@ pub fn build_send_assets(
 
     // 5. Calculate min ADA for change output
     let input_refs: Vec<&UtxoApi> = input_utxos.to_vec();
-    let change_asset_ids = collect_asset_ids(&input_refs, Some(&assets_to_send));
+    let change_assets: Vec<_> = collect_utxo_native_assets(&input_refs, Some(&assets_to_send))
+        .into_iter()
+        .collect();
     let mut min_ada_for_change = crate::calculate_min_ada_with_params(
         &to_maestro_params(&deps.params),
-        &change_asset_ids,
+        &change_assets,
         &crate::OutputParams { datum_size: None },
     );
 
@@ -234,10 +240,13 @@ pub fn build_send_assets(
 
         // Recalculate change with additional UTxOs
         let new_refs: Vec<&UtxoApi> = input_utxos.to_vec();
-        let new_change_asset_ids = collect_asset_ids(&new_refs, Some(&assets_to_send));
+        let new_change_assets: Vec<_> =
+            collect_utxo_native_assets(&new_refs, Some(&assets_to_send))
+                .into_iter()
+                .collect();
         min_ada_for_change = crate::calculate_min_ada_with_params(
             &to_maestro_params(&deps.params),
-            &new_change_asset_ids,
+            &new_change_assets,
             &crate::OutputParams { datum_size: None },
         );
     }
@@ -318,12 +327,13 @@ pub fn build_consolidate(deps: &TxDeps, max_inputs: u32) -> Result<UnsignedTx, T
     let total_lovelace = total_utxo_lovelace(&refs);
     let has_native_assets = !all_native_assets.is_empty();
 
-    // Calculate min ADA for asset output
-    let asset_ids = collect_asset_ids(&refs, None);
+    // Calculate min ADA for asset output. Consolidation packs every input asset
+    // into one output, so the summed quantities are what get encoded there.
     let min_ada_for_assets = if has_native_assets {
+        let packed: Vec<_> = all_native_assets.clone().into_iter().collect();
         crate::calculate_min_ada_with_params(
             &to_maestro_params(&deps.params),
-            &asset_ids,
+            &packed,
             &crate::OutputParams { datum_size: None },
         )
     } else {
@@ -707,12 +717,12 @@ pub fn build_parcel_split(
             "build_parcel_split: parcel_size {parcel_size} < min_pure_utxo {min_pure_utxo}"
         )));
     }
-    if let Some((_, amt)) = refund {
-        if amt < min_pure_utxo {
-            return Err(TxBuildError::BuildFailed(format!(
-                "build_parcel_split: refund {amt} < min_pure_utxo {min_pure_utxo}"
-            )));
-        }
+    if let Some((_, amt)) = refund
+        && amt < min_pure_utxo
+    {
+        return Err(TxBuildError::BuildFailed(format!(
+            "build_parcel_split: refund {amt} < min_pure_utxo {min_pure_utxo}"
+        )));
     }
 
     // Inputs: `source` ALWAYS first (the assigned funding UTxO — the buyer payment,

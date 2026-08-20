@@ -59,7 +59,7 @@
 
 use egui::{Color32, FontFamily, RichText, TextStyle, Ui, WidgetText};
 
-use crate::icons::{install_phosphor_font, phosphor_family, PhosphorIcon};
+use crate::icons::{PhosphorIcon, install_phosphor_font, phosphor_family};
 
 /// Builder.
 pub struct ButtonGroup<'a> {

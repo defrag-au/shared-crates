@@ -405,40 +405,38 @@ pub fn show(
 
     // ── Hover interaction ──────────────────────────────────────────────
 
-    if response.hovered() {
-        if let Some(hover_pos) = ui.ctx().pointer_hover_pos() {
-            if plot_rect.contains(hover_pos) {
-                let rel_x = (hover_pos.x - plot_rect.left()) / plot_rect.width();
-                let hover_input = (total as f64 * rel_x as f64) as u64;
+    if response.hovered()
+        && let Some(hover_pos) = ui.ctx().pointer_hover_pos()
+        && plot_rect.contains(hover_pos)
+    {
+        let rel_x = (hover_pos.x - plot_rect.left()) / plot_rect.width();
+        let hover_input = (total as f64 * rel_x as f64) as u64;
 
-                // Vertical crosshair
-                painter.line_segment(
-                    [
-                        Pos2::new(hover_pos.x, plot_rect.top()),
-                        Pos2::new(hover_pos.x, plot_rect.bottom()),
-                    ],
-                    Stroke::new(0.5_f32, theme::TEXT_MUTED),
-                );
+        // Vertical crosshair
+        painter.line_segment(
+            [
+                Pos2::new(hover_pos.x, plot_rect.top()),
+                Pos2::new(hover_pos.x, plot_rect.bottom()),
+            ],
+            Stroke::new(0.5_f32, theme::TEXT_MUTED),
+        );
 
-                // Find impact for each pool at this x position and show tooltip
-                let mut tooltip_lines =
-                    vec![format!("{:.0} ADA", hover_input as f64 / 1_000_000.0)];
-                for pool in pools {
-                    let impact = price_impact_fn(hover_input, pool);
-                    tooltip_lines.push(format!("{}: {:.2}%", pool.label, impact * 100.0));
+        // Find impact for each pool at this x position and show tooltip
+        let mut tooltip_lines = vec![format!("{:.0} ADA", hover_input as f64 / 1_000_000.0)];
+        for pool in pools {
+            let impact = price_impact_fn(hover_input, pool);
+            tooltip_lines.push(format!("{}: {:.2}%", pool.label, impact * 100.0));
 
-                    // Highlight dot on each curve at hover position
-                    let y_frac = (impact / y_max) as f32;
-                    let dot_pos = Pos2::new(
-                        hover_pos.x,
-                        plot_rect.bottom() - y_frac * plot_rect.height(),
-                    );
-                    painter.circle_filled(dot_pos, 3.0, pool.color);
-                }
-
-                response.clone().on_hover_text(tooltip_lines.join("\n"));
-            }
+            // Highlight dot on each curve at hover position
+            let y_frac = (impact / y_max) as f32;
+            let dot_pos = Pos2::new(
+                hover_pos.x,
+                plot_rect.bottom() - y_frac * plot_rect.height(),
+            );
+            painter.circle_filled(dot_pos, 3.0, pool.color);
         }
+
+        response.clone().on_hover_text(tooltip_lines.join("\n"));
     }
 
     // ── Legend ──────────────────────────────────────────────────────────

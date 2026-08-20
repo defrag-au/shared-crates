@@ -153,11 +153,10 @@ where
         ev.prevent_default();
 
         // Capture pointer to track movement even outside container
-        if let Some(target) = ev.target() {
-            if let Ok(el) = target.dyn_into::<web_sys::Element>() {
+        if let Some(target) = ev.target()
+            && let Ok(el) = target.dyn_into::<web_sys::Element>() {
                 let _ = el.set_pointer_capture(ev.pointer_id());
             }
-        }
 
         // Capture original item positions for stable hit testing during drag
         let item_rects = if let Some(container) = container_ref.get() {
@@ -166,8 +165,8 @@ where
             let mut rects = Vec::with_capacity(children.length() as usize);
 
             for i in 0..children.length() {
-                if let Some(child) = children.item(i) {
-                    if let Ok(el) = child.dyn_into::<web_sys::HtmlElement>() {
+                if let Some(child) = children.item(i)
+                    && let Ok(el) = child.dyn_into::<web_sys::HtmlElement>() {
                         let rect = el.get_bounding_client_rect();
                         let (start, end) = match direction {
                             StackDirection::Horizontal => (rect.left(), rect.right()),
@@ -175,7 +174,6 @@ where
                         };
                         rects.push(ItemRect { start, end });
                     }
-                }
             }
             rects
         } else {
@@ -263,29 +261,26 @@ where
     // Pointer up - complete drag
     let on_pointerup = move |ev: web_sys::PointerEvent| {
         // Release pointer capture
-        if let Some(target) = ev.target() {
-            if let Ok(el) = target.dyn_into::<web_sys::Element>() {
+        if let Some(target) = ev.target()
+            && let Ok(el) = target.dyn_into::<web_sys::Element>() {
                 let _ = el.release_pointer_capture(ev.pointer_id());
             }
-        }
 
         let state = drag_state.get();
-        if let (Some(source), Some(target)) = (state.source_index, state.target_position) {
-            if source != target && source + 1 != target {
+        if let (Some(source), Some(target)) = (state.source_index, state.target_position)
+            && source != target && source + 1 != target {
                 on_reorder.run(Reorder::new(source, target));
             }
-        }
         set_drag_state.set(DragState::default());
     };
 
     // Pointer cancel - abort drag (e.g., if another touch starts, or system interrupts)
     let on_pointercancel = move |ev: web_sys::PointerEvent| {
         // Release pointer capture
-        if let Some(target) = ev.target() {
-            if let Ok(el) = target.dyn_into::<web_sys::Element>() {
+        if let Some(target) = ev.target()
+            && let Ok(el) = target.dyn_into::<web_sys::Element>() {
                 let _ = el.release_pointer_capture(ev.pointer_id());
             }
-        }
         set_drag_state.set(DragState::default());
     };
 

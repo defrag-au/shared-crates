@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ui-flow × macroquad probe</title>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #0b0d12; overflow: hidden; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    #boot {
+      position: fixed; inset: 0; padding: 24px;
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #8b93a1; white-space: pre-wrap; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="glcanvas" tabindex="1"></canvas>
+  <!-- Mirrors console output, so a failure before the canvas paints is still
+       visible. A blank screen is the least useful diagnostic there is. -->
+  <div id="boot"></div>
+
+  <!--
+    Load order, per miniquad + sapp_jsutils conventions:
+      1. gl.js            — defines load() + miniquad_add_plugin
+      2. sapp_jsutils.js  — js_object() / consume_js_object()
+      3. quad-net.js      — the WebSocket plugin, and the reason this exists
+      4. load(<wasm>)     — instantiate
+
+    quad-net.js must precede the wasm or its imports are missing at
+    instantiate — the failure looks like a corrupt module rather than a
+    missing script.
+  -->
+  <script src="gl.js"></script>
+  <script src="sapp_jsutils.js"></script>
+  <script src="quad-net.js"></script>
+  <script>
+    const boot = document.getElementById('boot');
+    const say = (msg, colour) => {
+      const line = document.createElement('div');
+      line.textContent = msg;
+      if (colour) line.style.color = colour;
+      boot.appendChild(line);
+    };
+
+    // The release profile is `panic = "abort"`, so a Rust panic surfaces in JS
+    // as `RuntimeError: unreachable` with no message. Mirroring console.error
+    // is what makes the actual panic text readable.
+    const realError = console.error.bind(console);
+    console.error = (...args) => { say(args.join(' '), '#fb7185'); realError(...args); };
+    window.addEventListener('error', (e) => say(`window error: ${e.message}`, '#fb7185'));
+
+    say('loading wasm…');
+    load('mq-flow-probe.wasm');
+  </script>
+</body>
+</html>

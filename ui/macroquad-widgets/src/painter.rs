@@ -173,6 +173,29 @@ pub use theme::{shade, with_alpha};
 
 /// A tap this frame — a fresh touch (mobile) OR a mouse press (desktop). Touch
 /// is checked first so wallet-webview runs exercise the real touch path.
+///
+/// # Deprecated: fires on touch-*down*
+///
+/// This reports a tap the instant a finger lands, so a finger that touches a
+/// control and slides away still activates it — not how a native control
+/// behaves, and on a mint button the difference between a mis-tap the buyer
+/// can take back and one they can't. It also makes swipe impossible: a drag
+/// across a grid would select whatever it started on *and* scroll.
+///
+/// [`crate::Gestures`] resolves a tap on release, within a small slop, and
+/// recognises swipes as mutually exclusive with taps. Hold one on your app
+/// state, call `update()` once per frame, and pass `.tap` here instead:
+///
+/// ```ignore
+/// let gesture = self.gestures.update();
+/// let p = Painter::new(font, mono, theme, gesture.tap);
+/// ```
+///
+/// Kept (rather than removed) so any out-of-tree caller gets a warning and
+/// this explanation instead of a broken build.
+#[deprecated(
+    note = "fires on touch-down, so dragging off a control still activates it; use `Gestures` and pass `Gesture::tap`"
+)]
 pub fn frame_tap() -> Option<Vec2> {
     for t in touches() {
         if matches!(t.phase, TouchPhase::Started) {

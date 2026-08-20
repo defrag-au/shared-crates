@@ -451,7 +451,7 @@ impl ShelfConfig {
                     DEFAULT_MAX_ROWS
                 };
             let tier_height = visible_rows as f32 * (bh + bg) + self.shelf_padding * 2.0 - bg; // no trailing gap
-                                                                                               // Add a small extra for the "+N more" indicator when collapsed
+            // Add a small extra for the "+N more" indicator when collapsed
             let tier_height =
                 if !is_expanded && tier != ShelfTier::Dust && total_rows > DEFAULT_MAX_ROWS {
                     tier_height + 16.0 // space for the "+N more" label
@@ -506,7 +506,7 @@ impl ShelfConfig {
 
         let mut y = rect.top();
 
-        for (tier, total_rows, visible_rows, ref widths) in &tier_info {
+        for (tier, total_rows, visible_rows, widths) in &tier_info {
             let tier = *tier;
             let total_rows = *total_rows;
             let visible_rows = *visible_rows;
@@ -824,26 +824,24 @@ impl ShelfConfig {
             // Check "+N more" clicks first
             if let Some(mp) = mouse_pos {
                 for layout in &tier_layouts {
-                    if let Some(more_rect) = layout.more_label_rect {
-                        if more_rect.contains(mp) {
-                            state.expanded_tiers.insert(layout.tier);
-                            handled = true;
-                            break;
-                        }
+                    if let Some(more_rect) = layout.more_label_rect
+                        && more_rect.contains(mp)
+                    {
+                        state.expanded_tiers.insert(layout.tier);
+                        handled = true;
+                        break;
                     }
                 }
             }
 
             // Then check block selection
-            if !handled {
-                if let Some(ref hovered_ref) = state.hovered_utxo {
-                    if state.selected_utxo.as_ref() == Some(hovered_ref) {
-                        state.selected_utxo = None;
-                        action = Some(ShelfAction::Deselected);
-                    } else {
-                        state.selected_utxo = Some(hovered_ref.clone());
-                        action = Some(ShelfAction::SelectedUtxo(hovered_ref.clone()));
-                    }
+            if !handled && let Some(ref hovered_ref) = state.hovered_utxo {
+                if state.selected_utxo.as_ref() == Some(hovered_ref) {
+                    state.selected_utxo = None;
+                    action = Some(ShelfAction::Deselected);
+                } else {
+                    state.selected_utxo = Some(hovered_ref.clone());
+                    action = Some(ShelfAction::SelectedUtxo(hovered_ref.clone()));
                 }
             }
         }
@@ -868,8 +866,8 @@ impl ShelfConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cardano_assets::utxo::{AssetQuantity, UtxoApi, UtxoTag};
     use cardano_assets::AssetId;
+    use cardano_assets::utxo::{AssetQuantity, UtxoApi, UtxoTag};
 
     /// Mainnet coinsPerUTxOByte for tests.
     const TEST_COINS_PER_UTXO_BYTE: u64 = 4310;

@@ -82,10 +82,10 @@ impl<'a> NamedGroupList<'a> {
                         {
                             changed = true;
                         }
-                        if let Some(label) = flag_label {
-                            if ui.checkbox(&mut group.flag, label).changed() {
-                                changed = true;
-                            }
+                        if let Some(label) = flag_label
+                            && ui.checkbox(&mut group.flag, label).changed()
+                        {
+                            changed = true;
                         }
                         if ui.button("Remove group").clicked() {
                             remove_group = Some(gi);
@@ -95,17 +95,17 @@ impl<'a> NamedGroupList<'a> {
                     let r = TokenMultiselect::new(&group.members, options)
                         .add_label(member_label)
                         .show(ui);
-                    if let Some(opt) = r.added {
-                        if !group.members.contains(&opt) {
-                            group.members.push(opt);
-                            changed = true;
-                        }
+                    if let Some(opt) = r.added
+                        && !group.members.contains(&opt)
+                    {
+                        group.members.push(opt);
+                        changed = true;
                     }
-                    if let Some(i) = r.removed {
-                        if i < group.members.len() {
-                            group.members.remove(i);
-                            changed = true;
-                        }
+                    if let Some(i) = r.removed
+                        && i < group.members.len()
+                    {
+                        group.members.remove(i);
+                        changed = true;
                     }
                     if r.cleared {
                         group.members.clear();

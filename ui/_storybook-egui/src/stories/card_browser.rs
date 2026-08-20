@@ -5,10 +5,10 @@ use egui_widgets::asset_card::{
     AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES, RARITIES,
 };
 use egui_widgets::card_browser::{self, CardBrowserConfig, CardBrowserState};
+use image_core::ImageSize;
 
 use crate::{ACCENT, TEXT_MUTED};
 
-const IIIF_BASE: &str = "https://iiif.hodlcroft.com/iiif/3";
 const POLICY_ID: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
 
 // ============================================================================
@@ -62,8 +62,8 @@ pub struct DemoItem {
 }
 
 /// Build a IIIF thumbnail URL from a hex asset name.
-fn iiif_url(asset_hex: &str, size: u32) -> String {
-    format!("{IIIF_BASE}/{POLICY_ID}:{asset_hex}/full/{size},/0/default.jpg")
+fn iiif_url(asset_hex: &str, size: ImageSize) -> String {
+    image_core::iiif_asset_url(POLICY_ID, asset_hex, size)
 }
 
 // Real Hodlcroft Pirates assets (50 hex asset names from asset_ids.csv)
@@ -166,7 +166,7 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                     } else {
                         Color32::from_rgb(224, 175, 104)
                     },
-                    image_url: Some(iiif_url(hex, 400)),
+                    image_url: Some(iiif_url(hex, ImageSize::Thumb)),
                     rarity: 0,
                     effect_index: 0,
                     card_state: AssetCardState::default(),
@@ -209,7 +209,7 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                     } else {
                         Color32::from_rgb(96, 104, 128)
                     },
-                    image_url: Some(iiif_url(hex, 400)),
+                    image_url: Some(iiif_url(hex, ImageSize::Thumb)),
                     rarity: 0,
                     effect_index: 0,
                     card_state: AssetCardState::default(),
@@ -240,7 +240,7 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                         ("Collection".into(), "Hodlcroft Pirates".into()),
                     ],
                     accent: RARITIES[rarity].1,
-                    image_url: Some(iiif_url(hex, 400)),
+                    image_url: Some(iiif_url(hex, ImageSize::Thumb)),
                     rarity,
                     effect_index,
                     card_state: AssetCardState {

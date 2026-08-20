@@ -167,21 +167,21 @@ pub fn show(ui: &mut Ui, segments: &[ExposureSegment], config: &ExposureBarConfi
     }
 
     // Hover tooltips — detect which segment the pointer is over
-    if response.hovered() {
-        if let Some(pointer) = ui.ctx().pointer_hover_pos() {
-            let rel_x = pointer.x - rect.min.x;
-            let frac_x = rel_x / rect.width();
-            let mut cumulative = 0.0;
-            for seg in segments {
-                cumulative += seg.fraction;
-                if frac_x <= cumulative {
-                    let ada = seg.principal_lovelace as f64 / 1_000_000.0;
-                    response.clone().on_hover_text(format!(
-                        "{}: {ada:.0} ADA ({:.1}% LTV)",
-                        seg.label, seg.ltv_pct,
-                    ));
-                    break;
-                }
+    if response.hovered()
+        && let Some(pointer) = ui.ctx().pointer_hover_pos()
+    {
+        let rel_x = pointer.x - rect.min.x;
+        let frac_x = rel_x / rect.width();
+        let mut cumulative = 0.0;
+        for seg in segments {
+            cumulative += seg.fraction;
+            if frac_x <= cumulative {
+                let ada = seg.principal_lovelace as f64 / 1_000_000.0;
+                response.clone().on_hover_text(format!(
+                    "{}: {ada:.0} ADA ({:.1}% LTV)",
+                    seg.label, seg.ltv_pct,
+                ));
+                break;
             }
         }
     }

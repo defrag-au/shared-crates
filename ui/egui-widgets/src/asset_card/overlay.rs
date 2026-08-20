@@ -1,4 +1,4 @@
-use crate::icons::{phosphor_family, PhosphorIcon};
+use crate::icons::{PhosphorIcon, phosphor_family};
 use egui::epaint::{Mesh, Vertex};
 use egui::text::LayoutJob;
 use egui::{Color32, Pos2, Rect, TextFormat, Vec2};

@@ -281,12 +281,11 @@ pub fn Pagination(
     };
 
     let handle_jump_submit = move |ev: web_sys::KeyboardEvent| {
-        if ev.key() == "Enter" {
-            if let Ok(page) = jump_input.get().parse::<usize>() {
+        if ev.key() == "Enter"
+            && let Ok(page) = jump_input.get().parse::<usize>() {
                 state.go_to(page);
                 set_jump_input.set(String::new());
             }
-        }
     };
 
     // Calculate which page numbers to show (reactive to page size changes)

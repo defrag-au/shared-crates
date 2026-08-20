@@ -18,7 +18,7 @@
 use egui::{Color32, Label, RichText, Sense, Ui};
 
 use crate::chip::{Chip, ChipVariant};
-use crate::icons::{install_phosphor_font, PhosphorIcon};
+use crate::icons::{PhosphorIcon, install_phosphor_font};
 
 /// The distilled view of a raw error string.
 #[derive(Clone, Debug, PartialEq, Eq)]

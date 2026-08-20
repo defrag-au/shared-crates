@@ -6,7 +6,11 @@ license.workspace = true
 description = "Wire protocol types for unified realtime communication"
 
 [dependencies]
-serde = { workspace = true }
+# `derive` declared HERE, not inherited by accident: the workspace `serde` has
+# no default features, so this crate only ever built because a sibling in the
+# same graph happened to turn derive on. Building it alone — or for wasm, where
+# the graph is different — loses that and every `#[derive(Serialize)]` fails.
+serde = { workspace = true, features = ["derive"] }
 serde_repr = "0.1"
 rmp-serde = "1.3"
 thiserror = { workspace = true }

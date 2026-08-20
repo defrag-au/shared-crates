@@ -157,31 +157,30 @@ pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
             });
 
             // Improvement vs best single pool
-            if let Some(single_tokens) = data.best_single_pool_tokens {
-                if single_tokens > 0 && data.total_tokens > single_tokens {
-                    let improvement =
-                        (data.total_tokens as f64 / single_tokens as f64 - 1.0) * 100.0;
-                    let extra = data.total_tokens - single_tokens;
+            if let Some(single_tokens) = data.best_single_pool_tokens
+                && single_tokens > 0
+                && data.total_tokens > single_tokens
+            {
+                let improvement = (data.total_tokens as f64 / single_tokens as f64 - 1.0) * 100.0;
+                let extra = data.total_tokens - single_tokens;
 
-                    ui.add_space(4.0);
-                    ui.horizontal(|ui| {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("Split advantage")
+                            .color(theme::TEXT_MUTED)
+                            .size(config.font_size),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new("Split advantage")
-                                .color(theme::TEXT_MUTED)
-                                .size(config.font_size),
+                            RichText::new(
+                                format!("+{} ({improvement:.2}%)", format_tokens(extra),),
+                            )
+                            .color(theme::ACCENT_GREEN)
+                            .size(config.font_size),
                         );
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(
-                                RichText::new(format!(
-                                    "+{} ({improvement:.2}%)",
-                                    format_tokens(extra),
-                                ))
-                                .color(theme::ACCENT_GREEN)
-                                .size(config.font_size),
-                            );
-                        });
                     });
-                }
+                });
             }
         });
 }

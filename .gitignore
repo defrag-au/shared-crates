@@ -13,3 +13,6 @@ database.sql
 
 # Claude Code personal overrides — shared rules live in .claude/settings.json
 .claude/settings.local.json
+
+# Agent scratch — screenshots, captures (see CLAUDE.md)
+.tmp/

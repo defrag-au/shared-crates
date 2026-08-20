@@ -238,13 +238,19 @@ impl<'a> TypeaheadSearch<'a> {
             *self.highlight = len - 1;
         }
 
-        // ── Keyboard navigation (only while the input is focused) ─────────
-        if te_response.has_focus() {
-            let (down, up, enter) = ui.input(|i| {
+        // ── Keyboard navigation ───────────────────────────────────────────
+        // `lost_focus()` as well as `has_focus()`: a single-line `TextEdit`
+        // SURRENDERS FOCUS on Enter, so a check gated on `has_focus()` alone
+        // misses the very keystroke that is meant to choose a row.
+        //
+        // `consume_key`, not `key_pressed`: taking the event stops egui's focus
+        // manager also acting on it and moving focus off the box mid-search.
+        if te_response.has_focus() || te_response.lost_focus() {
+            let (down, up, enter) = ui.input_mut(|i| {
                 (
-                    i.key_pressed(egui::Key::ArrowDown),
-                    i.key_pressed(egui::Key::ArrowUp),
-                    i.key_pressed(egui::Key::Enter),
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
                 )
             });
             if down {
@@ -255,6 +261,9 @@ impl<'a> TypeaheadSearch<'a> {
             }
             if enter {
                 out.chosen = Some(self.options[*self.highlight].id.clone());
+                // Keep the caret in the box so the next search can just be
+                // typed — choosing a result is not the end of the task.
+                ui.memory_mut(|m| m.request_focus(edit_id));
             }
         }
 
@@ -309,10 +318,14 @@ fn row(
     height: f32,
     accent: Color32,
 ) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), height),
-        egui::Sense::click(),
-    );
+    // `Sense::CLICK`, NOT `Sense::click()` — the const is the non-focusable
+    // variant. A focusable row joins egui's keyboard focus order, so ArrowDown
+    // moves FOCUS into the list instead of moving our highlight, and Enter then
+    // synthesises a click on whichever row holds focus rather than the
+    // highlighted one. The dropdown is driven by `highlight`; rows are a mouse
+    // target only.
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::CLICK);
 
     if highlighted || response.hovered() {
         ui.painter().rect_filled(rect, 6.0, theme::BG_HIGHLIGHT);
@@ -412,9 +425,151 @@ pub fn filter_options<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use egui::pos2;
 
     fn opt(title: &str) -> TypeaheadOption {
         TypeaheadOption::new(title.to_lowercase(), title)
+    }
+
+    // ── interaction harness ───────────────────────────────────────────────
+    // Rendering tests are not enough for a picker: "the rows are drawn" and
+    // "clicking a row selects it" are different claims, and it was the second
+    // one that was broken in the app.
+
+    use egui::{Event, PointerButton, Pos2, RawInput, Rect, vec2};
+
+    struct Harness {
+        ctx: egui::Context,
+        query: String,
+        highlight: usize,
+    }
+
+    impl Harness {
+        fn new(query: &str) -> Self {
+            let ctx = egui::Context::default();
+            // The input row draws a phosphor magnifier; without the font bound,
+            // layout panics before any interaction happens.
+            crate::icons::install_fonts(&ctx);
+            Self {
+                ctx,
+                query: query.into(),
+                highlight: 0,
+            }
+        }
+
+        /// One frame with the given events; returns what the widget reported.
+        ///
+        /// `#[expect(deprecated)]`: egui 0.34 deprecates top-level
+        /// `CentralPanel::show(ctx, …)` without exposing a root `Ui` to use
+        /// `show_inside` against — see the note in `party_finder`'s harness.
+        #[expect(deprecated)]
+        fn frame(&mut self, options: &[TypeaheadOption], events: Vec<Event>) -> TypeaheadResponse {
+            let mut out = TypeaheadResponse::default();
+            let raw = RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(600.0, 500.0))),
+                events,
+                ..Default::default()
+            };
+            self.ctx.begin_pass(raw);
+            egui::CentralPanel::default().show(&self.ctx, |ui| {
+                // The app puts the finder inside a horizontal row (next to the
+                // pinned chip), so the harness does too.
+                ui.horizontal(|ui| {
+                    out = TypeaheadSearch::new("h", &mut self.query, options, &mut self.highlight)
+                        .show(ui);
+                });
+            });
+            let _ = self.ctx.end_pass();
+            out
+        }
+
+        fn click_at(&mut self, options: &[TypeaheadOption], pos: Pos2) -> TypeaheadResponse {
+            // Hover first: egui needs the pointer to be over the widget on a
+            // frame before the press is attributed to it.
+            self.frame(options, vec![Event::PointerMoved(pos)]);
+            self.frame(
+                options,
+                vec![
+                    Event::PointerMoved(pos),
+                    Event::PointerButton {
+                        pos,
+                        button: PointerButton::Primary,
+                        pressed: true,
+                        modifiers: Default::default(),
+                    },
+                ],
+            );
+            self.frame(
+                options,
+                vec![Event::PointerButton {
+                    pos,
+                    button: PointerButton::Primary,
+                    pressed: false,
+                    modifiers: Default::default(),
+                }],
+            )
+        }
+    }
+
+    fn three() -> Vec<TypeaheadOption> {
+        vec![
+            TypeaheadOption::new("a", "$alpha").subtitle("stake1a…"),
+            TypeaheadOption::new("b", "$beta").subtitle("stake1b…"),
+            TypeaheadOption::new("c", "$gamma").subtitle("stake1c…"),
+        ]
+    }
+
+    /// Clicking a row chooses THAT row.
+    #[test]
+    fn clicking_a_row_chooses_it() {
+        let opts = three();
+        let mut h = Harness::new("a");
+        // Frame once to establish layout, then click into the second row.
+        h.frame(&opts, vec![]);
+        // Input row ~46px tall incl. frame; rows are 46px each below it.
+        let r = h.click_at(&opts, pos2(120.0, 46.0 + 6.0 + 4.0 + 46.0 + 23.0));
+        assert_eq!(
+            r.chosen.as_deref(),
+            Some("b"),
+            "click on row 2 must choose it"
+        );
+    }
+
+    /// Enter chooses the highlighted row. A single-line `TextEdit` SURRENDERS
+    /// FOCUS on Enter, so anything gated on `has_focus()` never sees the key.
+    #[test]
+    fn enter_chooses_the_highlighted_row() {
+        let opts = three();
+        let mut h = Harness::new("a");
+        h.frame(&opts, vec![]);
+        // Focus the input by clicking it.
+        h.click_at(&opts, pos2(120.0, 20.0));
+        // Arrow down to the second row, then Enter.
+        h.frame(
+            &opts,
+            vec![Event::Key {
+                key: egui::Key::ArrowDown,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        let r = h.frame(
+            &opts,
+            vec![Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+        );
+        assert_eq!(
+            r.chosen.as_deref(),
+            Some("b"),
+            "enter must choose the highlight"
+        );
     }
 
     #[test]

@@ -329,8 +329,13 @@ where
             _action: std::marker::PhantomData,
         }));
 
-        // Notify initial status
-        if let Some(ref cb) = on_status {
+        // Notify initial status.
+        //
+        // BORROW, never move: these callbacks are `Option<Rc<dyn Fn>>` and each
+        // one is used again by the handlers below. Moving out of the option
+        // here would also make every closure that does it `FnOnce`, which
+        // `Closure::wrap(... as Box<dyn FnMut>)` cannot accept.
+        if let Some(cb) = &on_status {
             cb(ConnectionStatus::Connecting);
         }
 
@@ -351,7 +356,7 @@ where
                     inner.reconnect_attempt = 0;
                 }
 
-                if let Some(ref cb) = on_status {
+                if let Some(cb) = &on_status {
                     cb(ConnectionStatus::Connected);
                 }
 
@@ -417,7 +422,7 @@ where
                     }
                     Err(e) => {
                         tracing::warn!("Failed to decode server message: {}", e);
-                        if let Some(ref cb) = on_error {
+                        if let Some(cb) = &on_error {
                             cb(format!("Decode error: {e}"), false);
                         }
                     }
@@ -454,7 +459,7 @@ where
 
                     if close_info.is_auth_failure() {
                         inner.status = ConnectionStatus::AuthFailed;
-                        if let Some(ref cb) = on_status {
+                        if let Some(cb) = &on_status {
                             cb(ConnectionStatus::AuthFailed);
                         }
                         false
@@ -466,12 +471,12 @@ where
                         if should {
                             inner.status = ConnectionStatus::Reconnecting { attempt };
                             inner.reconnect_attempt = attempt;
-                            if let Some(ref cb) = on_status {
+                            if let Some(cb) = &on_status {
                                 cb(ConnectionStatus::Reconnecting { attempt });
                             }
                         } else {
                             inner.status = ConnectionStatus::Disconnected;
-                            if let Some(ref cb) = on_status {
+                            if let Some(cb) = &on_status {
                                 cb(ConnectionStatus::Disconnected);
                             }
                         }
@@ -511,7 +516,7 @@ where
 
             let onerror = Closure::wrap(Box::new(move |_event: JsValue| {
                 tracing::error!("WebSocket error");
-                if let Some(ref cb) = on_error {
+                if let Some(cb) = &on_error {
                     cb("WebSocket error".into(), false);
                 }
             }) as Box<dyn FnMut(JsValue)>);
@@ -612,7 +617,7 @@ fn handle_server_message<State, Delta, Event, Action>(
     match msg {
         ServerMessage::Connected { connection_id, .. } => {
             tracing::debug!("Server acknowledged connection: {}", connection_id);
-            if let Some(ref cb) = on_connected {
+            if let Some(cb) = on_connected {
                 cb(connection_id);
             }
         }
@@ -621,30 +626,30 @@ fn handle_server_message<State, Delta, Event, Action>(
         }
         ServerMessage::Error { message, fatal, .. } => {
             tracing::error!("Server error (fatal={}): {}", fatal, message);
-            if let Some(ref cb) = on_error {
+            if let Some(cb) = on_error {
                 cb(message, fatal);
             }
         }
         ServerMessage::Snapshot { state, seq, .. } => {
             inner.borrow_mut().current_seq = seq;
-            if let Some(ref cb) = on_snapshot {
+            if let Some(cb) = on_snapshot {
                 cb(state, seq);
             }
         }
         ServerMessage::Delta { delta, seq, .. } => {
             inner.borrow_mut().current_seq = seq;
-            if let Some(ref cb) = on_delta {
+            if let Some(cb) = on_delta {
                 cb(delta, seq);
             }
         }
         ServerMessage::Deltas { deltas, seq, .. } => {
             inner.borrow_mut().current_seq = seq;
-            if let Some(ref cb) = on_deltas {
+            if let Some(cb) = on_deltas {
                 cb(deltas, seq);
             }
         }
         ServerMessage::Presence { users } => {
-            if let Some(ref cb) = on_presence {
+            if let Some(cb) = on_presence {
                 cb(users);
             }
         }
@@ -657,7 +662,7 @@ fn handle_server_message<State, Delta, Event, Action>(
             event,
             correlation_id,
         } => {
-            if let Some(ref cb) = on_notify {
+            if let Some(cb) = on_notify {
                 cb(domain, event, correlation_id);
             }
         }
@@ -666,12 +671,12 @@ fn handle_server_message<State, Delta, Event, Action>(
             percent,
             message,
         } => {
-            if let Some(ref cb) = on_progress {
+            if let Some(cb) = on_progress {
                 cb(op_id, percent, message);
             }
         }
         ServerMessage::ActionOk { op_id, .. } => {
-            if let Some(ref cb) = on_action_complete {
+            if let Some(cb) = on_action_complete {
                 cb(op_id);
             }
         }
@@ -680,7 +685,7 @@ fn handle_server_message<State, Delta, Event, Action>(
             code,
             message,
         } => {
-            if let Some(ref cb) = on_action_error {
+            if let Some(cb) = on_action_error {
                 cb(op_id, code, message);
             }
         }
@@ -711,7 +716,7 @@ fn reconnect<Action>(
     // For now, this is a simplified version
     inner.borrow_mut().ws = Some(ws);
 
-    if let Some(ref cb) = on_status {
+    if let Some(cb) = on_status {
         cb(ConnectionStatus::Connecting);
     }
 

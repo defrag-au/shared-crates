@@ -13,7 +13,9 @@ use egui::{Color32, FontFamily, FontId, Pos2, RichText, Ui};
 /// The font family name registered for Phosphor icons.
 pub const PHOSPHOR_FAMILY_NAME: &str = "phosphor-icons";
 
-/// Tracks whether the font has been installed in the current process.
+/// Tracks whether the font has been installed in ANY context in this process.
+/// Kept only to back the deprecated [`phosphor_font_installed`] query — the
+/// install itself is guarded per-context.
 static FONT_INSTALLED: AtomicBool = AtomicBool::new(false);
 
 /// Font family for Phosphor icons.
@@ -35,9 +37,16 @@ pub const FALLBACK_FAMILY_NAME: &str = "dejavu-fallback";
 /// Safe to call multiple times — only installs once per process. Call before
 /// [`crate::theme::configure_style`].
 pub fn install_phosphor_font(ctx: &egui::Context) {
-    if FONT_INSTALLED.swap(true, Ordering::Relaxed) {
+    // Guarded PER CONTEXT, not per process. Fonts live in the context, so a
+    // process-wide flag means the SECOND context in a process (a second
+    // viewport, a test running beside another) never gets them and either
+    // renders tofu or panics with "not bound to any fonts".
+    let installed = egui::Id::new("egui-widgets/fonts-installed");
+    if ctx.data(|d| d.get_temp::<bool>(installed)).unwrap_or(false) {
         return;
     }
+    ctx.data_mut(|d| d.insert_temp(installed, true));
+    FONT_INSTALLED.store(true, Ordering::Relaxed);
 
     let mut fonts = egui::FontDefinitions::default();
 

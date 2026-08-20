@@ -59,11 +59,11 @@
 
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke, Ui};
 
+use crate::PhosphorIcon;
 use crate::button_group::{ButtonGroup, ButtonGroupButton};
 use crate::icons::install_phosphor_font;
 use crate::id_pill::{IdPill, IdPillLayout};
 use crate::wallet_list::{WalletPoolBadge, WalletPoolBadgeHealth};
-use crate::PhosphorIcon;
 
 // ─────────────────────────────────────────────────────────────────────
 // Types
@@ -670,11 +670,10 @@ fn render_card(
                     // Refuel — fan-out tx that splits the wallet's pure-ADA
                     // balance into N × 10 ADA fuel slots. Self-disables (no
                     // pool / healthy / in-flight) so the host doesn't re-check.
-                    if controls.contains(CollectionControl::Refuel) {
-                        if let Some(pool) = &row.pool {
+                    if controls.contains(CollectionControl::Refuel)
+                        && let Some(pool) = &row.pool {
                             refuel_button(ui, row, pool, response);
                         }
-                    }
                     // Withdraw — dev-only sweep of the wallet's tADA back to the
                     // operator's connected wallet. Sits last (it's a teardown, not
                     // a routine control) and only when the host opts in (preprod).
@@ -765,10 +764,10 @@ fn render_list_row(
                     // Within `right_to_left`, items added first sit furthest
                     // right; ButtonGroup's internal layout still flows
                     // left-to-right inside its own cluster.
-                    if controls.contains(CollectionControl::Refuel) {
-                        if let Some(pool) = &row.pool {
-                            refuel_button(ui, row, pool, response);
-                        }
+                    if controls.contains(CollectionControl::Refuel)
+                        && let Some(pool) = &row.pool
+                    {
+                        refuel_button(ui, row, pool, response);
                     }
                     if ui
                         .small_button(PhosphorIcon::Copy.rich_text(11.0, META_GREY).small())
@@ -819,16 +818,15 @@ fn render_wallet_pill(
 
     ui.add_space(2.0);
     ui.horizontal(|ui| {
-        if let Some(idx) = account_index {
-            if ui
+        if let Some(idx) = account_index
+            && ui
                 .small_button(RichText::new("Inspect").small().color(META_GREY))
                 .on_hover_text("Open this wallet's UTxOs")
                 .clicked()
-            {
-                response
-                    .actions
-                    .push(CollectionListAction::OpenWallet { account_index: idx });
-            }
+        {
+            response
+                .actions
+                .push(CollectionListAction::OpenWallet { account_index: idx });
         }
         extra(ui, response);
     });

@@ -96,11 +96,10 @@ pub fn AssetDetailCard(
         // Fall back to IIIF URL generation from asset-id (use large size for detail view)
         if let Some(ref id_signal) = asset_id {
             let id = id_signal.get();
-            if !id.is_empty() {
-                if let Some(url) = generate_iiif_url(&id, IiifSize::Large) {
+            if !id.is_empty()
+                && let Some(url) = generate_iiif_url(&id, IiifSize::Large) {
                     return url;
                 }
-            }
         }
 
         String::new()

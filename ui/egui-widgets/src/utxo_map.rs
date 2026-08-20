@@ -516,12 +516,11 @@ impl UtxoMapConfig {
                         policy_color(&cell.policy_id)
                     };
 
-                    if !is_water {
-                        if let Some(mp) = mouse_pos {
-                            if point_in_polygon(mp, &screen_verts) {
-                                hovered_cell_idx = Some(poly_idx);
-                            }
-                        }
+                    if !is_water
+                        && let Some(mp) = mouse_pos
+                        && point_in_polygon(mp, &screen_verts)
+                    {
+                        hovered_cell_idx = Some(poly_idx);
                     }
 
                     painter.add(Shape::convex_polygon(
@@ -839,8 +838,8 @@ mod tests {
 
     #[test]
     fn test_utxos_to_map_data_multi_policy() {
-        use cardano_assets::utxo::{AssetQuantity, UtxoApi};
         use cardano_assets::AssetId;
+        use cardano_assets::utxo::{AssetQuantity, UtxoApi};
 
         let utxos = vec![UtxoApi {
             tx_hash: "ccdd".into(),

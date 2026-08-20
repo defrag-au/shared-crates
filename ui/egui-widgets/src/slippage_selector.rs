@@ -139,13 +139,12 @@ pub fn show(
             );
             ui.label(RichText::new("%").color(theme::TEXT_MUTED).size(11.0));
 
-            if response.changed() {
-                if let Some(bps) = parse_percent_to_bps(&state.custom_text) {
-                    if state.slippage_bps != bps {
-                        state.slippage_bps = bps;
-                        action = SlippageSelectorAction::Changed(bps);
-                    }
-                }
+            if response.changed()
+                && let Some(bps) = parse_percent_to_bps(&state.custom_text)
+                && state.slippage_bps != bps
+            {
+                state.slippage_bps = bps;
+                action = SlippageSelectorAction::Changed(bps);
             }
         }
     });

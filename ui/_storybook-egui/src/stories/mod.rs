@@ -3,12 +3,16 @@ pub mod asset_card;
 pub mod async_data;
 pub mod bullet_bar;
 pub mod buttons;
+pub mod capital_flow;
 pub mod card_browser;
 pub mod collection_list;
 pub mod distribution;
 pub mod distribution_waterfall;
 pub mod error_note;
 pub mod flip_counter;
+pub mod flow_ledger;
+pub mod flow_matrix;
+pub mod flow_ring;
 pub mod focus_list;
 pub mod formatting;
 pub mod gated;
@@ -21,6 +25,8 @@ pub mod mnemonic_display;
 pub mod named_group_list;
 pub mod order_list;
 pub mod palette_editor;
+pub mod party_annotator;
+pub mod party_badge;
 pub mod perspective_text;
 pub mod pip_row;
 pub mod price_timeline;
@@ -38,6 +44,7 @@ pub mod supply_bar;
 pub mod swap;
 pub mod tag_list;
 pub mod tcg_card;
+pub mod time_spine;
 pub mod timestamp;
 pub mod token_multiselect;
 pub mod trait_filter;
@@ -55,6 +62,7 @@ pub mod slippage_selector;
 pub mod split_allocation_bar;
 
 // Loan dashboard widgets
+pub mod custody_walk;
 pub mod data_table;
 pub mod exposure_bar;
 
@@ -86,7 +94,9 @@ pub mod tx_cart;
 // label/value grids, button groups). Add new foundation widgets to this
 // group rather than tacking on a new category at the end of the file.
 pub mod button_group;
+pub mod channel_bands;
 pub mod chip;
+pub mod claim_card;
 pub mod id_pill;
 pub mod property_list;
 pub mod toast;

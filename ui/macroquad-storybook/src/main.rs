@@ -11,10 +11,12 @@
 
 use macroquad::prelude::*;
 use macroquad_widgets::{
-    frame_tap, mint_checkout, order_fulfilment, quantity_stepper, theme, wallet_connect,
-    wallet_list, Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility,
+    mint_checkout, order_fulfilment, quantity_stepper, theme, wallet_connect,
+    wallet_list, Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility, Gestures,
+    SwipeDir,
     FulfilmentAction, FulfilmentStatus, FulfilmentTx, MintCheckoutVm, OrderFulfilmentVm,
-    OrderStatus, Painter, QuantityStepperVm, StepperAction, Theme, WalletAction, WalletConnectVm,
+    squad_picker, OrderStatus, Painter, QuantityStepperVm, SquadCandidate, SquadCommit,
+    SquadPickerAction, SquadPickerVm, StepperAction, Theme, WalletAction, WalletConnectVm,
     WalletItem, WalletListAction, WalletListState, WalletListVm, WalletRow, WalletState,
 };
 
@@ -73,6 +75,7 @@ enum Body {
     WalletList(WalletListVm),
     Checkout(MintCheckoutVm),
     Fulfilment(Fulfilment),
+    SquadPicker(SquadPickerVm),
 }
 
 /// Cheap copy of the story kind — lets `draw_main` dispatch without holding a
@@ -85,6 +88,7 @@ enum Kind {
     WalletList,
     Checkout,
     Fulfilment,
+    SquadPicker,
 }
 
 struct Story {
@@ -161,8 +165,95 @@ impl Story {
             Body::WalletList(_) => Kind::WalletList,
             Body::Checkout(_) => Kind::Checkout,
             Body::Fulfilment(_) => Kind::Fulfilment,
+            Body::SquadPicker(_) => Kind::SquadPicker,
         }
     }
+
+    fn squad_picker(category: &'static str, name: &'static str, vm: SquadPickerVm) -> Self {
+        Self {
+            category,
+            name,
+            body: Body::SquadPicker(vm),
+        }
+    }
+}
+
+/// Stand-in asset art, generated rather than shipped.
+///
+/// Real art needs a network and a wallet; the point here is to judge *layout*
+/// with something image-shaped in every tile. Each is a distinct two-tone
+/// pattern so a grid of them reads like a grid of different assets rather than
+/// one repeated — which is exactly what makes a picker's spacing testable.
+///
+/// The last one is deliberately left `None` so the missing-art fallback (the
+/// serial on a plate) is always on screen next to real tiles.
+fn placeholder_art(seed: usize) -> Texture2D {
+    const N: usize = 16;
+    let hues = [
+        (0.36, 0.55, 0.85),
+        (0.85, 0.45, 0.40),
+        (0.45, 0.80, 0.55),
+        (0.80, 0.70, 0.35),
+        (0.65, 0.45, 0.85),
+        (0.40, 0.75, 0.80),
+    ];
+    let (r, g, b) = hues[seed % hues.len()];
+    let mut bytes = Vec::with_capacity(N * N * 4);
+    for y in 0..N {
+        for x in 0..N {
+            // A cheap deterministic pattern — blocky, like pixel-art PFPs.
+            let on = ((x / 2) * 7 + (y / 2) * 13 + seed * 5) % 5 < 2;
+            let k = if on { 1.0 } else { 0.45 };
+            let vignette = if x == 0 || y == 0 || x == N - 1 || y == N - 1 {
+                0.5
+            } else {
+                1.0
+            };
+            bytes.push((r * k * vignette * 255.0) as u8);
+            bytes.push((g * k * vignette * 255.0) as u8);
+            bytes.push((b * k * vignette * 255.0) as u8);
+            bytes.push(255);
+        }
+    }
+    let tex = Texture2D::from_rgba8(N as u16, N as u16, &bytes);
+    // Nearest, so the blocky pattern stays crisp when scaled up rather than
+    // turning to mush — and so it reads as art, not as a rendering error.
+    tex.set_filter(FilterMode::Nearest);
+    tex
+}
+
+/// A roster big enough to page, with the awkward cases a real one has: a name
+/// too long for its card, an asset that matched no role, and one that can't be
+/// picked at all.
+fn squad_roster(n: usize) -> Vec<SquadCandidate> {
+    let roles = ["mechanic", "medic", "scout", "gunner"];
+    (0..n)
+        .map(|i| {
+            let mut c = SquadCandidate::new(
+                format!("tool{i:04}"),
+                if i == 4 {
+                    "Toolhead #0777 With A Very Long Name".to_string()
+                } else {
+                    format!("Toolhead #{:04}", 220 + i * 37)
+                },
+                980 - (i as i32 * 13),
+            );
+            // Every fourth asset matched no role — a real roster has these, and
+            // they must still be pickable.
+            if i % 4 != 3 {
+                c = c.with_role(roles[i % roles.len()]);
+            }
+            if i == 6 {
+                c = c.unavailable("on another run");
+            }
+            // One asset without art, so the fallback is always visible beside
+            // real tiles rather than only in a story nobody opens.
+            if i != 3 {
+                c = c.with_image(placeholder_art(i));
+            }
+            c
+        })
+        .collect()
 }
 
 fn fx(
@@ -362,6 +453,58 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         ),
         Story::fulfilment("interactive", "knobs playground", Knobs, playground_vm()),
         Story::fulfilment("interactive", "simulate poll", Simulate, simulate_vm()),
+        // Squad picker. The live story is first because picking is the whole
+        // widget — the static ones exist to pin states that are awkward to
+        // reach by hand.
+        Story::squad_picker(
+            "squad",
+            "pick 4 of 12",
+            SquadPickerVm::new(squad_roster(12), 4).chosen(vec![
+                "tool0000".into(),
+                "tool0001".into(),
+            ]),
+        ),
+        Story::squad_picker(
+            "squad",
+            "full squad",
+            SquadPickerVm::new(squad_roster(12), 4).chosen(vec![
+                "tool0000".into(),
+                "tool0001".into(),
+                "tool0002".into(),
+                "tool0003".into(),
+            ]),
+        ),
+        Story::squad_picker(
+            "squad",
+            "single page",
+            SquadPickerVm::new(squad_roster(5), 4).chosen(vec!["tool0000".into()]),
+        ),
+        Story::squad_picker(
+            "squad",
+            "empty roster",
+            SquadPickerVm::new(Vec::new(), 4),
+        ),
+        Story::squad_picker(
+            "squad",
+            "locked (run under way)",
+            SquadPickerVm::new(squad_roster(12), 4)
+                .chosen(vec!["tool0000".into(), "tool0001".into()])
+                .editable(false),
+        ),
+        Story::squad_picker(
+            "squad",
+            "committing",
+            SquadPickerVm::new(squad_roster(12), 4)
+                .chosen(vec!["tool0000".into(), "tool0001".into()])
+                .commit(SquadCommit::Sending),
+        ),
+        Story::squad_picker(
+            "squad",
+            "commit failed",
+            SquadPickerVm::new(squad_roster(12), 4)
+                .chosen(vec!["tool0000".into()])
+                .commit(SquadCommit::Failed("that asset is not yours".into())),
+        ),
     ]
 }
 
@@ -434,6 +577,9 @@ struct Storybook {
     selected: usize,
     theme_idx: usize,
     last_action: Option<String>,
+    /// A swipe recognised this frame, for whichever story consumes gestures.
+    /// Set by the main loop before `frame`, cleared by the story that uses it.
+    pending_swipe: Option<SwipeDir>,
 }
 
 impl Storybook {
@@ -447,6 +593,7 @@ impl Storybook {
             selected: 0,
             theme_idx: 0,
             last_action: None,
+            pending_swipe: None,
         }
     }
 
@@ -587,7 +734,66 @@ impl Storybook {
             Kind::WalletList => self.draw_wallet_list(p, sel, x0, y, col_w),
             Kind::Checkout => self.draw_checkout(p, sel, x0, y, col_w),
             Kind::Fulfilment => self.draw_fulfilment(p, sel, x0, y, col_w),
+            Kind::SquadPicker => self.draw_squad_picker(p, sel, x0, y, col_w),
         }
+    }
+
+    /// The picker is fully interactive here — the storybook plays the host,
+    /// applying each action to the VM exactly as the Activity does. That is
+    /// the point of having it: selection, paging and the slot-full rule get
+    /// exercised without a Discord session or a live mission.
+    fn draw_squad_picker(&mut self, p: &Painter, sel: usize, x: f32, y: f32, w: f32) {
+        let Body::SquadPicker(vm) = &mut self.stories[sel].body else {
+            return;
+        };
+
+        // Drag horizontally with the mouse to page, the same gesture a finger
+        // makes on a phone.
+        if let Some(dir) = self.pending_swipe.take() {
+            if let Some(page) = vm.swipe(dir, w) {
+                self.last_action = Some(format!("swipe → page {}", page + 1));
+                return;
+            }
+        }
+
+        let r = squad_picker(p, vm, x, y, w);
+        if let Some(action) = r.action {
+            let echo = match action {
+                SquadPickerAction::Toggle(id) => {
+                    let label = match vm.chosen.iter().position(|c| c == &id) {
+                        Some(at) => {
+                            vm.chosen.remove(at);
+                            format!("removed {id}")
+                        }
+                        None if vm.chosen.len() < vm.max_slots => {
+                            vm.chosen.push(id.clone());
+                            format!("added {id}")
+                        }
+                        // The widget disables full-and-unpicked cards, so this
+                        // is unreachable by tap — kept because the host, not
+                        // the widget, owns the rule.
+                        None => format!("ignored {id} (squad full)"),
+                    };
+                    label
+                }
+                SquadPickerAction::Page(page) => {
+                    vm.page = page;
+                    format!("page {}", page + 1)
+                }
+                SquadPickerAction::Commit => {
+                    let names: Vec<String> = vm
+                        .chosen
+                        .iter()
+                        .filter_map(|id| vm.candidates.iter().find(|c| &c.id == id))
+                        .map(|c| c.name.clone())
+                        .collect();
+                    vm.commit = SquadCommit::Done(format!("deployed: {}", names.join(", ")));
+                    "commit".to_string()
+                }
+            };
+            self.last_action = Some(echo);
+        }
+        self.echo(p, x);
     }
 
     fn echo(&self, p: &Painter, x: f32) {
@@ -837,17 +1043,103 @@ fn window_conf() -> Conf {
     }
 }
 
+/// Command line: `--story <substring>` and `--shot <path>`.
+///
+/// Both exist for the same reason: the sidebar doesn't scroll and the number
+/// keys stop at 9, so a story added late in the list is otherwise unreachable —
+/// and a widget you can't get on screen is a widget you stop checking. `--shot`
+/// additionally makes the storybook the place a UI change gets *reviewed*,
+/// rather than deploying to Discord to find out.
+struct Args {
+    story: Option<String>,
+    shot: Option<String>,
+}
+
+fn args() -> Args {
+    let argv: Vec<String> = std::env::args().collect();
+    let value = |flag: &str| {
+        argv.iter()
+            .position(|a| a == flag)
+            .and_then(|i| argv.get(i + 1))
+            .cloned()
+    };
+    Args {
+        story: value("--story"),
+        shot: value("--shot"),
+    }
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
     // Proportional sans for chrome, monospace for hashes/data.
     let font = load_ttf_font_from_bytes(include_bytes!("../assets/NotoSans-Bold.ttf")).ok();
     let mono = load_ttf_font_from_bytes(include_bytes!("../assets/JetBrainsMono-Regular.ttf")).ok();
     let mut book = Storybook::new();
+    // Gesture recognition rather than `frame_tap`, so a mouse *drag* exercises
+    // the swipe path on desktop — otherwise page-turning could only be tested
+    // on a phone, which is where it would then be discovered broken.
+    let mut gestures = Gestures::new();
+
+    let args = args();
+    if let Some(want) = &args.story {
+        let want = want.to_lowercase();
+        match book
+            .stories
+            .iter()
+            .position(|s| {
+                format!("{} {}", s.category, s.name)
+                    .to_lowercase()
+                    .contains(&want)
+            }) {
+            Some(i) => book.select(i),
+            // Loud, because silently showing story 0 would look like the
+            // widget rendered wrong rather than never rendered at all.
+            None => {
+                eprintln!("no story matching {want:?}; showing the first");
+            }
+        }
+    }
+
+    // Frames to settle before capturing: hit rects and hover states are read
+    // one frame stale, and the first frame has no layout from a previous pass.
+    const SETTLE_FRAMES: u32 = 3;
+    let mut frames = 0;
     loop {
         let theme = book.current_theme();
+        let gesture = gestures.update();
+        let p = Painter::new(font.as_ref(), mono.as_ref(), theme, gesture.tap);
+        book.pending_swipe = gesture.swipe;
+
+        // Snapshot mode draws into an offscreen target and reads *that*, not
+        // the window. `get_screen_data` reads the front buffer, which an
+        // unfocused or not-yet-composited macOS window never fills — it
+        // returns solid black, indistinguishable from a widget that drew
+        // nothing. Rendering to a texture we own sidesteps the window server
+        // entirely, so a capture works headless and in CI.
+        let shot = args.shot.as_ref().filter(|_| frames >= SETTLE_FRAMES);
+        let target = shot.map(|_| {
+            let t = render_target(screen_width() as u32, screen_height() as u32);
+            t.texture.set_filter(FilterMode::Linear);
+            // `from_display_rect` already yields a top-left origin that matches
+            // the screen; the render target needs no extra y-flip on top of it.
+            let mut cam =
+                Camera2D::from_display_rect(Rect::new(0.0, 0.0, screen_width(), screen_height()));
+            cam.render_target = Some(t.clone());
+            set_camera(&cam);
+            t
+        });
+
         clear_background(theme.bg);
-        let p = Painter::new(font.as_ref(), mono.as_ref(), theme, frame_tap());
         book.frame(&p);
+
+        if let (Some(path), Some(target)) = (shot, target) {
+            set_default_camera();
+            target.texture.get_texture_data().export_png(path);
+            println!("wrote {path}");
+            std::process::exit(0);
+        }
+
         next_frame().await;
+        frames += 1;
     }
 }

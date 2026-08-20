@@ -38,8 +38,11 @@ pub const PLUGIN_JS: &str = include_str!("../js/platform.js");
 #[cfg(target_arch = "wasm32")]
 use sapp_jsutils::JsObject;
 
+// `unsafe extern` and `#[unsafe(no_mangle)]` below are edition-2024 syntax:
+// the edition made both explicit rather than implicit. Purely a spelling
+// change — same ABI, same behaviour.
 #[cfg(target_arch = "wasm32")]
-extern "C" {
+unsafe extern "C" {
     fn platform_random_bytes(len: u32) -> JsObject;
 }
 
@@ -69,7 +72,7 @@ getrandom::register_custom_getrandom!(webcrypto_getrandom);
 /// `Plugin platform is present in JS bundle, but is not used in the
 /// rust code` warning. JS-side `version: 1`, must match.
 #[cfg(target_arch = "wasm32")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn platform_crate_version() -> u32 {
     1
 }

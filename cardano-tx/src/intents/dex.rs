@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
 
 /// Supported DEX platforms
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -70,6 +72,62 @@ pub enum LovelaceAmount {
     WalletMax,
 }
 
+/// The literal that selects [`LovelaceAmount::WalletMax`] in text input.
+pub const WALLET_MAX_LITERAL: &str = "max";
+
+/// Why a lovelace amount string could not be parsed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LovelaceAmountParseError {
+    input: String,
+}
+
+impl fmt::Display for LovelaceAmountParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "expected a lovelace amount or '{WALLET_MAX_LITERAL}', got '{}'",
+            self.input
+        )
+    }
+}
+
+impl std::error::Error for LovelaceAmountParseError {}
+
+/// Parse a user-entered amount: a lovelace figure, or `max` to sweep the wallet.
+///
+/// Every text input for this field advertises `max`, so the parse belongs on the
+/// type rather than in each UI — the admin panel promised it in three places
+/// while its own handler parsed straight to `u64` and rejected it.
+impl FromStr for LovelaceAmount {
+    type Err = LovelaceAmountParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let trimmed = s.trim();
+
+        if trimmed.eq_ignore_ascii_case(WALLET_MAX_LITERAL) {
+            return Ok(Self::WalletMax);
+        }
+
+        trimmed
+            .parse::<u64>()
+            .map(|amount| Self::Specific { amount })
+            .map_err(|_| LovelaceAmountParseError {
+                input: trimmed.to_string(),
+            })
+    }
+}
+
+/// Renders back into the form [`FromStr`] accepts, so a parsed value can be put
+/// straight back into an input box.
+impl fmt::Display for LovelaceAmount {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Specific { amount } => write!(f, "{amount}"),
+            Self::WalletMax => write!(f, "{WALLET_MAX_LITERAL}"),
+        }
+    }
+}
+
 /// Policy filter for narrowing eligible assets in a wallet.
 /// Used by `SendRandomAsset` to select which NFTs are candidates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,6 +181,55 @@ mod tests {
         let json = r#"{"type":"wallet_max"}"#;
         let amount: LovelaceAmount = serde_json::from_str(json).unwrap();
         assert_eq!(amount, LovelaceAmount::WalletMax);
+    }
+
+    /// The admin panel's own hint text promises `max`; parsing must honour it,
+    /// case and surrounding whitespace included (input boxes deliver both).
+    #[test]
+    fn lovelace_amount_parses_max() {
+        for input in ["max", "MAX", "Max", "  max  ", "\tmax\n"] {
+            assert_eq!(
+                input.parse::<LovelaceAmount>(),
+                Ok(LovelaceAmount::WalletMax),
+                "should accept {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn lovelace_amount_parses_numbers() {
+        assert_eq!(
+            "5000000".parse::<LovelaceAmount>(),
+            Ok(LovelaceAmount::Specific { amount: 5_000_000 })
+        );
+        assert_eq!(
+            " 42 ".parse::<LovelaceAmount>(),
+            Ok(LovelaceAmount::Specific { amount: 42 })
+        );
+    }
+
+    #[test]
+    fn lovelace_amount_rejects_garbage_with_a_useful_message() {
+        let err = "maximum".parse::<LovelaceAmount>().unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("'max'"), "should name the literal: {msg}");
+        assert!(msg.contains("maximum"), "should echo the input: {msg}");
+
+        assert!("".parse::<LovelaceAmount>().is_err());
+        assert!("-1".parse::<LovelaceAmount>().is_err());
+        assert!("1.5".parse::<LovelaceAmount>().is_err());
+    }
+
+    /// A parsed value must render back into something `FromStr` accepts, so a
+    /// form can round-trip its own state.
+    #[test]
+    fn lovelace_amount_display_roundtrips() {
+        for value in [
+            LovelaceAmount::WalletMax,
+            LovelaceAmount::Specific { amount: 5_000_000 },
+        ] {
+            assert_eq!(value.to_string().parse::<LovelaceAmount>(), Ok(value));
+        }
     }
 
     #[test]

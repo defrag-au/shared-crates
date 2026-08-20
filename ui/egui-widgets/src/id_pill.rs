@@ -28,7 +28,7 @@ use std::borrow::Cow;
 
 use egui::{Align, Color32, Layout, RichText, Ui};
 
-use crate::icons::{install_phosphor_font, PhosphorIcon};
+use crate::icons::{PhosphorIcon, install_phosphor_font};
 
 /// Visual layout pick — `IdPill::layout(…)` consumes one of these.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,6 +59,9 @@ pub struct IdPill<'a> {
     value_min_width: Option<f32>,
     min_width: Option<f32>,
     copyable: bool,
+    /// Somewhere this identifier can be looked up — a block explorer for a tx
+    /// hash, say. Renders a second button beside copy.
+    link: Option<Cow<'a, str>>,
     layout: IdPillLayout,
     label_color: Color32,
     value_color: Color32,
@@ -70,6 +73,9 @@ pub struct IdPillResponse {
     /// `true` when the user clicked the copy button (the widget has
     /// already written `value_full` to the clipboard).
     pub copied: bool,
+    /// `true` when the user clicked the link button (the widget has already
+    /// asked the host to open it).
+    pub opened: bool,
 }
 
 impl<'a> IdPill<'a> {
@@ -89,6 +95,7 @@ impl<'a> IdPill<'a> {
             value_min_width: None,
             min_width: None,
             copyable: true,
+            link: None,
             layout: IdPillLayout::Stacked,
             label_color: Color32::from_gray(140),
             value_color: Color32::from_gray(220),
@@ -114,6 +121,7 @@ impl<'a> IdPill<'a> {
             value_min_width: None,
             min_width: None,
             copyable: true,
+            link: None,
             layout: IdPillLayout::Inline,
             label_color: Color32::from_gray(140),
             value_color: Color32::from_gray(160),
@@ -145,6 +153,18 @@ impl<'a> IdPill<'a> {
     }
 
     /// Suppress the copy button.
+    /// Give the identifier somewhere to be looked up — typically a block
+    /// explorer for a tx hash.
+    ///
+    /// The point is to hand the reader back to primary evidence. A ledger view
+    /// is a derived claim; being one click from the transaction on chain is
+    /// what makes it checkable rather than trusted.
+    pub fn link(mut self, url: impl Into<Cow<'a, str>>) -> Self {
+        let url = url.into();
+        self.link = (!url.is_empty()).then_some(url);
+        self
+    }
+
     pub fn copyable(mut self, b: bool) -> Self {
         self.copyable = b;
         self
@@ -291,6 +311,15 @@ impl<'a> IdPill<'a> {
                         ui.ctx().copy_text(self.value_full.to_string());
                         response.copied = true;
                     }
+                    if let Some(url) = &self.link
+                        && ui
+                            .small_button(PhosphorIcon::Eye.rich_text(12.0, self.label_color))
+                            .on_hover_text(format!("Open {url}"))
+                            .clicked()
+                    {
+                        ui.ctx().open_url(egui::OpenUrl::new_tab(url.as_ref()));
+                        response.opened = true;
+                    }
                 });
             });
     }
@@ -334,6 +363,17 @@ impl<'a> IdPill<'a> {
                 {
                     ui.ctx().copy_text(self.value_full.to_string());
                     response.copied = true;
+                }
+            }
+            if let Some(url) = &self.link {
+                install_phosphor_font(ui.ctx());
+                if ui
+                    .small_button(PhosphorIcon::Eye.rich_text(11.0, self.label_color).small())
+                    .on_hover_text(format!("Open {url}"))
+                    .clicked()
+                {
+                    ui.ctx().open_url(egui::OpenUrl::new_tab(url.as_ref()));
+                    response.opened = true;
                 }
             }
         });

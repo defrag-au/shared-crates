@@ -186,23 +186,23 @@ impl<'a> MetricCard<'a> {
                 }
 
                 // Sparkline — own row with breathing room
-                if let Some(data) = self.sparkline_data {
-                    if data.len() >= 2 {
-                        ui.add_space(8.0);
-                        crate::Sparkline::new(data)
-                            .height(32.0)
-                            .line_width(1.5)
-                            .line_color(self.value_color)
-                            .fill(Color32::from_rgba_premultiplied(
-                                self.value_color.r(),
-                                self.value_color.g(),
-                                self.value_color.b(),
-                                25,
-                            ))
-                            .show_endpoint(false)
-                            .bg_color(self.bg_color)
-                            .show(ui);
-                    }
+                if let Some(data) = self.sparkline_data
+                    && data.len() >= 2
+                {
+                    ui.add_space(8.0);
+                    crate::Sparkline::new(data)
+                        .height(32.0)
+                        .line_width(1.5)
+                        .line_color(self.value_color)
+                        .fill(Color32::from_rgba_premultiplied(
+                            self.value_color.r(),
+                            self.value_color.g(),
+                            self.value_color.b(),
+                            25,
+                        ))
+                        .show_endpoint(false)
+                        .bg_color(self.bg_color)
+                        .show(ui);
                 }
             });
         };

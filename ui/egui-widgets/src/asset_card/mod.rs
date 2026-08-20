@@ -13,17 +13,17 @@ pub mod widget;
 
 // Effects
 pub use effects::{
-    AuroraCurtain, BrushedMetal, CardEffect, DiffractionGrating, EffectVertex, Glitter,
-    PrismaticDispersion, StreakHolo, ThinFilmIridescence, EFFECT_NAMES,
+    AuroraCurtain, BrushedMetal, CardEffect, DiffractionGrating, EFFECT_NAMES, EffectVertex,
+    Glitter, PrismaticDispersion, StreakHolo, ThinFilmIridescence,
 };
 
 // Projection
-pub use projection::{project_3d, project_points, update_tilt, TiltState};
+pub use projection::{TiltState, project_3d, project_points, update_tilt};
 
 // Geometry
 pub use geometry::{
-    base_outline, cumulative_lengths, expand_outline, regular_polygon_vertices,
-    rounded_rect_vertices, sample_path, unified_outline, with_badge, BADGE_H, BADGE_W_FRAC,
+    BADGE_H, BADGE_W_FRAC, base_outline, cumulative_lengths, expand_outline,
+    regular_polygon_vertices, rounded_rect_vertices, sample_path, unified_outline, with_badge,
 };
 
 // Mesh drawing
@@ -33,7 +33,7 @@ pub use mesh::{
 };
 
 // Overlay
-pub use overlay::{draw_tile_overlay, rarity_color, rarity_glow, CardMask, RARITIES};
+pub use overlay::{CardMask, RARITIES, draw_tile_overlay, rarity_color, rarity_glow};
 
 // High-level reusable widget
 pub use widget::{AssetCard, AssetCardState, CardEffectKind, CardImage};

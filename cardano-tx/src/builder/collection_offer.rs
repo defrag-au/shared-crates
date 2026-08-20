@@ -1080,11 +1080,10 @@ pub fn build_cancel_offer_tx(
                 .collateral_input(fee_input.clone());
 
             // Include datum in witness set if provided (needed for hash-datum COs)
-            if let Some(ref hex) = req.datum_cbor_hex {
-                if let Ok(bytes) = hex::decode(hex) {
+            if let Some(ref hex) = req.datum_cbor_hex
+                && let Ok(bytes) = hex::decode(hex) {
                     tx = tx.datum(bytes);
                 }
-            }
 
             // Single output: CO value + fee UTxO value - fee, all back to
             // wallet. When the fee UTxO carries native assets, those assets

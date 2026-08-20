@@ -23,8 +23,8 @@ use egui::{
 };
 
 use crate::chip::{Chip, ChipVariant};
-use crate::error_note::{summarize_error, ErrorNote};
-use crate::icons::{install_phosphor_font, PhosphorIcon};
+use crate::error_note::{ErrorNote, summarize_error};
+use crate::icons::{PhosphorIcon, install_phosphor_font};
 use crate::relative_time::relative_label;
 use crate::timestamp::Timestamp;
 

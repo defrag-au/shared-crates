@@ -15,7 +15,7 @@
 
 use egui::{Color32, CornerRadius, FontId, Margin, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::{theme, SparkHoverStyle, Sparkline, Trend};
+use crate::{SparkHoverStyle, Sparkline, Trend, theme};
 
 /// A low / median / high price triple for a window's range bar. Positions are
 /// mapped onto a domain shared across the whole strip, so the bands are
@@ -250,21 +250,21 @@ impl<'a> StatStrip<'a> {
 
                     // Activity sparkline. Crosshair-only hover — the caller
                     // owns the tooltip via `StatStripResponse`.
-                    if let Some(series) = &w.spark {
-                        if series.len() >= 2 {
-                            ui.add_space(6.0);
-                            let resp = Sparkline::new(series)
-                                .height(22.0)
-                                .line_width(1.5)
-                                .line_color(self.value_color)
-                                .fill(tint(self.value_color, 30))
-                                .show_endpoint(false)
-                                .bg_color(theme::BG_HIGHLIGHT)
-                                .hover_style(SparkHoverStyle::CrosshairOnly)
-                                .show(ui);
-                            if let Some(bucket) = hovered_bucket(&resp, series.len()) {
-                                spark_hover = Some((resp, bucket));
-                            }
+                    if let Some(series) = &w.spark
+                        && series.len() >= 2
+                    {
+                        ui.add_space(6.0);
+                        let resp = Sparkline::new(series)
+                            .height(22.0)
+                            .line_width(1.5)
+                            .line_color(self.value_color)
+                            .fill(tint(self.value_color, 30))
+                            .show_endpoint(false)
+                            .bg_color(theme::BG_HIGHLIGHT)
+                            .hover_style(SparkHoverStyle::CrosshairOnly)
+                            .show(ui);
+                        if let Some(bucket) = hovered_bucket(&resp, series.len()) {
+                            spark_hover = Some((resp, bucket));
                         }
                     }
 

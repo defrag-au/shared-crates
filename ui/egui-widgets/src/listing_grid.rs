@@ -1,3 +1,6 @@
+//! `ListingGrid` — a responsive grid of marketplace listing cards, each with a
+//! lazily-loaded image, price and trailing badges.
+
 use crate::image_loader::CachedSpinner;
 use egui::{Color32, RichText, Sense, Vec2};
 

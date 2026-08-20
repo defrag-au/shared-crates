@@ -1,0 +1,22 @@
+[package]
+name = "mq-flow-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "macroquad client that connects to any ui-flow service and reports what it sees. Proves the quad-net transport end to end."
+
+[[bin]]
+name = "mq-flow-probe"
+path = "src/main.rs"
+
+[dependencies]
+# The whole point: ui-flow's macroquad transport (quad-net + miniquad), with
+# `default-features = false` so no wasm-bindgen is pulled in — under
+# macroquad's gl.js runtime, wasm-bindgen cannot exist.
+ui-flow = { path = "../ui-flow", default-features = false, features = ["macroquad"] }
+macroquad = "0.4"
+# State/Delta/Event are `serde_json::Value` rather than a service's real types.
+# ui-flow only requires `DeserializeOwned`, so the probe stays service-agnostic
+# — point it at flow-demo today, treasure-island or a missions DO tomorrow,
+# with no code change.
+serde_json = "1"

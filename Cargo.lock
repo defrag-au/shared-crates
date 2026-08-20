@@ -738,6 +738,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "chain-ledger"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "chain-ledger-case"
+version = "0.1.0"
+dependencies = [
+ "chain-ledger",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "chain-ledger-koios"
+version = "0.1.0"
+dependencies = [
+ "chain-ledger",
+ "serde_json",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1210,6 +1236,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "discord-miniquad"
+version = "0.1.0"
+dependencies = [
+ "sapp-jsutils",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1365,6 +1400,7 @@ dependencies = [
  "ehttp",
  "i_overlay",
  "image 0.25.10",
+ "image-core",
  "js-sys",
  "log",
  "serde",
@@ -2597,6 +2633,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "image-core"
+version = "0.1.0"
+
+[[package]]
 name = "image-hash"
 version = "0.1.0"
 dependencies = [
@@ -3441,6 +3481,15 @@ checksum = "bb85c154ba489f01b25c0d36ae69a87e4a1c73a72631fc6c0eb6dde34a73e44b"
 dependencies = [
  "num-traits",
  "pxfm",
+]
+
+[[package]]
+name = "mq-flow-probe"
+version = "0.1.0"
+dependencies = [
+ "macroquad",
+ "serde_json",
+ "ui-flow",
 ]
 
 [[package]]
@@ -5658,6 +5707,7 @@ dependencies = [
  "cardano-assets",
  "console_error_panic_hook",
  "gloo-net",
+ "image-core",
  "js-sys",
  "leptos",
  "serde",
@@ -5834,6 +5884,7 @@ dependencies = [
  "egui_extras",
  "gloo-timers",
  "image 0.25.10",
+ "image-core",
  "js-sys",
  "log",
  "wasm-bindgen",
@@ -6561,6 +6612,7 @@ version = "0.1.0"
 dependencies = [
  "asset-intents",
  "cardano-assets",
+ "image-core",
  "js-sys",
  "leptos",
  "phf",

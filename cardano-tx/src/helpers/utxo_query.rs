@@ -49,11 +49,10 @@ pub fn collect_utxo_native_assets(
 
     for utxo in utxos {
         for AssetQuantity { asset_id, quantity } in &utxo.assets {
-            if let Some(excluded) = exclude {
-                if excluded.contains(asset_id) {
+            if let Some(excluded) = exclude
+                && excluded.contains(asset_id) {
                     continue;
                 }
-            }
             *assets.entry(asset_id.clone()).or_insert(0) += quantity;
         }
     }
@@ -67,11 +66,10 @@ pub fn collect_asset_ids(utxos: &[&UtxoApi], exclude: Option<&HashSet<AssetId>>)
 
     for utxo in utxos {
         for AssetQuantity { asset_id, .. } in &utxo.assets {
-            if let Some(excluded) = exclude {
-                if excluded.contains(asset_id) {
+            if let Some(excluded) = exclude
+                && excluded.contains(asset_id) {
                     continue;
                 }
-            }
             if !ids.contains(asset_id) {
                 ids.push(asset_id.clone());
             }

@@ -32,8 +32,8 @@
 
 use egui::{RichText, Ui};
 
-use crate::theme;
 use crate::PhosphorIcon;
+use crate::theme;
 
 /// Click events the section can produce. Today only `BulkAction`
 /// (the right-aligned header button); future variants could add
@@ -190,22 +190,22 @@ impl<'a> GroupedSection<'a> {
                     if self.is_verified {
                         ui.label(PhosphorIcon::CheckCircle.rich_text(12.0, cfg.badge_color));
                     }
-                    if let Some((visible, label)) = &self.bulk_button {
-                        if *visible {
-                            ui.add_space(8.0);
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        RichText::new(label)
-                                            .color(cfg.bulk_button_color)
-                                            .size(cfg.bulk_button_size),
-                                    )
-                                    .frame(false),
+                    if let Some((visible, label)) = &self.bulk_button
+                        && *visible
+                    {
+                        ui.add_space(8.0);
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    RichText::new(label)
+                                        .color(cfg.bulk_button_color)
+                                        .size(cfg.bulk_button_size),
                                 )
-                                .clicked()
-                            {
-                                action = Some(GroupedSectionAction::BulkAction);
-                            }
+                                .frame(false),
+                            )
+                            .clicked()
+                        {
+                            action = Some(GroupedSectionAction::BulkAction);
                         }
                     }
                 });
