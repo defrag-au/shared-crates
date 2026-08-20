@@ -125,12 +125,35 @@ pub fn paint_grid(
     time: f32,
     skip_row: Option<usize>,
 ) {
+    paint_grid_at(
+        grid, font, font_size, metrics, padding, padding, time, skip_row,
+    );
+}
+
+/// Paint a grid anchored anywhere, rather than at `(padding, padding)`.
+///
+/// [`paint_grid`] takes one padding value for both axes, which pins a grid to
+/// the top-left corner. That is right for a full-screen terminal and wrong for
+/// a grid *placed* in a larger canvas: a menu that does not fill its viewport
+/// ends up clustered in one corner with the rest of the screen empty, and no
+/// amount of padding can centre it.
+#[allow(clippy::too_many_arguments)]
+pub fn paint_grid_at(
+    grid: &Grid,
+    font: Option<&Font>,
+    font_size: u16,
+    metrics: &GridMetrics,
+    origin_x: f32,
+    origin_y: f32,
+    time: f32,
+    skip_row: Option<usize>,
+) {
     for (row, col, cell) in grid.cells() {
         if Some(row) == skip_row {
             continue;
         }
-        let x = padding + col as f32 * metrics.cell_w;
-        let y_top = padding + row as f32 * metrics.cell_h;
+        let x = origin_x + col as f32 * metrics.cell_w;
+        let y_top = origin_y + row as f32 * metrics.cell_h;
         paint_cell(cell, x, y_top, metrics, font, font_size, time);
     }
 }

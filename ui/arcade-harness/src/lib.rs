@@ -81,7 +81,13 @@ impl TitleStatus<'_> {
             return format!("! {error}");
         }
         match self.backend {
-            BackendState::Connecting(what) => format!("{what}…"),
+            // ASCII throughout these lines. macroquad's built-in font covers
+            // ASCII only, so an ellipsis or a star draws as a tofu box — and
+            // the shell's own status text is the last place that should be
+            // unreadable, since it is what a player reads when something has
+            // already gone wrong. A game that loads a real font can render
+            // whatever it likes in its own screens.
+            BackendState::Connecting(what) => format!("{what}..."),
             BackendState::Offline(why) => format!("offline — {why}"),
             BackendState::Ready => match self.player_name {
                 Some(name) => format!("playing as {name}"),
@@ -114,7 +120,7 @@ impl SubmissionState {
     pub fn line(&self) -> String {
         match self {
             Self::Offline(why) => format!("not submitted — {why}"),
-            Self::Submitting => "submitting…".to_string(),
+            Self::Submitting => "submitting...".to_string(),
             Self::Verified {
                 rank,
                 reward_eligible,
@@ -128,7 +134,7 @@ impl SubmissionState {
                     None => "verified — no ranked slots left this epoch".to_string(),
                 };
                 if *reward_eligible {
-                    format!("{rank} ★ playing for rewards")
+                    format!("{rank} * playing for rewards")
                 } else {
                     rank
                 }

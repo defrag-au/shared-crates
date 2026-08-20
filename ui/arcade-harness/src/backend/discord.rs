@@ -82,6 +82,15 @@ fn to_discord(id: ReqId) -> discord_miniquad::ReqId {
     discord_miniquad::ReqId(id as i32)
 }
 
+/// How long to wait for Discord to answer the handshake before giving up.
+///
+/// The handshake is a `postMessage` with no reply guarantee: if the client
+/// never answers — wrong `targetOrigin`, a frame it no longer tracks — nothing
+/// rejects and nothing logs. Without a deadline the Activity sits on
+/// "connecting to Discord" forever, which is the least informative failure
+/// available and takes a debugging session to tell apart from a slow network.
+const HANDSHAKE_TIMEOUT_SECS: f64 = 8.0;
+
 /// One hop of the launch chain.
 enum Step {
     /// Waiting on the postMessage handshake; nothing issued yet.
@@ -107,6 +116,8 @@ pub struct DiscordBackend {
     mount: String,
     step: Step,
     player_name: Option<String>,
+    /// When the handshake started, for [`HANDSHAKE_TIMEOUT_SECS`].
+    started_at: f64,
 }
 
 impl DiscordBackend {
@@ -122,6 +133,7 @@ impl DiscordBackend {
             mount: String::new(),
             step: Step::Handshake,
             player_name: None,
+            started_at: macroquad::time::get_time(),
         }
     }
 
@@ -165,7 +177,16 @@ impl DiscordBackend {
 
         self.step = match step {
             Step::Handshake => match self.activity.update() {
-                Phase::Connecting => Step::Handshake,
+                Phase::Connecting => {
+                    if macroquad::time::get_time() - self.started_at > HANDSHAKE_TIMEOUT_SECS {
+                        Step::Offline(
+                            "Discord did not answer the handshake — playing without a leaderboard"
+                                .to_string(),
+                        )
+                    } else {
+                        Step::Handshake
+                    }
+                }
                 Phase::Failed(err) => Step::Offline(format!("not running as an Activity ({err})")),
                 Phase::Ready => {
                     let args = serde_json::to_string(&AuthorizeArgs {
