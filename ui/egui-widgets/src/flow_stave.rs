@@ -447,11 +447,23 @@ impl<'a> FlowStave<'a> {
                     match from_x {
                         Some(fx) if (fx - tx_).abs() > 1.0 => {
                             let w = 1.0 + 2.6 * e.magnitude.clamp(0.0, 1.0);
-                            painter.line_segment(
-                                [pos2(fx, ey), pos2(tx_, ey)],
-                                Stroke::new(w, col.gamma_multiply(0.85 * dim)),
-                            );
-                            arrowhead(&painter, pos2(tx_, ey), tx_ > fx, col.gamma_multiply(dim));
+                            // STOP THE SHAFT AT THE HEAD'S BASE. Drawing it
+                            // to the tip leaves a nub poking out of the
+                            // point: egui rounds the cap of a thick stroke,
+                            // so half the line width overshoots the endpoint
+                            // the triangle is trying to make sharp.
+                            let rightward = tx_ > fx;
+                            let base = tx_ - if rightward { HEAD_LEN } else { -HEAD_LEN };
+                            // A hop between adjacent lanes can be shorter than
+                            // the head; drawing a shaft then would run it
+                            // BACKWARDS out of the arrow.
+                            if (tx_ - fx).abs() > HEAD_LEN {
+                                painter.line_segment(
+                                    [pos2(fx, ey), pos2(base, ey)],
+                                    Stroke::new(w, col.gamma_multiply(0.85 * dim)),
+                                );
+                            }
+                            arrowhead(&painter, pos2(tx_, ey), rightward, col.gamma_multiply(dim));
                             // Payload label rides the arrow, biased toward the
                             // origin so it never collides with the head.
                             let mid = pos2(fx + (tx_ - fx) * 0.45, ey - 7.0);
@@ -534,10 +546,14 @@ impl<'a> FlowStave<'a> {
     }
 }
 
+/// Arrowhead length. The shaft stops here so the point stays sharp — see the
+/// call site.
+const HEAD_LEN: f32 = 7.0;
+
 fn arrowhead(painter: &egui::Painter, at: Pos2, rightward: bool, col: Color32) {
-    let dx = if rightward { -6.0 } else { 6.0 };
+    let dx = if rightward { -HEAD_LEN } else { HEAD_LEN };
     painter.add(egui::Shape::convex_polygon(
-        vec![at, at + vec2(dx, -3.5), at + vec2(dx, 3.5)],
+        vec![at, at + vec2(dx, -4.0), at + vec2(dx, 4.0)],
         col,
         Stroke::NONE,
     ));

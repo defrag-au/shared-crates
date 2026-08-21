@@ -142,6 +142,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
             let config = AssetStripConfig {
                 thumb_size: 48.0,
                 min_visible: 14.0,
+                ..Default::default()
             };
             let resp = asset_strip::show(ui, &state.items, &config);
 

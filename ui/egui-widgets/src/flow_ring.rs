@@ -225,21 +225,28 @@ pub(crate) const IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
 /// Per-flow particle cap. A single huge payment must not drown the frame.
 const MAX_DOTS: usize = 40;
 
-/// Ring tints, innermost first — a TEAL ordinal ramp plus a neutral outer step.
+/// Ring tints, innermost first — a green→teal ordinal ramp plus a neutral
+/// outer step.
 ///
-/// ## Why teal, and why these exact values
+/// ## Why this band, and why these exact values
 ///
-/// The ring index is ordinal (how close to the project), so it takes one hue in
-/// monotone lightness steps rather than four unrelated hues. The hue is
-/// constrained from two directions: the chords drawn ACROSS these rings are
-/// [`OUT`] orange and [`IN`] blue, and a seat dot must never be mistakable for
-/// a payment.
+/// The ring index is ordinal (how close to the project), so it moves along ONE
+/// safe band rather than taking four unrelated hues. The band is constrained
+/// from two directions: the chords drawn ACROSS these rings are [`OUT`] orange
+/// and [`IN`] blue, and a seat dot must never be mistakable for a payment.
+/// Violet, the obvious first pick, **fails** — it collapses onto the chord
+/// blue under protanopia at ΔE 5.1.
 ///
-/// Both were chosen by running the palette validator, not by eye, over every
-/// pair of {3 ring steps, neutral, orange, blue} on this dark surface —
-/// violet, the obvious first pick, **fails**: it collapses onto the chord blue
-/// under protanopia at ΔE 5.1. Teal clears with worst-pair ΔE 12.4 under CVD
-/// (deutan) and 16.2 under normal vision, against floors of 8 and 15.
+/// ## Lightness alone was not enough (fixed 2026-08-21)
+///
+/// The first ramp took one teal hue in lightness steps, and in use the middle
+/// two — associate and customer — read as the same colour: ΔE 22 normal, 19
+/// under deuteranopia, which clears the floor and still fails the eye, because
+/// the seats are 4px dots seen at a glance rather than swatches side by side.
+/// The ramp now moves in HUE as well (pale aqua → green → deep teal), taking
+/// that pair to **ΔE 53 normal / 44 deutan**. Every pair, including against
+/// both chord colours, is asserted in
+/// `the_ring_ramp_stays_separable_including_under_colour_blindness`.
 ///
 /// ## The last step is deliberately colourless
 ///
@@ -251,8 +258,8 @@ const MAX_DOTS: usize = 40;
 /// prints the address beside it and the ring gives it the outermost band.
 const RING_TINTS: [Color32; 4] = [
     Color32::from_rgb(0xa5, 0xf3, 0xe4), // core — the project itself
-    Color32::from_rgb(0x19, 0xc2, 0xad), // associates — paid BY the project
-    Color32::from_rgb(0x10, 0x89, 0x7c), // customers — bought from it
+    Color32::from_rgb(0x3d, 0xdc, 0x84), // associates — paid BY the project
+    Color32::from_rgb(0x0f, 0x8f, 0x8a), // customers — bought from it
     Color32::from_rgb(0x4d, 0x54, 0x78), // nobody has looked yet
 ];
 
@@ -1154,6 +1161,130 @@ mod tests {
             RingNode::new("payee-a", 1),
             RingNode::new("payee-b", 1),
         ]
+    }
+
+    /// CIELAB of an sRGB colour — enough for ΔE76, which is what the palette
+    /// floors are stated in.
+    fn lab(c: Color32) -> [f64; 3] {
+        let lin = |v: u8| {
+            let v = v as f64 / 255.0;
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let (r, g, b) = (lin(c.r()), lin(c.g()), lin(c.b()));
+        let (x, y, z) = (
+            (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047,
+            0.2126 * r + 0.7152 * g + 0.0722 * b,
+            (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883,
+        );
+        let f = |t: f64| {
+            if t > 0.008_856 {
+                t.cbrt()
+            } else {
+                7.787 * t + 16.0 / 116.0
+            }
+        };
+        let (fx, fy, fz) = (f(x), f(y), f(z));
+        [116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz)]
+    }
+
+    fn delta_e(a: Color32, b: Color32) -> f64 {
+        lab(a)
+            .iter()
+            .zip(lab(b).iter())
+            .map(|(x, y)| (x - y).powi(2))
+            .sum::<f64>()
+            .sqrt()
+    }
+
+    /// Machado et al. (2009) severity-1.0 simulation of dichromatic vision.
+    fn simulate(c: Color32, m: [[f64; 3]; 3]) -> Color32 {
+        let lin = |v: u8| {
+            let v = v as f64 / 255.0;
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let enc = |v: f64| {
+            let v = v.clamp(0.0, 1.0);
+            let s = if v <= 0.003_130_8 {
+                12.92 * v
+            } else {
+                1.055 * v.powf(1.0 / 2.4) - 0.055
+            };
+            (s * 255.0).round() as u8
+        };
+        let (r, g, b) = (lin(c.r()), lin(c.g()), lin(c.b()));
+        Color32::from_rgb(
+            enc(m[0][0] * r + m[0][1] * g + m[0][2] * b),
+            enc(m[1][0] * r + m[1][1] * g + m[1][2] * b),
+            enc(m[2][0] * r + m[2][1] * g + m[2][2] * b),
+        )
+    }
+
+    const PROTAN: [[f64; 3]; 3] = [
+        [0.152_286, 1.052_583, -0.204_868],
+        [0.114_503, 0.786_281, 0.099_216],
+        [-0.003_882, -0.048_116, 1.051_998],
+    ];
+    const DEUTAN: [[f64; 3]; 3] = [
+        [0.367_322, 0.860_646, -0.227_968],
+        [0.280_085, 0.672_501, 0.047_413],
+        [-0.011_820, 0.042_940, 0.968_881],
+    ];
+
+    /// THE PALETTE VALIDATOR, as a test rather than a script somebody ran once.
+    ///
+    /// Every pair of {four ring tints, both chord colours} must stay apart
+    /// under normal vision AND under both common dichromacies — a seat that
+    /// collapses onto a chord makes a wallet look like a payment, and two ring
+    /// steps that collapse onto each other erase the classification the whole
+    /// chart encodes. The floors are the ones the ramp was originally chosen
+    /// against; the associate/customer pair carries a much higher one because
+    /// clearing the floor was exactly what it did while still reading as one
+    /// colour on 4px dots.
+    #[test]
+    fn the_ring_ramp_stays_separable_including_under_colour_blindness() {
+        const NORMAL_FLOOR: f64 = 15.0;
+        const CVD_FLOOR: f64 = 8.0;
+        let all: Vec<(&str, Color32)> = vec![
+            ("core", ring_tint(0)),
+            ("associate", ring_tint(1)),
+            ("customer", ring_tint(2)),
+            ("unexamined", ring_tint(3)),
+            ("chord-out", OUT),
+            ("chord-in", IN),
+        ];
+        for (i, (na, a)) in all.iter().enumerate() {
+            for (nb, b) in all.iter().skip(i + 1) {
+                assert!(
+                    delta_e(*a, *b) >= NORMAL_FLOOR,
+                    "{na} vs {nb}: ΔE {:.1} < {NORMAL_FLOOR}",
+                    delta_e(*a, *b)
+                );
+                for (kind, m) in [("protan", PROTAN), ("deutan", DEUTAN)] {
+                    let d = delta_e(simulate(*a, m), simulate(*b, m));
+                    assert!(
+                        d >= CVD_FLOOR,
+                        "{na} vs {nb} under {kind}: ΔE {d:.1} < {CVD_FLOOR}"
+                    );
+                }
+            }
+        }
+        // The pair that prompted the change: one teal hue in lightness steps
+        // measured 22 normal / 19 deutan and still read as one colour.
+        let (assoc, cust) = (ring_tint(1), ring_tint(2));
+        assert!(
+            delta_e(assoc, cust) >= 40.0,
+            "associate vs customer must be obvious, not merely legal: ΔE {:.1}",
+            delta_e(assoc, cust)
+        );
+        assert!(delta_e(simulate(assoc, DEUTAN), simulate(cust, DEUTAN)) >= 30.0);
     }
 
     /// The tints are chosen against the chords by a validator, so the thing
