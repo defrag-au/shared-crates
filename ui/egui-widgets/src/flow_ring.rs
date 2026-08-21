@@ -366,7 +366,16 @@ impl<'a> FlowRing<'a> {
             .max()
             .unwrap_or(0);
         let centre = rect.center();
-        let r_outer = (rect.width().min(rect.height()) * 0.5) - 46.0;
+        // When berths exist the RINGS contract to make the dock zone, rather
+        // than the pills being pushed out into the label margin — the widget
+        // keeps its footprint and the breathing room appears between the rim
+        // and the berths, which is where it means something.
+        let dock = if nodes.iter().any(|n| n.berth.is_some()) {
+            BERTH_OFFSET
+        } else {
+            0.0
+        };
+        let r_outer = (rect.width().min(rect.height()) * 0.5) - 46.0 - dock;
         let mut seats = seat_positions(nodes, max_hop, centre, r_outer.max(40.0));
         for (k, s) in berth_positions(nodes, flows, &seats, centre, r_outer.max(40.0), max_hop + 1)
         {
@@ -800,8 +809,10 @@ fn seat_positions<'a>(
     out
 }
 
-/// How far beyond the outer ring a berth docks.
-const BERTH_OFFSET: f32 = 18.0;
+/// How far beyond the outer ring a berth docks. Generous on purpose: the gap
+/// IS the statement — infrastructure is outside the classification system,
+/// and a pill grazing the rim dots reads as just another crowded seat.
+const BERTH_OFFSET: f32 = 36.0;
 /// Minimum angular separation between two berths, radians. Centroids of two
 /// providers serving the same crowd can coincide exactly; without a floor
 /// their pills stack into one unreadable glyph.
