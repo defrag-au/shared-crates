@@ -103,6 +103,7 @@ mod app {
         TimeSpine,
         FlowMatrix,
         FlowRing,
+        FlowStave,
         PartyAnnotator,
         TagList,
         TokenMultiselect,
@@ -146,6 +147,7 @@ mod app {
                 Self::TimeSpine,
                 Self::FlowMatrix,
                 Self::FlowRing,
+                Self::FlowStave,
                 Self::PartyAnnotator,
                 Self::TagList,
                 Self::TokenMultiselect,
@@ -344,6 +346,7 @@ mod app {
                 Self::TimeSpine => "Time Spine",
                 Self::FlowMatrix => "Flow Matrix",
                 Self::FlowRing => "Flow Ring",
+                Self::FlowStave => "Flow Stave",
                 Self::PartyAnnotator => "Party Annotator",
                 Self::TagList => "Tag List",
                 Self::TokenMultiselect => "Token Multiselect",
@@ -384,6 +387,7 @@ mod app {
                 | Self::TimeSpine
                 | Self::FlowMatrix
                 | Self::FlowRing
+                | Self::FlowStave
                 | Self::PartyAnnotator
                 | Self::TagList
                 | Self::TokenMultiselect
@@ -664,6 +668,9 @@ mod app {
                 Self::FlowRing => {
                     "Value moving between parties, LIVE, on the shared spine. Parties keep fixed seats on concentric rings (inner = the project's own wallets, outer = who they dealt with) and value crosses the middle as particles — ONE DOT PER QUANTUM, so a large payment is a longer train rather than a thicker line. Particle position is a pure function of the playhead, so scrubbing shows value genuinely mid-flight and a still frame is reproducible. Hover for a wallet's inventory at that exact moment; switch nodes off to cut density without moving anything that stays"
                 }
+                Self::FlowStave => {
+                    "One wallet's money story as a SEQUENCE CHART — the narrative face the transfers table cannot be. The focal wallet holds the centre lane, counterparties fan out by ring class, and time runs downward with LOG-COMPRESSED gaps: a five-minute fund→mint→forward cascade stays a visible cluster while an idle week stays a bounded gap, with the true clock in the gutter. Direction is an arrow (blue toward the focal lane, orange away), a mint is a diamond — created, not received — an unresolved payer arrives from the chart's edge, and every arrow carries its own unit label so ADA, tokens and asset counts keep their identity on one chart"
+                }
                 Self::PartyAnnotator => {
                     "Turn an anonymous wallet into a named thing, ON THE RECORD. Entity is WHO is behind it (several wallets share one — that is what makes roll-up possible); label is what to call this one wallet. The basis is the point: a human filling in a form is ASSERTING, so that is the default rather than 'observed', and an assertion with no source is marked UNSOURCED in place instead of being blocked — blocking just pushes the guess into the label field where nothing can flag it"
                 }
@@ -862,6 +869,7 @@ mod app {
         time_spine_state: stories::time_spine::TimeSpineState,
         flow_matrix_state: stories::flow_matrix::FlowMatrixState,
         flow_ring_state: stories::flow_ring::FlowRingState,
+        flow_stave_state: stories::flow_stave::FlowStaveState,
         party_annotator_state: stories::party_annotator::PartyAnnotatorState,
     }
 
@@ -987,6 +995,7 @@ mod app {
                 time_spine_state: stories::time_spine::TimeSpineState::default(),
                 flow_matrix_state: stories::flow_matrix::FlowMatrixState::default(),
                 flow_ring_state: stories::flow_ring::FlowRingState::default(),
+                flow_stave_state: stories::flow_stave::FlowStaveState::default(),
                 party_annotator_state: stories::party_annotator::PartyAnnotatorState::default(),
             }
         }
@@ -1257,6 +1266,9 @@ mod app {
                             }
                             Story::FlowRing => {
                                 stories::flow_ring::show(ui, &mut self.flow_ring_state)
+                            }
+                            Story::FlowStave => {
+                                stories::flow_stave::show(ui, &mut self.flow_stave_state)
                             }
                             Story::PartyAnnotator => {
                                 stories::party_annotator::show(ui, &mut self.party_annotator_state)

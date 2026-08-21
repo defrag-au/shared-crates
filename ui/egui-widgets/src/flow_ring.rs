@@ -217,8 +217,11 @@ fn fmt_quantum(q: u64, scale: f64) -> String {
     }
 }
 
-const OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
-const IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
+/// Outbound value — shared by every flow face so direction never changes hue
+/// between widgets.
+pub(crate) const OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
+/// Inbound value — see [`OUT`].
+pub(crate) const IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
 /// Per-flow particle cap. A single huge payment must not drown the frame.
 const MAX_DOTS: usize = 40;
 
