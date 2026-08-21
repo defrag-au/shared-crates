@@ -57,6 +57,16 @@ pub enum ProviderCapability {
     Bridge,
     /// Holds assets for others — an escrow or custodial wallet.
     Custody,
+    /// A PER-CUSTOMER chain exit — the deposit-address shape: stakeless, one
+    /// (or very few) payers, strictly one-way. Money in never comes back.
+    ///
+    /// Distinct from [`Self::Cex`] on purpose: a CEX hot wallet is SHARED
+    /// infrastructure (pays thousands, boundary in both directions), while an
+    /// off-ramp is one wallet's private door out — usually an exchange deposit
+    /// address, whose exchange the chain cannot name. Same boundary
+    /// consequence, different investigative meaning: an off-ramp's sole payer
+    /// IS an identification.
+    Offramp,
 }
 
 impl ProviderCapability {
@@ -77,7 +87,7 @@ impl ProviderCapability {
 
     /// Value crossing here leaves on-chain traceability entirely.
     pub fn is_boundary(self) -> bool {
-        matches!(self, Self::Cex | Self::Bridge)
+        matches!(self, Self::Cex | Self::Bridge | Self::Offramp)
     }
 
     pub fn as_str(self) -> &'static str {
@@ -92,10 +102,11 @@ impl ProviderCapability {
             Self::Staking => "staking",
             Self::Bridge => "bridge",
             Self::Custody => "custody",
+            Self::Offramp => "offramp",
         }
     }
 
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Cex,
         Self::Dex,
         Self::Aggregator,
@@ -106,6 +117,7 @@ impl ProviderCapability {
         Self::Staking,
         Self::Bridge,
         Self::Custody,
+        Self::Offramp,
     ];
 }
 

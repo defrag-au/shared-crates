@@ -30,6 +30,8 @@ pub struct FlowStaveState {
     /// caller's, because "back" must survive face switches the widget cannot
     /// see.
     history: Vec<String>,
+    /// Last clicked event, for the detail card below the stave.
+    detail: Option<usize>,
 }
 
 impl Default for FlowStaveState {
@@ -39,6 +41,7 @@ impl Default for FlowStaveState {
             selection: Selection::default(),
             focal: FOCAL.to_string(),
             history: Vec::new(),
+            detail: None,
         }
     }
 }
@@ -198,6 +201,29 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowStaveState) {
 
     if let Some(i) = r.clicked {
         spine.set_playhead(events[i].timestamp);
+        state.detail = Some(i);
+    }
+    // Row click = detail, demoed the way the app composes it: the widget
+    // reports the index, the host renders whatever "more" means to it.
+    if let Some(e) = state.detail.and_then(|i| events.get(i)) {
+        let from = match e.from {
+            StaveOrigin::Party(p) => p,
+            StaveOrigin::Mint => "mint · created here",
+            StaveOrigin::Unresolved => "unresolved payer",
+        };
+        ui.add_space(4.0);
+        ui.group(|ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("event").small().color(TEXT_MUTED));
+                ui.label(format!("{from} → {}: {}", e.to, e.label));
+                if ui.small_button("×").clicked() {
+                    state.detail = None;
+                }
+            });
+            egui_widgets::IdPill::new("tx", e.tx)
+                .layout(egui_widgets::IdPillLayout::Inline)
+                .show(ui);
+        });
     }
     // The widget reports intent; the story owns the stack. Same division the
     // app will use.

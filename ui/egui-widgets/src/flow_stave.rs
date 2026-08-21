@@ -357,11 +357,32 @@ impl<'a> FlowStave<'a> {
 
                 // ── events ─────────────────────────────────────────────────
                 let watched = selection.active().map(|s| s.to_string());
+                // Hover is resolved BEFORE drawing so the hovered row can wear
+                // its highlight band — the affordance that says "this row is
+                // clickable", which a tooltip alone never quite does.
                 let hover = response.hover_pos();
                 let mut best: Option<(usize, f32)> = None;
+                if let Some(h) = hover {
+                    for (row, (idx, _)) in in_range.iter().enumerate() {
+                        let d = (h.y - (rect.top() + ys[row])).abs();
+                        if d <= HOVER_SLOP + 4.0 && best.is_none_or(|(_, bd)| d < bd) {
+                            best = Some((*idx, d));
+                        }
+                    }
+                }
                 let mut last_day: Option<i64> = None;
                 for (row, (idx, e)) in in_range.iter().enumerate() {
                     let ey = rect.top() + ys[row];
+                    if matches!(best, Some((i, _)) if i == *idx) {
+                        painter.rect_filled(
+                            Rect::from_min_max(
+                                pos2(rect.left() + GUTTER - 8.0, ey - ROW_MIN * 0.45),
+                                pos2(rect.right() - 4.0, ey + ROW_MIN * 0.45),
+                            ),
+                            3.0,
+                            ink.gamma_multiply(0.06),
+                        );
+                    }
 
                     // Day rule: a labelled separator when the date changes —
                     // the true clock, so log-compression never has to be
@@ -467,18 +488,11 @@ impl<'a> FlowStave<'a> {
                             );
                         }
                     }
-
-                    // Hover: nearest row within slop.
-                    if let Some(h) = hover {
-                        let d = (h.y - ey).abs();
-                        if d <= HOVER_SLOP + 4.0 && best.is_none_or(|(_, bd)| d < bd) {
-                            best = Some((*idx, d));
-                        }
-                    }
                 }
 
                 if let Some((idx, _)) = best {
                     out.hovered = Some(idx);
+                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
                     let e = &events[idx];
                     egui::Tooltip::always_open(
                         ui.ctx().clone(),

@@ -36,6 +36,7 @@ pub mod counterparty;
 pub mod frontier;
 pub mod interest;
 mod model;
+pub mod tokens;
 mod walk;
 
 pub use attribution::{movements, net_deltas, round_trips, RoundTrip};
