@@ -86,6 +86,11 @@ pub struct FlowStaveResponse {
     /// Index into the caller's slice of the clicked event, for playhead moves
     /// or explorer hand-off.
     pub clicked: Option<usize>,
+    /// A lane HEADER was clicked — the reader wants that entity as the new
+    /// subject. The caller owns what that means (refocus, and any history
+    /// stack for going back); the widget only reports the intent. Never the
+    /// focal lane: it is already the subject.
+    pub clicked_lane: Option<String>,
     pub events_shown: usize,
     /// Events outside the spine's brush — filtered by the reader, not lost.
     pub events_clipped: usize,
@@ -101,6 +106,8 @@ pub struct FlowStave<'a> {
     label: Option<&'a dyn Fn(&str) -> String>,
 }
 
+/// The pinned lane-header band's height.
+const HEADER_H: f32 = 30.0;
 /// Vertical rhythm: the tightest two events may sit this close…
 const ROW_MIN: f32 = 22.0;
 /// …and however long the silence, never further apart than this.
@@ -198,9 +205,8 @@ impl<'a> FlowStave<'a> {
         let events_clipped = events.len() - in_range.len();
 
         // ── vertical layout: order preserved, gaps log-compressed ─────────
-        const HEADER: f32 = 26.0;
         let mut ys = Vec::with_capacity(in_range.len());
-        let mut y = HEADER + ROW_MIN;
+        let mut y = ROW_MIN;
         let mut prev_t: Option<i64> = None;
         for (_, e) in &in_range {
             if let Some(p) = prev_t {
@@ -209,7 +215,7 @@ impl<'a> FlowStave<'a> {
             ys.push(y);
             prev_t = Some(e.timestamp);
         }
-        let content_h = (y + ROW_MIN).max(height);
+        let content_h = (y + ROW_MIN).max(height - HEADER_H);
 
         let order = lane_order(focal, lanes);
         let ring_of = |k: &str| lanes.iter().find(|l| l.key == k).map(|l| l.ring);
@@ -218,61 +224,118 @@ impl<'a> FlowStave<'a> {
             response: ui.allocate_response(vec2(0.0, 0.0), Sense::hover()),
             hovered: None,
             clicked: None,
+            clicked_lane: None,
             events_shown: in_range.len(),
             events_clipped,
         };
 
+        // Lane geometry is computed ONCE, from the outer width, and shared by
+        // the pinned header and the scrolling body — two derivations would
+        // drift the first time either got an inset the other didn't.
+        const GUTTER: f32 = 78.0;
+        let avail_w = ui.available_width();
+        let span = (avail_w - GUTTER - 56.0).max(60.0);
+        let step = span / (order.len().max(2) as f32 - 1.0).max(1.0);
+        let lane_off = |k: &str| -> Option<f32> {
+            order
+                .iter()
+                .position(|o| *o == k)
+                .map(|i| GUTTER + step * i as f32)
+        };
+        let muted = ui.visuals().weak_text_color();
+        let ink = ui.visuals().text_color();
+        let small = egui::TextStyle::Small.resolve(ui.style());
+
+        // ── header: PINNED, never scrolls ──────────────────────────────────
+        // The lane names are the legend for every arrow below; a legend that
+        // scrolls away is no legend. Also the click surface: an entity's name
+        // is the natural handle for "make this one the subject".
+        let (head_rect, head_resp) =
+            ui.allocate_exact_size(vec2(avail_w, HEADER_H), Sense::hover());
+        {
+            let painter = ui.painter_at(head_rect);
+            for k in &order {
+                let x = head_rect.left() + lane_off(k).expect("in order");
+                let is_focal = *k == focal;
+                let tint = match ring_of(k) {
+                    _ if is_focal => ink,
+                    Some(r) => ring_tint(r),
+                    None => muted,
+                };
+                let name = truncate(&name_of(k), 14);
+                let hit = Rect::from_center_size(
+                    pos2(x, head_rect.top() + HEADER_H * 0.45),
+                    vec2(
+                        (name.chars().count() as f32 * 7.0).max(30.0),
+                        HEADER_H - 4.0,
+                    ),
+                );
+                // The focal lane is not clickable — it is already the subject,
+                // and a dead click teaches the reader the others are dead too.
+                let lane_resp = if is_focal {
+                    None
+                } else {
+                    Some(ui.interact(hit, head_resp.id.with(*k), Sense::click()))
+                };
+                let hovered_lane = lane_resp.as_ref().is_some_and(|r| r.hovered());
+                if let Some(r) = &lane_resp {
+                    r.clone().on_hover_cursor(egui::CursorIcon::PointingHand);
+                    if r.clicked() {
+                        out.clicked_lane = Some((*k).to_string());
+                    }
+                }
+                let text_col = match (is_focal, hovered_lane) {
+                    (true, _) => ink,
+                    (false, true) => ink,
+                    (false, false) => muted,
+                };
+                painter.circle_filled(pos2(x, head_rect.bottom() - 6.0), 3.0, tint);
+                painter.text(
+                    pos2(x, head_rect.bottom() - 12.0),
+                    Align2::CENTER_BOTTOM,
+                    &name,
+                    small.clone(),
+                    text_col,
+                );
+                if hovered_lane {
+                    // Underline as the affordance — colour alone is not a cue.
+                    let half = (name.chars().count() as f32 * 3.4).max(12.0);
+                    painter.line_segment(
+                        [
+                            pos2(x - half, head_rect.bottom() - 10.0),
+                            pos2(x + half, head_rect.bottom() - 10.0),
+                        ],
+                        Stroke::new(1.0_f32, ink.gamma_multiply(0.8)),
+                    );
+                }
+            }
+        }
+
         egui::ScrollArea::vertical()
-            .max_height(height)
+            .max_height(height - HEADER_H)
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                let avail_w = ui.available_width();
                 let (rect, response) =
                     ui.allocate_exact_size(vec2(avail_w, content_h), Sense::click());
                 let painter = ui.painter_at(rect);
-                let muted = ui.visuals().weak_text_color();
-                let ink = ui.visuals().text_color();
                 let small = egui::TextStyle::Small.resolve(ui.style());
 
-                // ── lanes ──────────────────────────────────────────────────
-                // The time gutter owns the left edge; lanes share the rest.
-                const GUTTER: f32 = 78.0;
-                // Right inset leaves room for the outermost lane's centred
-                // header — 12px put "ops (pervsn)" half off the viewport.
-                let span = (rect.width() - GUTTER - 56.0).max(60.0);
-                let step = span / (order.len().max(2) as f32 - 1.0).max(1.0);
-                let lane_x = |k: &str| -> Option<f32> {
-                    order
-                        .iter()
-                        .position(|o| *o == k)
-                        .map(|i| rect.left() + GUTTER + step * i as f32)
-                };
+                // ── lane guide lines ───────────────────────────────────────
                 for k in &order {
-                    let x = lane_x(k).expect("in order");
+                    let x = rect.left() + lane_off(k).expect("in order");
                     let is_focal = *k == focal;
                     let tint = match ring_of(k) {
                         _ if is_focal => ink,
                         Some(r) => ring_tint(r),
                         None => muted,
                     };
-                    // Guide line, faint; the focal lane a touch firmer — it is
-                    // the subject every arrow relates to.
+                    // Faint; the focal lane a touch firmer — it is the subject
+                    // every arrow relates to.
                     let w = if is_focal { 1.2_f32 } else { 0.6_f32 };
                     let a = if is_focal { 0.5 } else { 0.25 };
                     painter.line_segment(
-                        [
-                            pos2(x, rect.top() + HEADER),
-                            pos2(x, rect.top() + content_h - 4.0),
-                        ],
+                        [pos2(x, rect.top()), pos2(x, rect.top() + content_h - 4.0)],
                         Stroke::new(w, tint.gamma_multiply(a)),
-                    );
-                    painter.circle_filled(pos2(x, rect.top() + HEADER - 8.0), 3.0, tint);
-                    painter.text(
-                        pos2(x, rect.top() + HEADER - 14.0),
-                        Align2::CENTER_BOTTOM,
-                        truncate(&name_of(k), 14),
-                        small.clone(),
-                        if is_focal { ink } else { muted },
                     );
                 }
 
@@ -280,7 +343,7 @@ impl<'a> FlowStave<'a> {
                 // Between the last event at-or-before `now` and the next one.
                 let now = spine.playhead;
                 let play_y = match in_range.iter().position(|(_, e)| e.timestamp > now) {
-                    Some(0) => rect.top() + HEADER + ROW_MIN * 0.4,
+                    Some(0) => rect.top() + ROW_MIN * 0.4,
                     Some(i) => rect.top() + (ys[i - 1] + ys[i]) * 0.5,
                     None => rect.top() + content_h - ROW_MIN * 0.4,
                 };
@@ -341,6 +404,7 @@ impl<'a> FlowStave<'a> {
                         (false, true) => 1.0,
                     };
 
+                    let lane_x = |k: &str| lane_off(k).map(|o| rect.left() + o);
                     let to_x = lane_x(e.to);
                     let (col, from_x) = match e.from {
                         StaveOrigin::Party(p) => {

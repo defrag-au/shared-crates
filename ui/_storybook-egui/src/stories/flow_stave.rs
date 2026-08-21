@@ -23,6 +23,13 @@ const DAY: i64 = 86_400;
 pub struct FlowStaveState {
     spine: Option<SpineState>,
     selection: Selection,
+    /// The current subject — clicking a lane header refocuses onto it.
+    focal: String,
+    /// Where the reader came from, for the back button. The WIDGET only
+    /// reports `clicked_lane`; this navigation stack is deliberately the
+    /// caller's, because "back" must survive face switches the widget cannot
+    /// see.
+    history: Vec<String>,
 }
 
 impl Default for FlowStaveState {
@@ -30,6 +37,8 @@ impl Default for FlowStaveState {
         Self {
             spine: None,
             selection: Selection::default(),
+            focal: FOCAL.to_string(),
+            history: Vec::new(),
         }
     }
 }
@@ -164,18 +173,43 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowStaveState) {
         .show(ui);
     ui.add_space(4.0);
 
+    // ── navigation: click a lane header to refocus; back to return ────────
+    ui.horizontal(|ui| {
+        let back = ui
+            .add_enabled(!state.history.is_empty(), egui::Button::new("← back"))
+            .on_hover_text("return to the previous subject");
+        if back.clicked() {
+            if let Some(prev) = state.history.pop() {
+                state.focal = prev;
+            }
+        }
+        ui.label(
+            egui::RichText::new(format!("subject: {}", state.focal))
+                .small()
+                .color(TEXT_MUTED),
+        );
+    });
+
     let lanes = lanes();
-    let r = FlowStave::new(FOCAL, &lanes, &events, spine, &mut state.selection)
-        .height(430.0)
+    let focal = state.focal.clone();
+    let r = FlowStave::new(&focal, &lanes, &events, spine, &mut state.selection)
+        .height(410.0)
         .show(ui);
 
     if let Some(i) = r.clicked {
         spine.set_playhead(events[i].timestamp);
     }
+    // The widget reports intent; the story owns the stack. Same division the
+    // app will use.
+    if let Some(next) = r.clicked_lane {
+        state.history.push(state.focal.clone());
+        state.focal = next;
+    }
     ui.add_space(4.0);
     ui.label(
         egui::RichText::new(format!(
-            "{} events on the stave · {} outside the brush · click an event to move the playhead",
+            "{} events on the stave · {} outside the brush · click an event to move the \
+             playhead · click a lane name to make it the subject",
             r.events_shown, r.events_clipped
         ))
         .small()
