@@ -427,9 +427,16 @@ mod tests {
     fn counter_payment_decay_is_full_then_linear_then_zero() {
         let (f, w) = (3600, 24 * 3600);
         assert_eq!(counter_payment_confidence(600, f, w), 1.0);
-        assert_eq!(counter_payment_confidence(-600, f, w), 1.0, "direction-agnostic");
+        assert_eq!(
+            counter_payment_confidence(-600, f, w),
+            1.0,
+            "direction-agnostic"
+        );
         assert_eq!(counter_payment_confidence(w + 1, f, w), 0.0);
         let mid = counter_payment_confidence((w + f) / 2, f, w);
-        assert!(mid > 0.45 && mid < 0.55, "roughly half at the midpoint: {mid}");
+        assert!(
+            mid > 0.45 && mid < 0.55,
+            "roughly half at the midpoint: {mid}"
+        );
     }
 }

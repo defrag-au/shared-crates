@@ -66,6 +66,17 @@ pub enum Role {
     /// expands, while a platform wallet is recorded — seated, drawable — and
     /// frozen the moment its scale shows.
     MintPayee,
+    /// Received a holder-facing asset of the tracked policy — a holder of the
+    /// collection itself.
+    ///
+    /// Seated WATCHED BUT NEVER EXPANDING, which is a different bargain from
+    /// every other role: the money frontier refuses asset receivers (promotion
+    /// grows along outbound VALUE edges, and 10k buyers would recruit the
+    /// chain), but on a queued mint the buyer never funds the mint transaction
+    /// at all — payment and fulfilment are separate txs — so the collection's
+    /// own customers were invisible and their purchase legs unattributed.
+    /// A holder's flows are booked; their counterparties promote nobody.
+    Holder,
 }
 
 impl Role {
@@ -73,9 +84,10 @@ impl Role {
     ///
     /// [`Role::MintPayee`] is the exception: it is seeded (nothing can promote
     /// it) but must still be freezable, or one custodial payee recruits the
-    /// whole chain.
+    /// whole chain. [`Role::Holder`] never expands in the first place, so
+    /// exemption is moot — grouped with the freezable for honesty.
     pub fn is_exempt(self) -> bool {
-        !matches!(self, Role::Promoted | Role::MintPayee)
+        !matches!(self, Role::Promoted | Role::MintPayee | Role::Holder)
     }
 }
 
@@ -336,6 +348,27 @@ impl Frontier {
         });
         // Idempotent, and never RAISES the coverage floor: re-seeding must not
         // silently narrow the window a reader has already been shown.
+        if m.watched_from_slot > slot {
+            m.watched_from_slot = slot;
+        }
+        &self.members[&key]
+    }
+
+    /// Seat a HOLDER of the collection: watched, never expanding, no terminal
+    /// verdict — a holder is a subject that happens not to recruit, not a
+    /// custodial off-ramp.
+    ///
+    /// Never DOWNGRADES: a party that is already a member (an expanding
+    /// promotee, a declared wallet) keeps its role and its expansion — buying
+    /// one of the project's assets must not shrink what the walk was already
+    /// watching. Idempotent, and only ever lowers `watched_from_slot`.
+    pub fn seed_holder(&mut self, party: Party, slot: u64) -> &Member {
+        let key = party.clone();
+        let m = self.members.entry(key.clone()).or_insert_with(|| {
+            let mut m = Member::new(party, Role::Holder, slot);
+            m.expand = false;
+            m
+        });
         if m.watched_from_slot > slot {
             m.watched_from_slot = slot;
         }
@@ -750,6 +783,51 @@ mod tests {
             Outcome::Ignored
         );
         assert!(!f.is_member(&stranger));
+    }
+
+    /// A holder is watched but recruits nobody — and holder-seating must never
+    /// DOWNGRADE a wallet the walk was already expanding: a treasury that buys
+    /// one of its own project's assets is still the treasury.
+    #[test]
+    fn a_holder_is_watched_promotes_nobody_and_never_downgrades() {
+        let mut f = frontier();
+        let buyer = stake("bought-one-nft");
+        let stranger = stake("stranger");
+        f.seed_holder(buyer.clone(), 500);
+
+        let m = f.member(&buyer).expect("seated");
+        assert_eq!(m.role, Role::Holder);
+        // `is_terminal()` only means "does not expand", which a holder shares
+        // with the off-ramps; what separates a subject from an off-ramp is
+        // that no custodial VERDICT was reached.
+        assert_eq!(
+            m.terminal_reason, None,
+            "a holder is a subject, not an off-ramp"
+        );
+        assert!(!f.expands(&buyer), "watched, never expanding");
+        assert_eq!(
+            f.on_movement(&mv(&buyer, &stranger, "tx1"), 550, None),
+            Outcome::Ignored
+        );
+        assert!(
+            !f.is_member(&stranger),
+            "a holder's payments recruit nobody"
+        );
+
+        // The other direction: an EXPANDING member who receives an asset
+        // keeps its role and its expansion.
+        let treasury = stake("treasury");
+        f.seed(treasury.clone(), Role::Declared, 0).unwrap();
+        f.seed_holder(treasury.clone(), 600);
+        let t = f.member(&treasury).unwrap();
+        assert_eq!(t.role, Role::Declared, "no downgrade");
+        assert!(f.expands(&treasury), "still expanding");
+
+        // And re-seating only ever widens coverage.
+        f.seed_holder(buyer.clone(), 300);
+        assert_eq!(f.member(&buyer).unwrap().watched_from_slot, 300);
+        f.seed_holder(buyer.clone(), 900);
+        assert_eq!(f.member(&buyer).unwrap().watched_from_slot, 300);
     }
 
     /// Re-seeding must not narrow coverage a reader has already been shown.
