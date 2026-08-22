@@ -117,7 +117,10 @@ impl<'a> HolderField<'a> {
             moves,
             spine,
             selection,
-            flight_secs: 0.7,
+            // Longer than it looks: the batch spread eats the first
+            // [`BATCH_SPREAD`] of this, so each individual dot flies for
+            // ~60% of it. At 0.7s a large sale still read as sudden.
+            flight_secs: 1.2,
             dot_color: None,
             height: 320.0,
             label: None,
@@ -204,6 +207,11 @@ impl<'a> HolderField<'a> {
         // stayed put keep their exact position, and the pile stays as compact
         // as its peak concurrent holdings rather than growing with churn.
         let mut slot_of: Vec<u32> = vec![0; model.assets.len()];
+        // The SEAT a dot vacated, so it can fly from where it actually sat.
+        // Without this the origin is the old pile's centre, which makes every
+        // departure teleport to the middle of its pile before setting off —
+        // and on a large pile that jump is bigger than the flight.
+        let mut left_seat: Vec<Option<(usize, u32)>> = vec![None; model.assets.len()];
         let mut next_slot: Vec<u32> = vec![0; n];
         let mut free: Vec<std::collections::BinaryHeap<std::cmp::Reverse<u32>>> = (0..n)
             .map(|_| std::collections::BinaryHeap::new())
@@ -216,6 +224,7 @@ impl<'a> HolderField<'a> {
             // Leaving its previous pile frees that seat.
             if let Some((old, _)) = held[m.asset] {
                 free[old].push(std::cmp::Reverse(slot_of[m.asset]));
+                left_seat[m.asset] = Some((old, slot_of[m.asset]));
             }
             held[m.asset] = m.to.map(|p| (p, mi));
             if let Some(p) = m.to {
@@ -368,20 +377,31 @@ impl<'a> HolderField<'a> {
             if brushed && !in_window[ai] {
                 continue;
             }
-            let centre = layout.centres[p];
+            let asset = model.assets[ai].as_str();
             let k = slot_of[ai];
-            let (dx, dy) = crate::mint_arrivals::pile_offset(k);
-            let j = jitter(model.assets[ai].as_str(), k);
-            let target = pos2(
-                centre.x + dx * spacing + j.x * spacing * 0.35,
-                centre.y + dy * spacing + j.y * spacing * 0.35,
-            );
-            let dot_id = id.with(("dot", model.assets[ai].as_str()));
-            // Where it came from: the emitter for a mint, the previous holder's
-            // pile for a transfer.
-            let origin = match model.timeline[mi].from {
-                Some(prev) => layout.centres[prev],
-                None => source,
+            let j = jitter(asset, k);
+            // ONE formula for both ends of the flight. Origin and target are
+            // the same kind of thing — a seat in a pile — and computing them
+            // differently is what let the origin quietly become a centre.
+            let seat = |party: usize, slot: u32| -> Pos2 {
+                let c = layout.centres[party];
+                let (dx, dy) = crate::mint_arrivals::pile_offset(slot);
+                let jj = jitter(asset, slot);
+                pos2(
+                    c.x + dx * spacing + jj.x * spacing * 0.35,
+                    c.y + dy * spacing + jj.y * spacing * 0.35,
+                )
+            };
+            let target = seat(p, k);
+            let dot_id = id.with(("dot", asset));
+            // Where it came from: the emitter for a mint, otherwise THE SEAT
+            // IT VACATED — not its old pile's centre. A dot peels off from
+            // where it was actually sitting, which is what makes a big sale
+            // read as a pile emptying rather than a burst from a midpoint.
+            let origin = match (model.timeline[mi].from, left_seat[ai]) {
+                (Some(_), Some((prev, prev_slot))) => seat(prev, prev_slot),
+                (Some(prev), None) => layout.centres[prev],
+                (None, _) => source,
             };
             let t = if playing {
                 tween_from(&ctx, dot_id, 0.0, 1.0, flight_secs, Easing::OutCubic)
@@ -398,12 +418,33 @@ impl<'a> HolderField<'a> {
                 }
             }
             let col = accent.linear_multiply(emph[p]);
+            // EACH DOT LEAVES ON ITS OWN BEAT. A hundred-asset sale where
+            // every dot shares one start is a single clump crossing the field
+            // and landing at once — the eye reads a blink, not a movement.
+            // The offset is derived from the asset key, so a dot's beat is
+            // identical every frame and across runs; a per-frame random would
+            // make the whole batch shimmer.
+            let t = stagger_progress(t, model.assets[ai].as_str());
             if t < 1.0 {
                 let ctrl = arc_control(origin, target, j.x);
                 let pnow = bezier(origin, ctrl, target, t);
-                for (back, a) in [(0.10f32, 0.18f32), (0.05, 0.36)] {
-                    let q = bezier(origin, ctrl, target, (t - back).max(0.0));
-                    painter.circle_filled(q, dot_r * 1.1, accent.linear_multiply(a));
+                // VAPOUR TRAIL. Samples are evenly spaced in PROGRESS, not in
+                // distance, so the trail stretches out where the dot is moving
+                // fast (the launch, under OutCubic) and bunches up as it
+                // settles — a comet, not a fixed-length streak. Drawn back to
+                // front so the head sits on top.
+                for k in (1..=TRAIL_SAMPLES).rev() {
+                    let tb = t - TRAIL_STEP * k as f32;
+                    if tb <= 0.0 {
+                        continue;
+                    }
+                    let fade = 1.0 - k as f32 / (TRAIL_SAMPLES + 1) as f32;
+                    let q = bezier(origin, ctrl, target, tb);
+                    painter.circle_filled(
+                        q,
+                        dot_r * (0.3 + 0.9 * fade),
+                        accent.linear_multiply(0.42 * fade * fade),
+                    );
                 }
                 painter.circle_filled(pnow, dot_r * 1.7, accent);
                 if t > 0.985 {
@@ -460,17 +501,22 @@ impl<'a> HolderField<'a> {
                 Some(f) => f(&model.parties[i]),
                 None => elide(&model.parties[i]),
             };
-            let galley = painter.layout_no_wrap(
+            let galley = fitted_label(
+                &painter,
                 format!("{name} {}", shown[i]),
                 egui::TextStyle::Small.resolve(ui.style()),
                 muted,
+                rect.width() - 4.0,
             );
             let mut at = pos2(
                 layout.centres[i].x - galley.size().x * 0.5,
                 layout.centres[i].y + disc_r(i) + 2.0,
             );
-            at.x =
-                at.x.clamp(rect.left() + 2.0, rect.right() - galley.size().x - 2.0);
+            at.x = clamp_into(
+                at.x,
+                rect.left() + 2.0,
+                rect.right() - galley.size().x - 2.0,
+            );
             // Never below the field — `painter_at` clips silently.
             at.y = at.y.min(field.bottom() - galley.size().y);
             painter.galley(at, galley, muted);
@@ -491,14 +537,22 @@ impl<'a> HolderField<'a> {
                 None => elide(&model.parties[i]),
             };
             let txt = format!("{name}  ·  {}", shown[i]);
-            let galley =
-                painter.layout_no_wrap(txt, egui::TextStyle::Small.resolve(ui.style()), ink);
+            let galley = fitted_label(
+                &painter,
+                txt,
+                egui::TextStyle::Small.resolve(ui.style()),
+                ink,
+                rect.width() - 4.0,
+            );
             let mut at = pos2(
                 c.x - galley.size().x * 0.5,
                 c.y - ring_r - galley.size().y - 4.0,
             );
-            at.x =
-                at.x.clamp(rect.left() + 2.0, rect.right() - galley.size().x - 2.0);
+            at.x = clamp_into(
+                at.x,
+                rect.left() + 2.0,
+                rect.right() - galley.size().x - 2.0,
+            );
             at.y = at.y.max(field.top());
             let bg = Rect::from_min_size(at, galley.size()).expand2(vec2(4.0, 2.0));
             painter.rect_filled(
@@ -860,6 +914,61 @@ fn bezier(a: Pos2, c: Pos2, b: Pos2, t: f32) -> Pos2 {
     )
 }
 
+/// Keep `v` inside `[lo, hi]` — and survive `hi < lo`.
+///
+/// `f32::clamp` PANICS when the bounds invert, and here they invert for a
+/// real reason: `hi` is "right edge minus the label's own width", so any
+/// label wider than its container makes it smaller than `lo`. That crashed
+/// the app on a narrow centre panel — a layout accident taking down the
+/// process. Pinning to `lo` is the honest answer: the label starts at the
+/// left edge and whatever does not fit is clipped, which is what a reader
+/// would expect from a too-narrow pane.
+fn clamp_into(v: f32, lo: f32, hi: f32) -> f32 {
+    v.clamp(lo, hi.max(lo))
+}
+
+/// Lay out a single-line label that FITS, truncating with an ellipsis.
+///
+/// A label wider than the field is unreadable however it is positioned, so
+/// the fix is to shorten it rather than to place it cleverly. Names got
+/// longer when handle harvesting landed (S1 went from 4,718 to 23,057
+/// aliases), which is what made this reachable.
+fn fitted_label(
+    painter: &egui::Painter,
+    text: String,
+    font: egui::FontId,
+    color: Color32,
+    max_width: f32,
+) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
+    job.wrap.max_width = max_width.max(24.0);
+    job.wrap.max_rows = 1;
+    job.wrap.break_anywhere = true;
+    painter.layout_job(job)
+}
+
+/// Trail length in samples, and their spacing in progress-space. Together
+/// they span the last ~35% of a dot's flight.
+const TRAIL_SAMPLES: usize = 10;
+const TRAIL_STEP: f32 = 0.035;
+/// How much of the flight window is spent LAUNCHING a batch — the spread of
+/// per-dot start beats. Each dot still flies the remainder, so the batch
+/// leaves as a stream and lands as one.
+const BATCH_SPREAD: f32 = 0.4;
+
+/// Re-time one dot's progress so a batch departs as a stream.
+///
+/// The dot starts somewhere in the first [`BATCH_SPREAD`] of the window and
+/// takes the rest to fly. Two properties matter and are tested:
+/// - **deterministic** in the asset key, so a dot's beat never changes;
+/// - **exactly 1.0 when the batch is done** — a scrubbed (not playing)
+///   field feeds in `1.0`, and any dot left below 1.0 there would be frozen
+///   mid-flight over a static field.
+fn stagger_progress(t: f32, asset: &str) -> f32 {
+    let s = (jitter(asset, 0x5747).x * 0.5 + 0.5).clamp(0.0, 1.0) * BATCH_SPREAD;
+    ((t - s) / (1.0 - BATCH_SPREAD)).clamp(0.0, 1.0)
+}
+
 fn jitter(asset: &str, k: u32) -> Vec2 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in asset.bytes() {
@@ -883,6 +992,105 @@ fn elide(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A label wider than its pane must not take the process down.
+    ///
+    /// Reproduces the real crash: the field started at x=260 (just past the
+    /// parties panel) while the label's width pushed the right-hand bound to
+    /// 257 — `f32::clamp` panics on inverted bounds, so a narrow window was
+    /// a hard abort on startup rather than an ugly label.
+    #[test]
+    fn a_label_wider_than_the_pane_pins_instead_of_panicking() {
+        // The exact numbers from the panic: min = 260.0, max = 257.25.
+        assert_eq!(clamp_into(300.0, 260.0, 257.25), 260.0);
+        assert_eq!(clamp_into(0.0, 260.0, 257.25), 260.0);
+        // Ordinary bounds behave exactly like `clamp`.
+        assert_eq!(clamp_into(50.0, 10.0, 100.0), 50.0);
+        assert_eq!(clamp_into(5.0, 10.0, 100.0), 10.0);
+        assert_eq!(clamp_into(150.0, 10.0, 100.0), 100.0);
+        // Degenerate but valid: zero-width window pins to the edge.
+        assert_eq!(clamp_into(7.0, 42.0, 42.0), 42.0);
+    }
+
+    /// A dot leaves from the seat it SAT IN, not from its pile's centre.
+    ///
+    /// The seat allocator frees a slot on departure, and the vacated slot is
+    /// exactly the flight's origin — so this pins the bookkeeping the render
+    /// depends on. Before it, origin was `centres[prev]`, and on a 500-dot
+    /// pile the teleport to the middle was larger than the flight itself.
+    #[test]
+    fn a_departing_dot_remembers_the_seat_it_vacated() {
+        // alice holds two, then hands the SECOND one to bob: the vacated seat
+        // must be the one that asset occupied, not slot 0 and not a centre.
+        let moves = vec![
+            AssetMove::mint(10, "a1", "alice"),
+            AssetMove::mint(20, "a2", "alice"),
+            AssetMove::transfer(30, "a2", "alice", "bob"),
+        ];
+        // Mirrors the allocator in `show`.
+        let assets = ["a1", "a2"];
+        let idx = |a: &str| assets.iter().position(|x| *x == a).unwrap();
+        let mut held: Vec<Option<usize>> = vec![None; 2];
+        let mut slot_of = [0u32; 2];
+        let mut left_seat: Vec<Option<(usize, u32)>> = vec![None; 2];
+        let mut next = [0u32; 2]; // per party: alice=0, bob=1
+        let party = |p: &str| if p == "alice" { 0 } else { 1 };
+        for m in &moves {
+            let ai = idx(m.asset);
+            if let Some(old) = held[ai] {
+                left_seat[ai] = Some((old, slot_of[ai]));
+            }
+            held[ai] = m.to.map(party);
+            if let Some(p) = held[ai] {
+                slot_of[ai] = next[p];
+                next[p] += 1;
+            }
+        }
+        assert_eq!(
+            left_seat[idx("a2")],
+            Some((0, 1)),
+            "a2 vacated alice's SECOND seat"
+        );
+        assert_eq!(
+            left_seat[idx("a1")],
+            None,
+            "a1 never left, so never vacated"
+        );
+    }
+
+    /// The stagger turns a batch into a stream, and must not strand a dot.
+    ///
+    /// The load-bearing case is SCRUBBING: a paused field feeds progress
+    /// 1.0, and any dot whose re-timed progress landed below 1.0 there would
+    /// hang mid-air over a static field — a bug that would only show up as
+    /// "some dots are in the wrong place", with no obvious cause.
+    #[test]
+    fn the_batch_stagger_streams_without_stranding_anyone() {
+        let assets: Vec<String> = (0..500).map(|i| format!("MD{i:04}")).collect();
+
+        for a in &assets {
+            assert_eq!(
+                stagger_progress(1.0, a),
+                1.0,
+                "{a} is stranded mid-flight on a paused field"
+            );
+            // Deterministic: the same key gives the same beat, always.
+            assert_eq!(stagger_progress(0.5, a), stagger_progress(0.5, a));
+            // Never runs past its target, never goes backwards.
+            assert!((0.0..=1.0).contains(&stagger_progress(0.5, a)));
+            assert!(stagger_progress(0.0, a) <= f32::EPSILON);
+        }
+
+        // Mid-flight the batch is SPREAD OUT — that is the whole point. Some
+        // dots have not left, some are well along.
+        let mid: Vec<f32> = assets.iter().map(|a| stagger_progress(0.5, a)).collect();
+        let lo = mid.iter().copied().fold(f32::MAX, f32::min);
+        let hi = mid.iter().copied().fold(0.0_f32, f32::max);
+        assert!(
+            hi - lo > 0.5,
+            "a batch should read as a stream, not a clump: spread {lo}..{hi}"
+        );
+    }
 
     fn ctx() -> egui::Context {
         let c = egui::Context::default();

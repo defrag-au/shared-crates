@@ -74,6 +74,9 @@ fn events() -> Vec<StaveEvent<'static>> {
             items,
             magnitude,
             tx: "d84561d75cc51201aa00bb11cc22dd33ee44ff55",
+            // Every lane in this fixture is a real seated party, so no
+            // rollup identity to carry.
+            counterparty: None,
         });
     };
 

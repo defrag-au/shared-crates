@@ -78,6 +78,15 @@ pub struct StaveEvent<'a> {
     pub magnitude: f32,
     /// For the hover card and the caller's click-through.
     pub tx: &'a str,
+    /// The REAL other party, when this event is drawn in a synthetic ROLLUP
+    /// lane ("(others)").
+    ///
+    /// Geometry follows `from`/`to` — those name the lane. Identity comes
+    /// from here. Without it a folded row reads "luthien → others ×11",
+    /// which names a bucket rather than a counterparty and leaves the reader
+    /// nothing to act on; the fold is a chart-capacity decision and must not
+    /// cost the fact of WHO was paid.
+    pub counterparty: Option<&'a str>,
 }
 
 pub struct FlowStaveResponse {
@@ -514,13 +523,25 @@ impl<'a> FlowStave<'a> {
                     )
                     .show(|ui| {
                         ui.set_max_width(320.0);
+                        // NAME THE PARTY, NOT THE LANE. Exactly one end of an
+                        // event is the focal wallet, so the other end is the
+                        // counterparty — and when that end was folded into a
+                        // rollup lane, `counterparty` carries who it really
+                        // was.
+                        let identity = |side: &str| -> String {
+                            if side == focal {
+                                name_of(side)
+                            } else {
+                                name_of(e.counterparty.unwrap_or(side))
+                            }
+                        };
                         let from = match e.from {
-                            StaveOrigin::Party(p) => name_of(p),
+                            StaveOrigin::Party(p) => identity(p),
                             StaveOrigin::Mint => "mint · created here".into(),
                             StaveOrigin::Unresolved => "unresolved payer".into(),
                         };
                         ui.label(
-                            egui::RichText::new(format!("{from} → {}", name_of(e.to))).strong(),
+                            egui::RichText::new(format!("{from} → {}", identity(e.to))).strong(),
                         );
                         ui.label(
                             egui::RichText::new(format!(
@@ -533,6 +554,12 @@ impl<'a> FlowStave<'a> {
                         ui.label(
                             egui::RichText::new(format!("tx {}", elide(e.tx)))
                                 .small()
+                                .color(ui.visuals().weak_text_color()),
+                        );
+                        ui.label(
+                            egui::RichText::new("click for detail")
+                                .small()
+                                .italics()
                                 .color(ui.visuals().weak_text_color()),
                         );
                     });
@@ -670,6 +697,29 @@ mod tests {
         assert_eq!(toward_focal("treasury", "front"), "in");
         assert_eq!(toward_focal("front", "jprigs"), "out");
         assert_eq!(toward_focal("a", "b"), "lateral");
+    }
+
+    /// A folded row must still name WHO. The lane is a chart-capacity
+    /// decision; the counterparty is a fact, and "→ others ×11" throws the
+    /// fact away.
+    #[test]
+    fn a_rollup_lane_names_the_party_not_the_bucket() {
+        // Mirrors the widget's rule: the non-focal end resolves through
+        // `counterparty` when the event was folded into a rollup lane.
+        let focal = "luthien";
+        let identity = |side: &str, counterparty: Option<&str>| -> String {
+            if side == focal {
+                side.to_string()
+            } else {
+                counterparty.unwrap_or(side).to_string()
+            }
+        };
+        // Folded: drawn in "(others)", but the reader is told the real key.
+        assert_eq!(identity("(others)", Some("stake1real")), "stake1real");
+        // The focal end never resolves through it, even when set.
+        assert_eq!(identity(focal, Some("stake1real")), "luthien");
+        // A seated lane is unaffected — no override, no change.
+        assert_eq!(identity("stake1seated", None), "stake1seated");
     }
 
     #[test]
