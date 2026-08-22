@@ -205,6 +205,65 @@ pub enum RegistryNetwork {
     Testnet,
 }
 
+// ── Stake-credential registry ────────────────────────────────────────────────
+
+/// What a stake-identified service does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum StakeServiceKind {
+    /// Runs mints on a project's behalf and takes a per-mint fee. Its wallet
+    /// appears as a destination in EVERY mint transaction it serves, for every
+    /// unrelated project — so a consumer that walks a frontier must record it
+    /// and refuse to expand it.
+    MintingProvider,
+}
+
+/// A service run from an ordinary wallet, identified by its stake credential.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StakeService {
+    pub label: &'static str,
+    pub kind: StakeServiceKind,
+    /// How the attribution was established. Registry entries are evidence, so
+    /// this is required rather than optional — see the module header.
+    pub source: &'static str,
+}
+
+/// Services keyed by STAKE credential rather than by payment address.
+///
+/// ## Why this table exists separately
+///
+/// [`ADDRESS_REGISTRY`] keys on payment addresses, which is correct for
+/// scripts: a contract IS its address. A service run from an ORDINARY WALLET
+/// is different — it spends from many payment addresses under a single staking
+/// credential, and enumerating them is both endless and pointless. The stake
+/// key is the stable identity.
+///
+/// ## The trap this does NOT fall into
+///
+/// [`ADDRESS_PREFIX_REGISTRY`] carries a warning: order and listing contracts
+/// keep the CUSTOMER's staking credential, so naming a stake key after a
+/// script-prefix hit labels every customer as the venue. That failure cannot
+/// occur here, because these entries are key-payment wallets whose stake
+/// credential is their own. Only add an entry when the stake credential
+/// genuinely belongs to the service.
+pub static STAKE_REGISTRY: Map<&'static str, StakeService> = phf_map! {
+    // Anvil — Cardano minting API. Takes a flat per-mint fee (1.15 ADA at time
+    // of writing) in the mint transaction itself, alongside the project's own
+    // payment. Observed across four unrelated collections.
+    "stake1uy50zl7a9k9c74v66c0gn833at5sh83qnjldk8hg4rrv05g3mmskr" => StakeService {
+        label: "Anvil",
+        kind: StakeServiceKind::MintingProvider,
+        source: "observed 2026-08-22: constant 1.15 ADA mint-tx fee across policies \
+                 55bd0ac4 (KAT Pack, 333), 6b42eca9 (chadano_citizen, 1501), \
+                 e26a8565 (perps_into_the_factions, 242), 812197d5 (Biddy_DeGoat, 127); \
+                 1,009 unspent ~1 ADA UTxOs from unrelated projects",
+    },
+};
+
+/// Look up a service by its stake credential (bech32 `stake1…`).
+pub fn lookup_stake(stake: &str) -> Option<&'static StakeService> {
+    STAKE_REGISTRY.get(stake)
+}
+
 // ── Lookup functions ─────────────────────────────────────────────────────────
 
 /// Look up an address in the mainnet registry (default, backward-compatible).
@@ -714,6 +773,34 @@ pub fn all_known_addresses() -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn anvil_is_found_by_stake_credential() {
+        let s = lookup_stake("stake1uy50zl7a9k9c74v66c0gn833at5sh83qnjldk8hg4rrv05g3mmskr")
+            .expect("Anvil is registered");
+        assert_eq!(s.label, "Anvil");
+        assert_eq!(s.kind, StakeServiceKind::MintingProvider);
+        assert!(!s.source.is_empty(), "an entry must carry its evidence");
+    }
+
+    #[test]
+    fn an_unregistered_stake_key_is_not_named() {
+        assert!(lookup_stake("stake1u98f5mr0mn8tv2kqndk5cwen4uasc7cewlzdklz6y664zacl9lvjz").is_none());
+    }
+
+    /// The stake table takes bech32 STAKE keys. A payment address must never
+    /// hit it, or a consumer could name a wallet after a service it merely
+    /// paid.
+    #[test]
+    fn a_payment_address_never_hits_the_stake_table() {
+        assert!(
+            lookup_stake(
+                "addr1qx68zqqmcfhy2jvj7ugffvrx0utykjeq9k2vfzy5lyn3defg79la6tvt3a2e44s73x0rr6hfpw0zp897mv0w32xxclgsle8hll"
+            )
+            .is_none(),
+            "Anvil's own payment address must be looked up by its STAKE key, not directly"
+        );
+    }
 
     /// A Splash ORDER address carries the customer's staking credential — the
     /// registry identifies the script, and must SAY it identified only the
