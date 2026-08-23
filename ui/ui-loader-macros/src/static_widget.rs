@@ -126,8 +126,19 @@ pub fn generate(input: StaticWidgetInput) -> TokenStream {
                         .get_element_by_id(#mount_point)
                         .expect("mount point not found");
 
-                    // Render the static HTML
+                    // Render the static HTML.
+                    //
+                    // The `allow` is generated deliberately. Expanded macro code
+                    // lands in the CALLER's crate, so a consumer that bans
+                    // `set_inner_html` (augminted-bots does, via clippy.toml)
+                    // reports this line against the `static_widget!` invocation —
+                    // a lint the caller cannot act on, in code they did not
+                    // write. The waiver is sound here: `render_fn` returns maud
+                    // `Markup`, which escapes text and attribute values by
+                    // construction, and installing it is the whole point of a
+                    // static widget.
                     let html = render_fn(&loaded.data, &loaded.auth);
+                    #[allow(clippy::disallowed_methods)]
                     mount.set_inner_html(&html.into_string());
                 }
                 Err(_) => {
