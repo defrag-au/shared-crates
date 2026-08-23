@@ -105,63 +105,93 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
     });
     ui.add_space(8.0);
 
-    // You give
-    flow_row(
+    // Give / arrow / get / net share one label gutter so every row's content
+    // starts on the same spine — labels of different widths must not push
+    // their values out of column.
+    let give_hover = format!("Leaves your wallet -> {}", data.peer_label);
+    gutter_row(
         ui,
-        "You give",
-        theme::ACCENT_RED,
-        ChipVariant::Danger,
-        &data.you_give,
-        data.you_give_ada,
-        &format!("Leaves your wallet -> {}", data.peer_label),
-        config,
+        |ui| {
+            ui.label(
+                RichText::new("You give")
+                    .color(theme::ACCENT_RED)
+                    .size(config.font_size)
+                    .strong(),
+            );
+        },
+        |ui| {
+            flow_chips(
+                ui,
+                ChipVariant::Danger,
+                &data.you_give,
+                data.you_give_ada,
+                &give_hover,
+                config,
+            );
+        },
     );
 
-    // A small downward hand-off cue between the two sides.
-    ui.add_space(2.0);
-    ui.horizontal(|ui| {
-        ui.add_space(4.0);
-        ui.label(PhosphorIcon::ArrowDown.rich_text(config.font_size, theme::TEXT_MUTED));
-    });
-    ui.add_space(2.0);
-
-    // You get
-    flow_row(
+    // Downward hand-off cue, seated in the gutter under the labels.
+    gutter_row(
         ui,
-        "You get",
-        theme::ACCENT_GREEN,
-        ChipVariant::Success,
-        &data.you_get,
-        data.you_get_ada,
-        &format!("Arrives from {}", data.peer_label),
-        config,
+        |ui| {
+            ui.label(PhosphorIcon::ArrowDown.rich_text(config.font_size, theme::TEXT_MUTED));
+        },
+        |_ui| {},
+    );
+
+    let get_hover = format!("Arrives from {}", data.peer_label);
+    gutter_row(
+        ui,
+        |ui| {
+            ui.label(
+                RichText::new("You get")
+                    .color(theme::ACCENT_GREEN)
+                    .size(config.font_size)
+                    .strong(),
+            );
+        },
+        |ui| {
+            flow_chips(
+                ui,
+                ChipVariant::Success,
+                &data.you_get,
+                data.you_get_ada,
+                &get_hover,
+                config,
+            );
+        },
     );
 
     ui.add_space(8.0);
     separator(ui);
     ui.add_space(6.0);
 
-    // Net line
-    ui.horizontal(|ui| {
-        ui.label(
-            RichText::new("Net")
-                .color(theme::TEXT_MUTED)
-                .size(config.font_size)
-                .strong(),
-        );
-        ui.add_space(8.0);
-        let (sign, color) = if data.net_ada >= 0 {
-            ("+", theme::ACCENT_GREEN)
-        } else {
-            ("", theme::ACCENT_RED)
-        };
-        ui.label(
-            RichText::new(format!("{sign}{}", format_lovelace(data.net_ada)))
-                .color(color)
-                .size(config.font_size + 1.0)
-                .strong(),
-        );
-    });
+    // Net line — same gutter, so the amount lands on the content spine.
+    gutter_row(
+        ui,
+        |ui| {
+            ui.label(
+                RichText::new("Net")
+                    .color(theme::TEXT_MUTED)
+                    .size(config.font_size)
+                    .strong(),
+            );
+        },
+        |ui| {
+            let (sign, color) = if data.net_ada >= 0 {
+                ("+", theme::ACCENT_GREEN)
+            } else {
+                ("", theme::ACCENT_RED)
+            };
+            ui.label(
+                RichText::new(format!("{sign}{}", format_lovelace(data.net_ada)))
+                    .color(color)
+                    .size(config.font_size + 1.0)
+                    .strong(),
+            );
+        },
+    );
 
     // Collapsible "what else is in this transaction" — names the pass-through so
     // the numbers a hardware wallet shows are explained, not surprising.
@@ -227,13 +257,32 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
 // Internal helpers
 // ============================================================================
 
-/// A "You give / You get" row: a label, then wrapped chips for each asset plus
-/// an ADA chip when non-zero. Renders "— nothing —" when the side is empty.
-#[allow(clippy::too_many_arguments)]
-fn flow_row(
+/// Width of the right-aligned label gutter. Every row's label shares this
+/// right edge, so chips and amounts start on one content spine.
+const LABEL_GUTTER: f32 = 64.0;
+
+/// One aligned row: `gutter` renders right-aligned into the fixed label
+/// column, `content` renders (and wraps) in the remaining width.
+fn gutter_row(
     ui: &mut egui::Ui,
-    label: &str,
-    label_color: egui::Color32,
+    gutter: impl FnOnce(&mut egui::Ui),
+    content: impl FnOnce(&mut egui::Ui),
+) {
+    ui.horizontal_top(|ui| {
+        ui.spacing_mut().item_spacing.x = 10.0;
+        ui.allocate_ui_with_layout(
+            egui::vec2(LABEL_GUTTER, 20.0),
+            egui::Layout::right_to_left(egui::Align::Center),
+            gutter,
+        );
+        ui.vertical(content);
+    });
+}
+
+/// Wrapped chips for each asset plus an ADA chip when non-zero. Renders
+/// "— nothing —" when the side is empty.
+fn flow_chips(
+    ui: &mut egui::Ui,
     chip_variant: ChipVariant,
     assets: &[FlowAsset],
     ada_lovelace: u64,
@@ -242,12 +291,6 @@ fn flow_row(
 ) {
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
-        ui.label(
-            RichText::new(label)
-                .color(label_color)
-                .size(config.font_size)
-                .strong(),
-        );
 
         if assets.is_empty() && ada_lovelace == 0 {
             ui.label(

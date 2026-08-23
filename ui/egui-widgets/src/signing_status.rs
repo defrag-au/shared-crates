@@ -116,11 +116,16 @@ pub fn show(
                     | SigningPhase::Confirmed { .. }
             );
 
-            // You row
-            draw_status_row(ui, config.you_label, you_signed, config.font_size);
-
-            // Them row
-            draw_status_row(ui, config.them_label, peer_signed, config.font_size);
+            // Party rows in a grid so the two statuses share a column edge
+            // regardless of label width.
+            egui::Grid::new("signing_status_rows")
+                .spacing(egui::vec2(6.0, 4.0))
+                .show(ui, |ui| {
+                    draw_status_row(ui, config.you_label, you_signed, config.font_size);
+                    ui.end_row();
+                    draw_status_row(ui, config.them_label, peer_signed, config.font_size);
+                    ui.end_row();
+                });
 
             ui.add_space(6.0);
 
@@ -280,32 +285,30 @@ pub fn show(
     SigningStatusResponse { action }
 }
 
+/// Emits one grid row: icon cell, label cell, status cell. Callers own the
+/// surrounding `egui::Grid` and the `end_row()`.
 fn draw_status_row(ui: &mut egui::Ui, label: &str, signed: bool, font_size: f32) {
-    ui.horizontal(|ui| {
-        if signed {
-            PhosphorIcon::CheckCircle.show(ui, 14.0, theme::ACCENT_GREEN);
-            ui.label(
-                RichText::new(format!("{label}:"))
-                    .color(theme::TEXT_PRIMARY)
-                    .size(font_size),
-            );
-            ui.label(
-                RichText::new("signed")
-                    .color(theme::ACCENT_GREEN)
-                    .size(font_size),
-            );
-        } else {
-            PhosphorIcon::Clock.show(ui, 14.0, theme::TEXT_MUTED);
-            ui.label(
-                RichText::new(format!("{label}:"))
-                    .color(theme::TEXT_PRIMARY)
-                    .size(font_size),
-            );
-            ui.label(
-                RichText::new("pending")
-                    .color(theme::TEXT_MUTED)
-                    .size(font_size),
-            );
-        }
-    });
+    if signed {
+        PhosphorIcon::CheckCircle.show(ui, 14.0, theme::ACCENT_GREEN);
+    } else {
+        PhosphorIcon::Clock.show(ui, 14.0, theme::TEXT_MUTED);
+    }
+    ui.label(
+        RichText::new(label)
+            .color(theme::TEXT_PRIMARY)
+            .size(font_size),
+    );
+    if signed {
+        ui.label(
+            RichText::new("signed")
+                .color(theme::ACCENT_GREEN)
+                .size(font_size),
+        );
+    } else {
+        ui.label(
+            RichText::new("pending")
+                .color(theme::TEXT_MUTED)
+                .size(font_size),
+        );
+    }
 }

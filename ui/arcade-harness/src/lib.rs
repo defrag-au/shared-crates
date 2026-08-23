@@ -202,7 +202,7 @@ pub trait GameRenderer<G: ArcadeGame> {
             _ => game.score(),
         };
         draw_text(
-            &format!("FINAL SCORE: {shown}"),
+            format!("FINAL SCORE: {shown}"),
             cx - 120.0,
             cy - 30.0,
             30.0,
@@ -210,7 +210,7 @@ pub trait GameRenderer<G: ArcadeGame> {
         );
 
         draw_text(
-            &format!(
+            format!(
                 "{} transitions over {} ticks",
                 recording.transitions.len(),
                 recording.total_ticks,
@@ -222,7 +222,7 @@ pub trait GameRenderer<G: ArcadeGame> {
         );
 
         draw_text(
-            &submission.line(),
+            submission.line(),
             cx - 160.0,
             cy + 50.0,
             18.0,

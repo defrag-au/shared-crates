@@ -220,6 +220,10 @@ pub async fn fetch_wallet_utxos(
     wallet_pallas::decode_utxos(&cbor_hexes).map_err(|e| format!("Failed to decode UTxOs: {e}"))
 }
 
+/// Pseudo-wallet demo profiles — see [`crate::wallet_mock`]. Re-exported here
+/// so consumers reach it as `wallet::mock`.
+pub use crate::wallet_mock as mock;
+
 /// Infer the expected Cardano network from the current page hostname.
 ///
 /// Returns `Preprod` if the hostname contains `.dev.` (e.g. `hire.dev.hodlcroft.com`)

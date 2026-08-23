@@ -125,7 +125,9 @@ impl ArcadeBackend for OfflineBackend {
 /// player a "connecting to Discord" screen that is a lie.
 #[cfg(all(feature = "discord", feature = "web"))]
 pub enum AutoBackend {
-    Discord(discord::DiscordBackend),
+    /// Boxed: the Discord chain carries the whole OAuth/RPC state machine and
+    /// dwarfs the web variant, which would otherwise pay for it on every frame.
+    Discord(Box<discord::DiscordBackend>),
     Web(web::WebBackend),
 }
 
@@ -136,7 +138,9 @@ impl AutoBackend {
     /// browser tab, where there is no proxy to route through.
     pub fn detect(client_id: &str, mount: &str, api_base: &str) -> Self {
         if miniquad_platform::launch_query("frame_id").is_some() {
-            Self::Discord(discord::DiscordBackend::new(client_id).with_mount(mount))
+            Self::Discord(Box::new(
+                discord::DiscordBackend::new(client_id).with_mount(mount),
+            ))
         } else {
             Self::Web(web::WebBackend::from_page(api_base))
         }

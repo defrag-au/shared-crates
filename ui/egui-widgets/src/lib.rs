@@ -92,6 +92,8 @@ pub mod wallet_button;
 pub mod wallet_editor;
 pub mod wallet_identity_header;
 pub mod wallet_list;
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub mod wallet_mock;
 
 // Image text editor (feature-gated)
 #[cfg(feature = "image-editor")]
