@@ -26,12 +26,52 @@
 ///
 /// To add: verify the decimals against the token's own documentation or the
 /// Cardano token registry, and cite it in the comment.
+///
+/// Every entry below was read from the token's own **Cardano token registry**
+/// record via Koios `asset_info.token_registry_metadata` on 2026-08-23, not
+/// inferred from its ticker. Two of them would have been wrong if guessed —
+/// see `SNEK` and `USDC`.
 pub fn decimals(unit: &str) -> Option<u32> {
     match unit {
         "lovelace" => Some(6),
-        // USDM — Moneta's fiat-backed stablecoin, 6 dp. Policy verified
-        // against the Mekka S2 ledger's own flows (`0014df10` + "USDM").
+
+        // ── stablecoins ────────────────────────────────────────────────────
+        // USDM — Moneta, registry ticker "USDM", url moneta.global.
         "c48cbb3d5e57ed56e276bc45f99ab39abe94e6cd7ac39fb402da47ad.0014df105553444d" => Some(6),
+        // iUSD — Indigo synthetic USD, registry ticker "iUSD".
+        "f66d78b4a3cb3d37afa0ec36461e51ecbde00f26c8f0a68f94b69880.69555344" => Some(6),
+        // USDA — Anzens, registry ticker "USDA".
+        "fe7c786ab321f41c654ef6c1af7b3250a613c24e4213e0425a7ae456.55534441" => Some(6),
+        // DJED — asset name is "DjedMicroUSD", registry ticker "DJED",
+        // name "Djed USD". The on-chain name says MICRO and the registry says
+        // 6 dp; both agree, so the micro-denomination IS the 6 dp.
+        "8db269c3ec630e06ae29f74bc39edd1f87c819f1056206e879a1cd61.446a65644d6963726f555344" => {
+            Some(6)
+        }
+        // USDCx — registry ticker "USDCx".
+        "1f3aec8bfe7ea4fe14c5f121e2a92e301afe414147860d557cac7e34.5553444378" => Some(6),
+
+        // ⚠️ USDC — **EIGHT** decimals, not six.
+        //
+        // This is the WANCHAIN-BRIDGED USDC: its registry record carries a
+        // BLANK ticker and a `wanscan.org` url, and states 8 dp. Ethereum's
+        // native USDC is 6, so the obvious assumption is wrong by 100× — in
+        // the direction that makes a holding look larger than it is. The
+        // blank ticker also means it cannot be matched by name.
+        "25c5de5f5b286073c593edfd77b48abc7a48e5a4f3d4cd9d428ff935.55534443" => Some(8),
+
+        // ── non-stables that move enough to be worth reading ───────────────
+        // ⚠️ SNEK — **ZERO** decimals (registry ticker "Snek"). A meme token
+        // with no fractional part; scaling it by 6 would divide every holding
+        // by a million. Relevant because snek.fun launches trade in it.
+        "279c909f348e533da5808898f87f9a14bb2c3dfbbacccd631d927a3f.534e454b" => Some(0),
+        // NIGHT — registry ticker "NIGHT".
+        "0691b2fecca1ac4f53cb6dfb00b7013e561d1f34403b957cbb5af1fa.4e49474854" => Some(6),
+        // MIN — Minswap, registry ticker "MIN".
+        "29d222ce763455e3d7a09a665ce554f00ac89d2e99a1a83d267170c6.4d494e" => Some(6),
+        // IAG — IAGON, registry ticker "IAG".
+        "5d16cc1a177b5d9ba9cfa9793b07e60f1fb70fea1f8aef064415d114.494147" => Some(6),
+
         _ => None,
     }
 }
@@ -43,6 +83,14 @@ pub fn decimals(unit: &str) -> Option<u32> {
 /// their sign; callers that want a magnitude pass one.
 pub fn format_quantity(unit: &str, qty: i128) -> String {
     match decimals(unit) {
+        // A token we KNOW has no fractional part — SNEK is the live case.
+        //
+        // Grouped, like an unknown token, and that is not a loss of
+        // information: the disclosure the grouped form carries is "this is a
+        // raw count, nobody has scaled it", and at 0 dp the raw count IS the
+        // quantity. Appending `.00` would be the actual lie — it asserts two
+        // decimal places of precision the token does not have.
+        Some(0) => group_digits(qty),
         Some(d) => {
             let scale = 10f64.powi(d as i32);
             format!("{:.2}", qty as f64 / scale)
@@ -87,6 +135,69 @@ mod tests {
         assert_eq!(decimals(wlk), None);
         assert_eq!(format_quantity(wlk, 1_000_000_000), "1,000,000,000");
         assert!(!format_quantity(wlk, 1_000_000_000).contains('.'));
+    }
+
+    /// The two entries that would be WRONG if anyone reasoned from the
+    /// ticker instead of reading the registry. Both fail in the direction
+    /// nobody notices, so they are pinned.
+    #[test]
+    fn the_two_traps_are_pinned() {
+        // SNEK has ZERO decimals. Assuming the usual 6 divides every holding
+        // by a million — a 1,000,000 SNEK position would read as "1.00".
+        let snek = "279c909f348e533da5808898f87f9a14bb2c3dfbbacccd631d927a3f.534e454b";
+        assert_eq!(decimals(snek), Some(0));
+        assert_eq!(
+            format_quantity(snek, 1_000_000),
+            "1,000,000",
+            "0 dp renders as the count it is — never scaled, and never given \
+             a fractional part the token does not have"
+        );
+        assert!(!format_quantity(snek, 1_000_000).contains('.'));
+
+        // Cardano's bridged USDC is EIGHT dp, not Ethereum's six. At 6 the
+        // same integer reads 100× too large.
+        let usdc = "25c5de5f5b286073c593edfd77b48abc7a48e5a4f3d4cd9d428ff935.55534443";
+        assert_eq!(decimals(usdc), Some(8));
+        assert_eq!(format_quantity(usdc, 100_000_000), "1.00");
+        assert_ne!(
+            format_quantity(usdc, 100_000_000),
+            "100.00",
+            "six decimals would say 100 USDC where the truth is 1"
+        );
+    }
+
+    /// Every stablecoin we claim to know renders a whole unit as "1.00".
+    /// A single wrong entry here is a misstated payment, so they are checked
+    /// as a set rather than trusted individually.
+    #[test]
+    fn every_curated_stablecoin_agrees_on_what_one_unit_looks_like() {
+        for (unit, dp) in [
+            (USDM, 6u32),
+            (
+                "f66d78b4a3cb3d37afa0ec36461e51ecbde00f26c8f0a68f94b69880.69555344",
+                6,
+            ),
+            (
+                "fe7c786ab321f41c654ef6c1af7b3250a613c24e4213e0425a7ae456.55534441",
+                6,
+            ),
+            (
+                "8db269c3ec630e06ae29f74bc39edd1f87c819f1056206e879a1cd61.446a65644d6963726f555344",
+                6,
+            ),
+            (
+                "1f3aec8bfe7ea4fe14c5f121e2a92e301afe414147860d557cac7e34.5553444378",
+                6,
+            ),
+            (
+                "25c5de5f5b286073c593edfd77b48abc7a48e5a4f3d4cd9d428ff935.55534443",
+                8,
+            ),
+        ] {
+            assert_eq!(decimals(unit), Some(dp), "decimals for {unit}");
+            let one = 10i128.pow(dp);
+            assert_eq!(format_quantity(unit, one), "1.00", "one unit of {unit}");
+        }
     }
 
     /// Keyed by FULL unit: a token that merely calls itself USDM under
