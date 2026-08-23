@@ -225,9 +225,12 @@ fn draw_picker_content(
         .collect();
 
     // ── Scrollable area ──
+    // Fill the full drawer width (auto_shrink would hug the widest row,
+    // leaving the scrollbar stranded mid-panel).
     let scroll_height = (ui.available_height() - 8.0).max(100.0);
     egui::ScrollArea::vertical()
         .max_height(scroll_height)
+        .auto_shrink([false, true])
         .show(ui, |ui| {
             let search_lower = state.search.to_lowercase();
             let is_searching = !search_lower.is_empty();
