@@ -41,9 +41,39 @@ use sapp_jsutils::JsObject;
 // `unsafe extern` and `#[unsafe(no_mangle)]` below are edition-2024 syntax:
 // the edition made both explicit rather than implicit. Purely a spelling
 // change — same ABI, same behaviour.
+// `#[link(wasm_import_module = "env")]` is the sanctioned fix for rustc 1.96+,
+// which stopped passing `--allow-undefined` to wasm-ld: without it these
+// imports do not link at all. Note the failure is at LINK time only — a plain
+// `cargo check` still passes, which is how this class of breakage reaches a
+// deploy unnoticed.
 #[cfg(target_arch = "wasm32")]
+#[link(wasm_import_module = "env")]
 unsafe extern "C" {
     fn platform_random_bytes(len: u32) -> JsObject;
+    fn platform_query_param(key: JsObject) -> JsObject;
+}
+
+/// Read one parameter from the page's query string.
+///
+/// The miniquad answer to `web_sys::window().location().search()`, which does
+/// not exist here: miniquad's `gl.js` carries no wasm-bindgen glue, so the
+/// browser is reachable only through the plugin protocol. Requires
+/// `platform.js` to be loaded before the wasm — the same requirement the
+/// random-bytes route already has.
+///
+/// `None` when the parameter is absent *or* empty.
+#[cfg(target_arch = "wasm32")]
+pub fn launch_query(key: &str) -> Option<String> {
+    let js = unsafe { platform_query_param(JsObject::string(key)) };
+    let mut value = String::new();
+    js.to_string(&mut value);
+    (!value.is_empty()).then_some(value)
+}
+
+/// Native builds have no page and therefore no query string.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn launch_query(_key: &str) -> Option<String> {
+    None
 }
 
 #[cfg(target_arch = "wasm32")]

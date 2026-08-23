@@ -31,6 +31,15 @@ pub struct AssetStripConfig {
     /// Minimum visible width per item when overlapping (pixels).
     /// Items will never overlap more than `thumb_size - min_visible`.
     pub min_visible: f32,
+    /// Space between cards when they all fit. Defaults to 0 — the original
+    /// look, where cards sit edge to edge.
+    ///
+    /// Setting `min_visible` to `thumb_size + gap` suppresses overlap
+    /// entirely: the strip then lays out at its natural width and overflows
+    /// its parent, which is what a caller wraps in a horizontal `ScrollArea`
+    /// to get scrolling instead of stacking. Scrolling stays the caller's
+    /// decision — the widget only reports the width it needs.
+    pub gap: f32,
 }
 
 impl Default for AssetStripConfig {
@@ -38,6 +47,7 @@ impl Default for AssetStripConfig {
         Self {
             thumb_size: 72.0,
             min_visible: 20.0,
+            gap: 0.0,
         }
     }
 }
@@ -75,9 +85,9 @@ pub fn show(
     // Calculate step (horizontal advance per card).
     // If all cards fit without overlap, step = thumb_size.
     // Otherwise shrink step down to min_visible.
-    let full_width = thumb * n as f32;
+    let full_width = thumb * n as f32 + config.gap * (n.saturating_sub(1)) as f32;
     let step = if full_width <= available_width {
-        thumb
+        thumb + config.gap
     } else {
         // Need to overlap. Total width = step * (n-1) + thumb = available_width
         // step = (available_width - thumb) / (n - 1)

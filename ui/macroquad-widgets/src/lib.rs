@@ -9,6 +9,10 @@ pub mod painter;
 pub mod theme;
 
 mod button;
+// Host-owned helpers, not widgets: these hold state across frames, which the
+// charter forbids inside a widget precisely so it lives somewhere named.
+pub mod assets;
+mod fonts;
 mod gesture;
 mod mint_checkout;
 mod order_fulfilment;
@@ -18,6 +22,8 @@ mod wallet_connect;
 mod wallet_list;
 
 pub use button::{Button, ButtonVariant};
+pub use assets::{draw_loading, Asset, Loader, Progress};
+pub use fonts::{FontFiles, Fonts, Slot};
 pub use gesture::{Gesture, Gestures, SwipeDir};
 pub use mint_checkout::{
     mint_checkout, CheckoutAction, CheckoutResponse, CheckoutState, Eligibility, MintCheckoutVm,

@@ -44,8 +44,8 @@ impl Default for ListingGridConfig {
             spacing: 8.0,
             bg_color: Color32::from_rgb(30, 31, 48),
             bg_hover_color: Color32::from_rgb(45, 46, 68),
-            text_primary: Color32::from_rgb(192, 202, 224),
-            text_muted: Color32::from_rgb(96, 104, 128),
+            text_primary: crate::theme::TEXT_PRIMARY,
+            text_muted: crate::theme::TEXT_MUTED,
             accent_green: Color32::from_rgb(158, 206, 106),
             rounding: 6.0,
         }

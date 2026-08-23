@@ -312,35 +312,40 @@ pub fn show(
         }
     });
 
-    // Remove button overlay (top-right)
-    if config.removable && hovered {
-        let btn_center = egui::pos2(card_rect.max.x - 10.0, card_rect.min.y + 10.0);
-
-        painter.circle_filled(
-            btn_center,
-            9.0,
-            Color32::from_rgba_premultiplied(20, 20, 30, 220),
-        );
+    // Remove button overlay (top-right). Always painted when removable —
+    // touch devices have no hover state, so a hover-gated button is
+    // undiscoverable AND untappable there. Hover still brightens it.
+    if config.removable {
+        let btn_r = 11.0;
+        let btn_center = egui::pos2(card_rect.max.x - btn_r - 3.0, card_rect.min.y + btn_r + 3.0);
 
         let cursor_in_btn = card_response
             .hover_pos()
-            .is_some_and(|p| p.distance(btn_center) <= 9.0);
+            .is_some_and(|p| p.distance(btn_center) <= btn_r);
 
-        let x_color = if cursor_in_btn {
-            theme::ACCENT_RED
+        let (bg, x_color) = if cursor_in_btn {
+            (Color32::from_black_alpha(235), theme::ACCENT_RED)
+        } else if hovered {
+            (Color32::from_black_alpha(220), theme::TEXT_PRIMARY)
         } else {
-            theme::TEXT_SECONDARY
+            (Color32::from_black_alpha(160), theme::TEXT_SECONDARY)
         };
 
+        painter.circle_filled(btn_center, btn_r, bg);
         painter.text(
             btn_center,
             egui::Align2::CENTER_CENTER,
             PhosphorIcon::X.codepoint().to_string(),
-            egui::FontId::new(10.0, crate::icons::phosphor_family()),
+            egui::FontId::new(11.0, crate::icons::phosphor_family()),
             x_color,
         );
 
-        if card_response.clicked() && cursor_in_btn {
+        // Hit-test with the press position, not hover — on touch the hover
+        // state may never exist before the tap.
+        let tapped_btn = card_response
+            .interact_pointer_pos()
+            .is_some_and(|p| p.distance(btn_center) <= btn_r);
+        if card_response.clicked() && tapped_btn {
             action = Some(OfferSlotAction::Remove);
         }
     }

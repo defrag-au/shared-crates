@@ -13,6 +13,7 @@ pub mod flip_counter;
 pub mod flow_ledger;
 pub mod flow_matrix;
 pub mod flow_ring;
+pub mod flow_stave;
 pub mod focus_list;
 pub mod formatting;
 pub mod gated;

@@ -28,8 +28,23 @@
         return js_object(out);
     }
 
+    // One parameter from the page's query string, or an empty string when
+    // absent. Under miniquad there is no wasm-bindgen and therefore no
+    // `web_sys::window()`, so a Rust crate that needs to read how the page was
+    // launched — a handoff token, an environment switch — has no other route.
+    //
+    // Empty string rather than null: the bridge marshals a JsObject, and
+    // "absent" and "present but empty" are the same non-answer to every caller
+    // that has asked so far.
+    function platform_query_param(key_js) {
+        const key = consume_js_object(key_js);
+        const value = new URLSearchParams(window.location.search).get(key);
+        return js_object(value === null ? '' : value);
+    }
+
     register_plugin = function (importObject) {
         importObject.env.platform_random_bytes = platform_random_bytes;
+        importObject.env.platform_query_param = platform_query_param;
     };
 
     miniquad_add_plugin({ register_plugin, version: 1, name: 'platform' });

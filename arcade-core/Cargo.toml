@@ -1,0 +1,17 @@
+[package]
+name = "arcade-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Replay verification for deterministic games: the ArcadeGame trait, a delta-encoded recording format, and a headless verifier. Pure serde — the same crate serves a macroquad client, a Cloudflare worker, and a native replay."
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+# Tests only. The wire types in `api` are deliberately generic over the
+# recording rather than defaulting to `serde_json::Value`, so that the crate a
+# macroquad client links does not carry a JSON parser it may not need.
+serde_json = { workspace = true }

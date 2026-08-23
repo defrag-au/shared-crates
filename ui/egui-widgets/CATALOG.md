@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-101 widgets.
+103 widgets.
 
 | module | what it is |
 |---|---|
@@ -38,6 +38,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `flow_ledger` | `FlowLedger` — a wallet's movements in time order: what arrived, what left, who was on the other side, and what the balance was after each step |
 | `flow_matrix` | `FlowMatrix` — who paid whom, across MANY wallets at once |
 | `flow_ring` | `FlowRing` — value moving between parties, live, on the shared spine |
+| `flow_stave` | `FlowStave` — one wallet's money story as a sequence chart on the spine |
 | `focus_list` | Focus list — a fixed-geometry master–detail widget for inspecting one item out of many in a constrained surface (typically a pinned chart tooltip) |
 | `fungibles_row` | Fungibles row — single horizontal row for a Cardano Native Token holding |
 | `gated` | Entitlement-gated rendering — the frontend half of the `authorizations` framework |
@@ -110,3 +111,4 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `wallet_editor` | Wallet bundle editor widget |
 | `wallet_identity_header` | Wallet identity header — the big "this is who we're showing" strip at the top of a wallet-profile view |
 | `wallet_list` | Wallet roster — the per-client list rendered on the admin portal dashboard |
+| `wallet_mock` | Pseudo-wallet profiles for LOCAL demo modes |

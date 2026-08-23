@@ -105,6 +105,40 @@ impl Basis {
     pub fn is_self_supporting(self) -> bool {
         matches!(self, Basis::Observed)
     }
+
+    /// Stored form. Same rule as [`AliasKind`]: one enum at both ends of the
+    /// store, so a writer and a reader cannot drift apart.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Observed => "observed",
+            Self::Derived => "derived",
+            Self::Asserted => "asserted",
+        }
+    }
+
+    /// Parse a stored basis, defaulting to the WEAKEST reading.
+    ///
+    /// Deliberately infallible and deliberately pessimistic: a value we cannot
+    /// parse must never be promoted to `Observed`, because "the chain says so"
+    /// is the one claim a reader is entitled to take without a source. An
+    /// unknown string is somebody's assertion until proven otherwise.
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "observed" => Self::Observed,
+            "derived" => Self::Derived,
+            _ => Self::Asserted,
+        }
+    }
+
+    /// Weakest last, so a picker built from this reads in the direction of
+    /// decreasing confidence.
+    pub const ALL: [Self; 3] = [Self::Observed, Self::Derived, Self::Asserted];
+}
+
+impl std::fmt::Display for Basis {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// A kind of name a party goes by, beyond its key.
@@ -263,6 +297,21 @@ impl Provenance {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The stored form must round-trip, and an unreadable one must degrade
+    /// DOWNWARD. Promoting an unknown string to `Observed` would let a claim
+    /// nobody can support present itself as chain fact.
+    #[test]
+    fn basis_round_trips_and_degrades_to_the_weakest_reading() {
+        for b in Basis::ALL {
+            assert_eq!(Basis::parse(b.as_str()), b, "{b}");
+        }
+        assert_eq!(Basis::parse("who knows"), Basis::Asserted);
+        assert_eq!(Basis::parse(""), Basis::Asserted);
+        assert!(Basis::Observed.is_self_supporting());
+        assert!(!Basis::Derived.is_self_supporting());
+        assert!(!Basis::Asserted.is_self_supporting());
+    }
 
     #[test]
     fn alias_kind_round_trips_through_its_stored_form() {

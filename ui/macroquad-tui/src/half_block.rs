@@ -86,9 +86,7 @@ impl HalfBlockCanvas {
     /// Fill every pixel with `color`. `Color::new(0, 0, 0, 0)` clears
     /// to transparent (the default state after `new`).
     pub fn clear(&mut self, color: Color) {
-        for p in &mut self.pixels {
-            *p = color;
-        }
+        self.pixels.fill(color);
     }
 
     /// Set one subpixel. Out-of-bounds writes are silently dropped.

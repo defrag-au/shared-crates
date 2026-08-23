@@ -66,6 +66,17 @@ pub enum Role {
     /// expands, while a platform wallet is recorded — seated, drawable — and
     /// frozen the moment its scale shows.
     MintPayee,
+    /// Received a holder-facing asset of the tracked policy — a holder of the
+    /// collection itself.
+    ///
+    /// Seated WATCHED BUT NEVER EXPANDING, which is a different bargain from
+    /// every other role: the money frontier refuses asset receivers (promotion
+    /// grows along outbound VALUE edges, and 10k buyers would recruit the
+    /// chain), but on a queued mint the buyer never funds the mint transaction
+    /// at all — payment and fulfilment are separate txs — so the collection's
+    /// own customers were invisible and their purchase legs unattributed.
+    /// A holder's flows are booked; their counterparties promote nobody.
+    Holder,
 }
 
 impl Role {
@@ -73,9 +84,10 @@ impl Role {
     ///
     /// [`Role::MintPayee`] is the exception: it is seeded (nothing can promote
     /// it) but must still be freezable, or one custodial payee recruits the
-    /// whole chain.
+    /// whole chain. [`Role::Holder`] never expands in the first place, so
+    /// exemption is moot — grouped with the freezable for honesty.
     pub fn is_exempt(self) -> bool {
-        !matches!(self, Role::Promoted | Role::MintPayee)
+        !matches!(self, Role::Promoted | Role::MintPayee | Role::Holder)
     }
 }
 
@@ -91,6 +103,11 @@ pub enum TerminalReason {
     Counterparties,
     /// Listed in the registry's terminal set (asserted; carries a source there).
     Declared,
+    /// Sustained outbound fan-out — new wallets paid, at
+    /// [`Thresholds::payees_per_window`] for [`Thresholds::payee_hot_windows`]
+    /// windows. The shape an exchange hot wallet or payout service takes, and
+    /// the only one no INBOUND measure can see.
+    Payees,
 }
 
 /// Custodial-scale proxies, computed from the stream. Tunable per case.
@@ -98,6 +115,41 @@ pub enum TerminalReason {
 pub struct Thresholds {
     pub receipts: u32,
     pub counterparties: u32,
+    /// NEW distinct wallets paid within one window, above which the window is
+    /// "hot" — the shape of an exchange hot wallet or a payout service.
+    ///
+    /// The other two thresholds measure money ARRIVING, and a hot wallet is
+    /// invisible to both: customer deposits go to per-user deposit addresses,
+    /// never the hot wallet, which is topped up internally from cold storage.
+    /// Measured on two real ones — enormous fan-out, almost no fan-in:
+    ///
+    /// | | paid | distinct recipients | received | distinct senders |
+    /// | --- | --- | --- | --- | --- |
+    /// | A | 23,724 | **2,390** | 71 | **3** |
+    /// | B | 19,230 | **3,081** | 2 | **2** |
+    ///
+    /// **A RATE, not a total.** A project wallet paying three hundred people
+    /// over two years is ordinary; an exchange pays three hundred in a day.
+    /// Measured new-payees-per-active-day: exchange B 12.3, `bank.pillar` 11.2,
+    /// exchange A 9.4, and an actual project treasury **1.2** with a peak of 3.
+    /// Two orders of magnitude of daylight, and nothing in between — which is
+    /// why a rate is safe where a total was not.
+    ///
+    /// A high-fan-out payout service like `bank.pillar` trips this too, and
+    /// should: it is not a project wallet either, and expanding it recruits
+    /// everyone it ever paid.
+    pub payees_per_window: u32,
+    /// Window length in slots. One Cardano slot ≈ 1s, so 86,400 ≈ a day.
+    pub payee_window_slots: u64,
+    /// How many HOT windows before freezing.
+    ///
+    /// The reason this is not 1: an airdrop is a legitimate one-off burst, and
+    /// `bank.pillar` peaked at **1,056** new payees in a single day against a
+    /// steady 42–92 for the exchanges. Requiring several windows means a
+    /// project that airdrops once keeps expanding, while a wallet that does it
+    /// week in week out does not. Windows need not be consecutive — a service
+    /// with quiet days is still a service.
+    pub payee_hot_windows: u32,
 }
 
 impl Default for Thresholds {
@@ -105,6 +157,11 @@ impl Default for Thresholds {
         Self {
             receipts: 1_000,
             counterparties: 300,
+            // ~4x the busiest day a real project treasury had, and at or below
+            // the AVERAGE day of all three services measured.
+            payees_per_window: 10,
+            payee_window_slots: 86_400,
+            payee_hot_windows: 3,
         }
     }
 }
@@ -130,6 +187,25 @@ pub struct Member {
     pub receipts: u32,
     /// Distinct inbound counterparties observed while watched (party keys).
     pub counterparties: BTreeSet<String>,
+    /// Distinct wallets this party has PAID while watched — needed only to tell
+    /// a NEW payee from a repeat one. See [`Thresholds::payees_per_window`].
+    ///
+    /// Stops growing once the party is frozen: the set exists to answer "is it
+    /// still reaching new wallets", and after freezing the answer cannot change
+    /// anything, so accumulating further is unbounded memory for no
+    /// information.
+    #[serde(default)]
+    pub payees: BTreeSet<String>,
+    /// Start slot of the fan-out window currently being counted.
+    #[serde(default)]
+    pub payee_window_start: u64,
+    /// New distinct payees seen so far in that window.
+    #[serde(default)]
+    pub payee_window_new: u32,
+    /// How many windows have been hot. Freezes at
+    /// [`Thresholds::payee_hot_windows`].
+    #[serde(default)]
+    pub payee_hot_windows: u32,
 }
 
 impl Member {
@@ -146,6 +222,10 @@ impl Member {
             promoted_via_terminal: false,
             receipts: 0,
             counterparties: BTreeSet::new(),
+            payees: BTreeSet::new(),
+            payee_window_start: slot,
+            payee_window_new: 0,
+            payee_hot_windows: 0,
         }
     }
 
@@ -239,6 +319,96 @@ impl Frontier {
         Ok(&self.members[&key])
     }
 
+    /// Seat a declared-terminal party FROM THE START of the walk: recorded,
+    /// never expanding.
+    ///
+    /// `declared_terminal` alone is not enough, because it only governs what
+    /// happens once a party is already a member — and [`Frontier::on_movement`]
+    /// records the RECEIVER of a movement, never the sender. A wallet that only
+    /// ever PAYS the watch set is therefore never seated by contact, no matter
+    /// how much it pays or how often.
+    ///
+    /// Measured: two wallets funding a treasury with 38,870 ₳ across five
+    /// synchronised payments. One was seated only by accident, a third of the
+    /// way into the walk, because it happened to receive from a member once.
+    /// The other was never seated at all, so nothing about it was recorded —
+    /// including who funded IT, which was the entire question.
+    ///
+    /// Seeding it as an ordinary wallet is not the alternative: that makes it
+    /// expand, and two active wallets took the same frontier from 180 parties
+    /// to 6,424. This gives coverage without recruitment — the party is watched
+    /// from `slot`, its flows are booked, and it promotes nobody.
+    pub fn seed_terminal(&mut self, party: Party, slot: u64) -> &Member {
+        let key = party.clone();
+        let m = self.members.entry(key.clone()).or_insert_with(|| {
+            let mut m = Member::new(party, Role::Declared, slot);
+            m.expand = false;
+            m.terminal_reason = Some(TerminalReason::Declared);
+            m
+        });
+        // Idempotent, and never RAISES the coverage floor: re-seeding must not
+        // silently narrow the window a reader has already been shown.
+        if m.watched_from_slot > slot {
+            m.watched_from_slot = slot;
+        }
+        &self.members[&key]
+    }
+
+    /// Seat a HOLDER of the collection: watched, never expanding, no terminal
+    /// verdict — a holder is a subject that happens not to recruit, not a
+    /// custodial off-ramp.
+    ///
+    /// Never DOWNGRADES: a party that is already a member (an expanding
+    /// promotee, a declared wallet) keeps its role and its expansion — buying
+    /// one of the project's assets must not shrink what the walk was already
+    /// watching. Idempotent, and only ever lowers `watched_from_slot`.
+    pub fn seed_holder(&mut self, party: Party, slot: u64) -> &Member {
+        let key = party.clone();
+        let m = self.members.entry(key.clone()).or_insert_with(|| {
+            let mut m = Member::new(party, Role::Holder, slot);
+            m.expand = false;
+            m
+        });
+        if m.watched_from_slot > slot {
+            m.watched_from_slot = slot;
+        }
+        &self.members[&key]
+    }
+
+    /// Record that `from` paid `to`, and report a freeze if its fan-out RATE
+    /// has been sustained for [`Thresholds::payee_hot_windows`] windows.
+    ///
+    /// Only novelty counts. A wallet paying the same fifty contributors every
+    /// week has a payee set that SATURATES; an exchange's never does, because
+    /// its customers are always new. That difference is the signal, and it is
+    /// why the window counts NEW payees rather than payments.
+    fn note_payee(&mut self, from: &Party, to: &Party, slot: u64) -> Option<TerminalReason> {
+        let t = self.thresholds;
+        let m = self.members.get_mut(from)?;
+        // Nothing to learn from a party that already cannot expand.
+        if !m.expand {
+            return None;
+        }
+        // Close out any windows that have elapsed. A window is hot if it met
+        // the rate; quiet windows do NOT reset the count, because a service
+        // with idle days is still a service — they simply do not add evidence.
+        while slot >= m.payee_window_start.saturating_add(t.payee_window_slots) {
+            if m.payee_window_new >= t.payees_per_window {
+                m.payee_hot_windows = m.payee_hot_windows.saturating_add(1);
+            }
+            m.payee_window_start = m.payee_window_start.saturating_add(t.payee_window_slots);
+            m.payee_window_new = 0;
+        }
+        if m.payees.insert(to.key.clone()) {
+            m.payee_window_new = m.payee_window_new.saturating_add(1);
+        }
+        // The window in progress counts toward the verdict as soon as it meets
+        // the rate — waiting for it to close would let a wallet recruit for a
+        // whole extra window after the evidence was already in.
+        let hot = m.payee_hot_windows + u32::from(m.payee_window_new >= t.payees_per_window);
+        (hot >= t.payee_hot_windows).then_some(TerminalReason::Payees)
+    }
+
     pub fn is_member(&self, p: &Party) -> bool {
         self.members.contains_key(p)
     }
@@ -279,6 +449,14 @@ impl Frontier {
         slot: u64,
         global_receipts_of_to: Option<u32>,
     ) -> Outcome {
+        // SENDER-SIDE FAN-OUT, before anything else — the only place the
+        // frontier looks at `from` as a subject rather than a source. An
+        // exchange hot wallet is invisible to every inbound measure, so if this
+        // is not counted here it is not counted anywhere.
+        if let Some(reason) = self.note_payee(&mv.from, &mv.to, slot) {
+            self.freeze(&mv.from, reason, slot);
+        }
+
         let from_expands = self.expands(&mv.from);
         if !self.members.contains_key(&mv.to) {
             if !from_expands {
@@ -439,6 +617,27 @@ mod tests {
             Thresholds {
                 receipts: 5,
                 counterparties: 3,
+                // Deliberately unreachable in the tests that are not ABOUT
+                // fan-out, so adding this rule cannot silently change what they
+                // were asserting.
+                payees_per_window: u32::MAX,
+                payee_window_slots: 86_400,
+                payee_hot_windows: u32::MAX,
+            },
+            [],
+        )
+    }
+
+    /// A frontier tuned to catch fan-out quickly, for the tests that are about
+    /// exactly that: 2 new payees in a window makes it hot, 2 hot windows freeze.
+    fn fanout_frontier() -> Frontier {
+        Frontier::new(
+            Thresholds {
+                receipts: u32::MAX,
+                counterparties: u32::MAX,
+                payees_per_window: 2,
+                payee_window_slots: 100,
+                payee_hot_windows: 2,
             },
             [],
         )
@@ -493,6 +692,154 @@ mod tests {
         assert!(f.is_member(&platform));
         // The quiet payee is untouched and still expands.
         assert!(f.expands(&artist));
+    }
+
+    /// An exchange hot wallet is invisible to every INBOUND measure — deposits
+    /// go to per-user addresses, so it receives from almost nobody while paying
+    /// thousands. Sustained fan-out is the only signal that identifies it.
+    #[test]
+    fn sustained_fan_out_freezes_a_hot_wallet() {
+        let mut f = fanout_frontier();
+        let hot = stake("exchange-hot-wallet");
+        f.seed(hot.clone(), Role::Declared, 0).unwrap();
+
+        // Window 1 (slots 0–99): two new payees — hot, but one window is not
+        // evidence.
+        f.on_movement(&mv(&hot, &stake("cust1"), "t1"), 10, None);
+        f.on_movement(&mv(&hot, &stake("cust2"), "t2"), 20, None);
+        assert!(f.expands(&hot), "one hot window must not be enough");
+
+        // Window 2: two more NEW payees — sustained, so it freezes.
+        f.on_movement(&mv(&hot, &stake("cust3"), "t3"), 110, None);
+        f.on_movement(&mv(&hot, &stake("cust4"), "t4"), 120, None);
+        assert!(!f.expands(&hot), "sustained fan-out freezes");
+        assert_eq!(
+            f.member(&hot).unwrap().terminal_reason,
+            Some(TerminalReason::Payees)
+        );
+        // Recorded, not removed — freezing costs reach, never data.
+        assert!(f.is_member(&hot));
+    }
+
+    /// A ONE-OFF airdrop is legitimate. `bank.pillar` peaked at 1,056 new
+    /// payees in a single day against a steady 42–92 for the exchanges, so a
+    /// single burst must not be treated as custodial behaviour.
+    #[test]
+    fn a_single_burst_does_not_freeze() {
+        let mut f = fanout_frontier();
+        let airdropper = stake("airdrop-wallet");
+        f.seed(airdropper.clone(), Role::Declared, 0).unwrap();
+        for i in 0..50 {
+            f.on_movement(
+                &mv(&airdropper, &stake(&format!("holder{i}")), "t"),
+                10,
+                None,
+            );
+        }
+        assert!(f.expands(&airdropper), "one burst is not a pattern");
+    }
+
+    /// Only NOVELTY counts. A wallet paying the same people repeatedly has a
+    /// payee set that saturates; an exchange's never does.
+    #[test]
+    fn repeat_payments_to_the_same_wallets_never_freeze() {
+        let mut f = fanout_frontier();
+        let payroll = stake("payroll");
+        f.seed(payroll.clone(), Role::Declared, 0).unwrap();
+        for w in 0..20 {
+            for who in ["alice", "bob"] {
+                f.on_movement(&mv(&payroll, &stake(who), "t"), w * 100 + 10, None);
+            }
+        }
+        assert!(
+            f.expands(&payroll),
+            "the same two payees forever is not fan-out"
+        );
+    }
+
+    /// A wallet that only ever PAYS the watch set is never seated by contact,
+    /// because `on_movement` records the receiver. `seed_terminal` is the only
+    /// way it becomes visible — and it must not thereby start recruiting.
+    #[test]
+    fn a_terminal_seed_is_watched_from_the_floor_and_promotes_nobody() {
+        let mut f = frontier();
+        let funder = stake("pays-us-and-never-receives");
+        let stranger = stake("stranger");
+        f.seed_terminal(funder.clone(), 100);
+
+        let m = f.member(&funder).expect("seated at seed time");
+        assert_eq!(
+            m.watched_from_slot, 100,
+            "covered from the floor, not on contact"
+        );
+        assert!(m.is_terminal());
+        assert_eq!(m.terminal_reason, Some(TerminalReason::Declared));
+        assert!(!f.expands(&funder), "recorded, never expanding");
+
+        // Its own payments must NOT recruit — that is what took a real frontier
+        // from 180 parties to 6,424.
+        assert_eq!(
+            f.on_movement(&mv(&funder, &stranger, "tx1"), 150, None),
+            Outcome::Ignored
+        );
+        assert!(!f.is_member(&stranger));
+    }
+
+    /// A holder is watched but recruits nobody — and holder-seating must never
+    /// DOWNGRADE a wallet the walk was already expanding: a treasury that buys
+    /// one of its own project's assets is still the treasury.
+    #[test]
+    fn a_holder_is_watched_promotes_nobody_and_never_downgrades() {
+        let mut f = frontier();
+        let buyer = stake("bought-one-nft");
+        let stranger = stake("stranger");
+        f.seed_holder(buyer.clone(), 500);
+
+        let m = f.member(&buyer).expect("seated");
+        assert_eq!(m.role, Role::Holder);
+        // `is_terminal()` only means "does not expand", which a holder shares
+        // with the off-ramps; what separates a subject from an off-ramp is
+        // that no custodial VERDICT was reached.
+        assert_eq!(
+            m.terminal_reason, None,
+            "a holder is a subject, not an off-ramp"
+        );
+        assert!(!f.expands(&buyer), "watched, never expanding");
+        assert_eq!(
+            f.on_movement(&mv(&buyer, &stranger, "tx1"), 550, None),
+            Outcome::Ignored
+        );
+        assert!(
+            !f.is_member(&stranger),
+            "a holder's payments recruit nobody"
+        );
+
+        // The other direction: an EXPANDING member who receives an asset
+        // keeps its role and its expansion.
+        let treasury = stake("treasury");
+        f.seed(treasury.clone(), Role::Declared, 0).unwrap();
+        f.seed_holder(treasury.clone(), 600);
+        let t = f.member(&treasury).unwrap();
+        assert_eq!(t.role, Role::Declared, "no downgrade");
+        assert!(f.expands(&treasury), "still expanding");
+
+        // And re-seating only ever widens coverage.
+        f.seed_holder(buyer.clone(), 300);
+        assert_eq!(f.member(&buyer).unwrap().watched_from_slot, 300);
+        f.seed_holder(buyer.clone(), 900);
+        assert_eq!(f.member(&buyer).unwrap().watched_from_slot, 300);
+    }
+
+    /// Re-seeding must not narrow coverage a reader has already been shown.
+    #[test]
+    fn re_seeding_a_terminal_keeps_the_earliest_slot() {
+        let mut f = frontier();
+        let p = stake("funder");
+        f.seed_terminal(p.clone(), 500);
+        f.seed_terminal(p.clone(), 900);
+        assert_eq!(f.member(&p).unwrap().watched_from_slot, 500);
+        f.seed_terminal(p.clone(), 100);
+        assert_eq!(f.member(&p).unwrap().watched_from_slot, 100);
     }
 
     /// The other seeded roles keep their exemption — this is a carve-out for

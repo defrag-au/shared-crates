@@ -99,45 +99,33 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeFlowStoryState) {
 
     ui.add_space(8.0);
 
-    // Controls
-    ui.horizontal(|ui| {
+    // Controls — one grid so labels and inputs share column edges.
+    let label = |ui: &mut egui::Ui, text: &str| {
         ui.label(
-            egui::RichText::new("NFTs you give:")
+            egui::RichText::new(text)
                 .color(egui_widgets::theme::TEXT_SECONDARY)
                 .size(10.0),
         );
-        ui.add(egui::DragValue::new(&mut state.give_nfts).range(0..=8));
-        ui.add_space(12.0);
-        ui.label(
-            egui::RichText::new("ADA you give:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
-                .size(10.0),
-        );
-        ui.add(egui::DragValue::new(&mut state.give_ada).range(0..=100_000));
-    });
-    ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new("NFTs you get:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
-                .size(10.0),
-        );
-        ui.add(egui::DragValue::new(&mut state.get_nfts).range(0..=8));
-        ui.add_space(12.0);
-        ui.label(
-            egui::RichText::new("ADA you get:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
-                .size(10.0),
-        );
-        ui.add(egui::DragValue::new(&mut state.get_ada).range(0..=100_000));
-    });
-    ui.horizontal(|ui| {
-        ui.label(
-            egui::RichText::new("Partner's UTxO rebalancing (ADA):")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
-                .size(10.0),
-        );
-        ui.add(egui::DragValue::new(&mut state.peer_passthrough_ada).range(0..=100_000));
-    });
+    };
+    egui::Grid::new("trade_flow_controls")
+        .spacing(egui::vec2(10.0, 4.0))
+        .show(ui, |ui| {
+            label(ui, "NFTs you give");
+            ui.add(egui::DragValue::new(&mut state.give_nfts).range(0..=8));
+            label(ui, "ADA you give");
+            ui.add(egui::DragValue::new(&mut state.give_ada).range(0..=100_000));
+            ui.end_row();
+
+            label(ui, "NFTs you get");
+            ui.add(egui::DragValue::new(&mut state.get_nfts).range(0..=8));
+            label(ui, "ADA you get");
+            ui.add(egui::DragValue::new(&mut state.get_ada).range(0..=100_000));
+            ui.end_row();
+
+            label(ui, "Partner's UTxO rebalancing (ADA)");
+            ui.add(egui::DragValue::new(&mut state.peer_passthrough_ada).range(0..=100_000));
+            ui.end_row();
+        });
 
     ui.add_space(12.0);
 

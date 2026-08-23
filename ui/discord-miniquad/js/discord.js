@@ -72,10 +72,18 @@
             .join('')}-${h.slice(8, 10).join('')}-${h.slice(10).join('')}`;
     }
 
-    // Everything Discord hands the iframe at launch. `custom_id` is the
-    // passthrough slot: whatever the interaction attached when it responded
-    // with LAUNCH_ACTIVITY arrives here, which is how an Activity knows which
-    // mission run (or squad, or match) it was opened for.
+    // Everything Discord hands the iframe at launch.
+    //
+    // `custom_id` was documented here as the passthrough slot — "whatever the
+    // interaction attached when it responded with LAUNCH_ACTIVITY" — and that
+    // is NOT what happens. Observed: a launch from a component interaction
+    // arrives with no `custom_id` at all. A `LAUNCH_ACTIVITY` response carries
+    // no payload, which is exactly why `workers/missions/src/pending.rs`
+    // exists: the Activity authenticates and then ASKS the server what it was
+    // opened for, because the launch itself cannot say.
+    //
+    // Read it if present, since a launch URL constructed by other means may
+    // still carry one. Do not build routing on the assumption that it will be.
     function discord_launch_context() {
         const p = new URLSearchParams(window.location.search);
         const ctx = {};
@@ -105,6 +113,37 @@
         return js_object(v === null ? '' : v);
     }
 
+    // `targetOrigin` for every postMessage to the client.
+    //
+    // This used to be `document.referrer || '*'`, which works only for a page
+    // Discord loaded directly and silently breaks every page reached by a
+    // navigation. `document.referrer` is the PREVIOUS DOCUMENT, not the parent
+    // window: navigate once inside the Activity iframe and it becomes
+    // `https://<app_id>.discordsays.com/...`, which is not the client's origin,
+    // so the browser drops the handshake without an error. The symptom is an
+    // Activity that sits on "connecting" forever — no rejection, no console
+    // message, nothing to see.
+    //
+    // So: use the referrer only when it really is a Discord client origin, and
+    // fall back to `*` otherwise. `*` is not a broadcast — the message still
+    // goes to one window object (`source`); it only means "deliver regardless
+    // of that window's origin", which is what a page that cannot know the
+    // client's origin has to say.
+    function clientOrigin() {
+        try {
+            const ref = document.referrer;
+            if (ref) {
+                const refOrigin = new URL(ref).origin;
+                if (/^https:\/\/([a-z0-9-]+\.)?discord\.com$/.test(refOrigin)) {
+                    return refOrigin;
+                }
+            }
+        } catch (e) {
+            // An unparseable referrer is not worth failing over.
+        }
+        return '*';
+    }
+
     function discord_connect(client_id_js) {
         const clientId = consume_js_object(client_id_js);
         const id = newId();
@@ -121,7 +160,7 @@
         // A popout Activity is a child of the popout window, whose opener is
         // the main client where the RPC server actually lives.
         source = window.parent.opener ?? window.parent;
-        origin = document.referrer || '*';
+        origin = clientOrigin();
         readyReq = id;
 
         window.addEventListener('message', onMessage);

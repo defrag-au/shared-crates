@@ -34,6 +34,20 @@
 //! could be one dot, but value is divisible and spans orders of magnitude, so
 //! it is quantised instead. One unit at a time, always — raw Cardano quantities
 //! from different units cannot share a scale.
+//!
+//! ## Berths — infrastructure docks OUTSIDE the rim
+//!
+//! The rings encode a **relationship class** a curator asserts: core,
+//! associate, customer, unexamined. A minting provider, an airdrop payer or a
+//! CEX hot wallet has no such class — it is infrastructure the project used,
+//! context rather than subject — so seating it on a ring makes it impersonate
+//! a wallet awaiting classification, and its fan-out drags the chart's ink to
+//! one fake seat. A node marked [`RingNode::berth`] instead docks beyond the
+//! outer ring, as a square pill rather than a dot, at the **angular centroid
+//! of its actual counterparties** — so its chords arrive from one direction
+//! and their shared radial departure reads as a single trunk that fans out
+//! only inside the rim. Beyond the rim is also semantically right for a
+//! boundary: past the outer ring IS where the chain's reach ends.
 
 use egui::{Align2, Color32, Pos2, Response, Sense, Stroke, Ui, pos2, vec2};
 
@@ -50,6 +64,11 @@ pub struct RingNode<'a> {
     /// Switched off by the reader to cut clutter. An inactive node keeps its
     /// seat (so nothing else moves) but is drawn faint and carries no flows.
     pub active: bool,
+    /// Provider capability marks (`"bank.pillar · minting"`). `Some` docks
+    /// this node OUTSIDE the rim as a berth instead of seating it on `hop` —
+    /// see the module docs. The string is what the always-on label prints
+    /// beside the key, so it should already be reader-facing.
+    pub berth: Option<&'a str>,
 }
 
 impl<'a> RingNode<'a> {
@@ -58,11 +77,18 @@ impl<'a> RingNode<'a> {
             key,
             hop,
             active: true,
+            berth: None,
         }
     }
 
     pub fn active(mut self, on: bool) -> Self {
         self.active = on;
+        self
+    }
+
+    /// Dock this node outside the rim as infrastructure, with capability marks.
+    pub fn berth(mut self, marks: &'a str) -> Self {
+        self.berth = Some(marks);
         self
     }
 }
@@ -143,9 +169,16 @@ fn nearest_seat<'a>(
         .map(|(key, _)| key)
 }
 
-/// Drawn radius of a seat. Hop 0 is the project itself and reads as the anchor.
+/// Drawn radius of a seat. Hop 0 is the project itself and reads as the
+/// anchor; a berth's pill is larger than any dot because it is one of a few.
 fn seat_radius(n: &RingNode<'_>) -> f32 {
-    if n.hop == 0 { 6.0 } else { 4.0 }
+    if n.berth.is_some() {
+        7.0
+    } else if n.hop == 0 {
+        6.0
+    } else {
+        4.0
+    }
 }
 
 /// Extra pointer forgiveness around a seat, in points. Generous enough to make
@@ -184,26 +217,36 @@ fn fmt_quantum(q: u64, scale: f64) -> String {
     }
 }
 
-const OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
-const IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
+/// Outbound value — shared by every flow face so direction never changes hue
+/// between widgets.
+pub(crate) const OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
+/// Inbound value — see [`OUT`].
+pub(crate) const IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
 /// Per-flow particle cap. A single huge payment must not drown the frame.
 const MAX_DOTS: usize = 40;
 
-/// Ring tints, innermost first — a TEAL ordinal ramp plus a neutral outer step.
+/// Ring tints, innermost first — a green→teal ordinal ramp plus a neutral
+/// outer step.
 ///
-/// ## Why teal, and why these exact values
+/// ## Why this band, and why these exact values
 ///
-/// The ring index is ordinal (how close to the project), so it takes one hue in
-/// monotone lightness steps rather than four unrelated hues. The hue is
-/// constrained from two directions: the chords drawn ACROSS these rings are
-/// [`OUT`] orange and [`IN`] blue, and a seat dot must never be mistakable for
-/// a payment.
+/// The ring index is ordinal (how close to the project), so it moves along ONE
+/// safe band rather than taking four unrelated hues. The band is constrained
+/// from two directions: the chords drawn ACROSS these rings are [`OUT`] orange
+/// and [`IN`] blue, and a seat dot must never be mistakable for a payment.
+/// Violet, the obvious first pick, **fails** — it collapses onto the chord
+/// blue under protanopia at ΔE 5.1.
 ///
-/// Both were chosen by running the palette validator, not by eye, over every
-/// pair of {3 ring steps, neutral, orange, blue} on this dark surface —
-/// violet, the obvious first pick, **fails**: it collapses onto the chord blue
-/// under protanopia at ΔE 5.1. Teal clears with worst-pair ΔE 12.4 under CVD
-/// (deutan) and 16.2 under normal vision, against floors of 8 and 15.
+/// ## Lightness alone was not enough (fixed 2026-08-21)
+///
+/// The first ramp took one teal hue in lightness steps, and in use the middle
+/// two — associate and customer — read as the same colour: ΔE 22 normal, 19
+/// under deuteranopia, which clears the floor and still fails the eye, because
+/// the seats are 4px dots seen at a glance rather than swatches side by side.
+/// The ramp now moves in HUE as well (pale aqua → green → deep teal), taking
+/// that pair to **ΔE 53 normal / 44 deutan**. Every pair, including against
+/// both chord colours, is asserted in
+/// `the_ring_ramp_stays_separable_including_under_colour_blindness`.
 ///
 /// ## The last step is deliberately colourless
 ///
@@ -215,8 +258,8 @@ const MAX_DOTS: usize = 40;
 /// prints the address beside it and the ring gives it the outermost band.
 const RING_TINTS: [Color32; 4] = [
     Color32::from_rgb(0xa5, 0xf3, 0xe4), // core — the project itself
-    Color32::from_rgb(0x19, 0xc2, 0xad), // associates — paid BY the project
-    Color32::from_rgb(0x10, 0x89, 0x7c), // customers — bought from it
+    Color32::from_rgb(0x3d, 0xdc, 0x84), // associates — paid BY the project
+    Color32::from_rgb(0x0f, 0x8f, 0x8a), // customers — bought from it
     Color32::from_rgb(0x4d, 0x54, 0x78), // nobody has looked yet
 ];
 
@@ -323,11 +366,31 @@ impl<'a> FlowRing<'a> {
 
         // ── seats ─────────────────────────────────────────────────────────
         // Position depends only on (hop, index within hop), never on the data
-        // in view — switching a filter must not move a wallet.
-        let max_hop = nodes.iter().map(|n| n.hop).max().unwrap_or(0);
+        // in view — switching a filter must not move a wallet. A berth's hop
+        // is ignored entirely: it docks outside whatever the outermost ring
+        // turns out to be.
+        let max_hop = nodes
+            .iter()
+            .filter(|n| n.berth.is_none())
+            .map(|n| n.hop)
+            .max()
+            .unwrap_or(0);
         let centre = rect.center();
-        let r_outer = (rect.width().min(rect.height()) * 0.5) - 46.0;
-        let seats = seat_positions(nodes, max_hop, centre, r_outer.max(40.0));
+        // When berths exist the RINGS contract to make the dock zone, rather
+        // than the pills being pushed out into the label margin — the widget
+        // keeps its footprint and the breathing room appears between the rim
+        // and the berths, which is where it means something.
+        let dock = if nodes.iter().any(|n| n.berth.is_some()) {
+            BERTH_OFFSET
+        } else {
+            0.0
+        };
+        let r_outer = (rect.width().min(rect.height()) * 0.5) - 46.0 - dock;
+        let mut seats = seat_positions(nodes, max_hop, centre, r_outer.max(40.0));
+        for (k, s) in berth_positions(nodes, flows, &seats, centre, r_outer.max(40.0), max_hop + 1)
+        {
+            seats.insert(k, s);
+        }
 
         let active: std::collections::HashSet<&str> =
             nodes.iter().filter(|n| n.active).map(|n| n.key).collect();
@@ -430,13 +493,22 @@ impl<'a> FlowRing<'a> {
             // most wants to pick out.
             //
             // Toward the centre means toward the project: a payment arriving.
-            // Away means value leaving it. Between seats on the same ring it is
-            // neither, and drawn quietly, because it does not concern the
-            // project's own money.
+            // Away means value leaving it. Between seats on the SAME ring
+            // there is no radial direction, so the chord wears that ring's own
+            // tint — internal to the classification, in its colour. This
+            // matters most at ring 0: an earlier rule drew all same-ring
+            // chords in muted grey with a comment claiming they "do not
+            // concern the project's own money", which is exactly backwards
+            // there — royalties→ops IS the project's own money moving, and
+            // classifying a wallet core was silently greying out its most
+            // internal relationships. On the outer rings the tints are quiet
+            // anyway, so customer↔customer chatter stays quiet. Direction
+            // within the pair is carried by the taper (wide origin, narrow
+            // destination), as it always was.
             let col = match a.ring.cmp(&b.ring) {
                 std::cmp::Ordering::Greater => IN,
                 std::cmp::Ordering::Less => OUT,
-                std::cmp::Ordering::Equal => muted,
+                std::cmp::Ordering::Equal => ring_tint(a.ring),
             };
             // Weight by share of the heaviest pair, on a log scale — treasury
             // flows span orders of magnitude, so a linear ramp shows one chord.
@@ -516,6 +588,49 @@ impl<'a> FlowRing<'a> {
             let emph = selection.emphasis(n.key);
             let on = n.active;
             let r = seat_radius(n);
+            if let Some(marks) = n.berth {
+                // A berth is INFRASTRUCTURE, so it must be unmistakable for a
+                // wallet: a square pill in neutral ink, never a ring tint —
+                // colour on this chart means a classification was asserted,
+                // and a provider has none to assert.
+                let col = if on {
+                    ink.gamma_multiply(0.85 * emph)
+                } else {
+                    muted.gamma_multiply(0.35)
+                };
+                let pill = egui::Rect::from_center_size(*p, vec2(2.0 * r, 2.0 * r));
+                painter.rect_stroke(
+                    pill,
+                    2.0,
+                    Stroke::new(1.2_f32, col),
+                    egui::StrokeKind::Middle,
+                );
+                painter.rect_filled(pill.shrink(3.0), 1.0, col.gamma_multiply(0.55));
+                if nearest == Some(n.key) {
+                    hovered = Some(n.key.to_string());
+                    painter.circle_stroke(*p, r + 5.0, Stroke::new(1.5_f32, ink));
+                }
+                // ALWAYS labelled, marks included — there are only ever a few
+                // berths, and an anonymous square outside the rim would read
+                // as a rendering fault rather than a provider.
+                let name = match label {
+                    Some(f) => f(n.key),
+                    None => elide(n.key),
+                };
+                let away = (*p - centre).normalized();
+                painter.text(
+                    *p + away * (r + 6.0),
+                    if away.x >= 0.0 {
+                        Align2::LEFT_CENTER
+                    } else {
+                        Align2::RIGHT_CENTER
+                    },
+                    format!("{} · {marks}", truncate(&name, 18)),
+                    egui::TextStyle::Small.resolve(ui.style()),
+                    ink.gamma_multiply(emph),
+                );
+                continue;
+            }
             // The seat wears its CLASSIFICATION. Emphasis still rides on top as
             // alpha, so selecting a wallet dims its neighbours without
             // repainting anyone's identity — colour follows the entity, never
@@ -671,7 +786,13 @@ fn seat_positions<'a>(
 ) -> std::collections::HashMap<&'a str, Seat> {
     let mut out = std::collections::HashMap::new();
     for h in 0..=max_hop {
-        let ring: Vec<&RingNode<'_>> = nodes.iter().filter(|n| n.hop == h).collect();
+        // Berths are laid out separately, beyond the rim — including one here
+        // would shift every other seat on its ring the moment a wallet is
+        // recognised as a provider.
+        let ring: Vec<&RingNode<'_>> = nodes
+            .iter()
+            .filter(|n| n.hop == h && n.berth.is_none())
+            .collect();
         let count = ring.len().max(1);
         let r = ring_radius(h, max_hop, outer);
         for (i, n) in ring.iter().enumerate() {
@@ -696,6 +817,86 @@ fn seat_positions<'a>(
         }
     }
     out
+}
+
+/// How far beyond the outer ring a berth docks. Generous on purpose: the gap
+/// IS the statement — infrastructure is outside the classification system,
+/// and a pill grazing the rim dots reads as just another crowded seat.
+const BERTH_OFFSET: f32 = 36.0;
+/// Minimum angular separation between two berths, radians. Centroids of two
+/// providers serving the same crowd can coincide exactly; without a floor
+/// their pills stack into one unreadable glyph.
+const BERTH_MIN_SEP: f32 = 0.45;
+
+/// Dock each berth at the weighted angular centroid of its seated partners.
+///
+/// The weights are log-magnitude — the same compression the chords use — so a
+/// provider's berth sits facing the wallets it mostly deals with, not wherever
+/// one huge transfer points. Computed over the FULL flow slice, never the
+/// playhead's window: a berth that migrated as the reader scrubbed would break
+/// the object-constancy rule every seat on the ring obeys.
+///
+/// A berth with no seated partners (possible early in a walk) falls back to a
+/// deterministic spread by index, which keeps the layout stable across frames
+/// even when it cannot yet be meaningful.
+fn berth_positions<'a>(
+    nodes: &'a [RingNode<'a>],
+    flows: &[RingFlow<'_>],
+    ring_seats: &std::collections::HashMap<&'a str, Seat>,
+    centre: Pos2,
+    outer: f32,
+    berth_ring: u8,
+) -> Vec<(&'a str, Seat)> {
+    let berths: Vec<&RingNode<'_>> = nodes.iter().filter(|n| n.berth.is_some()).collect();
+    let mut placed: Vec<(&str, f32)> = Vec::new();
+    for (i, n) in berths.iter().enumerate() {
+        let (mut x, mut y) = (0.0f64, 0.0f64);
+        for f in flows {
+            let other = if f.from == n.key {
+                f.to
+            } else if f.to == n.key {
+                f.from
+            } else {
+                continue;
+            };
+            if let Some(s) = ring_seats.get(other) {
+                let w = (f.quantity as f64 + 1.0).ln();
+                x += w * f64::from(s.angle).cos();
+                y += w * f64::from(s.angle).sin();
+            }
+        }
+        let angle = if x == 0.0 && y == 0.0 {
+            -std::f32::consts::FRAC_PI_2
+                + std::f32::consts::TAU * (i as f32) / berths.len().max(1) as f32
+        } else {
+            y.atan2(x) as f32
+        };
+        placed.push((n.key, angle));
+    }
+    // Two berths may want the same angle; separate them deterministically
+    // (sorted by angle then key, pushed apart in order).
+    placed.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(b.0)));
+    for i in 1..placed.len() {
+        let prev = placed[i - 1].1;
+        if placed[i].1 - prev < BERTH_MIN_SEP {
+            placed[i].1 = prev + BERTH_MIN_SEP;
+        }
+    }
+    let r = outer + BERTH_OFFSET;
+    placed
+        .into_iter()
+        .map(|(k, a)| {
+            (
+                k,
+                Seat {
+                    pos: pos2(centre.x + r * a.cos(), centre.y + r * a.sin()),
+                    ring: berth_ring,
+                    radius: r,
+                    angle: a,
+                },
+            )
+        })
+        .collect()
 }
 
 /// The annulus a ring owns: everything nearer to it than to its neighbours.
@@ -960,6 +1161,130 @@ mod tests {
             RingNode::new("payee-a", 1),
             RingNode::new("payee-b", 1),
         ]
+    }
+
+    /// CIELAB of an sRGB colour — enough for ΔE76, which is what the palette
+    /// floors are stated in.
+    fn lab(c: Color32) -> [f64; 3] {
+        let lin = |v: u8| {
+            let v = v as f64 / 255.0;
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let (r, g, b) = (lin(c.r()), lin(c.g()), lin(c.b()));
+        let (x, y, z) = (
+            (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047,
+            0.2126 * r + 0.7152 * g + 0.0722 * b,
+            (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883,
+        );
+        let f = |t: f64| {
+            if t > 0.008_856 {
+                t.cbrt()
+            } else {
+                7.787 * t + 16.0 / 116.0
+            }
+        };
+        let (fx, fy, fz) = (f(x), f(y), f(z));
+        [116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz)]
+    }
+
+    fn delta_e(a: Color32, b: Color32) -> f64 {
+        lab(a)
+            .iter()
+            .zip(lab(b).iter())
+            .map(|(x, y)| (x - y).powi(2))
+            .sum::<f64>()
+            .sqrt()
+    }
+
+    /// Machado et al. (2009) severity-1.0 simulation of dichromatic vision.
+    fn simulate(c: Color32, m: [[f64; 3]; 3]) -> Color32 {
+        let lin = |v: u8| {
+            let v = v as f64 / 255.0;
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let enc = |v: f64| {
+            let v = v.clamp(0.0, 1.0);
+            let s = if v <= 0.003_130_8 {
+                12.92 * v
+            } else {
+                1.055 * v.powf(1.0 / 2.4) - 0.055
+            };
+            (s * 255.0).round() as u8
+        };
+        let (r, g, b) = (lin(c.r()), lin(c.g()), lin(c.b()));
+        Color32::from_rgb(
+            enc(m[0][0] * r + m[0][1] * g + m[0][2] * b),
+            enc(m[1][0] * r + m[1][1] * g + m[1][2] * b),
+            enc(m[2][0] * r + m[2][1] * g + m[2][2] * b),
+        )
+    }
+
+    const PROTAN: [[f64; 3]; 3] = [
+        [0.152_286, 1.052_583, -0.204_868],
+        [0.114_503, 0.786_281, 0.099_216],
+        [-0.003_882, -0.048_116, 1.051_998],
+    ];
+    const DEUTAN: [[f64; 3]; 3] = [
+        [0.367_322, 0.860_646, -0.227_968],
+        [0.280_085, 0.672_501, 0.047_413],
+        [-0.011_820, 0.042_940, 0.968_881],
+    ];
+
+    /// THE PALETTE VALIDATOR, as a test rather than a script somebody ran once.
+    ///
+    /// Every pair of {four ring tints, both chord colours} must stay apart
+    /// under normal vision AND under both common dichromacies — a seat that
+    /// collapses onto a chord makes a wallet look like a payment, and two ring
+    /// steps that collapse onto each other erase the classification the whole
+    /// chart encodes. The floors are the ones the ramp was originally chosen
+    /// against; the associate/customer pair carries a much higher one because
+    /// clearing the floor was exactly what it did while still reading as one
+    /// colour on 4px dots.
+    #[test]
+    fn the_ring_ramp_stays_separable_including_under_colour_blindness() {
+        const NORMAL_FLOOR: f64 = 15.0;
+        const CVD_FLOOR: f64 = 8.0;
+        let all: Vec<(&str, Color32)> = vec![
+            ("core", ring_tint(0)),
+            ("associate", ring_tint(1)),
+            ("customer", ring_tint(2)),
+            ("unexamined", ring_tint(3)),
+            ("chord-out", OUT),
+            ("chord-in", IN),
+        ];
+        for (i, (na, a)) in all.iter().enumerate() {
+            for (nb, b) in all.iter().skip(i + 1) {
+                assert!(
+                    delta_e(*a, *b) >= NORMAL_FLOOR,
+                    "{na} vs {nb}: ΔE {:.1} < {NORMAL_FLOOR}",
+                    delta_e(*a, *b)
+                );
+                for (kind, m) in [("protan", PROTAN), ("deutan", DEUTAN)] {
+                    let d = delta_e(simulate(*a, m), simulate(*b, m));
+                    assert!(
+                        d >= CVD_FLOOR,
+                        "{na} vs {nb} under {kind}: ΔE {d:.1} < {CVD_FLOOR}"
+                    );
+                }
+            }
+        }
+        // The pair that prompted the change: one teal hue in lightness steps
+        // measured 22 normal / 19 deutan and still read as one colour.
+        let (assoc, cust) = (ring_tint(1), ring_tint(2));
+        assert!(
+            delta_e(assoc, cust) >= 40.0,
+            "associate vs customer must be obvious, not merely legal: ΔE {:.1}",
+            delta_e(assoc, cust)
+        );
+        assert!(delta_e(simulate(assoc, DEUTAN), simulate(cust, DEUTAN)) >= 30.0);
     }
 
     /// The tints are chosen against the chords by a validator, so the thing
@@ -1254,6 +1579,116 @@ mod tests {
                 "{from}->{to} does not end on its seat"
             );
         }
+    }
+
+    /// A berth docks OUTSIDE the rim, facing the wallets it deals with — the
+    /// whole point of the form is that its chords arrive from one direction
+    /// instead of lassoing the ring from a fake outer-ring seat.
+    #[test]
+    fn a_berth_docks_beyond_the_rim_facing_its_partners() {
+        let mut n = banded();
+        n.push(RingNode::new("pillar", 0).berth("minting"));
+        let seats = seat_positions(&n, 3, CENTRE, OUTER);
+        let flows = [
+            RingFlow {
+                timestamp: 1,
+                from: "pillar",
+                to: "x0",
+                quantity: 100,
+            },
+            RingFlow {
+                timestamp: 2,
+                from: "pillar",
+                to: "x1",
+                quantity: 100,
+            },
+        ];
+        let berths = berth_positions(&n, &flows, &seats, CENTRE, OUTER, 4);
+        assert_eq!(berths.len(), 1);
+        let (key, seat) = berths[0];
+        assert_eq!(key, "pillar");
+        assert!(
+            seat.radius > OUTER,
+            "a berth must sit beyond the outer ring, got r={}",
+            seat.radius
+        );
+        // Facing its partners: between x0 and x1, which are 30° apart.
+        let (a0, a1) = (seats["x0"].angle, seats["x1"].angle);
+        let (lo, hi) = (a0.min(a1), a0.max(a1));
+        assert!(
+            (lo..=hi).contains(&seat.angle),
+            "berth angle {} not between its partners at {a0} and {a1}",
+            seat.angle
+        );
+    }
+
+    /// Two providers serving the same crowd want the same centroid; without a
+    /// separation floor their pills stack into one unreadable glyph.
+    #[test]
+    fn two_berths_never_stack() {
+        let mut n = banded();
+        n.push(RingNode::new("mint-svc", 0).berth("minting"));
+        n.push(RingNode::new("drop-svc", 0).berth("airdrop"));
+        let seats = seat_positions(&n, 3, CENTRE, OUTER);
+        let flows = [
+            RingFlow {
+                timestamp: 1,
+                from: "mint-svc",
+                to: "x0",
+                quantity: 100,
+            },
+            RingFlow {
+                timestamp: 2,
+                from: "drop-svc",
+                to: "x0",
+                quantity: 100,
+            },
+        ];
+        let berths = berth_positions(&n, &flows, &seats, CENTRE, OUTER, 4);
+        assert_eq!(berths.len(), 2);
+        let sep = (berths[0].1.angle - berths[1].1.angle).abs();
+        assert!(
+            sep >= BERTH_MIN_SEP - 1e-4,
+            "berths {sep} rad apart, floor is {BERTH_MIN_SEP}"
+        );
+    }
+
+    /// Recognising a wallet as a provider must not reshuffle the ring it used
+    /// to sit on — every other seat keeps its place.
+    #[test]
+    fn promoting_a_node_to_a_berth_moves_nobody_else() {
+        let with_dot = banded();
+        let mut with_berth = banded();
+        with_berth.push(RingNode::new("pillar", 3).berth("minting"));
+        let a = seat_positions(&with_dot, 3, CENTRE, OUTER);
+        let b = seat_positions(&with_berth, 3, CENTRE, OUTER);
+        for k in ["c0", "a1", "u2", "x0", "x11"] {
+            assert_eq!(a[k].pos, b[k].pos, "{k} moved when a berth was added");
+        }
+        assert!(
+            !b.contains_key("pillar"),
+            "a berth must not take a ring seat"
+        );
+    }
+
+    /// A berth is a real seat to the flow machinery: its traffic draws, and is
+    /// not counted as unseated coverage loss.
+    #[test]
+    fn a_berth_flow_is_drawn_not_unseated() {
+        let mut n = nodes();
+        n.push(RingNode::new("pillar", 0).berth("minting"));
+        let flows = [RingFlow {
+            timestamp: 1_000,
+            from: "pillar",
+            to: "payee-a",
+            quantity: 500,
+        }];
+        let mut sel = Selection::default();
+        let mut spine = SpineState::new((0, 100_000));
+        spine.set_playhead(1_000 + 3_600);
+        let r = run(&n, &flows, &spine, &mut sel);
+        assert_eq!(r.flows_unseated, 0, "the berth has a seat");
+        assert_eq!(r.in_flight, 1, "and its flow flies");
     }
 
     /// A seat depends only on (hop, index) — never on what is in view. If a

@@ -25,6 +25,7 @@ pub mod flip_counter;
 pub mod flow_ledger;
 pub mod flow_matrix;
 pub mod flow_ring;
+pub mod flow_stave;
 pub mod focus_list;
 pub mod fonts;
 pub mod fungibles_row;
@@ -91,6 +92,8 @@ pub mod wallet_button;
 pub mod wallet_editor;
 pub mod wallet_identity_header;
 pub mod wallet_list;
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub mod wallet_mock;
 
 // Image text editor (feature-gated)
 #[cfg(feature = "image-editor")]
@@ -181,6 +184,7 @@ pub use flow_ledger::{
 };
 pub use flow_matrix::{FlowMatrix, FlowMatrixResponse, MatrixFlow};
 pub use flow_ring::{FlowRing, FlowRingResponse, RingFlow, RingNode, ring_tint};
+pub use flow_stave::{FlowStave, FlowStaveResponse, StaveEvent, StaveLane, StaveOrigin};
 pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
 pub use holder_field::{AssetMove, HolderField, HolderFieldResponse};
 pub use holder_formation::{

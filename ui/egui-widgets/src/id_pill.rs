@@ -62,6 +62,11 @@ pub struct IdPill<'a> {
     /// Somewhere this identifier can be looked up — a block explorer for a tx
     /// hash, say. Renders a second button beside copy.
     link: Option<Cow<'a, str>>,
+    /// Auto-link stake addresses to pool.pm (default ON). A stake key's
+    /// natural lookup is its wallet page; making every call site remember the
+    /// URL is how the affordance stays missing. An explicit [`IdPill::link`]
+    /// wins; [`IdPill::pool_pm(false)`] suppresses.
+    auto_pool_pm: bool,
     layout: IdPillLayout,
     label_color: Color32,
     value_color: Color32,
@@ -96,6 +101,7 @@ impl<'a> IdPill<'a> {
             min_width: None,
             copyable: true,
             link: None,
+            auto_pool_pm: true,
             layout: IdPillLayout::Stacked,
             label_color: Color32::from_gray(140),
             value_color: Color32::from_gray(220),
@@ -122,6 +128,7 @@ impl<'a> IdPill<'a> {
             min_width: None,
             copyable: true,
             link: None,
+            auto_pool_pm: true,
             layout: IdPillLayout::Inline,
             label_color: Color32::from_gray(140),
             value_color: Color32::from_gray(160),
@@ -167,6 +174,13 @@ impl<'a> IdPill<'a> {
 
     pub fn copyable(mut self, b: bool) -> Self {
         self.copyable = b;
+        self
+    }
+
+    /// Suppress (or re-enable) the automatic pool.pm link on stake
+    /// addresses. On by default — see the field doc.
+    pub fn pool_pm(mut self, on: bool) -> Self {
+        self.auto_pool_pm = on;
         self
     }
 
@@ -225,7 +239,13 @@ impl<'a> IdPill<'a> {
     }
 
     /// Render. Dispatches on [`IdPill::layout`].
-    pub fn show(self, ui: &mut Ui) -> IdPillResponse {
+    pub fn show(mut self, ui: &mut Ui) -> IdPillResponse {
+        if self.link.is_none()
+            && self.auto_pool_pm
+            && let Some(url) = pool_pm_url(self.value_full.as_ref())
+        {
+            self.link = Some(Cow::Owned(url));
+        }
         match self.layout {
             IdPillLayout::Stacked => self.show_stacked(ui),
             IdPillLayout::Inline => self.show_inline(ui),
@@ -432,6 +452,18 @@ pub fn stacked_width_for(ui: &Ui, value: &str, copyable: bool) -> f32 {
     text_w + frame_pad + copy_w
 }
 
+/// The pool.pm wallet page for a MAINNET stake address, or `None` for
+/// anything that is not one. Strict on shape (bech32 charset only) so a
+/// display string with decoration never becomes a mangled URL.
+fn pool_pm_url(value: &str) -> Option<String> {
+    let v = value.trim();
+    (v.starts_with("stake1")
+        && v.len() > 20
+        && v.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()))
+    .then(|| format!("https://pool.pm/{v}"))
+}
+
 /// Middle-elide a string at `prefix + ellipsis + suffix` width. Returns
 /// the input unchanged when it's already short enough.
 fn truncate_middle(s: &str, prefix: usize, suffix: usize) -> String {
@@ -463,5 +495,32 @@ mod tests {
     fn truncate_long_string_elides() {
         let s = "0123456789abcdef0123456789abcdef";
         assert_eq!(truncate_middle(s, 8, 6), "01234567…abcdef");
+    }
+
+    /// Stake addresses get their wallet page for free; everything else —
+    /// payment addresses, tx hashes, testnet keys, decorated strings — must
+    /// not, because a wrong link is worse than none.
+    #[test]
+    fn only_a_clean_mainnet_stake_address_links_to_pool_pm() {
+        let stake = "stake1uxmaqke42j9q6v83lvgyg0g8r5nvmhxrfpganethr5fslds6fzq77";
+        assert_eq!(
+            pool_pm_url(stake).as_deref(),
+            Some("https://pool.pm/stake1uxmaqke42j9q6v83lvgyg0g8r5nvmhxrfpganethr5fslds6fzq77")
+        );
+        assert_eq!(
+            pool_pm_url(" stake1uxmaqke42j9q6v83lvgyg0g8r5nvmhxrfpganethr5fslds6fzq77 ")
+                .as_deref()
+                .map(|u| u.ends_with("fzq77")),
+            Some(true),
+            "trimmed, not rejected"
+        );
+        assert_eq!(pool_pm_url("addr1qy9mg28evkzcfghlrg8"), None);
+        assert_eq!(pool_pm_url("stake_test1uqfu74w3wh4gfzu8m6e7"), None);
+        assert_eq!(
+            pool_pm_url("stake1uxmaqke…fzq77"),
+            None,
+            "elided display strings never link"
+        );
+        assert_eq!(pool_pm_url("stake1"), None);
     }
 }

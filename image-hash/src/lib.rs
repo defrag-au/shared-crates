@@ -79,8 +79,8 @@ impl VisualHash {
     /// Reassemble from stored columns (dhash8 + 32-byte dhash16 blob).
     pub fn from_stored(dhash8: u64, dhash16_bytes: &[u8; 32]) -> Self {
         let mut words = [0u64; 4];
-        for (i, chunk) in dhash16_bytes.chunks_exact(8).enumerate() {
-            words[i] = u64::from_be_bytes(chunk.try_into().expect("8-byte chunk"));
+        for (i, chunk) in dhash16_bytes.as_chunks::<8>().0.iter().enumerate() {
+            words[i] = u64::from_be_bytes(*chunk);
         }
         Self {
             dhash8,

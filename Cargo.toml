@@ -22,6 +22,7 @@ members = [
     "worker-stack",
     "worker-utils",
     "asset-rarity",
+    "arcade-core",
     "chain-ledger",
     "chain-ledger-koios",
     "chain-ledger-case",
@@ -40,7 +41,9 @@ members = [
     "ui/wallet-pallas",
     "ui/wallet-leptos",
     "ui/wallet-miniquad",
+    "ui/arcade-harness",
     "ui/macroquad-tui",
+    "ui/macroquad-wallet-flow",
     "ui/macroquad-widgets",
     "ui/macroquad-storybook",
     "ui/miniquad-platform",
@@ -162,6 +165,14 @@ asset-rarity = { path = "asset-rarity" }
 egui-widgets = { path = "ui/egui-widgets" }
 wallet-core = { path = "ui/wallet-core" }
 wallet-pallas = { path = "ui/wallet-pallas" }
+# Replay-verified games (ported from the adacade workspace). `arcade-core` is
+# a pure serde primitive and sits at the top level; the macroquad glue is
+# under ui/ with its siblings.
+arcade-core = { path = "arcade-core" }
+arcade-harness = { path = "ui/arcade-harness" }
+macroquad-wallet-flow = { path = "ui/macroquad-wallet-flow" }
+macroquad-widgets = { path = "ui/macroquad-widgets" }
+wallet-miniquad = { path = "ui/wallet-miniquad" }
 tx_insights = { path = "tx-insights" }
 test_utils = { path = "test-utils" }
 pipeline-types = { path = "pipeline/pipeline-types" }

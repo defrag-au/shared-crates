@@ -46,6 +46,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SigningStatusStoryState) {
 
         let phases: &[(&str, SigningPhase, bool)] = &[
             ("Awaiting", SigningPhase::AwaitingSignatures, false),
+            ("Wallet pending", SigningPhase::WalletPending, false),
             ("Waiting for Peer", SigningPhase::WaitingForPeer, false),
             ("Peer signed first", SigningPhase::AwaitingSignatures, true),
             ("Submitting", SigningPhase::Submitting, true),
@@ -100,7 +101,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut SigningStatusStoryState) {
                     match action {
                         signing_status::SigningAction::Sign => {
                             state.last_action = "Sign clicked!".into();
-                            state.phase = SigningPhase::WaitingForPeer;
+                            // Mirror the real flow: Sign first goes wallet-pending.
+                            state.phase = SigningPhase::WalletPending;
                         }
                         signing_status::SigningAction::Cancel => {
                             state.last_action = "Cancel clicked!".into();
