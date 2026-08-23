@@ -71,8 +71,14 @@ jobs:
         # flow-demo and flow-demo-frontend are excluded: they're Cloudflare Workers
         # built by wrangler, and depend on getrandom/rand with wasm_js feature
         # which requires JS glue not available in bare wasm32 target
+        #
+        # The macroquad crates (arcade-harness, macroquad-wallet-flow,
+        # macroquad-widgets) are absent on purpose: they need the miniquad JS
+        # plugins to link, so they are checked by the consuming repo's wasm job
+        # rather than here. arcade-core is pure serde and belongs here.
         run: |
           cargo check --target wasm32-unknown-unknown \
+            -p arcade-core \
             -p asset-intents \
             -p cardano-assets \
             -p wasm_safe_serde \
