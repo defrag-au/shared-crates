@@ -82,7 +82,14 @@ fn events() -> Vec<StaveEvent<'static>> {
 
     // Round 1: the treasury loads the front, part flows back, then the
     // mint→forward cadence begins.
-    push(T0, StaveOrigin::Party("S2 treasury"), FOCAL, "5,000 ₳", 0, 1.0);
+    push(
+        T0,
+        StaveOrigin::Party("S2 treasury"),
+        FOCAL,
+        "5,000 ₳",
+        0,
+        1.0,
+    );
     push(
         T0 + 5 * 60,
         StaveOrigin::Party(FOCAL),

@@ -16,11 +16,19 @@ pub const BG_HIGHLIGHT: Color32 = Color32::from_rgb(41, 46, 66);
 
 // ============================================================================
 // Text colors
+//
+// The ramp is tiered for hierarchy but every tier must stay readable: most of
+// this suite renders at 9-12px, where WCAG AA demands 4.5:1. Floors are
+// enforced against all three backgrounds by tests/contrast.rs — if you dim a
+// tier, that test is the negotiation, not your monitor.
 // ============================================================================
 
 pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(192, 202, 245);
-pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(120, 130, 170);
-pub const TEXT_MUTED: Color32 = Color32::from_rgb(86, 95, 137);
+/// Tokyo Night `fg_dark` — ~6.9:1 on `BG_SECONDARY`.
+pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(169, 177, 214);
+/// De-emphasis tier, but still AA at small sizes — ~5.0:1 on `BG_SECONDARY`.
+/// (The previous `#565F89` sat at 2.2-2.8:1 and carried real copy.)
+pub const TEXT_MUTED: Color32 = Color32::from_rgb(139, 149, 196);
 
 // ============================================================================
 // Accent colors (full palette — apps pick the aliases they prefer)
@@ -46,8 +54,10 @@ pub const SUCCESS: Color32 = ACCENT_GREEN;
 pub const WARNING: Color32 = ACCENT_YELLOW;
 /// Error / danger status.
 pub const ERROR: Color32 = ACCENT_RED;
-/// Default border stroke color.
-pub const BORDER: Color32 = BG_HIGHLIGHT;
+/// Default border stroke color. Deliberately its own value: when this aliased
+/// `BG_HIGHLIGHT` it sat at 1.24:1 against `BG_PRIMARY` and panel edges were
+/// effectively invisible.
+pub const BORDER: Color32 = Color32::from_rgb(65, 72, 104);
 
 // ============================================================================
 // Rarity rank coloring
@@ -129,6 +139,11 @@ impl FontStrategy {
 ///
 /// Pass a [`FontStrategy`] to control font rendering. Call once at startup.
 pub fn configure_style(ctx: &egui::Context, fonts: FontStrategy) {
+    // These are dark-only palettes, but egui's web default follows
+    // prefers-color-scheme and set_global_style only writes the ACTIVE theme's
+    // style — pin dark first so a light-mode device gets the same app.
+    ctx.set_theme(egui::ThemePreference::Dark);
+
     let mut style = (*ctx.global_style()).clone();
 
     match fonts {
@@ -185,12 +200,15 @@ pub fn configure_style(ctx: &egui::Context, fonts: FontStrategy) {
     visuals.extreme_bg_color = BG_PRIMARY;
     visuals.faint_bg_color = BG_SECONDARY;
 
+    // Default (unstyled) text is PRIMARY — with TEXT_SECONDARY here a plain
+    // `ui.label()` rendered at 3.9:1 inside any BG_SECONDARY card. Widgets
+    // opt IN to de-emphasis via TEXT_SECONDARY/TEXT_MUTED, not out of it.
     visuals.widgets.noninteractive.bg_fill = BG_SECONDARY;
-    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT_SECONDARY);
+    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
     visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER);
 
     visuals.widgets.inactive.bg_fill = BG_SECONDARY;
-    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT_SECONDARY);
+    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
     visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER);
 
     visuals.widgets.hovered.bg_fill = BG_HIGHLIGHT;
@@ -202,6 +220,12 @@ pub fn configure_style(ctx: &egui::Context, fonts: FontStrategy) {
 
     visuals.selection.bg_fill = Color32::from_rgba_premultiplied(122, 162, 247, 40);
     visuals.selection.stroke = Stroke::new(1.0_f32, ACCENT);
+
+    // Derived states: egui's defaults (weak 0.6, disabled 0.5) would drop
+    // even TEXT_PRIMARY below AA. 0.7 of TEXT_PRIMARY still clears ~4.5:1
+    // on cards while reading as de-emphasised.
+    visuals.weak_text_alpha = 0.7;
+    visuals.disabled_alpha = 0.7;
 
     style.visuals = visuals;
 

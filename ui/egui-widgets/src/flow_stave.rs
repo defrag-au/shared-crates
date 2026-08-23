@@ -541,7 +541,7 @@ impl<'a> FlowStave<'a> {
                             StaveOrigin::Unresolved => "unresolved payer".into(),
                         };
                         ui.label(
-                            egui::RichText::new(format!("{from} → {}", identity(e.to))).strong(),
+                            egui::RichText::new(format!("{from} -> {}", identity(e.to))).strong(),
                         );
                         ui.label(
                             egui::RichText::new(format!(

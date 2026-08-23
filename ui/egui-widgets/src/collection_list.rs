@@ -339,7 +339,7 @@ const ROW_BG: Color32 = Color32::from_rgb(22, 22, 32);
 const ROW_BG_ARCHIVED: Color32 = Color32::from_rgb(18, 18, 24);
 const ROW_STROKE: Color32 = Color32::from_rgb(40, 40, 56);
 const META_GREY: Color32 = Color32::from_gray(140);
-const KEYHASH_GREY: Color32 = Color32::from_gray(120);
+const KEYHASH_GREY: Color32 = Color32::from_gray(150);
 
 // Standard chips: CIP-25 = soft purple, CIP-68 = soft teal. Distinct
 // enough to scan at a glance; tonal palette matches the wallet-role

@@ -736,20 +736,24 @@ mod app {
     // Theme
     // ========================================================================
 
+    // Storybook chrome colours (sidebar only). Stories themselves render
+    // under the REAL shipped theme — see `configure_style` below.
     const BG_SIDEBAR: egui::Color32 = egui::Color32::from_rgb(20, 20, 40);
-    pub const BG_MAIN: egui::Color32 = egui::Color32::from_rgb(26, 26, 46);
-    pub const TEXT_MUTED: egui::Color32 = egui::Color32::from_rgb(100, 100, 130);
-    const TEXT_PRIMARY: egui::Color32 = egui::Color32::from_rgb(220, 220, 235);
+    pub const BG_MAIN: egui::Color32 = egui_widgets::theme::BG_PRIMARY;
+    pub const TEXT_MUTED: egui::Color32 = egui_widgets::theme::TEXT_MUTED;
+    const TEXT_PRIMARY: egui::Color32 = egui_widgets::theme::TEXT_PRIMARY;
     pub const ACCENT: egui::Color32 = egui::Color32::from_rgb(68, 255, 68);
     const BG_SELECTED: egui::Color32 = egui::Color32::from_rgb(40, 40, 60);
 
     fn configure_style(ctx: &egui::Context) {
-        let mut style = (*ctx.style()).clone();
-        style.visuals.dark_mode = true;
-        style.visuals.panel_fill = BG_MAIN;
-        style.visuals.window_fill = BG_MAIN;
-        style.visuals.override_text_color = Some(TEXT_PRIMARY);
-        ctx.set_style(style);
+        // Use the shipped theme, not a private one. The old private style set
+        // `override_text_color`, so every default label screenshotted at
+        // 12.6:1 while the same label in a real app rendered near 4:1 —
+        // storybook reviews were reviewing a surface no user sees.
+        egui_widgets::theme::configure_style(
+            ctx,
+            egui_widgets::theme::FontStrategy::proportional(),
+        );
     }
 
     // ========================================================================

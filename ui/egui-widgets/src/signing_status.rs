@@ -18,6 +18,10 @@ use crate::theme;
 pub enum SigningPhase {
     /// Both parties need to sign. Local party hasn't signed yet.
     AwaitingSignatures,
+    /// Local party clicked Sign — the wallet's approval dialog is open.
+    /// Keeps the UI visibly busy while the CIP-30 promise is pending
+    /// (hardware wallets can take a minute here).
+    WalletPending,
     /// Local party has signed, waiting for peer.
     WaitingForPeer,
     /// Both signed, TX is being submitted.
@@ -160,6 +164,40 @@ pub fn show(
                             .color(theme::TEXT_MUTED)
                             .size(9.0),
                     );
+                }
+                SigningPhase::WalletPending => {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(
+                            RichText::new("Check your wallet — approve the transaction there.")
+                                .color(theme::ACCENT_CYAN)
+                                .size(config.font_size),
+                        );
+                    });
+
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new("Hardware wallets can take a minute.")
+                                .color(theme::TEXT_MUTED)
+                                .size(9.0),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        RichText::new("Cancel")
+                                            .color(theme::TEXT_MUTED)
+                                            .size(config.font_size),
+                                    )
+                                    .frame(false),
+                                )
+                                .clicked()
+                            {
+                                action = Some(SigningAction::Cancel);
+                            }
+                        });
+                    });
                 }
                 SigningPhase::WaitingForPeer => {
                     ui.horizontal(|ui| {

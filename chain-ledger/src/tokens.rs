@@ -76,6 +76,52 @@ pub fn decimals(unit: &str) -> Option<u32> {
     }
 }
 
+/// Whether a unit is **money** — something a payment can be settled in.
+///
+/// ## Why this is a list and not a label test
+///
+/// The obvious shortcut is to ask whether the asset carries the CIP-67
+/// fungible-token label (`0014df10`, class 333). Do not: that label says
+/// "this is fungible", not "this is money". Any project can mint a fungible
+/// token, so the test admits every meme and utility token ever launched —
+/// measured on the Mekka S1 ledger it accepted WLK, ASCEND, ANGELS, ATLAS,
+/// SKULLY, TITAN, BETFI, FLDT, PBG, Shards and GENS as settlement, ~17,300
+/// legs of it.
+///
+/// And it fails the other way at the same time. Real stablecoins mostly use
+/// PLAIN asset names — iUSD, USDA, DJED, USDC, USDCx carry no CIP-68 label —
+/// so the same test rejected 139,157 legs of genuine payment. USDM passed
+/// only by the accident of being CIP-68 minted.
+///
+/// So: an explicit list, on the same terms as [`decimals`]. A unit is money
+/// because we can say why, not because of the shape of its name.
+///
+/// ## What is deliberately NOT here
+///
+/// Traded assets with known decimals — SNEK, MIN, IAG, NIGHT. Knowing a
+/// token's scale is not the same as calling it settlement, and a meme token
+/// counted as money is the very failure this replaces. If a case needs SNEK
+/// treated as settlement (a snek.fun launch priced in it, say), add it
+/// deliberately with the reason.
+pub fn is_settlement_unit(unit: &str) -> bool {
+    matches!(
+        unit,
+        "lovelace"
+            // USDM — Moneta
+            | "c48cbb3d5e57ed56e276bc45f99ab39abe94e6cd7ac39fb402da47ad.0014df105553444d"
+            // iUSD — Indigo
+            | "f66d78b4a3cb3d37afa0ec36461e51ecbde00f26c8f0a68f94b69880.69555344"
+            // USDA — Anzens
+            | "fe7c786ab321f41c654ef6c1af7b3250a613c24e4213e0425a7ae456.55534441"
+            // DJED — COTI
+            | "8db269c3ec630e06ae29f74bc39edd1f87c819f1056206e879a1cd61.446a65644d6963726f555344"
+            // USDCx
+            | "1f3aec8bfe7ea4fe14c5f121e2a92e301afe414147860d557cac7e34.5553444378"
+            // USDC — Wanchain-bridged, 8 dp
+            | "25c5de5f5b286073c593edfd77b48abc7a48e5a4f3d4cd9d428ff935.55534443"
+    )
+}
+
 /// Format a raw on-chain quantity for display, WITHOUT a ticker.
 ///
 /// Known decimals give `59.01`; unknown give a grouped integer `1,000,000,000`
@@ -197,6 +243,52 @@ mod tests {
             assert_eq!(decimals(unit), Some(dp), "decimals for {unit}");
             let one = 10i128.pow(dp);
             assert_eq!(format_quantity(unit, one), "1.00", "one unit of {unit}");
+        }
+    }
+
+    /// The CIP-68 label test this replaced, in both its failure directions.
+    #[test]
+    fn settlement_is_a_list_not_a_label() {
+        // FALSE POSITIVE the label test allowed: a project token minted with
+        // the fungible label 333. Fungible is not money.
+        let skully =
+            "861d38630fb4541234567890123456789012345678901234567890ab.0014df10534b554c4c59";
+        assert!(
+            skully.contains("0014df10"),
+            "this is exactly the shape the old test accepted"
+        );
+        assert!(
+            !is_settlement_unit(skully),
+            "a meme token is not settlement"
+        );
+
+        // FALSE NEGATIVE the label test caused: real stablecoins with plain
+        // asset names, 139,157 legs of them on one ledger.
+        for stable in [
+            "f66d78b4a3cb3d37afa0ec36461e51ecbde00f26c8f0a68f94b69880.69555344", // iUSD
+            "fe7c786ab321f41c654ef6c1af7b3250a613c24e4213e0425a7ae456.55534441", // USDA
+            "8db269c3ec630e06ae29f74bc39edd1f87c819f1056206e879a1cd61.446a65644d6963726f555344",
+            "1f3aec8bfe7ea4fe14c5f121e2a92e301afe414147860d557cac7e34.5553444378", // USDCx
+            "25c5de5f5b286073c593edfd77b48abc7a48e5a4f3d4cd9d428ff935.55534443",   // USDC
+        ] {
+            assert!(!stable.contains("0014df10"), "no CIP-68 label to match on");
+            assert!(is_settlement_unit(stable), "but it IS money: {stable}");
+        }
+
+        assert!(is_settlement_unit("lovelace"));
+        assert!(is_settlement_unit(USDM));
+    }
+
+    /// Knowing a token's SCALE is not the same as calling it MONEY.
+    #[test]
+    fn known_decimals_do_not_make_a_token_settlement() {
+        for traded in [
+            "279c909f348e533da5808898f87f9a14bb2c3dfbbacccd631d927a3f.534e454b", // SNEK
+            "29d222ce763455e3d7a09a665ce554f00ac89d2e99a1a83d267170c6.4d494e",   // MIN
+            "5d16cc1a177b5d9ba9cfa9793b07e60f1fb70fea1f8aef064415d114.494147",   // IAG
+        ] {
+            assert!(decimals(traded).is_some(), "we know its scale");
+            assert!(!is_settlement_unit(traded), "but it is not money: {traded}");
         }
     }
 

@@ -73,7 +73,10 @@ impl ChipVariant {
                 Color32::from_rgb(26, 44, 44),
                 Some(Color32::from_rgb(60, 100, 100)),
             ),
-            Self::Muted => (Color32::WHITE, Color32::from_gray(140), None),
+            // Darker fill than the old gray(140): white-on-gray(140) was
+            // 3.4:1 — and Muted is the default variant, so the accidental
+            // chip was the unreadable one.
+            Self::Muted => (Color32::WHITE, Color32::from_gray(90), None),
         }
     }
 }
