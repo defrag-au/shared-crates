@@ -405,15 +405,18 @@ pub fn draw_thumbnail(
         .is_ok_and(|poll| matches!(poll, egui::load::TexturePoll::Ready { .. }));
 
     if is_loaded {
-        let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(thumb_rect).layout(
-            egui::Layout::centered_and_justified(egui::Direction::TopDown),
-        ));
-        child_ui.add(
-            egui::Image::new(url)
-                .fit_to_exact_size(thumb_rect.size())
-                .show_loading_spinner(false)
-                .corner_radius(4),
-        );
+        // paint_at, NOT a child ui + `add(Image)`: the widget-form Image takes
+        // an auto-derived id, and because it only exists once loaded, each
+        // newly-loaded card SHIFTS the auto-id of every image after it in the
+        // container. egui's debug builds flag that id instability by flashing
+        // a 2px red outline around the affected rects ("changed id between
+        // passes") — the red border seen on every spinner->image transition.
+        // The card itself owns interaction, so no widget is needed here.
+        egui::Image::new(url)
+            .fit_to_exact_size(thumb_rect.size())
+            .show_loading_spinner(false)
+            .corner_radius(4)
+            .paint_at(ui, thumb_rect);
         false
     } else {
         ui.painter()
