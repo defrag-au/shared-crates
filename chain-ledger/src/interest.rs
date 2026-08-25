@@ -57,6 +57,22 @@ pub enum Signal {
     /// A DEX/aggregator/lending counterparty — the wallet's own money
     /// returning. Suppresses (was 58,150 ₳ of phantom income).
     RoundTripLeg,
+    /// Value left a project-owned wallet and ASSETS came back to one inside
+    /// the window — a deployment that landed. **Suppresses.**
+    ///
+    /// The ledger records every unit of value but only the project's own
+    /// policy of assets, so a deployment paid in ADA and returned in someone
+    /// else's NFTs has its departure recorded and its arrival missing. Read
+    /// without this, an honest allocation is indistinguishable from
+    /// extraction. Measured on Octaverse: 6,000 ₳ out, **63 Mekka S2 minted
+    /// and 62 returned to the project's holding wallet within 35 minutes**,
+    /// plus a Mekka S1 donated four minutes BEFORE the ADA moved — a complete
+    /// and provable deployment that the tool drew as money walking out.
+    ///
+    /// Never asserts the legs are one transaction: they are hours and two
+    /// units apart. It suppresses interest the way [`Signal::CounterPayment`]
+    /// does, and the pairing itself is a proposal a curator confirms.
+    ValueReturned,
     /// A CEX or bridge on either end — where off-chain legs surface.
     BoundaryCrossing,
     /// Policy asset delivered where the receiver did not pay: no within-tx
@@ -70,6 +86,21 @@ pub enum Signal {
     /// Value into a core-role wallet that nothing explains — not mint, not
     /// sale, not a round trip. The 67,938 ₳ detector.
     UnexplainedInbound,
+    /// Value left the project boundary and NOTHING came back — no assets to a
+    /// project-owned wallet, and no declared purpose. **Raises.**
+    ///
+    /// The outbound twin of [`Signal::UnexplainedInbound`], and the finding
+    /// that the returned/declared/unreconciled split exists to isolate. Until
+    /// an outflow can be shown to be one of the other two, this is what it is.
+    ///
+    /// Firing on a payment to a service is CORRECT, not a false positive: a
+    /// service is delivered off-chain, so the flow genuinely does not
+    /// reconcile on-chain and the resolution is a *declared purpose* carrying
+    /// a source. That is the intended curation loop, not an error to suppress.
+    /// Measured on Octaverse: ~4,730 ₳ of token purchases that stayed in the
+    /// founder's personal wallet, where the same treasury's Mekka deployment
+    /// went to a dedicated holding wallet and is provable.
+    Unreconciled,
     /// An asserted-core party funds or receives. The user's rule, verbatim:
     /// everything core touches is interesting. Scaled by the assertion's
     /// [`Confidence`].
@@ -92,7 +123,7 @@ pub enum Signal {
 }
 
 impl Signal {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 19] = [
         Self::PolicyMint,
         Self::MintFundSplit,
         Self::RoyaltyPayment,
@@ -101,10 +132,12 @@ impl Signal {
         Self::VenueSale,
         Self::CounterPayment,
         Self::RoundTripLeg,
+        Self::ValueReturned,
         Self::BoundaryCrossing,
         Self::AssetGrant,
         Self::Recurrence,
         Self::UnexplainedInbound,
+        Self::Unreconciled,
         Self::CoreTouch,
         Self::HotPartyTouch,
         Self::Magnitude,
@@ -122,10 +155,12 @@ impl Signal {
             Self::VenueSale => "venue_sale",
             Self::CounterPayment => "counter_payment",
             Self::RoundTripLeg => "round_trip_leg",
+            Self::ValueReturned => "value_returned",
             Self::BoundaryCrossing => "boundary_crossing",
             Self::AssetGrant => "asset_grant",
             Self::Recurrence => "recurrence",
             Self::UnexplainedInbound => "unexplained_inbound",
+            Self::Unreconciled => "unreconciled",
             Self::CoreTouch => "core_touch",
             Self::HotPartyTouch => "hot_party_touch",
             Self::Magnitude => "magnitude",
@@ -160,6 +195,14 @@ impl Signal {
     /// THIS PROJECT (policy-anchored: fund splits, distributions, royalties)
     /// from its other business. Without it, damping would suppress the exact
     /// flows under investigation — rewards distribution through a provider.
+    ///
+    /// [`Signal::ValueReturned`] and [`Signal::Unreconciled`] are structural
+    /// because they are facts about the PROJECT's boundary, not about who was
+    /// standing at it. For `ValueReturned` the exemption is load-bearing in a
+    /// way the others are not: its weight is NEGATIVE, so damping it would
+    /// attenuate a suppression and thereby *raise* the interest of a flow the
+    /// evidence just explained — precisely backwards. A deployment routed
+    /// through a minting platform is still a deployment.
     pub const fn is_structural(self) -> bool {
         matches!(
             self,
@@ -169,6 +212,8 @@ impl Signal {
                 | Self::FanoutDistribution
                 | Self::TxMessage
                 | Self::BoundaryCrossing
+                | Self::ValueReturned
+                | Self::Unreconciled
         )
     }
 }
@@ -269,10 +314,15 @@ pub struct Weights {
     /// Multiplied by the match's time-decay confidence.
     pub counter_payment: f64,
     pub round_trip_leg: f64,
+    /// Negative. Stronger than [`Weights::round_trip_leg`] because the
+    /// pairing is curator-confirmable rather than inferred from a
+    /// counterparty's shape.
+    pub value_returned: f64,
     pub boundary_crossing: f64,
     pub asset_grant: f64,
     pub recurrence: f64,
     pub unexplained_inbound: f64,
+    pub unreconciled: f64,
     /// Multiplied by the assertion's [`Confidence::factor`].
     pub core_touch: f64,
     /// Multiplied by the participant's normalised party score (and damping).
@@ -287,6 +337,16 @@ pub struct Weights {
     /// `counter_payment_full_secs`, linear decay to zero at the window edge.
     pub counter_payment_window_secs: i64,
     pub counter_payment_full_secs: i64,
+    /// How long after value leaves a project-owned wallet assets may arrive at
+    /// one and still pair as a return. A cost/coverage dial, not a
+    /// correctness one: too short misses slow deployments, too long invents
+    /// pairings out of unrelated traffic. The Octaverse deployment closed in
+    /// under three hours.
+    pub return_window_secs: i64,
+    /// Outflows below this (lovelace) never raise [`Signal::Unreconciled`].
+    /// Without a floor every minAda carrier riding an asset transfer becomes
+    /// its own finding, and the real ones drown.
+    pub unreconciled_min_lovelace: u64,
     /// Recurrence: a pair needs at least this many events…
     pub recurrence_min_events: u32,
     /// …at most this many (beyond it is churn, not a schedule)…
@@ -313,10 +373,12 @@ impl Default for Weights {
             venue_sale: -0.5,
             counter_payment: -0.4,
             round_trip_leg: -0.6,
+            value_returned: -0.8,
             boundary_crossing: 0.7,
             asset_grant: 0.8,
             recurrence: 0.5,
             unexplained_inbound: 0.6,
+            unreconciled: 0.7,
             core_touch: 1.0,
             hot_party_touch: 0.4,
             core_assertion: 2.0,
@@ -324,6 +386,8 @@ impl Default for Weights {
             fanout_min_recipients: 10,
             counter_payment_window_secs: 24 * 3600,
             counter_payment_full_secs: 3600,
+            return_window_secs: 24 * 3600,
+            unreconciled_min_lovelace: 5_000_000,
             recurrence_min_events: 3,
             recurrence_max_events: 50,
             recurrence_max_cv: 0.5,
@@ -397,6 +461,54 @@ mod tests {
         // Radiated interest is exactly what damping exists to attenuate.
         assert!(!Signal::HotPartyTouch.is_structural());
         assert!(!Signal::CoreTouch.is_structural());
+    }
+
+    /// Damping a NEGATIVE weight attenuates a suppression, which raises the
+    /// interest of a flow the evidence just explained. `ValueReturned` must
+    /// therefore be structural, or a deployment routed through a minting
+    /// platform scores HIGHER than the same deployment made directly.
+    #[test]
+    fn damping_can_never_un_explain_a_returned_deployment() {
+        let w = Weights::default();
+        assert!(w.value_returned < 0.0, "a return suppresses");
+        assert!(Signal::ValueReturned.is_structural());
+
+        let damped = w.value_returned * w.provider_damp;
+        assert!(
+            damped > w.value_returned,
+            "damping a negative weight moves it toward zero — the exemption is \
+             what stops that becoming a score increase"
+        );
+    }
+
+    /// The outbound twin of `UnexplainedInbound`, and the whole point of the
+    /// returned/declared/unreconciled split: an outflow is a finding only
+    /// until it is shown to be one of the other two.
+    #[test]
+    fn the_project_boundary_signals_are_a_signed_pair() {
+        let w = Weights::default();
+        assert!(
+            w.unreconciled > 0.0,
+            "nothing came back — that is the finding"
+        );
+        assert!(
+            w.value_returned < 0.0,
+            "assets came back — that is the answer"
+        );
+        assert!(Signal::Unreconciled.is_structural());
+        // Both are conclusions from a stated rule over recorded facts, never
+        // readings of a single output.
+        assert_eq!(Signal::ValueReturned.basis(), Basis::Derived);
+        assert_eq!(Signal::Unreconciled.basis(), Basis::Derived);
+    }
+
+    /// A floor is not tuning: without it every minAda carrier riding an asset
+    /// transfer becomes its own unreconciled finding and the real ones drown.
+    #[test]
+    fn unreconciled_has_a_dust_floor_and_returns_have_a_window() {
+        let w = Weights::default();
+        assert!(w.unreconciled_min_lovelace >= 1_000_000);
+        assert!(w.return_window_secs > 0);
     }
 
     /// The evidence-panel invariant: rows sum to the score, magnitude

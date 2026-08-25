@@ -36,8 +36,8 @@ pub mod typer;
 
 pub use editor::{CompletionSource, LineEditor};
 pub use grid::{Cell, CellAttrs, Grid};
-pub use half_block::{encode_pair, HalfBlockCanvas};
-pub use render::{paint_cell, paint_grid, paint_grid_at, GridMetrics};
+pub use half_block::{HalfBlockCanvas, encode_pair};
+pub use render::{GridMetrics, paint_cell, paint_grid, paint_grid_at};
 pub use repeat::KeyRepeat;
 pub use scene::{FixedStep, Scene, SceneCtx, SceneInput, SceneOutcome, SceneStack};
 pub use sprite::{CellSprite, SpriteSheet};

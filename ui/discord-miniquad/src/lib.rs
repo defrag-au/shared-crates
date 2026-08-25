@@ -40,8 +40,8 @@
 
 mod bridge;
 
-pub use bridge::{launch_query, page_origin, ImagePoll, LaunchContext, PollResult, ReqId};
 use bridge::DecodedSize;
+pub use bridge::{ImagePoll, LaunchContext, PollResult, ReqId, launch_query, page_origin};
 
 /// The JS half of the bridge, for stamping into a web build.
 ///
@@ -233,7 +233,10 @@ impl Activity {
                         // transfer truncated. Both are "no image", and both
                         // would otherwise reach the GPU as a malformed upload.
                         return ImagePoll::Err {
-                            message: format!("expected {expected} bytes of RGBA, got {}", rgba.len()),
+                            message: format!(
+                                "expected {expected} bytes of RGBA, got {}",
+                                rgba.len()
+                            ),
                         };
                     }
                     ImagePoll::Ok {

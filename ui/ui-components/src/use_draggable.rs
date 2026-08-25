@@ -236,13 +236,14 @@ impl Draggable {
             ev.prevent_default();
             let current = state_drop.get_untracked();
             if let Some(source) = current.source_index
-                && source != index {
-                    let callback = on_reorder.get_value();
-                    callback(Reorder {
-                        source,
-                        target: index,
-                    });
-                }
+                && source != index
+            {
+                let callback = on_reorder.get_value();
+                callback(Reorder {
+                    source,
+                    target: index,
+                });
+            }
             set_state_drop.set(DragState::default());
         });
 

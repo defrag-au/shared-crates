@@ -125,9 +125,6 @@ mod status;
 // Re-export the protocol types from ui_flow_protocol
 pub use ui_flow_protocol::{
     self as protocol,
-    // Codec functions
-    decode,
-    encode,
     // Core message types
     ClientMessage,
     // Helper types
@@ -138,6 +135,9 @@ pub use ui_flow_protocol::{
     ProtocolError,
     ServerMessage,
     SignalPayload,
+    // Codec functions
+    decode,
+    encode,
 };
 
 // Callback-based connection (web-sys only)

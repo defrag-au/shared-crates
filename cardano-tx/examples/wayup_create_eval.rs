@@ -7,10 +7,10 @@
 //! Run: `cargo run -p cardano-tx --example wayup_create_eval`
 
 use cardano_assets::utxo::UtxoApi;
-use cardano_tx::builder::collection_offer::{
-    build_wayup_collection_offers_tx, CollectionOfferRequest,
-};
 use cardano_tx::builder::TxDeps;
+use cardano_tx::builder::collection_offer::{
+    CollectionOfferRequest, build_wayup_collection_offers_tx,
+};
 use cardano_tx::params::TxBuildParams;
 use pallas_addresses::{Address, Network};
 use pallas_txbuilder::BuildConway;

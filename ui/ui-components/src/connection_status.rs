@@ -87,9 +87,10 @@ pub fn ConnectionStatus(
 
     let handle_click = move |_| {
         if status.get().is_reconnectable()
-            && let Some(cb) = on_reconnect {
-                cb.run(());
-            }
+            && let Some(cb) = on_reconnect
+        {
+            cb.run(());
+        }
     };
 
     view! {

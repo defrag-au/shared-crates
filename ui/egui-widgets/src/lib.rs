@@ -184,7 +184,9 @@ pub use flow_ledger::{
 };
 pub use flow_matrix::{FlowMatrix, FlowMatrixResponse, MatrixFlow};
 pub use flow_ring::{FlowRing, FlowRingResponse, RingFlow, RingNode, ring_tint};
-pub use flow_stave::{FlowStave, FlowStaveResponse, StaveEvent, StaveLane, StaveOrigin};
+pub use flow_stave::{
+    FlowStave, FlowStaveResponse, Reconciliation, StaveEvent, StaveLane, StaveOrigin,
+};
 pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
 pub use holder_field::{AssetMove, HolderField, HolderFieldResponse};
 pub use holder_formation::{

@@ -208,7 +208,9 @@ impl FromStr for AssetUri {
     type Err = AssetUriError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let rest = s.strip_prefix("asset://").ok_or(AssetUriError::MissingScheme)?;
+        let rest = s
+            .strip_prefix("asset://")
+            .ok_or(AssetUriError::MissingScheme)?;
         // Split on the LAST slash: neither identifier form contains one, but a
         // future form might, and the size is always the final segment.
         let (id, size) = rest.rsplit_once('/').ok_or(AssetUriError::MissingSize)?;
@@ -287,7 +289,8 @@ impl FromStr for AvatarUri {
         if user_id.is_empty() || !user_id.chars().all(|c| c.is_ascii_digit()) {
             return Err(AssetUriError::InvalidFingerprint);
         }
-        if hash != "default" && (hash.is_empty() || !hash.chars().all(|c| c.is_ascii_alphanumeric()))
+        if hash != "default"
+            && (hash.is_empty() || !hash.chars().all(|c| c.is_ascii_alphanumeric()))
         {
             return Err(AssetUriError::InvalidFingerprint);
         }
@@ -334,7 +337,9 @@ impl FromStr for R2Uri {
     type Err = AssetUriError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let rest = s.strip_prefix("r2://").ok_or(AssetUriError::MissingScheme)?;
+        let rest = s
+            .strip_prefix("r2://")
+            .ok_or(AssetUriError::MissingScheme)?;
         let (binding, key) = rest.split_once('/').ok_or(AssetUriError::MissingSize)?;
 
         // Cloudflare binding names are SCREAMING_SNAKE_CASE. Requiring the
@@ -353,7 +358,9 @@ impl FromStr for R2Uri {
         // later maps keys onto a filesystem or a URL.
         if key.is_empty()
             || key.starts_with('/')
-            || key.split('/').any(|segment| segment == ".." || segment.is_empty())
+            || key
+                .split('/')
+                .any(|segment| segment == ".." || segment.is_empty())
         {
             return Err(AssetUriError::InvalidFingerprint);
         }
@@ -432,7 +439,9 @@ mod tests {
 
     #[test]
     fn rejects_a_cold_size() {
-        let err = format!("asset://{FP}/1024").parse::<AssetUri>().unwrap_err();
+        let err = format!("asset://{FP}/1024")
+            .parse::<AssetUri>()
+            .unwrap_err();
         assert_eq!(err, AssetUriError::UnsupportedSize("1024".to_string()));
     }
 
@@ -510,7 +519,10 @@ mod policy_asset_tests {
     fn the_two_forms_parse_to_different_identifiers() {
         let fp = "asset1rjklcrnsdzqp65wjgrg55sy9723kw09mlgvlc3";
         assert!(matches!(
-            format!("asset://{fp}/400").parse::<AssetUri>().unwrap().identifier,
+            format!("asset://{fp}/400")
+                .parse::<AssetUri>()
+                .unwrap()
+                .identifier,
             AssetIdentifier::Fingerprint(_)
         ));
         assert!(matches!(
@@ -525,9 +537,13 @@ mod policy_asset_tests {
     /// Both halves become URL path segments, so non-hex must not parse.
     #[test]
     fn non_hex_identifiers_are_rejected() {
-        assert!(format!("asset://{POLICY}:../../etc/x/400").parse::<AssetUri>().is_err());
+        assert!(format!("asset://{POLICY}:../../etc/x/400")
+            .parse::<AssetUri>()
+            .is_err());
         assert!("asset://short:abcd/400".parse::<AssetUri>().is_err());
-        assert!(format!("asset://{POLICY}:zzzz/400").parse::<AssetUri>().is_err());
+        assert!(format!("asset://{POLICY}:zzzz/400")
+            .parse::<AssetUri>()
+            .is_err());
     }
 
     #[test]
@@ -576,7 +592,9 @@ mod r2_tests {
     /// confusion worth catching at parse rather than as a failed lookup.
     #[test]
     fn a_bucket_name_is_not_a_binding_name() {
-        assert!(format!("r2://augminted-dev/{KEY}").parse::<R2Uri>().is_err());
+        assert!(format!("r2://augminted-dev/{KEY}")
+            .parse::<R2Uri>()
+            .is_err());
     }
 
     #[test]

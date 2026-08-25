@@ -11,10 +11,10 @@
 //! Run: `cargo run -p cardano-tx --example wayup_cancel_eval`
 
 use cardano_assets::utxo::UtxoApi;
-use cardano_tx::builder::collection_offer::{
-    build_cancel_offers_tx_with, CancelContract, CancelOfferRequest,
-};
 use cardano_tx::builder::TxDeps;
+use cardano_tx::builder::collection_offer::{
+    CancelContract, CancelOfferRequest, build_cancel_offers_tx_with,
+};
 use cardano_tx::params::TxBuildParams;
 use pallas_addresses::Address;
 use pallas_txbuilder::BuildConway;

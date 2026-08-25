@@ -46,7 +46,8 @@ mod tests {
     #[test]
     fn a_wallet_without_a_handle_round_trips() {
         let wallet = LinkedWallet {
-            stake_address: "stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9".to_string(),
+            stake_address: "stake1u8962x3wtddcq2syq258ka3d9mxxkx5md5xawzx67pac9tgc5rhq9"
+                .to_string(),
             handle: None,
         };
         let json = serde_json::to_string(&wallet).unwrap();

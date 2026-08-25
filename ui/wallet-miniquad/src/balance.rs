@@ -71,9 +71,11 @@ fn scan_assets(d: &mut Decoder<'_>) -> Option<String> {
 
         let cleaned = strip_cip67_label(asset_name);
         if let Ok(s) = std::str::from_utf8(cleaned)
-            && !s.is_empty() && s.chars().all(|c| !c.is_control()) {
-                return Some(format!("${s}"));
-            }
+            && !s.is_empty()
+            && s.chars().all(|c| !c.is_control())
+        {
+            return Some(format!("${s}"));
+        }
     }
     None
 }

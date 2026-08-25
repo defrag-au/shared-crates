@@ -7,15 +7,15 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use serde::de::DeserializeOwned;
 use serde::Serialize;
-use wasm_bindgen::prelude::*;
+use serde::de::DeserializeOwned;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 use web_sys::{CloseEvent, MessageEvent, WebSocket};
 
 use crate::status::{CloseInfo, ConnectionStatus};
 use ui_flow_protocol::{
-    decode, encode, ClientMessage, OpId, PresenceInfo, ProtocolError, ServerMessage,
+    ClientMessage, OpId, PresenceInfo, ProtocolError, ServerMessage, decode, encode,
 };
 
 // Type aliases to reduce complexity warnings

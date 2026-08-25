@@ -73,11 +73,20 @@ impl Progress {
 /// decides absolute-vs-relative — which matters inside a Discord Activity,
 /// where only same-origin paths are permitted.
 pub enum Asset {
-    Font { slot: Slot, url: String },
+    Font {
+        slot: Slot,
+        url: String,
+    },
     /// An image, keyed for later lookup.
-    Texture { key: String, url: String },
+    Texture {
+        key: String,
+        url: String,
+    },
     /// Anything else — a level, a config, a sound file the caller decodes.
-    Bytes { key: String, url: String },
+    Bytes {
+        key: String,
+        url: String,
+    },
 }
 
 impl Asset {

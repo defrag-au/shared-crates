@@ -310,11 +310,7 @@ mod tests {
             .cells()
             .filter_map(
                 |(r, c, cell)| {
-                    if cell.ch == 'X' {
-                        Some((r, c))
-                    } else {
-                        None
-                    }
+                    if cell.ch == 'X' { Some((r, c)) } else { None }
                 },
             )
             .collect();

@@ -35,8 +35,9 @@
 //! }
 //! ```
 
-use arcade_core::api::{ScoreSubmission, SeedGrant, SeedRequest, SubmitOutcome, SEED_PATH,
-    SUBMIT_PATH};
+use arcade_core::api::{
+    SEED_PATH, SUBMIT_PATH, ScoreSubmission, SeedGrant, SeedRequest, SubmitOutcome,
+};
 use arcade_core::{ArcadeGame, GameRecording, InputRecorder};
 use backend::{ArcadeBackend, BackendState};
 use macroquad::prelude::*;
@@ -335,9 +336,7 @@ pub async fn run_game<G, B, R, I>(
                     accumulator = 0.0;
                     match &state {
                         BackendState::Connecting(_) => Phase::Title { error: None },
-                        BackendState::Offline(_) => {
-                            start_run::<G>(config.offline_seed, None)
-                        }
+                        BackendState::Offline(_) => start_run::<G>(config.offline_seed, None),
                         BackendState::Ready => Phase::AwaitingSeed(session::post(
                             &mut backend,
                             SEED_PATH,

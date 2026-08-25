@@ -313,7 +313,7 @@ pub fn decode_spot_order_datum(data: &PlutusData) -> Result<DecodedSpotOrder, Sp
         _ => {
             return Err(SplashError::InvalidInput(
                 "expected Constr 0 (tag 121)".into(),
-            ))
+            ));
         }
     };
 
@@ -428,7 +428,7 @@ fn extract_address(data: &PlutusData) -> Result<(Vec<u8>, Option<Vec<u8>>), Spla
         _ => {
             return Err(SplashError::InvalidInput(
                 "expected address Constr(121, [payment, stake])".into(),
-            ))
+            ));
         }
     };
 
@@ -440,7 +440,7 @@ fn extract_address(data: &PlutusData) -> Result<(Vec<u8>, Option<Vec<u8>>), Spla
         _ => {
             return Err(SplashError::InvalidInput(
                 "expected payment Constr(121, [bytes])".into(),
-            ))
+            ));
         }
     };
 
@@ -512,10 +512,9 @@ mod tests {
             ),
             cancel_pkh: hex::decode("74104cd5ca6288c1dd2e22ee5c874fdcfc1b81897462d91153496430")
                 .unwrap(),
-            permitted_executors: vec![hex::decode(
-                "5cb2c968e5d1c7197a6ce7615967310a375545d9bc65063a964335b2",
-            )
-            .unwrap()],
+            permitted_executors: vec![
+                hex::decode("5cb2c968e5d1c7197a6ce7615967310a375545d9bc65063a964335b2").unwrap(),
+            ],
         };
 
         let result = encode_datum_hex(&params).unwrap();
@@ -558,10 +557,9 @@ mod tests {
             ),
             cancel_pkh: hex::decode("74104cd5ca6288c1dd2e22ee5c874fdcfc1b81897462d91153496430")
                 .unwrap(),
-            permitted_executors: vec![hex::decode(
-                "5cb2c968e5d1c7197a6ce7615967310a375545d9bc65063a964335b2",
-            )
-            .unwrap()],
+            permitted_executors: vec![
+                hex::decode("5cb2c968e5d1c7197a6ce7615967310a375545d9bc65063a964335b2").unwrap(),
+            ],
         };
 
         // Encode to PlutusData, then decode

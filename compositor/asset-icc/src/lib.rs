@@ -42,7 +42,9 @@ pub fn open_rgba(path: &Path) -> Result<RgbaImage> {
 /// record, so match that byte pattern rather than pulling in a CMS.
 pub fn is_display_p3(profile: &[u8]) -> bool {
     const NAME_UTF16BE: &[u8] = b"\x00D\x00i\x00s\x00p\x00l\x00a\x00y\x00 \x00P\x003";
-    profile.windows(NAME_UTF16BE.len()).any(|w| w == NAME_UTF16BE)
+    profile
+        .windows(NAME_UTF16BE.len())
+        .any(|w| w == NAME_UTF16BE)
 }
 
 /// Convert Display P3 pixel values to sRGB in place: linearize (P3 shares sRGB's
@@ -56,14 +58,26 @@ pub fn display_p3_to_srgb(mut img: RgbaImage) -> RgbaImage {
         [-0.019_637_555, -0.078_636_04, 1.098_273_6],
     ];
     fn eotf(u: f32) -> f32 {
-        if u <= 0.04045 { u / 12.92 } else { ((u + 0.055) / 1.055).powf(2.4) }
+        if u <= 0.04045 {
+            u / 12.92
+        } else {
+            ((u + 0.055) / 1.055).powf(2.4)
+        }
     }
     fn oetf(l: f32) -> f32 {
-        if l <= 0.003_130_8 { 12.92 * l } else { 1.055 * l.powf(1.0 / 2.4) - 0.055 }
+        if l <= 0.003_130_8 {
+            12.92 * l
+        } else {
+            1.055 * l.powf(1.0 / 2.4) - 0.055
+        }
     }
     for px in img.pixels_mut() {
         let [r, g, b, a] = px.0;
-        let lin = [eotf(r as f32 / 255.0), eotf(g as f32 / 255.0), eotf(b as f32 / 255.0)];
+        let lin = [
+            eotf(r as f32 / 255.0),
+            eotf(g as f32 / 255.0),
+            eotf(b as f32 / 255.0),
+        ];
         let out = std::array::from_fn::<_, 3, _>(|i| {
             let v = M[i][0] * lin[0] + M[i][1] * lin[1] + M[i][2] * lin[2];
             (oetf(v.clamp(0.0, 1.0)) * 255.0 + 0.5) as u8
@@ -90,10 +104,16 @@ mod tests {
         img.put_pixel(3, 0, Rgba([190, 30, 45, 255])); // saturated red
         let out = display_p3_to_srgb(img);
         let expect: [([u8; 4], &str); 4] = [
-            ([74, 198, 223, 128], "sheen cyan regains chroma, alpha untouched"),
+            (
+                [74, 198, 223, 128],
+                "sheen cyan regains chroma, alpha untouched",
+            ),
             ([127, 127, 127, 255], "greys are fixed points"),
             ([30, 30, 30, 255], "near-black linework unchanged"),
-            ([208, 0, 36, 255], "saturated red (green clips to gamut edge)"),
+            (
+                [208, 0, 36, 255],
+                "saturated red (green clips to gamut edge)",
+            ),
         ];
         for (x, (want, why)) in expect.iter().enumerate() {
             let got = out.get_pixel(x as u32, 0).0;

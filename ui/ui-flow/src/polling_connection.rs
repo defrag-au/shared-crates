@@ -6,12 +6,12 @@
 //!
 //! This is ideal for game loops where you're already polling each frame.
 
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 use crate::status::{CloseInfo, ConnectionStatus};
 use crate::transport::{DefaultTransport, WebSocketEvent, WebSocketTransport};
-use ui_flow_protocol::{decode, encode, ClientMessage, OpId, PresenceInfo, ServerMessage};
+use ui_flow_protocol::{ClientMessage, OpId, PresenceInfo, ServerMessage, decode, encode};
 
 /// Configuration for reconnection behavior
 #[derive(Debug, Clone)]

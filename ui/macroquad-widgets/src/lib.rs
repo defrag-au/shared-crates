@@ -21,8 +21,8 @@ mod squad_picker;
 mod wallet_connect;
 mod wallet_list;
 
-pub use button::{Button, ButtonVariant};
 pub use assets::{draw_loading, Asset, Loader, Progress};
+pub use button::{Button, ButtonVariant};
 pub use fonts::{FontFiles, Fonts, Slot};
 pub use gesture::{Gesture, Gestures, SwipeDir};
 pub use mint_checkout::{

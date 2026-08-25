@@ -11,8 +11,8 @@
 //!   [6] lpTokenPolicy: Bytes
 //!   [7] lpTokenName: Bytes
 
-use pallas_primitives::alonzo::{BigInt, PlutusData};
 use pallas_primitives::Fragment;
+use pallas_primitives::alonzo::{BigInt, PlutusData};
 
 use super::CswapError;
 

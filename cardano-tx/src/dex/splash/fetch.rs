@@ -5,11 +5,11 @@
 
 use http_client::HttpClient;
 
-use super::config::{
-    decimal_to_rational, derive_lp_fee_bps, to_splash_asset, FeeApiResponse, FeeDistribution,
-    OrderBookQuote, RawOrderBook, MAINNET_FEE_URL, ORDER_BOOK_URL,
-};
 use super::SplashError;
+use super::config::{
+    FeeApiResponse, FeeDistribution, MAINNET_FEE_URL, ORDER_BOOK_URL, OrderBookQuote, RawOrderBook,
+    decimal_to_rational, derive_lp_fee_bps, to_splash_asset,
+};
 
 /// Fetch dynamic executor fee for a specific trading pair and amount.
 ///

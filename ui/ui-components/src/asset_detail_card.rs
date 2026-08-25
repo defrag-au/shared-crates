@@ -45,7 +45,7 @@
 //! }
 //! ```
 
-use crate::asset_card::{generate_iiif_url, IiifSize};
+use crate::asset_card::{IiifSize, generate_iiif_url};
 use leptos::prelude::*;
 use std::collections::HashMap;
 
@@ -97,9 +97,10 @@ pub fn AssetDetailCard(
         if let Some(ref id_signal) = asset_id {
             let id = id_signal.get();
             if !id.is_empty()
-                && let Some(url) = generate_iiif_url(&id, IiifSize::Large) {
-                    return url;
-                }
+                && let Some(url) = generate_iiif_url(&id, IiifSize::Large)
+            {
+                return url;
+            }
         }
 
         String::new()

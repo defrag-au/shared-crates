@@ -4,8 +4,8 @@
 //! CIP-30 returns `TransactionUnspentOutput = (TransactionInput, TransactionOutput)` CBOR.
 
 use crate::PallasError;
-use cardano_assets::utxo::{AssetQuantity, UtxoApi, UtxoTag};
 use cardano_assets::AssetId;
+use cardano_assets::utxo::{AssetQuantity, UtxoApi, UtxoTag};
 use pallas_addresses::Address;
 use pallas_codec::minicbor;
 use pallas_primitives::conway::{TransactionInput, TransactionOutput};

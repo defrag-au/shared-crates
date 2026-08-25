@@ -14,7 +14,9 @@
 //! move the playhead there.
 
 use crate::TEXT_MUTED;
-use egui_widgets::{FlowStave, Selection, SpineState, StaveEvent, StaveLane, StaveOrigin};
+use egui_widgets::{
+    FlowStave, Reconciliation, Selection, SpineState, StaveEvent, StaveLane, StaveOrigin,
+};
 
 const T0: i64 = 1_785_950_000; // 2026-08-05-ish, matching the case
 const H: i64 = 3_600;
@@ -65,7 +67,8 @@ fn events() -> Vec<StaveEvent<'static>> {
                     to: &'static str,
                     label: &str,
                     items: i32,
-                    magnitude: f32| {
+                    magnitude: f32,
+                    reconciliation: Option<Reconciliation>| {
         out.push(StaveEvent {
             timestamp,
             from,
@@ -77,6 +80,7 @@ fn events() -> Vec<StaveEvent<'static>> {
             // Every lane in this fixture is a real seated party, so no
             // rollup identity to carry.
             counterparty: None,
+            reconciliation,
         });
     };
 
@@ -89,6 +93,8 @@ fn events() -> Vec<StaveEvent<'static>> {
         "5,000 ₳",
         0,
         1.0,
+        // Inbound to the front: nothing has crossed the project boundary.
+        None,
     );
     push(
         T0 + 5 * 60,
@@ -97,6 +103,8 @@ fn events() -> Vec<StaveEvent<'static>> {
         "1,500 ₳",
         0,
         0.55,
+        // Returning TO the treasury — an inflow to the project, not an outflow.
+        None,
     );
     for round in 0..5i64 {
         let base = T0 + 2 * DAY + round * DAY + (round % 3) * 3 * H;
@@ -109,8 +117,11 @@ fn events() -> Vec<StaveEvent<'static>> {
             "1,050 ₳",
             0,
             0.6,
+            // The batch it pays for mints 40 min later and forwards to a
+            // ring-0 wallet: value out, assets back. RETURNED.
+            Some(Reconciliation::Returned),
         );
-        push(base, StaveOrigin::Mint, FOCAL, "12 assets", 12, 0.4);
+        push(base, StaveOrigin::Mint, FOCAL, "12 assets", 12, 0.4, None);
         push(
             base + 25 * 60,
             StaveOrigin::Party(FOCAL),
@@ -118,6 +129,8 @@ fn events() -> Vec<StaveEvent<'static>> {
             "12 items",
             12,
             0.5,
+            // The asset leg itself — the return, not an outflow to judge.
+            None,
         );
         // Top-ups from the treasury keep the front liquid.
         if round % 2 == 1 {
@@ -128,17 +141,36 @@ fn events() -> Vec<StaveEvent<'static>> {
                 "1,638 ₳",
                 0,
                 0.8,
+                None,
             );
         }
     }
-    // A small ops payment, and one receipt nobody could attribute.
+    // The other two verdicts, placed EARLY so all three are on screen
+    // together: a story that cannot show its own vocabulary is not
+    // documenting it. Ops work is delivered off-chain; the 2,400 ₳ is the
+    // same shape as the 1,050 ₳ rounds and never comes back.
     push(
-        T0 + 4 * DAY + 6 * H,
+        T0 + 3 * H,
         StaveOrigin::Party(FOCAL),
         "ops (pervsn)",
         "25 ₳",
         0,
         0.2,
+        // Ops work is delivered OFF chain, so no return is possible. A
+        // sourced purpose is the only thing that can settle it: DECLARED.
+        Some(Reconciliation::Declared),
+    );
+    // The one that does NOT resolve — same shape as every round above, and
+    // no batch ever comes back. Without the three-state mark this arrow is
+    // pixel-identical to the five that did, which is the whole problem.
+    push(
+        T0 + 5 * H,
+        StaveOrigin::Party(FOCAL),
+        "collector",
+        "2,400 ₳",
+        0,
+        0.75,
+        Some(Reconciliation::Unreconciled),
     );
     push(
         T0 + 6 * DAY,
@@ -147,6 +179,7 @@ fn events() -> Vec<StaveEvent<'static>> {
         "847 ₳",
         0,
         0.5,
+        None,
     );
     out.sort_by_key(|e| e.timestamp);
     out
@@ -170,6 +203,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowStaveState) {
              and an unresolved payer arrives from the chart's edge. Asset movements wear \
              a count chip; every arrow carries its own unit label, so ADA, tokens and \
              items keep their identity on one chart.\n\n\
+             Outflows carry a RECONCILIATION mark at their origin end, shape-coded like \
+             PartyBadge's basis pips: filled = returned (assets came back to a wallet the \
+             project owns), half = declared (bought off-chain, purpose asserted with a \
+             source), hollow + warn = unreconciled (nothing came back, nothing claimed). \
+             Compare the five 1,050 ₳ rounds against the lone 2,400 ₳ — identical arrows, \
+             opposite verdicts. Without the mark a ledger that tracks every unit of VALUE \
+             but only one policy of ASSETS draws an honest deployment and an extraction \
+             the same way.\n\n\
              Scrub the spine: the playhead sweeps the chart and the future dims. This \
              fixture is the real S2 shape — treasury loads a front, the front pays the \
              collector, batches mint in, assets forward to a founder minutes later.",

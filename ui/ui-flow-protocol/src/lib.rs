@@ -48,7 +48,7 @@
 //! let client_msg: ClientMessage<MyAction> = decode(&bytes)?;
 //! ```
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};

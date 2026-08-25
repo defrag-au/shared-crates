@@ -264,14 +264,29 @@ mod tests {
         // Service bindings and same-origin proxies both matter: a Discord
         // Activity cannot reach an absolute IIIF host at all under its CSP.
         assert_eq!(
-            iiif_url_on("https://iiif-service/iiif/3", POLICY, ASSET, ImageSize::Full),
+            iiif_url_on(
+                "https://iiif-service/iiif/3",
+                POLICY,
+                ASSET,
+                ImageSize::Full
+            ),
             format!("https://iiif-service/iiif/3/{POLICY}:{ASSET}/full/1646,/0/default.jpg")
         );
         // A trailing slash on the base must not produce a doubled separator,
         // which some IIIF servers 404 rather than normalise.
         assert_eq!(
-            iiif_url_on("https://example.test/iiif/3/", POLICY, ASSET, ImageSize::Thumb),
-            iiif_url_on("https://example.test/iiif/3", POLICY, ASSET, ImageSize::Thumb),
+            iiif_url_on(
+                "https://example.test/iiif/3/",
+                POLICY,
+                ASSET,
+                ImageSize::Thumb
+            ),
+            iiif_url_on(
+                "https://example.test/iiif/3",
+                POLICY,
+                ASSET,
+                ImageSize::Thumb
+            ),
         );
     }
 
@@ -283,7 +298,10 @@ mod tests {
 
         // bot-db: the only PNG caller.
         assert_eq!(
-            IiifUrl::new(POLICY, ASSET).custom_px(500).format(Format::Png).build(),
+            IiifUrl::new(POLICY, ASSET)
+                .custom_px(500)
+                .format(Format::Png)
+                .build(),
             format!("https://iiif.hodlcroft.com/iiif/3/{POLICY}:{ASSET}/full/500,/0/default.png")
         );
 
@@ -301,7 +319,9 @@ mod tests {
 
         // The service-binding form used inside workers.
         assert_eq!(
-            IiifUrl::new(POLICY, ASSET).on(hosts::SERVICE_BINDING).build(),
+            IiifUrl::new(POLICY, ASSET)
+                .on(hosts::SERVICE_BINDING)
+                .build(),
             format!("https://iiif-service/iiif/3/{POLICY}:{ASSET}/full/400,/0/default.jpg")
         );
 
@@ -318,7 +338,9 @@ mod tests {
         // A CIP-14 fingerprint has no colon, so it cannot be composed from
         // policy + name. Two call sites hold only this form.
         assert_eq!(
-            IiifUrl::from_identifier("asset1abcdefghijklmnop").custom_px(1200).build(),
+            IiifUrl::from_identifier("asset1abcdefghijklmnop")
+                .custom_px(1200)
+                .build(),
             "https://iiif.hodlcroft.com/iiif/3/asset1abcdefghijklmnop/full/1200,/0/default.jpg"
         );
         // And the two constructors agree where both apply.

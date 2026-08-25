@@ -31,8 +31,8 @@
 //! let op_id = conn.send(MyAction::Apply { placement_id })?;
 //! ```
 
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::rc::Rc;
 
 use crate::connection::{FlowConnection, FlowConnectionBuilder, FlowError, ReconnectConfig};

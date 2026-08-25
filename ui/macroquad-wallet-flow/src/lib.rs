@@ -10,7 +10,7 @@
 
 use macroquad::prelude::Vec2;
 use macroquad_widgets::{
-    wallet_connect, Painter, Theme, WalletAction, WalletConnectVm, WalletItem, WalletState,
+    Painter, Theme, WalletAction, WalletConnectVm, WalletItem, WalletState, wallet_connect,
 };
 use wallet_miniquad::{self as wallet, PollResult, ReqId};
 

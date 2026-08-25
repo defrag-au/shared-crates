@@ -4,8 +4,8 @@
 
 use wasm_bindgen::prelude::*;
 
-use crate::types::{DataSignature, WalletInfo, WalletProvider};
 use crate::WalletError;
+use crate::types::{DataSignature, WalletInfo, WalletProvider};
 
 // JavaScript bindings for wallet detection and connection
 #[wasm_bindgen(inline_js = r#"
