@@ -258,6 +258,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
+name = "asset-icc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "image 0.25.10",
+]
+
+[[package]]
 name = "asset-intents"
 version = "0.1.0"
 dependencies = [
@@ -5933,6 +5941,15 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "surface-mesh"
+version = "0.1.0"
+dependencies = [
+ "image 0.25.10",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "syn"

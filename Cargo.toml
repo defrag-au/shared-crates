@@ -58,6 +58,7 @@ members = [
     "procedural/*",
     "ai-media-gen",
     "pipeline/*",
+    "compositor/*",
 ]
 resolver = "2"
 

@@ -1,0 +1,16 @@
+[package]
+name = "surface-mesh"
+description = "Traced Catmull-Rom surface mesh + CPU decal warp/mask/composite, extracted from the hodlcroft compositor's mugz-mesh crate."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# Operates on in-memory RgbaImage only — no codecs needed.
+image = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

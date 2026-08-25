@@ -1,0 +1,14 @@
+[package]
+name = "asset-icc"
+description = "ICC-aware image loading: Display P3 (Procreate exports) converted to sRGB at decode."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow = "1"
+# The workspace image dep is default-features = false; decoding real asset
+# drops needs the raster codecs back on.
+image = { workspace = true, features = ["png", "jpeg", "webp"] }
