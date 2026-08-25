@@ -109,6 +109,8 @@ mod app {
         TokenMultiselect,
         TypeaheadSearch,
         RelationshipEditor,
+        CommandPalette,
+        EventWiring,
         NamedGroupList,
         RarityTargetEditor,
         PaletteEditor,
@@ -153,6 +155,8 @@ mod app {
                 Self::TokenMultiselect,
                 Self::TypeaheadSearch,
                 Self::RelationshipEditor,
+                Self::CommandPalette,
+                Self::EventWiring,
                 Self::NamedGroupList,
                 Self::RarityTargetEditor,
                 Self::PaletteEditor,
@@ -352,6 +356,8 @@ mod app {
                 Self::TokenMultiselect => "Token Multiselect",
                 Self::TypeaheadSearch => "Typeahead Search",
                 Self::RelationshipEditor => "Relationship Editor",
+                Self::CommandPalette => "Command Palette",
+                Self::EventWiring => "Event Wiring",
                 Self::NamedGroupList => "Named Group List",
                 Self::RarityTargetEditor => "Rarity Target Editor",
                 Self::PaletteEditor => "Palette Editor",
@@ -393,6 +399,8 @@ mod app {
                 | Self::TokenMultiselect
                 | Self::TypeaheadSearch
                 | Self::RelationshipEditor
+                | Self::CommandPalette
+                | Self::EventWiring
                 | Self::NamedGroupList
                 | Self::RarityTargetEditor
                 | Self::PaletteEditor
@@ -695,6 +703,12 @@ mod app {
                 Self::RelationshipEditor => {
                     "Directed source → target edges over an option set — variant_flow / dependencies / slot-locks (and the wires in the node-graph view)"
                 }
+                Self::CommandPalette => {
+                    "Modal ⌘K launcher — autofocused fuzzy search over the app's commands, enter dispatches, escape dismisses. Wraps TypeaheadSearch"
+                }
+                Self::EventWiring => {
+                    "One event node wired to its action cards — pattern chips fire it, the '+ action' port opens the palette. The gateway admin's IFTTT editor"
+                }
                 Self::NamedGroupList => {
                     "Named groups with member multiselects + an optional flag — exclusive groups / bundled sets / linked traits"
                 }
@@ -804,6 +818,8 @@ mod app {
         tag_list_state: stories::tag_list::TagListState,
         token_multiselect_state: stories::token_multiselect::TokenMultiselectState,
         relationship_editor_state: stories::relationship_editor::RelationshipEditorState,
+        command_palette_state: stories::command_palette::CommandPaletteState,
+        event_wiring_state: stories::event_wiring::EventWiringState,
         named_group_list_state: stories::named_group_list::NamedGroupListState,
         rarity_target_editor_state: stories::rarity_target_editor::RarityTargetEditorState,
         palette_editor_state: stories::palette_editor::PaletteEditorState,
@@ -915,6 +931,8 @@ mod app {
                 ),
                 relationship_editor_state:
                     stories::relationship_editor::RelationshipEditorState::default(),
+                command_palette_state: stories::command_palette::CommandPaletteState::default(),
+                event_wiring_state: stories::event_wiring::EventWiringState::default(),
                 named_group_list_state: stories::named_group_list::NamedGroupListState::default(),
                 rarity_target_editor_state:
                     stories::rarity_target_editor::RarityTargetEditorState::default(),
@@ -1289,6 +1307,14 @@ mod app {
                             Story::RelationshipEditor => stories::relationship_editor::show(
                                 ui,
                                 &mut self.relationship_editor_state,
+                            ),
+                            Story::CommandPalette => stories::command_palette::show(
+                                ui,
+                                &mut self.command_palette_state,
+                            ),
+                            Story::EventWiring => stories::event_wiring::show(
+                                ui,
+                                &mut self.event_wiring_state,
                             ),
                             Story::NamedGroupList => stories::named_group_list::show(
                                 ui,

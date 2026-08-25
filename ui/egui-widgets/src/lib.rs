@@ -16,9 +16,11 @@ pub mod chip;
 pub mod claim_card;
 pub mod collection_composition;
 pub mod collection_list;
+pub mod command_palette;
 pub mod distribution_waterfall;
 pub mod donut_chart;
 pub mod error_note;
+pub mod event_wiring;
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
 pub mod flip_counter;
@@ -160,6 +162,8 @@ pub use channel_bands::{
     assign_colors, fold_to_other, period_total,
 };
 pub use chip::{Chip, ChipResponse, ChipVariant};
+pub use command_palette::{CommandPalette, PaletteAction, PaletteState};
+pub use event_wiring::{ActionCardVm, EventNodeVm, EventWiring, EventWiringResponse};
 pub use claim_card::{
     ClaimCard, ClaimSupport, FalsifierStatus, unsourced_assertions, weakest_basis,
 };

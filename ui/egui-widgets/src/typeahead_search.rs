@@ -172,6 +172,10 @@ impl<'a> TypeaheadSearch<'a> {
 
     fn show_impl(self, ui: &mut Ui) -> TypeaheadResponse {
         let mut out = TypeaheadResponse::default();
+        // Row labels are click targets, not copyable data — selectable labels
+        // would put the cursor into text-select (I-beam, drag-highlights) and
+        // fight row clicks.
+        ui.style_mut().interaction.selectable_labels = false;
         // Tall enough for an icon + a two-line title/subtitle without the
         // subtitle clipping into the next row.
         let row_height = 46.0;
@@ -291,6 +295,12 @@ impl<'a> TypeaheadSearch<'a> {
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
+                        // No gap between rows: the viewport height is an exact
+                        // multiple of `row_height`, so whole rows always show
+                        // (no half-clipped last row), and there are no dead
+                        // strips between rows where a click hits nothing.
+                        // Rows carry their own inner padding.
+                        ui.spacing_mut().item_spacing.y = 0.0;
                         for (i, opt) in options.iter().enumerate() {
                             let resp = row(ui, i == *highlight, opt, row_height, accent);
                             // Hovering moves the highlight so mouse + keyboard

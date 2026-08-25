@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-103 widgets.
+105 widgets.
 
 | module | what it is |
 |---|---|
@@ -25,12 +25,14 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `claim_card` | `ClaimCard` — an assertion, what would refute it, and whether anyone has tried |
 | `collection_composition` | Collection composition — a promotable "how this collection is generated" infographic |
 | `collection_list` | Collection roster — the per-client collections list rendered on the admin portal dashboard |
+| `command_palette` | `CommandPalette` — a modal, keyboard-first action launcher over a caller-supplied command set |
 | `coverage_delta_bar` | Coverage delta bar — before/after progress bar for trait coverage |
 | `custody_walk` | `CustodyWalk` — where a specific sum came from, unit by unit |
 | `data_table` | Data table — dense row-based table with column headers, selection, and optional detail panel |
 | `distribution_waterfall` | `DistributionWaterfall` — how a buyer's payment flows down to what lands in each party's wallet under settle-as-you-mint |
 | `donut_chart` | `DistributionChart` — a donut of banded shares with a legend and hover tooltip, for "how is this split" questions |
 | `error_note` | `ErrorNote` — turns an ugly machine error string into a readable note |
+| `event_wiring` | `EventWiring` — one event-source node wired to its action cards, IFTTT made visible |
 | `exposure_bar` | Exposure bar — stacked horizontal bar showing total ADA exposure segmented by collateral token, colored by LTV risk |
 | `fee_report` | Fee report widget — displays per-side fee breakdown for a trade |
 | `file_upload` | File upload widget — opens a browser file picker and reads the selected file |

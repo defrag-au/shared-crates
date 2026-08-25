@@ -158,6 +158,13 @@ shape: builder → `.show(ui) -> Response { actions: Vec<…> }`.
 - **`wallet_asset_picker`** → `PickerAsset` + `PickerPolicyGroup` —
   Modal browser grouped by policy with multi-select summary bar.
   **Pick NFTs from wallet inventory.**
+- **`command_palette`** → `CommandPalette` + `PaletteState` — Modal ⌘K
+  launcher over caller-supplied commands; wraps `TypeaheadSearch` for the
+  list. **Keyboard-first app actions.**
+- **`event_wiring`** → `EventWiring` + `EventNodeVm`/`ActionCardVm` — One
+  event node (pattern chips) wired to action cards with drawn wires; the
+  small-scale exception to `flow_matrix`'s no-node-link rule. **IFTTT
+  binding editor (gateway admin).**
 
 ## Wallet / identity
 
