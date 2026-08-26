@@ -16,26 +16,49 @@
 
 use egui::{Align2, Key, KeyboardShortcut, Modifiers, Ui, Vec2};
 
+use crate::machine::Machine;
 use crate::theme;
 use crate::typeahead_search::{filter_options, TypeaheadOption, TypeaheadSearch};
 
-/// Caller-owned palette state, persisted across frames.
-#[derive(Default)]
+enum PalettePhase {
+    Closed,
+    Open,
+}
+
+/// Caller-owned palette state, persisted across frames. Open/closed rides a
+/// [`Machine`], whose entry framing suppresses dismissal on the frame the
+/// palette opened — the click that OPENED it is still in that frame's input
+/// and lands outside the not-yet-rendered window, which otherwise read as an
+/// instant self-dismiss ("the palette never appeared").
 pub struct PaletteState {
-    pub open: bool,
+    phase: Machine<PalettePhase>,
     pub query: String,
     pub highlight: usize,
 }
 
+impl Default for PaletteState {
+    fn default() -> Self {
+        Self {
+            phase: Machine::new(PalettePhase::Closed),
+            query: String::new(),
+            highlight: 0,
+        }
+    }
+}
+
 impl PaletteState {
     pub fn open(&mut self) {
-        self.open = true;
+        self.phase.transition(PalettePhase::Open);
         self.query.clear();
         self.highlight = 0;
     }
 
     pub fn close(&mut self) {
-        self.open = false;
+        self.phase.transition(PalettePhase::Closed);
+    }
+
+    pub fn is_open(&self) -> bool {
+        matches!(self.phase.get(), PalettePhase::Open)
     }
 }
 
@@ -94,18 +117,23 @@ impl<'a> CommandPalette<'a> {
         if self.keybinding {
             let chord = KeyboardShortcut::new(Modifiers::COMMAND, Key::K);
             if ctx.input_mut(|i| i.consume_shortcut(&chord)) {
-                if state.open {
+                if state.is_open() {
                     state.close();
                 } else {
                     state.open();
                 }
             }
         }
-        if !state.open {
+        if !state.is_open() {
+            state.phase.tick();
             return PaletteAction::None;
         }
-        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+        // Entry frame = the frame `open()` was called (show ticks at exit,
+        // so this holds however early or late in the frame the open happened).
+        let just_opened = state.phase.entered();
+        if !just_opened && ctx.input(|i| i.key_pressed(Key::Escape)) {
             state.close();
+            state.phase.tick();
             return PaletteAction::None;
         }
 
@@ -157,7 +185,9 @@ impl<'a> CommandPalette<'a> {
 
                 // Click-away dismissal: the window consumes its own clicks, so
                 // a primary click anywhere else while open closes the palette.
-                if ui.input(|i| i.pointer.any_click())
+                // Suppressed on the opening frame — see `just_opened`.
+                if !just_opened
+                    && ui.input(|i| i.pointer.any_click())
                     && !ui.rect_contains_pointer(ui.min_rect().expand(8.0))
                 {
                     dismissed = true;
@@ -169,6 +199,7 @@ impl<'a> CommandPalette<'a> {
         } else if dismissed {
             state.close();
         }
+        state.phase.tick();
         action
     }
 }

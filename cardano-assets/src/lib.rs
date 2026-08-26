@@ -1001,13 +1001,27 @@ impl Asset {
     pub fn get_full_id(id: &str, metadata_kind: &MetadataKind) -> String {
         match metadata_kind {
             MetadataKind::Cip68(nft_purpose) => {
-                format!(
-                    "{}{}",
-                    nft_purpose,
-                    Self::strip_metadata_prefix(id, metadata_kind)
-                )
+                // Strip ANY recognized CIP-67 label before applying the
+                // target one. The old code stripped only the TARGET kind's
+                // prefix, so converting a user token (`000de140…`) to its
+                // reference token prepended `000643b0` onto the still-labeled
+                // name — a double-labeled asset that exists nowhere (surfaced
+                // as IIIF 404s on every CIP-68 image lookup fed a labeled
+                // user-token name, which is what ownership bundles carry).
+                format!("{}{}", nft_purpose, Self::strip_any_cip67_prefix(id))
             }
             _ => id.to_string(),
+        }
+    }
+
+    /// Drop a leading CIP-67 asset-name label (any recognized purpose) if
+    /// present; bare names pass through untouched.
+    #[must_use]
+    pub fn strip_any_cip67_prefix(id: &str) -> String {
+        if id.len() >= 8 && NftPurpose::from(&id[..8]) != NftPurpose::Unknown {
+            id[8..].to_string()
+        } else {
+            id.to_string()
         }
     }
 
@@ -1789,6 +1803,18 @@ mod tests {
         assert_eq!(
             Asset::get_full_id(
                 "000643b04e696b65766572736533333638",
+                &MetadataKind::Cip68(NftPurpose::ReferenceNft)
+            ),
+            "000643b04e696b65766572736533333638"
+        );
+
+        // CROSS-kind conversion — the labels must SWAP, not stack. A user
+        // token converted for image lookup must become the reference token;
+        // the old prefix-strip only recognised the target kind's label, so
+        // this produced `000643b0000de140…` — an asset that exists nowhere.
+        assert_eq!(
+            Asset::get_full_id(
+                "000de1404e696b65766572736533333638",
                 &MetadataKind::Cip68(NftPurpose::ReferenceNft)
             ),
             "000643b04e696b65766572736533333638"

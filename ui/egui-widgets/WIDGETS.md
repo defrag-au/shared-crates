@@ -225,6 +225,11 @@ generalise them into other contexts.
 - **`icons`** → `PhosphorIcon` + `install_phosphor_font` — phosphor
   glyph helper. Call `install_phosphor_font(ctx)` once, then
   `PhosphorIcon::Gear.rich_text(size, colour)`.
+- **`machine`** → `Machine<S>` — plain-enum UI state with entry-frame
+  detection (`entered()`, kills `just_opened` flags) and frame-TTL
+  auto-revert (`transition_for`, kills `saved_flash` flags); in-flight
+  data lives in the variant (`Saving { op }`). Tick once per frame,
+  after rendering.
 - **`theme`** — shared dark-mode colour palette.
 - **`utils`** — `truncate_middle`, etc. *(Consider `IdPill` before
   hand-truncating.)*

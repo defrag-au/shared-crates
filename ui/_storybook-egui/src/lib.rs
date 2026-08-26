@@ -96,6 +96,7 @@ mod app {
         Chip,
         PartyBadge,
         FlowLedger,
+        ActivityFeed,
         ChannelBands,
         CustodyWalk,
         ClaimCard,
@@ -111,6 +112,7 @@ mod app {
         RelationshipEditor,
         CommandPalette,
         EventWiring,
+        UiMachine,
         NamedGroupList,
         RarityTargetEditor,
         PaletteEditor,
@@ -142,6 +144,7 @@ mod app {
                 Self::Chip,
                 Self::PartyBadge,
                 Self::FlowLedger,
+                Self::ActivityFeed,
                 Self::ChannelBands,
                 Self::CustodyWalk,
                 Self::ClaimCard,
@@ -157,6 +160,7 @@ mod app {
                 Self::RelationshipEditor,
                 Self::CommandPalette,
                 Self::EventWiring,
+                Self::UiMachine,
                 Self::NamedGroupList,
                 Self::RarityTargetEditor,
                 Self::PaletteEditor,
@@ -343,6 +347,7 @@ mod app {
                 Self::Chip => "Chip",
                 Self::PartyBadge => "Party Badge",
                 Self::FlowLedger => "Flow Ledger",
+                Self::ActivityFeed => "Activity Feed",
                 Self::ChannelBands => "Channel Bands",
                 Self::CustodyWalk => "Custody Walk",
                 Self::ClaimCard => "Claim Card",
@@ -358,6 +363,7 @@ mod app {
                 Self::RelationshipEditor => "Relationship Editor",
                 Self::CommandPalette => "Command Palette",
                 Self::EventWiring => "Event Wiring",
+                Self::UiMachine => "Machine",
                 Self::NamedGroupList => "Named Group List",
                 Self::RarityTargetEditor => "Rarity Target Editor",
                 Self::PaletteEditor => "Palette Editor",
@@ -386,6 +392,7 @@ mod app {
                 | Self::Chip
                 | Self::PartyBadge
                 | Self::FlowLedger
+                | Self::ActivityFeed
                 | Self::ChannelBands
                 | Self::CustodyWalk
                 | Self::ClaimCard
@@ -401,6 +408,7 @@ mod app {
                 | Self::RelationshipEditor
                 | Self::CommandPalette
                 | Self::EventWiring
+                | Self::UiMachine
                 | Self::NamedGroupList
                 | Self::RarityTargetEditor
                 | Self::PaletteEditor
@@ -664,6 +672,9 @@ mod app {
                 Self::FlowLedger => {
                     "A wallet's movements in time order — net amounts only, running balance, per-row channel colour, round trips muted, and a reconciliation footer that says DOES NOT RECONCILE rather than showing a plausible total"
                 }
+                Self::ActivityFeed => {
+                    "The account view of the same history: day-grouped cards, each naming its venue, its counterparty and THE ASSETS THAT MOVED — because \"+2 items\" hides whether a wallet got two junk airdrops or two of the collection it trades"
+                }
                 Self::CapitalFlow => {
                     "\"They raised X — watch where it went.\" Cumulative destination bands over a real time axis with a draggable playhead and play button; a labelled raise line the stack is free to CROSS, because deployment beyond the raise is a finding rather than an error to clamp"
                 }
@@ -708,6 +719,9 @@ mod app {
                 }
                 Self::EventWiring => {
                     "One event node wired to its action cards — pattern chips fire it, the '+ action' port opens the palette. The gateway admin's IFTTT editor"
+                }
+                Self::UiMachine => {
+                    "Plain-enum UI state with entry-frame detection + frame-TTL auto-revert — replaces the dirty/pending/flash boolean trio with one matchable state"
                 }
                 Self::NamedGroupList => {
                     "Named groups with member multiselects + an optional flag — exclusive groups / bundled sets / linked traits"
@@ -820,6 +834,7 @@ mod app {
         relationship_editor_state: stories::relationship_editor::RelationshipEditorState,
         command_palette_state: stories::command_palette::CommandPaletteState,
         event_wiring_state: stories::event_wiring::EventWiringState,
+        machine_state: stories::machine::MachineState,
         named_group_list_state: stories::named_group_list::NamedGroupListState,
         rarity_target_editor_state: stories::rarity_target_editor::RarityTargetEditorState,
         palette_editor_state: stories::palette_editor::PaletteEditorState,
@@ -933,6 +948,7 @@ mod app {
                     stories::relationship_editor::RelationshipEditorState::default(),
                 command_palette_state: stories::command_palette::CommandPaletteState::default(),
                 event_wiring_state: stories::event_wiring::EventWiringState::default(),
+                machine_state: stories::machine::MachineState::default(),
                 named_group_list_state: stories::named_group_list::NamedGroupListState::default(),
                 rarity_target_editor_state:
                     stories::rarity_target_editor::RarityTargetEditorState::default(),
@@ -1275,6 +1291,7 @@ mod app {
                             Story::Chip => stories::chip::show(ui),
                             Story::PartyBadge => stories::party_badge::show(ui),
                             Story::FlowLedger => stories::flow_ledger::show(ui),
+                            Story::ActivityFeed => stories::activity_feed::show(ui),
                             Story::ChannelBands => stories::channel_bands::show(ui),
                             Story::CustodyWalk => stories::custody_walk::show(ui),
                             Story::CapitalFlow => {
@@ -1315,6 +1332,10 @@ mod app {
                             Story::EventWiring => stories::event_wiring::show(
                                 ui,
                                 &mut self.event_wiring_state,
+                            ),
+                            Story::UiMachine => stories::machine::show(
+                                ui,
+                                &mut self.machine_state,
                             ),
                             Story::NamedGroupList => stories::named_group_list::show(
                                 ui,

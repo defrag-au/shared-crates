@@ -2,6 +2,7 @@
 pub use egui_inbox;
 
 pub mod access_gate;
+pub mod activity_feed;
 pub mod activity_lanes;
 pub mod animated_counter;
 pub mod arrival_field;
@@ -40,6 +41,7 @@ pub mod id_pill;
 pub mod image_loader;
 pub mod leaderboard;
 pub mod listing_grid;
+pub mod machine;
 pub mod marquee;
 pub mod metric_card;
 pub mod mint_arrivals;
@@ -161,6 +163,9 @@ pub use channel_bands::{
     CHANNEL_PALETTE, ChannelBands, ChannelBandsResponse, ChannelSeries, OTHER_COLOR, OTHER_LABEL,
     assign_colors, fold_to_other, period_total,
 };
+pub use activity_feed::{
+    ActivityAsset, ActivityEntry, ActivityFeed, ActivityFeedResponse, ActivityTag,
+};
 pub use chip::{Chip, ChipResponse, ChipVariant};
 pub use command_palette::{CommandPalette, PaletteAction, PaletteState};
 pub use event_wiring::{ActionCardVm, EventNodeVm, EventWiring, EventWiringResponse};
@@ -206,6 +211,7 @@ pub use image_text_editor::{
     FontChoice, ImageTextEditor, TextEffect, TextOverlay, TextOverlayAnchor,
 };
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
+pub use machine::Machine;
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
 pub use mint_arrivals::{Arrival, MintArrivals, peak_pile, pile_offset, piles_at};

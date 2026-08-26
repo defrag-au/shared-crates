@@ -5,11 +5,12 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-105 widgets.
+107 widgets.
 
 | module | what it is |
 |---|---|
 | `access_gate` | `AccessGate` — the app-level access screen: a "sign in" prompt for anonymous visitors and a "requirements" screen (what to join to gain access) for signed-in-but-unqualified users |
+| `activity_feed` | `ActivityFeed` — a wallet's transactions as day-grouped cards: what it was, who it was with, what moved, and what it cost |
 | `activity_lanes` | `ActivityLanes` — one thin lane per party, showing WHEN it acted, under the shared spine |
 | `amount_input` | ADA amount input widget with preset buttons and validation |
 | `animated_counter` | AnimatedCounter — smoothly interpolates a numeric value between snapshots |
@@ -52,6 +53,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `leaderboard` | `Leaderboard` — ranked standings: podium-tinted ranks, an optional prize thumbnail, one headline metric, supporting stats, and a share bar |
 | `leaderboard_table` | `LeaderboardTable` — a dense, virtual-scrolled ranked table |
 | `listing_grid` | `ListingGrid` — a responsive grid of marketplace listing cards, each with a lazily-loaded image, price and trailing badges |
+| `machine` | `Machine` — plain-enum UI state with entry-frame detection and frame-TTL auto-revert |
 | `managed_wallet_utxos` | Managed-wallet UTxO breakdown — a structured, role-aware view of a custodial wallet's on-chain UTxOs |
 | `marquee` | Scrolling marquee ticker widget |
 | `metric_card` | MetricCard — a dashboard stat card with label, value, optional trend, and sparkline |

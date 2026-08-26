@@ -12,6 +12,12 @@
 //! VMs per frame; the widget reports what the user did this frame in
 //! [`EventWiringResponse`] and holds no model state (the pattern-input draft
 //! rides egui temp memory, keyed by `id_salt`).
+//!
+//! Action config expands IN the card ([`EventWiring::expanded`] — the caller
+//! supplies the fields as a closure, and the card widens to hold them). The
+//! inflection rule: config that fits a widened card stays inline in the
+//! flow; anything bigger pushes to a centred `egui::Modal` rather than
+//! growing the card until the flow stops reading as a flow.
 
 use egui::{Color32, CursorIcon, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
@@ -68,10 +74,19 @@ pub struct EventWiring<'a> {
     id_salt: &'a str,
     event: &'a EventNodeVm,
     actions: &'a [ActionCardVm],
+    /// An action card expanded in place, with caller-rendered content (the
+    /// action's config fields — app domain, so it arrives as a closure).
+    expanded: Option<usize>,
+    expanded_content: Option<Box<dyn FnOnce(&mut Ui) + 'a>>,
 }
 
 const NODE_WIDTH: f32 = 230.0;
 const CARD_WIDTH: f32 = 240.0;
+/// An expanded card gets room for real fields (a 56-hex policy id, a style
+/// picker). This is the "inline" side of the inflection point — anything
+/// that doesn't fit here should push to an `egui::Modal` instead of growing
+/// the card further.
+const EXPANDED_CARD_WIDTH: f32 = 380.0;
 const WIRE_GAP: f32 = 56.0;
 const PORT_RADIUS: f32 = 4.0;
 
@@ -81,7 +96,18 @@ impl<'a> EventWiring<'a> {
             id_salt,
             event,
             actions,
+            expanded: None,
+            expanded_content: None,
         }
+    }
+
+    /// Expand the action card at `index` in place, rendering `content`
+    /// (its config UI) inside the card body. The card widens to
+    /// [`EXPANDED_CARD_WIDTH`]; wires follow.
+    pub fn expanded(mut self, index: usize, content: impl FnOnce(&mut Ui) + 'a) -> Self {
+        self.expanded = Some(index);
+        self.expanded_content = Some(Box::new(content));
+        self
     }
 
     pub fn show(self, ui: &mut Ui) -> EventWiringResponse {
@@ -155,13 +181,18 @@ impl<'a> EventWiring<'a> {
                             .hint_text("add pattern…")
                             .desired_width(f32::INFINITY),
                     );
-                    if edit.lost_focus()
-                        && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                        && !draft.trim().is_empty()
-                    {
+                    // Commit on ANY focus loss with text — not just Enter.
+                    // Requiring Enter left "type a pattern, click Save" with
+                    // an empty pattern list and a confusing rejection: the
+                    // text LOOKED entered but was still a draft.
+                    if edit.lost_focus() && !draft.trim().is_empty() {
                         response.pattern_added = Some(draft.trim().to_string());
                         draft.clear();
-                        edit.request_focus();
+                        // Only chain focus when Enter committed (rapid entry);
+                        // a click-away is the user leaving the field.
+                        if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            edit.request_focus();
+                        }
                     }
                     ui.ctx().data_mut(|d| d.insert_temp(draft_id, draft));
 
@@ -197,14 +228,34 @@ impl<'a> EventWiring<'a> {
             ui.add_space(WIRE_GAP);
 
             // ── Action cards ──────────────────────────────────────────────
+            let column_width = if self.expanded.is_some() {
+                EXPANDED_CARD_WIDTH
+            } else {
+                CARD_WIDTH
+            };
+            let mut expanded_content = self.expanded_content;
             ui.vertical(|ui| {
-                ui.set_width(CARD_WIDTH);
+                ui.set_width(column_width);
                 for (index, action) in self.actions.iter().enumerate() {
+                    let is_expanded = self.expanded == Some(index);
+                    let card_width = if is_expanded {
+                        EXPANDED_CARD_WIDTH
+                    } else {
+                        CARD_WIDTH
+                    };
                     let frame = egui::Frame::group(ui.style())
                         .fill(tint(theme::BG_HIGHLIGHT))
-                        .stroke(Stroke::new(1.0_f32,tint(theme::BORDER)))
+                        .stroke(Stroke::new(
+                            1.0_f32,
+                            if is_expanded {
+                                tint(theme::ACCENT_CYAN)
+                            } else {
+                                tint(theme::BORDER)
+                            },
+                        ))
                         .inner_margin(8.0);
                     let card = frame.show(ui, |ui| {
+                        ui.set_width(card_width - 16.0);
                         ui.horizontal(|ui| {
                             action.icon.show(ui, 14.0, tint(theme::ACCENT_CYAN));
                             ui.vertical(|ui| {
@@ -231,16 +282,27 @@ impl<'a> EventWiring<'a> {
                                     if icon_button(ui, PhosphorIcon::X, "remove action") {
                                         response.action_removed = Some(index);
                                     }
-                                    if icon_button(
-                                        ui,
-                                        PhosphorIcon::PencilSimple,
-                                        "configure action",
-                                    ) {
+                                    let toggle_icon = if is_expanded {
+                                        PhosphorIcon::CaretDown
+                                    } else {
+                                        PhosphorIcon::PencilSimple
+                                    };
+                                    if icon_button(ui, toggle_icon, "configure action") {
                                         response.action_clicked = Some(index);
                                     }
                                 },
                             );
                         });
+                        // The in-card config expansion — the caller's fields,
+                        // rendered inside the card so the flow stays the view.
+                        if is_expanded {
+                            if let Some(content) = expanded_content.take() {
+                                ui.add_space(6.0);
+                                ui.separator();
+                                ui.add_space(4.0);
+                                content(ui);
+                            }
+                        }
                     });
                     let rect = card.response.rect;
                     action_ports.push(Pos2::new(rect.left(), rect.center().y));
@@ -248,8 +310,10 @@ impl<'a> EventWiring<'a> {
                 }
 
                 // The add-action port — a dashed card inviting the palette.
+                // Generous hit target + hover fill: this is the editor's main
+                // growth affordance, it must not feel touchy.
                 let (rect, add) = ui.allocate_exact_size(
-                    Vec2::new(CARD_WIDTH, 30.0),
+                    Vec2::new(CARD_WIDTH, 36.0),
                     Sense::click(),
                 );
                 let hover = add.hovered();
@@ -258,7 +322,10 @@ impl<'a> EventWiring<'a> {
                 } else {
                     tint(theme::TEXT_MUTED)
                 };
-                dashed_rect(ui, rect, Stroke::new(1.0_f32,stroke_color));
+                if hover {
+                    ui.painter().rect_filled(rect, 4.0, theme::BG_HIGHLIGHT);
+                }
+                dashed_rect(ui, rect, Stroke::new(1.0_f32, stroke_color));
                 let painter = ui.painter();
                 painter.text(
                     rect.center(),
