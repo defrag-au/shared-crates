@@ -18,7 +18,7 @@ use egui::{Align2, Key, KeyboardShortcut, Modifiers, Ui, Vec2};
 
 use crate::machine::Machine;
 use crate::theme;
-use crate::typeahead_search::{filter_options, TypeaheadOption, TypeaheadSearch};
+use crate::typeahead_search::{TypeaheadOption, TypeaheadSearch, filter_options};
 
 enum PalettePhase {
     Closed,

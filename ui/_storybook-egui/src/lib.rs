@@ -1325,18 +1325,13 @@ mod app {
                                 ui,
                                 &mut self.relationship_editor_state,
                             ),
-                            Story::CommandPalette => stories::command_palette::show(
-                                ui,
-                                &mut self.command_palette_state,
-                            ),
-                            Story::EventWiring => stories::event_wiring::show(
-                                ui,
-                                &mut self.event_wiring_state,
-                            ),
-                            Story::UiMachine => stories::machine::show(
-                                ui,
-                                &mut self.machine_state,
-                            ),
+                            Story::CommandPalette => {
+                                stories::command_palette::show(ui, &mut self.command_palette_state)
+                            }
+                            Story::EventWiring => {
+                                stories::event_wiring::show(ui, &mut self.event_wiring_state)
+                            }
+                            Story::UiMachine => stories::machine::show(ui, &mut self.machine_state),
                             Story::NamedGroupList => stories::named_group_list::show(
                                 ui,
                                 &mut self.named_group_list_state,

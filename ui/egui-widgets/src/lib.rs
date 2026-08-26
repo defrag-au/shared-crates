@@ -147,6 +147,9 @@ pub mod utxo_shelf;
 #[cfg(feature = "cardano")]
 pub mod wallet_asset_picker;
 
+pub use activity_feed::{
+    ActivityAsset, ActivityEntry, ActivityFeed, ActivityFeedResponse, ActivityTag,
+};
 pub use activity_lanes::{ActivityLanes, ActivityLanesResponse, Lane};
 pub use animated_counter::AnimatedCounter;
 pub use arrival_field::{ArrivalField, ArrivalFieldResponse};
@@ -163,12 +166,7 @@ pub use channel_bands::{
     CHANNEL_PALETTE, ChannelBands, ChannelBandsResponse, ChannelSeries, OTHER_COLOR, OTHER_LABEL,
     assign_colors, fold_to_other, period_total,
 };
-pub use activity_feed::{
-    ActivityAsset, ActivityEntry, ActivityFeed, ActivityFeedResponse, ActivityTag,
-};
 pub use chip::{Chip, ChipResponse, ChipVariant};
-pub use command_palette::{CommandPalette, PaletteAction, PaletteState};
-pub use event_wiring::{ActionCardVm, EventNodeVm, EventWiring, EventWiringResponse};
 pub use claim_card::{
     ClaimCard, ClaimSupport, FalsifierStatus, unsourced_assertions, weakest_basis,
 };
@@ -176,6 +174,7 @@ pub use collection_list::{
     CollectionControl, CollectionControls, CollectionList, CollectionListAction,
     CollectionListLayout, CollectionListResponse, CollectionRow,
 };
+pub use command_palette::{CommandPalette, PaletteAction, PaletteState};
 pub use custody_walk::{
     CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode, WalkNodeKind, WalkSummary,
     summarize as summarize_walk,
@@ -185,6 +184,7 @@ pub use donut_chart::{
     DistBand, DistributionChart, format_value as format_chart_value, legend_row,
 };
 pub use error_note::{ErrorNote, ErrorSummary, pretty_json, summarize_error};
+pub use event_wiring::{ActionCardVm, EventNodeVm, EventWiring, EventWiringResponse};
 #[cfg(target_arch = "wasm32")]
 pub use file_upload::{FileUploadButton, UploadedFile};
 pub use flip_counter::FlipCounter;

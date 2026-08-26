@@ -44,17 +44,28 @@ pub fn show(ui: &mut egui::Ui, state: &mut MachineState) {
             state.save.transition(DemoSave::Dirty);
         }
         let can_send = matches!(state.save.get(), DemoSave::Dirty);
-        if ui.add_enabled(can_send, egui::Button::new("save")).clicked() {
+        if ui
+            .add_enabled(can_send, egui::Button::new("save"))
+            .clicked()
+        {
             let op = state.next_op;
             state.next_op += 1;
             state.save.transition(DemoSave::Saving { op });
         }
         let in_flight = matches!(state.save.get(), DemoSave::Saving { .. });
-        if ui.add_enabled(in_flight, egui::Button::new("ack")).clicked() {
+        if ui
+            .add_enabled(in_flight, egui::Button::new("ack"))
+            .clicked()
+        {
             // ~2s flash, then back to Clean by itself.
-            state.save.transition_for(DemoSave::Saved, 120, DemoSave::Clean);
+            state
+                .save
+                .transition_for(DemoSave::Saved, 120, DemoSave::Clean);
         }
-        if ui.add_enabled(in_flight, egui::Button::new("fail")).clicked() {
+        if ui
+            .add_enabled(in_flight, egui::Button::new("fail"))
+            .clicked()
+        {
             state.save.transition(DemoSave::Dirty);
         }
     });

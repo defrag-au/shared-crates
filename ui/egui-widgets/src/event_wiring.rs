@@ -129,7 +129,7 @@ impl<'a> EventWiring<'a> {
                 ui.set_width(NODE_WIDTH);
                 let frame = egui::Frame::group(ui.style())
                     .fill(tint(theme::BG_SECONDARY))
-                    .stroke(Stroke::new(1.0_f32,tint(theme::ACCENT)))
+                    .stroke(Stroke::new(1.0_f32, tint(theme::ACCENT)))
                     .inner_margin(10.0);
                 let node = frame.show(ui, |ui| {
                     ui.horizontal(|ui| {
@@ -139,18 +139,15 @@ impl<'a> EventWiring<'a> {
                                 .color(tint(theme::TEXT_PRIMARY))
                                 .strong(),
                         );
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center),
-                            |ui| {
-                                if icon_button(ui, PhosphorIcon::Trash, "remove binding") {
-                                    response.remove_clicked = true;
-                                }
-                                let mut enabled = self.event.enabled;
-                                if ui.checkbox(&mut enabled, "").changed() {
-                                    response.enabled_toggled = true;
-                                }
-                            },
-                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if icon_button(ui, PhosphorIcon::Trash, "remove binding") {
+                                response.remove_clicked = true;
+                            }
+                            let mut enabled = self.event.enabled;
+                            if ui.checkbox(&mut enabled, "").changed() {
+                                response.enabled_toggled = true;
+                            }
+                        });
                     });
                     ui.add_space(6.0);
                     ui.label(
@@ -215,9 +212,7 @@ impl<'a> EventWiring<'a> {
                             response.cooldown_set = Some(secs);
                         }
                         if self.event.cooldown_seconds.is_none() {
-                            ui.label(
-                                RichText::new("off").color(tint(theme::TEXT_MUTED)).small(),
-                            );
+                            ui.label(RichText::new("off").color(tint(theme::TEXT_MUTED)).small());
                         }
                     });
                 });
@@ -312,10 +307,8 @@ impl<'a> EventWiring<'a> {
                 // The add-action port — a dashed card inviting the palette.
                 // Generous hit target + hover fill: this is the editor's main
                 // growth affordance, it must not feel touchy.
-                let (rect, add) = ui.allocate_exact_size(
-                    Vec2::new(CARD_WIDTH, 36.0),
-                    Sense::click(),
-                );
+                let (rect, add) =
+                    ui.allocate_exact_size(Vec2::new(CARD_WIDTH, 36.0), Sense::click());
                 let hover = add.hovered();
                 let stroke_color = if hover {
                     theme::ACCENT

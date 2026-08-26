@@ -143,7 +143,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut EventWiringState) {
                 "render" => state.actions.push(StoryAction::Render {
                     policy: "guild default".into(),
                 }),
-                "react" => state.actions.push(StoryAction::React { emoji: "⚓".into() }),
+                "react" => state.actions.push(StoryAction::React {
+                    emoji: "⚓".into()
+                }),
                 _ => {}
             }
             state.last = format!("added via palette: {id}");

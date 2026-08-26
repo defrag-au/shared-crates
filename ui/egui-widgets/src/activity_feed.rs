@@ -251,29 +251,24 @@ impl<'a> ActivityFeed<'a> {
                     // Right: what it cost.
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                         ui.vertical(|ui| {
-                            ui.with_layout(
-                                egui::Layout::top_down(egui::Align::RIGHT),
-                                |ui| {
-                                    let color = if entry.amount >= 0 {
-                                        theme::SUCCESS
-                                    } else {
-                                        theme::ACCENT_ORANGE
-                                    };
+                            ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
+                                let color = if entry.amount >= 0 {
+                                    theme::SUCCESS
+                                } else {
+                                    theme::ACCENT_ORANGE
+                                };
+                                ui.label(
+                                    RichText::new((self.format_amount)(entry.amount))
+                                        .color(color)
+                                        .monospace()
+                                        .strong(),
+                                );
+                                if let Some(second) = &entry.secondary {
                                     ui.label(
-                                        RichText::new((self.format_amount)(entry.amount))
-                                            .color(color)
-                                            .monospace()
-                                            .strong(),
+                                        RichText::new(second).color(theme::TEXT_MUTED).small(),
                                     );
-                                    if let Some(second) = &entry.secondary {
-                                        ui.label(
-                                            RichText::new(second)
-                                                .color(theme::TEXT_MUTED)
-                                                .small(),
-                                        );
-                                    }
-                                },
-                            );
+                                }
+                            });
                         });
                     });
                 });
@@ -348,14 +343,31 @@ fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>) {
                 );
                 // Quantity is a signed badge, not a bare number: on a card the
                 // direction belongs to the thing that moved.
-                let qty = if asset.quantity.abs() == 1 && arrived {
-                    "+1".to_string()
-                } else {
-                    format!("{:+}", asset.quantity)
-                };
-                ui.label(RichText::new(qty).color(tint).small().strong());
+                ui.label(
+                    RichText::new(signed_quantity(asset.quantity))
+                        .color(tint)
+                        .small()
+                        .strong(),
+                );
             });
         });
+}
+
+/// Signed quantity with digit grouping. A fungible move is routinely six or
+/// more digits, and `-420000` is a number the reader has to count on screen;
+/// `-420,000` is one they can read.
+fn signed_quantity(quantity: i64) -> String {
+    let sign = if quantity < 0 { '-' } else { '+' };
+    let digits = quantity.unsigned_abs().to_string();
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3 + 1);
+    grouped.push(sign);
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            grouped.push(',');
+        }
+        grouped.push(c);
+    }
+    grouped
 }
 
 /// Thumbnail stand-in: a tinted disc carrying the label's first character, so
@@ -429,6 +441,15 @@ mod tests {
         assert_eq!(friendly_day("2026-01-01"), "January 1, 2026");
         // Malformed input degrades to the raw string rather than panicking.
         assert_eq!(friendly_day("nonsense"), "nonsense");
+    }
+
+    #[test]
+    fn quantities_group_and_keep_their_sign() {
+        assert_eq!(signed_quantity(1), "+1");
+        assert_eq!(signed_quantity(-420_000), "-420,000");
+        assert_eq!(signed_quantity(1_250), "+1,250");
+        assert_eq!(signed_quantity(999), "+999");
+        assert_eq!(signed_quantity(1_000_000), "+1,000,000");
     }
 
     #[test]
