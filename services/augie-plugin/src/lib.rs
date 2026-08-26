@@ -8,12 +8,14 @@
 //!
 //! | Endpoint | Direction | Purpose |
 //! |----------|-----------|---------|
-//! | `GET /_augie/manifest` | Augie → plugin | Advertise commands ([`ServiceManifest`]) |
+//! | `GET /_augie/manifest` | Augie → plugin | Advertise commands and tools ([`ServiceManifest`]) |
 //! | `POST /_augie/command` | Augie → plugin | Invoke a command ([`CommandInvocation`] → [`CommandResponse`]) |
 //! | `POST /_augie/component` | Augie → plugin | Button / select callback ([`ComponentInvocation`] → [`CommandResponse`]) |
+//! | `POST /_augie/tool` | Augie → plugin | Run a tool for an agent ([`ToolInvocation`] → [`ToolResponse`]) |
 //!
 //! Only the first two are required. A plugin that never returns components
-//! never receives component callbacks.
+//! never receives component callbacks, and one that advertises no
+//! [`PluginTool`]s is never routed to by an agent.
 //!
 //! ## Why this crate carries no Discord types
 //!
@@ -24,10 +26,11 @@
 //! repo through a twilight migration, and mixing majors produces the
 //! duplicate-crate type mismatches this workspace has been bitten by before.
 //!
-//! So the protocol defines its own minimal, `serde`-only vocabulary
-//! ([`PluginEmbed`], [`PluginComponent`], …) and each host converts at its own
-//! edge. The crate depends on `serde` and nothing else, which also keeps it
-//! trivially WASM-safe.
+//! So the protocol defines its own minimal vocabulary ([`PluginEmbed`],
+//! [`PluginComponent`], …) and each host converts at its own edge. The crate
+//! depends on `serde` and `serde_json` and nothing else — the latter only
+//! because a [`PluginTool`]'s schema and a [`ToolInvocation`]'s arguments are
+//! genuinely free-form JSON — which keeps it trivially WASM-safe.
 //!
 //! ## Snowflakes are strings
 //!
@@ -40,11 +43,13 @@ mod address;
 mod invocation;
 mod manifest;
 mod response;
+mod tool;
 
 pub use address::*;
 pub use invocation::*;
 pub use manifest::*;
 pub use response::*;
+pub use tool::*;
 
 /// Path Augie fetches to discover a plugin's command surface.
 pub const MANIFEST_PATH: &str = "/_augie/manifest";
@@ -52,6 +57,8 @@ pub const MANIFEST_PATH: &str = "/_augie/manifest";
 pub const COMMAND_PATH: &str = "/_augie/command";
 /// Path Augie posts a [`ComponentInvocation`] to.
 pub const COMPONENT_PATH: &str = "/_augie/component";
+/// Path Augie posts a [`ToolInvocation`] to, on an agent's behalf.
+pub const TOOL_PATH: &str = "/_augie/tool";
 
 /// Path a *plugin* posts a [`RefreshMessage`] to — the one direction that runs
 /// plugin → Augie rather than the other way.

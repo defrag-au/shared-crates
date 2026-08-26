@@ -7,9 +7,10 @@ description = "Wire protocol for services that advertise Discord commands to the
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
+# A tool's parameter schema and an invocation's arguments are genuinely
+# free-form JSON — they are whatever the tool declares. Everything else on this
+# wire stays typed.
+serde_json = { workspace = true }
 # A plugin describes a graphic it wants; the HOST renders it. See
 # `CommandResponse::render` for why the plugin cannot do this itself.
 render-protocol = { path = "../render-protocol" }
-
-[dev-dependencies]
-serde_json = { workspace = true }
