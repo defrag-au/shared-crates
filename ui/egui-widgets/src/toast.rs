@@ -307,8 +307,7 @@ impl ToastQueue {
 
     /// Drop a keyed toast — the work finished quietly or was cancelled.
     pub fn dismiss(&mut self, key: &str) {
-        self.toasts
-            .retain(|t| t.key.as_deref() != Some(key));
+        self.toasts.retain(|t| t.key.as_deref() != Some(key));
     }
 
     /// Replace a keyed toast with its outcome, so the running notice becomes
@@ -322,7 +321,8 @@ impl ToastQueue {
         // A keyed push is an update, not an addition.
         if let Some(key) = toast.key.as_deref() {
             let key = key.to_string();
-            self.toasts.retain(|t| t.key.as_deref() != Some(key.as_str()));
+            self.toasts
+                .retain(|t| t.key.as_deref() != Some(key.as_str()));
         }
         self.toasts.push_back(toast);
         while self.toasts.len() > self.max_visible {

@@ -246,6 +246,36 @@ impl HandleResolver {
         self.dirty = true;
     }
 
+    /// Every key the resolver has been asked about, settled or not — the
+    /// denominator for a progress readout.
+    pub fn total(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Keys with a final answer: named, confirmed nameless, or given up on.
+    /// Abandoned counts as settled — no more work will happen on it, and a
+    /// progress bar that never reaches its end because of a dead endpoint is
+    /// worse than one that completes honestly.
+    pub fn settled(&self) -> usize {
+        self.entries
+            .values()
+            .filter(|e| matches!(e, Entry::Named(_) | Entry::Nameless | Entry::Abandoned))
+            .count()
+    }
+
+    /// Is there outstanding work?
+    pub fn working(&self) -> bool {
+        !self.queue.is_empty() || self.in_flight() > 0
+    }
+
+    /// Settled fraction in `0.0..=1.0`, or `None` when nothing was ever
+    /// asked for — a progress bar over an empty set is a lie either way it
+    /// is drawn.
+    pub fn progress(&self) -> Option<f32> {
+        let total = self.total();
+        (total > 0).then(|| self.settled() as f32 / total as f32)
+    }
+
     /// Keys waiting to be sent.
     pub fn queued(&self) -> usize {
         self.queue.len()
@@ -406,6 +436,44 @@ mod tests {
         r.apply(&batch, found(&[("stake1a", "$alice")]));
         assert!(r.take_dirty(), "a resolution is worth a repaint");
         assert!(!r.take_dirty(), "and only once");
+    }
+
+    #[test]
+    fn progress_counts_every_settled_outcome() {
+        let mut r = HandleResolver::new().with_batch_size(2);
+        for k in ["a", "b", "c", "d"] {
+            r.want(k);
+        }
+        assert_eq!(r.progress(), Some(0.0));
+        assert!(r.working());
+
+        let first = r.next_batch().expect("first");
+        r.apply(&first, found(&[("a", "$a")]));
+        // Both settled: one named, one confirmed nameless.
+        assert_eq!(r.settled(), 2);
+        assert_eq!(r.progress(), Some(0.5));
+
+        let second = r.next_batch().expect("second");
+        r.apply(&second, HashMap::new());
+        assert_eq!(r.progress(), Some(1.0));
+        assert!(!r.working(), "nothing queued and nothing in flight");
+    }
+
+    /// A progress readout that can never complete is worse than one that
+    /// completes honestly, so giving up counts as settled.
+    #[test]
+    fn abandoned_keys_still_complete_the_progress() {
+        let mut r = HandleResolver::new().with_max_attempts(1);
+        r.want("a");
+        let batch = r.next_batch().expect("batch");
+        r.fail(&batch);
+        assert_eq!(r.progress(), Some(1.0));
+        assert!(!r.working());
+    }
+
+    #[test]
+    fn progress_is_none_when_nothing_was_asked() {
+        assert_eq!(HandleResolver::new().progress(), None);
     }
 
     #[test]

@@ -94,6 +94,7 @@ mod app {
         CollectionList,
         // Mint configuration
         ThemeStates,
+        BackgroundToasts,
         Chip,
         PartyBadge,
         FlowLedger,
@@ -143,6 +144,7 @@ mod app {
                 Self::Marquee,
                 Self::Buttons,
                 Self::ThemeStates,
+                Self::BackgroundToasts,
                 Self::Chip,
                 Self::PartyBadge,
                 Self::FlowLedger,
@@ -347,6 +349,7 @@ mod app {
                 Self::WalletList => "Wallet List",
                 Self::CollectionList => "Collection List",
                 Self::ThemeStates => "Theme States",
+                Self::BackgroundToasts => "Background Toasts",
                 Self::Chip => "Chip",
                 Self::PartyBadge => "Party Badge",
                 Self::FlowLedger => "Flow Ledger",
@@ -393,6 +396,7 @@ mod app {
                 | Self::Marquee
                 | Self::Buttons
                 | Self::ThemeStates
+                | Self::BackgroundToasts
                 | Self::Chip
                 | Self::PartyBadge
                 | Self::FlowLedger
@@ -666,6 +670,9 @@ mod app {
                 }
                 Self::CollectionList => {
                     "Per-client collections list — title, status/standard/network chips, supply progress, policy_id copy, Test mint / Seed stubs actions"
+                }
+                Self::BackgroundToasts => {
+                    "Declare which background jobs are running; the toasts follow. Owns the settle delay (quick work finishes silently), the quiet dismissal (finishing is not news) and the repaint scheduling that makes the delay mean something on an idle surface"
                 }
                 Self::ThemeStates => {
                     "TEMPLATE for contrast bugs — interaction states (selected / hovered / active / disabled) drawn on every surface, plus the translucent selection wash. Resting-state stories cannot show these; mirrored numerically by tests/contrast.rs"
@@ -1296,6 +1303,7 @@ mod app {
                                 stories::collection_list::show(ui, &mut self.collection_list_state)
                             }
                             Story::ThemeStates => stories::theme_states::show(ui),
+                            Story::BackgroundToasts => stories::background::show(ui),
                             Story::Chip => stories::chip::show(ui),
                             Story::PartyBadge => stories::party_badge::show(ui),
                             Story::FlowLedger => stories::flow_ledger::show(ui),

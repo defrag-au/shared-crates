@@ -2,6 +2,7 @@ pub mod access_gate;
 pub mod activity_feed;
 pub mod asset_card;
 pub mod async_data;
+pub mod background;
 pub mod bullet_bar;
 pub mod buttons;
 pub mod capital_flow;
@@ -101,10 +102,10 @@ pub mod tx_cart;
 pub mod button_group;
 pub mod channel_bands;
 pub mod chip;
-pub mod theme_states;
 pub mod claim_card;
 pub mod id_pill;
 pub mod property_list;
+pub mod theme_states;
 pub mod toast;
 
 // Layout

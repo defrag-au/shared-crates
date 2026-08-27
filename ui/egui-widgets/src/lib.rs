@@ -7,6 +7,7 @@ pub mod activity_lanes;
 pub mod animated_counter;
 pub mod arrival_field;
 pub mod asset_card;
+pub mod background;
 pub mod bullet_bar;
 pub mod button_group;
 pub mod buttons;

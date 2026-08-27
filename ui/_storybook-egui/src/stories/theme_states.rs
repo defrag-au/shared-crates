@@ -73,8 +73,18 @@ pub fn show(ui: &mut egui::Ui) {
                 // Hover and active can't be forced from here, so paint the
                 // fills directly beside a label of the text colour they carry.
                 let v = ui.visuals().clone();
-                swatch(ui, "hovered", v.widgets.hovered.bg_fill, v.widgets.hovered.fg_stroke);
-                swatch(ui, "active", v.widgets.active.bg_fill, v.widgets.active.fg_stroke);
+                swatch(
+                    ui,
+                    "hovered",
+                    v.widgets.hovered.bg_fill,
+                    v.widgets.hovered.fg_stroke,
+                );
+                swatch(
+                    ui,
+                    "active",
+                    v.widgets.active.bg_fill,
+                    v.widgets.active.fg_stroke,
+                );
             });
         });
     }
@@ -97,7 +107,8 @@ pub fn show(ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         for (name, surface) in SURFACES {
             ui.vertical(|ui| {
-                let (rect, _) = ui.allocate_exact_size(egui::vec2(150.0, 34.0), egui::Sense::hover());
+                let (rect, _) =
+                    ui.allocate_exact_size(egui::vec2(150.0, 34.0), egui::Sense::hover());
                 ui.painter().rect_filled(rect, 4.0, surface);
                 ui.painter().rect_filled(rect, 4.0, sel.bg_fill);
                 ui.painter().text(

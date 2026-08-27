@@ -102,9 +102,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
             );
         }
         if ui.button("Indeterminate").clicked() {
-            state
-                .queue
-                .progress("resolve", "naming senders…", None);
+            state.queue.progress("resolve", "naming senders…", None);
         }
         if ui.button("Resolve").clicked() {
             state.excavation = 0.0;
