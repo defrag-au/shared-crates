@@ -74,6 +74,31 @@ pub struct ToolInvocation {
     pub config: HashMap<String, String>,
 }
 
+/// How a tool call ended.
+///
+/// An enum rather than a pair of booleans: "failed" and "needs the user to
+/// choose" are different states with different consequences — one invites the
+/// model to work around it, the other must stop it dead — and a second flag
+/// would let both be true at once.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolStatus {
+    /// The tool answered.
+    #[default]
+    Ok,
+    /// The tool failed in a way the model can work around — a bad argument, an
+    /// unknown name. The content explains it.
+    Failed,
+    /// The tool has asked the user a question and cannot proceed until it is
+    /// answered.
+    ///
+    /// The question lives in `presentation`, as components the user interacts
+    /// with; the answer arrives later as a component callback, not as another
+    /// tool call. **The model must not retry or guess** — there is nothing to
+    /// retry, and guessing is the behaviour this exists to replace.
+    AwaitingInput,
+}
+
 /// What a tool produced.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ToolResponse {
@@ -85,10 +110,8 @@ pub struct ToolResponse {
     /// `"ERR_NOT_FOUND"` does not.
     pub content: String,
 
-    /// Marks `content` as describing a failure. The model sees it either way —
-    /// a tool that fails usefully is how an agent recovers rather than stalls.
     #[serde(default)]
-    pub is_error: bool,
+    pub status: ToolStatus,
 
     /// How to *show* this result, if plain prose won't do.
     ///
@@ -110,9 +133,31 @@ impl ToolResponse {
     pub fn ok(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
-            is_error: false,
+            status: ToolStatus::Ok,
             presentation: None,
         }
+    }
+
+    /// The tool needs the user to choose before it can answer.
+    ///
+    /// `content` is what the model reads — it should say a question was asked,
+    /// so the model relays that rather than inventing a result. `showing` then
+    /// carries the question itself.
+    #[must_use]
+    pub fn asking(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+            status: ToolStatus::AwaitingInput,
+            presentation: None,
+        }
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.status == ToolStatus::Failed
+    }
+
+    pub fn awaiting_input(&self) -> bool {
+        self.status == ToolStatus::AwaitingInput
     }
 
     /// A failure the model should see and work around.
@@ -120,7 +165,7 @@ impl ToolResponse {
     pub fn error(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
-            is_error: true,
+            status: ToolStatus::Failed,
             presentation: None,
         }
     }
@@ -160,16 +205,28 @@ mod tests {
     fn a_result_with_no_presentation_omits_it_from_the_wire() {
         let json = serde_json::to_string(&ToolResponse::ok("112 matches")).unwrap();
         assert!(!json.contains("presentation"), "{json}");
-        // `is_error` rides along so the failure state is explicit on every
-        // result rather than inferred from absence — same call as on
-        // `CommandResponse::ephemeral`.
-        assert!(json.contains("is_error"), "{json}");
+        // `status` rides along so the outcome is explicit on every result
+        // rather than inferred from absence.
+        assert!(json.contains("status"), "{json}");
+    }
+
+    /// Awaiting input is not a failure. A model told "this failed" retries or
+    /// works around it; a model told "I asked the user" must do neither.
+    #[test]
+    fn awaiting_input_is_distinct_from_failure() {
+        let asking = ToolResponse::asking("asked which trait they meant");
+        assert!(asking.awaiting_input());
+        assert!(!asking.is_error(), "a question is not a failure");
+
+        let failed = ToolResponse::error("nope");
+        assert!(failed.is_error());
+        assert!(!failed.awaiting_input());
     }
 
     #[test]
     fn an_error_is_still_content_the_model_reads() {
         let response = ToolResponse::error("no trait value matching 'ghoul'");
-        assert!(response.is_error);
+        assert!(response.is_error());
         assert!(response.content.contains("ghoul"));
     }
 }

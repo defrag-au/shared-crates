@@ -2,7 +2,10 @@
 
 use std::collections::HashSet;
 
-use crate::{AgentError, ChatModel, Message, ToolCall, ToolDef, ToolExecutor, ToolOutcome, Usage};
+use crate::{
+    AgentError, ChatModel, Message, ToolCall, ToolDef, ToolExecutor, ToolOutcome, ToolStatus,
+    Usage,
+};
 
 /// Bounds on a single run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,6 +35,13 @@ pub enum StopReason {
     /// had. The answer is real, but it may be partial — worth surfacing
     /// differently in a UI, and worth alerting on if it happens often.
     ToolRoundsExhausted,
+
+    /// A tool put a question to the user, so the run stopped and said so.
+    ///
+    /// Not a failure and not a complete answer: the conversation continues
+    /// when the user picks, through a component callback rather than another
+    /// model turn.
+    AwaitingInput,
 }
 
 /// The result of one run.
@@ -126,6 +136,7 @@ where
         // tests and a production trace readable. Revisit if fan-out turns show
         // up in real traffic.
         let mut fresh = 0usize;
+        let mut asked = false;
         for call in turn.calls {
             let signature = (call.name.clone(), call.arguments.clone());
 
@@ -142,14 +153,33 @@ where
                 executor.execute(&call).await
             };
 
-            if outcome.is_error {
-                failed.insert(signature);
+            match outcome.status {
+                ToolStatus::Failed => {
+                    failed.insert(signature);
+                }
+                ToolStatus::AwaitingInput => asked = true,
+                ToolStatus::Ok => {}
             }
             history.push(Message::ToolResult {
                 call_id: call.id.clone(),
                 content: outcome.content,
             });
             calls.push(call);
+        }
+
+        // A tool has asked the user something. There is nothing to retry and
+        // no more work to do this turn: let the model say so, with no tools on
+        // offer so it cannot try to answer around the question.
+        if asked {
+            on_turn(limits.max_tool_rounds).await;
+            let closing = model.turn(&history, &[]).await?;
+            usage.add(closing.usage);
+            return Ok(AgentRun {
+                answer: closing.content,
+                calls,
+                usage,
+                stop: StopReason::AwaitingInput,
+            });
         }
 
         // A whole round of nothing but repeats means the model is stuck rather
@@ -537,6 +567,36 @@ mod tests {
 
         assert_eq!(*executor.ran.borrow(), vec!["find_assets", "find_assets"]);
         assert_eq!(run.stop, StopReason::Answered);
+    }
+
+    /// A question stops the run dead. The alternative — letting the loop carry
+    /// on with tools still on offer — is a model answering around a question
+    /// it just asked, which is the behaviour this whole mechanism replaces.
+    #[tokio::test]
+    async fn a_question_ends_the_run_with_no_tools_offered() {
+        let model = ScriptedModel::new(vec![
+            ModelTurn::calling(vec![call("c1", "bargains", r#"{"trait":"necro"}"#)]),
+            ModelTurn::answer("I've asked which trait you meant."),
+        ]);
+        let executor = StubExecutor::new(vec![(
+            "bargains",
+            ToolOutcome::awaiting_input("asked the user which trait"),
+        )]);
+
+        let run = run(
+            &model,
+            &executor,
+            &[tool("bargains")],
+            seed("any necro bargains?"),
+            Limits::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(run.stop, StopReason::AwaitingInput);
+        assert_eq!(run.answer.as_deref(), Some("I've asked which trait you meant."));
+        // One round with tools, then the closing turn with none.
+        assert_eq!(*model.tools_offered.borrow(), vec![1, 0]);
     }
 
     #[tokio::test]

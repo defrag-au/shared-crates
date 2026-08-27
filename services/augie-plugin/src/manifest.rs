@@ -312,7 +312,7 @@ mod tests {
         PluginTool {
             name: name.to_string(),
             description: format!("call {name} when asked about {name}"),
-            parameters: serde_json::from_str(r#"{"type":"object","properties":{}}"#).unwrap(),
+            parameters: vec![],
             permission,
         }
     }

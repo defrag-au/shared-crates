@@ -57,15 +57,23 @@ pub struct ToolCall {
     pub arguments: String,
 }
 
+/// How a tool call ended.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ToolStatus {
+    #[default]
+    Ok,
+    /// Failed in a way the model can work around.
+    Failed,
+    /// The tool asked the user something and cannot proceed until answered.
+    /// The loop stops offering tools after this — see [`crate::run`].
+    AwaitingInput,
+}
+
 /// What running a tool produced.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToolOutcome {
     pub content: String,
-
-    /// Marks content that describes a failure. The loop feeds it back either
-    /// way; this is for the consumer's telemetry, and for an executor that
-    /// wants to count failures without string-matching its own messages.
-    pub is_error: bool,
+    pub status: ToolStatus,
 }
 
 impl ToolOutcome {
@@ -73,8 +81,24 @@ impl ToolOutcome {
     pub fn ok(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
-            is_error: false,
+            status: ToolStatus::Ok,
         }
+    }
+
+    /// The tool put a question to the user.
+    ///
+    /// Terminal for the run: there is nothing to retry, and the answer arrives
+    /// later through a different channel entirely.
+    #[must_use]
+    pub fn awaiting_input(content: impl Into<String>) -> Self {
+        Self {
+            content: content.into(),
+            status: ToolStatus::AwaitingInput,
+        }
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.status == ToolStatus::Failed
     }
 
     /// A failure the model should see and work around.
@@ -86,7 +110,7 @@ impl ToolOutcome {
     pub fn error(content: impl Into<String>) -> Self {
         Self {
             content: content.into(),
-            is_error: true,
+            status: ToolStatus::Failed,
         }
     }
 }
