@@ -1,8 +1,24 @@
 //! `Toast` / `ToastQueue` — transient overlay messages with
-//! frame-countdown auto-dismiss. The recurring "Copied to clipboard"
+//! frame-countdown auto-dismiss, plus keyed **progress** toasts for work
+//! happening in the background. The recurring "Copied to clipboard"
 //! / "Refuel submitted" / "Save failed" affordance used everywhere a
 //! widget completes an action and the host wants a brief acknowledgement
 //! without committing to a status bar.
+//!
+//! ## Background work belongs here, not in the content
+//!
+//! A task that runs for a minute — an excavation, an upload, a rebuild —
+//! should not push the thing the reader came for down the page, and should
+//! not vanish when they navigate. [`ToastKind::Progress`] is an ambient
+//! notice: quieter than `Info`, never auto-dismissed, carrying a bar when
+//! completion is known and a spinner when it isn't (a fake bar that creeps
+//! to 90% and stalls is a lie).
+//!
+//! Progress toasts are **keyed**, and that is the load-bearing part: a task
+//! reporting every frame would otherwise stack hundreds of entries.
+//! [`ToastQueue::progress`] upserts by key, [`ToastQueue::resolve`] swaps the
+//! running notice for its outcome in place, and [`ToastQueue::dismiss`] drops
+//! it when the work ends quietly.
 //!
 //! ## Shape
 //!
@@ -79,6 +95,13 @@ pub enum ToastKind {
     Warning,
     /// Blue — neutral confirmations (clipboard, save, etc.).
     Info,
+    /// Slate — work happening in the background, with a bar or a spinner.
+    ///
+    /// Unlike the other kinds this describes a *state*, not an outcome, so it
+    /// never auto-dismisses: the host resolves or dismisses it when the task
+    /// ends. Pair it with [`ToastQueue::progress`], which upserts by key —
+    /// pushing a fresh toast per tick would stack hundreds of them.
+    Progress,
 }
 
 impl ToastKind {
@@ -111,6 +134,14 @@ impl ToastKind {
                 Color32::from_rgb(160, 190, 230),
                 Color32::from_rgb(210, 220, 240),
             ),
+            // Deliberately quieter than Info: background work is ambient, and
+            // a running task should not compete with a result.
+            ToastKind::Progress => (
+                Color32::from_rgb(26, 28, 34),
+                Color32::from_rgb(70, 76, 92),
+                Color32::from_rgb(150, 160, 185),
+                Color32::from_rgb(200, 208, 225),
+            ),
         }
     }
 
@@ -125,7 +156,8 @@ impl ToastKind {
             // with the trailing close `X` on sticky error toasts.
             ToastKind::Error => Some(PhosphorIcon::Warning),
             ToastKind::Warning => Some(PhosphorIcon::Warning),
-            ToastKind::Info => None,
+            // Progress carries a bar or a spinner; a glyph as well is noise.
+            ToastKind::Info | ToastKind::Progress => None,
         }
     }
 }
@@ -148,6 +180,14 @@ pub struct Toast {
     /// user clicks its close `×`. Errors default to sticky so the operator
     /// has time to read + capture them.
     pub sticky: bool,
+    /// Stable identity for updatable toasts. A keyed push REPLACES the
+    /// entry with the same key instead of stacking a new one, which is what
+    /// makes a progress toast possible at all.
+    pub key: Option<String>,
+    /// Completion in `0..=1` for [`ToastKind::Progress`]. `None` renders an
+    /// indeterminate spinner — the honest rendering when a task cannot say
+    /// how far along it is.
+    pub progress: Option<f32>,
 }
 
 impl Toast {
@@ -159,8 +199,24 @@ impl Toast {
             kind,
             icon: None,
             frames_remaining: DEFAULT_DURATION_FRAMES,
-            sticky: false,
+            // Progress describes ongoing work, so it cannot time out — it
+            // ends when the host says the work ended.
+            sticky: kind == ToastKind::Progress,
+            key: None,
+            progress: None,
         }
+    }
+
+    /// Give the toast a stable identity so later pushes replace it.
+    pub fn key(mut self, key: impl Into<String>) -> Self {
+        self.key = Some(key.into());
+        self
+    }
+
+    /// Completion in `0..=1`; omit for an indeterminate spinner.
+    pub fn progress(mut self, fraction: Option<f32>) -> Self {
+        self.progress = fraction.map(|f| f.clamp(0.0, 1.0));
+        self
     }
 
     /// Make the toast persist until the user dismisses it (no auto-timeout).
@@ -228,7 +284,46 @@ impl ToastQueue {
     }
 
     /// Append a fully-built [`Toast`].
+    /// Upsert a keyed background-work toast: same key replaces, so a task
+    /// reporting every frame occupies exactly one slot.
+    ///
+    /// ```ignore
+    /// queue.progress("excavation", "scan: 5,000/8,865 chunks", Some(0.56));
+    /// // …later…
+    /// queue.resolve("excavation", ToastKind::Success, "3,203 transactions");
+    /// ```
+    pub fn progress(
+        &mut self,
+        key: impl Into<String>,
+        message: impl Into<String>,
+        fraction: Option<f32>,
+    ) {
+        self.push(
+            Toast::new(message, ToastKind::Progress)
+                .key(key)
+                .progress(fraction),
+        );
+    }
+
+    /// Drop a keyed toast — the work finished quietly or was cancelled.
+    pub fn dismiss(&mut self, key: &str) {
+        self.toasts
+            .retain(|t| t.key.as_deref() != Some(key));
+    }
+
+    /// Replace a keyed toast with its outcome, so the running notice becomes
+    /// the result in place rather than leaving two.
+    pub fn resolve(&mut self, key: &str, kind: ToastKind, message: impl Into<String>) {
+        self.dismiss(key);
+        self.push(Toast::new(message, kind));
+    }
+
     pub fn push(&mut self, toast: Toast) {
+        // A keyed push is an update, not an addition.
+        if let Some(key) = toast.key.as_deref() {
+            let key = key.to_string();
+            self.toasts.retain(|t| t.key.as_deref() != Some(key.as_str()));
+        }
         self.toasts.push_back(toast);
         while self.toasts.len() > self.max_visible {
             self.toasts.pop_front();
@@ -303,7 +398,13 @@ pub fn show_toasts(ctx: &Context, queue: &mut ToastQueue) {
             any_ticking = true;
         }
     }
-    if any_ticking {
+    // Progress toasts are sticky but animated — a spinner that only turns on
+    // input reads as a hang.
+    let any_progress = queue
+        .toasts
+        .iter()
+        .any(|t| t.kind == ToastKind::Progress && t.progress.is_none());
+    if any_ticking || any_progress {
         ctx.request_repaint();
     }
 
@@ -375,6 +476,26 @@ fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
             ui.horizontal(|ui| {
                 if let Some(icon) = toast.resolved_icon() {
                     ui.label(icon.rich_text(14.0, icon_col));
+                }
+                if toast.kind == ToastKind::Progress {
+                    match toast.progress {
+                        // Determinate: a short bar carries the magnitude, so
+                        // the reader isn't comparing percentages by eye.
+                        Some(f) => {
+                            let (rect, _) =
+                                ui.allocate_exact_size(egui::vec2(56.0, 6.0), Sense::hover());
+                            let r = CornerRadius::same(3);
+                            ui.painter().rect_filled(rect, r, stroke);
+                            let mut done = rect;
+                            done.set_right(rect.left() + rect.width() * f);
+                            ui.painter().rect_filled(done, r, icon_col);
+                        }
+                        // Indeterminate: a spinner, because a fake bar that
+                        // creeps to 90% and stalls is a lie.
+                        None => {
+                            ui.add(egui::Spinner::new().size(12.0).color(icon_col));
+                        }
+                    }
                 }
                 ui.add(Label::new(RichText::new(display).color(text_col).small()).wrap());
 

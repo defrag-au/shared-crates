@@ -53,7 +53,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `leaderboard` | `Leaderboard` — ranked standings: podium-tinted ranks, an optional prize thumbnail, one headline metric, supporting stats, and a share bar |
 | `leaderboard_table` | `LeaderboardTable` — a dense, virtual-scrolled ranked table |
 | `listing_grid` | `ListingGrid` — a responsive grid of marketplace listing cards, each with a lazily-loaded image, price and trailing badges |
-| `machine` | `Machine` — plain-enum UI state with entry-frame detection and frame-TTL auto-revert |
+| `machine` | `Machine` — plain-enum UI state, hierarchical, with entry framing, frame-TTL auto-revert and eased transition progress |
 | `managed_wallet_utxos` | Managed-wallet UTxO breakdown — a structured, role-aware view of a custodial wallet's on-chain UTxOs |
 | `marquee` | Scrolling marquee ticker widget |
 | `metric_card` | MetricCard — a dashboard stat card with label, value, optional trend, and sparkline |
@@ -96,7 +96,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `tag_list` | Tag list — a wrapping row of removable tags with an optional trailing "clear all" button |
 | `time_spine` | TimeSpine — ONE time axis for a surface of many faces |
 | `timestamp` | `Timestamp` — a tiny atom that renders a unix-seconds timestamp **consistently** as ISO-8601 (UTC), with an optional clean badge presentation |
-| `toast` | `Toast` / `ToastQueue` — transient overlay messages with frame-countdown auto-dismiss |
+| `toast` | `Toast` / `ToastQueue` — transient overlay messages with frame-countdown auto-dismiss, plus keyed **progress** toasts for work happening in the background |
 | `token_multiselect` | token_multiselect — pick a subset from a known set of options |
 | `trade_flow` | Trade-flow widget — the local user's view of a P2P swap in plain give / get / net terms, decoupled from the raw eUTxO structure |
 | `trade_table` | Trade table widget — TCG-style top/bottom offer display for the trade desk |

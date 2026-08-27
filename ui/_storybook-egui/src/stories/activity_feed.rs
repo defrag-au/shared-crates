@@ -66,6 +66,19 @@ pub fn show(ui: &mut egui::Ui) {
             .asset(ActivityAsset::new("Alien #0418", 1))
             .asset(ActivityAsset::new("Alien #0419", 1))
             .asset(ActivityAsset::new("Alien #0420", 1)),
+        // An offer: ADA leaves, nothing arrives, and the only thing worth
+        // knowing is what it was FOR. A Wayup cart puts many in one tx —
+        // real ones reach 25 distinct collections — so the row caps and
+        // says how many it hid.
+        ActivityEntry::new(1787689433, -1_210_000)
+            .tag(ActivityTag::new("Wayup", ChipVariant::Warning))
+            .tag(ActivityTag::new("offer_created", ChipVariant::Info))
+            .secondary("2,500 ₳")
+            .tx_id("ce01589f48219c3f548ecce3a0185cdbc3bccc72b267f133eb907fc03c88e4fb")
+            .target(ActivityAsset::new("Alien #0413", 0))
+            .target(ActivityAsset::new("HOSKY C(ash Grab)NFT 1729", 0))
+            .target(ActivityAsset::new("collection 79c8e06f…", 0))
+            .targets_meta("offer on", 25),
         // Previous day, and an untagged transfer — counterparty carries it.
         ActivityEntry::new(1787601442, 500_000_000)
             .counterparty(Some(

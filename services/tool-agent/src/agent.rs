@@ -1,6 +1,8 @@
 //! The loop.
 
-use crate::{AgentError, ChatModel, Message, ToolCall, ToolDef, ToolExecutor, Usage};
+use std::collections::HashSet;
+
+use crate::{AgentError, ChatModel, Message, ToolCall, ToolDef, ToolExecutor, ToolOutcome, Usage};
 
 /// Bounds on a single run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,17 +60,50 @@ pub async fn run<M, E>(
     model: &M,
     executor: &E,
     tools: &[ToolDef],
-    mut history: Vec<Message>,
+    history: Vec<Message>,
     limits: Limits,
 ) -> Result<AgentRun, AgentError>
 where
     M: ChatModel,
     E: ToolExecutor,
 {
+    run_with_progress(model, executor, tools, history, limits, |_| async {}).await
+}
+
+/// [`run`], with a hook fired before every model turn.
+///
+/// Exists for one concrete reason: a run takes long enough that the caller
+/// needs to keep saying so. Discord's typing indicator lasts about ten seconds
+/// and a two-round run comfortably outlives it, so a single "typing…" before
+/// the loop leaves the user watching nothing for the rest of it.
+///
+/// The hook is deliberately *before the turn* rather than after: the point is
+/// to cover the wait that is about to happen. It gets the round number (0-based)
+/// so a caller can distinguish "starting" from "still going".
+pub async fn run_with_progress<M, E, F, Fut>(
+    model: &M,
+    executor: &E,
+    tools: &[ToolDef],
+    mut history: Vec<Message>,
+    limits: Limits,
+    mut on_turn: F,
+) -> Result<AgentRun, AgentError>
+where
+    M: ChatModel,
+    E: ToolExecutor,
+    F: FnMut(u8) -> Fut,
+    Fut: core::future::Future<Output = ()>,
+{
     let mut calls = Vec::new();
     let mut usage = Usage::default();
+    // Calls that already failed, by (name, arguments). A model that can't
+    // express what it wants will often reach for the same wrong thing again,
+    // and each retry costs a full round — the whole prompt back through the
+    // model — for a result we already know.
+    let mut failed: HashSet<(String, String)> = HashSet::new();
 
-    for _ in 0..limits.max_tool_rounds {
+    for round in 0..limits.max_tool_rounds {
+        on_turn(round).await;
         let turn = model.turn(&history, tools).await?;
         usage.add(turn.usage);
 
@@ -90,18 +125,44 @@ where
         // the slow part either way, and a deterministic order makes both the
         // tests and a production trace readable. Revisit if fan-out turns show
         // up in real traffic.
+        let mut fresh = 0usize;
         for call in turn.calls {
-            let outcome = executor.execute(&call).await;
+            let signature = (call.name.clone(), call.arguments.clone());
+
+            let outcome = if failed.contains(&signature) {
+                // Answered from memory. Saying so is more useful than silently
+                // repeating the same error, and it costs nothing.
+                ToolOutcome::error(format!(
+                    "`{}` already failed with exactly these arguments. Try different \
+                     arguments, a different tool, or answer without it.",
+                    call.name
+                ))
+            } else {
+                fresh += 1;
+                executor.execute(&call).await
+            };
+
+            if outcome.is_error {
+                failed.insert(signature);
+            }
             history.push(Message::ToolResult {
                 call_id: call.id.clone(),
                 content: outcome.content,
             });
             calls.push(call);
         }
+
+        // A whole round of nothing but repeats means the model is stuck rather
+        // than working. Stop spending rounds on it and go straight to the
+        // forced answer, which is where this was heading anyway.
+        if fresh == 0 {
+            break;
+        }
     }
 
     // Out of rounds. Ask once more with no tools, so the model answers from
     // what it gathered instead of the run ending in silence.
+    on_turn(limits.max_tool_rounds).await;
     let final_turn = model.turn(&history, &[]).await?;
     usage.add(final_turn.usage);
 
@@ -116,7 +177,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ModelTurn, ToolOutcome};
+    use crate::ModelTurn;
     use std::cell::RefCell;
     use std::collections::VecDeque;
 
@@ -393,6 +454,93 @@ mod tests {
 
         assert_eq!(run.usage, Usage::new(350, 50));
         assert_eq!(run.usage.total(), 400);
+    }
+
+    /// The typing-indicator contract: one hook per model turn, *including* the
+    /// forced final one. A run whose last turn wasn't covered would drop the
+    /// indicator right before the answer lands, which is the worst moment.
+    #[tokio::test]
+    async fn progress_fires_once_before_every_model_turn() {
+        let model = ScriptedModel::new(vec![
+            ModelTurn::calling(vec![call("c1", "find_assets", "{}")]),
+            ModelTurn::calling(vec![call("c2", "find_assets", "{}")]),
+            ModelTurn::answer("done"),
+        ]);
+        let executor = StubExecutor::new(vec![("find_assets", ToolOutcome::ok("ok"))]);
+        let seen = RefCell::new(Vec::new());
+
+        let run = run_with_progress(
+            &model,
+            &executor,
+            &[tool("find_assets")],
+            seed("keep going"),
+            Limits { max_tool_rounds: 2 },
+            |round| {
+                seen.borrow_mut().push(round);
+                async {}
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(run.stop, StopReason::ToolRoundsExhausted);
+        // Two rounds plus the forced answer.
+        assert_eq!(*seen.borrow(), vec![0, 1, 2]);
+    }
+
+    /// The live waste this guards: a model with no way to express what it
+    /// wants reaches for the same wrong call every round, and each retry costs
+    /// a full pass of the prompt through the model for a known answer.
+    #[tokio::test]
+    async fn an_identical_failing_call_is_not_run_twice() {
+        let repeat = || call("c", "find_assets", r#"{"q":"x"}"#);
+        // Round 1 runs it, round 2 repeats it — which ends the loop, so the
+        // third turn is the forced answer rather than another attempt.
+        let model = ScriptedModel::new(vec![
+            ModelTurn::calling(vec![repeat()]),
+            ModelTurn::calling(vec![repeat()]),
+            ModelTurn::answer("giving up"),
+        ]);
+        let executor = StubExecutor::new(vec![("find_assets", ToolOutcome::error("nope"))]);
+
+        let run = run(
+            &model,
+            &executor,
+            &[tool("find_assets")],
+            seed("keep trying"),
+            Limits::default(),
+        )
+        .await
+        .unwrap();
+
+        // Executed once; the repeat short-circuits and ends the loop.
+        assert_eq!(*executor.ran.borrow(), vec!["find_assets"]);
+        assert_eq!(run.stop, StopReason::ToolRoundsExhausted);
+        assert_eq!(run.answer.as_deref(), Some("giving up"));
+    }
+
+    /// Different arguments are a genuine retry, not a repeat.
+    #[tokio::test]
+    async fn a_retry_with_different_arguments_still_runs() {
+        let model = ScriptedModel::new(vec![
+            ModelTurn::calling(vec![call("c1", "find_assets", r#"{"q":"x"}"#)]),
+            ModelTurn::calling(vec![call("c2", "find_assets", r#"{"q":"y"}"#)]),
+            ModelTurn::answer("found it"),
+        ]);
+        let executor = StubExecutor::new(vec![("find_assets", ToolOutcome::error("nope"))]);
+
+        let run = run(
+            &model,
+            &executor,
+            &[tool("find_assets")],
+            seed("try again"),
+            Limits::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(*executor.ran.borrow(), vec!["find_assets", "find_assets"]);
+        assert_eq!(run.stop, StopReason::Answered);
     }
 
     #[tokio::test]

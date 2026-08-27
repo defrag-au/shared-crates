@@ -107,6 +107,16 @@ pub struct ActivityEntry<'a> {
     pub amount: i128,
     pub tags: Vec<ActivityTag<'a>>,
     pub assets: Vec<ActivityAsset<'a>>,
+    /// Assets the transaction was ABOUT rather than moved — what an offer
+    /// names, what a listing lists. Rendered without a quantity badge and
+    /// behind their own caption, because a target drawn like a movement
+    /// claims a receipt that never happened.
+    pub targets: Vec<ActivityAsset<'a>>,
+    /// Caption for the target row ("offer on", "listing"). Domain wording is
+    /// the caller's; the widget only knows these did not move.
+    pub targets_label: &'a str,
+    /// Distinct targets before the caller's cap, for the overflow note.
+    pub targets_total: usize,
     /// Secondary amount line (a converted value, a fee, a note).
     pub secondary: Option<String>,
     /// Counterparty, shown muted when there are no tags to carry the identity.
@@ -121,10 +131,27 @@ impl<'a> ActivityEntry<'a> {
             amount,
             tags: Vec::new(),
             assets: Vec::new(),
+            targets: Vec::new(),
+            targets_label: "for",
+            targets_total: 0,
             secondary: None,
             counterparty: None,
             tx_id: None,
         }
+    }
+
+    /// An asset this transaction was about but did not move.
+    pub fn target(mut self, asset: ActivityAsset<'a>) -> Self {
+        self.targets.push(asset);
+        self.targets_total = self.targets_total.max(self.targets.len());
+        self
+    }
+
+    /// Caption + true count for the target row (a cart may exceed the cap).
+    pub fn targets_meta(mut self, label: &'a str, total: usize) -> Self {
+        self.targets_label = label;
+        self.targets_total = total;
+        self
     }
 
     pub fn tag(mut self, tag: ActivityTag<'a>) -> Self {
@@ -278,9 +305,33 @@ impl<'a> ActivityFeed<'a> {
                     ui.add_space(6.0);
                     ui.horizontal_wrapped(|ui| {
                         for asset in entry.assets.iter().take(MAX_PILLS) {
-                            asset_pill(ui, asset);
+                            asset_pill(ui, asset, true);
                         }
                         let extra = entry.assets.len().saturating_sub(MAX_PILLS);
+                        if extra > 0 {
+                            ui.label(
+                                RichText::new(format!("+{extra} more"))
+                                    .color(theme::TEXT_MUTED)
+                                    .small(),
+                            );
+                        }
+                    });
+                }
+
+                // …and what it was about, if that is a different thing.
+                if !entry.targets.is_empty() {
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            RichText::new(entry.targets_label)
+                                .color(theme::TEXT_MUTED)
+                                .small(),
+                        );
+                        for asset in entry.targets.iter().take(MAX_PILLS) {
+                            asset_pill(ui, asset, false);
+                        }
+                        let shown = entry.targets.len().min(MAX_PILLS);
+                        let extra = entry.targets_total.saturating_sub(shown);
                         if extra > 0 {
                             ui.label(
                                 RichText::new(format!("+{extra} more"))
@@ -312,10 +363,14 @@ impl<'a> ActivityFeed<'a> {
     }
 }
 
-/// A named asset with its thumbnail and signed quantity.
-fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>) {
+/// A named asset with its thumbnail. `moved` decides whether it carries a
+/// signed quantity — a referenced asset gets no badge and a neutral tint, so
+/// "the offer names this" cannot be misread as "this arrived".
+fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>, moved: bool) {
     let arrived = asset.quantity >= 0;
-    let tint = if arrived {
+    let tint = if !moved {
+        theme::TEXT_MUTED
+    } else if arrived {
         theme::SUCCESS
     } else {
         theme::ACCENT_ORANGE
@@ -343,12 +398,14 @@ fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>) {
                 );
                 // Quantity is a signed badge, not a bare number: on a card the
                 // direction belongs to the thing that moved.
-                ui.label(
-                    RichText::new(signed_quantity(asset.quantity))
-                        .color(tint)
-                        .small()
-                        .strong(),
-                );
+                if moved {
+                    ui.label(
+                        RichText::new(signed_quantity(asset.quantity))
+                            .color(tint)
+                            .small()
+                            .strong(),
+                    );
+                }
             });
         });
 }
