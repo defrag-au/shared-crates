@@ -19,6 +19,7 @@ pub mod claim_card;
 pub mod collection_composition;
 pub mod collection_list;
 pub mod command_palette;
+pub mod detail_split;
 pub mod distribution_waterfall;
 pub mod donut_chart;
 pub mod error_note;

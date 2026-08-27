@@ -159,9 +159,17 @@ pub struct FlowStave<'a> {
 /// The pinned lane-header band's height.
 const HEADER_H: f32 = 30.0;
 /// Vertical rhythm: the tightest two events may sit this close…
-const ROW_MIN: f32 = 22.0;
+/// Closest two events are ever drawn.
+///
+/// This is the floor for a BUSY wallet, where most gaps are seconds apart and
+/// every row lands on it — so it has to fit what a row actually carries: an
+/// arrow, a value label sitting above that arrow, and an optional asset-count
+/// chip. At 22 those touched, and a cascade of trades read as a solid block of
+/// overlapping ink. The gutter timestamps collided too, since they are drawn
+/// at `ROW_MIN * 0.7` above the line.
+const ROW_MIN: f32 = 34.0;
 /// …and however long the silence, never further apart than this.
-const ROW_MAX: f32 = 64.0;
+const ROW_MAX: f32 = 88.0;
 /// Pointer forgiveness around an event's line.
 const HOVER_SLOP: f32 = 6.0;
 
