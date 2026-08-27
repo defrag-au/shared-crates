@@ -2,6 +2,11 @@
 //! config-refresh time and merged into the guild's registered command set.
 
 use serde::{Deserialize, Serialize};
+// Re-exported deliberately. This crate is the facade a plugin author works
+// against: they should be able to declare a tool's parameters, and render the
+// schema for their own MCP surface, without needing to know `tool-schema`
+// exists or adding a second dependency to say the same thing.
+pub use tool_schema::{to_json_schema, ToolParameter, ToolParameterKind};
 
 /// A plugin's complete command surface.
 ///
@@ -59,14 +64,14 @@ pub struct PluginTool {
     /// current listings or floor price"), not just the capability.
     pub description: String,
 
-    /// JSON Schema for the arguments object.
+    /// The arguments it accepts.
     ///
-    /// Keep parameters bounded — enums over free text wherever the set is
-    /// known. A tool taking `window: "last_24h" | "last_7d"` cannot be asked
-    /// for a window that doesn't exist; one taking a free-text date range
-    /// invites the model to invent one, and invites a public-channel question
-    /// to steer a query.
-    pub parameters: serde_json::Value,
+    /// Typed rather than raw JSON Schema: a `serde_json::Value` here could be
+    /// an object, a string, `null`, or an object missing the key the reader
+    /// wanted, and nothing would catch any of it — the model would simply be
+    /// offered a tool with no arguments. See `tool_schema` for the generator.
+    #[serde(default)]
+    pub parameters: Vec<ToolParameter>,
 
     /// Who may cause this tool to run. See [`PermissionClass`].
     ///

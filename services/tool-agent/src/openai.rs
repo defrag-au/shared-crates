@@ -22,7 +22,7 @@ impl ChatModel for OpenAI {
                     ToolSpec::function(
                         tool.name.as_str(),
                         tool.description.as_str(),
-                        tool.parameters.clone(),
+                        tool.json_schema(),
                     )
                 })
                 .collect(),

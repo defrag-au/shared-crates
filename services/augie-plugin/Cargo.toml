@@ -14,3 +14,5 @@ serde_json = { workspace = true }
 # A plugin describes a graphic it wants; the HOST renders it. See
 # `CommandResponse::render` for why the plugin cannot do this itself.
 render-protocol = { path = "../render-protocol" }
+# Typed tool parameters, and the single generator of their JSON Schema.
+tool-schema = { path = "../tool-schema" }

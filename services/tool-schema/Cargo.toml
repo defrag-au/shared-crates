@@ -1,0 +1,10 @@
+[package]
+name = "tool-schema"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Typed tool parameters, and the one place JSON Schema is generated from them"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

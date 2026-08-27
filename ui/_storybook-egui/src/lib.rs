@@ -93,6 +93,7 @@ mod app {
         WalletList,
         CollectionList,
         // Mint configuration
+        ThemeStates,
         Chip,
         PartyBadge,
         FlowLedger,
@@ -141,6 +142,7 @@ mod app {
                 Self::Distribution,
                 Self::Marquee,
                 Self::Buttons,
+                Self::ThemeStates,
                 Self::Chip,
                 Self::PartyBadge,
                 Self::FlowLedger,
@@ -344,6 +346,7 @@ mod app {
                 Self::MnemonicDisplay => "Mnemonic Display",
                 Self::WalletList => "Wallet List",
                 Self::CollectionList => "Collection List",
+                Self::ThemeStates => "Theme States",
                 Self::Chip => "Chip",
                 Self::PartyBadge => "Party Badge",
                 Self::FlowLedger => "Flow Ledger",
@@ -389,6 +392,7 @@ mod app {
                 | Self::Distribution
                 | Self::Marquee
                 | Self::Buttons
+                | Self::ThemeStates
                 | Self::Chip
                 | Self::PartyBadge
                 | Self::FlowLedger
@@ -662,6 +666,9 @@ mod app {
                 }
                 Self::CollectionList => {
                     "Per-client collections list — title, status/standard/network chips, supply progress, policy_id copy, Test mint / Seed stubs actions"
+                }
+                Self::ThemeStates => {
+                    "TEMPLATE for contrast bugs — interaction states (selected / hovered / active / disabled) drawn on every surface, plus the translucent selection wash. Resting-state stories cannot show these; mirrored numerically by tests/contrast.rs"
                 }
                 Self::Chip => {
                     "Small filled-tag label with semantic variants (Success / Warning / Danger / Tag / Info / Muted) + optional × remove affordance"
@@ -1288,6 +1295,7 @@ mod app {
                             Story::CollectionList => {
                                 stories::collection_list::show(ui, &mut self.collection_list_state)
                             }
+                            Story::ThemeStates => stories::theme_states::show(ui),
                             Story::Chip => stories::chip::show(ui),
                             Story::PartyBadge => stories::party_badge::show(ui),
                             Story::FlowLedger => stories::flow_ledger::show(ui),

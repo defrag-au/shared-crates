@@ -16,6 +16,9 @@ openai = ["dep:openai-client"]
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# Typed tool parameters. The loop carries them; the provider adapter turns
+# them into JSON Schema at the one point a model needs one.
+tool-schema = { path = "../tool-schema" }
 openai-client = { path = "../../openai-client", optional = true }
 
 [dev-dependencies]

@@ -377,6 +377,7 @@ dependencies = [
  "render-protocol",
  "serde",
  "serde_json",
+ "tool-schema",
 ]
 
 [[package]]
@@ -2227,6 +2228,10 @@ dependencies = [
  "crunchy",
  "zerocopy",
 ]
+
+[[package]]
+name = "handle-resolver"
+version = "0.1.0"
 
 [[package]]
 name = "hashbrown"
@@ -6381,6 +6386,15 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tool-schema",
+]
+
+[[package]]
+name = "tool-schema"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

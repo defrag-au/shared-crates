@@ -13,6 +13,7 @@ members = [
     "discord-client",
     "fal-client",
     "filebase",
+    "handle-resolver",
     "http-client",
     "openai-client",
     "pinata",

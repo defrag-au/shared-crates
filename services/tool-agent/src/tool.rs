@@ -1,18 +1,21 @@
 //! Tools: what the model may call, and who runs it.
 
 use serde::{Deserialize, Serialize};
+pub use tool_schema::{ToolParameter, ToolParameterKind};
 
 /// A tool the model may call.
 ///
-/// `parameters` is a JSON Schema object describing the arguments. It is a
-/// [`serde_json::Value`] rather than a typed schema because the definitions
-/// come from services that already publish them this way — re-typing them
-/// here would mean a second vocabulary to keep in sync with the first.
+/// Parameters are typed rather than raw JSON Schema, and converted to a schema
+/// only where a provider needs one. See `tool_schema` for why: an untyped
+/// schema on the wire can be the wrong shape in four different ways, none of
+/// which anything notices until a model is offered a tool it cannot pass
+/// arguments to.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolDef {
     pub name: String,
     pub description: String,
-    pub parameters: serde_json::Value,
+    #[serde(default)]
+    pub parameters: Vec<ToolParameter>,
 }
 
 impl ToolDef {
@@ -20,13 +23,19 @@ impl ToolDef {
     pub fn new(
         name: impl Into<String>,
         description: impl Into<String>,
-        parameters: serde_json::Value,
+        parameters: Vec<ToolParameter>,
     ) -> Self {
         Self {
             name: name.into(),
             description: description.into(),
             parameters,
         }
+    }
+
+    /// The JSON Schema a provider is sent for this tool.
+    #[must_use]
+    pub fn json_schema(&self) -> serde_json::Value {
+        tool_schema::to_json_schema(&self.parameters)
     }
 }
 

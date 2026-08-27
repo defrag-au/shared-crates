@@ -382,12 +382,28 @@ fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>, moved: bool) {
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 match asset.image_url {
+                    // Reserve the space FIRST, then only request the image if
+                    // that space is actually on screen.
+                    //
+                    // `ui.add(Image::new(url))` starts a fetch+decode the
+                    // moment the widget is built, and a feed is a long
+                    // scrolling list: every card below the fold was pulling
+                    // its thumbnails on first paint. A few hundred requests
+                    // against a six-connections-per-host browser limit is a
+                    // stall before the first card is readable.
+                    //
+                    // The size is fixed, so gating the paint cannot move
+                    // layout — a scrolled-past pill occupies exactly the same
+                    // box whether or not its image has been asked for.
                     Some(url) => {
-                        ui.add(
+                        let (rect, _) =
+                            ui.allocate_exact_size(Vec2::splat(18.0), egui::Sense::hover());
+                        if ui.is_rect_visible(rect) {
                             egui::Image::new(url)
                                 .fit_to_exact_size(Vec2::splat(18.0))
-                                .corner_radius(CornerRadius::same(4)),
-                        );
+                                .corner_radius(CornerRadius::same(4))
+                                .paint_at(ui, rect);
+                        }
                     }
                     None => initial_disc(ui, asset.label, tint),
                 }
@@ -491,6 +507,86 @@ fn elide(s: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Records every URI egui asks for, so a test can assert about *fetches*
+    /// rather than about pixels.
+    #[derive(Default)]
+    struct CountingLoader {
+        asked: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl egui::load::ImageLoader for CountingLoader {
+        fn id(&self) -> &str {
+            "counting"
+        }
+        fn load(
+            &self,
+            _ctx: &egui::Context,
+            uri: &str,
+            _hint: egui::load::SizeHint,
+        ) -> egui::load::ImageLoadResult {
+            self.asked.lock().expect("asked").push(uri.to_string());
+            Ok(egui::load::ImagePoll::Pending { size: None })
+        }
+        fn forget(&self, _uri: &str) {}
+        fn forget_all(&self) {}
+        fn byte_size(&self) -> usize {
+            0
+        }
+    }
+
+    /// The lag report: a long feed pulled every thumbnail on first paint,
+    /// including cards far below the fold. Hundreds of concurrent fetches
+    /// against a six-per-host browser limit stalls the view before the first
+    /// card is readable.
+    ///
+    /// Asserts on the loader, not on appearance: what matters is that work is
+    /// not STARTED for rows nobody can see.
+    #[test]
+    fn offscreen_thumbnails_are_not_requested() {
+        let loader = std::sync::Arc::new(CountingLoader::default());
+        let ctx = egui::Context::default();
+        ctx.add_image_loader(loader.clone());
+
+        // Enough entries that most of them cannot fit in the viewport.
+        let labels: Vec<String> = (0..200).map(|i| format!("asset {i}")).collect();
+        let urls: Vec<String> = (0..200).map(|i| format!("https://img/{i}.png")).collect();
+        let entries: Vec<ActivityEntry<'_>> = (0..200)
+            .map(|i| {
+                ActivityEntry::new(1_756_000_000 + i as i64 * 3600, 1_000_000)
+                    .asset(ActivityAsset::new(&labels[i], 1).image(Some(&urls[i])))
+            })
+            .collect();
+
+        let input = egui::RawInput {
+            // A short viewport: only the first few cards can be on screen.
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(600.0, 300.0),
+            )),
+            ..Default::default()
+        };
+        let fmt = |a: i128| format!("{a}");
+        ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ActivityFeed::new(&entries, &fmt).show(ui);
+                });
+            });
+        });
+
+        let asked = loader.asked.lock().expect("asked").len();
+        assert!(
+            asked > 0,
+            "nothing was requested at all — the visible cards still need their thumbnails"
+        );
+        assert!(
+            asked < entries.len() / 2,
+            "{asked} of {} thumbnails requested — off-screen cards are still \
+             fetching, which is the first-paint stall",
+            entries.len()
+        );
+    }
 
     #[test]
     fn day_header_reads_as_a_date() {

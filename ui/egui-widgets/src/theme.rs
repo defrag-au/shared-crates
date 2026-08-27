@@ -218,8 +218,22 @@ pub fn configure_style(ctx: &egui::Context, fonts: FontStrategy) {
     visuals.widgets.active.bg_fill = BG_HIGHLIGHT;
     visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
 
-    visuals.selection.bg_fill = Color32::from_rgba_premultiplied(122, 162, 247, 40);
-    visuals.selection.stroke = Stroke::new(1.0_f32, ACCENT);
+    // Selection. Two traps here, both of which shipped once:
+    //
+    // 1. `from_rgba_premultiplied` requires each channel to be ALREADY
+    //    multiplied by alpha, so it must be <= alpha. Passing (122,162,247)
+    //    with alpha 40 is not a valid premultiplied colour and blends
+    //    additively — the wash came out far lighter than the 16% tint
+    //    intended. `from_rgba_unmultiplied` is what this wanted.
+    // 2. egui's `interact_selectable` sets `fg_stroke` from
+    //    `selection.stroke`, so that colour is the SELECTED LABEL'S TEXT, not
+    //    a border. Leaving it as ACCENT put accent text on an accent wash.
+    //
+    // Selected text therefore uses the primary ramp, which is what everything
+    // else on a tinted background uses. `selection_contrast_clears_wcag_aa`
+    // pins both.
+    visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(122, 162, 247, 40);
+    visuals.selection.stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
 
     // Derived states: egui's defaults (weak 0.6, disabled 0.5) would drop
     // even TEXT_PRIMARY below AA. 0.7 of TEXT_PRIMARY still clears ~4.5:1

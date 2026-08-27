@@ -250,11 +250,7 @@ mod tests {
     }
 
     fn tool(name: &str) -> ToolDef {
-        // `from_str` rather than the `json!` macro — this codebase builds JSON
-        // from typed structs, and a literal is the honest way to write a
-        // schema fixture.
-        let schema = serde_json::from_str(r#"{"type":"object","properties":{}}"#).unwrap();
-        ToolDef::new(name, format!("the {name} tool"), schema)
+        ToolDef::new(name, format!("the {name} tool"), vec![])
     }
 
     fn seed(question: &str) -> Vec<Message> {
