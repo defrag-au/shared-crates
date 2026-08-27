@@ -10,10 +10,22 @@ pub use tool_schema::{to_json_schema, ToolParameter, ToolParameterKind};
 
 /// A plugin's complete command surface.
 ///
-/// Fetched from `GET /_augie/manifest` during the `RefreshBotConfigs` chain —
-/// **not** at interaction time. Discord command registration is a deliberate,
-/// rate-limited, guild-scoped operation; it belongs to an explicit refresh, not
-/// to a request path.
+/// Fetched from `GET /_augie/manifest` during the `RefreshBotConfigs` chain,
+/// and — since the two halves of this type have different costs — revalidated
+/// opportunistically off the agent path as well.
+///
+/// The distinction to hold onto:
+///
+/// - [`Self::commands`] **registers with Discord**, which is a deliberate,
+///   rate-limited, guild-scoped write. That belongs to an explicit refresh and
+///   must never happen on a request path.
+/// - [`Self::tools`] are only ever handed to a model in-process. Nothing
+///   external, nothing to rate-limit. Requiring a refresh to pick up a new
+///   tool was an accident of sharing one cache with the commands, not a
+///   property tools have.
+///
+/// So the manifest may be re-fetched and re-cached after answering a mention;
+/// what that refresh cannot do is register anything.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ServiceManifest {
     /// Stable identifier for this plugin, e.g. `"holder-map"`. Must match the
