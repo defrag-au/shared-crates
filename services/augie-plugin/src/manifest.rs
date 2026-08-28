@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 // against: they should be able to declare a tool's parameters, and render the
 // schema for their own MCP surface, without needing to know `tool-schema`
 // exists or adding a second dependency to say the same thing.
-pub use tool_schema::{assert_flat, schema_for, schemars, JsonSchema};
+pub use tool_schema::{assert_flat, no_arguments, schema_for, schemars, JsonSchema};
 
 /// A plugin's complete command surface.
 ///

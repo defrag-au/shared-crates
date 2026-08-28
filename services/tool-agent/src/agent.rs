@@ -36,6 +36,17 @@ pub enum StopReason {
     /// differently in a UI, and worth alerting on if it happens often.
     ToolRoundsExhausted,
 
+    /// The model spent a whole round re-making calls that had already failed,
+    /// so the run stopped early rather than burning the remaining rounds.
+    ///
+    /// Distinct from [`Self::ToolRoundsExhausted`] because it means something
+    /// different and is fixed differently. Hitting the cap suggests the cap is
+    /// too low; repeating means the model had no *better* call available — a
+    /// missing tool, a stale schema offering it nothing to vary, or a prompt
+    /// that left it no way forward. Reported as "ran out of rounds", it sends
+    /// whoever reads it to raise a limit that was never the problem.
+    Repeating,
+
     /// A tool put a question to the user, so the run stopped and said so.
     ///
     /// Not a failure and not a complete answer: the conversation continues
@@ -111,6 +122,9 @@ where
     // and each retry costs a full round — the whole prompt back through the
     // model — for a result we already know.
     let mut failed: HashSet<(String, String)> = HashSet::new();
+    // Set when the loop breaks on a round of nothing but repeats, so the run
+    // reports being stuck rather than out of rounds. See [`StopReason`].
+    let mut stuck = false;
 
     for round in 0..limits.max_tool_rounds {
         on_turn(round).await;
@@ -186,12 +200,13 @@ where
         // than working. Stop spending rounds on it and go straight to the
         // forced answer, which is where this was heading anyway.
         if fresh == 0 {
+            stuck = true;
             break;
         }
     }
 
-    // Out of rounds. Ask once more with no tools, so the model answers from
-    // what it gathered instead of the run ending in silence.
+    // Ask once more with no tools, so the model answers from what it gathered
+    // instead of the run ending in silence.
     on_turn(limits.max_tool_rounds).await;
     let final_turn = model.turn(&history, &[]).await?;
     usage.add(final_turn.usage);
@@ -200,7 +215,11 @@ where
         answer: final_turn.content,
         calls,
         usage,
-        stop: StopReason::ToolRoundsExhausted,
+        stop: if stuck {
+            StopReason::Repeating
+        } else {
+            StopReason::ToolRoundsExhausted
+        },
     })
 }
 
@@ -280,7 +299,7 @@ mod tests {
     }
 
     fn tool(name: &str) -> ToolDef {
-        ToolDef::new(name, format!("the {name} tool"), vec![])
+        ToolDef::new(name, format!("the {name} tool"), None)
     }
 
     fn seed(question: &str) -> Vec<Message> {
@@ -541,8 +560,37 @@ mod tests {
 
         // Executed once; the repeat short-circuits and ends the loop.
         assert_eq!(*executor.ran.borrow(), vec!["find_assets"]);
-        assert_eq!(run.stop, StopReason::ToolRoundsExhausted);
         assert_eq!(run.answer.as_deref(), Some("giving up"));
+
+        // Stuck, NOT out of rounds — the cap here is 4 and only two were used.
+        // Reporting this as "ran out of rounds" sends whoever reads the trace
+        // to raise a limit that was never the problem; the real cause is the
+        // model having no better call available.
+        assert_eq!(run.stop, StopReason::Repeating);
+    }
+
+    /// And the cap is still reported as the cap, so the two remain tellable
+    /// apart by whoever is diagnosing a run.
+    #[tokio::test]
+    async fn using_every_round_is_reported_as_the_cap_not_as_repeating() {
+        let model = ScriptedModel::new(vec![
+            ModelTurn::calling(vec![call("a", "find_assets", r#"{"q":"1"}"#)]),
+            ModelTurn::calling(vec![call("b", "find_assets", r#"{"q":"2"}"#)]),
+            ModelTurn::answer("partial"),
+        ]);
+        let executor = StubExecutor::new(vec![("find_assets", ToolOutcome::ok("some"))]);
+
+        let run = run(
+            &model,
+            &executor,
+            &[tool("find_assets")],
+            seed("keep going"),
+            Limits { max_tool_rounds: 2 },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(run.stop, StopReason::ToolRoundsExhausted);
     }
 
     /// Different arguments are a genuine retry, not a repeat.

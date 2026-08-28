@@ -91,6 +91,22 @@ pub fn schema_for<T: JsonSchema>() -> Value {
     schema
 }
 
+/// The schema for a tool that genuinely takes no arguments.
+///
+/// Explicit on purpose. A *missing* schema and a schema describing no
+/// arguments must not be the same value: the first means "this manifest is too
+/// old to say", the second means "there is nothing to pass". Conflated, a host
+/// tells the model an unknown tool takes nothing, the model dutifully calls it
+/// with `{}`, and the tool rejects it for a field it was never told about —
+/// which reads as the model being stupid when it was being obedient.
+pub fn no_arguments() -> Value {
+    let mut schema = serde_json::Map::new();
+    schema.insert("type".to_string(), Value::from("object"));
+    schema.insert("properties".to_string(), Value::Object(serde_json::Map::new()));
+    schema.insert("additionalProperties".to_string(), Value::from(false));
+    Value::Object(schema)
+}
+
 /// Complain about a tool schema that is more expressive than a tool schema
 /// should be.
 ///
@@ -158,10 +174,8 @@ fn flatness_problems(property: &Value) -> Vec<String> {
         match key.as_str() {
             "properties" => problems.push("is a nested object".to_string()),
             "type" if is_object_type(value) => problems.push("is a nested object".to_string()),
-            "items" => {
-                if item_type(value) != Some("string") {
-                    problems.push("is an array of something other than strings".to_string());
-                }
+            "items" if item_type(value) != Some("string") => {
+                problems.push("is an array of something other than strings".to_string());
             }
             _ => {}
         }

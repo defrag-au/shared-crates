@@ -142,10 +142,22 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineState) {
             .collect(),
         None => Vec::new(),
     };
+    // Brushing is the default; turning it off makes the spine a NAVIGATOR —
+    // drag anywhere moves the playhead, and no range can be selected. Use that
+    // on a surface with one long list and no linked faces to narrow together,
+    // where a brush mostly reads as the list mysteriously going short.
+    let brush_id = ui.id().with("spine_brushing");
+    let mut brushing = ui
+        .data_mut(|d| d.get_temp::<bool>(brush_id))
+        .unwrap_or(true);
+    ui.checkbox(&mut brushing, "allow range selection (brushing)");
+    ui.data_mut(|d| d.insert_temp(brush_id, brushing));
+
     let sr = TimeSpine::new(spine)
         .format_tick(&tick)
         .marks(&marks)
         .height(58.0)
+        .brushing(brushing)
         .show(ui);
     let _ = sr;
 

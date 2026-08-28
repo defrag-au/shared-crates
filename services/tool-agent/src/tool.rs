@@ -1,21 +1,21 @@
 //! Tools: what the model may call, and who runs it.
 
 use serde::{Deserialize, Serialize};
-pub use tool_schema::{ToolParameter, ToolParameterKind};
 
 /// A tool the model may call.
 ///
-/// Parameters are typed rather than raw JSON Schema, and converted to a schema
-/// only where a provider needs one. See `tool_schema` for why: an untyped
-/// schema on the wire can be the wrong shape in four different ways, none of
-/// which anything notices until a model is offered a tool it cannot pass
-/// arguments to.
+/// The schema is carried as JSON because it is **generated** — from the type
+/// the tool parses its arguments into ([`tool_schema::schema_for`]) — rather
+/// than hand-written. The hazard that once argued for a typed intermediate was
+/// an unchecked hand-written `Value`; deriving it removes that, and a typed
+/// intermediate would now only be re-serialised into exactly this.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolDef {
     pub name: String,
     pub description: String,
-    #[serde(default)]
-    pub parameters: Vec<ToolParameter>,
+    /// JSON Schema for the arguments. `None` for a tool that takes none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<serde_json::Value>,
 }
 
 impl ToolDef {
@@ -23,19 +23,51 @@ impl ToolDef {
     pub fn new(
         name: impl Into<String>,
         description: impl Into<String>,
-        parameters: Vec<ToolParameter>,
+        schema: Option<serde_json::Value>,
     ) -> Self {
         Self {
             name: name.into(),
             description: description.into(),
-            parameters,
+            schema,
         }
     }
 
     /// The JSON Schema a provider is sent for this tool.
+    ///
+    /// Falls back to "takes nothing" only because a provider requires the
+    /// field. **A tool with no schema should not be offered at all** — see
+    /// [`Self::arguments_are_known`]. Telling a model that an unknown tool
+    /// accepts nothing is not a safe default: it will call it with `{}`,
+    /// correctly, and be rejected for a field it was never shown.
     #[must_use]
     pub fn json_schema(&self) -> serde_json::Value {
-        tool_schema::to_json_schema(&self.parameters)
+        self.schema.clone().unwrap_or_else(tool_schema::no_arguments)
+    }
+
+    /// Do we know what this tool takes?
+    ///
+    /// False means the manifest predates `input_schema`, not that the tool is
+    /// argument-less — a tool that genuinely takes none says so explicitly
+    /// with [`tool_schema::no_arguments`]. The distinction exists so a host
+    /// can decline to offer what it cannot describe.
+    #[must_use]
+    pub fn arguments_are_known(&self) -> bool {
+        self.schema.is_some()
+    }
+
+    /// The argument names, for logs and traces.
+    ///
+    /// `calls=1` alone cannot distinguish "the model never passed the
+    /// argument" from "it passed one and ignored the answer", and those have
+    /// completely different fixes.
+    #[must_use]
+    pub fn parameter_names(&self) -> Vec<&str> {
+        self.schema
+            .as_ref()
+            .and_then(|schema| schema.get("properties"))
+            .and_then(serde_json::Value::as_object)
+            .map(|properties| properties.keys().map(String::as_str).collect())
+            .unwrap_or_default()
     }
 }
 

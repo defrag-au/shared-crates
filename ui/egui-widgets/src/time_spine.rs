@@ -612,6 +612,9 @@ pub struct TimeSpine<'a> {
     marks: &'a [(i64, MarkKind)],
     height: f32,
     show_play: bool,
+    /// May the reader drag out a range to FILTER by? See
+    /// [`TimeSpine::brushing`].
+    brushing: bool,
     /// Extra space reserved left of the ruler, for a caller that draws a row
     /// of labels beneath (see [`crate::activity_lanes::ActivityLanes`]).
     left_inset: f32,
@@ -626,8 +629,24 @@ impl<'a> TimeSpine<'a> {
             marks: &[],
             height: 56.0,
             show_play: true,
+            brushing: true,
             left_inset: 0.0,
         }
+    }
+
+    /// Allow dragging out a range to filter by. Default on.
+    ///
+    /// Turn it off where the spine is a NAVIGATOR rather than a filter — a
+    /// surface with one long list and no linked faces to narrow together. The
+    /// brush is a second, modal way to hide rows, and where nothing else
+    /// responds to it, it mostly reads as the list mysteriously going short.
+    ///
+    /// Disabling also clears any brush already set, so a range cannot outlive
+    /// the affordance that made it and leave rows filtered with no visible
+    /// control to undo it.
+    pub fn brushing(mut self, on: bool) -> Self {
+        self.brushing = on;
+        self
     }
 
     /// Reserve space left of the ruler so a label column beneath can line up.
@@ -671,11 +690,20 @@ impl<'a> TimeSpine<'a> {
             marks,
             height,
             show_play,
+            brushing,
             left_inset,
         } = self;
         state.tick(ui.ctx());
         let mut playhead_changed = state.playing;
         let mut brush_changed = false;
+
+        // A brush set before brushing was turned off would keep filtering with
+        // no control left to clear it — rows missing, and nothing on screen to
+        // explain why. Clearing here means the flag alone is enough.
+        if !brushing && state.brush.is_some() {
+            state.set_brush(None);
+            brush_changed = true;
+        }
 
         let full_w = ui.available_width();
         // The ruler starts after the play button AND after any caller-reserved
@@ -798,7 +826,11 @@ impl<'a> TimeSpine<'a> {
         }
         let origin = press_origin.or(ptr);
         if let (Some(p), Some(o)) = (ptr, origin) {
-            let in_brush_lane = brush_lane.contains(o);
+            // With brushing off, a drag anywhere — including the mark lane —
+            // moves the PLAYHEAD. Otherwise dragging across the marks would
+            // land in a dead zone that silently does nothing, which reads as
+            // the widget being broken rather than as a disabled feature.
+            let in_brush_lane = brushing && brush_lane.contains(o);
             if response.dragged() || response.clicked() {
                 if in_brush_lane && response.dragged() {
                     if let (Some(ta), Some(tb)) =
@@ -823,7 +855,7 @@ impl<'a> TimeSpine<'a> {
                 brush_changed = true;
             }
         }
-        if response.double_clicked() && brush_lane.contains(ptr.unwrap_or(rect.min)) {
+        if brushing && response.double_clicked() && brush_lane.contains(ptr.unwrap_or(rect.min)) {
             state.set_brush(None);
             brush_changed = true;
         }
