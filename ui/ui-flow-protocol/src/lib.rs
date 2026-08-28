@@ -608,6 +608,107 @@ impl<Action> ClientMessage<Action> {
 mod tests {
     use super::*;
 
+    /// Writes representative full-history payloads to /tmp for an external
+    /// size comparison. Ignored by default — this is a measurement, not a
+    /// check, and it writes outside the workspace.
+    #[test]
+    #[ignore = "measurement; run explicitly with --ignored"]
+    fn dump_payloads_for_size_comparison() {
+        #[derive(serde::Serialize)]
+        struct Sender {
+            address: String,
+            lovelace: u64,
+        }
+        #[derive(serde::Serialize)]
+        struct Verbose {
+            kind: u8,
+            slot: u64,
+            tx: Vec<u8>,
+            lovelace_in: u64,
+            lovelace_out: u64,
+            net_lovelace: i64,
+            assets_in: u32,
+            assets_out: u32,
+            asset_total: u32,
+            senders: Option<Vec<Sender>>,
+        }
+        #[derive(serde::Serialize)]
+        struct Interned {
+            kind: u8,
+            slot: u64,
+            tx: Vec<u8>,
+            lovelace_in: u64,
+            lovelace_out: u64,
+            net_lovelace: i64,
+            assets_in: u32,
+            assets_out: u32,
+            asset_total: u32,
+            senders: Option<Vec<(u32, u64)>>,
+        }
+
+        // A wallet trades with the SAME parties over and over — that
+        // repetition is the whole reason interning and compression both help,
+        // so the model has to include it.
+        // Realistic bech32: high-entropy over the bech32 charset. Zero-padded
+        // placeholders would let deflate crush the payload in a way real
+        // addresses never would, and the whole comparison hinges on this.
+        const CHARSET: &[u8] = b"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+        let mut seed: u64 = 0x2545_F491_4F6C_DD1D;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            CHARSET[(seed % CHARSET.len() as u64) as usize] as char
+        };
+        let pool: Vec<String> = (0..200)
+            .map(|_| {
+                let body: String = (0..98).map(|_| next()).collect();
+                format!("addr1{body}")
+            })
+            .collect();
+        let rows = 3_235usize;
+        let mut verbose = Vec::with_capacity(rows);
+        let mut interned = Vec::with_capacity(rows);
+        for i in 0..rows {
+            let party = (i * 7) % pool.len();
+            let tx: Vec<u8> = (0..32).map(|b| ((i + b) % 251) as u8).collect();
+            verbose.push(Verbose {
+                kind: (i % 3) as u8,
+                slot: 171_086_978 + i as u64 * 7_000,
+                tx: tx.clone(),
+                lovelace_in: 3_191_646_193,
+                lovelace_out: 3_196_746_654,
+                net_lovelace: -5_100_461,
+                assets_in: 2,
+                assets_out: 0,
+                asset_total: 2,
+                senders: Some(vec![Sender {
+                    address: pool[party].clone(),
+                    lovelace: 3_191_646_193,
+                }]),
+            });
+            interned.push(Interned {
+                kind: (i % 3) as u8,
+                slot: 171_086_978 + i as u64 * 7_000,
+                tx,
+                lovelace_in: 3_191_646_193,
+                lovelace_out: 3_196_746_654,
+                net_lovelace: -5_100_461,
+                assets_in: 2,
+                assets_out: 0,
+                asset_total: 2,
+                senders: Some(vec![(party as u32, 3_191_646_193)]),
+            });
+        }
+        let a = rmp_serde::to_vec_named(&verbose).unwrap();
+        // The interned payload must carry its table, or it is not comparable.
+        let b = rmp_serde::to_vec_named(&(&pool, &interned)).unwrap();
+        std::fs::write("/tmp/wire_verbose.bin", &a).unwrap();
+        std::fs::write("/tmp/wire_interned.bin", &b).unwrap();
+        println!("verbose  : {} B", a.len());
+        println!("interned : {} B", b.len());
+    }
+
     /// What a wallet row costs on the wire, measured rather than assumed.
     ///
     /// [`encode`] uses `to_vec_named`, which writes every FIELD NAME as a
@@ -675,6 +776,89 @@ mod tests {
             named < 700,
             "a row grew past 700 B ({named}) — the feed pages thousands of these"
         );
+
+        // ── Where the bytes actually are ────────────────────────────────────
+        #[derive(serde::Serialize)]
+        struct NoTime<'a> {
+            kind: &'a str,
+            slot: u64,
+            tx: &'a str,
+            lovelace_in: u64,
+            lovelace_out: u64,
+            net_lovelace: i64,
+            assets_in: u32,
+            assets_out: u32,
+            asset_total: u32,
+            senders: Option<Vec<Sender>>,
+        }
+        #[derive(serde::Serialize)]
+        struct InternedSender {
+            /// Index into a per-snapshot address table.
+            address: u32,
+            lovelace: u64,
+        }
+        #[derive(serde::Serialize)]
+        struct Slim<'a> {
+            kind: u8,
+            slot: u64,
+            tx: &'a [u8],
+            lovelace_in: u64,
+            lovelace_out: u64,
+            net_lovelace: i64,
+            assets_in: u32,
+            assets_out: u32,
+            asset_total: u32,
+            senders: Option<Vec<InternedSender>>,
+        }
+
+        let addr = "addr1q99qpegypskhugq6nss8gjkwvjlj35wd54venfynreqxjgkt55dzuk6msq4qgq4g0dmz6tkvdvdfkmgd6uyd4urms2ksl0yc60";
+        let no_time = rmp_serde::to_vec_named(&NoTime {
+            kind: "receive",
+            slot: 196_329_574,
+            tx: "c9834a6d03290c69759b73bc055942041817386645e169f5642b2a1bf506c90d",
+            lovelace_in: 3_191_646_193,
+            lovelace_out: 3_196_746_654,
+            net_lovelace: -5_100_461,
+            assets_in: 2,
+            assets_out: 0,
+            asset_total: 2,
+            senders: Some(vec![Sender {
+                address: addr.into(),
+                lovelace: 3_191_646_193,
+            }]),
+        })
+        .unwrap()
+        .len();
+
+        let tx_bytes: Vec<u8> = (0..32).collect();
+        let slim = rmp_serde::to_vec_named(&Slim {
+            kind: 0,
+            slot: 196_329_574,
+            tx: &tx_bytes,
+            lovelace_in: 3_191_646_193,
+            lovelace_out: 3_196_746_654,
+            net_lovelace: -5_100_461,
+            assets_in: 2,
+            assets_out: 0,
+            asset_total: 2,
+            senders: Some(vec![InternedSender {
+                address: 7,
+                lovelace: 3_191_646_193,
+            }]),
+        })
+        .unwrap()
+        .len();
+
+        let pct = |b: usize| 100.0 * (named - b) as f64 / named as f64;
+        println!("--- candidates (named encoding kept throughout) ---");
+        println!("drop `time`          : {no_time} B  (-{:.0}%)", pct(no_time));
+        println!("+ tx bytes, kind u8, interned addrs: {slim} B  (-{:.0}%)", pct(slim));
+        println!(
+            "3,235 rows           : {} KB -> {} KB",
+            named * full / 1024,
+            slim * full / 1024
+        );
+        assert!(slim < no_time && no_time < named);
     }
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

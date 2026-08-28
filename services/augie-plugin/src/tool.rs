@@ -17,6 +17,17 @@
 //! whatever its JSON Schema declares — `{"trait_bits": [47]}` has no
 //! `OptionValue` representation at all.
 //!
+//! ## Not everything on an invocation comes from the model
+//!
+//! [`ToolInvocation::arguments`] is the only model-authored field. `config` and
+//! [`ToolInvocation::attachments`] are host-populated, and that split is the
+//! protocol's central safety property rather than a convenience: **the
+//! untrusted party names the intent, the trusted path supplies the data.**
+//!
+//! A model cannot see a Discord attachment, so an image passed as an argument
+//! would be a URL it invented. A guild's `policy_id` passed as an argument
+//! would be a collection it guessed. Both failures look like answers.
+//!
 //! ## Why tools are a separate list from commands
 //!
 //! They overlap but neither contains the other. `bargains` is worth both
@@ -72,6 +83,60 @@ pub struct ToolInvocation {
     /// came from a public channel.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub config: HashMap<String, String>,
+
+    /// Files the user attached to the message that triggered this call.
+    ///
+    /// Host-populated, and deliberately **not** part of the tool's declared
+    /// schema: the model cannot see an attachment, so it must not be able to
+    /// name one. It decides *whether* to call a tool that consumes images and
+    /// how to scope the search; the host decides which bytes that tool
+    /// receives.
+    ///
+    /// Same trust direction as [`Self::config`], for the same reason — the
+    /// untrusted party names the intent, the trusted path supplies the data.
+    /// Were the URL model-supplied, a plugin fetching it would be an SSRF
+    /// lever; it is safe here precisely because the model never touched it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<InvocationAttachment>,
+}
+
+/// One file the user attached, as the plugin needs to see it.
+///
+/// A URL rather than inline bytes: a 4MB image is ~5.3MB of base64 across a
+/// service binding for something the plugin can fetch itself — and a plugin
+/// doing visual work already fetches renditions on every call.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InvocationAttachment {
+    /// Where to fetch it. A Discord CDN URL today: **signed and short-lived**.
+    ///
+    /// Fine for a call made in the same turn, which is the only time this is
+    /// sent. A fetch minutes later may 403, and a plugin should say so plainly
+    /// rather than report an empty result — "the image link expired" and
+    /// "nothing matched" are opposite answers.
+    pub url: String,
+
+    /// MIME type as Discord reported it, when it reported one.
+    ///
+    /// The host has already filtered to images before sending — a plugin
+    /// reading this is choosing a decoder, not deciding whether to trust it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+
+    /// Size in bytes, as Discord reported it. Lets a plugin refuse something
+    /// too large without fetching it first.
+    pub size_bytes: u64,
+}
+
+impl InvocationAttachment {
+    /// Is this an image, by its declared type?
+    ///
+    /// A missing `content_type` is **not** an image: guessing from a file
+    /// extension is how a `.png` that is really a zip reaches an image decoder.
+    pub fn is_image(&self) -> bool {
+        self.content_type
+            .as_deref()
+            .is_some_and(|mime| mime.starts_with("image/"))
+    }
 }
 
 /// How a tool call ended.
@@ -299,6 +364,67 @@ mod tests {
             parsed.arguments["trait_bits"].as_array().unwrap().len(),
             2
         );
+    }
+
+    /// Attachments ride on the invocation, never in `arguments`. A model that
+    /// could name one would name one it never saw — the hallucination class
+    /// this whole trust direction exists to remove.
+    #[test]
+    fn attachments_arrive_outside_the_arguments() {
+        let json = r#"{
+            "tool": "visual_search",
+            "arguments": {},
+            "user": {"id": "1", "username": "u", "display_name": "U"},
+            "guild_id": "2",
+            "permission_class": "everyone",
+            "attachments": [
+                {"url": "https://cdn.discordapp.com/x.png?ex=1&hm=2",
+                 "content_type": "image/png", "size_bytes": 51200}
+            ]
+        }"#;
+
+        let parsed: ToolInvocation = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.attachments.len(), 1);
+        assert!(parsed.attachments[0].is_image());
+        // And the model's own argument object stayed empty — the image is not
+        // in there and never was.
+        assert_eq!(parsed.arguments, serde_json::json!({}));
+    }
+
+    /// Every existing plugin deserialises an invocation that predates this
+    /// field, and every tool that consumes no images sends nothing on the wire.
+    #[test]
+    fn an_invocation_without_attachments_is_unchanged() {
+        let json = r#"{
+            "tool": "assets",
+            "arguments": {},
+            "user": {"id": "1", "username": "u", "display_name": "U"},
+            "guild_id": "2",
+            "permission_class": "everyone"
+        }"#;
+        let parsed: ToolInvocation = serde_json::from_str(json).unwrap();
+        assert!(parsed.attachments.is_empty());
+
+        let wire = serde_json::to_string(&parsed).unwrap();
+        assert!(!wire.contains("attachments"), "{wire}");
+    }
+
+    /// A type Discord didn't report is not an image. Sniffing the extension
+    /// instead is how a `.png` that is really a zip reaches a decoder.
+    #[test]
+    fn an_undeclared_content_type_is_not_an_image() {
+        let untyped = InvocationAttachment {
+            url: "https://cdn.discordapp.com/thing.png".to_string(),
+            content_type: None,
+            size_bytes: 10,
+        };
+        assert!(!untyped.is_image());
+
+        let text = InvocationAttachment {
+            content_type: Some("text/plain".to_string()),
+            ..untyped.clone()
+        };
+        assert!(!text.is_image());
     }
 
     #[test]
