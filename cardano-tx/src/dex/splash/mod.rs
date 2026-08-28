@@ -18,7 +18,7 @@ use pallas_addresses::{
 use pallas_crypto::hash::Hash;
 use pallas_primitives::Fragment;
 
-use beacon::{calculate_beacon, EMPTY_BEACON};
+use beacon::{EMPTY_BEACON, calculate_beacon};
 use config::SpotOrderConfig;
 use datum::{DatumAsset, RationalPrice, SpotOrderParams};
 
@@ -104,7 +104,7 @@ pub fn build_spot_order(req: &SpotOrderRequest) -> Result<SpotOrder, SplashError
         stake_pkh: req.stake_key_hash.map(|h| h.to_vec()),
         cancel_pkh: req.payment_pkh.to_vec(),
         permitted_executors: vec![
-            hex::decode(config::DEFAULT_BATCHER_KEY).expect("DEFAULT_BATCHER_KEY is valid hex")
+            hex::decode(config::DEFAULT_BATCHER_KEY).expect("DEFAULT_BATCHER_KEY is valid hex"),
         ],
     };
 

@@ -93,14 +93,18 @@ mod app {
         WalletList,
         CollectionList,
         // Mint configuration
+        ThemeStates,
+        BackgroundToasts,
         Chip,
         PartyBadge,
         FlowLedger,
+        ActivityFeed,
         ChannelBands,
         CustodyWalk,
         ClaimCard,
         CapitalFlow,
         TimeSpine,
+        CoverageLanes,
         FlowMatrix,
         FlowRing,
         FlowStave,
@@ -109,6 +113,9 @@ mod app {
         TokenMultiselect,
         TypeaheadSearch,
         RelationshipEditor,
+        CommandPalette,
+        EventWiring,
+        UiMachine,
         NamedGroupList,
         RarityTargetEditor,
         PaletteEditor,
@@ -123,6 +130,7 @@ mod app {
         Gated,
         AccessGate,
         UserBadge,
+        TierLadder,
         QuantityStepper,
         MintCheckout,
     }
@@ -137,14 +145,18 @@ mod app {
                 Self::Distribution,
                 Self::Marquee,
                 Self::Buttons,
+                Self::ThemeStates,
+                Self::BackgroundToasts,
                 Self::Chip,
                 Self::PartyBadge,
                 Self::FlowLedger,
+                Self::ActivityFeed,
                 Self::ChannelBands,
                 Self::CustodyWalk,
                 Self::ClaimCard,
                 Self::CapitalFlow,
                 Self::TimeSpine,
+                Self::CoverageLanes,
                 Self::FlowMatrix,
                 Self::FlowRing,
                 Self::FlowStave,
@@ -153,6 +165,9 @@ mod app {
                 Self::TokenMultiselect,
                 Self::TypeaheadSearch,
                 Self::RelationshipEditor,
+                Self::CommandPalette,
+                Self::EventWiring,
+                Self::UiMachine,
                 Self::NamedGroupList,
                 Self::RarityTargetEditor,
                 Self::PaletteEditor,
@@ -166,6 +181,7 @@ mod app {
                 Self::Gated,
                 Self::AccessGate,
                 Self::UserBadge,
+                Self::TierLadder,
                 Self::ProgressBar,
                 Self::BulletBar,
                 Self::Sparkline,
@@ -336,14 +352,18 @@ mod app {
                 Self::MnemonicDisplay => "Mnemonic Display",
                 Self::WalletList => "Wallet List",
                 Self::CollectionList => "Collection List",
+                Self::ThemeStates => "Theme States",
+                Self::BackgroundToasts => "Background Toasts",
                 Self::Chip => "Chip",
                 Self::PartyBadge => "Party Badge",
                 Self::FlowLedger => "Flow Ledger",
+                Self::ActivityFeed => "Activity Feed",
                 Self::ChannelBands => "Channel Bands",
                 Self::CustodyWalk => "Custody Walk",
                 Self::ClaimCard => "Claim Card",
                 Self::CapitalFlow => "Capital Flow",
                 Self::TimeSpine => "Time Spine",
+                Self::CoverageLanes => "Coverage Lanes",
                 Self::FlowMatrix => "Flow Matrix",
                 Self::FlowRing => "Flow Ring",
                 Self::FlowStave => "Flow Stave",
@@ -352,6 +372,9 @@ mod app {
                 Self::TokenMultiselect => "Token Multiselect",
                 Self::TypeaheadSearch => "Typeahead Search",
                 Self::RelationshipEditor => "Relationship Editor",
+                Self::CommandPalette => "Command Palette",
+                Self::EventWiring => "Event Wiring",
+                Self::UiMachine => "Machine",
                 Self::NamedGroupList => "Named Group List",
                 Self::RarityTargetEditor => "Rarity Target Editor",
                 Self::PaletteEditor => "Palette Editor",
@@ -363,6 +386,7 @@ mod app {
                 Self::Gated => "Gated",
                 Self::AccessGate => "Access Gate",
                 Self::UserBadge => "User Badge",
+                Self::TierLadder => "Tier Ladder",
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
                 Self::Toast => "Toast",
@@ -377,14 +401,18 @@ mod app {
                 | Self::Distribution
                 | Self::Marquee
                 | Self::Buttons
+                | Self::ThemeStates
+                | Self::BackgroundToasts
                 | Self::Chip
                 | Self::PartyBadge
                 | Self::FlowLedger
+                | Self::ActivityFeed
                 | Self::ChannelBands
                 | Self::CustodyWalk
                 | Self::ClaimCard
                 | Self::CapitalFlow
                 | Self::TimeSpine
+                | Self::CoverageLanes
                 | Self::FlowMatrix
                 | Self::FlowRing
                 | Self::FlowStave
@@ -393,6 +421,9 @@ mod app {
                 | Self::TokenMultiselect
                 | Self::TypeaheadSearch
                 | Self::RelationshipEditor
+                | Self::CommandPalette
+                | Self::EventWiring
+                | Self::UiMachine
                 | Self::NamedGroupList
                 | Self::RarityTargetEditor
                 | Self::PaletteEditor
@@ -402,6 +433,7 @@ mod app {
                 | Self::Gated
                 | Self::AccessGate
                 | Self::UserBadge
+                | Self::TierLadder
                 | Self::IdPill
                 | Self::PropertyList
                 | Self::ButtonGroup
@@ -474,6 +506,7 @@ mod app {
                 Self::Gated => "Entitlement-gated rendering — locked card/chip affordances driven by the shared authorizations Feature registry",
                 Self::AccessGate => "App-level access screen: sign-in prompt + requirements (join links) for gated tools",
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
+                Self::TierLadder => "The access ladder as a modal — what each rung gives, every route to it, and where you stand",
                 Self::Distribution => "Concentric orbital rings supply distribution chart",
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
@@ -647,6 +680,12 @@ mod app {
                 Self::CollectionList => {
                     "Per-client collections list — title, status/standard/network chips, supply progress, policy_id copy, Test mint / Seed stubs actions"
                 }
+                Self::BackgroundToasts => {
+                    "Declare which background jobs are running; the toasts follow. Owns the settle delay (quick work finishes silently), the quiet dismissal (finishing is not news) and the repaint scheduling that makes the delay mean something on an idle surface"
+                }
+                Self::ThemeStates => {
+                    "TEMPLATE for contrast bugs — interaction states (selected / hovered / active / disabled) drawn on every surface, plus the translucent selection wash. Resting-state stories cannot show these; mirrored numerically by tests/contrast.rs"
+                }
                 Self::Chip => {
                     "Small filled-tag label with semantic variants (Success / Warning / Danger / Tag / Info / Muted) + optional × remove affordance"
                 }
@@ -656,11 +695,17 @@ mod app {
                 Self::FlowLedger => {
                     "A wallet's movements in time order — net amounts only, running balance, per-row channel colour, round trips muted, and a reconciliation footer that says DOES NOT RECONCILE rather than showing a plausible total"
                 }
+                Self::ActivityFeed => {
+                    "The account view of the same history: day-grouped cards, each naming its venue, its counterparty and THE ASSETS THAT MOVED — because \"+2 items\" hides whether a wallet got two junk airdrops or two of the collection it trades"
+                }
                 Self::CapitalFlow => {
                     "\"They raised X — watch where it went.\" Cumulative destination bands over a real time axis with a draggable playhead and play button; a labelled raise line the stack is free to CROSS, because deployment beyond the raise is a finding rather than an error to clamp"
                 }
                 Self::TimeSpine => {
                     "ONE time axis for many faces: a playhead that REVEALS, a brush that FILTERS, play/pause — and a shared selection so hovering a holder's pile lights it up everywhere. Dots fly in and settle (keyed tweens; object constancy) while playing; a scrubbed frame settles instantly so a still is readable. The falsifier for 'is egui why this feels flat?'"
+                }
+                Self::CoverageLanes => {
+                    "Three answers, not two: observed producing, observed idle, and NOBODY LOOKED. Day 4's midday orange stretch and day 7's grey column cover comparable spans and make completely different claims — one is a watched fleet sitting idle, the other is a broken poller. Fold them together and every ingest outage becomes recorded downtime. The ground state is unobserved and knowledge paints over it, so a caller cannot assert \"idle\" by forgetting to mention it; uptime divides by OBSERVED time and travels with the share of the window nobody watched. miner-06 dies on day 5 and never returns — you find it by lane shape, not by reading rows"
                 }
                 Self::FlowMatrix => {
                     "Who paid whom across MANY wallets at once — the face for when you do NOT yet know where to look. A matrix rather than a node-link graph, because the finding that cracks a multi-wallet case is two wallets paying the SAME counterparty, which is a column here and four edges lost in a hairball there. One unit at a time (raw Cardano quantities are not comparable), diverging out/in, log magnitude, and an unresolved payer gets its own column instead of being dropped"
@@ -694,6 +739,15 @@ mod app {
                 }
                 Self::RelationshipEditor => {
                     "Directed source → target edges over an option set — variant_flow / dependencies / slot-locks (and the wires in the node-graph view)"
+                }
+                Self::CommandPalette => {
+                    "Modal ⌘K launcher — autofocused fuzzy search over the app's commands, enter dispatches, escape dismisses. Wraps TypeaheadSearch"
+                }
+                Self::EventWiring => {
+                    "One event node wired to its action cards — pattern chips fire it, the '+ action' port opens the palette. The gateway admin's IFTTT editor"
+                }
+                Self::UiMachine => {
+                    "Plain-enum UI state with entry-frame detection + frame-TTL auto-revert — replaces the dirty/pending/flash boolean trio with one matchable state"
                 }
                 Self::NamedGroupList => {
                     "Named groups with member multiselects + an optional flag — exclusive groups / bundled sets / linked traits"
@@ -804,6 +858,9 @@ mod app {
         tag_list_state: stories::tag_list::TagListState,
         token_multiselect_state: stories::token_multiselect::TokenMultiselectState,
         relationship_editor_state: stories::relationship_editor::RelationshipEditorState,
+        command_palette_state: stories::command_palette::CommandPaletteState,
+        event_wiring_state: stories::event_wiring::EventWiringState,
+        machine_state: stories::machine::MachineState,
         named_group_list_state: stories::named_group_list::NamedGroupListState,
         rarity_target_editor_state: stories::rarity_target_editor::RarityTargetEditorState,
         palette_editor_state: stories::palette_editor::PaletteEditorState,
@@ -871,6 +928,7 @@ mod app {
         claim_card_state: stories::claim_card::ClaimCardState,
         capital_flow_state: stories::capital_flow::CapitalFlowState,
         time_spine_state: stories::time_spine::TimeSpineState,
+        coverage_lanes_state: stories::coverage_lanes::CoverageLanesState,
         flow_matrix_state: stories::flow_matrix::FlowMatrixState,
         flow_ring_state: stories::flow_ring::FlowRingState,
         flow_stave_state: stories::flow_stave::FlowStaveState,
@@ -915,6 +973,9 @@ mod app {
                 ),
                 relationship_editor_state:
                     stories::relationship_editor::RelationshipEditorState::default(),
+                command_palette_state: stories::command_palette::CommandPaletteState::default(),
+                event_wiring_state: stories::event_wiring::EventWiringState::default(),
+                machine_state: stories::machine::MachineState::default(),
                 named_group_list_state: stories::named_group_list::NamedGroupListState::default(),
                 rarity_target_editor_state:
                     stories::rarity_target_editor::RarityTargetEditorState::default(),
@@ -997,6 +1058,7 @@ mod app {
                 claim_card_state: stories::claim_card::ClaimCardState::default(),
                 capital_flow_state: stories::capital_flow::CapitalFlowState::default(),
                 time_spine_state: stories::time_spine::TimeSpineState::default(),
+                coverage_lanes_state: stories::coverage_lanes::CoverageLanesState::default(),
                 flow_matrix_state: stories::flow_matrix::FlowMatrixState::default(),
                 flow_ring_state: stories::flow_ring::FlowRingState::default(),
                 flow_stave_state: stories::flow_stave::FlowStaveState::default(),
@@ -1080,6 +1142,7 @@ mod app {
                             Story::Gated => stories::gated::show(ui),
                             Story::AccessGate => stories::access_gate::show(ui),
                             Story::UserBadge => stories::user_badge::show(ui),
+                            Story::TierLadder => stories::tier_ladder::show(ui),
                             Story::Distribution => {
                                 stories::distribution::show(ui, &mut self.distribution_chart)
                             }
@@ -1254,9 +1317,12 @@ mod app {
                             Story::CollectionList => {
                                 stories::collection_list::show(ui, &mut self.collection_list_state)
                             }
+                            Story::ThemeStates => stories::theme_states::show(ui),
+                            Story::BackgroundToasts => stories::background::show(ui),
                             Story::Chip => stories::chip::show(ui),
                             Story::PartyBadge => stories::party_badge::show(ui),
                             Story::FlowLedger => stories::flow_ledger::show(ui),
+                            Story::ActivityFeed => stories::activity_feed::show(ui),
                             Story::ChannelBands => stories::channel_bands::show(ui),
                             Story::CustodyWalk => stories::custody_walk::show(ui),
                             Story::CapitalFlow => {
@@ -1264,6 +1330,9 @@ mod app {
                             }
                             Story::TimeSpine => {
                                 stories::time_spine::show(ui, &mut self.time_spine_state)
+                            }
+                            Story::CoverageLanes => {
+                                stories::coverage_lanes::show(ui, &mut self.coverage_lanes_state)
                             }
                             Story::FlowMatrix => {
                                 stories::flow_matrix::show(ui, &mut self.flow_matrix_state)
@@ -1290,6 +1359,13 @@ mod app {
                                 ui,
                                 &mut self.relationship_editor_state,
                             ),
+                            Story::CommandPalette => {
+                                stories::command_palette::show(ui, &mut self.command_palette_state)
+                            }
+                            Story::EventWiring => {
+                                stories::event_wiring::show(ui, &mut self.event_wiring_state)
+                            }
+                            Story::UiMachine => stories::machine::show(ui, &mut self.machine_state),
                             Story::NamedGroupList => stories::named_group_list::show(
                                 ui,
                                 &mut self.named_group_list_state,

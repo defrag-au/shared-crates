@@ -44,9 +44,9 @@
 
 use std::collections::HashMap;
 
-use macroquad::experimental::coroutines::{start_coroutine, Coroutine};
+use macroquad::experimental::coroutines::{Coroutine, start_coroutine};
 use macroquad::prelude::Rect;
-use macroquad::texture::{load_image, FilterMode, Image, Texture2D};
+use macroquad::texture::{FilterMode, Image, Texture2D, load_image};
 use serde::Deserialize;
 
 /// Wire shape of the atlas index JSON.

@@ -22,14 +22,14 @@
 //! assets would breach `max_value_size` is chunked across several outputs.
 
 use crate::builder::swap::{estimate_value_size_from_map, min_utxo_for_assets};
-use crate::builder::{converge_fee, TxBuildError, UnsignedTx};
+use crate::builder::{TxBuildError, UnsignedTx, converge_fee};
 use crate::helpers::input::add_utxo_inputs;
 use crate::helpers::output::{add_assets_from_map, create_ada_output};
 use crate::params::TxBuildParams;
-use crate::select::{select, SelectError, Selection, Strategy};
-use cardano_assets::utxo::UtxoApi;
-use cardano_assets::utxo_health::{classify_utxo, classify_wallet, UtxoTier, DUST_THRESHOLD};
+use crate::select::{SelectError, Selection, Strategy, select};
 use cardano_assets::AssetId;
+use cardano_assets::utxo::UtxoApi;
+use cardano_assets::utxo_health::{DUST_THRESHOLD, UtxoTier, classify_utxo, classify_wallet};
 use pallas_addresses::Address;
 use pallas_txbuilder::StagingTransaction;
 use serde::{Deserialize, Serialize};
@@ -863,10 +863,12 @@ pub fn build_debag(
     // Mirror the closure's fold: a sub-min remainder rode out on the last
     // asset group, so that output's actual value exceeds its min.
     let mut group_lovelaces = group_mins.clone();
-    if change_lovelace > 0 && change_lovelace < min_pure
-        && let Some(last) = group_lovelaces.last_mut() {
-            *last += change_lovelace;
-        }
+    if change_lovelace > 0
+        && change_lovelace < min_pure
+        && let Some(last) = group_lovelaces.last_mut()
+    {
+        *last += change_lovelace;
+    }
 
     Ok(DebagBuildResult {
         unsigned,
@@ -1353,10 +1355,12 @@ mod tests {
         let merge = merges[0];
         // Spends the two pass-1 shared-policy outputs via placeholder refs.
         assert_eq!(merge.inputs.len(), 2);
-        assert!(merge
-            .inputs
-            .iter()
-            .all(|(h, _)| h.starts_with(PLAN_REF_PREFIX)));
+        assert!(
+            merge
+                .inputs
+                .iter()
+                .all(|(h, _)| h.starts_with(PLAN_REF_PREFIX))
+        );
         // One fused output holding all 41 shared-policy assets.
         assert_eq!(merge.output_groups.len(), 1);
         assert_eq!(merge.output_groups[0].assets.len(), 41);

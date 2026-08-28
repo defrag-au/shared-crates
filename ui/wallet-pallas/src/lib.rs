@@ -38,11 +38,11 @@ pub mod utxo;
 mod value;
 
 pub use address::Address;
-pub use cip8::{compute_key_hash, verify_data_signature, DataSignatureInfo};
+pub use cip8::{DataSignatureInfo, compute_key_hash, verify_data_signature};
 pub use error::PallasError;
 pub use transaction::{
-    assemble_signed_tx, compute_tx_hash, extract_vkey_witnesses, parse_transaction,
-    parse_witness_set, TransactionInfo, WitnessSetInfo,
+    TransactionInfo, WitnessSetInfo, assemble_signed_tx, compute_tx_hash, extract_vkey_witnesses,
+    parse_transaction, parse_witness_set,
 };
 pub use utxo::{decode_utxo, decode_utxos};
-pub use value::{decode_balance, NativeToken, PolicyGroup, WalletBalance, ADA_HANDLE_POLICY};
+pub use value::{ADA_HANDLE_POLICY, NativeToken, PolicyGroup, WalletBalance, decode_balance};

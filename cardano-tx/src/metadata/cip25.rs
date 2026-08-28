@@ -33,8 +33,8 @@ use super::MetadataError;
 pub fn build_cip25_auxiliary_data(
     metadata_json: &serde_json::Value,
 ) -> Result<Vec<u8>, MetadataError> {
-    use pallas_primitives::alonzo::PostAlonzoAuxiliaryData;
     use pallas_primitives::Fragment;
+    use pallas_primitives::alonzo::PostAlonzoAuxiliaryData;
 
     let metadata_721 = metadata_json
         .get("721")
@@ -115,8 +115,8 @@ pub fn build_cip25_auxiliary_data(
 pub fn build_metadata_auxiliary_data(
     metadata_json: &serde_json::Value,
 ) -> Result<Vec<u8>, MetadataError> {
-    use pallas_primitives::alonzo::PostAlonzoAuxiliaryData;
     use pallas_primitives::Fragment;
+    use pallas_primitives::alonzo::PostAlonzoAuxiliaryData;
 
     let obj = metadata_json.as_object().ok_or_else(|| {
         MetadataError::UnsupportedValue("metadata root must be a JSON object of labels".to_string())
@@ -279,9 +279,11 @@ mod tests {
     fn test_build_metadata_auxiliary_data_674_only() {
         let json = serde_json::json!({ "674": { "msg": ["settle:pol:1"] } });
         let bytes = build_metadata_auxiliary_data(&json).unwrap();
-        assert!(bytes
-            .windows(b"settle:pol:1".len())
-            .any(|w| w == b"settle:pol:1"));
+        assert!(
+            bytes
+                .windows(b"settle:pol:1".len())
+                .any(|w| w == b"settle:pol:1")
+        );
     }
 
     #[test]

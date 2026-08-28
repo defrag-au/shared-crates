@@ -13,6 +13,7 @@ members = [
     "discord-client",
     "fal-client",
     "filebase",
+    "handle-resolver",
     "http-client",
     "openai-client",
     "pinata",
@@ -58,6 +59,7 @@ members = [
     "procedural/*",
     "ai-media-gen",
     "pipeline/*",
+    "compositor/*",
 ]
 resolver = "2"
 
@@ -78,6 +80,10 @@ gloo-net = "0.6.0"
 indexmap = { version = "2.0", features = ["serde"] }
 phf = { version = "0.11", features = ["macros"] }
 reqwest = { version = "0.12.12", default-features = false }
+# JSON Schema derived from the type that parses the arguments, so a tool's
+# declaration and its reader are the same definition. Already in the tree
+# transitively; taking it directly adds nothing to the build.
+schemars = { version = "1" }
 serde = { version = "1.0.217" }
 serde_json = { version = "1.0.134" }
 serde_with = { version = "3.12.0" }

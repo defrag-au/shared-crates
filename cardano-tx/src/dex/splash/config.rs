@@ -273,11 +273,7 @@ pub struct OrderBookQuote {
 /// Splash uses `"."` for ADA and `"policy_id.asset_name_hex"` for native tokens.
 /// Our system uses `"lovelace"` for ADA.
 pub fn to_splash_asset(asset: &str) -> &str {
-    if asset == "lovelace" {
-        "."
-    } else {
-        asset
-    }
+    if asset == "lovelace" { "." } else { asset }
 }
 
 // ============================================================================

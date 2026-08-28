@@ -21,7 +21,7 @@
 
 use std::collections::HashMap;
 
-use macroquad::input::{is_key_down, is_key_pressed, KeyCode};
+use macroquad::input::{KeyCode, is_key_down, is_key_pressed};
 
 #[derive(Debug, Clone, Copy)]
 struct KeyState {

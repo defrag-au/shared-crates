@@ -163,5 +163,4 @@ mod tests {
         assert_eq!(asset.traits.get("Mouth"), Some(&vec!["Smile".to_string()]));
         assert!(!asset.traits.contains_key("Eyes")); // null trait value skipped
     }
-
 }

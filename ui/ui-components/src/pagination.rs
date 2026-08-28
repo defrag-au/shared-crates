@@ -236,11 +236,7 @@ fn get_grid_column_count(element: &web_sys::Element) -> Option<usize> {
         .filter(|part| !part.starts_with('[') && !part.ends_with(']') && !part.is_empty())
         .count();
 
-    if count > 0 {
-        Some(count)
-    } else {
-        None
-    }
+    if count > 0 { Some(count) } else { None }
 }
 
 /// Pagination control component
@@ -282,10 +278,11 @@ pub fn Pagination(
 
     let handle_jump_submit = move |ev: web_sys::KeyboardEvent| {
         if ev.key() == "Enter"
-            && let Ok(page) = jump_input.get().parse::<usize>() {
-                state.go_to(page);
-                set_jump_input.set(String::new());
-            }
+            && let Ok(page) = jump_input.get().parse::<usize>()
+        {
+            state.go_to(page);
+            set_jump_input.set(String::new());
+        }
     };
 
     // Calculate which page numbers to show (reactive to page size changes)

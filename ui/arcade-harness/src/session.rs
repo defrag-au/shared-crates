@@ -6,8 +6,8 @@
 //! parsing JSON in the middle of a frame.
 
 use crate::backend::{ArcadeBackend, Poll, ReqId};
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::marker::PhantomData;
 
 /// A request in flight, remembering the response it expects.

@@ -125,7 +125,11 @@ pub fn generate_iiif_url(asset_id: &str, size: IiifSize) -> Option<String> {
     }
 
     // IIIF format: {policy_id}:{asset_name_hex}
-    Some(image_core::iiif_asset_url(policy_id, asset_name, size.into()))
+    Some(image_core::iiif_asset_url(
+        policy_id,
+        asset_name,
+        size.into(),
+    ))
 }
 
 /// Asset card component - wraps ImageCard with IIIF URL generation and overlay slots

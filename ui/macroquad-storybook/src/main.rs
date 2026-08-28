@@ -11,13 +11,12 @@
 
 use macroquad::prelude::*;
 use macroquad_widgets::{
-    mint_checkout, order_fulfilment, quantity_stepper, theme, wallet_connect,
-    wallet_list, Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility, Gestures,
-    SwipeDir,
-    FulfilmentAction, FulfilmentStatus, FulfilmentTx, MintCheckoutVm, OrderFulfilmentVm,
-    squad_picker, OrderStatus, Painter, QuantityStepperVm, SquadCandidate, SquadCommit,
-    SquadPickerAction, SquadPickerVm, StepperAction, Theme, WalletAction, WalletConnectVm,
-    WalletItem, WalletListAction, WalletListState, WalletListVm, WalletRow, WalletState,
+    mint_checkout, order_fulfilment, quantity_stepper, squad_picker, theme, wallet_connect,
+    wallet_list, Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility,
+    FulfilmentAction, FulfilmentStatus, FulfilmentTx, Gestures, MintCheckoutVm, OrderFulfilmentVm,
+    OrderStatus, Painter, QuantityStepperVm, SquadCandidate, SquadCommit, SquadPickerAction,
+    SquadPickerVm, StepperAction, SwipeDir, Theme, WalletAction, WalletConnectVm, WalletItem,
+    WalletListAction, WalletListState, WalletListVm, WalletRow, WalletState,
 };
 
 const SIDEBAR_W: f32 = 210.0;
@@ -459,10 +458,8 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
         Story::squad_picker(
             "squad",
             "pick 4 of 12",
-            SquadPickerVm::new(squad_roster(12), 4).chosen(vec![
-                "tool0000".into(),
-                "tool0001".into(),
-            ]),
+            SquadPickerVm::new(squad_roster(12), 4)
+                .chosen(vec!["tool0000".into(), "tool0001".into()]),
         ),
         Story::squad_picker(
             "squad",
@@ -479,11 +476,7 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
             "single page",
             SquadPickerVm::new(squad_roster(5), 4).chosen(vec!["tool0000".into()]),
         ),
-        Story::squad_picker(
-            "squad",
-            "empty roster",
-            SquadPickerVm::new(Vec::new(), 4),
-        ),
+        Story::squad_picker("squad", "empty roster", SquadPickerVm::new(Vec::new(), 4)),
         Story::squad_picker(
             "squad",
             "locked (run under way)",
@@ -1083,14 +1076,11 @@ async fn main() {
     let args = args();
     if let Some(want) = &args.story {
         let want = want.to_lowercase();
-        match book
-            .stories
-            .iter()
-            .position(|s| {
-                format!("{} {}", s.category, s.name)
-                    .to_lowercase()
-                    .contains(&want)
-            }) {
+        match book.stories.iter().position(|s| {
+            format!("{} {}", s.category, s.name)
+                .to_lowercase()
+                .contains(&want)
+        }) {
             Some(i) => book.select(i),
             // Loud, because silently showing story 0 would look like the
             // widget rendered wrong rather than never rendered at all.

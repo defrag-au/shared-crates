@@ -25,7 +25,7 @@
 
 use crate::asset_card::AssetCard;
 use crate::image_card::CardSize;
-use crate::pagination::{use_adaptive_pagination, Pagination};
+use crate::pagination::{Pagination, use_adaptive_pagination};
 use leptos::prelude::*;
 use wallet_pallas::{NativeToken, PolicyGroup};
 

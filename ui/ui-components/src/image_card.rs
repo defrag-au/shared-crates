@@ -139,10 +139,9 @@ pub fn ImageCard(
     };
 
     let handle_click = move |_| {
-        if !is_static
-            && let Some(cb) = on_click {
-                cb.run(());
-            }
+        if !is_static && let Some(cb) = on_click {
+            cb.run(());
+        }
     };
 
     // Convert name to a signal for reactive access

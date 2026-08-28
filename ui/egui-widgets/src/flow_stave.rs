@@ -8,7 +8,7 @@
 //! classic message-sequence-chart form, with wallets as vertical lanes and
 //! each movement drawn as an arrow at its moment in time.
 //!
-//! ## The three commitments
+//! ## The four commitments
 //!
 //! - **Time is the axis.** Events run downward in time order, with the gap
 //!   between rows LOG-compressed: a five-minute mint→forward cascade stays a
@@ -26,6 +26,14 @@
 //!   it is a diamond spark on the receiving lane, because "created here" and
 //!   "arrived from someone unresolved" are different facts and the old face
 //!   rendered both the same way.
+//! - **"It never came back" is a VERDICT, not a default.** A ledger records
+//!   every unit of value but only the project's own policy of assets, so a
+//!   deployment paid in ADA and returned in someone else's NFTs has its
+//!   departure drawn and its return missing — and an honest allocation renders
+//!   exactly like an extraction. [`Reconciliation`] makes the caller decide:
+//!   returned, declared, or unreconciled, marked at the arrow's origin end in
+//!   the same filled / half / hollow shapes `PartyBadge` uses for basis.
+//!   Unmarked (`None`) asserts nothing.
 //!
 //! Lanes are ordered by ring class, nearest the focal wallet first — the same
 //! curation the ring encodes, so the two faces tell one story. Lane positions
@@ -63,6 +71,34 @@ pub enum StaveOrigin<'a> {
     Unresolved,
 }
 
+/// Whether value that left ever came back — the verdict on an outflow.
+///
+/// A ledger that records every unit of VALUE but only one policy of ASSETS
+/// draws a barter as money walking out: the departure is captured, the return
+/// leg is in someone else's policy and was never seen. So the default
+/// rendering of an honest deployment and of a genuine extraction is the same
+/// arrow, and the reader cannot tell them apart.
+///
+/// Making the verdict a THREE-valued thing the caller computes is the fix.
+/// "Nothing came back" then has to be established rather than assumed, and
+/// [`Reconciliation::Unreconciled`] becomes a finding instead of the absence
+/// of evidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reconciliation {
+    /// Assets arrived at a wallet the project owns, inside the window.
+    /// Observed on both legs; the pairing is derived.
+    Returned,
+    /// No on-chain return is possible — the value bought something off-chain
+    /// — and a purpose has been asserted WITH A SOURCE. Callers must not use
+    /// this for an unsourced claim; that is `Unreconciled` with a note.
+    Declared,
+    /// Value left the project boundary, nothing came back, nothing was
+    /// claimed. Drawn in the warn colour, and drawn ALWAYS — a verdict that
+    /// renders silently at small sizes is the one bug this widget family has
+    /// already shipped once.
+    Unreconciled,
+}
+
 /// One movement involving the focal wallet.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StaveEvent<'a> {
@@ -87,6 +123,11 @@ pub struct StaveEvent<'a> {
     /// nothing to act on; the fold is a chart-capacity decision and must not
     /// cost the fact of WHO was paid.
     pub counterparty: Option<&'a str>,
+    /// Did this value come back? `None` = not applicable or not assessed, and
+    /// draws nothing — the widget never decides that an outflow crossed a
+    /// project boundary, because only the caller knows which lanes the
+    /// project owns.
+    pub reconciliation: Option<Reconciliation>,
 }
 
 pub struct FlowStaveResponse {
@@ -118,9 +159,17 @@ pub struct FlowStave<'a> {
 /// The pinned lane-header band's height.
 const HEADER_H: f32 = 30.0;
 /// Vertical rhythm: the tightest two events may sit this close…
-const ROW_MIN: f32 = 22.0;
+/// Closest two events are ever drawn.
+///
+/// This is the floor for a BUSY wallet, where most gaps are seconds apart and
+/// every row lands on it — so it has to fit what a row actually carries: an
+/// arrow, a value label sitting above that arrow, and an optional asset-count
+/// chip. At 22 those touched, and a cascade of trades read as a solid block of
+/// overlapping ink. The gutter timestamps collided too, since they are drawn
+/// at `ROW_MIN * 0.7` above the line.
+const ROW_MIN: f32 = 34.0;
 /// …and however long the silence, never further apart than this.
-const ROW_MAX: f32 = 64.0;
+const ROW_MAX: f32 = 88.0;
 /// Pointer forgiveness around an event's line.
 const HOVER_SLOP: f32 = 6.0;
 
@@ -253,6 +302,10 @@ impl<'a> FlowStave<'a> {
         };
         let muted = ui.visuals().weak_text_color();
         let ink = ui.visuals().text_color();
+        // Copied out BEFORE any `Frame::show` closure — holding a borrow of
+        // `ui.visuals()` across one is the egui trap this crate has hit
+        // before. Same source as `PartyBadge`'s unsourced-assertion warn.
+        let warn = ui.visuals().warn_fg_color;
         let small = egui::TextStyle::Small.resolve(ui.style());
 
         // ── header: PINNED, never scrolls ──────────────────────────────────
@@ -494,6 +547,30 @@ impl<'a> FlowStave<'a> {
                                     &small,
                                 );
                             }
+                            if let Some(r) = e.reconciliation {
+                                // ORIGIN end, and BELOW the line.
+                                //
+                                // The destination end already carries the
+                                // arrowhead and the count chip, and the
+                                // payload label sits at 0.45 above — so below
+                                // the origin is the only anchor nothing else
+                                // competes for.
+                                //
+                                // Below, not ON: the shaft running through a
+                                // HOLLOW ring turns it into a ring with a bar
+                                // through it, which is precisely the
+                                // `Declared` glyph. Two opposite verdicts
+                                // would render identically. Same reason the
+                                // count chip sits off the line.
+                                reconciliation_mark(
+                                    &painter,
+                                    pos2(fx + if rightward { 8.0 } else { -8.0 }, ey + 7.0),
+                                    r,
+                                    col,
+                                    warn,
+                                    dim,
+                                );
+                            }
                         }
                         _ => {
                             // A mint (or a degenerate zero-length arrow):
@@ -600,6 +677,50 @@ fn diamond(painter: &egui::Painter, at: Pos2, r: f32, col: Color32) {
 }
 
 /// The asset-count chip at an arrow's destination end.
+/// The three-state verdict, SHAPE-coded so it survives both themes and
+/// colour-vision differences — the same filled / half / hollow vocabulary
+/// `PartyBadge` uses for `Basis`, because a reader who has learned it once
+/// should not have to learn it twice.
+///
+/// Colour is a second channel, never the only one: `Unreconciled` also takes
+/// the warn hue, matching `PartyBadge`'s unsourced-assertion rule. Shape
+/// carries the meaning; colour carries the urgency.
+fn reconciliation_mark(
+    painter: &egui::Painter,
+    at: Pos2,
+    r: Reconciliation,
+    col: Color32,
+    warn: Color32,
+    dim: f32,
+) {
+    const R: f32 = 3.5;
+    match r {
+        // Closed loop: the value came back, and we saw it.
+        Reconciliation::Returned => {
+            painter.circle_filled(at, R, col.gamma_multiply(dim));
+        }
+        // Half: a claim stands where evidence cannot.
+        Reconciliation::Declared => {
+            painter.circle_stroke(at, R, Stroke::new(1.4_f32, col.gamma_multiply(dim)));
+            painter.line_segment(
+                [pos2(at.x - R, at.y), pos2(at.x + R, at.y)],
+                Stroke::new(1.4_f32, col.gamma_multiply(dim)),
+            );
+        }
+        // Hollow AND warn-coloured. Never gamma-dimmed below legibility: an
+        // unreconciled outflow that fades out is the finding going quiet,
+        // which is exactly the failure a 10px unlabelled bar caused in
+        // `CustodyWalk`.
+        Reconciliation::Unreconciled => {
+            painter.circle_stroke(
+                at,
+                R,
+                Stroke::new(1.4_f32, warn.gamma_multiply(dim.max(0.6))),
+            );
+        }
+    }
+}
+
 fn item_chip(painter: &egui::Painter, at: Pos2, items: i32, col: Color32, font: &egui::FontId) {
     let r = Rect::from_center_size(at, vec2(7.0, 7.0));
     painter.rect_stroke(r, 1.5, Stroke::new(1.0_f32, col), egui::StrokeKind::Middle);
@@ -660,6 +781,49 @@ mod tests {
         );
         // Stability: same lanes, same order, every time.
         assert_eq!(order, lane_order("front", &lanes));
+    }
+
+    /// A verdict is DECORATION, never geometry.
+    ///
+    /// Lane positions depend only on the lane list and row positions only on
+    /// timestamps — so marking an outflow reconciled cannot move it, and two
+    /// arrows with opposite verdicts stay directly comparable. If a verdict
+    /// could shift an arrow, a reader would be unable to tell a re-layout
+    /// from a re-classification.
+    #[test]
+    fn a_reconciliation_verdict_never_moves_an_arrow() {
+        let lanes = [
+            StaveLane::new("front", 3),
+            StaveLane::new("treasury", 0),
+            StaveLane::new("collector", 3),
+        ];
+        let before = lane_order("front", &lanes);
+
+        let ev = |r: Option<Reconciliation>| StaveEvent {
+            timestamp: 1_785_950_000,
+            from: StaveOrigin::Party("front"),
+            to: "collector",
+            label: "1,050 ₳".into(),
+            items: 0,
+            magnitude: 0.6,
+            tx: "aa",
+            counterparty: None,
+            reconciliation: r,
+        };
+        let plain = ev(None);
+        for r in [
+            Reconciliation::Returned,
+            Reconciliation::Declared,
+            Reconciliation::Unreconciled,
+        ] {
+            let marked = ev(Some(r));
+            assert_eq!(marked.timestamp, plain.timestamp, "{r:?} moved the row");
+            assert_eq!(marked.from, plain.from, "{r:?} moved the origin");
+            assert_eq!(marked.to, plain.to, "{r:?} moved the destination");
+            assert_eq!(marked.magnitude, plain.magnitude, "{r:?} changed weight");
+            assert_ne!(marked.reconciliation, plain.reconciliation);
+        }
+        assert_eq!(before, lane_order("front", &lanes), "lanes are event-blind");
     }
 
     /// Order is preserved and gaps are compressed, never inverted: a

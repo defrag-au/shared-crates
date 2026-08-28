@@ -104,7 +104,7 @@ fn parse_jpg_v1_v2_v3_datum(
         _ => {
             return Err(TxBuildError::BuildFailed(format!(
                 "Expected payouts array at datum field[{payouts_field_idx}]"
-            )))
+            )));
         }
     };
 
@@ -198,7 +198,7 @@ fn parse_payout_address(data: &PlutusData, network_id: u8) -> Result<Address, Tx
         _ => {
             return Err(TxBuildError::BuildFailed(format!(
                 "Unexpected address credential tags: pay={pay_tag}"
-            )))
+            )));
         }
     }
 
@@ -291,21 +291,23 @@ fn extract_constr_fields(
     match data {
         PlutusData::Constr(constr) => {
             if let Some(tag) = expected_tag
-                && constr.tag != (121 + tag) && constr.tag != tag {
-                    // pallas uses raw CBOR tag (121 = Constructor 0, 122 = Constructor 1, etc.)
-                    // but also sometimes the "compact" form
-                    let effective_tag = if constr.tag >= 121 && constr.tag <= 127 {
-                        constr.tag - 121
-                    } else {
-                        constr.tag
-                    };
-                    if effective_tag != tag {
-                        return Err(TxBuildError::BuildFailed(format!(
-                            "Expected constructor tag {tag}, got {} (raw: {})",
-                            effective_tag, constr.tag
-                        )));
-                    }
+                && constr.tag != (121 + tag)
+                && constr.tag != tag
+            {
+                // pallas uses raw CBOR tag (121 = Constructor 0, 122 = Constructor 1, etc.)
+                // but also sometimes the "compact" form
+                let effective_tag = if constr.tag >= 121 && constr.tag <= 127 {
+                    constr.tag - 121
+                } else {
+                    constr.tag
+                };
+                if effective_tag != tag {
+                    return Err(TxBuildError::BuildFailed(format!(
+                        "Expected constructor tag {tag}, got {} (raw: {})",
+                        effective_tag, constr.tag
+                    )));
                 }
+            }
             Ok(constr.fields.iter().cloned().collect())
         }
         _ => Err(TxBuildError::BuildFailed(format!(

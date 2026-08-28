@@ -34,7 +34,7 @@ use crate::{
     AssetCard, Button, ButtonVariant, CardSize, DraggableStack, ItemDragState, Modal, Reorder,
     Select, SelectOption, StackDirection,
 };
-use asset_intents::{format_number, AssetId, Drop};
+use asset_intents::{AssetId, Drop, format_number};
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 

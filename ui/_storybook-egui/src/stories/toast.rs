@@ -7,6 +7,10 @@ use egui_widgets::{show_toasts, IdPill, PhosphorIcon, Toast, ToastKind, ToastQue
 /// frames and self-dismiss on the countdown.
 pub struct ToastState {
     pub queue: ToastQueue,
+    /// Fake completion for the progress demo.
+    pub excavation: f32,
+    /// A story should show its widget without being clicked first.
+    pub seeded: bool,
     /// Backing string for the IdPill demo so we have something to copy.
     pub demo_policy: String,
 }
@@ -15,12 +19,26 @@ impl Default for ToastState {
     fn default() -> Self {
         Self {
             queue: ToastQueue::new(),
+            excavation: 0.0,
+            seeded: false,
             demo_policy: "8532f316dd0973a8e2c5b7d0fa194deebd4451aabdfe3a8c2bd45d87a1b".to_string(),
         }
     }
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
+    // Seed a running task so the progress kind is visible on arrival — a
+    // story that only renders after a click screenshots as an empty screen.
+    if !state.seeded {
+        state.seeded = true;
+        state.excavation = 0.56;
+        state.queue.progress(
+            "excavation",
+            "scan: 56% of 8,865 chunks",
+            Some(state.excavation),
+        );
+        state.queue.progress("resolve", "naming senders…", None);
+    }
     ui.label(egui::RichText::new("Toast").color(ACCENT).strong());
     ui.label(
         egui::RichText::new(
@@ -59,6 +77,41 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
         }
         if ui.button("Info").clicked() {
             state.queue.info("3 new orders since last refresh");
+        }
+    });
+
+    ui.add_space(10.0);
+    ui.label(
+        egui::RichText::new(
+            "Progress — background work. Keyed, so repeated pushes replace rather than stack; \
+             never auto-dismisses; resolves in place.",
+        )
+        .color(TEXT_MUTED)
+        .small(),
+    );
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        // The same key each click: the toast advances instead of piling up.
+        if ui.button("Advance excavation").clicked() {
+            state.excavation = (state.excavation + 0.18).min(1.0);
+            let pct = (state.excavation * 100.0).round();
+            state.queue.progress(
+                "excavation",
+                format!("scan: {pct:.0}% of 8,865 chunks"),
+                Some(state.excavation),
+            );
+        }
+        if ui.button("Indeterminate").clicked() {
+            state.queue.progress("resolve", "naming senders…", None);
+        }
+        if ui.button("Resolve").clicked() {
+            state.excavation = 0.0;
+            state.queue.resolve(
+                "excavation",
+                ToastKind::Success,
+                "excavation complete — 3,203 transactions",
+            );
+            state.queue.dismiss("resolve");
         }
     });
 

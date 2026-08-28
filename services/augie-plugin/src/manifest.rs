@@ -2,13 +2,30 @@
 //! config-refresh time and merged into the guild's registered command set.
 
 use serde::{Deserialize, Serialize};
+// Re-exported deliberately. This crate is the facade a plugin author works
+// against: they should be able to declare a tool's parameters, and render the
+// schema for their own MCP surface, without needing to know `tool-schema`
+// exists or adding a second dependency to say the same thing.
+pub use tool_schema::{assert_flat, no_arguments, schema_for, schemars, JsonSchema};
 
 /// A plugin's complete command surface.
 ///
-/// Fetched from `GET /_augie/manifest` during the `RefreshBotConfigs` chain —
-/// **not** at interaction time. Discord command registration is a deliberate,
-/// rate-limited, guild-scoped operation; it belongs to an explicit refresh, not
-/// to a request path.
+/// Fetched from `GET /_augie/manifest` during the `RefreshBotConfigs` chain,
+/// and — since the two halves of this type have different costs — revalidated
+/// opportunistically off the agent path as well.
+///
+/// The distinction to hold onto:
+///
+/// - [`Self::commands`] **registers with Discord**, which is a deliberate,
+///   rate-limited, guild-scoped write. That belongs to an explicit refresh and
+///   must never happen on a request path.
+/// - [`Self::tools`] are only ever handed to a model in-process. Nothing
+///   external, nothing to rate-limit. Requiring a refresh to pick up a new
+///   tool was an accident of sharing one cache with the commands, not a
+///   property tools have.
+///
+/// So the manifest may be re-fetched and re-cached after answering a mention;
+/// what that refresh cannot do is register anything.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ServiceManifest {
     /// Stable identifier for this plugin, e.g. `"holder-map"`. Must match the
@@ -26,6 +43,64 @@ pub struct ServiceManifest {
     /// refresh rather than picking a winner.
     #[serde(default)]
     pub commands: Vec<PluginCommand>,
+
+    /// Tools an agent may call on this plugin's behalf. See [`PluginTool`] for
+    /// why this overlaps `commands` without being derived from it.
+    ///
+    /// Defaults to empty, so a plugin that predates agents advertises none and
+    /// is simply never routed to by one.
+    #[serde(default)]
+    pub tools: Vec<PluginTool>,
+}
+
+/// One tool an agent may call.
+///
+/// Advertised alongside — not instead of — [`PluginCommand`]. The two lists
+/// overlap: `bargains` is worth being both a slash command and a tool, while
+/// `resolve_traits` is only ever an agent's intermediate step and a
+/// destructive command may be worth offering to humans and to no model at all.
+///
+/// Sent to `POST /_augie/tool` as a [`crate::ToolInvocation`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PluginTool {
+    /// Stable identifier. Must be unique within this plugin; Augie namespaces
+    /// across plugins itself, so two services may both offer `search`.
+    pub name: String,
+
+    /// What the tool does **and when to call it**.
+    ///
+    /// This is the single highest-leverage field in the manifest — it is the
+    /// entire basis on which a model decides to reach for this tool rather
+    /// than another, or rather than answering from its own knowledge. Say the
+    /// trigger condition explicitly ("call this when the user asks about
+    /// current listings or floor price"), not just the capability.
+    pub description: String,
+
+    /// The arguments it accepts, as JSON Schema.
+    ///
+    /// **Generate this with [`tool_schema::schema_for`], never by hand.** It
+    /// is derived from the same type the tool parses its arguments into, so
+    /// what is advertised and what is accepted are one definition rather than
+    /// two that drift — which is how a filter came to be silently dropped and
+    /// how a "1-5" in prose outlived a code limit of 60.
+    ///
+    /// Raw JSON here rather than a typed parameter list because this is what
+    /// a function-calling API wants and what MCP already puts on the wire; a
+    /// typed intermediate would only be re-serialised to exactly this. The
+    /// hazard that argued for typing it — a hand-written `Value` nobody
+    /// checked — is gone once the value is generated from a type.
+    ///
+    /// Missing or `null` means the tool takes no arguments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<serde_json::Value>,
+
+    /// Who may cause this tool to run. See [`PermissionClass`].
+    ///
+    /// Augie filters the offered list by the *asking user's* class before the
+    /// model ever sees it, so a tool a caller may not use is not something the
+    /// model can be talked into calling.
+    #[serde(default)]
+    pub permission: PermissionClass,
 }
 
 /// One command, or one subcommand of a command.
@@ -188,6 +263,18 @@ impl ServiceManifest {
         }
         out
     }
+
+    /// The tools a caller of this class may use.
+    ///
+    /// Filtering happens here, before the list reaches the model, rather than
+    /// at execution time. A model that is never told a tool exists cannot be
+    /// argued into calling it — and since the question arrives from a public
+    /// channel, "cannot" is worth more than "will be refused".
+    pub fn tools_for(&self, caller: PermissionClass) -> impl Iterator<Item = &PluginTool> {
+        self.tools
+            .iter()
+            .filter(move |tool| caller.satisfies(tool.permission))
+    }
 }
 
 #[cfg(test)]
@@ -217,6 +304,7 @@ mod tests {
                 "comp",
                 vec![cmd("create", vec![]), cmd("draw", vec![])],
             )],
+            tools: vec![],
         };
 
         assert_eq!(
@@ -239,5 +327,55 @@ mod tests {
         let parsed: PluginCommand = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.permission, PermissionClass::Everyone);
         assert!(!parsed.needs_defer);
+    }
+
+    fn tool(name: &str, permission: PermissionClass) -> PluginTool {
+        PluginTool {
+            name: name.to_string(),
+            description: format!("call {name} when asked about {name}"),
+            input_schema: None,
+            permission,
+        }
+    }
+
+    fn manifest_with_tools(tools: Vec<PluginTool>) -> ServiceManifest {
+        ServiceManifest {
+            service: "collection-ownership".to_string(),
+            version: "1".to_string(),
+            commands: vec![],
+            tools,
+        }
+    }
+
+    /// A tool the caller may not use is never offered to the model, so there is
+    /// nothing to talk it into calling.
+    #[test]
+    fn tools_for_hides_what_the_caller_may_not_run() {
+        let manifest = manifest_with_tools(vec![
+            tool("find_assets", PermissionClass::Everyone),
+            tool("purge_cache", PermissionClass::Admin),
+        ]);
+
+        let visible: Vec<&str> = manifest
+            .tools_for(PermissionClass::Everyone)
+            .map(|t| t.name.as_str())
+            .collect();
+        assert_eq!(visible, vec!["find_assets"]);
+
+        let as_admin: Vec<&str> = manifest
+            .tools_for(PermissionClass::Admin)
+            .map(|t| t.name.as_str())
+            .collect();
+        assert_eq!(as_admin, vec!["find_assets", "purge_cache"]);
+    }
+
+    /// A manifest written before tools existed must still parse, and advertise
+    /// none rather than failing the refresh.
+    #[test]
+    fn a_manifest_without_tools_still_parses() {
+        let json = r#"{"service":"holder-map","version":"1","commands":[]}"#;
+        let parsed: ServiceManifest = serde_json::from_str(json).unwrap();
+        assert!(parsed.tools.is_empty());
+        assert_eq!(parsed.tools_for(PermissionClass::Admin).count(), 0);
     }
 }

@@ -1081,9 +1081,10 @@ pub fn build_cancel_offer_tx(
 
             // Include datum in witness set if provided (needed for hash-datum COs)
             if let Some(ref hex) = req.datum_cbor_hex
-                && let Ok(bytes) = hex::decode(hex) {
-                    tx = tx.datum(bytes);
-                }
+                && let Ok(bytes) = hex::decode(hex)
+            {
+                tx = tx.datum(bytes);
+            }
 
             // Single output: CO value + fee UTxO value - fee, all back to
             // wallet. When the fee UTxO carries native assets, those assets
@@ -1347,11 +1348,7 @@ fn build_cancel_offers_tx_inner(
             &from_address,
             Address::Shelley(s) if s.payment().as_hash().as_slice() == owner_pkh_bytes.as_slice()
         );
-        if payer_is_signer {
-            1
-        } else {
-            2
-        }
+        if payer_is_signer { 1 } else { 2 }
     };
 
     super::converge_fee_with_witnesses(
@@ -1786,8 +1783,14 @@ mod tests {
     fn test_extract_co_script_hashes() {
         // Two known CO script addresses (different contract versions)
         let addresses = [
-            ("V2 (active)", "addr1xxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tfvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eks2utwdd"),
-            ("V3 (deprecated)", "addr1xxzvcf02fs5e282qk3pmjkau2emtcsj5wrukxak3np90n2evjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eksg6pw3p"),
+            (
+                "V2 (active)",
+                "addr1xxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tfvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eks2utwdd",
+            ),
+            (
+                "V3 (deprecated)",
+                "addr1xxzvcf02fs5e282qk3pmjkau2emtcsj5wrukxak3np90n2evjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eksg6pw3p",
+            ),
         ];
         for (label, bech32) in &addresses {
             let addr = Address::from_bech32(bech32).unwrap();

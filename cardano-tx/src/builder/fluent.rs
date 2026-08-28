@@ -15,8 +15,8 @@
 //!     .build()?;
 //! ```
 
-use cardano_assets::utxo::UtxoTag;
 use cardano_assets::UtxoApi;
+use cardano_assets::utxo::UtxoTag;
 use pallas_addresses::Address;
 use pallas_crypto::hash::Hash;
 use pallas_txbuilder::{ExUnits, Input, Output, ScriptKind, StagingTransaction};
@@ -630,11 +630,7 @@ fn higher_plutus_version(a: ScriptKind, b: ScriptKind) -> ScriptKind {
             _ => 0,
         }
     }
-    if rank(a) >= rank(b) {
-        a
-    } else {
-        b
-    }
+    if rank(a) >= rank(b) { a } else { b }
 }
 
 #[cfg(test)]

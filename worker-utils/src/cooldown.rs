@@ -128,7 +128,11 @@ mod tests {
         assert_eq!(ttl, 60, "TTL is raised to the KV floor");
 
         let until = now + seconds;
-        assert_eq!(until - now, 30, "remaining still reflects the real duration");
+        assert_eq!(
+            until - now,
+            30,
+            "remaining still reflects the real duration"
+        );
     }
 
     #[test]

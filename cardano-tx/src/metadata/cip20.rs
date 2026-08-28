@@ -18,8 +18,8 @@ use super::MetadataError;
 /// Each string must be ≤64 bytes (CIP-20 requirement). Longer strings
 /// are truncated with a warning.
 pub fn build_cip20_auxiliary_data(messages: &[String]) -> Result<Vec<u8>, MetadataError> {
-    use pallas_primitives::alonzo::PostAlonzoAuxiliaryData;
     use pallas_primitives::Fragment;
+    use pallas_primitives::alonzo::PostAlonzoAuxiliaryData;
 
     if messages.is_empty() {
         return Err(MetadataError::UnsupportedValue(

@@ -1,0 +1,11 @@
+[package]
+name = "handle-resolver"
+version = "0.1.0"
+edition = "2021"
+
+# Deliberately dependency-free. This crate is the QUEUE, not the transport:
+# every consumer already has its own way to reach the handle service (a worker
+# fetch, a same-origin POST, a ui-flow action), and pulling an HTTP client in
+# here would pick one for all of them — and make the crate unusable from a
+# macroquad target, where wasm-bindgen cannot go.
+[dependencies]

@@ -1,0 +1,11 @@
+[package]
+name = "tool-schema"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Tool arguments as a type: the derived JSON Schema, and the parse target, from one definition"
+
+[dependencies]
+schemars = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

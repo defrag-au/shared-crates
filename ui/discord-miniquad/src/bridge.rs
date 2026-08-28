@@ -126,8 +126,7 @@ mod imp {
     }
 
     pub fn launch_context() -> LaunchContext {
-        serde_json::from_str(&js_to_string(unsafe { discord_launch_context() }))
-            .unwrap_or_default()
+        serde_json::from_str(&js_to_string(unsafe { discord_launch_context() })).unwrap_or_default()
     }
 
     pub fn launch_query(key: &str) -> Option<String> {

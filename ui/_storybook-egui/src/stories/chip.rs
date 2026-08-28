@@ -96,4 +96,36 @@ pub fn show(ui: &mut egui::Ui) {
             .on_hover_text("Status: sold out — inventory exhausted")
             .show(ui);
     });
+
+    ui.add_space(16.0);
+    ui.label(egui::RichText::new("Clickable body").strong());
+    ui.label(
+        egui::RichText::new(
+            "`clickable(true)` adds a pointer cursor; `ChipResponse::clicked` reports \
+             the body being hit either way. Click the chip — the counter proves the \
+             response is live, which it was NOT before the frame started sensing clicks.",
+        )
+        .color(TEXT_MUTED)
+        .small(),
+    );
+    ui.add_space(4.0);
+    let id = ui.id().with("chip_clicks");
+    let mut clicks: u32 = ui.data_mut(|d| d.get_temp(id)).unwrap_or(0);
+    ui.horizontal(|ui| {
+        if Chip::new("click me")
+            .variant(ChipVariant::Warning)
+            .clickable(true)
+            .on_hover_text("Counts a body click")
+            .show(ui)
+            .clicked
+        {
+            clicks += 1;
+        }
+        ui.label(
+            egui::RichText::new(format!("clicked {clicks}×"))
+                .small()
+                .color(TEXT_MUTED),
+        );
+    });
+    ui.data_mut(|d| d.insert_temp(id, clicks));
 }

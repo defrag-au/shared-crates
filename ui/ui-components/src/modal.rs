@@ -32,7 +32,7 @@
 //! </Modal>
 //! ```
 
-use crate::modal_context::{use_modal_navigation, ModalViewId};
+use crate::modal_context::{ModalViewId, use_modal_navigation};
 use leptos::prelude::*;
 
 /// Modal dialog component
@@ -148,9 +148,10 @@ pub fn Modal(
 
         let handle_keydown = move |ev: web_sys::KeyboardEvent| {
             if ev.key() == "Escape"
-                && let Some(cb) = on_close {
-                    cb.run(());
-                }
+                && let Some(cb) = on_close
+            {
+                cb.run(());
+            }
         };
 
         let handle_backdrop_click = move |_| {

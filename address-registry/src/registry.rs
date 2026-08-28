@@ -785,7 +785,9 @@ mod tests {
 
     #[test]
     fn an_unregistered_stake_key_is_not_named() {
-        assert!(lookup_stake("stake1u98f5mr0mn8tv2kqndk5cwen4uasc7cewlzdklz6y664zacl9lvjz").is_none());
+        assert!(
+            lookup_stake("stake1u98f5mr0mn8tv2kqndk5cwen4uasc7cewlzdklz6y664zacl9lvjz").is_none()
+        );
     }
 
     /// The stake table takes bech32 STAKE keys. A payment address must never

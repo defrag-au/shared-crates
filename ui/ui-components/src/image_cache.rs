@@ -5,8 +5,8 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
 thread_local! {
     /// Global cache mapping image URLs to blob URLs

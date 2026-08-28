@@ -247,7 +247,7 @@ mod tests {
         // key 1: outputs
         enc.u32(1).unwrap();
         enc.array(1).unwrap(); // 1 output
-                               // Post-alonzo output as map
+        // Post-alonzo output as map
         enc.map(2).unwrap();
         enc.u32(0).unwrap(); // address key
         enc.bytes(&[0x01; 57]).unwrap(); // 57-byte shelley address
@@ -439,9 +439,11 @@ mod tests {
 
         let result = assemble_signed_tx(&unsigned_hex, &ws_hex);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("no VKey witnesses"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("no VKey witnesses")
+        );
     }
 }

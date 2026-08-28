@@ -457,12 +457,16 @@ mod tests {
         };
         let clauses = script_all_clauses(&policy);
         // lower bound = after_slot (InvalidBefore), upper bound = before_slot (InvalidHereafter)
-        assert!(clauses
-            .iter()
-            .any(|c| matches!(c, NativeScript::InvalidBefore(s) if *s == 40_000_000)));
-        assert!(clauses
-            .iter()
-            .any(|c| matches!(c, NativeScript::InvalidHereafter(s) if *s == 50_000_000)));
+        assert!(
+            clauses
+                .iter()
+                .any(|c| matches!(c, NativeScript::InvalidBefore(s) if *s == 40_000_000))
+        );
+        assert!(
+            clauses
+                .iter()
+                .any(|c| matches!(c, NativeScript::InvalidHereafter(s) if *s == 50_000_000))
+        );
     }
 
     #[test]
@@ -473,12 +477,16 @@ mod tests {
             before_slot: 50_000_000,
         };
         let clauses = script_all_clauses(&policy);
-        assert!(clauses
-            .iter()
-            .any(|c| matches!(c, NativeScript::InvalidHereafter(s) if *s == 50_000_000)));
-        assert!(!clauses
-            .iter()
-            .any(|c| matches!(c, NativeScript::InvalidBefore(_))));
+        assert!(
+            clauses
+                .iter()
+                .any(|c| matches!(c, NativeScript::InvalidHereafter(s) if *s == 50_000_000))
+        );
+        assert!(
+            !clauses
+                .iter()
+                .any(|c| matches!(c, NativeScript::InvalidBefore(_)))
+        );
     }
 
     #[test]

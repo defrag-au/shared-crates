@@ -88,6 +88,7 @@ pub struct Chip<'a> {
     removable: bool,
     hover_text: Option<&'a str>,
     upper: bool,
+    clickable: bool,
 }
 
 /// Outcome of one `Chip::show()` call.
@@ -111,6 +112,7 @@ impl<'a> Chip<'a> {
             removable: false,
             hover_text: None,
             upper: false,
+            clickable: false,
         }
     }
 
@@ -138,6 +140,18 @@ impl<'a> Chip<'a> {
     /// behaviour). Off by default — passing pre-cased text is cleaner.
     pub fn upper_case(mut self, b: bool) -> Self {
         self.upper = b;
+        self
+    }
+
+    /// Advertise that the body does something when clicked — currently a
+    /// pointer cursor on hover.
+    ///
+    /// `ChipResponse::clicked` is reported either way; this only changes the
+    /// AFFORDANCE, so a static chip does not grow a hand cursor it cannot
+    /// honour. A chip that acts on a click without saying so is a hidden
+    /// control, and one that promises a click it ignores is worse.
+    pub fn clickable(mut self, b: bool) -> Self {
+        self.clickable = b;
         self
     }
 
@@ -182,7 +196,18 @@ impl<'a> Chip<'a> {
             });
         });
 
-        if inner.response.clicked() {
+        // `Frame::show` hands back a plain allocated-area response sensing
+        // only hover, so asking it `.clicked()` directly is always false —
+        // which silently made `ChipResponse::clicked` dead for every host.
+        // Interacting the frame's rect is what actually senses the body,
+        // the same move `UserBadge` makes for its pill.
+        let body = inner.response.interact(Sense::click());
+        if self.clickable && body.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        // A click that removed the chip is not also a click ON it — without
+        // this, hitting the `×` would fire the host's body handler too.
+        if body.clicked() && !response.removed {
             response.clicked = true;
         }
         response

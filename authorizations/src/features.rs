@@ -43,4 +43,13 @@ crate::features! {
         name: "Admin",
         locked_hint: "Operator access — granted to specific Discord accounts",
     };
+    /// Augminted gateway-listener admin surface — live editing of chat
+    /// trigger wiring (which utterances invoke which bot commands, with
+    /// which reactions) per guild. Granted via a Gateway Admin role in
+    /// HODLCroft; enforced by the augminted-bots gateway worker.
+    pub const GATEWAY_ADMIN = {
+        id: "gateway.admin",
+        name: "Gateway Admin",
+        locked_hint: "Gateway operator access — hold the Gateway Admin role in HODLCroft",
+    };
 }

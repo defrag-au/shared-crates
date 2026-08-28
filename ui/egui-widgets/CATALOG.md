@@ -5,16 +5,18 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-103 widgets.
+111 widgets.
 
 | module | what it is |
 |---|---|
 | `access_gate` | `AccessGate` — the app-level access screen: a "sign in" prompt for anonymous visitors and a "requirements" screen (what to join to gain access) for signed-in-but-unqualified users |
+| `activity_feed` | `ActivityFeed` — a wallet's transactions as day-grouped cards: what it was, who it was with, what moved, and what it cost |
 | `activity_lanes` | `ActivityLanes` — one thin lane per party, showing WHEN it acted, under the shared spine |
 | `amount_input` | ADA amount input widget with preset buttons and validation |
 | `animated_counter` | AnimatedCounter — smoothly interpolates a numeric value between snapshots |
 | `arrival_field` | ArrivalField — every asset a dot, every holder a pile, and now they MOVE |
 | `asset_strip` | Asset strip — a horizontal row of square asset thumbnails that overlap progressively as more items are added |
+| `background` | `BackgroundToasts` — declare what work is running; the toasts follow |
 | `bullet_bar` | Bullet bar — a value fill against a track with a **target marker** |
 | `button_group` | `ButtonGroup` — a row of related action buttons with shared layout |
 | `buttons` | Button helpers that add consistent UX behavior (pointer cursor, etc.) |
@@ -25,12 +27,16 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `claim_card` | `ClaimCard` — an assertion, what would refute it, and whether anyone has tried |
 | `collection_composition` | Collection composition — a promotable "how this collection is generated" infographic |
 | `collection_list` | Collection roster — the per-client collections list rendered on the admin portal dashboard |
+| `command_palette` | `CommandPalette` — a modal, keyboard-first action launcher over a caller-supplied command set |
 | `coverage_delta_bar` | Coverage delta bar — before/after progress bar for trait coverage |
+| `coverage_lanes` | `CoverageLanes` — was it up, was it down, or was nobody looking, per entity, on the shared spine |
 | `custody_walk` | `CustodyWalk` — where a specific sum came from, unit by unit |
 | `data_table` | Data table — dense row-based table with column headers, selection, and optional detail panel |
+| `detail_split` | `detail_split` — a content column beside a detail column, laid out by hand |
 | `distribution_waterfall` | `DistributionWaterfall` — how a buyer's payment flows down to what lands in each party's wallet under settle-as-you-mint |
 | `donut_chart` | `DistributionChart` — a donut of banded shares with a legend and hover tooltip, for "how is this split" questions |
 | `error_note` | `ErrorNote` — turns an ugly machine error string into a readable note |
+| `event_wiring` | `EventWiring` — one event-source node wired to its action cards, IFTTT made visible |
 | `exposure_bar` | Exposure bar — stacked horizontal bar showing total ADA exposure segmented by collateral token, colored by LTV risk |
 | `fee_report` | Fee report widget — displays per-side fee breakdown for a trade |
 | `file_upload` | File upload widget — opens a browser file picker and reads the selected file |
@@ -50,6 +56,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `leaderboard` | `Leaderboard` — ranked standings: podium-tinted ranks, an optional prize thumbnail, one headline metric, supporting stats, and a share bar |
 | `leaderboard_table` | `LeaderboardTable` — a dense, virtual-scrolled ranked table |
 | `listing_grid` | `ListingGrid` — a responsive grid of marketplace listing cards, each with a lazily-loaded image, price and trailing badges |
+| `machine` | `Machine` — plain-enum UI state, hierarchical, with entry framing, frame-TTL auto-revert and eased transition progress |
 | `managed_wallet_utxos` | Managed-wallet UTxO breakdown — a structured, role-aware view of a custodial wallet's on-chain UTxOs |
 | `marquee` | Scrolling marquee ticker widget |
 | `metric_card` | MetricCard — a dashboard stat card with label, value, optional trend, and sparkline |
@@ -90,9 +97,10 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `supply_bar` | Two-band mint supply bar — `minted` (on chain) + `ordered` (the backlog of ordered-but-not-yet-minted units), over the unsold track |
 | `swap_modal` | Reusable swap modal widget for egui frontends |
 | `tag_list` | Tag list — a wrapping row of removable tags with an optional trailing "clear all" button |
+| `tier_ladder` | `TierLadder` — the whole access ladder as a modal: what each rung gives, every way to reach it, and where the reader currently stands |
 | `time_spine` | TimeSpine — ONE time axis for a surface of many faces |
 | `timestamp` | `Timestamp` — a tiny atom that renders a unix-seconds timestamp **consistently** as ISO-8601 (UTC), with an optional clean badge presentation |
-| `toast` | `Toast` / `ToastQueue` — transient overlay messages with frame-countdown auto-dismiss |
+| `toast` | `Toast` / `ToastQueue` — transient overlay messages with frame-countdown auto-dismiss, plus keyed **progress** toasts for work happening in the background |
 | `token_multiselect` | token_multiselect — pick a subset from a known set of options |
 | `trade_flow` | Trade-flow widget — the local user's view of a P2P swap in plain give / get / net terms, decoupled from the raw eUTxO structure |
 | `trade_table` | Trade table widget — TCG-style top/bottom offer display for the trade desk |
@@ -101,7 +109,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `tx_cart` | TX Cart widget — displays a list of pending chain actions with batch execution |
 | `tx_estimate` | Per-wallet transaction estimate widget — shows the local user's ADA impact |
 | `typeahead_search` | `TypeaheadSearch` — a search box with a keyboard-navigable result dropdown |
-| `user_badge` | `UserBadge` — a compact "logged in as" pill (avatar + name) with a click-to-open popup carrying a sign-out action |
+| `user_badge` | `UserBadge` — a compact "logged in as" pill (avatar/icon + name) whose click-to-open popup carries the session's identity block and a sign-out action |
 | `utxo_map` | UTxO terrain map — a Voronoi-based wallet visualization |
 | `utxo_shelf` | UTxO Shelf — wallet health visualization |
 | `variant_split` | Variant split — explains a `variant_flow` source slot's **derived** variant distribution and *why* it isn't uniform |

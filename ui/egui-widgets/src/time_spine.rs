@@ -612,6 +612,9 @@ pub struct TimeSpine<'a> {
     marks: &'a [(i64, MarkKind)],
     height: f32,
     show_play: bool,
+    /// May the reader drag out a range to FILTER by? See
+    /// [`TimeSpine::brushing`].
+    brushing: bool,
     /// Extra space reserved left of the ruler, for a caller that draws a row
     /// of labels beneath (see [`crate::activity_lanes::ActivityLanes`]).
     left_inset: f32,
@@ -626,8 +629,24 @@ impl<'a> TimeSpine<'a> {
             marks: &[],
             height: 56.0,
             show_play: true,
+            brushing: true,
             left_inset: 0.0,
         }
+    }
+
+    /// Allow dragging out a range to filter by. Default on.
+    ///
+    /// Turn it off where the spine is a NAVIGATOR rather than a filter — a
+    /// surface with one long list and no linked faces to narrow together. The
+    /// brush is a second, modal way to hide rows, and where nothing else
+    /// responds to it, it mostly reads as the list mysteriously going short.
+    ///
+    /// Disabling also clears any brush already set, so a range cannot outlive
+    /// the affordance that made it and leave rows filtered with no visible
+    /// control to undo it.
+    pub fn brushing(mut self, on: bool) -> Self {
+        self.brushing = on;
+        self
     }
 
     /// Reserve space left of the ruler so a label column beneath can line up.
@@ -671,11 +690,20 @@ impl<'a> TimeSpine<'a> {
             marks,
             height,
             show_play,
+            brushing,
             left_inset,
         } = self;
         state.tick(ui.ctx());
         let mut playhead_changed = state.playing;
         let mut brush_changed = false;
+
+        // A brush set before brushing was turned off would keep filtering with
+        // no control left to clear it — rows missing, and nothing on screen to
+        // explain why. Clearing here means the flag alone is enough.
+        if !brushing && state.brush.is_some() {
+            state.set_brush(None);
+            brush_changed = true;
+        }
 
         let full_w = ui.available_width();
         // The ruler starts after the play button AND after any caller-reserved
@@ -798,7 +826,11 @@ impl<'a> TimeSpine<'a> {
         }
         let origin = press_origin.or(ptr);
         if let (Some(p), Some(o)) = (ptr, origin) {
-            let in_brush_lane = brush_lane.contains(o);
+            // With brushing off, a drag anywhere — including the mark lane —
+            // moves the PLAYHEAD. Otherwise dragging across the marks would
+            // land in a dead zone that silently does nothing, which reads as
+            // the widget being broken rather than as a disabled feature.
+            let in_brush_lane = brushing && brush_lane.contains(o);
             if response.dragged() || response.clicked() {
                 if in_brush_lane && response.dragged() {
                     if let (Some(ta), Some(tb)) =
@@ -823,7 +855,7 @@ impl<'a> TimeSpine<'a> {
                 brush_changed = true;
             }
         }
-        if response.double_clicked() && brush_lane.contains(ptr.unwrap_or(rect.min)) {
+        if brushing && response.double_clicked() && brush_lane.contains(ptr.unwrap_or(rect.min)) {
             state.set_brush(None);
             brush_changed = true;
         }
@@ -891,22 +923,46 @@ impl<'a> TimeSpine<'a> {
             ph_col,
             Stroke::NONE,
         ));
-        // Time label, clamped inside the ruler so it never clips at the ends.
+        // Time label as a filled BADGE, clamped inside the ruler so it never
+        // clips at the ends.
+        //
+        // Bare text here sat directly on top of the event marks and was
+        // unreadable against them — the one number on the widget that says
+        // WHERE YOU ARE, illegible exactly when the history is dense enough
+        // to need a scrubber. A pill gives it its own background so it reads
+        // over marks, brush fill and ticks alike.
         let label = format_tick(state.playhead, 86_400);
         let galley = ui.painter().layout_no_wrap(
             label,
             egui::TextStyle::Small.resolve(ui.style()),
-            visuals.text_color(),
+            // The chip carries the contrast, so the text takes the colour that
+            // reads against the FILL rather than against the widget.
+            visuals.strong_text_color(),
         );
-        let lw = galley.size().x;
-        let lx = (x + 6.0)
-            .min(ruler.right() - lw - 2.0)
-            .max(ruler.left() + 2.0);
-        painter.galley(
-            pos2(lx, rect.bottom() - galley.size().y - 1.0),
-            galley,
-            ph_col,
+        let pad = vec2(5.0, 2.0);
+        let badge_size = galley.size() + pad * 2.0;
+        // Sits beside the playhead, flipping to its left when it would
+        // otherwise run off the right-hand end.
+        let bx = if x + 6.0 + badge_size.x <= ruler.right() - 2.0 {
+            x + 6.0
+        } else {
+            (x - 6.0 - badge_size.x).max(ruler.left() + 2.0)
+        };
+        let badge = Rect::from_min_size(pos2(bx, rect.bottom() - badge_size.y - 1.0), badge_size);
+        painter.rect_filled(
+            badge,
+            CornerRadius::same(3),
+            // Opaque, not a tint: a translucent chip over dense marks is the
+            // same illegibility with extra steps.
+            visuals.extreme_bg_color,
         );
+        painter.rect_stroke(
+            badge,
+            CornerRadius::same(3),
+            Stroke::new(1.0_f32, ph_col.linear_multiply(0.6)),
+            egui::StrokeKind::Inside,
+        );
+        painter.galley(badge.min + pad, galley, visuals.strong_text_color());
 
         // Playing indicator glow on the head — eases in/out.
         let glow = tween_bool(

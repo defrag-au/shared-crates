@@ -1,0 +1,25 @@
+[package]
+name = "tool-agent"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Provider-neutral tool-calling loop: offer tools, run what the model asks for, feed results back"
+
+[features]
+default = []
+# The adapter that lets an `openai_client::OpenAI` drive the loop. Off by
+# default so the core stays serde-only and trivially WASM-safe; a consumer
+# talking to some other provider implements `ChatModel` itself and never
+# compiles an HTTP stack it doesn't use.
+openai = ["dep:openai-client"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# Typed tool parameters. The loop carries them; the provider adapter turns
+# them into JSON Schema at the one point a model needs one.
+tool-schema = { path = "../tool-schema" }
+openai-client = { path = "../../openai-client", optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

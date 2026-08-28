@@ -2,10 +2,12 @@
 pub use egui_inbox;
 
 pub mod access_gate;
+pub mod activity_feed;
 pub mod activity_lanes;
 pub mod animated_counter;
 pub mod arrival_field;
 pub mod asset_card;
+pub mod background;
 pub mod bullet_bar;
 pub mod button_group;
 pub mod buttons;
@@ -16,9 +18,12 @@ pub mod chip;
 pub mod claim_card;
 pub mod collection_composition;
 pub mod collection_list;
+pub mod command_palette;
+pub mod detail_split;
 pub mod distribution_waterfall;
 pub mod donut_chart;
 pub mod error_note;
+pub mod event_wiring;
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
 pub mod flip_counter;
@@ -38,6 +43,7 @@ pub mod id_pill;
 pub mod image_loader;
 pub mod leaderboard;
 pub mod listing_grid;
+pub mod machine;
 pub mod marquee;
 pub mod metric_card;
 pub mod mint_arrivals;
@@ -74,6 +80,7 @@ pub mod supply_bar;
 pub mod swap_modal;
 pub mod tag_list;
 pub mod theme;
+pub mod tier_ladder;
 pub mod time_spine;
 pub mod timestamp;
 pub mod toast;
@@ -117,6 +124,7 @@ pub mod leaderboard_table;
 
 // Generic coverage bar (no cardano deps — usable everywhere, e.g. rarity tuning).
 pub mod coverage_delta_bar;
+pub mod coverage_lanes;
 
 // Cardano-specific widgets (feature-gated)
 #[cfg(feature = "cardano")]
@@ -143,6 +151,9 @@ pub mod utxo_shelf;
 #[cfg(feature = "cardano")]
 pub mod wallet_asset_picker;
 
+pub use activity_feed::{
+    ActivityAsset, ActivityEntry, ActivityFeed, ActivityFeedResponse, ActivityTag,
+};
 pub use activity_lanes::{ActivityLanes, ActivityLanesResponse, Lane};
 pub use animated_counter::AnimatedCounter;
 pub use arrival_field::{ArrivalField, ArrivalFieldResponse};
@@ -167,6 +178,7 @@ pub use collection_list::{
     CollectionControl, CollectionControls, CollectionList, CollectionListAction,
     CollectionListLayout, CollectionListResponse, CollectionRow,
 };
+pub use command_palette::{CommandPalette, PaletteAction, PaletteState};
 pub use custody_walk::{
     CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode, WalkNodeKind, WalkSummary,
     summarize as summarize_walk,
@@ -176,6 +188,7 @@ pub use donut_chart::{
     DistBand, DistributionChart, format_value as format_chart_value, legend_row,
 };
 pub use error_note::{ErrorNote, ErrorSummary, pretty_json, summarize_error};
+pub use event_wiring::{ActionCardVm, EventNodeVm, EventWiring, EventWiringResponse};
 #[cfg(target_arch = "wasm32")]
 pub use file_upload::{FileUploadButton, UploadedFile};
 pub use flip_counter::FlipCounter;
@@ -184,7 +197,9 @@ pub use flow_ledger::{
 };
 pub use flow_matrix::{FlowMatrix, FlowMatrixResponse, MatrixFlow};
 pub use flow_ring::{FlowRing, FlowRingResponse, RingFlow, RingNode, ring_tint};
-pub use flow_stave::{FlowStave, FlowStaveResponse, StaveEvent, StaveLane, StaveOrigin};
+pub use flow_stave::{
+    FlowStave, FlowStaveResponse, Reconciliation, StaveEvent, StaveLane, StaveOrigin,
+};
 pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
 pub use holder_field::{AssetMove, HolderField, HolderFieldResponse};
 pub use holder_formation::{
@@ -200,6 +215,7 @@ pub use image_text_editor::{
     FontChoice, ImageTextEditor, TextEffect, TextOverlay, TextOverlayAnchor,
 };
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
+pub use machine::Machine;
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, Trend};
 pub use mint_arrivals::{Arrival, MintArrivals, peak_pile, pile_offset, piles_at};
@@ -303,6 +319,10 @@ pub use leaderboard_table::{LeaderboardRow, LeaderboardTable};
 pub use asset_strip::{AssetStripConfig, AssetStripItem, AssetStripResponse};
 pub use bullet_bar::BulletBar;
 pub use coverage_delta_bar::CoverageDeltaConfig;
+pub use coverage_lanes::{
+    Coverage, CoverageLane, CoverageLanes, CoverageLanesResponse, Run, UNOBSERVED, WindowCoverage,
+    coverage_tint, coverage_tint_emphasis,
+};
 #[cfg(feature = "cardano")]
 pub use fee_report::{FeeReportConfig, FeeReportData, SideFeeData};
 #[cfg(feature = "cardano")]

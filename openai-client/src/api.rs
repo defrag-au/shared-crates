@@ -1,5 +1,5 @@
 use http_client::{HttpClient, HttpError, ResponseDetails};
-use serde_json::Value;
+use serde::Serialize;
 
 const DEFAULT_BASE_URL: &str = "api.openai.com/v1";
 
@@ -27,19 +27,22 @@ impl Api {
     }
 
     #[allow(dead_code)]
-    pub async fn post<T: serde::de::DeserializeOwned>(
+    pub async fn post<B: Serialize, T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
-        body: &Value,
+        body: &B,
     ) -> Result<T, HttpError> {
         let url = format!("https://{}{path}", self.base_url);
         self.client.post(&url, body).await
     }
 
-    pub async fn post_with_details<T: serde::de::DeserializeOwned>(
+    /// Generic over the body so callers can post a typed request struct rather
+    /// than building a `serde_json::Value` by hand — `HttpClient` was already
+    /// generic here, this only stops narrowing it.
+    pub async fn post_with_details<B: Serialize, T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
-        body: &Value,
+        body: &B,
     ) -> Result<ResponseDetails<T>, HttpError> {
         let url = format!("https://{}{path}", self.base_url);
         self.client.post_with_details(&url, body).await

@@ -194,7 +194,10 @@ mod tests {
         q.request("also-first", 0);
         // Both priority-0 entries come out before the priority-10 one, and the
         // tie breaks on the URL rather than on hash order.
-        assert_eq!(q.next_batch(), vec!["also-first".to_string(), "first".to_string()]);
+        assert_eq!(
+            q.next_batch(),
+            vec!["also-first".to_string(), "first".to_string()]
+        );
     }
 
     #[test]

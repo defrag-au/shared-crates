@@ -1,0 +1,15 @@
+[package]
+name = "result-paging"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# `ServiceAddress` — a snapshot has to remember which plugin renders a page of
+# it, and that is the protocol's own vocabulary for "how to reach a plugin".
+augie-plugin = { path = "../augie-plugin" }
+serde = { workspace = true, features = ["derive"] }
+# A snapshot stores the tool arguments verbatim, and those are free-form by
+# definition — the same reason `ToolInvocation::arguments` is a `Value`.
+serde_json = { workspace = true }
+tracing = { workspace = true }
+worker_stack = { workspace = true }

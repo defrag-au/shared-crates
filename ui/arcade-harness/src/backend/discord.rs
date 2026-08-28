@@ -204,7 +204,9 @@ impl DiscordBackend {
 
             Step::Authorizing(req) => match self.activity.poll(to_discord(req)) {
                 PollResult::Pending => Step::Authorizing(req),
-                PollResult::Err { data } => Step::Offline(format!("Discord refused sign-in: {data}")),
+                PollResult::Err { data } => {
+                    Step::Offline(format!("Discord refused sign-in: {data}"))
+                }
                 PollResult::Ok { data } => match serde_json::from_str::<AuthorizeResponse>(&data) {
                     Err(e) => Step::Offline(format!("unexpected AUTHORIZE reply: {e}")),
                     Ok(authorized) => {
@@ -223,7 +225,9 @@ impl DiscordBackend {
 
             Step::Exchanging(req) => match self.activity.poll(to_discord(req)) {
                 PollResult::Pending => Step::Exchanging(req),
-                PollResult::Err { data } => Step::Offline(format!("sign-in exchange failed: {data}")),
+                PollResult::Err { data } => {
+                    Step::Offline(format!("sign-in exchange failed: {data}"))
+                }
                 PollResult::Ok { data } => {
                     match serde_json::from_str::<TokenExchangeResponse>(&data) {
                         Err(e) => Step::Offline(format!("unexpected exchange reply: {e}")),
@@ -244,7 +248,8 @@ impl DiscordBackend {
                 }
             },
 
-            Step::Authenticating { req, widget_token } => match self.activity.poll(to_discord(req)) {
+            Step::Authenticating { req, widget_token } => match self.activity.poll(to_discord(req))
+            {
                 PollResult::Pending => Step::Authenticating { req, widget_token },
                 // The token is already in hand and the server will verify it
                 // independently, so a failure here costs the greeting, not the
@@ -253,11 +258,8 @@ impl DiscordBackend {
                 PollResult::Err { .. } => Step::Ready { widget_token },
                 PollResult::Ok { data } => {
                     if let Ok(auth) = serde_json::from_str::<AuthenticateResponse>(&data) {
-                        self.player_name = Some(
-                            auth.user
-                                .global_name
-                                .unwrap_or(auth.user.username),
-                        );
+                        self.player_name =
+                            Some(auth.user.global_name.unwrap_or(auth.user.username));
                     }
                     Step::Ready { widget_token }
                 }

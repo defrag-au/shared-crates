@@ -27,6 +27,27 @@ The two crates do not interchange — egui-widgets targets wasm-bindgen frontend
 macroquad-widgets targets miniquad, which has no wasm-bindgen glue. Runtime-specific
 widgets come in pairs on purpose.
 
+## egui traps that cost an afternoon
+
+These are catalogued modules, so the "read the catalogue" rule already covers them —
+but they are the ones that look correct, compile, and are wrong at runtime:
+
+- **A detail pane beside content: use `detail_split`, NOT `SidePanel::show_inside`.**
+  `SidePanel` reserves its strip by shrinking the parent's `cursor.max.x`, and a
+  **top-down** `Ui` never reads `cursor.max.x` (`Layout::available_from_cursor_max_rect`
+  takes only `min.y` in its `TopDown` arm). The reservation is dropped, the following
+  `CentralPanel` takes full width, and the pane floats over the content's right edge —
+  hiding exactly the column a reader came for. Panels work at the **eframe root**, where
+  the `Context` arbitrates; they do not work inside a `Ui` you are laying out yourself,
+  which is every `App::ui` here.
+- **`Color32` stores PREMULTIPLIED channels** — each must be `<= alpha`.
+  `from_rgba_premultiplied` with larger channels blends additively and renders far
+  lighter than intended. `tests/contrast.rs` asserts this for the theme; the `theme_states`
+  story shows the interaction states a resting-state story cannot.
+- **Images load when the widget is BUILT, not when it is drawn.** `ui.add(Image::new(url))`
+  in a long list starts a fetch for every row, including those below the fold. Reserve the
+  space, then gate on `ui.is_rect_visible` — see `activity_feed`.
+
 ## Toolchain access
 
 Rust toolchain (cargo, clippy, rustfmt, wasm targets, wrangler, node, aiken) is provided **only** inside the Nix devshell defined in `flake.nix`. `cargo` is not on `$PATH` outside the shell.

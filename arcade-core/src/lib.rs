@@ -243,7 +243,11 @@ mod tests {
         type Input = CountInput;
 
         fn new(seed: u64) -> Self {
-            Self { tick: 0, count: 0, over_at: seed % 100 + 10 }
+            Self {
+                tick: 0,
+                count: 0,
+                over_at: seed % 100 + 10,
+            }
         }
 
         fn tick(&mut self, input: Option<&CountInput>) {
@@ -253,10 +257,18 @@ mod tests {
             self.tick += 1;
         }
 
-        fn is_over(&self) -> bool { self.tick >= self.over_at }
-        fn score(&self) -> u64 { self.count }
-        fn current_tick(&self) -> u64 { self.tick }
-        fn game_id() -> &'static str { "count-game" }
+        fn is_over(&self) -> bool {
+            self.tick >= self.over_at
+        }
+        fn score(&self) -> u64 {
+            self.count
+        }
+        fn current_tick(&self) -> u64 {
+            self.tick
+        }
+        fn game_id() -> &'static str {
+            "count-game"
+        }
     }
 
     #[test]
@@ -265,8 +277,16 @@ mod tests {
             game_id: "count-game".into(),
             seed: 42,
             transitions: vec![
-                InputTransition { tick: 5, input: Some(CountInput), timestamp: 0.08 },
-                InputTransition { tick: 15, input: None, timestamp: 0.25 },
+                InputTransition {
+                    tick: 5,
+                    input: Some(CountInput),
+                    timestamp: 0.08,
+                },
+                InputTransition {
+                    tick: 15,
+                    input: None,
+                    timestamp: 0.25,
+                },
             ],
             total_ticks: 52,
             claimed_score: 10,
@@ -282,8 +302,16 @@ mod tests {
             game_id: "count-game".into(),
             seed: 42,
             transitions: vec![
-                InputTransition { tick: 0, input: Some(CountInput), timestamp: 0.0 },
-                InputTransition { tick: 5, input: None, timestamp: 0.08 },
+                InputTransition {
+                    tick: 0,
+                    input: Some(CountInput),
+                    timestamp: 0.0,
+                },
+                InputTransition {
+                    tick: 5,
+                    input: None,
+                    timestamp: 0.08,
+                },
             ],
             total_ticks: 52,
             claimed_score: 999,
@@ -322,8 +350,16 @@ mod tests {
     #[test]
     fn deterministic_across_runs() {
         let transitions = vec![
-            InputTransition { tick: 5, input: Some(CountInput), timestamp: 0.08 },
-            InputTransition { tick: 15, input: None, timestamp: 0.25 },
+            InputTransition {
+                tick: 5,
+                input: Some(CountInput),
+                timestamp: 0.08,
+            },
+            InputTransition {
+                tick: 15,
+                input: None,
+                timestamp: 0.25,
+            },
         ];
 
         let r1 = verify_recording::<CountGame>(&GameRecording {
