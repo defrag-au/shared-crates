@@ -124,6 +124,7 @@ pub mod leaderboard_table;
 
 // Generic coverage bar (no cardano deps — usable everywhere, e.g. rarity tuning).
 pub mod coverage_delta_bar;
+pub mod coverage_lanes;
 
 // Cardano-specific widgets (feature-gated)
 #[cfg(feature = "cardano")]
@@ -318,6 +319,10 @@ pub use leaderboard_table::{LeaderboardRow, LeaderboardTable};
 pub use asset_strip::{AssetStripConfig, AssetStripItem, AssetStripResponse};
 pub use bullet_bar::BulletBar;
 pub use coverage_delta_bar::CoverageDeltaConfig;
+pub use coverage_lanes::{
+    Coverage, CoverageLane, CoverageLanes, CoverageLanesResponse, Run, UNOBSERVED, WindowCoverage,
+    coverage_tint, coverage_tint_emphasis,
+};
 #[cfg(feature = "cardano")]
 pub use fee_report::{FeeReportConfig, FeeReportData, SideFeeData};
 #[cfg(feature = "cardano")]

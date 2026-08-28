@@ -9,6 +9,7 @@ pub mod capital_flow;
 pub mod card_browser;
 pub mod collection_list;
 pub mod command_palette;
+pub mod coverage_lanes;
 pub mod distribution;
 pub mod distribution_waterfall;
 pub mod error_note;

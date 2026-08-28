@@ -104,6 +104,7 @@ mod app {
         ClaimCard,
         CapitalFlow,
         TimeSpine,
+        CoverageLanes,
         FlowMatrix,
         FlowRing,
         FlowStave,
@@ -155,6 +156,7 @@ mod app {
                 Self::ClaimCard,
                 Self::CapitalFlow,
                 Self::TimeSpine,
+                Self::CoverageLanes,
                 Self::FlowMatrix,
                 Self::FlowRing,
                 Self::FlowStave,
@@ -361,6 +363,7 @@ mod app {
                 Self::ClaimCard => "Claim Card",
                 Self::CapitalFlow => "Capital Flow",
                 Self::TimeSpine => "Time Spine",
+                Self::CoverageLanes => "Coverage Lanes",
                 Self::FlowMatrix => "Flow Matrix",
                 Self::FlowRing => "Flow Ring",
                 Self::FlowStave => "Flow Stave",
@@ -409,6 +412,7 @@ mod app {
                 | Self::ClaimCard
                 | Self::CapitalFlow
                 | Self::TimeSpine
+                | Self::CoverageLanes
                 | Self::FlowMatrix
                 | Self::FlowRing
                 | Self::FlowStave
@@ -700,6 +704,9 @@ mod app {
                 Self::TimeSpine => {
                     "ONE time axis for many faces: a playhead that REVEALS, a brush that FILTERS, play/pause — and a shared selection so hovering a holder's pile lights it up everywhere. Dots fly in and settle (keyed tweens; object constancy) while playing; a scrubbed frame settles instantly so a still is readable. The falsifier for 'is egui why this feels flat?'"
                 }
+                Self::CoverageLanes => {
+                    "Three answers, not two: observed producing, observed idle, and NOBODY LOOKED. Day 4's midday orange stretch and day 7's grey column cover comparable spans and make completely different claims — one is a watched fleet sitting idle, the other is a broken poller. Fold them together and every ingest outage becomes recorded downtime. The ground state is unobserved and knowledge paints over it, so a caller cannot assert \"idle\" by forgetting to mention it; uptime divides by OBSERVED time and travels with the share of the window nobody watched. miner-06 dies on day 5 and never returns — you find it by lane shape, not by reading rows"
+                }
                 Self::FlowMatrix => {
                     "Who paid whom across MANY wallets at once — the face for when you do NOT yet know where to look. A matrix rather than a node-link graph, because the finding that cracks a multi-wallet case is two wallets paying the SAME counterparty, which is a column here and four edges lost in a hairball there. One unit at a time (raw Cardano quantities are not comparable), diverging out/in, log magnitude, and an unresolved payer gets its own column instead of being dropped"
                 }
@@ -921,6 +928,7 @@ mod app {
         claim_card_state: stories::claim_card::ClaimCardState,
         capital_flow_state: stories::capital_flow::CapitalFlowState,
         time_spine_state: stories::time_spine::TimeSpineState,
+        coverage_lanes_state: stories::coverage_lanes::CoverageLanesState,
         flow_matrix_state: stories::flow_matrix::FlowMatrixState,
         flow_ring_state: stories::flow_ring::FlowRingState,
         flow_stave_state: stories::flow_stave::FlowStaveState,
@@ -1050,6 +1058,7 @@ mod app {
                 claim_card_state: stories::claim_card::ClaimCardState::default(),
                 capital_flow_state: stories::capital_flow::CapitalFlowState::default(),
                 time_spine_state: stories::time_spine::TimeSpineState::default(),
+                coverage_lanes_state: stories::coverage_lanes::CoverageLanesState::default(),
                 flow_matrix_state: stories::flow_matrix::FlowMatrixState::default(),
                 flow_ring_state: stories::flow_ring::FlowRingState::default(),
                 flow_stave_state: stories::flow_stave::FlowStaveState::default(),
@@ -1321,6 +1330,9 @@ mod app {
                             }
                             Story::TimeSpine => {
                                 stories::time_spine::show(ui, &mut self.time_spine_state)
+                            }
+                            Story::CoverageLanes => {
+                                stories::coverage_lanes::show(ui, &mut self.coverage_lanes_state)
                             }
                             Story::FlowMatrix => {
                                 stories::flow_matrix::show(ui, &mut self.flow_matrix_state)

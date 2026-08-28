@@ -608,6 +608,75 @@ impl<Action> ClientMessage<Action> {
 mod tests {
     use super::*;
 
+    /// What a wallet row costs on the wire, measured rather than assumed.
+    ///
+    /// [`encode`] uses `to_vec_named`, which writes every FIELD NAME as a
+    /// string on every value. That buys schema tolerance — fields can be
+    /// added, reordered, or defaulted without breaking an older peer — and it
+    /// is the right default for a protocol crate. It is not free, and a feed
+    /// that now pages thousands of rows should know the price.
+    ///
+    /// This mirrors flow-explorer's `FlowRow`; it lives here because this is
+    /// the crate that owns the encoding.
+    #[test]
+    fn a_wallet_row_reports_its_wire_cost() {
+        #[derive(serde::Serialize)]
+        struct Sender {
+            address: String,
+            lovelace: u64,
+        }
+        #[derive(serde::Serialize)]
+        struct Row {
+            kind: String,
+            slot: u64,
+            time: String,
+            tx: String,
+            lovelace_in: u64,
+            lovelace_out: u64,
+            net_lovelace: i64,
+            assets_in: u32,
+            assets_out: u32,
+            asset_total: u32,
+            senders: Option<Vec<Sender>>,
+        }
+        let row = Row {
+            kind: "receive".into(),
+            slot: 196_329_574,
+            time: "2026-08-28 01:56".into(),
+            tx: "c9834a6d03290c69759b73bc055942041817386645e169f5642b2a1bf506c90d".into(),
+            lovelace_in: 3_191_646_193,
+            lovelace_out: 3_196_746_654,
+            net_lovelace: -5_100_461,
+            assets_in: 2,
+            assets_out: 0,
+            asset_total: 2,
+            senders: Some(vec![Sender {
+                address: "addr1q99qpegypskhugq6nss8gjkwvjlj35wd54venfynreqxjgkt55dzuk6msq4qgq4g0dmz6tkvdvdfkmgd6uyd4urms2ksl0yc60".into(),
+                lovelace: 3_191_646_193,
+            }]),
+        };
+
+        let named = rmp_serde::to_vec_named(&row).unwrap().len();
+        let compact = rmp_serde::to_vec(&row).unwrap().len();
+        let keys_cost = named - compact;
+
+        // A 3,235-row wallet is real: that is $boef's full history.
+        let page = 500;
+        let full = 3_235;
+        println!("one row      : {named} B named / {compact} B compact");
+        println!("field names  : {keys_cost} B per row ({:.0}%)", 100.0 * keys_cost as f64 / named as f64);
+        println!("500-row page : {} KB named / {} KB compact", named * page / 1024, compact * page / 1024);
+        println!("3,235 rows   : {} KB named / {} KB compact", named * full / 1024, compact * full / 1024);
+
+        // Guard rails rather than exact figures — this is a cost report, and
+        // pinning byte counts would fail on any harmless field addition.
+        assert!(compact < named, "compact must be smaller");
+        assert!(
+            named < 700,
+            "a row grew past 700 B ({named}) — the feed pages thousands of these"
+        );
+    }
+
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     struct TestState {
         counter: u64,
