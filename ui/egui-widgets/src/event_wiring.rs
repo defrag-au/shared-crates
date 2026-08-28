@@ -290,14 +290,13 @@ impl<'a> EventWiring<'a> {
                         });
                         // The in-card config expansion — the caller's fields,
                         // rendered inside the card so the flow stays the view.
-                        if is_expanded {
-                            if let Some(content) = expanded_content.take() {
+                        if is_expanded
+                            && let Some(content) = expanded_content.take() {
                                 ui.add_space(6.0);
                                 ui.separator();
                                 ui.add_space(4.0);
                                 content(ui);
                             }
-                        }
                     });
                     let rect = card.response.rect;
                     action_ports.push(Pos2::new(rect.left(), rect.center().y));

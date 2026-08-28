@@ -139,7 +139,7 @@ impl StatePath {
     /// Is `seg` anywhere on this path — i.e. is this state that one, or
     /// underneath it?
     pub fn contains(&self, seg: &str) -> bool {
-        self.as_slice().iter().any(|s| *s == seg)
+        self.as_slice().contains(&seg)
     }
 }
 
@@ -260,12 +260,11 @@ impl<S> Machine<S> {
     /// armed auto-revert whose frames have elapsed.
     pub fn tick(&mut self) {
         self.frames_in_state = self.frames_in_state.saturating_add(1);
-        if let Some((frames, _)) = &self.revert {
-            if self.frames_in_state > *frames {
+        if let Some((frames, _)) = &self.revert
+            && self.frames_in_state > *frames {
                 let (_, then) = self.revert.take().expect("checked above");
                 self.transition(then);
             }
-        }
     }
 }
 
