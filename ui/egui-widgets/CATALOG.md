@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-109 widgets.
+110 widgets.
 
 | module | what it is |
 |---|---|
@@ -96,6 +96,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `supply_bar` | Two-band mint supply bar — `minted` (on chain) + `ordered` (the backlog of ordered-but-not-yet-minted units), over the unsold track |
 | `swap_modal` | Reusable swap modal widget for egui frontends |
 | `tag_list` | Tag list — a wrapping row of removable tags with an optional trailing "clear all" button |
+| `tier_ladder` | `TierLadder` — the whole access ladder as a modal: what each rung gives, every way to reach it, and where the reader currently stands |
 | `time_spine` | TimeSpine — ONE time axis for a surface of many faces |
 | `timestamp` | `Timestamp` — a tiny atom that renders a unix-seconds timestamp **consistently** as ISO-8601 (UTC), with an optional clean badge presentation |
 | `toast` | `Toast` / `ToastQueue` — transient overlay messages with frame-countdown auto-dismiss, plus keyed **progress** toasts for work happening in the background |

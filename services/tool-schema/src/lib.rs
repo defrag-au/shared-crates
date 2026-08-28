@@ -1,292 +1,369 @@
-//! What a tool takes, as data rather than as JSON.
+//! What a tool takes: **one type**, used as both the advertised schema and the
+//! parse target.
 //!
-//! ## Why this crate exists
+//! ## The mistake this replaces
 //!
-//! A tool's arguments were previously a `serde_json::Value` holding a
-//! hand-written JSON Schema, authored in one service and interpreted in
-//! another. Nothing checked the two agreed, and nothing could: a `Value` is
-//! equally happy being an object, a string, `null`, or an object missing the
-//! key the reader wanted. The failure mode is a model silently offered a tool
-//! with no arguments, which looks exactly like a model choosing not to pass
-//! one.
+//! This crate used to hold a hand-written parameter list — name, description,
+//! kind, required — which a service declared and then read back out of a
+//! `serde_json::Value` by hand. Two descriptions of one thing, with nothing
+//! tying them together, and every drift between them was invisible:
 //!
-//! So the parameters are typed all the way across the wire, and **JSON Schema
-//! is generated in exactly one function** ([`to_json_schema`]). What a service
-//! advertises and what a model is sent are then the same code path rather than
-//! two descriptions that have to be kept in step.
+//! | Symptom | Drift |
+//! |---|---|
+//! | a filter silently ignored | doc said `trait_bit`, code read `trait_bits` |
+//! | 30 requested, 5 returned | prose said "1-5", code allowed 60 |
+//! | `traits` dropped without a word | an undeclared key, ignored not rejected |
+//! | `trait: ["ghoul"]` disappeared | declared a string, read with `as_str()` |
 //!
-//! ## Deliberately less expressive than JSON Schema
+//! None of those are catchable at runtime, because prose is not checkable. The
+//! fix is structural: derive the schema from the type that parses the
+//! arguments, so a bound lives on the field rather than in a sentence.
 //!
-//! Flat, scalar-or-string-array, with bounded `choices`. No nested objects, no
-//! `oneOf`. That is the point: a tool taking a free-text filter invites a model
-//! to invent a query language, and invites a question typed in a public channel
-//! to steer one. A tool taking `window: last_24h | last_7d` cannot be asked for
-//! a window that doesn't exist.
+//! ```ignore
+//! #[derive(Deserialize, JsonSchema)]
+//! #[serde(deny_unknown_fields)]
+//! struct AssetsArgs {
+//!     /// Collection name (e.g. "Perps") or 56-character hex policy id
+//!     collection: String,
+//!     /// How many to fetch. Shown 5 to a card, with paging.
+//!     #[schemars(range(min = 1, max = 60))]
+//!     count: Option<usize>,
+//! }
+//! ```
 //!
-//! ## Where this sits
+//! ## serde is the validator
 //!
-//! Depended on by the plugin protocol (`augie-plugin`, which advertises tools)
-//! and by the agent loop (`tool-agent`, which offers them to a model). Not the
-//! reverse — either of those depending on the other would drag a Discord
-//! protocol into a provider-neutral loop, or vice versa.
+//! A tool parses into its own argument type, and serde's errors are better
+//! than anything a host could synthesise: *"unknown field `traits`, expected
+//! one of `collection`, `trait`, `count`, `order`"* names the mistake and the
+//! fix in one line. `deny_unknown_fields` is what turns a silently-dropped
+//! argument into a message a model can correct from.
+//!
+//! So there is no separate validation step and no schema interpreter. The
+//! host forwards arguments; the tool that declared them parses them.
+//!
+//! ## Still deliberately narrow
+//!
+//! The old vocabulary was flat scalars and bounded choices, so that a tool
+//! could not invite a model to invent a query language. That constraint is
+//! worth keeping and is now a *lint* over the generated schema
+//! ([`assert_flat`]) rather than a vocabulary too weak to express the bounds
+//! we actually need — which is precisely what cost us the `count` bug.
 
-use std::collections::BTreeMap;
+use schemars::{generate::SchemaSettings, SchemaGenerator};
+use serde_json::Value;
 
-use serde::{Deserialize, Serialize};
+// Re-exported so a tool author derives against the same version this crate
+// generates with. Two schemars majors in one graph would produce two
+// incompatible `JsonSchema` traits and a baffling error at the derive site.
+pub use schemars;
+pub use schemars::JsonSchema;
 
-/// One argument a tool accepts.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ToolParameter {
-    /// Argument name, as the model will send it.
-    pub name: String,
-
-    /// What it means, written for the model.
-    ///
-    /// Worth as much care as the tool's own description: this is where a model
-    /// learns that `collection` takes a name and not a policy id.
-    pub description: String,
-
-    pub kind: ToolParameterKind,
-
-    /// Whether the model must supply it. Optional arguments are how a tool
-    /// offers a default it resolves itself — see `bargains`, which falls back
-    /// to the guild's own collection.
-    #[serde(default)]
-    pub required: bool,
-
-    /// Bounded set of acceptable values. Empty means free input.
-    ///
-    /// Prefer choices wherever the set is knowable. They become an `enum` in
-    /// the generated schema, which makes an invalid value unrepresentable
-    /// rather than merely discouraged.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub choices: Vec<String>,
-}
-
-impl ToolParameter {
-    /// A required string.
-    pub fn required(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            description: description.into(),
-            kind: ToolParameterKind::String,
-            required: true,
-            choices: Vec::new(),
-        }
-    }
-
-    /// An optional string — the tool supplies its own default.
-    pub fn optional(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            description: description.into(),
-            kind: ToolParameterKind::String,
-            required: false,
-            choices: Vec::new(),
-        }
-    }
-
-    #[must_use]
-    pub fn of_kind(mut self, kind: ToolParameterKind) -> Self {
-        self.kind = kind;
-        self
-    }
-
-    /// Restrict to a known set of values.
-    #[must_use]
-    pub fn choosing(mut self, choices: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.choices = choices.into_iter().map(Into::into).collect();
-        self
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ToolParameterKind {
-    String,
-    Integer,
-    Number,
-    Boolean,
-    /// A list of strings. The only compound shape offered, because trait
-    /// filters and id lists are the one place a scalar genuinely won't do.
-    StringArray,
-}
-
-impl ToolParameterKind {
-    /// The JSON Schema type name for this kind.
-    fn schema_type(self) -> &'static str {
-        match self {
-            Self::String => "string",
-            Self::Integer => "integer",
-            Self::Number => "number",
-            Self::Boolean => "boolean",
-            Self::StringArray => "array",
-        }
-    }
-}
-
-/// Generate the JSON Schema a model is given for these parameters.
+/// The JSON Schema a model is given for `T`'s arguments.
 ///
-/// **The only place schema JSON is produced.** Both the service advertising a
-/// tool and the host offering it to a model go through here, so they cannot
-/// describe the same tool differently.
-pub fn to_json_schema(parameters: &[ToolParameter]) -> serde_json::Value {
-    let properties: BTreeMap<String, PropertySchema> = parameters
-        .iter()
-        .map(|param| (param.name.clone(), PropertySchema::from(param)))
-        .collect();
+/// **The only place tool schema JSON is produced.** Both the service
+/// advertising a tool and the host offering it to a model go through here, so
+/// they cannot describe the same tool differently.
+///
+/// Two deliberate departures from schemars' defaults:
+///
+/// - **Subschemas are inlined.** A nested enum would otherwise become a
+///   `$ref` into `$defs`, and provider support for following those in function
+///   schemas is uneven. A self-contained schema works everywhere.
+/// - **No `$schema` key.** It is meaningless to a function-calling API and
+///   costs bytes in a prompt prefix that is cached by exact match.
+pub fn schema_for<T: JsonSchema>() -> Value {
+    let settings = SchemaSettings::draft2020_12().with(|settings| {
+        settings.inline_subschemas = true;
+        settings.meta_schema = None;
+    });
 
-    let required = parameters
-        .iter()
-        .filter(|param| param.required)
-        .map(|param| param.name.clone())
-        .collect();
+    let mut schema = SchemaGenerator::new(settings)
+        .into_root_schema_for::<T>()
+        .to_value();
 
-    let schema = ObjectSchema {
-        kind: "object",
-        properties,
-        required,
-        // Refuse arguments the tool never declared. Without this a model can
-        // invent a plausible-looking extra and have it silently ignored, which
-        // reads to it as "I passed that and it was honoured".
-        additional_properties: false,
+    // `title` is the Rust type name — `AssetsArgs` tells a model nothing and
+    // leaks an implementation detail into the prompt.
+    if let Some(object) = schema.as_object_mut() {
+        object.remove("title");
+    }
+
+    schema
+}
+
+/// Complain about a tool schema that is more expressive than a tool schema
+/// should be.
+///
+/// Not a correctness check — an over-rich schema still *works*. It is a design
+/// guard: a tool taking a free-text filter or a nested object invites a model
+/// to invent a query language, and invites a question typed in a public
+/// channel to steer one. A tool taking `order: first | random | rarest` cannot
+/// be asked for an order that does not exist.
+///
+/// Call it from a test over every advertised tool.
+pub fn assert_flat(schema: &Value) -> Result<(), Vec<String>> {
+    let mut problems = Vec::new();
+
+    let Some(object) = schema.as_object() else {
+        return Err(vec!["schema is not an object".to_string()]);
     };
 
-    serde_json::to_value(schema).unwrap_or_else(|_| serde_json::Value::Null)
-}
+    if object.get("type").and_then(Value::as_str) != Some("object") {
+        problems.push("top level must be an object".to_string());
+    }
 
-/// A `BTreeMap`, not a `HashMap`: the schema sits in the cached prompt prefix,
-/// and prompt caching is a byte-prefix match — key order that varied between
-/// requests would quietly cost a cache miss every time.
-#[derive(Serialize)]
-struct ObjectSchema {
-    #[serde(rename = "type")]
-    kind: &'static str,
-    properties: BTreeMap<String, PropertySchema>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    required: Vec<String>,
-    #[serde(rename = "additionalProperties")]
-    additional_properties: bool,
-}
-
-#[derive(Serialize)]
-struct PropertySchema {
-    #[serde(rename = "type")]
-    kind: &'static str,
-    description: String,
-    /// Element type, for arrays only.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    items: Option<ItemSchema>,
-    #[serde(rename = "enum", skip_serializing_if = "Vec::is_empty")]
-    choices: Vec<String>,
-}
-
-#[derive(Serialize)]
-struct ItemSchema {
-    #[serde(rename = "type")]
-    kind: &'static str,
-}
-
-impl From<&ToolParameter> for PropertySchema {
-    fn from(param: &ToolParameter) -> Self {
-        Self {
-            kind: param.kind.schema_type(),
-            description: param.description.clone(),
-            items: matches!(param.kind, ToolParameterKind::StringArray)
-                .then_some(ItemSchema { kind: "string" }),
-            choices: param.choices.clone(),
+    // An inlined schema has no business carrying definitions.
+    for key in ["$defs", "definitions"] {
+        if object.contains_key(key) {
+            problems.push(format!("`{key}` present — subschemas should be inlined"));
         }
     }
+
+    let Some(properties) = object.get("properties").and_then(Value::as_object) else {
+        // A tool taking no arguments is fine.
+        return finish(problems);
+    };
+
+    for (name, property) in properties {
+        for problem in flatness_problems(property) {
+            problems.push(format!("`{name}`: {problem}"));
+        }
+    }
+
+    finish(problems)
+}
+
+fn finish(problems: Vec<String>) -> Result<(), Vec<String>> {
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems)
+    }
+}
+
+/// What is wrong with one property, if anything.
+fn flatness_problems(property: &Value) -> Vec<String> {
+    let mut problems = Vec::new();
+    let Some(object) = property.as_object() else {
+        return problems;
+    };
+
+    if object.contains_key("$ref") {
+        problems.push("is a `$ref` — subschemas should be inlined".to_string());
+    }
+
+    // `Option<T>` renders as a type union with null, which is expected and
+    // fine; anything else nested is not.
+    for (key, value) in object {
+        match key.as_str() {
+            "properties" => problems.push("is a nested object".to_string()),
+            "type" if is_object_type(value) => problems.push("is a nested object".to_string()),
+            "items" => {
+                if item_type(value) != Some("string") {
+                    problems.push("is an array of something other than strings".to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    problems
+}
+
+fn is_object_type(value: &Value) -> bool {
+    match value {
+        Value::String(name) => name == "object",
+        Value::Array(names) => names.iter().any(|n| n.as_str() == Some("object")),
+        _ => false,
+    }
+}
+
+fn item_type(items: &Value) -> Option<&str> {
+    items.get("type").and_then(|t| match t {
+        Value::String(name) => Some(name.as_str()),
+        Value::Array(names) => names.iter().find_map(|n| n.as_str()).filter(|n| *n != "null"),
+        _ => None,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use schemars::JsonSchema;
+    use serde::Deserialize;
 
+    #[derive(Debug, Deserialize, JsonSchema)]
+    #[serde(rename_all = "lowercase")]
+    enum Order {
+        First,
+        Random,
+        Rarest,
+    }
+
+    #[derive(Debug, Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    struct AssetsArgs {
+        /// Collection name (e.g. "Perps") or 56-character hex policy id
+        collection: String,
+        /// A trait to narrow to
+        #[serde(default)]
+        r#trait: Option<String>,
+        /// How many to fetch
+        #[schemars(range(min = 1, max = 60))]
+        #[serde(default)]
+        count: Option<u32>,
+        #[serde(default)]
+        order: Option<Order>,
+    }
+
+    /// The whole point: a bound stated to the model comes from the field, so
+    /// it cannot say "1-5" while the code allows 60.
     #[test]
-    fn a_required_string_becomes_a_property_and_a_requirement() {
-        let schema = to_json_schema(&[ToolParameter::required(
-            "collection",
-            "Collection name, e.g. \"SpaceBudz\"",
-        )]);
+    fn a_range_on_the_field_reaches_the_model() {
+        let schema = schema_for::<AssetsArgs>();
+        let count = &schema["properties"]["count"];
 
-        assert_eq!(schema["type"], "object");
-        assert_eq!(schema["properties"]["collection"]["type"], "string");
-        assert!(schema["properties"]["collection"]["description"]
+        // Reachable whether or not the Option wraps it in a union.
+        let json = serde_json::to_string(count).unwrap();
+        assert!(json.contains("\"minimum\":1"), "{json}");
+        assert!(json.contains("\"maximum\":60"), "{json}");
+    }
+
+    /// Doc comments are the description a model reads, so the prose and the
+    /// field it describes cannot drift apart — they are the same declaration.
+    #[test]
+    fn doc_comments_become_descriptions() {
+        let schema = schema_for::<AssetsArgs>();
+        let description = schema["properties"]["collection"]["description"]
             .as_str()
-            .is_some_and(|d| d.contains("SpaceBudz")));
-        assert_eq!(schema["required"][0], "collection");
-        assert_eq!(schema["additionalProperties"], false);
+            .expect("collection is described");
+        assert!(description.contains("56-character hex"), "{description}");
     }
 
-    /// The live bug this crate exists to prevent: an optional parameter still
-    /// has to appear in `properties`, or the model has no way to pass it.
     #[test]
-    fn an_optional_parameter_is_still_offered() {
-        let schema = to_json_schema(&[ToolParameter::optional(
-            "collection",
-            "Omit to use this server's collection",
-        )]);
+    fn required_and_optional_are_distinguished() {
+        let schema = schema_for::<AssetsArgs>();
+        let required: Vec<&str> = schema["required"]
+            .as_array()
+            .expect("required list")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert_eq!(required, vec!["collection"]);
+    }
 
+    /// A nested enum would otherwise be a `$ref` into `$defs`, and provider
+    /// support for following those in function schemas is uneven.
+    #[test]
+    fn subschemas_are_inlined_rather_than_referenced() {
+        let schema = schema_for::<AssetsArgs>();
+        let json = serde_json::to_string(&schema).unwrap();
+
+        assert!(!json.contains("$ref"), "{json}");
+        assert!(!json.contains("$defs"), "{json}");
+        // The enum's values survive the inlining.
+        assert!(json.contains("rarest"), "{json}");
+    }
+
+    /// `title` is the Rust type name, and `$schema` is meaningless to a
+    /// function-calling API — both are prompt bytes for nothing.
+    #[test]
+    fn implementation_details_are_stripped() {
+        let schema = schema_for::<AssetsArgs>();
+        assert!(schema.get("title").is_none(), "{schema}");
+        assert!(schema.get("$schema").is_none(), "{schema}");
+    }
+
+    #[test]
+    fn a_flat_tool_schema_passes_the_lint() {
+        assert!(assert_flat(&schema_for::<AssetsArgs>()).is_ok());
+    }
+
+    /// The design guard: a tool that takes a nested object has grown a query
+    /// language, which is what the narrow vocabulary existed to prevent.
+    #[test]
+    fn a_nested_argument_is_reported() {
+        #[derive(JsonSchema)]
+        struct Filter {
+            field: String,
+        }
+        #[derive(JsonSchema)]
+        struct Nested {
+            filter: Filter,
+        }
+
+        let problems = assert_flat(&schema_for::<Nested>()).unwrap_err();
         assert!(
-            schema["properties"]["collection"].is_object(),
-            "an optional parameter must still be offered: {schema}"
-        );
-        // Not required, so the key is omitted rather than an empty array.
-        assert!(schema.get("required").is_none(), "{schema}");
-    }
-
-    #[test]
-    fn no_parameters_is_an_object_with_no_properties() {
-        let schema = to_json_schema(&[]);
-        assert_eq!(schema["type"], "object");
-        assert_eq!(schema["properties"], serde_json::json!({}));
-    }
-
-    #[test]
-    fn choices_become_an_enum() {
-        let schema = to_json_schema(&[
-            ToolParameter::required("window", "How far back to look")
-                .choosing(["last_24h", "last_7d", "last_30d"]),
-        ]);
-        assert_eq!(schema["properties"]["window"]["enum"][1], "last_7d");
-    }
-
-    #[test]
-    fn a_string_array_declares_its_item_type() {
-        let schema = to_json_schema(&[
-            ToolParameter::required("trait_bits", "Trait bit indices")
-                .of_kind(ToolParameterKind::StringArray),
-        ]);
-        assert_eq!(schema["properties"]["trait_bits"]["type"], "array");
-        assert_eq!(schema["properties"]["trait_bits"]["items"]["type"], "string");
-    }
-
-    /// The schema rides in the cached prompt prefix, so identical input must
-    /// produce byte-identical output.
-    #[test]
-    fn generation_is_deterministic() {
-        let params = [
-            ToolParameter::required("zebra", "z"),
-            ToolParameter::optional("alpha", "a"),
-            ToolParameter::required("middle", "m"),
-        ];
-        let first = to_json_schema(&params).to_string();
-        let second = to_json_schema(&params).to_string();
-        assert_eq!(first, second);
-        // And ordered, not merely stable within one process.
-        assert!(
-            first.find("alpha") < first.find("middle")
-                && first.find("middle") < first.find("zebra"),
-            "{first}"
+            problems.iter().any(|p| p.contains("nested object")),
+            "{problems:?}"
         );
     }
 
+    /// String arrays are the one compound shape allowed — id lists and trait
+    /// filters are the place a scalar genuinely will not do.
     #[test]
-    fn parameters_round_trip_on_the_wire() {
-        let params = vec![ToolParameter::optional("collection", "name").choosing(["a", "b"])];
-        let json = serde_json::to_string(&params).unwrap();
-        let back: Vec<ToolParameter> = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, params);
+    fn a_string_array_is_allowed_but_other_arrays_are_not() {
+        #[derive(JsonSchema)]
+        struct Strings {
+            names: Vec<String>,
+        }
+        assert!(assert_flat(&schema_for::<Strings>()).is_ok());
+
+        #[derive(JsonSchema)]
+        struct Numbers {
+            counts: Vec<u32>,
+        }
+        let problems = assert_flat(&schema_for::<Numbers>()).unwrap_err();
+        assert!(problems.iter().any(|p| p.contains("array")), "{problems:?}");
+    }
+
+    /// serde is the validator, and its message is the model's correction.
+    /// This is what turns a silently-dropped argument into a fixable one.
+    #[test]
+    fn an_undeclared_argument_is_rejected_by_name() {
+        let error = serde_json::from_str::<AssetsArgs>(
+            r#"{"collection":"Black Flag","traits":"ghoul"}"#,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("unknown field `traits`"), "{error}");
+        assert!(error.contains("expected one of"), "{error}");
+        assert!(error.contains("`trait`"), "{error}");
+    }
+
+    /// The filter that vanished: declared a string, sent as an array, read
+    /// with `as_str()` and therefore absent. Parsing reports it instead.
+    #[test]
+    fn a_wrongly_typed_argument_is_rejected_rather_than_read_as_absent() {
+        let error = serde_json::from_str::<AssetsArgs>(
+            r#"{"collection":"Black Flag","trait":["ghoul"]}"#,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("invalid type: sequence"), "{error}");
+        assert!(error.contains("expected a string"), "{error}");
+    }
+
+    #[test]
+    fn a_value_outside_its_choices_is_rejected() {
+        let error =
+            serde_json::from_str::<AssetsArgs>(r#"{"collection":"x","order":"cheapest"}"#)
+                .unwrap_err()
+                .to_string();
+        assert!(error.contains("unknown variant `cheapest`"), "{error}");
+        assert!(error.contains("rarest"), "{error}");
+    }
+
+    #[test]
+    fn a_well_formed_call_parses() {
+        let args: AssetsArgs = serde_json::from_str(
+            r#"{"collection":"Black Flag","trait":"ghoul","count":30,"order":"rarest"}"#,
+        )
+        .expect("parses");
+        assert_eq!(args.collection, "Black Flag");
+        assert_eq!(args.r#trait.as_deref(), Some("ghoul"));
+        assert_eq!(args.count, Some(30));
     }
 }

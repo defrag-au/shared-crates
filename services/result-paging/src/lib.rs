@@ -1,49 +1,47 @@
-//! Paging a result set across message edits.
+//! Paging a rendered result across message edits.
 //!
-//! A plugin renders one page and reports its shape ([`augie_plugin::PageInfo`]).
-//! The **host** stores what a page turn needs, draws the controls, and calls
-//! the plugin back for the page the user asked for. This crate is the middle
-//! of that: the snapshot, and the arithmetic of which buttons to show.
+//! A tool answers once, rendering every page it can afford to. The host
+//! remembers those pages against a request id and swaps between them when the
+//! reader clicks. This crate is the memory and the arithmetic; the host wires
+//! it to its own storage and component routing.
 //!
-//! ## Why the host owns it
+//! ## A page turn is not a request
 //!
-//! A plugin cannot see the host's storage, and a page turn needs storage —
-//! so a plugin that drew its own buttons would have to grow a store, a key
-//! scheme and an expiry policy, and then every other plugin would grow its own
-//! slightly different one. Paging is a property of *showing a list*, not of any
-//! particular list, so it belongs where lists are shown.
+//! The obvious design re-invokes the tool with a page number, and it is wrong.
+//! A page turn would then have to reproduce the original request exactly —
+//! re-resolve the collection, re-resolve the trait, re-read config the model
+//! never saw, re-authorise the caller — and every one of those is a chance to
+//! land somewhere slightly different. The failures all look the same from
+//! outside: a card that rendered perfectly, above a Next button that errors.
 //!
-//! ## Store only what a re-run would destroy
+//! Paging is a **view over a result already computed**. Storing the rendered
+//! pages makes that structural rather than aspirational: there is nothing left
+//! to resolve, so nothing left to resolve differently, and the list cannot
+//! shift under the reader between page one and page five.
 //!
-//! Most queries reproduce themselves. "The 5 rarest, skipping 10" is the same
-//! five however often you ask, so its snapshot holds the *query* and each page
-//! re-runs — which costs nothing to store and returns live data as a bonus.
+//! What that buys, concretely:
 //!
-//! A random sample is the exception, and the reason [`Snapshot::order`] exists:
-//! it is redrawn on every call, so page 2 of it would be an unrelated handful
-//! rather than a later part of the same list. For those, and only those, the
-//! drawn identifiers are stored and pages are slices of them.
+//! - a page turn costs no query, no round trip, and no permission re-check —
+//!   the data was fetched and authorised once, when it was asked for
+//! - the plugin holds no state and is never called again
+//! - a snapshot has no credentials, no address and no arguments in it, so an
+//!   expired or leaked one is a stale picture rather than a way to run
+//!   anything
 //!
-//! That asymmetry is also what makes a redraw meaningful to offer: a stored
-//! deck can be thrown away and drawn again ([`PageAction::Redraw`]), where a
-//! deterministic query has nothing to redraw.
+//! ## None of it reaches a model
 //!
-//! ## What never happens here
-//!
-//! **None of this reaches a model.** A snapshot is addressed by id, not
-//! injected into a prompt: the model's view of a result stays the short summary
-//! its tool returned. Paging is a UI affordance over data the host already
-//! fetched, and spending prompt tokens on it would be paying twice for
-//! something the user can already see.
+//! A snapshot is addressed by id, never injected into a prompt. Turning a page
+//! runs no model at all: the reader is looking at the list, and paying a model
+//! to re-describe what is on screen would be paying twice.
 
-use augie_plugin::ServiceAddress;
+use augie_plugin::PluginBlock;
 use serde::{Deserialize, Serialize};
 use worker_stack::worker::kv::KvStore;
 
-/// How long a posted list stays pageable.
+/// How long a posted result stays pageable.
 ///
 /// Matched to the agent's answer context deliberately: both answer "can the
-/// user still interact with this message", and two different lifetimes would
+/// reader still interact with this message", and two different lifetimes would
 /// mean a reply that still works above buttons that no longer do.
 pub const SNAPSHOT_TTL_SECONDS: u64 = 60 * 60 * 24;
 
@@ -51,36 +49,24 @@ fn snapshot_key(id: &str) -> String {
     format!("agent_snapshot:{id}")
 }
 
-/// Everything needed to render another page of a result already shown.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// The rendered pages of one answer, and what they are.
+///
+/// Note what is **not** here: no service, no address, no tool name, no
+/// arguments. Nothing in a snapshot can be used to run anything — it is a
+/// picture, and paging it is a presentation change.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Snapshot {
-    /// Service id, for logging and to find the guild's opt-in block.
-    pub service: String,
+    /// Every page, in order. Page 0 is the one first posted.
+    pub pages: Vec<Vec<PluginBlock>>,
 
-    /// How to reach the plugin that renders a page.
-    pub address: ServiceAddress,
-
-    /// The tool to call — its plugin-local name, not the namespaced one the
-    /// model sees.
-    pub tool: String,
-
-    /// The arguments that produced page 0, verbatim.
-    ///
-    /// Re-sent with a page selector added. Stored rather than rebuilt because
-    /// they carry resolutions the host cannot redo — which collection a bare
-    /// "the ghouls" meant, which of two ambiguous traits the user picked.
-    pub arguments: serde_json::Value,
-
-    pub page_size: usize,
-
-    /// Total matching items, when the plugin could say. `None` shows a page
+    /// Total matching items, when the tool could say. `None` shows a page
     /// number with no denominator rather than one derived from a guess.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total: Option<u32>,
 
-    /// The drawn order, for a set a re-run would not reproduce. Empty is the
-    /// normal case — see the module docs.
+    /// How many items were rendered, across every page.
     #[serde(default)]
-    pub order: Vec<String>,
+    pub shown: u32,
 
     /// What this set is, for the pager line.
     #[serde(default)]
@@ -88,138 +74,99 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// Is this a stored deck rather than a re-runnable query?
-    pub fn is_fixed_order(&self) -> bool {
-        !self.order.is_empty()
+    pub fn page_count(&self) -> usize {
+        self.pages.len()
     }
 
-    /// The identifiers to render for `page`, when this is a stored deck.
-    ///
-    /// Empty past the end, which is what a Next click on a deck that shrank
-    /// underneath it produces — the caller reports "past the last page" rather
-    /// than rendering nothing and calling it a page.
-    pub fn slice(&self, page: usize) -> &[String] {
-        if self.page_size == 0 {
-            return &[];
-        }
-        let start = page.saturating_mul(self.page_size).min(self.order.len());
-        let end = start.saturating_add(self.page_size).min(self.order.len());
-        &self.order[start..end]
+    /// Did more match than was rendered? Derived from the two counts, so the
+    /// card cannot claim one thing while its own numbers say another.
+    pub fn is_truncated(&self) -> bool {
+        self.total.is_some_and(|total| total > self.shown)
     }
 
-    /// Is there a page after `page`? Only knowable here for a stored deck;
-    /// for a re-runnable query the plugin answers it on the next render.
+    /// The blocks for `page`, or `None` past the end.
+    pub fn page(&self, page: usize) -> Option<&Vec<PluginBlock>> {
+        self.pages.get(page)
+    }
+
     pub fn has_more_after(&self, page: usize) -> bool {
-        self.is_fixed_order() && (page + 1) * self.page_size < self.order.len()
-    }
-
-    /// How many pages, when that is knowable without asking the plugin.
-    pub fn page_count(&self) -> Option<usize> {
-        if self.page_size == 0 {
-            return None;
-        }
-        let items = if self.is_fixed_order() {
-            self.order.len()
-        } else {
-            self.total? as usize
-        };
-        Some(items.div_ceil(self.page_size))
+        page + 1 < self.pages.len()
     }
 }
 
 /// What a pager button does when clicked.
+///
+/// One variant, and deliberately so: everything a click can do is show a page
+/// that already exists. There is no redraw, because a redraw would mean
+/// re-running a query — which is the thing this design removes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PageAction {
-    /// Show this page of the existing set.
     Show(usize),
-    /// Throw the stored deck away and draw a new one.
-    ///
-    /// Only offered for a fixed order: re-running a deterministic query would
-    /// produce the same list, so a button promising a fresh one would lie.
-    Redraw,
 }
 
 /// A control the host should render and route.
 ///
-/// Deliberately not a [`augie_plugin::PluginComponent`]: the host has to mint
-/// the `custom_id`, because the id is how the click finds its way back to the
+/// Deliberately not a [`augie_plugin::PluginComponent`]: the host mints the
+/// `custom_id`, because that id is how a click finds its way back to the
 /// host's own storage. This crate decides *which* buttons and *what state*;
 /// routing is not its business.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PagerButton {
     pub action: PageAction,
     pub label: String,
-    pub emoji: Option<String>,
     pub disabled: bool,
 }
 
-/// The controls for a page of a result, or empty when there is nothing to page.
-///
-/// `more` comes from the plugin's latest render rather than the snapshot,
-/// because for a re-runnable query it is the only thing that knows.
-pub fn pager_buttons(page: usize, more: bool, fixed_order: bool) -> Vec<PagerButton> {
-    // One page and nothing after it: a Previous and a Next that are both dead
-    // is worse than no controls, because it implies there is somewhere to go.
-    if page == 0 && !more && !fixed_order {
+/// The controls for a page, or empty when there is nothing to page.
+pub fn pager_buttons(snapshot: &Snapshot, page: usize) -> Vec<PagerButton> {
+    // One page: a Previous and a Next that are both dead is worse than no
+    // controls, because it implies there is somewhere to go.
+    if snapshot.page_count() <= 1 {
         return Vec::new();
     }
 
-    let mut buttons = vec![
+    vec![
         PagerButton {
             // Saturating rather than checked: this button is disabled on page
             // 0 anyway, and an underflow would take out the whole reply.
             action: PageAction::Show(page.saturating_sub(1)),
             label: "Previous".to_string(),
-            emoji: None,
             disabled: page == 0,
         },
         PagerButton {
             action: PageAction::Show(page + 1),
             label: "Next".to_string(),
-            emoji: None,
-            disabled: !more,
+            disabled: !snapshot.has_more_after(page),
         },
-    ];
-
-    if fixed_order {
-        buttons.push(PagerButton {
-            action: PageAction::Redraw,
-            label: "Shuffle".to_string(),
-            emoji: Some("🎲".to_string()),
-            disabled: false,
-        });
-    }
-
-    buttons
+    ]
 }
 
 /// The line under a paged card: where you are, and in what.
 ///
-/// Every number here comes from data. A total the plugin could not supply is
-/// simply absent — "page 3" says less than "page 3 of 12" and is the only
-/// honest thing to say when the size of the set is genuinely unknown.
+/// Every number comes from data. A total the tool could not supply is simply
+/// absent — "page 3 of 8" says more than "page 3", but only "page 3" is
+/// honest when the size of the set is genuinely unknown.
 pub fn pager_line(snapshot: &Snapshot, page: usize) -> String {
     let mut line = if snapshot.label.is_empty() {
-        format!("page {}", page + 1)
+        format!("page {} of {}", page + 1, snapshot.page_count())
     } else {
-        format!("{} · page {}", snapshot.label, page + 1)
+        format!(
+            "{} · page {} of {}",
+            snapshot.label,
+            page + 1,
+            snapshot.page_count()
+        )
     };
 
-    if let Some(pages) = snapshot.page_count() {
-        line.push_str(&format!(" of {pages}"));
-    }
-
-    // A deck drawn from a larger pool has to say so, or "page 2 of 10" reads
-    // as though ten pages is the whole collection.
-    if snapshot.is_fixed_order() {
-        let drawn = snapshot.order.len();
-        match snapshot.total {
-            Some(total) if total as usize > drawn => {
-                line.push_str(&format!(" — {drawn} shuffled from {total}"));
-            }
-            _ => line.push_str(" — shuffled"),
+    // Both counts, said plainly. Without this the last page reads as the end
+    // of the list when it is only the end of what was fetched.
+    match snapshot.total {
+        Some(total) if snapshot.is_truncated() => {
+            line.push_str(&format!(" · {} of {total} shown", snapshot.shown));
         }
+        Some(total) => line.push_str(&format!(" · {total} in total")),
+        None => {}
     }
 
     line
@@ -260,143 +207,101 @@ pub async fn load(kv: &KvStore, id: &str) -> Option<Snapshot> {
 mod tests {
     use super::*;
 
-    fn snapshot(order: Vec<String>, total: Option<u32>) -> Snapshot {
+    fn page(n: usize) -> Vec<PluginBlock> {
+        vec![PluginBlock::Text {
+            content: format!("page {n}"),
+        }]
+    }
+
+    /// Five items per page, all of them rendered — the complete case.
+    fn snapshot(pages: usize, total: Option<u32>) -> Snapshot {
         Snapshot {
-            service: "collection-ownership".to_string(),
-            address: ServiceAddress::Binding("COLLECTION_OWNERSHIP".to_string()),
-            tool: "assets".to_string(),
-            arguments: serde_json::Value::Null,
-            page_size: 5,
+            pages: (0..pages).map(page).collect(),
             total,
-            order,
-            label: "Perps · Post It".to_string(),
+            shown: total.unwrap_or((pages * 5) as u32),
+            label: "Black Flag · Skin: Ghoul".to_string(),
         }
     }
 
-    fn deck(n: usize) -> Vec<String> {
-        (0..n).map(|i| format!("asset{i}")).collect()
-    }
-
-    /// The case this whole crate exists for: a random sample is redrawn per
-    /// call, so its pages have to be slices of one stored draw.
+    /// A page turn is a lookup, not a query. This is the whole design in one
+    /// assertion: the pages are already here.
     #[test]
-    fn a_stored_deck_pages_by_slicing_the_draw() {
-        let snap = snapshot(deck(12), Some(420));
-
-        assert_eq!(snap.slice(0), &deck(12)[0..5]);
-        assert_eq!(snap.slice(1), &deck(12)[5..10]);
-        // A short final page is a page, not an error.
-        assert_eq!(snap.slice(2).len(), 2);
-
-        assert!(snap.has_more_after(0));
-        assert!(snap.has_more_after(1));
-        assert!(!snap.has_more_after(2));
-    }
-
-    /// Clicking Next on a deck that shrank underneath you must not render an
-    /// empty page as though it were a real one.
-    #[test]
-    fn paging_past_a_deck_yields_nothing_rather_than_wrapping() {
-        let snap = snapshot(deck(7), None);
-        assert!(snap.slice(2).is_empty());
-        assert!(snap.slice(99).is_empty());
-    }
-
-    /// A re-runnable query stores no items, so the host must re-invoke rather
-    /// than slice — `slice` returning empty is what signals that.
-    #[test]
-    fn a_rerunnable_query_stores_no_order() {
-        let snap = snapshot(Vec::new(), Some(420));
-        assert!(!snap.is_fixed_order());
-        assert!(snap.slice(0).is_empty());
-        // And `more` cannot be answered from the snapshot alone.
-        assert!(!snap.has_more_after(0));
-    }
-
-    /// Page counts come from the deck when there is one, and from the total
-    /// otherwise — never from the page currently on screen.
-    #[test]
-    fn page_count_prefers_the_deck_over_the_pool() {
-        // 50 drawn from 420: ten pages of the deck, not 84 of the collection.
-        assert_eq!(snapshot(deck(50), Some(420)).page_count(), Some(10));
-        // No deck: the pool is what is being paged.
-        assert_eq!(snapshot(Vec::new(), Some(420)).page_count(), Some(84));
-        // Unknown pool and no deck: no denominator to offer.
-        assert_eq!(snapshot(Vec::new(), None).page_count(), None);
-        // Partial last page counts as a page.
-        assert_eq!(snapshot(Vec::new(), Some(11)).page_count(), Some(3));
-    }
-
-    /// The display has to distinguish "ten pages of everything" from "ten
-    /// pages of a sample", or it overstates what the user is looking at.
-    #[test]
-    fn a_shuffled_deck_says_what_it_was_drawn_from() {
-        let line = pager_line(&snapshot(deck(50), Some(420)), 1);
-        assert!(line.contains("page 2 of 10"), "{line}");
-        assert!(line.contains("50 shuffled from 420"), "{line}");
+    fn a_page_is_read_not_fetched() {
+        let snap = snapshot(3, Some(15));
+        assert_eq!(snap.page(0), Some(&page(0)));
+        assert_eq!(snap.page(2), Some(&page(2)));
+        assert_eq!(snap.page(3), None, "past the end is None, not an empty page");
     }
 
     #[test]
-    fn an_unknown_total_shows_a_page_number_and_no_denominator() {
-        let line = pager_line(&snapshot(Vec::new(), None), 2);
-        assert_eq!(line, "Perps · Post It · page 3");
-        assert!(!line.contains(" of "), "no invented total: {line}");
+    fn the_ends_of_a_list_disable_the_direction_that_leads_nowhere() {
+        let snap = snapshot(3, None);
+
+        let first = pager_buttons(&snap, 0);
+        assert!(first[0].disabled, "no previous page from the first");
+        assert!(!first[1].disabled);
+        assert_eq!(first[0].action, PageAction::Show(0), "saturates, not wraps");
+
+        let last = pager_buttons(&snap, 2);
+        assert!(!last[0].disabled);
+        assert!(last[1].disabled, "no next page from the last");
     }
 
     /// A whole result gets no controls — two dead buttons imply somewhere to go.
     #[test]
     fn a_single_page_gets_no_controls() {
-        assert!(pager_buttons(0, false, false).is_empty());
+        assert!(pager_buttons(&snapshot(1, Some(3)), 0).is_empty());
+        assert!(pager_buttons(&Snapshot::default(), 0).is_empty());
+    }
+
+    /// The denominator is the number of pages that EXIST, so it can never
+    /// promise a page the snapshot cannot serve.
+    #[test]
+    fn the_page_total_counts_stored_pages() {
+        let line = pager_line(&snapshot(16, Some(80)), 1);
+        assert!(line.contains("page 2 of 16"), "{line}");
+        assert!(line.contains("80 in total"), "{line}");
+    }
+
+    /// Truncation has to be visible, or the last page reads as the end of the
+    /// list rather than the end of what was fetched. Both counts appear, so
+    /// "30 of 80" cannot be misread as "80 shown".
+    #[test]
+    fn a_truncated_result_shows_both_counts() {
+        let mut snap = snapshot(6, Some(80));
+        snap.shown = 30;
+
+        let line = pager_line(&snap, 5);
+        assert!(line.contains("page 6 of 6"), "{line}");
+        assert!(line.contains("30 of 80 shown"), "{line}");
+        assert!(
+            !line.contains("in total"),
+            "that would claim completeness: {line}"
+        );
     }
 
     #[test]
-    fn the_ends_of_a_list_disable_the_direction_that_leads_nowhere() {
-        let first = pager_buttons(0, true, false);
-        assert_eq!(first.len(), 2);
-        assert!(first[0].disabled, "no previous page from the first");
-        assert!(!first[1].disabled);
-        assert_eq!(first[0].action, PageAction::Show(0), "saturates, not wraps");
-
-        let last = pager_buttons(3, false, false);
-        assert!(!last[0].disabled);
-        assert!(last[1].disabled, "no next page from the last");
-        assert_eq!(last[0].action, PageAction::Show(2));
+    fn an_unknown_total_shows_a_page_number_and_no_denominator() {
+        let line = pager_line(&snapshot(4, None), 2);
+        assert_eq!(line, "Black Flag · Skin: Ghoul · page 3 of 4");
     }
 
-    /// Redraw is offered only where it means something. A deterministic query
-    /// re-run gives the same list back, so the button would be a lie.
-    #[test]
-    fn only_a_stored_deck_can_be_redrawn() {
-        let shuffled = pager_buttons(0, true, true);
-        assert!(shuffled.iter().any(|b| b.action == PageAction::Redraw));
-
-        let deterministic = pager_buttons(0, true, false);
-        assert!(!deterministic.iter().any(|b| b.action == PageAction::Redraw));
-    }
-
-    /// A one-page deck still offers a redraw: there is nowhere to page, but
-    /// drawing a different sample is exactly what the user would want.
-    #[test]
-    fn a_single_page_deck_can_still_be_reshuffled() {
-        let buttons = pager_buttons(0, false, true);
-        assert!(!buttons.is_empty(), "a deck always has a redraw");
-        assert!(buttons.iter().any(|b| b.action == PageAction::Redraw));
-        assert!(buttons[1].disabled, "but Next still leads nowhere");
-    }
-
+    /// The rendered pages ARE the stored result, so a lossy round trip would
+    /// page to blank cards.
     #[test]
     fn a_snapshot_round_trips_as_json() {
-        let snap = snapshot(deck(3), Some(9));
+        let snap = snapshot(3, Some(15));
         let back: Snapshot = serde_json::from_str(&serde_json::to_string(&snap).unwrap()).unwrap();
         assert_eq!(back, snap);
     }
 
-    /// A degenerate page size must not divide by zero or spin.
+    /// Nothing in a snapshot can run anything — no address, no tool, no
+    /// arguments. An expired or leaked one is a stale picture, not a lever.
     #[test]
-    fn a_zero_page_size_is_survivable() {
-        let mut snap = snapshot(deck(3), Some(9));
-        snap.page_size = 0;
-        assert!(snap.slice(0).is_empty());
-        assert_eq!(snap.page_count(), None);
+    fn a_snapshot_carries_no_way_to_invoke_anything() {
+        let json = serde_json::to_string(&snapshot(2, Some(9))).unwrap();
+        for lever in ["address", "binding", "tool", "arguments", "policy"] {
+            assert!(!json.contains(lever), "snapshot leaks `{lever}`: {json}");
+        }
     }
 }

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 // against: they should be able to declare a tool's parameters, and render the
 // schema for their own MCP surface, without needing to know `tool-schema`
 // exists or adding a second dependency to say the same thing.
-pub use tool_schema::{to_json_schema, ToolParameter, ToolParameterKind};
+pub use tool_schema::{assert_flat, schema_for, schemars, JsonSchema};
 
 /// A plugin's complete command surface.
 ///
@@ -76,14 +76,23 @@ pub struct PluginTool {
     /// current listings or floor price"), not just the capability.
     pub description: String,
 
-    /// The arguments it accepts.
+    /// The arguments it accepts, as JSON Schema.
     ///
-    /// Typed rather than raw JSON Schema: a `serde_json::Value` here could be
-    /// an object, a string, `null`, or an object missing the key the reader
-    /// wanted, and nothing would catch any of it — the model would simply be
-    /// offered a tool with no arguments. See `tool_schema` for the generator.
-    #[serde(default)]
-    pub parameters: Vec<ToolParameter>,
+    /// **Generate this with [`tool_schema::schema_for`], never by hand.** It
+    /// is derived from the same type the tool parses its arguments into, so
+    /// what is advertised and what is accepted are one definition rather than
+    /// two that drift — which is how a filter came to be silently dropped and
+    /// how a "1-5" in prose outlived a code limit of 60.
+    ///
+    /// Raw JSON here rather than a typed parameter list because this is what
+    /// a function-calling API wants and what MCP already puts on the wire; a
+    /// typed intermediate would only be re-serialised to exactly this. The
+    /// hazard that argued for typing it — a hand-written `Value` nobody
+    /// checked — is gone once the value is generated from a type.
+    ///
+    /// Missing or `null` means the tool takes no arguments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<serde_json::Value>,
 
     /// Who may cause this tool to run. See [`PermissionClass`].
     ///
@@ -324,7 +333,7 @@ mod tests {
         PluginTool {
             name: name.to_string(),
             description: format!("call {name} when asked about {name}"),
-            parameters: vec![],
+            input_schema: None,
             permission,
         }
     }

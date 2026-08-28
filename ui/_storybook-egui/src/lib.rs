@@ -129,6 +129,7 @@ mod app {
         Gated,
         AccessGate,
         UserBadge,
+        TierLadder,
         QuantityStepper,
         MintCheckout,
     }
@@ -178,6 +179,7 @@ mod app {
                 Self::Gated,
                 Self::AccessGate,
                 Self::UserBadge,
+                Self::TierLadder,
                 Self::ProgressBar,
                 Self::BulletBar,
                 Self::Sparkline,
@@ -381,6 +383,7 @@ mod app {
                 Self::Gated => "Gated",
                 Self::AccessGate => "Access Gate",
                 Self::UserBadge => "User Badge",
+                Self::TierLadder => "Tier Ladder",
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
                 Self::Toast => "Toast",
@@ -426,6 +429,7 @@ mod app {
                 | Self::Gated
                 | Self::AccessGate
                 | Self::UserBadge
+                | Self::TierLadder
                 | Self::IdPill
                 | Self::PropertyList
                 | Self::ButtonGroup
@@ -498,6 +502,7 @@ mod app {
                 Self::Gated => "Entitlement-gated rendering — locked card/chip affordances driven by the shared authorizations Feature registry",
                 Self::AccessGate => "App-level access screen: sign-in prompt + requirements (join links) for gated tools",
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
+                Self::TierLadder => "The access ladder as a modal — what each rung gives, every route to it, and where you stand",
                 Self::Distribution => "Concentric orbital rings supply distribution chart",
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
@@ -1128,6 +1133,7 @@ mod app {
                             Story::Gated => stories::gated::show(ui),
                             Story::AccessGate => stories::access_gate::show(ui),
                             Story::UserBadge => stories::user_badge::show(ui),
+                            Story::TierLadder => stories::tier_ladder::show(ui),
                             Story::Distribution => {
                                 stories::distribution::show(ui, &mut self.distribution_chart)
                             }

@@ -50,6 +50,7 @@ pub mod supply_bar;
 pub mod swap;
 pub mod tag_list;
 pub mod tcg_card;
+pub mod tier_ladder;
 pub mod time_spine;
 pub mod timestamp;
 pub mod token_multiselect;

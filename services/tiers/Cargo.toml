@@ -1,0 +1,16 @@
+[package]
+name = "tiers"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Configurable holding-based access tiers: qualification, resolution, and upsell"
+
+# PURE — no I/O, no wasm-bindgen, no worker deps. The same crate is consumed
+# from a Cloudflare worker (the gate), a wasm-bindgen frontend (the upsell
+# copy), and could be consumed from a macroquad game. Measuring a holding is
+# the caller's job; deciding what it buys is this crate's.
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

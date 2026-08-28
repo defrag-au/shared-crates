@@ -80,6 +80,7 @@ pub mod supply_bar;
 pub mod swap_modal;
 pub mod tag_list;
 pub mod theme;
+pub mod tier_ladder;
 pub mod time_spine;
 pub mod timestamp;
 pub mod toast;

@@ -30,7 +30,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{CommandResponse, InvokingUser, PermissionClass};
+use crate::{CommandResponse, InvokingUser, PermissionClass, PluginBlock};
 
 /// An agent asking a plugin to run one of its advertised tools.
 ///
@@ -99,50 +99,58 @@ pub enum ToolStatus {
     AwaitingInput,
 }
 
-/// A result the caller can page through.
+/// The rest of a result the user can page through.
 ///
-/// A plugin reports what it just rendered and how the rest of the set is
-/// shaped; it does **not** render controls. Paging is a host concern — the
-/// host owns the storage a page turn needs, so a plugin that drew its own
-/// buttons would need a store it cannot see, and every plugin would reimplement
-/// the same thing.
+/// A tool that answers with more than fits one message renders **every** page
+/// up front and hands them over. The host remembers them against the request
+/// and swaps between them on a click.
 ///
-/// ## Why `order` exists
+/// ## A page turn is not a request
 ///
-/// Most queries reproduce themselves: "the 5 rarest, skipping 10" returns the
-/// same five however often you ask, so a page turn can simply re-run with a
-/// different offset and gets live data as a bonus. A **random sample does not**
-/// — it is redrawn per call, so page 2 of it would be an unrelated handful
-/// rather than a later part of the same list.
+/// The tempting design is to re-invoke the tool with a page number. It reads
+/// as cheaper — one page fetched at a time — and it is wrong, because a page
+/// turn then has to reproduce the original request exactly: re-resolve the
+/// collection, re-resolve the trait, re-read the guild config the model never
+/// saw, re-authorise the caller. Each of those is a chance to land somewhere
+/// slightly different, and each failure surfaces as a page that errors under a
+/// card that rendered perfectly.
 ///
-/// So `order` carries the drawn identifiers *only* for results a re-run would
-/// destroy. Leaving it empty is the normal case and stores nothing.
+/// Paging is a **view over a result already computed**. Rendering the pages at
+/// query time makes that structural: there is nothing left to resolve, so
+/// nothing left to resolve differently. It also means the list cannot shift
+/// under the reader between page one and page five.
+///
+/// ## Consequences worth knowing
+///
+/// - The plugin is not called again, so a page turn costs no query, no
+///   round trip and no permission check — the data was fetched and authorised
+///   once, when it was asked for.
+/// - The plugin holds no state. It renders and returns; the host remembers.
+/// - Cap what you render. A result of thousands should return the first
+///   sensible span and set [`Self::truncated`], not a thousand pages.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PageInfo {
-    /// Zero-based index of the page in this response.
-    pub page: usize,
-
-    /// Items on a full page. The last page may hold fewer.
-    pub page_size: usize,
+    /// Pages **after** the one in [`ToolResponse::presentation`], in order.
+    ///
+    /// Empty means the result fitted one page and needs no controls.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rest: Vec<Vec<PluginBlock>>,
 
     /// Total matching items, when the plugin can say so **from data**.
     ///
-    /// `None` when it genuinely doesn't know — a bounded query usually cannot
-    /// see past its own limit. The host then shows a page number with no total
-    /// rather than dividing by a guess.
+    /// `None` when it genuinely doesn't know. The host then shows a page
+    /// number with no total rather than dividing by a guess.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total: Option<u32>,
 
-    /// Whether a further page exists.
-    pub more: bool,
-
-    /// The fixed item order, for results a re-run would not reproduce.
+    /// How many items were rendered, across every page.
     ///
-    /// Empty means "re-runnable" — see the type docs. When set, the host
-    /// stores it and hands back the slice it wants rendered, which also makes
-    /// a redraw ("shuffle") a meaningful thing to offer.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub order: Vec<String>,
+    /// With [`Self::total`] this says whether the reader is looking at all of
+    /// the matches or the first slice of them — so truncation is *derived*
+    /// from two counts rather than asserted by a flag that could disagree
+    /// with them.
+    #[serde(default)]
+    pub shown: u32,
 
     /// What this set is, for the pager line — e.g. `"Perps · Post It"`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -150,14 +158,23 @@ pub struct PageInfo {
 }
 
 impl PageInfo {
-    /// Is this a set the host must store to page at all?
-    pub fn is_fixed_order(&self) -> bool {
-        !self.order.is_empty()
+    /// How many pages in total, counting the one in `presentation`.
+    pub fn page_count(&self) -> usize {
+        self.rest.len() + 1
     }
 
-    /// True when there is nothing to page — one page, and no more after it.
+    /// True when there is nothing to page.
     pub fn is_single_page(&self) -> bool {
-        self.page == 0 && !self.more
+        self.rest.is_empty()
+    }
+
+    /// Did more match than was rendered?
+    ///
+    /// Derived, never asserted — a flag saying "truncated" could contradict
+    /// the two counts beside it, and then the card claims one thing while its
+    /// own numbers say another.
+    pub fn is_truncated(&self) -> bool {
+        self.total.is_some_and(|total| total > self.shown)
     }
 }
 
@@ -306,41 +323,75 @@ mod tests {
         assert!(!failed.awaiting_input());
     }
 
-    /// The distinction the whole paging design turns on: a query that can
-    /// reproduce itself needs nothing stored, and one that cannot must carry
-    /// its drawn order or page 2 is a different list.
-    #[test]
-    fn only_an_unreproducible_result_carries_its_order() {
-        let rerunnable = PageInfo {
-            page: 1,
-            page_size: 5,
-            total: Some(420),
-            more: true,
-            ..Default::default()
-        };
-        assert!(!rerunnable.is_fixed_order());
-        assert!(!rerunnable.is_single_page());
+    fn text_page(content: &str) -> Vec<PluginBlock> {
+        vec![PluginBlock::Text {
+            content: content.to_string(),
+        }]
+    }
 
-        let shuffled = PageInfo {
-            page: 0,
-            page_size: 5,
-            more: true,
-            order: vec!["a".into(), "b".into()],
+    /// The count includes the page in `presentation`, which is not in `rest` —
+    /// off by one here shows up as a card claiming one page fewer than it has.
+    #[test]
+    fn the_page_count_includes_the_one_already_shown() {
+        let paged = PageInfo {
+            rest: vec![text_page("two"), text_page("three")],
             ..Default::default()
         };
-        assert!(shuffled.is_fixed_order());
+        assert_eq!(paged.page_count(), 3);
+        assert!(!paged.is_single_page());
     }
 
     /// A whole result must not sprout controls.
     #[test]
-    fn a_single_page_is_recognised_as_needing_no_controls() {
+    fn a_result_that_fits_one_page_needs_no_controls() {
         let whole = PageInfo {
-            page: 0,
-            page_size: 5,
-            more: false,
+            total: Some(3),
             ..Default::default()
         };
         assert!(whole.is_single_page());
+        assert_eq!(whole.page_count(), 1);
+    }
+
+    /// Rendered pages survive the wire — they ARE the stored result, so a
+    /// lossy round trip would page to blank cards.
+    #[test]
+    fn rendered_pages_round_trip() {
+        let paged = PageInfo {
+            rest: vec![text_page("second page")],
+            total: Some(80),
+            shown: 30,
+            label: "Black Flag · Skin: Ghoul".to_string(),
+        };
+
+        let back: PageInfo = serde_json::from_str(&serde_json::to_string(&paged).unwrap()).unwrap();
+        assert_eq!(back, paged);
+    }
+
+    /// Truncation is the relationship between two counts, not a third field
+    /// that could disagree with them.
+    #[test]
+    fn truncation_is_derived_from_the_counts() {
+        let partial = PageInfo {
+            total: Some(80),
+            shown: 30,
+            ..Default::default()
+        };
+        assert!(partial.is_truncated());
+
+        let complete = PageInfo {
+            total: Some(30),
+            shown: 30,
+            ..Default::default()
+        };
+        assert!(!complete.is_truncated());
+
+        // Unknown total: nothing is claimed either way.
+        let unknown = PageInfo {
+            total: None,
+            shown: 30,
+            ..Default::default()
+        };
+        assert!(!unknown.is_truncated());
     }
 
     /// Paging is opt-in: a plugin that says nothing about it gets nothing on
@@ -356,10 +407,8 @@ mod tests {
     #[test]
     fn an_unknown_total_is_absent_not_zero() {
         let page = PageInfo {
-            page: 0,
-            page_size: 5,
+            rest: vec![text_page("two")],
             total: None,
-            more: true,
             ..Default::default()
         };
         let json = serde_json::to_string(&page).unwrap();
