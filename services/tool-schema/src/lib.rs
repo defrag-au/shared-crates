@@ -226,6 +226,11 @@ mod tests {
         #[schemars(range(min = 1, max = 60))]
         #[serde(default)]
         count: Option<u32>,
+        // Never read, and that is the whole point: these fixtures exist to be
+        // DERIVED from, and every assertion below is about the generated
+        // schema rather than about a value. `expect` rather than `allow` so
+        // the day one of them gains a real reader, this says so.
+        #[expect(dead_code)]
         #[serde(default)]
         order: Option<Order>,
     }
@@ -297,12 +302,15 @@ mod tests {
     /// language, which is what the narrow vocabulary existed to prevent.
     #[test]
     fn a_nested_argument_is_reported() {
+        // Shapes to derive a schema from, not values to read — see `AssetsArgs`.
         #[derive(JsonSchema)]
         struct Filter {
+            #[expect(dead_code)]
             field: String,
         }
         #[derive(JsonSchema)]
         struct Nested {
+            #[expect(dead_code)]
             filter: Filter,
         }
 
@@ -319,12 +327,14 @@ mod tests {
     fn a_string_array_is_allowed_but_other_arrays_are_not() {
         #[derive(JsonSchema)]
         struct Strings {
+            #[expect(dead_code)]
             names: Vec<String>,
         }
         assert!(assert_flat(&schema_for::<Strings>()).is_ok());
 
         #[derive(JsonSchema)]
         struct Numbers {
+            #[expect(dead_code)]
             counts: Vec<u32>,
         }
         let problems = assert_flat(&schema_for::<Numbers>()).unwrap_err();

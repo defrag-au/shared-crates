@@ -338,8 +338,8 @@ mod tests {
         let ctx = egui::Context::default();
         let mut open = false;
         let mut action = TierLadderAction::SignIn;
-        let _ = ctx.run(Default::default(), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
+        let _ = ctx.run_ui(Default::default(), |ui| {
+            egui::CentralPanel::default().show_inside(ui, |ui| {
                 action = TierLadder::new(&[]).show(ui, &mut open);
             });
         });

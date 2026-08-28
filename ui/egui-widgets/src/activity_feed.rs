@@ -567,8 +567,11 @@ mod tests {
             ..Default::default()
         };
         let fmt = |a: i128| format!("{a}");
-        ctx.run(input, |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
+        // `run_ui` hands back a `&mut Ui` rather than a `&Context`, so the
+        // panel is shown INSIDE it — `Context::run` and `Panel::show` are the
+        // deprecated pair of that older shape and only make sense together.
+        let _ = ctx.run_ui(input, |ui| {
+            egui::CentralPanel::default().show_inside(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ActivityFeed::new(&entries, &fmt).show(ui);
                 });

@@ -69,15 +69,21 @@ pub struct EventWiringResponse {
     pub remove_clicked: bool,
 }
 
+/// Caller-supplied rendering for an expanded action card.
+///
+/// The config fields inside a card are app domain — a policy id, a style
+/// picker — so this crate takes them as a closure rather than growing a
+/// vocabulary for every app that has one.
+type ExpandedContent<'a> = Box<dyn FnOnce(&mut Ui) + 'a>;
+
 /// The wiring node group for one binding.
 pub struct EventWiring<'a> {
     id_salt: &'a str,
     event: &'a EventNodeVm,
     actions: &'a [ActionCardVm],
-    /// An action card expanded in place, with caller-rendered content (the
-    /// action's config fields — app domain, so it arrives as a closure).
+    /// An action card expanded in place, with caller-rendered content.
     expanded: Option<usize>,
-    expanded_content: Option<Box<dyn FnOnce(&mut Ui) + 'a>>,
+    expanded_content: Option<ExpandedContent<'a>>,
 }
 
 const NODE_WIDTH: f32 = 230.0;

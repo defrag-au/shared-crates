@@ -55,7 +55,9 @@ fn over(fg: Color32, bg: Color32) -> Color32 {
 fn configured() -> egui::Visuals {
     let ctx = egui::Context::default();
     theme::configure_style(&ctx, theme::FontStrategy::proportional());
-    ctx.style().visuals.clone()
+    // `global_style`, not `ui.style()` — this is the context-wide style
+    // `configure_style` writes, which is exactly what the renaming was for.
+    ctx.global_style().visuals.clone()
 }
 
 #[test]
