@@ -5225,6 +5225,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "result-paging"
+version = "0.1.0"
+dependencies = [
+ "augie-plugin",
+ "serde",
+ "serde_json",
+ "tracing",
+ "worker_stack",
+]
+
+[[package]]
 name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"

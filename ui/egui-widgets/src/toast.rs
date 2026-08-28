@@ -163,6 +163,10 @@ impl ToastKind {
 }
 
 /// One toast message in the queue.
+///
+/// `Clone` because a host may park its queue in `egui`'s `data_mut` between
+/// frames, and both `get_temp` and `insert_temp` require it.
+#[derive(Clone)]
 pub struct Toast {
     /// The body text rendered next to the icon.
     pub message: String,
@@ -254,6 +258,7 @@ impl Toast {
 /// Host-owned toast controller. Place one on app state, push toasts as
 /// actions resolve, and call [`show_toasts`] once per paint to surface
 /// them.
+#[derive(Clone)]
 pub struct ToastQueue {
     toasts: VecDeque<Toast>,
     max_visible: usize,

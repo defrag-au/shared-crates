@@ -107,7 +107,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `tx_cart` | TX Cart widget — displays a list of pending chain actions with batch execution |
 | `tx_estimate` | Per-wallet transaction estimate widget — shows the local user's ADA impact |
 | `typeahead_search` | `TypeaheadSearch` — a search box with a keyboard-navigable result dropdown |
-| `user_badge` | `UserBadge` — a compact "logged in as" pill (avatar + name) with a click-to-open popup carrying a sign-out action |
+| `user_badge` | `UserBadge` — a compact "logged in as" pill (avatar/icon + name) whose click-to-open popup carries the session's identity block and a sign-out action |
 | `utxo_map` | UTxO terrain map — a Voronoi-based wallet visualization |
 | `utxo_shelf` | UTxO Shelf — wallet health visualization |
 | `variant_split` | Variant split — explains a `variant_flow` source slot's **derived** variant distribution and *why* it isn't uniform |
