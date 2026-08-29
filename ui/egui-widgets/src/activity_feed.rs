@@ -60,6 +60,10 @@ use crate::timestamp::format_iso8601;
 
 /// Assets shown before the overflow pill takes over.
 const MAX_PILLS: usize = 6;
+/// Characters of an asset name a pill shows before eliding. [`elide`] takes
+/// it out of the MIDDLE, so a long minted name (`HOSKYCashGrab000146545`)
+/// keeps both the collection prefix and the serial that distinguishes it.
+const PILL_LABEL_CHARS: usize = 22;
 
 /// One tag on a card — a venue, a shape, a note.
 #[derive(Clone, Copy)]
@@ -366,6 +370,42 @@ impl<'a> ActivityFeed<'a> {
 /// A named asset with its thumbnail. `moved` decides whether it carries a
 /// signed quantity — a referenced asset gets no badge and a neutral tint, so
 /// "the offer names this" cannot be misread as "this arrived".
+/// Pill geometry, kept in one place because the width is now MEASURED before
+/// the pill draws and the two must agree.
+const PILL_ICON: f32 = 18.0;
+const PILL_PAD_X: f32 = 6.0;
+const PILL_PAD_Y: f32 = 3.0;
+
+/// How wide this pill will be, computed before anything is drawn.
+///
+/// Exists because of a real layout trap: `Frame::show` inside a
+/// `horizontal_wrapped` row never triggers the row's wrap. A frame takes the
+/// cursor's remaining rect, lays its children out, and only THEN calls
+/// `allocate_rect` — and `allocate_rect` does not consult the wrap logic, it
+/// simply advances the cursor. So a pill that does not fit is drawn
+/// overhanging and clipped at the column edge, and the first thing off the
+/// end is the QUANTITY, which sits last. Six long asset names ran clean off
+/// the card that way.
+///
+/// Measuring first and reserving with `allocate_exact_size` puts the size in
+/// front of the allocation, which is the only form the wrapped layout can act
+/// on.
+fn pill_width(ui: &Ui, asset: &ActivityAsset<'_>, moved: bool) -> f32 {
+    let gap = ui.spacing().item_spacing.x;
+    let font = egui::TextStyle::Small.resolve(ui.style());
+    let text_w = |s: String| {
+        ui.painter()
+            .layout_no_wrap(s, font.clone(), egui::Color32::WHITE)
+            .size()
+            .x
+    };
+    let mut w = PILL_PAD_X * 2.0 + PILL_ICON + gap + text_w(elide(asset.label, PILL_LABEL_CHARS));
+    if moved {
+        w += gap + text_w(signed_quantity(asset.quantity));
+    }
+    w
+}
+
 fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>, moved: bool) {
     let arrived = asset.quantity >= 0;
     let tint = if !moved {
@@ -375,55 +415,59 @@ fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>, moved: bool) {
     } else {
         theme::ACCENT_ORANGE
     };
-    Frame::new()
-        .fill(theme::BG_HIGHLIGHT)
-        .corner_radius(CornerRadius::same(6))
-        .inner_margin(Margin::symmetric(6, 3))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                match asset.image_url {
-                    // Reserve the space FIRST, then only request the image if
-                    // that space is actually on screen.
-                    //
-                    // `ui.add(Image::new(url))` starts a fetch+decode the
-                    // moment the widget is built, and a feed is a long
-                    // scrolling list: every card below the fold was pulling
-                    // its thumbnails on first paint. A few hundred requests
-                    // against a six-connections-per-host browser limit is a
-                    // stall before the first card is readable.
-                    //
-                    // The size is fixed, so gating the paint cannot move
-                    // layout — a scrolled-past pill occupies exactly the same
-                    // box whether or not its image has been asked for.
-                    Some(url) => {
-                        let (rect, _) =
-                            ui.allocate_exact_size(Vec2::splat(18.0), egui::Sense::hover());
-                        if ui.is_rect_visible(rect) {
-                            egui::Image::new(url)
-                                .fit_to_exact_size(Vec2::splat(18.0))
-                                .corner_radius(CornerRadius::same(4))
-                                .paint_at(ui, rect);
-                        }
-                    }
-                    None => initial_disc(ui, asset.label, tint),
-                }
-                ui.label(
-                    RichText::new(elide(asset.label, 26))
-                        .color(theme::TEXT_PRIMARY)
-                        .small(),
-                );
-                // Quantity is a signed badge, not a bare number: on a card the
-                // direction belongs to the thing that moved.
-                if moved {
-                    ui.label(
-                        RichText::new(signed_quantity(asset.quantity))
-                            .color(tint)
-                            .small()
-                            .strong(),
-                    );
-                }
-            });
-        });
+    // Reserve the whole pill up front so the wrapped row can break BEFORE it,
+    // then draw into the rect we were given. See [`pill_width`].
+    let size = egui::vec2(pill_width(ui, asset, moved), PILL_ICON + PILL_PAD_Y * 2.0);
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    if !ui.is_rect_visible(rect) {
+        return;
+    }
+    ui.painter()
+        .rect_filled(rect, CornerRadius::same(6), theme::BG_HIGHLIGHT);
+    let ui = &mut ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect.shrink2(egui::vec2(PILL_PAD_X, PILL_PAD_Y)))
+            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+    );
+    match asset.image_url {
+        // Reserve the space FIRST, then only request the image if that space
+        // is actually on screen.
+        //
+        // `ui.add(Image::new(url))` starts a fetch+decode the moment the
+        // widget is built, and a feed is a long scrolling list: every card
+        // below the fold was pulling its thumbnails on first paint. A few
+        // hundred requests against a six-connections-per-host browser limit is
+        // a stall before the first card is readable.
+        //
+        // The size is fixed, so gating the paint cannot move layout — a
+        // scrolled-past pill occupies exactly the same box whether or not its
+        // image has been asked for.
+        Some(url) => {
+            let (icon, _) = ui.allocate_exact_size(Vec2::splat(PILL_ICON), egui::Sense::hover());
+            if ui.is_rect_visible(icon) {
+                egui::Image::new(url)
+                    .fit_to_exact_size(Vec2::splat(PILL_ICON))
+                    .corner_radius(CornerRadius::same(4))
+                    .paint_at(ui, icon);
+            }
+        }
+        None => initial_disc(ui, asset.label, tint),
+    }
+    ui.label(
+        RichText::new(elide(asset.label, PILL_LABEL_CHARS))
+            .color(theme::TEXT_PRIMARY)
+            .small(),
+    );
+    // Quantity is a signed badge, not a bare number: on a card the direction
+    // belongs to the thing that moved.
+    if moved {
+        ui.label(
+            RichText::new(signed_quantity(asset.quantity))
+                .color(tint)
+                .small()
+                .strong(),
+        );
+    }
 }
 
 /// Signed quantity with digit grouping. A fungible move is routinely six or
