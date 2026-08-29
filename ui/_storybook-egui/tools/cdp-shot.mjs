@@ -7,7 +7,11 @@
 // real one. CDP's Emulation.setDeviceMetricsOverride sets the real layout
 // viewport instead.
 //
-//   node cdp-shot.mjs <url> <width> <height> <out.png> [settleMs]
+//   node cdp-shot.mjs <url> <width> <height> <out.png> [settleMs] [clickX,clickY]
+//
+// The optional click reaches state that only exists after input — a modal, a
+// popup, a menu. `--screenshot` mode delivers no events at all, so without this
+// a modal widget screenshots as the button that opens it.
 //
 // Pair it with `?nav=0` on the storybook, which drops the 180px sidebar so the
 // story gets the whole viewport rather than `viewport − 180`.
@@ -24,7 +28,7 @@
 // Node has a global WebSocket, so there are no dependencies to install.
 import { writeFileSync } from 'node:fs';
 
-const [url, w, h, out, wait] = process.argv.slice(2);
+const [url, w, h, out, wait, click] = process.argv.slice(2);
 if (!url || !w || !h || !out) {
     console.error('usage: cdp-shot.mjs <url> <width> <height> <out.png> [settleMs]');
     process.exit(2);
@@ -68,6 +72,26 @@ await send('Emulation.setDeviceMetricsOverride', {
 });
 await send('Page.navigate', { url });
 await new Promise((r) => setTimeout(r, settleMs));
+
+if (click) {
+    const [x, y] = click.split(',').map(Number);
+    // MOVE FIRST. egui tracks the pointer itself, so a press with no prior
+    // movement lands on a widget it has never hovered: `hovered()` is false,
+    // the click is ignored and the modal never opens. This is the whole trick.
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    for (const type of ['mousePressed', 'mouseReleased']) {
+        await send('Input.dispatchMouseEvent', {
+            type,
+            x,
+            y,
+            button: 'left',
+            clickCount: 1,
+        });
+    }
+    // egui needs a frame or two to react and settle any transition.
+    await new Promise((r) => setTimeout(r, 1200));
+}
+
 const shot = await send('Page.captureScreenshot', { format: 'png' });
 writeFileSync(out, Buffer.from(shot.data, 'base64'));
 console.log(`${out} @ ${width}x${height}`);

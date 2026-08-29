@@ -131,6 +131,7 @@ mod app {
         AccessGate,
         UserBadge,
         TierLadder,
+        AboutModal,
         QuantityStepper,
         MintCheckout,
     }
@@ -182,6 +183,7 @@ mod app {
                 Self::AccessGate,
                 Self::UserBadge,
                 Self::TierLadder,
+                Self::AboutModal,
                 Self::ProgressBar,
                 Self::BulletBar,
                 Self::Sparkline,
@@ -387,6 +389,7 @@ mod app {
                 Self::AccessGate => "Access Gate",
                 Self::UserBadge => "User Badge",
                 Self::TierLadder => "Tier Ladder",
+                Self::AboutModal => "About Modal",
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
                 Self::Toast => "Toast",
@@ -434,6 +437,7 @@ mod app {
                 | Self::AccessGate
                 | Self::UserBadge
                 | Self::TierLadder
+                | Self::AboutModal
                 | Self::IdPill
                 | Self::PropertyList
                 | Self::ButtonGroup
@@ -507,6 +511,7 @@ mod app {
                 Self::AccessGate => "App-level access screen: sign-in prompt + requirements (join links) for gated tools",
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
                 Self::TierLadder => "The access ladder as a modal — what each rung gives, every route to it, and where you stand",
+                Self::AboutModal => "What a product is, what state it is in, and what to expect — the BETA badge's modal",
                 Self::Distribution => "Concentric orbital rings supply distribution chart",
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
@@ -1171,6 +1176,7 @@ mod app {
                             Story::AccessGate => stories::access_gate::show(ui),
                             Story::UserBadge => stories::user_badge::show(ui),
                             Story::TierLadder => stories::tier_ladder::show(ui),
+                            Story::AboutModal => stories::about_modal::show(ui),
                             Story::Distribution => {
                                 stories::distribution::show(ui, &mut self.distribution_chart)
                             }

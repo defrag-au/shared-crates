@@ -1,3 +1,4 @@
+pub mod about_modal;
 pub mod access_gate;
 pub mod activity_feed;
 pub mod asset_card;

@@ -1,6 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 pub use egui_inbox;
 
+pub mod about_modal;
 pub mod access_gate;
 pub mod activity_feed;
 pub mod activity_lanes;
@@ -151,6 +152,7 @@ pub mod utxo_shelf;
 #[cfg(feature = "cardano")]
 pub mod wallet_asset_picker;
 
+pub use about_modal::{AboutModal, AboutPoint};
 pub use activity_feed::{
     ActivityAsset, ActivityEntry, ActivityFeed, ActivityFeedResponse, ActivityTag,
 };
