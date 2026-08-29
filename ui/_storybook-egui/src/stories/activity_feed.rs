@@ -33,6 +33,19 @@ pub fn show(ui: &mut egui::Ui) {
 
     // 2026-08-25, five Wayup sales inside eight minutes.
     let entries = vec![
+        // FOUR TAGS, ONE OF THEM A SENTENCE — the shape that broke the card on
+        // a phone. The tag row does not wrap on its own, so it ran past the
+        // card, left the amount column zero width, and the amount wrapped one
+        // glyph per line into ~400pt of invisible height. Keep this entry: it
+        // is the narrow-width regression, and the widest tag is the point.
+        ActivityEntry::new(1787704512, -1_170_000)
+            .tag(ActivityTag::new("$walkers.ada", ChipVariant::Success))
+            .tag(ActivityTag::new("1 ₳ + 1 asset released", ChipVariant::Tag))
+            .tag(ActivityTag::new("wayup", ChipVariant::Warning))
+            .tag(ActivityTag::new("sold", ChipVariant::Info))
+            .secondary("$0.28")
+            .tx_id("9d41b7e0c2a85f36b1e094d7a3c5f288")
+            .asset(ActivityAsset::new("Walker183", -1)),
         ActivityEntry::new(1787704389, 2_430_840)
             .tag(ActivityTag::new("Wayup", ChipVariant::Warning))
             .tag(ActivityTag::new("sale", ChipVariant::Info))

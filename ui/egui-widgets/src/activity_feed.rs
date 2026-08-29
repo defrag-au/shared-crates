@@ -264,57 +264,75 @@ impl<'a> ActivityFeed<'a> {
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
 
-                ui.horizontal(|ui| {
-                    // Left: what it was, and when.
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            for tag in &entry.tags {
-                                Chip::new(tag.label).variant(tag.variant).show(ui);
-                            }
-                            // With no tag to carry identity, the counterparty
-                            // is the only "what was this" the card has.
-                            let bare = entry.counterparty.filter(|_| entry.tags.is_empty());
-                            if let Some(cp) = bare {
-                                ui.label(
-                                    RichText::new(elide(cp, 28))
-                                        .color(theme::TEXT_SECONDARY)
-                                        .monospace(),
-                                );
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            ui.add(RelativeTime::new(entry.timestamp));
-                            ui.label(
-                                RichText::new(format!("· {stamp}"))
-                                    .color(theme::TEXT_MUTED)
-                                    .small(),
-                            );
-                        });
-                    });
+                // SPLIT THE HEADER ROW EXPLICITLY. Letting the two columns
+                // negotiate their own widths inside a plain `horizontal` was a
+                // narrow-screen collapse: the tag row does not wrap, so on a
+                // phone it overflowed past the card, the amount column was
+                // handed what was left (zero), and the amount then wrapped ONE
+                // GLYPH PER LINE — several hundred points of invisible column
+                // that made the card look mostly empty. Measuring the amount
+                // and reserving it FIRST means neither column can starve the
+                // other.
+                let amount = (self.format_amount)(entry.amount);
+                let avail = ui.available_width();
+                // The amount is the headline number and must never wrap; the
+                // cap keeps a long `secondary` from eating the tag column.
+                let right_w = amount_column_width(ui, &amount, entry.secondary.as_deref())
+                    .min((avail * 0.42).max(MIN_AMOUNT_COL));
+                let left_w = (avail - right_w - ui.spacing().item_spacing.x).max(MIN_AMOUNT_COL);
 
-                    // Right: what it cost.
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                        ui.vertical(|ui| {
-                            ui.with_layout(egui::Layout::top_down(egui::Align::RIGHT), |ui| {
-                                let color = if entry.amount >= 0 {
-                                    theme::SUCCESS
-                                } else {
-                                    theme::ACCENT_ORANGE
-                                };
-                                ui.label(
-                                    RichText::new((self.format_amount)(entry.amount))
-                                        .color(color)
-                                        .monospace()
-                                        .strong(),
-                                );
-                                if let Some(second) = &entry.secondary {
+                ui.horizontal_top(|ui| {
+                    // Left: what it was, and when.
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(left_w, 0.0),
+                        egui::Layout::top_down(egui::Align::LEFT),
+                        |ui| {
+                            ui.set_max_width(left_w);
+                            // WRAPPED. Four tags is normal — a token, a shape,
+                            // a venue and an outcome — and on a phone that is
+                            // two lines, not one clipped one.
+                            ui.horizontal_wrapped(|ui| {
+                                for tag in &entry.tags {
+                                    Chip::new(tag.label).variant(tag.variant).show(ui);
+                                }
+                                // With no tag to carry identity, the counterparty
+                                // is the only "what was this" the card has.
+                                let bare = entry.counterparty.filter(|_| entry.tags.is_empty());
+                                if let Some(cp) = bare {
                                     ui.label(
-                                        RichText::new(second).color(theme::TEXT_MUTED).small(),
+                                        RichText::new(elide(cp, 28))
+                                            .color(theme::TEXT_SECONDARY)
+                                            .monospace(),
                                     );
                                 }
                             });
-                        });
-                    });
+                            ui.horizontal_wrapped(|ui| {
+                                ui.add(RelativeTime::new(entry.timestamp));
+                                ui.label(
+                                    RichText::new(format!("· {stamp}"))
+                                        .color(theme::TEXT_MUTED)
+                                        .small(),
+                                );
+                            });
+                        },
+                    );
+
+                    // Right: what it cost.
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(ui.available_width().max(right_w), 0.0),
+                        egui::Layout::top_down(egui::Align::RIGHT),
+                        |ui| {
+                            let color = if entry.amount >= 0 {
+                                theme::SUCCESS
+                            } else {
+                                theme::ACCENT_ORANGE
+                            };
+                            ui.label(RichText::new(amount).color(color).monospace().strong());
+                            if let Some(second) = &entry.secondary {
+                                ui.label(RichText::new(second).color(theme::TEXT_MUTED).small());
+                            }
+                        },
+                    );
                 });
 
                 // Bottom: what moved.
@@ -378,6 +396,28 @@ impl<'a> ActivityFeed<'a> {
         }
         response.clicked()
     }
+}
+
+/// Floor for either header column, so a very narrow card degrades to a squeeze
+/// rather than to a column of one character per line.
+const MIN_AMOUNT_COL: f32 = 72.0;
+
+/// How wide the amount column wants to be, MEASURED before the tag column gets
+/// to claim space — the same measure-then-reserve shape as [`pill_width`], and
+/// for the same reason: egui hands a child whatever is left over, so whichever
+/// column lays out first silently decides the other one's fate.
+fn amount_column_width(ui: &Ui, amount: &str, secondary: Option<&str>) -> f32 {
+    let width_of = |text: &str, style: egui::TextStyle| {
+        ui.painter()
+            .layout_no_wrap(text.to_owned(), style.resolve(ui.style()), Color32::WHITE)
+            .size()
+            .x
+    };
+    let mut w = width_of(amount, egui::TextStyle::Monospace);
+    if let Some(second) = secondary {
+        w = w.max(width_of(second, egui::TextStyle::Small));
+    }
+    w
 }
 
 /// A named asset with its thumbnail. `moved` decides whether it carries a

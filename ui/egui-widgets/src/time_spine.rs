@@ -472,6 +472,10 @@ pub fn format_date(unix: i64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// Half the width of the playhead's arrow head. The playhead is inset by this
+/// at both ends so the marker never draws past the widget's clip rect.
+const PLAYHEAD_HALF_W: f32 = 5.0;
+
 /// A tick label with only as much precision as `spacing` seconds warrants:
 /// day-or-coarser → date; sub-day → `HH:MM`; sub-minute → `HH:MM:SS`.
 pub fn compact_tick_label(unix: i64, spacing: i64) -> String {
@@ -902,10 +906,19 @@ impl<'a> TimeSpine<'a> {
 
         // Playhead — tweened so a click glides rather than teleports (and a
         // playing head is smooth even at coarse tick rates).
+        // Inset by the marker's own half-width. Clamping to the bare ruler
+        // edge drew the head's arrow centred ON the edge, so `painter_at`
+        // sliced half of it off — and the playhead sits at the right-hand end
+        // by default, which made the clipped state the FIRST thing a reader
+        // sees on a narrow screen.
+        let head_x = Rangef::new(
+            ruler.left() + PLAYHEAD_HALF_W,
+            (ruler.right() - PLAYHEAD_HALF_W).max(ruler.left() + PLAYHEAD_HALF_W),
+        );
         let target_x = scale
             .x_from_time_f32(state.playhead as f64)
             .unwrap_or(ruler.right())
-            .clamp(ruler.left(), ruler.right());
+            .clamp(head_x.min, head_x.max);
         let x = tween(
             ui.ctx(),
             id.with("playhead"),
@@ -920,8 +933,8 @@ impl<'a> TimeSpine<'a> {
         );
         painter.add(Shape::convex_polygon(
             vec![
-                pos2(x - 5.0, rect.top()),
-                pos2(x + 5.0, rect.top()),
+                pos2(x - PLAYHEAD_HALF_W, rect.top()),
+                pos2(x + PLAYHEAD_HALF_W, rect.top()),
                 pos2(x, rect.top() + 7.0),
             ],
             ph_col,

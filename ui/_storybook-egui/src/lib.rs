@@ -843,12 +843,35 @@ mod app {
     #[cfg(not(target_arch = "wasm32"))]
     fn set_location_hash(_slug: &str) {}
 
+    /// `?nav=0` drops the story list so the story gets the WHOLE viewport.
+    ///
+    /// This exists for narrow-width review. The sidebar is a fixed 180px, so a
+    /// 390px phone viewport left the story 200px — every card overflowed, and
+    /// the overflow was the storybook's chrome rather than anything the widget
+    /// did. Screenshotting a wider viewport to compensate is not the same test:
+    /// what a widget does at 390 is the thing being checked.
+    #[cfg(target_arch = "wasm32")]
+    fn nav_hidden() -> bool {
+        web_sys::window()
+            .and_then(|w| w.location().search().ok())
+            .is_some_and(|s| s.contains("nav=0"))
+    }
+
+    /// Native builds have no address bar; the env var stands in, as with
+    /// `STORYBOOK_STORY`.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn nav_hidden() -> bool {
+        std::env::var("STORYBOOK_NAV").is_ok_and(|v| v == "0")
+    }
+
     // ========================================================================
     // App
     // ========================================================================
 
     struct StorybookApp {
         current_story: Story,
+        /// `?nav=0` — see [`nav_hidden`].
+        nav_hidden: bool,
         // Per-story state
         distribution_chart: egui_widgets::DistributionChart,
         marquee: egui_widgets::Marquee,
@@ -960,6 +983,9 @@ mod app {
 
             Self {
                 current_story: story_from_location().unwrap_or(Story::Distribution),
+                // Read ONCE at startup: with the nav gone there is no way to
+                // change stories, so this is a per-load mode, not a toggle.
+                nav_hidden: nav_hidden(),
                 distribution_chart: egui_widgets::DistributionChart::new(),
                 marquee: egui_widgets::Marquee::default(),
                 marquee_messages: vec![egui_widgets::MarqueeItem {
@@ -1111,18 +1137,20 @@ mod app {
         // panels nest via `show_inside(ui, …)` instead of `show(ctx, …)`.
         fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
             let ctx = ui.ctx().clone();
-            egui::SidePanel::left("stories")
-                .default_width(180.0)
-                .resizable(false)
-                .frame(egui::Frame::side_top_panel(&ctx.style()).fill(BG_SIDEBAR))
-                .show_inside(ui, |ui| {
-                    ui.add_space(8.0);
-                    ui.heading(egui::RichText::new("egui Widgets").color(ACCENT));
-                    ui.separator();
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        self.draw_sidebar(ui);
+            if !self.nav_hidden {
+                egui::SidePanel::left("stories")
+                    .default_width(180.0)
+                    .resizable(false)
+                    .frame(egui::Frame::side_top_panel(&ctx.style()).fill(BG_SIDEBAR))
+                    .show_inside(ui, |ui| {
+                        ui.add_space(8.0);
+                        ui.heading(egui::RichText::new("egui Widgets").color(ACCENT));
+                        ui.separator();
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            self.draw_sidebar(ui);
+                        });
                     });
-                });
+            }
 
             egui::CentralPanel::default()
                 .frame(egui::Frame::central_panel(&ctx.style()).fill(BG_MAIN))
