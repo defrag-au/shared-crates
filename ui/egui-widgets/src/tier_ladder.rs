@@ -59,6 +59,12 @@ pub struct TierRoute<'a> {
     /// they already hold — telling someone their balance against a threshold
     /// they cleared is noise.
     pub have: Option<String>,
+    /// The token's logo. Absent renders the card as text only, which is the
+    /// correct degradation: an icon that fails to load must not take the
+    /// amount down with it.
+    pub icon_url: Option<String>,
+    /// Where to go to acquire it. Present turns the card into a link.
+    pub buy_url: Option<String>,
 }
 
 impl<'a> TierRoute<'a> {
@@ -67,12 +73,29 @@ impl<'a> TierRoute<'a> {
             label,
             need: need.into(),
             have: None,
+            icon_url: None,
+            buy_url: None,
         }
     }
 
     /// Show progress against this route.
     pub fn have(mut self, have: impl Into<String>) -> Self {
         self.have = Some(have.into());
+        self
+    }
+
+    /// The token's logo, by URL. The host app supplies the image loader.
+    pub fn icon_url(mut self, url: impl Into<String>) -> Self {
+        self.icon_url = Some(url.into());
+        self
+    }
+
+    /// Make the card a link to somewhere the reader can buy this token.
+    ///
+    /// The point of the whole modal: a threshold a reader cannot act on is
+    /// just a wall. Opened in a new tab so an in-progress session survives.
+    pub fn buy_url(mut self, url: impl Into<String>) -> Self {
+        self.buy_url = Some(url.into());
         self
     }
 }
@@ -266,40 +289,99 @@ fn rung_row(ui: &mut Ui, rung: &TierRung<'_>) {
             });
         });
 
-        ui.horizontal(|ui| {
-            ui.add_space(20.0);
-            ui.label(
-                RichText::new(rung.gives)
-                    .small()
-                    .color(theme::TEXT_SECONDARY),
-            );
-        });
-
-        for (i, route) in rung.routes.iter().enumerate() {
+        // Empty `gives` draws nothing at all. A caller whose rung LABEL
+        // already states what the rung buys ("90 days") would otherwise get
+        // the same sentence twice, and a blank line's worth of height for it.
+        if !rung.gives.is_empty() {
             ui.horizontal(|ui| {
                 ui.add_space(20.0);
-                // "or" carries the whole meaning here. Stacked without it,
-                // two routes read as two requirements — telling a holder who
-                // owns either asset that they need both.
-                let verb = if i == 0 { "hold" } else { "or hold" };
                 ui.label(
-                    RichText::new(format!("{verb} {} {}", route.need, route.label))
+                    RichText::new(rung.gives)
                         .small()
-                        .color(theme::TEXT_MUTED),
+                        .color(theme::TEXT_SECONDARY),
                 );
-                // Progress is the difference between "you don't qualify" and
-                // "you are most of the way there", and only the second is
-                // worth acting on.
-                if let Some(have) = &route.have {
-                    ui.label(
-                        RichText::new(format!("({have} held)"))
-                            .small()
-                            .color(theme::TEXT_MUTED),
-                    );
+            });
+        }
+
+        if !rung.routes.is_empty() {
+            ui.add_space(4.0);
+            // Routes as CARDS on one wrapping line rather than a stacked
+            // sentence per route. Three stacked "or hold N $TOKEN" lines cost
+            // as much vertical space as the rung itself, which on a six-rung
+            // ladder is most of the modal spent restating the same sentence.
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(20.0);
+                for (i, route) in rung.routes.iter().enumerate() {
+                    // "or" carries the whole meaning. Without it the cards
+                    // read as a set of requirements — telling a holder who
+                    // owns any one of them that they need all three.
+                    if i > 0 {
+                        ui.label(RichText::new("or").small().color(theme::TEXT_MUTED));
+                    }
+                    route_card(ui, route);
                 }
             });
         }
     });
+}
+
+/// One route as a compact card: logo, amount, ticker — and a link to buy it.
+fn route_card(ui: &mut Ui, route: &TierRoute<'_>) {
+    let buyable = route.buy_url.is_some();
+    let frame = egui::Frame::default()
+        .fill(theme::BG_SECONDARY)
+        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+        .inner_margin(egui::Margin::symmetric(7, 4))
+        .corner_radius(6.0);
+
+    let inner = frame.show(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 5.0;
+            if let Some(url) = &route.icon_url {
+                ui.add(
+                    egui::Image::new(url)
+                        .fit_to_exact_size(egui::vec2(16.0, 16.0))
+                        .corner_radius(8.0),
+                );
+            }
+            ui.label(
+                RichText::new(&route.need)
+                    .strong()
+                    .color(theme::TEXT_PRIMARY),
+            );
+            ui.label(RichText::new(route.label).color(theme::TEXT_SECONDARY));
+            if buyable {
+                ui.label(PhosphorIcon::ArrowsDownUp.rich_text(11.0, theme::ACCENT));
+            }
+        });
+    });
+
+    // `Frame::show` hands back a HOVER-only response — clicks on it are always
+    // false. The same trap that left `Chip::clicked` permanently dead for
+    // every host that called it; re-interacting is the fix.
+    if !buyable {
+        return;
+    }
+    let hit = inner.response.interact(egui::Sense::click());
+    if hit.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    // Progress lives in the tooltip, not on the card. It is the difference
+    // between "you don't qualify" and "you are nearly there" — worth having,
+    // but a third figure on every card buries the two that matter.
+    let tip = match &route.have {
+        Some(have) => format!(
+            "You hold {have} {}\nNeed {} — opens a swap",
+            route.label, route.need
+        ),
+        None => format!("Buy {} — opens a swap", route.label),
+    };
+    let hit = hit.on_hover_text(tip);
+    if let Some(url) = &route.buy_url
+        && hit.clicked()
+    {
+        ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+    }
 }
 
 #[cfg(test)]

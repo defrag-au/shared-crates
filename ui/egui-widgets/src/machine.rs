@@ -261,10 +261,11 @@ impl<S> Machine<S> {
     pub fn tick(&mut self) {
         self.frames_in_state = self.frames_in_state.saturating_add(1);
         if let Some((frames, _)) = &self.revert
-            && self.frames_in_state > *frames {
-                let (_, then) = self.revert.take().expect("checked above");
-                self.transition(then);
-            }
+            && self.frames_in_state > *frames
+        {
+            let (_, then) = self.revert.take().expect("checked above");
+            self.transition(then);
+        }
     }
 }
 
