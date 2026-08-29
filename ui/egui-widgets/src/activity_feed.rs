@@ -194,6 +194,7 @@ pub struct ActivityFeed<'a> {
     entries: &'a [ActivityEntry<'a>],
     format_amount: &'a dyn Fn(i128) -> String,
     show_day_headers: bool,
+    max_pills: usize,
 }
 
 impl<'a> ActivityFeed<'a> {
@@ -205,7 +206,19 @@ impl<'a> ActivityFeed<'a> {
             entries,
             format_amount,
             show_day_headers: true,
+            max_pills: MAX_PILLS,
         }
+    }
+
+    /// Asset pills shown inline before the rest collapse into "+N more".
+    ///
+    /// A caller's decision because it is really a question about WIDTH, which
+    /// the widget cannot see far enough to answer: six pills wrap to a
+    /// comfortable two lines on a desktop card and to six lines on a phone,
+    /// where they push the card past the viewport.
+    pub fn max_pills(mut self, max: usize) -> Self {
+        self.max_pills = max.max(1);
+        self
     }
 
     /// Suppress the day headers (for a short embedded feed).
@@ -308,10 +321,10 @@ impl<'a> ActivityFeed<'a> {
                 if !entry.assets.is_empty() {
                     ui.add_space(6.0);
                     ui.horizontal_wrapped(|ui| {
-                        for asset in entry.assets.iter().take(MAX_PILLS) {
+                        for asset in entry.assets.iter().take(self.max_pills) {
                             asset_pill(ui, asset, true);
                         }
-                        let extra = entry.assets.len().saturating_sub(MAX_PILLS);
+                        let extra = entry.assets.len().saturating_sub(self.max_pills);
                         if extra > 0 {
                             ui.label(
                                 RichText::new(format!("+{extra} more"))
@@ -331,10 +344,10 @@ impl<'a> ActivityFeed<'a> {
                                 .color(theme::TEXT_MUTED)
                                 .small(),
                         );
-                        for asset in entry.targets.iter().take(MAX_PILLS) {
+                        for asset in entry.targets.iter().take(self.max_pills) {
                             asset_pill(ui, asset, false);
                         }
-                        let shown = entry.targets.len().min(MAX_PILLS);
+                        let shown = entry.targets.len().min(self.max_pills);
                         let extra = entry.targets_total.saturating_sub(shown);
                         if extra > 0 {
                             ui.label(

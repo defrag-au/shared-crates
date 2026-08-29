@@ -30,8 +30,8 @@
 
 use egui::emath::Rangef;
 use egui::{
-    Align2, Color32, CornerRadius, FontId, Pos2, Rect, Response, Rgba, Sense, Shape, Stroke, Ui,
-    Vec2, lerp, pos2, remap, remap_clamp, vec2,
+    Color32, CornerRadius, FontId, Pos2, Rect, Response, Rgba, Sense, Shape, Stroke, Ui, Vec2,
+    lerp, pos2, remap, remap_clamp, vec2,
 };
 
 use crate::motion::{Easing, tween, tween_bool};
@@ -427,14 +427,18 @@ fn tick_shapes(
             if tc != Color32::TRANSPARENT {
                 let text = format_tick(t, spacing);
                 ui.ctx().fonts_mut(|f| {
-                    shapes.push(Shape::text(
-                        f,
-                        pos2(x + 4.0, lerp(canvas.y_range(), 0.5)),
-                        Align2::LEFT_CENTER,
-                        &text,
-                        font_id.clone(),
-                        tc,
-                    ));
+                    // MEASURE BEFORE DRAWING. The `visible` test above bounds
+                    // the tick, not the label that hangs to the right of it,
+                    // so a tick near the edge painted its text past the canvas
+                    // — invisible inside a desktop margin, and straight off
+                    // the viewport on a phone. The tick line still draws; only
+                    // its label is dropped, which is the right thing to lose.
+                    let galley = f.layout_no_wrap(text, font_id.clone(), tc);
+                    let size = galley.size();
+                    if x + 4.0 + size.x <= canvas.max.x {
+                        let y = lerp(canvas.y_range(), 0.5) - size.y * 0.5;
+                        shapes.push(Shape::galley(pos2(x + 4.0, y), galley, tc));
+                    }
                 });
             }
         }

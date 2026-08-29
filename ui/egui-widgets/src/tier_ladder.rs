@@ -199,8 +199,14 @@ impl<'a> TierLadder<'a> {
 
         let mut action = TierLadderAction::None;
         let response = egui::Modal::new(egui::Id::new("tier_ladder_modal")).show(ui.ctx(), |ui| {
-            ui.set_min_width(420.0);
-            ui.set_max_width(520.0);
+            // CLAMPED to the viewport, not asserted. A flat 420pt minimum is
+            // wider than a phone, so on the screen where a prospective holder
+            // is being told what a token buys, the modal was the thing that
+            // overflowed. Leave a margin so it reads as a panel rather than
+            // filling edge to edge.
+            let room = (ui.ctx().content_rect().width() - 32.0).max(240.0);
+            ui.set_min_width(420.0_f32.min(room));
+            ui.set_max_width(520.0_f32.min(room));
 
             ui.label(RichText::new(self.title).size(16.0).strong());
             if let Some(intro) = self.intro {
