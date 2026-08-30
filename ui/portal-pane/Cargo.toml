@@ -1,0 +1,14 @@
+[package]
+name = "portal-pane"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The contract a capability pane implements to be hosted by the client portal shell"
+
+[dependencies]
+egui = { workspace = true }
+# The pane's entitlement is a `Feature` const — the SAME one its backend
+# enforces with — and `SessionClaims` is what the session bridge hands over.
+authorizations = { workspace = true }
+egui-widgets = { workspace = true }

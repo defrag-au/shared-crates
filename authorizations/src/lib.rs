@@ -123,10 +123,34 @@ impl EntitlementSet {
 
 /// Custom claims carried by the session JWT (standard `exp`/`iat` are
 /// handled by the `jwt-compact` envelope).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// **Two ways in, one token.** Discord OAuth (`discord-auth`) and CIP-8
+/// wallet auth (the client portal) both mint this, and they know different
+/// things about the holder: one has a Discord user id and no wallet, the
+/// other a stake address and a client id and possibly no Discord link at
+/// all. Every identity field is therefore optional, with the invariant that
+/// **at least one is present** — enforced at the mint sites by the
+/// [`SessionClaims::for_discord`] / [`SessionClaims::for_wallet`]
+/// constructors, and checkable with [`SessionClaims::has_identity`].
+///
+/// Making `sub` optional rather than overloading it (`discord:123` vs
+/// `stake1…`) is deliberate: a prefix scheme silently changes the meaning of
+/// a field every existing consumer already reads, whereas an `Option` makes
+/// each of them a compile error that has to be answered.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionClaims {
-    /// Discord user id.
-    pub sub: String,
+    /// Discord user id, **when known**. Absent for a wallet-authed session
+    /// whose holder has never linked Discord.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sub: Option<String>,
+    /// Client id, for a session minted by the client portal. Absent for
+    /// Discord-authed sessions, which have no client context.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
+    /// The bech32 stake address this session authenticated as (`stake1…` /
+    /// `stake_test1…`). Absent for Discord-authed sessions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stake: Option<String>,
     /// Guild the session was granted through (provenance, not authority —
     /// the entitlements are the authority).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -147,6 +171,78 @@ pub struct SessionClaims {
 }
 
 impl SessionClaims {
+    /// A Discord-authed session (the `discord-auth` OAuth callback).
+    pub fn for_discord(discord_user_id: impl Into<String>, ent: impl Into<String>) -> Self {
+        Self {
+            sub: Some(discord_user_id.into()),
+            ent: ent.into(),
+            ..Self::default()
+        }
+    }
+
+    /// A wallet-authed session (the client portal, after CIP-8 verify).
+    ///
+    /// The stake address is the identity that was actually proven; `client`
+    /// and `sub` are resolutions of it — the client it owns, and the Discord
+    /// user who linked it, when either is known. Attach them with
+    /// [`with_client`](Self::with_client) / [`with_discord`](Self::with_discord).
+    pub fn for_wallet(stake_address: impl Into<String>, ent: impl Into<String>) -> Self {
+        Self {
+            stake: Some(stake_address.into()),
+            ent: ent.into(),
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn with_client(mut self, client_id: impl Into<String>) -> Self {
+        self.client = Some(client_id.into());
+        self
+    }
+
+    /// Attach the Discord identity resolved from the stake address
+    /// (`social:stake:{addr}` → `StakeOwner`). Never self-asserted.
+    #[must_use]
+    pub fn with_discord(mut self, discord_user_id: impl Into<String>) -> Self {
+        self.sub = Some(discord_user_id.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    /// The invariant: a token naming nobody authenticates nobody. Verifiers
+    /// reject a token that fails this — see [`verify_token`].
+    pub fn has_identity(&self) -> bool {
+        self.sub.is_some() || self.client.is_some() || self.stake.is_some()
+    }
+
+    /// Who to write into an audit trail, best available.
+    ///
+    /// Degrades through the identities rather than inventing a name: display
+    /// name + Discord id, then the bare Discord id, then the client id, then
+    /// the stake address. The last case is the honest one for a wallet-authed
+    /// operator who has never linked Discord — "who did this" is answerable,
+    /// just not by a name.
+    pub fn actor(&self) -> String {
+        match (self.name.as_deref(), self.sub.as_deref()) {
+            (Some(name), Some(id)) => format!("{name} ({id})"),
+            (Some(name), None) => name.to_string(),
+            (None, Some(id)) => id.to_string(),
+            (None, None) => match (self.client.as_deref(), self.stake.as_deref()) {
+                (Some(client), _) => format!("client {client}"),
+                (None, Some(stake)) => stake.to_string(),
+                // Unreachable for a verified token — `verify_token` rejects
+                // an identity-less one — but this is an audit field, and a
+                // panic here would be a worse answer than a legible marker.
+                (None, None) => "unidentified".to_string(),
+            },
+        }
+    }
+
     pub fn entitlements(&self) -> EntitlementSet {
         EntitlementSet::from_scope_string(&self.ent)
     }
@@ -200,6 +296,11 @@ pub enum TokenError {
     Invalid(String),
     #[error("token expired")]
     Expired,
+    /// The token verified but named nobody — no `sub`, `client` or `stake`.
+    /// Checked at both mint and verify: an unsigned-for identity is the one
+    /// way a correctly-signed token could still authenticate no one.
+    #[error("token carries no identity")]
+    NoIdentity,
 }
 
 /// Verify an HS256 session token and return its claims. `secret` is the
@@ -222,7 +323,15 @@ pub fn verify_token(token: &str, secret: &[u8]) -> Result<SessionClaims, TokenEr
             jwt_compact::ValidationError::Expired => TokenError::Expired,
             other => TokenError::Invalid(other.to_string()),
         })?;
-    Ok(token.claims().custom.clone())
+    let claims = token.claims().custom.clone();
+    // The identity invariant is enforced HERE, not left to each consumer:
+    // every field is optional on the wire, so an all-absent token is
+    // syntactically valid and would otherwise sail through to a caller that
+    // reads whichever field it happens to care about and finds `None`.
+    if !claims.has_identity() {
+        return Err(TokenError::NoIdentity);
+    }
+    Ok(claims)
 }
 
 /// Mint a session token (used by the bot side and by tests; consumers that
@@ -234,6 +343,9 @@ pub fn mint_token(
 ) -> Result<String, TokenError> {
     use jwt_compact::{alg::Hs256, alg::Hs256Key, prelude::*, AlgorithmExt};
 
+    if !claims.has_identity() {
+        return Err(TokenError::NoIdentity);
+    }
     let key = Hs256Key::new(secret);
     let time_options = TimeOptions::default();
     let claims = Claims::new(claims)
@@ -263,12 +375,9 @@ mod tests {
 
     fn claims(ent: &str) -> SessionClaims {
         SessionClaims {
-            sub: "user123".into(),
             guild: Some("guild1".into()),
             tier: Some("collector".into()),
-            name: Some("tester".into()),
-            avatar: None,
-            ent: ent.into(),
+            ..SessionClaims::for_discord("user123", ent).with_name("tester")
         }
     }
 
@@ -313,8 +422,73 @@ mod tests {
         )
         .unwrap();
         let parsed = verify_token(&token, secret).unwrap();
-        assert_eq!(parsed.sub, "user123");
+        assert_eq!(parsed.sub.as_deref(), Some("user123"));
         assert!(parsed.entitlements().grants(&TEST_FEATURE)); // via wildcard
         assert!(verify_token(&token, b"wrong-secret").is_err());
+    }
+
+    /// A wallet-authed session carries no Discord id and must still be a
+    /// valid, round-trippable token — this is the whole point of `sub`
+    /// becoming optional.
+    #[test]
+    fn a_wallet_session_needs_no_discord_id() {
+        let secret = b"super-secret-key-for-tests";
+        let claims = SessionClaims::for_wallet("stake_test1abc", "gateway.admin")
+            .with_client("client_42");
+        let token = mint_token(claims, secret, chrono::Duration::hours(8)).unwrap();
+
+        let parsed = verify_token(&token, secret).unwrap();
+        assert_eq!(parsed.sub, None);
+        assert_eq!(parsed.stake.as_deref(), Some("stake_test1abc"));
+        assert_eq!(parsed.client.as_deref(), Some("client_42"));
+    }
+
+    /// The invariant is enforced at BOTH ends. A correctly-signed token that
+    /// names nobody is the one way a valid signature could authenticate no
+    /// one, so neither side is allowed to be the only check.
+    #[test]
+    fn a_token_naming_nobody_is_refused_at_both_ends() {
+        let secret = b"super-secret-key-for-tests";
+        let anonymous = SessionClaims {
+            ent: "*".into(),
+            ..SessionClaims::default()
+        };
+        assert!(matches!(
+            mint_token(anonymous.clone(), secret, chrono::Duration::hours(1)),
+            Err(TokenError::NoIdentity)
+        ));
+
+        // Mint it anyway, the way a future/foreign issuer might, and confirm
+        // the verifier refuses it rather than trusting the mint site.
+        let forged = {
+            use jwt_compact::{alg::Hs256, alg::Hs256Key, prelude::*, AlgorithmExt};
+            let key = Hs256Key::new(secret);
+            let claims = Claims::new(anonymous)
+                .set_duration_and_issuance(&TimeOptions::default(), chrono::Duration::hours(1));
+            Hs256.token(&Header::empty(), &claims, &key).unwrap()
+        };
+        assert!(matches!(
+            verify_token(&forged, secret),
+            Err(TokenError::NoIdentity)
+        ));
+    }
+
+    /// The audit actor degrades through the identities rather than inventing
+    /// a name — the gateway's change log is the consumer that made this
+    /// necessary.
+    #[test]
+    fn the_actor_degrades_to_whatever_identity_exists() {
+        assert_eq!(claims("").actor(), "tester (user123)");
+        assert_eq!(SessionClaims::for_discord("user123", "").actor(), "user123");
+        assert_eq!(
+            SessionClaims::for_wallet("stake_test1abc", "")
+                .with_client("client_42")
+                .actor(),
+            "client client_42"
+        );
+        assert_eq!(
+            SessionClaims::for_wallet("stake_test1abc", "").actor(),
+            "stake_test1abc"
+        );
     }
 }

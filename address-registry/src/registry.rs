@@ -215,6 +215,12 @@ pub enum StakeServiceKind {
     /// unrelated project — so a consumer that walks a frontier must record it
     /// and refuse to expand it.
     MintingProvider,
+    /// An NFT marketplace's escrow. Assets and offers sit at its script
+    /// addresses while listed, so it appears as a HOLDER of everything on sale
+    /// — including every ADA Handle currently listed. A consumer that asks a
+    /// handle service "who lives at this stake key" gets thousands of handles
+    /// that belong to unrelated sellers, slowly. Name it and never ask.
+    Marketplace,
 }
 
 /// A service run from an ordinary wallet, identified by its stake credential.
@@ -232,19 +238,31 @@ pub struct StakeService {
 /// ## Why this table exists separately
 ///
 /// [`ADDRESS_REGISTRY`] keys on payment addresses, which is correct for
-/// scripts: a contract IS its address. A service run from an ORDINARY WALLET
-/// is different — it spends from many payment addresses under a single staking
-/// credential, and enumerating them is both endless and pointless. The stake
-/// key is the stable identity.
+/// scripts: a contract IS its address. Two things are not reachable that way.
+///
+/// A service run from an ORDINARY WALLET spends from many payment addresses
+/// under a single staking credential, and enumerating them is both endless and
+/// pointless. The stake key is the stable identity.
+///
+/// A SCRIPT is reachable by address — but consumers routinely hold only the
+/// stake key, because deriving one from an address is a local decode while
+/// keeping the address is not always possible. Anything that groups holders by
+/// stake key (a holder snapshot, a handle batch) has thrown the payment
+/// address away by the time it wants a name.
 ///
 /// ## The trap this does NOT fall into
 ///
 /// [`ADDRESS_PREFIX_REGISTRY`] carries a warning: order and listing contracts
 /// keep the CUSTOMER's staking credential, so naming a stake key after a
-/// script-prefix hit labels every customer as the venue. That failure cannot
-/// occur here, because these entries are key-payment wallets whose stake
-/// credential is their own. Only add an entry when the stake credential
-/// genuinely belongs to the service.
+/// script-prefix hit labels every customer as the venue. That is exactly the
+/// failure this table could reintroduce, so the bar for an entry is:
+///
+/// **Only add a stake credential that genuinely belongs to the service.** For a
+/// wallet-run service that means its own staking key. For a script it means the
+/// credential is FIXED across the venue's own addresses rather than carried in
+/// from whoever built the transaction — check that the same credential appears
+/// in two or more of the venue's registered addresses, and that it is not the
+/// seller's. Never derive an entry from a prefix-matched address.
 pub static STAKE_REGISTRY: Map<&'static str, StakeService> = phf_map! {
     // Anvil — Cardano minting API. Takes a flat per-mint fee (1.15 ADA at time
     // of writing) in the mint transaction itself, alongside the project's own
@@ -256,6 +274,31 @@ pub static STAKE_REGISTRY: Map<&'static str, StakeService> = phf_map! {
                  55bd0ac4 (KAT Pack, 333), 6b42eca9 (chadano_citizen, 1501), \
                  e26a8565 (perps_into_the_factions, 242), 812197d5 (Biddy_DeGoat, 127); \
                  1,009 unspent ~1 ADA UTxOs from unrelated projects",
+    },
+
+    // JPG.store — SCRIPT stake credential 2c967f4b…833e6d, shared by the V1
+    // offer escrow (addr1xxgx3far…) and the V2 sale escrow (addr1x8rjw3paw…).
+    // Fixed across both, so it is the venue's own credential and not a
+    // seller's — see the bar for entry above.
+    "stake17ykfvl6t62y5fvryvtsnch3lt406dcpls4n4d9pcekpnumg6v83tq" => StakeService {
+        label: "JPG.store",
+        kind: StakeServiceKind::Marketplace,
+        source: "delegation part of the registered JPG.store escrow addresses \
+                 addr1xxgx3far… (offer, V1) and addr1x8rjw3paw… (sale, V2); \
+                 both are addr1x (script payment + script stake) and carry the \
+                 identical script credential 2c967f4bd28944b06462e13c5e3f5d5f\
+                 a6e03f8567569438cd833e6d",
+    },
+    // JPG.store — KEY stake credential 81728e7e…cb806d, the delegation part of
+    // the V1 sale escrow (addr1zxgx3far…). A different credential from the one
+    // above and reached from one registered address only, so it is listed
+    // explicitly rather than inferred.
+    "stake1uxqh9rn76n8nynsnyvf4ulndjv0srcc8jtvumut3989cqmgjt49h6" => StakeService {
+        label: "JPG.store",
+        kind: StakeServiceKind::Marketplace,
+        source: "delegation part of the registered JPG.store V1 sale escrow \
+                 addr1zxgx3far… (script payment + key stake); credential \
+                 81728e7ed4cf324e1323135e7e6d931f01e30792d9cdf17129cb806d",
     },
 };
 
@@ -788,6 +831,44 @@ mod tests {
         assert!(
             lookup_stake("stake1u98f5mr0mn8tv2kqndk5cwen4uasc7cewlzdklz6y664zacl9lvjz").is_none()
         );
+    }
+
+    /// Both jpg.store escrow credentials resolve to the same venue. A consumer
+    /// that only has a stake key — a holder snapshot, a handle batch — must be
+    /// able to name the marketplace without the payment address.
+    #[test]
+    fn jpg_store_escrow_is_found_by_either_stake_credential() {
+        for stake in [
+            "stake17ykfvl6t62y5fvryvtsnch3lt406dcpls4n4d9pcekpnumg6v83tq",
+            "stake1uxqh9rn76n8nynsnyvf4ulndjv0srcc8jtvumut3989cqmgjt49h6",
+        ] {
+            let s = lookup_stake(stake).unwrap_or_else(|| panic!("{stake} is registered"));
+            assert_eq!(s.label, "JPG.store");
+            assert_eq!(s.kind, StakeServiceKind::Marketplace);
+            assert!(!s.source.is_empty(), "an entry must carry its evidence");
+        }
+    }
+
+    /// The script credential is shared by the V1 offer and V2 sale escrows.
+    /// Those two addresses are the evidence the entry rests on, so if either
+    /// leaves [`ADDRESS_REGISTRY`] the stake entry has lost its justification.
+    #[test]
+    fn the_shared_jpg_store_credential_still_has_two_witnesses() {
+        for addr in [
+            "addr1xxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tfvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eks2utwdd",
+            "addr1x8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7efvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8ekstg4qrx",
+        ] {
+            assert!(
+                matches!(
+                    lookup_address(addr),
+                    Some(AddressCategory::Script(ScriptCategory::Marketplace {
+                        marketplace: Marketplace::JpgStore,
+                        ..
+                    }))
+                ),
+                "{addr} is a witness for the shared jpg.store stake credential"
+            );
+        }
     }
 
     /// The stake table takes bech32 STAKE keys. A payment address must never

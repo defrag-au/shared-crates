@@ -1980,6 +1980,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gateway-wiring"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4545,6 +4553,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "50596ddc09eb5ad5f75cacd40209568e66df71baf86e1499a0e99c4cff12a5a6"
 dependencies = [
  "arrayvec",
+]
+
+[[package]]
+name = "portal-pane"
+version = "0.1.0"
+dependencies = [
+ "authorizations",
+ "egui",
+ "egui-widgets",
 ]
 
 [[package]]
