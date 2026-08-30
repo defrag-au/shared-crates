@@ -13,6 +13,7 @@ pub mod bullet_bar;
 pub mod button_group;
 pub mod buttons;
 pub mod capital_flow;
+pub mod cap_band;
 pub mod card_browser;
 pub mod channel_bands;
 pub mod chip;
@@ -73,6 +74,7 @@ pub mod relationship_editor;
 pub mod relative_time;
 pub mod screenshot;
 pub mod selection;
+pub mod service_banner;
 pub mod seven_segment;
 pub mod slot_table;
 pub mod sparkline;
@@ -257,6 +259,7 @@ pub use relationship_editor::{RelationshipEditor, RelationshipEditorResponse};
 pub use relative_time::{RelativeTime, relative_label};
 pub use screenshot::ScreenshotButton;
 pub use selection::{DIM as SELECTION_DIM, Selection};
+pub use service_banner::{BannerTone, ServiceBanner};
 pub use seven_segment::SevenSegmentDisplay;
 pub use slot_table::{SlotRow, SlotTable};
 pub use sparkline::{SparkHoverStyle, Sparkline};
@@ -320,6 +323,7 @@ pub use leaderboard_table::{LeaderboardRow, LeaderboardTable};
 #[cfg(feature = "cardano")]
 pub use asset_strip::{AssetStripConfig, AssetStripItem, AssetStripResponse};
 pub use bullet_bar::BulletBar;
+pub use cap_band::{CapBand, CapSample};
 pub use coverage_delta_bar::CoverageDeltaConfig;
 pub use coverage_lanes::{
     Coverage, CoverageLane, CoverageLanes, CoverageLanesResponse, Run, UNOBSERVED, WindowCoverage,

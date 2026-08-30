@@ -122,6 +122,11 @@ where
     // and each retry costs a full round — the whole prompt back through the
     // model — for a result we already know.
     let mut failed: HashSet<(String, String)> = HashSet::new();
+    // ...and calls that already SUCCEEDED, for the same reason. A model stuck
+    // on a question its tools cannot answer re-asks the one call that worked,
+    // which is not a retry — it is the same question with the same answer, and
+    // it costs a round and a second copy of the result each time.
+    let mut succeeded: HashSet<(String, String)> = HashSet::new();
     // Set when the loop breaks on a round of nothing but repeats, so the run
     // reports being stuck rather than out of rounds. See [`StopReason`].
     let mut stuck = false;
@@ -162,6 +167,22 @@ where
                      arguments, a different tool, or answer without it.",
                     call.name
                 ))
+            } else if succeeded.contains(&signature) {
+                // A repeat that WORKED. This was missed: only failures were
+                // remembered, so a model re-issuing a successful call had it
+                // re-executed every time — four identical calls, four rounds,
+                // and the same result pushed into context four times before the
+                // run gave up with "answer may be partial".
+                //
+                // Points at the existing result rather than repeating it: the
+                // content is already in `history` a few messages up, and
+                // sending it twice is the cost this is here to avoid.
+                ToolOutcome::error(format!(
+                    "`{}` already returned a result for exactly these arguments — it is above. \
+                     Repeating it will not produce a different answer: use different arguments, \
+                     a different tool, or answer from what you have.",
+                    call.name
+                ))
             } else {
                 fresh += 1;
                 executor.execute(&call).await
@@ -172,7 +193,9 @@ where
                     failed.insert(signature);
                 }
                 ToolStatus::AwaitingInput => asked = true,
-                ToolStatus::Ok => {}
+                ToolStatus::Ok => {
+                    succeeded.insert(signature);
+                }
             }
             history.push(Message::ToolResult {
                 call_id: call.id.clone(),
@@ -423,9 +446,12 @@ mod tests {
     /// and must still say something.
     #[tokio::test]
     async fn caps_tool_rounds_then_forces_an_answer_with_no_tools() {
+        // DIFFERENT arguments each round. This is the cap's test, and identical
+        // calls would now stop on `Repeating` before the cap could land —
+        // testing the wrong guard and passing for the wrong reason.
         let model = ScriptedModel::new(vec![
-            ModelTurn::calling(vec![call("c1", "find_assets", "{}")]),
-            ModelTurn::calling(vec![call("c2", "find_assets", "{}")]),
+            ModelTurn::calling(vec![call("c1", "find_assets", r#"{"q":"a"}"#)]),
+            ModelTurn::calling(vec![call("c2", "find_assets", r#"{"q":"b"}"#)]),
             // Would keep going, but the cap lands first.
             ModelTurn::answer("here's what I found so far"),
         ]);
@@ -506,9 +532,10 @@ mod tests {
     /// indicator right before the answer lands, which is the worst moment.
     #[tokio::test]
     async fn progress_fires_once_before_every_model_turn() {
+        // Distinct arguments, for the same reason as the cap test above.
         let model = ScriptedModel::new(vec![
-            ModelTurn::calling(vec![call("c1", "find_assets", "{}")]),
-            ModelTurn::calling(vec![call("c2", "find_assets", "{}")]),
+            ModelTurn::calling(vec![call("c1", "find_assets", r#"{"q":"a"}"#)]),
+            ModelTurn::calling(vec![call("c2", "find_assets", r#"{"q":"b"}"#)]),
             ModelTurn::answer("done"),
         ]);
         let executor = StubExecutor::new(vec![("find_assets", ToolOutcome::ok("ok"))]);
@@ -531,6 +558,45 @@ mod tests {
         assert_eq!(run.stop, StopReason::ToolRoundsExhausted);
         // Two rounds plus the forced answer.
         assert_eq!(*seen.borrow(), vec![0, 1, 2]);
+    }
+
+    /// The same guard, for a call that WORKS. Missed originally, because only
+    /// failures were remembered: asked how many of a holder's assets lacked a
+    /// trait — which no tool could express at the time — the model re-issued
+    /// the one call that succeeded four times, spent every round, and answered
+    /// "I could not count" anyway. Each repeat re-ran the tool and pushed
+    /// another copy of the same result into the prompt.
+    #[tokio::test]
+    async fn a_repeated_successful_call_stops_the_run_too() {
+        let repeat = || call("c", "find_assets", r#"{"holder":"me"}"#);
+        let model = ScriptedModel::new(vec![
+            ModelTurn::calling(vec![repeat()]),
+            ModelTurn::calling(vec![repeat()]),
+            ModelTurn::answer("as many as I could tell"),
+        ]);
+        let executor = StubExecutor::new(vec![("find_assets", ToolOutcome::ok("325 assets"))]);
+
+        let run = run(
+            &model,
+            &executor,
+            &[tool("find_assets")],
+            seed("how many without a pipe"),
+            Limits { max_tool_rounds: 4 },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(run.stop, StopReason::Repeating);
+        // Executed ONCE. The second is answered from memory, so the tool never
+        // runs again and the result is not duplicated into the prompt.
+        assert_eq!(
+            executor.ran.borrow().len(),
+            1,
+            "the repeat must not re-execute"
+        );
+        // Rounds are left on the table rather than spent: it stopped because it
+        // was stuck, not because it ran out.
+        assert_eq!(run.answer.as_deref(), Some("as many as I could tell"));
     }
 
     /// The live waste this guards: a model with no way to express what it

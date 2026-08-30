@@ -103,6 +103,7 @@ mod app {
         CustodyWalk,
         ClaimCard,
         CapitalFlow,
+        CapBand,
         TimeSpine,
         CoverageLanes,
         FlowMatrix,
@@ -132,6 +133,7 @@ mod app {
         UserBadge,
         TierLadder,
         AboutModal,
+        ServiceBanner,
         QuantityStepper,
         MintCheckout,
     }
@@ -156,6 +158,7 @@ mod app {
                 Self::CustodyWalk,
                 Self::ClaimCard,
                 Self::CapitalFlow,
+                Self::CapBand,
                 Self::TimeSpine,
                 Self::CoverageLanes,
                 Self::FlowMatrix,
@@ -184,6 +187,7 @@ mod app {
                 Self::UserBadge,
                 Self::TierLadder,
                 Self::AboutModal,
+                Self::ServiceBanner,
                 Self::ProgressBar,
                 Self::BulletBar,
                 Self::Sparkline,
@@ -364,6 +368,7 @@ mod app {
                 Self::CustodyWalk => "Custody Walk",
                 Self::ClaimCard => "Claim Card",
                 Self::CapitalFlow => "Capital Flow",
+                Self::CapBand => "Cap Band",
                 Self::TimeSpine => "Time Spine",
                 Self::CoverageLanes => "Coverage Lanes",
                 Self::FlowMatrix => "Flow Matrix",
@@ -390,6 +395,7 @@ mod app {
                 Self::UserBadge => "User Badge",
                 Self::TierLadder => "Tier Ladder",
                 Self::AboutModal => "About Modal",
+                Self::ServiceBanner => "Service Banner",
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
                 Self::Toast => "Toast",
@@ -414,6 +420,7 @@ mod app {
                 | Self::CustodyWalk
                 | Self::ClaimCard
                 | Self::CapitalFlow
+                | Self::CapBand
                 | Self::TimeSpine
                 | Self::CoverageLanes
                 | Self::FlowMatrix
@@ -438,6 +445,7 @@ mod app {
                 | Self::UserBadge
                 | Self::TierLadder
                 | Self::AboutModal
+                | Self::ServiceBanner
                 | Self::IdPill
                 | Self::PropertyList
                 | Self::ButtonGroup
@@ -512,11 +520,15 @@ mod app {
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
                 Self::TierLadder => "The access ladder as a modal — what each rung gives, every route to it, and where you stand",
                 Self::AboutModal => "What a product is, what state it is in, and what to expect — the BETA badge's modal",
+                Self::ServiceBanner => "A persistent strip saying the backend is not whole — takes space rather than covering content",
                 Self::Distribution => "Concentric orbital rings supply distribution chart",
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
                 Self::ProgressBar => "Determinate and countdown progress bars with custom colors",
-                Self::BulletBar => "Value fill with a target marker (bullet graph) — actual vs target",
+                Self::BulletBar => {
+                    "Value fill with an OPTIONAL target marker (bullet graph) — actual vs \
+                     target, or no target at all when none was ever set"
+                }
                 Self::Sparkline => {
                     "Inline line chart with fill gradient, mean line, and hover inspection"
                 }
@@ -705,6 +717,9 @@ mod app {
                 }
                 Self::CapitalFlow => {
                     "\"They raised X — watch where it went.\" Cumulative destination bands over a real time axis with a draggable playhead and play button; a labelled raise line the stack is free to CROSS, because deployment beyond the raise is a finding rather than an error to clamp"
+                }
+                Self::CapBand => {
+                    "A headline valuation against what it would ACTUALLY fetch. The yellow line is what everybody quotes; the teal is the float sold into the curve — at peak ~150k notional against ~20k realisable, about 13%. A chart showing only the headline makes an argument it cannot support. For the first third the band is a LINE, not a band: low == high because every holder was identified and there was no uncertainty to draw. That flat stretch is also four collinear points per quad — drawn as a polygon the tessellator cannot derive a normal and throws diagonal rays across the panel, which shipped once and was caught only by looking"
                 }
                 Self::TimeSpine => {
                     "ONE time axis for many faces: a playhead that REVEALS, a brush that FILTERS, play/pause — and a shared selection so hovering a holder's pile lights it up everywhere. Dots fly in and settle (keyed tweens; object constancy) while playing; a scrubbed frame settles instantly so a still is readable. The falsifier for 'is egui why this feels flat?'"
@@ -955,6 +970,7 @@ mod app {
         toast_state: stories::toast::ToastState,
         claim_card_state: stories::claim_card::ClaimCardState,
         capital_flow_state: stories::capital_flow::CapitalFlowState,
+        cap_band_state: stories::cap_band::CapBandState,
         time_spine_state: stories::time_spine::TimeSpineState,
         coverage_lanes_state: stories::coverage_lanes::CoverageLanesState,
         flow_matrix_state: stories::flow_matrix::FlowMatrixState,
@@ -1088,6 +1104,7 @@ mod app {
                 toast_state: stories::toast::ToastState::default(),
                 claim_card_state: stories::claim_card::ClaimCardState::default(),
                 capital_flow_state: stories::capital_flow::CapitalFlowState::default(),
+                cap_band_state: stories::cap_band::CapBandState::default(),
                 time_spine_state: stories::time_spine::TimeSpineState::default(),
                 coverage_lanes_state: stories::coverage_lanes::CoverageLanesState::default(),
                 flow_matrix_state: stories::flow_matrix::FlowMatrixState::default(),
@@ -1177,6 +1194,7 @@ mod app {
                             Story::UserBadge => stories::user_badge::show(ui),
                             Story::TierLadder => stories::tier_ladder::show(ui),
                             Story::AboutModal => stories::about_modal::show(ui),
+                            Story::ServiceBanner => stories::service_banner::show(ui),
                             Story::Distribution => {
                                 stories::distribution::show(ui, &mut self.distribution_chart)
                             }
@@ -1361,6 +1379,9 @@ mod app {
                             Story::CustodyWalk => stories::custody_walk::show(ui),
                             Story::CapitalFlow => {
                                 stories::capital_flow::show(ui, &mut self.capital_flow_state)
+                            }
+                            Story::CapBand => {
+                                stories::cap_band::show(ui, &mut self.cap_band_state)
                             }
                             Story::TimeSpine => {
                                 stories::time_spine::show(ui, &mut self.time_spine_state)

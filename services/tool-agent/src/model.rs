@@ -76,6 +76,20 @@ impl ModelTurn {
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
+    /// Of `prompt_tokens`, how many were served from cache — a SUBSET, not an
+    /// addition.
+    ///
+    /// Carried because it is most of the cost: cached input bills at a small
+    /// fraction of uncached, so two requests of identical size can differ
+    /// several-fold. Without it a token count cannot tell a cheap turn from an
+    /// expensive one, and a change that quietly broke cache-prefix stability
+    /// would show up nowhere.
+    pub cached_prompt_tokens: u32,
+    /// Of `completion_tokens`, how many were reasoning — again a SUBSET.
+    ///
+    /// Billed as output and routinely an order of magnitude larger than the
+    /// visible reply, so a run reporting "69 out" can have spent nearer 870.
+    pub reasoning_tokens: u32,
 }
 
 impl Usage {
@@ -84,7 +98,20 @@ impl Usage {
         Self {
             prompt_tokens,
             completion_tokens,
+            cached_prompt_tokens: 0,
+            reasoning_tokens: 0,
         }
+    }
+
+    /// The breakdowns, when the provider reported them.
+    ///
+    /// Separate from [`Self::new`] so a provider that reports neither keeps the
+    /// two-argument constructor rather than passing zeros it does not know.
+    #[must_use]
+    pub fn with_details(mut self, cached_prompt_tokens: u32, reasoning_tokens: u32) -> Self {
+        self.cached_prompt_tokens = cached_prompt_tokens;
+        self.reasoning_tokens = reasoning_tokens;
+        self
     }
 
     /// Saturating so a runaway loop reports a large number rather than
@@ -92,6 +119,20 @@ impl Usage {
     pub fn add(&mut self, other: Self) {
         self.prompt_tokens = self.prompt_tokens.saturating_add(other.prompt_tokens);
         self.completion_tokens = self.completion_tokens.saturating_add(other.completion_tokens);
+        self.cached_prompt_tokens = self
+            .cached_prompt_tokens
+            .saturating_add(other.cached_prompt_tokens);
+        self.reasoning_tokens = self.reasoning_tokens.saturating_add(other.reasoning_tokens);
+    }
+
+    /// Prompt tokens billed at the full rate — the total less what was cached.
+    ///
+    /// Saturating rather than asserting: a provider reporting more cached than
+    /// prompt tokens is nonsense, but nonsense in a usage field should not
+    /// panic a run that has already produced an answer.
+    #[must_use]
+    pub fn uncached_prompt_tokens(&self) -> u32 {
+        self.prompt_tokens.saturating_sub(self.cached_prompt_tokens)
     }
 
     #[must_use]

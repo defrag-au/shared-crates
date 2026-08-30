@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-112 widgets.
+114 widgets.
 
 | module | what it is |
 |---|---|
@@ -18,9 +18,10 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `arrival_field` | ArrivalField — every asset a dot, every holder a pile, and now they MOVE |
 | `asset_strip` | Asset strip — a horizontal row of square asset thumbnails that overlap progressively as more items are added |
 | `background` | `BackgroundToasts` — declare what work is running; the toasts follow |
-| `bullet_bar` | Bullet bar — a value fill against a track with a **target marker** |
+| `bullet_bar` | Bullet bar — a value fill against a track with an **optional target marker** |
 | `button_group` | `ButtonGroup` — a row of related action buttons with shared layout |
 | `buttons` | Button helpers that add consistent UX behavior (pointer cursor, etc.) |
+| `cap_band` | `CapBand` — a notional valuation against what it would actually fetch |
 | `capital_flow` | `CapitalFlow` — a project raised some money; watch where it went |
 | `card_browser` | Composable master-detail card browser widget |
 | `channel_bands` | `ChannelBands` — where a wallet's money came from, period by period |
@@ -88,6 +89,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `relationship_editor` | relationship_editor — edit a list of directed `source → target` edges over a known option set |
 | `relative_time` | `RelativeTime` — a tiny auto-scaling "time ago" label |
 | `route_summary` | Route summary widget — compact display of split routing results |
+| `service_banner` | `ServiceBanner` — a persistent strip saying the backend is not currently whole, in the operator's own words |
 | `seven_segment` | SevenSegmentDisplay — retro LED-style numeric display |
 | `signing_status` | Signing status widget — concurrent signing checklist for the trade desk |
 | `slippage_selector` | Reusable slippage selector widget |

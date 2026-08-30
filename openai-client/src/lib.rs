@@ -35,12 +35,46 @@ pub struct OpenAiResponse {
 }
 
 /// Token counts for one request.
+///
+/// The two totals plus the two breakdowns that carry most of the cost
+/// information. Both breakdowns are SUBSETS of a total, never additions:
+/// `cached_tokens` is the part of `prompt_tokens` that hit the cache, and
+/// `reasoning_tokens` the part of `completion_tokens` spent thinking. Summing
+/// a breakdown with its total double-counts.
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 pub struct Usage {
     #[serde(default)]
     pub prompt_tokens: u32,
     #[serde(default)]
     pub completion_tokens: u32,
+
+    /// Nested on the wire; flattened here because callers want the number, not
+    /// the shape. Absent from providers that don't report it, which reads as
+    /// zero — indistinguishable from a genuine miss, and the right default
+    /// either way since neither is worth failing a response over.
+    #[serde(default)]
+    pub prompt_tokens_details: TokenDetails,
+    #[serde(default)]
+    pub completion_tokens_details: TokenDetails,
+}
+
+/// The subset breakdowns providers nest under a total.
+///
+/// One type for both because the two fields never co-occur — a prompt has no
+/// reasoning and a completion has no cache — and a second near-identical struct
+/// would be two things to keep in step for no gain.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+pub struct TokenDetails {
+    /// Of `prompt_tokens`, how many were served from cache. Billed at a small
+    /// fraction of the uncached rate, so this is most of what separates a cheap
+    /// request from an expensive one of the same size.
+    #[serde(default)]
+    pub cached_tokens: u32,
+    /// Of `completion_tokens`, how many were reasoning. Billed as output and
+    /// routinely an order of magnitude larger than the visible reply, so a cost
+    /// estimate that ignores it is not close.
+    #[serde(default)]
+    pub reasoning_tokens: u32,
 }
 
 impl OpenAiResponse {
@@ -339,5 +373,45 @@ impl OpenAI {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod usage_tests {
+    use super::*;
+
+    /// The breakdowns are NESTED on the wire. Reading them off the top level
+    /// would silently yield zero — indistinguishable from a provider that
+    /// doesn't report them, and the whole point is telling those apart.
+    #[test]
+    fn the_nested_breakdowns_are_read() {
+        let usage: Usage = serde_json::from_str(
+            r#"{
+                "prompt_tokens": 13431,
+                "completion_tokens": 869,
+                "prompt_tokens_details": {"cached_tokens": 7070},
+                "completion_tokens_details": {"reasoning_tokens": 800}
+            }"#,
+        )
+        .expect("parses");
+
+        assert_eq!(usage.prompt_tokens, 13431);
+        assert_eq!(usage.prompt_tokens_details.cached_tokens, 7070);
+        assert_eq!(usage.completion_tokens_details.reasoning_tokens, 800);
+    }
+
+    /// A provider reporting neither must still parse. Both default to zero,
+    /// which reads as "nothing cached, nothing reasoned" — wrong only in the
+    /// direction that over-states cost, and never worth failing a response
+    /// that already carries an answer.
+    #[test]
+    fn a_response_without_breakdowns_still_parses() {
+        let usage: Usage =
+            serde_json::from_str(r#"{"prompt_tokens": 100, "completion_tokens": 20}"#)
+                .expect("parses");
+
+        assert_eq!(usage.prompt_tokens, 100);
+        assert_eq!(usage.prompt_tokens_details.cached_tokens, 0);
+        assert_eq!(usage.completion_tokens_details.reasoning_tokens, 0);
     }
 }
