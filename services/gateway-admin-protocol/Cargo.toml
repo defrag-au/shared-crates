@@ -1,0 +1,20 @@
+[package]
+name = "gateway-admin-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "ui-flow protocol for the gateway trigger-wiring admin surface — the wire two renderers and one Durable Object share"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+# Path dep, matching how every other crate in this repo reaches it — it is a
+# workspace member here rather than a `workspace.dependencies` entry.
+ui-flow-protocol = { path = "../../ui/ui-flow-protocol" }
+gateway-wiring = { workspace = true }
+# `GatewayAudience` is derived from the same `Feature` consts the DO enforces
+# with, so display and enforcement cannot name different things.
+authorizations = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

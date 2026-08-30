@@ -1981,6 +1981,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gateway-admin-protocol"
+version = "0.1.0"
+dependencies = [
+ "authorizations",
+ "gateway-wiring",
+ "serde",
+ "serde_json",
+ "ui-flow-protocol",
+]
+
+[[package]]
 name = "gateway-wiring"
 version = "0.1.0"
 dependencies = [
