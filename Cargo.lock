@@ -31,6 +31,7 @@ dependencies = [
 name = "address-registry"
 version = "0.1.0"
 dependencies = [
+ "pallas-addresses",
  "phf",
  "serde",
  "serde_json",

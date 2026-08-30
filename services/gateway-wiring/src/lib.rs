@@ -929,8 +929,33 @@ pub fn humanise_mentions(content: &str, bot_user_id: &str, bot_name: &str) -> St
     out
 }
 
+/// How many feed entries an admin surface keeps.
+///
+/// Enough to cover "I tried it a few times and nothing happened" without
+/// turning an in-memory debugging aid into a message store.
+///
+/// Shared because BOTH ends bound it now: the listener rings its own feed at
+/// this, and a client applying `ActivityAppended` deltas over a long session
+/// must cap the list it is building or it grows without limit. **One
+/// constant, not two that happen to match** — a client capped above the
+/// server would hold entries the server had already dropped, so its feed and
+/// the next snapshot it received would silently disagree.
+pub const MAX_RECENT_ACTIVITY: usize = 25;
+
 /// Status of one bot's gateway connection, returned by every control route
 /// (`/bot/{name}/start|stop|status`).
+///
+/// **Connection health only.** The activity feed used to ride along here, and
+/// that made it undisclosable: `Status` is broadcast to every admin socket on
+/// every heartbeat, while the feed is cross-guild by construction — message
+/// previews, authors and agent replies from every server the bot is in. A
+/// client-facing pane cannot be given that, and it cannot be filtered out of a
+/// type whose other fields are global.
+///
+/// So the feed left, and is now its own guild-scoped delta. That also made the
+/// heartbeat cheap: it used to re-send the entire feed several times a minute
+/// to say the socket was still up. See
+/// `augminted-bots/docs/ADMIN_SURFACE_CONSOLIDATION_DESIGN.md` §10.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GatewayStatus {
     /// Master switch — persisted, so "stopped" survives evictions.
@@ -939,13 +964,6 @@ pub struct GatewayStatus {
     pub connected: bool,
     /// Resume state held: reconnects will resume rather than re-identify.
     pub has_session: bool,
-    /// Recent messages the listener evaluated, oldest first.
-    ///
-    /// The answer to "I typed something and nothing happened" — which is
-    /// otherwise unanswerable without a live tail, and by then the moment has
-    /// passed. In-memory and small; a debugging aid, not an audit log.
-    #[serde(default)]
-    pub recent: Vec<RecentActivity>,
 
     /// Our own user id is known, so `on_mention` bindings can match.
     ///
