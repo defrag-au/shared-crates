@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-114 widgets.
+115 widgets.
 
 | module | what it is |
 |---|---|
@@ -88,6 +88,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `rarity_target_editor` | rarity_target_editor — a labelled list of 0–100% target sliders with an optional budget indicator (running total vs a budget, coloured over/under/ok) |
 | `relationship_editor` | relationship_editor — edit a list of directed `source → target` edges over a known option set |
 | `relative_time` | `RelativeTime` — a tiny auto-scaling "time ago" label |
+| `role_picker` | `RolePicker` — choose a Discord role by name instead of pasting a snowflake |
 | `route_summary` | Route summary widget — compact display of split routing results |
 | `service_banner` | `ServiceBanner` — a persistent strip saying the backend is not currently whole, in the operator's own words |
 | `seven_segment` | SevenSegmentDisplay — retro LED-style numeric display |

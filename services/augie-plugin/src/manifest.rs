@@ -337,7 +337,7 @@ mod tests {
                 "comp",
                 vec![cmd("create", vec![]), cmd("draw", vec![])],
             )],
-            tools: vec![],
+            ..Default::default()
         };
 
         assert_eq!(
@@ -375,8 +375,8 @@ mod tests {
         ServiceManifest {
             service: "collection-ownership".to_string(),
             version: "1".to_string(),
-            commands: vec![],
             tools,
+            ..Default::default()
         }
     }
 

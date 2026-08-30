@@ -36,11 +36,20 @@ pub struct OpenAiResponse {
 
 /// Token counts for one request.
 ///
-/// The two totals plus the two breakdowns that carry most of the cost
-/// information. Both breakdowns are SUBSETS of a total, never additions:
-/// `cached_tokens` is the part of `prompt_tokens` that hit the cache, and
-/// `reasoning_tokens` the part of `completion_tokens` spent thinking. Summing
-/// a breakdown with its total double-counts.
+/// **The two breakdowns relate to their totals differently, and it is not
+/// symmetric.** Observed against x.ai:
+///
+/// - `cached_tokens` is a SUBSET of `prompt_tokens`. Billed input is
+///   `prompt_tokens - cached_tokens` at the full rate plus `cached_tokens` at
+///   the cached rate.
+/// - `reasoning_tokens` is ADDITIONAL to `completion_tokens`, not part of it —
+///   a turn reporting 74 completion and 320 reasoning spent 394 output tokens.
+///   x.ai bills them as separate line items.
+///
+/// Asserted from data rather than from the schema: OpenAI documents reasoning
+/// as a subset, so a provider that reports more reasoning than completion is
+/// the evidence that settles it. Anything computing a bill must not assume the
+/// two behave alike.
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 pub struct Usage {
     #[serde(default)]
@@ -70,9 +79,9 @@ pub struct TokenDetails {
     /// request from an expensive one of the same size.
     #[serde(default)]
     pub cached_tokens: u32,
-    /// Of `completion_tokens`, how many were reasoning. Billed as output and
-    /// routinely an order of magnitude larger than the visible reply, so a cost
-    /// estimate that ignores it is not close.
+    /// Reasoning tokens, IN ADDITION to `completion_tokens` — see the type
+    /// docs. Billed as output and routinely several times the visible reply, so
+    /// a cost estimate that ignores it is not close.
     #[serde(default)]
     pub reasoning_tokens: u32,
 }
