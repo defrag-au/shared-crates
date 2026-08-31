@@ -344,7 +344,12 @@ impl<'a> Select<'a> {
                                                 None => theme::TEXT_PRIMARY,
                                             },
                                         );
-                                        let label = ui.label(text);
+                                        // `truncate`, not wrap: a long value
+                                        // wrapping to a second line would push
+                                        // the control off its fixed height and
+                                        // make a row of selects ragged.
+                                        let label =
+                                            ui.add(egui::Label::new(text).truncate());
                                         if let Some(why) = &value.warning {
                                             label.on_hover_text(why);
                                         }
@@ -543,6 +548,7 @@ pub struct MultiSelect<'a> {
     placeholder: &'a str,
     empty_text: &'a str,
     clearable: bool,
+    creatable: bool,
     width: f32,
 }
 
@@ -559,8 +565,23 @@ impl<'a> MultiSelect<'a> {
             placeholder: "Select…",
             empty_text: "Nothing left to add",
             clearable: true,
+            creatable: false,
             width: 320.0,
         }
+    }
+
+    /// Allow values that are not in `options` — react-select's "creatable".
+    ///
+    /// For fields where the option list is a *record of what has been used*
+    /// rather than a closed vocabulary: tags, labels, categories. Typing
+    /// something new offers a "Create …" row at the top of the menu, and the
+    /// created value comes back through `added` like any other.
+    ///
+    /// Off by default: for a closed set — roles, providers, group members —
+    /// inventing a value produces config that references nothing.
+    pub fn creatable(mut self, creatable: bool) -> Self {
+        self.creatable = creatable;
+        self
     }
 
     pub fn placeholder(mut self, placeholder: &'a str) -> Self {
@@ -602,8 +623,25 @@ impl<'a> MultiSelect<'a> {
                 q => o.label.to_lowercase().contains(&q.to_lowercase()),
             })
             .collect();
-        if state.highlight >= available.len() {
-            state.highlight = available.len().saturating_sub(1);
+        // The "Create …" row, when the typed value is genuinely new. Offered
+        // only for a value that matches no option and nothing already picked
+        // — otherwise it invites making a duplicate of something one row down.
+        let typed = state.query.trim().to_string();
+        let create: Option<String> = (self.creatable
+            && !typed.is_empty()
+            && !self
+                .options
+                .iter()
+                .any(|o| o.label.eq_ignore_ascii_case(&typed))
+            && !self.selected.iter().any(|s| s.eq_ignore_ascii_case(&typed)))
+        .then_some(typed);
+
+        // The menu is [create?] ++ available, and the keyboard cursor indexes
+        // that whole list — so Enter on a fresh value creates it.
+        let create_rows = usize::from(create.is_some());
+        let row_count = available.len() + create_rows;
+        if state.highlight >= row_count {
+            state.highlight = row_count.saturating_sub(1);
         }
 
         let open = state.open;
@@ -692,15 +730,22 @@ impl<'a> MultiSelect<'a> {
                         i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace),
                     )
                 });
-                if down && !available.is_empty() {
-                    state.highlight = (state.highlight + 1).min(available.len() - 1);
+                if down && row_count > 0 {
+                    state.highlight = (state.highlight + 1).min(row_count - 1);
                 }
                 if up {
                     state.highlight = state.highlight.saturating_sub(1);
                 }
                 if enter {
-                    if let Some(option) = available.get(state.highlight) {
-                        out.added = Some(option.id.clone());
+                    let picked = match (&create, state.highlight) {
+                        // Row 0 is the create row when there is one.
+                        (Some(new_value), 0) => Some(new_value.clone()),
+                        _ => available
+                            .get(state.highlight - create_rows)
+                            .map(|o| o.id.clone()),
+                    };
+                    if let Some(id) = picked {
+                        out.added = Some(id);
                         // Stay open and clear the filter: adding members is a
                         // run of picks, not one. Closing after each would make
                         // choosing five options five round trips.
@@ -732,7 +777,7 @@ impl<'a> MultiSelect<'a> {
                         .inner_margin(Margin::same(4))
                         .show(ui, |ui| {
                             ui.set_width(control_rect.width());
-                            if available.is_empty() {
+                            if available.is_empty() && create.is_none() {
                                 ui.add_space(4.0);
                                 ui.colored_label(theme::TEXT_MUTED, self.empty_text);
                                 ui.add_space(4.0);
@@ -742,10 +787,24 @@ impl<'a> MultiSelect<'a> {
                             egui::ScrollArea::vertical()
                                 .max_height(MENU_MAX_HEIGHT)
                                 .show(ui, |ui| {
+                                    if let Some(new_value) = &create {
+                                        let row = SelectOption::new(
+                                            new_value.clone(),
+                                            format!("Create “{new_value}”"),
+                                        );
+                                        if menu_row(ui, &row, state.highlight == 0, false) {
+                                            picked = Some(new_value.clone());
+                                        }
+                                    }
                                     for (index, option) in available.iter().enumerate() {
                                         // Nothing in this menu is "selected" —
                                         // selected options are not in it.
-                                        if menu_row(ui, option, index == state.highlight, false) {
+                                        if menu_row(
+                                            ui,
+                                            option,
+                                            index + create_rows == state.highlight,
+                                            false,
+                                        ) {
                                             picked = Some(option.id.clone());
                                         }
                                     }
@@ -812,9 +871,9 @@ fn chip(ui: &mut Ui, label: &str, swatch: Option<Color32>, known: bool) -> bool 
     } else {
         theme::ACCENT_YELLOW
     };
-    let galley = ui
-        .painter()
-        .layout_no_wrap(label.to_string(), font, fg);
+    // Chips are elided too, at a generous cap: one pathological tag should
+    // not make a chip wider than the control it sits in.
+    let galley = elided_line(ui, label, font, fg, 180.0);
     let swatch_w = if swatch.is_some() { 14.0 } else { 0.0 };
     let size = vec2(galley.size().x + swatch_w + 30.0, 20.0);
     // `hover`, not `click` — see the doc comment: the control takes the click.
@@ -858,6 +917,36 @@ fn chip(ui: &mut Ui, label: &str, swatch: Option<Color32>, known: bool) -> bool 
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     x_hovered
+}
+
+/// Lay out one line, ellipsised at `max_width`.
+///
+/// `Painter::text` neither wraps nor clips — it just draws, so a subtitle
+/// longer than the menu ran out past its own border and over whatever was
+/// behind it. Menu rows are painted rather than laid out (they are fixed-
+/// height hit targets), so the elision has to be asked for explicitly.
+fn elided_line(
+    ui: &Ui,
+    text: &str,
+    font: egui::FontId,
+    color: Color32,
+    max_width: f32,
+) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::single_section(
+        text.to_owned(),
+        egui::TextFormat {
+            font_id: font,
+            color,
+            ..Default::default()
+        },
+    );
+    job.wrap = egui::text::TextWrapping {
+        max_width,
+        max_rows: 1,
+        overflow_character: Some('…'),
+        ..Default::default()
+    };
+    ui.painter().layout_job(job)
 }
 
 /// One menu row. Returns true when chosen.
@@ -906,23 +995,33 @@ fn menu_row(ui: &mut Ui, option: &SelectOption, highlighted: bool, selected: boo
         cursor += 16.0;
     }
 
+    // What is left of the row after the tick column, any swatch, and a right
+    // margin — everything painted below is elided to fit inside it.
+    let text_width = (rect.right() - cursor - 8.0).max(24.0);
     let text_top = match option.subtitle {
         Some(_) => rect.min.y + 6.0,
         None => rect.center().y - 7.0,
     };
-    ui.painter().text(
-        egui::pos2(cursor, text_top),
-        egui::Align2::LEFT_TOP,
+    let label = elided_line(
+        ui,
         &option.label,
         egui::FontId::proportional(13.0),
         theme::TEXT_PRIMARY,
+        text_width,
     );
+    ui.painter()
+        .galley(egui::pos2(cursor, text_top), label, theme::TEXT_PRIMARY);
     if let Some(subtitle) = &option.subtitle {
-        ui.painter().text(
-            egui::pos2(cursor, rect.min.y + 22.0),
-            egui::Align2::LEFT_TOP,
+        let subtitle = elided_line(
+            ui,
             subtitle,
             egui::FontId::proportional(11.0),
+            theme::TEXT_MUTED,
+            text_width,
+        );
+        ui.painter().galley(
+            egui::pos2(cursor, rect.min.y + 22.0),
+            subtitle,
             theme::TEXT_MUTED,
         );
     }

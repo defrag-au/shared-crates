@@ -91,7 +91,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut PartyAnnotatorState) {
                         .small()
                         .color(TEXT_MUTED),
                 );
-                let r = PartyAnnotator::new("fresh", "stake1uy0x3e…wfl6ha", &mut state.fresh)
+                // FULL addresses: `IdPill` middle-elides for display and puts
+                // the whole thing on the clipboard, so a pre-truncated fixture
+                // would be demonstrating a copy button that yields junk.
+                let r = PartyAnnotator::new(
+                    "fresh",
+                    "stake1uy0x3e9q7m4kzvahn2s0dcf8rj6twpl5xg3ydq8vn4he2gswfl6ha",
+                    &mut state.fresh,
+                )
                     .palette(&pal)
                     .entities(&ents)
                     .show(ui);
@@ -105,7 +112,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut PartyAnnotatorState) {
                         .small()
                         .color(TEXT_MUTED),
                 );
-                let r = PartyAnnotator::new("guess", "stake1u9hech…7gpt5q", &mut state.guess)
+                let r = PartyAnnotator::new(
+                    "guess",
+                    "stake1u9hech4kd0p2ntyq7gv3xzm8ejlw5aqr6sf9cbdu3tk0nvgs7gpt5q",
+                    &mut state.guess,
+                )
                     .palette(&pal)
                     .entities(&ents)
                     .dirty(true)
@@ -120,7 +131,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut PartyAnnotatorState) {
                         .small()
                         .color(TEXT_MUTED),
                 );
-                let r = PartyAnnotator::new("derived", "stake1ux3q5n…ldk5f2", &mut state.derived)
+                let r = PartyAnnotator::new(
+                    "derived",
+                    "stake1ux3q5nw8jm2pv6ted0hgy4za7bcrs9fxk5lqn3vu8dm4t0gsldk5f2",
+                    &mut state.derived,
+                )
                     .palette(&pal)
                     .entities(&ents)
                     .dirty(true)

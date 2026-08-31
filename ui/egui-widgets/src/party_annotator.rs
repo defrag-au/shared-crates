@@ -36,7 +36,8 @@
 use egui::{Color32, Ui};
 
 use crate::party_badge::PartyBasis;
-use crate::select::{Select, SelectOption};
+use crate::id_pill::IdPill;
+use crate::select::{MultiSelect, Select, SelectOption};
 use crate::{Chip, ChipVariant};
 
 /// Where a wallet sits relative to the project. Mirrors the app's stored
@@ -73,6 +74,18 @@ impl PartyClass {
             Self::Associate => "associate",
             Self::Customer => "customer",
             Self::Ignored => "ignore",
+        }
+    }
+
+    /// A few words, for a menu row under the label. [`hint`](Self::hint) is
+    /// the full argument and is too long to sit in a list.
+    pub fn blurb(self) -> &'static str {
+        match self {
+            Self::Founder => "a founder's personal wallet",
+            Self::Core => "the project itself — treasury, mint, the people running it",
+            Self::Associate => "paid BY the project — artist, dev, marketing",
+            Self::Customer => "bought from the project",
+            Self::Ignored => "examined, judged irrelevant — not erased",
         }
     }
 
@@ -113,8 +126,9 @@ pub struct AnnotationDraft {
     pub tags: Vec<String>,
     pub basis: PartyBasis,
     pub source: String,
-    /// Free-text tag being typed.
-    pub tag_input: String,
+    // (`tag_input` lived here — the half-typed tag. The tag control is now a
+    // creatable `MultiSelect`, which keeps its filter in egui temp memory like
+    // every other select, so the draft no longer carries UI scratch state.)
 }
 
 impl Default for AnnotationDraft {
@@ -129,7 +143,6 @@ impl Default for AnnotationDraft {
             // note into a chain fact.
             basis: PartyBasis::Asserted,
             source: String::new(),
-            tag_input: String::new(),
         }
     }
 }
@@ -185,7 +198,10 @@ pub struct PartyAnnotatorResponse {
 
 pub struct PartyAnnotator<'a> {
     id_salt: &'a str,
-    /// The party being annotated, already display-formatted by the host.
+    /// The party being annotated — the **whole** identifier, not a shortened
+    /// one: it renders as an [`IdPill`], which middle-elides for display and
+    /// copies the full value. Empty when the host already names the subject
+    /// above the form, which is the usual case.
     subject: &'a str,
     draft: &'a mut AnnotationDraft,
     /// Tags already in use, most-used first — the palette.
@@ -248,12 +264,23 @@ impl<'a> PartyAnnotator<'a> {
             // the form must never be ambiguous about is WHICH wallet you are
             // annotating. Let the basis fall to the next line instead.
             ui.horizontal_wrapped(|ui| {
-                // The subject is only repeated when the host has not already
-                // named it above — in the shell it has, and the name appearing
-                // twice in one panel is pure noise.
-                if !subject.is_empty() {
-                    ui.label(egui::RichText::new(subject).strong());
-                }
+                // `Align::Center`: the address is text and the basis select is
+                // a 30pt framed box, so a baseline-aligned row sat the address
+                // against the top of the control.
+                ui.with_layout(
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        // The subject is only repeated when the host has not
+                        // already named it above — in the shell it has, and
+                        // the name appearing twice in one panel is pure noise.
+                        if !subject.is_empty() {
+                            // `IdPill` owns the truncation, which is why the
+                            // caller passes the WHOLE address: it middle-elides
+                            // for display, shows the full value on hover, and
+                            // copies the real thing. A pre-truncated string
+                            // would put an unusable address on the clipboard.
+                            IdPill::new("wallet", subject).show(ui);
+                        }
                 {
                     // The basis is never empty — a claim always rests on
                     // something — so this select is deliberately NOT
@@ -270,7 +297,12 @@ impl<'a> PartyAnnotator<'a> {
                             SelectOption::new(b.word(), b.word()).swatch(Some(basis_color(*b)))
                         })
                         .collect();
-                    let resp = Select::new("party_annotator_basis", &options)
+                    // Salted with the widget's OWN id — `Select` builds its id
+                    // from the salt alone (deliberately, so `Grid` siblings
+                    // cannot collide), which means the enclosing `push_id`
+                    // does not reach it. A constant here put three annotators
+                    // on one id.
+                    let resp = Select::new((id_salt, "basis"), &options)
                         .value_from_id(draft.basis.word(), "unknown basis")
                         .clearable(false)
                         .width(140.0)
@@ -282,7 +314,9 @@ impl<'a> PartyAnnotator<'a> {
                         draft.basis = *b;
                         changed = true;
                     }
-                }
+                        }
+                    },
+                );
             });
 
             // 1 · WHAT IS THIS WALLET TO THE PROJECT.
@@ -291,27 +325,41 @@ impl<'a> PartyAnnotator<'a> {
             // spotting an address out in the unexamined ring that actually
             // belongs to the team, and pulling it in. Everything else on this
             // form is detail hung off that call.
-            ui.horizontal_wrapped(|ui| {
-                for c in PartyClass::ALL {
-                    let on = draft.class == Some(c);
-                    if ui
-                        .selectable_label(on, c.label())
-                        .on_hover_text(c.hint())
-                        .clicked()
-                    {
-                        // Clicking the current class clears it — back to
-                        // unexamined, which is a legitimate thing to conclude
-                        // you were wrong about.
-                        draft.class = if on { None } else { Some(c) };
-                        changed = true;
-                    }
+            ui.add_space(10.0);
+            field_label(ui, "What is this wallet to the project?", muted);
+            {
+                // A select, not a row of toggles. Five mutually-exclusive
+                // options wrapping across two lines read as loose words; and
+                // **clearing is now a visible affordance** rather than the
+                // undiscoverable "click the one that is already on".
+                //
+                // Empty is not a sixth class: `None` is "not yet examined",
+                // which the placeholder says outright.
+                let options: Vec<SelectOption> = PartyClass::ALL
+                    .iter()
+                    .map(|c| SelectOption::new(c.label(), c.label()).subtitle(c.blurb()))
+                    .collect();
+                let resp = Select::new((id_salt, "class"), &options)
+                    .value_from_id(
+                        draft.class.map(|c| c.label()).unwrap_or_default(),
+                        "unknown class",
+                    )
+                    .placeholder("not yet examined")
+                    .width(240.0)
+                    .show(ui);
+                if let Some(word) = resp.chosen {
+                    draft.class = PartyClass::ALL.iter().copied().find(|c| c.label() == word);
+                    changed = true;
                 }
-                if draft.class.is_none() {
-                    ui.label(egui::RichText::new("not yet examined").small().color(muted));
+                if resp.cleared {
+                    draft.class = None;
+                    changed = true;
                 }
-            });
+            }
 
             // 2 · who is behind it.
+            ui.add_space(10.0);
+            field_label(ui, "Entity — who is behind it", muted);
             let name = ui.add(
                 egui::TextEdit::singleline(&mut draft.entity)
                     .hint_text("who? — Dwess, MEKKALABS…")
@@ -338,62 +386,50 @@ impl<'a> PartyAnnotator<'a> {
                     });
                 }
             }
-            // 3 · what kind of thing it is. Chips on the same line as the
-            // input, and the palette appears only as FILTERED suggestions
-            // while typing — a standing wall of every tag ever used is the
-            // single biggest source of clutter in a form like this.
-            ui.horizontal_wrapped(|ui| {
-                let mut remove: Option<usize> = None;
-                for (i, t) in draft.tags.iter().enumerate() {
-                    if ui
-                        .small_button(format!("{t} x"))
-                        .on_hover_text("remove")
-                        .clicked()
-                    {
-                        remove = Some(i);
-                    }
+            // 3 · what kind of thing it is.
+            //
+            // A CREATABLE multiselect: the palette is a record of tags already
+            // in use, not a closed vocabulary, so typing a new one offers
+            // "Create …". That replaced a hand-rolled arrangement of chips, a
+            // text field, and a second row of filtered suggestion buttons —
+            // three controls doing what one does, each with its own idea of
+            // what a tag looks like.
+            ui.add_space(10.0);
+            field_label(ui, "Tags — what kind of thing it is", muted);
+            {
+                // Most-used first (the palette's own order), with the count as
+                // the subtitle — which tag is the established one is exactly
+                // the thing a tagger wants to know before inventing a synonym.
+                let options: Vec<SelectOption> = palette
+                    .iter()
+                    .map(|(t, n)| {
+                        SelectOption::new(t.clone(), t.clone()).subtitle(format!("used {n}×"))
+                    })
+                    .collect();
+                let resp = MultiSelect::new((id_salt, "tags"), &draft.tags, &options)
+                    .placeholder("tags")
+                    .empty_text("type to add a new tag")
+                    .creatable(true)
+                    .clearable(false)
+                    .width(320.0)
+                    .show(ui);
+                if let Some(tag) = resp.added
+                    && draft.add_tag(&tag)
+                {
+                    changed = true;
                 }
-                if let Some(i) = remove {
+                if let Some(i) = resp.removed
+                    && i < draft.tags.len()
+                {
                     draft.tags.remove(i);
                     changed = true;
-                }
-                let te = ui.add(
-                    egui::TextEdit::singleline(&mut draft.tag_input)
-                        .hint_text(if draft.tags.is_empty() { "tags" } else { "+" })
-                        .desired_width(if draft.tags.is_empty() { 200.0 } else { 90.0 }),
-                );
-                // A singleline TextEdit surrenders focus on Enter, so
-                // `lost_focus` is the reliable commit signal.
-                if te.lost_focus()
-                    && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                    && draft.add_tag(&draft.tag_input.clone())
-                {
-                    draft.tag_input.clear();
-                    changed = true;
-                }
-            });
-            if !draft.tag_input.trim().is_empty() {
-                let q = draft.tag_input.trim().to_lowercase();
-                let hits: Vec<&(String, usize)> = palette
-                    .iter()
-                    .filter(|(t, _)| t.contains(&q) && !draft.tags.iter().any(|x| x == t))
-                    .take(5)
-                    .collect();
-                if !hits.is_empty() {
-                    ui.horizontal_wrapped(|ui| {
-                        for (t, n) in hits {
-                            if ui.small_button(format!("{t} ({n})")).clicked() {
-                                draft.add_tag(t);
-                                draft.tag_input.clear();
-                                changed = true;
-                            }
-                        }
-                    });
                 }
             }
 
             // 4 · how do you know. This IS the basis question for almost every
             // note, so it is asked in plain words rather than as a taxonomy.
+            ui.add_space(10.0);
+            field_label(ui, "Source — how do you know", muted);
             changed |= ui
                 .add(
                     egui::TextEdit::singleline(&mut draft.source)
@@ -405,44 +441,52 @@ impl<'a> PartyAnnotator<'a> {
                         .desired_width(f32::INFINITY),
                 )
                 .changed();
-            if draft.is_unsourced_assertion() {
-                // Marked in place, at the moment of writing — not in an export
-                // nobody reads until later.
-                Chip::new("unsourced")
-                    .variant(ChipVariant::Warning)
-                    .on_hover_text("this will save as a claim nobody stands behind")
-                    .show(ui);
-            }
 
-            // Everything rarer than the three above.
-            ui.horizontal(|ui| {
-                egui::CollapsingHeader::new(egui::RichText::new("more").small().color(muted))
-                    .id_salt("more")
-                    .show_unindented(ui, |ui| {
-                        // Only the label lives here now. Free-text reasoning
-                        // moved to the COMMENT thread the host renders below
-                        // this form — timestamped and attributable, which a
-                        // single note field could never be.
-                        changed |= ui
-                            .add(
-                                egui::TextEdit::singleline(&mut draft.label)
-                                    .hint_text("label just this wallet")
-                                    .desired_width(f32::INFINITY),
-                            )
-                            .changed();
-                    });
-                let can_save = dirty || changed;
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .add_enabled(can_save, egui::Button::new("Save"))
-                        .clicked()
-                    {
-                        save = true;
-                    }
-                    if can_save && ui.small_button("revert").clicked() {
-                        revert = true;
-                    }
+            // Everything rarer than the three above. On its OWN row: sharing
+            // a line with the save controls made the disclosure's height
+            // decide where the buttons sat, so they landed differently on
+            // every card depending on whether it was expanded.
+            ui.add_space(10.0);
+            egui::CollapsingHeader::new(egui::RichText::new("more").small().color(muted))
+                .id_salt("more")
+                .show_unindented(ui, |ui| {
+                    // Only the label lives here now. Free-text reasoning moved
+                    // to the COMMENT thread the host renders below this form —
+                    // timestamped and attributable, which a single note field
+                    // could never be.
+                    field_label(ui, "Label — this wallet alone", muted);
+                    changed |= ui
+                        .add(
+                            egui::TextEdit::singleline(&mut draft.label)
+                                .hint_text("label just this wallet")
+                                .desired_width(f32::INFINITY),
+                        )
+                        .changed();
                 });
+
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(6.0);
+            let can_save = dirty || changed;
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(can_save, egui::Button::new("Save"))
+                    .clicked()
+                {
+                    save = true;
+                }
+                if can_save && ui.button("Revert").clicked() {
+                    revert = true;
+                }
+                // The unsourced warning belongs BESIDE the save button, not
+                // orphaned up by the source field: it describes what saving
+                // will produce, and it is read at the moment of deciding.
+                if draft.is_unsourced_assertion() {
+                    Chip::new("unsourced")
+                        .variant(ChipVariant::Warning)
+                        .on_hover_text("this will save as a claim nobody stands behind")
+                        .show(ui);
+                }
             });
         });
 
@@ -453,6 +497,16 @@ impl<'a> PartyAnnotator<'a> {
             unsourced: draft.is_unsourced_assertion(),
         }
     }
+}
+
+/// A small caption above a field.
+///
+/// Hint text disappears the moment a field has content, so a filled-in form
+/// was four unlabelled boxes — you could read what someone wrote and not what
+/// they were answering. These stay.
+fn field_label(ui: &mut Ui, text: &str, muted: Color32) {
+    ui.label(egui::RichText::new(text).small().color(muted));
+    ui.add_space(2.0);
 }
 
 /// Colour for a basis, so a claim never renders like a chain fact.
