@@ -1,6 +1,7 @@
 pub mod about_modal;
 pub mod access_gate;
 pub mod activity_feed;
+pub mod aliens_fixture;
 pub mod asset_card;
 pub mod async_data;
 pub mod background;
@@ -58,12 +59,16 @@ pub mod tcg_card;
 pub mod tier_ladder;
 pub mod time_spine;
 pub mod timestamp;
+pub mod token_history;
+pub mod token_kinetic;
 pub mod token_multiselect;
+pub mod token_particles;
 pub mod trait_filter;
 pub mod typeahead_search;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
 pub mod wallet_editor;
+pub mod wrt_fixture;
 
 // DEX split swap widgets
 pub mod amount_input;

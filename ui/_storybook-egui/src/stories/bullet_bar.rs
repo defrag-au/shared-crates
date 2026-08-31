@@ -77,11 +77,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut BulletBarState) {
             .strong(),
     );
     ui.label(
-        egui::RichText::new(
-            "Both categories were published, so both carry a target tick.",
-        )
-        .color(theme::TEXT_MUTED)
-        .small(),
+        egui::RichText::new("Both categories were published, so both carry a target tick.")
+            .color(theme::TEXT_MUTED)
+            .small(),
     );
     ui.add_space(8.0);
 
@@ -134,7 +132,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut BulletBarState) {
     ui.add_space(8.0);
 
     for (label, actual, detail) in [
-        ("Founder — free transfers", 105.0_f32 / 1143.0, "105 of 1,143, no consideration"),
+        (
+            "Founder — free transfers",
+            105.0_f32 / 1143.0,
+            "105 of 1,143, no consideration",
+        ),
         ("Team-held supply", 148.0 / 1143.0, "148 of 1,143 minted"),
     ] {
         BulletBar::untargeted(actual)

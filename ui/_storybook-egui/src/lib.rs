@@ -25,6 +25,9 @@ mod app {
         BulletBar,
         Sparkline,
         MetricCard,
+        TokenHistory,
+        TokenKinetic,
+        TokenParticles,
         StatStrip,
         SevenSegment,
         FlipCounter,
@@ -194,6 +197,9 @@ mod app {
                 Self::BulletBar,
                 Self::Sparkline,
                 Self::MetricCard,
+                Self::TokenHistory,
+                Self::TokenKinetic,
+                Self::TokenParticles,
                 Self::StatStrip,
                 Self::SevenSegment,
                 Self::FlipCounter,
@@ -303,6 +309,9 @@ mod app {
                 Self::BulletBar => "Bullet Bar",
                 Self::Sparkline => "Sparkline",
                 Self::MetricCard => "Metric Card",
+                Self::TokenHistory => "Token History",
+                Self::TokenKinetic => "Token Kinetic",
+                Self::TokenParticles => "Token Particles",
                 Self::StatStrip => "Stat Strip",
                 Self::SevenSegment => "Seven Segment",
                 Self::FlipCounter => "Flip Counter",
@@ -458,6 +467,9 @@ mod app {
                 | Self::BulletBar
                 | Self::Sparkline
                 | Self::MetricCard
+                | Self::TokenHistory
+                | Self::TokenKinetic
+                | Self::TokenParticles
                 | Self::StatStrip
                 | Self::SevenSegment
                 | Self::FlipCounter
@@ -538,6 +550,15 @@ mod app {
                 }
                 Self::MetricCard => {
                     "Dashboard stat card with trend indicators and embedded sparklines"
+                }
+                Self::TokenParticles => {
+                    "Supply as a conserved particle field, playing through warped time"
+                }
+                Self::TokenKinetic => {
+                    "Kinetic variants — conserved mass, event-warped time, reservoirs"
+                }
+                Self::TokenHistory => {
+                    "Candidate forms for a token's history, on real WRT data — exploration surface"
                 }
                 Self::StatStrip => {
                     "Row of windowed stat cards — one metric across 24h/7d/30d, with an empty-window note"
@@ -1223,6 +1244,9 @@ mod app {
                                 stories::sparkline::show(ui, &mut self.sparkline_state)
                             }
                             Story::MetricCard => stories::metric_card::show(ui),
+                            Story::TokenHistory => stories::token_history::show(ui),
+                            Story::TokenKinetic => stories::token_kinetic::show(ui),
+                            Story::TokenParticles => stories::token_particles::show(ui),
                             Story::StatStrip => stories::stat_strip::show(ui),
                             Story::SevenSegment => {
                                 stories::seven_segment::show(ui, &mut self.seven_segment_state)
@@ -1389,9 +1413,7 @@ mod app {
                             Story::CapitalFlow => {
                                 stories::capital_flow::show(ui, &mut self.capital_flow_state)
                             }
-                            Story::CapBand => {
-                                stories::cap_band::show(ui, &mut self.cap_band_state)
-                            }
+                            Story::CapBand => stories::cap_band::show(ui, &mut self.cap_band_state),
                             Story::TimeSpine => {
                                 stories::time_spine::show(ui, &mut self.time_spine_state)
                             }
@@ -1457,9 +1479,7 @@ mod app {
                             Story::ButtonGroup => {
                                 stories::button_group::show(ui, &mut self.button_group_state)
                             }
-                            Story::PaneNav => {
-                                stories::pane_nav::show(ui, &mut self.pane_nav_state)
-                            }
+                            Story::PaneNav => stories::pane_nav::show(ui, &mut self.pane_nav_state),
                             Story::Toast => stories::toast::show(ui, &mut self.toast_state),
                         }
                     });

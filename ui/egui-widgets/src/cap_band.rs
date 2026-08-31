@@ -135,10 +135,8 @@ impl<'a> CapBand<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> CapBandResponse {
-        let (rect, response) = ui.allocate_exact_size(
-            Vec2::new(ui.available_width(), self.height),
-            Sense::hover(),
-        );
+        let (rect, response) =
+            ui.allocate_exact_size(Vec2::new(ui.available_width(), self.height), Sense::hover());
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 2.0, ui.visuals().extreme_bg_color);
 
@@ -230,7 +228,11 @@ impl<'a> CapBand<'a> {
         if let Some(at) = self.playhead
             && let Some(x) = x_of(at)
         {
-            p.vline(x, rect.y_range(), Stroke::new(1.0_f32, theme::TEXT_SECONDARY));
+            p.vline(
+                x,
+                rect.y_range(),
+                Stroke::new(1.0_f32, theme::TEXT_SECONDARY),
+            );
         }
 
         // Legend, and one labelled magnitude reference. Without a scale mark

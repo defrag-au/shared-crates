@@ -22,7 +22,7 @@
 //! a normal and throws long diagonal rays across the panel — it shipped that
 //! way once and was only caught by looking at it.
 
-use egui_widgets::{CapBand, CapSample, SpineState, TimeSpine, cap_band::honesty_ratio};
+use egui_widgets::{cap_band::honesty_ratio, CapBand, CapSample, SpineState, TimeSpine};
 
 const DAY: i64 = 86_400;
 const T0: i64 = 1_771_128_940; // the real mint time, so the ruler reads sensibly
@@ -94,9 +94,9 @@ fn fixture(collapsed: bool) -> Vec<CapSample> {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut CapBandState) {
-    let spine = state.spine.get_or_insert_with(|| {
-        SpineState::new((T0, T0 + (DAYS - 1) * DAY))
-    });
+    let spine = state
+        .spine
+        .get_or_insert_with(|| SpineState::new((T0, T0 + (DAYS - 1) * DAY)));
 
     ui.horizontal(|ui| {
         if ui

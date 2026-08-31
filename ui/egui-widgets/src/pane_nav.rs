@@ -43,7 +43,7 @@
 
 use egui::{RichText, Ui};
 
-use crate::icons::{install_phosphor_font, phosphor_label, PhosphorIcon};
+use crate::icons::{PhosphorIcon, install_phosphor_font, phosphor_label};
 
 /// One destination in the nav.
 pub struct PaneNavEntry<'a> {
@@ -184,7 +184,6 @@ impl<'a> PaneNavBar<'a> {
         response
     }
 }
-
 
 #[cfg(test)]
 mod tests {

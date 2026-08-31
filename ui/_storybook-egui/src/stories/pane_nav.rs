@@ -102,7 +102,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
         .color(TEXT_MUTED)
         .small(),
     );
-    let resp = PaneNavBar::new(0).add(PaneNavEntry::new(0, "Clients")).show(ui);
+    let resp = PaneNavBar::new(0)
+        .add(PaneNavEntry::new(0, "Clients"))
+        .show(ui);
     ui.label(
         egui::RichText::new(format!("↑ nothing drew · shown = {}", resp.shown))
             .color(TEXT_MUTED)

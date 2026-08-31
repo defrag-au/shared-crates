@@ -23,6 +23,11 @@
 //!   one thing a holder can already see for themselves.
 //! - **What did it cost?** — the amount, top-right, signed and coloured, with
 //!   an optional second line for a converted value.
+//! - **Who was it with?** — the counterparty, on the time line beside the
+//!   timestamp. With [`ActivityFeed::walkable`] it is a link, and clicking it
+//!   reports [`ActivityFeedResponse::walk`] instead of `clicked`: following
+//!   money out of a feed is the move the card exists to enable, and a feed
+//!   that can only open its own transactions is a dead end at every hop.
 //!
 //! Time is deliberately doubled up: a relative age ("18h ago") for the scan,
 //! an absolute timestamp beneath it for the record. Day headers break the run
@@ -64,6 +69,14 @@ const MAX_PILLS: usize = 6;
 /// it out of the MIDDLE, so a long minted name (`HOSKYCashGrab000146545`)
 /// keeps both the collection prefix and the serial that distinguishes it.
 const PILL_LABEL_CHARS: usize = 22;
+/// Characters of a counterparty the time line shows. Shorter than a pill's:
+/// it shares that line with a relative age and a full timestamp, and a
+/// 103-character address would push both off a phone.
+const PARTY_LABEL_CHARS: usize = 18;
+/// Hover wording for a walkable counterparty. "Walk" is the verb this toolkit
+/// already uses for following money between wallets — see `CustodyWalk` and
+/// the stave's lane click.
+const WALK_HINT: &str = "walk to this wallet";
 
 /// One tag on a card — a venue, a shape, a note.
 #[derive(Clone, Copy)]
@@ -123,8 +136,17 @@ pub struct ActivityEntry<'a> {
     pub targets_total: usize,
     /// Secondary amount line (a converted value, a fee, a note).
     pub secondary: Option<String>,
-    /// Counterparty, shown muted when there are no tags to carry the identity.
+    /// Who this was with, shown on the time line beside the timestamp.
+    ///
+    /// Always rendered when present — "when" and "who" are the two facts a
+    /// card is scanned for, and the counterparty used to appear only on an
+    /// untagged card, so the moment a transaction was recognised at all the
+    /// other side of it vanished.
     pub counterparty: Option<&'a str>,
+    /// Preposition for the counterparty — "from", "to", "with". Domain
+    /// wording is the caller's; the widget only knows there was another side,
+    /// not which way the value went.
+    pub counterparty_label: &'a str,
     pub tx_id: Option<&'a str>,
 }
 
@@ -140,6 +162,7 @@ impl<'a> ActivityEntry<'a> {
             targets_total: 0,
             secondary: None,
             counterparty: None,
+            counterparty_label: "",
             tx_id: None,
         }
     }
@@ -178,6 +201,12 @@ impl<'a> ActivityEntry<'a> {
         self
     }
 
+    /// The preposition in front of the counterparty ("from", "to", "with").
+    pub fn counterparty_label(mut self, caption: &'a str) -> Self {
+        self.counterparty_label = caption;
+        self
+    }
+
     pub fn tx_id(mut self, tx_id: &'a str) -> Self {
         self.tx_id = Some(tx_id);
         self
@@ -188,6 +217,14 @@ impl<'a> ActivityEntry<'a> {
 pub struct ActivityFeedResponse {
     /// Index of the card clicked this frame.
     pub clicked: Option<usize>,
+    /// Index of the card whose COUNTERPARTY was clicked — a request to go to
+    /// that party, not to open the transaction.
+    ///
+    /// Mutually exclusive with [`Self::clicked`]: one pointer press is one
+    /// intent, and the party sits inside the card, so the two must not both
+    /// fire and leave the caller opening a panel about the wallet it just
+    /// navigated away from.
+    pub walk: Option<usize>,
 }
 
 pub struct ActivityFeed<'a> {
@@ -195,6 +232,7 @@ pub struct ActivityFeed<'a> {
     format_amount: &'a dyn Fn(i128) -> String,
     show_day_headers: bool,
     max_pills: usize,
+    walkable: bool,
 }
 
 impl<'a> ActivityFeed<'a> {
@@ -207,7 +245,20 @@ impl<'a> ActivityFeed<'a> {
             format_amount,
             show_day_headers: true,
             max_pills: MAX_PILLS,
+            walkable: false,
         }
+    }
+
+    /// Is the counterparty somewhere the reader can GO?
+    ///
+    /// Opt-in, because that depends entirely on the host: a feed of a single
+    /// wallet's own history can follow the other side, an embedded receipt
+    /// list has nowhere to send anyone. Off, the party still shows — it is
+    /// half of what a card says — it simply is not a link, so the affordance
+    /// never promises a destination that does not exist.
+    pub fn walkable(mut self, walkable: bool) -> Self {
+        self.walkable = walkable;
+        self
     }
 
     /// Asset pills shown inline before the rest collapse into "+N more".
@@ -246,16 +297,22 @@ impl<'a> ActivityFeed<'a> {
                 ui.add_space(2.0);
                 last_day = Some(day);
             }
-            if self.card(ui, entry, &stamp) {
-                resp.clicked = Some(i);
+            match self.card(ui, entry, &stamp) {
+                Hit::Card => resp.clicked = Some(i),
+                Hit::Party => resp.walk = Some(i),
+                Hit::Miss => {}
             }
             ui.add_space(4.0);
         }
         resp
     }
 
-    /// One card. Returns whether it was clicked.
-    fn card(&self, ui: &mut Ui, entry: &ActivityEntry<'_>, stamp: &str) -> bool {
+    /// One card. Returns what the click landed on, if anything.
+    fn card(&self, ui: &mut Ui, entry: &ActivityEntry<'_>, stamp: &str) -> Hit {
+        // Where the counterparty ended up, so the click below can tell "open
+        // this transaction" from "go to that wallet". Set inside the frame,
+        // read outside it — see the interact block at the end.
+        let mut party_rect = None;
         let inner = Frame::new()
             .fill(theme::BG_SECONDARY)
             .stroke(Stroke::new(1.0_f32, theme::BORDER))
@@ -295,17 +352,13 @@ impl<'a> ActivityFeed<'a> {
                                 for tag in &entry.tags {
                                     Chip::new(tag.label).variant(tag.variant).show(ui);
                                 }
-                                // With no tag to carry identity, the counterparty
-                                // is the only "what was this" the card has.
-                                let bare = entry.counterparty.filter(|_| entry.tags.is_empty());
-                                if let Some(cp) = bare {
-                                    ui.label(
-                                        RichText::new(elide(cp, 28))
-                                            .color(theme::TEXT_SECONDARY)
-                                            .monospace(),
-                                    );
-                                }
                             });
+                            // WHEN and WHO on one line. The counterparty used
+                            // to live in the tag row above and only when that
+                            // row was otherwise empty, so recognising a
+                            // transaction — a venue, a mint, a handle — cost
+                            // the card the other side of it, which is the one
+                            // thing a reader following money needs next.
                             ui.horizontal_wrapped(|ui| {
                                 ui.add(RelativeTime::new(entry.timestamp));
                                 ui.label(
@@ -313,6 +366,9 @@ impl<'a> ActivityFeed<'a> {
                                         .color(theme::TEXT_MUTED)
                                         .small(),
                                 );
+                                if let Some(cp) = entry.counterparty {
+                                    party_rect = Some(self.party(ui, entry.counterparty_label, cp));
+                                }
                             });
                         },
                     );
@@ -378,12 +434,28 @@ impl<'a> ActivityFeed<'a> {
                 }
             });
 
+        // ONE interaction over the whole card, and the party resolved by
+        // geometry rather than by nesting a second clickable widget inside it.
+        //
+        // A nested link would never fire: this `interact` is registered after
+        // everything the frame drew, so it sits on top of the card's own
+        // contents and wins the hit test for every point inside it. Comparing
+        // the pointer against the party's rect is the same decision, made in
+        // the one place that actually receives the click.
         let response = ui.interact(
             inner.response.rect,
             ui.id().with(entry.tx_id.unwrap_or(stamp)),
             Sense::click(),
         );
-        if response.hovered() {
+        // `walkable` gates the HIT, not just the styling. Without it a feed
+        // with nowhere to send anyone would still swallow every click that
+        // landed on a party, and the card it sits in would stop opening.
+        let on_party =
+            self.walkable && party_rect.is_some_and(|r: egui::Rect| ui.rect_contains_pointer(r));
+        // The card's own hover cues are withheld over the party — outlining
+        // the whole card would promise it is about to open, which is exactly
+        // what clicking there does NOT do.
+        if response.hovered() && !on_party {
             ui.painter().rect_stroke(
                 inner.response.rect,
                 CornerRadius::same(8),
@@ -391,11 +463,75 @@ impl<'a> ActivityFeed<'a> {
                 egui::StrokeKind::Inside,
             );
         }
-        if let Some(tx) = entry.tx_id {
-            response.clone().on_hover_text(tx);
+        match (entry.tx_id, on_party) {
+            (_, true) => {
+                response.clone().on_hover_text(WALK_HINT);
+            }
+            (Some(tx), false) => {
+                response.clone().on_hover_text(tx);
+            }
+            (None, false) => {}
         }
-        response.clicked()
+        match (response.clicked(), on_party) {
+            (false, _) => Hit::Miss,
+            (true, true) => Hit::Party,
+            (true, false) => Hit::Card,
+        }
     }
+
+    /// The counterparty on the time line. Returns the rect it claimed, which
+    /// is what the card's click is measured against.
+    fn party(&self, ui: &mut Ui, caption: &str, who: &str) -> egui::Rect {
+        let colour = if self.walkable {
+            theme::ACCENT_BLUE
+        } else {
+            theme::TEXT_SECONDARY
+        };
+        ui.label(RichText::new("·").color(theme::TEXT_MUTED).small());
+        // The caption is inside the hit rect: "from addr1q…" is one phrase,
+        // and a link that starts one word into it invites a miss.
+        let caption_rect = (!caption.is_empty()).then(|| {
+            ui.label(RichText::new(caption).color(theme::TEXT_MUTED).small())
+                .rect
+        });
+        let mut rect = ui
+            .label(
+                RichText::new(elide(who, PARTY_LABEL_CHARS))
+                    .color(colour)
+                    .monospace()
+                    .small(),
+            )
+            .rect;
+        // …but only when the wrap left them on the SAME line. At phone width
+        // the caption stays with the timestamp and the address drops below
+        // it, and a bounding box over both would claim the empty stretch of
+        // the timestamp line between them — clicks landing on nothing and
+        // walking away from the transaction the reader was reading.
+        if let Some(cap) = caption_rect {
+            if (cap.center().y - rect.center().y).abs() < 1.0 {
+                rect = rect.union(cap);
+            }
+        }
+        if self.walkable && ui.rect_contains_pointer(rect) {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            // Underlined on hover rather than re-tinted: the tint is already
+            // spent saying "this is a link", and the colour cannot be changed
+            // after the text is painted anyway.
+            ui.painter().hline(
+                rect.x_range(),
+                rect.bottom() - 1.0,
+                Stroke::new(1.0_f32, theme::ACCENT_BLUE),
+            );
+        }
+        rect
+    }
+}
+
+/// What a click on a card landed on.
+enum Hit {
+    Miss,
+    Card,
+    Party,
 }
 
 /// Floor for either header column, so a very narrow card degrades to a squeeze
