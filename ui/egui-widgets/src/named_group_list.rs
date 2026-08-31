@@ -45,6 +45,7 @@ impl<'a> NamedGroupList<'a> {
         self
     }
 
+    /// Placeholder for each group's member picker (default `"+ member"`).
     pub fn member_label(mut self, label: &'a str) -> Self {
         self.member_label = label;
         self
@@ -92,8 +93,11 @@ impl<'a> NamedGroupList<'a> {
                         }
                     });
 
-                    let r = TokenMultiselect::new(&group.members, options)
-                        .add_label(member_label)
+                    // Salted with the group index: every group has its own
+                    // control, and without a distinct salt they would share
+                    // one open menu and one filter.
+                    let r = TokenMultiselect::new(("members", gi), &group.members, options)
+                        .placeholder(member_label)
                         .show(ui);
                     if let Some(opt) = r.added
                         && !group.members.contains(&opt)

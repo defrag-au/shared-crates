@@ -9,6 +9,8 @@
 
 use egui::Ui;
 
+use crate::select::{Select, SelectOption};
+
 #[derive(Default, Debug, Clone)]
 pub struct RelationshipEditorResponse {
     /// A complete `(source, target)` edge chosen on the add row this frame.
@@ -64,10 +66,40 @@ impl<'a> RelationshipEditor<'a> {
         // Add row — pending source/target kept in temp memory by id.
         let id = egui::Id::new(("relationship_editor", self.id_salt));
         let mut pending: (String, String) = ui.data(|d| d.get_temp(id)).unwrap_or_default();
+        // id == label: an edge names options by their own text.
+        let options: Vec<SelectOption> = self
+            .options
+            .iter()
+            .map(|o| SelectOption::new(o.clone(), o.clone()))
+            .collect();
+
         ui.horizontal(|ui| {
-            combo(ui, id.with("src"), "source", &mut pending.0, self.options);
+            let src = Select::new(id.with("src"), &options)
+                .value_from_id(&pending.0, "no longer an option")
+                .placeholder("source")
+                .width(160.0)
+                .show(ui);
+            if let Some(chosen) = src.chosen {
+                pending.0 = chosen;
+            }
+            if src.cleared {
+                pending.0.clear();
+            }
+
             crate::PhosphorIcon::ArrowRight.show(ui, 12.0, arrow_color);
-            combo(ui, id.with("tgt"), "target", &mut pending.1, self.options);
+
+            let tgt = Select::new(id.with("tgt"), &options)
+                .value_from_id(&pending.1, "no longer an option")
+                .placeholder("target")
+                .width(160.0)
+                .show(ui);
+            if let Some(chosen) = tgt.chosen {
+                pending.1 = chosen;
+            }
+            if tgt.cleared {
+                pending.1.clear();
+            }
+
             let can_add = !pending.0.is_empty() && !pending.1.is_empty();
             if ui
                 .add_enabled(can_add, egui::Button::new(self.add_label))
@@ -81,19 +113,4 @@ impl<'a> RelationshipEditor<'a> {
 
         resp
     }
-}
-
-fn combo(ui: &mut Ui, id: egui::Id, placeholder: &str, current: &mut String, options: &[String]) {
-    let text = if current.is_empty() {
-        placeholder
-    } else {
-        current.as_str()
-    };
-    egui::ComboBox::from_id_salt(id)
-        .selected_text(text)
-        .show_ui(ui, |ui| {
-            for opt in options {
-                ui.selectable_value(current, opt.clone(), opt.as_str());
-            }
-        });
 }

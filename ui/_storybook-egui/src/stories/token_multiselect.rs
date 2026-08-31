@@ -51,9 +51,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut TokenMultiselectState) {
     }
     ui.add_space(8.0);
 
-    let resp = TokenMultiselect::new(&state.selected, &state.options)
-        .add_label("+ add slot")
-        .clearable("Clear")
+    let resp = TokenMultiselect::new("slots", &state.selected, &state.options)
+        .placeholder("Add slots…")
+        .empty_text("Every slot is already required")
+        .clearable(true)
         .show(ui);
     if let Some(opt) = resp.added {
         if !state.selected.contains(&opt) {

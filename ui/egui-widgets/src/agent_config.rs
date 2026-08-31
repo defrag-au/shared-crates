@@ -42,7 +42,8 @@ use gateway_wiring::{
 use crate::icons::{install_phosphor_font, phosphor_label};
 use crate::relative_time::relative_label;
 use crate::utils::{format_number, section_heading};
-use crate::{PhosphorIcon, RoleOption, RolePicker, RolePickerState, theme};
+use crate::select::{Select, SelectOption};
+use crate::{PhosphorIcon, theme};
 
 /// A token-count spinner that reads as a number rather than a digit run.
 ///
@@ -319,7 +320,6 @@ pub fn budget_editor(
     ui: &mut Ui,
     agent: &mut Option<AgentEntitlement>,
     roles: Option<&[GuildRole]>,
-    pickers: &mut std::collections::HashMap<String, RolePickerState>,
     id_salt: &str,
     response: &mut AgentConfigResponse,
 ) {
@@ -365,11 +365,20 @@ pub fn budget_editor(
     }
 
     // Whatever the roster last returned. Absent means never fetched, which
-    // the picker renders differently from "fetched, and this role is gone".
-    let options: Vec<RoleOption> = roles
+    // the select renders differently from "fetched, and this role is gone".
+    let options: Vec<SelectOption> = roles
         .unwrap_or(&[])
         .iter()
-        .map(|r| RoleOption::new(&r.id, &r.name, r.color))
+        .map(|r| {
+            SelectOption::new(r.id.clone(), format!("@{}", r.name))
+                .swatch((r.color != 0).then(|| {
+                    egui::Color32::from_rgb(
+                        ((r.color >> 16) & 0xff) as u8,
+                        ((r.color >> 8) & 0xff) as u8,
+                        (r.color & 0xff) as u8,
+                    )
+                }))
+        })
         .collect();
 
     ui.horizontal(|ui| {
@@ -396,10 +405,15 @@ pub fn budget_editor(
     let mut remove_tier: Option<usize> = None;
     for (index, tier) in entitlement.tiers.iter_mut().enumerate() {
         ui.horizontal(|ui| {
-            // Keyed per row, so two tiers cannot share one open dropdown.
-            let picker = pickers.entry(format!("{id_salt}:{index}")).or_default();
-            let resp =
-                RolePicker::new(&format!("tier-{index}"), picker, &options, &tier.role).show(ui);
+            // Salted per row: two tiers sharing a salt share one open menu.
+            let resp = Select::new((id_salt, "tier", index), &options)
+                .value_from_id(
+                    &tier.role,
+                    "no such role in this server — it may have been deleted",
+                )
+                .placeholder("Select role…")
+                .width(200.0)
+                .show(ui);
             if let Some(id) = resp.chosen {
                 tier.role = id;
                 response.budget_changed = true;
@@ -480,7 +494,6 @@ pub fn agent_config_section(
     credential: &mut CredentialDraft,
     agent: &mut Option<AgentEntitlement>,
     roles: Option<&[GuildRole]>,
-    pickers: &mut std::collections::HashMap<String, RolePickerState>,
     id_salt: &str,
     now_ms: f64,
 ) -> AgentConfigResponse {
@@ -516,7 +529,7 @@ pub fn agent_config_section(
     ui.add_space(14.0);
     ui.separator();
     ui.add_space(10.0);
-    budget_editor(ui, agent, roles, pickers, id_salt, &mut response);
+    budget_editor(ui, agent, roles, id_salt, &mut response);
 
     response
 }

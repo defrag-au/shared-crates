@@ -115,7 +115,17 @@ impl From<&SelectOption> for SelectValue {
     }
 }
 
-/// Caller-owned, persists across frames.
+/// Transient UI state — is the menu open, what has been typed, where the
+/// keyboard cursor is.
+///
+/// **Held in egui temp memory keyed by the salt, not by the caller.** This is
+/// the same call `ComboBox` makes, and it is what lets a select appear inside
+/// a loop — a row of a group list, a tier in a table — without the host
+/// carrying a `HashMap` of picker state whose only purpose is to be threaded
+/// back in. None of it is model state: losing it on a reload costs an open
+/// menu and a half-typed filter, which is the correct amount to lose.
+///
+/// Public because the transitions are worth testing on their own.
 #[derive(Debug, Clone, Default)]
 pub struct SelectState {
     pub open: bool,
@@ -126,6 +136,14 @@ pub struct SelectState {
 }
 
 impl SelectState {
+    pub(crate) fn load(ui: &Ui, id: egui::Id) -> Self {
+        ui.data(|d| d.get_temp::<Self>(id)).unwrap_or_default()
+    }
+
+    pub(crate) fn store(self, ui: &Ui, id: egui::Id) {
+        ui.data_mut(|d| d.insert_temp(id, self));
+    }
+
     fn open(&mut self) {
         self.open = true;
         self.query.clear();
@@ -159,7 +177,6 @@ const MENU_MAX_HEIGHT: f32 = 240.0;
 
 pub struct Select<'a> {
     id_salt: egui::Id,
-    state: &'a mut SelectState,
     options: &'a [SelectOption],
     value: Option<SelectValue>,
     placeholder: &'a str,
@@ -177,14 +194,9 @@ impl<'a> Select<'a> {
     /// salt collide on both, and egui paints its "first/second use of widget
     /// ID" banner across the layout. Taking `impl Hash` instead of `&str`
     /// makes the unique-per-instance case free rather than a `format!`.
-    pub fn new(
-        id_salt: impl std::hash::Hash,
-        state: &'a mut SelectState,
-        options: &'a [SelectOption],
-    ) -> Self {
+    pub fn new(id_salt: impl std::hash::Hash, options: &'a [SelectOption]) -> Self {
         Self {
             id_salt: egui::Id::new(id_salt),
-            state,
             options,
             value: None,
             placeholder: "Select…",
@@ -247,11 +259,13 @@ impl<'a> Select<'a> {
         // one, so two rows with different salts could still collide.
         let widget_id = self.id_salt;
         let edit_id = widget_id.with("edit");
+        // Loaded here, stored at the end — the caller never sees it.
+        let mut state = SelectState::load(ui, widget_id);
 
         // Options matching the current filter. Filtering lives here rather
         // than in the caller because a select that does not narrow as you type
         // is the thing this widget exists to stop being.
-        let filtered: Vec<&SelectOption> = match self.state.query.trim() {
+        let filtered: Vec<&SelectOption> = match state.query.trim() {
             "" => self.options.iter().collect(),
             query => {
                 let q = query.to_lowercase();
@@ -266,13 +280,14 @@ impl<'a> Select<'a> {
                     .collect()
             }
         };
-        if self.state.highlight >= filtered.len() {
-            self.state.highlight = filtered.len().saturating_sub(1);
+        if state.highlight >= filtered.len() {
+            state.highlight = filtered.len().saturating_sub(1);
         }
 
         // ── Control ───────────────────────────────────────────────────────
-        let open = self.state.open;
-        let mut clicked_control = false;
+        let open = state.open;
+        // Whether the pointer is over the clear `×` — see the routing below.
+        let mut hovered_clear = false;
         let mut edit_response = None;
 
         let frame = egui::Frame::new()
@@ -294,7 +309,7 @@ impl<'a> Select<'a> {
                         Layout::left_to_right(Align::Center),
                         |ui| {
                             if open {
-                                let edit = egui::TextEdit::singleline(&mut self.state.query)
+                                let edit = egui::TextEdit::singleline(&mut state.query)
                                     .id(edit_id)
                                     // An empty `Frame` draws nothing — this
                                     // fork's `frame()` takes a Frame, not a
@@ -359,16 +374,19 @@ impl<'a> Select<'a> {
                             theme::hairline(theme::BORDER),
                         );
                         if self.clearable && self.value.is_some() {
+                            // Hover, not click — the control's `interact`
+                            // below covers this and is registered after it,
+                            // so in egui's top-most-wins ordering it takes
+                            // the click. Same routing as MultiSelect's chips.
                             let clear = ui
-                                .add(
-                                    egui::Label::new(
-                                        PhosphorIcon::X.rich_text(11.0, theme::TEXT_MUTED),
-                                    )
-                                    .sense(Sense::click()),
-                                )
+                                .add(egui::Label::new(PhosphorIcon::X.rich_text(
+                                    11.0,
+                                    theme::TEXT_MUTED,
+                                )))
                                 .on_hover_text("clear");
-                            if clear.clicked() {
-                                out.cleared = true;
+                            hovered_clear = clear.hovered();
+                            if hovered_clear {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                             }
                         }
                     });
@@ -376,22 +394,22 @@ impl<'a> Select<'a> {
             });
 
         // The whole box opens it — a select you must hit the chevron of is a
-        // select that feels broken. Interact AFTER the contents so the clear
-        // `×` and the text field win their own clicks.
+        // select that feels broken. So the control takes every click inside
+        // itself and routes it: over the clear `×` it clears, anywhere else
+        // it toggles the menu.
         let control_rect = frame.response.rect;
         let control = ui.interact(control_rect, widget_id, Sense::click());
-        if control.clicked() && !out.cleared {
-            clicked_control = true;
-        }
         if control.hovered() && !open {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
 
-        if clicked_control {
-            if open {
-                self.state.close();
+        if control.clicked() {
+            if hovered_clear {
+                out.cleared = true;
+            } else if open {
+                state.close();
             } else {
-                self.state.open();
+                state.open();
                 ui.memory_mut(|m| m.request_focus(edit_id));
             }
         }
@@ -399,7 +417,7 @@ impl<'a> Select<'a> {
         // ── Keyboard ──────────────────────────────────────────────────────
         // `lost_focus()` too: a single-line TextEdit surrenders focus ON Enter,
         // which is the very keystroke that chooses a row.
-        if self.state.open {
+        if state.open {
             let focused = edit_response
                 .as_ref()
                 .is_some_and(|r| r.has_focus() || r.lost_focus());
@@ -413,25 +431,25 @@ impl<'a> Select<'a> {
                     )
                 });
                 if down && !filtered.is_empty() {
-                    self.state.highlight = (self.state.highlight + 1).min(filtered.len() - 1);
+                    state.highlight = (state.highlight + 1).min(filtered.len() - 1);
                 }
                 if up {
-                    self.state.highlight = self.state.highlight.saturating_sub(1);
+                    state.highlight = state.highlight.saturating_sub(1);
                 }
                 if enter {
-                    if let Some(option) = filtered.get(self.state.highlight) {
+                    if let Some(option) = filtered.get(state.highlight) {
                         out.chosen = Some(option.id.clone());
                     }
-                    self.state.close();
+                    state.close();
                 }
                 if esc {
-                    self.state.close();
+                    state.close();
                 }
             }
         }
 
         // ── Menu ──────────────────────────────────────────────────────────
-        if self.state.open {
+        if state.open {
             let menu_id = widget_id.with("menu");
             let menu = egui::Area::new(menu_id)
                 .order(egui::Order::Foreground)
@@ -463,7 +481,7 @@ impl<'a> Select<'a> {
                                         if menu_row(
                                             ui,
                                             option,
-                                            index == self.state.highlight,
+                                            index == state.highlight,
                                             selected,
                                         ) {
                                             picked = Some(option.id.clone());
@@ -477,19 +495,369 @@ impl<'a> Select<'a> {
 
             if let Some(id) = menu.inner {
                 out.chosen = Some(id);
-                self.state.close();
+                state.close();
             } else if ui.input(|i| i.pointer.any_click())
                 && !control.clicked()
                 && !menu.response.hovered()
             {
                 // Click-outside closes, the one behaviour every select has and
                 // whose absence makes a menu feel stuck.
-                self.state.close();
+                state.close();
             }
         }
 
+        state.store(ui, widget_id);
         out
     }
+}
+
+// ============================================================================
+// MultiSelect
+// ============================================================================
+
+#[derive(Debug, Clone, Default)]
+pub struct MultiSelectResponse {
+    /// An option id was added this frame.
+    pub added: Option<String>,
+    /// Index into `selected` whose chip was removed this frame.
+    pub removed: Option<usize>,
+    /// The clear-all `×` was pressed.
+    pub cleared: bool,
+}
+
+/// Many values, as removable chips inside one control.
+///
+/// react-select's multi mode, and the same box as [`Select`] — chips where the
+/// single value would be, the filter input trailing them, indicators on the
+/// right. The distinction that matters: **the menu only offers what is not
+/// already chosen**, so the option list shrinks as you pick, and picking
+/// something twice is not a state that exists.
+///
+/// The host owns the selection and applies the reported add/remove; this
+/// widget owns only the open/filter state, in temp memory like [`Select`].
+pub struct MultiSelect<'a> {
+    id_salt: egui::Id,
+    /// Ids currently selected, in the host's order.
+    selected: &'a [String],
+    options: &'a [SelectOption],
+    placeholder: &'a str,
+    empty_text: &'a str,
+    clearable: bool,
+    width: f32,
+}
+
+impl<'a> MultiSelect<'a> {
+    pub fn new(
+        id_salt: impl std::hash::Hash,
+        selected: &'a [String],
+        options: &'a [SelectOption],
+    ) -> Self {
+        Self {
+            id_salt: egui::Id::new(id_salt),
+            selected,
+            options,
+            placeholder: "Select…",
+            empty_text: "Nothing left to add",
+            clearable: true,
+            width: 320.0,
+        }
+    }
+
+    pub fn placeholder(mut self, placeholder: &'a str) -> Self {
+        self.placeholder = placeholder;
+        self
+    }
+
+    pub fn empty_text(mut self, empty_text: &'a str) -> Self {
+        self.empty_text = empty_text;
+        self
+    }
+
+    pub fn clearable(mut self, clearable: bool) -> Self {
+        self.clearable = clearable;
+        self
+    }
+
+    pub fn width(mut self, width: f32) -> Self {
+        self.width = width;
+        self
+    }
+
+    pub fn show(self, ui: &mut Ui) -> MultiSelectResponse {
+        install_phosphor_font(ui.ctx());
+        let mut out = MultiSelectResponse::default();
+        ui.style_mut().interaction.selectable_labels = false;
+
+        let widget_id = self.id_salt;
+        let edit_id = widget_id.with("edit");
+        let mut state = SelectState::load(ui, widget_id);
+
+        // Only what is NOT already selected, then narrowed by the filter.
+        let available: Vec<&SelectOption> = self
+            .options
+            .iter()
+            .filter(|o| !self.selected.iter().any(|s| *s == o.id))
+            .filter(|o| match state.query.trim() {
+                "" => true,
+                q => o.label.to_lowercase().contains(&q.to_lowercase()),
+            })
+            .collect();
+        if state.highlight >= available.len() {
+            state.highlight = available.len().saturating_sub(1);
+        }
+
+        let open = state.open;
+        let mut edit_response = None;
+        // Which chip's `×` the pointer is over, if any — the control's click
+        // is routed here rather than to opening the menu.
+        let mut hovered_remove: Option<usize> = None;
+
+        let frame = egui::Frame::new()
+            .fill(theme::BG_SECONDARY)
+            .corner_radius(6.0)
+            .stroke(theme::hairline(if open {
+                theme::ACCENT
+            } else {
+                theme::BORDER
+            }))
+            .inner_margin(Margin::symmetric(6, 4))
+            .show(ui, |ui| {
+                ui.set_width(self.width);
+                // `horizontal_wrapped`, not `horizontal`: a control holding
+                // eight chips has to grow downwards rather than off the edge.
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+                    ui.set_min_height(CONTROL_HEIGHT - 8.0);
+
+                    for (index, id) in self.selected.iter().enumerate() {
+                        // A chip shows the option's LABEL where one resolves,
+                        // and the raw id where it does not — the same honesty
+                        // as `Select`'s unresolved value, chip-sized.
+                        let option = self.options.iter().find(|o| o.id == *id);
+                        let label = option.map(|o| o.label.as_str()).unwrap_or(id.as_str());
+                        let known = option.is_some();
+                        if chip(ui, label, option.and_then(|o| o.swatch), known) {
+                            hovered_remove = Some(index);
+                        }
+                    }
+
+                    if open {
+                        let edit = egui::TextEdit::singleline(&mut state.query)
+                            .id(edit_id)
+                            .frame(egui::Frame::default())
+                            .desired_width(90.0)
+                            .hint_text(if self.selected.is_empty() {
+                                self.placeholder
+                            } else {
+                                ""
+                            })
+                            .text_color(theme::TEXT_PRIMARY);
+                        edit_response = Some(ui.add(edit));
+                    } else if self.selected.is_empty() {
+                        ui.colored_label(theme::TEXT_MUTED, self.placeholder);
+                    }
+                });
+            });
+
+        let control_rect = frame.response.rect;
+        let control = ui.interact(control_rect, widget_id, Sense::click());
+        if control.hovered() && !open {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if control.clicked() {
+            // A click over a chip's `×` removes it and does NOT also toggle
+            // the menu — otherwise deleting three chips is a fight with a
+            // dropdown that reopens under the cursor each time.
+            if let Some(index) = hovered_remove {
+                out.removed = Some(index);
+            } else if open {
+                state.close();
+            } else {
+                state.open();
+                ui.memory_mut(|m| m.request_focus(edit_id));
+            }
+        }
+
+        if state.open {
+            let focused = edit_response
+                .as_ref()
+                .is_some_and(|r| r.has_focus() || r.lost_focus());
+            if focused {
+                let (down, up, enter, esc, backspace) = ui.input_mut(|i| {
+                    (
+                        i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
+                        i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
+                        i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+                        i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
+                        i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace),
+                    )
+                });
+                if down && !available.is_empty() {
+                    state.highlight = (state.highlight + 1).min(available.len() - 1);
+                }
+                if up {
+                    state.highlight = state.highlight.saturating_sub(1);
+                }
+                if enter {
+                    if let Some(option) = available.get(state.highlight) {
+                        out.added = Some(option.id.clone());
+                        // Stay open and clear the filter: adding members is a
+                        // run of picks, not one. Closing after each would make
+                        // choosing five options five round trips.
+                        state.query.clear();
+                        state.highlight = 0;
+                    }
+                }
+                if esc {
+                    state.close();
+                }
+                // Backspace on an empty filter removes the last chip — the
+                // behaviour every tag input has, and the reason people type
+                // rather than reach for the mouse.
+                if backspace && state.query.is_empty() && !self.selected.is_empty() {
+                    out.removed = Some(self.selected.len() - 1);
+                }
+            }
+
+            let menu_id = widget_id.with("menu");
+            let menu = egui::Area::new(menu_id)
+                .order(egui::Order::Foreground)
+                .fixed_pos(egui::pos2(control_rect.min.x, control_rect.max.y + 4.0))
+                .show(ui.ctx(), |ui| {
+                    ui.style_mut().interaction.selectable_labels = false;
+                    egui::Frame::new()
+                        .fill(theme::BG_SECONDARY)
+                        .corner_radius(6.0)
+                        .stroke(theme::hairline(theme::BORDER))
+                        .inner_margin(Margin::same(4))
+                        .show(ui, |ui| {
+                            ui.set_width(control_rect.width());
+                            if available.is_empty() {
+                                ui.add_space(4.0);
+                                ui.colored_label(theme::TEXT_MUTED, self.empty_text);
+                                ui.add_space(4.0);
+                                return None;
+                            }
+                            let mut picked = None;
+                            egui::ScrollArea::vertical()
+                                .max_height(MENU_MAX_HEIGHT)
+                                .show(ui, |ui| {
+                                    for (index, option) in available.iter().enumerate() {
+                                        // Nothing in this menu is "selected" —
+                                        // selected options are not in it.
+                                        if menu_row(ui, option, index == state.highlight, false) {
+                                            picked = Some(option.id.clone());
+                                        }
+                                    }
+                                });
+                            picked
+                        })
+                        .inner
+                });
+
+            if let Some(id) = menu.inner {
+                out.added = Some(id);
+                state.query.clear();
+                state.highlight = 0;
+            } else if ui.input(|i| i.pointer.any_click())
+                && !control.clicked()
+                && !menu.response.hovered()
+            {
+                state.close();
+            }
+        }
+
+        // Clear-all sits OUTSIDE the box, after it: inside, among a row of
+        // per-chip `×`s, a control that discards all of them is a mis-click
+        // waiting to happen.
+        if self.clearable && !self.selected.is_empty() {
+            ui.horizontal(|ui| {
+                if ui
+                    .add(
+                        egui::Label::new(
+                            egui::RichText::new("clear all")
+                                .small()
+                                .color(theme::TEXT_MUTED),
+                        )
+                        .sense(Sense::click()),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                    .clicked()
+                {
+                    out.cleared = true;
+                }
+            });
+        }
+
+        state.store(ui, widget_id);
+        out
+    }
+}
+
+/// One removable chip inside a [`MultiSelect`].
+///
+/// Returns whether the pointer is over its `×` **right now** — not whether it
+/// was clicked. The control's own `interact` covers the whole box and is
+/// registered after these, so in egui's top-most-wins ordering it takes every
+/// click inside it; a chip that tested its own `clicked()` never fired, and
+/// pressing `×` merely reopened the menu. So hover decides *where* a click
+/// goes and the control decides *that* it happened.
+///
+/// `known` is false for a selected id with no matching option, which renders
+/// warning-tinted rather than vanishing.
+fn chip(ui: &mut Ui, label: &str, swatch: Option<Color32>, known: bool) -> bool {
+    let font = egui::FontId::proportional(12.0);
+    let fg = if known {
+        theme::TEXT_PRIMARY
+    } else {
+        theme::ACCENT_YELLOW
+    };
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_string(), font, fg);
+    let swatch_w = if swatch.is_some() { 14.0 } else { 0.0 };
+    let size = vec2(galley.size().x + swatch_w + 30.0, 20.0);
+    // `hover`, not `click` — see the doc comment: the control takes the click.
+    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+
+    ui.painter().rect_filled(rect, 3.0, theme::BG_HIGHLIGHT);
+    // A hairline so a chip reads as an object against the control's own fill;
+    // without it the two greys blur into one another and the chips look like
+    // text that happens to be shaded.
+    ui.painter().rect_stroke(
+        rect,
+        3.0,
+        theme::hairline(if known { theme::BORDER } else { theme::ACCENT_YELLOW }),
+        egui::StrokeKind::Inside,
+    );
+    let mut cursor = rect.min.x + 6.0;
+    if let Some(color) = swatch {
+        ui.painter()
+            .circle_filled(egui::pos2(cursor + 4.0, rect.center().y), 4.0, color);
+        cursor += swatch_w;
+    }
+    ui.painter().galley(
+        egui::pos2(cursor, rect.center().y - galley.size().y / 2.0),
+        galley,
+        fg,
+    );
+
+    // The `×` is its own hit target inside the chip, so clicking the label
+    // does not remove it — a chip is a value, not a button.
+    let x_rect =
+        egui::Rect::from_center_size(egui::pos2(rect.right() - 11.0, rect.center().y), vec2(16.0, 16.0));
+    let x_hovered = ui.rect_contains_pointer(x_rect);
+    ui.painter().text(
+        x_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        PhosphorIcon::X.as_str(),
+        egui::FontId::new(10.0, crate::icons::phosphor_family()),
+        if x_hovered { theme::ERROR } else { theme::TEXT_MUTED },
+    );
+    if x_hovered {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    x_hovered
 }
 
 /// One menu row. Returns true when chosen.
@@ -578,9 +946,8 @@ mod tests {
     /// still exists and still matches nobody.
     #[test]
     fn an_unresolved_value_renders_flagged_rather_than_empty() {
-        let mut state = SelectState::default();
         let opts = options();
-        let select = Select::new("s", &mut state, &opts).value_from_id("999", "role is gone");
+        let select = Select::new("s", &opts).value_from_id("999", "role is gone");
         let value = select.value.expect("a set id must render something");
         assert_eq!(value.label, "999", "the raw id, so the rule is still legible");
         assert_eq!(value.warning.as_deref(), Some("role is gone"));
@@ -588,9 +955,8 @@ mod tests {
 
     #[test]
     fn a_resolved_value_renders_as_its_label() {
-        let mut state = SelectState::default();
         let opts = options();
-        let select = Select::new("s", &mut state, &opts).value_from_id("2", "gone");
+        let select = Select::new("s", &opts).value_from_id("2", "gone");
         let value = select.value.expect("set");
         assert_eq!(value.label, "deckhand");
         assert!(value.warning.is_none());
@@ -599,10 +965,9 @@ mod tests {
     /// Empty is empty — not a warning about the empty string.
     #[test]
     fn an_empty_id_is_a_placeholder_not_a_warning() {
-        let mut state = SelectState::default();
         let opts = options();
         assert!(
-            Select::new("s", &mut state, &opts)
+            Select::new("s", &opts)
                 .value_from_id("  ", "gone")
                 .value
                 .is_none()

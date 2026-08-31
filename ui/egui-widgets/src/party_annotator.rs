@@ -36,6 +36,7 @@
 use egui::{Color32, Ui};
 
 use crate::party_badge::PartyBasis;
+use crate::select::{Select, SelectOption};
 use crate::{Chip, ChipVariant};
 
 /// Where a wallet sits relative to the project. Mirrors the app's stored
@@ -254,25 +255,33 @@ impl<'a> PartyAnnotator<'a> {
                     ui.label(egui::RichText::new(subject).strong());
                 }
                 {
-                    egui::ComboBox::from_id_salt("basis")
-                        .selected_text(
-                            egui::RichText::new(draft.basis.word())
-                                .small()
-                                .color(basis_color(draft.basis)),
-                        )
-                        .width(92.0)
-                        .show_ui(ui, |ui| {
-                            for b in [
-                                PartyBasis::Asserted,
-                                PartyBasis::Derived,
-                                PartyBasis::Observed,
-                            ] {
-                                if ui.selectable_label(draft.basis == b, b.word()).clicked() {
-                                    draft.basis = b;
-                                    changed = true;
-                                }
-                            }
-                        });
+                    // The basis is never empty — a claim always rests on
+                    // something — so this select is deliberately NOT
+                    // clearable, and its swatch carries the same colour
+                    // coding the rest of the form uses for basis.
+                    let bases = [
+                        PartyBasis::Asserted,
+                        PartyBasis::Derived,
+                        PartyBasis::Observed,
+                    ];
+                    let options: Vec<SelectOption> = bases
+                        .iter()
+                        .map(|b| {
+                            SelectOption::new(b.word(), b.word()).swatch(Some(basis_color(*b)))
+                        })
+                        .collect();
+                    let resp = Select::new("party_annotator_basis", &options)
+                        .value_from_id(draft.basis.word(), "unknown basis")
+                        .clearable(false)
+                        .width(140.0)
+                        .show(ui);
+                    if let Some(word) = resp.chosen
+                        && let Some(b) = bases.iter().find(|b| b.word() == word)
+                        && draft.basis != *b
+                    {
+                        draft.basis = *b;
+                        changed = true;
+                    }
                 }
             });
 

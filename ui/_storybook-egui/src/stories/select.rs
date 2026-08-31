@@ -5,17 +5,20 @@
 //! the fixed value column is that the `×` and `⌄` land in the same place on
 //! every row. The old three-loose-buttons row failed exactly there.
 
-use egui_widgets::select::{Select, SelectOption, SelectState};
+use egui_widgets::select::{MultiSelect, Select, SelectOption};
 use egui_widgets::theme;
 
+/// Note what is NOT in here: any `SelectState`. The control keeps its own
+/// open/filter state in egui temp memory, so a host holds only the VALUES —
+/// which is what made putting one in a loop practical.
 pub struct SelectStory {
     pub roles: Vec<SelectOption>,
-    pub tiers: Vec<(String, SelectState)>,
-    pub plain: SelectState,
+    pub tiers: Vec<String>,
     pub plain_value: String,
-    pub subtitled: SelectState,
     pub subtitled_value: String,
-    pub empty: SelectState,
+    /// Selected ids for the MultiSelect below — one already chosen, plus an
+    /// id with no matching option, which renders as a flagged chip.
+    pub members: Vec<String>,
     pub last: String,
 }
 
@@ -35,15 +38,16 @@ impl Default for SelectStory {
             // no longer exists — the case a select that blanks unknown values
             // would quietly destroy.
             tiers: vec![
-                ("1291038099278790738".to_string(), SelectState::default()),
-                ("1291038099278790999".to_string(), SelectState::default()),
-                ("999000111222333444".to_string(), SelectState::default()),
+                "1291038099278790738".to_string(),
+                "1291038099278790999".to_string(),
+                "999000111222333444".to_string(),
             ],
-            plain: SelectState::default(),
             plain_value: String::new(),
-            subtitled: SelectState::default(),
             subtitled_value: "https://api.x.ai/v1".to_string(),
-            empty: SelectState::default(),
+            members: vec![
+                "1291038099278790738".to_string(),
+                "555000111222333444".to_string(),
+            ],
             last: String::new(),
         }
     }
@@ -86,7 +90,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
     );
     ui.add_space(4.0);
     let roles = state.roles.clone();
-    let resp = Select::new("plain", &mut state.plain, &roles)
+    let resp = Select::new("plain", &roles)
         .value_from_id(&state.plain_value, "no such role in this guild")
         .placeholder("Select role…")
         .width(240.0)
@@ -111,7 +115,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
     );
     ui.add_space(4.0);
     let provider_options = providers();
-    let resp = Select::new("providers", &mut state.subtitled, &provider_options)
+    let resp = Select::new("providers", &provider_options)
         .value_from_id(&state.subtitled_value, "unknown endpoint")
         .placeholder("Select provider…")
         .width(280.0)
@@ -145,11 +149,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
         .num_columns(3)
         .spacing([12.0, 8.0])
         .show(ui, |ui| {
-            for (index, (value, tier_state)) in state.tiers.iter_mut().enumerate() {
+            for (index, value) in state.tiers.iter().enumerate() {
                 // `("tier", index)` — a constant salt here is what produced
                 // egui's "second use of widget ID" banner across the layout,
                 // because every row's control, popup and text field collided.
-                let resp = Select::new(("tier", index), tier_state, &roles)
+                let resp = Select::new(("tier", index), &roles)
                     .value_from_id(value, "no such role in this guild — it may have been deleted")
                     .placeholder("Select role…")
                     .width(220.0)
@@ -166,11 +170,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
             }
         });
     if let Some((index, id)) = chose {
-        state.tiers[index].0 = id;
+        state.tiers[index] = id;
         state.last = format!("row {index} chose a role");
     }
     if let Some(index) = cleared {
-        state.tiers[index].0.clear();
+        state.tiers[index].clear();
         state.last = format!("row {index} cleared");
     }
 
@@ -186,9 +190,44 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
         .color(theme::TEXT_MUTED),
     );
     ui.add_space(4.0);
-    Select::new("empty", &mut state.empty, &[])
+    Select::new("empty", &[])
         .placeholder("Select role…")
         .empty_text("No roles loaded yet")
         .width(240.0)
         .show(ui);
+
+    ui.add_space(20.0);
+    ui.strong("MultiSelect");
+    ui.label(
+        egui::RichText::new(
+            "The same control holding many values as removable chips. The menu offers only \
+             what is not already chosen, so it shrinks as you pick; Enter keeps it open for a \
+             run of picks; Backspace on an empty filter removes the last chip.",
+        )
+        .small()
+        .color(theme::TEXT_MUTED),
+    );
+    ui.add_space(6.0);
+
+    let resp = MultiSelect::new("multi", &state.members, &roles)
+        .placeholder("Add members…")
+        .empty_text("Every role is already a member")
+        .width(360.0)
+        .show(ui);
+    if let Some(id) = resp.added {
+        if !state.members.contains(&id) {
+            state.members.push(id);
+            state.last = "member added".into();
+        }
+    }
+    if let Some(index) = resp.removed {
+        if index < state.members.len() {
+            state.members.remove(index);
+            state.last = "member removed".into();
+        }
+    }
+    if resp.cleared {
+        state.members.clear();
+        state.last = "members cleared".into();
+    }
 }

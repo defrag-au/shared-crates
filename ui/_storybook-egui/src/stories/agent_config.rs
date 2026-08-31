@@ -14,7 +14,6 @@ use egui_widgets::agent_config::{
     agent_config_section, AgentConfigResponse, CredentialDraft, ProviderDraft,
 };
 use egui_widgets::theme;
-use egui_widgets::RolePickerState;
 use gateway_wiring::{AgentEntitlement, AgentTier, GuildRole, ProviderStatus};
 
 const NOW_MS: f64 = 1_780_000_000_000.0;
@@ -47,7 +46,6 @@ pub struct AgentConfigStory {
     pub provider: ProviderDraft,
     pub credential: CredentialDraft,
     pub agent: Option<AgentEntitlement>,
-    pub pickers: std::collections::HashMap<String, RolePickerState>,
     pub last: String,
 }
 
@@ -75,7 +73,6 @@ impl Default for AgentConfigStory {
                 ],
                 default_daily_tokens: 0,
             }),
-            pickers: std::collections::HashMap::new(),
             last: String::new(),
         }
     }
@@ -216,7 +213,6 @@ fn body(ui: &mut egui::Ui, state: &mut AgentConfigStory) {
         &mut state.credential,
         &mut state.agent,
         roles_slice,
-        &mut state.pickers,
         "story",
         NOW_MS,
     );
