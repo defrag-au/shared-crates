@@ -158,7 +158,7 @@ const MENU_ROW_HEIGHT: f32 = 28.0;
 const MENU_MAX_HEIGHT: f32 = 240.0;
 
 pub struct Select<'a> {
-    id_salt: &'a str,
+    id_salt: egui::Id,
     state: &'a mut SelectState,
     options: &'a [SelectOption],
     value: Option<SelectValue>,
@@ -169,13 +169,21 @@ pub struct Select<'a> {
 }
 
 impl<'a> Select<'a> {
+    /// `id_salt` is `impl Hash`, egui's own convention — so a row in a list
+    /// passes `("tier", index)` rather than a constant.
+    ///
+    /// It matters more here than for most widgets: this one owns a persistent
+    /// open/query/highlight state AND a floating `Area`. Two selects sharing a
+    /// salt collide on both, and egui paints its "first/second use of widget
+    /// ID" banner across the layout. Taking `impl Hash` instead of `&str`
+    /// makes the unique-per-instance case free rather than a `format!`.
     pub fn new(
-        id_salt: &'a str,
+        id_salt: impl std::hash::Hash,
         state: &'a mut SelectState,
         options: &'a [SelectOption],
     ) -> Self {
         Self {
-            id_salt,
+            id_salt: egui::Id::new(id_salt),
             state,
             options,
             value: None,
@@ -234,7 +242,10 @@ impl<'a> Select<'a> {
         // labels put an I-beam over the click target and fight it.
         ui.style_mut().interaction.selectable_labels = false;
 
-        let widget_id = ui.make_persistent_id(self.id_salt);
+        // `Id::new(salt)` directly, NOT `ui.make_persistent_id` — the latter
+        // mixes in the parent `Ui`'s id, and sibling cells of a `Grid` share
+        // one, so two rows with different salts could still collide.
+        let widget_id = self.id_salt;
         let edit_id = widget_id.with("edit");
 
         // Options matching the current filter. Filtering lives here rather
@@ -441,14 +452,19 @@ impl<'a> Select<'a> {
                                 return None;
                             }
                             let mut picked = None;
+                            let chosen_label =
+                                self.value.as_ref().map(|v| v.label.as_str());
                             egui::ScrollArea::vertical()
                                 .max_height(MENU_MAX_HEIGHT)
                                 .show(ui, |ui| {
                                     for (index, option) in filtered.iter().enumerate() {
+                                        let selected =
+                                            chosen_label == Some(option.label.as_str());
                                         if menu_row(
                                             ui,
                                             option,
                                             index == self.state.highlight,
+                                            selected,
                                         ) {
                                             picked = Some(option.id.clone());
                                         }
@@ -477,7 +493,12 @@ impl<'a> Select<'a> {
 }
 
 /// One menu row. Returns true when chosen.
-fn menu_row(ui: &mut Ui, option: &SelectOption, highlighted: bool) -> bool {
+///
+/// `highlighted` is the keyboard cursor; `selected` is the value already held.
+/// They are different things and look different: the cursor is a background,
+/// the selection is a tick. Conflating them means arrowing past the current
+/// value makes it appear to change.
+fn menu_row(ui: &mut Ui, option: &SelectOption, highlighted: bool, selected: bool) -> bool {
     let height = match option.subtitle {
         Some(_) => MENU_ROW_HEIGHT + 12.0,
         None => MENU_ROW_HEIGHT,
@@ -496,7 +517,18 @@ fn menu_row(ui: &mut Ui, option: &SelectOption, highlighted: bool) -> bool {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
 
-    let mut cursor = rect.min.x + 8.0;
+    // A tick reserves its column whether or not it is drawn, so labels do not
+    // shift sideways as the selection moves.
+    if selected {
+        ui.painter().text(
+            egui::pos2(rect.min.x + 8.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            PhosphorIcon::Check.as_str(),
+            egui::FontId::new(12.0, crate::icons::phosphor_family()),
+            theme::ACCENT,
+        );
+    }
+    let mut cursor = rect.min.x + 26.0;
     if let Some(color) = option.swatch {
         ui.painter().circle_filled(
             egui::pos2(cursor + 4.0, rect.center().y),

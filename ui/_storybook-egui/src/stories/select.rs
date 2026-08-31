@@ -15,6 +15,7 @@ pub struct SelectStory {
     pub plain_value: String,
     pub subtitled: SelectState,
     pub subtitled_value: String,
+    pub empty: SelectState,
     pub last: String,
 }
 
@@ -42,6 +43,7 @@ impl Default for SelectStory {
             plain_value: String::new(),
             subtitled: SelectState::default(),
             subtitled_value: "https://api.x.ai/v1".to_string(),
+            empty: SelectState::default(),
             last: String::new(),
         }
     }
@@ -144,7 +146,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
         .spacing([12.0, 8.0])
         .show(ui, |ui| {
             for (index, (value, tier_state)) in state.tiers.iter_mut().enumerate() {
-                let resp = Select::new("tier", tier_state, &roles)
+                // `("tier", index)` — a constant salt here is what produced
+                // egui's "second use of widget ID" banner across the layout,
+                // because every row's control, popup and text field collided.
+                let resp = Select::new(("tier", index), tier_state, &roles)
                     .value_from_id(value, "no such role in this guild — it may have been deleted")
                     .placeholder("Select role…")
                     .width(220.0)
@@ -172,8 +177,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
     ui.add_space(16.0);
     ui.strong("Empty option set");
     ui.label(
-        egui::RichText::new("Filter to something that matches nothing to see the menu's empty state.")
-            .small()
-            .color(theme::TEXT_MUTED),
+        egui::RichText::new(
+            "No options at all — a roster that has not loaded yet. Opening it should say so \
+             rather than show an empty box. (Typing a filter that matches nothing in the \
+             selects above reaches the same state.)",
+        )
+        .small()
+        .color(theme::TEXT_MUTED),
     );
+    ui.add_space(4.0);
+    Select::new("empty", &mut state.empty, &[])
+        .placeholder("Select role…")
+        .empty_text("No roles loaded yet")
+        .width(240.0)
+        .show(ui);
 }
