@@ -1,6 +1,8 @@
 pub mod about_modal;
 pub mod access_gate;
 pub mod activity_feed;
+pub mod agent_config;
+pub mod select;
 pub mod aliens_fixture;
 pub mod asset_card;
 pub mod async_data;
@@ -12,13 +14,12 @@ pub mod capital_flow;
 pub mod card_browser;
 pub mod collection_list;
 pub mod command_palette;
+pub mod conversation_history;
 pub mod coverage_lanes;
 pub mod distribution;
 pub mod distribution_waterfall;
 pub mod error_note;
-pub mod conversation_history;
 pub mod event_wiring;
-pub mod wiring_editor;
 pub mod flip_counter;
 pub mod flow_ledger;
 pub mod flow_matrix;
@@ -70,6 +71,7 @@ pub mod typeahead_search;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
 pub mod wallet_editor;
+pub mod wiring_editor;
 pub mod wrt_fixture;
 
 // DEX split swap widgets

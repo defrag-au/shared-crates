@@ -105,7 +105,7 @@ fn fixture_bindings() -> Vec<EventBinding> {
         variants: Vec::new(),
     });
     ahoy.insert_action(WiredAction::React {
-        emoji: "⚓".into(),
+        emoji: "⚓".into()
     });
 
     let mention = EventBinding::new_mention("b-mention".into());

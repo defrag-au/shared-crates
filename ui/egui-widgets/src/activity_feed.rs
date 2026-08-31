@@ -233,6 +233,8 @@ pub struct ActivityFeed<'a> {
     show_day_headers: bool,
     max_pills: usize,
     walkable: bool,
+    marked: Option<usize>,
+    scroll_to: Option<usize>,
 }
 
 impl<'a> ActivityFeed<'a> {
@@ -246,7 +248,35 @@ impl<'a> ActivityFeed<'a> {
             show_day_headers: true,
             max_pills: MAX_PILLS,
             walkable: false,
+            marked: None,
+            scroll_to: None,
         }
+    }
+
+    /// Draw this card as the one under discussion.
+    ///
+    /// For a selection made somewhere OTHER than the feed — a detail panel
+    /// opened from a link, or from the stave. Without it the panel talks about
+    /// a transaction the reader cannot pick out of the list, which is the same
+    /// problem as not scrolling to it: the card is present but anonymous.
+    ///
+    /// Persistent, unlike [`Self::scroll_to`]: it marks for as long as the
+    /// selection stands.
+    pub fn marked(mut self, index: Option<usize>) -> Self {
+        self.marked = index;
+        self
+    }
+
+    /// Bring this card into view, this frame.
+    ///
+    /// **One-shot, and the caller owns the "once".** Passing `Some` on every
+    /// frame would pin the scroll position and the reader could never move
+    /// away from it — so the host is expected to clear this after the frame
+    /// that used it. Separated from [`Self::marked`] for exactly that reason:
+    /// the two look like one feature and have opposite lifetimes.
+    pub fn scroll_to(mut self, index: Option<usize>) -> Self {
+        self.scroll_to = index;
+        self
     }
 
     /// Is the counterparty somewhere the reader can GO?
@@ -297,7 +327,16 @@ impl<'a> ActivityFeed<'a> {
                 ui.add_space(2.0);
                 last_day = Some(day);
             }
-            match self.card(ui, entry, &stamp) {
+            let marked = self.marked == Some(i);
+            let (hit, rect) = self.card(ui, entry, &stamp, marked);
+            // Scrolled AFTER the card is laid out, so there is a real rect to
+            // aim at. `Align::Center` rather than `Min`: a transaction arrived
+            // at from a link wants its neighbours visible — what came before
+            // and after it is most of why somebody sent the link.
+            if self.scroll_to == Some(i) {
+                ui.scroll_to_rect(rect, Some(egui::Align::Center));
+            }
+            match hit {
                 Hit::Card => resp.clicked = Some(i),
                 Hit::Party => resp.walk = Some(i),
                 Hit::Miss => {}
@@ -307,8 +346,15 @@ impl<'a> ActivityFeed<'a> {
         resp
     }
 
-    /// One card. Returns what the click landed on, if anything.
-    fn card(&self, ui: &mut Ui, entry: &ActivityEntry<'_>, stamp: &str) -> Hit {
+    /// One card. Returns what the click landed on, and where the card ended
+    /// up — the rect is what [`Self::scroll_to`] aims at.
+    fn card(
+        &self,
+        ui: &mut Ui,
+        entry: &ActivityEntry<'_>,
+        stamp: &str,
+        marked: bool,
+    ) -> (Hit, egui::Rect) {
         // Where the counterparty ended up, so the click below can tell "open
         // this transaction" from "go to that wallet". Set inside the frame,
         // read outside it — see the interact block at the end.
@@ -472,11 +518,24 @@ impl<'a> ActivityFeed<'a> {
             }
             (None, false) => {}
         }
-        match (response.clicked(), on_party) {
+        // THE MARK, painted last so it survives the hover stroke above rather
+        // than being overdrawn by it. A selection made elsewhere has to stay
+        // visible while the pointer moves over other cards — that is the whole
+        // situation it exists for.
+        if marked {
+            ui.painter().rect_stroke(
+                inner.response.rect,
+                CornerRadius::same(8),
+                Stroke::new(2.0_f32, theme::ACCENT_CYAN),
+                egui::StrokeKind::Inside,
+            );
+        }
+        let hit = match (response.clicked(), on_party) {
             (false, _) => Hit::Miss,
             (true, true) => Hit::Party,
             (true, false) => Hit::Card,
-        }
+        };
+        (hit, inner.response.rect)
     }
 
     /// The counterparty on the time line. Returns the rect it claimed, which

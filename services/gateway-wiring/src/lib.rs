@@ -441,6 +441,140 @@ impl std::fmt::Display for WiredAction {
     }
 }
 
+/// One way to reach a model, as offered in the admin UI.
+///
+/// A **preset, not an enum on the wire.** What gets stored is a `base_url`
+/// and a `model` string, because the platform accepts any OpenAI-compatible
+/// endpoint and an allow-list would be a list to maintain against a market
+/// that adds a provider a month. These exist so the common cases are one
+/// click instead of a URL someone has to look up and can typo.
+pub struct ProviderPreset {
+    pub label: &'static str,
+    pub base_url: &'static str,
+    /// A model known to exist there — a starting point, freely editable.
+    pub default_model: &'static str,
+    /// Where the reader goes to get a key. The one thing they need next and
+    /// the one thing we cannot give them.
+    pub keys_url: &'static str,
+}
+
+/// The presets offered, in presentation order.
+///
+/// Not exhaustive by design — "Custom" is a first-class choice, and a
+/// provider absent from this list is a UI gap, never a blocked configuration.
+pub fn provider_presets() -> [ProviderPreset; 3] {
+    [
+        ProviderPreset {
+            label: "x.ai",
+            base_url: "https://api.x.ai/v1",
+            default_model: "grok-4.3",
+            keys_url: "https://console.x.ai",
+        },
+        ProviderPreset {
+            label: "OpenAI",
+            base_url: "https://api.openai.com/v1",
+            default_model: "gpt-4.1",
+            keys_url: "https://platform.openai.com/api-keys",
+        },
+        ProviderPreset {
+            label: "DeepSeek",
+            base_url: "https://api.deepseek.com",
+            default_model: "deepseek-chat",
+            keys_url: "https://platform.deepseek.com/api_keys",
+        },
+    ]
+}
+
+/// The preset a stored `base_url` corresponds to, if any. `None` means the
+/// admin typed their own, which is a supported state rather than an error.
+pub fn preset_for_base_url(base_url: &str) -> Option<ProviderPreset> {
+    let trimmed = base_url.trim_end_matches('/');
+    provider_presets()
+        .into_iter()
+        .find(|p| p.base_url.trim_end_matches('/') == trimmed)
+}
+
+/// What an admin surface may know about a stored credential.
+///
+/// **Everything here is metadata.** The secret itself is write-only: it goes
+/// in via an action and never comes back, not even to the admin who typed it
+/// — see the module docs on why a credential must not ride `GuildWiring`.
+/// This type exists precisely so a screen can be useful about a key
+/// ("is one set? which? still working?") without the key being on it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProviderStatus {
+    pub base_url: String,
+    pub model: String,
+    /// Last few characters only, already masked by the SERVER. A full key
+    /// must never cross the wire for a renderer to truncate — see
+    /// [`mask_key`].
+    pub masked_key: String,
+    /// Unix ms the credential was set or last replaced.
+    pub set_at_ms: f64,
+    /// Unix ms it last answered a question. `None` = never used, which for a
+    /// freshly-set key is the ordinary state and for an old one is a symptom.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_used_ms: Option<f64>,
+    /// The provider's own last error, when the last attempt failed. Shown to
+    /// the admin ONLY — members get a canned line that says nothing about
+    /// billing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+}
+
+/// How much of a key may be shown: enough to tell two keys apart, never
+/// enough to use one.
+const KEY_TAIL: usize = 4;
+
+/// Mask a provider key for display — `sk-proj-abc…4f2c`.
+///
+/// Applied at the BOUNDARY, where the plaintext already is; the masked form
+/// is what gets stored in [`ProviderStatus`] and sent to admins. A renderer
+/// that received a whole key and truncated it would have already lost.
+///
+/// Short or malformed input degrades to all-mask rather than leaking a
+/// prefix: a key too short to mask safely is far more likely a paste error
+/// than a real credential, and echoing it teaches the wrong habit.
+pub fn mask_key(key: &str) -> String {
+    let key = key.trim();
+    // The vendor prefix only exists if there IS a separator — without one the
+    // whole string would masquerade as a prefix and mask itself away.
+    let prefix = key.find('-').map(|i| &key[..i]).unwrap_or("");
+    // Enough left over that prefix + tail cannot reconstitute the middle.
+    if key.chars().count() < prefix.chars().count() + KEY_TAIL + 4 {
+        return "…".to_string();
+    }
+    let tail: String = {
+        let mut t: Vec<char> = key.chars().rev().take(KEY_TAIL).collect();
+        t.reverse();
+        t.into_iter().collect()
+    };
+    if prefix.is_empty() {
+        format!("…{tail}")
+    } else {
+        format!("{prefix}-…{tail}")
+    }
+}
+
+/// What is wrong with a provider configuration, in the admin's words.
+///
+/// Pure, so "would this save be usable" is answerable without a round trip
+/// to a provider — and the same answers appear on both surfaces.
+pub fn provider_problems(base_url: &str, model: &str) -> Vec<String> {
+    let mut problems = Vec::new();
+    let url = base_url.trim();
+    if url.is_empty() {
+        problems.push("no API base URL".to_string());
+    } else if !url.starts_with("https://") {
+        // Not pedantry: the key travels on this URL.
+        problems.push("the base URL must start with https://".to_string());
+    }
+    if model.trim().is_empty() {
+        problems.push("no model named".to_string());
+    }
+    problems
+}
+
 /// Per-user pacing a new mention binding starts with.
 ///
 /// Every other action costs a render at most; `Ask` costs a model call, so an
@@ -776,6 +910,53 @@ mod tests {
             role: role.to_string(),
             daily_tokens,
         }
+    }
+
+    /// A mask must identify a key without helping anyone use it, and must
+    /// not leak a prefix from something too short to mask safely.
+    #[test]
+    fn a_masked_key_identifies_without_revealing() {
+        assert_eq!(mask_key("sk-proj-abcdefghijklmnop4f2c"), "sk-…4f2c");
+        assert_eq!(mask_key("  sk-proj-abcdefghijklmnop4f2c  "), "sk-…4f2c");
+        // No dash: still masked, just without a prefix to show.
+        assert_eq!(mask_key("abcdefghijklmnopqrst"), "…qrst");
+
+        // Too short to mask safely — reveal nothing rather than most of it.
+        assert_eq!(mask_key("sk-abc"), "…");
+        assert_eq!(mask_key(""), "…");
+        for short in ["a", "sk-", "sk-1", "1234567"] {
+            assert!(
+                !mask_key(short).contains("1234"),
+                "{short:?} leaked through the mask"
+            );
+        }
+    }
+
+    /// The key travels on the base URL, so plain http is a defect the admin
+    /// is told about before saving rather than after.
+    #[test]
+    fn provider_problems_catch_an_unusable_config() {
+        assert!(provider_problems("https://api.x.ai/v1", "grok-4.3").is_empty());
+
+        assert_eq!(provider_problems("", "grok-4.3").len(), 1);
+        assert_eq!(provider_problems("https://api.x.ai/v1", "  ").len(), 1);
+        assert!(provider_problems("http://api.x.ai/v1", "grok-4.3")[0].contains("https://"));
+        // Both wrong reports both, rather than stopping at the first.
+        assert_eq!(provider_problems("", "").len(), 2);
+    }
+
+    /// A stored base URL resolves back to the preset that produced it, so
+    /// reopening the editor shows the provider rather than "Custom".
+    #[test]
+    fn a_stored_base_url_resolves_to_its_preset() {
+        assert_eq!(preset_for_base_url("https://api.x.ai/v1").unwrap().label, "x.ai");
+        // A trailing slash is the same endpoint.
+        assert_eq!(
+            preset_for_base_url("https://api.x.ai/v1/").unwrap().label,
+            "x.ai"
+        );
+        // An endpoint we don't ship a preset for is Custom, not an error.
+        assert!(preset_for_base_url("https://llm.example.com/v1").is_none());
     }
 
     /// The billed shape, not the totals — and each qualifier absent when

@@ -124,7 +124,48 @@ pub fn show(ui: &mut egui::Ui) {
             .tx_id("c04e91a7f3b28d56091e7a4c2b8f5d31"),
     ];
 
-    let resp = ActivityFeed::new(&entries, &ada).walkable(true).show(ui);
+    // MARKED AND SCROLLED-TO — the deep-link case.
+    //
+    // A selection made somewhere OTHER than the feed: a link that named one
+    // transaction, or a pick off the stave. Both halves are needed and they
+    // are easy to mistake for one feature. Without the MARK the detail panel
+    // describes a card the reader cannot pick out of the list; without the
+    // SCROLL the card may be hundreds of rows down and never comes into view.
+    //
+    // Note the opposite lifetimes, which is why they are separate builders:
+    // the mark persists for as long as the selection stands, while the scroll
+    // is spent by the frame that serves it. The button below models the host's
+    // job — request once, and let it be consumed. Holding `scroll_to` every
+    // frame would pin the viewport and the reader could never look away.
+    let marked_id = ui.id().with("activity_feed_marked");
+    let scroll_id = ui.id().with("activity_feed_scroll");
+    let mut marked: Option<usize> = ui.data(|d| d.get_temp(marked_id)).unwrap_or(None);
+    let scroll_to: Option<usize> = ui
+        .data_mut(|d| d.remove_temp_returning(scroll_id))
+        .flatten();
+
+    ui.horizontal(|ui| {
+        if ui.button("open card 4 from a link").clicked() {
+            marked = Some(4);
+            ui.data_mut(|d| d.insert_temp(scroll_id, Some(4usize)));
+        }
+        if marked.is_some() && ui.button("clear").clicked() {
+            marked = None;
+        }
+    });
+    ui.add_space(8.0);
+
+    let resp = ActivityFeed::new(&entries, &ada)
+        .walkable(true)
+        .marked(marked)
+        .scroll_to(scroll_to)
+        .show(ui);
+    // A click in the feed moves the mark too, so the two selection routes
+    // agree — a card opened by hand looks the same as one opened by a link.
+    if let Some(i) = resp.clicked {
+        marked = Some(i);
+    }
+    ui.data_mut(|d| d.insert_temp(marked_id, marked));
     ui.add_space(8.0);
     match (resp.clicked, resp.walk) {
         // The party wins the click it is under, so these can never both be

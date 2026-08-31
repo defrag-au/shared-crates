@@ -121,6 +121,8 @@ mod app {
         EventWiring,
         WiringEditor,
         ConversationHistory,
+        AgentConfig,
+        Select,
         UiMachine,
         NamedGroupList,
         RarityTargetEditor,
@@ -179,6 +181,8 @@ mod app {
                 Self::EventWiring,
                 Self::WiringEditor,
                 Self::ConversationHistory,
+                Self::AgentConfig,
+                Self::Select,
                 Self::UiMachine,
                 Self::NamedGroupList,
                 Self::RarityTargetEditor,
@@ -398,6 +402,8 @@ mod app {
                 Self::EventWiring => "Event Wiring",
                 Self::WiringEditor => "Wiring Editor",
                 Self::ConversationHistory => "Conversation History",
+                Self::AgentConfig => "Agent Config",
+                Self::Select => "Select",
                 Self::UiMachine => "Machine",
                 Self::NamedGroupList => "Named Group List",
                 Self::RarityTargetEditor => "Rarity Target Editor",
@@ -453,6 +459,8 @@ mod app {
                 | Self::EventWiring
                 | Self::WiringEditor
                 | Self::ConversationHistory
+                | Self::AgentConfig
+                | Self::Select
                 | Self::UiMachine
                 | Self::NamedGroupList
                 | Self::RarityTargetEditor
@@ -805,6 +813,12 @@ mod app {
                 Self::ConversationHistory => {
                     "What was said, what the bot worked out, what it answered — misses with their reason, failed tool steps, dropped traces, and the billed token shape"
                 }
+                Self::AgentConfig => {
+                    "Bring-your-own-key agent setup: provider presets, a write-only credential shown only as masked metadata, and per-role daily token budgets"
+                }
+                Self::Select => {
+                    "react-select-shaped single select: one bordered control (value · clear · separator · chevron), floating filtered menu, keyboard nav, and values whose option no longer exists rendered flagged rather than blank"
+                }
                 Self::UiMachine => {
                     "Plain-enum UI state with entry-frame detection + frame-TTL auto-revert — replaces the dirty/pending/flash boolean trio with one matchable state"
                 }
@@ -947,6 +961,8 @@ mod app {
         event_wiring_state: stories::event_wiring::EventWiringState,
         wiring_editor_state: stories::wiring_editor::WiringEditorStory,
         conversation_history_state: stories::conversation_history::ConversationHistoryStory,
+        agent_config_state: stories::agent_config::AgentConfigStory,
+        select_state: stories::select::SelectStory,
         machine_state: stories::machine::MachineState,
         named_group_list_state: stories::named_group_list::NamedGroupListState,
         rarity_target_editor_state: stories::rarity_target_editor::RarityTargetEditorState,
@@ -1070,6 +1086,8 @@ mod app {
                 wiring_editor_state: stories::wiring_editor::WiringEditorStory::default(),
                 conversation_history_state:
                     stories::conversation_history::ConversationHistoryStory::default(),
+                agent_config_state: stories::agent_config::AgentConfigStory::default(),
+                select_state: stories::select::SelectStory::default(),
                 machine_state: stories::machine::MachineState::default(),
                 named_group_list_state: stories::named_group_list::NamedGroupListState::default(),
                 rarity_target_editor_state:
@@ -1477,6 +1495,12 @@ mod app {
                                 ui,
                                 &mut self.conversation_history_state,
                             ),
+                            Story::AgentConfig => {
+                                stories::agent_config::show(ui, &mut self.agent_config_state)
+                            }
+                            Story::Select => {
+                                stories::select::show(ui, &mut self.select_state)
+                            }
                             Story::UiMachine => stories::machine::show(ui, &mut self.machine_state),
                             Story::NamedGroupList => stories::named_group_list::show(
                                 ui,

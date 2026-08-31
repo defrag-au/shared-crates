@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-118 widgets.
+120 widgets.
 
 | module | what it is |
 |---|---|
@@ -13,6 +13,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `access_gate` | `AccessGate` — the app-level access screen: a "sign in" prompt for anonymous visitors and a "requirements" screen (what to join to gain access) for signed-in-but-unqualified users |
 | `activity_feed` | `ActivityFeed` — a wallet's transactions as day-grouped cards: what it was, who it was with, what moved, and what it cost |
 | `activity_lanes` | `ActivityLanes` — one thin lane per party, showing WHEN it acted, under the shared spine |
+| `agent_config` | `agent_config` — who answers, on whose key, for whom, and how much (feature `gateway`) |
 | `amount_input` | ADA amount input widget with preset buttons and validation |
 | `animated_counter` | AnimatedCounter — smoothly interpolates a numeric value between snapshots |
 | `arrival_field` | ArrivalField — every asset a dot, every holder a pile, and now they MOVE |
@@ -92,6 +93,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `relative_time` | `RelativeTime` — a tiny auto-scaling "time ago" label |
 | `role_picker` | `RolePicker` — choose a Discord role by name instead of pasting a snowflake |
 | `route_summary` | Route summary widget — compact display of split routing results |
+| `select` | `Select` — a single-select control with the anatomy of a real select |
 | `service_banner` | `ServiceBanner` — a persistent strip saying the backend is not currently whole, in the operator's own words |
 | `seven_segment` | SevenSegmentDisplay — retro LED-style numeric display |
 | `signing_status` | Signing status widget — concurrent signing checklist for the trade desk |

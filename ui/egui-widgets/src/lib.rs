@@ -5,6 +5,8 @@ pub mod about_modal;
 pub mod access_gate;
 pub mod activity_feed;
 pub mod activity_lanes;
+#[cfg(feature = "gateway")]
+pub mod agent_config;
 pub mod animated_counter;
 pub mod arrival_field;
 pub mod asset_card;
@@ -21,15 +23,13 @@ pub mod claim_card;
 pub mod collection_composition;
 pub mod collection_list;
 pub mod command_palette;
+#[cfg(feature = "gateway")]
+pub mod conversation_history;
 pub mod detail_split;
 pub mod distribution_waterfall;
 pub mod donut_chart;
 pub mod error_note;
 pub mod event_wiring;
-#[cfg(feature = "gateway")]
-pub mod conversation_history;
-#[cfg(feature = "gateway")]
-pub mod wiring_editor;
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
 pub mod flip_counter;
@@ -79,6 +79,7 @@ pub mod relationship_editor;
 pub mod relative_time;
 pub mod role_picker;
 pub mod screenshot;
+pub mod select;
 pub mod selection;
 pub mod service_banner;
 pub mod seven_segment;
@@ -110,6 +111,8 @@ pub mod wallet_identity_header;
 pub mod wallet_list;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet_mock;
+#[cfg(feature = "gateway")]
+pub mod wiring_editor;
 
 // Image text editor (feature-gated)
 #[cfg(feature = "image-editor")]

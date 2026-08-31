@@ -99,7 +99,9 @@ pub fn conversation_header(ui: &mut Ui, entries: &[RecentActivity], state: &mut 
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.checkbox(&mut state.misses_only, "misses only")
-                .on_hover_text("Only messages that triggered nothing — the \"why didn't it work\" view");
+                .on_hover_text(
+                    "Only messages that triggered nothing — the \"why didn't it work\" view",
+                );
         });
     });
     ui.add_space(4.0);
@@ -145,6 +147,8 @@ pub fn conversation_list(
 
 /// One turn: the request, the working out, the answer.
 pub fn conversation_turn(ui: &mut Ui, entry: &RecentActivity, now_ms: f64) -> HistoryResponse {
+    // The family has to exist before a `FontId` can name it.
+    crate::icons::install_phosphor_font(ui.ctx());
     let mut response = HistoryResponse::default();
 
     // Level 1 — what someone actually asked.
@@ -158,10 +162,8 @@ pub fn conversation_turn(ui: &mut Ui, entry: &RecentActivity, now_ms: f64) -> Hi
         ui.colored_label(color, mark);
         if ui
             .add(
-                egui::Label::new(
-                    egui::RichText::new(&entry.author).color(theme::TEXT_MUTED),
-                )
-                .sense(egui::Sense::click()),
+                egui::Label::new(egui::RichText::new(&entry.author).color(theme::TEXT_MUTED))
+                    .sense(egui::Sense::click()),
             )
             .on_hover_text("filter to this person")
             .clicked()
@@ -223,14 +225,17 @@ pub fn conversation_turn(ui: &mut Ui, entry: &RecentActivity, now_ms: f64) -> Hi
         }
 
         if let Some(note) = &trace.note {
-            // `PhosphorIcon::Warning`, not U+26A0 — the default font renders
-            // that as tofu, which is why this crate has a test for it. The
-            // standalone admin shipped the bare glyph for months; lifting the
-            // code into a crate that checks was how it surfaced.
-            ui.colored_label(
-                theme::ACCENT_YELLOW,
-                format!("{}  {note}", crate::PhosphorIcon::Warning.as_str()),
-            );
+            // `PhosphorIcon`, not U+26A0 — the default font renders that as
+            // tofu, which is why this crate has a test for it.
+            //
+            // And `rich_text`, not `as_str`: Phosphor is its own FAMILY, so
+            // the bare codepoint in a normal label is tofu of a second kind
+            // that no test catches. The denylist checks which characters you
+            // use; nothing checks which font you asked for.
+            ui.horizontal(|ui| {
+                ui.label(crate::PhosphorIcon::Warning.rich_text(13.0, theme::ACCENT_YELLOW));
+                ui.colored_label(theme::ACCENT_YELLOW, note);
+            });
         }
 
         // Level 3 — what it said back.

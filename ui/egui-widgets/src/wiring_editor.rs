@@ -18,12 +18,12 @@
 
 use egui::Ui;
 use gateway_wiring::{
-    text_to_variants, variants_to_text, AgentEntitlement, AgentMode, EventBinding, EventSource,
-    GuildRole, RenderStyle, WiredAction,
+    AgentEntitlement, AgentMode, EventBinding, EventSource, GuildRole, RenderStyle, WiredAction,
+    text_to_variants, variants_to_text,
 };
 
 use crate::event_wiring::{ActionCardVm, EventNodeVm, EventWiring};
-use crate::{theme, PhosphorIcon};
+use crate::{PhosphorIcon, theme};
 
 /// Cross-frame editor state. The caller holds one per editor and resets it
 /// when the draft it refers to is reloaded (indices go stale with the draft).
@@ -148,8 +148,7 @@ pub fn bindings_editor(
             state.config_open = if expanded_index == Some(i) {
                 None
             } else {
-                if let Some(WiredAction::RandomOwnedAsset { variants, .. }) =
-                    binding.actions.get(i)
+                if let Some(WiredAction::RandomOwnedAsset { variants, .. }) = binding.actions.get(i)
                 {
                     state.variants_draft = variants_to_text(variants);
                 }
@@ -244,7 +243,11 @@ fn action_card_vm(binding_id: &str, i: usize, action: &WiredAction) -> ActionCar
 /// `EventWiring::expanded` closure). Returns true when anything changed.
 /// Fits the widened card by design; if an action's config ever outgrows it,
 /// push that action to a centred `egui::Modal` instead of growing the card.
-fn render_action_config(ui: &mut Ui, action: &mut WiredAction, variants_draft: &mut String) -> bool {
+fn render_action_config(
+    ui: &mut Ui,
+    action: &mut WiredAction,
+    variants_draft: &mut String,
+) -> bool {
     let mut dirty = false;
     match action {
         WiredAction::Ask {} => {
