@@ -119,6 +119,8 @@ mod app {
         RelationshipEditor,
         CommandPalette,
         EventWiring,
+        WiringEditor,
+        ConversationHistory,
         UiMachine,
         NamedGroupList,
         RarityTargetEditor,
@@ -175,6 +177,8 @@ mod app {
                 Self::RelationshipEditor,
                 Self::CommandPalette,
                 Self::EventWiring,
+                Self::WiringEditor,
+                Self::ConversationHistory,
                 Self::UiMachine,
                 Self::NamedGroupList,
                 Self::RarityTargetEditor,
@@ -392,6 +396,8 @@ mod app {
                 Self::RelationshipEditor => "Relationship Editor",
                 Self::CommandPalette => "Command Palette",
                 Self::EventWiring => "Event Wiring",
+                Self::WiringEditor => "Wiring Editor",
+                Self::ConversationHistory => "Conversation History",
                 Self::UiMachine => "Machine",
                 Self::NamedGroupList => "Named Group List",
                 Self::RarityTargetEditor => "Rarity Target Editor",
@@ -445,6 +451,8 @@ mod app {
                 | Self::RelationshipEditor
                 | Self::CommandPalette
                 | Self::EventWiring
+                | Self::WiringEditor
+                | Self::ConversationHistory
                 | Self::UiMachine
                 | Self::NamedGroupList
                 | Self::RarityTargetEditor
@@ -791,6 +799,12 @@ mod app {
                 Self::EventWiring => {
                     "One event node wired to its action cards — pattern chips fire it, the '+ action' port opens the palette. The gateway admin's IFTTT editor"
                 }
+                Self::WiringEditor => {
+                    "The composed binding editor both gateway surfaces mount: VM mapping, action config, add/remove drain. Toggle the host to check it survives the portal's scrolled column"
+                }
+                Self::ConversationHistory => {
+                    "What was said, what the bot worked out, what it answered — misses with their reason, failed tool steps, dropped traces, and the billed token shape"
+                }
                 Self::UiMachine => {
                     "Plain-enum UI state with entry-frame detection + frame-TTL auto-revert — replaces the dirty/pending/flash boolean trio with one matchable state"
                 }
@@ -931,6 +945,8 @@ mod app {
         relationship_editor_state: stories::relationship_editor::RelationshipEditorState,
         command_palette_state: stories::command_palette::CommandPaletteState,
         event_wiring_state: stories::event_wiring::EventWiringState,
+        wiring_editor_state: stories::wiring_editor::WiringEditorStory,
+        conversation_history_state: stories::conversation_history::ConversationHistoryStory,
         machine_state: stories::machine::MachineState,
         named_group_list_state: stories::named_group_list::NamedGroupListState,
         rarity_target_editor_state: stories::rarity_target_editor::RarityTargetEditorState,
@@ -1051,6 +1067,9 @@ mod app {
                     stories::relationship_editor::RelationshipEditorState::default(),
                 command_palette_state: stories::command_palette::CommandPaletteState::default(),
                 event_wiring_state: stories::event_wiring::EventWiringState::default(),
+                wiring_editor_state: stories::wiring_editor::WiringEditorStory::default(),
+                conversation_history_state:
+                    stories::conversation_history::ConversationHistoryStory::default(),
                 machine_state: stories::machine::MachineState::default(),
                 named_group_list_state: stories::named_group_list::NamedGroupListState::default(),
                 rarity_target_editor_state:
@@ -1451,6 +1470,13 @@ mod app {
                             Story::EventWiring => {
                                 stories::event_wiring::show(ui, &mut self.event_wiring_state)
                             }
+                            Story::WiringEditor => {
+                                stories::wiring_editor::show(ui, &mut self.wiring_editor_state)
+                            }
+                            Story::ConversationHistory => stories::conversation_history::show(
+                                ui,
+                                &mut self.conversation_history_state,
+                            ),
                             Story::UiMachine => stories::machine::show(ui, &mut self.machine_state),
                             Story::NamedGroupList => stories::named_group_list::show(
                                 ui,

@@ -14,7 +14,9 @@ eframe = { workspace = true }
 egui = { workspace = true }
 egui_extras = { workspace = true }
 authorizations = { path = "../../authorizations" }
-egui-widgets = { path = "../egui-widgets", features = ["image-editor"] }
+egui-widgets = { path = "../egui-widgets", features = ["image-editor", "gateway"] }
+# The vocabulary the wiring-editor story builds its fixtures from.
+gateway-wiring = { path = "../../services/gateway-wiring" }
 image-core = { path = "../image-core" }
 cardano-assets = { workspace = true }
 cardano-tx = { path = "../../cardano-tx" }

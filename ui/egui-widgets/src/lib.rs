@@ -26,6 +26,10 @@ pub mod distribution_waterfall;
 pub mod donut_chart;
 pub mod error_note;
 pub mod event_wiring;
+#[cfg(feature = "gateway")]
+pub mod conversation_history;
+#[cfg(feature = "gateway")]
+pub mod wiring_editor;
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
 pub mod flip_counter;

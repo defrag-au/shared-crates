@@ -85,6 +85,16 @@ impl GatewayAudience {
         matches!(self, Self::Operator)
     }
 
+    /// May this audience start or stop the Discord listener?
+    ///
+    /// The listener is one process serving every guild, so its lifecycle is a
+    /// platform concern: a client stopping it would take every other client's
+    /// triggers down with their own. Named for the same reason as
+    /// [`may_set_entitlement`](Self::may_set_entitlement).
+    pub fn may_control_lifecycle(self) -> bool {
+        matches!(self, Self::Operator)
+    }
+
     /// Wire spelling, for the header the worker sets on the DO upgrade.
     /// Same string serde writes, so a log line and a payload agree.
     pub fn as_str(self) -> &'static str {
@@ -229,6 +239,18 @@ mod tests {
             note: None,
             trace: None,
         }
+    }
+
+    /// Client authority ends at their own guild's wiring. The entitlement
+    /// (who pays) and the listener lifecycle (one process serving every
+    /// guild) are both platform concerns, and each has its own predicate so
+    /// a renderer asking the wrong question fails a test rather than a user.
+    #[test]
+    fn a_client_holds_neither_platform_capability() {
+        assert!(!GatewayAudience::Client.may_set_entitlement());
+        assert!(!GatewayAudience::Client.may_control_lifecycle());
+        assert!(GatewayAudience::Operator.may_set_entitlement());
+        assert!(GatewayAudience::Operator.may_control_lifecycle());
     }
 
     /// A client applying appends over a long session must ring at the SAME

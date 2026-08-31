@@ -441,6 +441,152 @@ impl std::fmt::Display for WiredAction {
     }
 }
 
+/// Per-user pacing a new mention binding starts with.
+///
+/// Every other action costs a render at most; `Ask` costs a model call, so an
+/// unpaced mention binding in a busy channel is a bill rather than a
+/// nuisance. Fifteen seconds still reads as responsive to one person asking
+/// follow-ups, and is editable on the binding like any other.
+pub const DEFAULT_ASK_COOLDOWN_SECONDS: u32 = 15;
+
+impl EventBinding {
+    /// A fresh pattern binding — no patterns yet, nothing wired.
+    pub fn new_message(id: String) -> Self {
+        Self {
+            id,
+            enabled: true,
+            cooldown_seconds: None,
+            event: EventSource::OnMessage {
+                patterns: Vec::new(),
+            },
+            actions: Vec::new(),
+        }
+    }
+
+    /// A mention binding, pre-wired to the agent.
+    ///
+    /// The action comes with it rather than being added separately: `Ask` is
+    /// the only action a mention trigger is useful with, and an empty mention
+    /// binding would answer nothing while looking correctly configured. The
+    /// cooldown comes with it too — this is the one action that costs a model
+    /// call per fire, so shipping it unpaced would be a trap.
+    pub fn new_mention(id: String) -> Self {
+        Self {
+            id,
+            enabled: true,
+            cooldown_seconds: Some(DEFAULT_ASK_COOLDOWN_SECONDS),
+            event: EventSource::OnMention {},
+            actions: vec![WiredAction::Ask {}],
+        }
+    }
+
+    /// Add an action where it belongs, returning the index it landed at.
+    ///
+    /// Reactions go ahead of renders — they land instantly on the message, so
+    /// the order shown in the editor should be the order the channel sees.
+    /// One rule, here, because two renderers insert actions and a card that
+    /// lands in a different slot per surface reads as a different config.
+    pub fn insert_action(&mut self, action: WiredAction) -> usize {
+        let insert_at = match &action {
+            WiredAction::React { .. } => self
+                .actions
+                .iter()
+                .position(|a| matches!(a, WiredAction::RandomOwnedAsset { .. }))
+                .unwrap_or(self.actions.len()),
+            _ => self.actions.len(),
+        };
+        self.actions.insert(insert_at, action);
+        insert_at
+    }
+}
+
+/// One entry in the add-action catalogue: the template instance a surface
+/// inserts, and the words it offers it with.
+pub struct ActionChoice {
+    pub title: &'static str,
+    pub subtitle: &'static str,
+    pub action: WiredAction,
+}
+
+/// The add-action catalogue, in presentation order.
+///
+/// Shared meaning, not presentation: which actions exist, what each is
+/// called, and the template instance adding one starts from. Two surfaces
+/// offering different titles (or different starting emoji) for the same
+/// action is the drift this list exists to prevent — each renderer decides
+/// only HOW to offer them (palette, menu, buttons).
+pub fn action_choices() -> [ActionChoice; 3] {
+    [
+        ActionChoice {
+            title: "Random owned asset",
+            subtitle: "render one of the user's assets as an inline reply",
+            action: WiredAction::RandomOwnedAsset {
+                policy_id: None,
+                style: RenderStyle::default(),
+                variants: Vec::new(),
+            },
+        },
+        ActionChoice {
+            title: "React to message",
+            subtitle: "instant emoji acknowledgment",
+            action: WiredAction::React {
+                emoji: "⚓".to_string(),
+            },
+        },
+        ActionChoice {
+            title: "Answer with the agent",
+            subtitle: "needs an ON_MENTION trigger — costs a model call per fire",
+            action: WiredAction::Ask {},
+        },
+    ]
+}
+
+/// Format trait filters for an editor: one line per search entry,
+/// `Category = v1 | v2 ; Category2 = v3`. The inverse of
+/// [`text_to_variants`], and the pair lives HERE because the text format is
+/// part of the editing vocabulary — two surfaces parsing it differently would
+/// save different filters from the same typed line.
+pub fn variants_to_text(variants: &[std::collections::HashMap<String, Vec<String>>]) -> String {
+    variants
+        .iter()
+        .map(|entry| {
+            let mut parts: Vec<String> = entry
+                .iter()
+                .map(|(category, values)| format!("{category} = {}", values.join(" | ")))
+                .collect();
+            parts.sort();
+            parts.join(" ; ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Parse the editor format back; malformed pieces are simply dropped, so a
+/// half-typed line never breaks the rest.
+pub fn text_to_variants(text: &str) -> Vec<std::collections::HashMap<String, Vec<String>>> {
+    text.lines()
+        .filter_map(|line| {
+            let mut entry = std::collections::HashMap::new();
+            for part in line.split(';') {
+                let Some((category, values)) = part.split_once('=') else {
+                    continue;
+                };
+                let category = category.trim();
+                let values: Vec<String> = values
+                    .split('|')
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .map(str::to_string)
+                    .collect();
+                if !category.is_empty() && !values.is_empty() {
+                    entry.insert(category.to_string(), values);
+                }
+            }
+            (!entry.is_empty()).then_some(entry)
+        })
+        .collect()
+}
+
 /// How a rendered asset is presented. This is the gateway's WIRE vocabulary —
 /// augie translates it to `bot_config::AssetResultStyle` at its render
 /// boundary (bot-config depends on this crate, so the richer type can't live
@@ -499,6 +645,35 @@ pub struct ActionTrace {
     /// the silent failures that cost the most time to diagnose.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+}
+
+impl ActionTrace {
+    /// The turn's cost, in the shape it is BILLED in — or `None` when no
+    /// model was called.
+    ///
+    /// Not just the totals. Cached input costs a fraction of uncached and
+    /// reasoning bills as output, so `13431 in / 69 out` describes a turn
+    /// whose real cost was mostly in two numbers it never showed. Each
+    /// qualifier is omitted when zero rather than printed as `0`, so a
+    /// provider reporting neither reads exactly as the plain line always did.
+    ///
+    /// Here rather than in a renderer because both surfaces show a bill, and
+    /// two descriptions of the same charge is worse than none.
+    pub fn token_summary(&self) -> Option<String> {
+        if self.prompt_tokens + self.completion_tokens == 0 {
+            return None;
+        }
+        let mut line = match self.cached_prompt_tokens {
+            0 => format!("{} in", self.prompt_tokens),
+            cached => format!("{} in ({cached} cached)", self.prompt_tokens),
+        };
+        line.push_str(&format!(" / {} out", self.completion_tokens));
+        if self.reasoning_tokens > 0 {
+            line.push_str(&format!(" ({} reasoning)", self.reasoning_tokens));
+        }
+        line.push_str(" tokens");
+        Some(line)
+    }
 }
 
 /// One step of an action's working out.
@@ -601,6 +776,75 @@ mod tests {
             role: role.to_string(),
             daily_tokens,
         }
+    }
+
+    /// The billed shape, not the totals — and each qualifier absent when
+    /// zero, so a provider that reports neither reads as the plain line.
+    #[test]
+    fn a_token_summary_shows_what_was_actually_billed() {
+        let trace = |prompt, cached, completion, reasoning| ActionTrace {
+            prompt_tokens: prompt,
+            cached_prompt_tokens: cached,
+            completion_tokens: completion,
+            reasoning_tokens: reasoning,
+            ..ActionTrace::default()
+        };
+
+        // No model called — no bill, and no empty line pretending there was.
+        assert_eq!(trace(0, 0, 0, 0).token_summary(), None);
+
+        assert_eq!(
+            trace(13431, 0, 69, 0).token_summary().as_deref(),
+            Some("13431 in / 69 out tokens")
+        );
+        // Cached input bills at a fraction; the total alone hides it.
+        assert_eq!(
+            trace(13431, 12000, 69, 0).token_summary().as_deref(),
+            Some("13431 in (12000 cached) / 69 out tokens")
+        );
+        // Reasoning bills as output and routinely dwarfs the visible reply.
+        assert_eq!(
+            trace(13431, 12000, 69, 801).token_summary().as_deref(),
+            Some("13431 in (12000 cached) / 69 out (801 reasoning) tokens")
+        );
+    }
+
+    /// The editor text format must round-trip: what a save writes, reopening
+    /// the editor must show. Two surfaces share this pair, so a drift here is
+    /// a filter silently changing between them.
+    #[test]
+    fn trait_filter_text_round_trips() {
+        let text = "Category = one | two ; Other = three\nSolo = four";
+        let variants = text_to_variants(text);
+        assert_eq!(variants.len(), 2);
+        assert_eq!(
+            variants[0].get("Category"),
+            Some(&vec!["one".to_string(), "two".to_string()])
+        );
+        assert_eq!(variants_to_text(&variants), text);
+
+        // A half-typed line never breaks the rest.
+        assert_eq!(text_to_variants("nonsense\nA = b").len(), 1);
+    }
+
+    /// Reactions land instantly on the message, so the editor order and the
+    /// channel order must agree — inserting a React lands it before renders.
+    #[test]
+    fn a_react_inserts_ahead_of_renders() {
+        let mut binding = EventBinding::new_message("b".into());
+        binding.insert_action(action_choices()[0].action.clone()); // render
+        let at = binding.insert_action(WiredAction::React { emoji: "🔥".into() });
+        assert_eq!(at, 0, "react goes ahead of the render");
+        assert!(matches!(binding.actions[0], WiredAction::React { .. }));
+    }
+
+    /// A mention binding is never useful empty — it ships wired to the agent
+    /// and paced, because `Ask` is the one action that costs a model call.
+    #[test]
+    fn a_new_mention_binding_comes_wired_and_paced() {
+        let binding = EventBinding::new_mention("b".into());
+        assert!(matches!(binding.actions.as_slice(), [WiredAction::Ask {}]));
+        assert_eq!(binding.cooldown_seconds, Some(DEFAULT_ASK_COOLDOWN_SECONDS));
     }
 
     /// The largest tier wins, so adding a higher one never takes anything from
