@@ -170,11 +170,12 @@ impl<'a> PaneNavBar<'a> {
                         // thing worth a glyph here, and hover is too cheap a
                         // place to hide the whole explanation.
                         let text = phosphor_label(ui, PhosphorIcon::Lock, entry.label);
-                        // A DISABLED `SelectableLabel`, not a bare `Label`:
+                        // A DISABLED selectable BUTTON, not a bare `Label`:
                         // the two have different padding, so a mixed row sits
                         // the locked entries below the baseline of the
                         // selectable ones. Same widget, same metrics.
-                        ui.add_enabled(false, egui::SelectableLabel::new(false, text))
+                        // (`Button::selectable` — `SelectableLabel` is gone.)
+                        ui.add_enabled(false, egui::Button::selectable(false, text))
                             .on_disabled_hover_text(reason);
                     }
                 }

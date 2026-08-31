@@ -17,7 +17,7 @@
 //! rises to 7.18% and then partly claims down to 5.98% — and **stays there,
 //! past maturity**. A gate opened and most of it did not walk through.
 
-use egui::{pos2, Color32, Pos2, Rect, Stroke, Vec2};
+use egui::{pos2, Color32, Pos2, Rect, Vec2};
 
 use crate::stories::aliens_fixture::{COHORTS, SERIES};
 use crate::{ACCENT, TEXT_MUTED};
@@ -43,6 +43,10 @@ fn cohort_color(name: &str) -> Color32 {
 /// them from the movement columns, where the magnitude is exact.
 struct Event {
     i: usize,
+    /// Which cohort moved. Kept because it is what makes an event
+    /// attributable — the marks are drawn cohort-agnostically today, but an
+    /// event you cannot trace back to a cohort is just a spike.
+    #[allow(dead_code)]
     cohort: usize,
     delta: f64,
 }
@@ -137,7 +141,7 @@ pub fn show(ui: &mut egui::Ui) {
         let x = xs[e.i];
         ui.painter().line_segment(
             [pos2(x, rect.top()), pos2(x, rect.bottom())],
-            Stroke::new(1.0, Color32::from_rgba_premultiplied(255, 255, 255, 60)),
+            egui_widgets::theme::hairline(Color32::from_rgba_premultiplied(255, 255, 255, 60)),
         );
         let up = e.delta > 0.0;
         ui.painter().circle_filled(
@@ -182,7 +186,7 @@ pub fn show(ui: &mut egui::Ui) {
         let x = warped[e.i];
         ui.painter().line_segment(
             [pos2(x, rect.top()), pos2(x, rect.bottom())],
-            Stroke::new(1.0, Color32::from_rgba_premultiplied(255, 255, 255, 70)),
+            egui_widgets::theme::hairline(Color32::from_rgba_premultiplied(255, 255, 255, 70)),
         );
     }
 

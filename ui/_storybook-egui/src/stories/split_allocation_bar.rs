@@ -26,7 +26,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Two-Way Split (78/22)")
@@ -60,7 +60,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Three-Way Split (55/30/15)")
@@ -100,7 +100,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Single Pool (100%)")
@@ -126,7 +126,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Without Legend")

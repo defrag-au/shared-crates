@@ -1227,10 +1227,10 @@ mod app {
         fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
             let ctx = ui.ctx().clone();
             if !self.nav_hidden {
-                egui::SidePanel::left("stories")
-                    .default_width(180.0)
+                egui::Panel::left("stories")
+                    .default_size(180.0)
                     .resizable(false)
-                    .frame(egui::Frame::side_top_panel(&ctx.style()).fill(BG_SIDEBAR))
+                    .frame(egui::Frame::side_top_panel(&ctx.global_style()).fill(BG_SIDEBAR))
                     .show_inside(ui, |ui| {
                         ui.add_space(8.0);
                         ui.heading(egui::RichText::new("egui Widgets").color(ACCENT));
@@ -1242,7 +1242,7 @@ mod app {
             }
 
             egui::CentralPanel::default()
-                .frame(egui::Frame::central_panel(&ctx.style()).fill(BG_MAIN))
+                .frame(egui::Frame::central_panel(&ctx.global_style()).fill(BG_MAIN))
                 .show_inside(ui, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         ui.heading(self.current_story.label());

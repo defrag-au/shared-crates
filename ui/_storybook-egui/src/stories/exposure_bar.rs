@@ -26,7 +26,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Multi-Token Mixed Risk")
@@ -77,7 +77,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("All Green (Well-Collateralised)")
@@ -113,7 +113,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Single Token High Risk")
@@ -140,7 +140,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Compact (No Legend / No Total)")

@@ -88,7 +88,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SigningStatusStoryState) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
             .show(ui, |ui| {
                 let config = SigningStatusConfig {
                     peer_name: "$boef".into(),

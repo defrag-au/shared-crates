@@ -59,6 +59,29 @@ pub const ERROR: Color32 = ACCENT_RED;
 /// effectively invisible.
 pub const BORDER: Color32 = Color32::from_rgb(65, 72, 104);
 
+/// A one-pixel stroke — the border weight used throughout this crate.
+///
+/// Exists for two reasons, one cosmetic and one that bites.
+///
+/// **The weight is a decision, not a literal.** Panel edges, card outlines and
+/// separators are all the same hairline; scattering `1.0` across a hundred
+/// call sites means there is nowhere to change it.
+///
+/// **`Stroke::new` takes `impl Into<f32>`, so a bare `1.0` is ambiguous.**
+/// Rustc falls back to `f32` and emits a future-compatibility warning at every
+/// site — 56 of them in the storybook alone. The annotation lives here once
+/// instead of `1.0_f32` forever, everywhere.
+pub fn hairline(color: Color32) -> Stroke {
+    Stroke::new(1.0_f32, color)
+}
+
+/// A stroke of an explicit weight, for the cases that are deliberately not a
+/// hairline (a card's rarity edge, a chart's series line). Same inference
+/// problem, same one-place fix.
+pub fn stroke(width: f32, color: Color32) -> Stroke {
+    Stroke::new(width, color)
+}
+
 // ============================================================================
 // Rarity rank coloring
 // ============================================================================

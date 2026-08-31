@@ -3,7 +3,9 @@ target = "index.html"
 dist = "dist"
 
 [serve]
-address = "127.0.0.1"
+# `addresses`, not the deprecated singular `address` — trunk 0.21 warns on it
+# and will drop it.
+addresses = ["127.0.0.1"]
 port = 8095
 open = false
 

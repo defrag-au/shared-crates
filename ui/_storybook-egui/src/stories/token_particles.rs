@@ -339,7 +339,7 @@ pub fn show(ui: &mut egui::Ui) {
         ui.painter().rect_stroke(
             b,
             2.0,
-            egui::Stroke::new(1.0, Color32::from_rgb(0x1e, 0x22, 0x33)),
+            egui_widgets::theme::hairline(Color32::from_rgb(0x1e, 0x22, 0x33)),
             egui::StrokeKind::Inside,
         );
         if f.w[k] > 34.0 {

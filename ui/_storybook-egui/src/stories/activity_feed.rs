@@ -140,8 +140,15 @@ pub fn show(ui: &mut egui::Ui) {
     let marked_id = ui.id().with("activity_feed_marked");
     let scroll_id = ui.id().with("activity_feed_scroll");
     let mut marked: Option<usize> = ui.data(|d| d.get_temp(marked_id)).unwrap_or(None);
+    // Read-then-remove: `remove_temp` returns `()`, so taking the value and
+    // clearing it is two steps under one `data_mut` — which is what makes the
+    // request "spent by the frame that serves it" rather than sticky.
     let scroll_to: Option<usize> = ui
-        .data_mut(|d| d.remove_temp_returning(scroll_id))
+        .data_mut(|d| {
+            let requested = d.get_temp::<Option<usize>>(scroll_id);
+            d.remove_temp::<Option<usize>>(scroll_id);
+            requested
+        })
         .flatten();
 
     ui.horizontal(|ui| {

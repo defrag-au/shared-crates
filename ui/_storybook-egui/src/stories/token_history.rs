@@ -19,7 +19,7 @@
 //! featureless on this token**. It is drawn anyway, precisely so that can be
 //! seen rather than argued about.
 
-use egui::{pos2, Color32, Pos2, Rect, Stroke, Vec2};
+use egui::{pos2, Color32, Pos2, Rect, Vec2};
 
 use crate::stories::wrt_fixture::{COHORTS, SERIES};
 use crate::{ACCENT, TEXT_MUTED};
@@ -100,7 +100,7 @@ fn line(ui: &mut egui::Ui, rect: Rect, vals: &[f64], colour: Color32, log: bool)
         .collect();
     // 2px, per the mark spec. Thin marks; the fill is not the point here.
     ui.painter()
-        .add(egui::Shape::line(pts, Stroke::new(2.0, colour)));
+        .add(egui::Shape::line(pts, egui_widgets::theme::stroke(2.0, colour)));
 }
 
 pub fn show(ui: &mut egui::Ui) {

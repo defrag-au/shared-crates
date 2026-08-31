@@ -139,7 +139,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
         .fill(BG_MAIN)
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+        .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
         .show(ui, |ui| {
             // Build segments from loans that have LTV data
             let with_ltv: Vec<&MockLoan> = loans.iter().filter(|l| l.ltv_pct.is_some()).collect();
@@ -166,7 +166,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
         .fill(BG_MAIN)
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+        .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
         .show(ui, |ui| {
             let config = DataTableConfig::default();
 

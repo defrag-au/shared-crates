@@ -36,7 +36,7 @@
 //! box shape is a different control with different affordances — react-select
 //! ships both for the same reason.
 
-use egui::{Align, Color32, Layout, Margin, Sense, Stroke, Ui, vec2};
+use egui::{Align, Color32, Layout, Margin, Sense, Ui, vec2};
 
 use crate::icons::install_phosphor_font;
 use crate::{PhosphorIcon, theme};
@@ -268,7 +268,7 @@ impl<'a> Select<'a> {
             .fill(theme::BG_SECONDARY)
             .corner_radius(6.0)
             // The border IS the state indicator, as a focus ring is on the web.
-            .stroke(Stroke::new(1.0_f32, if open { theme::ACCENT } else { theme::BORDER }))
+            .stroke(theme::hairline(if open { theme::ACCENT } else { theme::BORDER }))
             .inner_margin(Margin::symmetric(8, 4))
             .show(ui, |ui| {
                 ui.set_width(self.width);
@@ -345,7 +345,7 @@ impl<'a> Select<'a> {
                         );
                         ui.painter().line_segment(
                             [sep.center_top(), sep.center_bottom()],
-                            Stroke::new(1.0_f32, theme::BORDER),
+                            theme::hairline(theme::BORDER),
                         );
                         if self.clearable && self.value.is_some() {
                             let clear = ui
@@ -430,7 +430,7 @@ impl<'a> Select<'a> {
                     egui::Frame::new()
                         .fill(theme::BG_SECONDARY)
                         .corner_radius(6.0)
-                        .stroke(Stroke::new(1.0_f32, theme::BORDER))
+                        .stroke(theme::hairline(theme::BORDER))
                         .inner_margin(Margin::same(4))
                         .show(ui, |ui| {
                             ui.set_width(control_rect.width());

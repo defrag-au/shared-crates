@@ -5,7 +5,7 @@
 //! the fixed value column is that the `×` and `⌄` land in the same place on
 //! every row. The old three-loose-buttons row failed exactly there.
 
-use egui_widgets::select::{Select, SelectOption, SelectState, SelectValue};
+use egui_widgets::select::{Select, SelectOption, SelectState};
 use egui_widgets::theme;
 
 pub struct SelectStory {
