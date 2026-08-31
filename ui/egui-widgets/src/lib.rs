@@ -56,6 +56,7 @@ pub mod named_group_list;
 pub mod offer_tile;
 pub mod order_list;
 pub mod palette_editor;
+pub mod pane_nav;
 pub mod party_annotator;
 pub mod party_badge;
 pub mod party_finder;
@@ -222,7 +223,7 @@ pub use image_text_editor::{
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use machine::Machine;
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
-pub use metric_card::{MetricCard, Trend};
+pub use metric_card::{MetricCard, MetricRow, Trend};
 pub use mint_arrivals::{Arrival, MintArrivals, peak_pile, pile_offset, piles_at};
 pub use mint_checkout::{
     BundleOffer, CheckoutState, Eligibility, MintCheckout, MintCheckoutAction,
@@ -238,6 +239,7 @@ pub use order_list::{
     OrderStatus,
 };
 pub use palette_editor::{Palette, PaletteEditor, PaletteVariant};
+pub use pane_nav::{PaneNavBar, PaneNavEntry, PaneNavResponse};
 pub use party_annotator::{
     AnnotationDraft, PartyAnnotator, PartyAnnotatorResponse, PartyClass, basis_color,
 };

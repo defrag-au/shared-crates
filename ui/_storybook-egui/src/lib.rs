@@ -125,6 +125,7 @@ mod app {
         IdPill,
         PhaseCard,
         ButtonGroup,
+        PaneNav,
         Toast,
         Timestamp,
         ErrorNote,
@@ -179,6 +180,7 @@ mod app {
                 Self::IdPill,
                 Self::PropertyList,
                 Self::ButtonGroup,
+                Self::PaneNav,
                 Self::Toast,
                 Self::Timestamp,
                 Self::ErrorNote,
@@ -398,6 +400,7 @@ mod app {
                 Self::ServiceBanner => "Service Banner",
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
+                Self::PaneNav => "Pane Nav",
                 Self::Toast => "Toast",
                 Self::QuantityStepper => "Quantity Stepper",
                 Self::MintCheckout => "Mint Checkout",
@@ -449,6 +452,7 @@ mod app {
                 | Self::IdPill
                 | Self::PropertyList
                 | Self::ButtonGroup
+                | Self::PaneNav
                 | Self::Toast => "Primitives",
                 Self::ProgressBar
                 | Self::BulletBar
@@ -793,6 +797,9 @@ mod app {
                 Self::ButtonGroup => {
                     "Row of related action buttons — text + optional Phosphor icons + tooltips + disabled state, with horizontal_wrapped layout"
                 }
+                Self::PaneNav => {
+                    "Shell nav with persistent selection — locked entries show their reason rather than vanishing, hides itself at one destination, wraps inside a constrained column"
+                }
                 Self::Toast => {
                     "Transient overlay messages with frame-countdown auto-dismiss — Success/Error/Warning/Info, host-owned ToastQueue, bottom-right stack"
                 }
@@ -967,6 +974,7 @@ mod app {
         collection_list_state: stories::collection_list::CollectionListState,
         // Primitives
         button_group_state: stories::button_group::ButtonGroupState,
+        pane_nav_state: stories::pane_nav::PaneNavState,
         toast_state: stories::toast::ToastState,
         claim_card_state: stories::claim_card::ClaimCardState,
         capital_flow_state: stories::capital_flow::CapitalFlowState,
@@ -1101,6 +1109,7 @@ mod app {
                 wallet_list_state: stories::wallet_list::WalletListState::default(),
                 collection_list_state: stories::collection_list::CollectionListState::default(),
                 button_group_state: stories::button_group::ButtonGroupState::default(),
+                pane_nav_state: stories::pane_nav::PaneNavState::default(),
                 toast_state: stories::toast::ToastState::default(),
                 claim_card_state: stories::claim_card::ClaimCardState::default(),
                 capital_flow_state: stories::capital_flow::CapitalFlowState::default(),
@@ -1447,6 +1456,9 @@ mod app {
                             }
                             Story::ButtonGroup => {
                                 stories::button_group::show(ui, &mut self.button_group_state)
+                            }
+                            Story::PaneNav => {
+                                stories::pane_nav::show(ui, &mut self.pane_nav_state)
                             }
                             Story::Toast => stories::toast::show(ui, &mut self.toast_state),
                         }

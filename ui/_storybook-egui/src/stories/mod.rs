@@ -34,6 +34,7 @@ pub mod mnemonic_display;
 pub mod named_group_list;
 pub mod order_list;
 pub mod palette_editor;
+pub mod pane_nav;
 pub mod party_annotator;
 pub mod party_badge;
 pub mod perspective_text;

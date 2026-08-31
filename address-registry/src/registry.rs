@@ -132,7 +132,17 @@ pub static ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
     "addr1z98ps3vxeewk94rwp5dtxvzlr4aczync78p8am9l9w4vcn04fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwq2zuf48" => AC::Script(SC::Staking { label: "The Vault", project: "CNFT Tools" }),
     // dexes — Splash pool contracts (type 6: script payment + script staking, per-pool credentials)
     "addr1x89ksjnfu7ys02tedvslc9g2wk90tu5qte0dt4dge60hdudj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsg0g63z" => AC::Script(SC::Exchange { label: "Splash" }),
-    // DexHunter aggregator contract
+    // DexHunter aggregator contract.
+    //
+    // SUSPECT — unverified, left as found. On chain this holds ~422k ADA and a
+    // thousand token policies at their full 1B supply, which is pool or
+    // launchpad inventory rather than anything an aggregator custodies, and it
+    // delegates to Spectrum/Splash's LBSP credential (see STAKE_REGISTRY's
+    // exclusions). An aggregator delegating its contract ADA into a
+    // competitor's liquidity-bootstrapping pool makes little sense, so this is
+    // more likely a Splash-family contract mislabelled. No labelled source was
+    // found to confirm either way, so the entry stands rather than being
+    // rewritten on inference.
     "addr1xxg94wrfjcdsjncmsxtj0r87zk69e0jfl28n934sznu95tdj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrs2993lw" => AC::Script(SC::Exchange { label: "DexHunter" }),
     // Minswap batcher contract (type 7: script payment, no staking)
     "addr1w8p79rpkcdz8x9d6tft0x0dx5mwuzac2sa4gm8cvkw5hcnqst2ctf" => AC::Script(SC::Exchange { label: "Minswap" }),
@@ -363,11 +373,24 @@ pub static STAKE_REGISTRY: Map<&'static str, StakeService> = phf_map! {
     // absence reads as a decision rather than an oversight.
     //
     //   stake17xe0d2lkpnx7jt4wrgh5lhm97t40vgydsukx7rje0nqskpc5zugc3
-    //     Fourteen distinct payment scripts across the corpus, registered
-    //     under BOTH "Splash" and "DexHunter". It is a shared staking script,
-    //     not an identity. Naming it after either would mislabel the other —
-    //     the same failure as the 168 Mekka counterparties wrongly labelled
-    //     "Splash", noted on ADDRESS_PREFIX_REGISTRY.
+    //     Fourteen distinct payment scripts delegate here, registered under
+    //     BOTH "Splash" and "DexHunter". This is not a transcription slip —
+    //     it is Spectrum/Splash's LBSP ("Liquidity Bootstrapping Stake Pool")
+    //     credential, the protocol's documented mechanism for delegating
+    //     contract-locked ADA to its own stake pool. Every validator in the
+    //     family shares it BY DESIGN, and the credential's controlled stake
+    //     (~16.4M ADA) is delegated to Spectrum Finance's pool.
+    //
+    //     So the credential identifies a STAKING ARRANGEMENT, not an operator,
+    //     and no label can be correct: the addresses behind it span pools, a
+    //     launchpad-shaped contract holding a thousand tokens at full supply,
+    //     and whatever else the protocol deploys next. Naming it would repeat
+    //     the 168 Mekka counterparties wrongly labelled "Splash", noted on
+    //     ADDRESS_PREFIX_REGISTRY.
+    //
+    //     Any DEX whose contracts delegate to a protocol-wide staking script
+    //     is unregisterable for the same reason; expect this to be the rule
+    //     for DEXes rather than the exception.
     //
     //   stake1u8653j3mcjks5d304g6eexryse7ma22erw8p05fsvefem8qklu7w7
     //     Three scripts, registered under both "The Vault" staking and "Wayup"

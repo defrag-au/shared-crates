@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-115 widgets.
+116 widgets.
 
 | module | what it is |
 |---|---|
@@ -61,7 +61,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `machine` | `Machine` — plain-enum UI state, hierarchical, with entry framing, frame-TTL auto-revert and eased transition progress |
 | `managed_wallet_utxos` | Managed-wallet UTxO breakdown — a structured, role-aware view of a custodial wallet's on-chain UTxOs |
 | `marquee` | Scrolling marquee ticker widget |
-| `metric_card` | MetricCard — a dashboard stat card with label, value, optional trend, and sparkline |
+| `metric_card` | `MetricCard` — a dashboard stat card with label, value, optional trend and sparkline; `MetricRow` lays a set of them out sharing one width, height and baseline |
 | `mint_arrivals` | `MintArrivals` — watch a collection land in people's hands, one asset at a time |
 | `mint_checkout` | `MintCheckout` — the buyer-facing mint offer + CTA, composed as one widget |
 | `mnemonic_display` | BIP-39 mnemonic display with copy-to-clipboard + optional confirmation gate |
@@ -70,6 +70,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `offer_tile` | `OfferTile` — fixed-size picker tile with state-aware visual treatment and a top-right quantity badge |
 | `order_list` | `OrderList` — the mint-orders dashboard |
 | `palette_editor` | palette_editor — edit colorization palettes: each palette has a name, a base color, and a list of variants (name + color + weight) |
+| `pane_nav` | `PaneNavBar` — the shell nav for an app made of capability panes |
 | `party_annotator` | `PartyAnnotator` — decide what a wallet IS to the project, on the record |
 | `party_badge` | `PartyBadge` — a counterparty as it should appear everywhere in a forensic trace: resolved name, **how firmly that name is known**, and the cluster it belongs to |
 | `party_finder` | PartyFinder — hunt down a wallet by ANY of its names, then watch it |
