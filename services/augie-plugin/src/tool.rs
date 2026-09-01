@@ -67,6 +67,19 @@ pub struct ToolInvocation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel_id: Option<String>,
 
+    /// The message that prompted this call, when there was one.
+    ///
+    /// An **anchor**, not a capability — unlike an interaction token it grants
+    /// nothing, it only says what this answer is about. A tool that hands work
+    /// to a queue needs it: without one, a result produced a minute later can
+    /// only be posted loose in the channel, reading as unrelated to the
+    /// question that caused it.
+    ///
+    /// `None` where there is no such message — a page turn, or any invocation
+    /// that did not begin with someone saying something.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+
     /// The caller's resolved class. Augie has already filtered the tool list
     /// to what this class may use; passed for the same defence-in-depth reason
     /// as on a command invocation.
@@ -360,10 +373,7 @@ mod tests {
 
         let parsed: ToolInvocation = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.tool, "find_assets");
-        assert_eq!(
-            parsed.arguments["trait_bits"].as_array().unwrap().len(),
-            2
-        );
+        assert_eq!(parsed.arguments["trait_bits"].as_array().unwrap().len(), 2);
     }
 
     /// Attachments ride on the invocation, never in `arguments`. A model that
