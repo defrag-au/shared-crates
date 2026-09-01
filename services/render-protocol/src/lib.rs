@@ -673,7 +673,6 @@ mod r2_tests {
             Err(AssetUriError::MissingScheme)
         );
     }
-
 }
 
 #[cfg(test)]
