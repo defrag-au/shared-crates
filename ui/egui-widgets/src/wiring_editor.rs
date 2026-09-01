@@ -73,8 +73,11 @@ pub fn bindings_editor(
     let mut response = WiringEditorResponse::default();
     let mut remove_binding: Option<usize> = None;
 
-    for index in 0..bindings.len() {
-        let binding = &bindings[index];
+    // One `&mut` per binding for the whole iteration: the reads that build the
+    // VMs are reborrows of it, and the expanded card's config takes its own
+    // mutable reborrow inside the closure. The index-and-reindex shape this
+    // replaced predated that being possible and only looked necessary.
+    for (index, binding) in bindings.iter_mut().enumerate() {
         let binding_id = binding.id.clone();
         // A mention trigger has no patterns to show — the whole message is
         // the question. Rendered as an empty list rather than a special case
@@ -106,7 +109,6 @@ pub fn bindings_editor(
         };
         let mut config_dirty = false;
         let resp = {
-            let binding = &mut bindings[index];
             let wiring = EventWiring::new(&binding_id, &event_vm, &cards);
             let variants_draft = &mut state.variants_draft;
             match expanded_index.and_then(|i| binding.actions.get_mut(i).map(|a| (i, a))) {
@@ -120,7 +122,6 @@ pub fn bindings_editor(
         };
         response.dirty |= config_dirty;
 
-        let binding = &mut bindings[index];
         // Pattern edits only apply to a pattern trigger. A mention binding
         // renders no pattern controls, so these are unreachable there rather
         // than merely ignored.
@@ -129,20 +130,18 @@ pub fn bindings_editor(
                 patterns.push(pattern);
                 response.dirty = true;
             }
-            if let Some(i) = resp.pattern_removed {
-                if i < patterns.len() {
+            if let Some(i) = resp.pattern_removed
+                && i < patterns.len() {
                     patterns.remove(i);
                     response.dirty = true;
                 }
-            }
         }
-        if let Some(i) = resp.action_removed {
-            if i < binding.actions.len() {
+        if let Some(i) = resp.action_removed
+            && i < binding.actions.len() {
                 binding.actions.remove(i);
                 response.dirty = true;
                 state.config_open = None;
             }
-        }
         if let Some(i) = resp.action_clicked {
             // Toggle: the caret on an expanded card collapses it.
             state.config_open = if expanded_index == Some(i) {

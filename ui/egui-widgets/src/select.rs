@@ -617,7 +617,7 @@ impl<'a> MultiSelect<'a> {
         let available: Vec<&SelectOption> = self
             .options
             .iter()
-            .filter(|o| !self.selected.iter().any(|s| *s == o.id))
+            .filter(|o| !self.selected.contains(&o.id))
             .filter(|o| match state.query.trim() {
                 "" => true,
                 q => o.label.to_lowercase().contains(&q.to_lowercase()),

@@ -566,11 +566,10 @@ impl<'a> ActivityFeed<'a> {
         // it, and a bounding box over both would claim the empty stretch of
         // the timestamp line between them — clicks landing on nothing and
         // walking away from the transaction the reader was reading.
-        if let Some(cap) = caption_rect {
-            if (cap.center().y - rect.center().y).abs() < 1.0 {
+        if let Some(cap) = caption_rect
+            && (cap.center().y - rect.center().y).abs() < 1.0 {
                 rect = rect.union(cap);
             }
-        }
         if self.walkable && ui.rect_contains_pointer(rect) {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             // Underlined on hover rather than re-tinted: the tint is already
