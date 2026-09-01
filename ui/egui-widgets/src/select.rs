@@ -294,7 +294,11 @@ impl<'a> Select<'a> {
             .fill(theme::BG_SECONDARY)
             .corner_radius(6.0)
             // The border IS the state indicator, as a focus ring is on the web.
-            .stroke(theme::hairline(if open { theme::ACCENT } else { theme::BORDER }))
+            .stroke(theme::hairline(if open {
+                theme::ACCENT
+            } else {
+                theme::BORDER
+            }))
             .inner_margin(Margin::symmetric(8, 4))
             .show(ui, |ui| {
                 ui.set_width(self.width);
@@ -333,10 +337,10 @@ impl<'a> Select<'a> {
                                             );
                                         }
                                         if value.warning.is_some() {
-                                            ui.label(PhosphorIcon::Warning.rich_text(
-                                                12.0,
-                                                theme::ACCENT_YELLOW,
-                                            ));
+                                            ui.label(
+                                                PhosphorIcon::Warning
+                                                    .rich_text(12.0, theme::ACCENT_YELLOW),
+                                            );
                                         }
                                         let text = egui::RichText::new(&value.label).color(
                                             match value.warning {
@@ -348,8 +352,7 @@ impl<'a> Select<'a> {
                                         // wrapping to a second line would push
                                         // the control off its fixed height and
                                         // make a row of selects ragged.
-                                        let label =
-                                            ui.add(egui::Label::new(text).truncate());
+                                        let label = ui.add(egui::Label::new(text).truncate());
                                         if let Some(why) = &value.warning {
                                             label.on_hover_text(why);
                                         }
@@ -370,10 +373,8 @@ impl<'a> Select<'a> {
                         ui.label(PhosphorIcon::CaretDown.rich_text(12.0, theme::TEXT_MUTED));
                         // The hairline that makes the chevron read as part of
                         // the control rather than a button parked next to it.
-                        let (sep, _) = ui.allocate_exact_size(
-                            vec2(9.0, CONTROL_HEIGHT - 14.0),
-                            Sense::hover(),
-                        );
+                        let (sep, _) = ui
+                            .allocate_exact_size(vec2(9.0, CONTROL_HEIGHT - 14.0), Sense::hover());
                         ui.painter().line_segment(
                             [sep.center_top(), sep.center_bottom()],
                             theme::hairline(theme::BORDER),
@@ -384,10 +385,9 @@ impl<'a> Select<'a> {
                             // so in egui's top-most-wins ordering it takes
                             // the click. Same routing as MultiSelect's chips.
                             let clear = ui
-                                .add(egui::Label::new(PhosphorIcon::X.rich_text(
-                                    11.0,
-                                    theme::TEXT_MUTED,
-                                )))
+                                .add(egui::Label::new(
+                                    PhosphorIcon::X.rich_text(11.0, theme::TEXT_MUTED),
+                                ))
                                 .on_hover_text("clear");
                             hovered_clear = clear.hovered();
                             if hovered_clear {
@@ -475,20 +475,14 @@ impl<'a> Select<'a> {
                                 return None;
                             }
                             let mut picked = None;
-                            let chosen_label =
-                                self.value.as_ref().map(|v| v.label.as_str());
+                            let chosen_label = self.value.as_ref().map(|v| v.label.as_str());
                             egui::ScrollArea::vertical()
                                 .max_height(MENU_MAX_HEIGHT)
                                 .show(ui, |ui| {
                                     for (index, option) in filtered.iter().enumerate() {
-                                        let selected =
-                                            chosen_label == Some(option.label.as_str());
-                                        if menu_row(
-                                            ui,
-                                            option,
-                                            index == state.highlight,
-                                            selected,
-                                        ) {
+                                        let selected = chosen_label == Some(option.label.as_str());
+                                        if menu_row(ui, option, index == state.highlight, selected)
+                                        {
                                             picked = Some(option.id.clone());
                                         }
                                     }
@@ -886,7 +880,11 @@ fn chip(ui: &mut Ui, label: &str, swatch: Option<Color32>, known: bool) -> bool 
     ui.painter().rect_stroke(
         rect,
         3.0,
-        theme::hairline(if known { theme::BORDER } else { theme::ACCENT_YELLOW }),
+        theme::hairline(if known {
+            theme::BORDER
+        } else {
+            theme::ACCENT_YELLOW
+        }),
         egui::StrokeKind::Inside,
     );
     let mut cursor = rect.min.x + 6.0;
@@ -903,15 +901,21 @@ fn chip(ui: &mut Ui, label: &str, swatch: Option<Color32>, known: bool) -> bool 
 
     // The `×` is its own hit target inside the chip, so clicking the label
     // does not remove it — a chip is a value, not a button.
-    let x_rect =
-        egui::Rect::from_center_size(egui::pos2(rect.right() - 11.0, rect.center().y), vec2(16.0, 16.0));
+    let x_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.right() - 11.0, rect.center().y),
+        vec2(16.0, 16.0),
+    );
     let x_hovered = ui.rect_contains_pointer(x_rect);
     ui.painter().text(
         x_rect.center(),
         egui::Align2::CENTER_CENTER,
         PhosphorIcon::X.as_str(),
         egui::FontId::new(10.0, crate::icons::phosphor_family()),
-        if x_hovered { theme::ERROR } else { theme::TEXT_MUTED },
+        if x_hovered {
+            theme::ERROR
+        } else {
+            theme::TEXT_MUTED
+        },
     );
     if x_hovered {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -962,13 +966,11 @@ fn menu_row(ui: &mut Ui, option: &SelectOption, highlighted: bool, selected: boo
     };
     // `Sense::CLICK` — the non-focusable const, so arrowing through the menu
     // does not fight egui's focus manager for the text field.
-    let (rect, response) =
-        ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::CLICK);
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::CLICK);
 
     let hovered = response.hovered();
     if hovered || highlighted {
-        ui.painter()
-            .rect_filled(rect, 4.0, theme::BG_HIGHLIGHT);
+        ui.painter().rect_filled(rect, 4.0, theme::BG_HIGHLIGHT);
     }
     if hovered {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -987,11 +989,8 @@ fn menu_row(ui: &mut Ui, option: &SelectOption, highlighted: bool, selected: boo
     }
     let mut cursor = rect.min.x + 26.0;
     if let Some(color) = option.swatch {
-        ui.painter().circle_filled(
-            egui::pos2(cursor + 4.0, rect.center().y),
-            4.0,
-            color,
-        );
+        ui.painter()
+            .circle_filled(egui::pos2(cursor + 4.0, rect.center().y), 4.0, color);
         cursor += 16.0;
     }
 
@@ -1048,7 +1047,10 @@ mod tests {
         let opts = options();
         let select = Select::new("s", &opts).value_from_id("999", "role is gone");
         let value = select.value.expect("a set id must render something");
-        assert_eq!(value.label, "999", "the raw id, so the rule is still legible");
+        assert_eq!(
+            value.label, "999",
+            "the raw id, so the rule is still legible"
+        );
         assert_eq!(value.warning.as_deref(), Some("role is gone"));
     }
 

@@ -131,17 +131,19 @@ pub fn bindings_editor(
                 response.dirty = true;
             }
             if let Some(i) = resp.pattern_removed
-                && i < patterns.len() {
-                    patterns.remove(i);
-                    response.dirty = true;
-                }
+                && i < patterns.len()
+            {
+                patterns.remove(i);
+                response.dirty = true;
+            }
         }
         if let Some(i) = resp.action_removed
-            && i < binding.actions.len() {
-                binding.actions.remove(i);
-                response.dirty = true;
-                state.config_open = None;
-            }
+            && i < binding.actions.len()
+        {
+            binding.actions.remove(i);
+            response.dirty = true;
+            state.config_open = None;
+        }
         if let Some(i) = resp.action_clicked {
             // Toggle: the caret on an expanded card collapses it.
             state.config_open = if expanded_index == Some(i) {

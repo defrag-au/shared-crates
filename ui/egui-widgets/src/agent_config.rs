@@ -41,8 +41,8 @@ use gateway_wiring::{
 
 use crate::icons::{install_phosphor_font, phosphor_label};
 use crate::relative_time::relative_label;
-use crate::utils::{format_number, section_heading};
 use crate::select::{Select, SelectOption};
+use crate::utils::{format_number, section_heading};
 use crate::{PhosphorIcon, theme};
 
 /// A token-count spinner that reads as a number rather than a digit run.
@@ -370,14 +370,15 @@ pub fn budget_editor(
         .unwrap_or(&[])
         .iter()
         .map(|r| {
-            SelectOption::new(r.id.clone(), format!("@{}", r.name))
-                .swatch((r.color != 0).then(|| {
+            SelectOption::new(r.id.clone(), format!("@{}", r.name)).swatch((r.color != 0).then(
+                || {
                     egui::Color32::from_rgb(
                         ((r.color >> 16) & 0xff) as u8,
                         ((r.color >> 8) & 0xff) as u8,
                         (r.color & 0xff) as u8,
                     )
-                }))
+                },
+            ))
         })
         .collect();
 

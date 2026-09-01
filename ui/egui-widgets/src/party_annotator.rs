@@ -35,8 +35,8 @@
 
 use egui::{Color32, Ui};
 
-use crate::party_badge::PartyBasis;
 use crate::id_pill::IdPill;
+use crate::party_badge::PartyBasis;
 use crate::select::{MultiSelect, Select, SelectOption};
 use crate::{Chip, ChipVariant};
 
@@ -267,56 +267,53 @@ impl<'a> PartyAnnotator<'a> {
                 // `Align::Center`: the address is text and the basis select is
                 // a 30pt framed box, so a baseline-aligned row sat the address
                 // against the top of the control.
-                ui.with_layout(
-                    egui::Layout::left_to_right(egui::Align::Center),
-                    |ui| {
-                        // The subject is only repeated when the host has not
-                        // already named it above — in the shell it has, and
-                        // the name appearing twice in one panel is pure noise.
-                        if !subject.is_empty() {
-                            // `IdPill` owns the truncation, which is why the
-                            // caller passes the WHOLE address: it middle-elides
-                            // for display, shows the full value on hover, and
-                            // copies the real thing. A pre-truncated string
-                            // would put an unusable address on the clipboard.
-                            IdPill::new("wallet", subject).show(ui);
-                        }
-                {
-                    // The basis is never empty — a claim always rests on
-                    // something — so this select is deliberately NOT
-                    // clearable, and its swatch carries the same colour
-                    // coding the rest of the form uses for basis.
-                    let bases = [
-                        PartyBasis::Asserted,
-                        PartyBasis::Derived,
-                        PartyBasis::Observed,
-                    ];
-                    let options: Vec<SelectOption> = bases
-                        .iter()
-                        .map(|b| {
-                            SelectOption::new(b.word(), b.word()).swatch(Some(basis_color(*b)))
-                        })
-                        .collect();
-                    // Salted with the widget's OWN id — `Select` builds its id
-                    // from the salt alone (deliberately, so `Grid` siblings
-                    // cannot collide), which means the enclosing `push_id`
-                    // does not reach it. A constant here put three annotators
-                    // on one id.
-                    let resp = Select::new((id_salt, "basis"), &options)
-                        .value_from_id(draft.basis.word(), "unknown basis")
-                        .clearable(false)
-                        .width(140.0)
-                        .show(ui);
-                    if let Some(word) = resp.chosen
-                        && let Some(b) = bases.iter().find(|b| b.word() == word)
-                        && draft.basis != *b
-                    {
-                        draft.basis = *b;
-                        changed = true;
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    // The subject is only repeated when the host has not
+                    // already named it above — in the shell it has, and
+                    // the name appearing twice in one panel is pure noise.
+                    if !subject.is_empty() {
+                        // `IdPill` owns the truncation, which is why the
+                        // caller passes the WHOLE address: it middle-elides
+                        // for display, shows the full value on hover, and
+                        // copies the real thing. A pre-truncated string
+                        // would put an unusable address on the clipboard.
+                        IdPill::new("wallet", subject).show(ui);
                     }
+                    {
+                        // The basis is never empty — a claim always rests on
+                        // something — so this select is deliberately NOT
+                        // clearable, and its swatch carries the same colour
+                        // coding the rest of the form uses for basis.
+                        let bases = [
+                            PartyBasis::Asserted,
+                            PartyBasis::Derived,
+                            PartyBasis::Observed,
+                        ];
+                        let options: Vec<SelectOption> = bases
+                            .iter()
+                            .map(|b| {
+                                SelectOption::new(b.word(), b.word()).swatch(Some(basis_color(*b)))
+                            })
+                            .collect();
+                        // Salted with the widget's OWN id — `Select` builds its id
+                        // from the salt alone (deliberately, so `Grid` siblings
+                        // cannot collide), which means the enclosing `push_id`
+                        // does not reach it. A constant here put three annotators
+                        // on one id.
+                        let resp = Select::new((id_salt, "basis"), &options)
+                            .value_from_id(draft.basis.word(), "unknown basis")
+                            .clearable(false)
+                            .width(140.0)
+                            .show(ui);
+                        if let Some(word) = resp.chosen
+                            && let Some(b) = bases.iter().find(|b| b.word() == word)
+                            && draft.basis != *b
+                        {
+                            draft.basis = *b;
+                            changed = true;
                         }
-                    },
-                );
+                    }
+                });
             });
 
             // 1 · WHAT IS THIS WALLET TO THE PROJECT.
