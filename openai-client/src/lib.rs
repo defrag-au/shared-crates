@@ -35,12 +35,55 @@ pub struct OpenAiResponse {
 }
 
 /// Token counts for one request.
+///
+/// **The two breakdowns relate to their totals differently, and it is not
+/// symmetric.** Observed against x.ai:
+///
+/// - `cached_tokens` is a SUBSET of `prompt_tokens`. Billed input is
+///   `prompt_tokens - cached_tokens` at the full rate plus `cached_tokens` at
+///   the cached rate.
+/// - `reasoning_tokens` is ADDITIONAL to `completion_tokens`, not part of it —
+///   a turn reporting 74 completion and 320 reasoning spent 394 output tokens.
+///   x.ai bills them as separate line items.
+///
+/// Asserted from data rather than from the schema: OpenAI documents reasoning
+/// as a subset, so a provider that reports more reasoning than completion is
+/// the evidence that settles it. Anything computing a bill must not assume the
+/// two behave alike.
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 pub struct Usage {
     #[serde(default)]
     pub prompt_tokens: u32,
     #[serde(default)]
     pub completion_tokens: u32,
+
+    /// Nested on the wire; flattened here because callers want the number, not
+    /// the shape. Absent from providers that don't report it, which reads as
+    /// zero — indistinguishable from a genuine miss, and the right default
+    /// either way since neither is worth failing a response over.
+    #[serde(default)]
+    pub prompt_tokens_details: TokenDetails,
+    #[serde(default)]
+    pub completion_tokens_details: TokenDetails,
+}
+
+/// The subset breakdowns providers nest under a total.
+///
+/// One type for both because the two fields never co-occur — a prompt has no
+/// reasoning and a completion has no cache — and a second near-identical struct
+/// would be two things to keep in step for no gain.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+pub struct TokenDetails {
+    /// Of `prompt_tokens`, how many were served from cache. Billed at a small
+    /// fraction of the uncached rate, so this is most of what separates a cheap
+    /// request from an expensive one of the same size.
+    #[serde(default)]
+    pub cached_tokens: u32,
+    /// Reasoning tokens, IN ADDITION to `completion_tokens` — see the type
+    /// docs. Billed as output and routinely several times the visible reply, so
+    /// a cost estimate that ignores it is not close.
+    #[serde(default)]
+    pub reasoning_tokens: u32,
 }
 
 impl OpenAiResponse {
@@ -339,5 +382,45 @@ impl OpenAI {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod usage_tests {
+    use super::*;
+
+    /// The breakdowns are NESTED on the wire. Reading them off the top level
+    /// would silently yield zero — indistinguishable from a provider that
+    /// doesn't report them, and the whole point is telling those apart.
+    #[test]
+    fn the_nested_breakdowns_are_read() {
+        let usage: Usage = serde_json::from_str(
+            r#"{
+                "prompt_tokens": 13431,
+                "completion_tokens": 869,
+                "prompt_tokens_details": {"cached_tokens": 7070},
+                "completion_tokens_details": {"reasoning_tokens": 800}
+            }"#,
+        )
+        .expect("parses");
+
+        assert_eq!(usage.prompt_tokens, 13431);
+        assert_eq!(usage.prompt_tokens_details.cached_tokens, 7070);
+        assert_eq!(usage.completion_tokens_details.reasoning_tokens, 800);
+    }
+
+    /// A provider reporting neither must still parse. Both default to zero,
+    /// which reads as "nothing cached, nothing reasoned" — wrong only in the
+    /// direction that over-states cost, and never worth failing a response
+    /// that already carries an answer.
+    #[test]
+    fn a_response_without_breakdowns_still_parses() {
+        let usage: Usage =
+            serde_json::from_str(r#"{"prompt_tokens": 100, "completion_tokens": 20}"#)
+                .expect("parses");
+
+        assert_eq!(usage.prompt_tokens, 100);
+        assert_eq!(usage.prompt_tokens_details.cached_tokens, 0);
+        assert_eq!(usage.completion_tokens_details.reasoning_tokens, 0);
     }
 }

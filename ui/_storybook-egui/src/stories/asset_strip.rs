@@ -102,7 +102,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
         .fill(BG_MAIN)
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+        .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
         .show(ui, |ui| {
             ui.label(
                 egui::RichText::new("Default (72px)")
@@ -129,7 +129,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
         .fill(BG_MAIN)
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+        .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
         .show(ui, |ui| {
             ui.set_max_width(300.0);
             ui.label(

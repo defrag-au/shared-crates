@@ -36,6 +36,10 @@ impl ChatModel for OpenAI {
         let usage = Usage::new(
             response.usage.prompt_tokens,
             response.usage.completion_tokens,
+        )
+        .with_details(
+            response.usage.prompt_tokens_details.cached_tokens,
+            response.usage.completion_tokens_details.reasoning_tokens,
         );
 
         let choice = response

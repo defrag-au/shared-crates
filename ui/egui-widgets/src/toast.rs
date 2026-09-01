@@ -195,6 +195,22 @@ pub struct Toast {
 }
 
 impl Toast {
+    /// Does this toast have anything to click?
+    ///
+    /// Drives whether the overlay [`Area`] takes pointer input at all, which
+    /// is not cosmetic: an interactable `Area` captures pointer events across
+    /// its whole rect, so it swallows the DRAG that would otherwise scroll the
+    /// content beneath it. With a mouse that is a dead zone nobody notices;
+    /// with a thumb it is a band across the bottom of the screen where
+    /// scrolling silently stops working.
+    ///
+    /// PROGRESS IS NOT INTERACTIVE. It reports work that ends on its own, so
+    /// it needs no dismiss — and a scan is exactly when the reader most wants
+    /// to scroll the rows already on screen.
+    pub fn is_interactive(&self) -> bool {
+        self.sticky && self.kind != ToastKind::Progress
+    }
+
     /// Construct with the default icon (per `kind`) and the default
     /// duration. Override either with the builders.
     pub fn new(message: impl Into<String>, kind: ToastKind) -> Self {
@@ -419,21 +435,36 @@ pub fn show_toasts(ctx: &Context, queue: &mut ToastQueue) {
     let content_rect = ctx.content_rect();
     let anchor = content_rect.right_bottom() + egui::vec2(-16.0, -16.0);
 
-    // Interactable so the copy/close affordances on (sticky) error toasts work;
-    // the Area only covers the small bottom-right stack.
+    // Interactable ONLY when something here can actually be clicked — see
+    // [`Toast::is_interactive`]. An interactable `Area` claims pointer input
+    // over its whole rect, so a purely informational stack was blocking
+    // scroll-by-drag beneath it for as long as it was on screen.
+    let takes_input = queue.toasts.iter().any(Toast::is_interactive);
     let mut closed: Vec<usize> = Vec::new();
     Area::new(Id::new("egui_widgets_toast_overlay"))
         .order(Order::Foreground)
         .fixed_pos(anchor)
         .pivot(Align2::RIGHT_BOTTOM)
-        .interactable(true)
+        .interactable(takes_input)
         .show(ctx, |ui| {
+            // BOUND THE OVERLAY TO THE STACK. An `Area`'s rect is measured
+            // from its content and is what the pointer tests against, so an
+            // unbounded layout inside makes the overlay far bigger than
+            // anything drawn — hundreds of points of invisible surface that
+            // swallows scrolls.
+            let width = 440.0_f32.min((content_rect.width() - 32.0).max(200.0));
+            ui.set_max_width(width);
             ui.spacing_mut().item_spacing.y = 6.0;
-            // bottom_up so newer toasts surface at the bottom of the
-            // stack (closest to the user's cursor on a typical click)
-            // while older ones float upward and fade out of the way.
-            ui.with_layout(Layout::bottom_up(Align::Max), |ui| {
-                for (i, toast) in queue.toasts.iter().enumerate() {
+            // TOP-DOWN, rendered newest-first, which puts the oldest nearest
+            // the anchor exactly as before.
+            //
+            // `bottom_up` was the bug: to lay out from the bottom it must
+            // claim the FULL available height first, so the measured rect ran
+            // from the anchor to the top of the screen regardless of how few
+            // toasts there were. Verified with a debug fill in the storybook —
+            // two toasts occupying ~250×70 produced a ~600×400 overlay.
+            ui.with_layout(Layout::top_down(Align::Max), |ui| {
+                for (i, toast) in queue.toasts.iter().enumerate().rev() {
                     if render_one(ui, toast) {
                         closed.push(i);
                     }
@@ -477,7 +508,12 @@ fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
         .corner_radius(CornerRadius::same(6))
         .inner_margin(Margin::symmetric(12, 8))
         .show(ui, |ui| {
-            ui.set_max_width(440.0);
+            // Clamped to the viewport, not asserted: 440 is wider than a
+            // phone, so the toast set the overlay's footprint to the full
+            // screen width — and the overlay's footprint is what blocks
+            // touches. The 32 leaves the anchor's own margin either side.
+            let room = (ui.ctx().content_rect().width() - 32.0).max(200.0);
+            ui.set_max_width(440.0_f32.min(room));
             ui.horizontal(|ui| {
                 if let Some(icon) = toast.resolved_icon() {
                     ui.label(icon.rich_text(14.0, icon_col));
@@ -506,7 +542,9 @@ fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
 
                 // Trailing affordances, right-aligned: copy (errors) + close (sticky).
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if toast.sticky {
+                    // Drawn only where the overlay actually takes input, or it
+                    // would be a dismiss control that cannot be pressed.
+                    if toast.is_interactive() {
                         let x = ui.add(
                             Label::new(PhosphorIcon::X.rich_text(12.0, icon_col))
                                 .sense(Sense::click()),
@@ -539,6 +577,41 @@ fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A progress toast must NOT make the overlay take pointer input.
+    ///
+    /// It is sticky, so it used to render a dismiss `×`, which forced the
+    /// `Area` interactable — and an interactable `Area` swallows the drag that
+    /// scrolls the content under it. A scan is precisely when a reader wants
+    /// to scroll the rows already on screen, so the overlay blocked the feed
+    /// for the whole scan.
+    #[test]
+    fn a_progress_toast_does_not_take_pointer_input() {
+        let t = Toast::new("scanning…", ToastKind::Progress);
+        assert!(t.sticky, "progress stays until the work ends");
+        assert!(
+            !t.is_interactive(),
+            "but it has nothing to click, so it must not capture touches"
+        );
+    }
+
+    /// The other side: an error is sticky BECAUSE it needs dismissing, so it
+    /// does take input. Blocking a drag under an error is acceptable; the
+    /// reader has something to do there.
+    #[test]
+    fn an_error_toast_takes_pointer_input() {
+        assert!(
+            Toast::new("boom", ToastKind::Error)
+                .sticky(true)
+                .is_interactive()
+        );
+    }
+
+    /// A timed toast disappears on its own and has no affordance either.
+    #[test]
+    fn a_timed_toast_takes_no_pointer_input() {
+        assert!(!Toast::new("saved", ToastKind::Success).is_interactive());
+    }
 
     #[test]
     fn push_caps_at_max_visible() {

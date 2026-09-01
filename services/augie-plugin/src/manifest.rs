@@ -26,7 +26,11 @@ pub use tool_schema::{assert_flat, no_arguments, schema_for, schemars, JsonSchem
 ///
 /// So the manifest may be re-fetched and re-cached after answering a mention;
 /// what that refresh cannot do is register anything.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// `Default` so a caller names only the fields it means. This is a protocol
+/// type: every field added to it has broken every literal that constructs one,
+/// across three repos, and "the protocol grew" is a poor reason for a test
+/// fixture to stop compiling.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ServiceManifest {
     /// Stable identifier for this plugin, e.g. `"holder-map"`. Must match the
     /// key a guild opts in under, and must not change once registered.
@@ -51,6 +55,35 @@ pub struct ServiceManifest {
     /// is simply never routed to by one.
     #[serde(default)]
     pub tools: Vec<PluginTool>,
+
+    /// How this service's tools relate to each other, for the system prompt.
+    ///
+    /// A tool description answers *"should I call this one?"* and is read while
+    /// choosing between siblings. It is the wrong place for a rule that spans
+    /// them — and those rules exist: which tool is authoritative for a count,
+    /// that a negative is an argument rather than a follow-up call, that a
+    /// question should be mapped into one call rather than assembled from
+    /// several.
+    ///
+    /// Without somewhere to put them they end up as clauses in whichever
+    /// description seemed closest, where each is read only by a model already
+    /// looking at that tool. `trait_count` ended up explaining `assets`, and a
+    /// model asked for a filtered count read one description, believed the
+    /// other tool could not do it, and gave up — with the counter-example
+    /// sitting in that tool's own schema.
+    ///
+    /// The host puts this in the system prompt, so it is read once, before any
+    /// tool is chosen. Keep it to relationships and rules; what a single tool
+    /// does belongs on that tool.
+    ///
+    /// The same idea as MCP's `InitializeResult.instructions`, and deliberately
+    /// so: a plugin that speaks both surfaces should be able to write this
+    /// once.
+    ///
+    /// `None` from a plugin that has nothing cross-cutting to say, which is
+    /// most of them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
 }
 
 /// One tool an agent may call.
@@ -304,7 +337,7 @@ mod tests {
                 "comp",
                 vec![cmd("create", vec![]), cmd("draw", vec![])],
             )],
-            tools: vec![],
+            ..Default::default()
         };
 
         assert_eq!(
@@ -342,8 +375,8 @@ mod tests {
         ServiceManifest {
             service: "collection-ownership".to_string(),
             version: "1".to_string(),
-            commands: vec![],
             tools,
+            ..Default::default()
         }
     }
 

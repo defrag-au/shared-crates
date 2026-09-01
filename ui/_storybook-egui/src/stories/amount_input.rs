@@ -41,7 +41,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AmountInputStoryState) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Default Presets (100, 250, 500 ADA)")
@@ -74,7 +74,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AmountInputStoryState) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("With MAX Button (balance: 1,234 ADA)")

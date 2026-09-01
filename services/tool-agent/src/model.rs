@@ -68,14 +68,32 @@ impl ModelTurn {
 
 /// Token counts, accumulated across every turn in a run.
 ///
-/// Cached-prompt tokens are counted in `prompt_tokens` like any other — the
-/// providers report them separately and inconsistently, and a consumer that
-/// needs the split should read it from its own client rather than have this
-/// crate pick a convention.
+/// This used to carry the two totals only, on the reasoning that providers
+/// report the breakdowns inconsistently and a consumer wanting the split should
+/// get it from its own client. That was the wrong call: the split IS the cost —
+/// a 98%-cached turn and a cold one of identical size differ several-fold — so
+/// every consumer had to rebuild it, or more likely went without and read the
+/// totals as if they meant something comparable.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
+    /// Of `prompt_tokens`, how many were served from cache — a SUBSET, not an
+    /// addition.
+    ///
+    /// Carried because it is most of the cost: cached input bills at a small
+    /// fraction of uncached, so two requests of identical size can differ
+    /// several-fold. Without it a token count cannot tell a cheap turn from an
+    /// expensive one, and a change that quietly broke cache-prefix stability
+    /// would show up nowhere.
+    pub cached_prompt_tokens: u32,
+    /// Reasoning tokens, IN ADDITION to `completion_tokens` — NOT a subset,
+    /// unlike `cached_prompt_tokens`. A turn reporting 74 completion and 320
+    /// reasoning spent 394 output tokens, and x.ai bills them separately.
+    ///
+    /// The asymmetry is the trap: the two breakdowns look alike and compose
+    /// with their totals in opposite directions.
+    pub reasoning_tokens: u32,
 }
 
 impl Usage {
@@ -84,7 +102,20 @@ impl Usage {
         Self {
             prompt_tokens,
             completion_tokens,
+            cached_prompt_tokens: 0,
+            reasoning_tokens: 0,
         }
+    }
+
+    /// The breakdowns, when the provider reported them.
+    ///
+    /// Separate from [`Self::new`] so a provider that reports neither keeps the
+    /// two-argument constructor rather than passing zeros it does not know.
+    #[must_use]
+    pub fn with_details(mut self, cached_prompt_tokens: u32, reasoning_tokens: u32) -> Self {
+        self.cached_prompt_tokens = cached_prompt_tokens;
+        self.reasoning_tokens = reasoning_tokens;
+        self
     }
 
     /// Saturating so a runaway loop reports a large number rather than
@@ -92,11 +123,32 @@ impl Usage {
     pub fn add(&mut self, other: Self) {
         self.prompt_tokens = self.prompt_tokens.saturating_add(other.prompt_tokens);
         self.completion_tokens = self.completion_tokens.saturating_add(other.completion_tokens);
+        self.cached_prompt_tokens = self
+            .cached_prompt_tokens
+            .saturating_add(other.cached_prompt_tokens);
+        self.reasoning_tokens = self.reasoning_tokens.saturating_add(other.reasoning_tokens);
     }
 
+    /// Prompt tokens billed at the full rate — the total less what was cached.
+    ///
+    /// Saturating rather than asserting: a provider reporting more cached than
+    /// prompt tokens is nonsense, but nonsense in a usage field should not
+    /// panic a run that has already produced an answer.
+    #[must_use]
+    pub fn uncached_prompt_tokens(&self) -> u32 {
+        self.prompt_tokens.saturating_sub(self.cached_prompt_tokens)
+    }
+
+    /// Every token the request is billed for.
+    ///
+    /// Reasoning is added because it is not part of `completion_tokens`;
+    /// cached is not, because it already is part of `prompt_tokens`. Getting
+    /// that backwards under-counts a reasoning model by several times over.
     #[must_use]
     pub fn total(&self) -> u32 {
-        self.prompt_tokens.saturating_add(self.completion_tokens)
+        self.prompt_tokens
+            .saturating_add(self.completion_tokens)
+            .saturating_add(self.reasoning_tokens)
     }
 }
 
@@ -129,3 +181,49 @@ impl std::fmt::Display for AgentError {
 }
 
 impl std::error::Error for AgentError {}
+
+#[cfg(test)]
+mod usage_tests {
+    use super::Usage;
+
+    /// The asymmetry, pinned. Cached is INSIDE the prompt total; reasoning is
+    /// OUTSIDE the completion total. They look alike and compose in opposite
+    /// directions, and getting it backwards silently under-counts a reasoning
+    /// model several-fold.
+    ///
+    /// The numbers are a real turn: `13433 in (13184 cached) / 74 out (320
+    /// reasoning)`.
+    #[test]
+    fn cached_is_inside_the_total_and_reasoning_is_outside_it() {
+        let usage = Usage::new(13_433, 74).with_details(13_184, 320);
+
+        // Billed at the full input rate: the prompt less what was cached.
+        assert_eq!(usage.uncached_prompt_tokens(), 249);
+        // Everything billed, so reasoning counts and cached does not double.
+        assert_eq!(usage.total(), 13_433 + 74 + 320);
+    }
+
+    /// Summed across rounds, each part independently — a run's cache hit rate
+    /// is only meaningful if the two halves accumulate together.
+    #[test]
+    fn rounds_accumulate_every_part() {
+        let mut usage = Usage::new(100, 10).with_details(80, 40);
+        usage.add(Usage::new(200, 20).with_details(150, 60));
+
+        assert_eq!(usage.prompt_tokens, 300);
+        assert_eq!(usage.cached_prompt_tokens, 230);
+        assert_eq!(usage.completion_tokens, 30);
+        assert_eq!(usage.reasoning_tokens, 100);
+        assert_eq!(usage.uncached_prompt_tokens(), 70);
+    }
+
+    /// A provider reporting neither breakdown still totals correctly — the
+    /// pre-existing behaviour, unchanged.
+    #[test]
+    fn a_provider_without_breakdowns_is_unaffected() {
+        let usage = Usage::new(100, 10);
+
+        assert_eq!(usage.uncached_prompt_tokens(), 100);
+        assert_eq!(usage.total(), 110);
+    }
+}

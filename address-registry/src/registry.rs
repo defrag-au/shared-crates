@@ -103,16 +103,46 @@ pub static ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
     "addr1x8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7efvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8ekstg4qrx" => AC::Script(SC::Marketplace { marketplace: MP::JpgStore, purpose: Purpose::Sale, kind: MarketplaceType::JpgStoreV2, fee_calculation: jpg_store_fee_calculation }),
     "addr1zxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tvpw288a4x0xf8pxgcntelxmyclq83s0ykeehchz2wtspks905plm" => AC::Script(SC::Marketplace { marketplace: MP::JpgStore, purpose: Purpose::Sale, kind: MarketplaceType::JpgStoreV1, fee_calculation: jpg_store_fee_calculation }),
     "addr1xxzvcf02fs5e282qk3pmjkau2emtcsj5wrukxak3np90n2evjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eksg6pw3p" => AC::Script(SC::Marketplace { marketplace: MP::JpgStore, purpose: Purpose::Fee, kind: MarketplaceType::JpgStoreV3, fee_calculation: no_fee_calculation }),
-    "addr1w8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7efvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8ekstg4qrx" => AC::Script(SC::Marketplace { marketplace: MP::JpgStore, purpose: Purpose::Sale, kind: MarketplaceType::JpgStoreV3, fee_calculation: jpg_store_fee_calculation }),
-    // JPG.store V4 — new simplified contract (asset ID + seller credentials, no price in datum)
-    "addr1w999n67e47he8y0v36hjtzluargwu25zw94f6lqnm82aqqsg4xkcp" => AC::Script(SC::Marketplace { marketplace: MP::JpgStore, purpose: Purpose::Sale, kind: MarketplaceType::JpgStoreV4, fee_calculation: jpg_store_fee_calculation }),
+    // The UNDELEGATED form of the V2 sale escrow: same payment script
+    // c727443d77df6cff95dca383994f4c3024d03ff56b02ecc22b0f3f65 as the entry
+    // above, with no staking credential. Same script means the same validator
+    // and so the same datum, which is why it is `JpgStoreV2` and not a version
+    // of its own — the two addresses differ in delegation, nothing else.
+    //
+    // It replaces a "V3 sale" row that was never an address: that string was
+    // this script's address with the type character changed `x` → `w`, leaving
+    // the bech32 checksum invalid, so no decoder could produce it and this
+    // exact-match table could never hit it. The escrow itself is real and
+    // active — it appears as an output address in recorded sale transactions
+    // under pipeline/tx-classifier/resources/test — so for as long as the
+    // corrupt row stood in for it, those sales resolved to `None` and went
+    // unclassified.
+    "addr1w8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7eg0fcr8k" => AC::Script(SC::Marketplace { marketplace: MP::JpgStore, purpose: Purpose::Sale, kind: MarketplaceType::JpgStoreV2, fee_calculation: jpg_store_fee_calculation }),
+    // A "V4 sale" row was removed from here for the same reason — it also
+    // failed the bech32 checksum — but unlike the V3 string its payload is
+    // corrupt beyond the checksum digits, so the intended address cannot be
+    // recovered from it and has to come from the source. Until then JPG.store
+    // V4 has a `MarketplaceType`, a datum parser and a fee rule, but no
+    // address to trigger them.
+    //
+    // `every_registered_address_is_a_real_address` stops any of this recurring.
     "addr1zxnk7racqx3f7kg7npc4weggmpdskheu8pm57egr9av0mtvasazx8r5xwqtnfjsfrnat3h6yrycd2hfm9qpg7d0hf50s7x4y79" => AC::Script(SC::Marketplace { marketplace: MP::Wayup, purpose: Purpose::Sale, kind: MarketplaceType::Wayup, fee_calculation: wayup_fee_calculation }),
     "addr1v87m5srrtx52s8jdragjl8wle0eq57dzv2n62nxh3nx65dq0edwwu" => AC::Script(SC::Marketplace { marketplace: MP::Wayup, purpose: Purpose::Sale, kind: MarketplaceType::Wayup, fee_calculation: wayup_fee_calculation }),
     "addr1xx2l3rxnj5cuvj58fxnztewnlxneejzayqqakg7c2xkkt0gejuwlk348lfs3mh65tm5ym27hg9z5cjphv6w7sv3dwxqsk9as6l" => AC::Script(SC::Minter(Minter::JpgStore)),
     "addr1z98ps3vxeewk94rwp5dtxvzlr4aczync78p8am9l9w4vcn04fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwq2zuf48" => AC::Script(SC::Staking { label: "The Vault", project: "CNFT Tools" }),
     // dexes — Splash pool contracts (type 6: script payment + script staking, per-pool credentials)
     "addr1x89ksjnfu7ys02tedvslc9g2wk90tu5qte0dt4dge60hdudj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsg0g63z" => AC::Script(SC::Exchange { label: "Splash" }),
-    // DexHunter aggregator contract
+    // DexHunter aggregator contract.
+    //
+    // SUSPECT — unverified, left as found. On chain this holds ~422k ADA and a
+    // thousand token policies at their full 1B supply, which is pool or
+    // launchpad inventory rather than anything an aggregator custodies, and it
+    // delegates to Spectrum/Splash's LBSP credential (see STAKE_REGISTRY's
+    // exclusions). An aggregator delegating its contract ADA into a
+    // competitor's liquidity-bootstrapping pool makes little sense, so this is
+    // more likely a Splash-family contract mislabelled. No labelled source was
+    // found to confirm either way, so the entry stands rather than being
+    // rewritten on inference.
     "addr1xxg94wrfjcdsjncmsxtj0r87zk69e0jfl28n934sznu95tdj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrs2993lw" => AC::Script(SC::Exchange { label: "DexHunter" }),
     // Minswap batcher contract (type 7: script payment, no staking)
     "addr1w8p79rpkcdz8x9d6tft0x0dx5mwuzac2sa4gm8cvkw5hcnqst2ctf" => AC::Script(SC::Exchange { label: "Minswap" }),
@@ -215,6 +245,18 @@ pub enum StakeServiceKind {
     /// unrelated project — so a consumer that walks a frontier must record it
     /// and refuse to expand it.
     MintingProvider,
+    /// An NFT marketplace's escrow. Assets and offers sit at its script
+    /// addresses while listed, so it appears as a HOLDER of everything on sale
+    /// — including every ADA Handle currently listed. A consumer that asks a
+    /// handle service "who lives at this stake key" gets thousands of handles
+    /// that belong to unrelated sellers, slowly. Name it and never ask.
+    Marketplace,
+    /// A token venue — DEX, aggregator, swap desk. Same holder problem as a
+    /// marketplace: liquidity sits at its addresses, so it tops any holder
+    /// list. Only ever registered by a credential that is provably the
+    /// venue's; DEX staking scripts are frequently shared, which is why most
+    /// of them cannot be listed here at all.
+    Exchange,
 }
 
 /// A service run from an ordinary wallet, identified by its stake credential.
@@ -232,19 +274,31 @@ pub struct StakeService {
 /// ## Why this table exists separately
 ///
 /// [`ADDRESS_REGISTRY`] keys on payment addresses, which is correct for
-/// scripts: a contract IS its address. A service run from an ORDINARY WALLET
-/// is different — it spends from many payment addresses under a single staking
-/// credential, and enumerating them is both endless and pointless. The stake
-/// key is the stable identity.
+/// scripts: a contract IS its address. Two things are not reachable that way.
+///
+/// A service run from an ORDINARY WALLET spends from many payment addresses
+/// under a single staking credential, and enumerating them is both endless and
+/// pointless. The stake key is the stable identity.
+///
+/// A SCRIPT is reachable by address — but consumers routinely hold only the
+/// stake key, because deriving one from an address is a local decode while
+/// keeping the address is not always possible. Anything that groups holders by
+/// stake key (a holder snapshot, a handle batch) has thrown the payment
+/// address away by the time it wants a name.
 ///
 /// ## The trap this does NOT fall into
 ///
 /// [`ADDRESS_PREFIX_REGISTRY`] carries a warning: order and listing contracts
 /// keep the CUSTOMER's staking credential, so naming a stake key after a
-/// script-prefix hit labels every customer as the venue. That failure cannot
-/// occur here, because these entries are key-payment wallets whose stake
-/// credential is their own. Only add an entry when the stake credential
-/// genuinely belongs to the service.
+/// script-prefix hit labels every customer as the venue. That is exactly the
+/// failure this table could reintroduce, so the bar for an entry is:
+///
+/// **Only add a stake credential that genuinely belongs to the service.** For a
+/// wallet-run service that means its own staking key. For a script it means the
+/// credential is FIXED across the venue's own addresses rather than carried in
+/// from whoever built the transaction — check that the same credential appears
+/// in two or more of the venue's registered addresses, and that it is not the
+/// seller's. Never derive an entry from a prefix-matched address.
 pub static STAKE_REGISTRY: Map<&'static str, StakeService> = phf_map! {
     // Anvil — Cardano minting API. Takes a flat per-mint fee (1.15 ADA at time
     // of writing) in the mint transaction itself, alongside the project's own
@@ -257,6 +311,90 @@ pub static STAKE_REGISTRY: Map<&'static str, StakeService> = phf_map! {
                  e26a8565 (perps_into_the_factions, 242), 812197d5 (Biddy_DeGoat, 127); \
                  1,009 unspent ~1 ADA UTxOs from unrelated projects",
     },
+
+    // JPG.store — SCRIPT stake credential 2c967f4b…833e6d, shared by the V1
+    // offer escrow (addr1xxgx3far…) and the V2 sale escrow (addr1x8rjw3paw…).
+    // Fixed across both, so it is the venue's own credential and not a
+    // seller's — see the bar for entry above.
+    "stake17ykfvl6t62y5fvryvtsnch3lt406dcpls4n4d9pcekpnumg6v83tq" => StakeService {
+        label: "JPG.store",
+        kind: StakeServiceKind::Marketplace,
+        source: "delegation part of the registered JPG.store escrow addresses \
+                 addr1xxgx3far… (offer, V1) and addr1x8rjw3paw… (sale, V2); \
+                 both are addr1x (script payment + script stake) and carry the \
+                 identical script credential 2c967f4bd28944b06462e13c5e3f5d5f\
+                 a6e03f8567569438cd833e6d",
+    },
+    // JPG.store — KEY stake credential 81728e7e…cb806d, the delegation part of
+    // the V1 sale escrow (addr1zxgx3far…). A different credential from the one
+    // above and reached from one registered address only, so it is listed
+    // explicitly rather than inferred.
+    "stake1uxqh9rn76n8nynsnyvf4ulndjv0srcc8jtvumut3989cqmgjt49h6" => StakeService {
+        label: "JPG.store",
+        kind: StakeServiceKind::Marketplace,
+        source: "delegation part of the registered JPG.store V1 sale escrow \
+                 addr1zxgx3far… (script payment + key stake); credential \
+                 81728e7ed4cf324e1323135e7e6d931f01e30792d9cdf17129cb806d",
+    },
+    // JPG.store's MINTER, a different contract from the escrows above and so a
+    // different credential. One payment script, no other label reaches it.
+    "stake17yvew80mg6nl5cgama29a6zd40t5z32vfqmkd80gxgkhrqgy48g8s" => StakeService {
+        label: "JPG.store",
+        kind: StakeServiceKind::Marketplace,
+        source: "delegation part of the registered JPG.store minter address; \
+                 reached by exactly one payment script and no other registered \
+                 label",
+    },
+    // Wayup — reached by two of its own sale scripts and nothing else.
+    //
+    // Covers only the Wayup addresses carrying THIS credential. Wayup also has
+    // a sale address delegating to the shared credential noted in the
+    // exclusions below, which is deliberately not registered; that address
+    // stays unnamed rather than being named wrongly.
+    "stake1uxwcw3rr36r8q9e5egy3e74cmazpjvx4t5ajsq50xhm568celda4g" => StakeService {
+        label: "Wayup",
+        kind: StakeServiceKind::Marketplace,
+        source: "delegation shared by two registered Wayup sale scripts and \
+                 carrying no other registered label",
+    },
+    // SaturnSwap — three of its own scripts, sole label.
+    "stake1u902fq2jxqctywjf22rv5xsch52p5jf7nddpnkyfj5lkekcnnhvtv" => StakeService {
+        label: "SaturnSwap",
+        kind: StakeServiceKind::Exchange,
+        source: "delegation shared by three registered SaturnSwap scripts and \
+                 carrying no other registered label",
+    },
+
+    // ── Deliberately NOT registered ─────────────────────────────────────────
+    //
+    // Two credentials look like obvious additions and are not, because more
+    // than one entity's contracts delegate to them. `a_registered_credential_
+    // is_claimed_by_exactly_one_entity` enforces this; the note is here so the
+    // absence reads as a decision rather than an oversight.
+    //
+    //   stake17xe0d2lkpnx7jt4wrgh5lhm97t40vgydsukx7rje0nqskpc5zugc3
+    //     Fourteen distinct payment scripts delegate here, registered under
+    //     BOTH "Splash" and "DexHunter". This is not a transcription slip —
+    //     it is Spectrum/Splash's LBSP ("Liquidity Bootstrapping Stake Pool")
+    //     credential, the protocol's documented mechanism for delegating
+    //     contract-locked ADA to its own stake pool. Every validator in the
+    //     family shares it BY DESIGN, and the credential's controlled stake
+    //     (~16.4M ADA) is delegated to Spectrum Finance's pool.
+    //
+    //     So the credential identifies a STAKING ARRANGEMENT, not an operator,
+    //     and no label can be correct: the addresses behind it span pools, a
+    //     launchpad-shaped contract holding a thousand tokens at full supply,
+    //     and whatever else the protocol deploys next. Naming it would repeat
+    //     the 168 Mekka counterparties wrongly labelled "Splash", noted on
+    //     ADDRESS_PREFIX_REGISTRY.
+    //
+    //     Any DEX whose contracts delegate to a protocol-wide staking script
+    //     is unregisterable for the same reason; expect this to be the rule
+    //     for DEXes rather than the exception.
+    //
+    //   stake1u8653j3mcjks5d304g6eexryse7ma22erw8p05fsvefem8qklu7w7
+    //     Three scripts, registered under both "The Vault" staking and "Wayup"
+    //     sale. Same problem, smaller blast radius.
 };
 
 /// Look up a service by its stake credential (bech32 `stake1…`).
@@ -787,6 +925,218 @@ mod tests {
     fn an_unregistered_stake_key_is_not_named() {
         assert!(
             lookup_stake("stake1u98f5mr0mn8tv2kqndk5cwen4uasc7cewlzdklz6y664zacl9lvjz").is_none()
+        );
+    }
+
+    /// Both jpg.store escrow credentials resolve to the same venue. A consumer
+    /// that only has a stake key — a holder snapshot, a handle batch — must be
+    /// able to name the marketplace without the payment address.
+    #[test]
+    fn jpg_store_escrow_is_found_by_either_stake_credential() {
+        for stake in [
+            "stake17ykfvl6t62y5fvryvtsnch3lt406dcpls4n4d9pcekpnumg6v83tq",
+            "stake1uxqh9rn76n8nynsnyvf4ulndjv0srcc8jtvumut3989cqmgjt49h6",
+        ] {
+            let s = lookup_stake(stake).unwrap_or_else(|| panic!("{stake} is registered"));
+            assert_eq!(s.label, "JPG.store");
+            assert_eq!(s.kind, StakeServiceKind::Marketplace);
+            assert!(!s.source.is_empty(), "an entry must carry its evidence");
+        }
+    }
+
+    /// The script credential is shared by the V1 offer and V2 sale escrows.
+    /// Those two addresses are the evidence the entry rests on, so if either
+    /// leaves [`ADDRESS_REGISTRY`] the stake entry has lost its justification.
+    #[test]
+    fn the_shared_jpg_store_credential_still_has_two_witnesses() {
+        for addr in [
+            "addr1xxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tfvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eks2utwdd",
+            "addr1x8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7efvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8ekstg4qrx",
+        ] {
+            assert!(
+                matches!(
+                    lookup_address(addr),
+                    Some(AddressCategory::Script(ScriptCategory::Marketplace {
+                        marketplace: Marketplace::JpgStore,
+                        ..
+                    }))
+                ),
+                "{addr} is a witness for the shared jpg.store stake credential"
+            );
+        }
+    }
+
+    /// The V2 escrow is registered twice: once delegated to JPG.store's own
+    /// stake credential, once undelegated. Same payment script, so the same
+    /// validator and the same datum — which is why both carry `JpgStoreV2`.
+    /// Splitting them across versions would route byte-identical datums to two
+    /// different schemas, and the undelegated one is the address that actually
+    /// shows up in recorded sales.
+    #[test]
+    fn both_forms_of_the_v2_escrow_are_the_same_contract() {
+        use pallas_addresses::Address;
+
+        const DELEGATED: &str = "addr1x8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7efvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8ekstg4qrx";
+        const UNDELEGATED: &str = "addr1w8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7eg0fcr8k";
+
+        let script_of = |a: &str| match Address::from_bech32(a) {
+            Ok(Address::Shelley(sh)) => sh.payment().to_hex(),
+            _ => panic!("{a} must decode"),
+        };
+        assert_eq!(
+            script_of(DELEGATED),
+            script_of(UNDELEGATED),
+            "the two forms must share a payment script, or they are not one contract"
+        );
+
+        let kind_of = |a: &str| match lookup_address(a) {
+            Some(AddressCategory::Script(ScriptCategory::Marketplace { kind, .. })) => *kind,
+            other => panic!("{a} should be a registered marketplace, got {other:?}"),
+        };
+        assert_eq!(kind_of(DELEGATED), MarketplaceType::JpgStoreV2);
+        assert_eq!(
+            kind_of(UNDELEGATED),
+            kind_of(DELEGATED),
+            "one script, one datum schema"
+        );
+    }
+
+    /// The ENTITY a category attributes an address to, ignoring the role it
+    /// plays. "JPG.store Offer" and "JPG.store Sale" are one entity; "Splash"
+    /// and "DexHunter" are two. Stake ownership is a claim about the entity,
+    /// so this is the granularity the invariant below has to compare at.
+    fn owner_of(category: &AddressCategory) -> Option<String> {
+        Some(match category {
+            AddressCategory::Unknown => return None,
+            AddressCategory::Marketplace(m) => m.to_string(),
+            AddressCategory::Script(s) => match s {
+                ScriptCategory::Unknown => return None,
+                ScriptCategory::Marketplace { marketplace, .. } => marketplace.to_string(),
+                ScriptCategory::Exchange { label } => label.to_string(),
+                ScriptCategory::DeFi { protocol, .. } => protocol.to_string(),
+                ScriptCategory::Minter(m) => m.to_string(),
+                ScriptCategory::Staking { label, .. } => label.to_string(),
+                ScriptCategory::Vesting { label } => label.to_string(),
+            },
+        })
+    }
+
+    /// The invariant that makes [`STAKE_REGISTRY`] safe to add to.
+    ///
+    /// A staking credential may only be named after an entity if every
+    /// registered address delegating to it belongs to that entity. DEX and
+    /// aggregator contracts routinely SHARE a staking script — fourteen
+    /// distinct payment scripts across Splash and DexHunter delegate to one
+    /// credential — and an order or listing contract carries the CUSTOMER's
+    /// delegation. Either way, naming such a credential labels somebody else's
+    /// wallet as the venue, which is the failure mode this whole table is
+    /// fenced against.
+    ///
+    /// Checking it here means the judgement is enforced rather than
+    /// remembered: add a credential shared by two entities and this fails with
+    /// both names, which is exactly the prompt needed.
+    #[test]
+    fn a_registered_credential_is_claimed_by_exactly_one_entity() {
+        use std::collections::{BTreeMap, BTreeSet};
+
+        let mut owners: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        for (address, category) in ADDRESS_REGISTRY.entries() {
+            let (Some(stake), Some(owner)) = (stake_of(address), owner_of(category)) else {
+                continue;
+            };
+            if STAKE_REGISTRY.contains_key(stake.as_str()) {
+                owners.entry(stake).or_default().insert(owner);
+            }
+        }
+
+        for (stake, claimants) in owners {
+            let registered = lookup_stake(&stake).expect("filtered on membership").label;
+            assert_eq!(
+                claimants.len(),
+                1,
+                "{stake} is registered as {registered:?} but registered addresses \
+                 for {claimants:?} delegate to it — a credential claimed by more \
+                 than one entity cannot name any of them"
+            );
+            let claimant = claimants.iter().next().expect("exactly one");
+            assert_eq!(
+                claimant, registered,
+                "{stake} is registered as {registered:?} but its addresses belong \
+                 to {claimant:?}"
+            );
+        }
+    }
+
+    /// Decode a registered address's delegation part, or `None` if it has one
+    /// of the forms that carries no stake credential.
+    fn stake_of(address: &str) -> Option<String> {
+        use pallas_addresses::{Address, StakeAddress};
+        let Ok(Address::Shelley(sh)) = Address::from_bech32(address) else {
+            return None;
+        };
+        StakeAddress::try_from(sh).ok()?.to_bech32().ok()
+    }
+
+    /// Nothing in this crate parses the addresses it stores — lookups are
+    /// string comparisons, and `payment_credential_is_script` reads one
+    /// character. So a typo produces a row that is silently unreachable rather
+    /// than a build error, and the table quietly stops covering what it claims
+    /// to. That is not hypothetical: a "JPG.store V3 sale" entry sat here for
+    /// a long time holding the V2 address with `x` changed to `w`, which fails
+    /// the bech32 checksum and could never have matched anything.
+    #[test]
+    fn every_registered_address_is_a_real_address() {
+        use pallas_addresses::Address;
+        for address in ADDRESS_REGISTRY
+            .keys()
+            .chain(TESTNET_ADDRESS_REGISTRY.keys())
+        {
+            assert!(
+                Address::from_bech32(address).is_ok(),
+                "{address} is registered but is not a decodable address — \
+                 an exact-match table can never hit it"
+            );
+        }
+    }
+
+    /// The two tables have to agree about who owns a staking credential.
+    ///
+    /// Every fully-registered JPG.store address delegates to a credential that
+    /// [`STAKE_REGISTRY`] must also name JPG.store. This is what makes the
+    /// stake entries self-maintaining: add a venue address carrying a
+    /// credential nobody registered and this fails, which is the prompt to
+    /// decide whether the credential is really the venue's — the one judgement
+    /// the stake table's doc comment insists on.
+    #[test]
+    fn a_registered_venue_address_delegates_to_a_registered_credential() {
+        let mut checked = 0;
+        for (address, category) in ADDRESS_REGISTRY.entries() {
+            if !matches!(
+                category,
+                AddressCategory::Script(ScriptCategory::Marketplace {
+                    marketplace: Marketplace::JpgStore,
+                    ..
+                })
+            ) {
+                continue;
+            }
+            // Enterprise addresses (V4) delegate to nothing — no claim to check.
+            let Some(stake) = stake_of(address) else {
+                continue;
+            };
+            let named = lookup_stake(&stake).map(|s| s.label);
+            assert_eq!(
+                named,
+                Some("JPG.store"),
+                "{address} is a registered JPG.store address delegating to \
+                 {stake}, which the stake table does not name as JPG.store"
+            );
+            checked += 1;
+        }
+        assert!(
+            checked >= 3,
+            "expected several JPG.store addresses to carry a stake credential, \
+             checked only {checked} — has the registry been gutted?"
         );
     }
 

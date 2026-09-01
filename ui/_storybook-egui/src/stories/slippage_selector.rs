@@ -41,7 +41,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SlippageSelectorStoryState) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Default Presets (0.5%, 1%, 3%)")
@@ -66,7 +66,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SlippageSelectorStoryState) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Custom Presets (0.1%, 0.5%, 2%, 5%)")

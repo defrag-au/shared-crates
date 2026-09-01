@@ -89,6 +89,24 @@ BRAVE="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
 - `--virtual-time-budget=8000` lets wasm boot and the remote font fetch settle. Too low gives a blank canvas.
 - Size the window to the content; the sidebar is ~180px.
 
+### Narrow / mobile widths — `--window-size` CANNOT do this
+
+Chromium headless **floors the window near 620px** (measured on this machine, 2026-08-29), lays out at the floor and then **crops the capture** to whatever width you asked for. A "390px" shot is therefore a wide layout with its right edge sliced off — which reads as an overflow bug that is not there, and hides the real one. Two things are needed:
+
+1. **`?nav=0`** drops the storybook sidebar, so the story gets the whole viewport instead of `viewport − 180`.
+2. **CDP `Emulation.setDeviceMetricsOverride`** sets a real layout viewport. Helper: `ui/_storybook-egui/tools/cdp-shot.mjs`; Node has a global `WebSocket`, so there is nothing to install.
+
+```sh
+BRAVE="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+"$BRAVE" --headless=new --disable-gpu --use-gl=swiftshader --enable-unsafe-swiftshader \
+  --hide-scrollbars --remote-debugging-port=9222 --user-data-dir=/tmp/brave-cdp-profile \
+  about:blank &
+node ui/_storybook-egui/tools/cdp-shot.mjs \
+  "http://127.0.0.1:8095/?nav=0#/activity-feed" 390 844 .tmp/narrow.png
+```
+
+`--user-data-dir` is required alongside `--remote-debugging-port` or Brave refuses to expose the port. The same helper points at a **deployed app** (pass a longer settle for socket + first payload), which is the only way to check a widget against real data at real width.
+
 ### Let the marks carry it — egui is weak at prose
 
 egui has no real text shaping and poor typographic hierarchy, so **blocks of text are the wrong tool**. If a widget is explaining itself in paragraphs, the design is wrong, not the copy. Reach for an encoding instead:

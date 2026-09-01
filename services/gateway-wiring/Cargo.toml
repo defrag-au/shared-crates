@@ -1,0 +1,13 @@
+[package]
+name = "gateway-wiring"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Per-guild chat trigger wiring and agent entitlement — the config vocabulary shared by the gateway listener and every admin surface over it"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

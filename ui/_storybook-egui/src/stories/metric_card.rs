@@ -124,6 +124,77 @@ pub fn show(ui: &mut egui::Ui) {
         .show(ui);
 
     ui.add_space(16.0);
+
+    // --- A real stat row: same requested width, wildly different value widths ---
+    //
+    // This is the case the story previously CLAIMED to cover ("fixed-width
+    // cards align in horizontal rows") without ever exercising: every card
+    // below asks for the same width, but the values range from "11796" to
+    // "278248 .. 333004 ADA". Lifted verbatim from token-explorer's readout,
+    // where the row renders visibly ragged.
+    ui.label(
+        egui::RichText::new("Stat row — uniform width, varied values")
+            .color(ACCENT)
+            .strong(),
+    );
+    ui.label(
+        egui::RichText::new("every card requests width(150); a row must not depend on the values")
+            .color(TEXT_MUTED)
+            .small(),
+    );
+    ui.add_space(4.0);
+
+    const STATS: [(&str, &str); 6] = [
+        ("at", "2026-08-29"),
+        ("spot", "0.02165204 ADA"),
+        ("holders", "11796"),
+        ("notional", "2165203 ADA"),
+        ("realisable", "278248 .. 333004 ADA"),
+        ("honesty", "12.9% .. 15.4%"),
+    ];
+
+    ui.label(
+        egui::RichText::new("per-card width(150) — every card a different width")
+            .color(TEXT_MUTED)
+            .small(),
+    );
+    ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+        for (label, value) in STATS {
+            egui_widgets::MetricCard::new(label, value)
+                .width(150.0)
+                .show(ui);
+        }
+    });
+
+    ui.add_space(10.0);
+    ui.label(
+        egui::RichText::new("MetricRow — measured, so every card shares one edge")
+            .color(TEXT_MUTED)
+            .small(),
+    );
+    STATS
+        .iter()
+        .fold(egui_widgets::MetricRow::new(), |row, (label, value)| {
+            row.push(egui_widgets::MetricCard::new(label, value))
+        })
+        .show(ui);
+
+    ui.add_space(10.0);
+    ui.label(
+        egui::RichText::new("mixed heights — a trend on one card must not stagger the row")
+            .color(TEXT_MUTED)
+            .small(),
+    );
+    egui_widgets::MetricRow::new()
+        .push(egui_widgets::MetricCard::new("holders", "11796"))
+        .push(
+            egui_widgets::MetricCard::new("notional", "2165203 ADA")
+                .trend(egui_widgets::Trend::Down, "-98.7%"),
+        )
+        .push(egui_widgets::MetricCard::new("honesty", "12.9% .. 15.4%"))
+        .show(ui);
+
+    ui.add_space(16.0);
     ui.separator();
     ui.add_space(8.0);
 
@@ -131,6 +202,12 @@ pub fn show(ui: &mut egui::Ui) {
     ui.label("\u{2022} Cards show label, value, optional subtitle");
     ui.label("\u{2022} Trend arrows: green up, red down, muted flat");
     ui.label("\u{2022} Sparkline embeds inside card with matching value color");
-    ui.label("\u{2022} Fixed-width cards align in horizontal rows");
+    // Was "Fixed-width cards align in horizontal rows" — asserted, never
+    // demonstrated, and false: `width()` was advisory, so six cards asking for
+    // 150 rendered at six widths. The stat-row section above is the case that
+    // would have caught it.
+    ui.label("\u{2022} width() pins the card; an oversized value still overflows it");
+    ui.label("\u{2022} MetricRow measures first, so a row shares one width, height and baseline");
+    ui.label("\u{2022} MetricRow never exceeds the available width — it shrinks the shared width instead");
     ui.label("\u{2022} Full-width card stretches to available space");
 }

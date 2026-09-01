@@ -30,8 +30,8 @@
 
 use egui::emath::Rangef;
 use egui::{
-    Align2, Color32, CornerRadius, FontId, Pos2, Rect, Response, Rgba, Sense, Shape, Stroke, Ui,
-    Vec2, lerp, pos2, remap, remap_clamp, vec2,
+    Color32, CornerRadius, FontId, Pos2, Rect, Response, Rgba, Sense, Shape, Stroke, Ui, Vec2,
+    lerp, pos2, remap, remap_clamp, vec2,
 };
 
 use crate::motion::{Easing, tween, tween_bool};
@@ -427,14 +427,18 @@ fn tick_shapes(
             if tc != Color32::TRANSPARENT {
                 let text = format_tick(t, spacing);
                 ui.ctx().fonts_mut(|f| {
-                    shapes.push(Shape::text(
-                        f,
-                        pos2(x + 4.0, lerp(canvas.y_range(), 0.5)),
-                        Align2::LEFT_CENTER,
-                        &text,
-                        font_id.clone(),
-                        tc,
-                    ));
+                    // MEASURE BEFORE DRAWING. The `visible` test above bounds
+                    // the tick, not the label that hangs to the right of it,
+                    // so a tick near the edge painted its text past the canvas
+                    // — invisible inside a desktop margin, and straight off
+                    // the viewport on a phone. The tick line still draws; only
+                    // its label is dropped, which is the right thing to lose.
+                    let galley = f.layout_no_wrap(text, font_id.clone(), tc);
+                    let size = galley.size();
+                    if x + 4.0 + size.x <= canvas.max.x {
+                        let y = lerp(canvas.y_range(), 0.5) - size.y * 0.5;
+                        shapes.push(Shape::galley(pos2(x + 4.0, y), galley, tc));
+                    }
                 });
             }
         }
@@ -467,6 +471,10 @@ pub fn format_date(unix: i64) -> String {
     let (y, m, d) = civil_from_unix(unix);
     format!("{y:04}-{m:02}-{d:02}")
 }
+
+/// Half the width of the playhead's arrow head. The playhead is inset by this
+/// at both ends so the marker never draws past the widget's clip rect.
+const PLAYHEAD_HALF_W: f32 = 5.0;
 
 /// A tick label with only as much precision as `spacing` seconds warrants:
 /// day-or-coarser → date; sub-day → `HH:MM`; sub-minute → `HH:MM:SS`.
@@ -898,10 +906,19 @@ impl<'a> TimeSpine<'a> {
 
         // Playhead — tweened so a click glides rather than teleports (and a
         // playing head is smooth even at coarse tick rates).
+        // Inset by the marker's own half-width. Clamping to the bare ruler
+        // edge drew the head's arrow centred ON the edge, so `painter_at`
+        // sliced half of it off — and the playhead sits at the right-hand end
+        // by default, which made the clipped state the FIRST thing a reader
+        // sees on a narrow screen.
+        let head_x = Rangef::new(
+            ruler.left() + PLAYHEAD_HALF_W,
+            (ruler.right() - PLAYHEAD_HALF_W).max(ruler.left() + PLAYHEAD_HALF_W),
+        );
         let target_x = scale
             .x_from_time_f32(state.playhead as f64)
             .unwrap_or(ruler.right())
-            .clamp(ruler.left(), ruler.right());
+            .clamp(head_x.min, head_x.max);
         let x = tween(
             ui.ctx(),
             id.with("playhead"),
@@ -916,8 +933,8 @@ impl<'a> TimeSpine<'a> {
         );
         painter.add(Shape::convex_polygon(
             vec![
-                pos2(x - 5.0, rect.top()),
-                pos2(x + 5.0, rect.top()),
+                pos2(x - PLAYHEAD_HALF_W, rect.top()),
+                pos2(x + PLAYHEAD_HALF_W, rect.top()),
                 pos2(x, rect.top() + 7.0),
             ],
             ph_col,

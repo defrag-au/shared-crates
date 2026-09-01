@@ -57,9 +57,9 @@
 //! }
 //! ```
 
-use egui::{Color32, FontFamily, RichText, TextStyle, Ui, WidgetText};
+use egui::{RichText, Ui, WidgetText};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font, phosphor_family};
+use crate::icons::{PhosphorIcon, install_phosphor_font};
 
 /// Builder.
 pub struct ButtonGroup<'a> {
@@ -212,29 +212,8 @@ fn render_one(ui: &mut Ui, button: &ButtonGroupButton) -> Option<u64> {
 /// Colour stays `PLACEHOLDER` so the button's enabled / hovered visual
 /// state carries through automatically.
 fn phosphor_text(ui: &Ui, icon: PhosphorIcon, label: &str) -> WidgetText {
-    use egui::text::LayoutJob;
-    use egui::{FontId, TextFormat};
-    let small = TextStyle::Small.resolve(ui.style());
-    let icon_font = FontId::new(small.size, phosphor_family());
-    let text_font = FontId::new(small.size, FontFamily::Proportional);
-    let mut job = LayoutJob::default();
-    job.append(
-        &icon.as_str(),
-        0.0,
-        TextFormat {
-            font_id: icon_font,
-            color: Color32::PLACEHOLDER,
-            ..Default::default()
-        },
-    );
-    job.append(
-        &format!(" {label}"),
-        0.0,
-        TextFormat {
-            font_id: text_font,
-            color: Color32::PLACEHOLDER,
-            ..Default::default()
-        },
-    );
-    job.into()
+    // Lifted to `icons` so the nav (and anything else mixing a glyph with a
+    // label) shares one implementation rather than rediscovering that a
+    // single-family `RichText` renders the glyph as tofu.
+    crate::icons::phosphor_label(ui, icon, label)
 }

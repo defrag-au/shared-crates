@@ -8,3 +8,11 @@ phf = { version = "0.11", features = ["macros"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"
+
+[dev-dependencies]
+# Tests only — the registry itself stays dependency-light on purpose (see
+# `payment_credential_is_script`, which reads the type character textually
+# rather than decoding). But a table of addresses that nothing ever parses can
+# hold a string that is not an address, which is exactly what happened, so the
+# guard test decodes them for real.
+pallas-addresses = { workspace = true }

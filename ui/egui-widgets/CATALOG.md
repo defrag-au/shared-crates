@@ -5,21 +5,24 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-111 widgets.
+120 widgets.
 
 | module | what it is |
 |---|---|
+| `about_modal` | `AboutModal` — what a product is, what state it is in, and what a reader should expect from it while it is in that state |
 | `access_gate` | `AccessGate` — the app-level access screen: a "sign in" prompt for anonymous visitors and a "requirements" screen (what to join to gain access) for signed-in-but-unqualified users |
 | `activity_feed` | `ActivityFeed` — a wallet's transactions as day-grouped cards: what it was, who it was with, what moved, and what it cost |
 | `activity_lanes` | `ActivityLanes` — one thin lane per party, showing WHEN it acted, under the shared spine |
+| `agent_config` | `agent_config` — who answers, on whose key, for whom, and how much (feature `gateway`) |
 | `amount_input` | ADA amount input widget with preset buttons and validation |
 | `animated_counter` | AnimatedCounter — smoothly interpolates a numeric value between snapshots |
 | `arrival_field` | ArrivalField — every asset a dot, every holder a pile, and now they MOVE |
 | `asset_strip` | Asset strip — a horizontal row of square asset thumbnails that overlap progressively as more items are added |
 | `background` | `BackgroundToasts` — declare what work is running; the toasts follow |
-| `bullet_bar` | Bullet bar — a value fill against a track with a **target marker** |
+| `bullet_bar` | Bullet bar — a value fill against a track with an **optional target marker** |
 | `button_group` | `ButtonGroup` — a row of related action buttons with shared layout |
 | `buttons` | Button helpers that add consistent UX behavior (pointer cursor, etc.) |
+| `cap_band` | `CapBand` — a notional valuation against what it would actually fetch |
 | `capital_flow` | `CapitalFlow` — a project raised some money; watch where it went |
 | `card_browser` | Composable master-detail card browser widget |
 | `channel_bands` | `ChannelBands` — where a wallet's money came from, period by period |
@@ -28,6 +31,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `collection_composition` | Collection composition — a promotable "how this collection is generated" infographic |
 | `collection_list` | Collection roster — the per-client collections list rendered on the admin portal dashboard |
 | `command_palette` | `CommandPalette` — a modal, keyboard-first action launcher over a caller-supplied command set |
+| `conversation_history` | `conversation_history` — what people said to the bot, what it worked out, and what it said back (feature `gateway`) |
 | `coverage_delta_bar` | Coverage delta bar — before/after progress bar for trait coverage |
 | `coverage_lanes` | `CoverageLanes` — was it up, was it down, or was nobody looking, per entity, on the shared spine |
 | `custody_walk` | `CustodyWalk` — where a specific sum came from, unit by unit |
@@ -59,7 +63,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `machine` | `Machine` — plain-enum UI state, hierarchical, with entry framing, frame-TTL auto-revert and eased transition progress |
 | `managed_wallet_utxos` | Managed-wallet UTxO breakdown — a structured, role-aware view of a custodial wallet's on-chain UTxOs |
 | `marquee` | Scrolling marquee ticker widget |
-| `metric_card` | MetricCard — a dashboard stat card with label, value, optional trend, and sparkline |
+| `metric_card` | `MetricCard` — a dashboard stat card with label, value, optional trend and sparkline; `MetricRow` lays a set of them out sharing one width, height and baseline |
 | `mint_arrivals` | `MintArrivals` — watch a collection land in people's hands, one asset at a time |
 | `mint_checkout` | `MintCheckout` — the buyer-facing mint offer + CTA, composed as one widget |
 | `mnemonic_display` | BIP-39 mnemonic display with copy-to-clipboard + optional confirmation gate |
@@ -68,6 +72,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `offer_tile` | `OfferTile` — fixed-size picker tile with state-aware visual treatment and a top-right quantity badge |
 | `order_list` | `OrderList` — the mint-orders dashboard |
 | `palette_editor` | palette_editor — edit colorization palettes: each palette has a name, a base color, and a list of variants (name + color + weight) |
+| `pane_nav` | `PaneNavBar` — the shell nav for an app made of capability panes |
 | `party_annotator` | `PartyAnnotator` — decide what a wallet IS to the project, on the record |
 | `party_badge` | `PartyBadge` — a counterparty as it should appear everywhere in a forensic trace: resolved name, **how firmly that name is known**, and the cluster it belongs to |
 | `party_finder` | PartyFinder — hunt down a wallet by ANY of its names, then watch it |
@@ -86,7 +91,10 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `rarity_target_editor` | rarity_target_editor — a labelled list of 0–100% target sliders with an optional budget indicator (running total vs a budget, coloured over/under/ok) |
 | `relationship_editor` | relationship_editor — edit a list of directed `source → target` edges over a known option set |
 | `relative_time` | `RelativeTime` — a tiny auto-scaling "time ago" label |
+| `role_picker` | `RolePicker` — choose a Discord role by name instead of pasting a snowflake |
 | `route_summary` | Route summary widget — compact display of split routing results |
+| `select` | `Select` — a single-select control with the anatomy of a real select |
+| `service_banner` | `ServiceBanner` — a persistent strip saying the backend is not currently whole, in the operator's own words |
 | `seven_segment` | SevenSegmentDisplay — retro LED-style numeric display |
 | `signing_status` | Signing status widget — concurrent signing checklist for the trade desk |
 | `slippage_selector` | Reusable slippage selector widget |
@@ -120,3 +128,4 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `wallet_identity_header` | Wallet identity header — the big "this is who we're showing" strip at the top of a wallet-profile view |
 | `wallet_list` | Wallet roster — the per-client list rendered on the admin portal dashboard |
 | `wallet_mock` | Pseudo-wallet profiles for LOCAL demo modes |
+| `wiring_editor` | The shared binding editor over `gateway-wiring`'s vocabulary (feature `gateway`) |

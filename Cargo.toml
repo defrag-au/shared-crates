@@ -52,6 +52,7 @@ members = [
     "ui/image-core",
     "ui/mq-flow-probe",
     "ui/egui-widgets",
+    "ui/portal-pane",
     "ui/_storybook",
     "ui/_storybook-egui",
     "ui/workers/flow-demo",
@@ -169,6 +170,9 @@ cardano-tx = { path = "cardano-tx" }
 worker_utils = { path = "worker-utils" }
 asset-rarity = { path = "asset-rarity" }
 egui-widgets = { path = "ui/egui-widgets" }
+portal-pane = { path = "ui/portal-pane" }
+gateway-wiring = { path = "services/gateway-wiring" }
+gateway-admin-protocol = { path = "services/gateway-admin-protocol" }
 wallet-core = { path = "ui/wallet-core" }
 wallet-pallas = { path = "ui/wallet-pallas" }
 # Replay-verified games (ported from the adacade workspace). `arcade-core` is

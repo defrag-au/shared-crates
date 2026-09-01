@@ -452,7 +452,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
     };
     let shadowed_bot = darken(bot_color, bot_shadow);
 
-    let border_stroke = egui::Stroke::new(1.0, border_color);
+    let border_stroke = egui_widgets::theme::hairline(border_color);
 
     // Draw each half-card with its own rounded border
     painter.rect_filled(bot_rect, corner, shadowed_bot);
@@ -586,7 +586,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
             Pos2::new(card_left, hinge_y),
             Pos2::new(card_left + card_w, hinge_y),
         ],
-        egui::Stroke::new(1.5, divider_color),
+        egui_widgets::theme::stroke(1.5,divider_color),
     );
 
     // Phase indicator

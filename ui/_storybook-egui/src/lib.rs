@@ -25,6 +25,9 @@ mod app {
         BulletBar,
         Sparkline,
         MetricCard,
+        TokenHistory,
+        TokenKinetic,
+        TokenParticles,
         StatStrip,
         SevenSegment,
         FlipCounter,
@@ -103,6 +106,7 @@ mod app {
         CustodyWalk,
         ClaimCard,
         CapitalFlow,
+        CapBand,
         TimeSpine,
         CoverageLanes,
         FlowMatrix,
@@ -115,6 +119,10 @@ mod app {
         RelationshipEditor,
         CommandPalette,
         EventWiring,
+        WiringEditor,
+        ConversationHistory,
+        AgentConfig,
+        Select,
         UiMachine,
         NamedGroupList,
         RarityTargetEditor,
@@ -124,6 +132,7 @@ mod app {
         IdPill,
         PhaseCard,
         ButtonGroup,
+        PaneNav,
         Toast,
         Timestamp,
         ErrorNote,
@@ -131,6 +140,8 @@ mod app {
         AccessGate,
         UserBadge,
         TierLadder,
+        AboutModal,
+        ServiceBanner,
         QuantityStepper,
         MintCheckout,
     }
@@ -155,6 +166,7 @@ mod app {
                 Self::CustodyWalk,
                 Self::ClaimCard,
                 Self::CapitalFlow,
+                Self::CapBand,
                 Self::TimeSpine,
                 Self::CoverageLanes,
                 Self::FlowMatrix,
@@ -167,6 +179,10 @@ mod app {
                 Self::RelationshipEditor,
                 Self::CommandPalette,
                 Self::EventWiring,
+                Self::WiringEditor,
+                Self::ConversationHistory,
+                Self::AgentConfig,
+                Self::Select,
                 Self::UiMachine,
                 Self::NamedGroupList,
                 Self::RarityTargetEditor,
@@ -175,6 +191,7 @@ mod app {
                 Self::IdPill,
                 Self::PropertyList,
                 Self::ButtonGroup,
+                Self::PaneNav,
                 Self::Toast,
                 Self::Timestamp,
                 Self::ErrorNote,
@@ -182,10 +199,15 @@ mod app {
                 Self::AccessGate,
                 Self::UserBadge,
                 Self::TierLadder,
+                Self::AboutModal,
+                Self::ServiceBanner,
                 Self::ProgressBar,
                 Self::BulletBar,
                 Self::Sparkline,
                 Self::MetricCard,
+                Self::TokenHistory,
+                Self::TokenKinetic,
+                Self::TokenParticles,
                 Self::StatStrip,
                 Self::SevenSegment,
                 Self::FlipCounter,
@@ -295,6 +317,9 @@ mod app {
                 Self::BulletBar => "Bullet Bar",
                 Self::Sparkline => "Sparkline",
                 Self::MetricCard => "Metric Card",
+                Self::TokenHistory => "Token History",
+                Self::TokenKinetic => "Token Kinetic",
+                Self::TokenParticles => "Token Particles",
                 Self::StatStrip => "Stat Strip",
                 Self::SevenSegment => "Seven Segment",
                 Self::FlipCounter => "Flip Counter",
@@ -362,6 +387,7 @@ mod app {
                 Self::CustodyWalk => "Custody Walk",
                 Self::ClaimCard => "Claim Card",
                 Self::CapitalFlow => "Capital Flow",
+                Self::CapBand => "Cap Band",
                 Self::TimeSpine => "Time Spine",
                 Self::CoverageLanes => "Coverage Lanes",
                 Self::FlowMatrix => "Flow Matrix",
@@ -374,6 +400,10 @@ mod app {
                 Self::RelationshipEditor => "Relationship Editor",
                 Self::CommandPalette => "Command Palette",
                 Self::EventWiring => "Event Wiring",
+                Self::WiringEditor => "Wiring Editor",
+                Self::ConversationHistory => "Conversation History",
+                Self::AgentConfig => "Agent Config",
+                Self::Select => "Select",
                 Self::UiMachine => "Machine",
                 Self::NamedGroupList => "Named Group List",
                 Self::RarityTargetEditor => "Rarity Target Editor",
@@ -387,8 +417,11 @@ mod app {
                 Self::AccessGate => "Access Gate",
                 Self::UserBadge => "User Badge",
                 Self::TierLadder => "Tier Ladder",
+                Self::AboutModal => "About Modal",
+                Self::ServiceBanner => "Service Banner",
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
+                Self::PaneNav => "Pane Nav",
                 Self::Toast => "Toast",
                 Self::QuantityStepper => "Quantity Stepper",
                 Self::MintCheckout => "Mint Checkout",
@@ -411,6 +444,7 @@ mod app {
                 | Self::CustodyWalk
                 | Self::ClaimCard
                 | Self::CapitalFlow
+                | Self::CapBand
                 | Self::TimeSpine
                 | Self::CoverageLanes
                 | Self::FlowMatrix
@@ -423,6 +457,10 @@ mod app {
                 | Self::RelationshipEditor
                 | Self::CommandPalette
                 | Self::EventWiring
+                | Self::WiringEditor
+                | Self::ConversationHistory
+                | Self::AgentConfig
+                | Self::Select
                 | Self::UiMachine
                 | Self::NamedGroupList
                 | Self::RarityTargetEditor
@@ -434,14 +472,20 @@ mod app {
                 | Self::AccessGate
                 | Self::UserBadge
                 | Self::TierLadder
+                | Self::AboutModal
+                | Self::ServiceBanner
                 | Self::IdPill
                 | Self::PropertyList
                 | Self::ButtonGroup
+                | Self::PaneNav
                 | Self::Toast => "Primitives",
                 Self::ProgressBar
                 | Self::BulletBar
                 | Self::Sparkline
                 | Self::MetricCard
+                | Self::TokenHistory
+                | Self::TokenKinetic
+                | Self::TokenParticles
                 | Self::StatStrip
                 | Self::SevenSegment
                 | Self::FlipCounter
@@ -507,16 +551,30 @@ mod app {
                 Self::AccessGate => "App-level access screen: sign-in prompt + requirements (join links) for gated tools",
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
                 Self::TierLadder => "The access ladder as a modal — what each rung gives, every route to it, and where you stand",
+                Self::AboutModal => "What a product is, what state it is in, and what to expect — the BETA badge's modal",
+                Self::ServiceBanner => "A persistent strip saying the backend is not whole — takes space rather than covering content",
                 Self::Distribution => "Concentric orbital rings supply distribution chart",
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
                 Self::ProgressBar => "Determinate and countdown progress bars with custom colors",
-                Self::BulletBar => "Value fill with a target marker (bullet graph) — actual vs target",
+                Self::BulletBar => {
+                    "Value fill with an OPTIONAL target marker (bullet graph) — actual vs \
+                     target, or no target at all when none was ever set"
+                }
                 Self::Sparkline => {
                     "Inline line chart with fill gradient, mean line, and hover inspection"
                 }
                 Self::MetricCard => {
                     "Dashboard stat card with trend indicators and embedded sparklines"
+                }
+                Self::TokenParticles => {
+                    "Supply as a conserved particle field, playing through warped time"
+                }
+                Self::TokenKinetic => {
+                    "Kinetic variants — conserved mass, event-warped time, reservoirs"
+                }
+                Self::TokenHistory => {
+                    "Candidate forms for a token's history, on real WRT data — exploration surface"
                 }
                 Self::StatStrip => {
                     "Row of windowed stat cards — one metric across 24h/7d/30d, with an empty-window note"
@@ -701,6 +759,9 @@ mod app {
                 Self::CapitalFlow => {
                     "\"They raised X — watch where it went.\" Cumulative destination bands over a real time axis with a draggable playhead and play button; a labelled raise line the stack is free to CROSS, because deployment beyond the raise is a finding rather than an error to clamp"
                 }
+                Self::CapBand => {
+                    "A headline valuation against what it would ACTUALLY fetch. The yellow line is what everybody quotes; the teal is the float sold into the curve — at peak ~150k notional against ~20k realisable, about 13%. A chart showing only the headline makes an argument it cannot support. For the first third the band is a LINE, not a band: low == high because every holder was identified and there was no uncertainty to draw. That flat stretch is also four collinear points per quad — drawn as a polygon the tessellator cannot derive a normal and throws diagonal rays across the panel, which shipped once and was caught only by looking"
+                }
                 Self::TimeSpine => {
                     "ONE time axis for many faces: a playhead that REVEALS, a brush that FILTERS, play/pause — and a shared selection so hovering a holder's pile lights it up everywhere. Dots fly in and settle (keyed tweens; object constancy) while playing; a scrubbed frame settles instantly so a still is readable. The falsifier for 'is egui why this feels flat?'"
                 }
@@ -746,6 +807,18 @@ mod app {
                 Self::EventWiring => {
                     "One event node wired to its action cards — pattern chips fire it, the '+ action' port opens the palette. The gateway admin's IFTTT editor"
                 }
+                Self::WiringEditor => {
+                    "The composed binding editor both gateway surfaces mount: VM mapping, action config, add/remove drain. Toggle the host to check it survives the portal's scrolled column"
+                }
+                Self::ConversationHistory => {
+                    "What was said, what the bot worked out, what it answered — misses with their reason, failed tool steps, dropped traces, and the billed token shape"
+                }
+                Self::AgentConfig => {
+                    "Bring-your-own-key agent setup: provider presets, a write-only credential shown only as masked metadata, and per-role daily token budgets"
+                }
+                Self::Select => {
+                    "react-select-shaped single select: one bordered control (value · clear · separator · chevron), floating filtered menu, keyboard nav, and values whose option no longer exists rendered flagged rather than blank"
+                }
                 Self::UiMachine => {
                     "Plain-enum UI state with entry-frame detection + frame-TTL auto-revert — replaces the dirty/pending/flash boolean trio with one matchable state"
                 }
@@ -772,6 +845,9 @@ mod app {
                 }
                 Self::ButtonGroup => {
                     "Row of related action buttons — text + optional Phosphor icons + tooltips + disabled state, with horizontal_wrapped layout"
+                }
+                Self::PaneNav => {
+                    "Shell nav with persistent selection — locked entries show their reason rather than vanishing, hides itself at one destination, wraps inside a constrained column"
                 }
                 Self::Toast => {
                     "Transient overlay messages with frame-countdown auto-dismiss — Success/Error/Warning/Info, host-owned ToastQueue, bottom-right stack"
@@ -843,12 +919,35 @@ mod app {
     #[cfg(not(target_arch = "wasm32"))]
     fn set_location_hash(_slug: &str) {}
 
+    /// `?nav=0` drops the story list so the story gets the WHOLE viewport.
+    ///
+    /// This exists for narrow-width review. The sidebar is a fixed 180px, so a
+    /// 390px phone viewport left the story 200px — every card overflowed, and
+    /// the overflow was the storybook's chrome rather than anything the widget
+    /// did. Screenshotting a wider viewport to compensate is not the same test:
+    /// what a widget does at 390 is the thing being checked.
+    #[cfg(target_arch = "wasm32")]
+    fn nav_hidden() -> bool {
+        web_sys::window()
+            .and_then(|w| w.location().search().ok())
+            .is_some_and(|s| s.contains("nav=0"))
+    }
+
+    /// Native builds have no address bar; the env var stands in, as with
+    /// `STORYBOOK_STORY`.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn nav_hidden() -> bool {
+        std::env::var("STORYBOOK_NAV").is_ok_and(|v| v == "0")
+    }
+
     // ========================================================================
     // App
     // ========================================================================
 
     struct StorybookApp {
         current_story: Story,
+        /// `?nav=0` — see [`nav_hidden`].
+        nav_hidden: bool,
         // Per-story state
         distribution_chart: egui_widgets::DistributionChart,
         marquee: egui_widgets::Marquee,
@@ -860,6 +959,10 @@ mod app {
         relationship_editor_state: stories::relationship_editor::RelationshipEditorState,
         command_palette_state: stories::command_palette::CommandPaletteState,
         event_wiring_state: stories::event_wiring::EventWiringState,
+        wiring_editor_state: stories::wiring_editor::WiringEditorStory,
+        conversation_history_state: stories::conversation_history::ConversationHistoryStory,
+        agent_config_state: stories::agent_config::AgentConfigStory,
+        select_state: stories::select::SelectStory,
         machine_state: stories::machine::MachineState,
         named_group_list_state: stories::named_group_list::NamedGroupListState,
         rarity_target_editor_state: stories::rarity_target_editor::RarityTargetEditorState,
@@ -924,9 +1027,11 @@ mod app {
         collection_list_state: stories::collection_list::CollectionListState,
         // Primitives
         button_group_state: stories::button_group::ButtonGroupState,
+        pane_nav_state: stories::pane_nav::PaneNavState,
         toast_state: stories::toast::ToastState,
         claim_card_state: stories::claim_card::ClaimCardState,
         capital_flow_state: stories::capital_flow::CapitalFlowState,
+        cap_band_state: stories::cap_band::CapBandState,
         time_spine_state: stories::time_spine::TimeSpineState,
         coverage_lanes_state: stories::coverage_lanes::CoverageLanesState,
         flow_matrix_state: stories::flow_matrix::FlowMatrixState,
@@ -960,6 +1065,9 @@ mod app {
 
             Self {
                 current_story: story_from_location().unwrap_or(Story::Distribution),
+                // Read ONCE at startup: with the nav gone there is no way to
+                // change stories, so this is a per-load mode, not a toggle.
+                nav_hidden: nav_hidden(),
                 distribution_chart: egui_widgets::DistributionChart::new(),
                 marquee: egui_widgets::Marquee::default(),
                 marquee_messages: vec![egui_widgets::MarqueeItem {
@@ -975,6 +1083,11 @@ mod app {
                     stories::relationship_editor::RelationshipEditorState::default(),
                 command_palette_state: stories::command_palette::CommandPaletteState::default(),
                 event_wiring_state: stories::event_wiring::EventWiringState::default(),
+                wiring_editor_state: stories::wiring_editor::WiringEditorStory::default(),
+                conversation_history_state:
+                    stories::conversation_history::ConversationHistoryStory::default(),
+                agent_config_state: stories::agent_config::AgentConfigStory::default(),
+                select_state: stories::select::SelectStory::default(),
                 machine_state: stories::machine::MachineState::default(),
                 named_group_list_state: stories::named_group_list::NamedGroupListState::default(),
                 rarity_target_editor_state:
@@ -1054,9 +1167,11 @@ mod app {
                 wallet_list_state: stories::wallet_list::WalletListState::default(),
                 collection_list_state: stories::collection_list::CollectionListState::default(),
                 button_group_state: stories::button_group::ButtonGroupState::default(),
+                pane_nav_state: stories::pane_nav::PaneNavState::default(),
                 toast_state: stories::toast::ToastState::default(),
                 claim_card_state: stories::claim_card::ClaimCardState::default(),
                 capital_flow_state: stories::capital_flow::CapitalFlowState::default(),
+                cap_band_state: stories::cap_band::CapBandState::default(),
                 time_spine_state: stories::time_spine::TimeSpineState::default(),
                 coverage_lanes_state: stories::coverage_lanes::CoverageLanesState::default(),
                 flow_matrix_state: stories::flow_matrix::FlowMatrixState::default(),
@@ -1111,21 +1226,23 @@ mod app {
         // panels nest via `show_inside(ui, …)` instead of `show(ctx, …)`.
         fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
             let ctx = ui.ctx().clone();
-            egui::SidePanel::left("stories")
-                .default_width(180.0)
-                .resizable(false)
-                .frame(egui::Frame::side_top_panel(&ctx.style()).fill(BG_SIDEBAR))
-                .show_inside(ui, |ui| {
-                    ui.add_space(8.0);
-                    ui.heading(egui::RichText::new("egui Widgets").color(ACCENT));
-                    ui.separator();
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        self.draw_sidebar(ui);
+            if !self.nav_hidden {
+                egui::Panel::left("stories")
+                    .default_size(180.0)
+                    .resizable(false)
+                    .frame(egui::Frame::side_top_panel(&ctx.global_style()).fill(BG_SIDEBAR))
+                    .show_inside(ui, |ui| {
+                        ui.add_space(8.0);
+                        ui.heading(egui::RichText::new("egui Widgets").color(ACCENT));
+                        ui.separator();
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            self.draw_sidebar(ui);
+                        });
                     });
-                });
+            }
 
             egui::CentralPanel::default()
-                .frame(egui::Frame::central_panel(&ctx.style()).fill(BG_MAIN))
+                .frame(egui::Frame::central_panel(&ctx.global_style()).fill(BG_MAIN))
                 .show_inside(ui, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         ui.heading(self.current_story.label());
@@ -1143,6 +1260,8 @@ mod app {
                             Story::AccessGate => stories::access_gate::show(ui),
                             Story::UserBadge => stories::user_badge::show(ui),
                             Story::TierLadder => stories::tier_ladder::show(ui),
+                            Story::AboutModal => stories::about_modal::show(ui),
+                            Story::ServiceBanner => stories::service_banner::show(ui),
                             Story::Distribution => {
                                 stories::distribution::show(ui, &mut self.distribution_chart)
                             }
@@ -1162,6 +1281,9 @@ mod app {
                                 stories::sparkline::show(ui, &mut self.sparkline_state)
                             }
                             Story::MetricCard => stories::metric_card::show(ui),
+                            Story::TokenHistory => stories::token_history::show(ui),
+                            Story::TokenKinetic => stories::token_kinetic::show(ui),
+                            Story::TokenParticles => stories::token_particles::show(ui),
                             Story::StatStrip => stories::stat_strip::show(ui),
                             Story::SevenSegment => {
                                 stories::seven_segment::show(ui, &mut self.seven_segment_state)
@@ -1328,6 +1450,7 @@ mod app {
                             Story::CapitalFlow => {
                                 stories::capital_flow::show(ui, &mut self.capital_flow_state)
                             }
+                            Story::CapBand => stories::cap_band::show(ui, &mut self.cap_band_state),
                             Story::TimeSpine => {
                                 stories::time_spine::show(ui, &mut self.time_spine_state)
                             }
@@ -1365,6 +1488,19 @@ mod app {
                             Story::EventWiring => {
                                 stories::event_wiring::show(ui, &mut self.event_wiring_state)
                             }
+                            Story::WiringEditor => {
+                                stories::wiring_editor::show(ui, &mut self.wiring_editor_state)
+                            }
+                            Story::ConversationHistory => stories::conversation_history::show(
+                                ui,
+                                &mut self.conversation_history_state,
+                            ),
+                            Story::AgentConfig => {
+                                stories::agent_config::show(ui, &mut self.agent_config_state)
+                            }
+                            Story::Select => {
+                                stories::select::show(ui, &mut self.select_state)
+                            }
                             Story::UiMachine => stories::machine::show(ui, &mut self.machine_state),
                             Story::NamedGroupList => stories::named_group_list::show(
                                 ui,
@@ -1393,6 +1529,7 @@ mod app {
                             Story::ButtonGroup => {
                                 stories::button_group::show(ui, &mut self.button_group_state)
                             }
+                            Story::PaneNav => stories::pane_nav::show(ui, &mut self.pane_nav_state),
                             Story::Toast => stories::toast::show(ui, &mut self.toast_state),
                         }
                     });

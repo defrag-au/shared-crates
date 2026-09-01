@@ -111,12 +111,10 @@ pub async fn handle_callback(
 
     // 5. Mint session.
     let claims = SessionClaims {
-        sub: user_id,
         guild: granted_via,
-        tier: None,
         name: display_name,
         avatar: user.avatar.clone(),
-        ent: entitlements.join(" "),
+        ..SessionClaims::for_discord(user_id, entitlements.join(" "))
     };
     let token = match mint_token(claims, settings.session_secret, settings.ttl) {
         Ok(t) => t,

@@ -157,7 +157,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
         .fill(BG_MAIN)
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+        .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
         .show(ui, |ui| {
             let config = TradeTableConfig::default();
             let resp = trade_table::show(

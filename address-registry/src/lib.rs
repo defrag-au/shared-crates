@@ -9,6 +9,7 @@
 //! - Marketplace-specific policy extraction logic
 //! - Address category classification utilities
 
+pub mod naming;
 pub mod registry;
 pub mod utils;
 

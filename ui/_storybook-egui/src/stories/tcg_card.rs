@@ -432,7 +432,7 @@ fn draw_card_front_flat(
     painter.rect_stroke(
         card_rect,
         4.0,
-        egui::Stroke::new(3.0, rarity_col),
+        egui_widgets::theme::stroke(3.0,rarity_col),
         egui::StrokeKind::Outside,
     );
 
@@ -496,7 +496,7 @@ fn draw_card_front_perspective(
     let card_bg = Color32::from_rgb(30, 30, 48);
 
     // 1. Rarity border
-    stroke_quad(painter, &corners, egui::Stroke::new(3.0, rarity_col));
+    stroke_quad(painter, &corners, egui_widgets::theme::stroke(3.0,rarity_col));
 
     // 2. Card background
     draw_quad(painter, corners, card_bg);
@@ -1275,7 +1275,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
         stroke_quad(
             &painter4,
             &flip_corners,
-            egui::Stroke::new(2.0, rarity_color(state.rarity)),
+            egui_widgets::theme::stroke(2.0,rarity_color(state.rarity)),
         );
     }
 
@@ -1367,7 +1367,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
         stroke_quad(
             &painter5,
             &corners5,
-            egui::Stroke::new(2.0, rarity_color(state.rarity)),
+            egui_widgets::theme::stroke(2.0,rarity_color(state.rarity)),
         );
     } else {
         draw_card_front_perspective(

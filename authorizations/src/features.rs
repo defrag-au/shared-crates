@@ -52,4 +52,23 @@ crate::features! {
         name: "Gateway Admin",
         locked_hint: "Gateway operator access — hold the Gateway Admin role in HODLCroft",
     };
+    /// Platform-operator authority over the gateway: setting a guild's agent
+    /// **entitlement** — who may ask, and how much.
+    ///
+    /// Deliberately separate from [`GATEWAY_ADMIN`], which is now the
+    /// *client* tier: their server, their trigger wiring. The entitlement is
+    /// what we sold them, so a paying guild's own admins must not be able to
+    /// grant themselves more of it.
+    ///
+    /// This split exists because the gate used to be the SCREEN — the whole
+    /// admin app was operator-only, so hiding controls was sufficient. Once
+    /// the surface is a pane in a client-facing portal that stops being true,
+    /// and "only operators can see this section" is a much weaker guarantee
+    /// than "the DO refuses it". See `ADMIN_SURFACE_CONSOLIDATION_DESIGN.md`
+    /// §6.
+    pub const GATEWAY_OPERATOR = {
+        id: "gateway.operator",
+        name: "Gateway Operator",
+        locked_hint: "Platform-operator access — agent entitlements are set by Augminted",
+    };
 }

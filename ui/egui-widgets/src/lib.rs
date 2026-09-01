@@ -1,9 +1,12 @@
 #[cfg(target_arch = "wasm32")]
 pub use egui_inbox;
 
+pub mod about_modal;
 pub mod access_gate;
 pub mod activity_feed;
 pub mod activity_lanes;
+#[cfg(feature = "gateway")]
+pub mod agent_config;
 pub mod animated_counter;
 pub mod arrival_field;
 pub mod asset_card;
@@ -11,6 +14,7 @@ pub mod background;
 pub mod bullet_bar;
 pub mod button_group;
 pub mod buttons;
+pub mod cap_band;
 pub mod capital_flow;
 pub mod card_browser;
 pub mod channel_bands;
@@ -19,6 +23,8 @@ pub mod claim_card;
 pub mod collection_composition;
 pub mod collection_list;
 pub mod command_palette;
+#[cfg(feature = "gateway")]
+pub mod conversation_history;
 pub mod detail_split;
 pub mod distribution_waterfall;
 pub mod donut_chart;
@@ -54,6 +60,7 @@ pub mod named_group_list;
 pub mod offer_tile;
 pub mod order_list;
 pub mod palette_editor;
+pub mod pane_nav;
 pub mod party_annotator;
 pub mod party_badge;
 pub mod party_finder;
@@ -70,8 +77,11 @@ pub mod range_bar;
 pub mod rarity_target_editor;
 pub mod relationship_editor;
 pub mod relative_time;
+pub mod role_picker;
 pub mod screenshot;
+pub mod select;
 pub mod selection;
+pub mod service_banner;
 pub mod seven_segment;
 pub mod slot_table;
 pub mod sparkline;
@@ -101,6 +111,8 @@ pub mod wallet_identity_header;
 pub mod wallet_list;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet_mock;
+#[cfg(feature = "gateway")]
+pub mod wiring_editor;
 
 // Image text editor (feature-gated)
 #[cfg(feature = "image-editor")]
@@ -151,6 +163,7 @@ pub mod utxo_shelf;
 #[cfg(feature = "cardano")]
 pub mod wallet_asset_picker;
 
+pub use about_modal::{AboutModal, AboutPoint};
 pub use activity_feed::{
     ActivityAsset, ActivityEntry, ActivityFeed, ActivityFeedResponse, ActivityTag,
 };
@@ -217,7 +230,7 @@ pub use image_text_editor::{
 pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
 pub use machine::Machine;
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
-pub use metric_card::{MetricCard, Trend};
+pub use metric_card::{MetricCard, MetricRow, Trend};
 pub use mint_arrivals::{Arrival, MintArrivals, peak_pile, pile_offset, piles_at};
 pub use mint_checkout::{
     BundleOffer, CheckoutState, Eligibility, MintCheckout, MintCheckoutAction,
@@ -233,6 +246,7 @@ pub use order_list::{
     OrderStatus,
 };
 pub use palette_editor::{Palette, PaletteEditor, PaletteVariant};
+pub use pane_nav::{PaneNavBar, PaneNavEntry, PaneNavResponse};
 pub use party_annotator::{
     AnnotationDraft, PartyAnnotator, PartyAnnotatorResponse, PartyClass, basis_color,
 };
@@ -253,8 +267,10 @@ pub use range_bar::{RangeBarConfig, RangePoint};
 pub use rarity_target_editor::{RarityRow, RarityTargetEditor};
 pub use relationship_editor::{RelationshipEditor, RelationshipEditorResponse};
 pub use relative_time::{RelativeTime, relative_label};
+pub use role_picker::{RoleOption, RolePicker, RolePickerResponse, RolePickerState};
 pub use screenshot::ScreenshotButton;
 pub use selection::{DIM as SELECTION_DIM, Selection};
+pub use service_banner::{BannerTone, ServiceBanner};
 pub use seven_segment::SevenSegmentDisplay;
 pub use slot_table::{SlotRow, SlotTable};
 pub use sparkline::{SparkHoverStyle, Sparkline};
@@ -318,6 +334,7 @@ pub use leaderboard_table::{LeaderboardRow, LeaderboardTable};
 #[cfg(feature = "cardano")]
 pub use asset_strip::{AssetStripConfig, AssetStripItem, AssetStripResponse};
 pub use bullet_bar::BulletBar;
+pub use cap_band::{CapBand, CapSample};
 pub use coverage_delta_bar::CoverageDeltaConfig;
 pub use coverage_lanes::{
     Coverage, CoverageLane, CoverageLanes, CoverageLanesResponse, Run, UNOBSERVED, WindowCoverage,

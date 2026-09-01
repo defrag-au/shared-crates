@@ -372,3 +372,45 @@ impl PhosphorIcon {
         }
     }
 }
+
+/// A Phosphor glyph followed by proportional label text, as one
+/// `WidgetText`.
+///
+/// **Use this rather than formatting the glyph into a string.** A
+/// `RichText` renders in ONE family, so `format!("{icon} {label}")` looks
+/// up the Phosphor codepoint in the proportional font, does not find it,
+/// and draws tofu — with no error anywhere. Only a `LayoutJob` can give
+/// the glyph and the label different families.
+///
+/// Both runs resolve to `TextStyle::Small`, so an icon+label widget matches
+/// a text-only sibling. Colour stays `PLACEHOLDER` so the host widget's
+/// enabled / hovered / selected state carries through automatically.
+///
+/// Callers must still have called [`install_phosphor_font`] — the family
+/// has to exist before a `FontId` can name it.
+pub fn phosphor_label(ui: &Ui, icon: PhosphorIcon, label: &str) -> egui::WidgetText {
+    use egui::text::LayoutJob;
+    use egui::{TextFormat, TextStyle};
+
+    let small = TextStyle::Small.resolve(ui.style());
+    let mut job = LayoutJob::default();
+    job.append(
+        &icon.as_str(),
+        0.0,
+        TextFormat {
+            font_id: FontId::new(small.size, phosphor_family()),
+            color: Color32::PLACEHOLDER,
+            ..Default::default()
+        },
+    );
+    job.append(
+        &format!(" {label}"),
+        0.0,
+        TextFormat {
+            font_id: FontId::new(small.size, FontFamily::Proportional),
+            color: Color32::PLACEHOLDER,
+            ..Default::default()
+        },
+    );
+    job.into()
+}

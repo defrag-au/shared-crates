@@ -155,6 +155,32 @@ impl<'a> Chip<'a> {
         self
     }
 
+    /// How wide this chip will draw, computed before anything is painted.
+    ///
+    /// Mirrors the geometry `show` builds: the label galley plus the frame's
+    /// horizontal `inner_margin`, plus the remove affordance when there is
+    /// one. Only used for the wrap decision, so being a pixel out moves a
+    /// break point rather than misdrawing anything.
+    fn width(&self, ui: &Ui, label: &str) -> f32 {
+        const MARGIN_X: f32 = 5.0;
+        const REMOVE_GLYPH: f32 = 10.0;
+        let text = ui
+            .painter()
+            .layout_no_wrap(
+                label.to_owned(),
+                egui::TextStyle::Small.resolve(ui.style()),
+                egui::Color32::WHITE,
+            )
+            .size()
+            .x;
+        let remove = if self.removable {
+            ui.spacing().item_spacing.x + REMOVE_GLYPH
+        } else {
+            0.0
+        };
+        text + remove + MARGIN_X * 2.0
+    }
+
     /// Render the chip inline at the current `Ui` cursor. The chip
     /// allocates a small filled frame; the caller does spacing.
     pub fn show(self, ui: &mut Ui) -> ChipResponse {
@@ -165,6 +191,28 @@ impl<'a> Chip<'a> {
         } else {
             self.text.to_string()
         };
+
+        // BREAK THE ROW OURSELVES INSIDE A WRAPPING LAYOUT.
+        //
+        // A chip draws as a `Frame`, and `Frame::end` reserves its space with
+        // `ui.allocate_rect`, which only advances the cursor — it never asks
+        // the layout whether the item fits. So inside a `horizontal_wrapped` a
+        // run of chips does NOT wrap: it walks straight off the right edge and
+        // is clipped. On a phone that showed up as a card's four tags running
+        // past the card and taking the amount column's width with them.
+        //
+        // Same trap, same fix as the asset pills in `activity_feed` — measure
+        // first, then make the layout decision explicitly.
+        if ui.layout().main_wrap && ui.layout().is_horizontal() {
+            let avail = ui.available_size_before_wrap().x;
+            // Only break when there is something to break AWAY from. At the
+            // start of a row an over-wide chip has nowhere better to go, and
+            // breaking would just leave a blank line above it.
+            let mid_row = avail < ui.max_rect().width();
+            if mid_row && self.width(ui, &label_text) > avail {
+                ui.end_row();
+            }
+        }
 
         let mut frame = Frame::new()
             .fill(bg)

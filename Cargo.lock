@@ -31,6 +31,7 @@ dependencies = [
 name = "address-registry"
 version = "0.1.0"
 dependencies = [
+ "pallas-addresses",
  "phf",
  "serde",
  "serde_json",
@@ -1428,6 +1429,7 @@ dependencies = [
  "egui_extras",
  "egui_inbox",
  "ehttp",
+ "gateway-wiring",
  "i_overlay",
  "image 0.25.10",
  "image-core",
@@ -1977,6 +1979,25 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "gateway-admin-protocol"
+version = "0.1.0"
+dependencies = [
+ "authorizations",
+ "gateway-wiring",
+ "serde",
+ "serde_json",
+ "ui-flow-protocol",
+]
+
+[[package]]
+name = "gateway-wiring"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4548,6 +4569,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "portal-pane"
+version = "0.1.0"
+dependencies = [
+ "authorizations",
+ "egui",
+ "egui-widgets",
+]
+
+[[package]]
 name = "potential_utf"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5960,6 +5990,7 @@ dependencies = [
  "egui",
  "egui-widgets",
  "egui_extras",
+ "gateway-wiring",
  "gloo-timers",
  "image 0.25.10",
  "image-core",

@@ -144,7 +144,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
         .fill(BG_MAIN)
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+        .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
         .show(ui, |ui| {
             ui.set_max_width(260.0);
             let action = state.wallet_btn.show(ui, &state.connector);
@@ -190,7 +190,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
         .fill(BG_MAIN)
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui::Stroke::new(1.0, egui_widgets::theme::BG_HIGHLIGHT))
+        .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
         .show(ui, |ui| {
             let has_assets = !state.groups.is_empty();
             let btn = ui.add_enabled(has_assets, egui::Button::new("Open Asset Picker"));
