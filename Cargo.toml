@@ -15,6 +15,7 @@ members = [
     "filebase",
     "handle-cache",
     "handle-resolver",
+    "local-cache",
     "http-client",
     "openai-client",
     "pinata",
