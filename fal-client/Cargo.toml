@@ -3,11 +3,12 @@ name = "fal-client"
 version.workspace = true
 authors.workspace = true
 edition = "2021"
-description = "fal.ai image generation/editing client (Qwen inpaint, Flux Fill) using http-client for platform-agnostic HTTP"
+description = "fal.ai image/video generation client (Qwen inpaint, Flux Fill, H3 Max video) using http-client for platform-agnostic HTTP"
 
 [dependencies]
 http-client = { path = "../http-client" }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 thiserror = "2.0"
 
 [dev-dependencies]

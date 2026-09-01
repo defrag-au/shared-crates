@@ -1,0 +1,21 @@
+[package]
+name = "handle-cache"
+version = "0.1.0"
+edition = "2021"
+description = "TTL + LRU persistence for resolved wallet names, and the book that ties it to a HandleResolver"
+
+[features]
+default = []
+# The localStorage-backed store. Gated because the CORE is pure: the TTL
+# policy, the eviction and the snapshot format are all testable without a
+# browser, and a macroquad target can depend on this crate as long as it does
+# not turn this on. See the note in `browser`.
+browser = ["dep:web-sys", "dep:js-sys"]
+
+[dependencies]
+handle-resolver = { path = "../handle-resolver" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+web-sys = { workspace = true, optional = true, features = ["Window", "Storage"] }
+js-sys = { workspace = true, optional = true }
