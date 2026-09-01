@@ -270,6 +270,21 @@ pub struct ToolResponse {
     #[serde(default)]
     pub status: ToolStatus,
 
+    /// Messages this tool posted to Discord itself.
+    ///
+    /// Most tools post nothing — they answer, and the host posts. A tool that
+    /// *does* post (a picture, say) leaves a message the host never saw, and a
+    /// reply to it is a reply to something the host cannot look up. Reporting
+    /// the ids lets the host record the same conversational context against
+    /// them, so replying to the artefact works as well as replying to the prose
+    /// about it.
+    ///
+    /// Without this the failure is quiet and confusing: the user replies to the
+    /// picture — the obvious thing to reply to — and the follow-up is treated
+    /// as a fresh question with none of the context that produced it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub posted_message_ids: Vec<String>,
+
     /// How to *show* this result, if plain prose won't do.
     ///
     /// The model writes the words; a plugin that can do better than words —
@@ -299,6 +314,7 @@ impl ToolResponse {
         Self {
             content: content.into(),
             status: ToolStatus::Ok,
+            posted_message_ids: Vec::new(),
             presentation: None,
             page: None,
         }
@@ -314,6 +330,7 @@ impl ToolResponse {
         Self {
             content: content.into(),
             status: ToolStatus::AwaitingInput,
+            posted_message_ids: Vec::new(),
             presentation: None,
             page: None,
         }
@@ -333,6 +350,7 @@ impl ToolResponse {
         Self {
             content: content.into(),
             status: ToolStatus::Failed,
+            posted_message_ids: Vec::new(),
             presentation: None,
             page: None,
         }
@@ -342,6 +360,16 @@ impl ToolResponse {
     #[must_use]
     pub fn showing(mut self, presentation: CommandResponse) -> Self {
         self.presentation = Some(presentation);
+        self
+    }
+
+    /// Record a message this tool posted itself.
+    ///
+    /// Call it for every message the tool put in the channel, so a reply to any
+    /// of them carries the same context as a reply to the host's prose.
+    #[must_use]
+    pub fn posted(mut self, message_id: impl Into<String>) -> Self {
+        self.posted_message_ids.push(message_id.into());
         self
     }
 
