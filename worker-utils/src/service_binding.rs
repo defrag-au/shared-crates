@@ -36,6 +36,18 @@ pub enum Auth<'a> {
     None,
     Bearer(&'a str),
     InternalKey(&'a str),
+
+    /// Both, which answer different questions and are not alternatives.
+    ///
+    /// The internal key proves the **caller** is a trusted service, so what it
+    /// asserts in the body (a resolved permission class, per-guild config) can
+    /// be believed. The bearer proves **who it is acting for**, so the callee
+    /// need not take the caller's word for whose data to return.
+    ///
+    /// A callee that receives only the key has to trust an asserted identity;
+    /// one that receives only the bearer has to trust an asserted authority.
+    /// Sending both lets it verify the second and scope the first.
+    InternalKeyAndBearer { key: &'a str, token: &'a str },
 }
 
 /// Options for service binding calls. Controls retry behaviour and authentication.
@@ -80,6 +92,15 @@ impl<'a> CallOpts<'a> {
     pub fn with_bearer(token: &'a str) -> Self {
         Self {
             auth: Auth::Bearer(token),
+            ..Default::default()
+        }
+    }
+
+    /// Default retry carrying both service auth and an acting-user token.
+    /// See [`Auth::InternalKeyAndBearer`] for why these are not alternatives.
+    pub fn with_internal_key_and_bearer(key: &'a str, token: &'a str) -> Self {
+        Self {
+            auth: Auth::InternalKeyAndBearer { key, token },
             ..Default::default()
         }
     }
@@ -210,6 +231,10 @@ impl ServiceBinding {
             }
             Auth::InternalKey(key) => {
                 headers.set("X-Internal-Key", key)?;
+            }
+            Auth::InternalKeyAndBearer { key, token } => {
+                headers.set("X-Internal-Key", key)?;
+                headers.set("Authorization", &format!("Bearer {token}"))?;
             }
         }
         Ok(())

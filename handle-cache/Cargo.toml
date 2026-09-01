@@ -1,0 +1,15 @@
+[package]
+name = "handle-cache"
+version = "0.1.0"
+edition = "2021"
+description = "Naming-shaped adapter over local-cache: TTL policy for names vs absences, and a HandleResolver that remembers"
+
+[features]
+default = []
+# Pass through to local-cache's localStorage store. Off by default so a target
+# without wasm-bindgen (miniquad) can still use the TTL policy and the book.
+browser = ["local-cache/browser"]
+
+[dependencies]
+handle-resolver = { path = "../handle-resolver" }
+local-cache = { path = "../local-cache" }

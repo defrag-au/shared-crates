@@ -261,6 +261,7 @@ pub struct PartyFinder<'a> {
     placeholder: &'a str,
     accent: Option<Color32>,
     limit: usize,
+    key_label: Option<&'a dyn Fn(&str) -> String>,
 }
 
 impl<'a> PartyFinder<'a> {
@@ -278,7 +279,22 @@ impl<'a> PartyFinder<'a> {
             placeholder: "Find a wallet: $handle, stake1…, addr1…, or a label",
             accent: None,
             limit: 12,
+            key_label: None,
         }
+    }
+
+    /// How to WRITE a party key in a result row — the title of a stake-key
+    /// match, and the subtitle under every other match. Defaults to middle
+    /// elision.
+    ///
+    /// Host business, like [`Self::accent`]: a host that is masking identities
+    /// (a shared screen, a screenshot) needs the rows to read `wallet 07`
+    /// rather than `stake1u98f5mr0m…l9lvjz`, and the search box is the one
+    /// place a party key is rendered without going through the host's own
+    /// naming.
+    pub fn key_label(mut self, f: &'a dyn Fn(&str) -> String) -> Self {
+        self.key_label = Some(f);
+        self
     }
 
     pub fn placeholder(mut self, p: &'a str) -> Self {
@@ -305,6 +321,7 @@ impl<'a> PartyFinder<'a> {
             placeholder,
             accent,
             limit,
+            key_label,
         } = self;
         let mut chosen = None;
         let cleared = false;
@@ -330,12 +347,16 @@ impl<'a> PartyFinder<'a> {
             // title, the stake key is the subtitle (unless the stake key IS the
             // match). Nothing else — a wallet's other handles are its own rows.
             let hits = index.find(&state.query, limit);
+            let write_key = |k: &str| match key_label {
+                Some(f) => f(k),
+                None => elide(k),
+            };
             let options: Vec<TypeaheadOption> = hits
                 .iter()
                 .map(|h| {
                     let key = h.key();
                     let title = if h.matched == key {
-                        elide(key)
+                        write_key(key)
                     } else if h.matched.starts_with("addr1") {
                         elide(&h.matched)
                     } else {
@@ -345,7 +366,7 @@ impl<'a> PartyFinder<'a> {
                     // found by, so the pin can be labelled by what you typed.
                     let mut opt = TypeaheadOption::new(row_id(key, &h.matched), title);
                     if h.matched != key {
-                        opt = opt.subtitle(elide(key));
+                        opt = opt.subtitle(write_key(key));
                     }
                     opt
                 })
@@ -569,6 +590,120 @@ mod tests {
             Some("$curiousfutures"),
             "not the wallet's first handle, $shuffler"
         );
+    }
+
+    /// Every string this pass actually PAINTED. Reading the rows back out of
+    /// the shapes is the only way to assert that an identifier is not on
+    /// screen — a masked finder that quietly renders the stake key in a
+    /// subtitle passes every test that only looks at the response.
+    fn painted(out: &egui::FullOutput) -> String {
+        fn walk(s: &egui::Shape, into: &mut String) {
+            match s {
+                egui::Shape::Text(t) => {
+                    into.push_str(t.galley.text());
+                    into.push('\n');
+                }
+                egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, into)),
+                _ => {}
+            }
+        }
+        let mut text = String::new();
+        for cs in &out.shapes {
+            walk(&cs.shape, &mut text);
+        }
+        text
+    }
+
+    #[expect(deprecated)]
+    fn run_masked(
+        ctx: &egui::Context,
+        ix: &AliasIndex,
+        state: &mut PartyFinderState,
+        sel: &mut Selection,
+        events: Vec<Event>,
+    ) -> (PartyFinderResponse, String) {
+        let mut out = PartyFinderResponse {
+            chosen: None,
+            cleared: false,
+        };
+        let raw = RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(700.0, 600.0))),
+            events,
+            ..Default::default()
+        };
+        ctx.begin_pass(raw);
+        let mask = |k: &str| format!("wallet {}", &k[6..8]);
+        egui::Panel::top("bar").show(ctx, |ui| {
+            out = PartyFinder::new("f", ix, state, sel)
+                .key_label(&mask)
+                .show(ui);
+        });
+        egui::CentralPanel::default().show(ctx, |_ui| {});
+        let full = ctx.end_pass();
+        (out, painted(&full))
+    }
+
+    /// A host masking identities gets a finder that shows none: the stake key
+    /// is written by `key_label` in the title AND the subtitle, and choosing a
+    /// row still pins the real key — the mask is presentation, not a different
+    /// selection model.
+    #[test]
+    fn key_label_masks_the_key_in_rows_without_breaking_the_pin() {
+        const KEY: &str = "stake1u98f5mr0mn8tv2kqndk5cwen4uasc7cewlzdklz6y664zacl9lvjz";
+        let ctx = egui::Context::default();
+        crate::icons::install_fonts(&ctx);
+        // A masked host indexes wallets by pseudonym alone — no handles, no
+        // addresses, since those are what it is hiding.
+        let ix = AliasIndex::new(vec![WalletIdentity::new(KEY).label("wallet 98")]);
+        let mut state = PartyFinderState {
+            query: "wallet".into(),
+            ..Default::default()
+        };
+        let mut sel = Selection::default();
+        // Two passes: the dropdown is laid out from state the first pass
+        // establishes, so a single pass paints only the input row.
+        run_masked(&ctx, &ix, &mut state, &mut sel, vec![]);
+        let (_, text) = run_masked(&ctx, &ix, &mut state, &mut sel, vec![]);
+        assert!(text.contains("wallet 98"), "the row is named: {text:?}");
+        assert!(
+            !text.contains("stake1"),
+            "the key must not be painted anywhere: {text:?}"
+        );
+
+        // …and the row still leads to the real wallet.
+        for ev in click(pos2(200.0, 20.0)) {
+            run_masked(&ctx, &ix, &mut state, &mut sel, ev);
+        }
+        run_masked(&ctx, &ix, &mut state, &mut sel, key(egui::Key::Enter));
+        assert!(sel.is_pinned(KEY), "pins the REAL key, not the pseudonym");
+    }
+
+    /// Unmasked is unchanged: no `key_label`, and the key still elides into
+    /// the subtitle the way it always has.
+    #[test]
+    fn without_key_label_the_key_is_shown_elided() {
+        let ctx = egui::Context::default();
+        crate::icons::install_fonts(&ctx);
+        let ix = index();
+        let mut state = PartyFinderState {
+            query: "whale".into(),
+            ..Default::default()
+        };
+        let mut sel = Selection::default();
+        let mut text = String::new();
+        #[expect(deprecated)]
+        for _ in 0..2 {
+            let raw = RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(700.0, 600.0))),
+                ..Default::default()
+            };
+            ctx.begin_pass(raw);
+            egui::Panel::top("bar").show(&ctx, |ui| {
+                PartyFinder::new("f", &ix, &mut state, &mut sel).show(ui);
+            });
+            text = painted(&ctx.end_pass());
+        }
+        assert!(text.contains("stake1uxf2xj…456789"), "{text:?}");
     }
 
     #[test]

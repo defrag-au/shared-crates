@@ -1667,6 +1667,7 @@ version = "0.1.0"
 dependencies = [
  "http-client",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "tokio",
 ]
@@ -2248,6 +2249,14 @@ dependencies = [
  "cfg-if 1.0.4",
  "crunchy",
  "zerocopy",
+]
+
+[[package]]
+name = "handle-cache"
+version = "0.1.0"
+dependencies = [
+ "handle-resolver",
+ "local-cache",
 ]
 
 [[package]]
@@ -3179,6 +3188,16 @@ name = "litrs"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
+
+[[package]]
+name = "local-cache"
+version = "0.1.0"
+dependencies = [
+ "js-sys",
+ "serde",
+ "serde_json",
+ "web-sys",
+]
 
 [[package]]
 name = "lock_api"

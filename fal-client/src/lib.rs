@@ -1,15 +1,27 @@
-//! fal.ai image generation/editing client.
+//! fal.ai image and video generation/editing client.
 //!
 //! Platform-agnostic — uses `http-client` which selects reqwest (native) or
-//! gloo-net (WASM) automatically. Targets fal's synchronous endpoint
+//! gloo-net (WASM) automatically. Image work targets fal's synchronous endpoint
 //! (`https://fal.run/{model_id}`) and requests `sync_mode` so results come back
 //! inline as data URIs (no second download).
 //!
 //! Primary use here is mask-based inpainting (Qwen / Flux Fill): the mask
 //! defines exactly which pixels change, so the masked region *is* the extracted
 //! layer's alpha.
+//!
+//! Video ([`video`]) is the exception on both counts: results come back as
+//! hosted CDN URLs rather than data URIs, and the [`queue`] API is available so
+//! a caller can submit, return, and take the result on a webhook.
 
 mod base64;
+mod queue;
+mod video;
+
+pub use queue::{QueueHandle, QueueStatus, WebhookPayload, WebhookStatus};
+pub use video::{
+    FalFile, PromptExpansion, VideoOutput, VideoRequest, VideoResolution, H3_MAX_IMAGE_TO_VIDEO,
+    H3_MAX_TEXT_TO_VIDEO,
+};
 
 use http_client::HttpClient;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};

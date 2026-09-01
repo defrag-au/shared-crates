@@ -163,6 +163,23 @@ impl HandleResolver {
         self.dirty = true;
     }
 
+    /// Seed the knowledge that a key has NO handle, from a source that already
+    /// asked — a persisted cache, a sibling view.
+    ///
+    /// The negative twin of [`Self::insert_known`], and the more valuable of
+    /// the two: most wallets have no handle, so "asked, nothing there" is most
+    /// of what a previous session learned. Without a way to restore it, a cache
+    /// can only ever spare the lookups for the minority that resolved, and
+    /// every reload re-asks about the rest.
+    ///
+    /// Callers are responsible for the freshness of what they seed — a key that
+    /// had no handle last week may have one now. See the TTL policy in
+    /// `handle-cache`.
+    pub fn insert_nameless(&mut self, key: &str) {
+        self.entries.insert(key.to_string(), Entry::Nameless);
+        self.dirty = true;
+    }
+
     /// The resolved name, if there is one.
     pub fn name(&self, key: &str) -> Option<&str> {
         match self.entries.get(key) {
@@ -402,6 +419,32 @@ mod tests {
         assert_ne!(r.status("stake1a"), Status::Nameless);
     }
 
+    /// The point of a persisted cache. Most wallets have no handle, so if
+    /// "nothing there" cannot be restored, a returning reader re-asks about
+    /// almost everything they asked about last time.
+    #[test]
+    fn a_seeded_absence_is_never_looked_up_either() {
+        let mut r = HandleResolver::new();
+        r.insert_nameless("stake1a");
+        r.want("stake1a");
+        assert_eq!(r.queued(), 0);
+        assert_eq!(r.status("stake1a"), Status::Nameless);
+        assert_eq!(r.name("stake1a"), None);
+    }
+
+    /// Seeding is a settled outcome, so a view restored entirely from cache
+    /// reports finished rather than sitting at an unexplained zero.
+    #[test]
+    fn seeded_entries_count_as_settled() {
+        let mut r = HandleResolver::new();
+        r.insert_known("stake1a", "$alice");
+        r.insert_nameless("stake1b");
+        r.want("stake1a");
+        r.want("stake1b");
+        assert_eq!(r.progress(), Some(1.0));
+        assert!(!r.working());
+    }
+
     #[test]
     fn a_seeded_name_is_never_looked_up() {
         let mut r = HandleResolver::new();
@@ -424,6 +467,35 @@ mod tests {
             Some("$alice"),
             "the newer fact wins over a settled in-flight request"
         );
+    }
+
+    /// Seed the names as they arrive, then settle the batch with an empty map.
+    ///
+    /// The shape a transport uses when names and acknowledgement come back
+    /// SEPARATELY — flow-explorer's gateway sends the names on a delta and the
+    /// op id on the ack that follows, so there is no one message carrying both.
+    /// Settling on the delta instead meant an unsolicited one could consume an
+    /// outstanding batch and bury 25 real keys as nameless.
+    ///
+    /// So `apply` has to mean "everything unresolved in this batch has no
+    /// handle" rather than "everything not in `found` has no handle" — the
+    /// already-seeded names must survive an empty answer, and the rest must
+    /// still settle so the queue drains.
+    #[test]
+    fn seeded_names_survive_a_batch_settled_with_an_empty_answer() {
+        let mut r = HandleResolver::new();
+        r.want("stake1a");
+        r.want("stake1b");
+        let batch = r.next_batch().expect("batch");
+
+        // The names land first, out of band.
+        r.insert_known("stake1a", "$alice");
+        // Then the ack, carrying no names of its own.
+        r.apply(&batch, HashMap::new());
+
+        assert_eq!(r.name("stake1a"), Some("$alice"));
+        assert_eq!(r.status("stake1b"), Status::Nameless);
+        assert!(!r.working(), "the batch is fully settled either way");
     }
 
     #[test]

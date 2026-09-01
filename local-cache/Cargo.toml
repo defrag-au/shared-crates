@@ -1,0 +1,20 @@
+[package]
+name = "local-cache"
+version = "0.1.0"
+edition = "2021"
+description = "Namespaced, TTL'd, size-bounded client-side cache over a pluggable store (localStorage by default)"
+
+[features]
+default = []
+# The localStorage-backed store. Gated because the CORE is pure: the TTL
+# policy, the eviction and the snapshot format are all testable without a
+# browser, and a macroquad target can depend on this crate as long as it does
+# not turn this on.
+browser = ["dep:web-sys", "dep:js-sys"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+web-sys = { workspace = true, optional = true, features = ["Window", "Storage"] }
+js-sys = { workspace = true, optional = true }
