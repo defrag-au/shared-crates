@@ -98,6 +98,7 @@ mod app {
         // Mint configuration
         ThemeStates,
         BackgroundToasts,
+        Skeleton,
         Chip,
         PartyBadge,
         FlowLedger,
@@ -158,6 +159,7 @@ mod app {
                 Self::Buttons,
                 Self::ThemeStates,
                 Self::BackgroundToasts,
+                Self::Skeleton,
                 Self::Chip,
                 Self::PartyBadge,
                 Self::FlowLedger,
@@ -379,6 +381,7 @@ mod app {
                 Self::CollectionList => "Collection List",
                 Self::ThemeStates => "Theme States",
                 Self::BackgroundToasts => "Background Toasts",
+                Self::Skeleton => "Skeleton",
                 Self::Chip => "Chip",
                 Self::PartyBadge => "Party Badge",
                 Self::FlowLedger => "Flow Ledger",
@@ -436,6 +439,7 @@ mod app {
                 | Self::Buttons
                 | Self::ThemeStates
                 | Self::BackgroundToasts
+                | Self::Skeleton
                 | Self::Chip
                 | Self::PartyBadge
                 | Self::FlowLedger
@@ -744,6 +748,9 @@ mod app {
                 Self::ThemeStates => {
                     "TEMPLATE for contrast bugs — interaction states (selected / hovered / active / disabled) drawn on every surface, plus the translucent selection wash. Resting-state stories cannot show these; mirrored numerically by tests/contrast.rs"
                 }
+                Self::Skeleton => {
+                    "Placeholders for content that is not on screen, and a statement of WHY — Loading pulses because 'wait' is the right instruction, Withheld is static and recedes because waiting produces nothing. The reason is positional so a call site cannot draw one without saying which. Rows or a block; carries no data, so the same shapes appear whether three items are behind the gate or three thousand"
+                }
                 Self::Chip => {
                     "Small filled-tag label with semantic variants (Success / Warning / Danger / Tag / Info / Muted) + optional × remove affordance"
                 }
@@ -1043,11 +1050,7 @@ mod app {
     impl StorybookApp {
         fn new(cc: &eframe::CreationContext<'_>) -> Self {
             configure_style(&cc.egui_ctx);
-            egui_extras::install_image_loaders(&cc.egui_ctx);
-            cc.egui_ctx.add_image_loader(std::sync::Arc::new(
-                egui_widgets::image_loader::browser::BrowserImageLoader::default(),
-            ));
-            egui_widgets::install_phosphor_font(&cc.egui_ctx);
+            egui_widgets::install_defaults(&cc.egui_ctx);
             // Inter as the primary proportional face (from the font bucket), in front of
             // the bundled default + DejaVu fallback. Async fetch; swaps in once it lands.
             egui_widgets::fonts::load_remote_font(
@@ -1441,6 +1444,7 @@ mod app {
                             }
                             Story::ThemeStates => stories::theme_states::show(ui),
                             Story::BackgroundToasts => stories::background::show(ui),
+                            Story::Skeleton => stories::skeleton::show(ui),
                             Story::Chip => stories::chip::show(ui),
                             Story::PartyBadge => stories::party_badge::show(ui),
                             Story::FlowLedger => stories::flow_ledger::show(ui),
@@ -1498,9 +1502,7 @@ mod app {
                             Story::AgentConfig => {
                                 stories::agent_config::show(ui, &mut self.agent_config_state)
                             }
-                            Story::Select => {
-                                stories::select::show(ui, &mut self.select_state)
-                            }
+                            Story::Select => stories::select::show(ui, &mut self.select_state),
                             Story::UiMachine => stories::machine::show(ui, &mut self.machine_state),
                             Story::NamedGroupList => stories::named_group_list::show(
                                 ui,

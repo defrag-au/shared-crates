@@ -24,7 +24,10 @@ pub enum Message {
     },
 
     /// One tool's result. `call_id` matches the [`ToolCall::id`] it answers.
-    ToolResult { call_id: String, content: String },
+    ToolResult {
+        call_id: String,
+        content: String,
+    },
 }
 
 /// What the model produced in one turn.
@@ -122,7 +125,9 @@ impl Usage {
     /// wrapping to a small one — a wrong bill is better than a silent one.
     pub fn add(&mut self, other: Self) {
         self.prompt_tokens = self.prompt_tokens.saturating_add(other.prompt_tokens);
-        self.completion_tokens = self.completion_tokens.saturating_add(other.completion_tokens);
+        self.completion_tokens = self
+            .completion_tokens
+            .saturating_add(other.completion_tokens);
         self.cached_prompt_tokens = self
             .cached_prompt_tokens
             .saturating_add(other.cached_prompt_tokens);
@@ -158,8 +163,7 @@ impl Usage {
 /// treat that as "offer nothing", not "offer everything".
 #[allow(async_fn_in_trait)] // Consumers are single-threaded (WASM workers); a Send bound would be a lie.
 pub trait ChatModel {
-    async fn turn(&self, messages: &[Message], tools: &[ToolDef])
-        -> Result<ModelTurn, AgentError>;
+    async fn turn(&self, messages: &[Message], tools: &[ToolDef]) -> Result<ModelTurn, AgentError>;
 }
 
 /// Why a run could not continue.

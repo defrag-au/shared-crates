@@ -47,7 +47,10 @@ pub enum Auth<'a> {
     /// A callee that receives only the key has to trust an asserted identity;
     /// one that receives only the bearer has to trust an asserted authority.
     /// Sending both lets it verify the second and scope the first.
-    InternalKeyAndBearer { key: &'a str, token: &'a str },
+    InternalKeyAndBearer {
+        key: &'a str,
+        token: &'a str,
+    },
 }
 
 /// Options for service binding calls. Controls retry behaviour and authentication.

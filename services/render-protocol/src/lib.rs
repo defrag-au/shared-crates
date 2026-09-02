@@ -33,6 +33,14 @@
 //! fingerprint is CIP-14, which is already the canonical key the IIIF image
 //! pipeline stores under, so this names an existing key rather than inventing
 //! an identifier.
+//!
+//! The other schemes work the same way and exist because they resolve to
+//! genuinely different pictures, not because they are conveniences:
+//! [`AvatarUri`] for a Discord user, [`R2Uri`] for a bucket this renderer is
+//! bound to, [`TokenUri`] for a token's registry brand mark — a different
+//! image from the artwork `asset://` returns for the same pair — and
+//! [`LogoUri`] for a venue's mark, which is what a graphic about a PLACE
+//! rather than an item needs.
 
 use std::fmt;
 use std::str::FromStr;
@@ -372,6 +380,130 @@ impl FromStr for R2Uri {
     }
 }
 
+/// A token's registry logo: `token://{policy_id}/{asset_name_hex}`.
+///
+/// # Why this is not an [`AssetUri`]
+///
+/// They name the same pair and resolve to different pictures. The IIIF asset
+/// service answers for a policy and name with the ARTWORK — for $Aliens, a
+/// photorealistic head. The Cardano token registry holds what the project
+/// actually brands itself with, which for $Aliens is a green plush toy. A card
+/// about a token wants the second one, and there is no width or flag on
+/// `asset://` that would get it.
+///
+/// # Why there is no size segment
+///
+/// `asset://` carries one because a resizer stands behind it. A registry logo
+/// is a single bitmap at whatever size the project uploaded — usually 64–256px
+/// — and nothing resizes it. Asking for `/1646` would be a request the
+/// renderer could only ignore, so the shape does not offer it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenUri {
+    pub policy_id: String,
+    /// On-chain asset name, hex. NOT the registry's display name.
+    pub asset_name_hex: String,
+}
+
+impl TokenUri {
+    pub fn new(policy_id: impl Into<String>, asset_name_hex: impl Into<String>) -> Self {
+        Self {
+            policy_id: policy_id.into(),
+            asset_name_hex: asset_name_hex.into(),
+        }
+    }
+}
+
+impl fmt::Display for TokenUri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "token://{}/{}", self.policy_id, self.asset_name_hex)
+    }
+}
+
+impl FromStr for TokenUri {
+    type Err = AssetUriError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let rest = s
+            .strip_prefix("token://")
+            .ok_or(AssetUriError::MissingScheme)?;
+        let (policy_id, asset_name_hex) = rest.split_once('/').ok_or(AssetUriError::MissingSize)?;
+
+        // Both halves become path segments in a URL the renderer builds, so
+        // anything that is not hex of the right length is rejected here rather
+        // than passed through. A policy id is exactly 28 bytes.
+        let hex_ok = |v: &str| !v.is_empty() && v.chars().all(|c| c.is_ascii_hexdigit());
+        if policy_id.len() != 56 || !hex_ok(policy_id) || !hex_ok(asset_name_hex) {
+            return Err(AssetUriError::InvalidFingerprint);
+        }
+
+        Ok(Self {
+            policy_id: policy_id.to_string(),
+            asset_name_hex: asset_name_hex.to_string(),
+        })
+    }
+}
+
+/// A venue or brand mark: `logo://{slug}`.
+///
+/// # Why not just `r2://STORAGE/logos/wayup.png`
+///
+/// That works, and it makes every caller responsible for a binding name and a
+/// key layout that are the RENDERER's business. Move the logos to another
+/// bucket, or switch them to SVG, and every service that ever drew one has to
+/// be found and edited. `logo://wayup` names the thing; where it lives is
+/// resolved on the other side, which is the same split `asset://` and
+/// `avatar://` already make.
+///
+/// # When to reach for it
+///
+/// When a graphic is about a PLACE rather than an item. A batched marketplace
+/// transaction is the case that motivated it: seven listings, two offers and a
+/// cancellation share one transaction, no single item represents it, and
+/// picking one to illustrate the card would caption the other nine with the
+/// wrong picture. The venue's own mark is the honest image for "a lot happened
+/// here".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogoUri {
+    /// Lower-case slug — `wayup`, `jpg`. The venue slugs the market ledger
+    /// already uses, so a caller passes through what it was given.
+    pub slug: String,
+}
+
+impl LogoUri {
+    pub fn new(slug: impl Into<String>) -> Self {
+        Self { slug: slug.into() }
+    }
+}
+
+impl fmt::Display for LogoUri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "logo://{}", self.slug)
+    }
+}
+
+impl FromStr for LogoUri {
+    type Err = AssetUriError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let slug = s
+            .strip_prefix("logo://")
+            .ok_or(AssetUriError::MissingScheme)?;
+        // The slug becomes a path segment in a key the renderer builds, so the
+        // alphabet is restricted rather than escaped — `..` and `/` are the
+        // ones that matter, and a venue slug never needs either.
+        if slug.is_empty()
+            || !slug
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+        {
+            return Err(AssetUriError::InvalidFingerprint);
+        }
+        Ok(Self {
+            slug: slug.to_string(),
+        })
+    }
+}
+
 /// A width the image pipeline keeps warm.
 ///
 /// Deliberately an enum rather than a free integer. The image service will
@@ -601,6 +733,118 @@ mod r2_tests {
     fn other_schemes_are_not_r2() {
         assert_eq!(
             "asset://abc:def/400".parse::<R2Uri>(),
+            Err(AssetUriError::MissingScheme)
+        );
+    }
+}
+
+#[cfg(test)]
+mod token_tests {
+    use super::*;
+
+    /// $Aliens. The registry holds the project's green plush mark here, where
+    /// `asset://` for the same pair returns the artwork — which is the whole
+    /// reason this scheme exists.
+    const ALIENS_POLICY: &str = "16657df32ad8eaa8f8c628586ac6b8ba3771226c12bd69b582738fb7";
+    const ALIENS_NAME: &str = "416c69656e73";
+
+    #[test]
+    fn a_token_uri_round_trips() {
+        let uri = TokenUri::new(ALIENS_POLICY, ALIENS_NAME);
+        let text = uri.to_string();
+        assert_eq!(text, format!("token://{ALIENS_POLICY}/{ALIENS_NAME}"));
+        assert_eq!(text.parse::<TokenUri>().unwrap(), uri);
+    }
+
+    /// Both halves land in a URL the renderer builds, so anything that is not
+    /// hex of the right length is a traversal attempt rather than a typo.
+    #[test]
+    fn a_token_uri_refuses_anything_that_is_not_a_hex_pair() {
+        for bad in [
+            // Policy the wrong length.
+            "token://abc/416c69656e73",
+            &format!("token://{ALIENS_POLICY}0/416c69656e73"),
+            // Not hex.
+            &format!("token://{ALIENS_POLICY}/nothex!"),
+            &format!("token://../{ALIENS_NAME}"),
+            // Missing halves.
+            &format!("token://{ALIENS_POLICY}"),
+            &format!("token://{ALIENS_POLICY}/"),
+            "token://",
+        ] {
+            assert!(bad.parse::<TokenUri>().is_err(), "{bad:?} should not parse");
+        }
+    }
+
+    /// A registry logo is one bitmap and nothing resizes it, so the shape does
+    /// not offer a size — a caller appending one is naming a different asset,
+    /// not asking for a width.
+    #[test]
+    fn a_token_uri_has_no_size_segment() {
+        let uri: TokenUri = format!("token://{ALIENS_POLICY}/{ALIENS_NAME}")
+            .parse()
+            .unwrap();
+        assert_eq!(uri.asset_name_hex, ALIENS_NAME);
+        // `/400` appended is read as part of the name, which is not hex.
+        assert!(format!("token://{ALIENS_POLICY}/{ALIENS_NAME}/400")
+            .parse::<TokenUri>()
+            .is_err());
+    }
+
+    #[test]
+    fn other_schemes_are_not_tokens() {
+        assert_eq!(
+            format!("asset://{ALIENS_POLICY}:{ALIENS_NAME}/400").parse::<TokenUri>(),
+            Err(AssetUriError::MissingScheme)
+        );
+        assert_eq!(
+            "r2://STORAGE/fonts/Anton.ttf".parse::<TokenUri>(),
+            Err(AssetUriError::MissingScheme)
+        );
+    }
+}
+
+#[cfg(test)]
+mod logo_tests {
+    use super::*;
+
+    #[test]
+    fn a_logo_uri_round_trips() {
+        let uri = LogoUri::new("wayup");
+        assert_eq!(uri.to_string(), "logo://wayup");
+        assert_eq!("logo://wayup".parse::<LogoUri>().unwrap(), uri);
+        // The slugs the market ledger actually uses.
+        for slug in ["jpg", "wayup", "spacebudz", "cnft-io", "dex_hunter"] {
+            let text = format!("logo://{slug}");
+            assert_eq!(text.parse::<LogoUri>().unwrap().slug, slug);
+        }
+    }
+
+    /// The slug becomes a path segment in a key the renderer builds, so it is
+    /// restricted rather than escaped. `..` and `/` are the ones that matter.
+    #[test]
+    fn a_slug_cannot_climb_or_contain_a_path() {
+        for bad in [
+            "logo://..",
+            "logo://../secrets",
+            "logo://a/b",
+            "logo://WayUp",
+            "logo://way up",
+            "logo://way.up",
+            "logo://",
+        ] {
+            assert!(bad.parse::<LogoUri>().is_err(), "{bad:?} should not parse");
+        }
+    }
+
+    #[test]
+    fn other_schemes_are_not_logos() {
+        assert_eq!(
+            "r2://STORAGE/logos/wayup.png".parse::<LogoUri>(),
+            Err(AssetUriError::MissingScheme)
+        );
+        assert_eq!(
+            "token://abc/def".parse::<LogoUri>(),
             Err(AssetUriError::MissingScheme)
         );
     }

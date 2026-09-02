@@ -46,7 +46,7 @@ pub enum GateAction {
 
 /// The access-gate screen.
 pub struct AccessGate<'a> {
-    feature: &'a Feature,
+    feature: Feature,
     tagline: &'a str,
     status: GateStatus,
     providers: &'a [GateProvider],
@@ -54,10 +54,10 @@ pub struct AccessGate<'a> {
 }
 
 impl<'a> AccessGate<'a> {
-    pub fn new(feature: &'a Feature, status: GateStatus) -> Self {
+    pub fn new(feature: Feature, status: GateStatus) -> Self {
         Self {
             feature,
-            tagline: feature.locked_hint,
+            tagline: feature.locked_hint(),
             status,
             providers: &[],
             providers_loading: false,
@@ -90,7 +90,7 @@ impl<'a> AccessGate<'a> {
         ui.add_space(48.0);
         ui.with_layout(Layout::top_down(Align::Center), |ui| {
             ui.set_max_width(520.0);
-            ui.label(RichText::new(self.feature.name).color(accent).size(24.0));
+            ui.label(RichText::new(self.feature.name()).color(accent).size(24.0));
             ui.add_space(6.0);
 
             match self.status {

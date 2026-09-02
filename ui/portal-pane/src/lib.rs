@@ -42,10 +42,10 @@ use egui::Ui;
 /// heterogeneous list. So a pane keeps its protocol private and the shell
 /// only ever asks it to render.
 pub trait Pane {
-    /// The entitlement this pane needs — the **same** [`Feature`] const its
+    /// The entitlement this pane needs — the **same** [`Feature`] variant its
     /// backend enforces with, so what a reader is shown and what they are
     /// allowed cannot drift.
-    fn feature(&self) -> &'static Feature;
+    fn feature(&self) -> Feature;
 
     /// Label and icon for the shell's nav.
     fn nav(&self) -> PaneNav;
@@ -173,7 +173,7 @@ pub enum PaneVisibility {
 /// One function so every pane is treated alike, and so the flag is checked
 /// **before** the entitlement: an unfinished pane should not advertise itself
 /// to an entitled reader as something they merely cannot reach.
-pub fn visibility(flag: PaneFlag, feature: &Feature, claims: &SessionClaims) -> PaneVisibility {
+pub fn visibility(flag: PaneFlag, feature: Feature, claims: &SessionClaims) -> PaneVisibility {
     match flag {
         PaneFlag::Hidden => PaneVisibility::Absent,
         PaneFlag::Enabled if claims.require(feature).is_ok() => PaneVisibility::Available,
@@ -185,13 +185,10 @@ pub fn visibility(flag: PaneFlag, feature: &Feature, claims: &SessionClaims) -> 
 mod tests {
     use super::*;
 
-    authorizations::features! {
-        pub const DEMO = {
-            id: "portal.demo",
-            name: "Demo",
-            locked_hint: "ask nicely",
-        };
-    }
+    /// Any real feature — the registry is a closed enum, so a test cannot
+    /// declare a private one. What is under test is the flag/entitlement
+    /// interaction, which is indifferent to which feature it is.
+    const DEMO: Feature = Feature::GatewayAdmin;
 
     fn claims(ent: &str) -> SessionClaims {
         SessionClaims::for_wallet("stake_test1demo", ent)
@@ -203,7 +200,7 @@ mod tests {
     #[test]
     fn a_hidden_pane_is_absent_even_when_entitled() {
         assert_eq!(
-            visibility(PaneFlag::Hidden, &DEMO, &claims("portal.demo")),
+            visibility(PaneFlag::Hidden, DEMO, &claims("gateway.admin")),
             PaneVisibility::Absent
         );
     }
@@ -211,11 +208,11 @@ mod tests {
     #[test]
     fn an_enabled_pane_locks_rather_than_vanishing() {
         assert_eq!(
-            visibility(PaneFlag::Enabled, &DEMO, &claims("")),
+            visibility(PaneFlag::Enabled, DEMO, &claims("")),
             PaneVisibility::Locked
         );
         assert_eq!(
-            visibility(PaneFlag::Enabled, &DEMO, &claims("portal.demo")),
+            visibility(PaneFlag::Enabled, DEMO, &claims("gateway.admin")),
             PaneVisibility::Available
         );
     }
@@ -224,10 +221,10 @@ mod tests {
     /// this shell, and must gate exactly like any other.
     #[test]
     fn a_wallet_session_gates_normally() {
-        let wallet_only = claims("portal.demo");
+        let wallet_only = claims("gateway.admin");
         assert_eq!(wallet_only.sub, None);
         assert_eq!(
-            visibility(PaneFlag::Enabled, &DEMO, &wallet_only),
+            visibility(PaneFlag::Enabled, DEMO, &wallet_only),
             PaneVisibility::Available
         );
     }

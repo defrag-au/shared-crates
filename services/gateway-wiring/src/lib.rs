@@ -949,7 +949,10 @@ mod tests {
     /// reopening the editor shows the provider rather than "Custom".
     #[test]
     fn a_stored_base_url_resolves_to_its_preset() {
-        assert_eq!(preset_for_base_url("https://api.x.ai/v1").unwrap().label, "x.ai");
+        assert_eq!(
+            preset_for_base_url("https://api.x.ai/v1").unwrap().label,
+            "x.ai"
+        );
         // A trailing slash is the same endpoint.
         assert_eq!(
             preset_for_base_url("https://api.x.ai/v1/").unwrap().label,
@@ -1014,7 +1017,9 @@ mod tests {
     fn a_react_inserts_ahead_of_renders() {
         let mut binding = EventBinding::new_message("b".into());
         binding.insert_action(action_choices()[0].action.clone()); // render
-        let at = binding.insert_action(WiredAction::React { emoji: "🔥".into() });
+        let at = binding.insert_action(WiredAction::React {
+            emoji: "🔥".into()
+        });
         assert_eq!(at, 0, "react goes ahead of the render");
         assert!(matches!(binding.actions[0], WiredAction::React { .. }));
     }
@@ -1090,7 +1095,11 @@ mod tests {
     fn mentions_become_readable() {
         let bot = "1372830411196993578";
         assert_eq!(
-            humanise_mentions(&format!("<@{bot}> can you show me bargains?"), bot, "City Watch"),
+            humanise_mentions(
+                &format!("<@{bot}> can you show me bargains?"),
+                bot,
+                "City Watch"
+            ),
             "@City Watch can you show me bargains?"
         );
         // The legacy nickname form too — same mention, different spelling.
@@ -1106,7 +1115,10 @@ mod tests {
         );
         // Nothing to do, and no infinite loop on an unterminated mention.
         assert_eq!(humanise_mentions("plain text", bot, "b"), "plain text");
-        assert_eq!(humanise_mentions("<@unterminated", bot, "b"), "<@unterminated");
+        assert_eq!(
+            humanise_mentions("<@unterminated", bot, "b"),
+            "<@unterminated"
+        );
     }
 
     /// `Display` claims to be the serde tag. This makes that true rather than
@@ -1212,17 +1224,21 @@ mod tests {
             tiers: vec![tier("123", 10), tier("123", 20)],
             default_daily_tokens: 0,
         };
-        assert!(entitlement_problems(&dupes)
-            .iter()
-            .any(|p| p.contains("twice")));
+        assert!(
+            entitlement_problems(&dupes)
+                .iter()
+                .any(|p| p.contains("twice"))
+        );
         // A role id that isn't one matches nobody, silently.
         let bad = AgentEntitlement {
             tiers: vec![tier("not-a-snowflake", 10)],
             default_daily_tokens: 0,
         };
-        assert!(entitlement_problems(&bad)
-            .iter()
-            .any(|p| p.contains("digits only")));
+        assert!(
+            entitlement_problems(&bad)
+                .iter()
+                .any(|p| p.contains("digits only"))
+        );
     }
 
     /// The entitlement leads the summary, because it is the part that decides
@@ -1247,8 +1263,14 @@ mod tests {
 
     #[test]
     fn reaction_emoji_normalization() {
-        assert_eq!(normalize_reaction_emoji("gm:1291038099278790738"), "gm:1291038099278790738");
-        assert_eq!(normalize_reaction_emoji(":gm:1291038099278790738"), "gm:1291038099278790738");
+        assert_eq!(
+            normalize_reaction_emoji("gm:1291038099278790738"),
+            "gm:1291038099278790738"
+        );
+        assert_eq!(
+            normalize_reaction_emoji(":gm:1291038099278790738"),
+            "gm:1291038099278790738"
+        );
         assert_eq!(
             normalize_reaction_emoji("<:gm:1291038099278790738>"),
             "gm:1291038099278790738"
@@ -1285,7 +1307,6 @@ pub struct GuildInfo {
     #[serde(default)]
     pub binding_count: usize,
 }
-
 
 /// One message the listener looked at, and what it decided.
 ///

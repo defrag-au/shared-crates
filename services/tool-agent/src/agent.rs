@@ -3,8 +3,7 @@
 use std::collections::HashSet;
 
 use crate::{
-    AgentError, ChatModel, Message, ToolCall, ToolDef, ToolExecutor, ToolOutcome, ToolStatus,
-    Usage,
+    AgentError, ChatModel, Message, ToolCall, ToolDef, ToolExecutor, ToolOutcome, ToolStatus, Usage,
 };
 
 /// Bounds on a single run.
@@ -379,7 +378,10 @@ mod tests {
 
         assert_eq!(run.answer.as_deref(), Some("112 ghoul pirates"));
         assert_eq!(run.stop, StopReason::Answered);
-        assert_eq!(*executor.ran.borrow(), vec!["resolve_traits", "find_assets"]);
+        assert_eq!(
+            *executor.ran.borrow(),
+            vec!["resolve_traits", "find_assets"]
+        );
 
         // The recorded calls are what makes a result refinable later.
         assert_eq!(run.calls.len(), 2);
@@ -508,7 +510,8 @@ mod tests {
     #[tokio::test]
     async fn usage_accumulates_across_every_turn() {
         let model = ScriptedModel::new(vec![
-            ModelTurn::calling(vec![call("c1", "find_assets", "{}")]).with_usage(Usage::new(100, 10)),
+            ModelTurn::calling(vec![call("c1", "find_assets", "{}")])
+                .with_usage(Usage::new(100, 10)),
             ModelTurn::answer("done").with_usage(Usage::new(250, 40)),
         ]);
         let executor = StubExecutor::new(vec![("find_assets", ToolOutcome::ok("ok"))]);
@@ -708,7 +711,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(run.stop, StopReason::AwaitingInput);
-        assert_eq!(run.answer.as_deref(), Some("I've asked which trait you meant."));
+        assert_eq!(
+            run.answer.as_deref(),
+            Some("I've asked which trait you meant.")
+        );
         // One round with tools, then the closing turn with none.
         assert_eq!(*model.tools_offered.borrow(), vec![1, 0]);
     }

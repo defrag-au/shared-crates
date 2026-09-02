@@ -28,7 +28,9 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(
+                egui_widgets::theme::BG_HIGHLIGHT,
+            ))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Balanced Trade")
@@ -59,7 +61,9 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(
+                egui_widgets::theme::BG_HIGHLIGHT,
+            ))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Pure Gain (filling gaps)")
@@ -88,7 +92,9 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(
+                egui_widgets::theme::BG_HIGHLIGHT,
+            ))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Pure Loss (trading away)")

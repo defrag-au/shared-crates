@@ -220,10 +220,7 @@ mod tests {
     fn parses_queue_statuses() {
         let queued: QueueStatus =
             serde_json::from_str(r#"{"status":"IN_QUEUE","queue_position":3}"#).unwrap();
-        assert!(matches!(
-            queued,
-            QueueStatus::InQueue { queue_position: 3 }
-        ));
+        assert!(matches!(queued, QueueStatus::InQueue { queue_position: 3 }));
         assert!(!queued.is_completed());
 
         // Extra fields fal adds (response_url, logs, metrics) must not break us.

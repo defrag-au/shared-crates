@@ -204,7 +204,11 @@ pub struct RequestToolCall {
 
 impl RequestToolCall {
     #[must_use]
-    pub fn function(id: impl Into<String>, name: impl Into<String>, arguments: impl Into<String>) -> Self {
+    pub fn function(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        arguments: impl Into<String>,
+    ) -> Self {
         Self {
             id: id.into(),
             kind: "function",
@@ -341,10 +345,7 @@ impl OpenAI {
         }
     }
 
-    async fn execute_request(
-        &self,
-        request: &ChatRequest,
-    ) -> Result<OpenAiResponse, OpenAiError> {
+    async fn execute_request(&self, request: &ChatRequest) -> Result<OpenAiResponse, OpenAiError> {
         match self
             .api
             .post_with_details::<_, OpenAiResponse>("/chat/completions", request)

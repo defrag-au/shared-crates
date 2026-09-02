@@ -41,7 +41,9 @@ impl ToolDef {
     /// correctly, and be rejected for a field it was never shown.
     #[must_use]
     pub fn json_schema(&self) -> serde_json::Value {
-        self.schema.clone().unwrap_or_else(tool_schema::no_arguments)
+        self.schema
+            .clone()
+            .unwrap_or_else(tool_schema::no_arguments)
     }
 
     /// Do we know what this tool takes?

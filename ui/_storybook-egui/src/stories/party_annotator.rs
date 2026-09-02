@@ -99,9 +99,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut PartyAnnotatorState) {
                     "stake1uy0x3e9q7m4kzvahn2s0dcf8rj6twpl5xg3ydq8vn4he2gswfl6ha",
                     &mut state.fresh,
                 )
-                    .palette(&pal)
-                    .entities(&ents)
-                    .show(ui);
+                .palette(&pal)
+                .entities(&ents)
+                .show(ui);
                 if r.save {
                     state.last = "saved: fresh wallet".into();
                 }
@@ -117,10 +117,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut PartyAnnotatorState) {
                     "stake1u9hech4kd0p2ntyq7gv3xzm8ejlw5aqr6sf9cbdu3tk0nvgs7gpt5q",
                     &mut state.guess,
                 )
-                    .palette(&pal)
-                    .entities(&ents)
-                    .dirty(true)
-                    .show(ui);
+                .palette(&pal)
+                .entities(&ents)
+                .dirty(true)
+                .show(ui);
                 if r.save {
                     state.last = format!("saved: unsourced = {}", r.unsourced);
                 }
@@ -136,10 +136,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut PartyAnnotatorState) {
                     "stake1ux3q5nw8jm2pv6ted0hgy4za7bcrs9fxk5lqn3vu8dm4t0gsldk5f2",
                     &mut state.derived,
                 )
-                    .palette(&pal)
-                    .entities(&ents)
-                    .dirty(true)
-                    .show(ui);
+                .palette(&pal)
+                .entities(&ents)
+                .dirty(true)
+                .show(ui);
                 if r.save {
                     state.last = "saved: derived note".into();
                 }

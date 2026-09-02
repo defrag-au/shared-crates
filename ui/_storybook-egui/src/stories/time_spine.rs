@@ -153,9 +153,24 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineState) {
     ui.checkbox(&mut brushing, "allow range selection (brushing)");
     ui.data_mut(|d| d.insert_temp(brush_id, brushing));
 
+    // THE PIN — "which of these is the one". A deep link lands a reader on a
+    // single event; the pin says where it sits without moving the playhead,
+    // because the playhead REVEALS and sending it back there would hide every
+    // later row. Toggle it and watch: the marks do not change, and nothing is
+    // filtered — only the answer to "where am I" appears.
+    let pin_id = ui.id().with("spine_pin");
+    let mut pinned = ui.data_mut(|d| d.get_temp::<bool>(pin_id)).unwrap_or(true);
+    ui.checkbox(&mut pinned, "pin an event (as a deep link would)");
+    ui.data_mut(|d| d.insert_temp(pin_id, pinned));
+    // A mark from the middle of the run, so the pin has a crowd to be found in.
+    let pin_at = pinned
+        .then(|| marks.get(marks.len() / 3).map(|(t, _)| *t))
+        .flatten();
+
     let sr = TimeSpine::new(spine)
         .format_tick(&tick)
         .marks(&marks)
+        .pin(pin_at)
         .height(58.0)
         .brushing(brushing)
         .show(ui);

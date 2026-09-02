@@ -1,0 +1,41 @@
+# browser-fetch — the JSON fetch every wasm frontend was writing for itself.
+#
+# Extracted 2026-09-02 after finding TEN hand-rolled copies in cnft.dev-workers
+# alone (flow-explorer, loan-book, token-explorer, collection-ownership,
+# meme-builder, trade-desk, …). They had already diverged in a way that
+# mattered: most threw the response body away and reported a bare `HTTP 500`,
+# while collection-ownership read it into the error. This crate takes the
+# better behaviour as the standard.
+#
+# PURE BROWSER — `web-sys` + `serde`, no worker deps, no framework. Consumable
+# from any wasm-bindgen frontend; egui, Leptos or hand-rolled DOM.
+[package]
+name = "browser-fetch"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "JSON fetch for wasm frontends: typed errors that carry the response body"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+# Bodies are encoded with `serde_json` rather than `serde_wasm_bindgen`: a POST
+# body is a STRING on the wire, and going through JsValue only to stringify it
+# adds a conversion that can fail for no gain.
+serde_json = { workspace = true }
+serde-wasm-bindgen = { workspace = true }
+# `Uint8Array`, for `get_bytes` — artifacts and images, not everything is JSON.
+js-sys = { workspace = true }
+wasm-bindgen = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+# The fetch surface is NOT in the workspace `web-sys` feature set — that one is
+# DOM-shaped (elements, events, shadow roots). Declared here rather than added
+# there so a crate that only touches the DOM does not start compiling the
+# network stack; cargo unions the features for anyone who needs both.
+web-sys = { workspace = true, features = [
+    "Window",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Response",
+    "Headers",
+] }

@@ -230,7 +230,11 @@ mod tests {
         let snap = snapshot(3, Some(15));
         assert_eq!(snap.page(0), Some(&page(0)));
         assert_eq!(snap.page(2), Some(&page(2)));
-        assert_eq!(snap.page(3), None, "past the end is None, not an empty page");
+        assert_eq!(
+            snap.page(3),
+            None,
+            "past the end is None, not an empty page"
+        );
     }
 
     #[test]

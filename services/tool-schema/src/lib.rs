@@ -102,7 +102,10 @@ pub fn schema_for<T: JsonSchema>() -> Value {
 pub fn no_arguments() -> Value {
     let mut schema = serde_json::Map::new();
     schema.insert("type".to_string(), Value::from("object"));
-    schema.insert("properties".to_string(), Value::Object(serde_json::Map::new()));
+    schema.insert(
+        "properties".to_string(),
+        Value::Object(serde_json::Map::new()),
+    );
     schema.insert("additionalProperties".to_string(), Value::from(false));
     Value::Object(schema)
 }
@@ -195,7 +198,10 @@ fn is_object_type(value: &Value) -> bool {
 fn item_type(items: &Value) -> Option<&str> {
     items.get("type").and_then(|t| match t {
         Value::String(name) => Some(name.as_str()),
-        Value::Array(names) => names.iter().find_map(|n| n.as_str()).filter(|n| *n != "null"),
+        Value::Array(names) => names
+            .iter()
+            .find_map(|n| n.as_str())
+            .filter(|n| *n != "null"),
         _ => None,
     })
 }
@@ -345,11 +351,10 @@ mod tests {
     /// This is what turns a silently-dropped argument into a fixable one.
     #[test]
     fn an_undeclared_argument_is_rejected_by_name() {
-        let error = serde_json::from_str::<AssetsArgs>(
-            r#"{"collection":"Black Flag","traits":"ghoul"}"#,
-        )
-        .unwrap_err()
-        .to_string();
+        let error =
+            serde_json::from_str::<AssetsArgs>(r#"{"collection":"Black Flag","traits":"ghoul"}"#)
+                .unwrap_err()
+                .to_string();
 
         assert!(error.contains("unknown field `traits`"), "{error}");
         assert!(error.contains("expected one of"), "{error}");
@@ -360,11 +365,10 @@ mod tests {
     /// with `as_str()` and therefore absent. Parsing reports it instead.
     #[test]
     fn a_wrongly_typed_argument_is_rejected_rather_than_read_as_absent() {
-        let error = serde_json::from_str::<AssetsArgs>(
-            r#"{"collection":"Black Flag","trait":["ghoul"]}"#,
-        )
-        .unwrap_err()
-        .to_string();
+        let error =
+            serde_json::from_str::<AssetsArgs>(r#"{"collection":"Black Flag","trait":["ghoul"]}"#)
+                .unwrap_err()
+                .to_string();
 
         assert!(error.contains("invalid type: sequence"), "{error}");
         assert!(error.contains("expected a string"), "{error}");
@@ -372,10 +376,9 @@ mod tests {
 
     #[test]
     fn a_value_outside_its_choices_is_rejected() {
-        let error =
-            serde_json::from_str::<AssetsArgs>(r#"{"collection":"x","order":"cheapest"}"#)
-                .unwrap_err()
-                .to_string();
+        let error = serde_json::from_str::<AssetsArgs>(r#"{"collection":"x","order":"cheapest"}"#)
+            .unwrap_err()
+            .to_string();
         assert!(error.contains("unknown variant `cheapest`"), "{error}");
         assert!(error.contains("rarest"), "{error}");
     }

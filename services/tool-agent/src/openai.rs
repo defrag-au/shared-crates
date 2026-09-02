@@ -9,11 +9,7 @@ use crate::{AgentError, ChatModel, Message, ModelTurn, ToolCall, ToolDef, Usage}
 use openai_client::{OpenAI, RequestMessage, RequestToolCall, ToolSpec};
 
 impl ChatModel for OpenAI {
-    async fn turn(
-        &self,
-        messages: &[Message],
-        tools: &[ToolDef],
-    ) -> Result<ModelTurn, AgentError> {
+    async fn turn(&self, messages: &[Message], tools: &[ToolDef]) -> Result<ModelTurn, AgentError> {
         let request = self.request(
             messages.iter().map(to_wire).collect(),
             tools

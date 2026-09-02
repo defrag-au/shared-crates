@@ -1,0 +1,15 @@
+# Clippy configuration for the workspace.
+#
+# `egui-widgets`' own `defaults.rs` is the one legitimate caller and carries an
+# `#[allow]` naming this rule.
+
+disallowed-methods = [
+    # Every egui frontend here needs BOTH the egui_extras loaders and
+    # egui-widgets' BrowserImageLoader, which decodes with createImageBitmap()
+    # off the main thread instead of egui_extras' synchronous ImageCrateLoader.
+    # That was a two-call incantation copied into sixteen apps, and the app that
+    # called only this one got main-thread decodes and tofu icons — neither of
+    # which announces itself. `install_defaults` is both calls plus the icon
+    # font, and is correct on native too (it cfgs the browser loader out).
+    { path = "egui_extras::install_image_loaders", reason = "Use egui_widgets::install_defaults — it installs these loaders AND the browser image decoder AND the Phosphor icon font" },
+]

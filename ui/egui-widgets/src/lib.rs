@@ -83,6 +83,7 @@ pub mod select;
 pub mod selection;
 pub mod service_banner;
 pub mod seven_segment;
+pub mod skeleton;
 pub mod slot_table;
 pub mod sparkline;
 pub mod stat_strip;
@@ -129,6 +130,7 @@ pub mod split_allocation_bar;
 // Loan dashboard widgets
 pub mod custody_walk;
 pub mod data_table;
+pub mod defaults;
 pub mod exposure_bar;
 
 // Ranked-list dashboards (holders, leaderboards, top traders)
@@ -196,6 +198,7 @@ pub use custody_walk::{
     CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode, WalkNodeKind, WalkSummary,
     summarize as summarize_walk,
 };
+pub use defaults::install_defaults;
 pub use distribution_waterfall::{DistributionWaterfall, WaterfallMode, WaterfallParty};
 pub use donut_chart::{
     DistBand, DistributionChart, format_value as format_chart_value, legend_row,
@@ -272,6 +275,7 @@ pub use screenshot::ScreenshotButton;
 pub use selection::{DIM as SELECTION_DIM, Selection};
 pub use service_banner::{BannerTone, ServiceBanner};
 pub use seven_segment::SevenSegmentDisplay;
+pub use skeleton::{Skeleton, SkeletonReason};
 pub use slot_table::{SlotRow, SlotTable};
 pub use sparkline::{SparkHoverStyle, Sparkline};
 pub use stat_strip::{StatRange, StatStrip, StatWindow};

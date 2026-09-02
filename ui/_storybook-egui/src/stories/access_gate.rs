@@ -6,13 +6,8 @@ use egui_widgets::access_gate::{AccessGate, GateProvider, GateStatus};
 
 use crate::{ACCENT, TEXT_MUTED};
 
-authorizations::features! {
-    pub const DEMO_ACCESS = {
-        id: "story.app-access",
-        name: "Collection Explorer",
-        locked_hint: "Access is granted through partner communities — hold a qualifying role",
-    };
-}
+/// A real feature — see the note in the `gated` story.
+const DEMO_ACCESS: authorizations::Feature = authorizations::Feature::AppAccess;
 
 pub fn show(ui: &mut egui::Ui) {
     ui.label(egui::RichText::new("Access Gate").color(ACCENT).strong());
@@ -48,7 +43,7 @@ pub fn show(ui: &mut egui::Ui) {
     );
     egui::Frame::group(ui.style()).show(ui, |ui| {
         ui.set_min_height(160.0);
-        let _ = AccessGate::new(&DEMO_ACCESS, GateStatus::Anonymous).show(ui);
+        let _ = AccessGate::new(DEMO_ACCESS, GateStatus::Anonymous).show(ui);
     });
     ui.add_space(12.0);
 
@@ -59,7 +54,7 @@ pub fn show(ui: &mut egui::Ui) {
     );
     egui::Frame::group(ui.style()).show(ui, |ui| {
         ui.set_min_height(240.0);
-        let _ = AccessGate::new(&DEMO_ACCESS, GateStatus::Unqualified)
+        let _ = AccessGate::new(DEMO_ACCESS, GateStatus::Unqualified)
             .providers(&providers)
             .show(ui);
     });

@@ -8,7 +8,7 @@
 //!   role→entitlement mapping can evolve at the mint site without
 //!   redeploying consumers).
 //! - **Backend enforcement** (workers-rs): a route handler calls
-//!   [`SessionClaims::require`] with the [`Feature`] const it protects and
+//!   [`SessionClaims::require`] with the [`Feature`] variant it protects and
 //!   receives a [`Grant`] proof or a typed denial. Gated inner functions
 //!   take `Grant` as a parameter — the "parse, don't validate" shape: one
 //!   runtime check at the boundary, a type-system proof everywhere past it.
@@ -22,64 +22,154 @@
 //! implementation. Pure compile-time capability tokens can't express
 //! JWT-carried per-user entitlements (no dependent types), so the boundary
 //! check is necessarily runtime; `Grant` gives the compile-time
-//! propagation half. Feature declaration is `macro_rules`-based — no
-//! proc-macro crate — because workers-rs routes are closures, which an
-//! attribute macro can't decorate anyway.
+//! propagation half.
+//!
+//! Features were originally macro-declared consts, on the reasoning that a
+//! consuming crate should be able to declare its own next to the code it
+//! gates. Nothing ever did — see [`Feature`] — so they are now one closed
+//! enum, which an exhaustive `match` can be checked against.
 
 use serde::{Deserialize, Serialize};
 
-pub mod features;
-
 // ============================================================================
-// Feature — a gated capability, declared next to the code that implements it
+// Feature — the closed set of gated capabilities
 // ============================================================================
 
-/// A gated feature. Declare with [`features!`]; reference the const from
-/// both the enforcing route and the rendering widget so the entitlement id,
-/// display name, and locked-state copy live in exactly one place.
-#[derive(Debug)]
-pub struct Feature {
-    /// Entitlement id — an RFC 8693-style scope token (`[a-z0-9._-]+`,
-    /// no spaces; spaces delimit the `ent` claim). Namespace by surface,
-    /// e.g. `tools.visual-search`.
-    pub id: &'static str,
-    /// Human-readable name for UI ("Visual Search").
-    pub name: &'static str,
-    /// Locked-state copy shown to unauthorized users — what the feature is
-    /// and how to gain access (e.g. "Run /collector in a partner Discord").
-    pub locked_hint: &'static str,
+/// A gated capability. Reference the same variant from the enforcing route
+/// and the rendering widget so the entitlement id, display name and
+/// locked-state copy can never drift apart.
+///
+/// # Why an enum and not a registry of consts
+///
+/// This was six `pub const Feature` values produced by a `features!` macro,
+/// justified by wanting features declared next to the code implementing them
+/// — an open set any crate could extend. In practice every one of them lived
+/// in the single registry module and the only out-of-tree declaration was a
+/// test fixture, so the extensibility was being paid for and not used.
+///
+/// Closed buys back what it costs: [`Self::ALL`] is the variants rather than
+/// a slice a declaration can forget to join, `from_id` round-trips the wire
+/// encoding, and a `match` over features is exhaustive — so adding one is a
+/// compile error at every site that has to answer for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Feature {
+    /// Base entitlement — access to the tool at all. Gates the whole app;
+    /// every qualifying partner role grants it.
+    AppAccess,
+    /// Perceptual-hash reverse image search over indexed collections.
+    VisualSearch,
+    /// Market scenario modelling — re-price a collection's listing book
+    /// against a hypothetical floor to surface what becomes under-priced if
+    /// the floor moves.
+    ///
+    /// **Deliberately granted to nobody yet.** The capability is built and
+    /// enforced, but which holding earns it is an open decision, so today only
+    /// wildcard (`*`) operator tokens see it. Naming the entitlement now means
+    /// turning it on later is a gate-config change, not a code change — and
+    /// nothing ships to general users in the meantime.
+    MarketScenarios,
+    /// Operator control surface — add/edit/delete tracked collections,
+    /// trigger syncs, and the visual-analysis tooling. Granted to specific
+    /// Discord accounts via the gate config; the operator `X-Debug-Token`
+    /// bypasses it for shell/CLI ops.
+    Admin,
+    /// Augminted gateway-listener admin surface — live editing of chat
+    /// trigger wiring (which utterances invoke which bot commands, with
+    /// which reactions) per guild. Granted via a Gateway Admin role in
+    /// HODLCroft; enforced by the augminted-bots gateway worker.
+    GatewayAdmin,
+    /// Platform-operator authority over the gateway: setting a guild's agent
+    /// **entitlement** — who may ask, and how much.
+    ///
+    /// Deliberately separate from [`Self::GatewayAdmin`], which is now the
+    /// *client* tier: their server, their trigger wiring. The entitlement is
+    /// what we sold them, so a paying guild's own admins must not be able to
+    /// grant themselves more of it.
+    ///
+    /// This split exists because the gate used to be the SCREEN — the whole
+    /// admin app was operator-only, so hiding controls was sufficient. Once
+    /// the surface is a pane in a client-facing portal that stops being true,
+    /// and "only operators can see this section" is a much weaker guarantee
+    /// than "the DO refuses it". See `ADMIN_SURFACE_CONSOLIDATION_DESIGN.md`
+    /// §6.
+    GatewayOperator,
+    /// Authoring the shared meme-template library — uploading templates and
+    /// placing the text boxes on them. Write access only: rendering a meme
+    /// from an existing template is not gated by this.
+    MemesAdmin,
 }
 
-/// Declare features and collect them into a registry slice.
-///
-/// ```
-/// authorizations::features! {
-///     pub const VISUAL_SEARCH = {
-///         id: "tools.visual-search",
-///         name: "Visual Search",
-///         locked_hint: "Collector-gated: run /collector in Discord",
-///     };
-/// }
-/// // Each const is a `Feature`; `ALL_FEATURES` lists every declaration.
-/// assert_eq!(VISUAL_SEARCH.id, "tools.visual-search");
-/// assert_eq!(ALL_FEATURES.len(), 1);
-/// ```
-#[macro_export]
-macro_rules! features {
-    ( $( $(#[$meta:meta])* pub const $name:ident = {
-            id: $id:expr, name: $display:expr, locked_hint: $hint:expr $(,)?
-        }; )+ ) => {
-        $(
-            $(#[$meta])*
-            pub const $name: $crate::Feature = $crate::Feature {
-                id: $id,
-                name: $display,
-                locked_hint: $hint,
-            };
-        )+
-        /// Every feature declared in this registry block.
-        pub const ALL_FEATURES: &[&$crate::Feature] = &[ $( &$name ),+ ];
-    };
+impl Feature {
+    /// Every feature, for a UI that enumerates them.
+    pub const ALL: &'static [Self] = &[
+        Self::AppAccess,
+        Self::VisualSearch,
+        Self::MarketScenarios,
+        Self::Admin,
+        Self::GatewayAdmin,
+        Self::GatewayOperator,
+        Self::MemesAdmin,
+    ];
+
+    /// Entitlement id — an RFC 8693-style scope token (`[a-z0-9._-]+`, no
+    /// spaces; spaces delimit the `ent` claim). Namespaced by surface.
+    ///
+    /// **This is the wire format.** It appears in minted tokens and in the
+    /// checked-in `discord-auth` gate config, so changing one silently
+    /// revokes access for everyone already holding it.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::AppAccess => "app.access",
+            Self::VisualSearch => "tools.visual-search",
+            Self::MarketScenarios => "tools.market-scenarios",
+            Self::Admin => "admin.access",
+            Self::GatewayAdmin => "gateway.admin",
+            Self::GatewayOperator => "gateway.operator",
+            Self::MemesAdmin => "memes.admin",
+        }
+    }
+
+    /// Human-readable name for UI.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::AppAccess => "Collection Explorer",
+            Self::VisualSearch => "Visual Search",
+            Self::MarketScenarios => "Market Scenarios",
+            Self::Admin => "Admin",
+            Self::GatewayAdmin => "Gateway Admin",
+            Self::GatewayOperator => "Gateway Operator",
+            Self::MemesAdmin => "Meme Templates",
+        }
+    }
+
+    /// Locked-state copy shown to unauthorized users — what the feature is
+    /// and how to gain access.
+    pub fn locked_hint(self) -> &'static str {
+        match self {
+            Self::AppAccess => {
+                "Access is granted through partner communities — hold a qualifying role to unlock"
+            }
+            Self::VisualSearch => "Hold a qualifying role in a partner Discord — sign in to unlock",
+            Self::MarketScenarios => "Advanced market tooling — access tier not yet assigned",
+            Self::Admin => "Operator access — granted to specific Discord accounts",
+            Self::GatewayAdmin => {
+                "Gateway operator access — hold the Gateway Admin role in HODLCroft"
+            }
+            Self::GatewayOperator => {
+                "Platform-operator access — agent entitlements are set by Augminted"
+            }
+            Self::MemesAdmin => "Meme template authoring — granted to specific Discord accounts",
+        }
+    }
+
+    /// Resolve a wire id back to a feature.
+    ///
+    /// `None` for an id this build does not know, which is the ordinary case
+    /// for a token minted by a newer deployment — the entitlement is simply
+    /// not honoured rather than mistaken for another.
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|f| f.id() == id)
+    }
 }
 
 // ============================================================================
@@ -112,8 +202,8 @@ impl EntitlementSet {
     }
 
     /// Whether this set grants `feature`.
-    pub fn grants(&self, feature: &Feature) -> bool {
-        self.ids.iter().any(|id| id == feature.id || id == "*")
+    pub fn grants(&self, feature: Feature) -> bool {
+        self.ids.iter().any(|id| id == feature.id() || id == "*")
     }
 }
 
@@ -250,7 +340,7 @@ impl SessionClaims {
     /// The boundary check: exchange claims for a [`Grant`] proof, or a
     /// typed denial carrying the feature (so the error response can say
     /// what was missing and how to get it).
-    pub fn require<'f>(&self, feature: &'f Feature) -> Result<Grant<'f>, Denied<'f>> {
+    pub fn require(&self, feature: Feature) -> Result<Grant, Denied> {
         if self.entitlements().grants(feature) {
             Ok(Grant { feature })
         } else {
@@ -267,23 +357,23 @@ impl SessionClaims {
 /// `#[non_exhaustive]` is what makes it unforgeable: outside this crate a
 /// `Grant` can't be built with a struct literal, so the only way to hold one
 /// is to have gone through [`SessionClaims::require`] (or [`Grant::for_test`]).
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
-pub struct Grant<'f> {
-    pub feature: &'f Feature,
+pub struct Grant {
+    pub feature: Feature,
 }
 
-impl<'f> Grant<'f> {
+impl Grant {
     /// Test-only constructor so gated internals stay unit-testable.
-    pub fn for_test(feature: &'f Feature) -> Self {
+    pub fn for_test(feature: Feature) -> Self {
         Self { feature }
     }
 }
 
 /// A refused boundary check.
-#[derive(Debug)]
-pub struct Denied<'f> {
-    pub feature: &'f Feature,
+#[derive(Debug, Clone, Copy)]
+pub struct Denied {
+    pub feature: Feature,
 }
 
 // ============================================================================
@@ -360,19 +450,6 @@ pub fn mint_token(
 mod tests {
     use super::*;
 
-    crate::features! {
-        pub const TEST_FEATURE = {
-            id: "test.feature",
-            name: "Test Feature",
-            locked_hint: "hold the test badge",
-        };
-        pub const OTHER_FEATURE = {
-            id: "test.other",
-            name: "Other",
-            locked_hint: "nope",
-        };
-    }
-
     fn claims(ent: &str) -> SessionClaims {
         SessionClaims {
             guild: Some("guild1".into()),
@@ -381,10 +458,35 @@ mod tests {
         }
     }
 
+    /// Every variant is reachable from `ALL`, which the const-registry shape
+    /// could not guarantee: a declaration could be written and simply left out
+    /// of the slice. `from_id` closes the loop the other way.
     #[test]
-    fn registry_collects_features() {
-        assert_eq!(ALL_FEATURES.len(), 2);
-        assert_eq!(TEST_FEATURE.id, "test.feature");
+    fn every_feature_is_listed_and_round_trips_through_its_id() {
+        assert_eq!(Feature::ALL.len(), 7);
+        for feature in Feature::ALL {
+            assert_eq!(Feature::from_id(feature.id()), Some(*feature));
+            assert!(!feature.name().is_empty());
+            assert!(!feature.locked_hint().is_empty());
+        }
+    }
+
+    /// Ids are the wire format — they appear in minted tokens and in the
+    /// checked-in gate config — so a duplicate would silently grant two
+    /// capabilities for the price of one.
+    #[test]
+    fn feature_ids_are_unique() {
+        let mut ids: Vec<&str> = Feature::ALL.iter().map(|f| f.id()).collect();
+        ids.sort_unstable();
+        let before = ids.len();
+        ids.dedup();
+        assert_eq!(ids.len(), before, "duplicate feature id");
+    }
+
+    #[test]
+    fn an_unknown_id_resolves_to_nothing_rather_than_a_neighbour() {
+        assert_eq!(Feature::from_id("nope.missing"), None);
+        assert_eq!(Feature::from_id(""), None);
     }
 
     #[test]
@@ -397,19 +499,25 @@ mod tests {
 
     #[test]
     fn grants_exact_and_wildcard() {
-        assert!(claims("test.feature").require(&TEST_FEATURE).is_ok());
-        assert!(claims("test.feature").require(&OTHER_FEATURE).is_err());
-        assert!(claims("*").require(&OTHER_FEATURE).is_ok());
-        assert!(claims("").require(&TEST_FEATURE).is_err());
+        assert!(claims("tools.visual-search")
+            .require(Feature::VisualSearch)
+            .is_ok());
+        assert!(claims("tools.visual-search")
+            .require(Feature::MarketScenarios)
+            .is_err());
+        assert!(claims("*").require(Feature::MarketScenarios).is_ok());
+        assert!(claims("").require(Feature::VisualSearch).is_err());
         // Prefixes must not match — scope tokens are exact.
-        assert!(claims("test.featurex").require(&TEST_FEATURE).is_err());
+        assert!(claims("tools.visual-searchx")
+            .require(Feature::VisualSearch)
+            .is_err());
     }
 
     #[test]
     fn denial_carries_feature_metadata() {
-        let err = claims("").require(&TEST_FEATURE).unwrap_err();
-        assert_eq!(err.feature.id, "test.feature");
-        assert_eq!(err.feature.locked_hint, "hold the test badge");
+        let err = claims("").require(Feature::VisualSearch).unwrap_err();
+        assert_eq!(err.feature.id(), "tools.visual-search");
+        assert!(err.feature.locked_hint().contains("qualifying role"));
     }
 
     #[test]
@@ -423,7 +531,7 @@ mod tests {
         .unwrap();
         let parsed = verify_token(&token, secret).unwrap();
         assert_eq!(parsed.sub.as_deref(), Some("user123"));
-        assert!(parsed.entitlements().grants(&TEST_FEATURE)); // via wildcard
+        assert!(parsed.entitlements().grants(Feature::VisualSearch)); // via wildcard
         assert!(verify_token(&token, b"wrong-secret").is_err());
     }
 
@@ -433,8 +541,8 @@ mod tests {
     #[test]
     fn a_wallet_session_needs_no_discord_id() {
         let secret = b"super-secret-key-for-tests";
-        let claims = SessionClaims::for_wallet("stake_test1abc", "gateway.admin")
-            .with_client("client_42");
+        let claims =
+            SessionClaims::for_wallet("stake_test1abc", "gateway.admin").with_client("client_42");
         let token = mint_token(claims, secret, chrono::Duration::hours(8)).unwrap();
 
         let parsed = verify_token(&token, secret).unwrap();
