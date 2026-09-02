@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-120 widgets.
+121 widgets.
 
 | module | what it is |
 |---|---|
@@ -36,6 +36,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `coverage_lanes` | `CoverageLanes` — was it up, was it down, or was nobody looking, per entity, on the shared spine |
 | `custody_walk` | `CustodyWalk` — where a specific sum came from, unit by unit |
 | `data_table` | Data table — dense row-based table with column headers, selection, and optional detail panel |
+| `defaults` | One call to set a frontend up before its first frame |
 | `detail_split` | `detail_split` — a content column beside a detail column, laid out by hand |
 | `distribution_waterfall` | `DistributionWaterfall` — how a buyer's payment flows down to what lands in each party's wallet under settle-as-you-mint |
 | `donut_chart` | `DistributionChart` — a donut of banded shares with a legend and hover tooltip, for "how is this split" questions |

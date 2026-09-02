@@ -129,6 +129,7 @@ pub mod split_allocation_bar;
 // Loan dashboard widgets
 pub mod custody_walk;
 pub mod data_table;
+pub mod defaults;
 pub mod exposure_bar;
 
 // Ranked-list dashboards (holders, leaderboards, top traders)
@@ -196,6 +197,7 @@ pub use custody_walk::{
     CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode, WalkNodeKind, WalkSummary,
     summarize as summarize_walk,
 };
+pub use defaults::install_defaults;
 pub use distribution_waterfall::{DistributionWaterfall, WaterfallMode, WaterfallParty};
 pub use donut_chart::{
     DistBand, DistributionChart, format_value as format_chart_value, legend_row,

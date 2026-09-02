@@ -452,6 +452,21 @@ pub struct Fonts {
 }
 
 impl Fonts {
+    /// Parse both faces from their bytes.
+    ///
+    /// Exists so a consumer never has to name `ab_glyph` — the crate is an
+    /// implementation detail of the compositor, and a worker that had to add it
+    /// as a direct dependency could drift to a different major and stop being
+    /// able to build a `Fonts` at all.
+    pub fn new(display: &[u8], body: &[u8]) -> Result<Self, String> {
+        Ok(Self {
+            display: ab_glyph::FontArc::try_from_vec(display.to_vec())
+                .map_err(|e| format!("display font failed to parse: {e}"))?,
+            body: ab_glyph::FontArc::try_from_vec(body.to_vec())
+                .map_err(|e| format!("body font failed to parse: {e}"))?,
+        })
+    }
+
     fn get(&self, role: FontRole) -> &ab_glyph::FontArc {
         match role {
             FontRole::Display => &self.display,
