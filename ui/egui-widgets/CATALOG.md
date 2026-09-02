@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-121 widgets.
+122 widgets.
 
 | module | what it is |
 |---|---|
@@ -98,6 +98,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `service_banner` | `ServiceBanner` — a persistent strip saying the backend is not currently whole, in the operator's own words |
 | `seven_segment` | SevenSegmentDisplay — retro LED-style numeric display |
 | `signing_status` | Signing status widget — concurrent signing checklist for the trade desk |
+| `skeleton` | `Skeleton` — placeholder shapes standing in for content that is not on screen, and a statement of WHY it is not |
 | `slippage_selector` | Reusable slippage selector widget |
 | `slot_table` | slot_table — the trait/slot list with enable / required toggles and an optional z-order field |
 | `sparkline` | Sparkline widget — compact inline line chart for trend visualization |

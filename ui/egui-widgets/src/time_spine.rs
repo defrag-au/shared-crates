@@ -42,6 +42,13 @@ use crate::motion::{Easing, tween, tween_bool};
 const MARK_IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
 const MARK_OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
 
+/// The pin — deliberately a THIRD hue, neither mark colour.
+///
+/// It has to be findable among a few thousand marks, and picking either
+/// in/out colour would make the one event the reader was sent to look at
+/// indistinguishable from the crowd it sits in.
+const PIN: Color32 = Color32::from_rgb(0x9b, 0x7c, 0xf5);
+
 // ---------------------------------------------------------------------------
 // TimeScale — the mapping (ported from re_time_ruler::TimeRangesUi)
 // ---------------------------------------------------------------------------
@@ -618,6 +625,9 @@ pub struct TimeSpine<'a> {
     /// lane, because "when did this wallet act" and "which interval do I want
     /// to brush" are the same question.
     marks: &'a [(i64, MarkKind)],
+    /// The one moment this view is ABOUT, if it is about one — see
+    /// [`TimeSpine::pin`].
+    pin: Option<i64>,
     height: f32,
     show_play: bool,
     /// May the reader drag out a range to FILTER by? See
@@ -635,6 +645,7 @@ impl<'a> TimeSpine<'a> {
             format_tick: &compact_tick_label,
             coverage: &[],
             marks: &[],
+            pin: None,
             height: 56.0,
             show_play: true,
             brushing: true,
@@ -680,6 +691,31 @@ impl<'a> TimeSpine<'a> {
         self
     }
 
+    /// The one moment this view is ABOUT — a deep-linked event, a selected
+    /// row, the thing somebody was sent here to look at.
+    ///
+    /// # Why this is not a [`MarkKind`]
+    ///
+    /// Marks answer "when did this thing act, and which way did the value
+    /// go" — they are a direction. A pin answers "which of these is the one",
+    /// which is not a direction at all, and folding it in as a third variant
+    /// would make `MarkKind` mean two unrelated things.
+    ///
+    /// # Why not just move the playhead
+    ///
+    /// Because the playhead REVEALS: everything after it is hidden. Sending
+    /// it back to a linked event would erase all the later history the reader
+    /// can see, which is the opposite of helping them place it. The pin says
+    /// "here" without changing what is shown — the two verbs stay separate,
+    /// as the module header insists.
+    ///
+    /// Drawn on the ruler rather than in the brush lane, so it reads against
+    /// the DATES rather than among the events.
+    pub fn pin(mut self, at: Option<i64>) -> Self {
+        self.pin = at;
+        self
+    }
+
     pub fn height(mut self, h: f32) -> Self {
         self.height = h;
         self
@@ -696,6 +732,7 @@ impl<'a> TimeSpine<'a> {
             format_tick,
             coverage,
             marks,
+            pin,
             height,
             show_play,
             brushing,
@@ -821,6 +858,35 @@ impl<'a> TimeSpine<'a> {
             Stroke::new(1.0_f32, visuals.widgets.noninteractive.bg_stroke.color),
         );
         paint_ticks(&scale, ui, &painter, tick_lane.y_range(), format_tick);
+
+        // THE PIN — the one moment this view is about.
+        //
+        // On the ruler, not among the marks: it answers "which of these", not
+        // "which way did it go". Drawn after the ticks so a date label cannot
+        // sit on top of the one thing the reader was sent to find, and as a
+        // full-height stem with a head so it is legible against a dense mark
+        // lane — a wallet with four thousand events makes any one-pixel
+        // tick invisible.
+        if let Some(t) = pin
+            && let Some(x) = scale.x_from_time_f32(t as f64)
+            && x >= ruler.left()
+            && x <= ruler.right()
+        {
+            let stem = Stroke::new(1.5_f32, PIN);
+            painter.line_segment([pos2(x, ruler.top()), pos2(x, ruler.bottom())], stem);
+            // A downward head at the top, so it reads as pointing AT the axis
+            // rather than as a second playhead (which points up from below).
+            let head = 4.0_f32;
+            painter.add(Shape::convex_polygon(
+                vec![
+                    pos2(x - head, ruler.top()),
+                    pos2(x + head, ruler.top()),
+                    pos2(x, ruler.top() + head * 1.6),
+                ],
+                PIN,
+                Stroke::NONE,
+            ));
+        }
 
         // ── interaction ────────────────────────────────────────────────────
         // Tick lane: drag/click = playhead. Brush lane: drag = brush range;

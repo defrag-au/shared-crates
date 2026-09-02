@@ -52,6 +52,7 @@ pub mod relationship_editor;
 pub mod select;
 pub mod service_banner;
 pub mod seven_segment;
+pub mod skeleton;
 pub mod slot_table;
 pub mod sparkline;
 pub mod stat_strip;

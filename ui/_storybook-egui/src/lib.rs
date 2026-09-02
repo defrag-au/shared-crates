@@ -98,6 +98,7 @@ mod app {
         // Mint configuration
         ThemeStates,
         BackgroundToasts,
+        Skeleton,
         Chip,
         PartyBadge,
         FlowLedger,
@@ -158,6 +159,7 @@ mod app {
                 Self::Buttons,
                 Self::ThemeStates,
                 Self::BackgroundToasts,
+                Self::Skeleton,
                 Self::Chip,
                 Self::PartyBadge,
                 Self::FlowLedger,
@@ -379,6 +381,7 @@ mod app {
                 Self::CollectionList => "Collection List",
                 Self::ThemeStates => "Theme States",
                 Self::BackgroundToasts => "Background Toasts",
+                Self::Skeleton => "Skeleton",
                 Self::Chip => "Chip",
                 Self::PartyBadge => "Party Badge",
                 Self::FlowLedger => "Flow Ledger",
@@ -436,6 +439,7 @@ mod app {
                 | Self::Buttons
                 | Self::ThemeStates
                 | Self::BackgroundToasts
+                | Self::Skeleton
                 | Self::Chip
                 | Self::PartyBadge
                 | Self::FlowLedger
@@ -743,6 +747,9 @@ mod app {
                 }
                 Self::ThemeStates => {
                     "TEMPLATE for contrast bugs — interaction states (selected / hovered / active / disabled) drawn on every surface, plus the translucent selection wash. Resting-state stories cannot show these; mirrored numerically by tests/contrast.rs"
+                }
+                Self::Skeleton => {
+                    "Placeholders for content that is not on screen, and a statement of WHY — Loading pulses because 'wait' is the right instruction, Withheld is static and recedes because waiting produces nothing. The reason is positional so a call site cannot draw one without saying which. Rows or a block; carries no data, so the same shapes appear whether three items are behind the gate or three thousand"
                 }
                 Self::Chip => {
                     "Small filled-tag label with semantic variants (Success / Warning / Danger / Tag / Info / Muted) + optional × remove affordance"
@@ -1437,6 +1444,7 @@ mod app {
                             }
                             Story::ThemeStates => stories::theme_states::show(ui),
                             Story::BackgroundToasts => stories::background::show(ui),
+                            Story::Skeleton => stories::skeleton::show(ui),
                             Story::Chip => stories::chip::show(ui),
                             Story::PartyBadge => stories::party_badge::show(ui),
                             Story::FlowLedger => stories::flow_ledger::show(ui),
