@@ -586,7 +586,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
             Pos2::new(card_left, hinge_y),
             Pos2::new(card_left + card_w, hinge_y),
         ],
-        egui_widgets::theme::stroke(1.5,divider_color),
+        egui_widgets::theme::stroke(1.5, divider_color),
     );
 
     // Phase indicator

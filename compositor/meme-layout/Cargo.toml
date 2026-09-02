@@ -1,0 +1,19 @@
+[package]
+name = "meme-layout"
+description = "Meme template box definitions and the CPU compositor that fills them — one source of truth for the editor preview and the render that actually posts."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+# In-memory RgbaImage only — no codecs. Callers decode.
+image = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+# Glyph outlines and metrics. The metrics are the point: shrink-to-fit needs
+# real advances, not an estimate.
+ab_glyph = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

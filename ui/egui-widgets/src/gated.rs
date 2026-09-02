@@ -3,15 +3,15 @@
 //!
 //! Immediate mode means there is no component tree to hide: every frame
 //! re-decides. These helpers make that decision in ONE place per feature,
-//! driven by the same [`authorizations::Feature`] const the backend route
+//! driven by the same [`authorizations::Feature`] variant the backend route
 //! enforces with, so the entitlement id, display name, and locked-state
 //! copy can never drift between enforcement and display.
 //!
 //! ```no_run
 //! # use egui_widgets::gated::{gated, GateState, LockedStyle};
-//! # use authorizations::features::VISUAL_SEARCH;
+//! # use authorizations::Feature;
 //! # fn demo(ui: &mut egui::Ui, gate: &GateState) {
-//! gated(ui, gate, &VISUAL_SEARCH, LockedStyle::Card, |ui| {
+//! gated(ui, gate, Feature::VisualSearch, LockedStyle::Card, |ui| {
 //!     ui.label("secret collector tooling");
 //! });
 //! # }
@@ -43,7 +43,7 @@ impl GateState {
         Self::Session(EntitlementSet::from_scope_string(ent))
     }
 
-    pub fn grants(&self, feature: &Feature) -> bool {
+    pub fn grants(&self, feature: Feature) -> bool {
         match self {
             Self::Anonymous => false,
             Self::Session(set) => set.grants(feature),
@@ -73,7 +73,7 @@ pub enum LockedStyle {
 pub fn gated(
     ui: &mut Ui,
     gate: &GateState,
-    feature: &Feature,
+    feature: Feature,
     style: LockedStyle,
     content: impl FnOnce(&mut Ui),
 ) -> bool {
@@ -94,7 +94,7 @@ pub fn gated(
 /// The locked-card affordance: lock icon + feature name + how-to-unlock
 /// copy from the feature registry (plus a "session expired?" nudge when
 /// the user is authenticated but lacks the entitlement).
-pub fn locked_card(ui: &mut Ui, gate: &GateState, feature: &Feature) {
+pub fn locked_card(ui: &mut Ui, gate: &GateState, feature: Feature) {
     install_phosphor_font(ui.ctx());
     egui::Frame::group(ui.style())
         .fill(ui.visuals().faint_bg_color)
@@ -102,9 +102,9 @@ pub fn locked_card(ui: &mut Ui, gate: &GateState, feature: &Feature) {
             ui.horizontal(|ui| {
                 ui.label(PhosphorIcon::Lock.rich_text(18.0, Color32::from_rgb(224, 175, 104)));
                 ui.vertical(|ui| {
-                    ui.label(RichText::new(feature.name).strong());
+                    ui.label(RichText::new(feature.name()).strong());
                     ui.label(
-                        RichText::new(feature.locked_hint)
+                        RichText::new(feature.locked_hint())
                             .size(11.0)
                             .color(ui.visuals().weak_text_color()),
                     );
@@ -123,7 +123,7 @@ pub fn locked_card(ui: &mut Ui, gate: &GateState, feature: &Feature) {
 /// Small inline lock chip for menu rows / toolbars. Returns the response
 /// so callers can attach tooltips or clicks (e.g. open an "how to unlock"
 /// modal).
-pub fn locked_chip(ui: &mut Ui, feature: &Feature) -> egui::Response {
+pub fn locked_chip(ui: &mut Ui, feature: Feature) -> egui::Response {
     install_phosphor_font(ui.ctx());
     // A button label is single-font, so the Phosphor glyph and the latin
     // name can't share one string — compose a chip-shaped frame instead.
@@ -134,34 +134,31 @@ pub fn locked_chip(ui: &mut Ui, feature: &Feature) -> egui::Response {
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(PhosphorIcon::Lock.rich_text(12.0, weak));
-                ui.label(RichText::new(feature.name).size(12.0).color(weak));
+                ui.label(RichText::new(feature.name()).size(12.0).color(weak));
             });
         })
         .response
-        .on_hover_text(feature.locked_hint)
+        .on_hover_text(feature.locked_hint())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    authorizations::features! {
-        pub const GATED_TEST = {
-            id: "test.gated",
-            name: "Gated Test",
-            locked_hint: "hold the badge",
-        };
-    }
+    /// Any real feature. The registry is a closed enum now, so a test can no
+    /// longer declare a private one — which is the trade the enum makes, and
+    /// costs nothing here: what is under test is the gate state, not the id.
+    const GATED_TEST: Feature = Feature::VisualSearch;
 
     #[test]
     fn gate_state_decisions() {
-        assert!(!GateState::Anonymous.grants(&GATED_TEST));
+        assert!(!GateState::Anonymous.grants(GATED_TEST));
         assert!(!GateState::Anonymous.is_authenticated());
-        let session = GateState::from_scope_string("test.gated other.thing");
-        assert!(session.grants(&GATED_TEST));
+        let session = GateState::from_scope_string("tools.visual-search other.thing");
+        assert!(session.grants(GATED_TEST));
         assert!(session.is_authenticated());
         let wrong = GateState::from_scope_string("other.thing");
-        assert!(!wrong.grants(&GATED_TEST));
+        assert!(!wrong.grants(GATED_TEST));
         assert!(wrong.is_authenticated());
     }
 }

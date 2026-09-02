@@ -18,7 +18,9 @@ fn card(ui: &mut egui::Ui, title: &str, slot: &str, segments: &[VariantSegment])
         .fill(BG_MAIN)
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
+        .stroke(egui_widgets::theme::hairline(
+            egui_widgets::theme::BG_HIGHLIGHT,
+        ))
         .show(ui, |ui| {
             ui.label(
                 egui::RichText::new(title)

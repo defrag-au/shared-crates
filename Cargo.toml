@@ -160,6 +160,10 @@ egui_inbox = "0.11"
 eframe = { version = "0.34", default-features = false, features = ["default_fonts", "glow"] }
 egui_extras = { version = "0.34", features = ["image", "http"] }
 image = { version = "0.25", default-features = false }
+# Glyph outlines + metrics for CPU text composition (`compositor/meme-layout`,
+# `ui/egui-widgets`'s image editor). Pure Rust, no system font stack, so it
+# works identically in a worker and in wasm.
+ab_glyph = { version = "0.2" }
 
 # Internal path deps usable as workspace deps
 address-registry = { path = "address-registry" }

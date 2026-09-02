@@ -26,7 +26,7 @@ use std::collections::HashMap;
 
 use gateway_wiring::{
     ActionTrace, AgentEntitlement, EventBinding, GatewayStatus, GuildInfo, GuildRole, GuildWiring,
-    RecentActivity, MAX_RECENT_ACTIVITY,
+    MAX_RECENT_ACTIVITY, RecentActivity,
 };
 use serde::{Deserialize, Serialize};
 
@@ -69,7 +69,7 @@ impl GatewayAudience {
     /// an operator" is how a screen ends up offering a control the backend
     /// refuses.
     pub fn from_entitlements(entitlements: &authorizations::EntitlementSet) -> Self {
-        if entitlements.grants(&authorizations::features::GATEWAY_OPERATOR) {
+        if entitlements.grants(authorizations::Feature::GatewayOperator) {
             Self::Operator
         } else {
             Self::Client

@@ -765,9 +765,20 @@ mod tests {
         let page = 500;
         let full = 3_235;
         println!("one row      : {named} B named / {compact} B compact");
-        println!("field names  : {keys_cost} B per row ({:.0}%)", 100.0 * keys_cost as f64 / named as f64);
-        println!("500-row page : {} KB named / {} KB compact", named * page / 1024, compact * page / 1024);
-        println!("3,235 rows   : {} KB named / {} KB compact", named * full / 1024, compact * full / 1024);
+        println!(
+            "field names  : {keys_cost} B per row ({:.0}%)",
+            100.0 * keys_cost as f64 / named as f64
+        );
+        println!(
+            "500-row page : {} KB named / {} KB compact",
+            named * page / 1024,
+            compact * page / 1024
+        );
+        println!(
+            "3,235 rows   : {} KB named / {} KB compact",
+            named * full / 1024,
+            compact * full / 1024
+        );
 
         // Guard rails rather than exact figures — this is a cost report, and
         // pinning byte counts would fail on any harmless field addition.
@@ -851,8 +862,14 @@ mod tests {
 
         let pct = |b: usize| 100.0 * (named - b) as f64 / named as f64;
         println!("--- candidates (named encoding kept throughout) ---");
-        println!("drop `time`          : {no_time} B  (-{:.0}%)", pct(no_time));
-        println!("+ tx bytes, kind u8, interned addrs: {slim} B  (-{:.0}%)", pct(slim));
+        println!(
+            "drop `time`          : {no_time} B  (-{:.0}%)",
+            pct(no_time)
+        );
+        println!(
+            "+ tx bytes, kind u8, interned addrs: {slim} B  (-{:.0}%)",
+            pct(slim)
+        );
         println!(
             "3,235 rows           : {} KB -> {} KB",
             named * full / 1024,

@@ -28,7 +28,9 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(
+                egui_widgets::theme::BG_HIGHLIGHT,
+            ))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Positive Delta (+4%)")
@@ -47,7 +49,9 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(
+                egui_widgets::theme::BG_HIGHLIGHT,
+            ))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Large Positive Delta (+15%)")
@@ -66,7 +70,9 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(
+                egui_widgets::theme::BG_HIGHLIGHT,
+            ))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Negative Delta (-5%)")
@@ -85,7 +91,9 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(
+                egui_widgets::theme::BG_HIGHLIGHT,
+            ))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("No Change (0%)")
@@ -104,7 +112,9 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(
+                egui_widgets::theme::BG_HIGHLIGHT,
+            ))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Without Label")

@@ -62,11 +62,7 @@ fn providers() -> Vec<SelectOption> {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
-    ui.label(
-        egui::RichText::new("Select")
-            .color(theme::ACCENT)
-            .strong(),
-    );
+    ui.label(egui::RichText::new("Select").color(theme::ACCENT).strong());
     ui.label(
         egui::RichText::new(
             "One bordered control — value, clear, separator, chevron — with a floating \
@@ -84,9 +80,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
     // ── Empty + placeholder ───────────────────────────────────────────────
     ui.strong("Empty");
     ui.label(
-        egui::RichText::new("Muted placeholder, no clear affordance until there is something to clear.")
-            .small()
-            .color(theme::TEXT_MUTED),
+        egui::RichText::new(
+            "Muted placeholder, no clear affordance until there is something to clear.",
+        )
+        .small()
+        .color(theme::TEXT_MUTED),
     );
     ui.add_space(4.0);
     let roles = state.roles.clone();
@@ -109,9 +107,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
     // ── Subtitles ─────────────────────────────────────────────────────────
     ui.strong("With subtitles");
     ui.label(
-        egui::RichText::new("A row can carry a second line — enough for a model name, not a table.")
-            .small()
-            .color(theme::TEXT_MUTED),
+        egui::RichText::new(
+            "A row can carry a second line — enough for a model name, not a table.",
+        )
+        .small()
+        .color(theme::TEXT_MUTED),
     );
     ui.add_space(4.0);
     let provider_options = providers();
@@ -154,7 +154,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
                 // egui's "second use of widget ID" banner across the layout,
                 // because every row's control, popup and text field collided.
                 let resp = Select::new(("tier", index), &roles)
-                    .value_from_id(value, "no such role in this guild — it may have been deleted")
+                    .value_from_id(
+                        value,
+                        "no such role in this guild — it may have been deleted",
+                    )
                     .placeholder("Select role…")
                     .width(220.0)
                     .show(ui);

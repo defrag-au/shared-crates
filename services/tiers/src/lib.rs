@@ -537,20 +537,29 @@ mod tests {
                 tier(
                     "6m",
                     1,
-                    vec![qual("$Aliens", vec![cond(&asset_source(ALIENS, None), 1_000_000)])],
+                    vec![qual(
+                        "$Aliens",
+                        vec![cond(&asset_source(ALIENS, None), 1_000_000)],
+                    )],
                 ),
                 tier(
                     "12m",
                     2,
                     vec![
-                        qual("$Aliens", vec![cond(&asset_source(ALIENS, None), 2_000_000)]),
+                        qual(
+                            "$Aliens",
+                            vec![cond(&asset_source(ALIENS, None), 2_000_000)],
+                        ),
                         qual("$PERP", vec![cond(&asset_source(PERP, None), 500)]),
                     ],
                 ),
                 tier(
                     "full",
                     3,
-                    vec![qual("$Aliens", vec![cond(&asset_source(ALIENS, None), 25_000_000)])],
+                    vec![qual(
+                        "$Aliens",
+                        vec![cond(&asset_source(ALIENS, None), 25_000_000)],
+                    )],
                 ),
             ],
         }
@@ -578,7 +587,11 @@ mod tests {
     /// asset's ladder would never have granted.
     #[test]
     fn a_different_asset_reaches_the_same_tier() {
-        let by_ns = assess(&ladder(), &held(&[(&asset_source(ALIENS, None), 2_000_000)])).unwrap();
+        let by_ns = assess(
+            &ladder(),
+            &held(&[(&asset_source(ALIENS, None), 2_000_000)]),
+        )
+        .unwrap();
         let by_perp = assess(&ladder(), &held(&[(&asset_source(PERP, None), 500)])).unwrap();
         assert_eq!(by_ns.tier_id, "12m");
         assert_eq!(by_perp.tier_id, "12m");
@@ -610,7 +623,11 @@ mod tests {
 
     #[test]
     fn the_threshold_itself_qualifies() {
-        let outcome = assess(&ladder(), &held(&[(&asset_source(ALIENS, None), 1_000_000)])).unwrap();
+        let outcome = assess(
+            &ladder(),
+            &held(&[(&asset_source(ALIENS, None), 1_000_000)]),
+        )
+        .unwrap();
         assert_eq!(outcome.tier_id, "6m");
     }
 
@@ -654,7 +671,11 @@ mod tests {
     /// Every route up is offered, not just the one the holder is already on.
     #[test]
     fn the_next_rung_lists_every_route_with_progress() {
-        let outcome = assess(&ladder(), &held(&[(&asset_source(ALIENS, None), 1_000_000)])).unwrap();
+        let outcome = assess(
+            &ladder(),
+            &held(&[(&asset_source(ALIENS, None), 1_000_000)]),
+        )
+        .unwrap();
         assert_eq!(outcome.next_label.as_deref(), Some("12m"));
 
         let labels: Vec<&str> = outcome.next.iter().map(|q| q.label.as_str()).collect();
@@ -668,7 +689,11 @@ mod tests {
 
     #[test]
     fn the_top_tier_has_nothing_to_upsell() {
-        let outcome = assess(&ladder(), &held(&[(&asset_source(ALIENS, None), 25_000_000)])).unwrap();
+        let outcome = assess(
+            &ladder(),
+            &held(&[(&asset_source(ALIENS, None), 25_000_000)]),
+        )
+        .unwrap();
         assert_eq!(outcome.tier_id, "full");
         assert!(outcome.next.is_empty());
         assert!(outcome.next_label.is_none());

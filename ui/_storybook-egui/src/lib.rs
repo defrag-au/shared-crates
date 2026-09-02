@@ -1498,9 +1498,7 @@ mod app {
                             Story::AgentConfig => {
                                 stories::agent_config::show(ui, &mut self.agent_config_state)
                             }
-                            Story::Select => {
-                                stories::select::show(ui, &mut self.select_state)
-                            }
+                            Story::Select => stories::select::show(ui, &mut self.select_state),
                             Story::UiMachine => stories::machine::show(ui, &mut self.machine_state),
                             Story::NamedGroupList => stories::named_group_list::show(
                                 ui,

@@ -99,8 +99,10 @@ fn line(ui: &mut egui::Ui, rect: Rect, vals: &[f64], colour: Color32, log: bool)
         })
         .collect();
     // 2px, per the mark spec. Thin marks; the fill is not the point here.
-    ui.painter()
-        .add(egui::Shape::line(pts, egui_widgets::theme::stroke(2.0, colour)));
+    ui.painter().add(egui::Shape::line(
+        pts,
+        egui_widgets::theme::stroke(2.0, colour),
+    ));
 }
 
 pub fn show(ui: &mut egui::Ui) {

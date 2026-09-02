@@ -5,19 +5,16 @@ use egui_widgets::gated::{gated, GateState, LockedStyle};
 
 use crate::{ACCENT, TEXT_MUTED};
 
-authorizations::features! {
-    pub const DEMO_FEATURE = {
-        id: "story.demo-feature",
-        name: "Visual Search",
-        locked_hint: "Collector-gated — run /collector in a partner Discord to unlock",
-    };
-}
+/// The registry is a closed enum, so a story shows a real feature rather
+/// than inventing one — which is arguably better: what renders here is
+/// exactly what a user sees when that entitlement is missing.
+const DEMO_FEATURE: authorizations::Feature = authorizations::Feature::VisualSearch;
 
 pub fn show(ui: &mut egui::Ui) {
     ui.label(egui::RichText::new("Gated").color(ACCENT).strong());
     ui.label(
         egui::RichText::new(
-            "Entitlement-gated rendering. The same `Feature` const drives backend \
+            "Entitlement-gated rendering. The same `Feature` variant drives backend \
              enforcement and these locked affordances, so the id, name, and unlock \
              copy never drift. Immediate mode: the grant decision re-runs each frame.",
         )
@@ -44,7 +41,7 @@ pub fn show(ui: &mut egui::Ui) {
     for (caption, gate, style) in cases {
         ui.label(egui::RichText::new(caption).small().strong());
         ui.add_space(2.0);
-        gated(ui, gate, &DEMO_FEATURE, style, |ui| {
+        gated(ui, gate, DEMO_FEATURE, style, |ui| {
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 ui.label("gated content — drop an image to search the collection");
             });

@@ -27,7 +27,9 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(
+                egui_widgets::theme::BG_HIGHLIGHT,
+            ))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Aliens \u{2014} 1000 ADA Split (78/22)")
@@ -69,7 +71,9 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(
+                egui_widgets::theme::BG_HIGHLIGHT,
+            ))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("PERP COIN \u{2014} 2000 ADA Three-Way Split")
@@ -118,7 +122,9 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(
+                egui_widgets::theme::BG_HIGHLIGHT,
+            ))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Single Pool (no split advantage)")

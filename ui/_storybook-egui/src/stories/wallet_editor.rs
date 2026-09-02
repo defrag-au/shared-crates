@@ -94,7 +94,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
             .fill(BG_MAIN)
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(egui_widgets::theme::BG_HIGHLIGHT))
+            .stroke(egui_widgets::theme::hairline(
+                egui_widgets::theme::BG_HIGHLIGHT,
+            ))
             .show(ui, |ui| {
                 let config = WalletEditorConfig {
                     subtitle: Some("Add wallets to analyze trait coverage"),
