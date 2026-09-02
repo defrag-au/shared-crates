@@ -37,8 +37,10 @@
 //! The other schemes work the same way and exist because they resolve to
 //! genuinely different pictures, not because they are conveniences:
 //! [`AvatarUri`] for a Discord user, [`R2Uri`] for a bucket this renderer is
-//! bound to, and [`TokenUri`] for a token's registry brand mark — which is a
-//! different image from the artwork `asset://` returns for the same pair.
+//! bound to, [`TokenUri`] for a token's registry brand mark — a different
+//! image from the artwork `asset://` returns for the same pair — and
+//! [`LogoUri`] for a venue's mark, which is what a graphic about a PLACE
+//! rather than an item needs.
 
 use std::fmt;
 use std::str::FromStr;
@@ -441,6 +443,67 @@ impl FromStr for TokenUri {
     }
 }
 
+/// A venue or brand mark: `logo://{slug}`.
+///
+/// # Why not just `r2://STORAGE/logos/wayup.png`
+///
+/// That works, and it makes every caller responsible for a binding name and a
+/// key layout that are the RENDERER's business. Move the logos to another
+/// bucket, or switch them to SVG, and every service that ever drew one has to
+/// be found and edited. `logo://wayup` names the thing; where it lives is
+/// resolved on the other side, which is the same split `asset://` and
+/// `avatar://` already make.
+///
+/// # When to reach for it
+///
+/// When a graphic is about a PLACE rather than an item. A batched marketplace
+/// transaction is the case that motivated it: seven listings, two offers and a
+/// cancellation share one transaction, no single item represents it, and
+/// picking one to illustrate the card would caption the other nine with the
+/// wrong picture. The venue's own mark is the honest image for "a lot happened
+/// here".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogoUri {
+    /// Lower-case slug — `wayup`, `jpg`. The venue slugs the market ledger
+    /// already uses, so a caller passes through what it was given.
+    pub slug: String,
+}
+
+impl LogoUri {
+    pub fn new(slug: impl Into<String>) -> Self {
+        Self { slug: slug.into() }
+    }
+}
+
+impl fmt::Display for LogoUri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "logo://{}", self.slug)
+    }
+}
+
+impl FromStr for LogoUri {
+    type Err = AssetUriError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let slug = s
+            .strip_prefix("logo://")
+            .ok_or(AssetUriError::MissingScheme)?;
+        // The slug becomes a path segment in a key the renderer builds, so the
+        // alphabet is restricted rather than escaped — `..` and `/` are the
+        // ones that matter, and a venue slug never needs either.
+        if slug.is_empty()
+            || !slug
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+        {
+            return Err(AssetUriError::InvalidFingerprint);
+        }
+        Ok(Self {
+            slug: slug.to_string(),
+        })
+    }
+}
+
 /// A width the image pipeline keeps warm.
 ///
 /// Deliberately an enum rather than a free integer. The image service will
@@ -736,6 +799,52 @@ mod token_tests {
         );
         assert_eq!(
             "r2://STORAGE/fonts/Anton.ttf".parse::<TokenUri>(),
+            Err(AssetUriError::MissingScheme)
+        );
+    }
+}
+
+#[cfg(test)]
+mod logo_tests {
+    use super::*;
+
+    #[test]
+    fn a_logo_uri_round_trips() {
+        let uri = LogoUri::new("wayup");
+        assert_eq!(uri.to_string(), "logo://wayup");
+        assert_eq!("logo://wayup".parse::<LogoUri>().unwrap(), uri);
+        // The slugs the market ledger actually uses.
+        for slug in ["jpg", "wayup", "spacebudz", "cnft-io", "dex_hunter"] {
+            let text = format!("logo://{slug}");
+            assert_eq!(text.parse::<LogoUri>().unwrap().slug, slug);
+        }
+    }
+
+    /// The slug becomes a path segment in a key the renderer builds, so it is
+    /// restricted rather than escaped. `..` and `/` are the ones that matter.
+    #[test]
+    fn a_slug_cannot_climb_or_contain_a_path() {
+        for bad in [
+            "logo://..",
+            "logo://../secrets",
+            "logo://a/b",
+            "logo://WayUp",
+            "logo://way up",
+            "logo://way.up",
+            "logo://",
+        ] {
+            assert!(bad.parse::<LogoUri>().is_err(), "{bad:?} should not parse");
+        }
+    }
+
+    #[test]
+    fn other_schemes_are_not_logos() {
+        assert_eq!(
+            "r2://STORAGE/logos/wayup.png".parse::<LogoUri>(),
+            Err(AssetUriError::MissingScheme)
+        );
+        assert_eq!(
+            "token://abc/def".parse::<LogoUri>(),
             Err(AssetUriError::MissingScheme)
         );
     }
