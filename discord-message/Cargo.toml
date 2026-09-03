@@ -1,0 +1,12 @@
+[package]
+name = "discord-message"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "Serde-only model of a Discord message, and its renderer to Discord's wire JSON"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

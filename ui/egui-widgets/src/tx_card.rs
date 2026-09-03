@@ -60,8 +60,8 @@
 //! sites are actually asking. Each one asks something specific (how big is the
 //! art, does the footnote appear at all) and answers it per variant.
 //!
-//! - [`TxDensity::Row`] — the feed unit. Art at 44px, unfanned: at that size a
-//!   fan is a smear, and a lone print is never tilted anyway.
+//! - [`TxDensity::Row`] — the feed unit. Art at 30px, and still fanned: at the
+//!   tuned pile style the buried prints are corners, and corners survive 30px.
 //! - [`TxDensity::Feature`] — the selected row, or the top of a feed.
 //! - [`TxDensity::Poster`] — the transaction's own page, and the share preview:
 //!   *this is what people see if you post this link*.
@@ -85,12 +85,14 @@
 //! ```
 
 use egui::{
-    Align, Color32, CornerRadius, FontFamily, FontId, Frame, Layout, Margin, Pos2, Rect, Response,
-    RichText, Sense, Shape, Stroke, Ui, Vec2, emath::Rot2,
+    Align, Color32, CornerRadius, FontId, Frame, Layout, Margin, Response, RichText, Sense, Ui,
+    Vec2,
 };
 
+use crate::chip::{Chip, ChipVariant};
 use crate::icons::PhosphorIcon;
-use crate::party_badge::{PartyBadge, PartyBasis};
+use crate::image_stack::{ImageStack, StackImage};
+use crate::party_badge::PartyBasis;
 use crate::relative_time::RelativeTime;
 use crate::theme;
 
@@ -105,7 +107,7 @@ use crate::theme;
 /// reconciliation line nobody can read is worse than one that is not there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TxDensity {
-    /// The feed unit. Three lines, art at 44px, no fan.
+    /// The feed unit. Art at 30px, fanned like the others.
     Row,
     /// The selected row, or the top of a feed. Art fans.
     Feature,
@@ -131,19 +133,6 @@ impl TxDensity {
             TxDensity::Row => 30.0,
             TxDensity::Feature => 56.0,
             TxDensity::Poster => 130.0,
-        }
-    }
-
-    /// Does the pile fan, mount and tilt?
-    ///
-    /// Only where there is room for the fan to READ. At 44px the peek of a
-    /// buried print is eight pixels of white, which is noise rather than a
-    /// second item — so a row shows the front print alone and lets the subject
-    /// line carry the count.
-    fn fans(self) -> bool {
-        match self {
-            TxDensity::Row => false,
-            TxDensity::Feature | TxDensity::Poster => true,
         }
     }
 
@@ -363,10 +352,7 @@ pub enum TxViewpoint<'a> {
     },
     /// No side at all: a policy watching a unit move between two strangers.
     /// States the pair, symmetrically, with no verb of ownership.
-    Pair {
-        from: TxParty<'a>,
-        to: TxParty<'a>,
-    },
+    Pair { from: TxParty<'a>, to: TxParty<'a> },
     /// One actor and no other side — a mint into existence.
     Sole { who: TxParty<'a> },
 }
@@ -445,31 +431,9 @@ pub enum TxArt<'a> {
     None,
 }
 
-/// Prints drawn before the fan stops being legible.
-///
-/// Three. Beyond that the pile is a smear and the count carries the meaning
-/// anyway — nobody tells nine prints from twelve by looking, but they do read
-/// "12 items".
-const STACK_MAX: usize = 3;
-
-/// House tilt angles, in degrees, indexed FRONT-FIRST.
-///
-/// Fixed rather than random: a row is re-laid every frame, so "random" would
-/// mean "jitters while you look at it". The front sits almost straight so the
-/// subject reads cleanly; the ones behind lean enough to look dropped rather
-/// than filed.
-const TILT_DEG: [f32; STACK_MAX] = [-1.5, 5.0, -7.0];
-
-/// The white border that makes a thumbnail read as a PRINT rather than as a
-/// picture with a line round it.
-const MOUNT_RATIO: f32 = 0.07;
-
-/// How much of each buried print stays visible past the one in front.
-const PEEK_RATIO: f32 = 0.26;
-
-/// Photographic paper, not pure white — pure white against this background
-/// glares and pulls focus off the artwork it is framing.
-const MOUNT_FILL: Color32 = Color32::from_rgb(244, 244, 239);
+// Every proportion of the pile — mount, peek, tilt, shadow — belongs to
+// `image_stack::ImageStackStyle`, which has a slider bench behind it. Nothing
+// about the treatment is decided here.
 
 // ============================================================================
 // Data
@@ -498,6 +462,21 @@ pub struct TxCardData<'a> {
     /// Unix seconds.
     pub when: i64,
     pub art: TxArt<'a>,
+    /// Filterable facets — venue, shape, annotation.
+    ///
+    /// # Why these survived the redesign
+    ///
+    /// The row this replaces was *only* chips: `$elchapojr` · `10 ₳ released` ·
+    /// `wayup` · `bought (CO)`, four co-equal tags standing in for a sentence
+    /// nobody had written. Deleting them was the wrong correction. A chip is a
+    /// FACET — a thing you click to filter a feed down to — and that is a
+    /// capability the surface wants; what was wrong was chips doing the work of
+    /// the verdict as well.
+    ///
+    /// So both, with the jobs separated: the kicker, headline and party clause
+    /// say what happened, and the chips are what you can slice the feed by.
+    /// They sit LAST for that reason — they are navigation, not narration.
+    pub tags: Vec<(&'a str, ChipVariant)>,
     /// The thing that changes the reading — "2 items in this transaction",
     /// "figures are partial". Amber, and it survives at every density above
     /// `Row` because a caution that gets edited out is not a caution.
@@ -509,7 +488,12 @@ pub struct TxCardData<'a> {
 }
 
 impl<'a> TxCardData<'a> {
-    pub fn new(kicker: &'a str, headline: TxHeadline<'a>, view: TxViewpoint<'a>, when: i64) -> Self {
+    pub fn new(
+        kicker: &'a str,
+        headline: TxHeadline<'a>,
+        view: TxViewpoint<'a>,
+        when: i64,
+    ) -> Self {
         Self {
             kicker,
             headline,
@@ -517,9 +501,16 @@ impl<'a> TxCardData<'a> {
             view,
             when,
             art: TxArt::None,
+            tags: Vec::new(),
             caution: None,
             footnote: None,
         }
+    }
+
+    /// Add a filterable facet — a venue, a shape, an annotation.
+    pub fn tag(mut self, label: &'a str, variant: ChipVariant) -> Self {
+        self.tags.push((label, variant));
+        self
     }
 
     pub fn subject(mut self, s: &'a str) -> Self {
@@ -558,6 +549,10 @@ pub struct TxCardResponse {
     /// The reader asked to walk deeper, from a [`TxParty::BelowFloor`] slot.
     /// Never offered for [`TxParty::Ambiguous`], which deepening cannot fix.
     pub deepen: bool,
+    /// A TAG was clicked — the label to filter the feed down to. Reported
+    /// separately again, because slicing a feed is a third distinct move from
+    /// opening a row or following its money.
+    pub filtered: Option<String>,
     pub response: Response,
 }
 
@@ -612,6 +607,7 @@ impl<'a> TxCard<'a> {
         let d = self.density;
         let mut walk = None;
         let mut deepen = false;
+        let mut filtered = None;
 
         let stroke = match self.selected {
             true => theme::stroke(1.0, theme::ACCENT),
@@ -624,12 +620,20 @@ impl<'a> TxCard<'a> {
             .corner_radius(CornerRadius::same(8))
             .inner_margin(Margin::same(d.padding()))
             .show(ui, |ui| {
+                // FULL WIDTH, ALWAYS. A `Frame` shrinks to its content, so a
+                // feed of these came out ragged — 620px for a long venue
+                // breakdown, 300px for a mint — with no shared left or right
+                // edge. Rows in a list are read as a column; anything that
+                // makes them individually shaped reads as broken layout rather
+                // than as varying content. A caller wanting a narrow card puts
+                // it in a narrow `Ui`.
+                ui.set_width(ui.available_width());
                 ui.horizontal_top(|ui| {
                     paint_art(ui, &self.data.art, d);
                     ui.add_space(match d {
-                        TxDensity::Row => 8.0,
-                        TxDensity::Feature => 14.0,
-                        TxDensity::Poster => 30.0,
+                        TxDensity::Row => 7.0,
+                        TxDensity::Feature => 10.0,
+                        TxDensity::Poster => 18.0,
                     });
 
                     // The headline column is claimed from the RIGHT first, so
@@ -639,42 +643,69 @@ impl<'a> TxCard<'a> {
                     // amount column to zero width.
                     let columnar = d.headline_is_columnar();
                     if columnar {
-                        let w = ui.available_width();
+                        // MEASURE THE FIGURE, THEN DIVIDE — do not let the two
+                        // columns race for the width.
+                        //
+                        // This was a `right_to_left` layout with the headline
+                        // claimed first. Inside it the headline's own
+                        // `horizontal` expanded to the full row, the text
+                        // column was handed what was left, which was nothing,
+                        // and every label wrapped ONE GLYPH PER LINE into a
+                        // column hundreds of points tall. `ActivityFeed`'s
+                        // story keeps a regression case for the identical
+                        // failure; it is the characteristic way an egui row
+                        // with a right-aligned figure breaks.
+                        let gap = 12.0;
+                        let head_w = headline_width(ui, &self.data.headline, d);
+                        let text_w = (ui.available_width() - head_w - gap).max(96.0);
+
                         ui.allocate_ui_with_layout(
-                            Vec2::new(w, 0.0),
-                            Layout::right_to_left(Align::TOP),
+                            Vec2::new(text_w, 0.0),
+                            Layout::top_down(Align::LEFT),
                             |ui| {
-                                ui.vertical(|ui| {
-                                    ui.with_layout(Layout::top_down(Align::RIGHT), |ui| {
-                                        headline(ui, &self.data.headline, d);
-                                    });
-                                });
-                                ui.vertical(|ui| {
-                                    let r = text_column(
-                                        ui,
-                                        self.data,
-                                        d,
-                                        self.walkable,
-                                        self.walking,
-                                        self.now,
-                                    );
-                                    walk = walk.take().or(r.0);
-                                    deepen |= r.1;
-                                });
+                                let r = text_column(
+                                    ui,
+                                    self.data,
+                                    d,
+                                    self.walkable,
+                                    self.walking,
+                                    self.now,
+                                );
+                                walk = walk.take().or(r.0);
+                                deepen |= r.1;
+                                filtered = filtered.take().or(r.2);
                             },
+                        );
+                        ui.add_space(gap);
+                        ui.allocate_ui_with_layout(
+                            Vec2::new(ui.available_width().max(head_w), 0.0),
+                            Layout::top_down(Align::RIGHT),
+                            |ui| headline(ui, &self.data.headline, d),
                         );
                     } else {
                         ui.vertical(|ui| {
+                            ui.spacing_mut().item_spacing.y = match d {
+                                TxDensity::Row => 1.0,
+                                TxDensity::Feature => 2.0,
+                                TxDensity::Poster => 4.0,
+                            };
                             ui.label(
                                 RichText::new(self.data.kicker)
                                     .size(d.kicker_size())
                                     .color(theme::TEXT_MUTED),
                             );
                             headline(ui, &self.data.headline, d);
-                            let r =
-                                text_column(ui, self.data, d, self.walkable, self.walking, self.now);
+                            let r = text_column(
+                                ui,
+                                self.data,
+                                d,
+                                self.walkable,
+                                self.walking,
+                                self.now,
+                            );
                             walk = walk.take().or(r.0);
                             deepen |= r.1;
+                            filtered = filtered.take().or(r.2);
                         });
                     }
                 });
@@ -685,6 +716,7 @@ impl<'a> TxCard<'a> {
             clicked: response.clicked(),
             walk,
             deepen,
+            filtered,
             response,
         }
     }
@@ -692,7 +724,7 @@ impl<'a> TxCard<'a> {
 
 /// The stacked text: subject, party clause, time, caution, footnote.
 ///
-/// Returns `(walked party, asked to deepen)`.
+/// Returns `(walked party, asked to deepen, tag clicked)`.
 fn text_column(
     ui: &mut Ui,
     data: &TxCardData<'_>,
@@ -700,7 +732,18 @@ fn text_column(
     walkable: bool,
     walking: bool,
     now: Option<i64>,
-) -> (Option<String>, bool) {
+) -> (Option<String>, bool, Option<String>) {
+    let mut filtered = None;
+    // TIGHTER THAN THE APP DEFAULT. These lines are one statement broken over
+    // four rows, not four separate controls, so they lead like a paragraph —
+    // egui's stock 6px gap between labels reads as four unrelated things and is
+    // most of what made the first pass feel oversized.
+    ui.spacing_mut().item_spacing.y = match d {
+        TxDensity::Row => 1.0,
+        TxDensity::Feature => 2.0,
+        TxDensity::Poster => 4.0,
+    };
+
     // A row's kicker lives here rather than above the headline: the headline is
     // in its own right-hand column, so a kicker over it would label a figure
     // sitting somewhere else on the card.
@@ -752,17 +795,35 @@ fn text_column(
         );
     }
 
-    if d.shows_footnote() {
-        if let Some(footnote) = data.footnote {
-            ui.label(
-                RichText::new(footnote)
-                    .size(d.body_size())
-                    .color(theme::TEXT_MUTED),
-            );
-        }
+    if let (true, Some(footnote)) = (d.shows_footnote(), data.footnote) {
+        ui.label(
+            RichText::new(footnote)
+                .size(d.body_size())
+                .color(theme::TEXT_MUTED),
+        );
     }
 
-    (walk, deepen)
+    // FACETS LAST. They are how a reader slices the feed, not how they read the
+    // row — putting them first is what made the old layout a tag soup with the
+    // verdict hidden inside it.
+    if !data.tags.is_empty() {
+        ui.add_space(3.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            for (label, variant) in &data.tags {
+                if Chip::new(label)
+                    .variant(*variant)
+                    .clickable(true)
+                    .show(ui)
+                    .clicked
+                {
+                    filtered = Some((*label).to_string());
+                }
+            }
+        });
+    }
+
+    (walk, deepen, filtered)
 }
 
 /// `$boef bought from $elchapojr`, or `$a → $b`, or one lone party.
@@ -825,11 +886,30 @@ fn party(
 ) -> (Option<String>, bool) {
     match p {
         TxParty::Known { label, key, basis } => {
-            let mut badge = PartyBadge::new(label, *basis).text_size(size);
-            if let Some(k) = key {
-                badge = badge.key(k);
-            }
-            let resp = badge.show(ui);
+            // PLAIN TEXT, NOT A `PartyBadge`.
+            //
+            // The badge prefixes every party with a shape-coded basis dot, and
+            // in a forensic trace — where a reader is weighing whether to trust
+            // a name — that glyph is the point. In a feed it is a 5px bullet in
+            // front of every handle on every row, which reads as list markup
+            // and says nothing. The basis is kept as INFORMATION, on the hover,
+            // where it costs nothing and is there when somebody asks.
+            let resp = ui
+                .link(RichText::new(*label).size(size).color(theme::ACCENT))
+                .on_hover_text(match basis {
+                    PartyBasis::Observed => "Resolved from the chain.".to_string(),
+                    PartyBasis::Derived => {
+                        "The venue's word — decoded from a market event, not an output the walk \
+                         resolved."
+                            .to_string()
+                    }
+                    PartyBasis::Asserted => {
+                        "Asserted from outside the chain.".to_string()
+                    }
+                } + &match key {
+                    Some(k) => format!("\n{k}"),
+                    None => String::new(),
+                });
             // `walkable()` is the ONE definition of "is there anywhere to go
             // from here" — consulted rather than re-derived, so an absence
             // cannot become clickable by way of a branch added above it.
@@ -885,42 +965,65 @@ fn party(
     }
 }
 
-/// The headline figure, with the digits in a tabular face.
+/// The headline figure — in the surface's OWN face, always.
 ///
-/// # Why the value is split
+/// # Why there is no monospace here
 ///
-/// Numbers in a feed are read against each other, so the digits want tabular
-/// figures — which is what the monospace family is for. But `₳` (U+20B3) is not
-/// in every mono face, and a headline that falls back to tofu is the worst
-/// possible place for a missing glyph. So the digits go to mono and everything
-/// after the last space goes to the proportional face, which is the one that
-/// demonstrably has the symbol.
+/// There was. The social card sets its digits in JetBrains Mono because a
+/// number is read against another number and tabular figures line up, and that
+/// reasoning was carried over unexamined. It does not survive the move, for two
+/// reasons:
 ///
-/// A value with no space in it renders whole, proportionally — the safe
-/// direction to be wrong in.
+/// 1. **This headline is not always a number.** A venue batch leads with
+///    `6 listed · 2 offers made · 1 delisted`, and the split-on-last-space rule
+///    that isolates `10` from `₳` saw a digit in that sentence and set the whole
+///    breakdown in a terminal face. Prose in mono at 22px does not read as
+///    precision, it reads as a mistake.
+/// 2. **Tabular alignment buys nothing in a column that mixes shapes.** The
+///    figures only line up if every row has a figure; interleave a count and a
+///    breakdown and the argument for the face is gone.
+///
+/// So the headline is the app's own proportional face, distinguished by weight,
+/// colour and size — which is how everything else on the surface is ranked.
+/// This also drops the `₳`-not-in-the-mono-face hazard the split existed to
+/// dodge in the first place.
+/// How wide the headline wants to be, measured before anything is drawn.
+///
+/// The row layout has to divide a fixed width between the story and the figure,
+/// and the only safe way to do that is to ask the font how much the figure
+/// needs rather than letting two flex columns negotiate — see the call site for
+/// what happens when they negotiate.
+///
+/// `.strong()` renders very slightly wider than the plain face it is measured
+/// against, so the result carries a little slack. Over-reserving pushes the
+/// text column in by a few points; under-reserving wraps the figure, which is
+/// far worse.
+fn headline_width(ui: &Ui, h: &TxHeadline<'_>, d: TxDensity) -> f32 {
+    let measure = |text: &str, size: f32| {
+        ui.painter()
+            .layout_no_wrap(text.to_string(), FontId::proportional(size), Color32::WHITE)
+            .size()
+            .x
+    };
+    let value = measure(h.value, d.headline_size());
+    let qualifier = h.qualifier.map_or(0.0, |q| measure(q, d.body_size()) + 6.0);
+    (value + qualifier) * 1.06 + 4.0
+}
+
 fn headline(ui: &mut Ui, h: &TxHeadline<'_>, d: TxDensity) {
     let size = d.headline_size();
     let colour = h.tone.color();
 
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = size * 0.12;
-        match h.value.rsplit_once(' ') {
-            Some((digits, symbol)) if digits.chars().any(|c| c.is_ascii_digit()) => {
-                ui.label(
-                    RichText::new(digits)
-                        .font(FontId::new(size, FontFamily::Monospace))
-                        .color(colour),
-                );
-                ui.label(RichText::new(symbol).size(size).color(colour));
-            }
-            _ => {
-                ui.label(RichText::new(h.value).size(size).color(colour));
-            }
-        }
+        ui.spacing_mut().item_spacing.x = 6.0;
+        ui.label(RichText::new(h.value).size(size).color(colour).strong());
         if let Some(q) = h.qualifier {
+            // Sized against the BODY, not against the headline: a qualifier
+            // scaled off a 40px figure is itself a headline, and it is meant to
+            // be the quiet word that stops `10 ₳` being read as ten each.
             ui.label(
                 RichText::new(q)
-                    .size(size * 0.34)
+                    .size(d.body_size())
                     .color(theme::TEXT_MUTED),
             );
         }
@@ -941,114 +1044,27 @@ fn paint_art(ui: &mut Ui, art: &TxArt<'_>, d: TxDensity) {
 
 /// The traded items as a fanned deck of prints.
 ///
-/// # How it overlaps
-///
-/// Painter-level, back to front, because the mount has to rotate WITH its
-/// image — a rotated picture inside an upright white border reads as a mistake.
-/// Each print is a rotated quad in paper-white with a rotated shadow beneath
-/// and the image rotated about the same centre.
-///
-/// A LONE PRINT IS NEVER TILTED. The tilt says "there are more of these behind";
-/// with nothing behind it, it is just a crooked picture, and the artwork is the
-/// thing the reader is trying to look at.
+/// Delegated to [`crate::image_stack`], which owns every proportion of the
+/// treatment and has a slider bench behind it. This was hand-painted here
+/// first and looked notably weaker than the server-rendered card without it
+/// being obvious why from the code — which is exactly the case for the geometry
+/// living somewhere it can be tuned by eye rather than by constant.
 fn paint_prints(ui: &mut Ui, prints: &[TxPrint<'_>], d: TxDensity) {
-    let shown: Vec<&TxPrint<'_>> = match d.fans() {
-        true => prints.iter().take(STACK_MAX).collect(),
-        // A row shows the front print alone: at 44px the peek is a few pixels
-        // of white, which is noise rather than a second item.
-        false => prints.iter().take(1).collect(),
-    };
-    if shown.is_empty() {
-        return;
-    }
-
-    let size = d.art_size();
-    let mount = (size * MOUNT_RATIO).max(2.0);
-    let peek = size * PEEK_RATIO;
-    let single = shown.len() == 1;
-    let lift_step = size * 0.05;
-
-    let n = shown.len() as f32;
-    let width = size + 2.0 * mount + (n - 1.0) * peek;
-    // Slack for the tilt and the lift: a rotated quad's corners reach past the
-    // box it would otherwise occupy, and clipping the pile is the one thing
-    // that makes the whole treatment look broken.
-    let slack = match single {
-        true => 0.0,
-        false => size * 0.18,
-    };
-    let height = size + 2.0 * mount + slack;
-
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
-    let painter = ui.painter();
-
-    // BACK TO FRONT. Later shapes paint over earlier ones, so the list is
-    // walked in reverse: prints[0] is the one a reader looks at, and it should
-    // not be the one buried.
-    for (i, print) in shown.iter().enumerate().rev() {
-        let from_back = shown.len() - 1 - i;
-        let tilt = match single {
-            true => 0.0,
-            false => TILT_DEG.get(i).copied().unwrap_or(0.0),
-        };
-        let angle = tilt.to_radians();
-        let rot = Rot2::from_angle(angle);
-
-        let cx = rect.left() + mount + size / 2.0 + from_back as f32 * peek;
-        let cy = rect.top() + mount + size / 2.0 + i as f32 * lift_step;
-        let center = Pos2::new(cx, cy);
-
-        // The mount: a rotated quad in paper-white. It is the separating edge
-        // between overlapping prints as well as the frame around each one.
-        let half = size / 2.0 + mount;
-        let quad = |c: Pos2, h: f32| -> Vec<Pos2> {
-            [(-h, -h), (h, -h), (h, h), (-h, h)]
-                .iter()
-                .map(|(x, y)| c + rot * Vec2::new(*x, *y))
-                .collect()
-        };
-
-        if !single {
-            painter.add(Shape::convex_polygon(
-                quad(center + Vec2::new(0.0, size * 0.035), half),
-                Color32::from_black_alpha(120),
-                Stroke::NONE,
-            ));
-        }
-        painter.add(Shape::convex_polygon(
-            quad(center, half),
-            MOUNT_FILL,
-            Stroke::NONE,
-        ));
-
-        let img_rect = Rect::from_center_size(center, Vec2::splat(size));
-        match print.image_url {
-            Some(url) => {
-                egui::Image::new(url)
-                    .rotate(angle, Vec2::splat(0.5))
-                    .corner_radius(CornerRadius::same(2))
-                    .paint_at(ui, img_rect);
-            }
-            // No image loader installed, or no artwork: a tinted initial, so
-            // the pile still reads as a pile of somethings.
-            None => {
-                painter.add(Shape::convex_polygon(
-                    quad(center, size / 2.0),
-                    theme::BG_HIGHLIGHT,
-                    Stroke::NONE,
-                ));
-                if let Some(ch) = print.label.chars().next() {
-                    painter.text(
-                        center,
-                        egui::Align2::CENTER_CENTER,
-                        ch.to_uppercase().to_string(),
-                        FontId::proportional(size * 0.4),
-                        theme::TEXT_MUTED,
-                    );
-                }
-            }
-        }
-    }
+    let images: Vec<StackImage<'_>> = prints
+        .iter()
+        .map(|p| match p.image_url {
+            Some(url) => StackImage::new(p.label).image(url),
+            None => StackImage::new(p.label),
+        })
+        .collect();
+    // FANNED AT EVERY DENSITY. There was a `fans()` on the density that turned
+    // the pile off for a row, on the theory that a 30px fan is a smear. That
+    // was true at the first-guess style and false at the tuned one — with
+    // almost no horizontal step the buried prints are corners poking out, and
+    // those survive 30px. The bench's "fanned vs single" row is the evidence;
+    // a predicate that had come to answer the same thing at every density was
+    // deleted rather than kept.
+    ImageStack::new(&images).size(d.art_size()).show(ui);
 }
 
 /// A venue's mark, for a batch no single item represents.

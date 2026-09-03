@@ -1,7 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 mod wasm_tests {
-    use discord_client::compat::twilight::TwEmbedBuilder;
-    use discord_client::{AttachmentInput, DiscordClient, DiscordMessage, WasmDiscordClient};
+    use discord_outbound::compat::twilight::TwEmbedBuilder;
+    use discord_outbound::{AttachmentInput, DiscordClient, DiscordMessage, WasmDiscordClient};
     use wasm_bindgen_test::*;
 
     wasm_bindgen_test_configure!(run_in_browser);
@@ -56,7 +56,7 @@ mod wasm_tests {
 
         let client = WasmDiscordClient::new(bot_token);
         let message = DiscordMessage {
-            content: Some("Test message from discord-client WASM".to_string()),
+            content: Some("Test message from discord-outbound WASM".to_string()),
             embeds: None,
             attachments: None,
         };
@@ -116,7 +116,7 @@ mod wasm_tests {
         let client = WasmDiscordClient::new(bot_token);
         let embed = TwEmbedBuilder::new()
             .title("WASM Test Embed")
-            .description("This is a test embed from discord-client WASM")
+            .description("This is a test embed from discord-outbound WASM")
             .color(0x0099ff)
             .build();
 

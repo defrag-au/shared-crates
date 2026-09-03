@@ -10,7 +10,8 @@ members = [
     "cardano-assets",
     "mint-manifest",
     "cnft-tools",
-    "discord-client",
+    "discord-message",
+    "discord-outbound",
     "fal-client",
     "filebase",
     "handle-cache",
@@ -172,6 +173,11 @@ authorizations = { path = "authorizations" }
 cardano-assets = { path = "cardano-assets" }
 image-hash = { path = "image-hash" }
 discord-auth = { path = "discord-auth" }
+# The serde-only Discord message model, and the client that sends it. Split
+# because the model is consumed by things that never send (the plugin protocol)
+# and the client drags an HTTP stack.
+discord-message = { path = "discord-message" }
+discord-outbound = { path = "discord-outbound" }
 cardano-tx = { path = "cardano-tx" }
 worker_utils = { path = "worker-utils" }
 asset-rarity = { path = "asset-rarity" }

@@ -52,10 +52,28 @@
 //! fill, so nothing here can claim a policy bought something.
 
 use crate::{ACCENT, TEXT_MUTED};
+use egui_widgets::chip::ChipVariant;
+use egui_widgets::image_loader::{iiif_asset_url, AssetImageSize};
 use egui_widgets::party_badge::PartyBasis;
 use egui_widgets::{
     Tone, TxArt, TxCard, TxCardData, TxDensity, TxHeadline, TxParty, TxPrint, TxVerb, TxViewpoint,
 };
+
+/// Real artwork, so the pile is judged against real images. A stack of grey
+/// placeholder squares looks acceptable at any settings and proves nothing —
+/// see the `image_stack` story, which exists because of exactly that.
+const POLICY_ID: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
+const ART: &[(&str, &str)] = &[
+    ("5069726174653834", "Pirate84"),
+    ("506972617465323733", "Pirate273"),
+    ("50697261746531303430", "Pirate1040"),
+];
+
+fn art_urls() -> Vec<String> {
+    ART.iter()
+        .map(|(hex, _)| iiif_asset_url(POLICY_ID, hex, AssetImageSize::Thumbnail))
+        .collect()
+}
 
 /// Pinned so every frame renders identically — a story that drifts with the
 /// wall clock cannot be screenshotted twice and compared.
@@ -110,6 +128,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCardState) {
 
     let d = *density;
     let mut action = None;
+    let urls = art_urls();
 
     egui::ScrollArea::vertical().show(ui, |ui| {
         // ── 1. SETTLEMENT ────────────────────────────────────────────────
@@ -119,8 +138,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCardState) {
         // sale was #527 and something else came along.
         section(ui, "Settlement", "Something changed hands for money. The PRICE is the headline; the net goes last, grey, for whoever is reconciling.");
         let prints = [
-            TxPrint::new("MachineHeadz527"),
-            TxPrint::new("MachineHeadz357"),
+            TxPrint::new("MachineHeadz527").image(&urls[0]),
+            TxPrint::new("MachineHeadz357").image(&urls[1]),
         ];
         let settlement = TxCardData::new(
             "collection offer accepted · wayup",
@@ -139,6 +158,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCardState) {
         )
         .subject("2 × MachineHeadz")
         .art(TxArt::Prints(&prints))
+        // THE TAGS SURVIVE — but as facets, not as the verdict. The row this
+        // replaced said everything in chips and nothing in words; the fix was
+        // to write the sentence, not to delete the chips. These are what a
+        // reader clicks to slice the feed, which is why they sit last.
+        .tag("wayup", ChipVariant::Warning)
+        .tag("collection offer", ChipVariant::Info)
+        .tag("bought", ChipVariant::Success)
         .caution("2 items in this transaction")
         .footnote("wallet net −7.6295 ₳");
         action = action.take().or(card(ui, &settlement, d, state.walking));
@@ -160,6 +186,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCardState) {
             image_url: None,
             label: "wayup",
         })
+        .tag("wayup", ChipVariant::Warning)
+        .tag("batch", ChipVariant::Info)
         // Value PARKED at a script, not spent. Amber rather than red: it is not
         // a loss, and it comes back on a delist.
         .caution("813.4 ₳ locked into contracts")
@@ -171,9 +199,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCardState) {
         // footnote — recorded, never presented as income.
         section(ui, "Mint", "Eleven things came into existence. The count is the headline; +1.49 ₳ is carrier ADA, not income, so it goes to the footnote.");
         let minted = [
-            TxPrint::new("Spanner #0041"),
-            TxPrint::new("Spanner #0042"),
-            TxPrint::new("Spanner #0043"),
+            TxPrint::new("Spanner #0041").image(&urls[0]),
+            TxPrint::new("Spanner #0042").image(&urls[1]),
+            TxPrint::new("Spanner #0043").image(&urls[2]),
         ];
         let mint = TxCardData::new(
             "minted",
@@ -184,6 +212,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCardState) {
             FILL - 86_400,
         )
         .art(TxArt::Prints(&minted))
+        .tag("mint", ChipVariant::Success)
         .caution("11 items in this transaction")
         .footnote("wallet net +1.49126 ₳");
         action = action.take().or(card(ui, &mint, d, state.walking));
@@ -210,7 +239,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCardState) {
         // wallet. No "us", so no verb and no net — a `PolicyRow` carries no
         // lovelace at all.
         section(ui, "Policy pair — no point of view", "The settlement above, from the POLICY's side. Nobody here is 'us', so there is no verb of ownership and no wallet net — only the pair, and what the unit went for.");
-        let pair_prints = [TxPrint::new("MachineHeadz527")];
+        let pair_prints = [TxPrint::new("MachineHeadz527").image(&urls[0])];
         let pair = TxCardData::new(
             "collection offer accepted · wayup",
             TxHeadline::new("10 ₳", Tone::Positive).qualifier("lot of 2"),
@@ -231,7 +260,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCardState) {
         // Adjacent on purpose. Rendered the same they are a lie: one is fixed
         // by walking deeper, the other is not fixable at all.
         section(ui, "Two absences, two sentences", "Below-floor resolves by walking deeper — it pulses while a pass runs and offers to reach back when none is. Ambiguous NEVER resolves, so it states itself and offers nothing. Toggle 'walk in flight' above.");
-        let below_prints = [TxPrint::new("MachineHeadz882")];
+        let below_prints = [TxPrint::new("MachineHeadz882").image(&urls[1])];
         let below = TxCardData::new(
             "transfer",
             TxHeadline::new("1 unit", Tone::Neutral),
@@ -245,7 +274,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCardState) {
         .art(TxArt::Prints(&below_prints));
         action = action.take().or(card(ui, &below, d, state.walking));
 
-        let amb_prints = [TxPrint::new("MachineHeadz119")];
+        let amb_prints = [TxPrint::new("MachineHeadz119").image(&urls[2])];
         let ambiguous = TxCardData::new(
             "offer accepted · jpg",
             TxHeadline::new("47 ₳", Tone::Positive).qualifier("lot of 9"),
@@ -268,16 +297,16 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCardState) {
 
 /// One card plus the response readout, so the story shows that `walk` and
 /// `clicked` are different answers rather than asserting it in prose.
-fn card(
-    ui: &mut egui::Ui,
-    data: &TxCardData<'_>,
-    d: TxDensity,
-    walking: bool,
-) -> Option<String> {
+fn card(ui: &mut egui::Ui, data: &TxCardData<'_>, d: TxDensity, walking: bool) -> Option<String> {
     let resp = TxCard::new(data, d).now(NOW).walking(walking).show(ui);
     ui.add_space(10.0);
     if let Some(party) = resp.walk {
         return Some(format!("walk → {party}"));
+    }
+    // A tag click is a THIRD answer, distinct from opening the row and from
+    // following its money — which is the whole reason the chips came back.
+    if let Some(tag) = resp.filtered {
+        return Some(format!("filter feed → {tag}"));
     }
     if resp.deepen {
         return Some("deepen → reach further back".to_string());

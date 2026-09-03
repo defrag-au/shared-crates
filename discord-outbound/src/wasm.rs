@@ -11,14 +11,72 @@ use worker_stack::js_sys;
 use worker_stack::wasm_bindgen::JsValue;
 use worker_stack::web_sys::{Blob, BlobPropertyBag, FormData};
 
-/// WASM Discord bot client using gloo-net (for cnft.dev-workers)
+/// Discord bot client over `gloo-net` — the stack cnft.dev-workers uses.
 pub struct WasmDiscordClient {
     bot_token: String,
+    rate_limits: crate::ratelimit::RateLimitTracker,
 }
 
 impl WasmDiscordClient {
     pub fn new(bot_token: String) -> Self {
-        Self { bot_token }
+        Self {
+            bot_token,
+            rate_limits: crate::ratelimit::RateLimitTracker::new(),
+        }
+    }
+}
+
+impl crate::DiscordOutbound for WasmDiscordClient {
+    async fn execute(
+        &self,
+        request: crate::HttpRequest,
+    ) -> Result<crate::HttpResponse, DiscordError> {
+        let builder = match request.method {
+            crate::Method::Post => Request::post(&request.url),
+            crate::Method::Patch => Request::patch(&request.url),
+        };
+
+        let mut builder = builder;
+        for (name, value) in &request.headers {
+            builder = builder.header(name, value);
+        }
+
+        // A `Uint8Array` rather than a string: the multipart body is binary,
+        // and pushing it through `String` would corrupt every non-UTF-8 byte
+        // of an image.
+        let bytes = js_sys::Uint8Array::new_with_length(request.body.len() as u32);
+        bytes.copy_from(&request.body);
+
+        let response = builder
+            .body(JsValue::from(bytes))
+            .map_err(|e| DiscordError::Gloo(format!("request creation failed: {e:?}")))?
+            .send()
+            .await
+            .map_err(|e| DiscordError::Gloo(format!("request failed: {e:?}")))?;
+
+        let status = response.status();
+        // Verbatim: a Cloudflare 1015 body is HTML, and an error that fails to
+        // parse must still be reportable.
+        let body = response.text().await.unwrap_or_default();
+
+        Ok(crate::HttpResponse { status, body })
+    }
+
+    fn now_ms(&self) -> u64 {
+        // `SystemTime::now()` panics on wasm32-unknown-unknown.
+        js_sys::Date::now() as u64
+    }
+
+    fn bot_token(&self) -> Option<&str> {
+        Some(&self.bot_token)
+    }
+
+    fn rate_limits(&self) -> &crate::ratelimit::RateLimitTracker {
+        &self.rate_limits
+    }
+
+    async fn sleep_ms(&self, millis: u64) {
+        worker_stack::worker::Delay::from(std::time::Duration::from_millis(millis)).await;
     }
 }
 

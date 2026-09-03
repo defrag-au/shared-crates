@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-124 widgets.
+126 widgets.
 
 | module | what it is |
 |---|---|
@@ -58,6 +58,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `holder_field` | HolderField — the holder graph, reshuffling as assets change hands |
 | `holder_formation` | `HolderFormation` — people arriving, and how evenly the collection lands |
 | `id_pill` | `IdPill` — small inline display of a long identifier with a copy affordance |
+| `image_stack` | `ImageStack` — several images as a fanned pile of mounted prints, so a lot of many reads as a lot of many at a glance |
 | `image_text_editor` | Image text overlay editor — place, style, and drag text on top of an image |
 | `leaderboard` | `Leaderboard` — ranked standings: podium-tinted ranks, an optional prize thumbnail, one headline metric, supporting stats, and a share bar |
 | `leaderboard_table` | `LeaderboardTable` — a dense, virtual-scrolled ranked table |
@@ -117,6 +118,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `trade_table` | Trade table widget — TCG-style top/bottom offer display for the trade desk |
 | `trait_delta` | Trait delta widget — shows traits gained and lost in a trade |
 | `trait_filter` | Compound-key prefix trie tag filter widget |
+| `tx_card` | `TxCard` — one transaction as a VERDICT: what it was, who it was between, and the one figure that says it — at three densities |
 | `tx_cart` | TX Cart widget — displays a list of pending chain actions with batch execution |
 | `tx_estimate` | Per-wallet transaction estimate widget — shows the local user's ADA impact |
 | `typeahead_search` | `TypeaheadSearch` — a search box with a keyboard-navigable result dropdown |

@@ -41,7 +41,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{CommandResponse, InvokingUser, PermissionClass, PluginBlock};
+use crate::{CommandResponse, InvokingUser, PermissionClass};
+use discord_message::PluginBlock;
 
 /// An agent asking a plugin to run one of its advertised tools.
 ///

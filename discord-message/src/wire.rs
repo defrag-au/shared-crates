@@ -8,6 +8,10 @@
 //! on twilight 0.17 and cnft.dev-workers is on twilight 0.16**, so a renderer
 //! naming a twilight type re-imports that split into the crate meant to end it.
 //!
+//! [`body`] renders a whole [`MessageBody`](crate::MessageBody) — the entry
+//! point a sender wants. The per-piece functions below are public for callers
+//! that hold one component rather than a message.
+//!
 //! No library support is needed. Components V2 is JSON plus the
 //! `IS_COMPONENTS_V2` message flag, and Discord's message JSON is stable and
 //! versioned by `/v10` in the URL — so the wire format itself is the shared
@@ -26,7 +30,7 @@
 
 use serde::Serialize;
 
-use crate::response::{
+use crate::components::{
     ButtonStyle, GalleryItem, PluginActionRow, PluginBlock, PluginComponent, PluginEmbed,
     SelectOption,
 };
@@ -61,6 +65,42 @@ const SPACING_SMALL: u8 = 1;
 const EMBED_RICH: &str = "rich";
 
 // ── Rendering ───────────────────────────────────────────────────────────────
+
+/// A whole [`MessageBody`](crate::MessageBody) as Discord's message payload.
+///
+/// This is where the classic/V2 fork is decided, once: a body with a `layout`
+/// becomes a V2 message, which means the `IS_COMPONENTS_V2` flag is set and
+/// `content`/`embeds` are **dropped**. Discord rejects a message carrying both,
+/// and the flag cannot be removed once set — so a body that set both gets the
+/// layout it explicitly asked for rather than a 400.
+///
+/// Attachments are *declared* here (`attachments[N].id` matching the `files[N]`
+/// part a multipart sender writes). The bytes are not this function's business.
+pub fn body(body: &crate::MessageBody) -> MessagePayload {
+    let v2 = body.is_v2();
+
+    MessagePayload {
+        content: if v2 { None } else { body.content.clone() },
+        embeds: if v2 { Vec::new() } else { embeds(&body.embeds) },
+        components: if v2 {
+            components(&body.layout)
+        } else {
+            action_rows(&body.rows)
+        },
+        attachments: body
+            .attachments
+            .iter()
+            .enumerate()
+            .map(|(index, attachment)| AttachmentJson {
+                id: index as u64,
+                filename: attachment.filename.clone(),
+                description: attachment.description.clone(),
+            })
+            .collect(),
+        flags: if v2 { IS_COMPONENTS_V2 } else { 0 },
+        message_reference: None,
+    }
+}
 
 /// A Components V2 layout as Discord's `components` array.
 pub fn components(blocks: &[PluginBlock]) -> Vec<ComponentJson> {
@@ -256,6 +296,80 @@ pub fn embed(embed: &PluginEmbed) -> EmbedJson {
 
 // ── The wire types ──────────────────────────────────────────────────────────
 
+/// Discord's message payload — the JSON body of a send, and of an edit.
+///
+/// Built by [`body`]. The two setters cover the delivery bits a
+/// [`MessageBody`](crate::MessageBody) deliberately does not carry, because
+/// they are about *this* transmission rather than about what is rendered.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MessagePayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    embeds: Vec<EmbedJson>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    components: Vec<ComponentJson>,
+    /// Always present when there are files, and **always present on an edit
+    /// that has none** — an edit omitting `attachments` keeps the message's
+    /// existing files, where an empty array clears them. Callers that mean
+    /// "leave them alone" must not go through this type.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    attachments: Vec<AttachmentJson>,
+    #[serde(skip_serializing_if = "is_zero")]
+    flags: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message_reference: Option<MessageReferenceJson>,
+}
+
+fn is_zero(flags: &u32) -> bool {
+    *flags == 0
+}
+
+impl MessagePayload {
+    /// OR in more message flags — [`EPHEMERAL`], typically.
+    ///
+    /// Additive rather than assigning, because [`body`] has already set
+    /// [`IS_COMPONENTS_V2`] if the body needed it, and overwriting that would
+    /// turn a V2 message into one Discord rejects.
+    pub fn with_flags(mut self, flags: u32) -> Self {
+        self.flags |= flags;
+        self
+    }
+
+    /// Post this as a reply to an existing message.
+    pub fn replying_to(mut self, message_id: impl Into<String>) -> Self {
+        self.message_reference = Some(MessageReferenceJson {
+            message_id: message_id.into(),
+            fail_if_not_exists: false,
+        });
+        self
+    }
+
+    /// Is this a Components V2 payload?
+    pub fn is_v2(&self) -> bool {
+        self.flags & IS_COMPONENTS_V2 != 0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AttachmentJson {
+    /// Index into the multipart `files[N]` parts. Discord matches them up by
+    /// this number, so it is a position rather than an identifier.
+    id: u64,
+    filename: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MessageReferenceJson {
+    message_id: String,
+    /// `false` so a reply to a deleted message posts as an ordinary message
+    /// instead of failing. Discord's own default is `true`, and inheriting it
+    /// means a racing delete costs the whole reply.
+    fail_if_not_exists: bool,
+}
+
 /// A Discord message component.
 ///
 /// Untagged: each variant already carries its own `type`, so the enum is a Rust
@@ -428,7 +542,7 @@ pub struct EmbedMediaJson {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::response::{PluginEmbedField, SelectOption};
+    use crate::components::{PluginEmbedField, SelectOption};
     use serde_json::{json, Value};
 
     fn rendered(block: PluginBlock) -> Value {
@@ -709,5 +823,103 @@ mod tests {
     fn the_v2_flag_is_bit_fifteen() {
         assert_eq!(IS_COMPONENTS_V2, 32_768);
         assert_eq!(EPHEMERAL, 64);
+    }
+
+    // ── The whole-body payload ──────────────────────────────────────────
+
+    fn payload(body: &crate::MessageBody) -> Value {
+        serde_json::to_value(super::body(body)).unwrap()
+    }
+
+    #[test]
+    fn a_classic_body_carries_content_embeds_and_rows() {
+        let value = payload(&crate::MessageBody {
+            content: Some("hi".into()),
+            embeds: vec![PluginEmbed {
+                title: Some("t".into()),
+                ..Default::default()
+            }],
+            rows: vec![PluginActionRow::new(vec![button("a")])],
+            ..Default::default()
+        });
+
+        assert_eq!(value["content"], "hi");
+        assert_eq!(value["embeds"][0]["title"], "t");
+        assert_eq!(value["components"][0]["type"], 1);
+        assert!(value.get("flags").is_none(), "no flags to set: {value}");
+    }
+
+    /// The rule the whole V2 path turns on. Discord rejects a message carrying
+    /// both vocabularies, and the flag cannot be removed once set — so a body
+    /// that set both gets the layout, and `content`/`embeds` are dropped rather
+    /// than 400ing the message.
+    #[test]
+    fn a_v2_body_drops_content_and_embeds_and_sets_the_flag() {
+        let value = payload(&crate::MessageBody {
+            content: Some("dropped".into()),
+            embeds: vec![PluginEmbed::default()],
+            rows: vec![PluginActionRow::new(vec![button("ignored")])],
+            layout: vec![PluginBlock::Text {
+                content: "kept".into(),
+            }],
+            ..Default::default()
+        });
+
+        assert!(value.get("content").is_none(), "{value}");
+        assert!(value.get("embeds").is_none(), "{value}");
+        assert_eq!(value["flags"], IS_COMPONENTS_V2);
+        // The layout wins the `components` slot; the classic rows do not also
+        // appear, which would be two vocabularies in one message again.
+        assert_eq!(value["components"].as_array().unwrap().len(), 1);
+        assert_eq!(value["components"][0]["content"], "kept");
+    }
+
+    /// `attachments[N].id` is a *position*: it has to match the `files[N]` part
+    /// a multipart sender writes, or Discord pairs the wrong file with the
+    /// wrong declaration.
+    #[test]
+    fn attachments_are_declared_by_index() {
+        let value = payload(
+            &crate::MessageBody::default()
+                .with_attachment(crate::Attachment::new("a.png", vec![1]))
+                .with_attachment(
+                    crate::Attachment::new("b.png", vec![2]).described("the second"),
+                ),
+        );
+
+        assert_eq!(
+            value["attachments"],
+            json!([
+                { "id": 0, "filename": "a.png" },
+                { "id": 1, "filename": "b.png", "description": "the second" },
+            ])
+        );
+    }
+
+    #[test]
+    fn ephemeral_ors_in_beside_the_v2_flag() {
+        let v2 = crate::MessageBody::layout(vec![PluginBlock::Text {
+            content: "x".into(),
+        }]);
+        let value = serde_json::to_value(super::body(&v2).with_flags(EPHEMERAL)).unwrap();
+
+        assert_eq!(value["flags"], IS_COMPONENTS_V2 | EPHEMERAL);
+        assert!(
+            super::body(&v2).with_flags(EPHEMERAL).is_v2(),
+            "adding a flag must not clear the V2 bit"
+        );
+    }
+
+    /// A reply to a message someone deleted mid-flight should still post.
+    /// Discord's own default for this field is `true`, which would lose it.
+    #[test]
+    fn a_reply_survives_its_target_being_deleted() {
+        let value =
+            serde_json::to_value(super::body(&crate::MessageBody::text("re")).replying_to("123"))
+                .unwrap();
+        assert_eq!(
+            value["message_reference"],
+            json!({ "message_id": "123", "fail_if_not_exists": false })
+        );
     }
 }

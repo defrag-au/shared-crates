@@ -104,6 +104,7 @@ mod app {
         FlowLedger,
         ActivityFeed,
         TxCard,
+        ImageStack,
         ChannelBands,
         CustodyWalk,
         ClaimCard,
@@ -168,6 +169,7 @@ mod app {
                 Self::FlowLedger,
                 Self::ActivityFeed,
                 Self::TxCard,
+                Self::ImageStack,
                 Self::ChannelBands,
                 Self::CustodyWalk,
                 Self::ClaimCard,
@@ -393,6 +395,7 @@ mod app {
                 Self::FlowLedger => "Flow Ledger",
                 Self::ActivityFeed => "Activity Feed",
                 Self::TxCard => "Tx Card",
+                Self::ImageStack => "Image Stack",
                 Self::ChannelBands => "Channel Bands",
                 Self::CustodyWalk => "Custody Walk",
                 Self::ClaimCard => "Claim Card",
@@ -454,6 +457,7 @@ mod app {
                 | Self::FlowLedger
                 | Self::ActivityFeed
                 | Self::TxCard
+                | Self::ImageStack
                 | Self::ChannelBands
                 | Self::CustodyWalk
                 | Self::ClaimCard
@@ -777,6 +781,9 @@ mod app {
                 Self::ActivityFeed => {
                     "The account view of the same history: day-grouped cards, each naming its venue, its counterparty and THE ASSETS THAT MOVED — because \"+2 items\" hides whether a wallet got two junk airdrops or two of the collection it trades"
                 }
+                Self::ImageStack => {
+                    "The tuning bench for the fanned pile of mounted prints that makes a lot of many READ as a lot of many. Every proportion is a slider — mount, spacing, lift, tilt spread, shadow offset/spread/alpha — and the count runs to the hard cap of five, because the difference between 'prints dropped on a desk' and 'some overlapping squares' is a few percent in two of them, and no amount of reading the code tells you which way to go. The art is a rotated mesh, not an egui::Image: Image::corner_radius silently cancels Image::rotate, which shipped once as upright pictures inside tilted mounts. The shadow is faked: epaint blurs rectangles but not rotated polygons, so fourteen concentric quads on an eased alpha ramp stand in for a blur. Includes a backdrop toggle — the server-rendered card sits on #0b0b10 where paper white pops far harder than it does on the app's own BG_SECONDARY, which may be most of why the rendered version looked stronger"
+                }
                 Self::TxCard => {
                     "One transaction as a VERDICT rather than a field list. The row this replaces led with the WALLET NET — bookkeeping — and buried the settlement price as the smallest text on the row next to a raw db slug; four chips did the work of one clause. Same ranking as the social card: the price leads, the lot is named by its shared stem (never after one member), the party clause is a sentence, the net goes last and grey. Viewpoint is an enum with the parties INSIDE it, so a policy feed — which has no \"us\" — literally cannot be given a verb of ownership. Two absences are kept apart: below-floor pulses and offers to walk deeper, ambiguous states itself and offers nothing, because deepening cannot fix it"
                 }
@@ -1057,6 +1064,7 @@ mod app {
         capital_flow_state: stories::capital_flow::CapitalFlowState,
         cap_band_state: stories::cap_band::CapBandState,
         tx_card_state: stories::tx_card::TxCardState,
+        image_stack_state: stories::image_stack::ImageStackState,
         time_spine_state: stories::time_spine::TimeSpineState,
         coverage_lanes_state: stories::coverage_lanes::CoverageLanesState,
         flow_matrix_state: stories::flow_matrix::FlowMatrixState,
@@ -1194,6 +1202,7 @@ mod app {
                 capital_flow_state: stories::capital_flow::CapitalFlowState::default(),
                 cap_band_state: stories::cap_band::CapBandState::default(),
                 tx_card_state: stories::tx_card::TxCardState::default(),
+                image_stack_state: stories::image_stack::ImageStackState::default(),
                 time_spine_state: stories::time_spine::TimeSpineState::default(),
                 coverage_lanes_state: stories::coverage_lanes::CoverageLanesState::default(),
                 flow_matrix_state: stories::flow_matrix::FlowMatrixState::default(),
@@ -1470,8 +1479,9 @@ mod app {
                             Story::PartyBadge => stories::party_badge::show(ui),
                             Story::FlowLedger => stories::flow_ledger::show(ui),
                             Story::ActivityFeed => stories::activity_feed::show(ui),
-                            Story::TxCard => {
-                                stories::tx_card::show(ui, &mut self.tx_card_state)
+                            Story::TxCard => stories::tx_card::show(ui, &mut self.tx_card_state),
+                            Story::ImageStack => {
+                                stories::image_stack::show(ui, &mut self.image_stack_state)
                             }
                             Story::ChannelBands => stories::channel_bands::show(ui),
                             Story::CustodyWalk => stories::custody_walk::show(ui),

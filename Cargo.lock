@@ -375,6 +375,7 @@ dependencies = [
 name = "augie-plugin"
 version = "0.1.0"
 dependencies = [
+ "discord-message",
  "render-protocol",
  "serde",
  "serde_json",
@@ -1261,9 +1262,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "discord-client"
+name = "discord-message"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "discord-miniquad"
+version = "0.1.0"
+dependencies = [
+ "sapp-jsutils",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "discord-outbound"
+version = "0.1.0"
+dependencies = [
+ "discord-message",
  "dotenv",
  "gloo-net",
  "reqwest",
@@ -1277,15 +1296,6 @@ dependencies = [
  "twilight-util",
  "wasm-bindgen-test",
  "worker_stack",
-]
-
-[[package]]
-name = "discord-miniquad"
-version = "0.1.0"
-dependencies = [
- "sapp-jsutils",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -5301,6 +5311,7 @@ name = "result-paging"
 version = "0.1.0"
 dependencies = [
  "augie-plugin",
+ "discord-message",
  "serde",
  "serde_json",
  "tracing",

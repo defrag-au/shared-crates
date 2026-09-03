@@ -78,6 +78,12 @@ row of data. These compose primitives internally.
   chip | qty (ADA value)" row. **CNT holdings list (no thumbnails).**
 - **`pip_row`** → `PipRow` — Label + horizontal bar of coloured pips OR
   density heatmap. **Distributions, market depth, listing spreads.**
+- **`tx_card`** → `TxCardData` + `TxDensity` + `TxViewpoint` — One
+  transaction as a VERDICT (kicker → headline → subject → party clause
+  → caution → footnote → filter chips), at Row / Feature / Poster
+  density. Viewpoint carries the parties, so a policy feed with no
+  "us" cannot be given a verb of ownership. **Wallet + policy feeds;
+  the in-app twin of the social card.**
 
 ## Lists & tables
 
@@ -99,6 +105,14 @@ shape: builder → `.show(ui) -> Response { actions: Vec<…> }`.
   **Trade-desk concurrent dual-side offers.**
 - **`asset_strip`** → `AssetStripItem` row — Horizontal overlapping
   thumbnails that lift on hover. **Compact related-assets row.**
+- **`image_stack`** → `ImageStack` + `StackImage` + `ImageStackStyle` —
+  Several images as a fanned pile of mounted prints, so a lot of many
+  READS as a lot of many, up to five deep. Every proportion is tunable
+  (mount, spacing, lift, tilt, shadow) with a slider bench in the
+  storybook. Art is a rotated mesh — `Image::corner_radius` cancels
+  `Image::rotate` silently, so don't go back to `egui::Image`. Use
+  `asset_strip` for a list you scan; use this to make ONE unit look
+  like the several things it was.
 
 ## Charts & visualisations
 

@@ -1,5 +1,5 @@
 [package]
-name = "discord-client"
+name = "discord-outbound"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,6 +8,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 thiserror = "1.0"
+discord-message = { workspace = true }
 
 # Native dependencies (for augminted-bots)
 reqwest = { version = "0.12", features = [
@@ -25,6 +26,13 @@ twilight-model = { version = "0.16", default-features = false }
 twilight-util = { version = "0.16", default-features = false, features = [
     "builder",
 ] }
+
+# Only to sleep out a known-closed rate-limit window on a native target.
+# Target-scoped so it never enters a wasm32 dependency graph: reqwest-on-wasm32
+# does not pull tokio, and this crate compiles into Workers where it would be
+# dead weight. On native, reqwest already brings it.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

@@ -26,18 +26,14 @@
 //! repo through a twilight migration, and mixing majors produces the
 //! duplicate-crate type mismatches this workspace has been bitten by before.
 //!
-//! So the protocol defines its own minimal vocabulary ([`PluginEmbed`],
-//! [`PluginComponent`], …). The crate depends on `serde` and `serde_json` and
-//! nothing else, which keeps it trivially WASM-safe.
+//! So the vocabulary is serde-only, and it lives in **`discord-message`** —
+//! [`discord_message::MessageBody`], `PluginEmbed`, `PluginBlock` and the
+//! `wire` renderer that turns them into Discord's JSON. It is a separate crate
+//! because the outbound client needs the same types, and a Discord client
+//! depending on the plugin protocol would be backwards.
 //!
-//! ## Rendering without twilight
-//!
-//! [`mod@wire`] turns that vocabulary into Discord's message JSON directly —
-//! no library send support is needed, because Components V2 is JSON plus the
-//! `IS_COMPONENTS_V2` flag. That is what lets **one** renderer serve both
-//! hosts: a twilight-typed one could not, for the version reason above. Each
-//! host still converts to its own twilight types where it wants them, but from
-//! the same JSON rather than from a second implementation.
+//! Import those directly (`use discord_message::PluginBlock;`) — this crate
+//! does not re-export them, so there is one place each type lives.
 //!
 //! ## Snowflakes are strings
 //!
@@ -51,7 +47,6 @@ mod invocation;
 mod manifest;
 mod response;
 mod tool;
-pub mod wire;
 
 pub use address::*;
 pub use invocation::*;
@@ -92,24 +87,10 @@ pub const REFRESH_PATH: &str = "/refresh";
 ///
 /// # Addressed through the interaction webhook, not the channel
 ///
-/// Two routes look plausible and only one works:
-///
-/// - `PATCH /channels/{channel}/messages/{message}` with the bot token —
-///   **fails with `10008 Unknown Message`** whenever the message is
-///   ephemeral. An ephemeral message is not a real channel message; it exists
-///   only inside the interaction that produced it, so the channel route cannot
-///   see it however much authority the bot has.
-/// - `PATCH /webhooks/{application_id}/{interaction_token}/messages/{message_id}`
-///   — works for both ephemeral and normal messages.
-///
-/// The message id is given explicitly rather than using `@original`, because a
-/// component answered with `LAUNCH_ACTIVITY` neither creates nor updates a
-/// message and so has no "original response" for `@original` to name.
-///
-/// **The 15-minute token lifetime is therefore unavoidable**, not a design
-/// choice: an ephemeral message is only ever reachable through its
-/// interaction, and Discord expires that. A refresh attempted later simply
-/// fails and the message stays as it was.
+/// Which route to use is [`discord_message::MessageTarget`]'s business, and the
+/// two are not interchangeable — see its docs. The short version: an ephemeral
+/// message is only reachable through its interaction, which is what bounds a
+/// refresh to the token's 15 minutes.
 ///
 /// # Authority
 ///
@@ -119,7 +100,7 @@ pub const REFRESH_PATH: &str = "/refresh";
 /// gated, so the caller is a trusted service by construction.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RefreshMessage {
-    pub target: MessageTarget,
+    pub target: discord_message::MessageTarget,
     /// Guild the message lives in, and the plugin's name in that guild's
     /// config.
     ///
@@ -136,164 +117,6 @@ pub struct RefreshMessage {
     pub response: CommandResponse,
 }
 
-/// How to address a message Augie should edit.
-///
-/// The two routes are not interchangeable, and picking the wrong one fails in
-/// a way that reads as a missing message rather than a wrong endpoint — so the
-/// choice is made explicit here rather than inferred.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum MessageTarget {
-    /// Through the interaction that produced the message.
-    ///
-    /// **Required for an ephemeral message**, which is not a real channel
-    /// message and cannot be reached any other way. Also works for a
-    /// non-ephemeral response or followup.
-    ///
-    /// Bounded by the interaction token's **15-minute** lifetime. For an
-    /// ephemeral message that ceiling is unavoidable; for anything else,
-    /// prefer [`Self::Channel`], which has none.
-    ///
-    /// `message_id` is explicit rather than `@original` because an interaction
-    /// answered with `LAUNCH_ACTIVITY` creates no response for `@original` to
-    /// name.
-    Interaction {
-        application_id: String,
-        interaction_token: String,
-        message_id: String,
-    },
-    /// Directly, with Augie's bot token.
-    ///
-    /// No expiry, so this is the right choice for anything edited long after
-    /// the fact — a summary updated when a job finishes, a post revised by a
-    /// cron. It is also the *only* route for a message with no interaction
-    /// behind it.
-    ///
-    /// **Not valid for an ephemeral message**: Discord answers `10008 Unknown
-    /// Message`, because from the channel's point of view it does not exist.
-    Channel {
-        channel_id: String,
-        message_id: String,
-    },
-}
-
-impl MessageTarget {
-    /// The Discord endpoint that edits this message.
-    pub fn edit_url(&self) -> String {
-        match self {
-            Self::Interaction {
-                application_id,
-                interaction_token,
-                message_id,
-            } => format!(
-                "https://discord.com/api/v10/webhooks/{application_id}/{interaction_token}/messages/{message_id}"
-            ),
-            Self::Channel {
-                channel_id,
-                message_id,
-            } => format!("https://discord.com/api/v10/channels/{channel_id}/messages/{message_id}"),
-        }
-    }
-
-    /// Does this route need the bot token in an `Authorization` header?
-    ///
-    /// The interaction route does not — the token in the path *is* the auth,
-    /// and sending a bot token alongside it is at best redundant.
-    pub fn needs_bot_token(&self) -> bool {
-        matches!(self, Self::Channel { .. })
-    }
-
-    /// Every field populated?
-    pub fn is_complete(&self) -> bool {
-        match self {
-            Self::Interaction {
-                application_id,
-                interaction_token,
-                message_id,
-            } => {
-                !application_id.is_empty()
-                    && !interaction_token.is_empty()
-                    && !message_id.is_empty()
-            }
-            Self::Channel {
-                channel_id,
-                message_id,
-            } => !channel_id.is_empty() && !message_id.is_empty(),
-        }
-    }
-}
-
-#[cfg(test)]
-mod message_target_tests {
-    use super::*;
-
-    fn interaction() -> MessageTarget {
-        MessageTarget::Interaction {
-            application_id: "app".into(),
-            interaction_token: "tok".into(),
-            message_id: "msg".into(),
-        }
-    }
-
-    fn channel() -> MessageTarget {
-        MessageTarget::Channel {
-            channel_id: "chan".into(),
-            message_id: "msg".into(),
-        }
-    }
-
-    #[test]
-    fn each_route_hits_its_own_endpoint() {
-        // The interaction route reaches ephemeral messages; the channel route
-        // is the only one that works without an interaction, and the only one
-        // with no expiry. Swapping them yields `10008 Unknown Message`, which
-        // reads as a missing message rather than a wrong URL — hence the test.
-        assert_eq!(
-            interaction().edit_url(),
-            "https://discord.com/api/v10/webhooks/app/tok/messages/msg"
-        );
-        assert_eq!(
-            channel().edit_url(),
-            "https://discord.com/api/v10/channels/chan/messages/msg"
-        );
-    }
-
-    #[test]
-    fn only_the_channel_route_needs_the_bot_token() {
-        // The interaction token in the path is itself the credential.
-        assert!(!interaction().needs_bot_token());
-        assert!(channel().needs_bot_token());
-    }
-
-    #[test]
-    fn an_incomplete_target_is_rejected_before_it_reaches_discord() {
-        // An empty segment silently produces a URL like `.../messages/` that
-        // 404s indistinguishably from a genuinely missing message.
-        assert!(interaction().is_complete());
-        assert!(channel().is_complete());
-
-        assert!(!MessageTarget::Interaction {
-            application_id: "app".into(),
-            interaction_token: String::new(),
-            message_id: "msg".into(),
-        }
-        .is_complete());
-        assert!(!MessageTarget::Channel {
-            channel_id: "chan".into(),
-            message_id: String::new(),
-        }
-        .is_complete());
-    }
-
-    #[test]
-    fn the_variant_survives_a_round_trip() {
-        // This crosses a service boundary *and* is persisted in run state, so
-        // an untagged or renamed variant would deserialise as the wrong route.
-        for target in [interaction(), channel()] {
-            let json = serde_json::to_string(&target).expect("serialises");
-            let back: MessageTarget = serde_json::from_str(&json).expect("round-trips");
-            assert_eq!(back.edit_url(), target.edit_url());
-            assert_eq!(back.needs_bot_token(), target.needs_bot_token());
-        }
-    }
-}
+// (`MessageTarget` and its tests moved to `discord-message`. It is how *any*
+// sender addresses an existing message, not something about plugins — and the
+// outbound client needs the same two routes for its `edit` verb.)

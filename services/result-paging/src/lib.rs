@@ -34,7 +34,7 @@
 //! runs no model at all: the reader is looking at the list, and paying a model
 //! to re-describe what is on screen would be paying twice.
 
-use augie_plugin::PluginBlock;
+use discord_message::PluginBlock;
 use serde::{Deserialize, Serialize};
 use worker_stack::worker::kv::KvStore;
 
@@ -107,7 +107,7 @@ pub enum PageAction {
 
 /// A control the host should render and route.
 ///
-/// Deliberately not a [`augie_plugin::PluginComponent`]: the host mints the
+/// Deliberately not a [`discord_message::PluginComponent`]: the host mints the
 /// `custom_id`, because that id is how a click finds its way back to the
 /// host's own storage. This crate decides *which* buttons and *what state*;
 /// routing is not its business.
