@@ -55,13 +55,15 @@
 //!
 //! ## Density
 //!
-//! [`TxDensity`] is matched exhaustively everywhere it is consulted — there is
-//! no `is_compact()`, because "is it small" is not the question any of these
-//! sites are actually asking. Each one asks something specific (how big is the
-//! art, does the footnote appear at all) and answers it per variant.
+//! [`TxDensity`] decides SIZES per variant, and maps once to a [`TxEdit`] that
+//! decides what SURVIVES. There is no `is_compact()`: the first cut of this had
+//! three boolean predicates on the density that all split it the same way and
+//! was about to grow three more, which is one decision asked six times. Now
+//! the split is made in one place and every site matches on the named result.
 //!
-//! - [`TxDensity::Row`] — the feed unit. Art at 30px, and still fanned: at the
-//!   tuned pile style the buried prints are corners, and corners survive 30px.
+//! - [`TxDensity::Row`] — the feed unit, on the tight edit: three lines at
+//!   ~65px. Art at 30px, and still fanned: at the tuned pile style the buried
+//!   prints are corners, and corners survive 30px.
 //! - [`TxDensity::Feature`] — the selected row, or the top of a feed.
 //! - [`TxDensity::Poster`] — the transaction's own page, and the share preview:
 //!   *this is what people see if you post this link*.
@@ -189,33 +191,45 @@ impl TxDensity {
         }
     }
 
-    /// Where the headline sits.
+    /// Which EDIT of the verdict this density gets. Decided once, here;
+    /// matched everywhere else.
+    fn edit(self) -> TxEdit {
+        match self {
+            TxDensity::Row => TxEdit::Tight,
+            TxDensity::Feature | TxDensity::Poster => TxEdit::Full,
+        }
+    }
+}
+
+/// The two edits of a verdict — what survives, and where it sits.
+///
+/// # Why this exists instead of six booleans
+///
+/// There were `headline_is_columnar()`, `shows_footnote()` and
+/// `shows_absolute_time()`, and the row cut was about to add three more. Six
+/// predicates on one enum that all split it the same way are one decision
+/// asked six times — the `is_compact()` shape — and the first one somebody
+/// adds that splits it *differently* is a bug nobody can see from the call
+/// sites. So the density maps to a named edit ONCE and every site matches on
+/// that.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TxEdit {
+    /// THREE LINES: subject / party + time / facets. For a feed of hundreds.
     ///
-    /// A row puts it in a right-hand column so a column of rows has a column of
-    /// figures to scan down. The larger densities put it inline under the
-    /// kicker, where it is the first thing read rather than the last.
-    fn headline_is_columnar(self) -> bool {
-        match self {
-            TxDensity::Row => true,
-            TxDensity::Feature | TxDensity::Poster => false,
-        }
-    }
-
-    /// Does the reconciliation footnote appear at all?
-    fn shows_footnote(self) -> bool {
-        match self {
-            TxDensity::Row => false,
-            TxDensity::Feature | TxDensity::Poster => true,
-        }
-    }
-
-    /// Does the absolute timestamp appear beside the relative one?
-    fn shows_absolute_time(self) -> bool {
-        match self {
-            TxDensity::Row => false,
-            TxDensity::Feature | TxDensity::Poster => true,
-        }
-    }
+    /// - The headline goes to a right-hand column, so a column of rows is a
+    ///   column of figures to scan down.
+    /// - No kicker: what it says — venue, shape — is on the chips already.
+    /// - The relative time hangs off the party clause rather than taking a
+    ///   line, and the absolute stamp is dropped.
+    /// - The caution moves into the chip row as an amber note. Not a chip: it
+    ///   is not a facet anyone filters by, and it keeps the colour it has at
+    ///   every other density so it means the same thing everywhere.
+    /// - No footnote. A reconciliation line nobody can read is worse than
+    ///   none; it is on the Feature card one click away.
+    Tight,
+    /// The whole stack: kicker, headline, subject, party, time with its
+    /// absolute stamp, caution, footnote, chips.
+    Full,
 }
 
 // ============================================================================
@@ -478,8 +492,10 @@ pub struct TxCardData<'a> {
     /// They sit LAST for that reason — they are navigation, not narration.
     pub tags: Vec<(&'a str, ChipVariant)>,
     /// The thing that changes the reading — "2 items in this transaction",
-    /// "figures are partial". Amber, and it survives at every density above
-    /// `Row` because a caution that gets edited out is not a caution.
+    /// "figures are partial". Amber at every density, because a caution that
+    /// gets edited out is not a caution; a row has no line to spare for it, so
+    /// there it leads the chip row instead. Keep it SHORT — on a row it sits
+    /// beside the chips, and a sentence there pushes them off the card.
     pub caution: Option<&'a str>,
     /// The reconciliation line — `wallet net −7.6295 ₳`. True, and not the
     /// point: it is here for whoever is checking against an explorer, which is
@@ -641,28 +657,61 @@ impl<'a> TxCard<'a> {
                     // rather than pushing the figure off the card. That
                     // ordering is what stops a long handle collapsing the
                     // amount column to zero width.
-                    let columnar = d.headline_is_columnar();
-                    if columnar {
-                        // MEASURE THE FIGURE, THEN DIVIDE — do not let the two
-                        // columns race for the width.
-                        //
-                        // This was a `right_to_left` layout with the headline
-                        // claimed first. Inside it the headline's own
-                        // `horizontal` expanded to the full row, the text
-                        // column was handed what was left, which was nothing,
-                        // and every label wrapped ONE GLYPH PER LINE into a
-                        // column hundreds of points tall. `ActivityFeed`'s
-                        // story keeps a regression case for the identical
-                        // failure; it is the characteristic way an egui row
-                        // with a right-aligned figure breaks.
-                        let gap = 12.0;
-                        let head_w = headline_width(ui, &self.data.headline, d);
-                        let text_w = (ui.available_width() - head_w - gap).max(96.0);
+                    match d.edit() {
+                        TxEdit::Tight => {
+                            // MEASURE THE FIGURE, THEN DIVIDE — do not let the two
+                            // columns race for the width.
+                            //
+                            // This was a `right_to_left` layout with the headline
+                            // claimed first. Inside it the headline's own
+                            // `horizontal` expanded to the full row, the text
+                            // column was handed what was left, which was nothing,
+                            // and every label wrapped ONE GLYPH PER LINE into a
+                            // column hundreds of points tall. `ActivityFeed`'s
+                            // story keeps a regression case for the identical
+                            // failure; it is the characteristic way an egui row
+                            // with a right-aligned figure breaks.
+                            let gap = 12.0;
+                            let head_w = headline_width(ui, &self.data.headline, d);
+                            let text_w = (ui.available_width() - head_w - gap).max(96.0);
 
-                        ui.allocate_ui_with_layout(
-                            Vec2::new(text_w, 0.0),
-                            Layout::top_down(Align::LEFT),
-                            |ui| {
+                            ui.allocate_ui_with_layout(
+                                Vec2::new(text_w, 0.0),
+                                Layout::top_down(Align::LEFT),
+                                |ui| {
+                                    let r = text_column(
+                                        ui,
+                                        self.data,
+                                        d,
+                                        self.walkable,
+                                        self.walking,
+                                        self.now,
+                                    );
+                                    walk = walk.take().or(r.0);
+                                    deepen |= r.1;
+                                    filtered = filtered.take().or(r.2);
+                                },
+                            );
+                            ui.add_space(gap);
+                            ui.allocate_ui_with_layout(
+                                Vec2::new(ui.available_width().max(head_w), 0.0),
+                                Layout::top_down(Align::RIGHT),
+                                |ui| headline(ui, &self.data.headline, d),
+                            );
+                        }
+                        TxEdit::Full => {
+                            ui.vertical(|ui| {
+                                ui.spacing_mut().item_spacing.y = match d {
+                                    TxDensity::Row => 1.0,
+                                    TxDensity::Feature => 2.0,
+                                    TxDensity::Poster => 4.0,
+                                };
+                                ui.label(
+                                    RichText::new(self.data.kicker)
+                                        .size(d.kicker_size())
+                                        .color(theme::TEXT_MUTED),
+                                );
+                                headline(ui, &self.data.headline, d);
                                 let r = text_column(
                                     ui,
                                     self.data,
@@ -674,39 +723,8 @@ impl<'a> TxCard<'a> {
                                 walk = walk.take().or(r.0);
                                 deepen |= r.1;
                                 filtered = filtered.take().or(r.2);
-                            },
-                        );
-                        ui.add_space(gap);
-                        ui.allocate_ui_with_layout(
-                            Vec2::new(ui.available_width().max(head_w), 0.0),
-                            Layout::top_down(Align::RIGHT),
-                            |ui| headline(ui, &self.data.headline, d),
-                        );
-                    } else {
-                        ui.vertical(|ui| {
-                            ui.spacing_mut().item_spacing.y = match d {
-                                TxDensity::Row => 1.0,
-                                TxDensity::Feature => 2.0,
-                                TxDensity::Poster => 4.0,
-                            };
-                            ui.label(
-                                RichText::new(self.data.kicker)
-                                    .size(d.kicker_size())
-                                    .color(theme::TEXT_MUTED),
-                            );
-                            headline(ui, &self.data.headline, d);
-                            let r = text_column(
-                                ui,
-                                self.data,
-                                d,
-                                self.walkable,
-                                self.walking,
-                                self.now,
-                            );
-                            walk = walk.take().or(r.0);
-                            deepen |= r.1;
-                            filtered = filtered.take().or(r.2);
-                        });
+                            });
+                        }
                     }
                 });
             });
@@ -744,16 +762,8 @@ fn text_column(
         TxDensity::Poster => 4.0,
     };
 
-    // A row's kicker lives here rather than above the headline: the headline is
-    // in its own right-hand column, so a kicker over it would label a figure
-    // sitting somewhere else on the card.
-    if d.headline_is_columnar() {
-        ui.label(
-            RichText::new(data.kicker)
-                .size(d.kicker_size())
-                .color(theme::TEXT_MUTED),
-        );
-    }
+    // No kicker in the tight edit — the Full edit draws it above the headline
+    // in `show()`, and a row has chips saying the same thing.
 
     if let Some(subject) = data.subject {
         ui.label(
@@ -764,52 +774,78 @@ fn text_column(
         );
     }
 
-    let (walk, deepen) = party_clause(ui, &data.view, d, walkable, walking);
+    let edit = d.edit();
 
     // Time. WORDS FIRST — "1h ago" is what a reader scanning a feed actually
     // uses; the absolute stamp is for the record and only earns its space once
-    // there is space.
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 5.0;
-        let mut rel = RelativeTime::new(data.when)
-            .size(d.body_size())
-            .color(theme::TEXT_MUTED);
-        if let Some(now) = now {
-            rel = rel.now(now);
+    // there is space. In the tight edit the words hang off the party clause
+    // and the stamp is gone; in the full edit they get a row of their own.
+    let inline_time = match edit {
+        TxEdit::Tight => Some((data.when, now)),
+        TxEdit::Full => None,
+    };
+    let (walk, deepen) = party_clause(ui, &data.view, d, walkable, walking, inline_time);
+
+    match edit {
+        TxEdit::Tight => {}
+        TxEdit::Full => {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 5.0;
+                relative_time(ui, data.when, now, d.body_size());
+                ui.label(
+                    RichText::new(format!("· {}", iso_utc(data.when)))
+                        .size(d.body_size())
+                        .color(theme::TEXT_MUTED),
+                );
+            });
         }
-        ui.add(rel);
-        if d.shows_absolute_time() {
+    }
+
+    // The caution: its own line where there is one, else it rides in the chip
+    // row below. Either way it is amber, because it means the same thing.
+    let caution_in_chip_row = match (edit, data.caution) {
+        (TxEdit::Full, Some(caution)) => {
             ui.label(
-                RichText::new(format!("· {}", iso_utc(data.when)))
+                RichText::new(caution)
+                    .size(d.body_size())
+                    .color(theme::ACCENT_ORANGE),
+            );
+            None
+        }
+        (TxEdit::Tight, caution) => caution,
+        (TxEdit::Full, None) => None,
+    };
+
+    match (edit, data.footnote) {
+        (TxEdit::Full, Some(footnote)) => {
+            ui.label(
+                RichText::new(footnote)
                     .size(d.body_size())
                     .color(theme::TEXT_MUTED),
             );
         }
-    });
-
-    if let Some(caution) = data.caution {
-        ui.label(
-            RichText::new(caution)
-                .size(d.body_size())
-                .color(theme::ACCENT_ORANGE),
-        );
-    }
-
-    if let (true, Some(footnote)) = (d.shows_footnote(), data.footnote) {
-        ui.label(
-            RichText::new(footnote)
-                .size(d.body_size())
-                .color(theme::TEXT_MUTED),
-        );
+        (TxEdit::Tight, _) | (TxEdit::Full, None) => {}
     }
 
     // FACETS LAST. They are how a reader slices the feed, not how they read the
     // row — putting them first is what made the old layout a tag soup with the
     // verdict hidden inside it.
-    if !data.tags.is_empty() {
+    if !data.tags.is_empty() || caution_in_chip_row.is_some() {
         ui.add_space(3.0);
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
+            // The caution LEADS the row when it is here: it changes the
+            // reading, and the chips only refine it.
+            if let Some(caution) = caution_in_chip_row {
+                ui.label(
+                    RichText::new(caution)
+                        .size(d.body_size())
+                        .color(theme::ACCENT_ORANGE),
+                );
+                if !data.tags.is_empty() {
+                    ui.add_space(4.0);
+                }
+            }
             for (label, variant) in &data.tags {
                 if Chip::new(label)
                     .variant(*variant)
@@ -833,6 +869,7 @@ fn party_clause(
     d: TxDensity,
     walkable: bool,
     walking: bool,
+    inline_time: Option<(i64, Option<i64>)>,
 ) -> (Option<String>, bool) {
     let mut walk = None;
     let mut deepen = false;
@@ -871,9 +908,23 @@ fn party_clause(
                 deepen |= dp;
             }
         }
+        // `$boef bought from $elchapojr · 1h ago` — the tight edit's time.
+        if let Some((when, now)) = inline_time {
+            ui.label(RichText::new("·").size(size).color(theme::TEXT_MUTED));
+            relative_time(ui, when, now, size);
+        }
     });
 
     (walk, deepen)
+}
+
+/// The relative age — `1h ago` — with a pinned "now" for stories.
+fn relative_time(ui: &mut Ui, when: i64, now: Option<i64>, size: f32) {
+    let mut rel = RelativeTime::new(when).size(size).color(theme::TEXT_MUTED);
+    if let Some(now) = now {
+        rel = rel.now(now);
+    }
+    ui.add(rel);
 }
 
 /// One party slot — a badge, a pulsing placeholder, or a statement.

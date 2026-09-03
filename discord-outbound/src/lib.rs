@@ -27,26 +27,40 @@ mod native;
 #[cfg(feature = "wasm")]
 mod wasm;
 
-#[cfg(feature = "wasm")]
+#[cfg(any(feature = "wasm", feature = "worker"))]
 use worker_stack::worker;
 
 pub mod multipart;
 pub mod ratelimit;
 mod send;
 mod target;
+/// The pre-[`discord_message::MessageBody`] surface. Behind the `twilight`
+/// feature because it is the only thing pinning twilight **0.16** here.
+#[cfg(feature = "twilight")]
 pub mod types;
 
 #[cfg(feature = "native")]
 pub use native::*;
 #[cfg(feature = "wasm")]
 pub use wasm::*;
+#[cfg(feature = "worker")]
+pub use worker_fetch::*;
 
 pub use send::*;
 pub use target::*;
+#[cfg(feature = "twilight")]
 pub use types::*;
 
+#[cfg(feature = "twilight")]
 pub mod compat;
 
+#[cfg(feature = "worker")]
+mod worker_fetch;
+
+// The API root lives in `discord_message::BASE_URL`, where `Target` and
+// `MessageTarget` build their URLs from it. Aliased here only for the legacy
+// clients, which spell their own URLs.
+#[cfg(feature = "twilight")]
 pub(crate) const BASE_URL: &str = discord_message::BASE_URL;
 
 #[derive(Error, Debug)]
@@ -81,7 +95,7 @@ pub enum DiscordError {
     #[error("Gloo error: {0}")]
     Gloo(String),
 
-    #[cfg(feature = "wasm")]
+    #[cfg(any(feature = "wasm", feature = "worker"))]
     #[error("Worker error: {0}")]
     Worker(#[from] worker::Error),
 }

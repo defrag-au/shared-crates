@@ -1,14 +1,23 @@
-use crate::{
-    AttachmentInput, DiscordClient, DiscordError, DiscordMessage, DiscordRateLimitResponse,
-    BASE_URL,
-};
-use core::future::Future;
-use core::pin::Pin;
+use crate::DiscordError;
 use gloo_net::http::Request;
-use tracing::{error, info, warn};
-use twilight_model::channel::Message;
 use worker_stack::js_sys;
 use worker_stack::wasm_bindgen::JsValue;
+
+// The pre-`MessageBody` surface. Behind the `twilight` feature because it is
+// the only thing here that names a twilight type — see the crate docs.
+#[cfg(feature = "twilight")]
+use crate::{
+    AttachmentInput, DiscordClient, DiscordMessage, DiscordRateLimitResponse, BASE_URL,
+};
+#[cfg(feature = "twilight")]
+use core::future::Future;
+#[cfg(feature = "twilight")]
+use core::pin::Pin;
+#[cfg(feature = "twilight")]
+use tracing::{error, info, warn};
+#[cfg(feature = "twilight")]
+use twilight_model::channel::Message;
+#[cfg(feature = "twilight")]
 use worker_stack::web_sys::{Blob, BlobPropertyBag, FormData};
 
 /// Discord bot client over `gloo-net` — the stack cnft.dev-workers uses.
@@ -80,6 +89,7 @@ impl crate::DiscordOutbound for WasmDiscordClient {
     }
 }
 
+#[cfg(feature = "twilight")]
 impl DiscordClient for WasmDiscordClient {
     type SendMessageFut<'a>
         = Pin<Box<dyn Future<Output = Result<Message, DiscordError>> + 'a>>
@@ -228,6 +238,7 @@ impl DiscordClient for WasmDiscordClient {
     }
 }
 
+#[cfg(feature = "twilight")]
 impl WasmDiscordClient {
     async fn send_multipart_message(
         &self,
