@@ -28,6 +28,7 @@ pub mod conversation_history;
 pub mod detail_split;
 pub mod distribution_waterfall;
 pub mod donut_chart;
+pub mod drawer;
 pub mod error_note;
 pub mod event_wiring;
 #[cfg(target_arch = "wasm32")]
@@ -102,6 +103,7 @@ pub mod typeahead_search;
 pub mod user_badge;
 pub mod utils;
 pub mod variant_split;
+pub mod viewport;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
@@ -155,6 +157,7 @@ pub mod signing_status;
 pub mod trade_table;
 #[cfg(feature = "cardano")]
 pub mod trait_delta;
+pub mod tx_card;
 pub mod tx_cart;
 #[cfg(feature = "cardano")]
 pub mod tx_estimate;
@@ -203,6 +206,7 @@ pub use distribution_waterfall::{DistributionWaterfall, WaterfallMode, Waterfall
 pub use donut_chart::{
     DistBand, DistributionChart, format_value as format_chart_value, legend_row,
 };
+pub use drawer::{Drawer, DrawerSide};
 pub use error_note::{ErrorNote, ErrorSummary, pretty_json, summarize_error};
 pub use event_wiring::{ActionCardVm, EventNodeVm, EventWiring, EventWiringResponse};
 #[cfg(target_arch = "wasm32")]
@@ -300,6 +304,7 @@ pub use utils::{
     format_ada, format_duration, format_lovelace, format_number, format_percent, section_heading,
     stat_card, truncate_hex,
 };
+pub use viewport::{Breakpoint, HeaderLayout, PanelMode, RecordLayout, apply_touch_sizing, fit};
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};
 #[cfg(feature = "cardano")]
@@ -360,6 +365,10 @@ pub use trade_table::{
 #[cfg(feature = "cardano")]
 pub use trait_delta::{TraitDeltaConfig, TraitItem};
 #[cfg(feature = "cardano")]
+pub use tx_card::{
+    Tone, TxArt, TxCard, TxCardData, TxCardResponse, TxDensity, TxHeadline, TxParty, TxPrint,
+    TxVerb, TxViewpoint,
+};
 pub use tx_estimate::{TxEstimateConfig, TxEstimateData, UtxoCost};
 #[cfg(feature = "cardano")]
 pub use utxo_map::{

@@ -127,20 +127,58 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineState) {
     // midline, disposals below. Watching a wallet has to answer "when", and the
     // axis you brush is where that answer belongs.
     let watched = state.selection.active().map(|k| k.to_string());
-    let marks: Vec<(i64, MarkKind)> = match &watched {
-        Some(k) => moves
+
+    // IN/OUT IS RELATIVE TO A SUBJECT, and some subjects have events that are
+    // genuinely neither. Switch this on to read the same data as a POLICY
+    // rather than as a wallet: a mint is supply arriving, a burn is supply
+    // leaving, and an ordinary transfer between two holders is circulation —
+    // no direction at all.
+    //
+    // Worth toggling to see WHY `MarkKind::Neutral` exists: the transfers are
+    // the majority, so calling them `In` would paint nearly the whole lane in
+    // the "arrived" hue and leave the colour meaning nothing, while dropping
+    // them would empty the strip for any collection that has stopped minting.
+    let policy_id = ui.id().with("spine_policy_reading");
+    let mut as_policy = ui
+        .data_mut(|d| d.get_temp::<bool>(policy_id))
+        .unwrap_or(false);
+    ui.checkbox(
+        &mut as_policy,
+        "read as a POLICY (mint in / burn out / transfer neither)",
+    );
+    ui.data_mut(|d| d.insert_temp(policy_id, as_policy));
+
+    let marks: Vec<(i64, MarkKind)> = if as_policy {
+        moves
             .iter()
-            .filter_map(|m| {
-                if m.to == Some(k.as_str()) {
-                    Some((m.timestamp, MarkKind::In))
-                } else if m.from == Some(k.as_str()) {
-                    Some((m.timestamp, MarkKind::Out))
-                } else {
-                    None
-                }
+            .map(|m| {
+                let kind = match (m.from.is_some(), m.to.is_some()) {
+                    // Created here — supply entered the policy.
+                    (false, true) => MarkKind::In,
+                    // Destroyed here — supply left it.
+                    (true, false) => MarkKind::Out,
+                    // Holder to holder. Nothing entered or left.
+                    _ => MarkKind::Neutral,
+                };
+                (m.timestamp, kind)
             })
-            .collect(),
-        None => Vec::new(),
+            .collect()
+    } else {
+        match &watched {
+            Some(k) => moves
+                .iter()
+                .filter_map(|m| {
+                    if m.to == Some(k.as_str()) {
+                        Some((m.timestamp, MarkKind::In))
+                    } else if m.from == Some(k.as_str()) {
+                        Some((m.timestamp, MarkKind::Out))
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+            None => Vec::new(),
+        }
     };
     // Brushing is the default; turning it off makes the spine a NAVIGATOR —
     // drag anywhere moves the playhead, and no range can be selected. Use that

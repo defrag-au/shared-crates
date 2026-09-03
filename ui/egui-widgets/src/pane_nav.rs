@@ -141,6 +141,13 @@ impl<'a> PaneNavBar<'a> {
         // `horizontal_wrapped`, not `horizontal`: a narrow viewport should
         // spill the nav onto a second row rather than push destinations off
         // the edge where they cannot be reached at all.
+        // A nav is the most important thing on the page to be able to hit, and
+        // `Button::selectable` does NOT honour `spacing.interact_size` — so an
+        // app that raised that for a phone still got a ~28pt nav strip. Ask
+        // the breakpoint directly and set it as an explicit floor.
+        let min_h = crate::viewport::Breakpoint::from_ui(ui).min_touch();
+        let min_size = egui::vec2(0.0, min_h);
+
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
             for entry in &self.entries {
@@ -155,7 +162,11 @@ impl<'a> PaneNavBar<'a> {
                             Some(icon) => phosphor_label(ui, icon, entry.label),
                             None => RichText::new(entry.label).into(),
                         };
-                        if ui.selectable_label(selected, text).clicked() && !selected {
+                        if ui
+                            .add(egui::Button::selectable(selected, text).min_size(min_size))
+                            .clicked()
+                            && !selected
+                        {
                             response.selected = Some(entry.id);
                         }
                     }
@@ -175,8 +186,11 @@ impl<'a> PaneNavBar<'a> {
                         // the locked entries below the baseline of the
                         // selectable ones. Same widget, same metrics.
                         // (`Button::selectable` — `SelectableLabel` is gone.)
-                        ui.add_enabled(false, egui::Button::selectable(false, text))
-                            .on_disabled_hover_text(reason);
+                        ui.add_enabled(
+                            false,
+                            egui::Button::selectable(false, text).min_size(min_size),
+                        )
+                        .on_disabled_hover_text(reason);
                     }
                 }
             }

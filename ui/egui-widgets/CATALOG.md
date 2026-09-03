@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-122 widgets.
+124 widgets.
 
 | module | what it is |
 |---|---|
@@ -40,6 +40,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `detail_split` | `detail_split` — a content column beside a detail column, laid out by hand |
 | `distribution_waterfall` | `DistributionWaterfall` — how a buyer's payment flows down to what lands in each party's wallet under settle-as-you-mint |
 | `donut_chart` | `DistributionChart` — a donut of banded shares with a legend and hover tooltip, for "how is this split" questions |
+| `drawer` | `Drawer` — an edge-anchored slide-over panel with a scrim, for the narrow layout of a surface that has a side panel when it is wide |
 | `error_note` | `ErrorNote` — turns an ugly machine error string into a readable note |
 | `event_wiring` | `EventWiring` — one event-source node wired to its action cards, IFTTT made visible |
 | `exposure_bar` | Exposure bar — stacked horizontal bar showing total ADA exposure segmented by collateral token, colored by LTV risk |
@@ -123,6 +124,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `utxo_map` | UTxO terrain map — a Voronoi-based wallet visualization |
 | `utxo_shelf` | UTxO Shelf — wallet health visualization |
 | `variant_split` | Variant split — explains a `variant_flow` source slot's **derived** variant distribution and *why* it isn't uniform |
+| `viewport` | `Breakpoint` — how wide the surface is, as three named sizes rather than a number every call site re-compares |
 | `wallet` | Framework-agnostic wallet connector for egui frontends |
 | `wallet_asset_picker` | Wallet asset picker — modal widget for browsing and selecting NFTs from a wallet, grouped by policy in an accordion layout |
 | `wallet_button` | Reusable wallet connection button widget for egui frontends |

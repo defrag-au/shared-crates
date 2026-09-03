@@ -17,6 +17,7 @@ pub mod conversation_history;
 pub mod coverage_lanes;
 pub mod distribution;
 pub mod distribution_waterfall;
+pub mod drawer;
 pub mod error_note;
 pub mod event_wiring;
 pub mod flip_counter;
@@ -110,6 +111,7 @@ pub mod utxo_map;
 pub mod wallet_asset_picker;
 
 // TX cart
+pub mod tx_card;
 pub mod tx_cart;
 
 // Primitives — foundational composables (semantic chips, ID displays,
@@ -139,5 +141,6 @@ pub mod fungibles_row;
 pub mod persona_strip;
 pub mod user_badge;
 pub mod variant_split;
+pub mod viewport;
 pub mod wallet_identity_header;
 pub mod wallet_list;

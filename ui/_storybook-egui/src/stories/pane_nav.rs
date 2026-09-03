@@ -12,6 +12,9 @@ pub struct PaneNavState {
     pub selected: u64,
     pub locked_selected: u64,
     pub narrow_selected: u64,
+    /// Shared across every rung of the width ladder, so selecting on one shows
+    /// the selected state at every width at once.
+    pub ladder_selected: u64,
     /// Width of the constrained-column demo, so the wrap behaviour can be
     /// dragged rather than imagined.
     pub column_width: f32,
@@ -23,6 +26,7 @@ impl Default for PaneNavState {
             selected: 0,
             locked_selected: 0,
             narrow_selected: 0,
+            ladder_selected: 1,
             column_width: 420.0,
         }
     }
@@ -164,7 +168,77 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
         ui.separator();
         ui.label("…pane content would render here, in the same column.");
     });
+
+    ui.add_space(16.0);
+
+    // ── 5. The width ladder ───────────────────────────────────────────
+    //
+    // The slider above is for poking at; this is for REVIEWING. Narrow
+    // behaviour that you have to drag a slider to reach is narrow behaviour
+    // nobody looks at — the nav above shipped into a phone layout unexamined
+    // because checking it meant three manual steps. Every width at once means
+    // one screenshot answers "does this work on a phone".
+    section(ui, "Width ladder — every breakpoint at once");
+    ui.label(
+        egui::RichText::new(
+            "The real five-destination nav from the collection detail page, at \
+             the widths that actually occur. Read down: the point is where the \
+             strip stops being one row, and whether what it becomes is usable \
+             with a thumb.",
+        )
+        .color(TEXT_MUTED)
+        .small(),
+    );
+    ui.add_space(6.0);
+
+    for (width, note) in WIDTH_LADDER {
+        ui.label(
+            egui::RichText::new(format!("{width:.0}pt — {note}"))
+                .color(TEXT_MUTED)
+                .small(),
+        );
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.set_max_width(*width);
+            ui.set_min_width(*width);
+            // Apply the COMPACT touch sizing the phone actually gets, locally.
+            // Without this the ladder renders desktop-sized buttons at phone
+            // widths and reports that everything fits — a rung that lies about
+            // the one thing it exists to check. Set here rather than via
+            // `viewport::apply_touch_sizing`, which writes the global style and
+            // would resize the whole storybook.
+            let bp = egui_widgets::Breakpoint::Compact;
+            ui.spacing_mut().interact_size.y = bp.min_touch();
+            ui.spacing_mut().button_padding = bp.button_padding();
+            let resp = PaneNavBar::new(state.ladder_selected)
+                .add(PaneNavEntry::new(0, "Browse").icon(PhosphorIcon::List))
+                .add(PaneNavEntry::new(1, "Market").icon(PhosphorIcon::Coins))
+                .add(PaneNavEntry::new(2, "Traits").icon(PhosphorIcon::Star))
+                .add(PaneNavEntry::new(3, "Sell").icon(PhosphorIcon::Handshake))
+                .add(PaneNavEntry::new(4, "Holders").icon(PhosphorIcon::User))
+                .show(ui);
+            if let Some(id) = resp.selected {
+                state.ladder_selected = id;
+            }
+        });
+        ui.add_space(6.0);
+    }
 }
+
+/// Widths a real reader actually arrives at, narrow → wide.
+///
+/// Not a smooth sweep: these are the devices and the breakpoint edges, so a
+/// regression shows up against a width someone is holding rather than against
+/// an arbitrary number.
+const WIDTH_LADDER: &[(f32, &str)] = &[
+    (320.0, "iPhone SE, the narrowest phone still in use"),
+    (390.0, "iPhone 15 / Pixel 8 — the common case"),
+    (430.0, "Pro Max"),
+    (560.0, "large phone landscape / split window"),
+    (
+        700.0,
+        "the Compact ceiling — a side panel starts to fit here",
+    ),
+];
 
 fn section(ui: &mut egui::Ui, title: &str) {
     ui.label(egui::RichText::new(title).strong());

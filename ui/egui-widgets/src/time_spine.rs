@@ -41,6 +41,17 @@ use crate::motion::{Easing, tween, tween_bool};
 /// than in/out.
 const MARK_IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
 const MARK_OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
+/// Directionless events — deliberately UNSATURATED rather than a third hue.
+///
+/// A hue would read as a third category competing with in and out; these are
+/// the events that decline the question, and they are usually the majority. A
+/// grey lets a burst of them still show as density while leaving the two
+/// directional colours as the thing the eye picks out.
+const MARK_NEUTRAL: Color32 = Color32::from_rgb(0x7a, 0x82, 0x94);
+/// Half-height of a neutral mark, in points. Small: it straddles the midline
+/// instead of rising from it, so it must not read as a short In and a short
+/// Out drawn on top of each other.
+const NEUTRAL_HALF: f32 = 2.0;
 
 /// The pin — deliberately a THIRD hue, neither mark colour.
 ///
@@ -613,6 +624,21 @@ pub enum MarkKind {
     In,
     /// Something left.
     Out,
+    /// It happened, and it had no direction for the thing being watched.
+    ///
+    /// **Not a fallback for "we didn't work it out" — a real third answer.**
+    /// In/Out are relative to a subject, and some subjects have events that
+    /// are genuinely neither. Watching a POLICY, a mint is supply arriving and
+    /// a burn is supply leaving, but an ordinary transfer is circulation
+    /// between two holders: nothing enters or leaves. Transfers are also most
+    /// of the feed, so forcing them into `In` would paint almost every mark in
+    /// the "arrived" hue and make the lane's colour meaningless — while
+    /// dropping them would empty the density strip on any collection that has
+    /// finished minting, which is exactly the history a reader came to see.
+    ///
+    /// Drawn straddling the midline rather than rising or falling from it, so
+    /// the shape says "no direction" before the colour does.
+    Neutral,
 }
 
 pub struct TimeSpine<'a> {
@@ -841,6 +867,10 @@ impl<'a> TimeSpine<'a> {
                 let (y0, y1, col) = match kind {
                     MarkKind::In => (mid, brush_lane.top() + 1.0, MARK_IN),
                     MarkKind::Out => (mid, brush_lane.bottom() - 1.0, MARK_OUT),
+                    // Straddles the midline: the SHAPE says "no direction"
+                    // before the colour does, which matters because these are
+                    // usually the majority of the lane.
+                    MarkKind::Neutral => (mid - NEUTRAL_HALF, mid + NEUTRAL_HALF, MARK_NEUTRAL),
                 };
                 painter.line_segment(
                     [pos2(x, y0), pos2(x, y1)],

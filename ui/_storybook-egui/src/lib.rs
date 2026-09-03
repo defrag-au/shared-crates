@@ -103,6 +103,7 @@ mod app {
         PartyBadge,
         FlowLedger,
         ActivityFeed,
+        TxCard,
         ChannelBands,
         CustodyWalk,
         ClaimCard,
@@ -145,6 +146,8 @@ mod app {
         ServiceBanner,
         QuantityStepper,
         MintCheckout,
+        Viewport,
+        Drawer,
     }
 
     impl Story {
@@ -164,6 +167,7 @@ mod app {
                 Self::PartyBadge,
                 Self::FlowLedger,
                 Self::ActivityFeed,
+                Self::TxCard,
                 Self::ChannelBands,
                 Self::CustodyWalk,
                 Self::ClaimCard,
@@ -199,6 +203,8 @@ mod app {
                 Self::ErrorNote,
                 Self::Gated,
                 Self::AccessGate,
+                Self::Viewport,
+                Self::Drawer,
                 Self::UserBadge,
                 Self::TierLadder,
                 Self::AboutModal,
@@ -386,6 +392,7 @@ mod app {
                 Self::PartyBadge => "Party Badge",
                 Self::FlowLedger => "Flow Ledger",
                 Self::ActivityFeed => "Activity Feed",
+                Self::TxCard => "Tx Card",
                 Self::ChannelBands => "Channel Bands",
                 Self::CustodyWalk => "Custody Walk",
                 Self::ClaimCard => "Claim Card",
@@ -418,6 +425,8 @@ mod app {
                 Self::ErrorNote => "Error Note",
                 Self::Gated => "Gated",
                 Self::AccessGate => "Access Gate",
+                Self::Viewport => "Breakpoint",
+                Self::Drawer => "Drawer",
                 Self::UserBadge => "User Badge",
                 Self::TierLadder => "Tier Ladder",
                 Self::AboutModal => "About Modal",
@@ -444,6 +453,7 @@ mod app {
                 | Self::PartyBadge
                 | Self::FlowLedger
                 | Self::ActivityFeed
+                | Self::TxCard
                 | Self::ChannelBands
                 | Self::CustodyWalk
                 | Self::ClaimCard
@@ -474,6 +484,8 @@ mod app {
                 | Self::ErrorNote
                 | Self::Gated
                 | Self::AccessGate
+                | Self::Viewport
+                | Self::Drawer
                 | Self::UserBadge
                 | Self::TierLadder
                 | Self::AboutModal
@@ -553,6 +565,8 @@ mod app {
                 Self::ErrorNote => "Distils Debug-wrapped / escaped-JSON error blobs to the human reason + HTTP status, with a show-raw toggle",
                 Self::Gated => "Entitlement-gated rendering — locked card/chip affordances driven by the shared authorizations Feature registry",
                 Self::AccessGate => "App-level access screen: sign-in prompt + requirements (join links) for gated tools",
+                Self::Viewport => "Compact / Medium / Wide — the breakpoint every responsive layout decision reads from",
+                Self::Drawer => "Edge-anchored slide-over with a scrim — the narrow-layout stand-in for a side panel",
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
                 Self::TierLadder => "The access ladder as a modal — what each rung gives, every route to it, and where you stand",
                 Self::AboutModal => "What a product is, what state it is in, and what to expect — the BETA badge's modal",
@@ -762,6 +776,9 @@ mod app {
                 }
                 Self::ActivityFeed => {
                     "The account view of the same history: day-grouped cards, each naming its venue, its counterparty and THE ASSETS THAT MOVED — because \"+2 items\" hides whether a wallet got two junk airdrops or two of the collection it trades"
+                }
+                Self::TxCard => {
+                    "One transaction as a VERDICT rather than a field list. The row this replaces led with the WALLET NET — bookkeeping — and buried the settlement price as the smallest text on the row next to a raw db slug; four chips did the work of one clause. Same ranking as the social card: the price leads, the lot is named by its shared stem (never after one member), the party clause is a sentence, the net goes last and grey. Viewpoint is an enum with the parties INSIDE it, so a policy feed — which has no \"us\" — literally cannot be given a verb of ownership. Two absences are kept apart: below-floor pulses and offers to walk deeper, ambiguous states itself and offers nothing, because deepening cannot fix it"
                 }
                 Self::CapitalFlow => {
                     "\"They raised X — watch where it went.\" Cumulative destination bands over a real time axis with a draggable playhead and play button; a labelled raise line the stack is free to CROSS, because deployment beyond the raise is a finding rather than an error to clamp"
@@ -1039,6 +1056,7 @@ mod app {
         claim_card_state: stories::claim_card::ClaimCardState,
         capital_flow_state: stories::capital_flow::CapitalFlowState,
         cap_band_state: stories::cap_band::CapBandState,
+        tx_card_state: stories::tx_card::TxCardState,
         time_spine_state: stories::time_spine::TimeSpineState,
         coverage_lanes_state: stories::coverage_lanes::CoverageLanesState,
         flow_matrix_state: stories::flow_matrix::FlowMatrixState,
@@ -1175,6 +1193,7 @@ mod app {
                 claim_card_state: stories::claim_card::ClaimCardState::default(),
                 capital_flow_state: stories::capital_flow::CapitalFlowState::default(),
                 cap_band_state: stories::cap_band::CapBandState::default(),
+                tx_card_state: stories::tx_card::TxCardState::default(),
                 time_spine_state: stories::time_spine::TimeSpineState::default(),
                 coverage_lanes_state: stories::coverage_lanes::CoverageLanesState::default(),
                 flow_matrix_state: stories::flow_matrix::FlowMatrixState::default(),
@@ -1261,6 +1280,8 @@ mod app {
                             Story::ErrorNote => stories::error_note::show(ui),
                             Story::Gated => stories::gated::show(ui),
                             Story::AccessGate => stories::access_gate::show(ui),
+                            Story::Viewport => stories::viewport::show(ui),
+                            Story::Drawer => stories::drawer::show(ui),
                             Story::UserBadge => stories::user_badge::show(ui),
                             Story::TierLadder => stories::tier_ladder::show(ui),
                             Story::AboutModal => stories::about_modal::show(ui),
@@ -1449,6 +1470,9 @@ mod app {
                             Story::PartyBadge => stories::party_badge::show(ui),
                             Story::FlowLedger => stories::flow_ledger::show(ui),
                             Story::ActivityFeed => stories::activity_feed::show(ui),
+                            Story::TxCard => {
+                                stories::tx_card::show(ui, &mut self.tx_card_state)
+                            }
                             Story::ChannelBands => stories::channel_bands::show(ui),
                             Story::CustodyWalk => stories::custody_walk::show(ui),
                             Story::CapitalFlow => {

@@ -87,9 +87,21 @@ impl<'a> AccessGate<'a> {
         let weak = ui.visuals().weak_text_color();
         let mut action = GateAction::None;
 
-        ui.add_space(48.0);
+        use crate::viewport::Breakpoint;
+        let bp = Breakpoint::from_ui(ui);
+
+        ui.add_space(match bp {
+            Breakpoint::Compact => 24.0,
+            Breakpoint::Medium | Breakpoint::Wide => 48.0,
+        });
         ui.with_layout(Layout::top_down(Align::Center), |ui| {
-            ui.set_max_width(520.0);
+            // CLAMPED, not asserted. `set_max_width` assigns `max_rect.max.x`
+            // outright rather than taking a minimum, so it WIDENS a Ui that
+            // has less room — a flat 520 laid the gate out at 520pt inside a
+            // 342pt phone and clipped the tagline off BOTH edges. The one
+            // screen whose entire job is to explain how to get in was the one
+            // screen nobody could read.
+            ui.set_max_width(crate::viewport::fit(ui, 520.0));
             ui.label(RichText::new(self.feature.name()).color(accent).size(24.0));
             ui.add_space(6.0);
 
@@ -97,9 +109,15 @@ impl<'a> AccessGate<'a> {
                 GateStatus::Anonymous => {
                     ui.label(RichText::new(self.tagline).color(weak).size(13.0));
                     ui.add_space(20.0);
+                    // The one control on the screen — on a phone it gets a
+                    // full-width, thumb-sized target rather than a 36pt strip.
+                    let btn = match bp {
+                        Breakpoint::Compact => [crate::viewport::fit(ui, 320.0), 48.0],
+                        Breakpoint::Medium | Breakpoint::Wide => [220.0, 36.0],
+                    };
                     if ui
                         .add_sized(
-                            [220.0, 36.0],
+                            btn,
                             egui::Button::new(
                                 RichText::new("Sign in with Discord")
                                     .color(accent)

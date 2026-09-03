@@ -194,14 +194,21 @@ impl<'a> StatStrip<'a> {
         // `left_to_right(TOP)` — top-align the cards so differing heights don't
         // cascade into a staircase (which `ui.horizontal`'s center align does
         // when it can't know row height up front).
+        //
+        // `with_main_wrap` — three 190pt cards need 590pt, so on a phone the
+        // third one was simply drawn past the right edge. Wrapping only engages
+        // when the row does not fit, so a desktop strip is unchanged.
         let mut spark_hover = None;
-        ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-            for (wi, w) in self.windows.iter().enumerate() {
-                if let Some((resp, bucket)) = self.card(ui, w, domain) {
-                    spark_hover = Some((wi, bucket, resp));
+        ui.with_layout(
+            egui::Layout::left_to_right(egui::Align::TOP).with_main_wrap(true),
+            |ui| {
+                for (wi, w) in self.windows.iter().enumerate() {
+                    if let Some((resp, bucket)) = self.card(ui, w, domain) {
+                        spark_hover = Some((wi, bucket, resp));
+                    }
                 }
-            }
-        });
+            },
+        );
         StatStripResponse { spark_hover }
     }
 
