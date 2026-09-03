@@ -22,6 +22,7 @@ members = [
     "pinata",
     "test-utils",
     "tx-insights",
+    "tx-verdict",
     "wasm-safe-serde",
     "worker-stack",
     "worker-utils",
@@ -196,6 +197,7 @@ macroquad-wallet-flow = { path = "ui/macroquad-wallet-flow" }
 macroquad-widgets = { path = "ui/macroquad-widgets" }
 wallet-miniquad = { path = "ui/wallet-miniquad" }
 tx_insights = { path = "tx-insights" }
+tx-verdict = { path = "tx-verdict" }
 test_utils = { path = "test-utils" }
 pipeline-types = { path = "pipeline/pipeline-types" }
 transactions = { path = "pipeline/transactions" }

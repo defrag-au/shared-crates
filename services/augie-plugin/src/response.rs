@@ -344,4 +344,48 @@ mod tests {
         assert_eq!(parsed.body.content.as_deref(), Some("hi"));
         assert!(parsed.ephemeral);
     }
+
+    /// Every envelope flag survives the round trip beside the flattened body.
+    ///
+    /// `#[serde(flatten)]` makes deserialisation go through serde's buffering
+    /// path, where a sibling field that failed to match would silently take its
+    /// `Default` rather than erroring. For `launch_activity` that default is
+    /// `false`, which does not read as a bug — it reads as the Activity simply
+    /// not opening. Each of these is a bool whose wrong value is invisible, so
+    /// each is asserted rather than assumed.
+    #[test]
+    fn envelope_flags_survive_beside_the_flattened_body() {
+        let cases: [(CommandResponse, fn(&CommandResponse) -> bool, &str); 4] = [
+            (
+                CommandResponse::launch_activity(),
+                |r| r.launch_activity,
+                "launch_activity",
+            ),
+            (
+                CommandResponse::text("x").updating(),
+                |r| r.update_message,
+                "update_message",
+            ),
+            (
+                CommandResponse::text("x").ephemeral(),
+                |r| r.ephemeral,
+                "ephemeral",
+            ),
+            (
+                CommandResponse::handoff(WellKnownCommand::LinkWallet, "x"),
+                |r| r.handoff.is_some(),
+                "handoff",
+            ),
+        ];
+
+        for (response, read, name) in cases {
+            assert!(read(&response), "fixture for `{name}` is wrong");
+
+            let json = serde_json::to_string(&response).unwrap();
+            let back: CommandResponse = serde_json::from_str(&json).unwrap();
+
+            assert!(read(&back), "`{name}` did not survive the wire: {json}");
+            assert_eq!(back, response, "`{name}` round trip differed");
+        }
+    }
 }
