@@ -27,10 +27,17 @@
 //! duplicate-crate type mismatches this workspace has been bitten by before.
 //!
 //! So the protocol defines its own minimal vocabulary ([`PluginEmbed`],
-//! [`PluginComponent`], …) and each host converts at its own edge. The crate
-//! depends on `serde` and `serde_json` and nothing else — the latter only
-//! because a [`PluginTool`]'s schema and a [`ToolInvocation`]'s arguments are
-//! genuinely free-form JSON — which keeps it trivially WASM-safe.
+//! [`PluginComponent`], …). The crate depends on `serde` and `serde_json` and
+//! nothing else, which keeps it trivially WASM-safe.
+//!
+//! ## Rendering without twilight
+//!
+//! [`mod@wire`] turns that vocabulary into Discord's message JSON directly —
+//! no library send support is needed, because Components V2 is JSON plus the
+//! `IS_COMPONENTS_V2` flag. That is what lets **one** renderer serve both
+//! hosts: a twilight-typed one could not, for the version reason above. Each
+//! host still converts to its own twilight types where it wants them, but from
+//! the same JSON rather than from a second implementation.
 //!
 //! ## Snowflakes are strings
 //!
@@ -44,6 +51,7 @@ mod invocation;
 mod manifest;
 mod response;
 mod tool;
+pub mod wire;
 
 pub use address::*;
 pub use invocation::*;
@@ -77,11 +85,10 @@ pub const REFRESH_PATH: &str = "/refresh";
 /// plain HTTP, a queue consumer finishing a job — and needing the original
 /// message to stop showing stale state.
 ///
-/// The plugin cannot render it alone: this crate is deliberately twilight-free
-/// so both repos can pin it as a pure wire format, so nothing here knows how a
-/// [`PluginBlock`] becomes a Discord component. Augie does. So the plugin sends
-/// the layout it wants and the credentials proving it owns that message, and
-/// Augie renders it with the same converter the interaction path uses.
+/// The plugin cannot send it alone: editing a message means holding either the
+/// bot token or the interaction token, and a plugin has neither. So the plugin
+/// sends the layout it wants and the credentials proving it owns that message,
+/// and Augie renders it with the same converter the interaction path uses.
 ///
 /// # Addressed through the interaction webhook, not the channel
 ///

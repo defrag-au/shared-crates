@@ -4,13 +4,25 @@
 //! service front-end actually needs — text, embeds, buttons, selects — and
 //! nothing else. Each host converts to its own twilight version at the edge;
 //! see the crate docs for why twilight types can't live on this wire.
+//!
+//! The presentation half is [`MessageBody`]: everything Discord renders, with
+//! no delivery semantics attached. [`CommandResponse`] is the *interaction*
+//! envelope around it — ephemerality, activity launches, host-side rendering.
+//! Splitting them is what lets the same presentation vocabulary describe a
+//! channel post, which has no interaction and so none of the envelope's
+//! fields. See `docs/DISCORD_OUTBOUND_CONSOLIDATION_DESIGN.md`.
 
 use render_protocol::RenderRequest;
 use serde::{Deserialize, Serialize};
 
-/// A plugin's reply to an invocation.
+/// Everything Discord will render. No transport, no delivery semantics.
+///
+/// The two vocabularies here are mutually exclusive: `layout` is Components V2
+/// and Discord rejects a message that also carries `content` or `embeds`. See
+/// [`PluginBlock`] — the host drops the classic fields rather than sending
+/// something that will 400.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct CommandResponse {
+pub struct MessageBody {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
 
@@ -22,6 +34,70 @@ pub struct CommandResponse {
     /// reject the whole message.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rows: Vec<PluginActionRow>,
+
+    /// Components V2 layout. See [`PluginBlock`] — mutually exclusive with
+    /// `content` and `embeds`, which the host drops when this is set.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layout: Vec<PluginBlock>,
+}
+
+impl MessageBody {
+    /// Plain text.
+    pub fn text(content: impl Into<String>) -> Self {
+        Self {
+            content: Some(content.into()),
+            ..Default::default()
+        }
+    }
+
+    /// A Components V2 layout.
+    pub fn layout(blocks: Vec<PluginBlock>) -> Self {
+        Self {
+            layout: blocks,
+            ..Default::default()
+        }
+    }
+
+    /// Nothing for Discord to render.
+    ///
+    /// Not the same as "nothing to do" — a [`CommandResponse`] can be an empty
+    /// body plus a `launch_activity`, which is a real answer with no message.
+    pub fn is_empty(&self) -> bool {
+        self.content.is_none()
+            && self.embeds.is_empty()
+            && self.rows.is_empty()
+            && self.layout.is_empty()
+    }
+
+    /// Every `custom_id` in this body, in render order.
+    ///
+    /// Augie uses this to register component routing before sending, so it can
+    /// map a later click back to the originating plugin.
+    ///
+    /// Classic `rows` only — a V2 `layout` nests rows inside containers, and
+    /// walking that tree needs mutable access to rewrite the ids anyway, so the
+    /// host does it in one pass rather than reading here and writing there.
+    pub fn custom_ids(&self) -> Vec<&str> {
+        self.rows
+            .iter()
+            .flat_map(|row| row.components.iter())
+            .filter_map(PluginComponent::custom_id)
+            .collect()
+    }
+}
+
+/// A plugin's reply to an invocation.
+///
+/// The presentation lives in [`MessageBody`], flattened onto this struct's JSON
+/// so the wire shape is unchanged by the split. Everything else here is
+/// *delivery* — meaningful only because an interaction is what is being
+/// answered.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct CommandResponse {
+    /// What Discord renders. Flattened: `content`, `embeds`, `rows` and
+    /// `layout` remain top-level keys on the wire.
+    #[serde(flatten)]
+    pub body: MessageBody,
 
     /// Visible only to the invoking user. Default `false`, so a plugin has to
     /// opt in to ephemeral — the failure mode of an accidentally-public
@@ -44,11 +120,6 @@ pub struct CommandResponse {
     /// beneath the message.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub render: Option<RenderRequest>,
-
-    /// Components V2 layout. See [`PluginBlock`] — mutually exclusive with
-    /// `content` and `embeds`, which the host drops when this is set.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub layout: Vec<PluginBlock>,
 
     /// Replace the message the component was attached to, rather than posting
     /// a new one. Only meaningful on a [`crate::ComponentInvocation`] reply —
@@ -157,7 +228,7 @@ impl CommandResponse {
     /// Plain text reply, visible to the channel.
     pub fn text(content: impl Into<String>) -> Self {
         Self {
-            content: Some(content.into()),
+            body: MessageBody::text(content),
             ..Default::default()
         }
     }
@@ -166,19 +237,27 @@ impl CommandResponse {
     /// errors and for anything reporting the caller's own state.
     pub fn ephemeral_text(content: impl Into<String>) -> Self {
         Self {
-            content: Some(content.into()),
+            body: MessageBody::text(content),
             ephemeral: true,
             ..Default::default()
         }
     }
 
+    /// A Components V2 reply. See [`PluginBlock`].
+    pub fn layout(blocks: Vec<PluginBlock>) -> Self {
+        Self {
+            body: MessageBody::layout(blocks),
+            ..Default::default()
+        }
+    }
+
     pub fn with_embed(mut self, embed: PluginEmbed) -> Self {
-        self.embeds.push(embed);
+        self.body.embeds.push(embed);
         self
     }
 
     pub fn with_row(mut self, row: PluginActionRow) -> Self {
-        self.rows.push(row);
+        self.body.rows.push(row);
         self
     }
 
@@ -213,23 +292,11 @@ impl CommandResponse {
     /// all, so it should stand on its own in words.
     pub fn handoff(handoff: WellKnownCommand, content: impl Into<String>) -> Self {
         Self {
-            content: Some(content.into()),
+            body: MessageBody::text(content),
             handoff: Some(handoff),
             ephemeral: true,
             ..Default::default()
         }
-    }
-
-    /// Every `custom_id` in this response, in row order.
-    ///
-    /// Augie uses this to register component routing before sending, so it can
-    /// map a later click back to the originating plugin.
-    pub fn custom_ids(&self) -> Vec<&str> {
-        self.rows
-            .iter()
-            .flat_map(|row| row.components.iter())
-            .filter_map(PluginComponent::custom_id)
-            .collect()
     }
 }
 
@@ -380,7 +447,7 @@ mod tests {
     fn a_handoff_carries_standalone_copy_and_is_private() {
         let response = CommandResponse::handoff(WellKnownCommand::LinkWallet, "connect a wallet");
         assert_eq!(response.handoff, Some(WellKnownCommand::LinkWallet));
-        assert_eq!(response.content.as_deref(), Some("connect a wallet"));
+        assert_eq!(response.body.content.as_deref(), Some("connect a wallet"));
         // A linked wallet ties an on-chain address to a Discord identity; the
         // channel is not entitled to watch someone being asked for one.
         assert!(response.ephemeral);
@@ -403,7 +470,7 @@ mod tests {
             },
         ]));
 
-        assert_eq!(response.custom_ids(), vec!["comp:refresh:01J"]);
+        assert_eq!(response.body.custom_ids(), vec!["comp:refresh:01J"]);
     }
 
     #[test]
@@ -415,6 +482,47 @@ mod tests {
         // along — that's deliberate, it makes the visibility explicit on
         // every response rather than inferred from absence.
         assert!(json.contains("ephemeral"), "{json}");
+    }
+
+    /// The body is `#[serde(flatten)]`ed, so extracting it must not have moved
+    /// anything on the wire. Every plugin in two repos serialises this shape,
+    /// and they update on independent rev bumps — a nested `body` object would
+    /// deserialise as an all-default response on the host, which renders as a
+    /// blank message rather than an error.
+    #[test]
+    fn the_body_stays_flat_on_the_wire() {
+        let response = CommandResponse {
+            body: MessageBody {
+                content: Some("hi".into()),
+                embeds: vec![PluginEmbed {
+                    title: Some("t".into()),
+                    ..Default::default()
+                }],
+                rows: vec![PluginActionRow::new(vec![PluginComponent::LinkButton {
+                    url: "https://example.com".into(),
+                    label: "Go".into(),
+                    disabled: false,
+                }])],
+                layout: vec![PluginBlock::Text {
+                    content: "block".into(),
+                }],
+            },
+            ephemeral: true,
+            ..Default::default()
+        };
+
+        let value: serde_json::Value = serde_json::to_value(&response).unwrap();
+        assert!(value.get("body").is_none(), "no nested envelope: {value}");
+        for key in ["content", "embeds", "rows", "layout", "ephemeral"] {
+            assert!(value.get(key).is_some(), "`{key}` must stay top-level: {value}");
+        }
+
+        // And the pre-split JSON still parses, which is the direction that
+        // actually breaks: an old plugin talking to a new host.
+        let legacy = r#"{"content":"hi","embeds":[],"rows":[],"layout":[],"ephemeral":true}"#;
+        let parsed: CommandResponse = serde_json::from_str(legacy).unwrap();
+        assert_eq!(parsed.body.content.as_deref(), Some("hi"));
+        assert!(parsed.ephemeral);
     }
 
     /// The live failure: ten three-line sections is over sixty components and
