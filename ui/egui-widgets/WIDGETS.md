@@ -84,6 +84,12 @@ row of data. These compose primitives internally.
   density. Viewpoint carries the parties, so a policy feed with no
   "us" cannot be given a verb of ownership. **Wallet + policy feeds;
   the in-app twin of the social card.**
+- **`verdict_card`** (feature `verdict`) → `VerdictCard` — The ONE
+  mapping from a shared `tx_verdict::TxVerdict` to `TxCard`'s input:
+  owns the thumbnail URLs and print labels the card borrows, maps
+  `Basis`/`Verb`/`Tone`/`TagKind` to the widget's vocabulary, and
+  returns the party's KEY on a walk click. **Any app drawing verdicts —
+  don't write this mapping by hand.**
 
 ## Lists & tables
 

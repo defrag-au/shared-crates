@@ -166,6 +166,8 @@ pub mod tx_estimate;
 pub mod utxo_map;
 #[cfg(feature = "cardano")]
 pub mod utxo_shelf;
+#[cfg(feature = "verdict")]
+pub mod verdict_card;
 #[cfg(feature = "cardano")]
 pub mod wallet_asset_picker;
 
@@ -382,6 +384,8 @@ pub use utxo_shelf::{
     ShelfAction, ShelfConfig, ShelfData, ShelfResponse, ShelfState, ShelfTier, ShelfUtxo,
     classify_utxos,
 };
+#[cfg(feature = "verdict")]
+pub use verdict_card::VerdictCard;
 #[cfg(feature = "cardano")]
 pub use wallet_asset_picker::{
     PickerAsset, PickerPolicyGroup, SelectedAsset, WalletAssetPickerAction,

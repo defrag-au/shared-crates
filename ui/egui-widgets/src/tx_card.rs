@@ -316,11 +316,15 @@ impl<'a> TxParty<'a> {
         self
     }
 
-    /// The label, when there is one to follow. `None` for either absence —
-    /// which is what stops a feed offering to walk into a party it cannot name.
+    /// Where a click goes: the KEY when one was given, else the label. `None`
+    /// for either absence — which is what stops a feed offering to walk into
+    /// a party it cannot name.
+    ///
+    /// The key is what makes a handle clickable in a feed: `$elchapojr` is
+    /// the label, and the stake behind it is where the walk has to go.
     fn walkable(&self) -> Option<&'a str> {
         match self {
-            TxParty::Known { label, .. } => Some(label),
+            TxParty::Known { label, key, .. } => Some(key.unwrap_or(label)),
             TxParty::BelowFloor | TxParty::Ambiguous { .. } => None,
         }
     }
@@ -891,6 +895,32 @@ fn party_clause(
                 walk = walk.take().or(w);
                 deepen |= dp;
             }
+            // BOTH SIDES AMBIGUOUS IS ONE FACT, not two absences with an arrow
+            // between them. A batched fill or a bulk transfer has several
+            // parties on each side; the live feed rendered that as "0 parties
+            // on this side → 0 parties on this side", which reads as a broken
+            // row rather than as the honest statement that there is no
+            // directed pair to draw.
+            TxViewpoint::Pair {
+                from: TxParty::Ambiguous { count: a },
+                to: TxParty::Ambiguous { count: b },
+            } => {
+                let text = match a + b {
+                    0 => "several parties — no single sender or recipient".to_string(),
+                    n => format!("several parties — {n} in this movement"),
+                };
+                ui.label(
+                    RichText::new(text)
+                        .size(size)
+                        .italics()
+                        .color(theme::TEXT_MUTED),
+                )
+                .on_hover_text(
+                    "A batched fill or a bulk transfer: more than one party on a side, so \
+                     there is no single sender and no single recipient. Walking deeper \
+                     does not resolve this.",
+                );
+            }
             TxViewpoint::Pair { from, to } => {
                 let (w, dp) = party(ui, from, size, walkable, walking);
                 walk = walk.take().or(w);
@@ -1001,8 +1031,14 @@ fn party(
         TxParty::Ambiguous { count } => {
             // A STATEMENT, never a placeholder, and never with a deepen offer:
             // this one does not resolve however deep the walk goes.
+            // A count of zero is "the derivation declined and recorded nobody",
+            // not "nobody was there" — say several, not 0.
+            let text = match count {
+                0 => "several parties on this side".to_string(),
+                n => format!("{n} parties on this side"),
+            };
             ui.label(
-                RichText::new(format!("{count} parties on this side"))
+                RichText::new(text)
                     .size(size)
                     .italics()
                     .color(theme::TEXT_MUTED),

@@ -1459,6 +1459,7 @@ dependencies = [
  "js-sys",
  "log",
  "serde",
+ "tx-verdict",
  "voronoice",
  "wallet-core",
  "wallet-pallas",

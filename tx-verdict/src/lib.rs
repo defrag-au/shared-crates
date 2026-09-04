@@ -39,6 +39,14 @@
 //! [`Party::BelowFloor`] resolves by walking deeper — offering to is true and
 //! actionable. [`Party::Ambiguous`] never resolves, and offering to deepen for
 //! it is a lie. They must not collapse into an `Option`.
+//!
+//! # A party has a label AND a key
+//!
+//! The label is what a reader sees — a handle, a venue, an elided address. The
+//! key is what a click navigates to — the stake or address the producer
+//! resolved the label from. They are different strings, and a renderer that
+//! only has the label cannot follow the money out of the row. The producer
+//! sets both; the renderer shows one and returns the other.
 
 use serde::{Deserialize, Serialize};
 
@@ -99,13 +107,60 @@ pub struct Headline {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Party {
     /// A named party, and how firmly.
-    Known { label: String, basis: Basis },
+    Known {
+        /// What the reader sees.
+        label: String,
+        /// What a click navigates to — the stake or address behind the
+        /// label. Absent when the label IS the key, or when there is nowhere
+        /// to go.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key: Option<String>,
+        basis: Basis,
+    },
     /// The source output sits below the walk floor. Walking deeper finds it —
     /// render as a placeholder, and offer to reach further back.
     BelowFloor,
     /// Several parties on this side. Stated, never guessed, never offered a
     /// deepen: it does not resolve however far the walk goes.
     Ambiguous { count: usize },
+}
+
+impl Party {
+    /// A party the chain itself resolved.
+    pub fn observed(label: impl Into<String>) -> Self {
+        Party::Known {
+            label: label.into(),
+            key: None,
+            basis: Basis::Observed,
+        }
+    }
+
+    /// A party a VENUE named — its word, not an output a walk resolved.
+    pub fn derived(label: impl Into<String>) -> Self {
+        Party::Known {
+            label: label.into(),
+            key: None,
+            basis: Basis::Derived,
+        }
+    }
+
+    /// Attach the navigation key. No effect on an absence, which has nowhere
+    /// to go by definition.
+    pub fn keyed(mut self, key: impl Into<String>) -> Self {
+        if let Party::Known { key: slot, .. } = &mut self {
+            *slot = Some(key.into());
+        }
+        self
+    }
+
+    /// Where a click on this party goes, if anywhere: the key, else the
+    /// label, else nothing — an absence is never a destination.
+    pub fn walk_target(&self) -> Option<&str> {
+        match self {
+            Party::Known { label, key, .. } => Some(key.as_deref().unwrap_or(label)),
+            Party::BelowFloor | Party::Ambiguous { .. } => None,
+        }
+    }
 }
 
 /// What this wallet DID, when there is a wallet whose side we are on.
@@ -488,6 +543,21 @@ mod tests {
         assert_eq!(venue_slug("wayup"), "wayup");
     }
 
+    /// A click goes to the KEY when there is one, the label otherwise, and
+    /// nowhere for an absence — a placeholder is never a destination.
+    #[test]
+    fn a_party_walks_to_its_key_never_to_an_absence() {
+        assert_eq!(Party::observed("$boef").walk_target(), Some("$boef"));
+        assert_eq!(
+            Party::observed("$boef").keyed("stake1boef").walk_target(),
+            Some("stake1boef")
+        );
+        assert_eq!(Party::BelowFloor.walk_target(), None);
+        assert_eq!(Party::Ambiguous { count: 3 }.walk_target(), None);
+        // Keying an absence is a no-op, not a promotion to a destination.
+        assert_eq!(Party::BelowFloor.keyed("x").walk_target(), None);
+    }
+
     /// The verdict is a wire type for the bots and the notifier as well as an
     /// in-memory one for the app: it must round-trip, and a `Pair` must not
     /// acquire a verb on the way through.
@@ -504,10 +574,7 @@ mod tests {
             },
             subject: Some("2 × MachineHeadz".into()),
             view: Viewpoint::Pair {
-                from: Party::Known {
-                    label: "$elchapojr".into(),
-                    basis: Basis::Derived,
-                },
+                from: Party::derived("$elchapojr").keyed("stake1elchapojr"),
                 to: Party::BelowFloor,
             },
             when_unix: 1_788_408_449,
@@ -519,6 +586,7 @@ mod tests {
         let json = serde_json::to_string(&v).unwrap();
         assert!(!json.contains("verb"), "{json}");
         assert!(json.contains("below_floor"), "{json}");
+        assert!(json.contains("stake1elchapojr"), "{json}");
         let back: TxVerdict = serde_json::from_str(&json).unwrap();
         assert_eq!(back, v);
     }

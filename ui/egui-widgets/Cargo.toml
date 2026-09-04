@@ -11,6 +11,10 @@ cardano = ["dep:cardano-assets", "dep:wallet-core", "dep:wallet-pallas"]
 # consumers that only want a widget or two (the portal builds with
 # default-features = false) opt into the gateway coupling explicitly.
 gateway = ["dep:gateway-wiring"]
+# `VerdictCard` — the one mapping from a `tx_verdict::TxVerdict` to `TxCard`'s
+# domain-free input. Feature-gated for the same reason as `gateway`: the
+# catalogue stays domain-free for consumers that never see a verdict.
+verdict = ["dep:tx-verdict"]
 
 # egui_inbox is only used by the wasm `file_upload` widget + a re-export, so it
 # moved to the wasm-only deps below (native consumers don't pull it).
@@ -26,6 +30,8 @@ image = { workspace = true, features = ["jpeg"] }
 cardano-assets = { workspace = true, optional = true }
 # The gateway trigger-wiring vocabulary AND its rules — see `wiring_editor`.
 gateway-wiring = { path = "../../services/gateway-wiring", optional = true }
+# The transaction verdict shape — see `verdict_card`.
+tx-verdict = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 log = { workspace = true }
 i_overlay = "4.4.1"

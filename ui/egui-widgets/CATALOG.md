@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-126 widgets.
+127 widgets.
 
 | module | what it is |
 |---|---|
@@ -126,6 +126,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `utxo_map` | UTxO terrain map — a Voronoi-based wallet visualization |
 | `utxo_shelf` | UTxO Shelf — wallet health visualization |
 | `variant_split` | Variant split — explains a `variant_flow` source slot's **derived** variant distribution and *why* it isn't uniform |
+| `verdict_card` | `VerdictCard` — a `tx_verdict::TxVerdict` drawn as a [`TxCard`] (feature `verdict`) |
 | `viewport` | `Breakpoint` — how wide the surface is, as three named sizes rather than a number every call site re-compares |
 | `wallet` | Framework-agnostic wallet connector for egui frontends |
 | `wallet_asset_picker` | Wallet asset picker — modal widget for browsing and selecting NFTs from a wallet, grouped by policy in an accordion layout |
