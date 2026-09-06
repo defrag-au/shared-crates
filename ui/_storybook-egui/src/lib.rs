@@ -25,6 +25,7 @@ mod app {
         BulletBar,
         Sparkline,
         MetricCard,
+        PerfStrip,
         TokenHistory,
         TokenKinetic,
         TokenParticles,
@@ -218,6 +219,7 @@ mod app {
                 Self::BulletBar,
                 Self::Sparkline,
                 Self::MetricCard,
+                Self::PerfStrip,
                 Self::TokenHistory,
                 Self::TokenKinetic,
                 Self::TokenParticles,
@@ -331,6 +333,7 @@ mod app {
                 Self::BulletBar => "Bullet Bar",
                 Self::Sparkline => "Sparkline",
                 Self::MetricCard => "Metric Card",
+                Self::PerfStrip => "Perf Strip",
                 Self::TokenHistory => "Token History",
                 Self::TokenKinetic => "Token Kinetic",
                 Self::TokenParticles => "Token Particles",
@@ -510,6 +513,7 @@ mod app {
                 | Self::BulletBar
                 | Self::Sparkline
                 | Self::MetricCard
+                | Self::PerfStrip
                 | Self::TokenHistory
                 | Self::TokenKinetic
                 | Self::TokenParticles
@@ -595,6 +599,9 @@ mod app {
                 }
                 Self::MetricCard => {
                     "Dashboard stat card with trend indicators and embedded sparklines"
+                }
+                Self::PerfStrip => {
+                    "Live HUD, vertical or horizontal — frame build cost, fps, memory, work in flight"
                 }
                 Self::TokenParticles => {
                     "Supply as a conserved particle field, playing through warped time"
@@ -1013,6 +1020,7 @@ mod app {
         palette_editor_state: stories::palette_editor::PaletteEditorState,
         slot_table_state: stories::slot_table::SlotTableState,
         sparkline_state: stories::sparkline::SparklineState,
+        perf_strip_state: stories::perf_strip::PerfStripStory,
         seven_segment_state: stories::seven_segment::SevenSegmentState,
         flip_counter_state: stories::flip_counter::FlipCounterState,
         async_data_state: stories::async_data::AsyncDataState,
@@ -1138,6 +1146,7 @@ mod app {
                 palette_editor_state: stories::palette_editor::PaletteEditorState::default(),
                 slot_table_state: stories::slot_table::SlotTableState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
+                perf_strip_state: stories::perf_strip::PerfStripStory::default(),
                 seven_segment_state: stories::seven_segment::SevenSegmentState::default(),
                 flip_counter_state: stories::flip_counter::FlipCounterState::default(),
                 async_data_state: stories::async_data::AsyncDataState::default(),
@@ -1272,6 +1281,11 @@ mod app {
         // eframe 0.34 made `ui` the required App method (was `update` in 0.33);
         // panels nest via `show_inside(ui, …)` instead of `show(ctx, …)`.
         fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+            // The perf_strip story shows the storybook's OWN cost, so the frame
+            // clock has to be wired up here rather than inside the story — a
+            // story that measured only itself would report a fraction of the
+            // frame and read as far cheaper than the app really is.
+            let _frame_scope = egui_widgets::perf_strip::FrameScope::begin();
             let ctx = ui.ctx().clone();
             if !self.nav_hidden {
                 egui::Panel::left("stories")
@@ -1330,6 +1344,9 @@ mod app {
                                 stories::sparkline::show(ui, &mut self.sparkline_state)
                             }
                             Story::MetricCard => stories::metric_card::show(ui),
+                            Story::PerfStrip => {
+                                stories::perf_strip::show(ui, &mut self.perf_strip_state)
+                            }
                             Story::TokenHistory => stories::token_history::show(ui),
                             Story::TokenKinetic => stories::token_kinetic::show(ui),
                             Story::TokenParticles => stories::token_particles::show(ui),

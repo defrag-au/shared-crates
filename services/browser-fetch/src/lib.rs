@@ -20,9 +20,36 @@
 //! failure on the same endpoint means the wire has drifted and deserves a bug
 //! report. Told apart only by substring-matching a `String`, both render as the
 //! same red box.
+//!
+//! # Every request is counted
+//!
+//! [`REQUESTS`] is a `perf-probe` gauge covering the three functions that own a
+//! complete request lifecycle, so any frontend on this crate gets an accurate
+//! in-flight count with no work at the call site — see the gauge's own docs for
+//! where the brackets sit and why they are not around `send`.
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+
+/// HTTP requests this frontend has outstanding.
+///
+/// Public so an app can [`register`](perf_probe::Gauge::register) it at startup
+/// and have the card read a real zero from frame one, rather than appearing
+/// only once the first request has been sent.
+///
+/// # Where the brackets are
+///
+/// Around [`request`], [`get_bytes`] and [`send_with`] — the three functions
+/// that own a whole request — and deliberately **not** around [`send`], which
+/// every one of them calls. `send` resolves when the response *headers* arrive;
+/// the body is read afterwards by its caller. A guard there would call a 240 KB
+/// artifact "done" at the moment its download started, which is most of the
+/// time we actually care about.
+///
+/// [`warm`] is not counted at all: nothing ever observes it finishing, so a
+/// guard could only be leaked, and the gauge would climb forever and read as a
+/// permanently stuck queue.
+pub static REQUESTS: perf_probe::Gauge = perf_probe::Gauge::new("http requests");
 
 /// Why a fetch did not produce a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,6 +221,7 @@ pub async fn send_with<B: Serialize>(
         Some(b) => Some(serde_json::to_string(b).map_err(|e| Error::Decode(e.to_string()))?),
         None => None,
     };
+    let _counted = REQUESTS.enter();
     send(url, method, encoded, headers).await.map(|_| ())
 }
 
@@ -214,6 +242,7 @@ pub async fn delete(url: &str, token: Option<&str>) -> Result<(), Error> {
 /// arrives decompressed and this returns exactly what the origin stored.
 pub async fn get_bytes(url: &str) -> Result<Vec<u8>, Error> {
     use wasm_bindgen_futures::JsFuture;
+    let _counted = REQUESTS.enter();
     let resp = send(url, "GET", None, &[]).await?;
     let buf = JsFuture::from(
         resp.array_buffer()
@@ -248,6 +277,7 @@ async fn request<T: DeserializeOwned>(
     headers: &[Header<'_>],
 ) -> Result<T, Error> {
     use wasm_bindgen_futures::JsFuture;
+    let _counted = REQUESTS.enter();
     let resp = send(url, method, body, headers).await?;
     let json = JsFuture::from(resp.json().map_err(|e| Error::Decode(format!("{e:?}")))?)
         .await

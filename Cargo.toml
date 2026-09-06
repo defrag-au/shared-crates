@@ -19,6 +19,7 @@ members = [
     "local-cache",
     "http-client",
     "openai-client",
+    "perf-probe",
     "pinata",
     "test-utils",
     "tx-insights",
@@ -187,6 +188,10 @@ discord-outbound = { path = "discord-outbound" }
 cardano-tx = { path = "cardano-tx" }
 worker_utils = { path = "worker-utils" }
 asset-rarity = { path = "asset-rarity" }
+# Frame-cost + in-flight-work counters. Pure std, no runtime — so `browser-fetch`
+# can increment a gauge without taking a dependency on any UI framework, and the
+# egui and macroquad sides can both read the same numbers.
+perf-probe = { path = "perf-probe" }
 egui-widgets = { path = "ui/egui-widgets" }
 portal-pane = { path = "ui/portal-pane" }
 gateway-wiring = { path = "services/gateway-wiring" }

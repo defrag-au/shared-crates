@@ -17,6 +17,10 @@ edition = "2021"
 description = "JSON fetch for wasm frontends: typed errors that carry the response body"
 
 [dependencies]
+# In-flight request counting. Pure std — no runtime, no framework, so counting
+# requests here does not compromise the "consumable from any wasm frontend"
+# promise above.
+perf-probe = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 # Bodies are encoded with `serde_json` rather than `serde_wasm_bindgen`: a POST
 # body is a STRING on the wire, and going through JsValue only to stringify it

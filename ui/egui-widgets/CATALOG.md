@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-128 widgets.
+129 widgets.
 
 | module | what it is |
 |---|---|
@@ -80,6 +80,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `party_annotator` | `PartyAnnotator` — decide what a wallet IS to the project, on the record |
 | `party_badge` | `PartyBadge` — a counterparty as it should appear everywhere in a forensic trace: resolved name, **how firmly that name is known**, and the cluster it belongs to |
 | `party_finder` | PartyFinder — hunt down a wallet by ANY of its names, then watch it |
+| `perf_strip` | `PerfStrip` — a small stack of readings saying what the frontend is costing: frame build time, render cadence, memory, and anything still in flight |
 | `persona_strip` | Persona strip — italic one-liner describing a wallet (or any tagged entity), with an optional row of small tag chips beneath |
 | `phase_card` | `PhaseCard` — read-only display of one mint phase row |
 | `pip_row` | Horizontal pip row widget — a label on the left and a bar of colored pips (or density heatmap) on the right, each positioned proportionally by value |

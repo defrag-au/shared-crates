@@ -7,11 +7,17 @@
 // real one. CDP's Emulation.setDeviceMetricsOverride sets the real layout
 // viewport instead.
 //
-//   node cdp-shot.mjs <url> <width> <height> <out.png> [settleMs] [clickX,clickY]
+//   node cdp-shot.mjs <url> <width> <height> <out.png> [settleMs] [[hover:]X,Y]
 //
 // The optional click reaches state that only exists after input — a modal, a
 // popup, a menu. `--screenshot` mode delivers no events at all, so without this
 // a modal widget screenshots as the button that opens it.
+//
+// Prefix the coordinates with `hover:` to move the pointer there and NOT click.
+// This is not a nicety: egui suppresses a tooltip on the widget you just clicked,
+// so capturing an `on_hover_text` with the plain click form reliably produces a
+// screenshot with no tooltip in it — which reads as "the tooltip is not wired
+// up" when it is. Found 2026-09-07 shooting `PerfStrip`.
 //
 // Pair it with `?nav=0` on the storybook, which drops the 180px sidebar so the
 // story gets the whole viewport rather than `viewport − 180`.
@@ -74,22 +80,28 @@ await send('Page.navigate', { url });
 await new Promise((r) => setTimeout(r, settleMs));
 
 if (click) {
-    const [x, y] = click.split(',').map(Number);
+    const hoverOnly = click.startsWith('hover:');
+    const [x, y] = click.replace(/^hover:/, '').split(',').map(Number);
     // MOVE FIRST. egui tracks the pointer itself, so a press with no prior
     // movement lands on a widget it has never hovered: `hovered()` is false,
     // the click is ignored and the modal never opens. This is the whole trick.
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-    for (const type of ['mousePressed', 'mouseReleased']) {
-        await send('Input.dispatchMouseEvent', {
-            type,
-            x,
-            y,
-            button: 'left',
-            clickCount: 1,
-        });
+    if (!hoverOnly) {
+        for (const type of ['mousePressed', 'mouseReleased']) {
+            await send('Input.dispatchMouseEvent', {
+                type,
+                x,
+                y,
+                button: 'left',
+                clickCount: 1,
+            });
+        }
     }
-    // egui needs a frame or two to react and settle any transition.
-    await new Promise((r) => setTimeout(r, 1200));
+    // egui needs a frame or two to react and settle any transition. A tooltip
+    // also has to clear `interaction.tooltip_delay`, and a widget that only
+    // repaints on a timer (a HUD sampling at 4 Hz) may take a couple of those
+    // ticks to draw one — hence longer for hover than a click needs.
+    await new Promise((r) => setTimeout(r, hoverOnly ? 2500 : 1200));
 }
 
 const shot = await send('Page.captureScreenshot', { format: 'png' });

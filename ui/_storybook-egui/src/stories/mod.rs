@@ -41,6 +41,7 @@ pub mod palette_editor;
 pub mod pane_nav;
 pub mod party_annotator;
 pub mod party_badge;
+pub mod perf_strip;
 pub mod perspective_text;
 pub mod pip_row;
 pub mod price_timeline;

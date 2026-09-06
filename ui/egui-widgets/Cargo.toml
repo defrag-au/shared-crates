@@ -25,6 +25,9 @@ authorizations = { workspace = true }
 image-core = { path = "../image-core" }
 egui = { workspace = true }
 egui_extras = { workspace = true }
+# Frame-cost and in-flight-work counters — see `perf_strip`. Pure std, so this
+# adds nothing to the build and keeps the probes usable from the macroquad side.
+perf-probe = { workspace = true }
 ehttp = "0.7"
 image = { workspace = true, features = ["jpeg"] }
 cardano-assets = { workspace = true, optional = true }
@@ -46,6 +49,14 @@ wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 web-sys = { workspace = true, features = [
     "Request", "RequestInit", "Response", "Headers", "Window",
+    # `performance.now()` — the only sub-millisecond monotonic clock available
+    # here; `Date::now()` is 1 ms-granular, which cannot resolve a 0.9 ms frame.
+    "Performance",
+    # `wallet.rs` reads `window.location.hostname`. Undeclared until now, so the
+    # crate only built for wasm when a CONSUMER happened to enable the feature
+    # and cargo unioned it in — `cargo clippy -p egui-widgets --target wasm32`
+    # on its own failed.
+    "Location",
     "Blob", "BlobPropertyBag",
     "HtmlImageElement",
     "ImageBitmap",

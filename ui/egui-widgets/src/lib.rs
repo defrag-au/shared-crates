@@ -67,6 +67,7 @@ pub mod pane_nav;
 pub mod party_annotator;
 pub mod party_badge;
 pub mod party_finder;
+pub mod perf_strip;
 pub mod persona_strip;
 pub mod phase_card;
 pub mod pip_row;
@@ -267,6 +268,7 @@ pub use party_badge::{PartyBadge, PartyBasis};
 pub use party_finder::{
     AliasIndex, MatchTier, PartyFinder, PartyFinderResponse, PartyFinderState, WalletIdentity,
 };
+pub use perf_strip::{FrameScope, Orientation as PerfOrientation, PerfStrip, PerfStripState};
 pub use persona_strip::{PersonaStrip, PersonaStripConfig};
 pub use phase_card::{GateChip, PhaseCard, PhaseCardAction, PhaseCardResponse, PhaseCardRow};
 pub use pip_row::{
