@@ -155,6 +155,11 @@ serde_repr = "0.1"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 rand = { version = "0.9", features = ["small_rng", "std"] }
 log = "0.4"
+# Hierarchical state machines (statig) — plain sync `handle(&event)`, no_std,
+# no deps beyond its own macro crate, so it is safe under wasm-bindgen AND
+# macroquad. Already the FSM in augminted-native-bots and blockchain-infra;
+# here it drives UI state that used to be flag soup (the time spine's tape).
+statig = "0.4.1"
 
 # egui stack
 egui = "0.34"

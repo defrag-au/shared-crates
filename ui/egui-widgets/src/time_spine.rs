@@ -27,10 +27,17 @@
 //! - the playhead **opens at the end**; play rewinds
 //! - the brush **filters**, the playhead **reveals** — two different verbs
 //! - time is unix seconds throughout; formatting is the caller's
-//! - **wheel zooms, sideways wheel pans, click places** — a vertical wheel
-//!   over the axis is zoom (pinch works too), horizontal wheel moves the
-//!   window, click or drag on the ruler sets the playhead, and double-click
-//!   on the ruler puts the whole domain back
+//! - **wheel zooms, sideways wheel scrubs, click places** — a vertical wheel
+//!   over the axis is zoom (pinch works too), a horizontal wheel moves the
+//!   playhead, click or drag on the ruler sets it, and double-click on the
+//!   ruler puts the whole domain back
+//! - **zoomed in, the tape follows the head** — see [`tape`], a state
+//!   machine. Once the view is narrower than the domain, play scrolls the
+//!   ruler and every layer under a centred head, and a scrub or a click
+//!   glides the tape to the new moment. Zoom anchors on the POINTER (on the
+//!   head only while playing), and a tape the reader has moved stays put
+//!   until the head next moves. Within half a window of either end the head
+//!   slides off centre rather than the axis showing empty time past the data.
 //!
 //! ## The naked spine and its layers
 //!
@@ -52,6 +59,8 @@ use egui::{
     Color32, CornerRadius, FontId, Pos2, Rect, Response, Rgba, Sense, Shape, Stroke, Ui, Vec2,
     lerp, pos2, remap, remap_clamp, vec2,
 };
+
+use statig::prelude::*;
 
 use crate::motion::{Easing, tween, tween_bool};
 
@@ -558,11 +567,23 @@ pub struct SpineState {
     /// Optional brush — what is being FILTERED to. `None` = everything.
     pub brush: Option<(i64, i64)>,
     pub playing: bool,
-    /// Wall-clock seconds for one full domain sweep when playing.
+    /// Wall-clock seconds for the head to cross one SCREEN at normal rate —
+    /// the visible window, which is the whole domain until the reader zooms.
+    /// Per screen rather than per domain, so a week under the glass plays
+    /// at a watchable pace instead of flashing past in a fraction of the
+    /// time the whole history takes.
     pub play_duration: f32,
+    /// The playback rate the reader has chosen — see [`PlayRate`].
+    pub rate: PlayRate,
     /// The visible time window (pan/zoom); defaults to the whole domain.
     pub view: TimeView,
     last_tick: Option<f64>,
+    /// The tape — which of free / locked / gliding / held / loose the view
+    /// is in, and every rule for moving between them. See [`tape`].
+    tape: InitializedStateMachine<tape::Tape>,
+    /// The head the tape last saw, so a move from ANY writer — play, a
+    /// scrub, a click, a face setting the playhead — is one event.
+    last_head: i64,
 }
 
 impl SpineState {
@@ -576,9 +597,23 @@ impl SpineState {
             brush: None,
             playing: false,
             play_duration: 12.0,
+            rate: PlayRate::Normal,
             view: TimeView::covering(domain.0, domain.1),
             last_tick: None,
+            tape: tape::Tape.uninitialized_state_machine().init(),
+            last_head: domain.1,
         }
+    }
+
+    /// Where the tape is — for a caller that renders differently while the
+    /// view is following the head.
+    pub fn tape(&self) -> &tape::State {
+        self.tape.state()
+    }
+
+    /// Is the view narrower than the domain and riding the head?
+    pub fn following(&self) -> bool {
+        !matches!(self.tape.state(), tape::State::Free {})
     }
 
     /// The range faces should FILTER to: the brush, else the domain.
@@ -609,8 +644,11 @@ impl SpineState {
         let now = ctx.input(|i| i.time);
         let dt = self.last_tick.map_or(0.0, |l| (now - l).max(0.0));
         self.last_tick = Some(now);
-        let span = (self.domain.1 - self.domain.0) as f64;
-        let advance = span * dt / self.play_duration.max(0.1) as f64;
+        // One SCREEN per `play_duration` at normal rate: the visible span,
+        // not the domain, so zooming in slows the sweep to match.
+        let span = self.view.spanned.max(1.0);
+        let advance =
+            span * dt * self.rate.multiplier() as f64 / self.play_duration.max(0.1) as f64;
         self.playhead = ((self.playhead as f64 + advance).round() as i64).min(self.domain.1);
         if self.playhead >= self.domain.1 {
             self.playing = false;
@@ -758,6 +796,69 @@ impl SpineLayer for MarksLayer<'_> {
     }
 }
 
+/// The RARE directional events — a policy's mints and burns — as pips at
+/// the lane's edges, where the waveform never reaches.
+///
+/// A hairline in the mark hue over a grey waveform has almost no contrast
+/// where the waveform is tall, and a mint is exactly where it is tallest:
+/// the one thing a reader came to find was the hardest thing on the lane to
+/// see. So the events leave the waveform alone and sit on its edges: a few
+/// blue pixels at the top for a mint, a few orange at the base for a burn.
+/// Small on purpose — this went through a flag with a stem and a head first,
+/// and that shouted over the waveform it was meant to annotate. Adjacent
+/// days merge into a thin coloured line along the edge, which is what a
+/// mint that ran for a fortnight is; a day that did both carries a pip on
+/// each edge, which is what a CIP-25 metadata update looks like.
+///
+/// Neutral marks are not drawn: a pip says "here, this one", and the
+/// majority of a lane cannot be that. Hover names the nearest pip by date,
+/// with its direction.
+pub struct FlagsLayer<'a>(pub &'a [(i64, MarkKind)]);
+
+/// A pip's size in points: two wide so it survives sub-pixel placement,
+/// three tall so it reads as a mark and not as noise.
+const PIP: Vec2 = vec2(2.0, 3.0);
+/// How near the pointer must be to a pip to name it, in points.
+const FLAG_REACH: f32 = 4.0;
+
+impl SpineLayer for FlagsLayer<'_> {
+    fn paint(&self, c: &SpineCanvas<'_>) -> Option<String> {
+        let mut nearest: Option<(f32, i64, MarkKind)> = None;
+        for &(t, kind) in self.0 {
+            let Some(x) = c.scale.x_from_time_f32(t as f64) else {
+                continue;
+            };
+            if x < c.ruler.left() || x > c.ruler.right() {
+                continue;
+            }
+            // In at the top, out at the base — the same sides the hairline
+            // marks use.
+            let (col, top) = match kind {
+                MarkKind::In => (MARK_IN, c.lane.top()),
+                MarkKind::Out => (MARK_OUT, c.lane.bottom() - PIP.y),
+                MarkKind::Neutral => continue,
+            };
+            let pip = Rect::from_min_size(pos2((x - PIP.x * 0.5).round(), top), PIP);
+            c.painter.rect_filled(pip, CornerRadius::ZERO, col);
+
+            if let Some(p) = c.hover {
+                let d = (p.x - x).abs();
+                if d <= FLAG_REACH && nearest.is_none_or(|(best, _, _)| d < best) {
+                    nearest = Some((d, t, kind));
+                }
+            }
+        }
+        nearest.map(|(_, t, kind)| {
+            let what = match kind {
+                MarkKind::In => "in",
+                MarkKind::Out => "out",
+                MarkKind::Neutral => "event",
+            };
+            format!("{}  ·  {what}", (c.format_tick)(t, 86_400))
+        })
+    }
+}
+
 /// A RATE — how much happened when — as a waveform of columns.
 ///
 /// The silhouette grows from the midline in both directions, the way a
@@ -830,6 +931,8 @@ pub struct TimeSpine<'a> {
     pin: Option<i64>,
     height: f32,
     show_play: bool,
+    /// Which keys this spine answers — see [`Hotkeys`].
+    hotkeys: Hotkeys,
     /// May the reader drag out a range to FILTER by? See
     /// [`TimeSpine::brushing`].
     brushing: bool,
@@ -847,9 +950,18 @@ impl<'a> TimeSpine<'a> {
             pin: None,
             height: 56.0,
             show_play: true,
+            hotkeys: Hotkeys::None,
             brushing: true,
             left_inset: 0.0,
         }
+    }
+
+    /// Which keys this spine answers. Default none — a surface with two
+    /// spines must pick the one that is the transport, and a spine inside a
+    /// storybook must not steal space from the page.
+    pub fn hotkeys(mut self, keys: Hotkeys) -> Self {
+        self.hotkeys = keys;
+        self
     }
 
     /// Allow dragging out a range to filter by. Default on.
@@ -900,9 +1012,15 @@ impl<'a> TimeSpine<'a> {
     }
 
     /// Sugar for a [`DensityLayer`]: HOW MUCH happened when, as a waveform.
-    /// Put the rare directional events on top with [`TimeSpine::marks`].
+    /// Put the rare directional events on top with [`TimeSpine::flags`].
     pub fn density(self, bins: &'a [DensityBin]) -> Self {
         self.layer(DensityLayer(bins))
+    }
+
+    /// Sugar for a [`FlagsLayer`]: the rare directional events as flags
+    /// that stay findable over a waveform. Neutral marks are skipped.
+    pub fn flags(self, events: &'a [(i64, MarkKind)]) -> Self {
+        self.layer(FlagsLayer(events))
     }
 
     /// The one moment this view is ABOUT — a deep-linked event, a selected
@@ -948,9 +1066,35 @@ impl<'a> TimeSpine<'a> {
             pin,
             height,
             show_play,
+            hotkeys,
             brushing,
             left_inset,
         } = self;
+
+        // ── keys ───────────────────────────────────────────────────────────
+        // Space plays and pauses; `[` and `]` halve and double the rate. Only
+        // while nothing else has the keyboard — a search box with the cursor
+        // in it must receive a space as a space — and CONSUMED, so a
+        // scrolling page underneath does not also jump.
+        if matches!(hotkeys, Hotkeys::Transport) && ui.ctx().memory(|m| m.focused().is_none()) {
+            let (space, slower, faster) = ui.input_mut(|i| {
+                (
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::Space),
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::OpenBracket),
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::CloseBracket),
+                )
+            });
+            if space {
+                state.toggle_play();
+            }
+            if slower {
+                state.rate = state.rate.slower();
+            }
+            if faster {
+                state.rate = state.rate.faster();
+            }
+        }
+
         state.tick(ui.ctx());
         let mut playhead_changed = state.playing;
         let mut brush_changed = false;
@@ -985,7 +1129,16 @@ impl<'a> TimeSpine<'a> {
                 state.toggle_play();
                 playhead_changed = true;
             }
-            let c = brect.center();
+            // THE RATE, under the glyph, inside the same gutter. Its own
+            // click target: a click on it cycles the ladder, a click on the
+            // glyph plays. Shown only when there is room for both.
+            let rate_h = 12.0;
+            let with_rate = height >= 40.0;
+            let glyph_c = if with_rate {
+                brect.center() - vec2(0.0, rate_h * 0.5)
+            } else {
+                brect.center()
+            };
             let col = if bresp.hovered() {
                 visuals.strong_text_color()
             } else {
@@ -994,25 +1147,49 @@ impl<'a> TimeSpine<'a> {
             if state.playing {
                 let w = 3.0;
                 painter.rect_filled(
-                    Rect::from_center_size(c - vec2(3.5, 0.0), vec2(w, 12.0)),
+                    Rect::from_center_size(glyph_c - vec2(3.5, 0.0), vec2(w, 12.0)),
                     CornerRadius::ZERO,
                     col,
                 );
                 painter.rect_filled(
-                    Rect::from_center_size(c + vec2(3.5, 0.0), vec2(w, 12.0)),
+                    Rect::from_center_size(glyph_c + vec2(3.5, 0.0), vec2(w, 12.0)),
                     CornerRadius::ZERO,
                     col,
                 );
             } else {
                 painter.add(Shape::convex_polygon(
                     vec![
-                        c + vec2(-4.5, -6.5),
-                        c + vec2(6.0, 0.0),
-                        c + vec2(-4.5, 6.5),
+                        glyph_c + vec2(-4.5, -6.5),
+                        glyph_c + vec2(6.0, 0.0),
+                        glyph_c + vec2(-4.5, 6.5),
                     ],
                     col,
                     Stroke::NONE,
                 ));
+            }
+            if with_rate {
+                let rrect = Rect::from_min_max(
+                    pos2(brect.left(), brect.bottom() - rate_h - 2.0),
+                    pos2(brect.right(), brect.bottom() - 2.0),
+                );
+                let rresp = ui
+                    .interact(rrect, id.with("rate"), Sense::click())
+                    .on_hover_text("playback rate — click to cycle, [ and ] to step");
+                if rresp.clicked() {
+                    state.rate = state.rate.next();
+                }
+                let rate_col = if rresp.hovered() || state.rate != PlayRate::Normal {
+                    visuals.strong_text_color()
+                } else {
+                    visuals.weak_text_color()
+                };
+                painter.text(
+                    rrect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    state.rate.label(),
+                    egui::TextStyle::Small.resolve(ui.style()),
+                    rate_col,
+                );
             }
         }
 
@@ -1021,6 +1198,54 @@ impl<'a> TimeSpine<'a> {
         let tick_lane =
             Rect::from_min_max(ruler.min, pos2(ruler.max.x, ruler.min.y + height * 0.5));
         let brush_lane = Rect::from_min_max(pos2(ruler.min.x, tick_lane.max.y), ruler.max);
+        // ── the tape ───────────────────────────────────────────────────────
+        // What happened since last frame, as events to the tape machine —
+        // then what the tape's state means for the view. The RULES live in
+        // [`tape`]; this is only the reading of inputs and the acting on a
+        // state. Applied BEFORE the scale is built so this frame draws the
+        // followed view.
+        //
+        // "Pressed" is read from the pointer itself, not from the drag marker
+        // below — that marker outlives a plain click, and the tape must not
+        // stay held for good after one.
+        {
+            use tape::{Event, State};
+            let pressed = response.is_pointer_button_down_on();
+            let held = matches!(state.tape.state(), State::Held {});
+            if !is_narrower_than_domain(state.view, state.domain) {
+                state.tape.handle(&Event::Widened);
+            } else {
+                if pressed && !held {
+                    state.tape.handle(&Event::Pressed);
+                } else if !pressed && held {
+                    state.tape.handle(&Event::Released);
+                }
+                if state.playing {
+                    state.tape.handle(&Event::Playing);
+                } else if state.playhead != state.last_head {
+                    state.tape.handle(&Event::HeadMoved);
+                }
+            }
+            state.last_head = state.playhead;
+
+            let target = view_centred_on(state.playhead, state.view.spanned, state.domain);
+            let now = state.tape.state().clone();
+            if matches!(now, State::Locked {}) && state.playing {
+                // Exact, every frame — the tape must not lag the head.
+                state.view = target;
+            } else if matches!(now, State::Gliding {}) {
+                // The head moved: the tape catches up over a beat rather than
+                // teleporting, and reports arrival so the machine can settle.
+                let dt = ui.input(|i| i.stable_dt).min(0.1) as f64;
+                let pps = ruler.width() as f64 / state.view.spanned.max(1.0);
+                state.view = glide_view(state.view, target, dt, pps);
+                if state.view == target {
+                    state.tape.handle(&Event::Arrived);
+                } else {
+                    ui.ctx().request_repaint();
+                }
+            }
+        }
         let scale =
             TimeScale::continuous(ruler.x_range(), state.view, state.domain.0, state.domain.1);
 
@@ -1044,6 +1269,26 @@ impl<'a> TimeSpine<'a> {
             if let Some(line) = layer.paint(&canvas) {
                 tooltip = Some(line);
             }
+        }
+
+        // THE VEIL — following, the right of the window is the future the
+        // playhead has not revealed. The faces below already hide it; saying
+        // so on the axis itself gives the centred head its reason to be
+        // there, and stops the unrevealed half reading as "nothing happened".
+        // Over the layers, under the ticks: the dates stay legible.
+        if state.following()
+            && let Some(hx) = scale.x_from_time_f32(state.playhead as f64)
+            && hx < ruler.right()
+        {
+            let veil = Rect::from_x_y_ranges(
+                Rangef::new(hx.max(ruler.left()), ruler.right()),
+                brush_lane.y_range(),
+            );
+            painter.rect_filled(
+                veil,
+                CornerRadius::ZERO,
+                visuals.extreme_bg_color.gamma_multiply(0.45),
+            );
         }
 
         // Baseline + ticks.
@@ -1130,31 +1375,96 @@ impl<'a> TimeSpine<'a> {
             state.set_brush(None);
             brush_changed = true;
         }
-        // ── zoom + pan ─────────────────────────────────────────────────────
+        // ── zoom + scrub ───────────────────────────────────────────────────
         // The wheel is the zoom. A time axis has no vertical content to
         // scroll, so a vertical wheel over it means only one thing — closer
         // or further — and pinch, the only other route to zoom, is fiddly
-        // on a trackpad and absent with a mouse. Horizontal wheel pans.
-        // Both are CONSUMED, or the page underneath scrolls away while the
-        // reader is trying to zoom; the same clearing `ScrollArea` does for
-        // its own scroll. Double-click on the ruler puts the whole domain
-        // back, so a reader zoomed in to a week is never stuck there.
+        // on a trackpad and absent with a mouse. A horizontal wheel SCRUBS:
+        // following, the view is locked to the head, so moving the window and
+        // moving the head are the same act, and the tape slides under a fixed
+        // head the way it does on any scrubber. Both are CONSUMED, or the
+        // page underneath scrolls away while the reader is trying to zoom;
+        // the same clearing `ScrollArea` does for its own scroll.
+        // Double-click on the ruler puts the whole domain back, so a reader
+        // zoomed in to a week is never stuck there.
         if response.hovered() {
-            let scroll = ui.input(|i| i.smooth_scroll_delta);
+            // The SMOOTHED delta is what gets applied — that is what makes a
+            // wheel feel like a wheel — but the RAW events decide the axis
+            // and keep the lock alive. Smoothing trails a gesture by several
+            // frames of small values, and letting those decide or refresh
+            // anything kept a lock alive well after the fingers had lifted.
+            let (scroll, raw) = ui.input(|i| {
+                // The raw wheel is the sum of this frame's wheel EVENTS;
+                // only their shape matters here, so the unit is ignored.
+                let raw = i
+                    .raw
+                    .events
+                    .iter()
+                    .filter_map(|e| match e {
+                        egui::Event::MouseWheel { delta, .. } => Some(*delta),
+                        _ => None,
+                    })
+                    .fold(Vec2::ZERO, |acc, d| acc + d);
+                (i.smooth_scroll_delta, raw)
+            });
+            // One axis per GESTURE, not per frame — see `wheel_axis`. The
+            // lock lives in the widget's temp memory with the time it was
+            // last fed by a real event, and lapses once the wheel is quiet.
+            let now = ui.input(|i| i.time);
+            let lock_id = id.with("wheel_axis");
+            let held: Option<WheelAxis> = ui
+                .data(|d| d.get_temp::<(WheelAxis, f64)>(lock_id))
+                .filter(|(_, last)| now - last < WHEEL_LOCK_SECS)
+                .map(|(axis, _)| axis);
+            let axis = if raw != Vec2::ZERO {
+                let decided = wheel_axis(raw, held);
+                if let Some(axis) = decided {
+                    ui.data_mut(|d| {
+                        d.insert_temp(lock_id, (axis, now));
+                    });
+                }
+                decided
+            } else {
+                // A smoothing-tail frame: ride the lock it belongs to, and
+                // drop it once that has lapsed.
+                held
+            };
+            let (wheel_zoom, wheel_scrub) = wheel_along(scroll, axis);
             let pinch = ui.input(|i| i.zoom_delta());
-            let zoom = pinch * wheel_zoom_factor(scroll.y);
-            if let Some(p) = ui.input(|i| i.pointer.hover_pos()) {
-                if zoom != 1.0
+            let zoom = pinch * wheel_zoom_factor(wheel_zoom);
+            if zoom != 1.0 {
+                // Zoom about the POINTER, as on a map — the reader is saying
+                // what to look at, and the tape machine treats a narrowed
+                // view as the reader's to keep. Playing is the exception:
+                // the tape is re-centred every frame regardless, so anchor
+                // on the head and the moment under it stays still.
+                let anchor = if state.playing {
+                    scale.x_from_time_f32(state.playhead as f64)
+                } else {
+                    ui.input(|i| i.pointer.hover_pos()).map(|p| p.x)
+                };
+                if let Some(x) = anchor
                     && let Some(v) =
-                        scale.zoom_at(p.x, zoom, (state.domain.1 - state.domain.0) as f64)
+                        scale.zoom_at(x, zoom, (state.domain.1 - state.domain.0) as f64)
                 {
                     state.view = clamp_view(v, state.domain);
+                    if !state.playing && is_narrower_than_domain(state.view, state.domain) {
+                        state.tape.handle(&tape::Event::Narrowed);
+                    }
                 }
-                if scroll.x != 0.0
-                    && let Some(v) = scale.pan(-scroll.x)
-                {
-                    state.view = clamp_view(v, state.domain);
-                }
+            }
+            if wheel_scrub != 0.0 {
+                // THE HEAD moves with the fingers, not the tape: a swipe
+                // left carries the head left, to an EARLIER moment — the
+                // same direction a drag on the ruler takes it, and the one
+                // that felt right once the wheel was moving the head rather
+                // than the window. (The first cut moved the tape instead, and
+                // was reversed by request.) A locate, not a stop — play
+                // carries on from the new moment, as it does on any transport.
+                let dt = wheel_scrub as f64 / scale.points_per_sec;
+                state.playhead =
+                    (state.playhead + dt.round() as i64).clamp(state.domain.0, state.domain.1);
+                playhead_changed = true;
             }
             if scroll != Vec2::ZERO {
                 ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
@@ -1476,6 +1786,333 @@ fn clamp_view(v: TimeView, domain: (i64, i64)) -> TimeView {
     TimeView { min, spanned }
 }
 
+/// Which keys a spine answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hotkeys {
+    /// None. The default, and right for any spine that is not THE transport
+    /// of its surface.
+    None,
+    /// Space plays and pauses; `[` and `]` step the rate. Only while no
+    /// other widget has the keyboard.
+    Transport,
+}
+
+/// Playback rate, as a ladder rather than a number: a reader steps it, and a
+/// ladder of four is what a hand on `[` and `]` can hold in its head.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayRate {
+    Half,
+    Normal,
+    Double,
+    Quadruple,
+}
+
+impl PlayRate {
+    pub const ALL: [PlayRate; 4] = [
+        PlayRate::Half,
+        PlayRate::Normal,
+        PlayRate::Double,
+        PlayRate::Quadruple,
+    ];
+
+    pub fn multiplier(self) -> f32 {
+        match self {
+            PlayRate::Half => 0.5,
+            PlayRate::Normal => 1.0,
+            PlayRate::Double => 2.0,
+            PlayRate::Quadruple => 4.0,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            PlayRate::Half => "½×",
+            PlayRate::Normal => "1×",
+            PlayRate::Double => "2×",
+            PlayRate::Quadruple => "4×",
+        }
+    }
+
+    /// One rung up; stays at the top.
+    pub fn faster(self) -> Self {
+        match self {
+            PlayRate::Half => PlayRate::Normal,
+            PlayRate::Normal => PlayRate::Double,
+            PlayRate::Double | PlayRate::Quadruple => PlayRate::Quadruple,
+        }
+    }
+
+    /// One rung down; stays at the bottom.
+    pub fn slower(self) -> Self {
+        match self {
+            PlayRate::Half | PlayRate::Normal => PlayRate::Half,
+            PlayRate::Double => PlayRate::Normal,
+            PlayRate::Quadruple => PlayRate::Double,
+        }
+    }
+
+    /// The next rung, wrapping — for a click that cycles.
+    pub fn next(self) -> Self {
+        match self {
+            PlayRate::Half => PlayRate::Normal,
+            PlayRate::Normal => PlayRate::Double,
+            PlayRate::Double => PlayRate::Quadruple,
+            PlayRate::Quadruple => PlayRate::Half,
+        }
+    }
+}
+
+/// Is `view` a real zoom into `domain`, not a rounding error? A view a
+/// second short of the domain is still "all of it".
+pub fn is_narrower_than_domain(view: TimeView, domain: (i64, i64)) -> bool {
+    let full = (domain.1 - domain.0) as f64;
+    view.spanned < full * 0.999
+}
+
+/// The one axis a wheel gesture means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WheelAxis {
+    /// Up and down: zoom.
+    Vertical,
+    /// Side to side: scrub the head.
+    Horizontal,
+}
+
+/// How much more one axis must move than the other before a gesture COMMITS
+/// to it. Two to one: a straight swipe clears it in its first frame, a
+/// diagonal wobble does not, and the frame is simply skipped until the hand
+/// makes up its mind.
+const WHEEL_AXIS_RATIO: f32 = 2.0;
+
+/// How much more the OTHER axis must move than the locked one before a
+/// gesture in progress changes its mind. Higher than the commit ratio: a
+/// wobble must not break a lock, but a hand that has plainly turned from
+/// seeking to zooming must not have to wait for silence first. That wait was
+/// the first cut, and on a trackpad silence never comes — momentum keeps
+/// feeding the lock — so every change of direction felt stuck.
+const WHEEL_BREAK_RATIO: f32 = 4.0;
+
+/// And how far, in points in one frame, the other axis must move to break a
+/// lock at all. A ratio alone lets a nine-point flick — the finger lifting
+/// off a seek — count as decisive; a deliberate swipe moves far more than
+/// this in its first frame.
+const WHEEL_BREAK_MIN: f32 = 12.0;
+
+/// How long the wheel may go quiet before a gesture is over and the next
+/// one may pick its own axis afresh. Measured against RAW wheel events, not
+/// the smoothed delta — the smoothing keeps emitting a tail after the
+/// fingers lift, and counting that tail as activity kept locks alive long
+/// after the gesture that made them.
+const WHEEL_LOCK_SECS: f64 = 0.25;
+
+/// Which axis this frame's wheel delta belongs to, given the axis the
+/// gesture in progress has already committed to.
+///
+/// AXIS LOCK, the way a browser scrolls. Deciding per frame was tried first
+/// and every horizontal seek on a trackpad zoomed a little: a swipe is never
+/// perfectly level, and the frames at its start and end, where the finger
+/// is settling or lifting, are as likely to lean vertical as not. Once a
+/// gesture has shown a clear axis it keeps it through the wobble — but a
+/// frame that moves DECISIVELY the other way ([`WHEEL_BREAK_RATIO`]) is a
+/// new intention and takes the lock with it. Before any commit, an
+/// ambiguous frame is `None`: dropped rather than guessed.
+pub fn wheel_axis(scroll: Vec2, locked: Option<WheelAxis>) -> Option<WheelAxis> {
+    let (x, y) = (scroll.x.abs(), scroll.y.abs());
+    let clear = |ratio: f32, at_least: f32| {
+        if y >= x * ratio && y >= at_least {
+            Some(WheelAxis::Vertical)
+        } else if x >= y * ratio && x >= at_least {
+            Some(WheelAxis::Horizontal)
+        } else {
+            None
+        }
+    };
+    match locked {
+        Some(axis) => match clear(WHEEL_BREAK_RATIO, WHEEL_BREAK_MIN) {
+            Some(other) if other != axis => Some(other),
+            _ => Some(axis),
+        },
+        None => clear(WHEEL_AXIS_RATIO, f32::EPSILON),
+    }
+}
+
+/// The delta along `axis`, with the other axis zeroed: `(zoom, scrub)`.
+pub fn wheel_along(scroll: Vec2, axis: Option<WheelAxis>) -> (f32, f32) {
+    match axis {
+        Some(WheelAxis::Vertical) => (scroll.y, 0.0),
+        Some(WheelAxis::Horizontal) => (0.0, scroll.x),
+        None => (0.0, 0.0),
+    }
+}
+
+/// The TAPE — how the view relates to the playhead, as a state machine.
+///
+/// Zoomed in, the ruler and its layers are a tape and the playhead is the
+/// fixed head it runs under. Five states say who is in charge of the tape:
+///
+/// ```text
+/// ┌──────┐  Narrowed   ┌───────────────── following ─────────────────┐
+/// │ free │────────────▶│ loose ──HeadMoved──▶ gliding ──Arrived──▶ locked │
+/// └──────┘◀──Widened───│   ▲                    ▲  ▲                │   │
+///                      │   └──Narrowed──────────┘──┘────────────────┘   │
+///                      │        Pressed ▶ held ──Released──▶ gliding    │
+///                      │        Playing ▶ locked (held stays held)      │
+///                      └──────────────────────────────────────────────┘
+/// ```
+///
+/// - **free** — the whole domain is on screen; nothing to follow.
+/// - **locked** — the tape is centred on the head. While playing it is put
+///   there exactly, every frame.
+/// - **gliding** — the head moved (play, a scrub, a click, a face); the
+///   tape is catching up over a beat.
+/// - **held** — a press is down. The tape is frozen while the head follows
+///   the pointer, because re-centring under a drag moves the content under
+///   the pointer, which changes the pointer's time, which moves the head:
+///   a runaway.
+/// - **loose** — the READER moved the tape, by zooming about the pointer.
+///   It stays where they put it until the head next moves. Pulling it back
+///   to the head a frame later would undo the one thing they just did.
+///
+/// Why a machine and not flags: the first cut had `playing`, `pressed` and
+/// a "head the view was last brought to" interacting in one `match`, and the
+/// third bug in that match was the moment to stop. Here every rule is a row
+/// in a handler and the tests read as the table above.
+pub mod tape {
+    use statig::prelude::*;
+
+    /// The machine's shared storage — nothing. All the state is the state.
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct Tape;
+
+    /// What the widget saw this frame.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Event {
+        /// The view spans the whole domain again.
+        Widened,
+        /// The reader zoomed in about the pointer: the view is theirs.
+        Narrowed,
+        /// The playhead is somewhere else than last frame, and play is off.
+        HeadMoved,
+        /// Play is running: the tape rides the head exactly.
+        Playing,
+        /// The pointer went down on the spine.
+        Pressed,
+        /// The pointer came up.
+        Released,
+        /// The gliding tape reached the head.
+        Arrived,
+    }
+
+    #[state_machine(
+        initial = "State::free()",
+        state(derive(Debug, Clone, PartialEq, Eq)),
+        superstate(derive(Debug))
+    )]
+    impl Tape {
+        // The generated `State::free()` constructors are PRIVATE to this
+        // module whatever the handlers' visibility; outside it the widget
+        // names states by their public variants, `State::Free {}`.
+        #[state]
+        fn free(event: &Event) -> Outcome<State> {
+            match event {
+                Event::Narrowed => Transition(State::loose()),
+                _ => Handled,
+            }
+        }
+
+        /// What every following state shares: widening frees the tape, a
+        /// press holds it, play locks it.
+        #[superstate]
+        fn following(event: &Event) -> Outcome<State> {
+            match event {
+                Event::Widened => Transition(State::free()),
+                Event::Pressed => Transition(State::held()),
+                Event::Playing => Transition(State::locked()),
+                _ => Handled,
+            }
+        }
+
+        #[state(superstate = "following")]
+        fn locked(event: &Event) -> Outcome<State> {
+            match event {
+                Event::HeadMoved => Transition(State::gliding()),
+                Event::Narrowed => Transition(State::loose()),
+                // Already locked: no self-transition every frame of play.
+                Event::Playing => Handled,
+                _ => Super,
+            }
+        }
+
+        #[state(superstate = "following")]
+        fn gliding(event: &Event) -> Outcome<State> {
+            match event {
+                Event::Arrived => Transition(State::locked()),
+                Event::Narrowed => Transition(State::loose()),
+                // The head moved again mid-glide: keep gliding — the target
+                // is recomputed from the head every frame anyway.
+                Event::HeadMoved => Handled,
+                _ => Super,
+            }
+        }
+
+        #[state(superstate = "following")]
+        fn held(event: &Event) -> Outcome<State> {
+            match event {
+                Event::Released => Transition(State::gliding()),
+                // A press during play holds the tape; play may carry on.
+                Event::Playing => Handled,
+                _ => Super,
+            }
+        }
+
+        #[state(superstate = "following")]
+        fn loose(event: &Event) -> Outcome<State> {
+            match event {
+                Event::HeadMoved => Transition(State::gliding()),
+                _ => Super,
+            }
+        }
+    }
+}
+
+/// The window of `spanned` seconds with `t` at its centre, slid — not
+/// shrunk — so it never leaves `domain`.
+///
+/// Near either end the head is therefore OFF centre: with the playhead at the
+/// last transaction, a centred window would show half a screen of time in
+/// which nothing exists, and a reader would look for what is there. Sliding
+/// the window is what a map does at the edge of the world, and it is the
+/// honest choice: the axis shows data or nothing, never blank axis.
+pub fn view_centred_on(t: i64, spanned: f64, domain: (i64, i64)) -> TimeView {
+    clamp_view(
+        TimeView {
+            min: t as f64 - spanned / 2.0,
+            spanned,
+        },
+        domain,
+    )
+}
+
+/// Time constant of the tape's glide, seconds. Short enough that a click
+/// feels like a jump, long enough that the reader sees which way it went.
+const GLIDE_TAU: f64 = 0.08;
+
+/// One frame of the tape catching up with the head: `view` moved toward
+/// `target` by an exponential approach over `dt` seconds, snapping once the
+/// remaining distance is under half a pixel at `pps` points per second. The
+/// span is taken from the target outright — only the position glides.
+pub fn glide_view(view: TimeView, target: TimeView, dt: f64, pps: f64) -> TimeView {
+    let gap = target.min - view.min;
+    if gap.abs() * pps < 0.5 {
+        return target;
+    }
+    let k = 1.0 - (-dt / GLIDE_TAU).exp();
+    TimeView {
+        min: view.min + gap * k,
+        spanned: target.spanned,
+    }
+}
+
 /// Convenience for faces: the x of `t` on the spine's scale, or `None` if the
 /// scale is empty.
 pub fn x_of(scale: &TimeScale, t: i64) -> Option<f32> {
@@ -1594,6 +2231,215 @@ mod tests {
         );
         let z = s.zoom_at(500.0, wheel_zoom_factor(-40.0), 1000.0).unwrap();
         assert!(z.spanned < 1000.0, "zoomed in: {}", z.spanned);
+    }
+
+    // ── follow ─────────────────────────────────────────────────────────────
+
+    /// Following is a fact about the VIEW, not a mode the reader toggles: the
+    /// whole domain on screen is free, anything narrower follows.
+    #[test]
+    fn a_view_is_narrower_only_past_a_rounding_error() {
+        let domain = (0, 10_000);
+        assert!(!is_narrower_than_domain(
+            TimeView::covering(0, 10_000),
+            domain
+        ));
+        assert!(
+            !is_narrower_than_domain(TimeView::covering(0, 9_999), domain),
+            "a rounding error is not a zoom"
+        );
+        assert!(is_narrower_than_domain(
+            TimeView::covering(2_000, 4_000),
+            domain
+        ));
+    }
+
+    /// THE TABLE, as a walk. Every rule the widget relies on is one step here,
+    /// and the two that came from being tried are called out.
+    #[test]
+    fn the_tape_machine_walks_its_table() {
+        use statig::prelude::*;
+        use tape::{Event, State, Tape};
+        let mut t = Tape.uninitialized_state_machine().init();
+        let (free, loose, gliding, locked, held) = (
+            State::Free {},
+            State::Loose {},
+            State::Gliding {},
+            State::Locked {},
+            State::Held {},
+        );
+        assert_eq!(*t.state(), free);
+        t.handle(&Event::HeadMoved);
+        assert_eq!(*t.state(), free, "nothing to follow at full width");
+
+        // The reader zooms in: the view is theirs until the head moves.
+        t.handle(&Event::Narrowed);
+        assert_eq!(*t.state(), loose);
+        t.handle(&Event::HeadMoved);
+        assert_eq!(*t.state(), gliding);
+        t.handle(&Event::HeadMoved);
+        assert_eq!(*t.state(), gliding, "keeps gliding to the new target");
+        t.handle(&Event::Arrived);
+        assert_eq!(*t.state(), locked);
+
+        // TRIED AND REJECTED: re-centring after a pointer zoom. A zoom about
+        // the pointer while locked LOOSENS the tape; it is not pulled back.
+        t.handle(&Event::Narrowed);
+        assert_eq!(*t.state(), loose);
+
+        // Play locks the tape from anywhere in following...
+        t.handle(&Event::Playing);
+        assert_eq!(*t.state(), locked);
+        t.handle(&Event::Playing);
+        assert_eq!(*t.state(), locked);
+
+        // ...except under a press, which holds it (the drag runaway).
+        t.handle(&Event::Pressed);
+        assert_eq!(*t.state(), held);
+        t.handle(&Event::Playing);
+        assert_eq!(*t.state(), held, "a press during play still holds");
+        t.handle(&Event::HeadMoved);
+        assert_eq!(
+            *t.state(),
+            held,
+            "the head follows the pointer; the tape does not"
+        );
+        t.handle(&Event::Released);
+        assert_eq!(*t.state(), gliding, "on release the tape catches up");
+
+        // Widening frees it from any following state.
+        t.handle(&Event::Widened);
+        assert_eq!(*t.state(), free);
+        t.handle(&Event::Pressed);
+        assert_eq!(*t.state(), free, "a press at full width holds nothing");
+    }
+
+    /// The rate ladder: clamped at both ends by the keys, wrapped by a click,
+    /// and every rung reachable.
+    #[test]
+    fn the_rate_ladder_steps_clamps_and_cycles() {
+        assert_eq!(PlayRate::Quadruple.faster(), PlayRate::Quadruple);
+        assert_eq!(PlayRate::Half.slower(), PlayRate::Half);
+        assert_eq!(PlayRate::Normal.faster().slower(), PlayRate::Normal);
+        let mut r = PlayRate::Half;
+        let mut seen = Vec::new();
+        for _ in 0..PlayRate::ALL.len() {
+            seen.push(r);
+            r = r.next();
+        }
+        assert_eq!(seen, PlayRate::ALL.to_vec(), "a click visits every rung");
+        assert_eq!(r, PlayRate::Half, "and wraps");
+    }
+
+    /// Play sweeps the SCREEN, not the domain: zoomed to a tenth of the
+    /// history, the head advances a tenth as fast, so a week under the glass
+    /// is watchable. At normal rate on the full view this is unchanged.
+    #[test]
+    fn play_sweeps_the_visible_window_at_the_chosen_rate() {
+        let ctx = egui::Context::default();
+        let step = |t: f64| crate::motion::tests::step(&ctx, t);
+        let mut s = SpineState::new((0, 1000));
+        s.play_duration = 10.0;
+        s.view = TimeView::covering(0, 100);
+        s.rate = PlayRate::Double;
+        s.set_playhead(0);
+        s.toggle_play();
+        step(0.0);
+        s.tick(&ctx);
+        let _ = ctx.end_pass();
+        step(1.0);
+        s.tick(&ctx);
+        let _ = ctx.end_pass();
+        // 100 s of view per 10 wall-s = 10/s, doubled = 20.
+        assert!((s.playhead - 20).abs() <= 1, "got {}", s.playhead);
+    }
+
+    /// A gesture commits to one axis on a clear frame, holds it through the
+    /// wobbly frames that follow, never guesses on an ambiguous start — and
+    /// lets go for a decisive move the other way.
+    #[test]
+    fn the_wheel_locks_to_one_axis_per_gesture_but_not_too_hard() {
+        use WheelAxis::{Horizontal, Vertical};
+        // Clear frames commit.
+        assert_eq!(wheel_axis(vec2(3.0, -40.0), None), Some(Vertical));
+        assert_eq!(wheel_axis(vec2(-25.0, 2.0), None), Some(Horizontal));
+        // A diagonal or empty frame does not, and is dropped.
+        assert_eq!(wheel_axis(vec2(10.0, -12.0), None), None);
+        assert_eq!(wheel_axis(Vec2::ZERO, None), None);
+        assert_eq!(wheel_along(vec2(10.0, -12.0), None), (0.0, 0.0));
+        // Locked horizontal, a frame that leans vertical — the finger lifting
+        // at the end of a seek — stays a scrub, not a zoom.
+        assert_eq!(
+            wheel_axis(vec2(2.0, -9.0), Some(Horizontal)),
+            Some(Horizontal)
+        );
+        assert_eq!(wheel_along(vec2(2.0, -9.0), Some(Horizontal)), (0.0, 2.0));
+        // TOO HARD, the second cut: a lock that only silence could end felt
+        // stuck, because a trackpad's momentum is never silent. A frame
+        // that is DECISIVELY the other way — far, and mostly that way — is
+        // a new gesture and takes the lock. A wobble of the same shape but
+        // no distance does not.
+        assert_eq!(
+            wheel_axis(vec2(1.0, -30.0), Some(Horizontal)),
+            Some(Vertical),
+            "a real vertical swipe breaks a horizontal lock"
+        );
+        assert_eq!(
+            wheel_axis(vec2(30.0, -1.0), Some(Vertical)),
+            Some(Horizontal),
+            "and the other way round"
+        );
+        assert_eq!(
+            wheel_axis(vec2(1.0, -8.0), Some(Horizontal)),
+            Some(Horizontal),
+            "a flick with the right shape but no distance does not"
+        );
+        assert_eq!(wheel_along(vec2(3.0, -40.0), Some(Vertical)), (-40.0, 0.0));
+    }
+
+    /// Mid-domain the head is centred; at either end the window SLIDES so it
+    /// stays on the data, and the head sits off centre. Never blank axis.
+    #[test]
+    fn a_centred_view_slides_at_the_ends_rather_than_leaving_the_data() {
+        let domain = (0, 10_000);
+        let mid = view_centred_on(5_000, 1_000.0, domain);
+        assert!((mid.min - 4_500.0).abs() < 1e-9 && mid.spanned == 1_000.0);
+        // The head opens at the END: the window is pinned to it.
+        let end = view_centred_on(10_000, 1_000.0, domain);
+        assert!((end.min - 9_000.0).abs() < 1e-9, "{}", end.min);
+        let start = view_centred_on(0, 1_000.0, domain);
+        assert_eq!(start.min, 0.0);
+        // A window wider than the domain is the domain.
+        let wide = view_centred_on(5_000, 50_000.0, domain);
+        assert_eq!((wide.min, wide.spanned), (0.0, 10_000.0));
+    }
+
+    /// The tape approaches the head and SNAPS when the remainder is under
+    /// half a pixel — a glide that never quite arrives would repaint forever.
+    #[test]
+    fn the_glide_approaches_then_snaps() {
+        let target = TimeView {
+            min: 1_000.0,
+            spanned: 100.0,
+        };
+        let from = TimeView {
+            min: 0.0,
+            spanned: 100.0,
+        };
+        let step = glide_view(from, target, 0.016, 1.0);
+        assert!(0.0 < step.min && step.min < 1_000.0, "{}", step.min);
+        assert_eq!(step.spanned, 100.0, "only the position glides");
+        let mut v = from;
+        for _ in 0..200 {
+            v = glide_view(v, target, 0.016, 1.0);
+        }
+        assert_eq!(v, target, "converges and snaps");
+        // Already within half a pixel: snap immediately.
+        let near = TimeView {
+            min: 999.8,
+            spanned: 100.0,
+        };
+        assert_eq!(glide_view(near, target, 0.016, 1.0), target);
     }
 
     #[test]

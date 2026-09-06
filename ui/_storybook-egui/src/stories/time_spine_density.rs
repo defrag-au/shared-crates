@@ -29,7 +29,7 @@
 
 use crate::stories::capital_flow::month;
 use crate::TEXT_MUTED;
-use egui_widgets::{format_date, DensityBin, MarkKind, SpineState, TimeSpine};
+use egui_widgets::{format_date, view_centred_on, DensityBin, MarkKind, SpineState, TimeSpine};
 
 const DAY: i64 = 86_400;
 const DAYS: i64 = 3 * 365 + 1;
@@ -144,8 +144,11 @@ fn explode(bins: &[DensityBin], events: &[(i64, MarkKind)]) -> Vec<(i64, MarkKin
 pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineDensityState) {
     let domain = (T0, T0 + DAYS * DAY);
     let total: u64 = state.bins.iter().map(|b| b.count).sum();
+    // Month names only once the ticks are months apart. At the ladder's
+    // ten-day rung a month label repeats three times in a row and says
+    // nothing; the full date is the honest label there.
     let tick = |t: i64, spacing: i64| {
-        if spacing >= DAY * 10 {
+        if spacing >= DAY * 100 {
             month(t)
         } else {
             format_date(t)
@@ -183,7 +186,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineDensityState) {
     TimeSpine::new(spine)
         .format_tick(&tick)
         .density(&state.bins)
-        .marks(&state.events)
+        .flags(&state.events)
         .height(48.0)
         .brushing(false)
         .show(ui);
@@ -203,13 +206,36 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineDensityState) {
     // the band must visibly sit UNDER the waveform, not tint it.
     let loaded = [(T0 + 700 * DAY, T0 + DAYS * DAY)];
     let spine = state.as_density.as_mut().expect("just inserted");
+    // FOLLOW. Zoomed in, the head is fixed and the tape moves: press play
+    // and the waveform scrolls under a centred head; wheel sideways to
+    // scrub; wheel down to zoom about the head. The buttons set the window
+    // the way a reader's wheel would, so the behaviour can be reached
+    // without a trackpad — and seen in a screenshot.
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("window:").small().color(TEXT_MUTED));
+        for (label, days) in [("all", DAYS), ("90 days", 90), ("14 days", 14)] {
+            if ui.small_button(label).clicked() {
+                spine.view = view_centred_on(spine.playhead, (days * DAY) as f64, domain);
+            }
+        }
+        if ui.small_button("head to mid-2024").clicked() {
+            spine.set_playhead(T0 + 330 * DAY);
+        }
+        // Both at once: a mid-domain head in a narrow window, which is the
+        // centred state — and the one a screenshot can reach with one click.
+        if ui.small_button("90 days at mid-2024").clicked() {
+            spine.set_playhead(T0 + 330 * DAY);
+            spine.view = view_centred_on(spine.playhead, (90 * DAY) as f64, domain);
+        }
+    });
     TimeSpine::new(spine)
         .format_tick(&tick)
         .coverage(&loaded)
         .density(&state.bins)
-        .marks(&state.events)
+        .flags(&state.events)
         .height(72.0)
         .brushing(false)
-        .show_play(false)
+        // The one transport on this page: space plays, `[` `]` step the rate.
+        .hotkeys(egui_widgets::time_spine::Hotkeys::Transport)
         .show(ui);
 }

@@ -34,6 +34,8 @@ gateway-wiring = { path = "../../services/gateway-wiring", optional = true }
 tx-verdict = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 log = { workspace = true }
+# Hierarchical FSM for widget interaction state — see `time_spine::tape`.
+statig = { workspace = true }
 i_overlay = "4.4.1"
 voronoice = "0.2"
 ab_glyph = { version = "0.2", optional = true }
