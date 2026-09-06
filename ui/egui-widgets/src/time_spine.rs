@@ -27,6 +27,21 @@
 //! - the playhead **opens at the end**; play rewinds
 //! - the brush **filters**, the playhead **reveals** — two different verbs
 //! - time is unix seconds throughout; formatting is the caller's
+//!
+//! ## The naked spine and its layers
+//!
+//! The spine itself owns only what every time axis needs: the time ↔ x
+//! mapping, zoom and pan, the ticks, the playhead, the brush and the play
+//! button. **What appears in the lane under the ruler is not its business.**
+//! That is drawn by [`SpineLayer`]s, handed in by the caller and painted in
+//! the order given, behind the ticks and the playhead, each on the same
+//! [`SpineCanvas`] — so a density silhouette, the marks for a watched wallet
+//! and a coverage band all sit on one axis without the spine knowing what
+//! any of them are, and a surface can stack as many as it needs.
+//!
+//! Three layers ship here — [`CoverageLayer`], [`MarksLayer`],
+//! [`DensityLayer`] — and the `coverage`/`marks`/`density` builders are sugar
+//! for pushing them. Anything else implements the trait.
 
 use egui::emath::Rangef;
 use egui::{
@@ -673,57 +688,152 @@ pub struct DensityBin {
     pub count: u64,
 }
 
-/// What the lane under the ruler shows. The caller picks, because the caller
-/// knows what it HAS — a page of rows, or a histogram from an origin that has
-/// already counted the whole history.
-#[derive(Debug, Clone, Copy)]
-pub enum SpineLane<'a> {
-    /// Discrete events, one line each.
-    ///
-    /// Right for as long as the events can be told apart. Past a few per
-    /// pixel the lane saturates: a day with eight hundred and a day with
-    /// thirty both paint the same solid bar, and the only thing left legible
-    /// is the gaps — the lane ends up showing when NOTHING happened and
-    /// saying nothing about how much did.
-    Marks(&'a [(i64, MarkKind)]),
-    /// A RATE — how much happened when — as a silhouette of columns, with the
-    /// rare directional events drawn over it as marks.
-    ///
-    /// The silhouette grows from the midline in both directions, the way a
-    /// neutral mark does: it is the same "happened, no direction" claim made
-    /// about a count. Height is square-root scaled against a ROBUST ceiling
-    /// (see [`column_ceiling`]): a mint day is routinely a few hundred times
-    /// a quiet one, and against the true maximum a linear lane is a flat line
-    /// with one tower while a log lane is a slab with no shape at all — both
-    /// were drawn and looked at. Clipping the outliers to full height lets
-    /// the body of the history use the lane. Any column with anything in it
-    /// gets at least [`COLUMN_FLOOR`], so one-versus-none stays visible.
-    ///
-    /// `events` are the things that ARE discrete — a policy's mints and
-    /// burns, not its transfers. They keep the mark language exactly: in
-    /// above the midline, out below.
-    Density {
-        bins: &'a [DensityBin],
-        events: &'a [(i64, MarkKind)],
-    },
+/// What a [`SpineLayer`] gets to draw with: the spine's own mapping and the
+/// rectangles it has already decided on. A layer never allocates space or
+/// handles input — it paints, and may name what is under the pointer.
+pub struct SpineCanvas<'c> {
+    pub painter: &'c egui::Painter,
+    /// The spine's time ↔ x mapping for this frame. Use it, never your own:
+    /// a layer that maps time itself will drift from the ticks the moment the
+    /// reader zooms.
+    pub scale: &'c TimeScale,
+    /// The whole ruler — tick lane above the baseline, event lane below.
+    pub ruler: Rect,
+    /// The lane under the baseline, where layers ordinarily draw.
+    pub lane: Rect,
+    pub visuals: &'c egui::Visuals,
+    /// The caller's tick formatter, so a layer's tooltip dates match the
+    /// ruler's.
+    pub format_tick: &'c dyn Fn(i64, i64) -> String,
+    /// The pointer, when it is over the lane.
+    pub hover: Option<Pos2>,
 }
 
-impl Default for SpineLane<'_> {
-    fn default() -> Self {
-        SpineLane::Marks(&[])
+/// Something drawn along the spine, behind the ticks.
+///
+/// Layers are painted in the order the caller adds them — first at the
+/// bottom. They share one canvas and one mapping, which is the point: a
+/// coverage band, a density silhouette and a watched wallet's marks compose
+/// on a single axis without any of them knowing about the others.
+pub trait SpineLayer {
+    /// Paint, and if the pointer is over something worth naming, return one
+    /// line for the tooltip. The topmost layer that answers wins.
+    fn paint(&self, canvas: &SpineCanvas<'_>) -> Option<String>;
+}
+
+/// Faint `(from, to)` bands: nobody was looking outside them.
+pub struct CoverageLayer<'a>(pub &'a [(i64, i64)]);
+
+impl SpineLayer for CoverageLayer<'_> {
+    fn paint(&self, c: &SpineCanvas<'_>) -> Option<String> {
+        for &(a, b) in self.0 {
+            if let (Some(xa), Some(xb)) = (
+                c.scale.x_from_time_f32(a as f64),
+                c.scale.x_from_time_f32(b as f64),
+            ) {
+                let r = Rect::from_x_y_ranges(
+                    Rangef::new(xa.max(c.ruler.left()), xb.min(c.ruler.right())),
+                    Rangef::new(c.lane.top() + 2.0, c.lane.bottom() - 2.0),
+                );
+                c.painter
+                    .rect_filled(r, CornerRadius::ZERO, c.visuals.faint_bg_color);
+            }
+        }
+        None
+    }
+}
+
+/// Discrete events, one hairline each: in rises from the midline, out falls
+/// from it, neutral straddles it.
+///
+/// Right for as long as the events can be told apart. Past a few per pixel
+/// the lane saturates: a day with eight hundred and a day with thirty both
+/// paint the same solid bar, and the only thing left legible is the gaps —
+/// the lane ends up showing when NOTHING happened and saying nothing about
+/// how much did. That is when to reach for [`DensityLayer`] underneath and
+/// keep this one for the events that are genuinely rare.
+pub struct MarksLayer<'a>(pub &'a [(i64, MarkKind)]);
+
+impl SpineLayer for MarksLayer<'_> {
+    fn paint(&self, c: &SpineCanvas<'_>) -> Option<String> {
+        paint_marks(c.painter, c.scale, &c.ruler, &c.lane, self.0);
+        None
+    }
+}
+
+/// A RATE — how much happened when — as a waveform of columns.
+///
+/// The silhouette grows from the midline in both directions, the way a
+/// neutral mark does: it is the same "happened, no direction" claim made
+/// about a count. Height is square-root scaled against a ROBUST ceiling (see
+/// [`column_ceiling`]): a mint day is routinely a few hundred times a quiet
+/// one, and against the true maximum a linear lane is a flat line with one
+/// tower while a log lane is a slab with no shape at all — both were drawn
+/// and looked at. Columns over the ceiling clip to full height and are drawn
+/// brighter, so "off the scale" is visible. Any column with anything in it
+/// gets at least [`COLUMN_FLOOR`], so one-versus-none stays visible.
+///
+/// Carries no directional events of its own: put a [`MarksLayer`] with the
+/// mints and burns ON TOP. They keep the mark language exactly, and the two
+/// layers stay ignorant of each other.
+///
+/// Hover names the column: the caller's tick format for its start, and the
+/// count.
+pub struct DensityLayer<'a>(pub &'a [DensityBin]);
+
+impl SpineLayer for DensityLayer<'_> {
+    fn paint(&self, c: &SpineCanvas<'_>) -> Option<String> {
+        let columns = bin_columns(c.ruler.x_range(), COLUMN_W, self.0, |t| {
+            c.scale.x_from_time(t as f64)
+        });
+        let ceiling = column_ceiling(&columns);
+        let mid = c.lane.center().y;
+        let max_half = c.lane.height() * 0.5 - 1.0;
+        for (i, &count) in columns.iter().enumerate() {
+            let half = column_half_height(count, ceiling, max_half);
+            if half <= 0.0 {
+                continue;
+            }
+            let x0 = c.ruler.left() + i as f32 * COLUMN_W;
+            let r = Rect::from_min_max(
+                pos2(x0, mid - half),
+                pos2((x0 + COLUMN_W).min(c.ruler.right()), mid + half),
+            );
+            let fill = if count > ceiling {
+                CLIPPED_FILL
+            } else {
+                DENSITY_FILL
+            };
+            c.painter.rect_filled(r, CornerRadius::ZERO, fill);
+        }
+
+        // The column under the pointer, with its own span in seconds so the
+        // formatter can pick a precision that matches the zoom.
+        let p = c.hover?;
+        let i = ((p.x - c.ruler.left()) / COLUMN_W).floor().max(0.0) as usize;
+        let count = *columns.get(i).filter(|n| **n > 0.0)?;
+        let t0 = c
+            .scale
+            .time_from_x_f32(c.ruler.left() + i as f32 * COLUMN_W)?;
+        let t1 = c
+            .scale
+            .time_from_x_f32(c.ruler.left() + (i + 1) as f32 * COLUMN_W)?;
+        let span = ((t1 - t0).round() as i64).max(1);
+        Some(format!(
+            "{}  ·  {}",
+            (c.format_tick)(t0.round() as i64, span),
+            count.round() as u64
+        ))
     }
 }
 
 pub struct TimeSpine<'a> {
     state: &'a mut SpineState,
     format_tick: &'a dyn Fn(i64, i64) -> String,
-    /// Optional coverage marks: `(from, to)` bands drawn faintly under the
-    /// ruler — e.g. each party's `watched_from` … cursor.
-    coverage: &'a [(i64, i64)],
-    /// What the lane under the ruler shows for whatever is currently being
-    /// WATCHED — drawn in the brush lane, because "when did this act" and
-    /// "which interval do I want to brush" are the same question.
-    lane: SpineLane<'a>,
+    /// What is drawn along the spine, bottom first — see the module header.
+    /// The lane is where "when did this act" and "which interval do I want to
+    /// brush" meet, so whatever is being WATCHED belongs here.
+    layers: Vec<Box<dyn SpineLayer + 'a>>,
     /// The one moment this view is ABOUT, if it is about one — see
     /// [`TimeSpine::pin`].
     pin: Option<i64>,
@@ -742,8 +852,7 @@ impl<'a> TimeSpine<'a> {
         Self {
             state,
             format_tick: &compact_tick_label,
-            coverage: &[],
-            lane: SpineLane::default(),
+            layers: Vec::new(),
             pin: None,
             height: 56.0,
             show_play: true,
@@ -778,31 +887,31 @@ impl<'a> TimeSpine<'a> {
         self
     }
 
-    pub fn coverage(mut self, bands: &'a [(i64, i64)]) -> Self {
-        self.coverage = bands;
+    /// Add a layer on top of those already added. Layers paint bottom-first
+    /// in the order given, behind the ticks and the playhead.
+    pub fn layer(mut self, layer: impl SpineLayer + 'a) -> Self {
+        self.layers.push(Box::new(layer));
         self
     }
 
-    /// Mark WHEN the watched thing acted. Drawn in the brush lane so the
-    /// answer to "when did they trade" sits on the axis you drag to isolate it.
-    /// See [`SpineLane::Marks`] for where this form stops working.
-    pub fn marks(mut self, marks: &'a [(i64, MarkKind)]) -> Self {
-        self.lane = SpineLane::Marks(marks);
-        self
+    /// Sugar for a [`CoverageLayer`]: faint `(from, to)` bands — e.g. each
+    /// party's `watched_from` … cursor. Add it FIRST; it is a ground, and
+    /// anything added before it will be painted over.
+    pub fn coverage(self, bands: &'a [(i64, i64)]) -> Self {
+        self.layer(CoverageLayer(bands))
     }
 
-    /// Show HOW MUCH happened when, as a silhouette, with the rare directional
-    /// `events` as marks over it. See [`SpineLane::Density`].
-    pub fn density(mut self, bins: &'a [DensityBin], events: &'a [(i64, MarkKind)]) -> Self {
-        self.lane = SpineLane::Density { bins, events };
-        self
+    /// Sugar for a [`MarksLayer`]: WHEN the watched thing acted, one hairline
+    /// per event, so the answer to "when did they trade" sits on the axis you
+    /// drag to isolate it. See the layer for where this form stops working.
+    pub fn marks(self, marks: &'a [(i64, MarkKind)]) -> Self {
+        self.layer(MarksLayer(marks))
     }
 
-    /// Set the lane's content directly, for a caller that already holds a
-    /// [`SpineLane`].
-    pub fn lane(mut self, lane: SpineLane<'a>) -> Self {
-        self.lane = lane;
-        self
+    /// Sugar for a [`DensityLayer`]: HOW MUCH happened when, as a waveform.
+    /// Put the rare directional events on top with [`TimeSpine::marks`].
+    pub fn density(self, bins: &'a [DensityBin]) -> Self {
+        self.layer(DensityLayer(bins))
     }
 
     /// The one moment this view is ABOUT — a deep-linked event, a selected
@@ -844,8 +953,7 @@ impl<'a> TimeSpine<'a> {
         let Self {
             state,
             format_tick,
-            coverage,
-            lane,
+            layers,
             pin,
             height,
             show_play,
@@ -925,75 +1033,25 @@ impl<'a> TimeSpine<'a> {
         let scale =
             TimeScale::continuous(ruler.x_range(), state.view, state.domain.0, state.domain.1);
 
-        // Coverage bands (faint) — nobody was looking outside them.
-        for &(a, b) in coverage {
-            if let (Some(xa), Some(xb)) = (
-                scale.x_from_time_f32(a as f64),
-                scale.x_from_time_f32(b as f64),
-            ) {
-                let r = Rect::from_x_y_ranges(
-                    Rangef::new(xa.max(ruler.left()), xb.min(ruler.right())),
-                    Rangef::new(brush_lane.top() + 2.0, brush_lane.bottom() - 2.0),
-                );
-                painter.rect_filled(r, CornerRadius::ZERO, visuals.faint_bg_color);
-            }
-        }
-
-        // The lane. Drawn before the ticks so the ruler and the playhead stay
-        // on top.
-        let mut hovered_column: Option<(i64, i64, u64)> = None;
-        match lane {
-            // Event marks for the watched party. In above the midline, out
-            // below, so a wallet that only ever accumulated reads differently
-            // at a glance from one that turned over.
-            SpineLane::Marks(marks) => paint_marks(&painter, &scale, &ruler, &brush_lane, marks),
-            // The silhouette first, then the directional events over it —
-            // saturated hairlines over an unsaturated fill, so a burn day is
-            // still findable inside a busy month.
-            SpineLane::Density { bins, events } => {
-                let columns = bin_columns(ruler.x_range(), COLUMN_W, bins, |t| {
-                    scale.x_from_time(t as f64)
-                });
-                let ceiling = column_ceiling(&columns);
-                let mid = brush_lane.center().y;
-                let max_half = brush_lane.height() * 0.5 - 1.0;
-                for (i, &count) in columns.iter().enumerate() {
-                    let half = column_half_height(count, ceiling, max_half);
-                    if half <= 0.0 {
-                        continue;
-                    }
-                    let x0 = ruler.left() + i as f32 * COLUMN_W;
-                    let r = Rect::from_min_max(
-                        pos2(x0, mid - half),
-                        pos2((x0 + COLUMN_W).min(ruler.right()), mid + half),
-                    );
-                    let fill = if count > ceiling {
-                        CLIPPED_FILL
-                    } else {
-                        DENSITY_FILL
-                    };
-                    painter.rect_filled(r, CornerRadius::ZERO, fill);
-                }
-                paint_marks(&painter, &scale, &ruler, &brush_lane, events);
-
-                // What is under the pointer, for the tooltip below. The
-                // column's own span in seconds, so the caller's formatter can
-                // pick a precision that matches.
-                if let Some(p) = ui.input(|i| i.pointer.hover_pos())
-                    && brush_lane.contains(p)
-                {
-                    let i = ((p.x - ruler.left()) / COLUMN_W).floor().max(0.0) as usize;
-                    if let Some(&count) = columns.get(i)
-                        && count > 0.0
-                        && let (Some(t0), Some(t1)) = (
-                            scale.time_from_x_f32(ruler.left() + i as f32 * COLUMN_W),
-                            scale.time_from_x_f32(ruler.left() + (i + 1) as f32 * COLUMN_W),
-                        )
-                    {
-                        let span = ((t1 - t0).round() as i64).max(1);
-                        hovered_column = Some((t0.round() as i64, span, count.round() as u64));
-                    }
-                }
+        // ── the layers ─────────────────────────────────────────────────────
+        // Bottom first, in the caller's order, before the ticks so the ruler
+        // and the playhead stay on top. The topmost layer with something
+        // under the pointer names it.
+        let canvas = SpineCanvas {
+            painter: &painter,
+            scale: &scale,
+            ruler,
+            lane: brush_lane,
+            visuals,
+            format_tick,
+            hover: ui
+                .input(|i| i.pointer.hover_pos())
+                .filter(|p| brush_lane.contains(*p)),
+        };
+        let mut tooltip: Option<String> = None;
+        for layer in &layers {
+            if let Some(line) = layer.paint(&canvas) {
+                tooltip = Some(line);
             }
         }
 
@@ -1195,20 +1253,18 @@ impl<'a> TimeSpine<'a> {
         );
         painter.galley(badge.min + pad, galley, visuals.strong_text_color());
 
-        // The count under the pointer. A silhouette can be READ for shape but
-        // not for numbers, and "how many, exactly" is the one question the
-        // marks it replaced could not answer either — so answer it on hover.
-        if let Some((t, span, count)) = hovered_column {
+        // What the topmost layer says is under the pointer. A silhouette can
+        // be READ for shape but not for numbers, and "how many, exactly" is
+        // the one question a mark lane could never answer either.
+        if let Some(line) = tooltip {
             egui::Tooltip::always_open(
                 ui.ctx().clone(),
                 ui.layer_id(),
-                id.with("column"),
+                id.with("layer_tip"),
                 egui::PopupAnchor::Pointer,
             )
             .show(|ui| {
-                ui.label(
-                    egui::RichText::new(format!("{}  ·  {count}", format_tick(t, span))).small(),
-                );
+                ui.label(egui::RichText::new(line).small());
             });
         }
 

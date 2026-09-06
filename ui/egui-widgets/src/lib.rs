@@ -297,9 +297,10 @@ pub use swap_modal::{
 pub use tag_list::{TagList, TagListResponse};
 pub use theme::{FontStrategy, rarity_rank_color};
 pub use time_spine::{
-    DensityBin, MarkKind, SpineLane, SpineState, TimeScale, TimeSpine, TimeSpineResponse, TimeView,
-    bin_columns, civil_from_unix, column_ceiling, column_half_height, compact_tick_label,
-    format_date, next_tick_step_secs, paint_ticks,
+    CoverageLayer, DensityBin, DensityLayer, MarkKind, MarksLayer, SpineCanvas, SpineLayer,
+    SpineState, TimeScale, TimeSpine, TimeSpineResponse, TimeView, bin_columns, civil_from_unix,
+    column_ceiling, column_half_height, compact_tick_label, format_date, next_tick_step_secs,
+    paint_ticks,
 };
 pub use timestamp::{Timestamp, format_iso8601};
 pub use toast::{DEFAULT_DURATION_FRAMES, Toast, ToastKind, ToastQueue, show_toasts};

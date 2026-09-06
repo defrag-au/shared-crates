@@ -5,19 +5,21 @@
 //! day to single digits with a weekly rhythm, three trading spikes, a
 //! two-month dead stretch, and a handful of burn days.
 //!
-//! **The thing to look at:** the top spine is [`egui_widgets::SpineLane::Marks`]
-//! fed the way the policy view feeds it today — one hairline per transaction,
-//! subsampled to a budget. Past a few per pixel it saturates: the mint, the
-//! spikes and the quiet tail all paint the same solid bar, and the only thing
-//! legible is the dead stretch. It shows when NOTHING happened.
+//! **The thing to look at:** the top spine carries one
+//! [`egui_widgets::MarksLayer`] fed the way the policy view feeds it today —
+//! one hairline per transaction, subsampled to a budget. Past a few per pixel
+//! it saturates: the mint, the spikes and the quiet tail all paint the same
+//! solid bar, and the only thing legible is the dead stretch. It shows when
+//! NOTHING happened.
 //!
-//! The bottom spine is [`egui_widgets::SpineLane::Density`] on the identical
-//! counts: a waveform from the midline, one column per two pixels,
-//! root-scaled against a robust ceiling so the mint burst and the frenzies
-//! CLIP (drawn brighter) instead of flattening the aftermarket into a
-//! hairline, with the mints and burns — the events that ARE discrete — kept
-//! as marks over it. Same ruler, same playhead, same in/out hues; different
-//! claim in the lane. Hover a column for its count.
+//! The bottom spine is the SAME widget with two layers stacked: an
+//! [`egui_widgets::DensityLayer`] on the identical counts — a waveform from
+//! the midline, one column per two pixels, root-scaled against a robust
+//! ceiling so the mint burst and the frenzies CLIP (drawn brighter) instead of
+//! flattening the aftermarket into a hairline — and a `MarksLayer` on top
+//! carrying only the mints and burns, the events that ARE discrete. Same
+//! ruler, same playhead, same in/out hues; the spine knows nothing about
+//! either layer. Hover a column for its count.
 //!
 //! It is fuzzy, and that is the data: day-to-day variance on a thirty-a-day
 //! collection is real, and a waveform is a form readers already know how to
@@ -173,13 +175,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineDensityState) {
 
     ui.add_space(14.0);
 
-    ui.label(egui::RichText::new("as density — the same counts").strong());
+    ui.label(egui::RichText::new("as density + marks — the same counts, two layers").strong());
     let spine = state
         .as_density
         .get_or_insert_with(|| SpineState::new(domain));
     TimeSpine::new(spine)
         .format_tick(&tick)
-        .density(&state.bins, &state.events)
+        .density(&state.bins)
+        .marks(&state.events)
         .height(48.0)
         .brushing(false)
         .show(ui);
@@ -187,12 +190,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineDensityState) {
     ui.add_space(14.0);
 
     ui.label(egui::RichText::new("as density — taller lane, zoom with scroll").strong());
-    // A third, taller, so the log scale has room: the policy view can afford
-    // 64 where the wallet feed runs at 48.
+    // A third, taller, so the waveform has room: the policy view can afford
+    // 72 where the wallet feed runs at 48.
     let spine = state.as_density.as_mut().expect("just inserted");
     TimeSpine::new(spine)
         .format_tick(&tick)
-        .density(&state.bins, &state.events)
+        .density(&state.bins)
+        .marks(&state.events)
         .height(72.0)
         .brushing(false)
         .show_play(false)
