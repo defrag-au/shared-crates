@@ -87,6 +87,7 @@ mod app {
         // Grouping
         GroupedSection,
         OfferTile,
+        CornerAction,
         // Wallet
         WalletIdentityHeader,
         PersonaStrip,
@@ -111,6 +112,7 @@ mod app {
         CapitalFlow,
         CapBand,
         TimeSpine,
+        TimeSpineDensity,
         CoverageLanes,
         FlowMatrix,
         FlowRing,
@@ -176,6 +178,7 @@ mod app {
                 Self::CapitalFlow,
                 Self::CapBand,
                 Self::TimeSpine,
+                Self::TimeSpineDensity,
                 Self::CoverageLanes,
                 Self::FlowMatrix,
                 Self::FlowRing,
@@ -277,6 +280,7 @@ mod app {
                 // Grouping
                 Self::GroupedSection,
                 Self::OfferTile,
+                Self::CornerAction,
                 // Wallet
                 Self::WalletIdentityHeader,
                 Self::PersonaStrip,
@@ -381,6 +385,7 @@ mod app {
                 Self::TxCart => "TX Cart",
                 Self::GroupedSection => "Grouped Section",
                 Self::OfferTile => "Offer Tile",
+                Self::CornerAction => "Corner Action",
                 Self::WalletIdentityHeader => "Wallet Identity Header",
                 Self::PersonaStrip => "Persona Strip",
                 Self::FungiblesRow => "Fungibles Row",
@@ -402,6 +407,7 @@ mod app {
                 Self::CapitalFlow => "Capital Flow",
                 Self::CapBand => "Cap Band",
                 Self::TimeSpine => "Time Spine",
+                Self::TimeSpineDensity => "Time Spine Density",
                 Self::CoverageLanes => "Coverage Lanes",
                 Self::FlowMatrix => "Flow Matrix",
                 Self::FlowRing => "Flow Ring",
@@ -464,6 +470,7 @@ mod app {
                 | Self::CapitalFlow
                 | Self::CapBand
                 | Self::TimeSpine
+                | Self::TimeSpineDensity
                 | Self::CoverageLanes
                 | Self::FlowMatrix
                 | Self::FlowRing
@@ -554,7 +561,7 @@ mod app {
                 Self::FileUpload => "Utility",
                 Self::ImageTextEditor => "Media",
                 Self::TxCart => "TX Cart",
-                Self::GroupedSection | Self::OfferTile => "Layout",
+                Self::GroupedSection | Self::OfferTile | Self::CornerAction => "Layout",
                 Self::MnemonicDisplay | Self::WalletList | Self::CollectionList => "Auth / Admin",
                 Self::PhaseCard | Self::QuantityStepper | Self::MintCheckout => {
                     "Mint Configuration"
@@ -742,6 +749,9 @@ mod app {
                 Self::OfferTile => {
                     "Picker tile with state machine (Active / InCart / Spent), image-or-placeholder content, and corner badge"
                 }
+                Self::CornerAction => {
+                    "Icon button pinned to a corner of a thumbnail — claims the click so the card beneath doesn't select"
+                }
                 Self::WalletIdentityHeader => {
                     "Big handle or shortened stake address with copy button — top-of-page wallet identity strip"
                 }
@@ -795,6 +805,9 @@ mod app {
                 }
                 Self::TimeSpine => {
                     "ONE time axis for many faces: a playhead that REVEALS, a brush that FILTERS, play/pause — and a shared selection so hovering a holder's pile lights it up everywhere. Dots fly in and settle (keyed tweens; object constancy) while playing; a scrubbed frame settles instantly so a still is readable. The falsifier for 'is egui why this feels flat?'"
+                }
+                Self::TimeSpineDensity => {
+                    "The same three years drawn twice. One mark per transaction saturates past a few per pixel — the mint, the spikes and the quiet tail all paint the same solid bar and only the dead stretch is legible, so the lane shows when NOTHING happened. The density form keeps the ruler, playhead and in/out hues and changes only the lane's claim: a waveform from the midline (a neutral mark's shape, made about a count), root-scaled against a robust ceiling so the mint burst clips bright instead of flattening three years into a hairline, floored so one-versus-none survives, with mints and burns — the events that ARE discrete — kept as marks over it. Hover a column for its count"
                 }
                 Self::CoverageLanes => {
                     "Three answers, not two: observed producing, observed idle, and NOBODY LOOKED. Day 4's midday orange stretch and day 7's grey column cover comparable spans and make completely different claims — one is a watched fleet sitting idle, the other is a broken poller. Fold them together and every ingest outage becomes recorded downtime. The ground state is unobserved and knowledge paints over it, so a caller cannot assert \"idle\" by forgetting to mention it; uptime divides by OBSERVED time and travels with the share of the window nobody watched. miner-06 dies on day 5 and never returns — you find it by lane shape, not by reading rows"
@@ -1066,6 +1079,7 @@ mod app {
         tx_card_state: stories::tx_card::TxCardState,
         image_stack_state: stories::image_stack::ImageStackState,
         time_spine_state: stories::time_spine::TimeSpineState,
+        time_spine_density_state: stories::time_spine_density::TimeSpineDensityState,
         coverage_lanes_state: stories::coverage_lanes::CoverageLanesState,
         flow_matrix_state: stories::flow_matrix::FlowMatrixState,
         flow_ring_state: stories::flow_ring::FlowRingState,
@@ -1204,6 +1218,8 @@ mod app {
                 tx_card_state: stories::tx_card::TxCardState::default(),
                 image_stack_state: stories::image_stack::ImageStackState::default(),
                 time_spine_state: stories::time_spine::TimeSpineState::default(),
+                time_spine_density_state:
+                    stories::time_spine_density::TimeSpineDensityState::default(),
                 coverage_lanes_state: stories::coverage_lanes::CoverageLanesState::default(),
                 flow_matrix_state: stories::flow_matrix::FlowMatrixState::default(),
                 flow_ring_state: stories::flow_ring::FlowRingState::default(),
@@ -1455,6 +1471,7 @@ mod app {
                             ),
                             Story::GroupedSection => stories::grouped_section::show(ui),
                             Story::OfferTile => stories::offer_tile::show(ui),
+                            Story::CornerAction => stories::corner_action::show(ui),
                             Story::TxCart => stories::tx_cart::show(ui, &mut self.tx_cart_state),
                             Story::WalletIdentityHeader => stories::wallet_identity_header::show(
                                 ui,
@@ -1492,6 +1509,10 @@ mod app {
                             Story::TimeSpine => {
                                 stories::time_spine::show(ui, &mut self.time_spine_state)
                             }
+                            Story::TimeSpineDensity => stories::time_spine_density::show(
+                                ui,
+                                &mut self.time_spine_density_state,
+                            ),
                             Story::CoverageLanes => {
                                 stories::coverage_lanes::show(ui, &mut self.coverage_lanes_state)
                             }

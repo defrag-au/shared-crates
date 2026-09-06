@@ -60,6 +60,27 @@ const NEUTRAL_HALF: f32 = 2.0;
 /// indistinguishable from the crowd it sits in.
 const PIN: Color32 = Color32::from_rgb(0x9b, 0x7c, 0xf5);
 
+/// Width of one density column, in points. Two: one is a hairline that
+/// flickers between adjacent pixels as the view pans, and wider starts to read
+/// as bars with edges rather than as a silhouette.
+const COLUMN_W: f32 = 2.0;
+/// The silhouette is the SAME grey as a neutral mark, lightened — it is the
+/// same claim ("this happened, no direction") made about a count instead of
+/// an event, and the directional marks drawn over it need to win.
+const DENSITY_FILL: Color32 = Color32::from_rgb(0x5e, 0x66, 0x78);
+/// A column OVER the ceiling — the mint burst, a floor sweep — drawn in the
+/// neutral mark's own grey rather than the silhouette's. Full height alone
+/// cannot say "off the scale", because the scale clips: a day at the ceiling
+/// and a day at forty times it are the same rectangle. The brighter tone is
+/// the only thing that tells them apart, and it is what makes a spike
+/// findable in a busy year.
+const CLIPPED_FILL: Color32 = MARK_NEUTRAL;
+/// Least half-height of a column that has anything in it. One transaction
+/// against ten thousand rounds to nothing on a log scale too, and "one" versus
+/// "none" is the distinction a mark lane shows for free, so it must not be
+/// lost when the lane changes form.
+const COLUMN_FLOOR: f32 = 1.0;
+
 // ---------------------------------------------------------------------------
 // TimeScale — the mapping (ported from re_time_ruler::TimeRangesUi)
 // ---------------------------------------------------------------------------
@@ -641,16 +662,68 @@ pub enum MarkKind {
     Neutral,
 }
 
+/// A count of events over a stretch of time — one bar of a histogram.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DensityBin {
+    /// Start, unix seconds.
+    pub start: i64,
+    /// Width, seconds.
+    pub span: i64,
+    /// How many events fell inside it.
+    pub count: u64,
+}
+
+/// What the lane under the ruler shows. The caller picks, because the caller
+/// knows what it HAS — a page of rows, or a histogram from an origin that has
+/// already counted the whole history.
+#[derive(Debug, Clone, Copy)]
+pub enum SpineLane<'a> {
+    /// Discrete events, one line each.
+    ///
+    /// Right for as long as the events can be told apart. Past a few per
+    /// pixel the lane saturates: a day with eight hundred and a day with
+    /// thirty both paint the same solid bar, and the only thing left legible
+    /// is the gaps — the lane ends up showing when NOTHING happened and
+    /// saying nothing about how much did.
+    Marks(&'a [(i64, MarkKind)]),
+    /// A RATE — how much happened when — as a silhouette of columns, with the
+    /// rare directional events drawn over it as marks.
+    ///
+    /// The silhouette grows from the midline in both directions, the way a
+    /// neutral mark does: it is the same "happened, no direction" claim made
+    /// about a count. Height is square-root scaled against a ROBUST ceiling
+    /// (see [`column_ceiling`]): a mint day is routinely a few hundred times
+    /// a quiet one, and against the true maximum a linear lane is a flat line
+    /// with one tower while a log lane is a slab with no shape at all — both
+    /// were drawn and looked at. Clipping the outliers to full height lets
+    /// the body of the history use the lane. Any column with anything in it
+    /// gets at least [`COLUMN_FLOOR`], so one-versus-none stays visible.
+    ///
+    /// `events` are the things that ARE discrete — a policy's mints and
+    /// burns, not its transfers. They keep the mark language exactly: in
+    /// above the midline, out below.
+    Density {
+        bins: &'a [DensityBin],
+        events: &'a [(i64, MarkKind)],
+    },
+}
+
+impl Default for SpineLane<'_> {
+    fn default() -> Self {
+        SpineLane::Marks(&[])
+    }
+}
+
 pub struct TimeSpine<'a> {
     state: &'a mut SpineState,
     format_tick: &'a dyn Fn(i64, i64) -> String,
     /// Optional coverage marks: `(from, to)` bands drawn faintly under the
     /// ruler — e.g. each party's `watched_from` … cursor.
     coverage: &'a [(i64, i64)],
-    /// Event marks for whatever is currently being WATCHED — drawn in the brush
-    /// lane, because "when did this wallet act" and "which interval do I want
-    /// to brush" are the same question.
-    marks: &'a [(i64, MarkKind)],
+    /// What the lane under the ruler shows for whatever is currently being
+    /// WATCHED — drawn in the brush lane, because "when did this act" and
+    /// "which interval do I want to brush" are the same question.
+    lane: SpineLane<'a>,
     /// The one moment this view is ABOUT, if it is about one — see
     /// [`TimeSpine::pin`].
     pin: Option<i64>,
@@ -670,7 +743,7 @@ impl<'a> TimeSpine<'a> {
             state,
             format_tick: &compact_tick_label,
             coverage: &[],
-            marks: &[],
+            lane: SpineLane::default(),
             pin: None,
             height: 56.0,
             show_play: true,
@@ -712,8 +785,23 @@ impl<'a> TimeSpine<'a> {
 
     /// Mark WHEN the watched thing acted. Drawn in the brush lane so the
     /// answer to "when did they trade" sits on the axis you drag to isolate it.
+    /// See [`SpineLane::Marks`] for where this form stops working.
     pub fn marks(mut self, marks: &'a [(i64, MarkKind)]) -> Self {
-        self.marks = marks;
+        self.lane = SpineLane::Marks(marks);
+        self
+    }
+
+    /// Show HOW MUCH happened when, as a silhouette, with the rare directional
+    /// `events` as marks over it. See [`SpineLane::Density`].
+    pub fn density(mut self, bins: &'a [DensityBin], events: &'a [(i64, MarkKind)]) -> Self {
+        self.lane = SpineLane::Density { bins, events };
+        self
+    }
+
+    /// Set the lane's content directly, for a caller that already holds a
+    /// [`SpineLane`].
+    pub fn lane(mut self, lane: SpineLane<'a>) -> Self {
+        self.lane = lane;
         self
     }
 
@@ -757,7 +845,7 @@ impl<'a> TimeSpine<'a> {
             state,
             format_tick,
             coverage,
-            marks,
+            lane,
             pin,
             height,
             show_play,
@@ -851,31 +939,61 @@ impl<'a> TimeSpine<'a> {
             }
         }
 
-        // Event marks for the watched party. In above the midline, out below,
-        // so a wallet that only ever accumulated reads differently at a glance
-        // from one that turned over. Drawn before the ticks so the ruler and
-        // the playhead stay on top.
-        if !marks.is_empty() {
-            let mid = brush_lane.center().y;
-            for &(t, kind) in marks {
-                let Some(x) = scale.x_from_time_f32(t as f64) else {
-                    continue;
-                };
-                if x < ruler.left() || x > ruler.right() {
-                    continue;
+        // The lane. Drawn before the ticks so the ruler and the playhead stay
+        // on top.
+        let mut hovered_column: Option<(i64, i64, u64)> = None;
+        match lane {
+            // Event marks for the watched party. In above the midline, out
+            // below, so a wallet that only ever accumulated reads differently
+            // at a glance from one that turned over.
+            SpineLane::Marks(marks) => paint_marks(&painter, &scale, &ruler, &brush_lane, marks),
+            // The silhouette first, then the directional events over it —
+            // saturated hairlines over an unsaturated fill, so a burn day is
+            // still findable inside a busy month.
+            SpineLane::Density { bins, events } => {
+                let columns = bin_columns(ruler.x_range(), COLUMN_W, bins, |t| {
+                    scale.x_from_time(t as f64)
+                });
+                let ceiling = column_ceiling(&columns);
+                let mid = brush_lane.center().y;
+                let max_half = brush_lane.height() * 0.5 - 1.0;
+                for (i, &count) in columns.iter().enumerate() {
+                    let half = column_half_height(count, ceiling, max_half);
+                    if half <= 0.0 {
+                        continue;
+                    }
+                    let x0 = ruler.left() + i as f32 * COLUMN_W;
+                    let r = Rect::from_min_max(
+                        pos2(x0, mid - half),
+                        pos2((x0 + COLUMN_W).min(ruler.right()), mid + half),
+                    );
+                    let fill = if count > ceiling {
+                        CLIPPED_FILL
+                    } else {
+                        DENSITY_FILL
+                    };
+                    painter.rect_filled(r, CornerRadius::ZERO, fill);
                 }
-                let (y0, y1, col) = match kind {
-                    MarkKind::In => (mid, brush_lane.top() + 1.0, MARK_IN),
-                    MarkKind::Out => (mid, brush_lane.bottom() - 1.0, MARK_OUT),
-                    // Straddles the midline: the SHAPE says "no direction"
-                    // before the colour does, which matters because these are
-                    // usually the majority of the lane.
-                    MarkKind::Neutral => (mid - NEUTRAL_HALF, mid + NEUTRAL_HALF, MARK_NEUTRAL),
-                };
-                painter.line_segment(
-                    [pos2(x, y0), pos2(x, y1)],
-                    Stroke::new(1.0_f32, col.gamma_multiply(0.85)),
-                );
+                paint_marks(&painter, &scale, &ruler, &brush_lane, events);
+
+                // What is under the pointer, for the tooltip below. The
+                // column's own span in seconds, so the caller's formatter can
+                // pick a precision that matches.
+                if let Some(p) = ui.input(|i| i.pointer.hover_pos())
+                    && brush_lane.contains(p)
+                {
+                    let i = ((p.x - ruler.left()) / COLUMN_W).floor().max(0.0) as usize;
+                    if let Some(&count) = columns.get(i)
+                        && count > 0.0
+                        && let (Some(t0), Some(t1)) = (
+                            scale.time_from_x_f32(ruler.left() + i as f32 * COLUMN_W),
+                            scale.time_from_x_f32(ruler.left() + (i + 1) as f32 * COLUMN_W),
+                        )
+                    {
+                        let span = ((t1 - t0).round() as i64).max(1);
+                        hovered_column = Some((t0.round() as i64, span, count.round() as u64));
+                    }
+                }
             }
         }
 
@@ -1077,6 +1195,23 @@ impl<'a> TimeSpine<'a> {
         );
         painter.galley(badge.min + pad, galley, visuals.strong_text_color());
 
+        // The count under the pointer. A silhouette can be READ for shape but
+        // not for numbers, and "how many, exactly" is the one question the
+        // marks it replaced could not answer either — so answer it on hover.
+        if let Some((t, span, count)) = hovered_column {
+            egui::Tooltip::always_open(
+                ui.ctx().clone(),
+                ui.layer_id(),
+                id.with("column"),
+                egui::PopupAnchor::Pointer,
+            )
+            .show(|ui| {
+                ui.label(
+                    egui::RichText::new(format!("{}  ·  {count}", format_tick(t, span))).small(),
+                );
+            });
+        }
+
         // Playing indicator glow on the head — eases in/out.
         let glow = tween_bool(
             ui.ctx(),
@@ -1100,6 +1235,135 @@ impl<'a> TimeSpine<'a> {
             brush_changed,
         }
     }
+}
+
+/// One hairline per event in the brush lane: in rises from the midline, out
+/// falls from it, neutral straddles it.
+fn paint_marks(
+    painter: &egui::Painter,
+    scale: &TimeScale,
+    ruler: &Rect,
+    brush_lane: &Rect,
+    marks: &[(i64, MarkKind)],
+) {
+    let mid = brush_lane.center().y;
+    for &(t, kind) in marks {
+        let Some(x) = scale.x_from_time_f32(t as f64) else {
+            continue;
+        };
+        if x < ruler.left() || x > ruler.right() {
+            continue;
+        }
+        let (y0, y1, col) = match kind {
+            MarkKind::In => (mid, brush_lane.top() + 1.0, MARK_IN),
+            MarkKind::Out => (mid, brush_lane.bottom() - 1.0, MARK_OUT),
+            // Straddles the midline: the SHAPE says "no direction" before the
+            // colour does, which matters because these are usually the
+            // majority of the lane.
+            MarkKind::Neutral => (mid - NEUTRAL_HALF, mid + NEUTRAL_HALF, MARK_NEUTRAL),
+        };
+        painter.line_segment(
+            [pos2(x, y0), pos2(x, y1)],
+            Stroke::new(1.0_f32, col.gamma_multiply(0.85)),
+        );
+    }
+}
+
+/// Re-bin `bins` into screen columns `column_w` wide across `x_range`.
+///
+/// Each bin's count is shared among the columns it overlaps in proportion to
+/// the overlap, so a day bucket zoomed to two hundred pixels spreads evenly
+/// and a hundred hour buckets zoomed out to one pixel SUM into it. Nothing on
+/// screen is dropped — the same rule `CoverageLanes` follows for sub-pixel
+/// runs — and the total across the columns equals the total of the bins that
+/// fall inside the range.
+///
+/// `x_of` is the spine's time → x mapping. Bins wholly off-screen contribute
+/// nothing; bins straddling an edge contribute the part that is on it.
+pub fn bin_columns(
+    x_range: Rangef,
+    column_w: f32,
+    bins: &[DensityBin],
+    x_of: impl Fn(i64) -> Option<f64>,
+) -> Vec<f64> {
+    let width = x_range.span();
+    if width <= 0.0 || column_w <= 0.0 {
+        return Vec::new();
+    }
+    let n = (width / column_w).ceil() as usize;
+    let mut columns = vec![0.0_f64; n];
+    let left = x_range.min as f64;
+    let cw = column_w as f64;
+    for bin in bins {
+        if bin.count == 0 {
+            continue;
+        }
+        let (Some(x0), Some(x1)) = (x_of(bin.start), x_of(bin.start + bin.span.max(1))) else {
+            continue;
+        };
+        let (x0, x1) = (x0.min(x1), x0.max(x1));
+        // A bin narrower than a hair still has to land somewhere: give it a
+        // minimal width so the overlap arithmetic below has something to share.
+        let x1 = x1.max(x0 + 1e-6);
+        let bin_w = x1 - x0;
+        let first = (((x0 - left) / cw).floor().max(0.0)) as usize;
+        let last = (((x1 - left) / cw).ceil().max(0.0)) as usize;
+        for (i, slot) in columns
+            .iter_mut()
+            .enumerate()
+            .take(last.min(n))
+            .skip(first.min(n))
+        {
+            let c0 = left + i as f64 * cw;
+            let c1 = c0 + cw;
+            let overlap = (x1.min(c1) - x0.max(c0)).max(0.0);
+            if overlap > 0.0 {
+                *slot += bin.count as f64 * overlap / bin_w;
+            }
+        }
+    }
+    columns
+}
+
+/// The share of non-empty columns that fit under the ceiling; the rest clip.
+///
+/// One in twenty. A three-year policy at two pixels a column has ~700
+/// columns, so this lets ~35 of them clip — a four-day mint plus two or three
+/// trading frenzies — while every ordinary week keeps its own height.
+const CEILING_QUANTILE: f64 = 0.95;
+
+/// The count a full-height column represents: the [`CEILING_QUANTILE`] of the
+/// NON-EMPTY columns, never below the median-ish body, so a handful of
+/// outliers do not set the scale for everything else.
+///
+/// Against the true maximum a mint burst flattens three years of aftermarket
+/// into a hairline; this lets the burst clip and the rest breathe. Empty
+/// columns are excluded because a quiet history is mostly zeros, and a
+/// quantile over them would put the ceiling at zero.
+pub fn column_ceiling(columns: &[f64]) -> f64 {
+    let mut filled: Vec<f64> = columns.iter().copied().filter(|c| *c > 0.0).collect();
+    if filled.is_empty() {
+        return 0.0;
+    }
+    filled.sort_by(|a, b| a.total_cmp(b));
+    let i = ((filled.len() as f64 - 1.0) * CEILING_QUANTILE).round() as usize;
+    filled[i.min(filled.len() - 1)]
+}
+
+/// Half-height of a column holding `count`, against `ceiling` (the count that
+/// fills the lane — see [`column_ceiling`]), with `max_half` points available.
+///
+/// Square-root scaled: linear crushes the aftermarket under the mint, log
+/// flattens everything into a slab, and the root sits between — a day with a
+/// quarter of the ceiling's traffic stands at half height. Counts over the
+/// ceiling CLIP to full height; floored at [`COLUMN_FLOOR`] for any non-empty
+/// column, so one-versus-none survives the scale.
+pub fn column_half_height(count: f64, ceiling: f64, max_half: f32) -> f32 {
+    if count <= 0.0 || ceiling <= 0.0 || max_half <= 0.0 {
+        return 0.0;
+    }
+    let f = (count / ceiling).min(1.0).sqrt() as f32;
+    (f * max_half).clamp(COLUMN_FLOOR.min(max_half), max_half)
 }
 
 fn clamp_view(v: TimeView, domain: (i64, i64)) -> TimeView {
@@ -1232,6 +1496,128 @@ mod tests {
         assert_eq!(compact_tick_label(86_400 * 3, 86_400), "1970-01-04");
         assert_eq!(compact_tick_label(3661, 60), "01:01");
         assert_eq!(compact_tick_label(3661, 1), "01:01:01");
+    }
+
+    // ── the density lane ───────────────────────────────────────────────────
+
+    /// A linear mapping over `[0, 1000]` seconds onto `[0, 1000]` points.
+    fn unit_x(t: i64) -> Option<f64> {
+        Some(t as f64)
+    }
+
+    fn bin(start: i64, span: i64, count: u64) -> DensityBin {
+        DensityBin { start, span, count }
+    }
+
+    /// THE INVARIANT: nothing on screen is dropped. Whatever the bin and
+    /// column widths, the columns sum to the bins that fall on the axis.
+    #[test]
+    fn rebinning_conserves_the_count() {
+        let bins = [
+            bin(0, 100, 7),
+            bin(100, 100, 3000),
+            bin(250, 1, 1),
+            bin(500, 500, 42),
+        ];
+        for cw in [1.0, 2.0, 3.0, 17.0] {
+            let cols = bin_columns(Rangef::new(0.0, 1000.0), cw, &bins, unit_x);
+            let total: f64 = cols.iter().sum();
+            assert!((total - 3050.0).abs() < 1e-6, "cw {cw}: {total}");
+        }
+    }
+
+    /// A day bucket zoomed to two hundred pixels spreads evenly across them
+    /// rather than piling into its first column.
+    #[test]
+    fn a_wide_bin_spreads_across_its_columns() {
+        let cols = bin_columns(Rangef::new(0.0, 1000.0), 2.0, &[bin(0, 200, 100)], unit_x);
+        for c in &cols[..100] {
+            assert!((c - 1.0).abs() < 1e-9, "{c}");
+        }
+        assert!(cols[100..].iter().all(|c| *c == 0.0));
+    }
+
+    /// Many narrow bins under one column SUM, rather than the last one winning.
+    #[test]
+    fn narrow_bins_sum_into_their_column() {
+        let bins: Vec<DensityBin> = (0..10).map(|i| bin(i, 1, 5)).collect();
+        let cols = bin_columns(Rangef::new(0.0, 1000.0), 10.0, &bins, unit_x);
+        assert!((cols[0] - 50.0).abs() < 1e-9, "{}", cols[0]);
+    }
+
+    /// Bins straddling the edge contribute the part on screen; bins wholly
+    /// off it contribute nothing and do not panic.
+    #[test]
+    fn off_screen_bins_are_clipped_not_dropped_into_the_edge() {
+        let bins = [bin(-100, 200, 100), bin(-500, 100, 999), bin(950, 100, 100)];
+        let cols = bin_columns(Rangef::new(0.0, 1000.0), 10.0, &bins, unit_x);
+        let total: f64 = cols.iter().sum();
+        assert!((total - 100.0).abs() < 1e-6, "{total}");
+        // Half of each straddling bin is on screen — 50 apiece — but the
+        // first is 200 px wide and the last 100, so they land at different
+        // densities: 50 over ten columns, then 50 over five.
+        assert!((cols[0] - 5.0).abs() < 1e-9, "{}", cols[0]);
+        assert!((cols[99] - 10.0).abs() < 1e-9, "{}", cols[99]);
+    }
+
+    #[test]
+    fn a_degenerate_range_yields_no_columns() {
+        assert!(bin_columns(Rangef::new(5.0, 5.0), 2.0, &[bin(0, 1, 1)], unit_x).is_empty());
+        assert!(bin_columns(Rangef::new(0.0, 10.0), 0.0, &[bin(0, 1, 1)], unit_x).is_empty());
+    }
+
+    /// A column at the ceiling fills the lane; an empty one draws nothing;
+    /// anything over the ceiling clips; and any column with something in it
+    /// is at least the floor — one-versus-none is the distinction the mark
+    /// lane showed for free and this must keep.
+    #[test]
+    fn column_heights_are_root_scaled_clipped_and_floored() {
+        let max_half = 11.0;
+        assert_eq!(column_half_height(0.0, 100.0, max_half), 0.0);
+        assert_eq!(column_half_height(100.0, 100.0, max_half), max_half);
+        let one = column_half_height(0.2, 100.0, max_half);
+        assert_eq!(one, COLUMN_FLOOR, "a single event is visible: {one}");
+        // Square root: a quarter of the ceiling stands at half height.
+        let quarter = column_half_height(25.0, 100.0, max_half);
+        assert!((quarter - max_half * 0.5).abs() < 1e-5, "{quarter}");
+        let (a, b, c) = (
+            column_half_height(4.0, 100.0, max_half),
+            column_half_height(16.0, 100.0, max_half),
+            column_half_height(64.0, 100.0, max_half),
+        );
+        assert!(a < b && b < c && c < max_half, "{a} {b} {c}");
+        // Over the ceiling CLIPS rather than overflowing the lane.
+        assert_eq!(column_half_height(5000.0, 100.0, max_half), max_half);
+    }
+
+    /// THE CEILING IS ROBUST. A four-day mint of thousands against three years
+    /// of tens must not set the scale — against the true max the aftermarket
+    /// is a hairline and the lane is a flat line with one tower.
+    #[test]
+    fn the_ceiling_ignores_the_outliers_and_the_zeros() {
+        let mut columns = vec![0.0; 300];
+        for (i, c) in columns.iter_mut().enumerate() {
+            *c = match i {
+                0..=3 => 3000.0,
+                100..=160 => 0.0, // the dead stretch
+                _ => 10.0 + (i % 7) as f64,
+            };
+        }
+        let ceiling = column_ceiling(&columns);
+        assert!(
+            ceiling < 100.0,
+            "the mint must not set the ceiling: {ceiling}"
+        );
+        assert!(ceiling >= 10.0, "nor may the zeros drag it down: {ceiling}");
+        // The body of the history now has a height of its own.
+        let quiet = column_half_height(10.0, ceiling, 11.0);
+        assert!(
+            quiet > 5.0,
+            "a quiet day is visible, not a hairline: {quiet}"
+        );
+        assert_eq!(column_ceiling(&[]), 0.0);
+        assert_eq!(column_ceiling(&[0.0, 0.0]), 0.0);
+        assert_eq!(column_ceiling(&[7.0]), 7.0);
     }
 
     #[test]

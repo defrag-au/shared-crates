@@ -25,6 +25,7 @@ pub mod collection_list;
 pub mod command_palette;
 #[cfg(feature = "gateway")]
 pub mod conversation_history;
+pub mod corner_action;
 pub mod detail_split;
 pub mod distribution_waterfall;
 pub mod donut_chart;
@@ -200,6 +201,7 @@ pub use collection_list::{
     CollectionListLayout, CollectionListResponse, CollectionRow,
 };
 pub use command_palette::{CommandPalette, PaletteAction, PaletteState};
+pub use corner_action::{Corner, CornerAction};
 pub use custody_walk::{
     CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode, WalkNodeKind, WalkSummary,
     summarize as summarize_walk,
@@ -295,8 +297,9 @@ pub use swap_modal::{
 pub use tag_list::{TagList, TagListResponse};
 pub use theme::{FontStrategy, rarity_rank_color};
 pub use time_spine::{
-    MarkKind, SpineState, TimeScale, TimeSpine, TimeSpineResponse, TimeView, civil_from_unix,
-    compact_tick_label, format_date, next_tick_step_secs, paint_ticks,
+    DensityBin, MarkKind, SpineLane, SpineState, TimeScale, TimeSpine, TimeSpineResponse, TimeView,
+    bin_columns, civil_from_unix, column_ceiling, column_half_height, compact_tick_label,
+    format_date, next_tick_step_secs, paint_ticks,
 };
 pub use timestamp::{Timestamp, format_iso8601};
 pub use toast::{DEFAULT_DURATION_FRAMES, Toast, ToastKind, ToastQueue, show_toasts};

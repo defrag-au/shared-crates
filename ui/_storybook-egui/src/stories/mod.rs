@@ -63,6 +63,7 @@ pub mod tag_list;
 pub mod tcg_card;
 pub mod tier_ladder;
 pub mod time_spine;
+pub mod time_spine_density;
 pub mod timestamp;
 pub mod token_history;
 pub mod token_kinetic;
@@ -128,6 +129,7 @@ pub mod theme_states;
 pub mod toast;
 
 // Layout
+pub mod corner_action;
 pub mod grouped_section;
 pub mod offer_tile;
 

@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-127 widgets.
+128 widgets.
 
 | module | what it is |
 |---|---|
@@ -32,6 +32,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `collection_list` | Collection roster — the per-client collections list rendered on the admin portal dashboard |
 | `command_palette` | `CommandPalette` — a modal, keyboard-first action launcher over a caller-supplied command set |
 | `conversation_history` | `conversation_history` — what people said to the bot, what it worked out, and what it said back (feature `gateway`) |
+| `corner_action` | `CornerAction` — a small icon button pinned to one corner of a thumbnail or card, for a one-tap action on the thing it sits on (refresh, remove, pin) |
 | `coverage_delta_bar` | Coverage delta bar — before/after progress bar for trait coverage |
 | `coverage_lanes` | `CoverageLanes` — was it up, was it down, or was nobody looking, per entity, on the shared spine |
 | `custody_walk` | `CustodyWalk` — where a specific sum came from, unit by unit |
