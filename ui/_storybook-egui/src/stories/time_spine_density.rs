@@ -6,7 +6,7 @@
 //! two-month dead stretch, and a handful of burn days.
 //!
 //! **The thing to look at:** the top spine carries one
-//! [`egui_widgets::MarksLayer`] fed the way the policy view feeds it today —
+//! [`egui_widgets::MarksLayer`] fed the way the policy view used to feed it —
 //! one hairline per transaction, subsampled to a budget. Past a few per pixel
 //! it saturates: the mint, the spikes and the quiet tail all paint the same
 //! solid bar, and the only thing legible is the dead stretch. It shows when
@@ -14,9 +14,10 @@
 //!
 //! The bottom spine is the SAME widget with two layers stacked: an
 //! [`egui_widgets::DensityLayer`] on the identical counts — a waveform from
-//! the midline, one column per two pixels, root-scaled against a robust
-//! ceiling so the mint burst and the frenzies CLIP (drawn brighter) instead of
-//! flattening the aftermarket into a hairline — and a `MarksLayer` on top
+//! the midline, one column per two pixels, root-scaled up to a robust knee
+//! and log-compressed above it, so the mint burst and the frenzies keep their
+//! shape without flattening the aftermarket into a hairline — and a
+//! `MarksLayer` on top
 //! carrying only the mints and burns, the events that ARE discrete. Same
 //! ruler, same playhead, same in/out hues; the spine knows nothing about
 //! either layer. Hover a column for its count.
@@ -154,7 +155,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineDensityState) {
     ui.label(
         egui::RichText::new(format!(
             "{total} transactions over three years, drawn twice. Top: one mark per \
-             transaction, as the policy view draws it today. Bottom: the same counts as \
+             transaction, as the policy view used to draw it. Bottom: the same counts as \
              a density silhouette, mints and burns kept as marks. Hover a column."
         ))
         .small()
@@ -189,12 +190,22 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineDensityState) {
 
     ui.add_space(14.0);
 
-    ui.label(egui::RichText::new("as density — taller lane, zoom with scroll").strong());
+    ui.label(
+        egui::RichText::new("three layers — coverage band under density under marks; taller lane")
+            .strong(),
+    );
     // A third, taller, so the waveform has room: the policy view can afford
-    // 72 where the wallet feed runs at 48.
+    // 72 where the wallet feed runs at 48. And a COVERAGE band as ground —
+    // the policy view's "this is what is paged in" — added FIRST, because
+    // layers paint in the order given. Added last it would be a faint wash
+    // over every column and mark inside it, which is how the policy view
+    // shipped once (`.marks().coverage()`), and the reason this spine exists:
+    // the band must visibly sit UNDER the waveform, not tint it.
+    let loaded = [(T0 + 700 * DAY, T0 + DAYS * DAY)];
     let spine = state.as_density.as_mut().expect("just inserted");
     TimeSpine::new(spine)
         .format_tick(&tick)
+        .coverage(&loaded)
         .density(&state.bins)
         .marks(&state.events)
         .height(72.0)

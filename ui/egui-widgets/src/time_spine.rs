@@ -83,13 +83,6 @@ const COLUMN_W: f32 = 2.0;
 /// same claim ("this happened, no direction") made about a count instead of
 /// an event, and the directional marks drawn over it need to win.
 const DENSITY_FILL: Color32 = Color32::from_rgb(0x5e, 0x66, 0x78);
-/// A column OVER the ceiling — the mint burst, a floor sweep — drawn in the
-/// neutral mark's own grey rather than the silhouette's. Full height alone
-/// cannot say "off the scale", because the scale clips: a day at the ceiling
-/// and a day at forty times it are the same rectangle. The brighter tone is
-/// the only thing that tells them apart, and it is what makes a spike
-/// findable in a busy year.
-const CLIPPED_FILL: Color32 = MARK_NEUTRAL;
 /// Least half-height of a column that has anything in it. One transaction
 /// against ten thousand rounds to nothing on a log scale too, and "one" versus
 /// "none" is the distinction a mark lane shows for free, so it must not be
@@ -765,13 +758,11 @@ impl SpineLayer for MarksLayer<'_> {
 ///
 /// The silhouette grows from the midline in both directions, the way a
 /// neutral mark does: it is the same "happened, no direction" claim made
-/// about a count. Height is square-root scaled against a ROBUST ceiling (see
-/// [`column_ceiling`]): a mint day is routinely a few hundred times a quiet
-/// one, and against the true maximum a linear lane is a flat line with one
-/// tower while a log lane is a slab with no shape at all — both were drawn
-/// and looked at. Columns over the ceiling clip to full height and are drawn
-/// brighter, so "off the scale" is visible. Any column with anything in it
-/// gets at least [`COLUMN_FLOOR`], so one-versus-none stays visible.
+/// about a count. Height is square-root scaled up to a ROBUST knee (see
+/// [`column_ceiling`]) and log-compressed above it — see
+/// [`column_half_height`] for why neither a plain scale nor clipping
+/// survived being looked at. Any column with anything in it gets at least
+/// [`COLUMN_FLOOR`], so one-versus-none stays visible.
 ///
 /// Carries no directional events of its own: put a [`MarksLayer`] with the
 /// mints and burns ON TOP. They keep the mark language exactly, and the two
@@ -786,11 +777,12 @@ impl SpineLayer for DensityLayer<'_> {
         let columns = bin_columns(c.ruler.x_range(), COLUMN_W, self.0, |t| {
             c.scale.x_from_time(t as f64)
         });
-        let ceiling = column_ceiling(&columns);
+        let knee = column_ceiling(&columns);
+        let max = columns.iter().copied().fold(0.0_f64, f64::max);
         let mid = c.lane.center().y;
         let max_half = c.lane.height() * 0.5 - 1.0;
         for (i, &count) in columns.iter().enumerate() {
-            let half = column_half_height(count, ceiling, max_half);
+            let half = column_half_height(count, knee, max, max_half);
             if half <= 0.0 {
                 continue;
             }
@@ -799,12 +791,7 @@ impl SpineLayer for DensityLayer<'_> {
                 pos2(x0, mid - half),
                 pos2((x0 + COLUMN_W).min(c.ruler.right()), mid + half),
             );
-            let fill = if count > ceiling {
-                CLIPPED_FILL
-            } else {
-                DENSITY_FILL
-            };
-            c.painter.rect_filled(r, CornerRadius::ZERO, fill);
+            c.painter.rect_filled(r, CornerRadius::ZERO, DENSITY_FILL);
         }
 
         // The column under the pointer, with its own span in seconds so the
@@ -1381,21 +1368,27 @@ pub fn bin_columns(
     columns
 }
 
-/// The share of non-empty columns that fit under the ceiling; the rest clip.
+/// The share of non-empty columns that sit below the knee; the rest are
+/// compressed into the top of the lane.
 ///
 /// One in twenty. A three-year policy at two pixels a column has ~700
-/// columns, so this lets ~35 of them clip — a four-day mint plus two or three
-/// trading frenzies — while every ordinary week keeps its own height.
+/// columns, so ~35 of them — a four-day mint plus two or three trading
+/// frenzies — live above the knee, while every ordinary week keeps its own
+/// height.
 const CEILING_QUANTILE: f64 = 0.95;
 
-/// The count a full-height column represents: the [`CEILING_QUANTILE`] of the
-/// NON-EMPTY columns, never below the median-ish body, so a handful of
-/// outliers do not set the scale for everything else.
+/// How much of the lane the body of the history gets. The top quarter is for
+/// everything above the knee.
+const KNEE_HEIGHT: f32 = 0.75;
+
+/// The knee: the count at which the square-root body hands over to the
+/// compressed top — the [`CEILING_QUANTILE`] of the NON-EMPTY columns, so a
+/// handful of outliers do not set the scale for everything else.
 ///
 /// Against the true maximum a mint burst flattens three years of aftermarket
-/// into a hairline; this lets the burst clip and the rest breathe. Empty
-/// columns are excluded because a quiet history is mostly zeros, and a
-/// quantile over them would put the ceiling at zero.
+/// into a hairline; this lets the body breathe. Empty columns are excluded
+/// because a quiet history is mostly zeros, and a quantile over them would put
+/// the knee at zero.
 pub fn column_ceiling(columns: &[f64]) -> f64 {
     let mut filled: Vec<f64> = columns.iter().copied().filter(|c| *c > 0.0).collect();
     if filled.is_empty() {
@@ -1406,19 +1399,37 @@ pub fn column_ceiling(columns: &[f64]) -> f64 {
     filled[i.min(filled.len() - 1)]
 }
 
-/// Half-height of a column holding `count`, against `ceiling` (the count that
-/// fills the lane — see [`column_ceiling`]), with `max_half` points available.
+/// Half-height of a column holding `count`, given the `knee` (see
+/// [`column_ceiling`]), the tallest column `max`, and `max_half` points.
 ///
-/// Square-root scaled: linear crushes the aftermarket under the mint, log
-/// flattens everything into a slab, and the root sits between — a day with a
-/// quarter of the ceiling's traffic stands at half height. Counts over the
-/// ceiling CLIP to full height; floored at [`COLUMN_FLOOR`] for any non-empty
-/// column, so one-versus-none survives the scale.
-pub fn column_half_height(count: f64, ceiling: f64, max_half: f32) -> f32 {
-    if count <= 0.0 || ceiling <= 0.0 || max_half <= 0.0 {
+/// A SOFT KNEE, the way a compressor treats a loud passage. Up to the knee the
+/// body is square-root scaled into the lower [`KNEE_HEIGHT`] of the lane —
+/// linear crushes the aftermarket under the mint, log flattens everything
+/// into a slab, and the root sits between, with a quarter of the knee's
+/// traffic at half the body's height. Above the knee the excess is
+/// log-compressed into the remaining top, so the tallest column reaches full
+/// height and nothing in between is flat.
+///
+/// This replaced CLIPPING at the knee, which was drawn and looked at: on a
+/// five-year collection the busiest five percent of columns are not a few
+/// one-day spikes but a weeks-long frenzy, and clipping turned it into
+/// flat-topped slabs that read as a different chart glued in. With no column
+/// above the knee the body takes the whole lane.
+///
+/// Floored at [`COLUMN_FLOOR`] for any non-empty column, so one-versus-none
+/// survives the scale.
+pub fn column_half_height(count: f64, knee: f64, max: f64, max_half: f32) -> f32 {
+    if count <= 0.0 || knee <= 0.0 || max_half <= 0.0 {
         return 0.0;
     }
-    let f = (count / ceiling).min(1.0).sqrt() as f32;
+    let compressed_top = max > knee;
+    let body_top = if compressed_top { KNEE_HEIGHT } else { 1.0 };
+    let f = if count <= knee || !compressed_top {
+        (count / knee).min(1.0).sqrt() as f32 * body_top
+    } else {
+        let excess = ((count / knee).ln() / (max / knee).ln()).clamp(0.0, 1.0) as f32;
+        body_top + (1.0 - body_top) * excess
+    };
     (f * max_half).clamp(COLUMN_FLOOR.min(max_half), max_half)
 }
 
@@ -1622,28 +1633,42 @@ mod tests {
         assert!(bin_columns(Rangef::new(0.0, 10.0), 0.0, &[bin(0, 1, 1)], unit_x).is_empty());
     }
 
-    /// A column at the ceiling fills the lane; an empty one draws nothing;
-    /// anything over the ceiling clips; and any column with something in it
-    /// is at least the floor — one-versus-none is the distinction the mark
-    /// lane showed for free and this must keep.
+    /// The body is root-scaled into the lower part of the lane, the knee hands
+    /// over to a compressed top, the TALLEST column fills the lane, nothing
+    /// flat-tops, and any column with something in it is at least the floor —
+    /// one-versus-none is the distinction the mark lane showed for free.
     #[test]
-    fn column_heights_are_root_scaled_clipped_and_floored() {
-        let max_half = 11.0;
-        assert_eq!(column_half_height(0.0, 100.0, max_half), 0.0);
-        assert_eq!(column_half_height(100.0, 100.0, max_half), max_half);
-        let one = column_half_height(0.2, 100.0, max_half);
+    fn column_heights_have_a_soft_knee_and_a_floor() {
+        let (knee, max, max_half) = (100.0, 5000.0, 12.0);
+        assert_eq!(column_half_height(0.0, knee, max, max_half), 0.0);
+        let one = column_half_height(0.2, knee, max, max_half);
         assert_eq!(one, COLUMN_FLOOR, "a single event is visible: {one}");
-        // Square root: a quarter of the ceiling stands at half height.
-        let quarter = column_half_height(25.0, 100.0, max_half);
-        assert!((quarter - max_half * 0.5).abs() < 1e-5, "{quarter}");
+        // The body: a quarter of the knee stands at half the body's height.
+        let body_top = max_half * KNEE_HEIGHT;
+        let at_knee = column_half_height(knee, knee, max, max_half);
+        assert!((at_knee - body_top).abs() < 1e-5, "{at_knee}");
+        let quarter = column_half_height(25.0, knee, max, max_half);
+        assert!((quarter - body_top * 0.5).abs() < 1e-5, "{quarter}");
+        // Above the knee: still rising, NOT flat — a frenzy keeps its shape.
         let (a, b, c) = (
-            column_half_height(4.0, 100.0, max_half),
-            column_half_height(16.0, 100.0, max_half),
-            column_half_height(64.0, 100.0, max_half),
+            column_half_height(200.0, knee, max, max_half),
+            column_half_height(1000.0, knee, max, max_half),
+            column_half_height(4000.0, knee, max, max_half),
         );
-        assert!(a < b && b < c && c < max_half, "{a} {b} {c}");
-        // Over the ceiling CLIPS rather than overflowing the lane.
-        assert_eq!(column_half_height(5000.0, 100.0, max_half), max_half);
+        assert!(at_knee < a && a < b && b < c && c < max_half, "{a} {b} {c}");
+        // The tallest column fills the lane; nothing exceeds it.
+        assert_eq!(column_half_height(max, knee, max, max_half), max_half);
+        assert!(column_half_height(max * 2.0, knee, max, max_half) <= max_half);
+    }
+
+    /// With nothing above the knee there is nothing to compress, so the body
+    /// takes the WHOLE lane rather than leaving the top quarter empty.
+    #[test]
+    fn without_outliers_the_body_uses_the_whole_lane() {
+        let h = column_half_height(100.0, 100.0, 100.0, 12.0);
+        assert_eq!(h, 12.0);
+        let h = column_half_height(25.0, 100.0, 100.0, 12.0);
+        assert!((h - 6.0).abs() < 1e-5, "{h}");
     }
 
     /// THE CEILING IS ROBUST. A four-day mint of thousands against three years
@@ -1666,7 +1691,7 @@ mod tests {
         );
         assert!(ceiling >= 10.0, "nor may the zeros drag it down: {ceiling}");
         // The body of the history now has a height of its own.
-        let quiet = column_half_height(10.0, ceiling, 11.0);
+        let quiet = column_half_height(10.0, ceiling, 3000.0, 11.0);
         assert!(
             quiet > 5.0,
             "a quiet day is visible, not a hairline: {quiet}"
