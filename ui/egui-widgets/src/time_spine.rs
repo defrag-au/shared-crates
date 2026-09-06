@@ -27,6 +27,10 @@
 //! - the playhead **opens at the end**; play rewinds
 //! - the brush **filters**, the playhead **reveals** — two different verbs
 //! - time is unix seconds throughout; formatting is the caller's
+//! - **wheel zooms, sideways wheel pans, click places** — a vertical wheel
+//!   over the axis is zoom (pinch works too), horizontal wheel moves the
+//!   window, click or drag on the ruler sets the playhead, and double-click
+//!   on the ruler puts the whole domain back
 //!
 //! ## The naked spine and its layers
 //!
@@ -1126,9 +1130,19 @@ impl<'a> TimeSpine<'a> {
             state.set_brush(None);
             brush_changed = true;
         }
+        // ── zoom + pan ─────────────────────────────────────────────────────
+        // The wheel is the zoom. A time axis has no vertical content to
+        // scroll, so a vertical wheel over it means only one thing — closer
+        // or further — and pinch, the only other route to zoom, is fiddly
+        // on a trackpad and absent with a mouse. Horizontal wheel pans.
+        // Both are CONSUMED, or the page underneath scrolls away while the
+        // reader is trying to zoom; the same clearing `ScrollArea` does for
+        // its own scroll. Double-click on the ruler puts the whole domain
+        // back, so a reader zoomed in to a week is never stuck there.
         if response.hovered() {
             let scroll = ui.input(|i| i.smooth_scroll_delta);
-            let zoom = ui.input(|i| i.zoom_delta());
+            let pinch = ui.input(|i| i.zoom_delta());
+            let zoom = pinch * wheel_zoom_factor(scroll.y);
             if let Some(p) = ui.input(|i| i.pointer.hover_pos()) {
                 if zoom != 1.0
                     && let Some(v) =
@@ -1142,6 +1156,12 @@ impl<'a> TimeSpine<'a> {
                     state.view = clamp_view(v, state.domain);
                 }
             }
+            if scroll != Vec2::ZERO {
+                ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
+            }
+        }
+        if response.double_clicked() && tick_lane.contains(ptr.unwrap_or(rect.min)) {
+            state.view = TimeView::covering(state.domain.0, state.domain.1);
         }
 
         // ── brush + playhead marks ─────────────────────────────────────────
@@ -1433,6 +1453,22 @@ pub fn column_half_height(count: f64, knee: f64, max: f64, max_half: f32) -> f32
     (f * max_half).clamp(COLUMN_FLOOR.min(max_half), max_half)
 }
 
+/// Points of vertical wheel per e-fold of zoom — egui's own
+/// `scroll_zoom_speed` default, so a wheel over the spine feels exactly like
+/// ctrl+wheel does everywhere else in the app.
+const WHEEL_ZOOM_SPEED: f32 = 1.0 / 200.0;
+
+/// The zoom factor a vertical wheel of `scroll_y` points asks for: scroll
+/// DOWN (negative) zooms in, up zooms out, symmetrically — a wheel one way
+/// and the same wheel back land where they started.
+///
+/// Inverted from egui's ctrl+wheel and from the map convention, by request
+/// after trying both: on a trackpad "pull towards me" reads as "bring it
+/// closer", and that is the gesture readers reached for.
+pub fn wheel_zoom_factor(scroll_y: f32) -> f32 {
+    (-WHEEL_ZOOM_SPEED * scroll_y).exp()
+}
+
 fn clamp_view(v: TimeView, domain: (i64, i64)) -> TimeView {
     let (d0, d1) = (domain.0 as f64, domain.1 as f64);
     let spanned = v.spanned.min(d1 - d0).max(1.0);
@@ -1538,6 +1574,26 @@ mod tests {
         // never zoom out past the max span
         let z = s.zoom_at(0.0, 0.1, 2000.0).unwrap();
         assert!((z.spanned - 2000.0).abs() < 1e-6);
+    }
+
+    /// A wheel DOWN zooms in, a wheel up zooms out, and the two cancel — a
+    /// reader who overshoots and comes back lands where they started.
+    #[test]
+    fn wheel_zoom_is_symmetric_and_down_means_in() {
+        assert_eq!(wheel_zoom_factor(0.0), 1.0);
+        assert!(wheel_zoom_factor(-40.0) > 1.0, "down = in");
+        assert!(wheel_zoom_factor(40.0) < 1.0, "up = out");
+        let round_trip = wheel_zoom_factor(40.0) * wheel_zoom_factor(-40.0);
+        assert!((round_trip - 1.0).abs() < 1e-6, "{round_trip}");
+        // A full-domain view narrows under one wheel-down step.
+        let s = TimeScale::continuous(
+            Rangef::new(0.0, 1000.0),
+            TimeView::covering(0, 1000),
+            0,
+            1000,
+        );
+        let z = s.zoom_at(500.0, wheel_zoom_factor(-40.0), 1000.0).unwrap();
+        assert!(z.spanned < 1000.0, "zoomed in: {}", z.spanned);
     }
 
     #[test]

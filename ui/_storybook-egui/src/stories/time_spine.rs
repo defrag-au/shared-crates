@@ -101,8 +101,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineState) {
     ui.label(
         egui::RichText::new(
             "One spine, one selection, three faces. Find a wallet by handle, stake key, \
-             address or label and it's pinned everywhere; scrub the ruler; drag the \
-             lower lane to brush a range; press play. Hover a pile.",
+             address or label and it's pinned everywhere; scrub the ruler; wheel to zoom, \
+             sideways to pan, double-click the ruler to reset; drag the lower lane to \
+             brush a range; press play. Hover a pile.",
         )
         .small()
         .color(TEXT_MUTED),
