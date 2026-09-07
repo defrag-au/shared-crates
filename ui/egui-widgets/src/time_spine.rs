@@ -2016,6 +2016,20 @@ pub mod tape {
         fn free(event: &Event) -> Outcome<State> {
             match event {
                 Event::Narrowed => Transition(State::loose()),
+                // ZOOMED IN WHILE ALREADY PLAYING. The widget only emits
+                // `Playing` once the view is narrower than the domain, so
+                // this event reaching `free` means exactly that — and it is
+                // the ONLY notice the machine gets, because `Narrowed` is
+                // suppressed during play (the zoom anchors on the head, so
+                // loosening the tape would fight the anchor).
+                //
+                // Without this arm the tape stays free for the rest of the
+                // run: nothing re-centres the window and the head walks off
+                // the edge of a view that never moves. Only reproducible
+                // when play STARTS at full width, which is why it survived —
+                // every path that starts zoomed in arrives here already
+                // following.
+                Event::Playing => Transition(State::locked()),
                 _ => Handled,
             }
         }
@@ -2312,6 +2326,42 @@ mod tests {
         assert_eq!(*t.state(), free);
         t.handle(&Event::Pressed);
         assert_eq!(*t.state(), free, "a press at full width holds nothing");
+    }
+
+    /// PLAY STARTED AT FULL WIDTH, then the reader zooms in mid-playback.
+    ///
+    /// The tape has to engage, and the only event that can tell it to is
+    /// `Playing`. `Narrowed` is deliberately NOT sent while playing — the
+    /// zoom anchors on the head instead of the pointer, so loosening the
+    /// tape there would fight the anchor — which leaves `Playing` as the
+    /// first the machine hears that the view is no longer full width.
+    ///
+    /// Without this the tape stays `Free` for the rest of the run: nothing
+    /// re-centres the window, and the playhead simply walks off the edge of
+    /// a view that never moves. Reported from the deployed graph view, and
+    /// invisible from any state that starts zoomed in.
+    #[test]
+    fn zooming_in_mid_play_engages_a_tape_that_started_free() {
+        use statig::prelude::*;
+        use tape::{Event, State, Tape};
+
+        let mut t = Tape.uninitialized_state_machine().init();
+        assert_eq!(*t.state(), State::Free {}, "play opened at full width");
+
+        // The widget only emits `Playing` once the view is narrower than the
+        // domain, so receiving it here MEANS the reader has zoomed in.
+        t.handle(&Event::Playing);
+        assert_eq!(
+            *t.state(),
+            State::Locked {},
+            "a zoom during play must put the tape on the head"
+        );
+
+        // And it behaves like any other locked tape from there.
+        t.handle(&Event::Playing);
+        assert_eq!(*t.state(), State::Locked {}, "no self-transition per frame");
+        t.handle(&Event::Widened);
+        assert_eq!(*t.state(), State::Free {}, "zooming back out frees it");
     }
 
     /// The rate ladder: clamped at both ends by the keys, wrapped by a click,
