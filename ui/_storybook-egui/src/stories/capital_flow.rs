@@ -156,6 +156,9 @@ pub(crate) fn moves() -> Vec<AssetMove<'static>> {
     let mut out: Vec<AssetMove<'static>> = Vec::new();
     // asset -> current holder, so a transfer always leaves the right pile.
     let mut held: Vec<(&'static str, &'static str)> = Vec::new();
+    // When each asset last did anything, so a listing can be placed BEFORE
+    // its sale without landing before the event that preceded it.
+    let mut last_t: Vec<i64> = Vec::new();
     let mut n = 0usize;
     for a in arrivals() {
         for _ in 0..a.count {
@@ -163,6 +166,7 @@ pub(crate) fn moves() -> Vec<AssetMove<'static>> {
             n += 1;
             out.push(AssetMove::mint(a.timestamp, asset, a.holder));
             held.push((asset, a.holder));
+            last_t.push(a.timestamp);
         }
     }
     let mint_end = out.iter().map(|m| m.timestamp).max().unwrap_or(T0);
@@ -193,8 +197,36 @@ pub(crate) fn moves() -> Vec<AssetMove<'static>> {
         }
         // Trades spread over the year after the mint closes.
         let t = mint_end + DAY / 2 + (k as i64) * 365 * DAY / 900;
+        // MOST SALES ARE LISTED FIRST, and the listing is the interesting
+        // interval: the dot sits amber in the seller's own pile for days,
+        // then flies when it actually sells. Placed only where there is room
+        // between the asset's previous event and this one — a listing that
+        // sorted before the mint would be a fixture bug that reads as a
+        // widget bug.
+        if next() % 4 != 0 && t - last_t[i] > 2 * DAY {
+            out.push(AssetMove::escrow(
+                (t - 5 * DAY).max(last_t[i] + DAY),
+                asset,
+                from,
+            ));
+        }
         out.push(AssetMove::transfer(t, asset, from, to));
         held[i].1 = to;
+        last_t[i] = t;
+    }
+    // STANDING LISTINGS — up on the market at the end of the series and never
+    // sold, so the resting field has amber in it. Without these the tint only
+    // ever appears mid-scrub and the story cannot show what it looks like.
+    let end = mint_end + DAY / 2 + 365 * DAY;
+    for _ in 0..120 {
+        let i = (next() % held.len() as u64) as usize;
+        let (asset, holder) = held[i];
+        let t = end - (next() % 30) as i64 * DAY;
+        if t <= last_t[i] {
+            continue;
+        }
+        out.push(AssetMove::escrow(t, asset, holder));
+        last_t[i] = t;
     }
     out.sort_by_key(|m| m.timestamp);
     out

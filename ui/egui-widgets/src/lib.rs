@@ -227,7 +227,7 @@ pub use flow_stave::{
     FlowStave, FlowStaveResponse, Reconciliation, StaveEvent, StaveLane, StaveOrigin,
 };
 pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
-pub use holder_field::{AssetMove, HolderField, HolderFieldResponse};
+pub use holder_field::{AssetMove, Custody, HolderField, HolderFieldResponse};
 pub use holder_formation::{
     Acquisition, Distribution, HolderFormation, distribution_at, distribution_series, holdings_at,
 };

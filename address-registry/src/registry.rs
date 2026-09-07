@@ -214,6 +214,150 @@ static ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[
     ),
 ];
 
+// ── Payment-credential registry ──────────────────────────────────────────────
+
+/// A contract named by its PAYMENT CREDENTIAL, plus the registered address
+/// that credential belongs to.
+///
+/// `derived_from` is not decoration: it is what
+/// `every_credential_matches_its_address` decodes to prove the hex beside it
+/// is really that contract's payment part. Without it the table would be
+/// twenty-eight unreadable bytes that nothing can check, which is how the
+/// same five credentials came to be pasted by hand into a frontend and a
+/// walker config with nothing keeping the three copies honest.
+#[derive(Debug, Clone)]
+pub struct CredentialEntry {
+    pub category: AddressCategory,
+    pub derived_from: CredentialSource,
+}
+
+/// Where a credential in this table came from, and therefore how much the
+/// guard test can prove about it.
+#[derive(Debug, Clone, Copy)]
+pub enum CredentialSource {
+    /// A full bech32 address whose payment credential is this one — decoded
+    /// and compared by `every_credential_matches_its_address`. Any of a
+    /// contract's delegation forms will do: they share a payment script,
+    /// which is the whole point of keying by it.
+    Address(&'static str),
+    /// NO ADDRESS IS REGISTERED for this contract, so the credential comes
+    /// from another curated source and cannot be re-derived here. Named so
+    /// the provenance is at least auditable by a person, and so the gap is
+    /// visible rather than looking like a checked entry.
+    ///
+    /// An entry should not stay `Attested` forever. Registering one real
+    /// address for the contract promotes it to [`CredentialSource::Address`]
+    /// and puts it back under the test.
+    Attested(&'static str),
+}
+
+/// Known contracts by payment credential, hex, lower case.
+///
+/// WHY THIS EXISTS SEPARATELY. The address tables answer "what is this
+/// address"; a growing number of consumers only ever hold a credential and
+/// cannot ask that. Wayup issues a different sale address per seller — the
+/// staking part is the SELLER's, so their delegation survives a listing —
+/// and `policy-archive`'s movement graph stores the credential for exactly
+/// that reason. Deriving one from the other needs a bech32 decoder, which
+/// this crate deliberately does not carry outside its tests, so the mapping
+/// is curated here once instead of being re-decoded by hand per consumer.
+///
+/// A linear scan, not a `phf_map`: the table is single digits long and
+/// `AddressCategory` carries fn pointers, so the constructor would have to
+/// be spelled out per entry for no measurable gain.
+static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
+    // jpg.store V1 — the sale escrow and the collection-offer contract are
+    // one script under two delegation forms.
+    (
+        "9068a7a3f008803edac87af1619860f2cdcde40c26987325ace138ad",
+        CredentialEntry {
+            category: AC::Script(SC::Marketplace {
+                marketplace: MP::JpgStore,
+                purpose: Purpose::Sale,
+                kind: MarketplaceType::JpgStoreV1,
+                fee_calculation: jpg_store_fee_calculation,
+            }),
+            derived_from: CredentialSource::Address("addr1zxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tvpw288a4x0xf8pxgcntelxmyclq83s0ykeehchz2wtspks905plm"),
+        },
+    ),
+    // jpg.store V2/V3 sale escrow — delegated and undelegated forms, one
+    // script. See `both_forms_of_the_v2_escrow_are_the_same_contract`.
+    (
+        "c727443d77df6cff95dca383994f4c3024d03ff56b02ecc22b0f3f65",
+        CredentialEntry {
+            category: AC::Script(SC::Marketplace {
+                marketplace: MP::JpgStore,
+                purpose: Purpose::Sale,
+                kind: MarketplaceType::JpgStoreV2,
+                fee_calculation: jpg_store_fee_calculation,
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1w8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7eg0fcr8k",
+            ),
+        },
+    ),
+    // NO jpg.store V4 ENTRY, and it is not an oversight.
+    //
+    // V4 has a `MarketplaceType`, a datum parser and a fee rule, and still no
+    // address anywhere that decodes: the row here was pulled for a bad bech32
+    // payload, and `market-ledger`'s own `venues.toml` carries a V4 string
+    // that fails its checksum too — so the walker has never matched a V4 sale
+    // by address either. A credential was doing the rounds
+    // (`4a59ebd9afaf9391ec8eaf258bfce8d0ee2a82716a9d7c13d9d5d002`) with no
+    // decodable source behind it, and it does not appear once in ClayNation's
+    // 146,816 recorded movements — the largest sample there is. Registering
+    // an unverifiable twenty-eight bytes to close a gap on paper is worse
+    // than leaving the gap visible, so the gap stays visible. One real V4
+    // address from the source closes it properly.
+    //
+    // Wayup sale validator — the credential this table exists for. One
+    // address per seller, all of them this payment script.
+    (
+        "a76f0fb801a29f591e9871576508d85b0b5f3c38774f65032f58fdad",
+        CredentialEntry {
+            category: AC::Script(SC::Marketplace {
+                marketplace: MP::Wayup,
+                purpose: Purpose::Sale,
+                kind: MarketplaceType::Wayup,
+                fee_calculation: wayup_fee_calculation,
+            }),
+            derived_from: CredentialSource::Address("addr1zxnk7racqx3f7kg7npc4weggmpdskheu8pm57egr9av0mtvasazx8r5xwqtnfjsfrnat3h6yrycd2hfm9qpg7d0hf50s7x4y79"),
+        },
+    ),
+    // Wayup offer contract. ATTESTED, not derived: no Wayup offer address is
+    // registered anywhere here, and the credential is only recorded as a
+    // credential upstream too. Kept because dropping it would silently stop
+    // an accepted offer from reading as escrow — the asset would look like a
+    // gift to the contract and then a second gift to the buyer.
+    (
+        "27d46ecbec94b052d8f875cf3beafd0e8ca40e8ad069f677e0a128ea",
+        CredentialEntry {
+            category: AC::Script(SC::Marketplace {
+                marketplace: MP::Wayup,
+                purpose: Purpose::Offer,
+                kind: MarketplaceType::Wayup,
+                fee_calculation: wayup_fee_calculation,
+            }),
+            derived_from: CredentialSource::Attested(
+                "mitos tools/market-ledger/venues.toml — venue.wayup.offer_creds",
+            ),
+        },
+    ),
+];
+
+/// What contract owns this payment credential, if any.
+///
+/// `None` is the honest answer for the overwhelming majority of credentials
+/// and must stay that way: a consumer deciding whether a script holds an
+/// asset ON THE OWNER'S BEHALF has to be told "no" for a DEX pool, a vesting
+/// lock or a bridge, all of which really do take custody.
+pub fn lookup_payment_credential(credential_hex: &str) -> Option<&'static CredentialEntry> {
+    PAYMENT_CREDENTIAL_REGISTRY
+        .iter()
+        .find(|(cred, _)| *cred == credential_hex)
+        .map(|(_, entry)| entry)
+}
+
 // ── Testnet / Preprod registries ─────────────────────────────────────────────
 
 /// Registry of known testnet/preprod addresses.
@@ -964,6 +1108,63 @@ mod tests {
                 "{addr} is a witness for the shared jpg.store stake credential"
             );
         }
+    }
+
+    /// Every credential in `PAYMENT_CREDENTIAL_REGISTRY` really is the
+    /// payment part of the address beside it.
+    ///
+    /// This is the whole reason the table is allowed to exist. Twenty-eight
+    /// bytes of hex is unreadable, so a typo or a stale copy cannot be caught
+    /// by review — and the consequence is silent: the credential simply never
+    /// matches, a marketplace stops being recognised, and the first anyone
+    /// hears of it is a chart that looks slightly wrong months later. Here it
+    /// is a decode away from being caught on every run.
+    #[test]
+    fn every_credential_matches_its_address() {
+        use pallas_addresses::Address;
+
+        for (cred, entry) in PAYMENT_CREDENTIAL_REGISTRY {
+            assert_eq!(
+                cred.len(),
+                56,
+                "{cred} is not a 28-byte credential — {} hex chars",
+                cred.len()
+            );
+            assert!(
+                cred.chars()
+                    .all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
+                "{cred} must be lower-case hex; lookups are exact"
+            );
+            let CredentialSource::Address(addr) = entry.derived_from else {
+                continue;
+            };
+            match Address::from_bech32(addr) {
+                Ok(Address::Shelley(sh)) => assert_eq!(
+                    sh.payment().to_hex(),
+                    *cred,
+                    "{addr} decodes to a different payment credential"
+                ),
+                other => panic!("{addr} must be a Shelley address, got {other:?}"),
+            }
+        }
+    }
+
+    /// A credential nobody registered answers NO.
+    ///
+    /// Load-bearing for consumers that use this to decide custody: a DEX
+    /// pool, a vesting lock and a bridge all genuinely take an asset, and
+    /// answering "yes, a marketplace" for an unknown script would freeze
+    /// assets at wallets that really did part with them.
+    #[test]
+    fn an_unregistered_credential_is_not_guessed_at() {
+        assert!(lookup_payment_credential("00".repeat(28).as_str()).is_none());
+        assert!(lookup_payment_credential("").is_none());
+        // The Wayup FEE credential — a real Wayup contract, and deliberately
+        // not in the table: a fee address takes the money and keeps it.
+        assert!(lookup_payment_credential(
+            "5f08a64f580e581735070e1b1d2ce29ae6942ab45ccff5a1747d2283"
+        )
+        .is_none());
     }
 
     /// The V2 escrow is registered twice: once delegated to JPG.store's own

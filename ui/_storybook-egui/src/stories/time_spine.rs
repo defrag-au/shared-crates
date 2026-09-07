@@ -218,7 +218,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineState) {
     ui.add_space(10.0);
 
     // ── assets out: dots moving between holders (motion + selection) ──────
-    ui.label(egui::RichText::new("assets out — who holds what, over time").strong());
+    ui.label(
+        egui::RichText::new("assets out — who holds what, over time (amber = listed)").strong(),
+    );
     let ar = HolderField::new(&moves, spine, &mut state.selection)
         .height(320.0)
         .show(ui);
@@ -243,9 +245,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineState) {
         .unwrap_or_else(|| "nothing selected — hover or click a pile".into());
     ui.label(
         egui::RichText::new(format!(
-            "{sel}   ·   {} assets / {} holders shown   ·   playhead {}   ·   {}",
+            "{sel}   ·   {} assets / {} holders shown   ·   {} listed   ·   playhead {}   ·   {}",
             ar.assets_shown,
             ar.holders_shown,
+            ar.listed_shown,
             format_date(spine.playhead),
             match spine.brush {
                 Some((a, b)) => format!("brush {} - {}", format_date(a), format_date(b)),
