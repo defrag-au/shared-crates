@@ -25,8 +25,8 @@
 use std::collections::HashMap;
 
 use gateway_wiring::{
-    ActionTrace, AgentEntitlement, EventBinding, GatewayStatus, GuildInfo, GuildRole, GuildWiring,
-    MAX_RECENT_ACTIVITY, RecentActivity,
+    ActionTrace, AgentEntitlement, EventBinding, GatewayLogEntry, GatewayStatus, GuildInfo,
+    GuildRole, GuildWiring, MAX_GATEWAY_LOG, MAX_RECENT_ACTIVITY, RecentActivity,
 };
 use serde::{Deserialize, Serialize};
 
@@ -135,6 +135,19 @@ pub struct GatewayAdminState {
     #[serde(default)]
     pub activity: Vec<RecentActivity>,
 
+    /// The listener's own log lines, oldest first.
+    ///
+    /// **Operator-only, and empty for everyone else.** Unlike [`activity`],
+    /// this cannot be filtered per client: a log line is free text captured
+    /// from a `tracing` call, and the listener logs guild ids, authors and
+    /// message previews across every guild it serves. There is no field to
+    /// scope it by, so the server sends it to operator connections and to
+    /// nobody else.
+    ///
+    /// [`activity`]: GatewayAdminState::activity
+    #[serde(default)]
+    pub log: Vec<GatewayLogEntry>,
+
     /// guild_id → that guild's roles, once fetched.
     ///
     /// **Not in the snapshot** — fetched per guild on demand (`RefreshRoles`),
@@ -182,6 +195,18 @@ pub enum GatewayAdminDelta {
         message_id: String,
         trace: Box<ActionTrace>,
     },
+
+    /// Log lines the listener emitted since the last push.
+    ///
+    /// **A batch, not one per line.** A single reconnect produces a handful of
+    /// lines within a few milliseconds of each other, and one delta each would
+    /// mean one encode and one socket write each for a stream that is already
+    /// the chattiest thing on this connection.
+    ///
+    /// **Operator-only** — see [`GatewayAdminState::log`]. This is the one
+    /// delta whose scope is neither "global" nor a guild, and the fan-out has
+    /// to route it on that basis rather than on the absence of a guild id.
+    LogAppended(Vec<GatewayLogEntry>),
 }
 
 impl GatewayAdminState {
@@ -218,6 +243,12 @@ impl GatewayAdminState {
                 {
                     entry.trace = Some(trace.as_ref().clone());
                 }
+            }
+            GatewayAdminDelta::LogAppended(lines) => {
+                self.log.extend(lines.iter().cloned());
+                // Same shared bound as the feed, for the same reason.
+                let excess = self.log.len().saturating_sub(MAX_GATEWAY_LOG);
+                self.log.drain(..excess);
             }
         }
     }
@@ -271,6 +302,30 @@ mod tests {
             state.activity.last().unwrap().message_id,
             (MAX_RECENT_ACTIVITY * 2 - 1).to_string()
         );
+    }
+
+    /// The log stream is the chattiest thing on this connection, so a long
+    /// session is exactly where an unbounded client list would hurt. Rings at
+    /// the SAME shared bound as the server, for the same reason the feed does.
+    #[test]
+    fn the_log_rings_at_the_shared_bound() {
+        let mut state = GatewayAdminState::default();
+        // Arriving in batches, which is how the server sends them.
+        for batch in 0..(MAX_GATEWAY_LOG / 5 * 3) {
+            let lines: Vec<_> = (0..5)
+                .map(|i| gateway_wiring::GatewayLogEntry {
+                    at_ms: 0.0,
+                    level: gateway_wiring::LogLevel::Info,
+                    target: "gateway_do".into(),
+                    message: format!("{batch}-{i}"),
+                })
+                .collect();
+            state.apply(&GatewayAdminDelta::LogAppended(lines));
+        }
+        assert_eq!(state.log.len(), MAX_GATEWAY_LOG);
+        // Oldest dropped, newest kept — a log that discarded the line you just
+        // provoked would be worse than no log.
+        assert_eq!(state.log.last().unwrap().message, "149-4");
     }
 
     /// A trace arrives seconds after its entry, matched on message id. An

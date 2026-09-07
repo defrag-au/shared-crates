@@ -43,6 +43,8 @@ pub mod focus_list;
 pub mod fonts;
 pub mod fungibles_row;
 pub mod gated;
+#[cfg(feature = "gateway")]
+pub mod gateway_log;
 pub mod grouped_section;
 pub mod holder_field;
 pub mod holder_formation;

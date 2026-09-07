@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-129 widgets.
+130 widgets.
 
 | module | what it is |
 |---|---|
@@ -55,6 +55,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `focus_list` | Focus list — a fixed-geometry master–detail widget for inspecting one item out of many in a constrained surface (typically a pinned chart tooltip) |
 | `fungibles_row` | Fungibles row — single horizontal row for a Cardano Native Token holding |
 | `gated` | Entitlement-gated rendering — the frontend half of the `authorizations` framework |
+| `gateway_log` | `gateway_log` — the listener's own log lines, in the surface that already knows what they mean (feature `gateway`) |
 | `grouped_section` | Grouped section header — hero icon + title + verified badge + subtitle + right-aligned bulk-action button, with caller-rendered body below |
 | `holder_field` | HolderField — the holder graph, reshuffling as assets change hands |
 | `holder_formation` | `HolderFormation` — people arriving, and how evenly the collection lands |
