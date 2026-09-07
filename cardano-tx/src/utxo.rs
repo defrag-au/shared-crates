@@ -206,6 +206,16 @@ pub fn calculate_min_ada(protocol_params: &ProtocolParameters, assets: &[AssetAm
     calculate_min_ada_with_params(protocol_params, assets, &OutputParams::default())
 }
 
+/// Minimum ADA for an asset-bearing output, keyed on the coins-per-UTxO-byte
+/// coefficient alone.
+///
+/// The coefficient is the only protocol parameter the size formula consumes, so
+/// this lets pure builders size an output without depending on an indexer's
+/// `ProtocolParameters` shape. See [`crate::params::TxBuildParams::min_utxo_for_assets`].
+pub fn min_ada_for_assets(coins_per_utxo_byte: u64, assets: &[AssetAmount]) -> u64 {
+    min_ada_with_coefficient(coins_per_utxo_byte, assets, &OutputParams::default())
+}
+
 /// Calculate the minimum ADA for an output with additional parameters (e.g., inline datum).
 ///
 /// This extended version supports:
@@ -248,6 +258,20 @@ pub fn calculate_min_ada_with_params(
     assets: &[AssetAmount],
     params: &OutputParams,
 ) -> u64 {
+    min_ada_with_coefficient(protocol_params.min_utxo_deposit_coefficient, assets, params)
+}
+
+/// The size formula, keyed on the only protocol parameter it consumes.
+///
+/// Both public entry points delegate here so there is exactly one copy of the
+/// serialised-output arithmetic — including the quantity's CBOR width, which a
+/// flat per-asset estimate gets wrong for large quantities and which shows up as
+/// `BabbageOutputTooSmallUTxO` only at submit time.
+pub fn min_ada_with_coefficient(
+    coins_per_utxo_byte: u64,
+    assets: &[AssetAmount],
+    params: &OutputParams,
+) -> u64 {
     // Conway/Babbage formula: (160 + |serialized_output|) * coinsPerUTxOByte
     const UTXO_OVERHEAD: u64 = 160;
 
@@ -279,7 +303,7 @@ pub fn calculate_min_ada_with_params(
     let serialized_output_size = map_header + address_with_key + value_with_key + datum_with_key;
 
     // Apply Babbage/Conway formula (no safety margin needed with correct calculation)
-    (UTXO_OVERHEAD + serialized_output_size) * protocol_params.min_utxo_deposit_coefficient
+    (UTXO_OVERHEAD + serialized_output_size) * coins_per_utxo_byte
 }
 
 #[cfg(test)]

@@ -30,6 +30,16 @@ pub struct ParsedListing {
     pub utxo: UtxoApi,
     /// Raw datum CBOR bytes (needed for script input)
     pub datum_cbor: Vec<u8>,
+    /// Whether the datum sits **inline** on the UTxO, as opposed to being
+    /// referenced by hash.
+    ///
+    /// This decides whether `datum_cbor` is witnessed, and getting it wrong
+    /// fails the transaction in one of two opposite ways: omitting the preimage
+    /// for a hash datum is `MissingRequiredDatums`, while witnessing one that is
+    /// already inline is `NotAllowedSupplementalDatums`. It cannot be inferred
+    /// from the bytes — only the UTxO knows — so the resolver that fetched the
+    /// datum must record it. jpg.store listings are hash-kind in practice.
+    pub datum_is_inline: bool,
     /// Payout obligations to fulfill
     pub payouts: Vec<DatumPayout>,
     /// Marketplace contract version
@@ -457,5 +467,151 @@ mod tests {
 
         let val = BigInt::Int(3_000_000.into());
         assert_eq!(extract_big_int_value(&val).unwrap(), 3_000_000);
+    }
+
+    /// The real hash-kind datum behind SpaceBud #1224, listed for 5000 ₳ at the
+    /// jpg.store V1 sale script (UTxO
+    /// `1d5b18556e6aeec81ddd4eb3e5f1e9a3ec226bf03596498e20d522bcb2809887#0`,
+    /// pulled from Koios `/datum_info` on 2026-09-07).
+    ///
+    /// This is the datum the previous two-level amount parser could not read —
+    /// it reported "No payouts could be parsed from datum" and made every V1
+    /// listing unbuyable.
+    const SPACEBUD_1224_V1_DATUM: &str = "d8799f581c7332086de38a8697e4ae475b4f5f4135946e0f8b83ceeca788b4ae889fd8799fd8799fd8799f581c740e42a7823c3ba189a7b54ee61533ca65b261a75e143a0e280faab0ffd8799fd8799fd8799f581cc9d531ef19bd56d932dcc8b02c3092c0392a16b2909e7ffd0711209affffffffa140d8799f00a1401a07270e00ffffd8799fd8799fd8799f581c70e60f3b5ea7153e0acc7a803e4401d44b8ed1bae1c7baaad1a62a72ffd8799fd8799fd8799f581c1e78aae7c90cc36d624f7b3bb6d86b52696dc84e490f343eba89005fffffffffa140d8799f00a1401a05f5e100ffffd8799fd8799fd8799f581c7332086de38a8697e4ae475b4f5f4135946e0f8b83ceeca788b4ae88ffd8799fd8799fd8799f581cbbdd2ef5dd2ce6fbef843b2f90d8295183ebfd27032fb29681dceac1ffffffffa140d8799f00a1401b000000011ce90300ffffffff";
+
+    #[test]
+    fn test_parse_live_jpg_v1_listing_datum() {
+        let bytes = hex::decode(SPACEBUD_1224_V1_DATUM).expect("fixture hex");
+        let payouts = parse_listing_datum(&bytes, MarketplaceType::JpgStoreV1, 1)
+            .expect("live V1 listing datum must parse");
+
+        // Three payouts: marketplace fee, royalty, seller take. All three are
+        // required — dropping any one builds a TX the validator rejects.
+        let amounts: Vec<u64> = payouts.iter().map(|p| p.lovelace).collect();
+        assert_eq!(amounts, vec![120_000_000, 100_000_000, 4_780_000_000]);
+
+        // Sums to exactly the 5000 ₳ list price. This is the assertion that
+        // proves we read the right integers: shape B nests a decoy `Int 0`
+        // beside the real amount, and picking it would total 0.
+        assert_eq!(amounts.iter().sum::<u64>(), 5_000_000_000);
+    }
+
+    #[test]
+    fn test_live_datum_payout_addresses_are_mainnet_bech32() {
+        let bytes = hex::decode(SPACEBUD_1224_V1_DATUM).expect("fixture hex");
+        let payouts = parse_listing_datum(&bytes, MarketplaceType::JpgStoreV1, 1).unwrap();
+
+        for payout in &payouts {
+            let bech32 = payout.address.to_bech32().expect("payout address encodes");
+            assert!(
+                bech32.starts_with("addr1"),
+                "expected a mainnet address, got {bech32}"
+            );
+        }
+
+        // The seller's take is the largest payout, and it must go back to the
+        // datum's own owner_pkh. Asserting on the payment credential rather
+        // than a bech32 prefix keeps this about the datum's semantics instead
+        // of the address encoding.
+        const OWNER_PKH: &str = "7332086de38a8697e4ae475b4f5f4135946e0f8b83ceeca788b4ae88";
+        let seller = payouts.last().unwrap();
+        assert_eq!(seller.lovelace, 4_780_000_000);
+        assert_eq!(
+            hex::encode(&seller.address.to_vec()[1..29]),
+            OWNER_PKH,
+            "seller payout must pay the datum's owner_pkh"
+        );
+
+        // …and the fee/royalty payouts must NOT, or we'd be paying the seller
+        // money the validator expects elsewhere.
+        for other in &payouts[..payouts.len() - 1] {
+            assert_ne!(hex::encode(&other.address.to_vec()[1..29]), OWNER_PKH);
+        }
+    }
+
+    /// A partially-unreadable payouts list must fail, not silently drop the
+    /// entry — see the "fail closed" comment in `parse_jpg_v1_v2_v3_datum`.
+    #[test]
+    fn test_unparseable_payout_fails_rather_than_being_skipped() {
+        use pallas_codec::utils::MaybeIndefArray;
+        use pallas_primitives::conway::{Constr, PlutusData};
+
+        let junk_payout = PlutusData::Constr(Constr {
+            tag: 121,
+            any_constructor: None,
+            fields: MaybeIndefArray::Def(vec![
+                PlutusData::BoundedBytes(vec![0u8; 4].into()),
+                PlutusData::BoundedBytes(vec![0u8; 4].into()),
+            ]),
+        });
+        let datum = PlutusData::Constr(Constr {
+            tag: 121,
+            any_constructor: None,
+            fields: MaybeIndefArray::Def(vec![
+                PlutusData::BoundedBytes(vec![0u8; 28].into()),
+                PlutusData::Array(MaybeIndefArray::Def(vec![junk_payout])),
+            ]),
+        });
+
+        let mut encoded = Vec::new();
+        minicbor::encode(&datum, &mut encoded).expect("encode fixture");
+
+        let err = parse_listing_datum(&encoded, MarketplaceType::JpgStoreV1, 1)
+            .expect_err("an unreadable payout must fail the whole parse");
+        assert!(
+            format!("{err:?}").contains("Payout 0 of 1"),
+            "error should name the offending payout, got: {err:?}"
+        );
+    }
+
+    /// The decoy-integer regression, isolated: shape B's constructor carries a
+    /// leading `Int 0` before the map holding the real amount.
+    #[test]
+    fn test_amount_ignores_decoy_integer_in_wrapper_constructor() {
+        use pallas_codec::utils::MaybeIndefArray;
+        use pallas_primitives::conway::{BigInt, Constr, PlutusData};
+
+        let inner = PlutusData::Map(
+            MaybeIndefArray::Def(vec![(
+                PlutusData::BoundedBytes(Vec::new().into()),
+                PlutusData::BigInt(BigInt::Int(120_000_000.into())),
+            )])
+            .to_vec()
+            .into(),
+        );
+
+        let wrapper = PlutusData::Constr(Constr {
+            tag: 121,
+            any_constructor: None,
+            fields: MaybeIndefArray::Def(vec![PlutusData::BigInt(BigInt::Int(0.into())), inner]),
+        });
+
+        let outer =
+            PlutusData::Map(vec![(PlutusData::BoundedBytes(Vec::new().into()), wrapper)].into());
+
+        assert_eq!(parse_payout_amount(&outer).unwrap(), 120_000_000);
+    }
+
+    /// A multi-asset payout has no single lovelace answer — refuse rather than
+    /// pick an arbitrary entry.
+    #[test]
+    fn test_ambiguous_multi_policy_amount_is_rejected() {
+        use pallas_primitives::conway::{BigInt, PlutusData};
+
+        let outer = PlutusData::Map(
+            vec![
+                (
+                    PlutusData::BoundedBytes(vec![1u8; 28].into()),
+                    PlutusData::BigInt(BigInt::Int(5.into())),
+                ),
+                (
+                    PlutusData::BoundedBytes(vec![2u8; 28].into()),
+                    PlutusData::BigInt(BigInt::Int(7.into())),
+                ),
+            ]
+            .into(),
+        );
+
+        assert!(parse_payout_amount(&outer).is_err());
     }
 }

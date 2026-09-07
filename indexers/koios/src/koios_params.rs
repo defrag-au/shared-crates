@@ -30,6 +30,28 @@ pub struct KoiosProtocolParams {
     pub max_execution_units_per_transaction: Option<OgmiosExUnits>,
     #[serde(rename = "maxTransactionSize", default)]
     pub max_transaction_size: Option<OgmiosByteSize>,
+    #[serde(rename = "maxValueSize", default)]
+    pub max_value_size: Option<OgmiosByteSize>,
+    /// Live Plutus cost models, per language.
+    ///
+    /// Load-bearing for any script spend: the language view feeds the
+    /// script-integrity hash, so a stale or wrong-length cost model makes the
+    /// node reject the transaction with `PPViewHashesDontMatch`. Sourcing them
+    /// live is the only way to stay correct across a protocol update — bundled
+    /// constants have gone stale here before.
+    #[serde(rename = "plutusCostModels", default)]
+    pub plutus_cost_models: Option<OgmiosCostModels>,
+}
+
+/// Ogmios keys these by language name: `plutus:v1`, `plutus:v2`, `plutus:v3`.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct OgmiosCostModels {
+    #[serde(rename = "plutus:v1", default)]
+    pub plutus_v1: Option<Vec<i64>>,
+    #[serde(rename = "plutus:v2", default)]
+    pub plutus_v2: Option<Vec<i64>>,
+    #[serde(rename = "plutus:v3", default)]
+    pub plutus_v3: Option<Vec<i64>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

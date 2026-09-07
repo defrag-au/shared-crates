@@ -33,14 +33,33 @@ const BUY_REDEEMER_EMPTY_CONSTRUCTOR: BuyRedeemer = BuyRedeemer { cbor_hex: "d87
 
 impl MarketplaceType {
     /// Get the script reference UTxO for this marketplace version (if known).
+    ///
+    /// The returned `script_hash` MUST equal the payment credential of the
+    /// addresses this variant covers — a reference input carrying any other
+    /// script cannot satisfy the spend. `script_reference_matches_address`
+    /// enforces that; it was added after this table shipped with the V1
+    /// script (`9068a7a3…`) filed under `JpgStoreV2`, which left V1 with no
+    /// reference at all and pointed V2 at the wrong validator, so *neither*
+    /// version could be bought.
     pub fn script_reference(&self) -> Option<ScriptReference> {
         match self {
-            MarketplaceType::JpgStoreV2 => Some(ScriptReference {
+            // jpg.store V1 — one validator serves both the sale and offer
+            // addresses, which differ only in their staking part.
+            MarketplaceType::JpgStoreV1 => Some(ScriptReference {
                 tx_hash: "9a32459bd4ef6bbafdeb8cf3b909d0e3e2ec806e4cc6268529280b0fc1d06f5b",
                 output_index: 0,
                 script_hash: "9068a7a3f008803edac87af1619860f2cdcde40c26987325ace138ad",
             }),
-            // V1/V3/V4/Wayup script references can be added as discovered
+            // V2 and V3 are the SAME validator; the V2 address carries a script
+            // staking part and V3 carries none. The reference UTxO itself sits
+            // at the V3 address. Discovered from the reference input of a live
+            // V2 spend (tx 65167d34…, 2026-09-07).
+            MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3 => Some(ScriptReference {
+                tx_hash: "1693c508b6132e89b932754d657d28b24068ff5ff1715fec36c010d4d6470b3d",
+                output_index: 0,
+                script_hash: "c727443d77df6cff95dca383994f4c3024d03ff56b02ecc22b0f3f65",
+            }),
+            // V4/Wayup script references can be added as discovered.
             _ => None,
         }
     }
@@ -1199,6 +1218,176 @@ mod tests {
             kind_of(UNDELEGATED),
             kind_of(DELEGATED),
             "one script, one datum schema"
+        );
+    }
+
+    /// Every registered address must decode AND round-trip back to the exact
+    /// string it is keyed by.
+    ///
+    /// Round-tripping is the part that matters. A corrupt or hand-edited bech32
+    /// still "decodes" into *something* under a lenient reader, so the only way
+    /// to know the header agrees with the payload is to re-encode and compare.
+    /// An address that fails this matches nothing on chain and makes every
+    /// lookup against it silently return no result rather than erroring.
+    #[test]
+    fn every_registered_address_is_well_formed() {
+        use pallas_addresses::Address;
+
+        let mut bad = Vec::new();
+        for (address, category) in ADDRESS_REGISTRY.entries() {
+            match Address::from_bech32(address) {
+                Ok(decoded) => {
+                    let reencoded = decoded.to_bech32().unwrap_or_default();
+                    if reencoded != *address {
+                        bad.push(format!(
+                            "{address} does not round-trip (re-encodes to {reencoded}) — {category}"
+                        ));
+                    }
+                }
+                Err(e) => bad.push(format!("{address} does not decode: {e} — {category}")),
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "malformed registry addresses:\n  {}",
+            bad.join("\n  ")
+        );
+    }
+
+    /// One contract version must mean one validator. If two SALE addresses
+    /// carry the same `MarketplaceType` but different *script* credentials, the
+    /// version no longer identifies a datum schema or a reference script, and
+    /// anything selecting behaviour by version is picking arbitrarily.
+    ///
+    /// Restricted to script-credential addresses on purpose. `ScriptCategory::
+    /// Marketplace` is also used to attribute addresses that are not contracts
+    /// at all — Wayup settles through an ordinary key address
+    /// (`addr1v87m5srr…`), and jpg's fee destination carries a version tag
+    /// despite being a payout target. Those are attribution facts, not contract
+    /// claims, and demanding a validator of them is a category error.
+    /// `marketplace_key_addresses_are_not_contracts` pins that distinction so
+    /// it stays deliberate rather than looking overlooked.
+    #[test]
+    fn one_marketplace_version_means_one_validator() {
+        use pallas_addresses::{Address, ShelleyPaymentPart};
+        use std::collections::BTreeMap;
+
+        let mut script_of_version: BTreeMap<String, (String, String)> = BTreeMap::new();
+        for (address, category) in ADDRESS_REGISTRY.entries() {
+            let AddressCategory::Script(ScriptCategory::Marketplace { kind, purpose, .. }) =
+                category
+            else {
+                continue;
+            };
+            if !matches!(purpose, Purpose::Sale) {
+                continue;
+            }
+            let Ok(Address::Shelley(shelley)) = Address::from_bech32(address) else {
+                continue;
+            };
+            // Only a script credential can be spent by a validator.
+            let ShelleyPaymentPart::Script(script_hash) = shelley.payment() else {
+                continue;
+            };
+            let script = script_hash.to_string();
+            match script_of_version.get(&format!("{kind:?}")) {
+                Some((seen_script, seen_address)) => assert_eq!(
+                    *seen_script, script,
+                    "{kind:?} maps to two different validators: {seen_address} uses \
+                     {seen_script}, {address} uses {script}"
+                ),
+                None => {
+                    script_of_version.insert(format!("{kind:?}"), (script, (*address).to_string()));
+                }
+            }
+        }
+        assert!(
+            !script_of_version.is_empty(),
+            "no sale addresses registered"
+        );
+    }
+
+    /// Some addresses filed under `ScriptCategory::Marketplace` are not
+    /// contracts: a venue's own settlement wallet, or a fee destination. They
+    /// belong in the registry — attribution is the point — but nothing may
+    /// treat them as spendable script UTxOs.
+    ///
+    /// This test names them so the conflation is a recorded decision rather
+    /// than something the next reader has to rediscover the hard way. If the
+    /// category model is ever split, this is the list to move.
+    #[test]
+    fn marketplace_key_addresses_are_not_contracts() {
+        use pallas_addresses::{Address, ShelleyPaymentPart};
+
+        // Wayup settles the overwhelming majority of its volume through this
+        // ordinary wallet rather than through its sale validator.
+        const WAYUP_SETTLEMENT_WALLET: &str =
+            "addr1v87m5srrtx52s8jdragjl8wle0eq57dzv2n62nxh3nx65dq0edwwu";
+
+        let Ok(Address::Shelley(shelley)) = Address::from_bech32(WAYUP_SETTLEMENT_WALLET) else {
+            panic!("{WAYUP_SETTLEMENT_WALLET} must decode");
+        };
+        assert!(
+            matches!(shelley.payment(), ShelleyPaymentPart::Key(_)),
+            "the Wayup settlement address is expected to be a KEY address; if it is now a \
+             script, it has become a contract and the version tables need revisiting"
+        );
+        assert!(
+            MarketplaceType::Wayup.script_reference().is_none(),
+            "a Wayup reference script has been registered — check it against the sale \
+             validator, not the settlement wallet"
+        );
+    }
+
+    /// A reference input can only satisfy a spend if it carries the *same*
+    /// script the UTxO's address is locked by. So for every registered
+    /// marketplace address, the `script_reference()` of its `kind` must hash to
+    /// that address's own payment credential.
+    ///
+    /// This is the invariant that was silently violated: the table shipped the
+    /// V1 validator (`9068a7a3…`) under `JpgStoreV2`, so V1 listings resolved
+    /// to no reference at all and V2 listings resolved to a validator that
+    /// isn't theirs. Both versions were unbuyable and nothing said so.
+    #[test]
+    fn script_reference_matches_address() {
+        use pallas_addresses::Address;
+
+        let mut checked = 0;
+        for (address, category) in ADDRESS_REGISTRY.entries() {
+            let AddressCategory::Script(ScriptCategory::Marketplace { kind, purpose, .. }) =
+                category
+            else {
+                continue;
+            };
+            // Only SALE addresses are spent by a buy. A fee address is a payout
+            // destination that happens to be tagged with a version, and an
+            // offer address is spent by the collection-offer builder against a
+            // different validator — neither is this reference's business.
+            if !matches!(purpose, Purpose::Sale) {
+                continue;
+            }
+            let Some(script_ref) = kind.script_reference() else {
+                continue;
+            };
+            let payment_cred = match Address::from_bech32(address) {
+                Ok(Address::Shelley(sh)) => sh.payment().to_hex(),
+                // A few registry rows are non-Shelley or have a corrupt
+                // payload; those are the address table's problem, not this
+                // invariant's.
+                _ => continue,
+            };
+            assert_eq!(
+                payment_cred, script_ref.script_hash,
+                "{kind:?} reference script {} does not match the payment credential of {address} \
+                 — a buy against this address would reference the wrong validator",
+                script_ref.script_hash
+            );
+            checked += 1;
+        }
+        assert!(
+            checked >= 3,
+            "expected to check several marketplace addresses, only checked {checked} — \
+             has the registry or the reference table been gutted?"
         );
     }
 

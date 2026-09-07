@@ -128,6 +128,61 @@ impl KoiosApi {
 }
 
 #[cfg(feature = "evaluator")]
+mod params_impl {
+    use crate::koios_params::KoiosProtocolParams;
+    use cardano_tx::builder::cost_models::PlutusCostModels;
+    use cardano_tx::params::TxBuildParams;
+
+    /// Parse an Ogmios exact-ratio string (`"577/10000"`) into `(num, den)`.
+    fn parse_ratio(raw: &str) -> Option<(u64, u64)> {
+        let (num, den) = raw.split_once('/')?;
+        Some((num.trim().parse().ok()?, den.trim().parse().ok()?))
+    }
+
+    /// Build tx-builder parameters straight from a Koios/Ogmios protocol
+    /// parameters response.
+    ///
+    /// Carries the LIVE Plutus cost models through. Without them a builder falls
+    /// back to bundled constants, which have gone stale across protocol updates
+    /// before and take every script spend down with `PPViewHashesDontMatch` —
+    /// so this conversion is the difference between a jpg buy that submits and
+    /// one that is rejected outright.
+    impl From<&KoiosProtocolParams> for TxBuildParams {
+        fn from(pp: &KoiosProtocolParams) -> Self {
+            let models = pp.plutus_cost_models.as_ref();
+            Self {
+                min_fee_coefficient: pp.min_fee_coefficient,
+                min_fee_constant: pp.min_fee_constant.ada.lovelace,
+                coins_per_utxo_byte: pp.min_utxo_deposit_coefficient,
+                max_tx_size: pp
+                    .max_transaction_size
+                    .as_ref()
+                    .map(|s| s.bytes as u32)
+                    .unwrap_or(16_384),
+                max_value_size: pp.max_value_size.as_ref().map(|s| s.bytes).unwrap_or(5_000),
+                price_mem: pp
+                    .script_execution_prices
+                    .as_ref()
+                    .and_then(|p| parse_ratio(&p.memory)),
+                price_step: pp
+                    .script_execution_prices
+                    .as_ref()
+                    .and_then(|p| parse_ratio(&p.cpu)),
+                // Ogmios reports this under `minFeeReferenceScripts`, which this
+                // struct does not model yet; the mainnet value is stable.
+                min_fee_ref_script_cost_per_byte: 15,
+                ref_script_size: 0,
+                cost_models: PlutusCostModels {
+                    plutus_v1: models.and_then(|m| m.plutus_v1.clone()),
+                    plutus_v2: models.and_then(|m| m.plutus_v2.clone()),
+                    plutus_v3: models.and_then(|m| m.plutus_v3.clone()),
+                },
+            }
+        }
+    }
+}
+
+#[cfg(feature = "evaluator")]
 mod evaluator_impl {
     use super::KoiosApi;
     use async_trait::async_trait;

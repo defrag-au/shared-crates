@@ -109,7 +109,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `slot_table` | slot_table — the trait/slot list with enable / required toggles and an optional z-order field |
 | `sparkline` | Sparkline widget — compact inline line chart for trend visualization |
 | `split_allocation_bar` | Split allocation bar — segmented horizontal bar showing ADA allocation across multiple DEXes |
-| `stat_strip` | StatStrip — a horizontal row of windowed summary "stat cards" |
+| `stat_strip` | StatStrip — windowed summary "stat cards", laid out as uniform tiles that fill their container and wrap into even rows |
 | `supply_bar` | Two-band mint supply bar — `minted` (on chain) + `ordered` (the backlog of ordered-but-not-yet-minted units), over the unsold track |
 | `swap_modal` | Reusable swap modal widget for egui frontends |
 | `tag_list` | Tag list — a wrapping row of removable tags with an optional trailing "clear all" button |

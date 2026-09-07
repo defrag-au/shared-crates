@@ -682,6 +682,26 @@ impl Default for KoiosApi {
 }
 
 impl KoiosApi {
+    /// Build a client for a base URL, with an optional bearer token.
+    ///
+    /// The other constructors read the key from a Cloudflare Secrets Store and
+    /// so are only usable inside a worker. This one takes the token directly,
+    /// which is what a CLI or test harness needs — `KoiosApi` was otherwise
+    /// unconstructible outside the worker runtime despite the crate itself
+    /// building natively.
+    ///
+    /// Pass `None` for the keyless free tier.
+    pub fn new(base_url: impl Into<String>, api_key: Option<String>) -> Self {
+        let client = match api_key {
+            Some(key) if !key.is_empty() => HttpClient::with_bearer_token(key),
+            _ => HttpClient::new(),
+        };
+        Self {
+            client,
+            base_url: base_url.into(),
+        }
+    }
+
     /// Build a client from a `RouteContext`, reading the optional
     /// `KOIOS_API_KEY` bearer token from the Cloudflare Secrets Store.
     pub async fn for_context(ctx: &RouteContext<()>) -> worker::Result<Self> {

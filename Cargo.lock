@@ -709,6 +709,7 @@ dependencies = [
  "pallas-codec",
  "pallas-crypto",
  "pallas-primitives",
+ "pallas-traverse",
  "pallas-txbuilder",
  "serde",
  "serde_json",

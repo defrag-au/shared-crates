@@ -22,7 +22,6 @@ use pallas_crypto::hash::Hash;
 use pallas_txbuilder::{ExUnits, Input, Output, ScriptKind, StagingTransaction};
 use std::collections::HashSet;
 
-use super::cost_models::{PLUTUS_V2_COST_MODEL, PLUTUS_V3_COST_MODEL};
 use super::script::{CollateralConfig, MintEntry, ScriptInput, ScriptSource, ValidityInterval};
 use super::{TxDeps, UnsignedTx};
 use crate::error::TxBuildError;
@@ -477,6 +476,7 @@ impl PreparedTx {
                     self.max_script_kind,
                     self.network_id,
                     effective_fee,
+                    &self.params.cost_models,
                 )
             },
             300_000,
@@ -508,8 +508,10 @@ fn assemble_tx(
     max_script_kind: Option<ScriptKind>,
     network_id: u8,
     fee: u64,
+    cost_models: &super::cost_models::PlutusCostModels,
 ) -> Result<StagingTransaction, TxBuildError> {
     let mut tx = StagingTransaction::new();
+    let mut wanted_refs: Vec<Input> = Vec::new();
 
     // 1. Inputs + script context
     for (input, script_ctx) in inputs {
@@ -526,13 +528,14 @@ fn assemble_tx(
                 }),
             );
 
-            // Script (inline or reference)
+            // Script (inline or reference). Reference inputs are collected and
+            // emitted once, below — see `wanted_refs`.
             match &ctx.script {
                 ScriptSource::Inline { language, bytes } => {
                     tx = tx.script(*language, bytes.clone());
                 }
                 ScriptSource::Reference { utxo } => {
-                    tx = tx.reference_input(utxo.clone());
+                    wanted_refs.push(utxo.clone());
                 }
             }
 
@@ -543,9 +546,20 @@ fn assemble_tx(
         }
     }
 
-    // 2. Reference inputs
-    for ref_input in reference_inputs {
-        tx = tx.reference_input(ref_input.clone());
+    // 2. Reference inputs — DEDUPLICATED.
+    //
+    // Conway encodes reference inputs as a `set`, and the ledger rejects a set
+    // containing the same entry twice ("final number of elements does not match
+    // the total count that was decoded"). Two paths converge here: several
+    // script inputs sharing one reference script (a sweep of listings at the
+    // same contract), and a caller that also adds the reference explicitly.
+    // Both are natural, so dedupe rather than making callers coordinate.
+    wanted_refs.extend(reference_inputs.iter().cloned());
+    let mut emitted: HashSet<([u8; 32], u64)> = HashSet::new();
+    for ref_input in wanted_refs {
+        if emitted.insert((ref_input.tx_hash.0, ref_input.txo_index)) {
+            tx = tx.reference_input(ref_input);
+        }
     }
 
     // 3. Outputs
@@ -604,11 +618,16 @@ fn assemble_tx(
     }
 
     // 9. Language view (cost model)
+    //
+    // Sourced from the live protocol parameters, falling back to the bundled
+    // constants only when the caller had none. A stale or wrong-length cost
+    // model produces a wrong script-integrity hash and the node rejects every
+    // script spend with `PPViewHashesDontMatch` — the failure that took the
+    // collection-offer cancel path down when these were hardcoded here.
     if let Some(kind) = max_script_kind {
         let cost_model = match kind {
-            ScriptKind::PlutusV2 => PLUTUS_V2_COST_MODEL.to_vec(),
-            ScriptKind::PlutusV3 => PLUTUS_V3_COST_MODEL.to_vec(),
-            _ => PLUTUS_V3_COST_MODEL.to_vec(),
+            ScriptKind::PlutusV2 => cost_models.v2(),
+            _ => cost_models.v3(),
         };
         tx = tx.add_language(kind, cost_model);
     }
@@ -772,6 +791,71 @@ mod tests {
             matches!(result, Err(TxBuildError::InsufficientFunds { .. })),
             "expected InsufficientFunds, got {result:?}"
         );
+    }
+
+    /// Several script inputs sharing ONE reference script must emit that
+    /// reference input exactly once.
+    ///
+    /// Conway encodes reference inputs as a `set`, and the node rejects a set
+    /// containing the same entry twice — "final number of elements: 1 does not
+    /// match the total count that was decoded: 2". The failure is invisible
+    /// locally: the tx builds and serialises fine, and is only rejected at
+    /// evaluation/submission with an error that blames CBOR rather than the
+    /// duplicate. Found while sweeping two jpg.store listings at one contract.
+    #[test]
+    fn shared_reference_script_is_emitted_once() {
+        use pallas_txbuilder::BuildConway;
+
+        let script_ref = Input::new(Hash::from([0xab; 32]), 0);
+        let script_input = || ScriptInput {
+            script: ScriptSource::Reference {
+                utxo: script_ref.clone(),
+            },
+            datum_cbor: None,
+            redeemer_cbor: vec![0xd8, 0x79, 0x80],
+            ex_units: ExUnits {
+                mem: 1_000,
+                steps: 1_000,
+            },
+        };
+
+        let inputs = vec![
+            (Input::new(Hash::from([0x01; 32]), 0), Some(script_input())),
+            (Input::new(Hash::from([0x02; 32]), 0), Some(script_input())),
+        ];
+
+        let tx = assemble_tx(
+            &inputs,
+            // The caller ALSO passes it explicitly — the other way a duplicate
+            // arises, and equally natural.
+            std::slice::from_ref(&script_ref),
+            &[],
+            &[],
+            &[],
+            &ValidityInterval::default(),
+            &None,
+            &None,
+            Some(ScriptKind::PlutusV2),
+            1,
+            200_000,
+            &crate::builder::cost_models::PlutusCostModels::EMPTY,
+        )
+        .expect("assembles");
+
+        let built = tx.build_conway_raw().expect("serialises");
+        let refs = count_reference_inputs(&built.tx_bytes.0);
+        assert_eq!(
+            refs, 1,
+            "three requests for one reference script must collapse to a single \
+             reference input; got {refs}, which the ledger rejects as a duplicate set entry"
+        );
+    }
+
+    /// Count reference inputs (body key 18) in a serialised tx.
+    fn count_reference_inputs(cbor: &[u8]) -> usize {
+        use pallas_traverse::MultiEraTx;
+        let tx = MultiEraTx::decode(cbor).expect("tx decodes");
+        tx.reference_inputs().len()
     }
 
     #[test]

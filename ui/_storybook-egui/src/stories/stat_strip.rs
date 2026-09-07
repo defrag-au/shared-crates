@@ -95,8 +95,82 @@ pub fn show(ui: &mut egui::Ui) {
     ];
     egui_widgets::StatStrip::new(&holders)
         .value_color(egui_widgets::theme::ACCENT_CYAN)
-        .card_width(150.0)
+        .min_card_width(150.0)
         .show(ui);
+
+    ui.add_space(16.0);
+
+    // --- THE CASE THE OTHER EXAMPLES ALL MISS ---
+    //
+    // Every strip above uses a short, uniform trend ("+50%", "-8%"), and under
+    // those the old widget looked fine while being badly broken: `card_width`
+    // was a floor, each card is a `Frame`, and a frame grows to its content —
+    // so the card width tracked the length of the trend string. Four windows
+    // with four different magnitudes came out four different widths, wrapped
+    // ragged, and the story's own test case claimed "cards align in a
+    // fixed-width horizontal row" while demonstrating only values that happened
+    // to be the same size.
+    //
+    // `MetricRow` has this exact warning in its docs. It is repeated here as a
+    // story, because a comment in another module does not fail when it regresses
+    // and a visibly ragged strip does.
+    ui.label(
+        egui::RichText::new("Unequal trend widths (regression case)")
+            .color(ACCENT)
+            .strong(),
+    );
+    ui.label(
+        egui::RichText::new(
+            "Trend strings differ by 10+ characters. Every card must still be the same width, \
+             the same height, and share one caption baseline — and the strip must fill the \
+             container rather than trail off.",
+        )
+        .color(TEXT_MUTED)
+        .small(),
+    );
+    ui.add_space(4.0);
+
+    let ragged = [
+        egui_widgets::StatWindow::new("24h", "+0 \u{20b3}")
+            .trend(egui_widgets::Trend::Flat, "+0 \u{20b3} / -0 \u{20b3}")
+            .detail("0 tx"),
+        egui_widgets::StatWindow::new("7d", "-502 \u{20b3}")
+            .trend(egui_widgets::Trend::Down, "+373 \u{20b3} / -876 \u{20b3}")
+            .spark(vec![3.0, 2.0, 1.0, 2.0, 3.0, 2.0, 3.0])
+            .detail("2 tx"),
+        egui_widgets::StatWindow::new("30d", "-30676 \u{20b3}")
+            .trend(egui_widgets::Trend::Down, "+804523 \u{20b3} / -835199 \u{20b3}")
+            .spark(vec![2.0, 3.0, 1.0, 4.0, 2.0, 5.0, 1.0, 3.0, 2.0, 4.0])
+            .detail("25 tx"),
+        egui_widgets::StatWindow::new("all", "+416482 \u{20b3}")
+            .trend(egui_widgets::Trend::Up, "+8473849 \u{20b3} / -8057366 \u{20b3}")
+            .spark(vec![1.0, 8.0, 2.0, 9.0, 1.0, 1.0, 2.0, 1.0, 1.0, 2.0])
+            .detail("500 tx"),
+    ];
+    egui_widgets::StatStrip::new(&ragged)
+        .empty_note("no movement")
+        .show(ui);
+
+    ui.add_space(16.0);
+
+    // --- Narrow container: the strip has to WRAP into even rows ---
+    //
+    // Shown inside a pinned-width `Ui` rather than only at a narrow viewport,
+    // so the wrap is visible on a desktop storybook run. The old widget packed
+    // greedily and produced ragged groups (three cards and a lonely fourth);
+    // the columns are chosen up front now, so every row is full but the last.
+    ui.label(
+        egui::RichText::new("Narrow container (wraps into even rows)")
+            .color(ACCENT)
+            .strong(),
+    );
+    ui.add_space(4.0);
+    ui.scope(|ui| {
+        ui.set_max_width(420.0);
+        egui_widgets::StatStrip::new(&ragged)
+            .empty_note("no movement")
+            .show(ui);
+    });
 
     ui.add_space(16.0);
 
@@ -118,7 +192,10 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(8.0);
 
     ui.label(egui::RichText::new("Test cases:").color(ACCENT).strong());
-    ui.label("\u{2022} Cards align in a fixed-width horizontal row");
+    ui.label("\u{2022} Every card is the SAME width, whatever its trend string");
+    ui.label("\u{2022} Every card is the same height, with or without a sparkline");
+    ui.label("\u{2022} Captions share one baseline along the bottom of the row");
+    ui.label("\u{2022} The strip fills its container, and wraps into even rows");
     ui.label("\u{2022} Headline stays visible even for empty windows");
     ui.label("\u{2022} Trend arrow + delta sit right of the headline");
     ui.label("\u{2022} Sparkline shows per-window activity shape");

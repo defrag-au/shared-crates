@@ -34,3 +34,6 @@ async-trait = "0.1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }
+# Decodes built transactions so tests can assert on what was actually
+# serialised, rather than on the builder's own intermediate state.
+pallas-traverse = { workspace = true }
