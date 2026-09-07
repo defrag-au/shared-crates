@@ -33,10 +33,22 @@
 //! if resp.removed { dispatch(RemoveGate { id }); }
 //! ```
 
-use egui::{Color32, CornerRadius, Frame, Margin, RichText, Sense, Stroke, Ui};
+use egui::{Color32, CornerRadius, RichText, Sense, Stroke, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
 use crate::viewport::Breakpoint;
+
+/// Horizontal padding inside the chip, each side.
+///
+/// Module-level so [`Chip::width`] — which decides where a wrapping row breaks
+/// — and [`Chip::show`] — which paints — cannot drift apart. They did when each
+/// held its own copy, and the symptom is a row that breaks one chip early or
+/// one chip late, which reads as an unrelated spacing bug.
+const MARGIN_X: f32 = 5.0;
+/// Vertical padding inside the chip, top and bottom.
+const MARGIN_Y: f32 = 1.0;
+/// Point size of the `×` remove affordance.
+const REMOVE_GLYPH: f32 = 10.0;
 
 /// Semantic palette pick — `Chip::variant(…)` consumes one of these.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -163,8 +175,6 @@ impl<'a> Chip<'a> {
     /// one. Only used for the wrap decision, so being a pixel out moves a
     /// break point rather than misdrawing anything.
     fn width(&self, ui: &Ui, label: &str) -> f32 {
-        const MARGIN_X: f32 = 5.0;
-        const REMOVE_GLYPH: f32 = 10.0;
         let text = ui
             .painter()
             .layout_no_wrap(
@@ -215,60 +225,95 @@ impl<'a> Chip<'a> {
             }
         }
 
-        let mut frame = Frame::new()
-            .fill(bg)
-            .corner_radius(CornerRadius::same(3))
-            .inner_margin(Margin::symmetric(5, 1));
-        if let Some(b) = border {
-            frame = frame.stroke(Stroke::new(1.0_f32, b));
-        }
-        let inner = frame.show(ui, |ui| {
-            // A CHIP IS A TAG, NOT A CONTROL — so it is never SIZED like one.
-            //
-            // `spacing.interact_size` is a floor on allocated space, and
-            // `apply_touch_sizing` raises it to 44pt on Compact so that every
-            // button clears a fingertip. That floor also sets the height of the
-            // `horizontal` below, which turned every read-only tag on a phone
-            // into a 44pt block with 10pt text rattling around inside it — the
-            // flow-explorer's "verified", "complete history" and "transfer"
-            // marks all came out as squares.
-            //
-            // Zeroed for clickable chips too. A tap target has to clear 44pt,
-            // but it clears it in the INTERACTION rect, not the painted one —
-            // see the expansion below. Growing the box was never the ask.
-            //
-            // Same floor, same mechanism as [`crate::viewport::prose_row`];
-            // this widget cannot call it, because a chip's content is a row
-            // that must NOT wrap.
-            ui.spacing_mut().interact_size = egui::Vec2::ZERO;
-            ui.horizontal(|ui| {
-                let body = ui.label(RichText::new(&label_text).small().color(fg));
-                if let Some(hover) = self.hover_text {
-                    body.clone().on_hover_text(hover);
-                }
-                if self.removable {
-                    // Phosphor `X` glyph for the remove affordance per the
-                    // crate's no-raw-Unicode rule (see CLAUDE.md). Rendered
-                    // as a click-sensed `egui::Label` rather than a
-                    // `small_button` because the button has too much padding
-                    // for a chip's footprint.
-                    install_phosphor_font(ui.ctx());
-                    let x = ui.add(
-                        egui::Label::new(PhosphorIcon::X.rich_text(10.0, fg)).sense(Sense::click()),
-                    );
-                    if x.on_hover_text("Remove").clicked() {
-                        response.removed = true;
-                    }
-                }
-            });
-        });
-
-        // `Frame::show` hands back a plain allocated-area response sensing
-        // only hover, so asking it `.clicked()` directly is always false —
-        // which silently made `ChipResponse::clicked` dead for every host.
-        // Interacting the frame's rect is what actually senses the body,
-        // the same move `UserBadge` makes for its pill.
+        // ALLOCATED AND PAINTED, NOT FRAMED — and that is what makes a chip sit
+        // on its row's centre line.
         //
+        // This was an `egui::Frame` around a label, which is the obvious way to
+        // draw a small filled tag and the reason every chip in the estate hung
+        // low in an app bar. A `Frame` cannot participate in vertical
+        // alignment: it does not know its height until its content is laid out,
+        // so `Frame::begin` starts at the cursor and `Frame::end` reserves what
+        // it used. The row never gets the chance to centre it. Measured on the
+        // flow-explorer's top bar: wordmark and buttons centred at y≈20, chip at
+        // y≈27, hanging out of the bottom of the row.
+        //
+        // `allocate_exact_size` goes through `Layout::next_frame`, which
+        // stretches an item's frame to the row height and centres the widget
+        // within it — so the rect comes back aligned the way the row asked.
+        // Painting straight into it keeps it there, with no nested `Ui` whose
+        // own alignment pass could disagree.
+        //
+        // It also settles a second bug for free. `spacing.interact_size` is a
+        // floor on ALLOCATED SPACE, not a property of buttons, and the old
+        // inner `ui.horizontal` took it as the chip's height — so under
+        // `apply_touch_sizing` every read-only tag became a 44pt square with
+        // 10pt text rattling inside it. Nothing here reads `interact_size` at
+        // all now; the chip is sized by its text, and a CLICKABLE chip meets the
+        // touch minimum in its interaction rect instead (see below).
+        if self.removable {
+            // Phosphor `X` for the remove affordance, per the crate's
+            // no-raw-Unicode rule. Installed before measuring: an uninstalled
+            // font lays the glyph out as a fallback of a different width.
+            install_phosphor_font(ui.ctx());
+        }
+        let text = RichText::new(&label_text).small().color(fg);
+        let galley = egui::WidgetText::from(text).into_galley(
+            ui,
+            Some(egui::TextWrapMode::Extend),
+            f32::INFINITY,
+            egui::TextStyle::Small,
+        );
+        let x_galley = self.removable.then(|| {
+            egui::WidgetText::from(PhosphorIcon::X.rich_text(REMOVE_GLYPH, fg)).into_galley(
+                ui,
+                Some(egui::TextWrapMode::Extend),
+                f32::INFINITY,
+                egui::TextStyle::Small,
+            )
+        });
+        let gap = ui.spacing().item_spacing.x;
+        let tail = x_galley.as_ref().map_or(0.0, |g| gap + g.size().x);
+        let size = egui::vec2(
+            galley.size().x + tail + MARGIN_X * 2.0,
+            galley.size().y + MARGIN_Y * 2.0,
+        );
+        // THE ID COMES FROM THE ALLOCATION, not from the label. egui derives a
+        // fresh one per allocated widget, so two chips reading "transfer" in the
+        // same list get different ids — an id built from the text does not, and
+        // egui paints a red "First use of widget ID …" over the collision. Which
+        // it did, on every repeated tag in the feed and on the tier ladder's
+        // three identical route rows.
+        let (rect, alloc) = ui.allocate_exact_size(size, Sense::hover());
+        let id = alloc.id;
+
+        ui.painter().rect(
+            rect,
+            CornerRadius::same(3),
+            bg,
+            border.map_or(Stroke::NONE, |b| Stroke::new(1.0_f32, b)),
+            egui::StrokeKind::Inside,
+        );
+        let text_pos = egui::pos2(
+            rect.left() + MARGIN_X,
+            rect.center().y - galley.size().y * 0.5,
+        );
+        ui.painter().galley(text_pos, galley, fg);
+
+        if let Some(x) = x_galley {
+            let x_rect = egui::Rect::from_min_size(
+                egui::pos2(
+                    rect.right() - MARGIN_X - x.size().x,
+                    rect.center().y - x.size().y * 0.5,
+                ),
+                x.size(),
+            );
+            ui.painter().galley(x_rect.min, x, fg);
+            let hit = ui.interact(x_rect, id.with("remove"), Sense::click());
+            if hit.on_hover_text("Remove").clicked() {
+                response.removed = true;
+            }
+        }
+
         // THE TAP TARGET IS BIGGER THAN THE CHIP. A clickable chip is a real
         // control — the flow-explorer's tier chip opens the ladder — and at
         // ~18pt tall it is half of the 44pt minimum a fingertip needs. The
@@ -282,14 +327,15 @@ impl<'a> Chip<'a> {
         // enlarged rect would only take hits away from whatever is above.
         let hit = match self.clickable {
             true => {
-                let grow = (Breakpoint::from_ui(ui).min_touch() - inner.response.rect.height())
-                    .max(0.0)
-                    / 2.0;
-                inner.response.rect.expand2(egui::vec2(0.0, grow))
+                let grow = (Breakpoint::from_ui(ui).min_touch() - rect.height()).max(0.0) / 2.0;
+                rect.expand2(egui::vec2(0.0, grow))
             }
-            false => inner.response.rect,
+            false => rect,
         };
-        let body = ui.interact(hit, inner.response.id, Sense::click());
+        let body = ui.interact(hit, id, Sense::click());
+        if let Some(hover) = self.hover_text {
+            body.clone().on_hover_text(hover);
+        }
         if self.clickable && body.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }

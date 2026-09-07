@@ -108,19 +108,26 @@ fn parse_jpg_v1_v2_v3_datum(
         }
     };
 
-    let mut payouts = Vec::new();
-    for payout_data in payouts_list.iter() {
-        match parse_single_payout(payout_data, network_id) {
-            Ok(payout) => payouts.push(payout),
-            Err(e) => {
-                tracing::warn!("Skipping unparseable payout: {e}");
-            }
-        }
-    }
+    // Fail closed: every payout must parse. Skipping an unparseable one would
+    // build a TX that underpays a target the validator checks, so the failure
+    // surfaces as a rejected script instead of a legible error — and if a
+    // validator ever *didn't* check it, we'd silently rob a royalty recipient.
+    let payouts = payouts_list
+        .iter()
+        .enumerate()
+        .map(|(i, payout_data)| {
+            parse_single_payout(payout_data, network_id).map_err(|e| {
+                TxBuildError::BuildFailed(format!(
+                    "Payout {i} of {} could not be parsed: {e}",
+                    payouts_list.len()
+                ))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     if payouts.is_empty() {
         return Err(TxBuildError::BuildFailed(
-            "No payouts could be parsed from datum".to_string(),
+            "Datum carries an empty payouts list".to_string(),
         ));
     }
 
@@ -246,37 +253,81 @@ fn parse_staking_credential(data: &PlutusData) -> Result<Option<(u64, [u8; 28])>
     Ok(Some((cred_tag, hash_arr)))
 }
 
-/// Parse the amount map from a payout.
+/// Maximum nesting to descend looking for the lovelace leaf. The deepest real
+/// shape seen is 3 (`Map -> Constr -> Map -> Int`); the cap only stops a
+/// malformed datum from recursing without bound.
+const MAX_AMOUNT_DEPTH: u8 = 8;
+
+/// Parse the lovelace amount from a payout.
 ///
-/// JPG.store uses: Map { ByteString("") => Map { ByteString("") => Int(lovelace) } }
-/// This represents a Value with just lovelace (empty policy = ADA, empty name = lovelace).
+/// The amount is a Plutus `Value`, and jpg.store has shipped three encodings of
+/// it across V1–V3. All of them bottom out at the same place — the integer
+/// under the ADA policy (empty ByteString) and the lovelace name (also empty):
+///
+/// ```text
+/// A  Map { "" => Map { "" => Int } }                     // the documented shape
+/// B  Map { "" => Constr _ [ Int, Map { "" => Int } ] }   // live V1, see the golden test
+/// C  Int                                                 // bare lovelace
+/// ```
+///
+/// Shape B is why this is a descent rather than two nested loops: the earlier
+/// two-level version bailed on the intervening `Constr` and reported "no
+/// payouts", making every V1 listing unbuyable. Note B's constructor also
+/// carries a leading `Int 0` — so "find the first integer" is exactly wrong and
+/// would value the payout at zero. Only integers reached as a *map value* count.
 fn parse_payout_amount(data: &PlutusData) -> Result<u64, TxBuildError> {
+    parse_payout_amount_at(data, 0)
+}
+
+fn parse_payout_amount_at(data: &PlutusData, depth: u8) -> Result<u64, TxBuildError> {
+    if depth > MAX_AMOUNT_DEPTH {
+        return Err(TxBuildError::BuildFailed(format!(
+            "Payout amount nested deeper than {MAX_AMOUNT_DEPTH} levels"
+        )));
+    }
+
     match data {
-        // Simple integer amount (some datums use this)
         PlutusData::BigInt(big_int) => extract_big_int_value(big_int),
-        // Map format: { "": { "": lovelace } }
-        PlutusData::Map(outer_map) => {
-            for (_, inner_val) in outer_map.iter() {
-                match inner_val {
-                    PlutusData::Map(inner_map) => {
-                        for (_, amount_val) in inner_map.iter() {
-                            if let PlutusData::BigInt(big_int) = amount_val {
-                                return extract_big_int_value(big_int);
-                            }
-                        }
-                    }
-                    PlutusData::BigInt(big_int) => {
-                        return extract_big_int_value(big_int);
-                    }
-                    _ => continue,
+
+        // Prefer the ADA entry (empty-ByteString key). A single-entry map is
+        // unambiguous whatever the key. Anything else is a genuine multi-asset
+        // payout, which an ADA-only output cannot satisfy — fail rather than
+        // guess which entry is the price.
+        PlutusData::Map(map) => {
+            let entries: Vec<_> = map.iter().collect();
+            let chosen = entries
+                .iter()
+                .find(|(k, _)| matches!(k, PlutusData::BoundedBytes(b) if b.is_empty()))
+                .or(if entries.len() == 1 {
+                    entries.first()
+                } else {
+                    None
+                });
+
+            match chosen {
+                Some((_, value)) => parse_payout_amount_at(value, depth + 1),
+                None => Err(TxBuildError::BuildFailed(format!(
+                    "Payout amount has {} map entries and none is the ADA (empty) key",
+                    entries.len()
+                ))),
+            }
+        }
+
+        // Descend through wrapper constructors, skipping scalar fields — those
+        // are tags/flags, never the amount.
+        PlutusData::Constr(constr) => {
+            for field in constr.fields.iter() {
+                if matches!(field, PlutusData::Map(_) | PlutusData::Constr(_)) {
+                    return parse_payout_amount_at(field, depth + 1);
                 }
             }
             Err(TxBuildError::BuildFailed(
-                "Could not find lovelace amount in payout map".to_string(),
+                "Payout amount constructor has no Map or Constr field to descend into".to_string(),
             ))
         }
+
         _ => Err(TxBuildError::BuildFailed(format!(
-            "Expected Map or Int for payout amount, got: {data:?}"
+            "Expected Map, Constr or Int for payout amount, got: {data:?}"
         ))),
     }
 }
