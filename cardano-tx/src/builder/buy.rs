@@ -53,8 +53,10 @@ use crate::params::TxBuildParams;
 /// measured units. Building with fixed units both overpays on fees and, on a
 /// sweep, walks into the per-transaction execution cap — N listings multiply
 /// these, and the block limit is not far away.
-const BUY_EX_UNITS_MEM: u64 = 1_400_000;
-const BUY_EX_UNITS_STEPS: u64 = 500_000_000;
+/// Public so batch planners can derive a sweep cap from the same figure the
+/// builder starts with, rather than keeping a second estimate that drifts.
+pub const BUY_EX_UNITS_MEM: u64 = 1_400_000;
+pub const BUY_EX_UNITS_STEPS: u64 = 500_000_000;
 
 /// Dependencies for a marketplace buy TX.
 #[derive(Debug)]
