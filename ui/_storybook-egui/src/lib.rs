@@ -43,6 +43,7 @@ mod app {
         PipRow,
         PriceTimeline,
         Leaderboard,
+        ListingGrid,
         FocusList,
         CardBrowser,
         IconGallery,
@@ -239,6 +240,7 @@ mod app {
                 Self::PipRow,
                 Self::PriceTimeline,
                 Self::Leaderboard,
+                Self::ListingGrid,
                 Self::FocusList,
                 Self::CardBrowser,
                 Self::IconGallery,
@@ -353,6 +355,7 @@ mod app {
                 Self::PipRow => "Pip Row",
                 Self::PriceTimeline => "Price Timeline",
                 Self::Leaderboard => "Leaderboard",
+                Self::ListingGrid => "Listing Grid",
                 Self::FocusList => "Focus List",
                 Self::CardBrowser => "Card Browser",
                 Self::IconGallery => "Icon Gallery",
@@ -568,7 +571,7 @@ mod app {
                 Self::SupplyBar | Self::OrderList => "Mint Dashboard",
                 Self::FileUpload => "Utility",
                 Self::ImageTextEditor => "Media",
-                Self::TxCart => "TX Cart",
+                Self::TxCart | Self::ListingGrid => "TX Cart",
                 Self::GroupedSection | Self::OfferTile | Self::CornerAction => "Layout",
                 Self::MnemonicDisplay | Self::WalletList | Self::CollectionList => "Auth / Admin",
                 Self::PhaseCard | Self::QuantityStepper | Self::MintCheckout => {
@@ -652,6 +655,9 @@ mod app {
                 }
                 Self::Leaderboard => {
                     "Ranked standings with medals, a share bar, and supporting stats"
+                }
+                Self::ListingGrid => {
+                    "A price is not a promise you can buy it. Real residual jpg.store listings: MarsBirds at 19-25 ADA with resolvable datums, beside a Clay Nation listing whose hash-datum preimage exists nowhere on chain or in any indexer. Before buyability was a state the grid drew those identically — the reader picked the cheapest, clicked, and got a node error about datums seconds later. Blocked cards stay in the book (hide them and the floor you quote is wrong) but are knocked back and say why, in the same corner the eye learned to find the add-to-cart +. The three reasons are an enum, not a bool: 'no datum' is permanent, 'unsupported' is a registry gap we can close, 'bundle' means buyable-but-not-alone — collapsing them to 'unavailable' has you chasing the wrong fix. Note the cheapest card in the grid is one of the blocked ones"
                 }
                 Self::FocusList => {
                     "Fixed-geometry master-detail list for tooltips: sliding highlight + detail pane"
@@ -1040,6 +1046,7 @@ mod app {
         pip_row_state: stories::pip_row::PipRowState,
         price_timeline_state: stories::price_timeline::PriceTimelineState,
         leaderboard_state: stories::leaderboard::LeaderboardState,
+        listing_grid_state: stories::listing_grid::ListingGridState,
         focus_list_state: stories::focus_list::FocusListState,
         card_browser_state: stories::card_browser::CardBrowserStoryState,
         icon_gallery_state: stories::icon_gallery::IconGalleryState,
@@ -1168,6 +1175,7 @@ mod app {
                 pip_row_state: stories::pip_row::PipRowState::default(),
                 price_timeline_state: stories::price_timeline::PriceTimelineState::default(),
                 leaderboard_state: stories::leaderboard::LeaderboardState::default(),
+                listing_grid_state: stories::listing_grid::ListingGridState::default(),
                 focus_list_state: stories::focus_list::FocusListState::default(),
                 card_browser_state: stories::card_browser::CardBrowserStoryState::default(),
                 icon_gallery_state: stories::icon_gallery::IconGalleryState::default(),
@@ -1397,6 +1405,9 @@ mod app {
                             }
                             Story::Leaderboard => {
                                 stories::leaderboard::show(ui, &mut self.leaderboard_state)
+                            }
+                            Story::ListingGrid => {
+                                stories::listing_grid::show(ui, &mut self.listing_grid_state)
                             }
                             Story::FocusList => {
                                 stories::focus_list::show(ui, &mut self.focus_list_state)

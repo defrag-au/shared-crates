@@ -31,6 +31,7 @@ pub mod formatting;
 pub mod gated;
 pub mod icon_gallery;
 pub mod leaderboard;
+pub mod listing_grid;
 pub mod machine;
 pub mod marquee;
 pub mod mesh_playground;
