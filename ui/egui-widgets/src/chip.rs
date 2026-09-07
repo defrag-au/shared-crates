@@ -36,6 +36,7 @@
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Sense, Stroke, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::viewport::Breakpoint;
 
 /// Semantic palette pick — `Chip::variant(…)` consumes one of these.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -222,6 +223,24 @@ impl<'a> Chip<'a> {
             frame = frame.stroke(Stroke::new(1.0_f32, b));
         }
         let inner = frame.show(ui, |ui| {
+            // A CHIP IS A TAG, NOT A CONTROL — so it is never SIZED like one.
+            //
+            // `spacing.interact_size` is a floor on allocated space, and
+            // `apply_touch_sizing` raises it to 44pt on Compact so that every
+            // button clears a fingertip. That floor also sets the height of the
+            // `horizontal` below, which turned every read-only tag on a phone
+            // into a 44pt block with 10pt text rattling around inside it — the
+            // flow-explorer's "verified", "complete history" and "transfer"
+            // marks all came out as squares.
+            //
+            // Zeroed for clickable chips too. A tap target has to clear 44pt,
+            // but it clears it in the INTERACTION rect, not the painted one —
+            // see the expansion below. Growing the box was never the ask.
+            //
+            // Same floor, same mechanism as [`crate::viewport::prose_row`];
+            // this widget cannot call it, because a chip's content is a row
+            // that must NOT wrap.
+            ui.spacing_mut().interact_size = egui::Vec2::ZERO;
             ui.horizontal(|ui| {
                 let body = ui.label(RichText::new(&label_text).small().color(fg));
                 if let Some(hover) = self.hover_text {
@@ -249,7 +268,28 @@ impl<'a> Chip<'a> {
         // which silently made `ChipResponse::clicked` dead for every host.
         // Interacting the frame's rect is what actually senses the body,
         // the same move `UserBadge` makes for its pill.
-        let body = inner.response.interact(Sense::click());
+        //
+        // THE TAP TARGET IS BIGGER THAN THE CHIP. A clickable chip is a real
+        // control — the flow-explorer's tier chip opens the ladder — and at
+        // ~18pt tall it is half of the 44pt minimum a fingertip needs. The
+        // answer is to grow what is HIT rather than what is drawn: a chip
+        // inflated to 44pt of painted box is not a chip any more, and that is
+        // the shape `interact_size` was giving us. Expansion is vertical only,
+        // because a row of chips sits shoulder to shoulder and a horizontal
+        // one would have neighbours stealing each other's clicks.
+        //
+        // Non-clickable chips are left alone: nothing senses them, so an
+        // enlarged rect would only take hits away from whatever is above.
+        let hit = match self.clickable {
+            true => {
+                let grow = (Breakpoint::from_ui(ui).min_touch() - inner.response.rect.height())
+                    .max(0.0)
+                    / 2.0;
+                inner.response.rect.expand2(egui::vec2(0.0, grow))
+            }
+            false => inner.response.rect,
+        };
+        let body = ui.interact(hit, inner.response.id, Sense::click());
         if self.clickable && body.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }

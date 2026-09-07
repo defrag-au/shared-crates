@@ -152,6 +152,7 @@ mod app {
         MintCheckout,
         Viewport,
         Drawer,
+        Disclosure,
     }
 
     impl Story {
@@ -211,6 +212,7 @@ mod app {
                 Self::AccessGate,
                 Self::Viewport,
                 Self::Drawer,
+                Self::Disclosure,
                 Self::UserBadge,
                 Self::TierLadder,
                 Self::AboutModal,
@@ -439,6 +441,7 @@ mod app {
                 Self::AccessGate => "Access Gate",
                 Self::Viewport => "Breakpoint",
                 Self::Drawer => "Drawer",
+                Self::Disclosure => "Disclosure",
                 Self::UserBadge => "User Badge",
                 Self::TierLadder => "Tier Ladder",
                 Self::AboutModal => "About Modal",
@@ -500,6 +503,7 @@ mod app {
                 | Self::AccessGate
                 | Self::Viewport
                 | Self::Drawer
+                | Self::Disclosure
                 | Self::UserBadge
                 | Self::TierLadder
                 | Self::AboutModal
@@ -582,6 +586,7 @@ mod app {
                 Self::AccessGate => "App-level access screen: sign-in prompt + requirements (join links) for gated tools",
                 Self::Viewport => "Compact / Medium / Wide — the breakpoint every responsive layout decision reads from",
                 Self::Drawer => "Edge-anchored slide-over with a scrim — the narrow-layout stand-in for a side panel",
+                Self::Disclosure => "Detail that opens under the row it explains — eased, tied by a rule, anchored so the list does not shove",
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
                 Self::TierLadder => "The access ladder as a modal — what each rung gives, every route to it, and where you stand",
                 Self::AboutModal => "What a product is, what state it is in, and what to expect — the BETA badge's modal",
@@ -1004,6 +1009,7 @@ mod app {
         marquee: egui_widgets::Marquee,
         marquee_messages: Vec<egui_widgets::MarqueeItem>,
         progress_bar_state: stories::progress_bar::ProgressBarState,
+        disclosure_state: stories::disclosure::State,
         bullet_bar_state: stories::bullet_bar::BulletBarState,
         tag_list_state: stories::tag_list::TagListState,
         token_multiselect_state: stories::token_multiselect::TokenMultiselectState,
@@ -1126,6 +1132,7 @@ mod app {
                     color: ACCENT,
                 }],
                 progress_bar_state: stories::progress_bar::ProgressBarState::default(),
+                disclosure_state: stories::disclosure::State::default(),
                 bullet_bar_state: stories::bullet_bar::BulletBarState::default(),
                 tag_list_state: stories::tag_list::TagListState::default(),
                 token_multiselect_state: stories::token_multiselect::TokenMultiselectState::default(
@@ -1321,6 +1328,9 @@ mod app {
                             Story::AccessGate => stories::access_gate::show(ui),
                             Story::Viewport => stories::viewport::show(ui),
                             Story::Drawer => stories::drawer::show(ui),
+                            Story::Disclosure => {
+                                stories::disclosure::show(ui, &mut self.disclosure_state)
+                            }
                             Story::UserBadge => stories::user_badge::show(ui),
                             Story::TierLadder => stories::tier_ladder::show(ui),
                             Story::AboutModal => stories::about_modal::show(ui),

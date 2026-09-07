@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-130 widgets.
+131 widgets.
 
 | module | what it is |
 |---|---|
@@ -39,6 +39,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `data_table` | Data table — dense row-based table with column headers, selection, and optional detail panel |
 | `defaults` | One call to set a frontend up before its first frame |
 | `detail_split` | `detail_split` — a content column beside a detail column, laid out by hand |
+| `disclosure` | `Disclosure` — a detail region that opens beneath the row it explains, eased open and tied to that row, without the feed jumping under the reader |
 | `distribution_waterfall` | `DistributionWaterfall` — how a buyer's payment flows down to what lands in each party's wallet under settle-as-you-mint |
 | `donut_chart` | `DistributionChart` — a donut of banded shares with a legend and hover tooltip, for "how is this split" questions |
 | `drawer` | `Drawer` — an edge-anchored slide-over panel with a scrim, for the narrow layout of a surface that has a side panel when it is wide |

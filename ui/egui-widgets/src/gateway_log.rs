@@ -81,10 +81,7 @@ pub fn gateway_log(ui: &mut Ui, entries: &[GatewayLogEntry], state: &mut LogStat
 /// The counts, the severity floor, and the substring filter.
 pub fn gateway_log_header(ui: &mut Ui, entries: &[GatewayLogEntry], state: &mut LogState) {
     let shown = entries.iter().filter(|e| state.shows(e)).count();
-    let problems = entries
-        .iter()
-        .filter(|e| e.level >= LogLevel::Warn)
-        .count();
+    let problems = entries.iter().filter(|e| e.level >= LogLevel::Warn).count();
 
     ui.horizontal(|ui| {
         ui.strong("Listener log");

@@ -95,6 +95,23 @@ impl GatewayAudience {
         matches!(self, Self::Operator)
     }
 
+    /// May this audience read the listener's own log?
+    ///
+    /// The log is captured `tracing` output — free text carrying guild ids,
+    /// authors and message previews from every guild the listener serves. It
+    /// has no field to scope it by, so unlike the activity feed it cannot be
+    /// filtered per client; it is disclosed whole or not at all.
+    ///
+    /// Its own predicate rather than a borrowed `may_set_entitlement`, even
+    /// though both resolve to `Operator` today. Three call sites — the DO's
+    /// fan-out, its snapshot builder and the console's pane — need to agree,
+    /// and three of them asking a question about *entitlements* to decide a
+    /// question about *disclosure* is how one of them ends up answering the
+    /// wrong one after a third audience lands.
+    pub fn may_read_listener_log(self) -> bool {
+        matches!(self, Self::Operator)
+    }
+
     /// Wire spelling, for the header the worker sets on the DO upgrade.
     /// Same string serde writes, so a log line and a payload agree.
     pub fn as_str(self) -> &'static str {
@@ -282,6 +299,10 @@ mod tests {
         assert!(!GatewayAudience::Client.may_control_lifecycle());
         assert!(GatewayAudience::Operator.may_set_entitlement());
         assert!(GatewayAudience::Operator.may_control_lifecycle());
+        // Disclosure, not authority — and the one a client must never hold,
+        // since the log is every other customer's traffic as free text.
+        assert!(!GatewayAudience::Client.may_read_listener_log());
+        assert!(GatewayAudience::Operator.may_read_listener_log());
     }
 
     /// A client applying appends over a long session must ring at the SAME

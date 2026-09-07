@@ -26,6 +26,9 @@
 //!
 //! - the playhead **opens at the end**; play rewinds
 //! - the brush **filters**, the playhead **reveals** — two different verbs
+//! - **the zoom is not a speed control** — playback is a fixed time factor
+//!   over the domain (`play_duration` at 1×), so 1× means the same speed
+//!   however far in the reader is zoomed. To dwell on a week, brush it
 //! - time is unix seconds throughout; formatting is the caller's
 //! - **wheel zooms, sideways wheel scrubs, click places** — a vertical wheel
 //!   over the axis is zoom (pinch works too), a horizontal wheel moves the
@@ -532,6 +535,33 @@ pub fn format_date(unix: i64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// A playback rate said in the coarsest unit that keeps it above 1 —
+/// "3.2 days/s", "45 min/s", "18 s/s". One unit, not a "2d 3h" breakdown:
+/// this is a speed a reader glances at, not a duration they read off.
+pub fn format_rate(data_seconds_per_second: f64) -> String {
+    const UNITS: [(f64, &str); 5] = [
+        (31_557_600.0, "yr"),
+        (86_400.0, "days"),
+        (3_600.0, "hr"),
+        (60.0, "min"),
+        (1.0, "s"),
+    ];
+    let v = data_seconds_per_second.max(0.0);
+    let (size, name) = UNITS
+        .iter()
+        .find(|(size, _)| v >= *size)
+        .copied()
+        .unwrap_or((1.0, "s"));
+    let n = v / size;
+    // One decimal only while it still says something: 3.2 days/s is a
+    // different speed from 3 days/s, 45.0 min/s is just noise next to 45.
+    if n < 10.0 {
+        format!("{n:.1} {name}/s")
+    } else {
+        format!("{n:.0} {name}/s")
+    }
+}
+
 /// Half the width of the playhead's arrow head. The playhead is inset by this
 /// at both ends so the marker never draws past the widget's clip rect.
 const PLAYHEAD_HALF_W: f32 = 5.0;
@@ -567,11 +597,15 @@ pub struct SpineState {
     /// Optional brush — what is being FILTERED to. `None` = everything.
     pub brush: Option<(i64, i64)>,
     pub playing: bool,
-    /// Wall-clock seconds for the head to cross one SCREEN at normal rate —
-    /// the visible window, which is the whole domain until the reader zooms.
-    /// Per screen rather than per domain, so a week under the glass plays
-    /// at a watchable pace instead of flashing past in a fraction of the
-    /// time the whole history takes.
+    /// Wall-clock seconds for the head to cross the whole DOMAIN at normal
+    /// rate.
+    ///
+    /// Per domain, not per screen. Anchoring to the visible window made the
+    /// rate a derivative of the zoom: 1× zoomed in and 1× zoomed out were
+    /// different speeds, so the label meant nothing and a zoom silently
+    /// changed the playback. A reader who wants to dwell on a week brushes
+    /// it — the brush is the verb for choosing an interval; the zoom only
+    /// magnifies.
     pub play_duration: f32,
     /// The playback rate the reader has chosen — see [`PlayRate`].
     pub rate: PlayRate,
@@ -596,7 +630,11 @@ impl SpineState {
             playhead: domain.1,
             brush: None,
             playing: false,
-            play_duration: 12.0,
+            // 45 s for the whole history at 1×. The old 12 s was one SCREEN,
+            // which read as a sane pace only because a zoom shrank it; over
+            // the full domain it is a blur. 4× brings it back to ~11 s for a
+            // reader who wants the old sweep.
+            play_duration: 45.0,
             rate: PlayRate::Normal,
             view: TimeView::covering(domain.0, domain.1),
             last_tick: None,
@@ -635,6 +673,20 @@ impl SpineState {
         self.last_tick = None;
     }
 
+    /// How much DATA time one wall-clock second of playback covers, at the
+    /// current rate. The whole domain per `play_duration`, times the rate —
+    /// a fixed time factor that the zoom cannot move.
+    pub fn data_seconds_per_second(&self) -> f64 {
+        let span = (self.domain.1 - self.domain.0).max(1) as f64;
+        span * self.rate.multiplier() as f64 / self.play_duration.max(0.1) as f64
+    }
+
+    /// The current rate said in real units — "3.2 days/s" — for a tooltip.
+    /// A rate label of "1×" is only meaningful next to what it is one of.
+    pub fn rate_summary(&self) -> String {
+        format_rate(self.data_seconds_per_second())
+    }
+
     /// Advance the playhead if playing. Call once per frame with `ctx`.
     pub fn tick(&mut self, ctx: &egui::Context) {
         if !self.playing {
@@ -644,11 +696,7 @@ impl SpineState {
         let now = ctx.input(|i| i.time);
         let dt = self.last_tick.map_or(0.0, |l| (now - l).max(0.0));
         self.last_tick = Some(now);
-        // One SCREEN per `play_duration` at normal rate: the visible span,
-        // not the domain, so zooming in slows the sweep to match.
-        let span = self.view.spanned.max(1.0);
-        let advance =
-            span * dt * self.rate.multiplier() as f64 / self.play_duration.max(0.1) as f64;
+        let advance = self.data_seconds_per_second() * dt;
         self.playhead = ((self.playhead as f64 + advance).round() as i64).min(self.domain.1);
         if self.playhead >= self.domain.1 {
             self.playing = false;
@@ -1174,7 +1222,10 @@ impl<'a> TimeSpine<'a> {
                 );
                 let rresp = ui
                     .interact(rrect, id.with("rate"), Sense::click())
-                    .on_hover_text("playback rate — click to cycle, [ and ] to step");
+                    .on_hover_text(format!(
+                        "playback rate — {}\nclick to cycle, [ and ] to step",
+                        state.rate_summary()
+                    ));
                 if rresp.clicked() {
                     state.rate = state.rate.next();
                 }
@@ -2381,27 +2432,50 @@ mod tests {
         assert_eq!(r, PlayRate::Half, "and wraps");
     }
 
-    /// Play sweeps the SCREEN, not the domain: zoomed to a tenth of the
-    /// history, the head advances a tenth as fast, so a week under the glass
-    /// is watchable. At normal rate on the full view this is unchanged.
+    /// Play sweeps the DOMAIN at a fixed time factor. The rate used to be a
+    /// derivative of the zoom — 1× zoomed in was a different speed from 1×
+    /// zoomed out — which made the label meaningless and let a zoom silently
+    /// change the playback. Zooming now moves nothing but the viewport.
     #[test]
-    fn play_sweeps_the_visible_window_at_the_chosen_rate() {
+    fn play_sweeps_the_domain_at_a_rate_the_zoom_cannot_move() {
         let ctx = egui::Context::default();
         let step = |t: f64| crate::motion::tests::step(&ctx, t);
-        let mut s = SpineState::new((0, 1000));
-        s.play_duration = 10.0;
-        s.view = TimeView::covering(0, 100);
-        s.rate = PlayRate::Double;
-        s.set_playhead(0);
-        s.toggle_play();
-        step(0.0);
-        s.tick(&ctx);
-        let _ = ctx.end_pass();
-        step(1.0);
-        s.tick(&ctx);
-        let _ = ctx.end_pass();
-        // 100 s of view per 10 wall-s = 10/s, doubled = 20.
-        assert!((s.playhead - 20).abs() <= 1, "got {}", s.playhead);
+        let one_second_from = |view: TimeView| {
+            let mut s = SpineState::new((0, 1000));
+            s.play_duration = 10.0;
+            s.view = view;
+            s.rate = PlayRate::Double;
+            s.set_playhead(0);
+            s.toggle_play();
+            step(0.0);
+            s.tick(&ctx);
+            let _ = ctx.end_pass();
+            step(1.0);
+            s.tick(&ctx);
+            let _ = ctx.end_pass();
+            s.playhead
+        };
+        // 1000 s of domain per 10 wall-s = 100/s, doubled = 200.
+        let full = one_second_from(TimeView::covering(0, 1000));
+        assert!((full - 200).abs() <= 1, "got {full}");
+        // Zoomed to a tenth of the history: the same 200.
+        let zoomed = one_second_from(TimeView::covering(0, 100));
+        assert_eq!(zoomed, full, "the zoom is not a speed control");
+    }
+
+    /// The rate says itself in real units, one coarse unit at a time.
+    #[test]
+    fn a_rate_is_legible_in_the_unit_that_suits_it() {
+        assert_eq!(format_rate(86_400.0 * 3.2), "3.2 days/s");
+        assert_eq!(format_rate(86_400.0 * 45.0), "45 days/s");
+        assert_eq!(format_rate(2_700.0), "45 min/s");
+        assert_eq!(format_rate(18.0), "18 s/s");
+        assert_eq!(format_rate(0.0), "0.0 s/s");
+        // A month-long domain at the default 45 s sweep.
+        let mut s = SpineState::new((0, 30 * 86_400));
+        assert_eq!(s.rate_summary(), "16 hr/s");
+        s.rate = PlayRate::Half;
+        assert_eq!(s.rate_summary(), "8.0 hr/s");
     }
 
     /// A gesture commits to one axis on a clear frame, holds it through the

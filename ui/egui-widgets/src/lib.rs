@@ -27,6 +27,7 @@ pub mod command_palette;
 pub mod conversation_history;
 pub mod corner_action;
 pub mod detail_split;
+pub mod disclosure;
 pub mod distribution_waterfall;
 pub mod donut_chart;
 pub mod drawer;
@@ -316,7 +317,9 @@ pub use utils::{
     format_ada, format_duration, format_lovelace, format_number, format_percent, section_heading,
     stat_card, truncate_hex,
 };
-pub use viewport::{Breakpoint, HeaderLayout, PanelMode, RecordLayout, apply_touch_sizing, fit};
+pub use viewport::{
+    Breakpoint, HeaderLayout, PanelMode, RecordLayout, apply_touch_sizing, fit, prose_row,
+};
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};
 #[cfg(feature = "cardano")]

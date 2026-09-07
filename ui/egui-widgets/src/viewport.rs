@@ -266,6 +266,45 @@ pub fn apply_touch_sizing(ctx: &Context, bp: Breakpoint) {
     ctx.set_global_style(style);
 }
 
+/// A wrapping horizontal row of PROSE, sized like text rather than like controls.
+///
+/// `Ui::horizontal_wrapped` seeds its first row's height from
+/// `spacing.interact_size` — a floor on ALLOCATED SPACE, not a property of
+/// buttons — and separates the rows after it by `spacing.item_spacing.y`. Both
+/// are sized for stacked controls, so a sentence assembled from
+/// differently-tinted runs (the common reason to reach for a wrapped row
+/// instead of one `Label`) comes out with a trench between its first line and
+/// its second, reading as unrelated fragments rather than as a caption.
+///
+/// Both are zeroed here. This is a ROW OF TEXT: nothing in it is tappable, so
+/// neither number is describing anything real about it.
+///
+/// The gap is worst under [`apply_touch_sizing`], which raises `interact_size`
+/// to 44pt and `item_spacing.y` to 10pt on Compact — but it is visible at the
+/// default spacing too, so this is not only a phone concern.
+///
+/// ```ignore
+/// prose_row(ui, |ui| {
+///     ui.label(RichText::new(line).color(theme::TEXT_MUTED).small());
+///     ui.label(RichText::new("amber").color(theme::ACCENT_ORANGE).small());
+///     ui.label(RichText::new(" = listed").color(theme::TEXT_MUTED).small());
+/// });
+/// ```
+///
+/// Use `horizontal_wrapped` directly when the row genuinely holds controls —
+/// a row of buttons that wraps still wants thumb-sized targets and the spacing
+/// to keep them apart.
+pub fn prose_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> egui::InnerResponse<R> {
+    // Set BEFORE `horizontal_wrapped`, not inside it: the row seeds its height
+    // from `interact_size` as it is created, so a closure that lowers the floor
+    // once it is already running has missed the only moment that mattered.
+    ui.scope(|ui| {
+        ui.spacing_mut().interact_size = egui::Vec2::ZERO;
+        ui.spacing_mut().item_spacing.y = 0.0;
+        ui.horizontal_wrapped(add).inner
+    })
+}
+
 /// Clamp a desired width to what the viewport actually has.
 ///
 /// `Ui::set_max_width` **widens** a `Ui` when less space is available — it

@@ -15,6 +15,7 @@ pub mod collection_list;
 pub mod command_palette;
 pub mod conversation_history;
 pub mod coverage_lanes;
+pub mod disclosure;
 pub mod distribution;
 pub mod distribution_waterfall;
 pub mod drawer;
