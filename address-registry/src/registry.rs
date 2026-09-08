@@ -370,18 +370,33 @@ pub static ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
     "addr1z98ps3vxeewk94rwp5dtxvzlr4aczync78p8am9l9w4vcn04fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwq2zuf48" => AC::Script(SC::Staking { label: "The Vault", project: "CNFT Tools" }),
     // dexes — Splash pool contracts (type 6: script payment + script staking, per-pool credentials)
     "addr1x89ksjnfu7ys02tedvslc9g2wk90tu5qte0dt4dge60hdudj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsg0g63z" => AC::Script(SC::Exchange { label: "Splash" }),
-    // DexHunter aggregator contract.
+    // snek.fun's BONDING CURVE. Was registered as "DexHunter" and marked
+    // SUSPECT — that note's reasoning was right and its caution was right, and
+    // this is the confirmation it was waiting for.
     //
-    // SUSPECT — unverified, left as found. On chain this holds ~422k ADA and a
-    // thousand token policies at their full 1B supply, which is pool or
-    // launchpad inventory rather than anything an aggregator custodies, and it
-    // delegates to Spectrum/Splash's LBSP credential (see STAKE_REGISTRY's
-    // exclusions). An aggregator delegating its contract ADA into a
-    // competitor's liquidity-bootstrapping pool makes little sense, so this is
-    // more likely a Splash-family contract mislabelled. No labelled source was
-    // found to confirm either way, so the entry stands rather than being
-    // rewritten on inference.
-    "addr1xxg94wrfjcdsjncmsxtj0r87zk69e0jfl28n934sznu95tdj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrs2993lw" => AC::Script(SC::Exchange { label: "DexHunter" }),
+    // It said: holds a thousand token policies at full 1B supply, which is
+    // "pool or launchpad inventory rather than anything an aggregator
+    // custodies"; delegates to Spectrum/Splash's LBSP credential; "more likely
+    // a Splash-family contract mislabelled"; but "no labelled source was found
+    // to confirm either way, so the entry stands rather than being rewritten on
+    // inference".
+    //
+    // PROVEN on chain 2026-09-08, and from the chain rather than a label: two
+    // independently chosen LIVE bonding-pool NFTs under policy
+    // 63f947b8d9535bc4e4ce6919e3dc056547e8d30ada12f29aa5f826b8 — one minted per
+    // launch, burned at graduation — both resolve to THIS address via Koios
+    // `asset_addresses`. The launchpad inventory the old note could see is
+    // exactly what it is: unsold supply on the curve.
+    //
+    // The Splash-family instinct was right too. snek.fun is a Splash Protocol
+    // product, which is why it delegates to the LBSP credential — and why
+    // naming it from that stake credential produced "DexHunter" in the first
+    // place. See STAKE_REGISTRY's exclusions: the stake identifies a staking
+    // arrangement, never an operator.
+    //
+    // Mechanics, graduation rate and the datum layout:
+    // `mitos/docs/design/SNEK_FUN_LAUNCH_LIFECYCLE.md`.
+    "addr1xxg94wrfjcdsjncmsxtj0r87zk69e0jfl28n934sznu95tdj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrs2993lw" => AC::Script(SC::Launchpad { label: "snek.fun" }),
     // Minswap batcher contract (type 7: script payment, no staking)
     "addr1w8p79rpkcdz8x9d6tft0x0dx5mwuzac2sa4gm8cvkw5hcnqst2ctf" => AC::Script(SC::Exchange { label: "Minswap" }),
 
@@ -418,12 +433,23 @@ static ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[
         "addr1z9ryamhgnuz6lau86sqytte2gz5rlktv2yce05e0h3207q",
         AC::Script(SC::Exchange { label: "Splash" }),
     ),
-    // Minswap DEX — per-pool staking credential variants (addr1z type 4)
+    // ⚠️ THESE TWO WERE LABELLED THE WRONG WAY ROUND — corrected 2026-09-08.
+    // The version lives only in these comments (both labels are "Minswap"), so
+    // the error was invisible to a lookup and misleading to a reader.
+    // Re-derived from the prefixes themselves rather than trusted:
+    //
+    //   addr1z84q0de… → ea07b733… = mitos-dex-decode `minswap::V2_PAYMENT_CRED`
+    //   addr1z8snz7c… → e1317b15… = mitos-dex-decode `minswap::V1_PAYMENT_CRED`
+    //
+    // Same finding `mitos-dex-decode/src/minswap.rs` recorded on 2026-06-24;
+    // its constants were right and this file inherited the swap.
+    //
+    // Minswap V2 pool contract (ea07b733…) — per-pool staking credential.
     (
         "addr1z84q0denmyep98ph3tmzwsmw0j7zau9ljmsqx6a4rvaau6",
         AC::Script(SC::Exchange { label: "Minswap" }),
     ),
-    // Minswap V2 pool contract (script hash: e1317b152faac13426e6a83e06ff88a4d62cce3c1634ab0a5ec13309)
+    // Minswap V1 pool contract (e1317b15…).
     (
         "addr1z8snz7c4974vzdpxu65ruphl3zjdvtxw8strf2c2tmqnxz",
         AC::Script(SC::Exchange { label: "Minswap" }),
@@ -578,6 +604,98 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             }),
             derived_from: CredentialSource::Attested(
                 "mitos tools/market-ledger/venues.toml — venue.wayup.offer_creds",
+            ),
+        },
+    ),
+
+    // ── DEX and launchpad contracts, added 2026-09-08 ────────────────────
+    //
+    // WHY THESE BELONG HERE AND NOT ONLY IN ADDRESS_PREFIX_REGISTRY. A DEX
+    // ORDER contract glues the CUSTOMER's stake credential onto one payment
+    // script, so it has as many addresses as it has had traders — measured on
+    // $PERP: 499 distinct addresses for the Splash order contract and 333 for
+    // Minswap's. A prefix match handles a bech32 string; a consumer holding a
+    // raw credential, as `policy-archive`'s movement graph does, cannot use
+    // one. That gap is not theoretical: of the 17 script credentials $PERP
+    // touches, this table could name three.
+    //
+    // Every credential below is derived from a real address and checked by
+    // `every_credential_matches_its_address`. The canonical constants live in
+    // `mitos-dex-decode`; these are the same values reachable by credential.
+    (
+        "cb684a69e78907a9796b21fc150a758af5f2805e5ed5d5a8ce9f76f1",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Splash" }),
+            derived_from: CredentialSource::Address("addr1x89ksjnfu7ys02tedvslc9g2wk90tu5qte0dt4dge60hdudj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsg0g63z"),
+        },
+    ),
+    // Splash's SECOND pool contract. Found holding $Dong 2026-08-30 and
+    // confirmed structurally, not by association — the same four leading datum
+    // fields as the first. Recognising it moved $Dong's pooled share from
+    // 1.48% to 11.32%, and nothing errored in between.
+    (
+        "9dee0659686c3ab807895c929e3284c11222affd710b09be690f924d",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Splash" }),
+            derived_from: CredentialSource::Address("addr1xxw7upjedpkr4wq839wf983jsnq3yg40l4cskzd7dy8eyndj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsgddq74"),
+        },
+    ),
+    (
+        "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "Minswap" }),
+            derived_from: CredentialSource::Address("addr1z84q0denmyep98ph3tmzwsmw0j7zau9ljmsqx6a4rvaau66j2c79gy9l76sdg0xwhd7r0c0kna0tycz4y5s6mlenh8pq777e2a"),
+        },
+    ),
+    (
+        "ed97e0a1394724bb7cb94f20acf627abc253694c92b88bf8fb4b7f6f",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "CSWAP" }),
+            derived_from: CredentialSource::Address("addr1z8ke0c9p89rjfwmuh98jpt8ky74uy5mffjft3zlcld9h7ml3lmln3mwk0y3zsh3gs3dzqlwa9rjzrxawkwm4udw9axhs6fuu6e"),
+        },
+    ),
+    (
+        "da5b47aed3955c9132ee087796fa3b58a1ba6173fa31a7bc29e56d4e",
+        CredentialEntry {
+            category: AC::Script(SC::Exchange { label: "CSWAP" }),
+            derived_from: CredentialSource::Address("addr1z8d9k3aw6w24eyfjacy809h68dv2rwnpw0arrfau98jk6nhv88awp8sgxk65d6kry0mar3rd0dlkfljz7dv64eu39vfs38yd9p"),
+        },
+    ),
+    // snek.fun's bonding curve. NOT `Exchange` — see `ScriptCategory::Launchpad`
+    // for why a consumer must not price it as an AMM. Same contract as the
+    // ADDRESS_REGISTRY entry above, reachable by credential.
+    (
+        "905ab869961b094f1b8197278cfe15b45cbe49fa8f32c6b014f85a2d",
+        CredentialEntry {
+            category: AC::Script(SC::Launchpad { label: "snek.fun" }),
+            derived_from: CredentialSource::Address("addr1xxg94wrfjcdsjncmsxtj0r87zk69e0jfl28n934sznu95tdj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrs2993lw"),
+        },
+    ),
+
+    // ── Burn sinks ───────────────────────────────────────────────────────
+    //
+    // Moved here 2026-09-08 from `mitos tools/token-ledger/tokens.toml`, where
+    // it sat as PER-TOKEN config. It is not per-token: an always-fails script
+    // is a property of the SCRIPT, and $PERP and $Aliens both send supply to
+    // this one. `CredentialSource` also states the provenance better than a
+    // TOML comment could.
+    (
+        "c1b35bb893529376effc4083dc0a0ed90a1c07fe09550885b37aa27f",
+        CredentialEntry {
+            category: AC::Script(SC::Burn {
+                evidence: "Header byte 0x71 (type 7): script payment credential, no stake part — \
+                           spending requires satisfying the script and there is no key that can. \
+                           The script is Plutus V2, 46 bytes; its entire body is the trace string \
+                           \"A cobra vai fumar!\" (18 bytes matching the 0x12 length prefix) — an \
+                           always-fails validator whose whole content is an error message. 46 bytes \
+                           leaves no room for conditional logic. Consistent with observation: \
+                           19,692 UTxOs accumulated, none ever consumed; $PERP alone has sent \
+                           133,627,385 (13.36% of supply). Checked 2026-08-29. CAVEAT: inferred \
+                           from script size + embedded string, not from decompiling the UPLC — \
+                           strong inference, not yet proof.",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1w8qmxkacjdffxah0l3qg8hq2pmvs58q8lcy42zy9kda2ylc6dy5r4",
             ),
         },
     ),
@@ -1007,6 +1125,28 @@ pub enum ScriptCategory {
     Exchange {
         label: &'static str,
     },
+    /// A launchpad's bonding curve — where a token trades BEFORE it graduates
+    /// to an AMM, and where its unsold supply sits until somebody buys it.
+    ///
+    /// Deliberately NOT `Exchange`. A curve's price is not constant-product:
+    /// fitted against real pools the implied reserve runs ~1,250 ADA near the
+    /// start and ~3,884 at the cap, so pricing one as a pool is roughly 3×
+    /// wrong and silently so. A consumer that treats every `Exchange` as an
+    /// AMM must not be handed one of these.
+    ///
+    /// Its supply is not float either: nobody has ever owned it.
+    Launchpad {
+        label: &'static str,
+    },
+    /// An address a token can reach and never leave.
+    ///
+    /// `evidence` is REQUIRED rather than a label, because an address that
+    /// removes supply from circulation is exactly where an unexamined
+    /// assumption gets expensive — "provably unspendable" and "believed
+    /// unspendable" have to be distinguishable at the point of registration.
+    Burn {
+        evidence: &'static str,
+    },
     DeFi {
         label: &'static str,
         protocol: &'static str,
@@ -1042,6 +1182,13 @@ impl PartialEq for ScriptCategory {
             (ScriptCategory::Exchange { label: l1 }, ScriptCategory::Exchange { label: l2 }) => {
                 l1 == l2
             }
+            (ScriptCategory::Launchpad { label: l1 }, ScriptCategory::Launchpad { label: l2 }) => {
+                l1 == l2
+            }
+            // Two burn addresses are the same category, not the same address —
+            // the evidence describes WHY each is unspendable and differs by
+            // construction, so comparing it would make every sink unequal.
+            (ScriptCategory::Burn { .. }, ScriptCategory::Burn { .. }) => true,
             (
                 ScriptCategory::DeFi {
                     label: l1,
@@ -1095,6 +1242,14 @@ impl fmt::Display for ScriptCategory {
             ScriptCategory::Vesting { label } => {
                 write!(f, "{label} vesting")
             }
+            // "bonding curve", never "exchange" — the word is what stops a
+            // reader treating its reserves as an AMM's.
+            ScriptCategory::Launchpad { label } => {
+                write!(f, "{label} bonding curve")
+            }
+            // The evidence is deliberately NOT rendered: it runs to a
+            // paragraph and belongs in a report, not a label.
+            ScriptCategory::Burn { .. } => write!(f, "burn address"),
         }
     }
 }
@@ -1661,6 +1816,82 @@ mod tests {
         );
     }
 
+    /// A DEX ORDER contract glues the CUSTOMER's stake onto one payment
+    /// script, so it has as many addresses as it has had traders — 499 for
+    /// Splash and 333 for Minswap on $PERP alone. A consumer holding a raw
+    /// credential (as `policy-archive`'s movement graph does) can only find
+    /// them here.
+    #[test]
+    fn dex_contracts_resolve_by_credential_not_only_by_address() {
+        for (cred, want) in [
+            ("cb684a69e78907a9796b21fc150a758af5f2805e5ed5d5a8ce9f76f1", "Splash"),
+            ("9dee0659686c3ab807895c929e3284c11222affd710b09be690f924d", "Splash"),
+            ("ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b", "Minswap"),
+            ("ed97e0a1394724bb7cb94f20acf627abc253694c92b88bf8fb4b7f6f", "CSWAP"),
+            ("da5b47aed3955c9132ee087796fa3b58a1ba6173fa31a7bc29e56d4e", "CSWAP"),
+        ] {
+            let entry = lookup_payment_credential(cred)
+                .unwrap_or_else(|| panic!("{cred} must resolve by credential"));
+            match &entry.category {
+                AC::Script(SC::Exchange { label }) => assert_eq!(*label, want, "{cred}"),
+                other => panic!("{cred} should be an Exchange, got {other:?}"),
+            }
+        }
+    }
+
+    /// A bonding curve is NOT an exchange, and the distinction is load-bearing:
+    /// its price is not constant-product, so a consumer that prices every
+    /// `Exchange` as an AMM must not be handed one.
+    #[test]
+    fn the_snek_fun_curve_is_a_launchpad_not_an_exchange() {
+        const CRED: &str = "905ab869961b094f1b8197278cfe15b45cbe49fa8f32c6b014f85a2d";
+        const ADDR: &str = "addr1xxg94wrfjcdsjncmsxtj0r87zk69e0jfl28n934sznu95tdj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrs2993lw";
+
+        // Reachable both ways — the address table and the credential table
+        // must not disagree about one contract.
+        for category in [
+            &lookup_payment_credential(CRED).expect("curve resolves by credential").category,
+            lookup_address(ADDR).expect("curve resolves by address"),
+        ] {
+            match category {
+                AC::Script(SC::Launchpad { label }) => assert_eq!(*label, "snek.fun"),
+                other => panic!("expected a Launchpad, got {other:?}"),
+            }
+        }
+        // It was registered as DexHunter until 2026-09-08, from a stake
+        // credential Splash's contracts share. If this ever reads Exchange
+        // again, that inference has crept back.
+        assert_ne!(
+            lookup_address(ADDR),
+            Some(&AC::Script(SC::Exchange { label: "DexHunter" })),
+        );
+        assert_eq!(
+            AC::Script(SC::Launchpad { label: "snek.fun" }).to_string(),
+            "snek.fun bonding curve",
+        );
+    }
+
+    /// A sink must carry EVIDENCE, not a label. An address that removes supply
+    /// from circulation is where an unexamined assumption gets expensive.
+    #[test]
+    fn a_burn_sink_carries_its_evidence() {
+        const CRED: &str = "c1b35bb893529376effc4083dc0a0ed90a1c07fe09550885b37aa27f";
+        let entry = lookup_payment_credential(CRED).expect("the sink resolves");
+        match &entry.category {
+            AC::Script(SC::Burn { evidence }) => {
+                assert!(evidence.contains("always-fails"), "evidence must say WHY");
+                assert!(
+                    evidence.contains("CAVEAT"),
+                    "an inference must be labelled as one, not presented as proof"
+                );
+            }
+            other => panic!("expected a Burn, got {other:?}"),
+        }
+        // Attributed to nobody — that is the claim, and it is what keeps a
+        // stake credential from being named after it.
+        assert_eq!(owner_of(&entry.category), None);
+    }
+
     /// The ENTITY a category attributes an address to, ignoring the role it
     /// plays. "JPG.store Offer" and "JPG.store Sale" are one entity; "Splash"
     /// and "DexHunter" are two. Stake ownership is a claim about the entity,
@@ -1677,6 +1908,12 @@ mod tests {
                 ScriptCategory::Minter(m) => m.to_string(),
                 ScriptCategory::Staking { label, .. } => label.to_string(),
                 ScriptCategory::Vesting { label } => label.to_string(),
+                ScriptCategory::Launchpad { label } => label.to_string(),
+                // A burn sink is attributed to NOBODY — that is the whole
+                // claim. Returning an owner would let a stake credential be
+                // named after it, and an always-fails script has no operator
+                // to name.
+                ScriptCategory::Burn { .. } => return None,
             },
         })
     }
