@@ -26,13 +26,44 @@
 //!
 //! - the playhead **opens at the end**; play rewinds
 //! - the brush **filters**, the playhead **reveals** — two different verbs
+//! - **the zoom is not a speed control** — playback is a fixed time factor
+//!   over the domain (`play_duration` at 1×), so 1× means the same speed
+//!   however far in the reader is zoomed. To dwell on a week, brush it
 //! - time is unix seconds throughout; formatting is the caller's
+//! - **wheel zooms, sideways wheel scrubs, click places** — a vertical wheel
+//!   over the axis is zoom (pinch works too), a horizontal wheel moves the
+//!   playhead, click or drag on the ruler sets it, and double-click on the
+//!   ruler puts the whole domain back
+//! - **zoomed in, the tape follows the head** — see [`tape`], a state
+//!   machine. Once the view is narrower than the domain, play scrolls the
+//!   ruler and every layer under a centred head, and a scrub or a click
+//!   glides the tape to the new moment. Zoom anchors on the POINTER (on the
+//!   head only while playing), and a tape the reader has moved stays put
+//!   until the head next moves. Within half a window of either end the head
+//!   slides off centre rather than the axis showing empty time past the data.
+//!
+//! ## The naked spine and its layers
+//!
+//! The spine itself owns only what every time axis needs: the time ↔ x
+//! mapping, zoom and pan, the ticks, the playhead, the brush and the play
+//! button. **What appears in the lane under the ruler is not its business.**
+//! That is drawn by [`SpineLayer`]s, handed in by the caller and painted in
+//! the order given, behind the ticks and the playhead, each on the same
+//! [`SpineCanvas`] — so a density silhouette, the marks for a watched wallet
+//! and a coverage band all sit on one axis without the spine knowing what
+//! any of them are, and a surface can stack as many as it needs.
+//!
+//! Three layers ship here — [`CoverageLayer`], [`MarksLayer`],
+//! [`DensityLayer`] — and the `coverage`/`marks`/`density` builders are sugar
+//! for pushing them. Anything else implements the trait.
 
 use egui::emath::Rangef;
 use egui::{
     Color32, CornerRadius, FontId, Pos2, Rect, Response, Rgba, Sense, Shape, Stroke, Ui, Vec2,
     lerp, pos2, remap, remap_clamp, vec2,
 };
+
+use statig::prelude::*;
 
 use crate::motion::{Easing, tween, tween_bool};
 
@@ -41,6 +72,17 @@ use crate::motion::{Easing, tween, tween_bool};
 /// than in/out.
 const MARK_IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
 const MARK_OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
+/// Directionless events — deliberately UNSATURATED rather than a third hue.
+///
+/// A hue would read as a third category competing with in and out; these are
+/// the events that decline the question, and they are usually the majority. A
+/// grey lets a burst of them still show as density while leaving the two
+/// directional colours as the thing the eye picks out.
+const MARK_NEUTRAL: Color32 = Color32::from_rgb(0x7a, 0x82, 0x94);
+/// Half-height of a neutral mark, in points. Small: it straddles the midline
+/// instead of rising from it, so it must not read as a short In and a short
+/// Out drawn on top of each other.
+const NEUTRAL_HALF: f32 = 2.0;
 
 /// The pin — deliberately a THIRD hue, neither mark colour.
 ///
@@ -48,6 +90,20 @@ const MARK_OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
 /// in/out colour would make the one event the reader was sent to look at
 /// indistinguishable from the crowd it sits in.
 const PIN: Color32 = Color32::from_rgb(0x9b, 0x7c, 0xf5);
+
+/// Width of one density column, in points. Two: one is a hairline that
+/// flickers between adjacent pixels as the view pans, and wider starts to read
+/// as bars with edges rather than as a silhouette.
+const COLUMN_W: f32 = 2.0;
+/// The silhouette is the SAME grey as a neutral mark, lightened — it is the
+/// same claim ("this happened, no direction") made about a count instead of
+/// an event, and the directional marks drawn over it need to win.
+const DENSITY_FILL: Color32 = Color32::from_rgb(0x5e, 0x66, 0x78);
+/// Least half-height of a column that has anything in it. One transaction
+/// against ten thousand rounds to nothing on a log scale too, and "one" versus
+/// "none" is the distinction a mark lane shows for free, so it must not be
+/// lost when the lane changes form.
+const COLUMN_FLOOR: f32 = 1.0;
 
 // ---------------------------------------------------------------------------
 // TimeScale — the mapping (ported from re_time_ruler::TimeRangesUi)
@@ -479,6 +535,33 @@ pub fn format_date(unix: i64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// A playback rate said in the coarsest unit that keeps it above 1 —
+/// "3.2 days/s", "45 min/s", "18 s/s". One unit, not a "2d 3h" breakdown:
+/// this is a speed a reader glances at, not a duration they read off.
+pub fn format_rate(data_seconds_per_second: f64) -> String {
+    const UNITS: [(f64, &str); 5] = [
+        (31_557_600.0, "yr"),
+        (86_400.0, "days"),
+        (3_600.0, "hr"),
+        (60.0, "min"),
+        (1.0, "s"),
+    ];
+    let v = data_seconds_per_second.max(0.0);
+    let (size, name) = UNITS
+        .iter()
+        .find(|(size, _)| v >= *size)
+        .copied()
+        .unwrap_or((1.0, "s"));
+    let n = v / size;
+    // One decimal only while it still says something: 3.2 days/s is a
+    // different speed from 3 days/s, 45.0 min/s is just noise next to 45.
+    if n < 10.0 {
+        format!("{n:.1} {name}/s")
+    } else {
+        format!("{n:.0} {name}/s")
+    }
+}
+
 /// Half the width of the playhead's arrow head. The playhead is inset by this
 /// at both ends so the marker never draws past the widget's clip rect.
 const PLAYHEAD_HALF_W: f32 = 5.0;
@@ -514,11 +597,27 @@ pub struct SpineState {
     /// Optional brush — what is being FILTERED to. `None` = everything.
     pub brush: Option<(i64, i64)>,
     pub playing: bool,
-    /// Wall-clock seconds for one full domain sweep when playing.
+    /// Wall-clock seconds for the head to cross the whole DOMAIN at normal
+    /// rate.
+    ///
+    /// Per domain, not per screen. Anchoring to the visible window made the
+    /// rate a derivative of the zoom: 1× zoomed in and 1× zoomed out were
+    /// different speeds, so the label meant nothing and a zoom silently
+    /// changed the playback. A reader who wants to dwell on a week brushes
+    /// it — the brush is the verb for choosing an interval; the zoom only
+    /// magnifies.
     pub play_duration: f32,
+    /// The playback rate the reader has chosen — see [`PlayRate`].
+    pub rate: PlayRate,
     /// The visible time window (pan/zoom); defaults to the whole domain.
     pub view: TimeView,
     last_tick: Option<f64>,
+    /// The tape — which of free / locked / gliding / held / loose the view
+    /// is in, and every rule for moving between them. See [`tape`].
+    tape: InitializedStateMachine<tape::Tape>,
+    /// The head the tape last saw, so a move from ANY writer — play, a
+    /// scrub, a click, a face setting the playhead — is one event.
+    last_head: i64,
 }
 
 impl SpineState {
@@ -531,10 +630,28 @@ impl SpineState {
             playhead: domain.1,
             brush: None,
             playing: false,
-            play_duration: 12.0,
+            // 45 s for the whole history at 1×. The old 12 s was one SCREEN,
+            // which read as a sane pace only because a zoom shrank it; over
+            // the full domain it is a blur. 4× brings it back to ~11 s for a
+            // reader who wants the old sweep.
+            play_duration: 45.0,
+            rate: PlayRate::Normal,
             view: TimeView::covering(domain.0, domain.1),
             last_tick: None,
+            tape: tape::Tape.uninitialized_state_machine().init(),
+            last_head: domain.1,
         }
+    }
+
+    /// Where the tape is — for a caller that renders differently while the
+    /// view is following the head.
+    pub fn tape(&self) -> &tape::State {
+        self.tape.state()
+    }
+
+    /// Is the view narrower than the domain and riding the head?
+    pub fn following(&self) -> bool {
+        !matches!(self.tape.state(), tape::State::Free {})
     }
 
     /// The range faces should FILTER to: the brush, else the domain.
@@ -556,6 +673,20 @@ impl SpineState {
         self.last_tick = None;
     }
 
+    /// How much DATA time one wall-clock second of playback covers, at the
+    /// current rate. The whole domain per `play_duration`, times the rate —
+    /// a fixed time factor that the zoom cannot move.
+    pub fn data_seconds_per_second(&self) -> f64 {
+        let span = (self.domain.1 - self.domain.0).max(1) as f64;
+        span * self.rate.multiplier() as f64 / self.play_duration.max(0.1) as f64
+    }
+
+    /// The current rate said in real units — "3.2 days/s" — for a tooltip.
+    /// A rate label of "1×" is only meaningful next to what it is one of.
+    pub fn rate_summary(&self) -> String {
+        format_rate(self.data_seconds_per_second())
+    }
+
     /// Advance the playhead if playing. Call once per frame with `ctx`.
     pub fn tick(&mut self, ctx: &egui::Context) {
         if !self.playing {
@@ -565,8 +696,7 @@ impl SpineState {
         let now = ctx.input(|i| i.time);
         let dt = self.last_tick.map_or(0.0, |l| (now - l).max(0.0));
         self.last_tick = Some(now);
-        let span = (self.domain.1 - self.domain.0) as f64;
-        let advance = span * dt / self.play_duration.max(0.1) as f64;
+        let advance = self.data_seconds_per_second() * dt;
         self.playhead = ((self.playhead as f64 + advance).round() as i64).min(self.domain.1);
         if self.playhead >= self.domain.1 {
             self.playing = false;
@@ -613,23 +743,244 @@ pub enum MarkKind {
     In,
     /// Something left.
     Out,
+    /// It happened, and it had no direction for the thing being watched.
+    ///
+    /// **Not a fallback for "we didn't work it out" — a real third answer.**
+    /// In/Out are relative to a subject, and some subjects have events that
+    /// are genuinely neither. Watching a POLICY, a mint is supply arriving and
+    /// a burn is supply leaving, but an ordinary transfer is circulation
+    /// between two holders: nothing enters or leaves. Transfers are also most
+    /// of the feed, so forcing them into `In` would paint almost every mark in
+    /// the "arrived" hue and make the lane's colour meaningless — while
+    /// dropping them would empty the density strip on any collection that has
+    /// finished minting, which is exactly the history a reader came to see.
+    ///
+    /// Drawn straddling the midline rather than rising or falling from it, so
+    /// the shape says "no direction" before the colour does.
+    Neutral,
+}
+
+/// A count of events over a stretch of time — one bar of a histogram.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DensityBin {
+    /// Start, unix seconds.
+    pub start: i64,
+    /// Width, seconds.
+    pub span: i64,
+    /// How many events fell inside it.
+    pub count: u64,
+}
+
+/// What a [`SpineLayer`] gets to draw with: the spine's own mapping and the
+/// rectangles it has already decided on. A layer never allocates space or
+/// handles input — it paints, and may name what is under the pointer.
+pub struct SpineCanvas<'c> {
+    pub painter: &'c egui::Painter,
+    /// The spine's time ↔ x mapping for this frame. Use it, never your own:
+    /// a layer that maps time itself will drift from the ticks the moment the
+    /// reader zooms.
+    pub scale: &'c TimeScale,
+    /// The whole ruler — tick lane above the baseline, event lane below.
+    pub ruler: Rect,
+    /// The lane under the baseline, where layers ordinarily draw.
+    pub lane: Rect,
+    pub visuals: &'c egui::Visuals,
+    /// The caller's tick formatter, so a layer's tooltip dates match the
+    /// ruler's.
+    pub format_tick: &'c dyn Fn(i64, i64) -> String,
+    /// The pointer, when it is over the lane.
+    pub hover: Option<Pos2>,
+}
+
+/// Something drawn along the spine, behind the ticks.
+///
+/// Layers are painted in the order the caller adds them — first at the
+/// bottom. They share one canvas and one mapping, which is the point: a
+/// coverage band, a density silhouette and a watched wallet's marks compose
+/// on a single axis without any of them knowing about the others.
+pub trait SpineLayer {
+    /// Paint, and if the pointer is over something worth naming, return one
+    /// line for the tooltip. The topmost layer that answers wins.
+    fn paint(&self, canvas: &SpineCanvas<'_>) -> Option<String>;
+}
+
+/// Faint `(from, to)` bands: nobody was looking outside them.
+pub struct CoverageLayer<'a>(pub &'a [(i64, i64)]);
+
+impl SpineLayer for CoverageLayer<'_> {
+    fn paint(&self, c: &SpineCanvas<'_>) -> Option<String> {
+        for &(a, b) in self.0 {
+            if let (Some(xa), Some(xb)) = (
+                c.scale.x_from_time_f32(a as f64),
+                c.scale.x_from_time_f32(b as f64),
+            ) {
+                let r = Rect::from_x_y_ranges(
+                    Rangef::new(xa.max(c.ruler.left()), xb.min(c.ruler.right())),
+                    Rangef::new(c.lane.top() + 2.0, c.lane.bottom() - 2.0),
+                );
+                c.painter
+                    .rect_filled(r, CornerRadius::ZERO, c.visuals.faint_bg_color);
+            }
+        }
+        None
+    }
+}
+
+/// Discrete events, one hairline each: in rises from the midline, out falls
+/// from it, neutral straddles it.
+///
+/// Right for as long as the events can be told apart. Past a few per pixel
+/// the lane saturates: a day with eight hundred and a day with thirty both
+/// paint the same solid bar, and the only thing left legible is the gaps —
+/// the lane ends up showing when NOTHING happened and saying nothing about
+/// how much did. That is when to reach for [`DensityLayer`] underneath and
+/// keep this one for the events that are genuinely rare.
+pub struct MarksLayer<'a>(pub &'a [(i64, MarkKind)]);
+
+impl SpineLayer for MarksLayer<'_> {
+    fn paint(&self, c: &SpineCanvas<'_>) -> Option<String> {
+        paint_marks(c.painter, c.scale, &c.ruler, &c.lane, self.0);
+        None
+    }
+}
+
+/// The RARE directional events — a policy's mints and burns — as pips at
+/// the lane's edges, where the waveform never reaches.
+///
+/// A hairline in the mark hue over a grey waveform has almost no contrast
+/// where the waveform is tall, and a mint is exactly where it is tallest:
+/// the one thing a reader came to find was the hardest thing on the lane to
+/// see. So the events leave the waveform alone and sit on its edges: a few
+/// blue pixels at the top for a mint, a few orange at the base for a burn.
+/// Small on purpose — this went through a flag with a stem and a head first,
+/// and that shouted over the waveform it was meant to annotate. Adjacent
+/// days merge into a thin coloured line along the edge, which is what a
+/// mint that ran for a fortnight is; a day that did both carries a pip on
+/// each edge, which is what a CIP-25 metadata update looks like.
+///
+/// Neutral marks are not drawn: a pip says "here, this one", and the
+/// majority of a lane cannot be that. Hover names the nearest pip by date,
+/// with its direction.
+pub struct FlagsLayer<'a>(pub &'a [(i64, MarkKind)]);
+
+/// A pip's size in points: two wide so it survives sub-pixel placement,
+/// three tall so it reads as a mark and not as noise.
+const PIP: Vec2 = vec2(2.0, 3.0);
+/// How near the pointer must be to a pip to name it, in points.
+const FLAG_REACH: f32 = 4.0;
+
+impl SpineLayer for FlagsLayer<'_> {
+    fn paint(&self, c: &SpineCanvas<'_>) -> Option<String> {
+        let mut nearest: Option<(f32, i64, MarkKind)> = None;
+        for &(t, kind) in self.0 {
+            let Some(x) = c.scale.x_from_time_f32(t as f64) else {
+                continue;
+            };
+            if x < c.ruler.left() || x > c.ruler.right() {
+                continue;
+            }
+            // In at the top, out at the base — the same sides the hairline
+            // marks use.
+            let (col, top) = match kind {
+                MarkKind::In => (MARK_IN, c.lane.top()),
+                MarkKind::Out => (MARK_OUT, c.lane.bottom() - PIP.y),
+                MarkKind::Neutral => continue,
+            };
+            let pip = Rect::from_min_size(pos2((x - PIP.x * 0.5).round(), top), PIP);
+            c.painter.rect_filled(pip, CornerRadius::ZERO, col);
+
+            if let Some(p) = c.hover {
+                let d = (p.x - x).abs();
+                if d <= FLAG_REACH && nearest.is_none_or(|(best, _, _)| d < best) {
+                    nearest = Some((d, t, kind));
+                }
+            }
+        }
+        nearest.map(|(_, t, kind)| {
+            let what = match kind {
+                MarkKind::In => "in",
+                MarkKind::Out => "out",
+                MarkKind::Neutral => "event",
+            };
+            format!("{}  ·  {what}", (c.format_tick)(t, 86_400))
+        })
+    }
+}
+
+/// A RATE — how much happened when — as a waveform of columns.
+///
+/// The silhouette grows from the midline in both directions, the way a
+/// neutral mark does: it is the same "happened, no direction" claim made
+/// about a count. Height is square-root scaled up to a ROBUST knee (see
+/// [`column_ceiling`]) and log-compressed above it — see
+/// [`column_half_height`] for why neither a plain scale nor clipping
+/// survived being looked at. Any column with anything in it gets at least
+/// [`COLUMN_FLOOR`], so one-versus-none stays visible.
+///
+/// Carries no directional events of its own: put a [`MarksLayer`] with the
+/// mints and burns ON TOP. They keep the mark language exactly, and the two
+/// layers stay ignorant of each other.
+///
+/// Hover names the column: the caller's tick format for its start, and the
+/// count.
+pub struct DensityLayer<'a>(pub &'a [DensityBin]);
+
+impl SpineLayer for DensityLayer<'_> {
+    fn paint(&self, c: &SpineCanvas<'_>) -> Option<String> {
+        let columns = bin_columns(c.ruler.x_range(), COLUMN_W, self.0, |t| {
+            c.scale.x_from_time(t as f64)
+        });
+        let knee = column_ceiling(&columns);
+        let max = columns.iter().copied().fold(0.0_f64, f64::max);
+        let mid = c.lane.center().y;
+        let max_half = c.lane.height() * 0.5 - 1.0;
+        for (i, &count) in columns.iter().enumerate() {
+            let half = column_half_height(count, knee, max, max_half);
+            if half <= 0.0 {
+                continue;
+            }
+            let x0 = c.ruler.left() + i as f32 * COLUMN_W;
+            let r = Rect::from_min_max(
+                pos2(x0, mid - half),
+                pos2((x0 + COLUMN_W).min(c.ruler.right()), mid + half),
+            );
+            c.painter.rect_filled(r, CornerRadius::ZERO, DENSITY_FILL);
+        }
+
+        // The column under the pointer, with its own span in seconds so the
+        // formatter can pick a precision that matches the zoom.
+        let p = c.hover?;
+        let i = ((p.x - c.ruler.left()) / COLUMN_W).floor().max(0.0) as usize;
+        let count = *columns.get(i).filter(|n| **n > 0.0)?;
+        let t0 = c
+            .scale
+            .time_from_x_f32(c.ruler.left() + i as f32 * COLUMN_W)?;
+        let t1 = c
+            .scale
+            .time_from_x_f32(c.ruler.left() + (i + 1) as f32 * COLUMN_W)?;
+        let span = ((t1 - t0).round() as i64).max(1);
+        Some(format!(
+            "{}  ·  {}",
+            (c.format_tick)(t0.round() as i64, span),
+            count.round() as u64
+        ))
+    }
 }
 
 pub struct TimeSpine<'a> {
     state: &'a mut SpineState,
     format_tick: &'a dyn Fn(i64, i64) -> String,
-    /// Optional coverage marks: `(from, to)` bands drawn faintly under the
-    /// ruler — e.g. each party's `watched_from` … cursor.
-    coverage: &'a [(i64, i64)],
-    /// Event marks for whatever is currently being WATCHED — drawn in the brush
-    /// lane, because "when did this wallet act" and "which interval do I want
-    /// to brush" are the same question.
-    marks: &'a [(i64, MarkKind)],
+    /// What is drawn along the spine, bottom first — see the module header.
+    /// The lane is where "when did this act" and "which interval do I want to
+    /// brush" meet, so whatever is being WATCHED belongs here.
+    layers: Vec<Box<dyn SpineLayer + 'a>>,
     /// The one moment this view is ABOUT, if it is about one — see
     /// [`TimeSpine::pin`].
     pin: Option<i64>,
     height: f32,
     show_play: bool,
+    /// Which keys this spine answers — see [`Hotkeys`].
+    hotkeys: Hotkeys,
     /// May the reader drag out a range to FILTER by? See
     /// [`TimeSpine::brushing`].
     brushing: bool,
@@ -643,14 +994,22 @@ impl<'a> TimeSpine<'a> {
         Self {
             state,
             format_tick: &compact_tick_label,
-            coverage: &[],
-            marks: &[],
+            layers: Vec::new(),
             pin: None,
             height: 56.0,
             show_play: true,
+            hotkeys: Hotkeys::None,
             brushing: true,
             left_inset: 0.0,
         }
+    }
+
+    /// Which keys this spine answers. Default none — a surface with two
+    /// spines must pick the one that is the transport, and a spine inside a
+    /// storybook must not steal space from the page.
+    pub fn hotkeys(mut self, keys: Hotkeys) -> Self {
+        self.hotkeys = keys;
+        self
     }
 
     /// Allow dragging out a range to filter by. Default on.
@@ -679,16 +1038,37 @@ impl<'a> TimeSpine<'a> {
         self
     }
 
-    pub fn coverage(mut self, bands: &'a [(i64, i64)]) -> Self {
-        self.coverage = bands;
+    /// Add a layer on top of those already added. Layers paint bottom-first
+    /// in the order given, behind the ticks and the playhead.
+    pub fn layer(mut self, layer: impl SpineLayer + 'a) -> Self {
+        self.layers.push(Box::new(layer));
         self
     }
 
-    /// Mark WHEN the watched thing acted. Drawn in the brush lane so the
-    /// answer to "when did they trade" sits on the axis you drag to isolate it.
-    pub fn marks(mut self, marks: &'a [(i64, MarkKind)]) -> Self {
-        self.marks = marks;
-        self
+    /// Sugar for a [`CoverageLayer`]: faint `(from, to)` bands — e.g. each
+    /// party's `watched_from` … cursor. Add it FIRST; it is a ground, and
+    /// anything added before it will be painted over.
+    pub fn coverage(self, bands: &'a [(i64, i64)]) -> Self {
+        self.layer(CoverageLayer(bands))
+    }
+
+    /// Sugar for a [`MarksLayer`]: WHEN the watched thing acted, one hairline
+    /// per event, so the answer to "when did they trade" sits on the axis you
+    /// drag to isolate it. See the layer for where this form stops working.
+    pub fn marks(self, marks: &'a [(i64, MarkKind)]) -> Self {
+        self.layer(MarksLayer(marks))
+    }
+
+    /// Sugar for a [`DensityLayer`]: HOW MUCH happened when, as a waveform.
+    /// Put the rare directional events on top with [`TimeSpine::flags`].
+    pub fn density(self, bins: &'a [DensityBin]) -> Self {
+        self.layer(DensityLayer(bins))
+    }
+
+    /// Sugar for a [`FlagsLayer`]: the rare directional events as flags
+    /// that stay findable over a waveform. Neutral marks are skipped.
+    pub fn flags(self, events: &'a [(i64, MarkKind)]) -> Self {
+        self.layer(FlagsLayer(events))
     }
 
     /// The one moment this view is ABOUT — a deep-linked event, a selected
@@ -730,14 +1110,39 @@ impl<'a> TimeSpine<'a> {
         let Self {
             state,
             format_tick,
-            coverage,
-            marks,
+            layers,
             pin,
             height,
             show_play,
+            hotkeys,
             brushing,
             left_inset,
         } = self;
+
+        // ── keys ───────────────────────────────────────────────────────────
+        // Space plays and pauses; `[` and `]` halve and double the rate. Only
+        // while nothing else has the keyboard — a search box with the cursor
+        // in it must receive a space as a space — and CONSUMED, so a
+        // scrolling page underneath does not also jump.
+        if matches!(hotkeys, Hotkeys::Transport) && ui.ctx().memory(|m| m.focused().is_none()) {
+            let (space, slower, faster) = ui.input_mut(|i| {
+                (
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::Space),
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::OpenBracket),
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::CloseBracket),
+                )
+            });
+            if space {
+                state.toggle_play();
+            }
+            if slower {
+                state.rate = state.rate.slower();
+            }
+            if faster {
+                state.rate = state.rate.faster();
+            }
+        }
+
         state.tick(ui.ctx());
         let mut playhead_changed = state.playing;
         let mut brush_changed = false;
@@ -772,7 +1177,16 @@ impl<'a> TimeSpine<'a> {
                 state.toggle_play();
                 playhead_changed = true;
             }
-            let c = brect.center();
+            // THE RATE, under the glyph, inside the same gutter. Its own
+            // click target: a click on it cycles the ladder, a click on the
+            // glyph plays. Shown only when there is room for both.
+            let rate_h = 12.0;
+            let with_rate = height >= 40.0;
+            let glyph_c = if with_rate {
+                brect.center() - vec2(0.0, rate_h * 0.5)
+            } else {
+                brect.center()
+            };
             let col = if bresp.hovered() {
                 visuals.strong_text_color()
             } else {
@@ -781,25 +1195,52 @@ impl<'a> TimeSpine<'a> {
             if state.playing {
                 let w = 3.0;
                 painter.rect_filled(
-                    Rect::from_center_size(c - vec2(3.5, 0.0), vec2(w, 12.0)),
+                    Rect::from_center_size(glyph_c - vec2(3.5, 0.0), vec2(w, 12.0)),
                     CornerRadius::ZERO,
                     col,
                 );
                 painter.rect_filled(
-                    Rect::from_center_size(c + vec2(3.5, 0.0), vec2(w, 12.0)),
+                    Rect::from_center_size(glyph_c + vec2(3.5, 0.0), vec2(w, 12.0)),
                     CornerRadius::ZERO,
                     col,
                 );
             } else {
                 painter.add(Shape::convex_polygon(
                     vec![
-                        c + vec2(-4.5, -6.5),
-                        c + vec2(6.0, 0.0),
-                        c + vec2(-4.5, 6.5),
+                        glyph_c + vec2(-4.5, -6.5),
+                        glyph_c + vec2(6.0, 0.0),
+                        glyph_c + vec2(-4.5, 6.5),
                     ],
                     col,
                     Stroke::NONE,
                 ));
+            }
+            if with_rate {
+                let rrect = Rect::from_min_max(
+                    pos2(brect.left(), brect.bottom() - rate_h - 2.0),
+                    pos2(brect.right(), brect.bottom() - 2.0),
+                );
+                let rresp = ui
+                    .interact(rrect, id.with("rate"), Sense::click())
+                    .on_hover_text(format!(
+                        "playback rate — {}\nclick to cycle, [ and ] to step",
+                        state.rate_summary()
+                    ));
+                if rresp.clicked() {
+                    state.rate = state.rate.next();
+                }
+                let rate_col = if rresp.hovered() || state.rate != PlayRate::Normal {
+                    visuals.strong_text_color()
+                } else {
+                    visuals.weak_text_color()
+                };
+                painter.text(
+                    rrect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    state.rate.label(),
+                    egui::TextStyle::Small.resolve(ui.style()),
+                    rate_col,
+                );
             }
         }
 
@@ -808,45 +1249,97 @@ impl<'a> TimeSpine<'a> {
         let tick_lane =
             Rect::from_min_max(ruler.min, pos2(ruler.max.x, ruler.min.y + height * 0.5));
         let brush_lane = Rect::from_min_max(pos2(ruler.min.x, tick_lane.max.y), ruler.max);
+        // ── the tape ───────────────────────────────────────────────────────
+        // What happened since last frame, as events to the tape machine —
+        // then what the tape's state means for the view. The RULES live in
+        // [`tape`]; this is only the reading of inputs and the acting on a
+        // state. Applied BEFORE the scale is built so this frame draws the
+        // followed view.
+        //
+        // "Pressed" is read from the pointer itself, not from the drag marker
+        // below — that marker outlives a plain click, and the tape must not
+        // stay held for good after one.
+        {
+            use tape::{Event, State};
+            let pressed = response.is_pointer_button_down_on();
+            let held = matches!(state.tape.state(), State::Held {});
+            if !is_narrower_than_domain(state.view, state.domain) {
+                state.tape.handle(&Event::Widened);
+            } else {
+                if pressed && !held {
+                    state.tape.handle(&Event::Pressed);
+                } else if !pressed && held {
+                    state.tape.handle(&Event::Released);
+                }
+                if state.playing {
+                    state.tape.handle(&Event::Playing);
+                } else if state.playhead != state.last_head {
+                    state.tape.handle(&Event::HeadMoved);
+                }
+            }
+            state.last_head = state.playhead;
+
+            let target = view_centred_on(state.playhead, state.view.spanned, state.domain);
+            let now = state.tape.state().clone();
+            if matches!(now, State::Locked {}) && state.playing {
+                // Exact, every frame — the tape must not lag the head.
+                state.view = target;
+            } else if matches!(now, State::Gliding {}) {
+                // The head moved: the tape catches up over a beat rather than
+                // teleporting, and reports arrival so the machine can settle.
+                let dt = ui.input(|i| i.stable_dt).min(0.1) as f64;
+                let pps = ruler.width() as f64 / state.view.spanned.max(1.0);
+                state.view = glide_view(state.view, target, dt, pps);
+                if state.view == target {
+                    state.tape.handle(&Event::Arrived);
+                } else {
+                    ui.ctx().request_repaint();
+                }
+            }
+        }
         let scale =
             TimeScale::continuous(ruler.x_range(), state.view, state.domain.0, state.domain.1);
 
-        // Coverage bands (faint) — nobody was looking outside them.
-        for &(a, b) in coverage {
-            if let (Some(xa), Some(xb)) = (
-                scale.x_from_time_f32(a as f64),
-                scale.x_from_time_f32(b as f64),
-            ) {
-                let r = Rect::from_x_y_ranges(
-                    Rangef::new(xa.max(ruler.left()), xb.min(ruler.right())),
-                    Rangef::new(brush_lane.top() + 2.0, brush_lane.bottom() - 2.0),
-                );
-                painter.rect_filled(r, CornerRadius::ZERO, visuals.faint_bg_color);
+        // ── the layers ─────────────────────────────────────────────────────
+        // Bottom first, in the caller's order, before the ticks so the ruler
+        // and the playhead stay on top. The topmost layer with something
+        // under the pointer names it.
+        let canvas = SpineCanvas {
+            painter: &painter,
+            scale: &scale,
+            ruler,
+            lane: brush_lane,
+            visuals,
+            format_tick,
+            hover: ui
+                .input(|i| i.pointer.hover_pos())
+                .filter(|p| brush_lane.contains(*p)),
+        };
+        let mut tooltip: Option<String> = None;
+        for layer in &layers {
+            if let Some(line) = layer.paint(&canvas) {
+                tooltip = Some(line);
             }
         }
 
-        // Event marks for the watched party. In above the midline, out below,
-        // so a wallet that only ever accumulated reads differently at a glance
-        // from one that turned over. Drawn before the ticks so the ruler and
-        // the playhead stay on top.
-        if !marks.is_empty() {
-            let mid = brush_lane.center().y;
-            for &(t, kind) in marks {
-                let Some(x) = scale.x_from_time_f32(t as f64) else {
-                    continue;
-                };
-                if x < ruler.left() || x > ruler.right() {
-                    continue;
-                }
-                let (y0, y1, col) = match kind {
-                    MarkKind::In => (mid, brush_lane.top() + 1.0, MARK_IN),
-                    MarkKind::Out => (mid, brush_lane.bottom() - 1.0, MARK_OUT),
-                };
-                painter.line_segment(
-                    [pos2(x, y0), pos2(x, y1)],
-                    Stroke::new(1.0_f32, col.gamma_multiply(0.85)),
-                );
-            }
+        // THE VEIL — following, the right of the window is the future the
+        // playhead has not revealed. The faces below already hide it; saying
+        // so on the axis itself gives the centred head its reason to be
+        // there, and stops the unrevealed half reading as "nothing happened".
+        // Over the layers, under the ticks: the dates stay legible.
+        if state.following()
+            && let Some(hx) = scale.x_from_time_f32(state.playhead as f64)
+            && hx < ruler.right()
+        {
+            let veil = Rect::from_x_y_ranges(
+                Rangef::new(hx.max(ruler.left()), ruler.right()),
+                brush_lane.y_range(),
+            );
+            painter.rect_filled(
+                veil,
+                CornerRadius::ZERO,
+                visuals.extreme_bg_color.gamma_multiply(0.45),
+            );
         }
 
         // Baseline + ticks.
@@ -933,22 +1426,103 @@ impl<'a> TimeSpine<'a> {
             state.set_brush(None);
             brush_changed = true;
         }
+        // ── zoom + scrub ───────────────────────────────────────────────────
+        // The wheel is the zoom. A time axis has no vertical content to
+        // scroll, so a vertical wheel over it means only one thing — closer
+        // or further — and pinch, the only other route to zoom, is fiddly
+        // on a trackpad and absent with a mouse. A horizontal wheel SCRUBS:
+        // following, the view is locked to the head, so moving the window and
+        // moving the head are the same act, and the tape slides under a fixed
+        // head the way it does on any scrubber. Both are CONSUMED, or the
+        // page underneath scrolls away while the reader is trying to zoom;
+        // the same clearing `ScrollArea` does for its own scroll.
+        // Double-click on the ruler puts the whole domain back, so a reader
+        // zoomed in to a week is never stuck there.
         if response.hovered() {
-            let scroll = ui.input(|i| i.smooth_scroll_delta);
-            let zoom = ui.input(|i| i.zoom_delta());
-            if let Some(p) = ui.input(|i| i.pointer.hover_pos()) {
-                if zoom != 1.0
-                    && let Some(v) =
-                        scale.zoom_at(p.x, zoom, (state.domain.1 - state.domain.0) as f64)
-                {
-                    state.view = clamp_view(v, state.domain);
+            // The SMOOTHED delta is what gets applied — that is what makes a
+            // wheel feel like a wheel — but the RAW events decide the axis
+            // and keep the lock alive. Smoothing trails a gesture by several
+            // frames of small values, and letting those decide or refresh
+            // anything kept a lock alive well after the fingers had lifted.
+            let (scroll, raw) = ui.input(|i| {
+                // The raw wheel is the sum of this frame's wheel EVENTS;
+                // only their shape matters here, so the unit is ignored.
+                let raw = i
+                    .raw
+                    .events
+                    .iter()
+                    .filter_map(|e| match e {
+                        egui::Event::MouseWheel { delta, .. } => Some(*delta),
+                        _ => None,
+                    })
+                    .fold(Vec2::ZERO, |acc, d| acc + d);
+                (i.smooth_scroll_delta, raw)
+            });
+            // One axis per GESTURE, not per frame — see `wheel_axis`. The
+            // lock lives in the widget's temp memory with the time it was
+            // last fed by a real event, and lapses once the wheel is quiet.
+            let now = ui.input(|i| i.time);
+            let lock_id = id.with("wheel_axis");
+            let held: Option<WheelAxis> = ui
+                .data(|d| d.get_temp::<(WheelAxis, f64)>(lock_id))
+                .filter(|(_, last)| now - last < WHEEL_LOCK_SECS)
+                .map(|(axis, _)| axis);
+            let axis = if raw != Vec2::ZERO {
+                let decided = wheel_axis(raw, held);
+                if let Some(axis) = decided {
+                    ui.data_mut(|d| {
+                        d.insert_temp(lock_id, (axis, now));
+                    });
                 }
-                if scroll.x != 0.0
-                    && let Some(v) = scale.pan(-scroll.x)
+                decided
+            } else {
+                // A smoothing-tail frame: ride the lock it belongs to, and
+                // drop it once that has lapsed.
+                held
+            };
+            let (wheel_zoom, wheel_scrub) = wheel_along(scroll, axis);
+            let pinch = ui.input(|i| i.zoom_delta());
+            let zoom = pinch * wheel_zoom_factor(wheel_zoom);
+            if zoom != 1.0 {
+                // Zoom about the POINTER, as on a map — the reader is saying
+                // what to look at, and the tape machine treats a narrowed
+                // view as the reader's to keep. Playing is the exception:
+                // the tape is re-centred every frame regardless, so anchor
+                // on the head and the moment under it stays still.
+                let anchor = if state.playing {
+                    scale.x_from_time_f32(state.playhead as f64)
+                } else {
+                    ui.input(|i| i.pointer.hover_pos()).map(|p| p.x)
+                };
+                if let Some(x) = anchor
+                    && let Some(v) =
+                        scale.zoom_at(x, zoom, (state.domain.1 - state.domain.0) as f64)
                 {
                     state.view = clamp_view(v, state.domain);
+                    if !state.playing && is_narrower_than_domain(state.view, state.domain) {
+                        state.tape.handle(&tape::Event::Narrowed);
+                    }
                 }
             }
+            if wheel_scrub != 0.0 {
+                // THE HEAD moves with the fingers, not the tape: a swipe
+                // left carries the head left, to an EARLIER moment — the
+                // same direction a drag on the ruler takes it, and the one
+                // that felt right once the wheel was moving the head rather
+                // than the window. (The first cut moved the tape instead, and
+                // was reversed by request.) A locate, not a stop — play
+                // carries on from the new moment, as it does on any transport.
+                let dt = wheel_scrub as f64 / scale.points_per_sec;
+                state.playhead =
+                    (state.playhead + dt.round() as i64).clamp(state.domain.0, state.domain.1);
+                playhead_changed = true;
+            }
+            if scroll != Vec2::ZERO {
+                ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
+            }
+        }
+        if response.double_clicked() && tick_lane.contains(ptr.unwrap_or(rect.min)) {
+            state.view = TimeView::covering(state.domain.0, state.domain.1);
         }
 
         // ── brush + playhead marks ─────────────────────────────────────────
@@ -1047,6 +1621,21 @@ impl<'a> TimeSpine<'a> {
         );
         painter.galley(badge.min + pad, galley, visuals.strong_text_color());
 
+        // What the topmost layer says is under the pointer. A silhouette can
+        // be READ for shape but not for numbers, and "how many, exactly" is
+        // the one question a mark lane could never answer either.
+        if let Some(line) = tooltip {
+            egui::Tooltip::always_open(
+                ui.ctx().clone(),
+                ui.layer_id(),
+                id.with("layer_tip"),
+                egui::PopupAnchor::Pointer,
+            )
+            .show(|ui| {
+                ui.label(egui::RichText::new(line).small());
+            });
+        }
+
         // Playing indicator glow on the head — eases in/out.
         let glow = tween_bool(
             ui.ctx(),
@@ -1072,11 +1661,521 @@ impl<'a> TimeSpine<'a> {
     }
 }
 
+/// One hairline per event in the brush lane: in rises from the midline, out
+/// falls from it, neutral straddles it.
+fn paint_marks(
+    painter: &egui::Painter,
+    scale: &TimeScale,
+    ruler: &Rect,
+    brush_lane: &Rect,
+    marks: &[(i64, MarkKind)],
+) {
+    let mid = brush_lane.center().y;
+    for &(t, kind) in marks {
+        let Some(x) = scale.x_from_time_f32(t as f64) else {
+            continue;
+        };
+        if x < ruler.left() || x > ruler.right() {
+            continue;
+        }
+        let (y0, y1, col) = match kind {
+            MarkKind::In => (mid, brush_lane.top() + 1.0, MARK_IN),
+            MarkKind::Out => (mid, brush_lane.bottom() - 1.0, MARK_OUT),
+            // Straddles the midline: the SHAPE says "no direction" before the
+            // colour does, which matters because these are usually the
+            // majority of the lane.
+            MarkKind::Neutral => (mid - NEUTRAL_HALF, mid + NEUTRAL_HALF, MARK_NEUTRAL),
+        };
+        painter.line_segment(
+            [pos2(x, y0), pos2(x, y1)],
+            Stroke::new(1.0_f32, col.gamma_multiply(0.85)),
+        );
+    }
+}
+
+/// Re-bin `bins` into screen columns `column_w` wide across `x_range`.
+///
+/// Each bin's count is shared among the columns it overlaps in proportion to
+/// the overlap, so a day bucket zoomed to two hundred pixels spreads evenly
+/// and a hundred hour buckets zoomed out to one pixel SUM into it. Nothing on
+/// screen is dropped — the same rule `CoverageLanes` follows for sub-pixel
+/// runs — and the total across the columns equals the total of the bins that
+/// fall inside the range.
+///
+/// `x_of` is the spine's time → x mapping. Bins wholly off-screen contribute
+/// nothing; bins straddling an edge contribute the part that is on it.
+pub fn bin_columns(
+    x_range: Rangef,
+    column_w: f32,
+    bins: &[DensityBin],
+    x_of: impl Fn(i64) -> Option<f64>,
+) -> Vec<f64> {
+    let width = x_range.span();
+    if width <= 0.0 || column_w <= 0.0 {
+        return Vec::new();
+    }
+    let n = (width / column_w).ceil() as usize;
+    let mut columns = vec![0.0_f64; n];
+    let left = x_range.min as f64;
+    let cw = column_w as f64;
+    for bin in bins {
+        if bin.count == 0 {
+            continue;
+        }
+        let (Some(x0), Some(x1)) = (x_of(bin.start), x_of(bin.start + bin.span.max(1))) else {
+            continue;
+        };
+        let (x0, x1) = (x0.min(x1), x0.max(x1));
+        // A bin narrower than a hair still has to land somewhere: give it a
+        // minimal width so the overlap arithmetic below has something to share.
+        let x1 = x1.max(x0 + 1e-6);
+        let bin_w = x1 - x0;
+        let first = (((x0 - left) / cw).floor().max(0.0)) as usize;
+        let last = (((x1 - left) / cw).ceil().max(0.0)) as usize;
+        for (i, slot) in columns
+            .iter_mut()
+            .enumerate()
+            .take(last.min(n))
+            .skip(first.min(n))
+        {
+            let c0 = left + i as f64 * cw;
+            let c1 = c0 + cw;
+            let overlap = (x1.min(c1) - x0.max(c0)).max(0.0);
+            if overlap > 0.0 {
+                *slot += bin.count as f64 * overlap / bin_w;
+            }
+        }
+    }
+    columns
+}
+
+/// The share of non-empty columns that sit below the knee; the rest are
+/// compressed into the top of the lane.
+///
+/// One in twenty. A three-year policy at two pixels a column has ~700
+/// columns, so ~35 of them — a four-day mint plus two or three trading
+/// frenzies — live above the knee, while every ordinary week keeps its own
+/// height.
+const CEILING_QUANTILE: f64 = 0.95;
+
+/// How much of the lane the body of the history gets. The top quarter is for
+/// everything above the knee.
+const KNEE_HEIGHT: f32 = 0.75;
+
+/// The knee: the count at which the square-root body hands over to the
+/// compressed top — the [`CEILING_QUANTILE`] of the NON-EMPTY columns, so a
+/// handful of outliers do not set the scale for everything else.
+///
+/// Against the true maximum a mint burst flattens three years of aftermarket
+/// into a hairline; this lets the body breathe. Empty columns are excluded
+/// because a quiet history is mostly zeros, and a quantile over them would put
+/// the knee at zero.
+pub fn column_ceiling(columns: &[f64]) -> f64 {
+    let mut filled: Vec<f64> = columns.iter().copied().filter(|c| *c > 0.0).collect();
+    if filled.is_empty() {
+        return 0.0;
+    }
+    filled.sort_by(|a, b| a.total_cmp(b));
+    let i = ((filled.len() as f64 - 1.0) * CEILING_QUANTILE).round() as usize;
+    filled[i.min(filled.len() - 1)]
+}
+
+/// Half-height of a column holding `count`, given the `knee` (see
+/// [`column_ceiling`]), the tallest column `max`, and `max_half` points.
+///
+/// A SOFT KNEE, the way a compressor treats a loud passage. Up to the knee the
+/// body is square-root scaled into the lower [`KNEE_HEIGHT`] of the lane —
+/// linear crushes the aftermarket under the mint, log flattens everything
+/// into a slab, and the root sits between, with a quarter of the knee's
+/// traffic at half the body's height. Above the knee the excess is
+/// log-compressed into the remaining top, so the tallest column reaches full
+/// height and nothing in between is flat.
+///
+/// This replaced CLIPPING at the knee, which was drawn and looked at: on a
+/// five-year collection the busiest five percent of columns are not a few
+/// one-day spikes but a weeks-long frenzy, and clipping turned it into
+/// flat-topped slabs that read as a different chart glued in. With no column
+/// above the knee the body takes the whole lane.
+///
+/// Floored at [`COLUMN_FLOOR`] for any non-empty column, so one-versus-none
+/// survives the scale.
+pub fn column_half_height(count: f64, knee: f64, max: f64, max_half: f32) -> f32 {
+    if count <= 0.0 || knee <= 0.0 || max_half <= 0.0 {
+        return 0.0;
+    }
+    let compressed_top = max > knee;
+    let body_top = if compressed_top { KNEE_HEIGHT } else { 1.0 };
+    let f = if count <= knee || !compressed_top {
+        (count / knee).min(1.0).sqrt() as f32 * body_top
+    } else {
+        let excess = ((count / knee).ln() / (max / knee).ln()).clamp(0.0, 1.0) as f32;
+        body_top + (1.0 - body_top) * excess
+    };
+    (f * max_half).clamp(COLUMN_FLOOR.min(max_half), max_half)
+}
+
+/// Points of vertical wheel per e-fold of zoom — egui's own
+/// `scroll_zoom_speed` default, so a wheel over the spine feels exactly like
+/// ctrl+wheel does everywhere else in the app.
+const WHEEL_ZOOM_SPEED: f32 = 1.0 / 200.0;
+
+/// The zoom factor a vertical wheel of `scroll_y` points asks for: scroll
+/// DOWN (negative) zooms in, up zooms out, symmetrically — a wheel one way
+/// and the same wheel back land where they started.
+///
+/// Inverted from egui's ctrl+wheel and from the map convention, by request
+/// after trying both: on a trackpad "pull towards me" reads as "bring it
+/// closer", and that is the gesture readers reached for.
+pub fn wheel_zoom_factor(scroll_y: f32) -> f32 {
+    (-WHEEL_ZOOM_SPEED * scroll_y).exp()
+}
+
 fn clamp_view(v: TimeView, domain: (i64, i64)) -> TimeView {
     let (d0, d1) = (domain.0 as f64, domain.1 as f64);
     let spanned = v.spanned.min(d1 - d0).max(1.0);
     let min = v.min.clamp(d0, d1 - spanned);
     TimeView { min, spanned }
+}
+
+/// Which keys a spine answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hotkeys {
+    /// None. The default, and right for any spine that is not THE transport
+    /// of its surface.
+    None,
+    /// Space plays and pauses; `[` and `]` step the rate. Only while no
+    /// other widget has the keyboard.
+    Transport,
+}
+
+/// Playback rate, as a ladder rather than a number: a reader steps it, and a
+/// ladder of four is what a hand on `[` and `]` can hold in its head.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayRate {
+    Half,
+    Normal,
+    Double,
+    Quadruple,
+}
+
+impl PlayRate {
+    pub const ALL: [PlayRate; 4] = [
+        PlayRate::Half,
+        PlayRate::Normal,
+        PlayRate::Double,
+        PlayRate::Quadruple,
+    ];
+
+    pub fn multiplier(self) -> f32 {
+        match self {
+            PlayRate::Half => 0.5,
+            PlayRate::Normal => 1.0,
+            PlayRate::Double => 2.0,
+            PlayRate::Quadruple => 4.0,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            PlayRate::Half => "½×",
+            PlayRate::Normal => "1×",
+            PlayRate::Double => "2×",
+            PlayRate::Quadruple => "4×",
+        }
+    }
+
+    /// One rung up; stays at the top.
+    pub fn faster(self) -> Self {
+        match self {
+            PlayRate::Half => PlayRate::Normal,
+            PlayRate::Normal => PlayRate::Double,
+            PlayRate::Double | PlayRate::Quadruple => PlayRate::Quadruple,
+        }
+    }
+
+    /// One rung down; stays at the bottom.
+    pub fn slower(self) -> Self {
+        match self {
+            PlayRate::Half | PlayRate::Normal => PlayRate::Half,
+            PlayRate::Double => PlayRate::Normal,
+            PlayRate::Quadruple => PlayRate::Double,
+        }
+    }
+
+    /// The next rung, wrapping — for a click that cycles.
+    pub fn next(self) -> Self {
+        match self {
+            PlayRate::Half => PlayRate::Normal,
+            PlayRate::Normal => PlayRate::Double,
+            PlayRate::Double => PlayRate::Quadruple,
+            PlayRate::Quadruple => PlayRate::Half,
+        }
+    }
+}
+
+/// Is `view` a real zoom into `domain`, not a rounding error? A view a
+/// second short of the domain is still "all of it".
+pub fn is_narrower_than_domain(view: TimeView, domain: (i64, i64)) -> bool {
+    let full = (domain.1 - domain.0) as f64;
+    view.spanned < full * 0.999
+}
+
+/// The one axis a wheel gesture means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WheelAxis {
+    /// Up and down: zoom.
+    Vertical,
+    /// Side to side: scrub the head.
+    Horizontal,
+}
+
+/// How much more one axis must move than the other before a gesture COMMITS
+/// to it. Two to one: a straight swipe clears it in its first frame, a
+/// diagonal wobble does not, and the frame is simply skipped until the hand
+/// makes up its mind.
+const WHEEL_AXIS_RATIO: f32 = 2.0;
+
+/// How much more the OTHER axis must move than the locked one before a
+/// gesture in progress changes its mind. Higher than the commit ratio: a
+/// wobble must not break a lock, but a hand that has plainly turned from
+/// seeking to zooming must not have to wait for silence first. That wait was
+/// the first cut, and on a trackpad silence never comes — momentum keeps
+/// feeding the lock — so every change of direction felt stuck.
+const WHEEL_BREAK_RATIO: f32 = 4.0;
+
+/// And how far, in points in one frame, the other axis must move to break a
+/// lock at all. A ratio alone lets a nine-point flick — the finger lifting
+/// off a seek — count as decisive; a deliberate swipe moves far more than
+/// this in its first frame.
+const WHEEL_BREAK_MIN: f32 = 12.0;
+
+/// How long the wheel may go quiet before a gesture is over and the next
+/// one may pick its own axis afresh. Measured against RAW wheel events, not
+/// the smoothed delta — the smoothing keeps emitting a tail after the
+/// fingers lift, and counting that tail as activity kept locks alive long
+/// after the gesture that made them.
+const WHEEL_LOCK_SECS: f64 = 0.25;
+
+/// Which axis this frame's wheel delta belongs to, given the axis the
+/// gesture in progress has already committed to.
+///
+/// AXIS LOCK, the way a browser scrolls. Deciding per frame was tried first
+/// and every horizontal seek on a trackpad zoomed a little: a swipe is never
+/// perfectly level, and the frames at its start and end, where the finger
+/// is settling or lifting, are as likely to lean vertical as not. Once a
+/// gesture has shown a clear axis it keeps it through the wobble — but a
+/// frame that moves DECISIVELY the other way ([`WHEEL_BREAK_RATIO`]) is a
+/// new intention and takes the lock with it. Before any commit, an
+/// ambiguous frame is `None`: dropped rather than guessed.
+pub fn wheel_axis(scroll: Vec2, locked: Option<WheelAxis>) -> Option<WheelAxis> {
+    let (x, y) = (scroll.x.abs(), scroll.y.abs());
+    let clear = |ratio: f32, at_least: f32| {
+        if y >= x * ratio && y >= at_least {
+            Some(WheelAxis::Vertical)
+        } else if x >= y * ratio && x >= at_least {
+            Some(WheelAxis::Horizontal)
+        } else {
+            None
+        }
+    };
+    match locked {
+        Some(axis) => match clear(WHEEL_BREAK_RATIO, WHEEL_BREAK_MIN) {
+            Some(other) if other != axis => Some(other),
+            _ => Some(axis),
+        },
+        None => clear(WHEEL_AXIS_RATIO, f32::EPSILON),
+    }
+}
+
+/// The delta along `axis`, with the other axis zeroed: `(zoom, scrub)`.
+pub fn wheel_along(scroll: Vec2, axis: Option<WheelAxis>) -> (f32, f32) {
+    match axis {
+        Some(WheelAxis::Vertical) => (scroll.y, 0.0),
+        Some(WheelAxis::Horizontal) => (0.0, scroll.x),
+        None => (0.0, 0.0),
+    }
+}
+
+/// The TAPE — how the view relates to the playhead, as a state machine.
+///
+/// Zoomed in, the ruler and its layers are a tape and the playhead is the
+/// fixed head it runs under. Five states say who is in charge of the tape:
+///
+/// ```text
+/// ┌──────┐  Narrowed   ┌───────────────── following ─────────────────┐
+/// │ free │────────────▶│ loose ──HeadMoved──▶ gliding ──Arrived──▶ locked │
+/// └──────┘◀──Widened───│   ▲                    ▲  ▲                │   │
+///                      │   └──Narrowed──────────┘──┘────────────────┘   │
+///                      │        Pressed ▶ held ──Released──▶ gliding    │
+///                      │        Playing ▶ locked (held stays held)      │
+///                      └──────────────────────────────────────────────┘
+/// ```
+///
+/// - **free** — the whole domain is on screen; nothing to follow.
+/// - **locked** — the tape is centred on the head. While playing it is put
+///   there exactly, every frame.
+/// - **gliding** — the head moved (play, a scrub, a click, a face); the
+///   tape is catching up over a beat.
+/// - **held** — a press is down. The tape is frozen while the head follows
+///   the pointer, because re-centring under a drag moves the content under
+///   the pointer, which changes the pointer's time, which moves the head:
+///   a runaway.
+/// - **loose** — the READER moved the tape, by zooming about the pointer.
+///   It stays where they put it until the head next moves. Pulling it back
+///   to the head a frame later would undo the one thing they just did.
+///
+/// Why a machine and not flags: the first cut had `playing`, `pressed` and
+/// a "head the view was last brought to" interacting in one `match`, and the
+/// third bug in that match was the moment to stop. Here every rule is a row
+/// in a handler and the tests read as the table above.
+pub mod tape {
+    use statig::prelude::*;
+
+    /// The machine's shared storage — nothing. All the state is the state.
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct Tape;
+
+    /// What the widget saw this frame.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Event {
+        /// The view spans the whole domain again.
+        Widened,
+        /// The reader zoomed in about the pointer: the view is theirs.
+        Narrowed,
+        /// The playhead is somewhere else than last frame, and play is off.
+        HeadMoved,
+        /// Play is running: the tape rides the head exactly.
+        Playing,
+        /// The pointer went down on the spine.
+        Pressed,
+        /// The pointer came up.
+        Released,
+        /// The gliding tape reached the head.
+        Arrived,
+    }
+
+    #[state_machine(
+        initial = "State::free()",
+        state(derive(Debug, Clone, PartialEq, Eq)),
+        superstate(derive(Debug))
+    )]
+    impl Tape {
+        // The generated `State::free()` constructors are PRIVATE to this
+        // module whatever the handlers' visibility; outside it the widget
+        // names states by their public variants, `State::Free {}`.
+        #[state]
+        fn free(event: &Event) -> Outcome<State> {
+            match event {
+                Event::Narrowed => Transition(State::loose()),
+                // ZOOMED IN WHILE ALREADY PLAYING. The widget only emits
+                // `Playing` once the view is narrower than the domain, so
+                // this event reaching `free` means exactly that — and it is
+                // the ONLY notice the machine gets, because `Narrowed` is
+                // suppressed during play (the zoom anchors on the head, so
+                // loosening the tape would fight the anchor).
+                //
+                // Without this arm the tape stays free for the rest of the
+                // run: nothing re-centres the window and the head walks off
+                // the edge of a view that never moves. Only reproducible
+                // when play STARTS at full width, which is why it survived —
+                // every path that starts zoomed in arrives here already
+                // following.
+                Event::Playing => Transition(State::locked()),
+                _ => Handled,
+            }
+        }
+
+        /// What every following state shares: widening frees the tape, a
+        /// press holds it, play locks it.
+        #[superstate]
+        fn following(event: &Event) -> Outcome<State> {
+            match event {
+                Event::Widened => Transition(State::free()),
+                Event::Pressed => Transition(State::held()),
+                Event::Playing => Transition(State::locked()),
+                _ => Handled,
+            }
+        }
+
+        #[state(superstate = "following")]
+        fn locked(event: &Event) -> Outcome<State> {
+            match event {
+                Event::HeadMoved => Transition(State::gliding()),
+                Event::Narrowed => Transition(State::loose()),
+                // Already locked: no self-transition every frame of play.
+                Event::Playing => Handled,
+                _ => Super,
+            }
+        }
+
+        #[state(superstate = "following")]
+        fn gliding(event: &Event) -> Outcome<State> {
+            match event {
+                Event::Arrived => Transition(State::locked()),
+                Event::Narrowed => Transition(State::loose()),
+                // The head moved again mid-glide: keep gliding — the target
+                // is recomputed from the head every frame anyway.
+                Event::HeadMoved => Handled,
+                _ => Super,
+            }
+        }
+
+        #[state(superstate = "following")]
+        fn held(event: &Event) -> Outcome<State> {
+            match event {
+                Event::Released => Transition(State::gliding()),
+                // A press during play holds the tape; play may carry on.
+                Event::Playing => Handled,
+                _ => Super,
+            }
+        }
+
+        #[state(superstate = "following")]
+        fn loose(event: &Event) -> Outcome<State> {
+            match event {
+                Event::HeadMoved => Transition(State::gliding()),
+                _ => Super,
+            }
+        }
+    }
+}
+
+/// The window of `spanned` seconds with `t` at its centre, slid — not
+/// shrunk — so it never leaves `domain`.
+///
+/// Near either end the head is therefore OFF centre: with the playhead at the
+/// last transaction, a centred window would show half a screen of time in
+/// which nothing exists, and a reader would look for what is there. Sliding
+/// the window is what a map does at the edge of the world, and it is the
+/// honest choice: the axis shows data or nothing, never blank axis.
+pub fn view_centred_on(t: i64, spanned: f64, domain: (i64, i64)) -> TimeView {
+    clamp_view(
+        TimeView {
+            min: t as f64 - spanned / 2.0,
+            spanned,
+        },
+        domain,
+    )
+}
+
+/// Time constant of the tape's glide, seconds. Short enough that a click
+/// feels like a jump, long enough that the reader sees which way it went.
+const GLIDE_TAU: f64 = 0.08;
+
+/// One frame of the tape catching up with the head: `view` moved toward
+/// `target` by an exponential approach over `dt` seconds, snapping once the
+/// remaining distance is under half a pixel at `pps` points per second. The
+/// span is taken from the target outright — only the position glides.
+pub fn glide_view(view: TimeView, target: TimeView, dt: f64, pps: f64) -> TimeView {
+    let gap = target.min - view.min;
+    if gap.abs() * pps < 0.5 {
+        return target;
+    }
+    let k = 1.0 - (-dt / GLIDE_TAU).exp();
+    TimeView {
+        min: view.min + gap * k,
+        spanned: target.spanned,
+    }
 }
 
 /// Convenience for faces: the x of `t` on the spine's scale, or `None` if the
@@ -1179,6 +2278,294 @@ mod tests {
         assert!((z.spanned - 2000.0).abs() < 1e-6);
     }
 
+    /// A wheel DOWN zooms in, a wheel up zooms out, and the two cancel — a
+    /// reader who overshoots and comes back lands where they started.
+    #[test]
+    fn wheel_zoom_is_symmetric_and_down_means_in() {
+        assert_eq!(wheel_zoom_factor(0.0), 1.0);
+        assert!(wheel_zoom_factor(-40.0) > 1.0, "down = in");
+        assert!(wheel_zoom_factor(40.0) < 1.0, "up = out");
+        let round_trip = wheel_zoom_factor(40.0) * wheel_zoom_factor(-40.0);
+        assert!((round_trip - 1.0).abs() < 1e-6, "{round_trip}");
+        // A full-domain view narrows under one wheel-down step.
+        let s = TimeScale::continuous(
+            Rangef::new(0.0, 1000.0),
+            TimeView::covering(0, 1000),
+            0,
+            1000,
+        );
+        let z = s.zoom_at(500.0, wheel_zoom_factor(-40.0), 1000.0).unwrap();
+        assert!(z.spanned < 1000.0, "zoomed in: {}", z.spanned);
+    }
+
+    // ── follow ─────────────────────────────────────────────────────────────
+
+    /// Following is a fact about the VIEW, not a mode the reader toggles: the
+    /// whole domain on screen is free, anything narrower follows.
+    #[test]
+    fn a_view_is_narrower_only_past_a_rounding_error() {
+        let domain = (0, 10_000);
+        assert!(!is_narrower_than_domain(
+            TimeView::covering(0, 10_000),
+            domain
+        ));
+        assert!(
+            !is_narrower_than_domain(TimeView::covering(0, 9_999), domain),
+            "a rounding error is not a zoom"
+        );
+        assert!(is_narrower_than_domain(
+            TimeView::covering(2_000, 4_000),
+            domain
+        ));
+    }
+
+    /// THE TABLE, as a walk. Every rule the widget relies on is one step here,
+    /// and the two that came from being tried are called out.
+    #[test]
+    fn the_tape_machine_walks_its_table() {
+        use statig::prelude::*;
+        use tape::{Event, State, Tape};
+        let mut t = Tape.uninitialized_state_machine().init();
+        let (free, loose, gliding, locked, held) = (
+            State::Free {},
+            State::Loose {},
+            State::Gliding {},
+            State::Locked {},
+            State::Held {},
+        );
+        assert_eq!(*t.state(), free);
+        t.handle(&Event::HeadMoved);
+        assert_eq!(*t.state(), free, "nothing to follow at full width");
+
+        // The reader zooms in: the view is theirs until the head moves.
+        t.handle(&Event::Narrowed);
+        assert_eq!(*t.state(), loose);
+        t.handle(&Event::HeadMoved);
+        assert_eq!(*t.state(), gliding);
+        t.handle(&Event::HeadMoved);
+        assert_eq!(*t.state(), gliding, "keeps gliding to the new target");
+        t.handle(&Event::Arrived);
+        assert_eq!(*t.state(), locked);
+
+        // TRIED AND REJECTED: re-centring after a pointer zoom. A zoom about
+        // the pointer while locked LOOSENS the tape; it is not pulled back.
+        t.handle(&Event::Narrowed);
+        assert_eq!(*t.state(), loose);
+
+        // Play locks the tape from anywhere in following...
+        t.handle(&Event::Playing);
+        assert_eq!(*t.state(), locked);
+        t.handle(&Event::Playing);
+        assert_eq!(*t.state(), locked);
+
+        // ...except under a press, which holds it (the drag runaway).
+        t.handle(&Event::Pressed);
+        assert_eq!(*t.state(), held);
+        t.handle(&Event::Playing);
+        assert_eq!(*t.state(), held, "a press during play still holds");
+        t.handle(&Event::HeadMoved);
+        assert_eq!(
+            *t.state(),
+            held,
+            "the head follows the pointer; the tape does not"
+        );
+        t.handle(&Event::Released);
+        assert_eq!(*t.state(), gliding, "on release the tape catches up");
+
+        // Widening frees it from any following state.
+        t.handle(&Event::Widened);
+        assert_eq!(*t.state(), free);
+        t.handle(&Event::Pressed);
+        assert_eq!(*t.state(), free, "a press at full width holds nothing");
+    }
+
+    /// PLAY STARTED AT FULL WIDTH, then the reader zooms in mid-playback.
+    ///
+    /// The tape has to engage, and the only event that can tell it to is
+    /// `Playing`. `Narrowed` is deliberately NOT sent while playing — the
+    /// zoom anchors on the head instead of the pointer, so loosening the
+    /// tape there would fight the anchor — which leaves `Playing` as the
+    /// first the machine hears that the view is no longer full width.
+    ///
+    /// Without this the tape stays `Free` for the rest of the run: nothing
+    /// re-centres the window, and the playhead simply walks off the edge of
+    /// a view that never moves. Reported from the deployed graph view, and
+    /// invisible from any state that starts zoomed in.
+    #[test]
+    fn zooming_in_mid_play_engages_a_tape_that_started_free() {
+        use statig::prelude::*;
+        use tape::{Event, State, Tape};
+
+        let mut t = Tape.uninitialized_state_machine().init();
+        assert_eq!(*t.state(), State::Free {}, "play opened at full width");
+
+        // The widget only emits `Playing` once the view is narrower than the
+        // domain, so receiving it here MEANS the reader has zoomed in.
+        t.handle(&Event::Playing);
+        assert_eq!(
+            *t.state(),
+            State::Locked {},
+            "a zoom during play must put the tape on the head"
+        );
+
+        // And it behaves like any other locked tape from there.
+        t.handle(&Event::Playing);
+        assert_eq!(*t.state(), State::Locked {}, "no self-transition per frame");
+        t.handle(&Event::Widened);
+        assert_eq!(*t.state(), State::Free {}, "zooming back out frees it");
+    }
+
+    /// The rate ladder: clamped at both ends by the keys, wrapped by a click,
+    /// and every rung reachable.
+    #[test]
+    fn the_rate_ladder_steps_clamps_and_cycles() {
+        assert_eq!(PlayRate::Quadruple.faster(), PlayRate::Quadruple);
+        assert_eq!(PlayRate::Half.slower(), PlayRate::Half);
+        assert_eq!(PlayRate::Normal.faster().slower(), PlayRate::Normal);
+        let mut r = PlayRate::Half;
+        let mut seen = Vec::new();
+        for _ in 0..PlayRate::ALL.len() {
+            seen.push(r);
+            r = r.next();
+        }
+        assert_eq!(seen, PlayRate::ALL.to_vec(), "a click visits every rung");
+        assert_eq!(r, PlayRate::Half, "and wraps");
+    }
+
+    /// Play sweeps the DOMAIN at a fixed time factor. The rate used to be a
+    /// derivative of the zoom — 1× zoomed in was a different speed from 1×
+    /// zoomed out — which made the label meaningless and let a zoom silently
+    /// change the playback. Zooming now moves nothing but the viewport.
+    #[test]
+    fn play_sweeps_the_domain_at_a_rate_the_zoom_cannot_move() {
+        let ctx = egui::Context::default();
+        let step = |t: f64| crate::motion::tests::step(&ctx, t);
+        let one_second_from = |view: TimeView| {
+            let mut s = SpineState::new((0, 1000));
+            s.play_duration = 10.0;
+            s.view = view;
+            s.rate = PlayRate::Double;
+            s.set_playhead(0);
+            s.toggle_play();
+            step(0.0);
+            s.tick(&ctx);
+            let _ = ctx.end_pass();
+            step(1.0);
+            s.tick(&ctx);
+            let _ = ctx.end_pass();
+            s.playhead
+        };
+        // 1000 s of domain per 10 wall-s = 100/s, doubled = 200.
+        let full = one_second_from(TimeView::covering(0, 1000));
+        assert!((full - 200).abs() <= 1, "got {full}");
+        // Zoomed to a tenth of the history: the same 200.
+        let zoomed = one_second_from(TimeView::covering(0, 100));
+        assert_eq!(zoomed, full, "the zoom is not a speed control");
+    }
+
+    /// The rate says itself in real units, one coarse unit at a time.
+    #[test]
+    fn a_rate_is_legible_in_the_unit_that_suits_it() {
+        assert_eq!(format_rate(86_400.0 * 3.2), "3.2 days/s");
+        assert_eq!(format_rate(86_400.0 * 45.0), "45 days/s");
+        assert_eq!(format_rate(2_700.0), "45 min/s");
+        assert_eq!(format_rate(18.0), "18 s/s");
+        assert_eq!(format_rate(0.0), "0.0 s/s");
+        // A month-long domain at the default 45 s sweep.
+        let mut s = SpineState::new((0, 30 * 86_400));
+        assert_eq!(s.rate_summary(), "16 hr/s");
+        s.rate = PlayRate::Half;
+        assert_eq!(s.rate_summary(), "8.0 hr/s");
+    }
+
+    /// A gesture commits to one axis on a clear frame, holds it through the
+    /// wobbly frames that follow, never guesses on an ambiguous start — and
+    /// lets go for a decisive move the other way.
+    #[test]
+    fn the_wheel_locks_to_one_axis_per_gesture_but_not_too_hard() {
+        use WheelAxis::{Horizontal, Vertical};
+        // Clear frames commit.
+        assert_eq!(wheel_axis(vec2(3.0, -40.0), None), Some(Vertical));
+        assert_eq!(wheel_axis(vec2(-25.0, 2.0), None), Some(Horizontal));
+        // A diagonal or empty frame does not, and is dropped.
+        assert_eq!(wheel_axis(vec2(10.0, -12.0), None), None);
+        assert_eq!(wheel_axis(Vec2::ZERO, None), None);
+        assert_eq!(wheel_along(vec2(10.0, -12.0), None), (0.0, 0.0));
+        // Locked horizontal, a frame that leans vertical — the finger lifting
+        // at the end of a seek — stays a scrub, not a zoom.
+        assert_eq!(
+            wheel_axis(vec2(2.0, -9.0), Some(Horizontal)),
+            Some(Horizontal)
+        );
+        assert_eq!(wheel_along(vec2(2.0, -9.0), Some(Horizontal)), (0.0, 2.0));
+        // TOO HARD, the second cut: a lock that only silence could end felt
+        // stuck, because a trackpad's momentum is never silent. A frame
+        // that is DECISIVELY the other way — far, and mostly that way — is
+        // a new gesture and takes the lock. A wobble of the same shape but
+        // no distance does not.
+        assert_eq!(
+            wheel_axis(vec2(1.0, -30.0), Some(Horizontal)),
+            Some(Vertical),
+            "a real vertical swipe breaks a horizontal lock"
+        );
+        assert_eq!(
+            wheel_axis(vec2(30.0, -1.0), Some(Vertical)),
+            Some(Horizontal),
+            "and the other way round"
+        );
+        assert_eq!(
+            wheel_axis(vec2(1.0, -8.0), Some(Horizontal)),
+            Some(Horizontal),
+            "a flick with the right shape but no distance does not"
+        );
+        assert_eq!(wheel_along(vec2(3.0, -40.0), Some(Vertical)), (-40.0, 0.0));
+    }
+
+    /// Mid-domain the head is centred; at either end the window SLIDES so it
+    /// stays on the data, and the head sits off centre. Never blank axis.
+    #[test]
+    fn a_centred_view_slides_at_the_ends_rather_than_leaving_the_data() {
+        let domain = (0, 10_000);
+        let mid = view_centred_on(5_000, 1_000.0, domain);
+        assert!((mid.min - 4_500.0).abs() < 1e-9 && mid.spanned == 1_000.0);
+        // The head opens at the END: the window is pinned to it.
+        let end = view_centred_on(10_000, 1_000.0, domain);
+        assert!((end.min - 9_000.0).abs() < 1e-9, "{}", end.min);
+        let start = view_centred_on(0, 1_000.0, domain);
+        assert_eq!(start.min, 0.0);
+        // A window wider than the domain is the domain.
+        let wide = view_centred_on(5_000, 50_000.0, domain);
+        assert_eq!((wide.min, wide.spanned), (0.0, 10_000.0));
+    }
+
+    /// The tape approaches the head and SNAPS when the remainder is under
+    /// half a pixel — a glide that never quite arrives would repaint forever.
+    #[test]
+    fn the_glide_approaches_then_snaps() {
+        let target = TimeView {
+            min: 1_000.0,
+            spanned: 100.0,
+        };
+        let from = TimeView {
+            min: 0.0,
+            spanned: 100.0,
+        };
+        let step = glide_view(from, target, 0.016, 1.0);
+        assert!(0.0 < step.min && step.min < 1_000.0, "{}", step.min);
+        assert_eq!(step.spanned, 100.0, "only the position glides");
+        let mut v = from;
+        for _ in 0..200 {
+            v = glide_view(v, target, 0.016, 1.0);
+        }
+        assert_eq!(v, target, "converges and snaps");
+        // Already within half a pixel: snap immediately.
+        let near = TimeView {
+            min: 999.8,
+            spanned: 100.0,
+        };
+        assert_eq!(glide_view(near, target, 0.016, 1.0), target);
+    }
+
     #[test]
     fn tick_ladder_matches_rerun_scaled_to_seconds() {
         assert_eq!(next_tick_step_secs(1), 10);
@@ -1202,6 +2589,142 @@ mod tests {
         assert_eq!(compact_tick_label(86_400 * 3, 86_400), "1970-01-04");
         assert_eq!(compact_tick_label(3661, 60), "01:01");
         assert_eq!(compact_tick_label(3661, 1), "01:01:01");
+    }
+
+    // ── the density lane ───────────────────────────────────────────────────
+
+    /// A linear mapping over `[0, 1000]` seconds onto `[0, 1000]` points.
+    fn unit_x(t: i64) -> Option<f64> {
+        Some(t as f64)
+    }
+
+    fn bin(start: i64, span: i64, count: u64) -> DensityBin {
+        DensityBin { start, span, count }
+    }
+
+    /// THE INVARIANT: nothing on screen is dropped. Whatever the bin and
+    /// column widths, the columns sum to the bins that fall on the axis.
+    #[test]
+    fn rebinning_conserves_the_count() {
+        let bins = [
+            bin(0, 100, 7),
+            bin(100, 100, 3000),
+            bin(250, 1, 1),
+            bin(500, 500, 42),
+        ];
+        for cw in [1.0, 2.0, 3.0, 17.0] {
+            let cols = bin_columns(Rangef::new(0.0, 1000.0), cw, &bins, unit_x);
+            let total: f64 = cols.iter().sum();
+            assert!((total - 3050.0).abs() < 1e-6, "cw {cw}: {total}");
+        }
+    }
+
+    /// A day bucket zoomed to two hundred pixels spreads evenly across them
+    /// rather than piling into its first column.
+    #[test]
+    fn a_wide_bin_spreads_across_its_columns() {
+        let cols = bin_columns(Rangef::new(0.0, 1000.0), 2.0, &[bin(0, 200, 100)], unit_x);
+        for c in &cols[..100] {
+            assert!((c - 1.0).abs() < 1e-9, "{c}");
+        }
+        assert!(cols[100..].iter().all(|c| *c == 0.0));
+    }
+
+    /// Many narrow bins under one column SUM, rather than the last one winning.
+    #[test]
+    fn narrow_bins_sum_into_their_column() {
+        let bins: Vec<DensityBin> = (0..10).map(|i| bin(i, 1, 5)).collect();
+        let cols = bin_columns(Rangef::new(0.0, 1000.0), 10.0, &bins, unit_x);
+        assert!((cols[0] - 50.0).abs() < 1e-9, "{}", cols[0]);
+    }
+
+    /// Bins straddling the edge contribute the part on screen; bins wholly
+    /// off it contribute nothing and do not panic.
+    #[test]
+    fn off_screen_bins_are_clipped_not_dropped_into_the_edge() {
+        let bins = [bin(-100, 200, 100), bin(-500, 100, 999), bin(950, 100, 100)];
+        let cols = bin_columns(Rangef::new(0.0, 1000.0), 10.0, &bins, unit_x);
+        let total: f64 = cols.iter().sum();
+        assert!((total - 100.0).abs() < 1e-6, "{total}");
+        // Half of each straddling bin is on screen — 50 apiece — but the
+        // first is 200 px wide and the last 100, so they land at different
+        // densities: 50 over ten columns, then 50 over five.
+        assert!((cols[0] - 5.0).abs() < 1e-9, "{}", cols[0]);
+        assert!((cols[99] - 10.0).abs() < 1e-9, "{}", cols[99]);
+    }
+
+    #[test]
+    fn a_degenerate_range_yields_no_columns() {
+        assert!(bin_columns(Rangef::new(5.0, 5.0), 2.0, &[bin(0, 1, 1)], unit_x).is_empty());
+        assert!(bin_columns(Rangef::new(0.0, 10.0), 0.0, &[bin(0, 1, 1)], unit_x).is_empty());
+    }
+
+    /// The body is root-scaled into the lower part of the lane, the knee hands
+    /// over to a compressed top, the TALLEST column fills the lane, nothing
+    /// flat-tops, and any column with something in it is at least the floor —
+    /// one-versus-none is the distinction the mark lane showed for free.
+    #[test]
+    fn column_heights_have_a_soft_knee_and_a_floor() {
+        let (knee, max, max_half) = (100.0, 5000.0, 12.0);
+        assert_eq!(column_half_height(0.0, knee, max, max_half), 0.0);
+        let one = column_half_height(0.2, knee, max, max_half);
+        assert_eq!(one, COLUMN_FLOOR, "a single event is visible: {one}");
+        // The body: a quarter of the knee stands at half the body's height.
+        let body_top = max_half * KNEE_HEIGHT;
+        let at_knee = column_half_height(knee, knee, max, max_half);
+        assert!((at_knee - body_top).abs() < 1e-5, "{at_knee}");
+        let quarter = column_half_height(25.0, knee, max, max_half);
+        assert!((quarter - body_top * 0.5).abs() < 1e-5, "{quarter}");
+        // Above the knee: still rising, NOT flat — a frenzy keeps its shape.
+        let (a, b, c) = (
+            column_half_height(200.0, knee, max, max_half),
+            column_half_height(1000.0, knee, max, max_half),
+            column_half_height(4000.0, knee, max, max_half),
+        );
+        assert!(at_knee < a && a < b && b < c && c < max_half, "{a} {b} {c}");
+        // The tallest column fills the lane; nothing exceeds it.
+        assert_eq!(column_half_height(max, knee, max, max_half), max_half);
+        assert!(column_half_height(max * 2.0, knee, max, max_half) <= max_half);
+    }
+
+    /// With nothing above the knee there is nothing to compress, so the body
+    /// takes the WHOLE lane rather than leaving the top quarter empty.
+    #[test]
+    fn without_outliers_the_body_uses_the_whole_lane() {
+        let h = column_half_height(100.0, 100.0, 100.0, 12.0);
+        assert_eq!(h, 12.0);
+        let h = column_half_height(25.0, 100.0, 100.0, 12.0);
+        assert!((h - 6.0).abs() < 1e-5, "{h}");
+    }
+
+    /// THE CEILING IS ROBUST. A four-day mint of thousands against three years
+    /// of tens must not set the scale — against the true max the aftermarket
+    /// is a hairline and the lane is a flat line with one tower.
+    #[test]
+    fn the_ceiling_ignores_the_outliers_and_the_zeros() {
+        let mut columns = vec![0.0; 300];
+        for (i, c) in columns.iter_mut().enumerate() {
+            *c = match i {
+                0..=3 => 3000.0,
+                100..=160 => 0.0, // the dead stretch
+                _ => 10.0 + (i % 7) as f64,
+            };
+        }
+        let ceiling = column_ceiling(&columns);
+        assert!(
+            ceiling < 100.0,
+            "the mint must not set the ceiling: {ceiling}"
+        );
+        assert!(ceiling >= 10.0, "nor may the zeros drag it down: {ceiling}");
+        // The body of the history now has a height of its own.
+        let quiet = column_half_height(10.0, ceiling, 3000.0, 11.0);
+        assert!(
+            quiet > 5.0,
+            "a quiet day is visible, not a hairline: {quiet}"
+        );
+        assert_eq!(column_ceiling(&[]), 0.0);
+        assert_eq!(column_ceiling(&[0.0, 0.0]), 0.0);
+        assert_eq!(column_ceiling(&[7.0]), 7.0);
     }
 
     #[test]

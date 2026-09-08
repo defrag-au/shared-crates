@@ -25,9 +25,12 @@ pub mod collection_list;
 pub mod command_palette;
 #[cfg(feature = "gateway")]
 pub mod conversation_history;
+pub mod corner_action;
 pub mod detail_split;
+pub mod disclosure;
 pub mod distribution_waterfall;
 pub mod donut_chart;
+pub mod drawer;
 pub mod error_note;
 pub mod event_wiring;
 #[cfg(target_arch = "wasm32")]
@@ -41,12 +44,15 @@ pub mod focus_list;
 pub mod fonts;
 pub mod fungibles_row;
 pub mod gated;
+#[cfg(feature = "gateway")]
+pub mod gateway_log;
 pub mod grouped_section;
 pub mod holder_field;
 pub mod holder_formation;
 pub mod icons;
 pub mod id_pill;
 pub mod image_loader;
+pub mod image_stack;
 pub mod leaderboard;
 pub mod listing_grid;
 pub mod machine;
@@ -64,6 +70,7 @@ pub mod pane_nav;
 pub mod party_annotator;
 pub mod party_badge;
 pub mod party_finder;
+pub mod perf_strip;
 pub mod persona_strip;
 pub mod phase_card;
 pub mod pip_row;
@@ -102,6 +109,7 @@ pub mod typeahead_search;
 pub mod user_badge;
 pub mod utils;
 pub mod variant_split;
+pub mod viewport;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
@@ -155,6 +163,7 @@ pub mod signing_status;
 pub mod trade_table;
 #[cfg(feature = "cardano")]
 pub mod trait_delta;
+pub mod tx_card;
 pub mod tx_cart;
 #[cfg(feature = "cardano")]
 pub mod tx_estimate;
@@ -162,6 +171,8 @@ pub mod tx_estimate;
 pub mod utxo_map;
 #[cfg(feature = "cardano")]
 pub mod utxo_shelf;
+#[cfg(feature = "verdict")]
+pub mod verdict_card;
 #[cfg(feature = "cardano")]
 pub mod wallet_asset_picker;
 
@@ -194,6 +205,7 @@ pub use collection_list::{
     CollectionListLayout, CollectionListResponse, CollectionRow,
 };
 pub use command_palette::{CommandPalette, PaletteAction, PaletteState};
+pub use corner_action::{Corner, CornerAction};
 pub use custody_walk::{
     CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode, WalkNodeKind, WalkSummary,
     summarize as summarize_walk,
@@ -203,6 +215,7 @@ pub use distribution_waterfall::{DistributionWaterfall, WaterfallMode, Waterfall
 pub use donut_chart::{
     DistBand, DistributionChart, format_value as format_chart_value, legend_row,
 };
+pub use drawer::{Drawer, DrawerSide};
 pub use error_note::{ErrorNote, ErrorSummary, pretty_json, summarize_error};
 pub use event_wiring::{ActionCardVm, EventNodeVm, EventWiring, EventWiringResponse};
 #[cfg(target_arch = "wasm32")]
@@ -217,7 +230,7 @@ pub use flow_stave::{
     FlowStave, FlowStaveResponse, Reconciliation, StaveEvent, StaveLane, StaveOrigin,
 };
 pub use fungibles_row::{FungiblesRow, FungiblesRowConfig};
-pub use holder_field::{AssetMove, HolderField, HolderFieldResponse};
+pub use holder_field::{AssetMove, Custody, HolderField, HolderFieldResponse};
 pub use holder_formation::{
     Acquisition, Distribution, HolderFormation, distribution_at, distribution_series, holdings_at,
 };
@@ -226,11 +239,14 @@ pub use id_pill::{
     IdPill, IdPillLayout, IdPillResponse, stacked_width_for as id_pill_stacked_width_for,
 };
 pub use image_loader::{AssetImageSize, iiif_asset_url};
+pub use image_stack::{ImageStack, ImageStackStyle, StackImage};
 #[cfg(feature = "image-editor")]
 pub use image_text_editor::{
     FontChoice, ImageTextEditor, TextEffect, TextOverlay, TextOverlayAnchor,
 };
-pub use listing_grid::{ListingCard, ListingGrid, ListingGridConfig};
+pub use listing_grid::{
+    BlockedReason, Buyability, ListingCard, ListingGrid, ListingGridConfig, ListingGridResponse,
+};
 pub use machine::Machine;
 pub use marquee::{Marquee, MarqueeConfig, MarqueeItem};
 pub use metric_card::{MetricCard, MetricRow, Trend};
@@ -257,6 +273,7 @@ pub use party_badge::{PartyBadge, PartyBasis};
 pub use party_finder::{
     AliasIndex, MatchTier, PartyFinder, PartyFinderResponse, PartyFinderState, WalletIdentity,
 };
+pub use perf_strip::{FrameScope, Orientation as PerfOrientation, PerfStrip, PerfStripState};
 pub use persona_strip::{PersonaStrip, PersonaStripConfig};
 pub use phase_card::{GateChip, PhaseCard, PhaseCardAction, PhaseCardResponse, PhaseCardRow};
 pub use pip_row::{
@@ -287,8 +304,10 @@ pub use swap_modal::{
 pub use tag_list::{TagList, TagListResponse};
 pub use theme::{FontStrategy, rarity_rank_color};
 pub use time_spine::{
-    MarkKind, SpineState, TimeScale, TimeSpine, TimeSpineResponse, TimeView, civil_from_unix,
-    compact_tick_label, format_date, next_tick_step_secs, paint_ticks,
+    CoverageLayer, DensityBin, DensityLayer, FlagsLayer, Hotkeys, MarkKind, MarksLayer, PlayRate,
+    SpineCanvas, SpineLayer, SpineState, TimeScale, TimeSpine, TimeSpineResponse, TimeView,
+    bin_columns, civil_from_unix, column_ceiling, column_half_height, compact_tick_label,
+    format_date, next_tick_step_secs, paint_ticks, view_centred_on,
 };
 pub use timestamp::{Timestamp, format_iso8601};
 pub use toast::{DEFAULT_DURATION_FRAMES, Toast, ToastKind, ToastQueue, show_toasts};
@@ -299,6 +318,9 @@ pub use typeahead_search::{TypeaheadOption, TypeaheadResponse, TypeaheadSearch, 
 pub use utils::{
     format_ada, format_duration, format_lovelace, format_number, format_percent, section_heading,
     stat_card, truncate_hex,
+};
+pub use viewport::{
+    Breakpoint, HeaderLayout, PanelMode, RecordLayout, apply_touch_sizing, fit, prose_row,
 };
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};
@@ -360,6 +382,11 @@ pub use trade_table::{
 #[cfg(feature = "cardano")]
 pub use trait_delta::{TraitDeltaConfig, TraitItem};
 #[cfg(feature = "cardano")]
+pub use tx_card::{
+    Tone, TxArt, TxCard, TxCardData, TxCardResponse, TxDensity, TxHeadline, TxParty, TxPrint,
+    TxVerb, TxViewpoint,
+};
+#[cfg(feature = "cardano")]
 pub use tx_estimate::{TxEstimateConfig, TxEstimateData, UtxoCost};
 #[cfg(feature = "cardano")]
 pub use utxo_map::{
@@ -371,6 +398,8 @@ pub use utxo_shelf::{
     ShelfAction, ShelfConfig, ShelfData, ShelfResponse, ShelfState, ShelfTier, ShelfUtxo,
     classify_utxos,
 };
+#[cfg(feature = "verdict")]
+pub use verdict_card::VerdictCard;
 #[cfg(feature = "cardano")]
 pub use wallet_asset_picker::{
     PickerAsset, PickerPolicyGroup, SelectedAsset, WalletAssetPickerAction,

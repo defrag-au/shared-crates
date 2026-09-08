@@ -179,6 +179,10 @@ const DEPTH_FALLOFF: f32 = 0.6;
 
 /// A UI state machine over a caller-defined state enum. See the module docs
 /// for the tick convention.
+///
+/// `Clone`/`Debug` follow the state's: a pane that derives them and holds a
+/// machine keeps deriving them.
+#[derive(Debug, Clone)]
 pub struct Machine<S> {
     state: S,
     /// End-of-frame ticks since the current state was entered. 0 means the

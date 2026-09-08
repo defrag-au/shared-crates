@@ -1,0 +1,71 @@
+[package]
+name = "discord-outbound"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = "1.0"
+discord-message = { workspace = true }
+
+# Native dependencies (for augminted-bots)
+reqwest = { version = "0.12", features = [
+    "json",
+    "rustls-tls",
+    "multipart",
+], optional = true }
+
+# WASM dependencies (for cnft.dev-workers)
+gloo-net = { workspace = true, features = ["json"], optional = true }
+worker_stack = { workspace = true, optional = true }
+
+# LEGACY, and optional for a reason. These are twilight **0.16**, reached only
+# by the pre-`MessageBody` surface (`DiscordMessage`, `DiscordClient`,
+# `compat`). augminted-bots is on twilight 0.17, so a consumer there must take
+# `default-features = false` or it links two twilight majors into one Worker
+# bundle — the duplicate-crate trap this workspace has hit before.
+#
+# Default-on so cnft.dev-workers is unaffected. Both go when step 5 migrates
+# the notifier off `DiscordMessage`.
+twilight-model = { version = "0.16", default-features = false, optional = true }
+twilight-util = { version = "0.16", default-features = false, features = [
+    "builder",
+], optional = true }
+
+# Only to sleep out a known-closed rate-limit window on a native target.
+# Target-scoped so it never enters a wasm32 dependency graph: reqwest-on-wasm32
+# does not pull tokio, and this crate compiles into Workers where it would be
+# dead weight. On native, reqwest already brings it.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = ["time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }
+dotenv = "0.15"
+wasm-bindgen-test = "0.3"
+tracing-subscriber = { workspace = true }
+
+[features]
+# `twilight` is in the default set so existing consumers are unaffected by it
+# becoming optional.
+default = ["native", "twilight"]
+
+# HTTP stacks. These name **stacks, not targets**: reqwest compiles for
+# wasm32-unknown-unknown too, and is what augminted-bots' workers already use.
+# Pick by which client the rest of your crate links.
+native = ["reqwest"]
+wasm = ["gloo-net", "worker_stack"]
+# `worker::Fetch`, for Cloudflare Workers that hold no other HTTP client.
+worker = ["worker_stack"]
+
+# The pre-`MessageBody` surface: `DiscordMessage`, `DiscordMessageEdit`,
+# `DiscordClient`, `compat::twilight`. Turn it OFF on twilight 0.17 — see the
+# dependency comment above.
+twilight = ["twilight-model", "twilight-util"]
+
+[[example]]
+name = "native_example"
+path = "examples/native_example.rs"
+required-features = ["native", "twilight"]

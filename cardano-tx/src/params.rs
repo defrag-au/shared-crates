@@ -63,6 +63,18 @@ impl TxBuildParams {
     pub fn min_pure_utxo(&self) -> u64 {
         PURE_ADA_OUTPUT_CHARGED_BYTES * self.coins_per_utxo_byte
     }
+
+    /// The minimum UTxO value for an output carrying `assets`.
+    ///
+    /// Delegates to the shared size calculation so the quantity's CBOR width is
+    /// accounted for — a fixed per-asset estimate under-counts large quantities
+    /// and produces `BabbageOutputTooSmallUTxO` at submit.
+    ///
+    /// Exists so builders can size an asset-bearing output from `TxBuildParams`
+    /// alone, without reaching for an indexer's `ProtocolParameters` type.
+    pub fn min_utxo_for_assets(&self, assets: &[crate::utxo::AssetAmount]) -> u64 {
+        crate::utxo::min_ada_for_assets(self.coins_per_utxo_byte, assets)
+    }
 }
 
 impl From<&maestro::ProtocolParameters> for TxBuildParams {

@@ -1,0 +1,19 @@
+# perf-probe — what a frontend is costing, while it runs.
+#
+# PURE: std only. No egui, no wasm-bindgen, no clock, no I/O. That is the whole
+# point — `browser-fetch` increments a gauge here, `egui-widgets` renders one,
+# and a macroquad game can do both, which it could not if the counters lived in
+# a widget crate (miniquad has no wasm-bindgen glue).
+#
+# No clock, specifically: `std::time::Instant::now()` PANICS on
+# wasm32-unknown-unknown, and the shims that fix it (`web-time`) drag in
+# wasm-bindgen. So the caller passes the milliseconds in; see `Frames::record`.
+[package]
+name = "perf-probe"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Frame-cost and in-flight-work counters for frontends, with no runtime dependency"
+
+[dependencies]

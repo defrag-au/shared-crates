@@ -315,20 +315,103 @@ fn rung_row(ui: &mut Ui, rung: &TierRung<'_>) {
             // sentence per route. Three stacked "or hold N $TOKEN" lines cost
             // as much vertical space as the rung itself, which on a six-rung
             // ladder is most of the modal spent restating the same sentence.
+            //
+            // AND THE ROW HAS TO BREAK ITSELF. A `route_card` is a `Frame`, and
+            // `Frame::end` reserves its space with `ui.allocate_rect`, which
+            // only advances the cursor — it never asks the layout whether the
+            // item fits. So `horizontal_wrapped` does NOT wrap a run of them:
+            // three cards walk straight off the right edge, and because
+            // `Region::expand_to_include_rect` unions an overflowing child into
+            // the parent's `max_rect`, they take the MODAL's width with them.
+            // On a phone that is what put "Wallet history tiers" half off the
+            // left of the screen — the modal was sized by its widest row, not
+            // by the viewport it had already been clamped to.
+            //
+            // Same trap, same fix as `Chip::show`: measure first, then make the
+            // break explicitly.
+            const INDENT: f32 = 20.0;
             ui.horizontal_wrapped(|ui| {
-                ui.add_space(20.0);
+                ui.add_space(INDENT);
                 for (i, route) in rung.routes.iter().enumerate() {
                     // "or" carries the whole meaning. Without it the cards
                     // read as a set of requirements — telling a holder who
                     // owns any one of them that they need all three.
+                    //
+                    // Measured WITH the card it belongs to, and broken before
+                    // the pair: a line ending in a dangling "or" reads as a
+                    // sentence that lost its second half.
+                    let or = RichText::new("or").small().color(theme::TEXT_MUTED);
+                    let mut want = route_width(ui, route);
                     if i > 0 {
-                        ui.label(RichText::new("or").small().color(theme::TEXT_MUTED));
+                        want += or_width(ui) + ui.spacing().item_spacing.x * 2.0;
+                    }
+                    let avail = ui.available_size_before_wrap().x;
+                    // Only break when there is something to break AWAY from —
+                    // at the start of a row an over-wide card has nowhere
+                    // better to go, and breaking would leave a blank line.
+                    if avail < ui.max_rect().width() && want > avail {
+                        ui.end_row();
+                        ui.add_space(INDENT);
+                    }
+                    if i > 0 {
+                        ui.label(or);
                     }
                     route_card(ui, route);
                 }
             });
         }
     });
+}
+
+/// What [`route_card`] is about to occupy, so the wrapping row can decide
+/// whether it fits BEFORE the frame draws itself past the edge.
+///
+/// Mirrors the card's own construction below; the constants are the same ones,
+/// named, so a change to the card that forgets this measure is a change that
+/// has to walk past its own comment.
+fn route_width(ui: &Ui, route: &TierRoute<'_>) -> f32 {
+    /// `Margin::symmetric(7, 4)`, both sides.
+    const MARGIN_X: f32 = 7.0;
+    /// `fit_to_exact_size(16, 16)`.
+    const ICON: f32 = 16.0;
+    /// `ArrowsDownUp` at 11pt.
+    const BUY_GLYPH: f32 = 11.0;
+    /// The card sets its own `item_spacing.x`.
+    const GAP: f32 = 5.0;
+
+    let text = |s: &str, style: egui::TextStyle| {
+        ui.painter()
+            .layout_no_wrap(
+                s.to_owned(),
+                style.resolve(ui.style()),
+                egui::Color32::WHITE,
+            )
+            .size()
+            .x
+    };
+
+    let mut w = MARGIN_X * 2.0;
+    if route.icon_url.is_some() {
+        w += ICON + GAP;
+    }
+    w += text(&route.need, egui::TextStyle::Body) + GAP;
+    w += text(route.label, egui::TextStyle::Body);
+    if route.buy_url.is_some() {
+        w += GAP + BUY_GLYPH;
+    }
+    w
+}
+
+/// The separator between two routes, measured the same way.
+fn or_width(ui: &Ui) -> f32 {
+    ui.painter()
+        .layout_no_wrap(
+            "or".to_owned(),
+            egui::TextStyle::Small.resolve(ui.style()),
+            egui::Color32::WHITE,
+        )
+        .size()
+        .x
 }
 
 /// One route as a compact card: logo, amount, ticker — and a link to buy it.

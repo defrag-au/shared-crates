@@ -268,8 +268,22 @@ pub fn show(
             view_changed = true;
         }
     }
-    if response.dragged() && plot_rect.width() > 0.0 && response.drag_delta().x != 0.0 {
-        let dx = response.drag_delta().x / plot_rect.width() * (z_hi - z_lo);
+    // A TOUCH drag that is mostly vertical is the reader trying to scroll the
+    // page, not to pan the plot — and this widget only ever pans horizontally,
+    // so the vertical component is of no use to it. `Sense::click_and_drag`
+    // claims the gesture regardless, which on a phone made a 180pt-tall plot
+    // an absorbing wall: the page could not be scrolled past it at all. Hand
+    // that motion back to the enclosing ScrollArea.
+    //
+    // Touch only. On a desktop the same rule would turn a wobbly mouse-drag
+    // pan into a page scroll, and a mouse has a wheel for scrolling anyway.
+    let drag = response.drag_delta();
+    let vertical_touch_scroll =
+        ui.input(|i| i.any_touches()) && drag.y.abs() > drag.x.abs() && drag.y != 0.0;
+    if vertical_touch_scroll {
+        ui.scroll_with_delta(Vec2::new(0.0, drag.y));
+    } else if response.dragged() && plot_rect.width() > 0.0 && drag.x != 0.0 {
+        let dx = drag.x / plot_rect.width() * (z_hi - z_lo);
         (z_lo, z_hi) = pan_window(z_lo, z_hi, -dx);
         view_changed = true;
     }

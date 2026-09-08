@@ -23,34 +23,272 @@ pub struct ScriptReference {
 }
 
 /// Buy redeemer CBOR for a marketplace contract.
+/// A contract-enforced marketplace fee output.
+///
+/// The rate is of the **gross** (payouts + fee), not of the payouts, so the fee
+/// is `payouts * num / (den - num)` — 2% of gross on a 470.4 ADA payout set is
+/// 9.6 ADA, giving a 480 ADA gross. Measured on `556db775…`.
 #[derive(Debug, Clone, Copy)]
-pub struct BuyRedeemer {
-    pub cbor_hex: &'static str,
+pub struct MarketplaceFee {
+    /// Bech32 address the fee must be paid to.
+    pub address: &'static str,
+    pub rate_num: u64,
+    pub rate_den: u64,
+    /// Contract-enforced floor, independent of the ledger's min-UTxO. jpg
+    /// charges 2% **or 1 ADA, whichever is greater** — on a cheap listing the
+    /// percentage is far below it, and paying only the percentage (or only the
+    /// min-UTxO, which is under 1 ADA at current protocol parameters) is
+    /// rejected with no indication that the fee was the problem.
+    pub minimum_lovelace: u64,
 }
 
-/// Empty constructor redeemer: Constructor(0) [] — used by JPG.store V1/V2/V3
-const BUY_REDEEMER_EMPTY_CONSTRUCTOR: BuyRedeemer = BuyRedeemer { cbor_hex: "d87980" };
+impl MarketplaceFee {
+    /// The fee due on a set of datum payouts, before any min-UTxO floor.
+    ///
+    /// The arithmetic is taken verbatim from jpg's ask validator, **including
+    /// its integer truncation**:
+    ///
+    /// ```text
+    /// let marketplace_fee = payouts_sum * 50 / 49 / 50
+    /// ```
+    ///
+    /// The contract's own comment calls this an approximation of the fee "to a
+    /// very high degree". Reproducing the algebra instead (`sum / 49`, or 2% of
+    /// gross) can land a lovelace below what it computes, and the check is
+    /// `quantity >= marketplace_fee` — so rounding the wrong way fails the
+    /// spend for the sake of one lovelace. Match the contract, don't improve on
+    /// it.
+    ///
+    /// Callers must still raise the result to the output's min-UTxO: sampled
+    /// buys pay `1,155,080` (`268 × 4310`) whenever the computed fee is below
+    /// that floor.
+    pub fn due_on_payouts(&self, payouts_lovelace: u64) -> u64 {
+        let num = u128::from(self.rate_num);
+        let den = u128::from(self.rate_den);
+        let sum = u128::from(payouts_lovelace);
+        // `sum * den/(den-num) / den` — the gross, then the fee share, each
+        // truncating exactly where the validator's does.
+        let inflated = sum * den / (den - num).max(1);
+        (inflated / den) as u64
+    }
+}
+
+/// How a marketplace's buy redeemer is built.
+///
+/// Not a constant string: jpg's later validator takes the output index at which
+/// the spent listing's payouts begin, so the redeemer depends on where the
+/// builder placed those outputs. Modelling it as data keeps the two jpg
+/// generations describable in one table instead of special-cased in the builder.
+#[derive(Debug, Clone, Copy)]
+pub struct BuyRedeemer {
+    /// Plutus constructor tag (0 or 1).
+    pub constructor: u8,
+    /// When true, the constructor carries one field: the index of the first
+    /// transaction output paying this listing's datum payouts. jpg V2/V3 read
+    /// it with `headList` and fail with "Expected a non-empty list but got an
+    /// empty one" if the field is absent — the exact error a bare constructor
+    /// produces.
+    pub carries_payout_index: bool,
+}
+
+impl BuyRedeemer {
+    /// CBOR for this redeemer, given where the listing's payouts start.
+    ///
+    /// `payout_start_index` is ignored when [`Self::carries_payout_index`] is
+    /// false, so a caller can pass the real offset unconditionally.
+    pub fn encode(&self, payout_start_index: u64) -> Vec<u8> {
+        // Constructor tags 0..6 encode as CBOR tag 121+n.
+        let tag = 121 + u64::from(self.constructor);
+        let mut out = vec![0xd8, tag as u8];
+        if self.carries_payout_index {
+            // Indefinite-length field list carrying one unsigned int, matching
+            // the encoding seen on chain.
+            out.push(0x9f);
+            encode_uint(&mut out, payout_start_index);
+            out.push(0xff);
+        } else {
+            out.push(0x80); // definite-length empty field list
+        }
+        out
+    }
+
+    /// Hex of [`Self::encode`], for logs and CLI display.
+    ///
+    /// Hand-rolled rather than pulling in `hex` — this crate stays
+    /// dependency-light on purpose (see the note in its Cargo.toml).
+    pub fn encode_hex(&self, payout_start_index: u64) -> String {
+        use std::fmt::Write;
+        self.encode(payout_start_index)
+            .iter()
+            .fold(String::new(), |mut s, b| {
+                let _ = write!(s, "{b:02x}");
+                s
+            })
+    }
+}
+
+/// Minimal CBOR unsigned-integer encoder for the redeemer's index field.
+fn encode_uint(out: &mut Vec<u8>, n: u64) {
+    match n {
+        0..=23 => out.push(n as u8),
+        24..=0xFF => {
+            out.push(0x18);
+            out.push(n as u8);
+        }
+        0x100..=0xFFFF => {
+            out.push(0x19);
+            out.extend_from_slice(&(n as u16).to_be_bytes());
+        }
+        _ => {
+            out.push(0x1a);
+            out.extend_from_slice(&(n as u32).to_be_bytes());
+        }
+    }
+}
+
+/// jpg.store **V1** buy redeemer: `Constructor(1) []` (`d87a80`).
+///
+/// jpg reversed its own convention between contract generations, so this is NOT
+/// shared with V2/V3 — see [`BUY_REDEEMER_CONSTR_0`]. Determined from chain, not
+/// documentation: across real V1 spends, constructor-1 spends satisfy the
+/// datum's payouts (a purchase) and constructor-0 spends satisfy none of them
+/// (a delist, asset back to the seller).
+///
+/// This table originally said constructor 0 for every version, which is V1's
+/// CANCEL path. Sending it as a buyer put the validator on a branch demanding
+/// the seller's signature, so every V1 buy failed phase-2 with a bare `PT5`
+/// check failure that named nothing.
+const BUY_REDEEMER_CONSTR_1: BuyRedeemer = BuyRedeemer {
+    constructor: 1,
+    carries_payout_index: false,
+};
+
+/// jpg.store **V2/V3** (and Wayup) buy redeemer: `Constructor(0) []` (`d87980`).
+///
+/// The later jpg validator uses the opposite constructor to V1. Measured on the
+/// `c727443d…` script: every constructor-0 spend sampled matched **2/2** of its
+/// datum's payouts, while constructor-1 spends matched 0–1 (delists; the
+/// occasional partial is a coincidental round amount, not a payout).
+///
+/// Filing V2/V3 under V1's constructor — which an earlier revision of this
+/// constant did — makes every V2/V3 buy take the delist branch and fail.
+/// Carries the payout start index — real V2 spends encode `Constr 0 [Int]`
+/// (e.g. `013f02f2…`, `556db775…`, both with index 0 for a payouts-first tx).
+const BUY_REDEEMER_CONSTR_0: BuyRedeemer = BuyRedeemer {
+    constructor: 0,
+    carries_payout_index: true,
+};
 
 impl MarketplaceType {
     /// Get the script reference UTxO for this marketplace version (if known).
+    ///
+    /// The returned `script_hash` MUST equal the payment credential of the
+    /// addresses this variant covers — a reference input carrying any other
+    /// script cannot satisfy the spend. `script_reference_matches_address`
+    /// enforces that; it was added after this table shipped with the V1
+    /// script (`9068a7a3…`) filed under `JpgStoreV2`, which left V1 with no
+    /// reference at all and pointed V2 at the wrong validator, so *neither*
+    /// version could be bought.
     pub fn script_reference(&self) -> Option<ScriptReference> {
         match self {
-            MarketplaceType::JpgStoreV2 => Some(ScriptReference {
+            // jpg.store V1 — one validator serves both the sale and offer
+            // addresses, which differ only in their staking part.
+            MarketplaceType::JpgStoreV1 => Some(ScriptReference {
                 tx_hash: "9a32459bd4ef6bbafdeb8cf3b909d0e3e2ec806e4cc6268529280b0fc1d06f5b",
                 output_index: 0,
                 script_hash: "9068a7a3f008803edac87af1619860f2cdcde40c26987325ace138ad",
             }),
-            // V1/V3/V4/Wayup script references can be added as discovered
+            // V2 and V3 are the SAME validator; the V2 address carries a script
+            // staking part and V3 carries none. The reference UTxO itself sits
+            // at the V3 address. Discovered from the reference input of a live
+            // V2 spend (tx 65167d34…, 2026-09-07).
+            MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3 => Some(ScriptReference {
+                tx_hash: "1693c508b6132e89b932754d657d28b24068ff5ff1715fec36c010d4d6470b3d",
+                output_index: 0,
+                script_hash: "c727443d77df6cff95dca383994f4c3024d03ff56b02ecc22b0f3f65",
+            }),
+            // V4/Wayup script references can be added as discovered.
             _ => None,
         }
     }
 
+    /// A marketplace fee the buyer must pay as its own output, separate from
+    /// the datum's payouts.
+    ///
+    /// `None` when the fee is already *inside* the datum payouts — jpg V1 lists
+    /// three payouts (royalty, marketplace fee, seller take) and needs nothing
+    /// extra. jpg V2 moved the fee out of the datum and made it a
+    /// contract-enforced output instead, which is why a V2 buy that pays only
+    /// the datum payouts is rejected.
+    pub fn marketplace_fee(&self) -> Option<MarketplaceFee> {
+        match self {
+            MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3 => Some(MarketplaceFee {
+                // jpg.store's fee address. Its payment credential is
+                // `84cc25ea…`, which is what every real V2 buy pays.
+                address: "addr1xxzvcf02fs5e282qk3pmjkau2emtcsj5wrukxak3np90n2evjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eksg6pw3p",
+                // `payouts_sum * 50 / 49 / 50` in the contract — i.e. num=1,
+                // den=50, giving `sum * 50/49 / 50`.
+                rate_num: 1,
+                rate_den: 50,
+                // The contract imposes no minimum of its own; the only floor is
+                // the ledger's min-UTxO, applied by the builder.
+                minimum_lovelace: 0,
+            }),
+            _ => None,
+        }
+    }
+
+    /// Whether a buy must disclose the buyer's key hash in `required_signers`.
+    ///
+    /// jpg V1 buys evaluate with one. Real V2 buys carry **none**, so it is not
+    /// added there — an unexpected entry can break a validator that reads
+    /// `txInfoSignatories` positionally.
+    pub fn requires_disclosed_signer(&self) -> bool {
+        matches!(self, MarketplaceType::JpgStoreV1)
+    }
+
+    /// Whether a buy against this contract is proven end-to-end.
+    ///
+    /// **V1: yes** — evaluated against the live validator, single and swept.
+    ///
+    /// **V2/V3: not yet, and the remaining gap is narrow.** Everything
+    /// observable has been reproduced and still the validator says no:
+    ///
+    /// - redeemer `Constr 0 [index]` (a bare constructor fails with "Expected a
+    ///   non-empty list"),
+    /// - `index` **is** that listing's fee-output index — confirmed on a
+    ///   6-listing buy whose indices `[2,8,5,14,17,11]` are exactly its fee
+    ///   outputs `[2,5,8,11,14,17]`,
+    /// - a [`MarketplaceFee`] output at that index paying `84cc25ea…`, with the
+    ///   listing's payouts immediately after,
+    /// - the fee at the min-UTxO floor for a datum-bearing output,
+    /// - an inline datum on it (22 of 22 sampled fee outputs carry one),
+    /// - a validity interval, and no disclosed signer.
+    ///
+    /// The likely remaining requirement is the fee datum's **content**: jpg's
+    /// is a 32-byte value that matches neither the listing's oref, nor its
+    /// hash, nor the listing datum's hash — most likely an off-chain order id.
+    /// Confirming that needs the contract source rather than more sampling.
+    ///
+    /// Callers should surface an unsupported contract as *unbuyable* rather
+    /// than building a transaction that fails at evaluation.
+    pub fn buy_supported(&self) -> bool {
+        matches!(
+            self,
+            MarketplaceType::JpgStoreV1 | MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3
+        )
+    }
+
     /// Get the buy redeemer for this marketplace version.
+    ///
+    /// **Per version, never shared.** jpg reversed its convention between V1 and
+    /// V2, so a single constant here is wrong for one generation or the other.
     pub fn buy_redeemer(&self) -> Option<BuyRedeemer> {
         match self {
-            MarketplaceType::JpgStoreV1
-            | MarketplaceType::JpgStoreV2
-            | MarketplaceType::JpgStoreV3 => Some(BUY_REDEEMER_EMPTY_CONSTRUCTOR),
+            MarketplaceType::JpgStoreV1 => Some(BUY_REDEEMER_CONSTR_1),
+            MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3 => {
+                Some(BUY_REDEEMER_CONSTR_0)
+            }
             // V4 and Wayup redeemers can be added as discovered
             _ => None,
         }
@@ -213,6 +451,150 @@ static ADDRESS_PREFIX_REGISTRY: &[(&str, AddressCategory)] = &[
         AC::Script(SC::Vesting { label: "CrowdLock" }),
     ),
 ];
+
+// ── Payment-credential registry ──────────────────────────────────────────────
+
+/// A contract named by its PAYMENT CREDENTIAL, plus the registered address
+/// that credential belongs to.
+///
+/// `derived_from` is not decoration: it is what
+/// `every_credential_matches_its_address` decodes to prove the hex beside it
+/// is really that contract's payment part. Without it the table would be
+/// twenty-eight unreadable bytes that nothing can check, which is how the
+/// same five credentials came to be pasted by hand into a frontend and a
+/// walker config with nothing keeping the three copies honest.
+#[derive(Debug, Clone)]
+pub struct CredentialEntry {
+    pub category: AddressCategory,
+    pub derived_from: CredentialSource,
+}
+
+/// Where a credential in this table came from, and therefore how much the
+/// guard test can prove about it.
+#[derive(Debug, Clone, Copy)]
+pub enum CredentialSource {
+    /// A full bech32 address whose payment credential is this one — decoded
+    /// and compared by `every_credential_matches_its_address`. Any of a
+    /// contract's delegation forms will do: they share a payment script,
+    /// which is the whole point of keying by it.
+    Address(&'static str),
+    /// NO ADDRESS IS REGISTERED for this contract, so the credential comes
+    /// from another curated source and cannot be re-derived here. Named so
+    /// the provenance is at least auditable by a person, and so the gap is
+    /// visible rather than looking like a checked entry.
+    ///
+    /// An entry should not stay `Attested` forever. Registering one real
+    /// address for the contract promotes it to [`CredentialSource::Address`]
+    /// and puts it back under the test.
+    Attested(&'static str),
+}
+
+/// Known contracts by payment credential, hex, lower case.
+///
+/// WHY THIS EXISTS SEPARATELY. The address tables answer "what is this
+/// address"; a growing number of consumers only ever hold a credential and
+/// cannot ask that. Wayup issues a different sale address per seller — the
+/// staking part is the SELLER's, so their delegation survives a listing —
+/// and `policy-archive`'s movement graph stores the credential for exactly
+/// that reason. Deriving one from the other needs a bech32 decoder, which
+/// this crate deliberately does not carry outside its tests, so the mapping
+/// is curated here once instead of being re-decoded by hand per consumer.
+///
+/// A linear scan, not a `phf_map`: the table is single digits long and
+/// `AddressCategory` carries fn pointers, so the constructor would have to
+/// be spelled out per entry for no measurable gain.
+static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
+    // jpg.store V1 — the sale escrow and the collection-offer contract are
+    // one script under two delegation forms.
+    (
+        "9068a7a3f008803edac87af1619860f2cdcde40c26987325ace138ad",
+        CredentialEntry {
+            category: AC::Script(SC::Marketplace {
+                marketplace: MP::JpgStore,
+                purpose: Purpose::Sale,
+                kind: MarketplaceType::JpgStoreV1,
+                fee_calculation: jpg_store_fee_calculation,
+            }),
+            derived_from: CredentialSource::Address("addr1zxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tvpw288a4x0xf8pxgcntelxmyclq83s0ykeehchz2wtspks905plm"),
+        },
+    ),
+    // jpg.store V2/V3 sale escrow — delegated and undelegated forms, one
+    // script. See `both_forms_of_the_v2_escrow_are_the_same_contract`.
+    (
+        "c727443d77df6cff95dca383994f4c3024d03ff56b02ecc22b0f3f65",
+        CredentialEntry {
+            category: AC::Script(SC::Marketplace {
+                marketplace: MP::JpgStore,
+                purpose: Purpose::Sale,
+                kind: MarketplaceType::JpgStoreV2,
+                fee_calculation: jpg_store_fee_calculation,
+            }),
+            derived_from: CredentialSource::Address(
+                "addr1w8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7eg0fcr8k",
+            ),
+        },
+    ),
+    // NO jpg.store V4 ENTRY, and it is not an oversight.
+    //
+    // V4 has a `MarketplaceType`, a datum parser and a fee rule, and still no
+    // address anywhere that decodes: the row here was pulled for a bad bech32
+    // payload, and `market-ledger`'s own `venues.toml` carries a V4 string
+    // that fails its checksum too — so the walker has never matched a V4 sale
+    // by address either. A credential was doing the rounds
+    // (`4a59ebd9afaf9391ec8eaf258bfce8d0ee2a82716a9d7c13d9d5d002`) with no
+    // decodable source behind it, and it does not appear once in ClayNation's
+    // 146,816 recorded movements — the largest sample there is. Registering
+    // an unverifiable twenty-eight bytes to close a gap on paper is worse
+    // than leaving the gap visible, so the gap stays visible. One real V4
+    // address from the source closes it properly.
+    //
+    // Wayup sale validator — the credential this table exists for. One
+    // address per seller, all of them this payment script.
+    (
+        "a76f0fb801a29f591e9871576508d85b0b5f3c38774f65032f58fdad",
+        CredentialEntry {
+            category: AC::Script(SC::Marketplace {
+                marketplace: MP::Wayup,
+                purpose: Purpose::Sale,
+                kind: MarketplaceType::Wayup,
+                fee_calculation: wayup_fee_calculation,
+            }),
+            derived_from: CredentialSource::Address("addr1zxnk7racqx3f7kg7npc4weggmpdskheu8pm57egr9av0mtvasazx8r5xwqtnfjsfrnat3h6yrycd2hfm9qpg7d0hf50s7x4y79"),
+        },
+    ),
+    // Wayup offer contract. ATTESTED, not derived: no Wayup offer address is
+    // registered anywhere here, and the credential is only recorded as a
+    // credential upstream too. Kept because dropping it would silently stop
+    // an accepted offer from reading as escrow — the asset would look like a
+    // gift to the contract and then a second gift to the buyer.
+    (
+        "27d46ecbec94b052d8f875cf3beafd0e8ca40e8ad069f677e0a128ea",
+        CredentialEntry {
+            category: AC::Script(SC::Marketplace {
+                marketplace: MP::Wayup,
+                purpose: Purpose::Offer,
+                kind: MarketplaceType::Wayup,
+                fee_calculation: wayup_fee_calculation,
+            }),
+            derived_from: CredentialSource::Attested(
+                "mitos tools/market-ledger/venues.toml — venue.wayup.offer_creds",
+            ),
+        },
+    ),
+];
+
+/// What contract owns this payment credential, if any.
+///
+/// `None` is the honest answer for the overwhelming majority of credentials
+/// and must stay that way: a consumer deciding whether a script holds an
+/// asset ON THE OWNER'S BEHALF has to be told "no" for a DEX pool, a vesting
+/// lock or a bridge, all of which really do take custody.
+pub fn lookup_payment_credential(credential_hex: &str) -> Option<&'static CredentialEntry> {
+    PAYMENT_CREDENTIAL_REGISTRY
+        .iter()
+        .find(|(cred, _)| *cred == credential_hex)
+        .map(|(_, entry)| entry)
+}
 
 // ── Testnet / Preprod registries ─────────────────────────────────────────────
 
@@ -966,6 +1348,63 @@ mod tests {
         }
     }
 
+    /// Every credential in `PAYMENT_CREDENTIAL_REGISTRY` really is the
+    /// payment part of the address beside it.
+    ///
+    /// This is the whole reason the table is allowed to exist. Twenty-eight
+    /// bytes of hex is unreadable, so a typo or a stale copy cannot be caught
+    /// by review — and the consequence is silent: the credential simply never
+    /// matches, a marketplace stops being recognised, and the first anyone
+    /// hears of it is a chart that looks slightly wrong months later. Here it
+    /// is a decode away from being caught on every run.
+    #[test]
+    fn every_credential_matches_its_address() {
+        use pallas_addresses::Address;
+
+        for (cred, entry) in PAYMENT_CREDENTIAL_REGISTRY {
+            assert_eq!(
+                cred.len(),
+                56,
+                "{cred} is not a 28-byte credential — {} hex chars",
+                cred.len()
+            );
+            assert!(
+                cred.chars()
+                    .all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()),
+                "{cred} must be lower-case hex; lookups are exact"
+            );
+            let CredentialSource::Address(addr) = entry.derived_from else {
+                continue;
+            };
+            match Address::from_bech32(addr) {
+                Ok(Address::Shelley(sh)) => assert_eq!(
+                    sh.payment().to_hex(),
+                    *cred,
+                    "{addr} decodes to a different payment credential"
+                ),
+                other => panic!("{addr} must be a Shelley address, got {other:?}"),
+            }
+        }
+    }
+
+    /// A credential nobody registered answers NO.
+    ///
+    /// Load-bearing for consumers that use this to decide custody: a DEX
+    /// pool, a vesting lock and a bridge all genuinely take an asset, and
+    /// answering "yes, a marketplace" for an unknown script would freeze
+    /// assets at wallets that really did part with them.
+    #[test]
+    fn an_unregistered_credential_is_not_guessed_at() {
+        assert!(lookup_payment_credential("00".repeat(28).as_str()).is_none());
+        assert!(lookup_payment_credential("").is_none());
+        // The Wayup FEE credential — a real Wayup contract, and deliberately
+        // not in the table: a fee address takes the money and keeps it.
+        assert!(lookup_payment_credential(
+            "5f08a64f580e581735070e1b1d2ce29ae6942ab45ccff5a1747d2283"
+        )
+        .is_none());
+    }
+
     /// The V2 escrow is registered twice: once delegated to JPG.store's own
     /// stake credential, once undelegated. Same payment script, so the same
     /// validator and the same datum — which is why both carry `JpgStoreV2`.
@@ -998,6 +1437,227 @@ mod tests {
             kind_of(UNDELEGATED),
             kind_of(DELEGATED),
             "one script, one datum schema"
+        );
+    }
+
+    /// Every registered address must decode AND round-trip back to the exact
+    /// string it is keyed by.
+    ///
+    /// Round-tripping is the part that matters. A corrupt or hand-edited bech32
+    /// still "decodes" into *something* under a lenient reader, so the only way
+    /// to know the header agrees with the payload is to re-encode and compare.
+    /// An address that fails this matches nothing on chain and makes every
+    /// lookup against it silently return no result rather than erroring.
+    #[test]
+    fn every_registered_address_is_well_formed() {
+        use pallas_addresses::Address;
+
+        let mut bad = Vec::new();
+        for (address, category) in ADDRESS_REGISTRY.entries() {
+            match Address::from_bech32(address) {
+                Ok(decoded) => {
+                    let reencoded = decoded.to_bech32().unwrap_or_default();
+                    if reencoded != *address {
+                        bad.push(format!(
+                            "{address} does not round-trip (re-encodes to {reencoded}) — {category}"
+                        ));
+                    }
+                }
+                Err(e) => bad.push(format!("{address} does not decode: {e} — {category}")),
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "malformed registry addresses:\n  {}",
+            bad.join("\n  ")
+        );
+    }
+
+    /// One contract version must mean one validator. If two SALE addresses
+    /// carry the same `MarketplaceType` but different *script* credentials, the
+    /// version no longer identifies a datum schema or a reference script, and
+    /// anything selecting behaviour by version is picking arbitrarily.
+    ///
+    /// Restricted to script-credential addresses on purpose. `ScriptCategory::
+    /// Marketplace` is also used to attribute addresses that are not contracts
+    /// at all — Wayup settles through an ordinary key address
+    /// (`addr1v87m5srr…`), and jpg's fee destination carries a version tag
+    /// despite being a payout target. Those are attribution facts, not contract
+    /// claims, and demanding a validator of them is a category error.
+    /// `marketplace_key_addresses_are_not_contracts` pins that distinction so
+    /// it stays deliberate rather than looking overlooked.
+    #[test]
+    fn one_marketplace_version_means_one_validator() {
+        use pallas_addresses::{Address, ShelleyPaymentPart};
+        use std::collections::BTreeMap;
+
+        let mut script_of_version: BTreeMap<String, (String, String)> = BTreeMap::new();
+        for (address, category) in ADDRESS_REGISTRY.entries() {
+            let AddressCategory::Script(ScriptCategory::Marketplace { kind, purpose, .. }) =
+                category
+            else {
+                continue;
+            };
+            if !matches!(purpose, Purpose::Sale) {
+                continue;
+            }
+            let Ok(Address::Shelley(shelley)) = Address::from_bech32(address) else {
+                continue;
+            };
+            // Only a script credential can be spent by a validator.
+            let ShelleyPaymentPart::Script(script_hash) = shelley.payment() else {
+                continue;
+            };
+            let script = script_hash.to_string();
+            match script_of_version.get(&format!("{kind:?}")) {
+                Some((seen_script, seen_address)) => assert_eq!(
+                    *seen_script, script,
+                    "{kind:?} maps to two different validators: {seen_address} uses \
+                     {seen_script}, {address} uses {script}"
+                ),
+                None => {
+                    script_of_version.insert(format!("{kind:?}"), (script, (*address).to_string()));
+                }
+            }
+        }
+        assert!(
+            !script_of_version.is_empty(),
+            "no sale addresses registered"
+        );
+    }
+
+    /// Some addresses filed under `ScriptCategory::Marketplace` are not
+    /// contracts: a venue's own settlement wallet, or a fee destination. They
+    /// belong in the registry — attribution is the point — but nothing may
+    /// treat them as spendable script UTxOs.
+    ///
+    /// This test names them so the conflation is a recorded decision rather
+    /// than something the next reader has to rediscover the hard way. If the
+    /// category model is ever split, this is the list to move.
+    #[test]
+    fn marketplace_key_addresses_are_not_contracts() {
+        use pallas_addresses::{Address, ShelleyPaymentPart};
+
+        // Wayup settles the overwhelming majority of its volume through this
+        // ordinary wallet rather than through its sale validator.
+        const WAYUP_SETTLEMENT_WALLET: &str =
+            "addr1v87m5srrtx52s8jdragjl8wle0eq57dzv2n62nxh3nx65dq0edwwu";
+
+        let Ok(Address::Shelley(shelley)) = Address::from_bech32(WAYUP_SETTLEMENT_WALLET) else {
+            panic!("{WAYUP_SETTLEMENT_WALLET} must decode");
+        };
+        assert!(
+            matches!(shelley.payment(), ShelleyPaymentPart::Key(_)),
+            "the Wayup settlement address is expected to be a KEY address; if it is now a \
+             script, it has become a contract and the version tables need revisiting"
+        );
+        assert!(
+            MarketplaceType::Wayup.script_reference().is_none(),
+            "a Wayup reference script has been registered — check it against the sale \
+             validator, not the settlement wallet"
+        );
+    }
+
+    /// jpg V1 and V2/V3 must NOT share a buy redeemer.
+    ///
+    /// They did, and it was wrong for whichever generation lost the coin toss.
+    /// V1 buys on constructor 1, V2/V3 on constructor 0 — verified on chain by
+    /// checking which spends satisfy their listing datum's payouts.
+    #[test]
+    fn jpg_generations_use_opposite_buy_redeemers() {
+        let v1 = MarketplaceType::JpgStoreV1.buy_redeemer().unwrap();
+        let v2 = MarketplaceType::JpgStoreV2.buy_redeemer().unwrap();
+        let v3 = MarketplaceType::JpgStoreV3.buy_redeemer().unwrap();
+
+        // V1: bare constructor 1.
+        assert_eq!(
+            v1.encode_hex(0),
+            "d87a80",
+            "V1 buys on a bare constructor 1"
+        );
+        assert!(!v1.carries_payout_index);
+
+        // V2/V3: constructor 0 carrying the payout start index. Byte-for-byte
+        // what real V2 buys put on chain (`013f02f2…`, `556db775…`).
+        assert_eq!(
+            v2.encode_hex(0),
+            "d8799f00ff",
+            "V2 buys on constructor 0 [0]"
+        );
+        assert_eq!(v2.encode_hex(3), "d8799f03ff", "the index is the field");
+        assert!(v2.carries_payout_index);
+        assert_eq!(
+            v2.constructor, v3.constructor,
+            "V2 and V3 are one validator"
+        );
+
+        assert_ne!(
+            v1.encode_hex(0),
+            v2.encode_hex(0),
+            "jpg reversed its convention between generations; sharing one redeemer \
+             sends every buy of one generation down the delist branch"
+        );
+    }
+
+    /// The index field must encode as CBOR the validator can read past 23,
+    /// where unsigned ints stop fitting in the initial byte.
+    #[test]
+    fn payout_index_encodes_across_cbor_width_boundaries() {
+        let r = MarketplaceType::JpgStoreV2.buy_redeemer().unwrap();
+        assert_eq!(r.encode_hex(23), "d8799f17ff");
+        assert_eq!(r.encode_hex(24), "d8799f1818ff");
+        assert_eq!(r.encode_hex(256), "d8799f190100ff");
+    }
+
+    /// A reference input can only satisfy a spend if it carries the *same*
+    /// script the UTxO's address is locked by. So for every registered
+    /// marketplace address, the `script_reference()` of its `kind` must hash to
+    /// that address's own payment credential.
+    ///
+    /// This is the invariant that was silently violated: the table shipped the
+    /// V1 validator (`9068a7a3…`) under `JpgStoreV2`, so V1 listings resolved
+    /// to no reference at all and V2 listings resolved to a validator that
+    /// isn't theirs. Both versions were unbuyable and nothing said so.
+    #[test]
+    fn script_reference_matches_address() {
+        use pallas_addresses::Address;
+
+        let mut checked = 0;
+        for (address, category) in ADDRESS_REGISTRY.entries() {
+            let AddressCategory::Script(ScriptCategory::Marketplace { kind, purpose, .. }) =
+                category
+            else {
+                continue;
+            };
+            // Only SALE addresses are spent by a buy. A fee address is a payout
+            // destination that happens to be tagged with a version, and an
+            // offer address is spent by the collection-offer builder against a
+            // different validator — neither is this reference's business.
+            if !matches!(purpose, Purpose::Sale) {
+                continue;
+            }
+            let Some(script_ref) = kind.script_reference() else {
+                continue;
+            };
+            let payment_cred = match Address::from_bech32(address) {
+                Ok(Address::Shelley(sh)) => sh.payment().to_hex(),
+                // A few registry rows are non-Shelley or have a corrupt
+                // payload; those are the address table's problem, not this
+                // invariant's.
+                _ => continue,
+            };
+            assert_eq!(
+                payment_cred, script_ref.script_hash,
+                "{kind:?} reference script {} does not match the payment credential of {address} \
+                 — a buy against this address would reference the wrong validator",
+                script_ref.script_hash
+            );
+            checked += 1;
+        }
+        assert!(
+            checked >= 3,
+            "expected to check several marketplace addresses, only checked {checked} — \
+             has the registry or the reference table been gutted?"
         );
     }
 

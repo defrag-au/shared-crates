@@ -1,5 +1,5 @@
-use discord_client::compat::twilight::TwEmbedBuilder;
-use discord_client::{AttachmentInput, DiscordClient, DiscordMessage, NativeDiscordClient};
+use discord_outbound::compat::twilight::TwEmbedBuilder;
+use discord_outbound::{AttachmentInput, DiscordClient, DiscordMessage, NativeDiscordClient};
 use std::env;
 
 #[tokio::test]
@@ -24,7 +24,7 @@ async fn test_native_json_message() {
 
     let client = NativeDiscordClient::new(bot_token);
     let message = DiscordMessage {
-        content: Some("Test message from discord-client native".to_string()),
+        content: Some("Test message from discord-outbound native".to_string()),
         embeds: None,
         attachments: None,
     };
@@ -56,7 +56,7 @@ async fn test_native_message_with_embed() {
     let client = NativeDiscordClient::new(bot_token);
     let embed = TwEmbedBuilder::new()
         .title("Test Embed")
-        .description("This is a test embed from discord-client")
+        .description("This is a test embed from discord-outbound")
         .color(0x00ff00)
         .build();
 

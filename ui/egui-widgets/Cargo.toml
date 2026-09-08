@@ -11,6 +11,10 @@ cardano = ["dep:cardano-assets", "dep:wallet-core", "dep:wallet-pallas"]
 # consumers that only want a widget or two (the portal builds with
 # default-features = false) opt into the gateway coupling explicitly.
 gateway = ["dep:gateway-wiring"]
+# `VerdictCard` — the one mapping from a `tx_verdict::TxVerdict` to `TxCard`'s
+# domain-free input. Feature-gated for the same reason as `gateway`: the
+# catalogue stays domain-free for consumers that never see a verdict.
+verdict = ["dep:tx-verdict"]
 
 # egui_inbox is only used by the wasm `file_upload` widget + a re-export, so it
 # moved to the wasm-only deps below (native consumers don't pull it).
@@ -21,13 +25,20 @@ authorizations = { workspace = true }
 image-core = { path = "../image-core" }
 egui = { workspace = true }
 egui_extras = { workspace = true }
+# Frame-cost and in-flight-work counters — see `perf_strip`. Pure std, so this
+# adds nothing to the build and keeps the probes usable from the macroquad side.
+perf-probe = { workspace = true }
 ehttp = "0.7"
 image = { workspace = true, features = ["jpeg"] }
 cardano-assets = { workspace = true, optional = true }
 # The gateway trigger-wiring vocabulary AND its rules — see `wiring_editor`.
 gateway-wiring = { path = "../../services/gateway-wiring", optional = true }
+# The transaction verdict shape — see `verdict_card`.
+tx-verdict = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
 log = { workspace = true }
+# Hierarchical FSM for widget interaction state — see `time_spine::tape`.
+statig = { workspace = true }
 i_overlay = "4.4.1"
 voronoice = "0.2"
 ab_glyph = { version = "0.2", optional = true }
@@ -38,6 +49,14 @@ wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 web-sys = { workspace = true, features = [
     "Request", "RequestInit", "Response", "Headers", "Window",
+    # `performance.now()` — the only sub-millisecond monotonic clock available
+    # here; `Date::now()` is 1 ms-granular, which cannot resolve a 0.9 ms frame.
+    "Performance",
+    # `wallet.rs` reads `window.location.hostname`. Undeclared until now, so the
+    # crate only built for wasm when a CONSUMER happened to enable the feature
+    # and cargo unioned it in — `cargo clippy -p egui-widgets --target wasm32`
+    # on its own failed.
+    "Location",
     "Blob", "BlobPropertyBag",
     "HtmlImageElement",
     "ImageBitmap",

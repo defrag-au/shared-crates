@@ -1,0 +1,28 @@
+# tx-verdict — one transaction, reduced to a VERDICT: which shape it is, the one
+# figure that says it, what the lot is called, who was on each side and how
+# firmly. The contract that an egui card, a social image and a Discord
+# notification all render FROM, so they cannot describe the same transaction
+# differently.
+#
+# Shape only, plus the helpers that read no row type. The projections that
+# build a verdict from a wallet row or a policy row live with those rows
+# (cnft.dev-workers `types/shared`), because the rows do. Pure types + string
+# rules: serde, cardano-assets for CIP-67 stripping, chain-ledger for `Basis`.
+# Safe for wasm32-unknown-unknown.
+
+[package]
+name = "tx-verdict"
+version.workspace = true
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+cardano-assets = { workspace = true }
+# `Basis` — how firmly a party is named. One enum across the estate rather
+# than a third redeclaration of observed / asserted / derived.
+chain-ledger = { path = "../chain-ledger" }
+
+[dev-dependencies]
+# The verdict is a wire type for the bots and the notifier; the round-trip
+# test is what holds that promise.
+serde_json = { workspace = true }

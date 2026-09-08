@@ -10,7 +10,8 @@ members = [
     "cardano-assets",
     "mint-manifest",
     "cnft-tools",
-    "discord-client",
+    "discord-message",
+    "discord-outbound",
     "fal-client",
     "filebase",
     "handle-cache",
@@ -18,9 +19,11 @@ members = [
     "local-cache",
     "http-client",
     "openai-client",
+    "perf-probe",
     "pinata",
     "test-utils",
     "tx-insights",
+    "tx-verdict",
     "wasm-safe-serde",
     "worker-stack",
     "worker-utils",
@@ -153,6 +156,11 @@ serde_repr = "0.1"
 getrandom = { version = "0.3", features = ["wasm_js"] }
 rand = { version = "0.9", features = ["small_rng", "std"] }
 log = "0.4"
+# Hierarchical state machines (statig) — plain sync `handle(&event)`, no_std,
+# no deps beyond its own macro crate, so it is safe under wasm-bindgen AND
+# macroquad. Already the FSM in augminted-native-bots and blockchain-infra;
+# here it drives UI state that used to be flag soup (the time spine's tape).
+statig = "0.4.1"
 
 # egui stack
 egui = "0.34"
@@ -172,9 +180,18 @@ authorizations = { path = "authorizations" }
 cardano-assets = { path = "cardano-assets" }
 image-hash = { path = "image-hash" }
 discord-auth = { path = "discord-auth" }
+# The serde-only Discord message model, and the client that sends it. Split
+# because the model is consumed by things that never send (the plugin protocol)
+# and the client drags an HTTP stack.
+discord-message = { path = "discord-message" }
+discord-outbound = { path = "discord-outbound" }
 cardano-tx = { path = "cardano-tx" }
 worker_utils = { path = "worker-utils" }
 asset-rarity = { path = "asset-rarity" }
+# Frame-cost + in-flight-work counters. Pure std, no runtime — so `browser-fetch`
+# can increment a gauge without taking a dependency on any UI framework, and the
+# egui and macroquad sides can both read the same numbers.
+perf-probe = { path = "perf-probe" }
 egui-widgets = { path = "ui/egui-widgets" }
 portal-pane = { path = "ui/portal-pane" }
 gateway-wiring = { path = "services/gateway-wiring" }
@@ -190,6 +207,7 @@ macroquad-wallet-flow = { path = "ui/macroquad-wallet-flow" }
 macroquad-widgets = { path = "ui/macroquad-widgets" }
 wallet-miniquad = { path = "ui/wallet-miniquad" }
 tx_insights = { path = "tx-insights" }
+tx-verdict = { path = "tx-verdict" }
 test_utils = { path = "test-utils" }
 pipeline-types = { path = "pipeline/pipeline-types" }
 transactions = { path = "pipeline/transactions" }

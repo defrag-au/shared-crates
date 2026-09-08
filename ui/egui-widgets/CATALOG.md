@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-122 widgets.
+131 widgets.
 
 | module | what it is |
 |---|---|
@@ -32,14 +32,17 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `collection_list` | Collection roster — the per-client collections list rendered on the admin portal dashboard |
 | `command_palette` | `CommandPalette` — a modal, keyboard-first action launcher over a caller-supplied command set |
 | `conversation_history` | `conversation_history` — what people said to the bot, what it worked out, and what it said back (feature `gateway`) |
+| `corner_action` | `CornerAction` — a small icon button pinned to one corner of a thumbnail or card, for a one-tap action on the thing it sits on (refresh, remove, pin) |
 | `coverage_delta_bar` | Coverage delta bar — before/after progress bar for trait coverage |
 | `coverage_lanes` | `CoverageLanes` — was it up, was it down, or was nobody looking, per entity, on the shared spine |
 | `custody_walk` | `CustodyWalk` — where a specific sum came from, unit by unit |
 | `data_table` | Data table — dense row-based table with column headers, selection, and optional detail panel |
 | `defaults` | One call to set a frontend up before its first frame |
 | `detail_split` | `detail_split` — a content column beside a detail column, laid out by hand |
+| `disclosure` | `Disclosure` — a detail region that opens beneath the row it explains, eased open and tied to that row, without the feed jumping under the reader |
 | `distribution_waterfall` | `DistributionWaterfall` — how a buyer's payment flows down to what lands in each party's wallet under settle-as-you-mint |
 | `donut_chart` | `DistributionChart` — a donut of banded shares with a legend and hover tooltip, for "how is this split" questions |
+| `drawer` | `Drawer` — an edge-anchored slide-over panel with a scrim, for the narrow layout of a surface that has a side panel when it is wide |
 | `error_note` | `ErrorNote` — turns an ugly machine error string into a readable note |
 | `event_wiring` | `EventWiring` — one event-source node wired to its action cards, IFTTT made visible |
 | `exposure_bar` | Exposure bar — stacked horizontal bar showing total ADA exposure segmented by collateral token, colored by LTV risk |
@@ -53,10 +56,12 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `focus_list` | Focus list — a fixed-geometry master–detail widget for inspecting one item out of many in a constrained surface (typically a pinned chart tooltip) |
 | `fungibles_row` | Fungibles row — single horizontal row for a Cardano Native Token holding |
 | `gated` | Entitlement-gated rendering — the frontend half of the `authorizations` framework |
+| `gateway_log` | `gateway_log` — the listener's own log lines, in the surface that already knows what they mean (feature `gateway`) |
 | `grouped_section` | Grouped section header — hero icon + title + verified badge + subtitle + right-aligned bulk-action button, with caller-rendered body below |
 | `holder_field` | HolderField — the holder graph, reshuffling as assets change hands |
 | `holder_formation` | `HolderFormation` — people arriving, and how evenly the collection lands |
 | `id_pill` | `IdPill` — small inline display of a long identifier with a copy affordance |
+| `image_stack` | `ImageStack` — several images as a fanned pile of mounted prints, so a lot of many reads as a lot of many at a glance |
 | `image_text_editor` | Image text overlay editor — place, style, and drag text on top of an image |
 | `leaderboard` | `Leaderboard` — ranked standings: podium-tinted ranks, an optional prize thumbnail, one headline metric, supporting stats, and a share bar |
 | `leaderboard_table` | `LeaderboardTable` — a dense, virtual-scrolled ranked table |
@@ -77,6 +82,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `party_annotator` | `PartyAnnotator` — decide what a wallet IS to the project, on the record |
 | `party_badge` | `PartyBadge` — a counterparty as it should appear everywhere in a forensic trace: resolved name, **how firmly that name is known**, and the cluster it belongs to |
 | `party_finder` | PartyFinder — hunt down a wallet by ANY of its names, then watch it |
+| `perf_strip` | `PerfStrip` — a small stack of readings saying what the frontend is costing: frame build time, render cadence, memory, and anything still in flight |
 | `persona_strip` | Persona strip — italic one-liner describing a wallet (or any tagged entity), with an optional row of small tag chips beneath |
 | `phase_card` | `PhaseCard` — read-only display of one mint phase row |
 | `pip_row` | Horizontal pip row widget — a label on the left and a bar of colored pips (or density heatmap) on the right, each positioned proportionally by value |
@@ -103,7 +109,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `slot_table` | slot_table — the trait/slot list with enable / required toggles and an optional z-order field |
 | `sparkline` | Sparkline widget — compact inline line chart for trend visualization |
 | `split_allocation_bar` | Split allocation bar — segmented horizontal bar showing ADA allocation across multiple DEXes |
-| `stat_strip` | StatStrip — a horizontal row of windowed summary "stat cards" |
+| `stat_strip` | StatStrip — windowed summary "stat cards", laid out as uniform tiles that fill their container and wrap into even rows |
 | `supply_bar` | Two-band mint supply bar — `minted` (on chain) + `ordered` (the backlog of ordered-but-not-yet-minted units), over the unsold track |
 | `swap_modal` | Reusable swap modal widget for egui frontends |
 | `tag_list` | Tag list — a wrapping row of removable tags with an optional trailing "clear all" button |
@@ -116,6 +122,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `trade_table` | Trade table widget — TCG-style top/bottom offer display for the trade desk |
 | `trait_delta` | Trait delta widget — shows traits gained and lost in a trade |
 | `trait_filter` | Compound-key prefix trie tag filter widget |
+| `tx_card` | `TxCard` — one transaction as a VERDICT: what it was, who it was between, and the one figure that says it — at three densities |
 | `tx_cart` | TX Cart widget — displays a list of pending chain actions with batch execution |
 | `tx_estimate` | Per-wallet transaction estimate widget — shows the local user's ADA impact |
 | `typeahead_search` | `TypeaheadSearch` — a search box with a keyboard-navigable result dropdown |
@@ -123,6 +130,8 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `utxo_map` | UTxO terrain map — a Voronoi-based wallet visualization |
 | `utxo_shelf` | UTxO Shelf — wallet health visualization |
 | `variant_split` | Variant split — explains a `variant_flow` source slot's **derived** variant distribution and *why* it isn't uniform |
+| `verdict_card` | `VerdictCard` — a `tx_verdict::TxVerdict` drawn as a [`TxCard`] (feature `verdict`) |
+| `viewport` | `Breakpoint` — how wide the surface is, as three named sizes rather than a number every call site re-compares |
 | `wallet` | Framework-agnostic wallet connector for egui frontends |
 | `wallet_asset_picker` | Wallet asset picker — modal widget for browsing and selecting NFTs from a wallet, grouped by policy in an accordion layout |
 | `wallet_button` | Reusable wallet connection button widget for egui frontends |

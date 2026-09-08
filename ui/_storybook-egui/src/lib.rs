@@ -25,6 +25,7 @@ mod app {
         BulletBar,
         Sparkline,
         MetricCard,
+        PerfStrip,
         TokenHistory,
         TokenKinetic,
         TokenParticles,
@@ -42,6 +43,7 @@ mod app {
         PipRow,
         PriceTimeline,
         Leaderboard,
+        ListingGrid,
         FocusList,
         CardBrowser,
         IconGallery,
@@ -87,6 +89,7 @@ mod app {
         // Grouping
         GroupedSection,
         OfferTile,
+        CornerAction,
         // Wallet
         WalletIdentityHeader,
         PersonaStrip,
@@ -103,12 +106,15 @@ mod app {
         PartyBadge,
         FlowLedger,
         ActivityFeed,
+        TxCard,
+        ImageStack,
         ChannelBands,
         CustodyWalk,
         ClaimCard,
         CapitalFlow,
         CapBand,
         TimeSpine,
+        TimeSpineDensity,
         CoverageLanes,
         FlowMatrix,
         FlowRing,
@@ -145,6 +151,9 @@ mod app {
         ServiceBanner,
         QuantityStepper,
         MintCheckout,
+        Viewport,
+        Drawer,
+        Disclosure,
     }
 
     impl Story {
@@ -164,12 +173,15 @@ mod app {
                 Self::PartyBadge,
                 Self::FlowLedger,
                 Self::ActivityFeed,
+                Self::TxCard,
+                Self::ImageStack,
                 Self::ChannelBands,
                 Self::CustodyWalk,
                 Self::ClaimCard,
                 Self::CapitalFlow,
                 Self::CapBand,
                 Self::TimeSpine,
+                Self::TimeSpineDensity,
                 Self::CoverageLanes,
                 Self::FlowMatrix,
                 Self::FlowRing,
@@ -199,6 +211,9 @@ mod app {
                 Self::ErrorNote,
                 Self::Gated,
                 Self::AccessGate,
+                Self::Viewport,
+                Self::Drawer,
+                Self::Disclosure,
                 Self::UserBadge,
                 Self::TierLadder,
                 Self::AboutModal,
@@ -207,6 +222,7 @@ mod app {
                 Self::BulletBar,
                 Self::Sparkline,
                 Self::MetricCard,
+                Self::PerfStrip,
                 Self::TokenHistory,
                 Self::TokenKinetic,
                 Self::TokenParticles,
@@ -224,6 +240,7 @@ mod app {
                 Self::PipRow,
                 Self::PriceTimeline,
                 Self::Leaderboard,
+                Self::ListingGrid,
                 Self::FocusList,
                 Self::CardBrowser,
                 Self::IconGallery,
@@ -269,6 +286,7 @@ mod app {
                 // Grouping
                 Self::GroupedSection,
                 Self::OfferTile,
+                Self::CornerAction,
                 // Wallet
                 Self::WalletIdentityHeader,
                 Self::PersonaStrip,
@@ -319,6 +337,7 @@ mod app {
                 Self::BulletBar => "Bullet Bar",
                 Self::Sparkline => "Sparkline",
                 Self::MetricCard => "Metric Card",
+                Self::PerfStrip => "Perf Strip",
                 Self::TokenHistory => "Token History",
                 Self::TokenKinetic => "Token Kinetic",
                 Self::TokenParticles => "Token Particles",
@@ -336,6 +355,7 @@ mod app {
                 Self::PipRow => "Pip Row",
                 Self::PriceTimeline => "Price Timeline",
                 Self::Leaderboard => "Leaderboard",
+                Self::ListingGrid => "Listing Grid",
                 Self::FocusList => "Focus List",
                 Self::CardBrowser => "Card Browser",
                 Self::IconGallery => "Icon Gallery",
@@ -373,6 +393,7 @@ mod app {
                 Self::TxCart => "TX Cart",
                 Self::GroupedSection => "Grouped Section",
                 Self::OfferTile => "Offer Tile",
+                Self::CornerAction => "Corner Action",
                 Self::WalletIdentityHeader => "Wallet Identity Header",
                 Self::PersonaStrip => "Persona Strip",
                 Self::FungiblesRow => "Fungibles Row",
@@ -386,12 +407,15 @@ mod app {
                 Self::PartyBadge => "Party Badge",
                 Self::FlowLedger => "Flow Ledger",
                 Self::ActivityFeed => "Activity Feed",
+                Self::TxCard => "Tx Card",
+                Self::ImageStack => "Image Stack",
                 Self::ChannelBands => "Channel Bands",
                 Self::CustodyWalk => "Custody Walk",
                 Self::ClaimCard => "Claim Card",
                 Self::CapitalFlow => "Capital Flow",
                 Self::CapBand => "Cap Band",
                 Self::TimeSpine => "Time Spine",
+                Self::TimeSpineDensity => "Time Spine Density",
                 Self::CoverageLanes => "Coverage Lanes",
                 Self::FlowMatrix => "Flow Matrix",
                 Self::FlowRing => "Flow Ring",
@@ -418,6 +442,9 @@ mod app {
                 Self::ErrorNote => "Error Note",
                 Self::Gated => "Gated",
                 Self::AccessGate => "Access Gate",
+                Self::Viewport => "Breakpoint",
+                Self::Drawer => "Drawer",
+                Self::Disclosure => "Disclosure",
                 Self::UserBadge => "User Badge",
                 Self::TierLadder => "Tier Ladder",
                 Self::AboutModal => "About Modal",
@@ -444,12 +471,15 @@ mod app {
                 | Self::PartyBadge
                 | Self::FlowLedger
                 | Self::ActivityFeed
+                | Self::TxCard
+                | Self::ImageStack
                 | Self::ChannelBands
                 | Self::CustodyWalk
                 | Self::ClaimCard
                 | Self::CapitalFlow
                 | Self::CapBand
                 | Self::TimeSpine
+                | Self::TimeSpineDensity
                 | Self::CoverageLanes
                 | Self::FlowMatrix
                 | Self::FlowRing
@@ -474,6 +504,9 @@ mod app {
                 | Self::ErrorNote
                 | Self::Gated
                 | Self::AccessGate
+                | Self::Viewport
+                | Self::Drawer
+                | Self::Disclosure
                 | Self::UserBadge
                 | Self::TierLadder
                 | Self::AboutModal
@@ -487,6 +520,7 @@ mod app {
                 | Self::BulletBar
                 | Self::Sparkline
                 | Self::MetricCard
+                | Self::PerfStrip
                 | Self::TokenHistory
                 | Self::TokenKinetic
                 | Self::TokenParticles
@@ -537,8 +571,8 @@ mod app {
                 Self::SupplyBar | Self::OrderList => "Mint Dashboard",
                 Self::FileUpload => "Utility",
                 Self::ImageTextEditor => "Media",
-                Self::TxCart => "TX Cart",
-                Self::GroupedSection | Self::OfferTile => "Layout",
+                Self::TxCart | Self::ListingGrid => "TX Cart",
+                Self::GroupedSection | Self::OfferTile | Self::CornerAction => "Layout",
                 Self::MnemonicDisplay | Self::WalletList | Self::CollectionList => "Auth / Admin",
                 Self::PhaseCard | Self::QuantityStepper | Self::MintCheckout => {
                     "Mint Configuration"
@@ -553,6 +587,9 @@ mod app {
                 Self::ErrorNote => "Distils Debug-wrapped / escaped-JSON error blobs to the human reason + HTTP status, with a show-raw toggle",
                 Self::Gated => "Entitlement-gated rendering — locked card/chip affordances driven by the shared authorizations Feature registry",
                 Self::AccessGate => "App-level access screen: sign-in prompt + requirements (join links) for gated tools",
+                Self::Viewport => "Compact / Medium / Wide — the breakpoint every responsive layout decision reads from",
+                Self::Drawer => "Edge-anchored slide-over with a scrim — the narrow-layout stand-in for a side panel",
+                Self::Disclosure => "Detail that opens under the row it explains — eased, tied by a rule, anchored so the list does not shove",
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
                 Self::TierLadder => "The access ladder as a modal — what each rung gives, every route to it, and where you stand",
                 Self::AboutModal => "What a product is, what state it is in, and what to expect — the BETA badge's modal",
@@ -570,6 +607,9 @@ mod app {
                 }
                 Self::MetricCard => {
                     "Dashboard stat card with trend indicators and embedded sparklines"
+                }
+                Self::PerfStrip => {
+                    "Live HUD, vertical or horizontal — frame build cost, fps, memory, work in flight"
                 }
                 Self::TokenParticles => {
                     "Supply as a conserved particle field, playing through warped time"
@@ -615,6 +655,9 @@ mod app {
                 }
                 Self::Leaderboard => {
                     "Ranked standings with medals, a share bar, and supporting stats"
+                }
+                Self::ListingGrid => {
+                    "A price is not a promise you can buy it. Real residual jpg.store listings: MarsBirds at 19-25 ADA with resolvable datums, beside a Clay Nation listing whose hash-datum preimage exists nowhere on chain or in any indexer. Before buyability was a state the grid drew those identically — the reader picked the cheapest, clicked, and got a node error about datums seconds later. Blocked cards stay in the book (hide them and the floor you quote is wrong) but are knocked back and say why, in the same corner the eye learned to find the add-to-cart +. The three reasons are an enum, not a bool: 'no datum' is permanent, 'unsupported' is a registry gap we can close, 'bundle' means buyable-but-not-alone — collapsing them to 'unavailable' has you chasing the wrong fix. Note the cheapest card in the grid is one of the blocked ones"
                 }
                 Self::FocusList => {
                     "Fixed-geometry master-detail list for tooltips: sliding highlight + detail pane"
@@ -724,6 +767,9 @@ mod app {
                 Self::OfferTile => {
                     "Picker tile with state machine (Active / InCart / Spent), image-or-placeholder content, and corner badge"
                 }
+                Self::CornerAction => {
+                    "Icon button pinned to a corner of a thumbnail — claims the click so the card beneath doesn't select"
+                }
                 Self::WalletIdentityHeader => {
                     "Big handle or shortened stake address with copy button — top-of-page wallet identity strip"
                 }
@@ -763,6 +809,12 @@ mod app {
                 Self::ActivityFeed => {
                     "The account view of the same history: day-grouped cards, each naming its venue, its counterparty and THE ASSETS THAT MOVED — because \"+2 items\" hides whether a wallet got two junk airdrops or two of the collection it trades"
                 }
+                Self::ImageStack => {
+                    "The tuning bench for the fanned pile of mounted prints that makes a lot of many READ as a lot of many. Every proportion is a slider — mount, spacing, lift, tilt spread, shadow offset/spread/alpha — and the count runs to the hard cap of five, because the difference between 'prints dropped on a desk' and 'some overlapping squares' is a few percent in two of them, and no amount of reading the code tells you which way to go. The art is a rotated mesh, not an egui::Image: Image::corner_radius silently cancels Image::rotate, which shipped once as upright pictures inside tilted mounts. The shadow is faked: epaint blurs rectangles but not rotated polygons, so fourteen concentric quads on an eased alpha ramp stand in for a blur. Includes a backdrop toggle — the server-rendered card sits on #0b0b10 where paper white pops far harder than it does on the app's own BG_SECONDARY, which may be most of why the rendered version looked stronger"
+                }
+                Self::TxCard => {
+                    "One transaction as a VERDICT rather than a field list. The row this replaces led with the WALLET NET — bookkeeping — and buried the settlement price as the smallest text on the row next to a raw db slug; four chips did the work of one clause. Same ranking as the social card: the price leads, the lot is named by its shared stem (never after one member), the party clause is a sentence, the net goes last and grey. Viewpoint is an enum with the parties INSIDE it, so a policy feed — which has no \"us\" — literally cannot be given a verb of ownership. Two absences are kept apart: below-floor pulses and offers to walk deeper, ambiguous states itself and offers nothing, because deepening cannot fix it"
+                }
                 Self::CapitalFlow => {
                     "\"They raised X — watch where it went.\" Cumulative destination bands over a real time axis with a draggable playhead and play button; a labelled raise line the stack is free to CROSS, because deployment beyond the raise is a finding rather than an error to clamp"
                 }
@@ -771,6 +823,9 @@ mod app {
                 }
                 Self::TimeSpine => {
                     "ONE time axis for many faces: a playhead that REVEALS, a brush that FILTERS, play/pause — and a shared selection so hovering a holder's pile lights it up everywhere. Dots fly in and settle (keyed tweens; object constancy) while playing; a scrubbed frame settles instantly so a still is readable. The falsifier for 'is egui why this feels flat?'"
+                }
+                Self::TimeSpineDensity => {
+                    "The same three years drawn twice. One mark per transaction saturates past a few per pixel — the mint, the spikes and the quiet tail all paint the same solid bar and only the dead stretch is legible, so the lane shows when NOTHING happened. The density form keeps the ruler, playhead and in/out hues and changes only the lane's claim: a waveform from the midline (a neutral mark's shape, made about a count), root-scaled up to a robust knee and log-compressed above it, so a weeks-long frenzy keeps its shape instead of clipping into slabs or flattening three years into a hairline, floored so one-versus-none survives, with mints and burns — the events that ARE discrete — kept as marks over it. Hover a column for its count"
                 }
                 Self::CoverageLanes => {
                     "Three answers, not two: observed producing, observed idle, and NOBODY LOOKED. Day 4's midday orange stretch and day 7's grey column cover comparable spans and make completely different claims — one is a watched fleet sitting idle, the other is a broken poller. Fold them together and every ingest outage becomes recorded downtime. The ground state is unobserved and knowledge paints over it, so a caller cannot assert \"idle\" by forgetting to mention it; uptime divides by OBSERVED time and travels with the share of the window nobody watched. miner-06 dies on day 5 and never returns — you find it by lane shape, not by reading rows"
@@ -960,6 +1015,7 @@ mod app {
         marquee: egui_widgets::Marquee,
         marquee_messages: Vec<egui_widgets::MarqueeItem>,
         progress_bar_state: stories::progress_bar::ProgressBarState,
+        disclosure_state: stories::disclosure::State,
         bullet_bar_state: stories::bullet_bar::BulletBarState,
         tag_list_state: stories::tag_list::TagListState,
         token_multiselect_state: stories::token_multiselect::TokenMultiselectState,
@@ -976,6 +1032,7 @@ mod app {
         palette_editor_state: stories::palette_editor::PaletteEditorState,
         slot_table_state: stories::slot_table::SlotTableState,
         sparkline_state: stories::sparkline::SparklineState,
+        perf_strip_state: stories::perf_strip::PerfStripStory,
         seven_segment_state: stories::seven_segment::SevenSegmentState,
         flip_counter_state: stories::flip_counter::FlipCounterState,
         async_data_state: stories::async_data::AsyncDataState,
@@ -989,6 +1046,7 @@ mod app {
         pip_row_state: stories::pip_row::PipRowState,
         price_timeline_state: stories::price_timeline::PriceTimelineState,
         leaderboard_state: stories::leaderboard::LeaderboardState,
+        listing_grid_state: stories::listing_grid::ListingGridState,
         focus_list_state: stories::focus_list::FocusListState,
         card_browser_state: stories::card_browser::CardBrowserStoryState,
         icon_gallery_state: stories::icon_gallery::IconGalleryState,
@@ -1039,7 +1097,10 @@ mod app {
         claim_card_state: stories::claim_card::ClaimCardState,
         capital_flow_state: stories::capital_flow::CapitalFlowState,
         cap_band_state: stories::cap_band::CapBandState,
+        tx_card_state: stories::tx_card::TxCardState,
+        image_stack_state: stories::image_stack::ImageStackState,
         time_spine_state: stories::time_spine::TimeSpineState,
+        time_spine_density_state: stories::time_spine_density::TimeSpineDensityState,
         coverage_lanes_state: stories::coverage_lanes::CoverageLanesState,
         flow_matrix_state: stories::flow_matrix::FlowMatrixState,
         flow_ring_state: stories::flow_ring::FlowRingState,
@@ -1078,6 +1139,7 @@ mod app {
                     color: ACCENT,
                 }],
                 progress_bar_state: stories::progress_bar::ProgressBarState::default(),
+                disclosure_state: stories::disclosure::State::default(),
                 bullet_bar_state: stories::bullet_bar::BulletBarState::default(),
                 tag_list_state: stories::tag_list::TagListState::default(),
                 token_multiselect_state: stories::token_multiselect::TokenMultiselectState::default(
@@ -1098,6 +1160,7 @@ mod app {
                 palette_editor_state: stories::palette_editor::PaletteEditorState::default(),
                 slot_table_state: stories::slot_table::SlotTableState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
+                perf_strip_state: stories::perf_strip::PerfStripStory::default(),
                 seven_segment_state: stories::seven_segment::SevenSegmentState::default(),
                 flip_counter_state: stories::flip_counter::FlipCounterState::default(),
                 async_data_state: stories::async_data::AsyncDataState::default(),
@@ -1112,6 +1175,7 @@ mod app {
                 pip_row_state: stories::pip_row::PipRowState::default(),
                 price_timeline_state: stories::price_timeline::PriceTimelineState::default(),
                 leaderboard_state: stories::leaderboard::LeaderboardState::default(),
+                listing_grid_state: stories::listing_grid::ListingGridState::default(),
                 focus_list_state: stories::focus_list::FocusListState::default(),
                 card_browser_state: stories::card_browser::CardBrowserStoryState::default(),
                 icon_gallery_state: stories::icon_gallery::IconGalleryState::default(),
@@ -1175,7 +1239,11 @@ mod app {
                 claim_card_state: stories::claim_card::ClaimCardState::default(),
                 capital_flow_state: stories::capital_flow::CapitalFlowState::default(),
                 cap_band_state: stories::cap_band::CapBandState::default(),
+                tx_card_state: stories::tx_card::TxCardState::default(),
+                image_stack_state: stories::image_stack::ImageStackState::default(),
                 time_spine_state: stories::time_spine::TimeSpineState::default(),
+                time_spine_density_state:
+                    stories::time_spine_density::TimeSpineDensityState::default(),
                 coverage_lanes_state: stories::coverage_lanes::CoverageLanesState::default(),
                 flow_matrix_state: stories::flow_matrix::FlowMatrixState::default(),
                 flow_ring_state: stories::flow_ring::FlowRingState::default(),
@@ -1228,6 +1296,11 @@ mod app {
         // eframe 0.34 made `ui` the required App method (was `update` in 0.33);
         // panels nest via `show_inside(ui, …)` instead of `show(ctx, …)`.
         fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+            // The perf_strip story shows the storybook's OWN cost, so the frame
+            // clock has to be wired up here rather than inside the story — a
+            // story that measured only itself would report a fraction of the
+            // frame and read as far cheaper than the app really is.
+            let _frame_scope = egui_widgets::perf_strip::FrameScope::begin();
             let ctx = ui.ctx().clone();
             if !self.nav_hidden {
                 egui::Panel::left("stories")
@@ -1261,6 +1334,11 @@ mod app {
                             Story::ErrorNote => stories::error_note::show(ui),
                             Story::Gated => stories::gated::show(ui),
                             Story::AccessGate => stories::access_gate::show(ui),
+                            Story::Viewport => stories::viewport::show(ui),
+                            Story::Drawer => stories::drawer::show(ui),
+                            Story::Disclosure => {
+                                stories::disclosure::show(ui, &mut self.disclosure_state)
+                            }
                             Story::UserBadge => stories::user_badge::show(ui),
                             Story::TierLadder => stories::tier_ladder::show(ui),
                             Story::AboutModal => stories::about_modal::show(ui),
@@ -1284,6 +1362,9 @@ mod app {
                                 stories::sparkline::show(ui, &mut self.sparkline_state)
                             }
                             Story::MetricCard => stories::metric_card::show(ui),
+                            Story::PerfStrip => {
+                                stories::perf_strip::show(ui, &mut self.perf_strip_state)
+                            }
                             Story::TokenHistory => stories::token_history::show(ui),
                             Story::TokenKinetic => stories::token_kinetic::show(ui),
                             Story::TokenParticles => stories::token_particles::show(ui),
@@ -1324,6 +1405,9 @@ mod app {
                             }
                             Story::Leaderboard => {
                                 stories::leaderboard::show(ui, &mut self.leaderboard_state)
+                            }
+                            Story::ListingGrid => {
+                                stories::listing_grid::show(ui, &mut self.listing_grid_state)
                             }
                             Story::FocusList => {
                                 stories::focus_list::show(ui, &mut self.focus_list_state)
@@ -1425,6 +1509,7 @@ mod app {
                             ),
                             Story::GroupedSection => stories::grouped_section::show(ui),
                             Story::OfferTile => stories::offer_tile::show(ui),
+                            Story::CornerAction => stories::corner_action::show(ui),
                             Story::TxCart => stories::tx_cart::show(ui, &mut self.tx_cart_state),
                             Story::WalletIdentityHeader => stories::wallet_identity_header::show(
                                 ui,
@@ -1449,6 +1534,10 @@ mod app {
                             Story::PartyBadge => stories::party_badge::show(ui),
                             Story::FlowLedger => stories::flow_ledger::show(ui),
                             Story::ActivityFeed => stories::activity_feed::show(ui),
+                            Story::TxCard => stories::tx_card::show(ui, &mut self.tx_card_state),
+                            Story::ImageStack => {
+                                stories::image_stack::show(ui, &mut self.image_stack_state)
+                            }
                             Story::ChannelBands => stories::channel_bands::show(ui),
                             Story::CustodyWalk => stories::custody_walk::show(ui),
                             Story::CapitalFlow => {
@@ -1458,6 +1547,10 @@ mod app {
                             Story::TimeSpine => {
                                 stories::time_spine::show(ui, &mut self.time_spine_state)
                             }
+                            Story::TimeSpineDensity => stories::time_spine_density::show(
+                                ui,
+                                &mut self.time_spine_density_state,
+                            ),
                             Story::CoverageLanes => {
                                 stories::coverage_lanes::show(ui, &mut self.coverage_lanes_state)
                             }

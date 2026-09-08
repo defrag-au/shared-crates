@@ -25,8 +25,8 @@
 use std::collections::HashMap;
 
 use gateway_wiring::{
-    ActionTrace, AgentEntitlement, EventBinding, GatewayStatus, GuildInfo, GuildRole, GuildWiring,
-    MAX_RECENT_ACTIVITY, RecentActivity,
+    ActionTrace, AgentEntitlement, EventBinding, GatewayLogEntry, GatewayStatus, GuildInfo,
+    GuildRole, GuildWiring, MAX_GATEWAY_LOG, MAX_RECENT_ACTIVITY, RecentActivity,
 };
 use serde::{Deserialize, Serialize};
 
@@ -95,6 +95,23 @@ impl GatewayAudience {
         matches!(self, Self::Operator)
     }
 
+    /// May this audience read the listener's own log?
+    ///
+    /// The log is captured `tracing` output — free text carrying guild ids,
+    /// authors and message previews from every guild the listener serves. It
+    /// has no field to scope it by, so unlike the activity feed it cannot be
+    /// filtered per client; it is disclosed whole or not at all.
+    ///
+    /// Its own predicate rather than a borrowed `may_set_entitlement`, even
+    /// though both resolve to `Operator` today. Three call sites — the DO's
+    /// fan-out, its snapshot builder and the console's pane — need to agree,
+    /// and three of them asking a question about *entitlements* to decide a
+    /// question about *disclosure* is how one of them ends up answering the
+    /// wrong one after a third audience lands.
+    pub fn may_read_listener_log(self) -> bool {
+        matches!(self, Self::Operator)
+    }
+
     /// Wire spelling, for the header the worker sets on the DO upgrade.
     /// Same string serde writes, so a log line and a payload agree.
     pub fn as_str(self) -> &'static str {
@@ -134,6 +151,19 @@ pub struct GatewayAdminState {
     /// could not be filtered while it rode inside a type broadcast whole.
     #[serde(default)]
     pub activity: Vec<RecentActivity>,
+
+    /// The listener's own log lines, oldest first.
+    ///
+    /// **Operator-only, and empty for everyone else.** Unlike [`activity`],
+    /// this cannot be filtered per client: a log line is free text captured
+    /// from a `tracing` call, and the listener logs guild ids, authors and
+    /// message previews across every guild it serves. There is no field to
+    /// scope it by, so the server sends it to operator connections and to
+    /// nobody else.
+    ///
+    /// [`activity`]: GatewayAdminState::activity
+    #[serde(default)]
+    pub log: Vec<GatewayLogEntry>,
 
     /// guild_id → that guild's roles, once fetched.
     ///
@@ -182,6 +212,18 @@ pub enum GatewayAdminDelta {
         message_id: String,
         trace: Box<ActionTrace>,
     },
+
+    /// Log lines the listener emitted since the last push.
+    ///
+    /// **A batch, not one per line.** A single reconnect produces a handful of
+    /// lines within a few milliseconds of each other, and one delta each would
+    /// mean one encode and one socket write each for a stream that is already
+    /// the chattiest thing on this connection.
+    ///
+    /// **Operator-only** — see [`GatewayAdminState::log`]. This is the one
+    /// delta whose scope is neither "global" nor a guild, and the fan-out has
+    /// to route it on that basis rather than on the absence of a guild id.
+    LogAppended(Vec<GatewayLogEntry>),
 }
 
 impl GatewayAdminState {
@@ -219,6 +261,12 @@ impl GatewayAdminState {
                     entry.trace = Some(trace.as_ref().clone());
                 }
             }
+            GatewayAdminDelta::LogAppended(lines) => {
+                self.log.extend(lines.iter().cloned());
+                // Same shared bound as the feed, for the same reason.
+                let excess = self.log.len().saturating_sub(MAX_GATEWAY_LOG);
+                self.log.drain(..excess);
+            }
         }
     }
 }
@@ -251,6 +299,10 @@ mod tests {
         assert!(!GatewayAudience::Client.may_control_lifecycle());
         assert!(GatewayAudience::Operator.may_set_entitlement());
         assert!(GatewayAudience::Operator.may_control_lifecycle());
+        // Disclosure, not authority — and the one a client must never hold,
+        // since the log is every other customer's traffic as free text.
+        assert!(!GatewayAudience::Client.may_read_listener_log());
+        assert!(GatewayAudience::Operator.may_read_listener_log());
     }
 
     /// A client applying appends over a long session must ring at the SAME
@@ -271,6 +323,30 @@ mod tests {
             state.activity.last().unwrap().message_id,
             (MAX_RECENT_ACTIVITY * 2 - 1).to_string()
         );
+    }
+
+    /// The log stream is the chattiest thing on this connection, so a long
+    /// session is exactly where an unbounded client list would hurt. Rings at
+    /// the SAME shared bound as the server, for the same reason the feed does.
+    #[test]
+    fn the_log_rings_at_the_shared_bound() {
+        let mut state = GatewayAdminState::default();
+        // Arriving in batches, which is how the server sends them.
+        for batch in 0..(MAX_GATEWAY_LOG / 5 * 3) {
+            let lines: Vec<_> = (0..5)
+                .map(|i| gateway_wiring::GatewayLogEntry {
+                    at_ms: 0.0,
+                    level: gateway_wiring::LogLevel::Info,
+                    target: "gateway_do".into(),
+                    message: format!("{batch}-{i}"),
+                })
+                .collect();
+            state.apply(&GatewayAdminDelta::LogAppended(lines));
+        }
+        assert_eq!(state.log.len(), MAX_GATEWAY_LOG);
+        // Oldest dropped, newest kept — a log that discarded the line you just
+        // provoked would be worse than no log.
+        assert_eq!(state.log.last().unwrap().message, "149-4");
     }
 
     /// A trace arrives seconds after its entry, matched on message id. An

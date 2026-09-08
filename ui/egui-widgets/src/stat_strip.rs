@@ -1,13 +1,35 @@
-//! StatStrip — a horizontal row of windowed summary "stat cards".
+//! StatStrip — windowed summary "stat cards", laid out as uniform tiles that
+//! fill their container and wrap into even rows.
 //!
 //! A dashboard idiom: the same metric summarised across a few time windows
 //! (24h / 7d / 30d), each as a compact card. Every card draws its own frame:
 //! the window label sits in a recessed pill in the top-right corner, the
-//! headline reads large below it (with an optional trend delta beside it),
-//! then optional marks stack underneath — an activity sparkline, a price-range
-//! bar on a strip-wide shared axis, and a caption. Windows with no marks fall
-//! back to a shared empty note (e.g. "no fills") while still showing their
-//! zeroed headline, so the strip keeps a stable shape.
+//! headline reads large below it (with an optional trend delta beside it, or
+//! beneath it when the pair does not fit), then optional marks stack underneath
+//! — an activity sparkline, a price-range bar on a strip-wide shared axis, and
+//! a caption pinned to the card's floor. Windows with no marks fall back to a
+//! shared empty note (e.g. "no fills") while still showing their zeroed
+//! headline, so the strip keeps a stable shape.
+//!
+//! ## Measure, then lay out
+//!
+//! **Every card in a strip is the same width and the same height.** That is the
+//! widget's job, not the caller's, and it is the whole reason the layout is a
+//! two-pass measurement rather than a wrapping row:
+//!
+//! - A card is an `egui::Frame`, and a frame grows to its content. So the old
+//!   `card_width` was a floor, not a width, and the headline row — headline plus
+//!   trend delta — sized each card to whatever string it happened to hold. Four
+//!   windows came out four different widths, ordered by trend length.
+//! - Overflow does not stay local: `Region::expand_to_include_rect` unions an
+//!   over-wide child into the parent's `max_rect`, so a long trend string spread
+//!   outward into the surrounding layout.
+//!
+//! So the strip measures the widest headline row, picks a column count that fits
+//! at [`StatStrip::min_card_width`], divides the row evenly, and only then
+//! measures height — because whether a trend fits beside its headline depends on
+//! the width just chosen. Both consumers of this widget had grown their own
+//! call-site workaround for the missing behaviour before it lived here.
 //!
 //! Purely presentational — the caller does the folding/aggregation and hands
 //! in already-formatted headlines/captions plus raw series/spreads, so the
@@ -16,6 +38,28 @@
 use egui::{Color32, CornerRadius, FontId, Margin, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::{SparkHoverStyle, Sparkline, Trend, theme};
+
+/// The sizes and spacings a card paints with.
+///
+/// Named and shared because both measuring passes — `natural_width` and
+/// `stack_height` — have to measure with exactly the same ones. The same rule
+/// `MetricCard` states for its own constants: a measurement that drifts from the
+/// painting produces a strip that is confidently the wrong size, which is worse
+/// than not measuring at all.
+const HEADLINE_SIZE: f32 = 24.0;
+const DETAIL_SIZE: f32 = 12.0;
+const TREND_SIZE: f32 = 11.0;
+/// Width `draw_trend` spends before its label: an 8pt gap from the headline
+/// plus a 9pt arrow. It zeroes the row's `item_spacing` first, so this is the
+/// whole gap — the row's own spacing does not also apply.
+const TREND_ARROW: f32 = 17.0;
+const SPARK_HEIGHT: f32 = 22.0;
+const RANGE_HEIGHT: f32 = 9.0;
+const MARGIN_X: f32 = 12.0;
+/// Taller than the sides: the top margin reserves room for the window pill,
+/// which is painted absolutely into the card's top-right corner.
+const MARGIN_TOP: f32 = 26.0;
+const MARGIN_BOTTOM: f32 = 12.0;
 
 /// A low / median / high price triple for a window's range bar. Positions are
 /// mapped onto a domain shared across the whole strip, so the bands are
@@ -158,8 +202,18 @@ impl<'a> StatStrip<'a> {
         self
     }
 
-    /// Fixed width of each card, keeping the row aligned. Defaults to 190.
-    pub fn card_width(mut self, width: f32) -> Self {
+    /// FLOOR for the shared card width, not the width itself. Defaults to 190.
+    ///
+    /// The strip decides the actual width: it measures every card, takes the
+    /// widest, and gives them all that — then fills the row, so a strip always
+    /// spans its container rather than trailing off into dead space. This
+    /// number only stops a strip of very short values collapsing into a huddle
+    /// of tiny cards, and sets how many columns fit before the strip wraps.
+    ///
+    /// Renamed from a "fixed width" that never was one: the value was a floor
+    /// on the frame, and the frame grew to its content regardless. See
+    /// [`Self::show`].
+    pub fn min_card_width(mut self, width: f32) -> Self {
         self.card_width = width;
         self
     }
@@ -191,18 +245,147 @@ impl<'a> StatStrip<'a> {
                     Some((lo.min(r.low), hi.max(r.high)))
                 });
 
-        // `left_to_right(TOP)` — top-align the cards so differing heights don't
-        // cascade into a staircase (which `ui.horizontal`'s center align does
-        // when it can't know row height up front).
+        if self.windows.is_empty() {
+            return StatStripResponse { spark_hover: None };
+        }
+
+        // MEASURE, THEN LAY OUT — the discipline `MetricRow` already documents,
+        // arrived at here the hard way.
+        //
+        // This used to be `left_to_right(TOP).with_main_wrap(true)` over cards
+        // that each asked for `card_width`. Neither half worked:
+        //
+        // - `card_width` was a FLOOR, not a width. Each card is an `egui::Frame`
+        //   and a frame grows to its content, so the headline row — headline
+        //   plus trend delta, side by side — pushed the card as wide as its
+        //   longest string. A strip of four windows came out four different
+        //   widths, ordered by how long each trend text happened to be:
+        //   "+0 ₳ / -0 ₳" gave a 320pt card and "+804523 ₳ / -835199 ₳" a 525pt
+        //   one. Worse, an overflowing child is unioned into the parent's
+        //   `max_rect` by `Region::expand_to_include_rect`, so the overflow
+        //   spread outward rather than clipping.
+        // - The wrap then broke the row into ragged groups — three cards and a
+        //   lonely fourth — because it packs greedily at whatever widths it was
+        //   handed.
+        //
+        // So: measure every card, take the widest and the tallest, choose a
+        // column count that fits, and give every card the same box.
+        let natural_w = self.natural_width(ui);
+        let gap = ui.spacing().item_spacing.x;
+        let avail = ui.available_width();
+
+        // How many columns fit at the FLOOR width — then the cards share the
+        // row equally, so the strip spans its container instead of leaving a
+        // gutter of dead space on the right. Never more columns than windows,
+        // never fewer than one.
+        let cols = (((avail + gap) / (self.card_width + gap)).floor() as usize)
+            .clamp(1, self.windows.len());
+        let w = ((avail - gap * (cols - 1) as f32) / cols as f32)
+            // 1pt of slack: `available_width` is measured before the row lays
+            // out and does not know about a scrollbar that may yet appear.
+            - 1.0;
+        // A measured card wider than its share is not clipped — it keeps its
+        // own width and the row overflows visibly, which is a local failure
+        // rather than a silently truncated number.
+        let w = w.max(natural_w.min(self.card_width));
+        // HEIGHT IS MEASURED SECOND, because it DEPENDS on the width: a trend
+        // that does not fit beside its headline takes a line of its own, and
+        // whether it fits is not knowable until the column count is settled.
+        // Measuring both in one pass is what left the narrow strip with two
+        // card heights in the same row.
+        let h = self.stack_height(ui, w);
+
         let mut spark_hover = None;
-        ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-            for (wi, w) in self.windows.iter().enumerate() {
-                if let Some((resp, bucket)) = self.card(ui, w, domain) {
-                    spark_hover = Some((wi, bucket, resp));
+        // `Align::TOP` is load-bearing: `ui.horizontal` centres by default, so
+        // cards of differing height sit at differing tops and the row looks
+        // staggered even once the widths agree.
+        ui.vertical(|ui| {
+            for (row, chunk) in self.windows.chunks(cols).enumerate() {
+                if row > 0 {
+                    ui.add_space(ui.spacing().item_spacing.y);
                 }
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
+                    for (i, window) in chunk.iter().enumerate() {
+                        let wi = row * cols + i;
+                        if let Some((resp, bucket)) = self.card(ui, window, domain, w, h) {
+                            spark_hover = Some((wi, bucket, resp));
+                        }
+                    }
+                });
             }
         });
         StatStripResponse { spark_hover }
+    }
+
+    /// Width of one line of text at a given size, measured the way the card
+    /// paints it. A free-standing helper because both measuring passes and the
+    /// card itself need the same answer.
+    fn text_w(ui: &Ui, s: &str, size: f32) -> f32 {
+        ui.painter()
+            .layout_no_wrap(s.to_owned(), FontId::proportional(size), Color32::WHITE)
+            .size()
+            .x
+    }
+
+    /// Does this window's trend fit beside its headline in a card `w` wide?
+    ///
+    /// The one place the question is asked, so [`Self::stack_height`] and
+    /// [`Self::card`] cannot disagree about it — if they did, a card would
+    /// reserve room for one layout and paint another.
+    fn trend_fits(ui: &Ui, w: &StatWindow, card_w: f32) -> bool {
+        let Some((_, label)) = &w.trend else {
+            return true;
+        };
+        let row = Self::text_w(ui, &w.headline, HEADLINE_SIZE)
+            + TREND_ARROW
+            + Self::text_w(ui, label, TREND_SIZE);
+        row <= card_w - MARGIN_X * 2.0
+    }
+
+    /// The widest headline row across the windows, floored at the caller's
+    /// minimum. This is what decides how many columns fit.
+    ///
+    /// Measured with exactly the font sizes and spacings [`Self::card`] paints
+    /// with — a measurement that drifts from the painting is worse than none,
+    /// because it produces a strip that is confidently the wrong size.
+    fn natural_width(&self, ui: &Ui) -> f32 {
+        let mut width = self.card_width;
+        for w in self.windows {
+            // Headline and trend sit side by side — see `TREND_ARROW` for why
+            // the row's own item spacing is not part of the gap.
+            let mut row = Self::text_w(ui, &w.headline, HEADLINE_SIZE);
+            if let Some((_, label)) = &w.trend {
+                row += TREND_ARROW + Self::text_w(ui, label, TREND_SIZE);
+            }
+            width = width.max(row + MARGIN_X * 2.0);
+        }
+        width
+    }
+
+    /// The tallest card in the strip, at a settled card width.
+    ///
+    /// Every card is drawn at this height so the row keeps one top and one
+    /// bottom edge — windows carry different marks (a quiet window has no
+    /// sparkline), and letting each size itself is what made the row look
+    /// staggered even once the widths agreed.
+    fn stack_height(&self, ui: &Ui, card_w: f32) -> f32 {
+        let mut height: f32 = 0.0;
+        for w in self.windows {
+            // The vertical stack, in the order `card` draws it.
+            let mut h = MARGIN_TOP + HEADLINE_SIZE * 1.2;
+            if !Self::trend_fits(ui, w, card_w) {
+                h += TREND_SIZE * 1.6;
+            }
+            if w.spark.as_ref().is_some_and(|s| s.len() >= 2) {
+                h += 6.0 + SPARK_HEIGHT;
+            }
+            if w.range.is_some() {
+                h += 6.0 + RANGE_HEIGHT;
+            }
+            h += 4.0 + DETAIL_SIZE * 1.4 + MARGIN_BOTTOM;
+            height = height.max(h);
+        }
+        height
     }
 
     /// Render one card. Returns the sparkline's `(response, bucket)` when the
@@ -212,6 +395,8 @@ impl<'a> StatStrip<'a> {
         ui: &mut Ui,
         w: &StatWindow,
         domain: Option<(f64, f64)>,
+        card_w: f32,
+        card_h: f32,
     ) -> Option<(egui::Response, usize)> {
         let mut spark_hover = None;
         // Top margin reserves room for the corner pill (painted absolutely
@@ -220,32 +405,52 @@ impl<'a> StatStrip<'a> {
             .fill(theme::BG_HIGHLIGHT)
             .corner_radius(6.0)
             .inner_margin(Margin {
-                left: 12,
-                right: 12,
-                top: 26,
-                bottom: 12,
+                left: MARGIN_X as i8,
+                right: MARGIN_X as i8,
+                top: MARGIN_TOP as i8,
+                bottom: MARGIN_BOTTOM as i8,
             })
             .stroke(egui::Stroke::new(1.0_f32, theme::BORDER));
 
-        // Fixed-width region so the row stays aligned regardless of content.
-        ui.allocate_ui(Vec2::new(self.card_width, 0.0), |ui| {
+        let inner_w = card_w - MARGIN_X * 2.0;
+        ui.allocate_ui(Vec2::new(card_w, card_h), |ui| {
             let card = frame.show(ui, |ui| {
                 ui.vertical(|ui| {
-                    ui.set_width(self.card_width - 24.0);
+                    // BOTH bounds, and a height floor. A minimum alone lets the
+                    // content grow the card — which is the bug this widget had
+                    // — and a maximum alone lets it shrink. The height floor is
+                    // what stops a window with no sparkline sitting shorter
+                    // than its neighbours and breaking the row's bottom edge.
+                    ui.set_min_width(inner_w);
+                    ui.set_max_width(inner_w);
+                    ui.set_min_height(card_h - MARGIN_TOP - MARGIN_BOTTOM);
 
-                    // Headline (centred) with the trend delta inline beside it.
+                    // Headline, with the trend delta beside it — or beneath it
+                    // when the pair does not fit.
+                    //
+                    // The decision is made by `trend_fits`, NOT by letting
+                    // `horizontal_wrapped` sort it out. egui wraps a wrapped row
+                    // at word boundaries INSIDE the label, which broke
+                    // "+373 ₳ / -876 ₳" across two lines with a lone "₳"
+                    // underneath. The trend is one quantity and moves as one.
+                    let fits = Self::trend_fits(ui, w, card_w);
                     ui.vertical_centered(|ui| {
                         ui.horizontal(|ui| {
                             ui.label(
                                 RichText::new(&w.headline)
                                     .color(self.value_color)
-                                    .size(24.0)
+                                    .size(HEADLINE_SIZE)
                                     .strong(),
                             );
-                            if let Some((dir, label)) = &w.trend {
+                            if let (true, Some((dir, label))) = (fits, &w.trend) {
                                 draw_trend(ui, *dir, label);
                             }
                         });
+                        if let (false, Some((dir, label))) = (fits, &w.trend) {
+                            ui.horizontal(|ui| {
+                                draw_trend(ui, *dir, label);
+                            });
+                        }
                     });
 
                     // Activity sparkline. Crosshair-only hover — the caller
@@ -255,7 +460,7 @@ impl<'a> StatStrip<'a> {
                     {
                         ui.add_space(6.0);
                         let resp = Sparkline::new(series)
-                            .height(22.0)
+                            .height(SPARK_HEIGHT)
                             .line_width(1.5)
                             .line_color(self.value_color)
                             .fill(tint(self.value_color, 30))
@@ -274,14 +479,22 @@ impl<'a> StatStrip<'a> {
                         self.draw_range_bar(ui, r, lo, hi);
                     }
 
-                    // Caption beneath the marks. Real stats read in the
-                    // secondary tone; the empty-window note stays faded.
-                    ui.add_space(4.0);
+                    // Caption ON THE CARD'S FLOOR, not merely after the marks.
+                    //
+                    // Cards in a strip do not all carry the same marks — a
+                    // window with no activity has no sparkline — so a caption
+                    // that simply follows the last mark sits at a different
+                    // height on every card. The row then has three "N tx" lines
+                    // at three heights, which reads as misalignment even though
+                    // the cards themselves are flush. Taking up the slack first
+                    // gives the strip a shared bottom baseline.
+                    let slack = ui.available_height() - DETAIL_SIZE * 1.4;
+                    ui.add_space(slack.max(4.0));
                     let (detail, color) = match &w.detail {
                         Some(d) => (d.as_str(), theme::TEXT_SECONDARY),
                         None => (self.empty_note, theme::TEXT_MUTED),
                     };
-                    ui.label(RichText::new(detail).color(color).size(12.0));
+                    ui.label(RichText::new(detail).color(color).size(DETAIL_SIZE));
                 });
             });
 

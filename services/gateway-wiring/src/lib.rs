@@ -1440,3 +1440,98 @@ pub struct GatewayStatus {
     #[serde(default)]
     pub triggers_dispatched: u64,
 }
+
+/// Severity of a captured log line, mirroring `tracing::Level`.
+///
+/// Its own enum rather than `tracing::Level` because this type crosses a wire
+/// and is rendered by a browser — neither end should have to depend on the
+/// logging framework the listener happens to use. Ordered least-severe-first
+/// so a "show me warnings and worse" filter is a comparison rather than a
+/// match arm per level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+impl LogLevel {
+    /// Short uppercase label, the width every line aligns on.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Trace => "TRACE",
+            Self::Debug => "DEBUG",
+            Self::Info => "INFO",
+            Self::Warn => "WARN",
+            Self::Error => "ERROR",
+        }
+    }
+
+    /// Every level, least severe first — for a filter control that must not
+    /// forget one when a level is added.
+    pub fn all() -> [Self; 5] {
+        [
+            Self::Trace,
+            Self::Debug,
+            Self::Info,
+            Self::Warn,
+            Self::Error,
+        ]
+    }
+}
+
+/// One captured log line from the listener.
+///
+/// **This is the `wrangler tail` output, delivered to the surface that already
+/// knows what it means.** The conversation feed answers "what did augie do
+/// with that message"; this answers everything else — why the socket dropped,
+/// which close code Discord sent, whether the identify budget was hit, why a
+/// dispatch failed. Those only ever existed as `tracing` calls, so the only
+/// way to read them was to be tailing at the moment they happened.
+///
+/// Deliberately flat text rather than structured fields: it is captured from
+/// *existing* call sites with no per-site work, so a `tracing::warn!` added
+/// tomorrow surfaces here without anyone remembering to teach this type about
+/// it. Structure would be nicer to render and would guarantee drift.
+///
+/// **Operator-only on the wire.** The listener logs message previews, guild
+/// ids and authors across every guild it serves, so this stream is global
+/// content by construction and cannot be filtered per client the way
+/// [`RecentActivity`] is.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GatewayLogEntry {
+    /// Unix milliseconds.
+    pub at_ms: f64,
+    pub level: LogLevel,
+    /// The `tracing` target — the module the line came from, trimmed to the
+    /// last segment. Enough to tell a DO line from a worker one.
+    #[serde(default)]
+    pub target: String,
+    /// The formatted message, with any structured fields appended as
+    /// `key=value`.
+    pub message: String,
+}
+
+/// How many log lines the listener keeps, and the cap a client applying
+/// appends must ring at.
+///
+/// Larger than the conversation feed for the reason logs are always larger
+/// than conversations: one message can produce a dozen lines, and the whole
+/// point is to still hold the reconnect that happened before you looked.
+/// Shared for the same reason [`MAX_RECENT_ACTIVITY`] is — a client capped
+/// above the server would hold lines the server had already dropped, and its
+/// view and the next snapshot would silently disagree.
+pub const MAX_GATEWAY_LOG: usize = 250;
+
+/// How many WARN/ERROR lines survive an eviction.
+///
+/// The rest of the ring is in-memory only, and that is the right trade: most
+/// of it describes a socket that eviction has already ended. But "what went
+/// wrong while nobody was watching" is exactly the question a live tail cannot
+/// answer, so the lines that record a failure are checkpointed with the resume
+/// state and are there on the next connect. Small, because it rides a `put`
+/// that already runs on every heartbeat.
+pub const MAX_PERSISTED_LOG: usize = 40;

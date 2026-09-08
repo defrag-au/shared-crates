@@ -64,6 +64,9 @@ pub struct ActivityLanes<'a> {
 
 const IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
 const OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
+/// Directionless events. Matches [`crate::time_spine`]'s neutral tint — the two
+/// widgets draw the same `MarkKind` and must not disagree about its colour.
+const NEUTRAL: Color32 = Color32::from_rgb(0x7a, 0x82, 0x94);
 
 impl<'a> ActivityLanes<'a> {
     pub fn new(
@@ -214,6 +217,9 @@ impl<'a> ActivityLanes<'a> {
                 let (y0, y1, col) = match kind {
                     MarkKind::In => (mid, top + 2.0, IN),
                     MarkKind::Out => (mid, top + lane_h - 2.0, OUT),
+                    // Straddles the midline, as it does on the spine: the two
+                    // widgets draw the same kind and must read the same way.
+                    MarkKind::Neutral => (mid - 2.0, mid + 2.0, NEUTRAL),
                 };
                 painter.line_segment(
                     [pos2(x, y0), pos2(x, y1)],

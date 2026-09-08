@@ -15,8 +15,10 @@ pub mod collection_list;
 pub mod command_palette;
 pub mod conversation_history;
 pub mod coverage_lanes;
+pub mod disclosure;
 pub mod distribution;
 pub mod distribution_waterfall;
+pub mod drawer;
 pub mod error_note;
 pub mod event_wiring;
 pub mod flip_counter;
@@ -29,6 +31,7 @@ pub mod formatting;
 pub mod gated;
 pub mod icon_gallery;
 pub mod leaderboard;
+pub mod listing_grid;
 pub mod machine;
 pub mod marquee;
 pub mod mesh_playground;
@@ -40,6 +43,7 @@ pub mod palette_editor;
 pub mod pane_nav;
 pub mod party_annotator;
 pub mod party_badge;
+pub mod perf_strip;
 pub mod perspective_text;
 pub mod pip_row;
 pub mod price_timeline;
@@ -62,6 +66,7 @@ pub mod tag_list;
 pub mod tcg_card;
 pub mod tier_ladder;
 pub mod time_spine;
+pub mod time_spine_density;
 pub mod timestamp;
 pub mod token_history;
 pub mod token_kinetic;
@@ -94,6 +99,7 @@ pub mod leaderboard_table;
 // Utility widgets
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
+pub mod image_stack;
 pub mod image_text_editor;
 
 // Trade desk widgets
@@ -110,6 +116,7 @@ pub mod utxo_map;
 pub mod wallet_asset_picker;
 
 // TX cart
+pub mod tx_card;
 pub mod tx_cart;
 
 // Primitives — foundational composables (semantic chips, ID displays,
@@ -125,6 +132,7 @@ pub mod theme_states;
 pub mod toast;
 
 // Layout
+pub mod corner_action;
 pub mod grouped_section;
 pub mod offer_tile;
 
@@ -139,5 +147,6 @@ pub mod fungibles_row;
 pub mod persona_strip;
 pub mod user_badge;
 pub mod variant_split;
+pub mod viewport;
 pub mod wallet_identity_header;
 pub mod wallet_list;

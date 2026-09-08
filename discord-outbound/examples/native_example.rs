@@ -1,5 +1,5 @@
-use discord_client::compat::twilight::TwEmbedBuilder;
-use discord_client::{AttachmentInput, DiscordClient, DiscordMessage, NativeDiscordClient};
+use discord_outbound::compat::twilight::TwEmbedBuilder;
+use discord_outbound::{AttachmentInput, DiscordClient, DiscordMessage, NativeDiscordClient};
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Example 1: Simple text message
     println!("Sending simple text message...");
     let simple_message = DiscordMessage {
-        content: Some("Hello from discord-client native example!".to_string()),
+        content: Some("Hello from discord-outbound native example!".to_string()),
         embeds: None,
         attachments: None,
     };
@@ -30,8 +30,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Edit the first message content to demonstrate editing
     println!("Editing the first message...");
-    let edit = discord_client::DiscordMessageEdit {
-        content: Some("Hello from discord-client (edited)!".to_string()),
+    let edit = discord_outbound::DiscordMessageEdit {
+        content: Some("Hello from discord-outbound (edited)!".to_string()),
         embeds: None,
     };
     let response_id = response.id.to_string();
@@ -44,7 +44,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Sending message with embed...");
     let embed = TwEmbedBuilder::new()
         .title("Native Client Example")
-        .description("This message was sent using the native discord-client")
+        .description("This message was sent using the native discord-outbound")
         .color(0x00ff00)
         .field(EmbedFieldBuilder::new("Platform", "Native Rust").inline())
         .field(EmbedFieldBuilder::new("HTTP Client", "reqwest").inline())
@@ -117,7 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Example 4: Edit text of the attachment message; attachment should be preserved
     println!("Editing attachment message content (attachment should remain)...");
-    let edit_keep_attachment = discord_client::DiscordMessageEdit {
+    let edit_keep_attachment = discord_outbound::DiscordMessageEdit {
         content: Some("Updated text; attachment should still be visible.".to_string()),
         embeds: None,
     };
@@ -170,7 +170,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .field(EmbedFieldBuilder::new("Action", "edit + attach").inline())
         .build();
 
-    let edit_with_new = discord_client::DiscordMessageEdit {
+    let edit_with_new = discord_outbound::DiscordMessageEdit {
         content: Some("Content updated during attachment add".to_string()),
         embeds: Some(vec![embed2]),
     };

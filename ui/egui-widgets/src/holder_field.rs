@@ -11,6 +11,21 @@
 //! | mint | `None` | holder | flies in from the emitter |
 //! | transfer | holder | holder | flies pile → pile |
 //! | burn | holder | `None` | fades out where it sat |
+//! | listing | holder | *same* | tints amber, stays put |
+//!
+//! ## Escrow is a TINT, not a destination
+//!
+//! A listing is the one move that must not move anything. The seller has
+//! parted with the UTxO but not with the claim — a delist hands it straight
+//! back — so drawing it as a transfer seats the marketplace as a holder, and
+//! on a real collection that pile is the biggest on screen. Measured on
+//! Perps: Wayup ranked first by holdings, above every wallet in the drop.
+//!
+//! So [`AssetMove::escrow`] is a move IN PLACE (`from == to`) carrying
+//! [`Custody::Escrowed`]. The dot keeps its exact seat and changes colour;
+//! the sale that follows flies from the SELLER to the buyer, one hop, with no
+//! venue in the middle. Deciding *what* counts as escrow is the caller's job
+//! — this widget knows only that some dots are spoken for.
 //!
 //! This supersedes the mint-only arrivals view: during the mint window it looks
 //! the same (everything arriving from the emitter), and afterwards it keeps
@@ -45,8 +60,33 @@ use crate::motion::{Easing, tween, tween_bool, tween_from};
 use crate::selection::Selection;
 use crate::time_spine::SpineState;
 
+/// Whether the holder has the asset IN HAND after a move, or somebody else is
+/// holding it for them.
+///
+/// A marketplace listing is the case this exists for. The seller has parted
+/// with the UTxO but not with the claim: they get it back on a delist, and
+/// while it sits in escrow no third party owns it. Rendering that as a
+/// transfer to the venue produces the reading the whole treatment exists to
+/// stop — a marketplace as the collection's largest holder — so an escrowed
+/// dot stays in its holder's pile and tints instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Custody {
+    /// The holder has it. The ordinary case, and the only one before escrow
+    /// was modelled.
+    #[default]
+    InHand,
+    /// Held on the holder's behalf — listed, offered, or otherwise locked in
+    /// a contract they can unwind. The dot does not move.
+    Escrowed,
+}
+
 /// One change of custody. `from`/`to` are party keys; `None` means the asset
 /// did not exist yet (a mint) or ceased to (a burn).
+///
+/// `from == to` is a move IN PLACE: nothing changes hands, so the dot keeps
+/// its exact seat and only [`AssetMove::custody`] can differ. That is how a
+/// listing and a delist are expressed, and it is also why a genuine UTxO
+/// shuffle within one wallet costs nothing to draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AssetMove<'a> {
     pub timestamp: i64,
@@ -54,6 +94,8 @@ pub struct AssetMove<'a> {
     pub asset: &'a str,
     pub from: Option<&'a str>,
     pub to: Option<&'a str>,
+    /// Where the asset sits AFTER this move.
+    pub custody: Custody,
 }
 
 impl<'a> AssetMove<'a> {
@@ -63,6 +105,7 @@ impl<'a> AssetMove<'a> {
             asset,
             from: None,
             to: Some(to),
+            custody: Custody::InHand,
         }
     }
 
@@ -72,6 +115,7 @@ impl<'a> AssetMove<'a> {
             asset,
             from: Some(from),
             to: Some(to),
+            custody: Custody::InHand,
         }
     }
 
@@ -81,6 +125,37 @@ impl<'a> AssetMove<'a> {
             asset,
             from: Some(from),
             to: None,
+            custody: Custody::InHand,
+        }
+    }
+
+    /// `holder` LISTS the asset — it leaves their wallet for a contract and
+    /// stays theirs.
+    ///
+    /// Deliberately in place (`from == to == holder`) rather than a move to
+    /// the venue: the caller has already decided this is escrow, and naming
+    /// the venue here would only invite the widget to seat it.
+    pub fn escrow(timestamp: i64, asset: &'a str, holder: &'a str) -> Self {
+        Self {
+            timestamp,
+            asset,
+            from: Some(holder),
+            to: Some(holder),
+            custody: Custody::Escrowed,
+        }
+    }
+
+    /// `holder` takes it back off the market — the inverse of
+    /// [`AssetMove::escrow`]. A SALE is not this: that is an ordinary
+    /// [`AssetMove::transfer`] from seller to buyer, which is what makes the
+    /// dot fly.
+    pub fn delist(timestamp: i64, asset: &'a str, holder: &'a str) -> Self {
+        Self {
+            timestamp,
+            asset,
+            from: Some(holder),
+            to: Some(holder),
+            custody: Custody::InHand,
         }
     }
 }
@@ -94,6 +169,9 @@ pub struct HolderFieldResponse {
     pub holders_shown: usize,
     /// Moves that happened inside the brush window (0 when no brush).
     pub moves_in_window: usize,
+    /// Of [`HolderFieldResponse::assets_shown`], how many are escrowed —
+    /// listed, at the playhead. The number a legend puts beside the tint.
+    pub listed_shown: u32,
 }
 
 pub struct HolderField<'a> {
@@ -102,6 +180,7 @@ pub struct HolderField<'a> {
     selection: &'a mut Selection,
     flight_secs: f32,
     dot_color: Option<Color32>,
+    escrow_color: Option<Color32>,
     height: f32,
     label: Option<&'a dyn Fn(&str) -> String>,
 }
@@ -122,6 +201,7 @@ impl<'a> HolderField<'a> {
             // ~60% of it. At 0.7s a large sale still read as sudden.
             flight_secs: 1.2,
             dot_color: None,
+            escrow_color: None,
             height: 320.0,
             label: None,
         }
@@ -134,6 +214,15 @@ impl<'a> HolderField<'a> {
 
     pub fn dot_color(mut self, c: Color32) -> Self {
         self.dot_color = Some(c);
+        self
+    }
+
+    /// The tint for a dot in [`Custody::Escrowed`]. Defaults to
+    /// [`crate::theme::ACCENT_ORANGE`] — far enough from the resting blue to
+    /// read at 2px, and not the red that would make a routine listing look
+    /// like a problem.
+    pub fn escrow_color(mut self, c: Color32) -> Self {
+        self.escrow_color = Some(c);
         self
     }
 
@@ -154,6 +243,7 @@ impl<'a> HolderField<'a> {
             selection,
             flight_secs,
             dot_color,
+            escrow_color,
             height,
             label,
         } = self;
@@ -162,6 +252,7 @@ impl<'a> HolderField<'a> {
         let muted = ui.visuals().weak_text_color();
         let ink = ui.visuals().text_color();
         let accent = dot_color.unwrap_or(Color32::from_rgb(0x39, 0x87, 0xe5));
+        let escrowed = escrow_color.unwrap_or(crate::theme::ACCENT_ORANGE);
 
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
@@ -178,6 +269,7 @@ impl<'a> HolderField<'a> {
                 assets_shown: 0,
                 holders_shown: 0,
                 moves_in_window: 0,
+                listed_shown: 0,
             };
         }
         let n = model.parties.len();
@@ -193,6 +285,11 @@ impl<'a> HolderField<'a> {
         // Per asset: who holds it now, and the move that put it there.
         let mut held: Vec<Option<(usize, usize)>> = vec![None; model.assets.len()]; // (party, move idx)
         let mut in_window: Vec<bool> = vec![false; model.assets.len()];
+        // Escrowed AT THE PLAYHEAD. Per asset rather than per move because it
+        // is a STATE, not an event: a dot listed in March and sold in June is
+        // orange for those three months and blue on either side, so scrubbing
+        // backwards has to un-list it just as scrubbing forwards lists it.
+        let mut listed: Vec<bool> = vec![false; model.assets.len()];
 
         // A dot's SLOT in its pile is allocated when it ARRIVES and released
         // when it leaves — never recomputed from the current holdings.
@@ -221,6 +318,20 @@ impl<'a> HolderField<'a> {
             if m.timestamp > spine.playhead {
                 break;
             }
+            // IN PLACE: the asset did not change hands, so the seat must not
+            // change either. Freeing and re-taking it would hand back the
+            // LOWEST free slot rather than the one just vacated, and a listing
+            // would make the dot jump within its own pile — the exact jitter
+            // the free-list exists to prevent. Only the tint moves.
+            if m.from.is_some() && m.from == m.to {
+                listed[m.asset] = m.custody == Custody::Escrowed;
+                if m.timestamp >= brush_lo && m.timestamp <= brush_hi {
+                    in_window[m.asset] = true;
+                    moves_in_window += 1;
+                }
+                continue;
+            }
+            listed[m.asset] = m.custody == Custody::Escrowed;
             // Leaving its previous pile frees that seat.
             if let Some((old, _)) = held[m.asset] {
                 free[old].push(std::cmp::Reverse(slot_of[m.asset]));
@@ -244,11 +355,13 @@ impl<'a> HolderField<'a> {
         }
 
         let mut shown: Vec<u32> = vec![0; n];
+        let mut listed_shown = 0u32;
         for (ai, h) in held.iter().enumerate() {
             if let Some((p, _)) = h
                 && (!brushed || in_window[ai])
             {
                 shown[*p] += 1;
+                listed_shown += u32::from(listed[ai]);
             }
         }
         let assets_shown: u32 = shown.iter().sum();
@@ -417,7 +530,14 @@ impl<'a> HolderField<'a> {
                     crate::motion::forget(&ctx, dot_id);
                 }
             }
-            let col = accent.linear_multiply(emph[p]);
+            // The tint is on the RESTING dot only. A dot in flight is by
+            // definition changing hands, which is the one thing escrow is
+            // not, so the trail and head stay the accent colour.
+            let hue = match listed[ai] {
+                true => escrowed,
+                false => accent,
+            };
+            let col = hue.linear_multiply(emph[p]);
             // EACH DOT LEAVES ON ITS OWN BEAT. A hundred-asset sale where
             // every dot shares one start is a single clump crossing the field
             // and landing at once — the eye reads a blink, not a movement.
@@ -652,6 +772,7 @@ impl<'a> HolderField<'a> {
             assets_shown,
             holders_shown,
             moves_in_window,
+            listed_shown,
         }
     }
 }
@@ -666,6 +787,17 @@ struct Step {
     asset: usize,
     from: Option<usize>,
     to: Option<usize>,
+    custody: Custody,
+}
+
+impl Step {
+    /// Nothing changed hands — a listing, a delist, or a UTxO shuffle inside
+    /// one wallet. Excluded from holdings arithmetic on purpose: counting it
+    /// would show a party losing and regaining the same asset, inflating
+    /// `gained`/`lost` with churn that never left the pile.
+    fn in_place(&self) -> bool {
+        self.from.is_some() && self.from == self.to
+    }
 }
 
 #[derive(Clone)]
@@ -715,12 +847,16 @@ impl Model {
                 asset,
                 from,
                 to,
+                custody: m.custody,
             });
         }
         let n = parties.len();
         let (mut cur, mut peak) = (vec![0i64; n], vec![0u32; n]);
         let (mut gained, mut lost) = (vec![0u32; n], vec![0u32; n]);
         for s in &timeline {
+            if s.in_place() {
+                continue;
+            }
             if let Some(f) = s.from {
                 cur[f] -= 1;
                 lost[f] += 1;
@@ -1338,5 +1474,77 @@ mod tests {
         assert_eq!(r.assets_shown, 2, "a1 + a2 changed hands in the window");
         assert_eq!(r.moves_in_window, 2);
         assert_eq!(r.holders_shown, 1, "both landed on carol");
+    }
+
+    /// A listing tints; it does not move, and it does not seat a venue.
+    ///
+    /// The failure this pins is the one that shipped: escrow drawn as a
+    /// transfer put the marketplace in the field as the largest holder, and
+    /// the seller looked like they had sold something they still owned. So
+    /// the assertions are about COUNTS — holders stays at one — rather than
+    /// about pixels.
+    #[test]
+    fn a_listing_tints_in_place_and_a_sale_flies_from_the_seller() {
+        let moves = vec![
+            AssetMove::mint(10, "a1", "alice"),
+            AssetMove::mint(11, "a2", "alice"),
+            // a1 goes up for sale, a2 stays in hand.
+            AssetMove::escrow(20, "a1", "alice"),
+            // …then sells. The venue is never a party to either step.
+            AssetMove::transfer(30, "a1", "alice", "bob"),
+        ];
+        let mut spine = SpineState::new((0, 40));
+        let mut sel = Selection::default();
+        let ctx = egui::Context::default();
+        let run = |ctx: &egui::Context, spine: &SpineState, sel: &mut Selection| {
+            let mut out = None;
+            let raw = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(600.0, 400.0))),
+                ..Default::default()
+            };
+            ctx.begin_pass(raw);
+            egui::Area::new(Id::new("escrow")).show(ctx, |ui| {
+                ui.set_min_size(vec2(600.0, 400.0));
+                out = Some(HolderField::new(&moves, spine, sel).show(ui));
+            });
+            let _ = ctx.end_pass();
+            out.unwrap()
+        };
+
+        // Listed but unsold: alice still holds BOTH, one of them spoken for.
+        spine.set_playhead(25);
+        let r = run(&ctx, &spine, &mut sel);
+        assert_eq!(r.assets_shown, 2, "escrow moved nothing");
+        assert_eq!(r.holders_shown, 1, "no venue pile");
+        assert_eq!(r.listed_shown, 1, "a1 is listed, a2 is not");
+
+        // Sold: one hop, seller to buyer, and the tint clears with the sale.
+        spine.set_playhead(35);
+        let r = run(&ctx, &spine, &mut sel);
+        assert_eq!(r.assets_shown, 2);
+        assert_eq!(r.holders_shown, 2, "alice keeps a2, bob gains a1");
+        assert_eq!(r.listed_shown, 0, "a sale is not an escrow");
+
+        // Scrubbing BACK un-lists it. Escrow is state, not a one-way latch.
+        spine.set_playhead(25);
+        let r = run(&ctx, &spine, &mut sel);
+        assert_eq!(r.listed_shown, 1);
+    }
+
+    /// A delist clears the tint without disturbing the pile.
+    #[test]
+    fn a_delist_returns_the_asset_to_hand() {
+        let moves = [
+            AssetMove::mint(10, "a1", "alice"),
+            AssetMove::escrow(20, "a1", "alice"),
+            AssetMove::delist(30, "a1", "alice"),
+        ];
+        assert_eq!(moves[1].custody, Custody::Escrowed);
+        assert_eq!(moves[2].custody, Custody::InHand);
+        // Both are in place, so neither counts as a change of hands: alice
+        // must not read as having lost and regained her own asset.
+        for m in &moves[1..] {
+            assert_eq!(m.from, m.to, "in place");
+        }
     }
 }

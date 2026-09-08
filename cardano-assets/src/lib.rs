@@ -10,6 +10,7 @@ use std::str::FromStr;
 use utoipa::ToSchema;
 
 pub mod asset_id;
+pub mod asset_role;
 pub mod cid;
 #[cfg(feature = "cip25")]
 pub mod cip25;
@@ -38,6 +39,7 @@ pub use token_type::TokenType;
 pub mod utxorpc;
 
 pub use asset_id::*;
+pub use asset_role::{AssetRole, Cip67Label, UnitStanding};
 pub use cid::{cid_v0_to_v1, normalize_cid, CidRole, ExtractedCid};
 #[cfg(feature = "cip25")]
 pub use cip25::{cip25_metadata_json, cip25_metadata_value, decode_cip25_metadata};

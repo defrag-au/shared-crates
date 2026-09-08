@@ -18,6 +18,8 @@ egui-widgets = { path = "../egui-widgets", features = ["image-editor", "gateway"
 # The vocabulary the wiring-editor story builds its fixtures from.
 gateway-wiring = { path = "../../services/gateway-wiring" }
 image-core = { path = "../image-core" }
+# The perf_strip story drives a real gauge rather than a fixture.
+perf-probe = { path = "../../perf-probe" }
 cardano-assets = { workspace = true }
 cardano-tx = { path = "../../cardano-tx" }
 wasm-bindgen = { workspace = true }
