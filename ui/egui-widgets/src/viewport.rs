@@ -368,9 +368,9 @@ mod tests {
         const SIDEBAR: f32 = 320.0;
         const MIN_CONTENT: f32 = 380.0;
         // Just under the ceiling there is not room for both.
-        assert!(COMPACT_MAX - 1.0 < SIDEBAR + MIN_CONTENT);
+        const { assert!(COMPACT_MAX - 1.0 < SIDEBAR + MIN_CONTENT) };
         // At the ceiling there is.
-        assert!(COMPACT_MAX >= SIDEBAR + MIN_CONTENT);
+        const { assert!(COMPACT_MAX >= SIDEBAR + MIN_CONTENT) };
     }
 
     /// Compact trades side padding for height. Pinned because the two move in

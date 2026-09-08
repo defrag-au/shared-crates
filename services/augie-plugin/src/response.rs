@@ -345,6 +345,10 @@ mod tests {
         assert!(parsed.ephemeral);
     }
 
+    /// A fixture carrying one envelope flag, how to read it back, and the name
+    /// to blame when it does not survive the wire.
+    type FlagCase = (CommandResponse, fn(&CommandResponse) -> bool, &'static str);
+
     /// Every envelope flag survives the round trip beside the flattened body.
     ///
     /// `#[serde(flatten)]` makes deserialisation go through serde's buffering
@@ -355,7 +359,7 @@ mod tests {
     /// each is asserted rather than assumed.
     #[test]
     fn envelope_flags_survive_beside_the_flattened_body() {
-        let cases: [(CommandResponse, fn(&CommandResponse) -> bool, &str); 4] = [
+        let cases: [FlagCase; 4] = [
             (
                 CommandResponse::launch_activity(),
                 |r| r.launch_activity,
