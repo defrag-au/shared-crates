@@ -284,7 +284,9 @@ pub trait DiscordOutbound {
             self.rate_limits()
                 .record(route, self.now_ms(), (retry_after * 1000.0).ceil() as u64);
 
-            tracing::warn!("rate limited on '{route}': retry after {retry_after:.2}s (global: {global})");
+            tracing::warn!(
+                "rate limited on '{route}': retry after {retry_after:.2}s (global: {global})"
+            );
             return Err(DiscordError::RateLimited {
                 retry_after,
                 global,
@@ -388,7 +390,11 @@ mod tests {
         }
 
         fn last(&self) -> HttpRequest {
-            self.sent.borrow().last().expect("a request was sent").clone()
+            self.sent
+                .borrow()
+                .last()
+                .expect("a request was sent")
+                .clone()
         }
 
         fn payload(&self) -> serde_json::Value {
@@ -516,7 +522,10 @@ mod tests {
         ))
         .unwrap();
 
-        assert_eq!(fake.last().url, "https://discord.com/api/v10/webhooks/app/int-tok");
+        assert_eq!(
+            fake.last().url,
+            "https://discord.com/api/v10/webhooks/app/int-tok"
+        );
         assert_eq!(fake.header("Authorization"), None);
         assert_eq!(fake.payload()["flags"], wire::EPHEMERAL);
     }
@@ -538,9 +547,15 @@ mod tests {
         );
 
         let raw = String::from_utf8_lossy(&fake.last().body).to_string();
-        assert!(raw.contains(r#"name="files[0]"; filename="render.png""#), "{raw}");
+        assert!(
+            raw.contains(r#"name="files[0]"; filename="render.png""#),
+            "{raw}"
+        );
         // And the payload still declares it, by the index the part uses.
-        assert!(raw.contains(r#""attachments":[{"id":0,"filename":"render.png"}]"#), "{raw}");
+        assert!(
+            raw.contains(r#""attachments":[{"id":0,"filename":"render.png"}]"#),
+            "{raw}"
+        );
     }
 
     /// A body with no bytes must not pay for multipart.
@@ -678,7 +693,10 @@ mod tests {
         let result = block_on(fake.edit(&target, &MessageBody::text("x"), SendOptions::default()));
 
         assert!(matches!(result, Err(DiscordError::Config(_))));
-        assert!(fake.sent.borrow().is_empty(), "nothing should have been sent");
+        assert!(
+            fake.sent.borrow().is_empty(),
+            "nothing should have been sent"
+        );
     }
 
     // ── Rate limiting ───────────────────────────────────────────────────
@@ -747,7 +765,10 @@ mod tests {
         ));
 
         assert!(matches!(result, Err(DiscordError::RateLimited { .. })));
-        assert!(fake.sent.borrow().is_empty(), "nothing should have been sent");
+        assert!(
+            fake.sent.borrow().is_empty(),
+            "nothing should have been sent"
+        );
         assert!(fake.slept.borrow().is_empty(), "best effort must not wait");
     }
 

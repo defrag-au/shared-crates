@@ -117,13 +117,36 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
 
     // One contract generation per transaction.
     //
-    // Each validator locates its payouts by its own rule — V2/V3 by the
-    // redeemer's offset, V1 by something else (its script is not open, and it
-    // fails when its payouts are not laid out as a solitary buy leaves them).
-    // Interleaving two generations' settlement blocks satisfies at most one of
-    // them: a mixed V1+V2 sweep evaluates with the V2 spend passing and BOTH V1
-    // spends failing. Refusing here turns that into a legible build error, and
-    // splitting by version is the caller's job.
+    // ## Verified against the live validator, not assumed
+    //
+    // Controls, each evaluating OK on its own:
+    //   V2 `4b5fa741…#0` alone  → fee ₳0.216508
+    //   V1 `e5558430…#1` alone  → fee ₳0.382996
+    //
+    // The two together, `evaluateTransaction` via ogmios:
+    //   ogmios 3010 → validator {index:1, purpose:"spend"} failed, traces ["3"]
+    //
+    // Input 1 is the V1 spend (inputs sort by tx hash: `4b5f…` < `e555…`), so
+    // **V2 passes and V1 fails**. Two candidate explanations were tested and
+    // BOTH ruled out:
+    //
+    // 1. *Missing required signer.* V1 demands a disclosed signer and the
+    //    signer predicate was `all()`, which silently dropped it from any
+    //    mixed sweep. Real bug, fixed below (`any()`), and the mixed sweep
+    //    still fails — so this was not the cause.
+    // 2. *Block ordering.* V2 carries its payout offset in the redeemer so it
+    //    does not care where its block sits; V1 has no offset and might need
+    //    the position a solitary buy gives it. Putting V1's block FIRST moved
+    //    V2's redeemer offset from 1 to 4, confirming the reorder took effect
+    //    — and V1 failed identically, same trace. So it is not position.
+    //
+    // A V1-only sweep of 3 evaluates fine, so V1 tolerates several script
+    // inputs and several settlement blocks; it is specifically a FOREIGN
+    // generation's presence it rejects. What exactly it asserts (trace "3")
+    // needs the V1 script decompiled — it is not in `contracts-v3`.
+    //
+    // Until that is known, refusing here turns an on-chain script failure into
+    // a legible build error. Splitting by version is the caller's job.
     let first_version = listings[0].marketplace_version;
     if let Some(other) = listings
         .iter()
@@ -230,9 +253,16 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
     // Disclosed signer: only where the contract wants one. Real jpg V2 buys
     // carry NO required signers, and a validator that inspects
     // `txInfoSignatories` positionally can be broken by an extra entry.
+    // `any`, not `all`: a required signer is a per-contract DEMAND, so one
+    // listing wanting it means the transaction must carry it or that spend
+    // fails. `all` silently dropped it from any mixed sweep — which is a
+    // property of the tx we built, not of the contracts, and is exactly the
+    // kind of self-inflicted failure that gets mistaken for an incompatibility.
+    // For a single-generation sweep the two are identical, so this changes
+    // nothing on the paths already proven against the validator.
     if listings
         .iter()
-        .all(|l| l.marketplace_version.requires_disclosed_signer())
+        .any(|l| l.marketplace_version.requires_disclosed_signer())
     {
         builder = builder.with_signer(Hash::from(extract_payment_key_hash(&deps.buyer_address)?));
     }

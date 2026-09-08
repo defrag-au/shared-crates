@@ -203,7 +203,19 @@ impl ListingGrid {
 
                 let (rect, resp) = ui.allocate_exact_size(card_size, Sense::click());
 
-                let card_hovered = resp.hovered();
+                // `contains_pointer()`, NOT `hovered()`. This card hosts a
+                // hover-revealed `CornerAction`, which is a later widget
+                // occupying part of this same rect — and `hovered()` respects
+                // occlusion, so the moment the pointer reaches that button the
+                // CARD stops being "hovered". The button is only drawn while
+                // the card is hovered, so it would vanish from under the
+                // cursor, reappear the next frame, and never survive long
+                // enough to complete a press→release. The add-to-cart was
+                // unclickable for exactly this reason.
+                //
+                // `contains_pointer()` is geometric and cannot be stolen by a
+                // child, which is what a hover-reveal control needs.
+                let card_hovered = resp.contains_pointer();
                 if card_hovered {
                     hovered_idx = Some(card_idx);
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);

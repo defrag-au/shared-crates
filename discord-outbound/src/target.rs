@@ -62,7 +62,9 @@ impl Target {
     /// The Discord endpoint that creates a message here.
     pub fn send_url(&self) -> String {
         match self {
-            Self::Channel { channel_id, .. } => format!("{BASE_URL}/channels/{channel_id}/messages"),
+            Self::Channel { channel_id, .. } => {
+                format!("{BASE_URL}/channels/{channel_id}/messages")
+            }
             Self::Followup {
                 application_id,
                 interaction_token,
