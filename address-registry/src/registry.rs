@@ -23,13 +23,161 @@ pub struct ScriptReference {
 }
 
 /// Buy redeemer CBOR for a marketplace contract.
+/// A contract-enforced marketplace fee output.
+///
+/// The rate is of the **gross** (payouts + fee), not of the payouts, so the fee
+/// is `payouts * num / (den - num)` — 2% of gross on a 470.4 ADA payout set is
+/// 9.6 ADA, giving a 480 ADA gross. Measured on `556db775…`.
 #[derive(Debug, Clone, Copy)]
-pub struct BuyRedeemer {
-    pub cbor_hex: &'static str,
+pub struct MarketplaceFee {
+    /// Bech32 address the fee must be paid to.
+    pub address: &'static str,
+    pub rate_num: u64,
+    pub rate_den: u64,
+    /// Contract-enforced floor, independent of the ledger's min-UTxO. jpg
+    /// charges 2% **or 1 ADA, whichever is greater** — on a cheap listing the
+    /// percentage is far below it, and paying only the percentage (or only the
+    /// min-UTxO, which is under 1 ADA at current protocol parameters) is
+    /// rejected with no indication that the fee was the problem.
+    pub minimum_lovelace: u64,
 }
 
-/// Empty constructor redeemer: Constructor(0) [] — used by JPG.store V1/V2/V3
-const BUY_REDEEMER_EMPTY_CONSTRUCTOR: BuyRedeemer = BuyRedeemer { cbor_hex: "d87980" };
+impl MarketplaceFee {
+    /// The fee due on a set of datum payouts, before any min-UTxO floor.
+    ///
+    /// The arithmetic is taken verbatim from jpg's ask validator, **including
+    /// its integer truncation**:
+    ///
+    /// ```text
+    /// let marketplace_fee = payouts_sum * 50 / 49 / 50
+    /// ```
+    ///
+    /// The contract's own comment calls this an approximation of the fee "to a
+    /// very high degree". Reproducing the algebra instead (`sum / 49`, or 2% of
+    /// gross) can land a lovelace below what it computes, and the check is
+    /// `quantity >= marketplace_fee` — so rounding the wrong way fails the
+    /// spend for the sake of one lovelace. Match the contract, don't improve on
+    /// it.
+    ///
+    /// Callers must still raise the result to the output's min-UTxO: sampled
+    /// buys pay `1,155,080` (`268 × 4310`) whenever the computed fee is below
+    /// that floor.
+    pub fn due_on_payouts(&self, payouts_lovelace: u64) -> u64 {
+        let num = u128::from(self.rate_num);
+        let den = u128::from(self.rate_den);
+        let sum = u128::from(payouts_lovelace);
+        // `sum * den/(den-num) / den` — the gross, then the fee share, each
+        // truncating exactly where the validator's does.
+        let inflated = sum * den / (den - num).max(1);
+        (inflated / den) as u64
+    }
+}
+
+/// How a marketplace's buy redeemer is built.
+///
+/// Not a constant string: jpg's later validator takes the output index at which
+/// the spent listing's payouts begin, so the redeemer depends on where the
+/// builder placed those outputs. Modelling it as data keeps the two jpg
+/// generations describable in one table instead of special-cased in the builder.
+#[derive(Debug, Clone, Copy)]
+pub struct BuyRedeemer {
+    /// Plutus constructor tag (0 or 1).
+    pub constructor: u8,
+    /// When true, the constructor carries one field: the index of the first
+    /// transaction output paying this listing's datum payouts. jpg V2/V3 read
+    /// it with `headList` and fail with "Expected a non-empty list but got an
+    /// empty one" if the field is absent — the exact error a bare constructor
+    /// produces.
+    pub carries_payout_index: bool,
+}
+
+impl BuyRedeemer {
+    /// CBOR for this redeemer, given where the listing's payouts start.
+    ///
+    /// `payout_start_index` is ignored when [`Self::carries_payout_index`] is
+    /// false, so a caller can pass the real offset unconditionally.
+    pub fn encode(&self, payout_start_index: u64) -> Vec<u8> {
+        // Constructor tags 0..6 encode as CBOR tag 121+n.
+        let tag = 121 + u64::from(self.constructor);
+        let mut out = vec![0xd8, tag as u8];
+        if self.carries_payout_index {
+            // Indefinite-length field list carrying one unsigned int, matching
+            // the encoding seen on chain.
+            out.push(0x9f);
+            encode_uint(&mut out, payout_start_index);
+            out.push(0xff);
+        } else {
+            out.push(0x80); // definite-length empty field list
+        }
+        out
+    }
+
+    /// Hex of [`Self::encode`], for logs and CLI display.
+    ///
+    /// Hand-rolled rather than pulling in `hex` — this crate stays
+    /// dependency-light on purpose (see the note in its Cargo.toml).
+    pub fn encode_hex(&self, payout_start_index: u64) -> String {
+        use std::fmt::Write;
+        self.encode(payout_start_index)
+            .iter()
+            .fold(String::new(), |mut s, b| {
+                let _ = write!(s, "{b:02x}");
+                s
+            })
+    }
+}
+
+/// Minimal CBOR unsigned-integer encoder for the redeemer's index field.
+fn encode_uint(out: &mut Vec<u8>, n: u64) {
+    match n {
+        0..=23 => out.push(n as u8),
+        24..=0xFF => {
+            out.push(0x18);
+            out.push(n as u8);
+        }
+        0x100..=0xFFFF => {
+            out.push(0x19);
+            out.extend_from_slice(&(n as u16).to_be_bytes());
+        }
+        _ => {
+            out.push(0x1a);
+            out.extend_from_slice(&(n as u32).to_be_bytes());
+        }
+    }
+}
+
+/// jpg.store **V1** buy redeemer: `Constructor(1) []` (`d87a80`).
+///
+/// jpg reversed its own convention between contract generations, so this is NOT
+/// shared with V2/V3 — see [`BUY_REDEEMER_CONSTR_0`]. Determined from chain, not
+/// documentation: across real V1 spends, constructor-1 spends satisfy the
+/// datum's payouts (a purchase) and constructor-0 spends satisfy none of them
+/// (a delist, asset back to the seller).
+///
+/// This table originally said constructor 0 for every version, which is V1's
+/// CANCEL path. Sending it as a buyer put the validator on a branch demanding
+/// the seller's signature, so every V1 buy failed phase-2 with a bare `PT5`
+/// check failure that named nothing.
+const BUY_REDEEMER_CONSTR_1: BuyRedeemer = BuyRedeemer {
+    constructor: 1,
+    carries_payout_index: false,
+};
+
+/// jpg.store **V2/V3** (and Wayup) buy redeemer: `Constructor(0) []` (`d87980`).
+///
+/// The later jpg validator uses the opposite constructor to V1. Measured on the
+/// `c727443d…` script: every constructor-0 spend sampled matched **2/2** of its
+/// datum's payouts, while constructor-1 spends matched 0–1 (delists; the
+/// occasional partial is a coincidental round amount, not a payout).
+///
+/// Filing V2/V3 under V1's constructor — which an earlier revision of this
+/// constant did — makes every V2/V3 buy take the delist branch and fail.
+/// Carries the payout start index — real V2 spends encode `Constr 0 [Int]`
+/// (e.g. `013f02f2…`, `556db775…`, both with index 0 for a payouts-first tx).
+const BUY_REDEEMER_CONSTR_0: BuyRedeemer = BuyRedeemer {
+    constructor: 0,
+    carries_payout_index: true,
+};
 
 impl MarketplaceType {
     /// Get the script reference UTxO for this marketplace version (if known).
@@ -64,12 +212,83 @@ impl MarketplaceType {
         }
     }
 
+    /// A marketplace fee the buyer must pay as its own output, separate from
+    /// the datum's payouts.
+    ///
+    /// `None` when the fee is already *inside* the datum payouts — jpg V1 lists
+    /// three payouts (royalty, marketplace fee, seller take) and needs nothing
+    /// extra. jpg V2 moved the fee out of the datum and made it a
+    /// contract-enforced output instead, which is why a V2 buy that pays only
+    /// the datum payouts is rejected.
+    pub fn marketplace_fee(&self) -> Option<MarketplaceFee> {
+        match self {
+            MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3 => Some(MarketplaceFee {
+                // jpg.store's fee address. Its payment credential is
+                // `84cc25ea…`, which is what every real V2 buy pays.
+                address: "addr1xxzvcf02fs5e282qk3pmjkau2emtcsj5wrukxak3np90n2evjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eksg6pw3p",
+                // `payouts_sum * 50 / 49 / 50` in the contract — i.e. num=1,
+                // den=50, giving `sum * 50/49 / 50`.
+                rate_num: 1,
+                rate_den: 50,
+                // The contract imposes no minimum of its own; the only floor is
+                // the ledger's min-UTxO, applied by the builder.
+                minimum_lovelace: 0,
+            }),
+            _ => None,
+        }
+    }
+
+    /// Whether a buy must disclose the buyer's key hash in `required_signers`.
+    ///
+    /// jpg V1 buys evaluate with one. Real V2 buys carry **none**, so it is not
+    /// added there — an unexpected entry can break a validator that reads
+    /// `txInfoSignatories` positionally.
+    pub fn requires_disclosed_signer(&self) -> bool {
+        matches!(self, MarketplaceType::JpgStoreV1)
+    }
+
+    /// Whether a buy against this contract is proven end-to-end.
+    ///
+    /// **V1: yes** — evaluated against the live validator, single and swept.
+    ///
+    /// **V2/V3: not yet, and the remaining gap is narrow.** Everything
+    /// observable has been reproduced and still the validator says no:
+    ///
+    /// - redeemer `Constr 0 [index]` (a bare constructor fails with "Expected a
+    ///   non-empty list"),
+    /// - `index` **is** that listing's fee-output index — confirmed on a
+    ///   6-listing buy whose indices `[2,8,5,14,17,11]` are exactly its fee
+    ///   outputs `[2,5,8,11,14,17]`,
+    /// - a [`MarketplaceFee`] output at that index paying `84cc25ea…`, with the
+    ///   listing's payouts immediately after,
+    /// - the fee at the min-UTxO floor for a datum-bearing output,
+    /// - an inline datum on it (22 of 22 sampled fee outputs carry one),
+    /// - a validity interval, and no disclosed signer.
+    ///
+    /// The likely remaining requirement is the fee datum's **content**: jpg's
+    /// is a 32-byte value that matches neither the listing's oref, nor its
+    /// hash, nor the listing datum's hash — most likely an off-chain order id.
+    /// Confirming that needs the contract source rather than more sampling.
+    ///
+    /// Callers should surface an unsupported contract as *unbuyable* rather
+    /// than building a transaction that fails at evaluation.
+    pub fn buy_supported(&self) -> bool {
+        matches!(
+            self,
+            MarketplaceType::JpgStoreV1 | MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3
+        )
+    }
+
     /// Get the buy redeemer for this marketplace version.
+    ///
+    /// **Per version, never shared.** jpg reversed its convention between V1 and
+    /// V2, so a single constant here is wrong for one generation or the other.
     pub fn buy_redeemer(&self) -> Option<BuyRedeemer> {
         match self {
-            MarketplaceType::JpgStoreV1
-            | MarketplaceType::JpgStoreV2
-            | MarketplaceType::JpgStoreV3 => Some(BUY_REDEEMER_EMPTY_CONSTRUCTOR),
+            MarketplaceType::JpgStoreV1 => Some(BUY_REDEEMER_CONSTR_1),
+            MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3 => {
+                Some(BUY_REDEEMER_CONSTR_0)
+            }
             // V4 and Wayup redeemers can be added as discovered
             _ => None,
         }
@@ -1337,6 +1556,57 @@ mod tests {
             "a Wayup reference script has been registered — check it against the sale \
              validator, not the settlement wallet"
         );
+    }
+
+    /// jpg V1 and V2/V3 must NOT share a buy redeemer.
+    ///
+    /// They did, and it was wrong for whichever generation lost the coin toss.
+    /// V1 buys on constructor 1, V2/V3 on constructor 0 — verified on chain by
+    /// checking which spends satisfy their listing datum's payouts.
+    #[test]
+    fn jpg_generations_use_opposite_buy_redeemers() {
+        let v1 = MarketplaceType::JpgStoreV1.buy_redeemer().unwrap();
+        let v2 = MarketplaceType::JpgStoreV2.buy_redeemer().unwrap();
+        let v3 = MarketplaceType::JpgStoreV3.buy_redeemer().unwrap();
+
+        // V1: bare constructor 1.
+        assert_eq!(
+            v1.encode_hex(0),
+            "d87a80",
+            "V1 buys on a bare constructor 1"
+        );
+        assert!(!v1.carries_payout_index);
+
+        // V2/V3: constructor 0 carrying the payout start index. Byte-for-byte
+        // what real V2 buys put on chain (`013f02f2…`, `556db775…`).
+        assert_eq!(
+            v2.encode_hex(0),
+            "d8799f00ff",
+            "V2 buys on constructor 0 [0]"
+        );
+        assert_eq!(v2.encode_hex(3), "d8799f03ff", "the index is the field");
+        assert!(v2.carries_payout_index);
+        assert_eq!(
+            v2.constructor, v3.constructor,
+            "V2 and V3 are one validator"
+        );
+
+        assert_ne!(
+            v1.encode_hex(0),
+            v2.encode_hex(0),
+            "jpg reversed its convention between generations; sharing one redeemer \
+             sends every buy of one generation down the delist branch"
+        );
+    }
+
+    /// The index field must encode as CBOR the validator can read past 23,
+    /// where unsigned ints stop fitting in the initial byte.
+    #[test]
+    fn payout_index_encodes_across_cbor_width_boundaries() {
+        let r = MarketplaceType::JpgStoreV2.buy_redeemer().unwrap();
+        assert_eq!(r.encode_hex(23), "d8799f17ff");
+        assert_eq!(r.encode_hex(24), "d8799f1818ff");
+        assert_eq!(r.encode_hex(256), "d8799f190100ff");
     }
 
     /// A reference input can only satisfy a spend if it carries the *same*

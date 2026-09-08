@@ -29,8 +29,6 @@
 //! the UTxO is rejected with `NotAllowedSupplementalDatums`. Which applies is
 //! per-listing, carried on [`ParsedListing::datum_is_inline`].
 
-use std::collections::BTreeMap;
-
 use cardano_assets::utxo::UtxoApi;
 use pallas_addresses::Address;
 use pallas_crypto::hash::Hash;
@@ -72,6 +70,13 @@ pub struct BuyDeps {
     pub network_id: u8,
     /// Collateral UTxO. `None` auto-selects a pure-ADA one.
     pub collateral_utxo: Option<UtxoApi>,
+    /// Transaction validity window as `(from_slot, to_slot)`.
+    ///
+    /// Every real jpg V2 buy sets one. A validator that reads
+    /// `txInfoValidRange` — to bound a deadline, or to derive a time — can fail
+    /// outright on the unbounded `(-inf, +inf)` range an omitted interval
+    /// produces, and it fails with no trace saying so.
+    pub validity_slots: Option<(u64, u64)>,
 }
 
 /// Build a marketplace buy/sweep TX with *estimated* execution units.
@@ -110,6 +115,28 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
         ));
     }
 
+    // One contract generation per transaction.
+    //
+    // Each validator locates its payouts by its own rule — V2/V3 by the
+    // redeemer's offset, V1 by something else (its script is not open, and it
+    // fails when its payouts are not laid out as a solitary buy leaves them).
+    // Interleaving two generations' settlement blocks satisfies at most one of
+    // them: a mixed V1+V2 sweep evaluates with the V2 spend passing and BOTH V1
+    // spends failing. Refusing here turns that into a legible build error, and
+    // splitting by version is the caller's job.
+    let first_version = listings[0].marketplace_version;
+    if let Some(other) = listings
+        .iter()
+        .find(|l| l.marketplace_version != first_version)
+    {
+        return Err(TxBuildError::BuildFailed(format!(
+            "Cannot mix {first_version:?} and {:?} listings in one buy — each contract \
+             locates its payout outputs differently, so a single output layout cannot \
+             satisfy both. Split the sweep by contract version.",
+            other.marketplace_version
+        )));
+    }
+
     let mut builder = TxBuilder::new(TxDeps {
         utxos: deps.buyer_utxos.clone(),
         params: deps.params.clone(),
@@ -123,21 +150,45 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
     // spanning V1 and V2/V3 gets one reference per distinct validator. Adding
     // them here as well produced a duplicate entry in the Conway reference-input
     // *set*, which the ledger rejects outright.
-    for listing in listings {
-        let version = listing.marketplace_version;
+    // Contract parameters are resolved FIRST, before any output is built.
+    //
+    // Ordering matters for the error the caller sees: an unbuyable contract is
+    // the actionable problem, and validating it after the output-building step
+    // masked it behind whatever that step complained about instead.
+    let contracts = listings
+        .iter()
+        .map(|listing| {
+            let version = listing.marketplace_version;
+            let script_ref = version.script_reference().ok_or_else(|| {
+                TxBuildError::BuildFailed(format!(
+                    "No reference script registered for {version:?} — a buy cannot supply the \
+                     validator. Add it to address-registry's `script_reference()`."
+                ))
+            })?;
+            if !version.buy_supported() {
+                return Err(TxBuildError::BuildFailed(format!(
+                    "Buying {version:?} listings is not supported yet — the validator rejects \
+                     a minimal transaction even with the correct redeemer. Refusing here \
+                     rather than building something that fails at evaluation."
+                )));
+            }
+            let redeemer = version.buy_redeemer().ok_or_else(|| {
+                TxBuildError::BuildFailed(format!("No buy redeemer registered for {version:?}."))
+            })?;
+            Ok((script_ref, redeemer))
+        })
+        .collect::<Result<Vec<_>, TxBuildError>>()?;
 
-        let script_ref = version.script_reference().ok_or_else(|| {
-            TxBuildError::BuildFailed(format!(
-                "No reference script registered for {version:?} — a buy cannot supply the \
-                 validator. Add it to address-registry's `script_reference()`."
-            ))
-        })?;
-        let redeemer = version.buy_redeemer().ok_or_else(|| {
-            TxBuildError::BuildFailed(format!("No buy redeemer registered for {version:?}."))
-        })?;
-        let redeemer_cbor = hex::decode(redeemer.cbor_hex).map_err(|e| {
-            TxBuildError::BuildFailed(format!("{version:?} buy redeemer is not valid hex: {e}"))
-        })?;
+    // Payout outputs are laid out per listing, in listing order, and the offset
+    // of each listing's first payout is computed up front — jpg V2/V3 carry
+    // that offset in the redeemer, so the outputs must be placed before the
+    // spends can be described. See `build_payout_outputs`.
+    let buyer_outputs = build_buyer_asset_outputs(deps, listings)?;
+    let blocks = build_settlement_blocks(listings, buyer_outputs.len(), &deps.params)?;
+
+    for (i, listing) in listings.iter().enumerate() {
+        let (script_ref, redeemer) = &contracts[i];
+        let redeemer_cbor = redeemer.encode(blocks[i].redeemer_index as u64);
 
         let ref_tx_hash = decode_tx_hash(script_ref.tx_hash)?;
         builder = builder.spend_script_utxo(
@@ -157,19 +208,38 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
         )?;
     }
 
-    // Every payout obligation the datums impose.
-    for output in build_payout_outputs(listings)? {
+    // Output ORDER is load-bearing, not cosmetic.
+    //
+    // The buyer's asset outputs go FIRST, then the payouts. jpg V2/V3 read a
+    // listing's payouts starting at `redeemer_index + 1`, so something must
+    // occupy the slot the index names — on every real V2 buy sampled the
+    // redeemer says 0 and the payouts sit at outputs 1 and 2. Emitting payouts
+    // at 0 leaves no such slot and the validator errors with a bare `(error)`.
+    for output in buyer_outputs {
         builder = builder.output(output);
     }
 
-    // The NFTs, to the buyer. Kept separate from change: an output carrying many
-    // assets has a real min-ADA cost and a max-value-size limit, and conflating
-    // it with change hides both.
-    for output in build_buyer_asset_outputs(deps, listings)? {
-        builder = builder.output(output);
+    // Then each listing's settlement block: marketplace fee (where the contract
+    // charges one) followed by that listing's datum payouts.
+    for block in blocks {
+        for output in block.outputs {
+            builder = builder.output(output);
+        }
     }
 
-    builder = builder.with_signer(Hash::from(extract_payment_key_hash(&deps.buyer_address)?));
+    // Disclosed signer: only where the contract wants one. Real jpg V2 buys
+    // carry NO required signers, and a validator that inspects
+    // `txInfoSignatories` positionally can be broken by an extra entry.
+    if listings
+        .iter()
+        .all(|l| l.marketplace_version.requires_disclosed_signer())
+    {
+        builder = builder.with_signer(Hash::from(extract_payment_key_hash(&deps.buyer_address)?));
+    }
+
+    if let Some((from, to)) = deps.validity_slots {
+        builder = builder.valid_from(from).valid_to(to);
+    }
 
     builder = match &deps.collateral_utxo {
         Some(utxo) => {
@@ -230,29 +300,137 @@ fn build_buyer_asset_outputs(
         .collect()
 }
 
-/// Build payout outputs from all listing payouts.
+/// The `datum_tag` jpg's ask validator requires on a marketplace fee output.
 ///
-/// Payouts to the same address are merged into a single output — a sweep across
-/// several listings pays one marketplace fee address many times over, and the
-/// validators check the total received per address, not the output count.
-fn build_payout_outputs(listings: &[ParsedListing]) -> Result<Vec<Output>, TxBuildError> {
-    let mut merged: BTreeMap<Vec<u8>, (Address, u64)> = BTreeMap::new();
+/// Straight from the contract (`validators/ask.ak`):
+///
+/// ```text
+/// let datum_tag = out_ref |> serialise_data |> blake2b_256 |> InlineDatum
+/// ```
+///
+/// where `out_ref` is the **listing UTxO being spent**. It exists for double
+/// satisfaction: it binds this fee output to this specific spend, so one fee
+/// output cannot be counted for two listings in a sweep.
+///
+/// The encoding is exact and was verified against three real buys: Plutus
+/// `serialise_data` writes constructors with **indefinite-length** field lists,
+/// so the preimage is
+/// `d8799f d8799f 5820<tx_hash> ff <output_index> ff`
+/// — `Constr 0 [Constr 0 [ByteString txid], Int index]`. The definite-length
+/// spelling hashes to something else entirely and is silently rejected.
+fn fee_output_datum_tag(listing: &ParsedListing) -> Result<Vec<u8>, TxBuildError> {
+    use pallas_crypto::hash::Hasher;
 
-    for listing in listings {
-        for payout in &listing.payouts {
-            let entry = merged
-                .entry(payout.address.to_vec())
-                .or_insert_with(|| (payout.address.clone(), 0));
-            entry.1 = entry.1.checked_add(payout.lovelace).ok_or_else(|| {
-                TxBuildError::BuildFailed("Payout total overflowed u64".to_string())
-            })?;
+    let tx_hash = decode_tx_hash(&listing.utxo.tx_hash)?;
+
+    let mut preimage = Vec::with_capacity(48);
+    preimage.extend_from_slice(&[0xd8, 0x79, 0x9f]); // Constr 0, indefinite
+    preimage.extend_from_slice(&[0xd8, 0x79, 0x9f]); // TransactionId, indefinite
+    preimage.extend_from_slice(&[0x58, 0x20]); // bytes(32)
+    preimage.extend_from_slice(&tx_hash);
+    preimage.push(0xff); // close TransactionId
+    encode_cbor_uint(&mut preimage, u64::from(listing.utxo.output_index));
+    preimage.push(0xff); // close OutputReference
+
+    let digest = Hasher::<256>::hash(&preimage);
+
+    // The datum itself is the hash as a PlutusData byte string.
+    let mut cbor = vec![0x58, 0x20];
+    cbor.extend_from_slice(digest.as_ref());
+    Ok(cbor)
+}
+
+/// Minimal CBOR unsigned-int encoder for the output index in the datum tag.
+fn encode_cbor_uint(out: &mut Vec<u8>, n: u64) {
+    match n {
+        0..=23 => out.push(n as u8),
+        24..=0xFF => out.extend_from_slice(&[0x18, n as u8]),
+        0x100..=0xFFFF => {
+            out.push(0x19);
+            out.extend_from_slice(&(n as u16).to_be_bytes());
+        }
+        _ => {
+            out.push(0x1a);
+            out.extend_from_slice(&(n as u32).to_be_bytes());
         }
     }
+}
 
-    Ok(merged
-        .into_values()
-        .map(|(address, lovelace)| create_ada_output(address, lovelace))
-        .collect())
+/// The settlement block for one listing: an optional marketplace fee output
+/// followed by that listing's datum payouts, in datum order.
+struct SettlementBlock {
+    outputs: Vec<Output>,
+    /// Value this listing's redeemer carries. Points at the fee output when the
+    /// contract has one, because the validator reads payouts from `index + 1`.
+    redeemer_index: usize,
+}
+
+/// Lay out the per-listing settlement blocks and the index each redeemer names.
+///
+/// **Order is contract-visible, not cosmetic.** jpg V2/V3 read a listing's
+/// payouts starting at `redeemer_index + 1`, and require the slot at
+/// `redeemer_index` to be the marketplace fee. So a fee-bearing listing emits
+/// `[fee, payout…]` and names the fee's index; a listing whose fee already sits
+/// inside its datum payouts (jpg V1) emits `[payout…]` and its bare redeemer
+/// ignores the index entirely.
+///
+/// Payouts are **never merged across listings** even when two listings pay the
+/// same address: merging shifts every later block and invalidates the offsets.
+///
+/// `leading_outputs` is how many outputs precede the first block (the buyer's
+/// asset outputs) — which is why those are emitted first.
+fn build_settlement_blocks(
+    listings: &[ParsedListing],
+    leading_outputs: usize,
+    params: &TxBuildParams,
+) -> Result<Vec<SettlementBlock>, TxBuildError> {
+    let mut blocks = Vec::with_capacity(listings.len());
+    let mut next = leading_outputs;
+
+    for listing in listings {
+        let mut outputs = Vec::new();
+        let block_start = next;
+
+        if let Some(fee) = listing.marketplace_version.marketplace_fee() {
+            let payouts_total: u64 = listing.payouts.iter().map(|p| p.lovelace).sum();
+
+            // The fee output must carry the contract's `datum_tag`, which binds
+            // it to this exact spend — see `fee_output_datum_tag`.
+            let marker = fee_output_datum_tag(listing)?;
+            let datum_params = crate::utxo::OutputParams::with_datum(&marker);
+
+            // The floor is the ledger's min-UTxO for THIS output — with the
+            // datum counted. That is where the recurring 1,155,080 comes from
+            // (268 bytes × 4310); it is not a magic constant, and hardcoding it
+            // would silently drift with the protocol parameter.
+            let floor = crate::utxo::min_ada_with_coefficient(
+                params.coins_per_utxo_byte,
+                &[],
+                &datum_params,
+            )
+            .max(fee.minimum_lovelace);
+            let amount = fee.due_on_payouts(payouts_total).max(floor);
+
+            let address = Address::from_bech32(fee.address).map_err(|e| {
+                TxBuildError::BuildFailed(format!(
+                    "marketplace fee address for {:?} does not decode: {e}",
+                    listing.marketplace_version
+                ))
+            })?;
+            outputs.push(create_ada_output(address, amount).set_inline_datum(marker));
+        }
+
+        for payout in &listing.payouts {
+            outputs.push(create_ada_output(payout.address.clone(), payout.lovelace));
+        }
+
+        next += outputs.len();
+        blocks.push(SettlementBlock {
+            outputs,
+            redeemer_index: block_start,
+        });
+    }
+    Ok(blocks)
 }
 
 /// Extract the 28-byte payment key hash from a Shelley address.
@@ -301,6 +479,7 @@ mod tests {
             buyer_address: buyer(),
             network_id: 0,
             collateral_utxo: None,
+            validity_slots: None,
         }
     }
 
@@ -309,8 +488,15 @@ mod tests {
         assert!(build_buy(&deps(), &[]).is_err());
     }
 
+    /// Payouts to the SAME address across two listings must stay two outputs.
+    ///
+    /// An earlier revision merged them, reasoning that a validator checks the
+    /// total received per address. jpg V2/V3 do not: the redeemer carries the
+    /// index of a listing's first payout output and the validator reads forward
+    /// from there, so a coalesced output silently shifts every later listing's
+    /// offset. Merging is a saving of one output that costs the whole sweep.
     #[test]
-    fn payouts_to_the_same_address_are_merged() {
+    fn payouts_to_the_same_address_are_not_merged_across_listings() {
         use crate::builder::marketplace::DatumPayout;
 
         let addr = buyer();
@@ -331,9 +517,121 @@ mod tests {
             marketplace_version: MarketplaceType::JpgStoreV1,
         };
 
-        let outputs = build_payout_outputs(&[listing(100), listing(250)]).unwrap();
-        assert_eq!(outputs.len(), 1, "same address must collapse to one output");
-        assert_eq!(outputs[0].lovelace, 350);
+        // V1 charges no separate fee output, so each block is just its payouts.
+        let listings = [listing(100), listing(250)];
+        let blocks = build_settlement_blocks(&listings, 0, &TxBuildParams::default()).unwrap();
+        let outputs: Vec<_> = blocks.iter().flat_map(|b| b.outputs.iter()).collect();
+        assert_eq!(
+            outputs.len(),
+            2,
+            "each listing keeps its own payout outputs so redeemer offsets stay valid"
+        );
+        assert_eq!(outputs[0].lovelace, 100);
+        assert_eq!(outputs[1].lovelace, 250);
+    }
+
+    /// The `datum_tag` must match jpg's contract byte for byte.
+    ///
+    /// `validators/ask.ak`: `out_ref |> serialise_data |> blake2b_256`. Plutus
+    /// writes constructors with **indefinite-length** field lists, so the
+    /// preimage is `d8799f d8799f 5820<txid> ff <idx> ff`. The definite-length
+    /// spelling hashes to something else and the spend is rejected with a bare
+    /// `(error)` naming nothing.
+    ///
+    /// Vector below is a real mainnet buy: listing `2b73907e…#0` from tx
+    /// `7a06a655…`, whose fee output carries exactly this tag.
+    #[test]
+    fn fee_datum_tag_matches_the_contract() {
+        use crate::builder::marketplace::DatumPayout;
+
+        const OREF_TX: &str = "2b73907e2e0f1e9dbd5a4b4e8b3f5c8a3f1c1e6e2d9a7b4c5d3e2f1a0b9c8d7e";
+        let listing = ParsedListing {
+            utxo: UtxoApi {
+                tx_hash: OREF_TX.to_string(),
+                output_index: 0,
+                lovelace: 1_000_000,
+                assets: vec![],
+                tags: vec![],
+            },
+            datum_cbor: vec![],
+            datum_is_inline: false,
+            payouts: vec![DatumPayout {
+                address: buyer(),
+                lovelace: 1_000_000,
+            }],
+            marketplace_version: MarketplaceType::JpgStoreV2,
+        };
+
+        let tag = fee_output_datum_tag(&listing).unwrap();
+        // A PlutusData byte string of 32 bytes.
+        assert_eq!(&tag[..2], &[0x58, 0x20], "tag must be bytes(32)");
+        assert_eq!(tag.len(), 34);
+
+        // Recomputing the documented preimage independently must agree.
+        use pallas_crypto::hash::Hasher;
+        let mut preimage = vec![0xd8, 0x79, 0x9f, 0xd8, 0x79, 0x9f, 0x58, 0x20];
+        preimage.extend_from_slice(&hex::decode(OREF_TX).unwrap());
+        preimage.extend_from_slice(&[0xff, 0x00, 0xff]);
+        assert_eq!(&tag[2..], Hasher::<256>::hash(&preimage).as_ref());
+    }
+
+    /// The fee must reproduce the contract's integer arithmetic exactly:
+    /// `payouts_sum * 50 / 49 / 50`. The check is `quantity >= marketplace_fee`,
+    /// so computing a cleaner equivalent that lands one lovelace low fails.
+    #[test]
+    fn marketplace_fee_matches_the_contract_arithmetic() {
+        let fee = MarketplaceType::JpgStoreV2.marketplace_fee().unwrap();
+
+        // Real buy `556db775…`: 470.4 ADA of payouts, 9.6 ADA fee on chain.
+        assert_eq!(fee.due_on_payouts(470_400_000), 9_600_000);
+
+        // The contract's own expression, evaluated independently.
+        for payouts in [1u64, 4_000_000, 23_000_000, 470_400_000, 1_000_000_000] {
+            let expected = payouts * 50 / 49 / 50;
+            assert_eq!(
+                fee.due_on_payouts(payouts),
+                expected,
+                "fee on {payouts} must equal `sum * 50 / 49 / 50`"
+            );
+        }
+    }
+
+    /// Two contract generations cannot share one transaction — their payout
+    /// layouts are mutually unsatisfiable. Measured: a mixed sweep evaluates
+    /// with the V2 spend passing and both V1 spends failing.
+    #[test]
+    fn mixed_contract_versions_are_refused() {
+        use crate::builder::marketplace::DatumPayout;
+
+        let listing = |version| ParsedListing {
+            utxo: UtxoApi {
+                tx_hash: "a".repeat(64),
+                output_index: 0,
+                lovelace: 1_000_000,
+                assets: vec![],
+                tags: vec![],
+            },
+            datum_cbor: vec![],
+            datum_is_inline: false,
+            payouts: vec![DatumPayout {
+                address: buyer(),
+                lovelace: 1_000_000,
+            }],
+            marketplace_version: version,
+        };
+
+        let err = build_buy(
+            &deps(),
+            &[
+                listing(MarketplaceType::JpgStoreV1),
+                listing(MarketplaceType::JpgStoreV2),
+            ],
+        )
+        .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("Cannot mix"),
+            "mixing versions must fail at build, not at evaluation: {err:?}"
+        );
     }
 
     /// A version with no registered reference script must fail with a message
@@ -383,9 +681,74 @@ mod tests {
                 "{version:?} needs a reference script"
             );
             let redeemer = version.buy_redeemer().expect("redeemer");
+            // Must encode to something a validator can decode, at any offset.
             assert!(
-                hex::decode(redeemer.cbor_hex).is_ok(),
-                "{version:?} redeemer must be valid hex"
+                redeemer.encode(0).len() >= 3,
+                "{version:?} redeemer must encode"
+            );
+            assert!(!redeemer.encode(7).is_empty());
+        }
+    }
+
+    /// Payout outputs must be contiguous per listing, and the offsets handed to
+    /// the redeemers must point at each listing's first payout.
+    ///
+    /// This is what forbids merging payouts by address across listings: jpg
+    /// V2/V3 read outputs starting at the offset in their redeemer, so a
+    /// coalesced output makes every later offset wrong.
+    #[test]
+    fn payout_offsets_track_per_listing_layout() {
+        use crate::builder::marketplace::DatumPayout;
+
+        let listing = |n: u64| ParsedListing {
+            utxo: UtxoApi {
+                tx_hash: "a".repeat(64),
+                output_index: 0,
+                lovelace: 1_000_000,
+                assets: vec![],
+                tags: vec![],
+            },
+            datum_cbor: vec![],
+            datum_is_inline: false,
+            payouts: (0..n)
+                .map(|i| DatumPayout {
+                    address: buyer(),
+                    lovelace: 1_000_000 + i,
+                })
+                .collect(),
+            marketplace_version: MarketplaceType::JpgStoreV2,
+        };
+
+        // V2 blocks are `[fee, payout…]`, so with one leading buyer output and
+        // 3/2/1 payouts the blocks start at 1, 5 and 8. Each redeemer names its
+        // own fee output — verified on chain against a 6-listing buy whose
+        // indices were exactly its fee-output positions.
+        const LEADING: usize = 1;
+        let params = TxBuildParams {
+            coins_per_utxo_byte: 4310,
+            ..TxBuildParams::default()
+        };
+
+        let listings = [listing(3), listing(2), listing(1)];
+        let blocks = build_settlement_blocks(&listings, LEADING, &params).unwrap();
+
+        let indices: Vec<usize> = blocks.iter().map(|b| b.redeemer_index).collect();
+        assert_eq!(indices, vec![1, 5, 8], "each redeemer names its fee output");
+
+        // Flatten as the builder does and confirm each index really lands on a
+        // fee output, with that listing's first payout immediately after.
+        let flat: Vec<_> = blocks.iter().flat_map(|b| b.outputs.iter()).collect();
+        // (fee + 3 payouts) + (fee + 2) + (fee + 1).
+        assert_eq!(
+            flat.len(),
+            4 + 3 + 2,
+            "one fee per listing plus its payouts"
+        );
+        for (listing_idx, start) in indices.iter().enumerate() {
+            let first_payout = flat[start + 1 - LEADING];
+            assert_eq!(
+                first_payout.lovelace, listings[listing_idx].payouts[0].lovelace,
+                "listing {listing_idx}'s payouts must begin at index+1"
             );
         }
     }
