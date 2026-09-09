@@ -107,6 +107,32 @@ where
         .await
 }
 
+/// Total reference-script bytes this buy will be charged for under Conway's
+/// `minFeeRefScriptCoinsPerByte`.
+///
+/// **Distinct by validator, not per listing.** A sweep over one generation
+/// reads that validator ONCE however many listings it spends, so billing per
+/// listing over-pays; billing zero — which every buy did, because callers set
+/// `ref_script_size` per action-type and buys fell into the `else` branch — is
+/// rejected by the node with `FeeTooSmallUTxO`. Neither figure is checked by
+/// `evaluateTransaction`, so a wrong one survives every dry run.
+fn reference_script_size(listings: &[ParsedListing]) -> u64 {
+    let mut counted: Vec<&str> = Vec::new();
+    let mut total = 0;
+    for listing in listings {
+        let hash = listing
+            .marketplace_version
+            .script_reference()
+            .map(|r| r.script_hash)
+            .unwrap_or_default();
+        if !counted.contains(&hash) {
+            counted.push(hash);
+            total += listing.script_ref.size;
+        }
+    }
+    total
+}
+
 /// Assemble the buy into a [`TxBuilder`], shared by both entry points.
 fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, TxBuildError> {
     if listings.is_empty() {
@@ -160,9 +186,23 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
         )));
     }
 
+    // Conway charges `minFeeRefScriptCoinsPerByte` for every reference script a
+    // transaction reads, and only the builder knows which those are — the
+    // caller cannot, because a sweep references one script per distinct
+    // GENERATION, not one per listing. Callers were setting this per
+    // action-type and buys got zero, so every buy under-paid by exactly the
+    // reference script's worth (1673 B × 15 = 25,095 lovelace for jpg V2/V3)
+    // and the node rejected it with `FeeTooSmallUTxO`. Nothing catches it
+    // earlier: `evaluateTransaction` does not check fees.
+    //
+    // Distinct by script hash, since a sweep across one generation reads that
+    // validator once no matter how many listings it spends.
+    let mut params = deps.params.clone();
+    params.ref_script_size = reference_script_size(listings);
+
     let mut builder = TxBuilder::new(TxDeps {
         utxos: deps.buyer_utxos.clone(),
-        params: deps.params.clone(),
+        params: params.clone(),
         from_address: deps.buyer_address.clone(),
         network_id: deps.network_id,
     });
@@ -219,6 +259,10 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
             ScriptInput {
                 script: ScriptSource::Reference {
                     utxo: Input::new(Hash::from(ref_tx_hash), script_ref.output_index as u64),
+                    // Read off the reference UTxO, never guessed — the language
+                    // names the cost model in the script-integrity hash, and a
+                    // wrong one is rejected at submit while evaluating clean.
+                    language: listing.script_ref.language,
                 },
                 // Supply the preimage only for hash datums — see the module doc.
                 datum_cbor: (!listing.datum_is_inline).then(|| listing.datum_cbor.clone()),
@@ -502,6 +546,100 @@ mod tests {
         .unwrap()
     }
 
+    /// The jpg V2/V3 reference script as the chain describes it: `plutusV2`,
+    /// 1673 bytes (Koios `utxo_info` on `1693c508…#0`).
+    fn test_script_ref() -> crate::builder::marketplace::ScriptRefInfo {
+        crate::builder::marketplace::ScriptRefInfo {
+            language: pallas_txbuilder::ScriptKind::PlutusV2,
+            size: 1673,
+        }
+    }
+
+    /// Conway charges for every reference script a TX reads, and a sweep over
+    /// ONE generation reads its validator once however many listings it spends.
+    /// Billing per listing would over-pay; billing zero (what buys did) is
+    /// rejected at submit with `FeeTooSmallUTxO` — and evaluation never checks
+    /// fees, so a wrong figure here is invisible until the node sees it.
+    #[test]
+    fn reference_script_is_billed_once_per_generation() {
+        use crate::builder::marketplace::DatumPayout;
+
+        let listing = |lovelace| ParsedListing {
+            utxo: UtxoApi {
+                tx_hash: "a".repeat(64),
+                output_index: 0,
+                lovelace: 1_000_000,
+                assets: vec![],
+                tags: vec![],
+            },
+            datum_cbor: vec![],
+            datum_is_inline: false,
+            payouts: vec![DatumPayout {
+                address: buyer(),
+                lovelace,
+            }],
+            marketplace_version: MarketplaceType::JpgStoreV2,
+            script_ref: test_script_ref(),
+        };
+
+        assert_eq!(
+            reference_script_size(&[listing(1_000_000)]),
+            1673,
+            "a single V2 buy bills the validator once"
+        );
+        assert_eq!(
+            reference_script_size(&[
+                listing(1_000_000),
+                listing(2_000_000),
+                listing(3_000_000)
+            ]),
+            1673,
+            "a 3-listing sweep reads ONE validator, so it bills 1673 — not 3×"
+        );
+        assert_eq!(
+            reference_script_size(&[]),
+            0,
+            "no listings, nothing referenced"
+        );
+    }
+
+    /// A sweep spanning two generations reads two different validators, so it
+    /// pays for both. Deduplicating by hash must not collapse them.
+    #[test]
+    fn distinct_generations_each_bill_their_own_reference_script() {
+        use crate::builder::marketplace::DatumPayout;
+
+        let listing = |version, size| ParsedListing {
+            utxo: UtxoApi {
+                tx_hash: "a".repeat(64),
+                output_index: 0,
+                lovelace: 1_000_000,
+                assets: vec![],
+                tags: vec![],
+            },
+            datum_cbor: vec![],
+            datum_is_inline: false,
+            payouts: vec![DatumPayout {
+                address: buyer(),
+                lovelace: 1_000_000,
+            }],
+            marketplace_version: version,
+            script_ref: crate::builder::marketplace::ScriptRefInfo {
+                language: pallas_txbuilder::ScriptKind::PlutusV2,
+                size,
+            },
+        };
+
+        // Real sizes from Koios: V1's script is 2561 B, V2/V3's is 1673 B.
+        assert_eq!(
+            reference_script_size(&[
+                listing(MarketplaceType::JpgStoreV1, 2561),
+                listing(MarketplaceType::JpgStoreV2, 1673),
+            ]),
+            2561 + 1673,
+        );
+    }
+
     fn deps() -> BuyDeps {
         BuyDeps {
             buyer_utxos: vec![],
@@ -545,6 +683,7 @@ mod tests {
                 lovelace,
             }],
             marketplace_version: MarketplaceType::JpgStoreV1,
+            script_ref: test_script_ref(),
         };
 
         // V1 charges no separate fee output, so each block is just its payouts.
@@ -590,6 +729,7 @@ mod tests {
                 lovelace: 1_000_000,
             }],
             marketplace_version: MarketplaceType::JpgStoreV2,
+            script_ref: test_script_ref(),
         };
 
         let tag = fee_output_datum_tag(&listing).unwrap();
@@ -648,6 +788,7 @@ mod tests {
                 lovelace: 1_000_000,
             }],
             marketplace_version: version,
+            script_ref: test_script_ref(),
         };
 
         let err = build_buy(
@@ -687,6 +828,7 @@ mod tests {
             }],
             // Wayup has no reference script registered.
             marketplace_version: MarketplaceType::Wayup,
+            script_ref: test_script_ref(),
         };
 
         let err = build_buy(&deps(), &[listing]).unwrap_err();
@@ -747,6 +889,7 @@ mod tests {
                 })
                 .collect(),
             marketplace_version: MarketplaceType::JpgStoreV2,
+            script_ref: test_script_ref(),
         };
 
         // V2 blocks are `[fee, payout…]`, so with one leading buyer output and

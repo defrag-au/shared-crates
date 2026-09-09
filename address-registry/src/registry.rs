@@ -22,6 +22,15 @@ pub struct ScriptReference {
     pub script_hash: &'static str,
 }
 
+// NOTE: this struct deliberately carries NO Plutus language and NO script size.
+//
+// Both are properties of the deployed script, and the reference UTxO already
+// states them on chain (`reference_script.type` / `.size`). Copying them here
+// would be a second, unverified source of truth for a fact the chain answers
+// definitively — the same shape of bug as the `script_reference` mislabel that
+// filed V1's script under V2 and left both generations unbuildable. Callers
+// resolve them from the referenced UTxO; see `cardano_tx::builder::buy`.
+
 /// Buy redeemer CBOR for a marketplace contract.
 /// A contract-enforced marketplace fee output.
 ///
