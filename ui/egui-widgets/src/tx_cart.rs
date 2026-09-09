@@ -115,6 +115,38 @@ pub enum TxCartPhase {
     Error { message: String },
 }
 
+/// Whether a phase lets the operator change what is IN the cart.
+///
+/// A named decision rather than a bare `matches!` at the call site, because
+/// getting it wrong is not a cosmetic bug: the remove control used to require
+/// [`TxCartPhase::Editing`], so a build that failed left the cart in
+/// [`TxCartPhase::Error`] with no per-row remove and a footer offering only
+/// "Retry" (which fails identically) and "Clear" (which discards everything).
+/// One unbuyable listing therefore cost you the whole cart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowEditing {
+    Allowed,
+    /// The cart is mid-flight or already committed; changing it now would
+    /// invalidate work in progress or rewrite history.
+    Locked,
+}
+
+impl TxCartPhase {
+    /// Exhaustive by design — a new phase must state its answer here rather
+    /// than inherit one from a wildcard.
+    pub fn row_editing(&self) -> RowEditing {
+        match self {
+            // Error is editable ON PURPOSE: removing the offending item is the
+            // only way to make the cart buildable again.
+            TxCartPhase::Editing | TxCartPhase::Error { .. } => RowEditing::Allowed,
+            TxCartPhase::Building
+            | TxCartPhase::Preview
+            | TxCartPhase::Executing { .. }
+            | TxCartPhase::Done => RowEditing::Locked,
+        }
+    }
+}
+
 /// Cart state — managed by the caller, rendered by the widget.
 pub struct TxCartState {
     pub items: Vec<TxCartItem>,
@@ -367,9 +399,13 @@ pub fn show_items(
 
                     // Right side: quantity x price + remove
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Remove button
-                        if matches!(item.status, TxCartItemStatus::Pending)
-                            && matches!(state.phase, TxCartPhase::Editing)
+                        // Remove button. Gated on the phase's own answer, and
+                        // on the ROW not already being committed — a row that
+                        // is building or submitted cannot be taken back.
+                        if matches!(
+                            item.status,
+                            TxCartItemStatus::Pending | TxCartItemStatus::Error { .. }
+                        ) && state.phase.row_editing() == RowEditing::Allowed
                         {
                             if ui
                                 .add(
@@ -650,6 +686,25 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                     .clicked()
                 {
                     action = Some(TxCartAction::Execute);
+                }
+                ui.add_space(8.0);
+                // Between "try the identical thing again" and "throw the whole
+                // cart away" there has to be a middle option, or a single bad
+                // item costs the operator everything else they queued.
+                if ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new("Edit cart")
+                                .color(theme::TEXT_PRIMARY)
+                                .size(12.0),
+                        )
+                        .fill(theme::BG_SECONDARY)
+                        .corner_radius(egui::CornerRadius::same(6))
+                        .min_size(egui::vec2(80.0, 30.0)),
+                    )
+                    .clicked()
+                {
+                    action = Some(TxCartAction::BackToEditing);
                 }
                 ui.add_space(8.0);
                 if ui
