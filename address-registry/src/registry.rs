@@ -22,6 +22,15 @@ pub struct ScriptReference {
     pub script_hash: &'static str,
 }
 
+// NOTE: this struct deliberately carries NO Plutus language and NO script size.
+//
+// Both are properties of the deployed script, and the reference UTxO already
+// states them on chain (`reference_script.type` / `.size`). Copying them here
+// would be a second, unverified source of truth for a fact the chain answers
+// definitively — the same shape of bug as the `script_reference` mislabel that
+// filed V1's script under V2 and left both generations unbuildable. Callers
+// resolve them from the referenced UTxO; see `cardano_tx::builder::buy`.
+
 /// Buy redeemer CBOR for a marketplace contract.
 /// A contract-enforced marketplace fee output.
 ///
@@ -1824,11 +1833,26 @@ mod tests {
     #[test]
     fn dex_contracts_resolve_by_credential_not_only_by_address() {
         for (cred, want) in [
-            ("cb684a69e78907a9796b21fc150a758af5f2805e5ed5d5a8ce9f76f1", "Splash"),
-            ("9dee0659686c3ab807895c929e3284c11222affd710b09be690f924d", "Splash"),
-            ("ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b", "Minswap"),
-            ("ed97e0a1394724bb7cb94f20acf627abc253694c92b88bf8fb4b7f6f", "CSWAP"),
-            ("da5b47aed3955c9132ee087796fa3b58a1ba6173fa31a7bc29e56d4e", "CSWAP"),
+            (
+                "cb684a69e78907a9796b21fc150a758af5f2805e5ed5d5a8ce9f76f1",
+                "Splash",
+            ),
+            (
+                "9dee0659686c3ab807895c929e3284c11222affd710b09be690f924d",
+                "Splash",
+            ),
+            (
+                "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+                "Minswap",
+            ),
+            (
+                "ed97e0a1394724bb7cb94f20acf627abc253694c92b88bf8fb4b7f6f",
+                "CSWAP",
+            ),
+            (
+                "da5b47aed3955c9132ee087796fa3b58a1ba6173fa31a7bc29e56d4e",
+                "CSWAP",
+            ),
         ] {
             let entry = lookup_payment_credential(cred)
                 .unwrap_or_else(|| panic!("{cred} must resolve by credential"));
@@ -1850,7 +1874,9 @@ mod tests {
         // Reachable both ways — the address table and the credential table
         // must not disagree about one contract.
         for category in [
-            &lookup_payment_credential(CRED).expect("curve resolves by credential").category,
+            &lookup_payment_credential(CRED)
+                .expect("curve resolves by credential")
+                .category,
             lookup_address(ADDR).expect("curve resolves by address"),
         ] {
             match category {

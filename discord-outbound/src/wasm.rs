@@ -6,9 +6,7 @@ use worker_stack::wasm_bindgen::JsValue;
 // The pre-`MessageBody` surface. Behind the `twilight` feature because it is
 // the only thing here that names a twilight type — see the crate docs.
 #[cfg(feature = "twilight")]
-use crate::{
-    AttachmentInput, DiscordClient, DiscordMessage, DiscordRateLimitResponse, BASE_URL,
-};
+use crate::{AttachmentInput, DiscordClient, DiscordMessage, DiscordRateLimitResponse, BASE_URL};
 #[cfg(feature = "twilight")]
 use core::future::Future;
 #[cfg(feature = "twilight")]

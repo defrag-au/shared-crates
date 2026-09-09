@@ -11,6 +11,24 @@
 //! Corner badges that only *display* (an owned dot, a quantity) are not this
 //! widget — see `offer_tile`. This one is for something the operator does.
 //!
+//! ## Hover-revealed? Gate on `contains_pointer()`, never `hovered()`
+//!
+//! It is natural to show this only while the host card is under the pointer.
+//! Doing that with the host's `Response::hovered()` produces a control that
+//! **cannot be clicked**, and the failure looks like a dead button rather than
+//! a layout mistake:
+//!
+//! Because this is registered *after* the host, egui's hit test gives it the
+//! pointer — which is what makes the click work, but also means the HOST's
+//! `hovered()` goes false the instant the pointer reaches this chip.
+//! `hovered()` respects occlusion. The gate then fails, the chip is not drawn
+//! or interacted that frame, the host is hovered again the next frame, and the
+//! chip flickers in and out under the cursor, never living long enough to
+//! complete a press→release.
+//!
+//! `Response::contains_pointer()` is geometric and cannot be stolen by a child,
+//! so it is the correct gate. This bit `listing_grid`'s add-to-cart.
+//!
 //! ## Example
 //!
 //! ```ignore

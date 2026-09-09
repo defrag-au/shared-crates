@@ -882,9 +882,7 @@ mod tests {
         let value = payload(
             &crate::MessageBody::default()
                 .with_attachment(crate::Attachment::new("a.png", vec![1]))
-                .with_attachment(
-                    crate::Attachment::new("b.png", vec![2]).described("the second"),
-                ),
+                .with_attachment(crate::Attachment::new("b.png", vec![2]).described("the second")),
         );
 
         assert_eq!(

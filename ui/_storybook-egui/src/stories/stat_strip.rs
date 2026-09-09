@@ -139,11 +139,17 @@ pub fn show(ui: &mut egui::Ui) {
             .spark(vec![3.0, 2.0, 1.0, 2.0, 3.0, 2.0, 3.0])
             .detail("2 tx"),
         egui_widgets::StatWindow::new("30d", "-30676 \u{20b3}")
-            .trend(egui_widgets::Trend::Down, "+804523 \u{20b3} / -835199 \u{20b3}")
+            .trend(
+                egui_widgets::Trend::Down,
+                "+804523 \u{20b3} / -835199 \u{20b3}",
+            )
             .spark(vec![2.0, 3.0, 1.0, 4.0, 2.0, 5.0, 1.0, 3.0, 2.0, 4.0])
             .detail("25 tx"),
         egui_widgets::StatWindow::new("all", "+416482 \u{20b3}")
-            .trend(egui_widgets::Trend::Up, "+8473849 \u{20b3} / -8057366 \u{20b3}")
+            .trend(
+                egui_widgets::Trend::Up,
+                "+8473849 \u{20b3} / -8057366 \u{20b3}",
+            )
             .spark(vec![1.0, 8.0, 2.0, 9.0, 1.0, 1.0, 2.0, 1.0, 1.0, 2.0])
             .detail("500 tx"),
     ];

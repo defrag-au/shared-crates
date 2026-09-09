@@ -29,13 +29,39 @@ pub struct KoiosUtxo {
     #[serde(default)]
     pub inline_datum: Option<KoiosInlineDatum>,
     #[serde(default)]
-    pub reference_script: Option<serde_json::Value>,
+    pub reference_script: Option<KoiosReferenceScript>,
     /// Native assets on the UTxO. Koios returns `null` (not `[]`) for
     /// ADA-only UTxOs, hence `Option`.
     #[serde(default)]
     pub asset_list: Option<Vec<KoiosUtxoAsset>>,
     #[serde(default)]
     pub is_spent: Option<bool>,
+}
+
+/// A script attached to a UTxO as a CIP-33 reference script.
+///
+/// Both `script_type` and `size` are load-bearing for anyone SPENDING via this
+/// reference, and neither is knowable any other way — the script lives in
+/// someone else's UTxO:
+///
+/// - `script_type` names the cost model in the spending transaction's language
+///   views, which are hashed into its script-integrity hash.
+/// - `size` drives Conway's `minFeeRefScriptCoinsPerByte`.
+///
+/// Get either wrong and the node rejects at submit
+/// (`ScriptIntegrityHashMismatch` / `FeeTooSmallUTxO`) while
+/// `evaluateTransaction` passes, because evaluation checks neither.
+#[derive(Debug, Clone, Deserialize)]
+pub struct KoiosReferenceScript {
+    pub hash: String,
+    /// Serialised script size in bytes.
+    pub size: u64,
+    /// `plutusV1` | `plutusV2` | `plutusV3` | `timelock`.
+    #[serde(rename = "type")]
+    pub script_type: String,
+    /// Script CBOR, hex. Large — present only on `_extended` queries.
+    #[serde(default)]
+    pub bytes: Option<String>,
 }
 
 /// Inline datum: the raw CBOR (`bytes`) plus its Plutus-JSON representation

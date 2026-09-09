@@ -195,7 +195,9 @@ mod tests {
         // The injected text is still there, but as filename characters: no
         // line in the body *starts* a header it did not write.
         assert!(
-            !text.lines().any(|line| line.starts_with("Content-Type: text/html")),
+            !text
+                .lines()
+                .any(|line| line.starts_with("Content-Type: text/html")),
             "injection became a header: {text}"
         );
         // The closing quote is escaped, so the value has not ended early.

@@ -250,24 +250,40 @@ impl TxBuilder {
             TxBuildError::BuildFailed(format!("{} evaluate failed: {e}", evaluator.name()))
         })?;
 
-        // Patch spend redeemer ExUnits (redeemer_tag = "spend")
-        // The evaluator returns redeemer_index which maps to sorted input order.
-        // Our inputs list is in insertion order, which should match the sorted
-        // order after assemble_tx. We match by index.
-        let mut spend_idx = 0u64;
-        for (_input, script_ctx) in &mut prepared.inputs {
-            if let Some(ctx) = script_ctx {
-                // Find matching evaluation result
-                if let Some(eval) = eval_results
-                    .iter()
-                    .find(|r| r.redeemer_tag == "spend" && r.redeemer_index == spend_idx)
-                {
-                    ctx.ex_units = ExUnits {
-                        mem: eval.ex_units.mem,
-                        steps: eval.ex_units.steps,
-                    };
-                }
-                spend_idx += 1;
+        // Patch spend redeemer ExUnits (redeemer_tag = "spend").
+        //
+        // A spend redeemer's index is its input's position in the LEDGER's
+        // sorted input list — not a running count of script inputs. Those
+        // coincide only when every script input sorts ahead of every plain
+        // one, which is a property of the tx hashes involved and therefore
+        // luck. A 4-listing sweep whose funding UTxO happened to sort first
+        // put the script inputs at 1..=4 while the counter looked for 0..=3:
+        // one redeemer matched nothing and kept the default estimate, and the
+        // other three were handed ANOTHER listing's units. Three of four
+        // spends then failed on-chain for overspending their budget.
+        //
+        // Sort the same way the ledger does — by (tx hash, output index) — and
+        // match on the real position.
+        let all_refs: Vec<(Vec<u8>, u64)> = prepared
+            .inputs
+            .iter()
+            .map(|(input, _)| (input.tx_hash.0.to_vec(), input.txo_index))
+            .collect();
+
+        for (input, script_ctx) in &mut prepared.inputs {
+            let Some(ctx) = script_ctx else { continue };
+            let key = (input.tx_hash.0.to_vec(), input.txo_index);
+            let Some(position) = spend_redeemer_index(&all_refs, &key) else {
+                continue;
+            };
+            if let Some(eval) = eval_results
+                .iter()
+                .find(|r| r.redeemer_tag == "spend" && r.redeemer_index == position)
+            {
+                ctx.ex_units = with_budget_margin(ExUnits {
+                    mem: eval.ex_units.mem,
+                    steps: eval.ex_units.steps,
+                });
             }
         }
 
@@ -384,20 +400,27 @@ impl TxBuilder {
 
     // --- Private helpers ---
 
+    /// Track the highest Plutus version any script in this TX uses, which
+    /// selects the cost model that goes into the language views.
+    ///
+    /// Both sources state their language; neither is inferred. A reference
+    /// script used to default to V3 here on the grounds that reference scripts
+    /// are "typically" V3 — but the language is part of the script-integrity
+    /// hash, so a wrong guess makes the node compute a different hash and
+    /// reject the transaction with `ScriptIntegrityHashMismatch`. Nothing
+    /// catches it earlier: `evaluateTransaction` executes the scripts and does
+    /// not check this field, so such a TX evaluates perfectly and then fails
+    /// at submit. Every jpg.store buy went out that way — both jpg validators
+    /// are plutusV2, and every buy spends them by reference.
     fn track_script_kind(&mut self, source: &ScriptSource) {
-        if let ScriptSource::Inline { language, .. } = source {
-            let new_kind = *language;
-            self.max_script_kind = Some(match self.max_script_kind {
-                None => new_kind,
-                Some(existing) => higher_plutus_version(existing, new_kind),
-            });
-        } else {
-            // Reference scripts — we still need a cost model. Default to V3 if not set,
-            // since reference scripts are typically used with V3.
-            if self.max_script_kind.is_none() {
-                self.max_script_kind = Some(ScriptKind::PlutusV3);
-            }
-        }
+        let new_kind = match source {
+            ScriptSource::Inline { language, .. } => *language,
+            ScriptSource::Reference { language, .. } => *language,
+        };
+        self.max_script_kind = Some(match self.max_script_kind {
+            None => new_kind,
+            Some(existing) => higher_plutus_version(existing, new_kind),
+        });
     }
 }
 
@@ -534,7 +557,7 @@ fn assemble_tx(
                 ScriptSource::Inline { language, bytes } => {
                     tx = tx.script(*language, bytes.clone());
                 }
-                ScriptSource::Reference { utxo } => {
+                ScriptSource::Reference { utxo, .. } => {
                     wanted_refs.push(utxo.clone());
                 }
             }
@@ -588,7 +611,7 @@ fn assemble_tx(
             ScriptSource::Inline { language, bytes } => {
                 tx = tx.script(*language, bytes.clone());
             }
-            ScriptSource::Reference { utxo } => {
+            ScriptSource::Reference { utxo, .. } => {
                 tx = tx.reference_input(utxo.clone());
             }
         }
@@ -636,6 +659,39 @@ fn assemble_tx(
     tx = tx.fee(fee).network_id(network_id);
 
     Ok(tx)
+}
+
+/// Headroom added to every evaluated execution budget, in percent.
+///
+/// The evaluator reports what the scripts cost in the transaction it was GIVEN
+/// — but the ScriptContext a validator sees includes the transaction's fee,
+/// and the fee is not final at evaluation time: the second convergence round
+/// changes it, which perturbs the context and moves the true cost slightly.
+/// Booking the exact reported figure therefore fails on the node by a hair.
+/// Observed on a real 4-listing V1 sweep: short by 2,206 memory units.
+///
+/// Execution units are only charged as FEE, and the fee is bounded by the
+/// units booked, so the margin costs a few hundred lovelace. Failing costs the
+/// whole transaction.
+const EX_UNIT_MARGIN_PERCENT: u64 = 15;
+
+/// Apply [`EX_UNIT_MARGIN_PERCENT`] to an evaluated budget.
+fn with_budget_margin(units: ExUnits) -> ExUnits {
+    let scale = |v: u64| v.saturating_mul(100 + EX_UNIT_MARGIN_PERCENT) / 100;
+    ExUnits {
+        mem: scale(units.mem),
+        steps: scale(units.steps),
+    }
+}
+
+/// A spend redeemer's index, given every input ref in the transaction.
+///
+/// Extracted so the mapping is testable without a live evaluator — it is the
+/// step that silently mis-assigned execution budgets between listings.
+fn spend_redeemer_index(all_refs: &[(Vec<u8>, u64)], script_ref: &(Vec<u8>, u64)) -> Option<u64> {
+    let mut sorted = all_refs.to_vec();
+    sorted.sort();
+    sorted.iter().position(|r| r == script_ref).map(|p| p as u64)
 }
 
 /// Return the "higher" Plutus version (V3 > V2 > V1).
@@ -802,6 +858,60 @@ mod tests {
     /// locally: the tx builds and serialises fine, and is only rejected at
     /// evaluation/submission with an error that blames CBOR rather than the
     /// duplicate. Found while sweeping two jpg.store listings at one contract.
+    /// The real 4-listing V1 sweep that failed on-chain: a funding UTxO whose
+    /// hash sorts FIRST, then four script inputs. A running count of script
+    /// inputs would say 0,1,2,3; the ledger says 1,2,3,4. Getting this wrong
+    /// does not error — it silently hands each listing another listing's
+    /// execution budget, and three of four spends died overspending.
+    #[test]
+    fn spend_redeemer_index_is_the_ledgers_sorted_position() {
+        // `2f29…` sorts before `e555…`, so the funding input is index 0.
+        let funding = (vec![0x2f, 0x29], 1u64);
+        let refs = vec![
+            funding.clone(),
+            (vec![0xe5, 0x55], 0),
+            (vec![0xe5, 0x55], 1),
+            (vec![0xe5, 0x55], 2),
+            (vec![0xe5, 0x55], 6),
+        ];
+
+        assert_eq!(spend_redeemer_index(&refs, &funding), Some(0));
+        assert_eq!(spend_redeemer_index(&refs, &(vec![0xe5, 0x55], 0)), Some(1));
+        assert_eq!(spend_redeemer_index(&refs, &(vec![0xe5, 0x55], 1)), Some(2));
+        assert_eq!(spend_redeemer_index(&refs, &(vec![0xe5, 0x55], 2)), Some(3));
+        assert_eq!(spend_redeemer_index(&refs, &(vec![0xe5, 0x55], 6)), Some(4));
+    }
+
+    /// Insertion order must not matter — only the sorted position does.
+    #[test]
+    fn spend_redeemer_index_ignores_insertion_order() {
+        let a = (vec![0xaa], 0u64);
+        let b = (vec![0xbb], 0u64);
+        let inserted_backwards = vec![b.clone(), a.clone()];
+        assert_eq!(spend_redeemer_index(&inserted_backwards, &a), Some(0));
+        assert_eq!(spend_redeemer_index(&inserted_backwards, &b), Some(1));
+    }
+
+    /// The evaluated budget is for the transaction as EVALUATED; the fee moves
+    /// afterwards and the fee is inside the ScriptContext, so the true cost
+    /// shifts. Booking the exact figure failed by 2,206 memory units on a real
+    /// sweep.
+    #[test]
+    fn evaluated_budgets_get_headroom() {
+        let evaluated = ExUnits {
+            mem: 1_000_000,
+            steps: 400_000_000,
+        };
+        let booked = with_budget_margin(ExUnits {
+            mem: evaluated.mem,
+            steps: evaluated.steps,
+        });
+        assert!(booked.mem > evaluated.mem, "memory must gain headroom");
+        assert!(booked.steps > evaluated.steps, "steps must gain headroom");
+        assert_eq!(booked.mem, 1_150_000);
+        assert_eq!(booked.steps, 460_000_000);
+    }
+
     #[test]
     fn shared_reference_script_is_emitted_once() {
         use pallas_txbuilder::BuildConway;
@@ -810,6 +920,7 @@ mod tests {
         let script_input = || ScriptInput {
             script: ScriptSource::Reference {
                 utxo: script_ref.clone(),
+                language: ScriptKind::PlutusV2,
             },
             datum_cbor: None,
             redeemer_cbor: vec![0xd8, 0x79, 0x80],

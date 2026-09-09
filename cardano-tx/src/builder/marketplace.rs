@@ -44,6 +44,32 @@ pub struct ParsedListing {
     pub payouts: Vec<DatumPayout>,
     /// Marketplace contract version
     pub marketplace_version: MarketplaceType,
+    /// The referenced validator as the chain describes it: its Plutus language
+    /// and its serialised size.
+    ///
+    /// Resolved from the reference UTxO, never assumed — see [`ScriptRefInfo`].
+    pub script_ref: ScriptRefInfo,
+}
+
+/// What the chain says about a deployed reference script.
+///
+/// Both fields are read off the reference UTxO (`reference_script.type` and
+/// `.size`), because both are load-bearing at SUBMIT and neither is visible to
+/// `evaluateTransaction`:
+///
+/// - **language** names the cost model in the transaction's language views,
+///   which are hashed into the script-integrity hash. Guess it and the node
+///   computes a different hash and rejects with `ScriptIntegrityHashMismatch`.
+/// - **size** drives Conway's `minFeeRefScriptCoinsPerByte`. Omit it and the
+///   node rejects with `FeeTooSmallUTxO`.
+///
+/// Both were previously guessed or ignored, and every jpg buy evaluated
+/// perfectly and then failed on submit with exactly those two errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScriptRefInfo {
+    pub language: pallas_txbuilder::ScriptKind,
+    /// Serialised script size in bytes.
+    pub size: u64,
 }
 
 /// Parse a JPG.store listing datum (raw CBOR bytes) into payout obligations.

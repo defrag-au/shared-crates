@@ -25,6 +25,16 @@ pub enum ScriptSource {
     },
     Reference {
         utxo: Input,
+        /// The referenced script's Plutus version.
+        ///
+        /// Required, not inferred. The language views in a transaction's
+        /// script-integrity hash name the language, so guessing it produces a
+        /// hash the node disagrees with and EVERY script spend is rejected
+        /// with `ScriptIntegrityHashMismatch` at submit — while
+        /// `evaluateTransaction` still passes, because evaluation runs the
+        /// scripts and never checks this field. Only the caller knows what it
+        /// deployed, so the caller states it.
+        language: ScriptKind,
     },
 }
 

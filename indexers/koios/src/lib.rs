@@ -162,6 +162,26 @@ pub struct DatumInfoRequest {
     pub datum_hashes: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct TxCborRequest {
+    #[serde(rename = "_tx_hashes")]
+    pub tx_hashes: Vec<String>,
+}
+
+/// A whole transaction as CBOR (`POST /tx_cbor`).
+///
+/// Needed where a *decoded* view will not do: recovering a hash-only datum
+/// means hashing the preimage's ORIGINAL bytes, which a decode/re-encode does
+/// not reproduce. It also carries the transaction's auxiliary data, which is
+/// where jpg.store publishes listing datums.
+#[derive(Debug, Deserialize)]
+pub struct KoiosTxCbor {
+    pub tx_hash: String,
+    /// Full transaction CBOR, hex.
+    #[serde(default)]
+    pub cbor: Option<String>,
+}
+
 /// A datum resolved by hash (`POST /datum_info`) — the CBOR preimage plus its
 /// Plutus-JSON rendering.
 #[derive(Debug, Clone, Deserialize)]
@@ -888,6 +908,21 @@ impl KoiosApi {
             &url,
             &DatumInfoRequest {
                 datum_hashes: datum_hashes.to_vec(),
+            },
+        )
+        .await
+    }
+
+    /// Whole transactions as CBOR (`POST /tx_cbor`).
+    pub async fn get_tx_cbor(&self, tx_hashes: &[String]) -> Result<Vec<KoiosTxCbor>, KoiosError> {
+        if tx_hashes.is_empty() {
+            return Ok(Vec::new());
+        }
+        let url = format!("{}/tx_cbor", self.base_url);
+        self.post_paginated(
+            &url,
+            &TxCborRequest {
+                tx_hashes: tx_hashes.to_vec(),
             },
         )
         .await
