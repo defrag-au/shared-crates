@@ -300,6 +300,34 @@ impl TxBuilder {
             }
         }
 
+        // The budget the whole transaction will be charged against, which is
+        // the one thing the evaluator does NOT check: it reports per-redeemer
+        // costs and never sums them against `maxTxExUnits`. Without this the
+        // build succeeds, the caller sees "evaluated OK", and the node rejects
+        // with `ExUnitsTooBigUTxO` — with no indication that the batch was
+        // simply too large.
+        let (mem_cap, steps_cap) = prepared.params.max_tx_ex_units;
+        let mem: u64 = prepared
+            .inputs
+            .iter()
+            .filter_map(|(_, s)| s.as_ref().map(|c| c.ex_units.mem))
+            .chain(prepared.mints.iter().map(|m| m.ex_units.mem))
+            .sum();
+        let steps: u64 = prepared
+            .inputs
+            .iter()
+            .filter_map(|(_, s)| s.as_ref().map(|c| c.ex_units.steps))
+            .chain(prepared.mints.iter().map(|m| m.ex_units.steps))
+            .sum();
+        if mem > mem_cap || steps > steps_cap {
+            return Err(TxBuildError::ExUnitsExceeded {
+                mem,
+                mem_cap,
+                steps,
+                steps_cap,
+            });
+        }
+
         // Round 2: rebuild with real ExUnits — fee now includes execution cost
         prepared.converge()
     }

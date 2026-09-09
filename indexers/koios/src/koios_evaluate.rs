@@ -160,6 +160,15 @@ mod params_impl {
                     .map(|s| s.bytes as u32)
                     .unwrap_or(16_384),
                 max_value_size: pp.max_value_size.as_ref().map(|s| s.bytes).unwrap_or(5_000),
+                // Live where available; Conway mainnet otherwise. Never a
+                // permissive fallback — this is the ceiling that stops an
+                // over-budget sweep reaching the node, and the evaluator does
+                // not check it for us.
+                max_tx_ex_units: pp
+                    .max_execution_units_per_transaction
+                    .as_ref()
+                    .map(|eu| (eu.memory, eu.cpu))
+                    .unwrap_or((16_500_000, 10_000_000_000)),
                 price_mem: pp
                     .script_execution_prices
                     .as_ref()
