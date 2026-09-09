@@ -95,6 +95,26 @@ pub enum TxBuildError {
     InsufficientFunds { needed: u64, available: u64 },
     #[error("No suitable UTxO found")]
     NoSuitableUtxo,
+    /// The evaluated scripts need more execution budget than one transaction
+    /// may spend. Actionable by SPLITTING the batch, so it carries both the
+    /// need and the cap rather than a bare message.
+    ///
+    /// Caught here because nothing else catches it before submit: the
+    /// evaluator reports per-redeemer costs and never sums them against
+    /// `maxTxExUnits`. Marketplace sweeps hit it sooner than expected — a jpg
+    /// V1 buy is O(n²) across a sweep (each validator scans the outputs for
+    /// its own payouts), so four listings need ~18.1M memory against a 16.5M
+    /// cap while three fit at 74%.
+    #[error(
+        "Execution budget exceeded: needs {mem} memory / {steps} steps, but a transaction \
+         may use at most {mem_cap} / {steps_cap}. Split the batch into fewer items."
+    )]
+    ExUnitsExceeded {
+        mem: u64,
+        mem_cap: u64,
+        steps: u64,
+        steps_cap: u64,
+    },
     /// Wallet has no UTxOs at all to select from. Distinct from
     /// `InsufficientFunds` (which means the wallet has UTxOs, just not enough)
     /// so callers can surface a clearer message ("connect a funded wallet").

@@ -56,6 +56,51 @@ use crate::params::TxBuildParams;
 pub const BUY_EX_UNITS_MEM: u64 = 1_400_000;
 pub const BUY_EX_UNITS_STEPS: u64 = 500_000_000;
 
+/// Largest sweep whose evaluated cost fits a transaction's execution budget.
+///
+/// **Do NOT derive this by dividing the cap by [`BUY_EX_UNITS_MEM`].** That
+/// assumes each listing costs the same, and a jpg buy does not: the cost is
+/// SUPER-LINEAR because every validator scans the transaction's output list
+/// looking for its own payouts, and that list grows with the sweep. The flat
+/// division said 11 listings fit; four do not.
+///
+/// Measured against the live mainnet validator (memory, jpg V1):
+///
+/// | listings | total  | largest single spend |
+/// |----------|--------|----------------------|
+/// | 1        |  2.85M |  2.85M |
+/// | 2        |  7.18M |  6.14M |
+/// | 3        | 12.25M |  9.43M |
+/// | 4        | 18.10M | 12.72M |
+///
+/// Second differences are near-constant (0.74M, 0.78M), i.e. quadratic, so the
+/// fit below is `0.38n² + 3.19n − 0.72` in millions — which reproduces all four
+/// measurements to within 0.02M. Against the 16.5M mainnet cap it yields 3.
+///
+/// Steps are not the binding constraint (a 4-listing sweep uses 38% of the step
+/// budget while exceeding memory), but both are checked so a future parameter
+/// change cannot silently invert that.
+pub fn max_buys_for_budget(mem_cap: u64, steps_cap: u64) -> usize {
+    // Same shape for steps, fitted the same way: 0.10n² + 0.86n − 0.13 in
+    // BILLIONS, from 0.583 / 1.477 / 2.562 / 3.844.
+    fn mem_for(n: u64) -> u64 {
+        380_000 * n * n + 3_190_000 * n - 720_000
+    }
+    fn steps_for(n: u64) -> u64 {
+        100_000_000 * n * n + 860_000_000 * n - 130_000_000
+    }
+
+    let mut best = 1;
+    for n in 1..=16 {
+        if mem_for(n) <= mem_cap && steps_for(n) <= steps_cap {
+            best = n as usize;
+        } else {
+            break;
+        }
+    }
+    best
+}
+
 /// Dependencies for a marketplace buy TX.
 #[derive(Debug)]
 pub struct BuyDeps {
@@ -553,6 +598,43 @@ mod tests {
             language: pallas_txbuilder::ScriptKind::PlutusV2,
             size: 1673,
         }
+    }
+
+    /// The fit must reproduce what the chain actually charged, and must give 3
+    /// against mainnet's 16.5M — the flat division it replaces said 11.
+    #[test]
+    fn sweep_cap_matches_measured_costs() {
+        // Mainnet Conway.
+        assert_eq!(max_buys_for_budget(16_500_000, 10_000_000_000), 3);
+
+        // The safety property: the estimate must never UNDERestimate what the
+        // chain charged, or the builder hands the node a transaction it will
+        // reject. Overestimating merely batches one fewer listing, so a budget
+        // of exactly the measured cost may admit n or n-1 — never more.
+        for (n, measured_mem) in [
+            (1usize, 2_850_000u64),
+            (2, 7_180_000),
+            (3, 12_250_000),
+            (4, 18_100_000),
+        ] {
+            assert!(
+                max_buys_for_budget(measured_mem, u64::MAX) <= n,
+                "a budget of exactly the measured cost for {n} must never admit more than {n}"
+            );
+        }
+        // 4 listings measured 18.10M, so mainnet's 16.5M must NOT admit them —
+        // this is the case that reached the node as ExUnitsTooBigUTxO.
+        assert!(max_buys_for_budget(16_500_000, u64::MAX) < 4);
+        // …and a budget with genuine room does admit them.
+        assert!(max_buys_for_budget(25_000_000, u64::MAX) >= 4);
+    }
+
+    /// Never zero: a caller uses this as a batch size, and 0 would drop the
+    /// cart on the floor rather than build one listing at a time.
+    #[test]
+    fn sweep_cap_is_never_zero() {
+        assert_eq!(max_buys_for_budget(0, 0), 1);
+        assert_eq!(max_buys_for_budget(1, 1), 1);
     }
 
     /// Conway charges for every reference script a TX reads, and a sweep over

@@ -47,6 +47,7 @@ fn main() {
         min_fee_constant: 155_381,
         coins_per_utxo_byte: 4_310,
         max_tx_size: 16_384,
+        max_tx_ex_units: (16_500_000, 10_000_000_000),
         max_value_size: 5_000,
         price_mem: Some((577, 10_000)),
         price_step: Some((721, 10_000_000)),

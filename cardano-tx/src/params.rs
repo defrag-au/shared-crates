@@ -20,6 +20,21 @@ pub struct TxBuildParams {
     pub coins_per_utxo_byte: u64,
     /// Maximum transaction size in bytes
     pub max_tx_size: u32,
+    /// Per-transaction execution-unit ceiling (`maxTxExUnits`), memory then
+    /// steps.
+    ///
+    /// Held here because NOTHING else checks it before submit:
+    /// `evaluateTransaction` returns PER-REDEEMER budgets and never sums them
+    /// against this, so a sweep evaluates perfectly and the node rejects it
+    /// with `ExUnitsTooBigUTxO`. Same blind spot as fees and the
+    /// script-integrity hash.
+    ///
+    /// It binds sooner than intuition suggests for marketplace sweeps: a jpg
+    /// V1 buy costs O(n²) across a sweep — each validator scans the output
+    /// list for its own payouts, and the list grows with the sweep — measured
+    /// at 2.85M / 7.18M / 12.25M / 18.10M memory for 1 / 2 / 3 / 4 listings.
+    /// Four does not fit; three sits at 74%.
+    pub max_tx_ex_units: (u64, u64),
     /// Maximum serialised size of the *value* portion of a single UTxO output
     /// (Cardano Conway parameter `maxValueSize`). Outputs whose value exceeds
     /// this limit are rejected by the ledger (`OutputTooBigUTxO`).
@@ -92,6 +107,16 @@ impl From<&maestro::ProtocolParameters> for TxBuildParams {
             // Maestro doesn't expose max_tx_size directly; use Cardano mainnet default
             max_tx_size: 16384,
             max_value_size: 5000,
+            // From the live params when present, else Conway mainnet's values.
+            // A too-LARGE fallback would let an over-budget sweep through to
+            // the node, which is the failure this field exists to prevent, so
+            // the default is the real protocol figure rather than something
+            // permissive.
+            max_tx_ex_units: pp
+                .max_execution_units_per_transaction
+                .as_ref()
+                .map(|eu| (eu.memory, eu.cpu))
+                .unwrap_or((16_500_000, 10_000_000_000)),
             price_mem,
             price_step,
             min_fee_ref_script_cost_per_byte: 15,
