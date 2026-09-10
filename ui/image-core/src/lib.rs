@@ -31,8 +31,8 @@ mod url;
 pub use cache::{Evicted, ImageCache};
 pub use queue::{LoadQueue, Outcome, Slot};
 pub use url::{
-    hosts, iiif_asset_url, iiif_cache_key, iiif_url_on, Format, IiifUrl, ImageSize, SizeSpec,
-    DEFAULT_IIIF_BASE,
+    base_for_network, hosts, iiif_asset_url, iiif_cache_key, iiif_url_on, Format, IiifUrl,
+    ImageSize, SizeSpec, DEFAULT_IIIF_BASE,
 };
 
 /// Decoded pixels, tightly packed RGBA8.

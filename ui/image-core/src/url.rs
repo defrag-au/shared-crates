@@ -62,9 +62,25 @@ pub mod hosts {
     pub const HODLCROFT: &str = "https://iiif.hodlcroft.com/iiif/3";
     pub const AUGMINTS: &str = "https://iiif.augmints.xyz/iiif/3";
     pub const CNFT_DEV: &str = "https://iiif.cnft.dev/iiif/3";
+    /// The PREPROD deployment (`iiif` worker, `dev` env): resolves metadata
+    /// from Koios preprod and caches in its own buckets. A preprod policy id
+    /// on the mainnet host resolves to nothing, so any app that can run
+    /// against preprod must pick its host by network — see
+    /// [`super::base_for_network`].
+    pub const CNFT_DEV_PREPROD: &str = "https://iiif-dev.cnft.dev/iiif/3";
     /// Dummy host for a Cloudflare **service binding** — resolved by the
     /// binding, never by DNS, so the hostname is arbitrary but must be stable.
     pub const SERVICE_BINDING: &str = "https://iiif-service/iiif/3";
+}
+
+/// The IIIF host for a chain network string (`cardano:mainnet`,
+/// `cardano:preprod`, …). Mainnet and anything unrecognised is the default
+/// deployment; the testnets are the preprod one.
+pub fn base_for_network(network: &str) -> &'static str {
+    match network {
+        "cardano:preprod" | "cardano:preview" | "cardano:testnet" => hosts::CNFT_DEV_PREPROD,
+        _ => DEFAULT_IIIF_BASE,
+    }
 }
 
 /// Encoding IIIF should return.

@@ -168,63 +168,145 @@ pub struct ListingIntent {
 /// Build the transaction that locks `intent.asset` at `sale_address` under
 /// an inline listing datum paying the seller `price_lovelace`.
 ///
-/// `deps.from_address` is the seller: it receives the payout when sold, its
-/// payment key is the datum's owner, and it funds the min-UTxO and fee.
+/// One-intent form of [`build_listings`].
 pub fn build_list(
     deps: &TxDeps,
     sale_address: &Address,
     intent: &ListingIntent,
 ) -> Result<UnsignedTx, TxBuildError> {
-    if intent.quantity == 0 {
-        return Err(TxBuildError::BuildFailed(
-            "cannot list a quantity of 0".into(),
-        ));
+    build_listings(deps, sale_address, std::slice::from_ref(intent))
+}
+
+/// Build ONE transaction that creates a listing per intent: every asset is
+/// locked at `sale_address` in its own output under its own inline datum, so
+/// each can be bought or cancelled independently.
+///
+/// `deps.from_address` is the seller for all of them: it receives each
+/// payout when sold, its payment key is every datum's owner, and it funds
+/// the min-UTxOs and the fee.
+///
+/// The UTxOs holding the assets are spent whole. Two intents that live in
+/// the same UTxO share one input; whatever those UTxOs carry beyond what is
+/// listed goes back to the seller in a single output, because the fluent
+/// builder's change is ADA-only and would otherwise drop it.
+pub fn build_listings(
+    deps: &TxDeps,
+    sale_address: &Address,
+    intents: &[ListingIntent],
+) -> Result<UnsignedTx, TxBuildError> {
+    add_listings(
+        TxBuilder::new(deps.clone_shallow()),
+        deps,
+        sale_address,
+        intents,
+    )?
+    .build()
+}
+
+/// Stage the listings onto `builder`, which may already carry other work:
+/// the holding UTxOs as inputs (found in `deps.utxos`, which should be the
+/// same set the builder selects coins from), one output and datum per
+/// intent, and the holdings' residual assets back to the seller.
+pub fn add_listings(
+    mut builder: TxBuilder,
+    deps: &TxDeps,
+    sale_address: &Address,
+    intents: &[ListingIntent],
+) -> Result<TxBuilder, TxBuildError> {
+    if intents.is_empty() {
+        return Err(TxBuildError::BuildFailed("nothing to list".into()));
     }
     let owner_pkh = extract_payment_key_hash(&deps.from_address)?;
 
-    // The UTxO holding the asset is spent whole; whatever else it carries
-    // goes straight back to the seller.
-    let holding = deps
-        .utxos
-        .iter()
-        .find(|u| {
-            u.assets
+    // Which UTxO each intent draws on. The same asset listed twice must come
+    // from a UTxO that holds enough for both, so drawn quantities are tracked
+    // per UTxO rather than matched against the original balance.
+    let mut drawn: Vec<(&UtxoApi, Vec<AssetAmount>)> = Vec::new();
+
+    for intent in intents {
+        if intent.quantity == 0 {
+            return Err(TxBuildError::BuildFailed(format!(
+                "cannot list a quantity of 0 ({})",
+                intent.asset.concatenated()
+            )));
+        }
+        let holding = deps
+            .utxos
+            .iter()
+            .find(|u| {
+                let held = u
+                    .assets
+                    .iter()
+                    .find(|a| a.asset_id == intent.asset)
+                    .map_or(0, |a| a.quantity);
+                let already = drawn
+                    .iter()
+                    .find(|(d, _)| d.tx_hash == u.tx_hash && d.output_index == u.output_index)
+                    .map_or(0, |(_, taken)| {
+                        taken
+                            .iter()
+                            .filter(|(id, _)| *id == intent.asset)
+                            .map(|(_, q)| *q)
+                            .sum()
+                    });
+                held.saturating_sub(already) >= intent.quantity
+            })
+            .ok_or_else(|| {
+                TxBuildError::AssetNotFound(format!(
+                    "{} ×{} is not in the seller's UTxOs",
+                    intent.asset.concatenated(),
+                    intent.quantity
+                ))
+            })?;
+
+        match drawn
+            .iter_mut()
+            .find(|(d, _)| d.tx_hash == holding.tx_hash && d.output_index == holding.output_index)
+        {
+            Some((_, taken)) => taken.push((intent.asset.clone(), intent.quantity)),
+            None => {
+                builder = builder.input(holding)?;
+                drawn.push((holding, vec![(intent.asset.clone(), intent.quantity)]));
+            }
+        }
+
+        let datum = encode_listing_datum(
+            &[DatumPayout {
+                address: deps.from_address.clone(),
+                lovelace: intent.price_lovelace,
+            }],
+            owner_pkh,
+        )?;
+        let listed: Vec<AssetAmount> = vec![(intent.asset.clone(), intent.quantity)];
+        let listing_lovelace = min_ada_with_coefficient(
+            deps.params.coins_per_utxo_byte,
+            &listed,
+            &OutputParams::with_datum(&datum),
+        );
+        builder = builder.output(with_assets(
+            create_ada_output(sale_address.clone(), listing_lovelace).set_inline_datum(datum),
+            &listed,
+        )?);
+    }
+
+    // Everything the spent UTxOs carried that is not being listed.
+    let mut residual: Vec<AssetAmount> = Vec::new();
+    for (holding, taken) in &drawn {
+        for asset in &holding.assets {
+            let listed: u64 = taken
                 .iter()
-                .any(|a| a.asset_id == intent.asset && a.quantity >= intent.quantity)
-        })
-        .ok_or_else(|| {
-            TxBuildError::AssetNotFound(format!(
-                "{} ×{} is not in the seller's UTxOs",
-                intent.asset.concatenated(),
-                intent.quantity
-            ))
-        })?;
-
-    let datum = encode_listing_datum(
-        &[DatumPayout {
-            address: deps.from_address.clone(),
-            lovelace: intent.price_lovelace,
-        }],
-        owner_pkh,
-    )?;
-
-    let listed: Vec<AssetAmount> = vec![(intent.asset.clone(), intent.quantity)];
-    let listing_lovelace = min_ada_with_coefficient(
-        deps.params.coins_per_utxo_byte,
-        &listed,
-        &OutputParams::with_datum(&datum),
-    );
-    let listing_output = with_assets(
-        create_ada_output(sale_address.clone(), listing_lovelace).set_inline_datum(datum),
-        &listed,
-    )?;
-
-    let mut builder = TxBuilder::new(deps.clone_shallow())
-        .input(holding)?
-        .output(listing_output);
-
-    // Residual assets from the holding UTxO — ADA-only change would drop them.
-    let residual = residual_assets(holding, &intent.asset, intent.quantity);
+                .filter(|(id, _)| *id == asset.asset_id)
+                .map(|(_, q)| *q)
+                .sum();
+            let left = asset.quantity.saturating_sub(listed);
+            if left > 0 {
+                match residual.iter_mut().find(|(id, _)| *id == asset.asset_id) {
+                    Some((_, q)) => *q += left,
+                    None => residual.push((asset.asset_id.clone(), left)),
+                }
+            }
+        }
+    }
     if !residual.is_empty() {
         let lovelace = deps.params.min_utxo_for_assets(&residual);
         builder = builder.output(with_assets(
@@ -233,7 +315,7 @@ pub fn build_list(
         )?);
     }
 
-    builder.build()
+    Ok(builder)
 }
 
 // ============================================================================
@@ -264,6 +346,46 @@ pub fn prepare_cancel(
     collateral_utxo: Option<&UtxoApi>,
     validity_slots: Option<(u64, u64)>,
 ) -> Result<TxBuilder, TxBuildError> {
+    // Conway bills the reference script's bytes; one validator, read once.
+    let mut params = deps.params.clone();
+    params.ref_script_size = listing.script_ref.size;
+    let builder = TxBuilder::new(TxDeps {
+        utxos: deps.utxos.clone(),
+        params,
+        from_address: deps.from_address.clone(),
+        network_id: deps.network_id,
+    });
+    let mut builder = add_cancel(builder, deps, listing, script_ref, outcome)?;
+
+    if let Some((from, to)) = validity_slots {
+        builder = builder.valid_from(from).valid_to(to);
+    }
+    builder = match collateral_utxo {
+        Some(utxo) => {
+            let tx_hash = decode_tx_hash(&utxo.tx_hash)?;
+            builder.with_collateral(CollateralConfig::Manual(Input::new(
+                Hash::from(tx_hash),
+                utxo.output_index as u64,
+            )))
+        }
+        None => builder.with_collateral(CollateralConfig::Auto),
+    };
+    Ok(builder)
+}
+
+/// Stage one owner's spend of their listing onto `builder`, which may
+/// already carry other work: the script input with its redeemer, the
+/// owner as required signer, and the asset's destination (back to the
+/// owner, or re-locked under a new datum). The builder's params must
+/// already carry the reference script's size and the caller sets
+/// collateral; both belong to the transaction, not to one part of it.
+pub fn add_cancel(
+    builder: TxBuilder,
+    deps: &TxDeps,
+    listing: &ParsedListing,
+    script_ref: &ScriptReference,
+    outcome: CancelOutcome,
+) -> Result<TxBuilder, TxBuildError> {
     let owner_pkh = listing_owner_pkh(&listing.datum_cbor)?;
     let signer_pkh = extract_payment_key_hash(&deps.from_address)?;
     if owner_pkh != signer_pkh {
@@ -282,33 +404,24 @@ pub fn prepare_cancel(
             ))
         })?;
 
-    // Conway bills the reference script's bytes; one validator, read once.
-    let mut params = deps.params.clone();
-    params.ref_script_size = listing.script_ref.size;
-
     let ref_tx_hash = decode_tx_hash(script_ref.tx_hash)?;
-    let mut builder = TxBuilder::new(TxDeps {
-        utxos: deps.utxos.clone(),
-        params,
-        from_address: deps.from_address.clone(),
-        network_id: deps.network_id,
-    })
-    .spend_script_utxo(
-        &listing.utxo,
-        ScriptInput {
-            script: ScriptSource::Reference {
-                utxo: Input::new(Hash::from(ref_tx_hash), script_ref.output_index as u64),
-                language: listing.script_ref.language,
+    let mut builder = builder
+        .spend_script_utxo(
+            &listing.utxo,
+            ScriptInput {
+                script: ScriptSource::Reference {
+                    utxo: Input::new(Hash::from(ref_tx_hash), script_ref.output_index as u64),
+                    language: listing.script_ref.language,
+                },
+                datum_cbor: (!listing.datum_is_inline).then(|| listing.datum_cbor.clone()),
+                redeemer_cbor: redeemer.encode(0),
+                ex_units: ExUnits {
+                    mem: DELIST_EX_UNITS_MEM,
+                    steps: DELIST_EX_UNITS_STEPS,
+                },
             },
-            datum_cbor: (!listing.datum_is_inline).then(|| listing.datum_cbor.clone()),
-            redeemer_cbor: redeemer.encode(0),
-            ex_units: ExUnits {
-                mem: DELIST_EX_UNITS_MEM,
-                steps: DELIST_EX_UNITS_STEPS,
-            },
-        },
-    )?
-    .with_signer(owner_pkh);
+        )?
+        .with_signer(owner_pkh);
 
     let assets: Vec<AssetAmount> = listing
         .utxo
@@ -353,20 +466,6 @@ pub fn prepare_cancel(
         }
     };
     builder = builder.output(output);
-
-    if let Some((from, to)) = validity_slots {
-        builder = builder.valid_from(from).valid_to(to);
-    }
-    builder = match collateral_utxo {
-        Some(utxo) => {
-            let tx_hash = decode_tx_hash(&utxo.tx_hash)?;
-            builder.with_collateral(CollateralConfig::Manual(Input::new(
-                Hash::from(tx_hash),
-                utxo.output_index as u64,
-            )))
-        }
-        None => builder.with_collateral(CollateralConfig::Auto),
-    };
     Ok(builder)
 }
 
@@ -389,6 +488,10 @@ fn with_assets(
 }
 
 /// Everything the holding UTxO carries other than the listed quantity.
+/// What a holding UTxO carries beyond one listed asset. [`build_listings`]
+/// computes this across every spent UTxO inline; kept as the single-UTxO
+/// reference the tests pin.
+#[cfg(test)]
 fn residual_assets(holding: &UtxoApi, listed: &AssetId, quantity: u64) -> Vec<AssetAmount> {
     holding
         .assets

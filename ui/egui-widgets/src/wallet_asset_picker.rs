@@ -66,6 +66,11 @@ pub struct WalletAssetPickerConfig {
     pub max_width: f32,
     /// Maximum modal height.
     pub max_height: f32,
+    /// The IIIF deployment thumbnails come from (everything up to and
+    /// including `/iiif/3`). `None` is the default mainnet host; an app on a
+    /// testnet passes [`crate::iiif_base_for_network`]'s answer, because the
+    /// mainnet host knows nothing about a preprod policy.
+    pub image_base: Option<String>,
 }
 
 impl Default for WalletAssetPickerConfig {
@@ -75,6 +80,7 @@ impl Default for WalletAssetPickerConfig {
             card_size: 80.0,
             max_width: 480.0,
             max_height: 600.0,
+            image_base: None,
         }
     }
 }
@@ -348,14 +354,7 @@ fn draw_collection_section(
         }
 
         header.show(ui, |ui| {
-            draw_card_grid(
-                ui,
-                &filtered,
-                &group.policy_id,
-                config.card_size,
-                state,
-                action,
-            );
+            draw_card_grid(ui, &filtered, &group.policy_id, config, state, action);
         });
     }
 }
@@ -415,10 +414,11 @@ fn draw_card_grid(
     ui: &mut egui::Ui,
     assets: &[&PickerAsset],
     policy_id: &str,
-    card_size: f32,
+    config: &WalletAssetPickerConfig,
     state: &WalletAssetPickerState,
     action: &mut Option<WalletAssetPickerAction>,
 ) {
+    let card_size = config.card_size;
     let available_width = ui.available_width();
     let spacing = 6.0;
     let cols = ((available_width + spacing) / (card_size + spacing))
@@ -429,7 +429,7 @@ fn draw_card_grid(
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = spacing;
             for asset in row_assets {
-                draw_picker_card(ui, asset, policy_id, card_size, state, action);
+                draw_picker_card(ui, asset, policy_id, config, state, action);
             }
         });
         ui.add_space(spacing);
@@ -440,10 +440,11 @@ fn draw_picker_card(
     ui: &mut egui::Ui,
     asset: &PickerAsset,
     policy_id: &str,
-    card_size: f32,
+    config: &WalletAssetPickerConfig,
     state: &WalletAssetPickerState,
     action: &mut Option<WalletAssetPickerAction>,
 ) {
+    let card_size = config.card_size;
     let size = Vec2::splat(card_size);
     let already_offered = state.is_already_offered(policy_id, &asset.asset_name_hex);
     let (card_rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
@@ -455,8 +456,16 @@ fn draw_picker_card(
     // Background
     painter.rect_filled(card_rect, rounding, theme::BG_SECONDARY);
 
-    // IIIF thumbnail
-    let image_url = iiif_asset_url(policy_id, &asset.asset_name_hex, AssetImageSize::Thumbnail);
+    // IIIF thumbnail, from the deployment the host named.
+    let image_url = match &config.image_base {
+        Some(base) => crate::image_loader::iiif_asset_url_on(
+            base,
+            policy_id,
+            &asset.asset_name_hex,
+            AssetImageSize::Thumbnail,
+        ),
+        None => iiif_asset_url(policy_id, &asset.asset_name_hex, AssetImageSize::Thumbnail),
+    };
     let browser_config = crate::CardBrowserConfig {
         rounding: 4.0,
         bg_card_hover: Color32::from_rgb(40, 40, 55),

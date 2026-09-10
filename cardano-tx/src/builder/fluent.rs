@@ -154,6 +154,19 @@ impl TxBuilder {
         self
     }
 
+    /// How many outputs are already staged — the index the NEXT output will
+    /// get. A validator that locates its outputs by index (the jpg-style
+    /// buy's settlement blocks) needs this when it is not the first thing in
+    /// the transaction.
+    pub fn output_count(&self) -> usize {
+        self.outputs.len()
+    }
+
+    /// True once any Plutus script input or mint has been staged.
+    pub fn has_scripts(&self) -> bool {
+        self.max_script_kind.is_some()
+    }
+
     // --- Minting ---
 
     /// Add a minting operation.
@@ -166,8 +179,14 @@ impl TxBuilder {
     // --- Signing & Validity ---
 
     /// Require a specific signer (disclosed signer / required signer).
+    ///
+    /// Idempotent: several parts of one transaction may each demand the same
+    /// key (two cancels by one owner), and the body's required-signer set
+    /// must carry it once.
     pub fn with_signer(mut self, pkh: Hash<28>) -> Self {
-        self.required_signers.push(pkh);
+        if !self.required_signers.contains(&pkh) {
+            self.required_signers.push(pkh);
+        }
         self
     }
 
@@ -645,9 +664,14 @@ fn assemble_tx(
         }
     }
 
-    // 5. Required signers
+    // 5. Required signers — DEDUPLICATED, for the same reason as the
+    // reference inputs: Conway encodes them as a `set`, and one owner
+    // cancelling two listings in one transaction asks for their key twice.
+    let mut disclosed: HashSet<[u8; 28]> = HashSet::new();
     for pkh in required_signers {
-        tx = tx.disclosed_signer(*pkh);
+        if disclosed.insert(**pkh) {
+            tx = tx.disclosed_signer(*pkh);
+        }
     }
 
     // 6. Validity interval
@@ -991,6 +1015,58 @@ mod tests {
             "three requests for one reference script must collapse to a single \
              reference input; got {refs}, which the ledger rejects as a duplicate set entry"
         );
+    }
+
+    /// One owner cancelling two listings in one transaction asks for their
+    /// key twice; the body's required-signer set must carry it once. Conway
+    /// decodes the field as a set and rejects a duplicate entry outright, so
+    /// the transaction never even reaches phase-2 — it fails at evaluate as
+    /// an undecodable body.
+    #[test]
+    fn duplicate_required_signer_is_emitted_once() {
+        use pallas_txbuilder::BuildConway;
+
+        let owner = Hash::from([0x42; 28]);
+        let inputs = vec![(Input::new(Hash::from([0x01; 32]), 0), None)];
+        let tx = assemble_tx(
+            &inputs,
+            &[],
+            &[],
+            &[],
+            &[owner, owner],
+            &ValidityInterval::default(),
+            &None,
+            &None,
+            None,
+            1,
+            200_000,
+            &crate::builder::cost_models::PlutusCostModels::EMPTY,
+        )
+        .expect("assembles");
+
+        let built = tx.build_conway_raw().expect("serialises");
+        let signers = count_required_signers(&built.tx_bytes.0);
+        assert_eq!(
+            signers, 1,
+            "two requests for one signer must collapse to a single required signer; \
+             got {signers}, which the ledger rejects as a duplicate set entry"
+        );
+
+        // And the fluent entry point refuses the duplicate before assembly.
+        let builder = TxBuilder::new(test_deps())
+            .with_signer(owner)
+            .with_signer(owner);
+        assert_eq!(builder.required_signers.len(), 1);
+    }
+
+    /// Count required signers (body key 14) in a serialised tx.
+    fn count_required_signers(cbor: &[u8]) -> usize {
+        use pallas_traverse::MultiEraTx;
+        let tx = MultiEraTx::decode(cbor).expect("tx decodes");
+        tx.required_signers()
+            .as_alonzo()
+            .map(|s| s.len())
+            .unwrap_or(0)
     }
 
     /// Count reference inputs (body key 18) in a serialised tx.

@@ -16,6 +16,9 @@ http-client = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 wasm_safe_serde = { workspace = true }
 serde_json = { workspace = true }
+# CIP-25 v1 keys asset names as UTF-8; `KoiosAssetInfo::cip25_record`
+# decodes the hex name to try that form too.
+hex = "0.4"
 serde_with = "3"
 worker_stack = { workspace = true }
 worker_utils = { workspace = true }

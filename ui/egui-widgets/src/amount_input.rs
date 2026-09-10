@@ -224,7 +224,7 @@ fn toggle_button(label: &str, selected: bool, accent: Color32) -> egui::Button<'
 }
 
 /// Parse ADA text input to lovelace. Accepts integers and decimals.
-fn parse_ada_input(text: &str) -> Option<u64> {
+pub fn parse_ada_input(text: &str) -> Option<u64> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return None;

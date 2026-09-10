@@ -226,6 +226,36 @@ pub struct KoiosAssetInfo {
     pub burn_cnt: u64,
     pub creation_time: u64,
     pub token_registry_metadata: Option<TokenMetadata>,
+    /// The minting transaction's label-721 payload, verbatim:
+    /// `{"721": {"<policy>": {"<name>": {...}}}}`. This is the CIP-25
+    /// metadata every image and trait derives from. `None` for assets
+    /// minted without it (CIP-68, or bare fungibles).
+    #[serde(default)]
+    pub minting_tx_metadata: Option<serde_json::Value>,
+    /// CIP-68 datum-derived metadata, where the reference token carries it.
+    #[serde(default)]
+    pub cip68_metadata: Option<serde_json::Value>,
+}
+
+impl KoiosAssetInfo {
+    /// This asset's own CIP-25 record: `minting_tx_metadata["721"][policy][name]`.
+    ///
+    /// CIP-25 v1 keys the name as UTF-8 and v2 as hex; both are tried, hex
+    /// first because it is unambiguous.
+    pub fn cip25_record(&self) -> Option<&serde_json::Value> {
+        let by_policy = self
+            .minting_tx_metadata
+            .as_ref()?
+            .get("721")?
+            .get(&self.policy_id)?;
+        if let Some(v) = by_policy.get(&self.asset_name) {
+            return Some(v);
+        }
+        let utf8 = hex::decode(&self.asset_name)
+            .ok()
+            .and_then(|b| String::from_utf8(b).ok())?;
+        by_policy.get(&utf8)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -851,6 +881,20 @@ impl KoiosApi {
         .await
     }
 
+    /// One asset's `POST /asset_info` row, or `None` if Koios has never seen
+    /// it. The row carries the minting metadata, so this is the one call an
+    /// image resolver needs on a network without an assets database.
+    pub async fn get_asset_info(
+        &self,
+        policy_id: &str,
+        asset_name_hex: &str,
+    ) -> Result<Option<KoiosAssetInfo>, KoiosError> {
+        let mut rows = self
+            .get_policy_assets(&[(policy_id.to_string(), asset_name_hex.to_string())])
+            .await?;
+        Ok(rows.pop())
+    }
+
     /// Extended UTxOs for one or more bech32 payment/base addresses
     /// (`POST /address_utxos`, `_extended=true`). Koios serves the whole
     /// batch in a single request; each row is tagged with its `address`.
@@ -1094,8 +1138,25 @@ impl KoiosApi {
             serde_json::to_string(body).unwrap()
         );
 
-        match self.client.post::<T, R>(&final_url, body).await {
-            Ok(result) => Ok(result),
+        // The detailed request keeps the response body on a non-2xx status.
+        // Koios's Ogmios passthrough answers a failed evaluation with a 400
+        // whose body names the reason (a script that refused, a body the
+        // ledger could not decode); a bare status code throws that away.
+        match self
+            .client
+            .post_with_details::<T, R>(&final_url, body)
+            .await
+        {
+            Ok(details) => Ok(details.data),
+            Err(HttpError::HttpStatus {
+                status_code, body, ..
+            }) => {
+                error!("Koios API error: {status_code} {body}");
+                Err(KoiosError::KoiosResponse {
+                    status: status_code,
+                    body,
+                })
+            }
             Err(HttpError::Custom(msg)) if msg.starts_with("HTTP request failed with status:") => {
                 // Extract status code from error message
                 let status_str = msg.replace("HTTP request failed with status: ", "");

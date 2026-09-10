@@ -1448,6 +1448,7 @@ name = "egui-widgets"
 version = "0.1.0"
 dependencies = [
  "ab_glyph",
+ "address-registry",
  "authorizations",
  "cardano-assets",
  "egui",
@@ -2941,6 +2942,7 @@ dependencies = [
  "async-trait",
  "cardano-assets",
  "cardano-tx",
+ "hex",
  "http-client",
  "nom",
  "serde",

@@ -103,11 +103,17 @@ fn fixture() -> Vec<ListingCard> {
         Buyability::Blocked(BlockedReason::UnsupportedContract),
     ));
 
-    // Live-book states: someone else's buy is in flight, and one of our own.
+    // Live-book states: someone else's buy is in flight, a seller's cancel
+    // is in flight, and one of our own.
     cards.push(card(
         "MartianSpawn0777",
         26.0,
         Buyability::Blocked(BlockedReason::PendingSale),
+    ));
+    cards.push(card(
+        "MartianSpawn0790",
+        28.0,
+        Buyability::Blocked(BlockedReason::PendingCancel),
     ));
     cards.push(card(
         "MartianSpawn0801",

@@ -45,6 +45,9 @@ pub enum BlockedReason {
     /// Someone has submitted a purchase and the chain has not confirmed it
     /// yet. Resolves itself either way within a block or two.
     PendingSale,
+    /// The seller has submitted a cancel or re-price and the chain has not
+    /// confirmed it yet. Buying it now would race the owner's own spend.
+    PendingCancel,
     /// The connected wallet is the seller. Cancel it from the seller side
     /// instead; buying your own listing only pays the fee.
     OwnListing,
@@ -59,6 +62,7 @@ impl BlockedReason {
             BlockedReason::UnsupportedContract => "Unsupported",
             BlockedReason::BundleMember => "Bundle",
             BlockedReason::PendingSale => "Buying…",
+            BlockedReason::PendingCancel => "Cancelling…",
             BlockedReason::OwnListing => "Yours",
         }
     }
@@ -83,6 +87,10 @@ impl BlockedReason {
                 "A purchase has been submitted and is waiting for the chain. If it \
                  fails, the listing is offered again."
             }
+            BlockedReason::PendingCancel => {
+                "The seller has submitted a cancel or re-price and it is waiting for \
+                 the chain. If it fails, the listing is offered again."
+            }
             BlockedReason::OwnListing => {
                 "You listed this. Cancel or re-price it from the seller side rather \
                  than buying it back."
@@ -91,11 +99,12 @@ impl BlockedReason {
     }
 
     /// Every variant, for stories and exhaustive review.
-    pub const ALL: [BlockedReason; 5] = [
+    pub const ALL: [BlockedReason; 6] = [
         BlockedReason::DatumUnavailable,
         BlockedReason::UnsupportedContract,
         BlockedReason::BundleMember,
         BlockedReason::PendingSale,
+        BlockedReason::PendingCancel,
         BlockedReason::OwnListing,
     ];
 }

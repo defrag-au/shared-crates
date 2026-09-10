@@ -81,6 +81,51 @@ impl FeeFormula {
         };
         fee as u64
     }
+
+    /// Work back from what the BUYER pays to what the seller's datum should
+    /// promise.
+    ///
+    /// A marketplace quotes the price a buyer pays; the datum carries the
+    /// seller's payout, and the validator demands `max(due(payout), floor)`
+    /// on top. This finds the LARGEST payout whose total does not exceed
+    /// `buyer_pays` and pins the fee at the remainder, so the buyer pays the
+    /// quoted figure exactly and the fee is never below what the contract or
+    /// the ledger demands. `floor` is the fee output's minimum (the ledger's
+    /// min-UTxO for it, or the contract's own minimum, whichever is higher).
+    ///
+    /// `None` when `buyer_pays` leaves no room for a positive payout.
+    pub fn split_buyer_price(self, buyer_pays: u64, floor: u64) -> Option<PriceSplit> {
+        let total_for = |payout: u64| payout.saturating_add(self.due_on_payouts(payout).max(floor));
+        if total_for(1) > buyer_pays {
+            return None;
+        }
+        // `total_for` is monotone in the payout, so the boundary is a binary
+        // search rather than a lovelace-by-lovelace walk.
+        let (mut lo, mut hi) = (1u64, buyer_pays);
+        while lo < hi {
+            let mid = lo + (hi - lo).div_ceil(2);
+            if total_for(mid) <= buyer_pays {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        Some(PriceSplit {
+            buyer_pays,
+            payout: lo,
+            fee: buyer_pays - lo,
+        })
+    }
+}
+
+/// A quoted price taken apart: what the buyer pays, what the seller's datum
+/// promises, and the fee output between them. `buyer_pays == payout + fee`
+/// always, and `fee` is at least what the validator will check for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PriceSplit {
+    pub buyer_pays: u64,
+    pub payout: u64,
+    pub fee: u64,
 }
 
 /// A contract-enforced marketplace fee output.
@@ -1802,6 +1847,67 @@ pub fn all_known_addresses() -> Vec<&'static str> {
         addrs.push(prefix);
     }
     addrs
+}
+
+#[cfg(test)]
+mod split_tests {
+    use super::*;
+
+    const FLOOR: u64 = 1_155_080;
+    const FIVE: FeeFormula = FeeFormula::GrossPercent { pct: 5 };
+
+    fn holds(formula: FeeFormula, buyer_pays: u64) -> PriceSplit {
+        let split = formula
+            .split_buyer_price(buyer_pays, FLOOR)
+            .expect("a split");
+        assert_eq!(split.buyer_pays, split.payout + split.fee, "sums exactly");
+        assert!(
+            split.fee >= formula.due_on_payouts(split.payout),
+            "fee covers the contract"
+        );
+        assert!(split.fee >= FLOOR, "fee covers the floor");
+        // Largest such payout: one more lovelace would break a bound.
+        let next = split.payout + 1;
+        assert!(next + formula.due_on_payouts(next).max(FLOOR) > buyer_pays);
+        split
+    }
+
+    #[test]
+    fn a_seller_who_wants_fifty_quotes_the_gross_and_gets_fifty() {
+        // 50 ₳ payout ⇒ 50 × 5 / 95 = 2.631578 ₳ fee ⇒ 52.631578 ₳ gross.
+        let split = holds(FIVE, 52_631_578);
+        assert_eq!(split.payout, 50_000_000);
+        assert_eq!(split.fee, 2_631_578);
+    }
+
+    #[test]
+    fn a_cheap_listing_pays_the_floor_out_of_the_quote() {
+        let split = holds(FIVE, 10_000_000);
+        assert_eq!(split.fee, FLOOR);
+        assert_eq!(split.payout, 10_000_000 - FLOOR);
+    }
+
+    #[test]
+    fn the_percentage_takes_over_above_the_floor_reach() {
+        let split = holds(FIVE, 100_000_000);
+        assert!(split.fee > FLOOR);
+        assert_eq!(split.fee, FIVE.due_on_payouts(split.payout));
+    }
+
+    #[test]
+    fn a_quote_at_or_below_the_floor_has_no_split() {
+        assert_eq!(FIVE.split_buyer_price(FLOOR, FLOOR), None);
+        assert_eq!(
+            FIVE.split_buyer_price(FLOOR + 1, FLOOR).map(|s| s.payout),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn jpg_v2_splits_hold_the_same_invariants() {
+        holds(FeeFormula::JpgV2, 480_000_000);
+        holds(FeeFormula::JpgV2, 5_000_000);
+    }
 }
 
 #[cfg(test)]

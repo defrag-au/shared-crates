@@ -58,6 +58,7 @@ mod app {
         SigningStatus,
         TxFlight,
         StakeSession,
+        ListingComposer,
         FeeReport,
         TxEstimate,
         TradeFlow,
@@ -257,6 +258,7 @@ mod app {
                 Self::SigningStatus,
                 Self::TxFlight,
                 Self::StakeSession,
+                Self::ListingComposer,
                 Self::FeeReport,
                 Self::TxEstimate,
                 Self::TradeFlow,
@@ -374,6 +376,7 @@ mod app {
                 Self::SigningStatus => "Signing Status",
                 Self::TxFlight => "Tx Flight",
                 Self::StakeSession => "Stake Session",
+                Self::ListingComposer => "Listing Composer",
                 Self::FeeReport => "Fee Report",
                 Self::TxEstimate => "TX Estimate",
                 Self::TradeFlow => "Trade Flow",
@@ -548,9 +551,11 @@ mod app {
                 | Self::CardBrowser
                 | Self::IconGallery
                 | Self::TraitFilter => "Data Visualization",
-                Self::WalletButton | Self::WalletEditor | Self::TxFlight | Self::StakeSession => {
-                    "Wallet"
-                }
+                Self::WalletButton
+                | Self::WalletEditor
+                | Self::TxFlight
+                | Self::StakeSession
+                | Self::ListingComposer => "Wallet",
                 Self::SwapModal => "Swap",
                 Self::TraitDelta
                 | Self::CoverageDeltaBar
@@ -698,6 +703,9 @@ mod app {
                 }
                 Self::TxFlight => {
                     "One server-built, wallet-signed transaction as a build / sign / submit checklist"
+                }
+                Self::ListingComposer => {
+                    "Price a batch of listings by what the buyer pays — fee and seller payout per row, from the contract's own arithmetic"
                 }
                 Self::StakeSession => {
                     "Connect a wallet, sign in to a worker by stake key, stay signed in — the whole strip"
@@ -1078,6 +1086,7 @@ mod app {
         signing_status_state: stories::signing_status::SigningStatusStoryState,
         tx_flight_state: stories::tx_flight::TxFlightStoryState,
         stake_session_state: stories::stake_session::StakeSessionStoryState,
+        listing_composer_state: stories::listing_composer::ListingComposerStoryState,
         trade_table_state: stories::trade_table::TradeTableStoryState,
         wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
         utxo_map_state: stories::utxo_map::UtxoMapStoryState,
@@ -1226,6 +1235,8 @@ mod app {
                 signing_status_state: stories::signing_status::SigningStatusStoryState::default(),
                 tx_flight_state: stories::tx_flight::TxFlightStoryState::default(),
                 stake_session_state: stories::stake_session::StakeSessionStoryState::default(),
+                listing_composer_state:
+                    stories::listing_composer::ListingComposerStoryState::default(),
                 trade_table_state: stories::trade_table::TradeTableStoryState::default(),
                 wallet_asset_picker_state:
                     stories::wallet_asset_picker::WalletAssetPickerStoryState::default(),
@@ -1464,6 +1475,10 @@ mod app {
                             Story::TxFlight => {
                                 stories::tx_flight::show(ui, &mut self.tx_flight_state)
                             }
+                            Story::ListingComposer => stories::listing_composer::show(
+                                ui,
+                                &mut self.listing_composer_state,
+                            ),
                             Story::StakeSession => {
                                 stories::stake_session::show(ui, &mut self.stake_session_state)
                             }

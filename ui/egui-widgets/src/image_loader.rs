@@ -47,6 +47,24 @@ pub fn iiif_asset_url(policy_id: &str, asset_name_hex: &str, size: AssetImageSiz
     image_core::iiif_asset_url(policy_id, asset_name_hex, size.into())
 }
 
+/// As [`iiif_asset_url`], against a specific IIIF deployment — the preprod
+/// host for an app running against a testnet. See [`iiif_base_for_network`].
+pub fn iiif_asset_url_on(
+    base: &str,
+    policy_id: &str,
+    asset_name_hex: &str,
+    size: AssetImageSize,
+) -> String {
+    image_core::iiif_url_on(base, policy_id, asset_name_hex, size.into())
+}
+
+/// The IIIF deployment for a chain network string (`cardano:mainnet`,
+/// `cardano:preprod`). A preprod policy asked of the mainnet host resolves
+/// to nothing, so every network-aware app picks its base with this.
+pub use image_core::base_for_network as iiif_base_for_network;
+/// The named IIIF deployments.
+pub use image_core::hosts as iiif_hosts;
+
 /// Build a IIIF thumbnail URL for an asset image.
 ///
 /// Constructs a IIIF Image API v3 URL that requests a square crop at the
