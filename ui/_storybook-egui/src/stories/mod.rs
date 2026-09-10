@@ -59,6 +59,8 @@ pub mod seven_segment;
 pub mod skeleton;
 pub mod slot_table;
 pub mod sparkline;
+#[cfg(target_arch = "wasm32")]
+pub mod stake_session;
 pub mod stat_strip;
 pub mod supply_bar;
 pub mod swap;
@@ -112,6 +114,7 @@ pub mod trade_flow;
 pub mod trade_table;
 pub mod trait_delta;
 pub mod tx_estimate;
+pub mod tx_flight;
 pub mod utxo_map;
 pub mod wallet_asset_picker;
 

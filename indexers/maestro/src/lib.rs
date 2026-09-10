@@ -1,3 +1,28 @@
+//! # SUNSETTING — the Maestro hosted indexer is going offline
+//!
+//! Do not add new call sites. Existing ones are all going away; the only open
+//! question is where they point instead.
+//!
+//! **Status (2026-09-10):** Maestro announced both a shutdown *and* that they
+//! are opensourcing their stack. The shutdown deadline is real either way —
+//! open code does not keep the hosted service running — but the destination is
+//! an open fork:
+//!
+//! - **A — migrate the clients** to `koios` (`indexers/koios`) / mitos.
+//!   ~245 call sites across ~15 crates, plus a tier of hand-rolled HTTP.
+//! - **B — rehost a Maestro-compatible API** on our own `tx-index` /
+//!   `policy-index` / dolos substrate, so the clients only change base URL.
+//!
+//! Gap analysis is blocked until their code actually lands and we can see what
+//! was released (indexer? API layer? just SDKs?) and under what licence.
+//!
+//! `#[deprecated]` attributes were deliberately **removed** pending that
+//! decision: they would have baked "migrate to Koios" into ~245 compiler
+//! warnings while path B is still live, and turned the workspace's
+//! `-D warnings` lint red for the duration.
+//!
+//! Full inventory, endpoint→substrate mapping and the decision criteria:
+//! `docs/design/MAESTRO_PROVIDER_MIGRATION.md` in `cnft.dev-workers`.
 #![allow(clippy::match_like_matches_macro)]
 
 use async_stream::stream;
@@ -673,8 +698,18 @@ pub struct ByteSize {
     pub bytes: u64,
 }
 
-// Protocol parameters for fee calculation and transaction building
-// Only deserialize the fields we actually need for transaction building
+/// Protocol parameters for fee calculation and transaction building.
+/// Only deserializes the fields we actually need for transaction building.
+///
+/// **Misplaced — relocate to `cardano-tx` regardless of how the Maestro
+/// sunset resolves.** This type is the shape `cardano-tx` builds from
+/// (`params.rs`, `fee.rs`, `selection.rs`, `builder/send.rs`), and the
+/// *fetch* is already Koios/Ogmios via `cached-config` — nothing about it
+/// is Maestro-specific any more. It is re-exported as
+/// `cached_config::ProtocolParams`, which drops the Cargo dep but not the
+/// coupling: jpg-store-mirror, trade-desk, wallet-operations and
+/// minting-engine all still name a `maestro` type on every tx build, so
+/// they are not as Maestro-free as their migration notes claim.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ProtocolParameters {
     #[serde(with = "wasm_safe_serde::u64_required")]

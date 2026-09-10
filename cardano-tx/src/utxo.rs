@@ -178,6 +178,11 @@ pub fn split_by_value_size(assets: &[AssetAmount], max_value_size: u64) -> Vec<V
 pub struct OutputParams {
     /// Optional inline datum size in bytes (for CIP-68 reference tokens)
     pub datum_size: Option<usize>,
+    /// Optional CIP-33 reference script size in bytes — the script's own
+    /// bytes (an Aiken blueprint's `compiledCode`), before the output's CBOR
+    /// wrapping. A deployed validator is ~1.5 KB, so this dominates the
+    /// output's min-UTxO (about 8 ADA at 4310 lovelace/byte).
+    pub script_ref_size: Option<usize>,
 }
 
 impl OutputParams {
@@ -185,7 +190,26 @@ impl OutputParams {
     pub fn with_datum(datum_bytes: &[u8]) -> Self {
         Self {
             datum_size: Some(datum_bytes.len()),
+            ..Self::default()
         }
+    }
+
+    /// Create params for an output carrying a reference script
+    pub fn with_script_ref(script_bytes: &[u8]) -> Self {
+        Self {
+            script_ref_size: Some(script_bytes.len()),
+            ..Self::default()
+        }
+    }
+}
+
+/// Bytes a CBOR byte-string header takes for a payload of `len` bytes.
+fn cbor_bytes_header_len(len: u64) -> u64 {
+    match len {
+        0..=23 => 1,
+        24..=255 => 2,
+        256..=65_535 => 3,
+        _ => 5,
     }
 }
 
@@ -300,7 +324,25 @@ pub fn min_ada_with_coefficient(
         None => 0,
     };
 
-    let serialized_output_size = map_header + address_with_key + value_with_key + datum_with_key;
+    // Key 3 (1 byte) + reference script (if present).
+    // Babbage/Conway: `script_ref = #6.24(bytes .cbor script)`, where
+    // `script = [kind, script_bytes]`:
+    //   d8 18          tag(24)                    2 bytes
+    //   58/59 xx..     inner byte-string header   1–3 bytes
+    //   82 0k          array(2), language tag     2 bytes
+    //   58/59 xx..     script byte-string header  1–3 bytes
+    //   [script bytes]
+    let script_with_key: u64 = match params.script_ref_size {
+        Some(size) => {
+            let size = size as u64;
+            let inner = 2 + cbor_bytes_header_len(size) + size;
+            1 + 2 + cbor_bytes_header_len(inner) + inner
+        }
+        None => 0,
+    };
+
+    let serialized_output_size =
+        map_header + address_with_key + value_with_key + datum_with_key + script_with_key;
 
     // Apply Babbage/Conway formula (no safety margin needed with correct calculation)
     (UTXO_OVERHEAD + serialized_output_size) * coins_per_utxo_byte
@@ -339,6 +381,7 @@ mod tests {
 
         let params = OutputParams {
             datum_size: Some(241),
+            script_ref_size: None,
         };
 
         let calculated = calculate_min_ada_with_params(&protocol_params, &[(asset_id, 1)], &params);

@@ -201,6 +201,9 @@ impl MarketplaceDatumParser {
             MarketplaceType::JpgStoreV1 => self.parse_jpg_store_v1(cbor_bytes),
             MarketplaceType::JpgStoreV2 => self.parse_jpg_store_v2(cbor_bytes),
             MarketplaceType::JpgStoreV3 => self.parse_jpg_store_v3(cbor_bytes),
+            // Same datum as jpg V3 — the fork changed the validator's constants,
+            // not its datum type.
+            MarketplaceType::Abandonware => self.parse_jpg_store_v3(cbor_bytes),
             MarketplaceType::JpgStoreV4 => self.parse_jpg_store_v4(cbor_bytes),
             MarketplaceType::Wayup => self.parse_wayup(cbor_bytes),
             MarketplaceType::Unknown => Err(DatumParsingError::SchemaValidation(

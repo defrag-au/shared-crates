@@ -36,6 +36,8 @@ gateway-wiring = { path = "../../services/gateway-wiring", optional = true }
 # The transaction verdict shape — see `verdict_card`.
 tx-verdict = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
+# `stake_session` persists a session as JSON in localStorage.
+serde_json = { workspace = true }
 log = { workspace = true }
 # Hierarchical FSM for widget interaction state — see `time_spine::tape`.
 statig = { workspace = true }
@@ -65,6 +67,8 @@ web-sys = { workspace = true, features = [
     "WorkerGlobalScope",
     "Document", "Element", "HtmlElement", "HtmlInputElement",
     "FileList", "File", "FileReader",
+    # `stake_session` persists a worker session in localStorage.
+    "Storage",
 ] }
 js-sys = { workspace = true }
 wallet-core = { workspace = true, optional = true }

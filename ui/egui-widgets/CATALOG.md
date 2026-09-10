@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-131 widgets.
+133 widgets.
 
 | module | what it is |
 |---|---|
@@ -109,6 +109,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `slot_table` | slot_table — the trait/slot list with enable / required toggles and an optional z-order field |
 | `sparkline` | Sparkline widget — compact inline line chart for trend visualization |
 | `split_allocation_bar` | Split allocation bar — segmented horizontal bar showing ADA allocation across multiple DEXes |
+| `stake_session` | `StakeSessionPanel` — connect a wallet, sign in to a worker by stake key, and stay signed in; the whole strip, with the session it holds |
 | `stat_strip` | StatStrip — windowed summary "stat cards", laid out as uniform tiles that fill their container and wrap into even rows |
 | `supply_bar` | Two-band mint supply bar — `minted` (on chain) + `ordered` (the backlog of ordered-but-not-yet-minted units), over the unsold track |
 | `swap_modal` | Reusable swap modal widget for egui frontends |
@@ -125,6 +126,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `tx_card` | `TxCard` — one transaction as a VERDICT: what it was, who it was between, and the one figure that says it — at three densities |
 | `tx_cart` | TX Cart widget — displays a list of pending chain actions with batch execution |
 | `tx_estimate` | Per-wallet transaction estimate widget — shows the local user's ADA impact |
+| `tx_flight` | `TxFlight` — one server-built, wallet-signed transaction as a checklist: build, review, sign, submit, land |
 | `typeahead_search` | `TypeaheadSearch` — a search box with a keyboard-navigable result dropdown |
 | `user_badge` | `UserBadge` — a compact "logged in as" pill (avatar/icon + name) whose click-to-open popup carries the session's identity block and a sign-out action |
 | `utxo_map` | UTxO terrain map — a Voronoi-based wallet visualization |

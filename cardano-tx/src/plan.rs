@@ -32,7 +32,7 @@
 //!   ([`SelectError::DuplicateMustSpend`]), not at the ledger.
 
 use pallas_addresses::Address;
-use pallas_txbuilder::{Output, StagingTransaction};
+use pallas_txbuilder::{Output, ScriptKind, StagingTransaction};
 use std::collections::{BTreeMap, HashSet};
 
 use crate::builder::{UnsignedTx, converge_fee_with_witnesses};
@@ -68,6 +68,10 @@ pub struct TxPlan<'a, U: Selectable> {
     /// computed min-UTxO for the asset bundle (never user-supplied — the floor
     /// is a ledger rule, not a knob).
     asset_outputs: Vec<(Address, Vec<AssetAmount>)>,
+    /// CIP-33 reference-script outputs: recipient + language + script bytes.
+    /// Lovelace is the computed min-UTxO for the script's size, like
+    /// `asset_outputs`.
+    script_outputs: Vec<(Address, ScriptKind, Vec<u8>)>,
     metadata: Option<serde_json::Value>,
     sweep_to: Option<Address>,
     rehome_assets: bool,
@@ -91,6 +95,7 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
             strategy: Strategy::ManualOnly,
             outputs: Vec::new(),
             asset_outputs: Vec::new(),
+            script_outputs: Vec::new(),
             metadata: None,
             sweep_to: None,
             rehome_assets: false,
@@ -146,6 +151,25 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
     ) -> Self {
         self.asset_outputs
             .push((addr, assets.into_iter().collect()));
+        self
+    }
+
+    /// Park a validator on chain as a CIP-33 reference script in an output at
+    /// `addr`, so later transactions can reference it instead of carrying the
+    /// script bytes in their witness set. The output's lovelace is the
+    /// computed min-UTxO for the script's size (a ledger rule, not a knob —
+    /// about 8 ADA for a 1.5 KB Plutus V2 validator).
+    ///
+    /// Put it at the validator's OWN address with no datum and it can never
+    /// be spent: a spend would need a datum the output does not have. That is
+    /// what a permanent reference wants, and it is how jpg.store parks theirs.
+    pub fn deploy_script_to(
+        mut self,
+        addr: Address,
+        language: ScriptKind,
+        script_bytes: Vec<u8>,
+    ) -> Self {
+        self.script_outputs.push((addr, language, script_bytes));
         self
     }
 
@@ -229,9 +253,9 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
             return self.build_sweep(target);
         }
         if self.fold_change {
-            if !self.asset_outputs.is_empty() {
+            if !self.asset_outputs.is_empty() || !self.script_outputs.is_empty() {
                 return Err(TxBuildError::BuildFailed(
-                    "TxPlan: fold_change is pure-ADA only (no asset outputs)".into(),
+                    "TxPlan: fold_change is pure-ADA only (no asset or script outputs)".into(),
                 ));
             }
             return self.build_fold();
@@ -241,7 +265,10 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
                 "TxPlan: rehome_assets is a sweep modifier — use sweep_to".into(),
             ));
         }
-        if self.outputs.is_empty() && self.asset_outputs.is_empty() {
+        if self.outputs.is_empty()
+            && self.asset_outputs.is_empty()
+            && self.script_outputs.is_empty()
+        {
             return Err(TxBuildError::BuildFailed("TxPlan: no outputs".into()));
         }
         let min_pure_utxo = self.params.min_pure_utxo();
@@ -376,15 +403,34 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
             ));
         }
 
+        // Reference-script outputs, min-ADA sized for the script bytes. The
+        // bytes also ride in the tx body, so they count toward the fee below.
+        let mut script_outs: Vec<(Output, u64)> = Vec::new();
+        let mut script_bytes_total: u64 = 0;
+        for (addr, kind, bytes) in &self.script_outputs {
+            let lovelace = crate::utxo::min_ada_with_coefficient(
+                self.params.coins_per_utxo_byte,
+                &[],
+                &crate::OutputParams::with_script_ref(bytes),
+            );
+            script_bytes_total += bytes.len() as u64;
+            script_outs.push((
+                create_ada_output(addr.clone(), lovelace).set_inline_script(*kind, bytes.clone()),
+                lovelace,
+            ));
+        }
+
         let total_pure_outputs: u64 = self.outputs.iter().map(|(_, l)| *l).sum();
         let total_asset_lovelace: u64 = asset_outs.iter().map(|(_, l)| *l).sum::<u64>()
-            + asset_change.iter().map(|(_, l)| *l).sum::<u64>();
+            + asset_change.iter().map(|(_, l)| *l).sum::<u64>()
+            + script_outs.iter().map(|(_, l)| *l).sum::<u64>();
         // Target estimate only (the converged fee is exact): base + metadata +
-        // a rough per-asset-output weight + per-input headroom for the inputs
-        // already committed.
+        // script bytes + a rough per-asset-output weight + per-input headroom
+        // for the inputs already committed.
         let fee_estimate = estimate_simple_fee(&self.params)
             + metadata_bytes.as_ref().map_or(0, |b| b.len() as u64)
-            + (asset_outs.len() + asset_change.len()) as u64 * 5_000
+            + script_bytes_total
+            + (asset_outs.len() + asset_change.len() + script_outs.len()) as u64 * 5_000
             + must_spend.len() as u64 * PER_INPUT_FEE_HEADROOM;
         let target = total_pure_outputs
             .saturating_add(total_asset_lovelace)
@@ -421,7 +467,7 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
                 for (addr, amount) in &outputs {
                     tx = tx.output(create_ada_output(addr.clone(), *amount));
                 }
-                for (out, _) in asset_outs.iter().chain(&asset_change) {
+                for (out, _) in asset_outs.iter().chain(&asset_change).chain(&script_outs) {
                     tx = tx.output(out.clone());
                 }
                 if let Some(bytes) = &metadata_bytes {
@@ -567,6 +613,12 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
     /// the excess ADA locked above the assets' minimum into the sweep. Mirrors
     /// `build_send_max`/`build_consolidate` (sweep-to-self + rehome).
     fn build_sweep(self, target: Address) -> Result<UnsignedTx, TxBuildError> {
+        if !self.script_outputs.is_empty() {
+            return Err(TxBuildError::BuildFailed(
+                "TxPlan sweep: deploy_script_to is not a sweep modifier — build a plain plan"
+                    .into(),
+            ));
+        }
         check_no_duplicate_inputs(&self.must_spend)?;
         let pure: Vec<&'a U> = self
             .must_spend
@@ -738,7 +790,7 @@ fn min_ada_for_assets(params: &TxBuildParams, assets: &[AssetAmount]) -> u64 {
     crate::calculate_min_ada_with_params(
         &crate::builder::send::to_maestro_params(params),
         assets,
-        &crate::OutputParams { datum_size: None },
+        &crate::OutputParams::default(),
     )
 }
 
@@ -887,6 +939,74 @@ mod tests {
             .build()
             .unwrap();
         assert_balanced(&unsigned, &pool);
+    }
+
+    /// A reference-script deployment: the script output carries the bytes,
+    /// is sized for them (the script dominates its min-UTxO), and the build
+    /// still balances. A 1.5 KB validator wants roughly 8 ADA at 4310/byte.
+    #[test]
+    fn deploy_script_output_carries_script_and_balances() {
+        let pool = vec![ada("aa", 0, 50_000_000)];
+        let script_bytes = vec![0x59, 0x05, 0xfb]
+            .into_iter()
+            .chain(std::iter::repeat_n(0xabu8, 1531))
+            .collect::<Vec<u8>>();
+        let unsigned = TxPlan::new(addr(), 0, params())
+            .select_from(&pool, Strategy::SmallestSufficient)
+            .deploy_script_to(addr(), ScriptKind::PlutusV2, script_bytes.clone())
+            .build()
+            .unwrap();
+        assert_balanced(&unsigned, &pool);
+
+        let outputs: Vec<_> = unsigned.staging.outputs.iter().flatten().collect();
+        let script_out = outputs
+            .iter()
+            .find(|o| o.script.is_some())
+            .expect("one output carries the script");
+        assert_eq!(
+            script_out.script.as_ref().unwrap().bytes.as_ref() as &[u8],
+            &script_bytes[..],
+            "the output carries exactly the bytes handed in"
+        );
+        let expected_min = crate::utxo::min_ada_with_coefficient(
+            4_310,
+            &[],
+            &crate::OutputParams::with_script_ref(&script_bytes),
+        );
+        assert_eq!(
+            script_out.lovelace, expected_min,
+            "sized by the script's min-UTxO"
+        );
+        assert!(
+            (7_000_000..=9_000_000).contains(&script_out.lovelace),
+            "a 1.5 KB script locks ~8 ADA, got {}",
+            script_out.lovelace
+        );
+        // The script bytes ride in the body, so the fee reflects them.
+        assert!(
+            unsigned.fee > 155_381 + 44 * 1_534,
+            "fee must cover the script bytes, got {}",
+            unsigned.fee
+        );
+    }
+
+    /// Reference scripts are only a plain-build feature; the other modes say so.
+    #[test]
+    fn deploy_script_is_refused_by_sweep_and_fold() {
+        let pool = vec![ada("aa", 0, 50_000_000)];
+        let sweep = TxPlan::new(addr(), 0, params())
+            .must_spend(&pool)
+            .deploy_script_to(addr(), ScriptKind::PlutusV2, vec![0u8; 100])
+            .sweep_to(addr())
+            .build();
+        assert!(sweep.is_err(), "sweep must refuse a script output");
+        let fold = TxPlan::new(addr(), 0, params())
+            .must_spend(&pool)
+            .pay_to(addr(), 5_000_000)
+            .deploy_script_to(addr(), ScriptKind::PlutusV2, vec![0u8; 100])
+            .fold_change()
+            .build();
+        assert!(fold.is_err(), "fold must refuse a script output");
     }
 
     #[test]

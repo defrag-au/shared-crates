@@ -1,3 +1,4 @@
+pub mod blueprint;
 pub mod builder;
 pub mod dex;
 pub mod error;

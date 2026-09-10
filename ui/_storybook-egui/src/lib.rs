@@ -56,6 +56,8 @@ mod app {
         AssetStrip,
         TradeTable,
         SigningStatus,
+        TxFlight,
+        StakeSession,
         FeeReport,
         TxEstimate,
         TradeFlow,
@@ -253,6 +255,8 @@ mod app {
                 Self::AssetStrip,
                 Self::TradeTable,
                 Self::SigningStatus,
+                Self::TxFlight,
+                Self::StakeSession,
                 Self::FeeReport,
                 Self::TxEstimate,
                 Self::TradeFlow,
@@ -368,6 +372,8 @@ mod app {
                 Self::AssetStrip => "Asset Strip",
                 Self::TradeTable => "Trade Table",
                 Self::SigningStatus => "Signing Status",
+                Self::TxFlight => "Tx Flight",
+                Self::StakeSession => "Stake Session",
                 Self::FeeReport => "Fee Report",
                 Self::TxEstimate => "TX Estimate",
                 Self::TradeFlow => "Trade Flow",
@@ -542,7 +548,9 @@ mod app {
                 | Self::CardBrowser
                 | Self::IconGallery
                 | Self::TraitFilter => "Data Visualization",
-                Self::WalletButton | Self::WalletEditor => "Wallet",
+                Self::WalletButton | Self::WalletEditor | Self::TxFlight | Self::StakeSession => {
+                    "Wallet"
+                }
                 Self::SwapModal => "Swap",
                 Self::TraitDelta
                 | Self::CoverageDeltaBar
@@ -687,6 +695,12 @@ mod app {
                 }
                 Self::SigningStatus => {
                     "Concurrent signing checklist with Sign/Cancel actions and progress states"
+                }
+                Self::TxFlight => {
+                    "One server-built, wallet-signed transaction as a build / sign / submit checklist"
+                }
+                Self::StakeSession => {
+                    "Connect a wallet, sign in to a worker by stake key, stay signed in — the whole strip"
                 }
                 Self::FeeReport => {
                     "Per-side fee breakdown with Black Flag holder waiver display"
@@ -1062,6 +1076,8 @@ mod app {
         tx_estimate_state: stories::tx_estimate::TxEstimateStoryState,
         trade_flow_state: stories::trade_flow::TradeFlowStoryState,
         signing_status_state: stories::signing_status::SigningStatusStoryState,
+        tx_flight_state: stories::tx_flight::TxFlightStoryState,
+        stake_session_state: stories::stake_session::StakeSessionStoryState,
         trade_table_state: stories::trade_table::TradeTableStoryState,
         wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
         utxo_map_state: stories::utxo_map::UtxoMapStoryState,
@@ -1208,6 +1224,8 @@ mod app {
                 tx_estimate_state: stories::tx_estimate::TxEstimateStoryState::default(),
                 trade_flow_state: stories::trade_flow::TradeFlowStoryState::default(),
                 signing_status_state: stories::signing_status::SigningStatusStoryState::default(),
+                tx_flight_state: stories::tx_flight::TxFlightStoryState::default(),
+                stake_session_state: stories::stake_session::StakeSessionStoryState::default(),
                 trade_table_state: stories::trade_table::TradeTableStoryState::default(),
                 wallet_asset_picker_state:
                     stories::wallet_asset_picker::WalletAssetPickerStoryState::default(),
@@ -1442,6 +1460,12 @@ mod app {
                             }
                             Story::SigningStatus => {
                                 stories::signing_status::show(ui, &mut self.signing_status_state)
+                            }
+                            Story::TxFlight => {
+                                stories::tx_flight::show(ui, &mut self.tx_flight_state)
+                            }
+                            Story::StakeSession => {
+                                stories::stake_session::show(ui, &mut self.stake_session_state)
                             }
                             Story::FeeReport => {
                                 stories::fee_report::show(ui, &mut self.fee_report_state)

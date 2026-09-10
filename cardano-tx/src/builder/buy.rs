@@ -29,6 +29,7 @@
 //! the UTxO is rejected with `NotAllowedSupplementalDatums`. Which applies is
 //! per-listing, carried on [`ParsedListing::datum_is_inline`].
 
+use address_registry::RegistryNetwork;
 use cardano_assets::utxo::UtxoApi;
 use pallas_addresses::Address;
 use pallas_crypto::hash::Hash;
@@ -161,13 +162,13 @@ where
 /// `ref_script_size` per action-type and buys fell into the `else` branch — is
 /// rejected by the node with `FeeTooSmallUTxO`. Neither figure is checked by
 /// `evaluateTransaction`, so a wrong one survives every dry run.
-fn reference_script_size(listings: &[ParsedListing]) -> u64 {
+fn reference_script_size(listings: &[ParsedListing], network: RegistryNetwork) -> u64 {
     let mut counted: Vec<&str> = Vec::new();
     let mut total = 0;
     for listing in listings {
         let hash = listing
             .marketplace_version
-            .script_reference()
+            .script_reference(network)
             .map(|r| r.script_hash)
             .unwrap_or_default();
         if !counted.contains(&hash) {
@@ -242,8 +243,11 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
     //
     // Distinct by script hash, since a sweep across one generation reads that
     // validator once no matter how many listings it spends.
+    // Reference UTxOs and fee addresses are per network; the deps say which.
+    let network = RegistryNetwork::from_network_id(deps.network_id);
+
     let mut params = deps.params.clone();
-    params.ref_script_size = reference_script_size(listings);
+    params.ref_script_size = reference_script_size(listings, network);
 
     let mut builder = TxBuilder::new(TxDeps {
         utxos: deps.buyer_utxos.clone(),
@@ -267,10 +271,11 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
         .iter()
         .map(|listing| {
             let version = listing.marketplace_version;
-            let script_ref = version.script_reference().ok_or_else(|| {
+            let script_ref = version.script_reference(network).ok_or_else(|| {
                 TxBuildError::BuildFailed(format!(
-                    "No reference script registered for {version:?} — a buy cannot supply the \
-                     validator. Add it to address-registry's `script_reference()`."
+                    "No reference script registered for {version:?} on {network:?} — a buy \
+                     cannot supply the validator. Add it to address-registry's \
+                     `script_reference()`."
                 ))
             })?;
             if !version.buy_supported() {
@@ -292,7 +297,7 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
     // that offset in the redeemer, so the outputs must be placed before the
     // spends can be described. See `build_payout_outputs`.
     let buyer_outputs = build_buyer_asset_outputs(deps, listings)?;
-    let blocks = build_settlement_blocks(listings, buyer_outputs.len(), &deps.params)?;
+    let blocks = build_settlement_blocks(listings, buyer_outputs.len(), &deps.params, network)?;
 
     for (i, listing) in listings.iter().enumerate() {
         let (script_ref, redeemer) = &contracts[i];
@@ -502,6 +507,7 @@ fn build_settlement_blocks(
     listings: &[ParsedListing],
     leading_outputs: usize,
     params: &TxBuildParams,
+    network: RegistryNetwork,
 ) -> Result<Vec<SettlementBlock>, TxBuildError> {
     let mut blocks = Vec::with_capacity(listings.len());
     let mut next = leading_outputs;
@@ -510,7 +516,7 @@ fn build_settlement_blocks(
         let mut outputs = Vec::new();
         let block_start = next;
 
-        if let Some(fee) = listing.marketplace_version.marketplace_fee() {
+        if let Some(fee) = listing.marketplace_version.marketplace_fee(network) {
             let payouts_total: u64 = listing.payouts.iter().map(|p| p.lovelace).sum();
 
             // The fee output must carry the contract's `datum_tag`, which binds
@@ -665,21 +671,20 @@ mod tests {
         };
 
         assert_eq!(
-            reference_script_size(&[listing(1_000_000)]),
+            reference_script_size(&[listing(1_000_000)], RegistryNetwork::Mainnet),
             1673,
             "a single V2 buy bills the validator once"
         );
         assert_eq!(
-            reference_script_size(&[
-                listing(1_000_000),
-                listing(2_000_000),
-                listing(3_000_000)
-            ]),
+            reference_script_size(
+                &[listing(1_000_000), listing(2_000_000), listing(3_000_000)],
+                RegistryNetwork::Mainnet
+            ),
             1673,
             "a 3-listing sweep reads ONE validator, so it bills 1673 — not 3×"
         );
         assert_eq!(
-            reference_script_size(&[]),
+            reference_script_size(&[], RegistryNetwork::Mainnet),
             0,
             "no listings, nothing referenced"
         );
@@ -714,10 +719,13 @@ mod tests {
 
         // Real sizes from Koios: V1's script is 2561 B, V2/V3's is 1673 B.
         assert_eq!(
-            reference_script_size(&[
-                listing(MarketplaceType::JpgStoreV1, 2561),
-                listing(MarketplaceType::JpgStoreV2, 1673),
-            ]),
+            reference_script_size(
+                &[
+                    listing(MarketplaceType::JpgStoreV1, 2561),
+                    listing(MarketplaceType::JpgStoreV2, 1673),
+                ],
+                RegistryNetwork::Mainnet
+            ),
             2561 + 1673,
         );
     }
@@ -770,7 +778,13 @@ mod tests {
 
         // V1 charges no separate fee output, so each block is just its payouts.
         let listings = [listing(100), listing(250)];
-        let blocks = build_settlement_blocks(&listings, 0, &TxBuildParams::default()).unwrap();
+        let blocks = build_settlement_blocks(
+            &listings,
+            0,
+            &TxBuildParams::default(),
+            RegistryNetwork::Mainnet,
+        )
+        .unwrap();
         let outputs: Vec<_> = blocks.iter().flat_map(|b| b.outputs.iter()).collect();
         assert_eq!(
             outputs.len(),
@@ -832,7 +846,9 @@ mod tests {
     /// so computing a cleaner equivalent that lands one lovelace low fails.
     #[test]
     fn marketplace_fee_matches_the_contract_arithmetic() {
-        let fee = MarketplaceType::JpgStoreV2.marketplace_fee().unwrap();
+        let fee = MarketplaceType::JpgStoreV2
+            .marketplace_fee(RegistryNetwork::Mainnet)
+            .unwrap();
 
         // Real buy `556db775…`: 470.4 ADA of payouts, 9.6 ADA fee on chain.
         assert_eq!(fee.due_on_payouts(470_400_000), 9_600_000);
@@ -931,7 +947,7 @@ mod tests {
             MarketplaceType::JpgStoreV3,
         ] {
             assert!(
-                version.script_reference().is_some(),
+                version.script_reference(RegistryNetwork::Mainnet).is_some(),
                 "{version:?} needs a reference script"
             );
             let redeemer = version.buy_redeemer().expect("redeemer");
@@ -985,7 +1001,8 @@ mod tests {
         };
 
         let listings = [listing(3), listing(2), listing(1)];
-        let blocks = build_settlement_blocks(&listings, LEADING, &params).unwrap();
+        let blocks =
+            build_settlement_blocks(&listings, LEADING, &params, RegistryNetwork::Mainnet).unwrap();
 
         let indices: Vec<usize> = blocks.iter().map(|b| b.redeemer_index).collect();
         assert_eq!(indices, vec![1, 5, 8], "each redeemer names its fee output");

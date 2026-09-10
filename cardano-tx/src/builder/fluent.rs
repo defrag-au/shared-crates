@@ -719,7 +719,10 @@ fn with_budget_margin(units: ExUnits) -> ExUnits {
 fn spend_redeemer_index(all_refs: &[(Vec<u8>, u64)], script_ref: &(Vec<u8>, u64)) -> Option<u64> {
     let mut sorted = all_refs.to_vec();
     sorted.sort();
-    sorted.iter().position(|r| r == script_ref).map(|p| p as u64)
+    sorted
+        .iter()
+        .position(|r| r == script_ref)
+        .map(|p| p as u64)
 }
 
 /// Return the "higher" Plutus version (V3 > V2 > V1).

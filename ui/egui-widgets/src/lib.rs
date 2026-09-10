@@ -93,6 +93,8 @@ pub mod seven_segment;
 pub mod skeleton;
 pub mod slot_table;
 pub mod sparkline;
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub mod stake_session;
 pub mod stat_strip;
 pub mod supply_bar;
 pub mod swap_modal;
@@ -114,6 +116,11 @@ pub mod viewport;
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet_button;
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub use stake_session::{
+    SignedChallenge, StakeSessionAction, StakeSessionPanel, StakeSessionPhase, StoredStakeSession,
+    sign_challenge,
+};
 #[cfg(feature = "cardano")]
 pub mod wallet_editor;
 pub mod wallet_identity_header;
@@ -167,6 +174,7 @@ pub mod tx_card;
 pub mod tx_cart;
 #[cfg(feature = "cardano")]
 pub mod tx_estimate;
+pub mod tx_flight;
 #[cfg(feature = "cardano")]
 pub mod utxo_map;
 #[cfg(feature = "cardano")]
@@ -388,6 +396,9 @@ pub use tx_card::{
 };
 #[cfg(feature = "cardano")]
 pub use tx_estimate::{TxEstimateConfig, TxEstimateData, UtxoCost};
+pub use tx_flight::{
+    FlightAction, FlightPhase, FlightReview, FlightStage, TxFlightConfig, TxFlightResponse,
+};
 #[cfg(feature = "cardano")]
 pub use utxo_map::{
     UtxoCell, UtxoMapAction, UtxoMapConfig, UtxoMapData, UtxoMapResponse, UtxoMapState,

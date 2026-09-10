@@ -1462,6 +1462,7 @@ dependencies = [
  "log",
  "perf-probe",
  "serde",
+ "serde_json",
  "statig",
  "tx-verdict",
  "voronoice",
