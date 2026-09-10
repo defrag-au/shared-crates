@@ -98,9 +98,12 @@ pub fn parse_listing_datum(
     network_id: u8,
 ) -> Result<Vec<DatumPayout>, TxBuildError> {
     match version {
-        MarketplaceType::JpgStoreV1 | MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3 => {
-            parse_jpg_v1_v2_v3_datum(datum_cbor, network_id)
-        }
+        // Abandonware is the V2/V3 validator with different constants; its
+        // datum type is identical.
+        MarketplaceType::JpgStoreV1
+        | MarketplaceType::JpgStoreV2
+        | MarketplaceType::JpgStoreV3
+        | MarketplaceType::Abandonware => parse_jpg_v1_v2_v3_datum(datum_cbor, network_id),
         _ => Err(TxBuildError::BuildFailed(format!(
             "Unsupported marketplace version for buy TX: {version:?}"
         ))),

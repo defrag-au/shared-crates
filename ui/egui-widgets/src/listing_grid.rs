@@ -42,6 +42,12 @@ pub enum BlockedReason {
     /// One member of a multi-asset bundle: the price shown is the whole
     /// bundle's, and the escrow can only be spent as a unit.
     BundleMember,
+    /// Someone has submitted a purchase and the chain has not confirmed it
+    /// yet. Resolves itself either way within a block or two.
+    PendingSale,
+    /// The connected wallet is the seller. Cancel it from the seller side
+    /// instead; buying your own listing only pays the fee.
+    OwnListing,
 }
 
 impl BlockedReason {
@@ -52,6 +58,8 @@ impl BlockedReason {
             BlockedReason::DatumUnavailable => "No datum",
             BlockedReason::UnsupportedContract => "Unsupported",
             BlockedReason::BundleMember => "Bundle",
+            BlockedReason::PendingSale => "Buying…",
+            BlockedReason::OwnListing => "Yours",
         }
     }
 
@@ -71,14 +79,24 @@ impl BlockedReason {
                 "Part of a multi-asset bundle. The price shown is for the whole \
                  bundle, which must be bought as a unit."
             }
+            BlockedReason::PendingSale => {
+                "A purchase has been submitted and is waiting for the chain. If it \
+                 fails, the listing is offered again."
+            }
+            BlockedReason::OwnListing => {
+                "You listed this. Cancel or re-price it from the seller side rather \
+                 than buying it back."
+            }
         }
     }
 
     /// Every variant, for stories and exhaustive review.
-    pub const ALL: [BlockedReason; 3] = [
+    pub const ALL: [BlockedReason; 5] = [
         BlockedReason::DatumUnavailable,
         BlockedReason::UnsupportedContract,
         BlockedReason::BundleMember,
+        BlockedReason::PendingSale,
+        BlockedReason::OwnListing,
     ];
 }
 

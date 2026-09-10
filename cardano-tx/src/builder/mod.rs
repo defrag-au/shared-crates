@@ -9,6 +9,7 @@ pub mod collection_offer;
 pub mod cost_models;
 pub mod debag;
 pub mod fluent;
+pub mod listing;
 pub mod marketplace;
 pub mod mint;
 pub mod script;

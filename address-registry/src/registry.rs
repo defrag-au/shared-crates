@@ -372,6 +372,28 @@ impl MarketplaceType {
             _ => None,
         }
     }
+
+    /// The redeemer that cancels (or updates) a listing — the seller's
+    /// branch, which demands the owner's signature and nothing else.
+    ///
+    /// The mirror image of [`Self::buy_redeemer`], and reversed between jpg
+    /// generations for the same reason: V1 delists on constructor 0, V2/V3
+    /// (`WithdrawOrUpdate`) on constructor 1. Neither carries a field.
+    pub fn delist_redeemer(&self) -> Option<BuyRedeemer> {
+        match self {
+            MarketplaceType::JpgStoreV1 => Some(BuyRedeemer {
+                constructor: 0,
+                carries_payout_index: false,
+            }),
+            MarketplaceType::JpgStoreV2
+            | MarketplaceType::JpgStoreV3
+            | MarketplaceType::Abandonware => Some(BuyRedeemer {
+                constructor: 1,
+                carries_payout_index: false,
+            }),
+            _ => None,
+        }
+    }
 }
 
 // ── Marketplace deployments ──────────────────────────────────────────────────
