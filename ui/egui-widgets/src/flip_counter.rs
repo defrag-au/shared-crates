@@ -11,7 +11,7 @@
 use egui::epaint::{Mesh, Vertex};
 use egui::{Color32, Pos2, Rect, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 
 /// Darken a colour by subtracting `amount` from each RGB channel.
 fn darken(c: Color32, amount: u8) -> Color32 {
@@ -58,7 +58,9 @@ impl DigitFlip {
 pub struct FlipCounter {
     digits: Vec<DigitFlip>,
     num_slots: usize,
-    text_color: Color32,
+    /// Caller override; `None` asks the theme at render time. A `new` cannot read
+    /// the context, so a colour default has to be deferred or it bakes one theme in.
+    text_color: Option<Color32>,
     card_color: Color32,
     card_color_bottom: Color32,
     card_height: f32,
@@ -74,7 +76,7 @@ impl FlipCounter {
         Self {
             digits: vec![DigitFlip::new(' '); num_slots],
             num_slots,
-            text_color: theme::TEXT_PRIMARY,
+            text_color: None,
             card_color: Color32::from_rgb(45, 45, 65),
             card_color_bottom: Color32::from_rgb(38, 38, 56),
             card_height: 60.0,
@@ -87,7 +89,7 @@ impl FlipCounter {
     }
 
     pub fn text_color(mut self, color: Color32) -> Self {
-        self.text_color = color;
+        self.text_color = Some(color);
         self
     }
 
@@ -117,6 +119,9 @@ impl FlipCounter {
     }
 
     pub fn show(&mut self, ui: &mut Ui) {
+        // Resolved once and passed down: the `&self` paint helpers cannot ask the
+        // context themselves, and a cached field would be stale before `show`.
+        let text = self.text_color.unwrap_or(ui.tokens().color.text_primary);
         let dt = ui.input(|i| i.stable_dt).min(0.1); // clamp to avoid jumps
         let mut needs_repaint = false;
 
@@ -171,7 +176,7 @@ impl FlipCounter {
                     Pos2::new(card_x, rect.top()),
                     Vec2::new(colon_width, self.card_height),
                 );
-                self.draw_colon(&painter, col_rect);
+                self.draw_colon(&painter, text, col_rect);
                 card_x += colon_width;
                 continue;
             }
@@ -212,12 +217,26 @@ impl FlipCounter {
                 painter.rect_stroke(top_rect, corner, border_stroke, egui::StrokeKind::Inside);
 
                 // Base text on both halves
-                self.draw_clipped_char(&painter, full_rect, bot_rect, font_size, digit.previous);
+                self.draw_clipped_char(
+                    &painter,
+                    text,
+                    full_rect,
+                    bot_rect,
+                    font_size,
+                    digit.previous,
+                );
 
                 if p < 0.5 {
                     // Phase 1: old top flap rotates forward toward the viewer.
                     // Behind it, the new digit's top half is revealed.
-                    self.draw_clipped_char(&painter, full_rect, top_rect, font_size, digit.current);
+                    self.draw_clipped_char(
+                        &painter,
+                        text,
+                        full_rect,
+                        top_rect,
+                        font_size,
+                        digit.current,
+                    );
 
                     // Ease within phase: 0→1 over the first half of progress
                     let phase_t = p * 2.0;
@@ -240,6 +259,7 @@ impl FlipCounter {
                         ];
 
                         self.draw_flap_with_text(
+                            text,
                             &painter,
                             full_rect,
                             corners,
@@ -255,7 +275,14 @@ impl FlipCounter {
                 } else {
                     // Phase 2: flap continues past vertical, showing its
                     // back face (new digit bottom half) growing downward.
-                    self.draw_clipped_char(&painter, full_rect, top_rect, font_size, digit.current);
+                    self.draw_clipped_char(
+                        &painter,
+                        text,
+                        full_rect,
+                        top_rect,
+                        font_size,
+                        digit.current,
+                    );
 
                     // Ease within phase: 0→1 over the second half of progress
                     let phase_t = (p - 0.5) * 2.0;
@@ -278,6 +305,7 @@ impl FlipCounter {
                         ];
 
                         self.draw_flap_with_text(
+                            text,
                             &painter,
                             full_rect,
                             corners,
@@ -298,8 +326,22 @@ impl FlipCounter {
                 painter.rect_filled(top_rect, corner, self.card_color);
                 painter.rect_stroke(top_rect, corner, border_stroke, egui::StrokeKind::Inside);
 
-                self.draw_clipped_char(&painter, full_rect, top_rect, font_size, digit.current);
-                self.draw_clipped_char(&painter, full_rect, bot_rect, font_size, digit.current);
+                self.draw_clipped_char(
+                    &painter,
+                    text,
+                    full_rect,
+                    top_rect,
+                    font_size,
+                    digit.current,
+                );
+                self.draw_clipped_char(
+                    &painter,
+                    text,
+                    full_rect,
+                    bot_rect,
+                    font_size,
+                    digit.current,
+                );
             }
 
             // Divider line at hinge (always on top)
@@ -320,7 +362,7 @@ impl FlipCounter {
     }
 
     /// Draw a colon separator (two square dots, no card behind).
-    fn draw_colon(&self, painter: &egui::Painter, full_rect: Rect) {
+    fn draw_colon(&self, painter: &egui::Painter, text: Color32, full_rect: Rect) {
         let dot_size = self.card_height * 0.08;
         let cx = full_rect.center().x;
         let quarter = self.card_height * 0.28;
@@ -329,7 +371,7 @@ impl FlipCounter {
             painter.rect_filled(
                 Rect::from_center_size(Pos2::new(cx, y_off), Vec2::splat(dot_size)),
                 0.0,
-                self.text_color,
+                text,
             );
         }
     }
@@ -354,6 +396,7 @@ impl FlipCounter {
     fn draw_clipped_char(
         &self,
         painter: &egui::Painter,
+        text: Color32,
         full_rect: Rect,
         clip: Rect,
         font_size: f32,
@@ -366,7 +409,7 @@ impl FlipCounter {
         let galley = painter.layout_no_wrap(
             ch.to_string(),
             egui::FontId::new(font_size, egui::FontFamily::Monospace),
-            self.text_color,
+            text,
         );
 
         // Center the text in the full card rect
@@ -395,6 +438,7 @@ impl FlipCounter {
     #[allow(clippy::too_many_arguments)]
     fn draw_flap_with_text(
         &self,
+        text: Color32,
         painter: &egui::Painter,
         full_rect: Rect,
         corners: [Pos2; 4],
@@ -415,7 +459,7 @@ impl FlipCounter {
         let galley = painter.layout_no_wrap(
             ch.to_string(),
             egui::FontId::new(font_size, egui::FontFamily::Monospace),
-            self.text_color,
+            text,
         );
 
         let text_origin = Pos2::new(

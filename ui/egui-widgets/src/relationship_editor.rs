@@ -45,7 +45,7 @@ impl<'a> RelationshipEditor<'a> {
         // The → arrow is a Phosphor icon (the default font lacks U+2192). Self-
         // install for safety; hosts should also install_phosphor_font at startup.
         crate::install_phosphor_font(ui.ctx());
-        let arrow_color = crate::theme::TEXT_MUTED;
+        let arrow_color = crate::theme::ThemeExt::tokens(ui).color.text_muted;
         let mut resp = RelationshipEditorResponse::default();
 
         for (i, (src, tgt)) in self.edges.iter().enumerate() {

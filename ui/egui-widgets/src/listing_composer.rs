@@ -17,6 +17,7 @@ pub use address_registry::{FeeFormula, PriceSplit};
 use egui::{RichText, Ui};
 
 use crate::amount_input::parse_ada_input;
+use crate::icons::PhosphorIcon;
 use crate::theme;
 
 // ---------------------------------------------------------------------------
@@ -335,8 +336,15 @@ pub fn show(
                             ui.label("");
                         }
                     }
+                    // Phosphor, not a bare `✕`: U+2715 is absent from the default
+                    // font stack and rendered as tofu. `no_broken_glyphs` catches
+                    // this, and muted matches how `service_banner` paints the same
+                    // remove affordance.
                     if ui
-                        .add(egui::Button::new(RichText::new("✕").size(small)).frame(false))
+                        .add(
+                            egui::Button::new(PhosphorIcon::X.rich_text(small, theme::TEXT_MUTED))
+                                .frame(false),
+                        )
                         .on_hover_text("Remove")
                         .clicked()
                     {
@@ -383,16 +391,15 @@ pub fn show(
                     egui::Button::new(RichText::new("Apply").size(small)),
                 )
                 .clicked()
+                && let Some(lovelace) = bulk
             {
-                if let Some(lovelace) = bulk {
-                    let text = state.bulk_price_text.trim().to_string();
-                    for row in &mut state.rows {
-                        row.price_text = text.clone();
-                    }
-                    action = Some(ListingComposerAction::AppliedToAll {
-                        buyer_price_lovelace: lovelace,
-                    });
+                let text = state.bulk_price_text.trim().to_string();
+                for row in &mut state.rows {
+                    row.price_text = text.clone();
                 }
+                action = Some(ListingComposerAction::AppliedToAll {
+                    buyer_price_lovelace: lovelace,
+                });
             }
             ui.add_space(12.0);
             if ui

@@ -49,7 +49,7 @@
 use egui::collapsing_header::CollapsingState;
 use egui::{Id, Rect, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 
 /// Width of the rule tying the body to the row above it.
 const RULE_W: f32 = 2.0;
@@ -60,13 +60,43 @@ const INDENT: f32 = 10.0;
 /// Space above the body, so the rule does not start hard against the row.
 const LEAD: f32 = 4.0;
 
+/// What the tie-rule is painted with.
+///
+/// Three states, so it is an enum rather than an `Option`: the rule can take the
+/// theme's accent (the default, which a `new` cannot resolve because it has no
+/// `Ui`), an explicit colour, or nothing at all. `Option<Color32>` could only
+/// express two of those, and it expressed the wrong two — the default was baked.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RuleTint {
+    /// The active theme's accent.
+    #[default]
+    Accent,
+    /// An explicit colour, overriding the theme.
+    Custom(egui::Color32),
+    /// Draw no rule.
+    None,
+}
+
+impl RuleTint {
+    pub const ALL: &'static [RuleTint] = &[RuleTint::Accent, RuleTint::None];
+
+    /// The colour to paint, or `None` for no rule.
+    fn resolve(self, ui: &Ui) -> Option<egui::Color32> {
+        match self {
+            Self::Accent => Some(ui.tokens().color.accent),
+            Self::Custom(c) => Some(c),
+            Self::None => None,
+        }
+    }
+}
+
 /// A detail region attached to the row above it.
 pub struct Disclosure {
     id: Id,
     open: bool,
     anchor: bool,
     indent: f32,
-    rule: Option<egui::Color32>,
+    rule: RuleTint,
 }
 
 impl Disclosure {
@@ -79,7 +109,7 @@ impl Disclosure {
             open,
             anchor: true,
             indent: INDENT,
-            rule: Some(theme::ACCENT),
+            rule: RuleTint::Accent,
         }
     }
 
@@ -96,8 +126,8 @@ impl Disclosure {
         self
     }
 
-    /// Tint the tie-rule, or `None` to draw none.
-    pub fn rule(mut self, rule: Option<egui::Color32>) -> Self {
+    /// Tint the tie-rule. Defaults to [`RuleTint::Accent`].
+    pub fn rule(mut self, rule: RuleTint) -> Self {
         self.rule = rule;
         self
     }
@@ -150,7 +180,7 @@ impl Disclosure {
         // THE RULE, drawn after the body so it spans exactly what was shown —
         // `show_body_unindented` clips to the eased height, and the response
         // rect is that clipped height rather than the natural one.
-        if let Some(colour) = self.rule {
+        if let Some(colour) = self.rule.resolve(ui) {
             let span = inner.response.rect;
             ui.painter().rect_filled(
                 Rect::from_min_size(

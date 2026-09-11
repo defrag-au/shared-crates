@@ -217,8 +217,8 @@ impl<'a> HolderField<'a> {
         self
     }
 
-    /// The tint for a dot in [`Custody::Escrowed`]. Defaults to
-    /// [`crate::theme::ACCENT_ORANGE`] — far enough from the resting blue to
+    /// The tint for a dot in [`Custody::Escrowed`]. Defaults to the theme's
+    /// `accent_orange` — far enough from the resting blue to
     /// read at 2px, and not the red that would make a routine listing look
     /// like a problem.
     pub fn escrow_color(mut self, c: Color32) -> Self {
@@ -252,7 +252,8 @@ impl<'a> HolderField<'a> {
         let muted = ui.visuals().weak_text_color();
         let ink = ui.visuals().text_color();
         let accent = dot_color.unwrap_or(Color32::from_rgb(0x39, 0x87, 0xe5));
-        let escrowed = escrow_color.unwrap_or(crate::theme::ACCENT_ORANGE);
+        let escrowed =
+            escrow_color.unwrap_or_else(|| crate::theme::ThemeExt::tokens(ui).color.accent_orange);
 
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
