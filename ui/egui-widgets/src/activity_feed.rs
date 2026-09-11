@@ -56,11 +56,11 @@
 //! if let Some(i) = resp.clicked { open_tx(&entries[i]); }
 //! ```
 
-use egui::{Color32, CornerRadius, Frame, Margin, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, Margin, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::chip::{Chip, ChipVariant};
 use crate::relative_time::RelativeTime;
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 use crate::timestamp::format_iso8601;
 
 /// Assets shown before the overflow pill takes over.
@@ -362,7 +362,7 @@ impl<'a> ActivityFeed<'a> {
         let inner = Frame::new()
             .fill(ui.tokens().color.bg_secondary)
             .stroke(Stroke::new(1.0_f32, ui.tokens().color.border))
-            .corner_radius(CornerRadius::same(8))
+            .corner_radius(ui.tokens().corner(Radius::Lg))
             .inner_margin(Margin::symmetric(12, 10))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -508,7 +508,7 @@ impl<'a> ActivityFeed<'a> {
         if response.hovered() && !on_party {
             ui.painter().rect_stroke(
                 inner.response.rect,
-                CornerRadius::same(8),
+                ui.tokens().corner(Radius::Lg),
                 Stroke::new(1.0_f32, ui.tokens().color.accent_blue),
                 egui::StrokeKind::Inside,
             );
@@ -529,7 +529,7 @@ impl<'a> ActivityFeed<'a> {
         if marked {
             ui.painter().rect_stroke(
                 inner.response.rect,
-                CornerRadius::same(8),
+                ui.tokens().corner(Radius::Lg),
                 Stroke::new(2.0_f32, ui.tokens().color.accent_cyan),
                 egui::StrokeKind::Inside,
             );
@@ -682,8 +682,11 @@ fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>, moved: bool) {
     if !ui.is_rect_visible(rect) {
         return;
     }
-    ui.painter()
-        .rect_filled(rect, CornerRadius::same(6), ui.tokens().color.bg_highlight);
+    ui.painter().rect_filled(
+        rect,
+        ui.tokens().corner(Radius::Md),
+        ui.tokens().color.bg_highlight,
+    );
     let ui = &mut ui.new_child(
         egui::UiBuilder::new()
             .max_rect(rect.shrink2(egui::vec2(PILL_PAD_X, PILL_PAD_Y)))
@@ -707,7 +710,7 @@ fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>, moved: bool) {
             if ui.is_rect_visible(icon) {
                 egui::Image::new(url)
                     .fit_to_exact_size(Vec2::splat(PILL_ICON))
-                    .corner_radius(CornerRadius::same(4))
+                    .corner_radius(ui.tokens().corner(Radius::Base))
                     .paint_at(ui, icon);
             }
         }

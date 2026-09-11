@@ -5,7 +5,7 @@
 //! flow, while the caller handles the actual TX building and signing.
 
 use crate::icons::PhosphorIcon;
-use crate::theme::{Theme, ThemeExt};
+use crate::theme::{Radius, Theme, ThemeExt};
 use egui::{RichText, Ui};
 
 // ---------------------------------------------------------------------------
@@ -343,7 +343,7 @@ pub fn show_items(
                     if let Some(ref url) = item.image_url {
                         let image = egui::Image::new(url.as_str())
                             .fit_to_exact_size(egui::vec2(44.0, 44.0))
-                            .corner_radius(egui::CornerRadius::same(4));
+                            .corner_radius(ui.tokens().corner(Radius::Base));
                         ui.add(image);
                         ui.add_space(6.0);
                     }
@@ -451,7 +451,7 @@ pub fn show_items(
             // Card border
             ui.painter().rect_stroke(
                 card_rect.expand(2.0),
-                egui::CornerRadius::same(6),
+                ui.tokens().corner(Radius::Md),
                 egui::Stroke::new(0.5_f32, ui.tokens().color.border),
                 egui::StrokeKind::Outside,
             );
@@ -529,7 +529,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                                         .strong(),
                                 )
                                 .fill(ui.tokens().color.accent_green)
-                                .corner_radius(egui::CornerRadius::same(6))
+                                .corner_radius(ui.tokens().corner(Radius::Md))
                                 .min_size(egui::vec2(100.0, 32.0)),
                             )
                             .clicked()
@@ -617,7 +617,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                                     .strong(),
                             )
                             .fill(ui.tokens().color.accent_green)
-                            .corner_radius(egui::CornerRadius::same(6))
+                            .corner_radius(ui.tokens().corner(Radius::Md))
                             .min_size(egui::vec2(120.0, 32.0)),
                         )
                         .clicked()
@@ -669,7 +669,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                                     .size(12.0),
                             )
                             .fill(ui.tokens().color.bg_secondary)
-                            .corner_radius(egui::CornerRadius::same(6))
+                            .corner_radius(ui.tokens().corner(Radius::Md))
                             .min_size(egui::vec2(70.0, 28.0)),
                         )
                         .clicked()
@@ -702,7 +702,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                                 .size(12.0),
                         )
                         .fill(ui.tokens().color.bg_secondary)
-                        .corner_radius(egui::CornerRadius::same(6))
+                        .corner_radius(ui.tokens().corner(Radius::Md))
                         .min_size(egui::vec2(80.0, 30.0)),
                     )
                     .clicked()
@@ -721,7 +721,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                                 .size(12.0),
                         )
                         .fill(ui.tokens().color.bg_secondary)
-                        .corner_radius(egui::CornerRadius::same(6))
+                        .corner_radius(ui.tokens().corner(Radius::Md))
                         .min_size(egui::vec2(80.0, 30.0)),
                     )
                     .clicked()

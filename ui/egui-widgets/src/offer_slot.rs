@@ -9,7 +9,7 @@ use egui::{Color32, CornerRadius, Vec2};
 use crate::card_browser;
 use crate::icons::PhosphorIcon;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};
-use crate::theme::{self, ThemeExt};
+use crate::theme::{self, Radius, ThemeExt};
 
 // ============================================================================
 // Types
@@ -105,7 +105,7 @@ pub fn show(
 
     let hovered = card_response.hovered();
     let painter = ui.painter_at(card_rect);
-    let rounding = CornerRadius::same(4);
+    let rounding = ui.tokens().corner(Radius::Base);
 
     // Card background (visible while image loads)
     painter.rect_filled(card_rect, rounding, ui.tokens().color.bg_secondary);
@@ -235,7 +235,7 @@ pub fn show(
         );
         painter.rect_filled(
             badge_rect,
-            CornerRadius::same(3),
+            ui.tokens().corner(Radius::Sm),
             Color32::from_rgba_premultiplied(15, 15, 25, 210),
         );
         painter.text(
@@ -262,7 +262,7 @@ pub fn show(
         );
         painter.rect_filled(
             badge_rect,
-            CornerRadius::same(3),
+            ui.tokens().corner(Radius::Sm),
             Color32::from_rgba_premultiplied(15, 15, 25, 210),
         );
         painter.text(
@@ -389,7 +389,7 @@ pub fn show_ada_card(
     let painter = ui.painter_at(card_rect);
     painter.rect_filled(
         card_rect,
-        CornerRadius::same(4),
+        ui.tokens().corner(Radius::Base),
         ui.tokens().color.bg_secondary,
     );
 
@@ -485,7 +485,7 @@ pub fn show_add_card(ui: &mut egui::Ui, config: &OfferSlotConfig) -> bool {
 
     let hovered = response.hovered();
     let painter = ui.painter_at(card_rect);
-    let rounding = CornerRadius::same(4);
+    let rounding = ui.tokens().corner(Radius::Base);
 
     // Border and fill
     let (border_color, icon_color, text_color) = if hovered {

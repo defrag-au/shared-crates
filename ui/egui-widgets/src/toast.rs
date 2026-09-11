@@ -73,12 +73,13 @@
 use std::collections::VecDeque;
 
 use egui::{
-    Align, Align2, Area, Color32, Context, CornerRadius, Frame, Id, Label, Layout, Margin, Order,
+    Align, Align2, Area, Color32, Context, Frame, Id, Label, Layout, Margin, Order,
     RichText, Sense, Stroke, Ui,
 };
 
 use crate::error_note::summarize_error;
 use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::theme::{Radius, ThemeExt};
 
 /// ~3 seconds at 60 fps. Used as the default lifetime for toasts pushed
 /// through the convenience helpers on [`ToastQueue`].
@@ -505,7 +506,7 @@ fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
     Frame::new()
         .fill(fill)
         .stroke(Stroke::new(1.0_f32, stroke))
-        .corner_radius(CornerRadius::same(6))
+        .corner_radius(ui.tokens().corner(Radius::Md))
         .inner_margin(Margin::symmetric(12, 8))
         .show(ui, |ui| {
             // Clamped to the viewport, not asserted: 440 is wider than a
@@ -525,7 +526,7 @@ fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
                         Some(f) => {
                             let (rect, _) =
                                 ui.allocate_exact_size(egui::vec2(56.0, 6.0), Sense::hover());
-                            let r = CornerRadius::same(3);
+                            let r = ui.tokens().corner(Radius::Sm);
                             ui.painter().rect_filled(rect, r, stroke);
                             let mut done = rect;
                             done.set_right(rect.left() + rect.width() * f);

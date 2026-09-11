@@ -72,7 +72,7 @@
 //! ```
 
 use egui::{
-    Color32, CornerRadius, Frame, Margin, Pos2, Response, RichText, Sense, Stroke, Ui, Vec2,
+    Color32, Frame, Margin, Pos2, Response, RichText, Sense, Stroke, Ui, Vec2,
 };
 
 use crate::party_badge::{PartyBadge, PartyBasis};

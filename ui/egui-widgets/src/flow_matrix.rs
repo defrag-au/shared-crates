@@ -40,7 +40,7 @@
 //!   walks cannot name the funder of most receipts, and that column being the
 //!   biggest one on screen is the honest picture of what is known.
 
-use egui::{Align2, Color32, CornerRadius, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
+use egui::{Align2, Color32, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
 use crate::theme::{Radius, ThemeExt};
 

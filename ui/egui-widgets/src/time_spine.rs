@@ -66,6 +66,7 @@ use egui::{
 use statig::prelude::*;
 
 use crate::motion::{Easing, tween, tween_bool};
+use crate::theme::{Radius, ThemeExt};
 
 /// Colours for [`MarkKind`]. Two categories, so two hues from the catalog's
 /// categorical order — never a red/green pair, which reads as good/bad rather
@@ -1538,7 +1539,7 @@ impl<'a> TimeSpine<'a> {
             );
             let mut fill = visuals.selection.bg_fill;
             fill = fill.linear_multiply(0.55);
-            painter.rect_filled(r, CornerRadius::same(2), fill);
+            painter.rect_filled(r, ui.tokens().corner(Radius::Xs), fill);
             let edge = Stroke::new(1.5_f32, visuals.selection.stroke.color);
             painter.line_segment([r.left_top(), r.left_bottom()], edge);
             painter.line_segment([r.right_top(), r.right_bottom()], edge);
@@ -1608,14 +1609,14 @@ impl<'a> TimeSpine<'a> {
         let badge = Rect::from_min_size(pos2(bx, rect.bottom() - badge_size.y - 1.0), badge_size);
         painter.rect_filled(
             badge,
-            CornerRadius::same(3),
+            ui.tokens().corner(Radius::Sm),
             // Opaque, not a tint: a translucent chip over dense marks is the
             // same illegibility with extra steps.
             visuals.extreme_bg_color,
         );
         painter.rect_stroke(
             badge,
-            CornerRadius::same(3),
+            ui.tokens().corner(Radius::Sm),
             Stroke::new(1.0_f32, ph_col.linear_multiply(0.6)),
             egui::StrokeKind::Inside,
         );

@@ -57,12 +57,13 @@
 //! }
 //! ```
 
-use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke, Ui};
+use egui::{Color32, Frame, Margin, RichText, Stroke, Ui};
 
 use crate::PhosphorIcon;
 use crate::button_group::{ButtonGroup, ButtonGroupButton};
 use crate::icons::install_phosphor_font;
 use crate::id_pill::{IdPill, IdPillLayout};
+use crate::theme::{Radius, ThemeExt};
 use crate::wallet_list::{WalletPoolBadge, WalletPoolBadgeHealth};
 
 // ─────────────────────────────────────────────────────────────────────
@@ -518,7 +519,7 @@ fn render_card(
     Frame::new()
         .fill(fill)
         .stroke(Stroke::new(1.0_f32, ROW_STROKE))
-        .corner_radius(CornerRadius::same(8))
+        .corner_radius(ui.tokens().corner(Radius::Lg))
         .inner_margin(Margin::symmetric(14, 12))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -727,7 +728,7 @@ fn render_list_row(
     Frame::new()
         .fill(fill)
         .stroke(Stroke::new(1.0_f32, ROW_STROKE))
-        .corner_radius(CornerRadius::same(4))
+        .corner_radius(ui.tokens().corner(Radius::Base))
         .inner_margin(Margin::symmetric(10, 7))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -1099,7 +1100,7 @@ fn network_chip(ui: &mut Ui, network: &str) {
 fn chip(ui: &mut Ui, text: &str, fg: Color32, bg: Color32) {
     Frame::new()
         .fill(bg)
-        .corner_radius(CornerRadius::same(3))
+        .corner_radius(ui.tokens().corner(Radius::Sm))
         .inner_margin(Margin::symmetric(6, 1))
         .show(ui, |ui| {
             ui.label(RichText::new(text).color(fg).small().strong());

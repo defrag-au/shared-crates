@@ -8,7 +8,7 @@
 //! Read-only — fed from the config + diagnosis; both an explainer and a clean graphic
 //! you could screenshot to promote the collection.
 
-use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2};
+use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2};
 
 use crate::theme::{self, Radius, ThemeExt};
 
@@ -273,7 +273,11 @@ fn layer_stack(
                 cfg.cell,
             );
             let hot = pointer.map(|pp| cell.contains(pp)).unwrap_or(false);
-            p.rect_filled(cell, ui.tokens().corner(Radius::Base), ui.tokens().color.bg_highlight);
+            p.rect_filled(
+                cell,
+                ui.tokens().corner(Radius::Base),
+                ui.tokens().color.bg_highlight,
+            );
             p.rect_stroke(
                 cell,
                 ui.tokens().corner(Radius::Base),

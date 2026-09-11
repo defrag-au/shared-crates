@@ -87,7 +87,7 @@
 //! ```
 
 use egui::{
-    Align, Color32, CornerRadius, FontId, Frame, Layout, Margin, Response, RichText, Sense, Ui,
+    Align, Color32, FontId, Frame, Layout, Margin, Response, RichText, Sense, Ui,
     Vec2,
 };
 
@@ -96,7 +96,7 @@ use crate::icons::PhosphorIcon;
 use crate::image_stack::{ImageStack, StackImage};
 use crate::party_badge::PartyBasis;
 use crate::relative_time::RelativeTime;
-use crate::theme::{self, ThemeExt};
+use crate::theme::{self, Radius, ThemeExt};
 
 // ============================================================================
 // Density
@@ -639,7 +639,7 @@ impl<'a> TxCard<'a> {
         let inner = Frame::new()
             .fill(ui.tokens().color.bg_secondary)
             .stroke(stroke)
-            .corner_radius(CornerRadius::same(8))
+            .corner_radius(ui.tokens().corner(Radius::Lg))
             .inner_margin(Margin::same(d.padding()))
             .show(ui, |ui| {
                 // FULL WIDTH, ALWAYS. A `Frame` shrinks to its content, so a
@@ -1166,12 +1166,15 @@ fn paint_prints(ui: &mut Ui, prints: &[TxPrint<'_>], d: TxDensity) {
 fn paint_mark(ui: &mut Ui, image_url: Option<&str>, label: &str, d: TxDensity) {
     let size = d.art_size();
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
-    ui.painter()
-        .rect_filled(rect, CornerRadius::same(6), ui.tokens().color.bg_highlight);
+    ui.painter().rect_filled(
+        rect,
+        ui.tokens().corner(Radius::Md),
+        ui.tokens().color.bg_highlight,
+    );
     match image_url {
         Some(url) => {
             egui::Image::new(url)
-                .corner_radius(CornerRadius::same(6))
+                .corner_radius(ui.tokens().corner(Radius::Md))
                 .paint_at(ui, rect);
         }
         None => {

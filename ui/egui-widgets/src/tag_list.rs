@@ -7,7 +7,7 @@
 //! `horizontal_wrapped` layout, so it flows onto the next line when it won't fit
 //! (a `Frame`-based chip instead lays out in the remaining width and can't wrap).
 
-use egui::{Color32, CornerRadius, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Sense, Stroke, Ui, Vec2};
 
 use crate::theme::{Radius, ThemeExt};
 

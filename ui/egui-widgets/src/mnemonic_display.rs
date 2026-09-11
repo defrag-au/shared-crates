@@ -28,7 +28,9 @@
 //! it passes to [`with_confirmation`]. That keeps the widget composable
 //! with parent dialogs / modals that already manage flow state.
 
-use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke, Ui};
+use egui::{Color32, Frame, Margin, RichText, Stroke, Ui};
+
+use crate::theme::{Radius, ThemeExt};
 
 /// Layout settings the consumer can tweak before rendering.
 #[derive(Debug, Clone, Copy)]
@@ -99,7 +101,7 @@ impl<'a> MnemonicDisplay<'a> {
             Frame::new()
                 .fill(Color32::from_rgb(50, 35, 10))
                 .stroke(Stroke::new(1.0_f32, Color32::from_rgb(180, 140, 60)))
-                .corner_radius(CornerRadius::same(4))
+                .corner_radius(ui.tokens().corner(Radius::Base))
                 .inner_margin(Margin::symmetric(12, 8))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
@@ -128,7 +130,7 @@ impl<'a> MnemonicDisplay<'a> {
         Frame::new()
             .fill(Color32::from_rgb(16, 16, 24))
             .stroke(Stroke::new(1.0_f32, Color32::from_rgb(40, 40, 56)))
-            .corner_radius(CornerRadius::same(6))
+            .corner_radius(ui.tokens().corner(Radius::Md))
             .inner_margin(Margin::same(14))
             .show(ui, |ui| {
                 let cols = style.columns.max(1);
@@ -192,7 +194,7 @@ fn render_word_cell(ui: &mut Ui, number: usize, word: &str, width: f32) {
     Frame::new()
         .fill(Color32::from_rgb(24, 24, 36))
         .stroke(Stroke::new(1.0_f32, Color32::from_rgb(50, 50, 70)))
-        .corner_radius(CornerRadius::same(3))
+        .corner_radius(ui.tokens().corner(Radius::Sm))
         .inner_margin(Margin::symmetric(8, 5))
         .show(ui, |ui| {
             ui.set_min_width(width);

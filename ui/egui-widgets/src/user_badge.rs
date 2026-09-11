@@ -42,6 +42,7 @@ use egui::{Color32, RichText, Sense, Ui, Vec2};
 use crate::icons::{PhosphorIcon, install_phosphor_font};
 use crate::id_pill::{IdPill, IdPillLayout};
 use crate::property_list::PropertyList;
+use crate::theme::{Radius, ThemeExt};
 
 /// What the user did with the badge this frame.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -140,7 +141,10 @@ impl<'a> UserBadge<'a> {
         let pill = egui::Frame::group(ui.style())
             .fill(ui.visuals().faint_bg_color)
             .inner_margin(egui::Margin::symmetric(8, 4))
-            .corner_radius(14.0)
+            // Exactly half the pill's height, so this is a pill rather than a
+            // rounded box — `Full` says that, and stays true if a theme changes
+            // the ramp or the padding changes the height.
+            .corner_radius(ui.tokens().corner(Radius::Full))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
@@ -149,7 +153,8 @@ impl<'a> UserBadge<'a> {
                             ui.add(
                                 egui::Image::new(url)
                                     .fit_to_exact_size(Vec2::splat(20.0))
-                                    .corner_radius(10.0),
+                                    // Half of the 20pt avatar — a circle.
+                                    .corner_radius(ui.tokens().corner(Radius::Full)),
                             );
                         }
                         None => {

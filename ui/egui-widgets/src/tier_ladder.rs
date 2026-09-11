@@ -34,7 +34,7 @@
 use egui::{Color32, RichText, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 /// Where a rung sits relative to the reader.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -270,7 +270,7 @@ fn rung_row(ui: &mut Ui, rung: &TierRung<'_>) {
             Color32::TRANSPARENT
         })
         .inner_margin(egui::Margin::symmetric(8, 6))
-        .corner_radius(6.0);
+        .corner_radius(ui.tokens().corner(Radius::Md));
 
     frame.show(ui, |ui| {
         ui.horizontal(|ui| {
@@ -431,7 +431,7 @@ fn route_card(ui: &mut Ui, route: &TierRoute<'_>) {
         .fill(ui.tokens().color.bg_secondary)
         .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .inner_margin(egui::Margin::symmetric(7, 4))
-        .corner_radius(6.0);
+        .corner_radius(ui.tokens().corner(Radius::Md));
 
     let inner = frame.show(ui, |ui| {
         ui.horizontal(|ui| {
@@ -440,7 +440,7 @@ fn route_card(ui: &mut Ui, route: &TierRoute<'_>) {
                 ui.add(
                     egui::Image::new(url)
                         .fit_to_exact_size(egui::vec2(16.0, 16.0))
-                        .corner_radius(8.0),
+                        .corner_radius(ui.tokens().corner(Radius::Lg)),
                 );
             }
             ui.label(

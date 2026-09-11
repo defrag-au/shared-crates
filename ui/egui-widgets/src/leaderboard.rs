@@ -19,7 +19,9 @@
 //! renders as a tofu box. The podium is conveyed with colour instead (see
 //! `tests/no_broken_glyphs.rs`, which enforces this).
 
-use egui::{Align, Color32, CornerRadius, Layout, Rect, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Align, Color32, Layout, Rect, RichText, Sense, Stroke, Ui, Vec2};
+
+use crate::theme::{Radius, ThemeExt};
 
 /// A supporting stat shown after the headline value (e.g. `12` / `assets`).
 #[derive(Clone, Debug, Default)]
@@ -212,13 +214,16 @@ pub fn show(
         if response.hovered() {
             // A whisper of white: the row should lift off the background, not
             // become a white block that inverts every colour on it.
-            ui.painter()
-                .rect_filled(rect, CornerRadius::same(3), Color32::from_white_alpha(6));
+            ui.painter().rect_filled(
+                rect,
+                ui.tokens().corner(Radius::Sm),
+                Color32::from_white_alpha(6),
+            );
         }
         if row.is_viewer {
             ui.painter().rect_stroke(
                 rect,
-                CornerRadius::same(3),
+                ui.tokens().corner(Radius::Sm),
                 Stroke::new(1.0_f32, config.bar_color_viewer),
                 egui::StrokeKind::Inside,
             );
@@ -303,8 +308,11 @@ pub fn show(
             egui::pos2(text_rect.min.x + 6.0, bar_y),
             Vec2::new(text_rect.width() - 12.0, config.bar_height),
         );
-        ui.painter()
-            .rect_filled(track, CornerRadius::same(1), config.bar_track_color);
+        ui.painter().rect_filled(
+            track,
+            ui.tokens().corner(Radius::Xs),
+            config.bar_track_color,
+        );
         let share = row.share.clamp(0.0, 1.0);
         if share > 0.0 {
             let fill = Rect::from_min_size(
@@ -313,7 +321,7 @@ pub fn show(
             );
             ui.painter().rect_filled(
                 fill,
-                CornerRadius::same(1),
+                ui.tokens().corner(Radius::Xs),
                 if row.is_viewer {
                     config.bar_color_viewer
                 } else {

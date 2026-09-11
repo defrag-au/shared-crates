@@ -26,7 +26,7 @@ use egui::{Color32, RichText, Ui};
 use crate::chip::{Chip, ChipVariant};
 use crate::error_note::ErrorNote;
 use crate::quantity_stepper::QuantityStepper;
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 use crate::utils::{format_lovelace, truncate_hex};
 
 /// Whether this wallet may mint right now, in the active phase.
@@ -217,7 +217,7 @@ impl<'a> MintCheckout<'a> {
         )
         .fill(accent)
         .min_size(egui::vec2(ui.available_width(), 44.0))
-        .corner_radius(8.0);
+        .corner_radius(ui.tokens().corner(Radius::Lg));
         if ui.add_enabled(can_mint, mint).clicked() {
             actions.push(MintCheckoutAction::Mint);
         }
@@ -264,7 +264,7 @@ fn price_card(ui: &mut Ui, label: &str, value: &str, value_color: Color32) {
     egui::Frame::new()
         .fill(ui.tokens().color.bg_highlight)
         .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
-        .corner_radius(8.0)
+        .corner_radius(ui.tokens().corner(Radius::Lg))
         .inner_margin(12.0)
         .show(ui, |ui| {
             ui.set_width(150.0);
@@ -291,7 +291,7 @@ fn bundle_card(ui: &mut Ui, bundle: &BundleOffer, unit: u64, busy: bool, accent:
     egui::Frame::new()
         .fill(ui.tokens().color.bg_secondary)
         .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
-        .corner_radius(8.0)
+        .corner_radius(ui.tokens().corner(Radius::Lg))
         .inner_margin(10.0)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
@@ -326,7 +326,7 @@ fn bundle_card(ui: &mut Ui, bundle: &BundleOffer, unit: u64, busy: bool, accent:
                             .color(ui.tokens().color.bg_primary),
                     )
                     .fill(accent)
-                    .corner_radius(6.0);
+                    .corner_radius(ui.tokens().corner(Radius::Md));
                     if ui.add_enabled(bundle.available && !busy, btn).clicked() {
                         clicked = true;
                     }

@@ -6,7 +6,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 // ============================================================================
 // Types
@@ -75,7 +75,7 @@ pub fn show(ui: &mut Ui, pools: &[PoolInfo], config: &PoolLiquidityConfig) {
 
         egui::Frame::new()
             .fill(ui.tokens().color.bg_secondary)
-            .corner_radius(6.0)
+            .corner_radius(ui.tokens().corner(Radius::Md))
             .inner_margin(10.0)
             .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
             .show(ui, |ui| {
@@ -141,7 +141,7 @@ fn draw_pool_card(ui: &mut Ui, pool: &PoolInfo, max_reserves: u64, config: &Pool
 
     if ui.is_rect_visible(bar_rect) {
         let painter = ui.painter();
-        let rounding = CornerRadius::same(2);
+        let rounding = ui.tokens().corner(Radius::Xs);
 
         // Track
         painter.rect_filled(bar_rect, rounding, ui.tokens().color.bg_highlight);

@@ -13,6 +13,7 @@
 use egui::{Align, Color32, Layout, RichText};
 
 use crate::buttons::UiButtonExt;
+use crate::theme::{Radius, ThemeExt};
 
 // ============================================================================
 // Config
@@ -293,13 +294,13 @@ impl SwapModal {
                     let button = if is_selected {
                         egui::Button::new(RichText::new(&btn_label).color(bg).strong().size(12.0))
                             .fill(accent)
-                            .corner_radius(6.0)
+                            .corner_radius(ui.tokens().corner(Radius::Md))
                             .min_size(egui::vec2(btn_width, 36.0))
                     } else {
                         egui::Button::new(RichText::new(&btn_label).color(accent).size(12.0))
                             .fill(Color32::TRANSPARENT)
                             .stroke(egui::Stroke::new(1.0_f32, accent))
-                            .corner_radius(6.0)
+                            .corner_radius(ui.tokens().corner(Radius::Md))
                             .min_size(egui::vec2(btn_width, 36.0))
                     };
 
@@ -315,13 +316,13 @@ impl SwapModal {
                 let custom_btn = if is_custom {
                     egui::Button::new(RichText::new("Custom").color(bg).strong().size(12.0))
                         .fill(accent)
-                        .corner_radius(6.0)
+                        .corner_radius(ui.tokens().corner(Radius::Md))
                         .min_size(egui::vec2(btn_width, 36.0))
                 } else {
                     egui::Button::new(RichText::new("Custom").color(accent).size(12.0))
                         .fill(Color32::TRANSPARENT)
                         .stroke(egui::Stroke::new(1.0_f32, accent))
-                        .corner_radius(6.0)
+                        .corner_radius(ui.tokens().corner(Radius::Md))
                         .min_size(egui::vec2(btn_width, 36.0))
                 };
 
@@ -367,13 +368,13 @@ impl SwapModal {
                 let btn = if is_selected {
                     egui::Button::new(RichText::new(label).color(bg).strong().size(10.0))
                         .fill(accent)
-                        .corner_radius(4.0)
+                        .corner_radius(ui.tokens().corner(Radius::Base))
                         .min_size(egui::vec2(36.0, 22.0))
                 } else {
                     egui::Button::new(RichText::new(label).color(text_muted).size(10.0))
                         .fill(Color32::TRANSPARENT)
                         .stroke(egui::Stroke::new(1.0_f32, text_muted))
-                        .corner_radius(4.0)
+                        .corner_radius(ui.tokens().corner(Radius::Base))
                         .min_size(egui::vec2(36.0, 22.0))
                 };
                 if ui.add_clickable(btn).clicked() && self.slippage_bps != bps {
@@ -428,7 +429,7 @@ impl SwapModal {
                         } else {
                             accent.gamma_multiply(0.3)
                         })
-                        .corner_radius(6.0),
+                        .corner_radius(ui.tokens().corner(Radius::Md)),
                 );
                 if can_confirm
                     && confirm_btn.clicked()
@@ -565,7 +566,7 @@ impl SwapModal {
             if ui
                 .add_clickable(
                     egui::Button::new(RichText::new("New Swap").color(theme.accent).size(12.0))
-                        .corner_radius(4.0),
+                        .corner_radius(ui.tokens().corner(Radius::Base)),
                 )
                 .clicked()
             {
@@ -597,7 +598,7 @@ impl SwapModal {
             if ui
                 .add_clickable(
                     egui::Button::new(RichText::new("Try Again").color(theme.accent).size(12.0))
-                        .corner_radius(4.0),
+                        .corner_radius(ui.tokens().corner(Radius::Base)),
                 )
                 .clicked()
             {

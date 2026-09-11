@@ -34,7 +34,7 @@
 
 use egui::{Color32, RichText, Ui};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 use crate::{Chip, ChipVariant, PhosphorIcon};
 
 /// One selectable row in the dropdown. All display strings are caller-formatted.
@@ -185,7 +185,7 @@ impl<'a> TypeaheadSearch<'a> {
         let edit_id = ui.make_persistent_id((self.id_salt, "edit"));
         let te_response = egui::Frame::new()
             .fill(ui.tokens().color.bg_secondary)
-            .corner_radius(8.0)
+            .corner_radius(ui.tokens().corner(Radius::Lg))
             .inner_margin(egui::Margin::symmetric(10, 8))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -288,7 +288,7 @@ impl<'a> TypeaheadSearch<'a> {
         ui.add_space(6.0);
         egui::Frame::new()
             .fill(ui.tokens().color.bg_primary)
-            .corner_radius(8.0)
+            .corner_radius(ui.tokens().corner(Radius::Lg))
             .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
             .inner_margin(4.0)
             .show(ui, |ui| {
@@ -361,7 +361,7 @@ fn row(
         content.add(
             egui::Image::new(url)
                 .fit_to_exact_size(egui::vec2(24.0, 24.0))
-                .corner_radius(4.0),
+                .corner_radius(ui.tokens().corner(Radius::Base)),
         );
     }
 

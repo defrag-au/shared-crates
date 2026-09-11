@@ -53,7 +53,7 @@
 //!     .show(ui);
 //! ```
 
-use egui::{Color32, CornerRadius, Frame, Margin, Response, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, Margin, Response, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::theme::{Radius, ThemeExt};
 

@@ -33,7 +33,7 @@
 //! if resp.removed { dispatch(RemoveGate { id }); }
 //! ```
 
-use egui::{Color32, CornerRadius, RichText, Sense, Stroke, Ui};
+use egui::{Color32, RichText, Sense, Stroke, Ui};
 
 use crate::theme::{Radius, ThemeExt};
 

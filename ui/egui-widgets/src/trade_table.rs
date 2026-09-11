@@ -16,11 +16,11 @@
 //! The vertical layout is mobile-friendly — your offer sits near the bottom
 //! of the screen, close to your thumbs.
 
-use egui::{Color32, CornerRadius, RichText, Vec2};
+use egui::{Color32, RichText, Vec2};
 
 use crate::icons::PhosphorIcon;
 use crate::offer_slot::{self, OfferSlotConfig, OfferSlotData};
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 // ============================================================================
 // Types
@@ -302,7 +302,7 @@ fn draw_lock_button(
                             .size(10.0),
                     )
                     .fill(ui.tokens().color.bg_secondary)
-                    .corner_radius(CornerRadius::same(4)),
+                    .corner_radius(ui.tokens().corner(Radius::Base)),
                 )
                 .clicked()
             {
@@ -326,7 +326,7 @@ fn draw_lock_button(
                             .size(10.0),
                     )
                     .fill(ui.tokens().color.bg_secondary)
-                    .corner_radius(CornerRadius::same(4)),
+                    .corner_radius(ui.tokens().corner(Radius::Base)),
                 )
                 .clicked()
             {
@@ -348,7 +348,7 @@ fn draw_lock_button(
                 .strong(),
         )
         .fill(btn_color)
-        .corner_radius(CornerRadius::same(6))
+        .corner_radius(ui.tokens().corner(Radius::Md))
         .min_size(egui::Vec2::new(180.0, 36.0));
 
         if ui.add(btn).clicked() {

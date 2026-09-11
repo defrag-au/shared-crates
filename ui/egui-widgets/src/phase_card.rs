@@ -46,7 +46,7 @@
 //! }
 //! ```
 
-use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke, Ui};
+use egui::{Color32, Frame, Margin, RichText, Stroke, Ui};
 
 use crate::theme::{Radius, ThemeExt};
 

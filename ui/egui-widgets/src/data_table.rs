@@ -6,10 +6,10 @@
 //! [`DataRowItem`] structs and render the detail panel, keeping the widget
 //! fully generic.
 
-use egui::{Color32, CornerRadius, Rect, Sense, Ui, Vec2};
+use egui::{Color32, Rect, Sense, Ui, Vec2};
 
 use crate::exposure_bar::ltv_risk_color;
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 // ============================================================================
 // Column widths
@@ -156,7 +156,7 @@ pub fn show<T>(
                 if state.selected_index == Some(idx) {
                     egui::Frame::new()
                         .fill(config.detail_bg)
-                        .corner_radius(4.0)
+                        .corner_radius(ui.tokens().corner(Radius::Base))
                         .inner_margin(14.0)
                         .outer_margin(egui::Margin {
                             left: COL_CHEVRON as i8,
@@ -290,7 +290,7 @@ fn draw_row(
         );
         let image = egui::Image::new(url.as_str())
             .fit_to_exact_size(Vec2::splat(config.icon_size))
-            .corner_radius(CornerRadius::same(2));
+            .corner_radius(ui.tokens().corner(Radius::Xs));
         image.paint_at(ui, icon_rect);
     }
     x += COL_ICON;

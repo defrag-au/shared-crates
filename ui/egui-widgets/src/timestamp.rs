@@ -13,7 +13,7 @@
 //! ui.add(Timestamp::new(ts).badge(true).with_seconds(true));   // framed chip, :SS
 //! ```
 
-use egui::{Color32, CornerRadius, Frame, Margin, Response, RichText, Stroke, Ui, Widget};
+use egui::{Color32, Frame, Margin, Response, RichText, Stroke, Ui, Widget};
 
 use crate::theme::{Radius, ThemeExt};
 

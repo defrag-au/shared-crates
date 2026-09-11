@@ -105,6 +105,7 @@ pub fn show(
     let accent = config.accent.unwrap_or(t.color.accent);
     let on_accent = t.color.bg_primary;
     let muted = t.color.text_muted;
+    let corner = t.corner(Radius::Base);
     let mut action = SlippageSelectorAction::None;
 
     ui.horizontal(|ui| {
@@ -117,7 +118,7 @@ pub fn show(
         // Preset buttons
         for preset in &config.presets {
             let is_selected = !state.custom_active && state.slippage_bps == preset.bps;
-            let btn = toggle_button(&preset.label, is_selected, accent, on_accent, muted);
+            let btn = toggle_button(&preset.label, is_selected, accent, on_accent, muted, corner);
             if ui.add_clickable(btn).clicked() {
                 state.custom_active = false;
                 if state.slippage_bps != preset.bps {
@@ -128,7 +129,14 @@ pub fn show(
         }
 
         // Custom button
-        let custom_btn = toggle_button("Custom", state.custom_active, accent, on_accent, muted);
+        let custom_btn = toggle_button(
+            "Custom",
+            state.custom_active,
+            accent,
+            on_accent,
+            muted,
+            corner,
+        );
         if ui.add_clickable(custom_btn).clicked() {
             state.custom_active = true;
             if state.custom_text.is_empty() {
@@ -192,17 +200,18 @@ fn toggle_button<'a>(
     accent: Color32,
     on_accent: Color32,
     muted: Color32,
+    corner: egui::CornerRadius,
 ) -> egui::Button<'a> {
     if selected {
         egui::Button::new(RichText::new(label).color(on_accent).strong().size(10.0))
             .fill(accent)
-            .corner_radius(ui.tokens().corner(Radius::Base))
+            .corner_radius(corner)
             .min_size(egui::vec2(36.0, 22.0))
     } else {
         egui::Button::new(RichText::new(label).color(muted).size(10.0))
             .fill(Color32::TRANSPARENT)
             .stroke(egui::Stroke::new(1.0_f32, muted))
-            .corner_radius(ui.tokens().corner(Radius::Base))
+            .corner_radius(corner)
             .min_size(egui::vec2(36.0, 22.0))
     }
 }

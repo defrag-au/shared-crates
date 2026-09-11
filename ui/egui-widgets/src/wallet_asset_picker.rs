@@ -11,7 +11,7 @@ use egui::{Color32, CornerRadius, Vec2};
 use crate::card_browser;
 use crate::icons::PhosphorIcon;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};
-use crate::theme::{self, ThemeExt};
+use crate::theme::{self, Radius, ThemeExt};
 
 // ============================================================================
 // Types
@@ -164,7 +164,7 @@ pub fn show(
             egui::Frame::window(&ctx.global_style())
                 .fill(ctx.tokens().color.bg_primary)
                 .stroke(egui::Stroke::new(1.0_f32, ctx.tokens().color.bg_highlight))
-                .corner_radius(CornerRadius::same(8))
+                .corner_radius(ctx.tokens().corner(Radius::Lg))
                 .inner_margin(16.0),
         )
         .show(ctx, |ui| {
@@ -451,7 +451,7 @@ fn draw_picker_card(
 
     let hovered = response.hovered();
     let painter = ui.painter_at(card_rect);
-    let rounding = CornerRadius::same(4);
+    let rounding = ui.tokens().corner(Radius::Base);
 
     // Background
     painter.rect_filled(card_rect, rounding, ui.tokens().color.bg_secondary);

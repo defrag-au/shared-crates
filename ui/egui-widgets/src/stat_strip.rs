@@ -35,9 +35,9 @@
 //! in already-formatted headlines/captions plus raw series/spreads, so the
 //! widget stays currency- and domain-agnostic.
 
-use egui::{Color32, CornerRadius, FontId, Margin, Rect, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, FontId, Margin, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 use crate::{SparkHoverStyle, Sparkline, Trend};
 
 /// The sizes and spacings a card paints with.
@@ -405,7 +405,7 @@ impl<'a> StatStrip<'a> {
         // below) so the headline always clears it, whatever the card width.
         let frame = egui::Frame::NONE
             .fill(ui.tokens().color.bg_highlight)
-            .corner_radius(6.0)
+            .corner_radius(ui.tokens().corner(Radius::Md))
             .inner_margin(Margin {
                 left: MARGIN_X as i8,
                 right: MARGIN_X as i8,
@@ -599,7 +599,7 @@ impl<'a> StatStrip<'a> {
         );
         painter.rect_filled(
             pill_rect,
-            CornerRadius::same(4),
+            ui.tokens().corner(Radius::Base),
             self.label_bg.unwrap_or(ui.tokens().color.bg_primary),
         );
         painter.galley(

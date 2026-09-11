@@ -98,6 +98,7 @@ pub fn show(
     let t = ui.tokens();
     let accent = config.accent.unwrap_or(t.color.accent);
     let on_accent = t.color.bg_primary;
+    let corner = t.corner(Radius::Base);
     let mut action = AmountInputAction::None;
 
     // Preset buttons row
@@ -105,7 +106,7 @@ pub fn show(
         for (idx, &ada) in config.presets.iter().enumerate() {
             let is_selected = state.selected_preset == Some(idx);
             let label = format!("{ada} ADA");
-            let btn = toggle_button(&label, is_selected, accent, on_accent);
+            let btn = toggle_button(&label, is_selected, accent, on_accent, corner);
 
             if ui.add_clickable(btn).clicked() {
                 state.selected_preset = Some(idx);

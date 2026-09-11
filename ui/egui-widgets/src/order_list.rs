@@ -18,7 +18,7 @@
 //! `ToggleHistory` asks the host to load that order's events into the row.
 
 use egui::{
-    Align, Color32, CornerRadius, Frame, Label, Layout, Margin, RichText, ScrollArea, Sense,
+    Align, Color32, Frame, Label, Layout, Margin, RichText, ScrollArea, Sense,
     Stroke, Ui,
 };
 
@@ -26,6 +26,7 @@ use crate::chip::{Chip, ChipVariant};
 use crate::error_note::{ErrorNote, summarize_error};
 use crate::icons::{PhosphorIcon, install_phosphor_font};
 use crate::relative_time::relative_label;
+use crate::theme::{Radius, ThemeExt};
 use crate::timestamp::Timestamp;
 
 // ─────────────────────────────────────────────────────────────────────
@@ -483,7 +484,7 @@ fn filter_chip(ui: &mut Ui, label: &str, count: usize, accent: Color32, selected
     let resp = Frame::new()
         .fill(fill)
         .stroke(stroke)
-        .corner_radius(CornerRadius::same(7))
+        .corner_radius(ui.tokens().corner(Radius::Lg))
         .inner_margin(Margin::symmetric(8, 2))
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 5.0;
@@ -494,7 +495,7 @@ fn filter_chip(ui: &mut Ui, label: &str, count: usize, accent: Color32, selected
             // Count badge.
             Frame::new()
                 .fill(Color32::from_black_alpha(70))
-                .corner_radius(CornerRadius::same(6))
+                .corner_radius(ui.tokens().corner(Radius::Md))
                 .inner_margin(Margin::symmetric(5, 0))
                 .show(ui, |ui| {
                     ui.label(
@@ -530,7 +531,7 @@ fn status_badge(ui: &mut Ui, status: &OrderStatus, inner_w: f32) {
     let (fg, bg, border) = status.chip_variant().palette();
     let mut frame = Frame::new()
         .fill(bg)
-        .corner_radius(CornerRadius::same(3))
+        .corner_radius(ui.tokens().corner(Radius::Sm))
         .inner_margin(Margin::symmetric(5, 1));
     if let Some(b) = border {
         frame = frame.stroke(Stroke::new(1.0_f32, b));

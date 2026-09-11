@@ -5,7 +5,7 @@
 //! with the index of the clicked item.
 
 use cardano_assets::AssetId;
-use egui::{Color32, CornerRadius, Rect, Vec2};
+use egui::{Color32, Rect, Vec2};
 
 use crate::card_browser;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};

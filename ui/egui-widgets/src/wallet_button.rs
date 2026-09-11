@@ -71,7 +71,7 @@ impl WalletButton {
 
         egui::Frame::new()
             .fill(theme.bg)
-            .corner_radius(6.0)
+            .corner_radius(ui.tokens().corner(Radius::Md))
             .inner_margin(8.0)
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -124,7 +124,7 @@ impl WalletButton {
                         .color(theme.accent)
                         .size(12.0),
                 )
-                .corner_radius(4.0),
+                .corner_radius(ui.tokens().corner(Radius::Base)),
             );
             if btn.clicked()
                 && let Some(provider) = WalletProvider::from_api_name(&info.api_name)
@@ -145,7 +145,7 @@ impl WalletButton {
                 )
                 .fill(Color32::TRANSPARENT)
                 .stroke(egui::Stroke::new(0.5_f32, theme.text_muted))
-                .corner_radius(4.0),
+                .corner_radius(ui.tokens().corner(Radius::Base)),
             );
 
             // Paint icon inside the button rect (left side)
@@ -159,7 +159,7 @@ impl WalletButton {
                     icon_rect,
                     egui::Image::new(icon_url.as_str())
                         .fit_to_exact_size(egui::vec2(icon_size, icon_size))
-                        .corner_radius(2.0),
+                        .corner_radius(ui.tokens().corner(Radius::Xs)),
                 );
             }
 
@@ -198,7 +198,7 @@ impl WalletButton {
                 ui.add(
                     egui::Image::new(icon_url.as_str())
                         .fit_to_exact_size(egui::vec2(20.0, 20.0))
-                        .corner_radius(3.0),
+                        .corner_radius(ui.tokens().corner(Radius::Sm)),
                 );
             }
 
@@ -249,7 +249,7 @@ impl WalletButton {
                 egui::Button::new(RichText::new("Disconnect").color(text_muted).size(10.0))
                     .fill(Color32::TRANSPARENT)
                     .stroke(egui::Stroke::new(0.5_f32, text_muted))
-                    .corner_radius(3.0),
+                    .corner_radius(ui.tokens().corner(Radius::Sm)),
             )
             .clicked()
         {

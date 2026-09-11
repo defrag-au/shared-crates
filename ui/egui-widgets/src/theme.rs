@@ -1418,11 +1418,11 @@ mod tests {
         // The outliers, and what they snap to — 6 sites in total. Every one of
         // these is a tie against the default ramp, so they are all decided by the
         // round-up rule rather than by distance.
-        assert_eq!(Radius::nearest(1.0, &s), Radius::Xs); // 1 → 2
-        assert_eq!(Radius::nearest(5.0, &s), Radius::Md); // 5 → 6
-        assert_eq!(Radius::nearest(7.0, &s), Radius::Lg); // 7 → 8
-        assert_eq!(Radius::nearest(10.0, &s), Radius::Xl); // 10 → 12
-        assert_eq!(Radius::nearest(14.0, &s), Radius::Xl); // 14 → 12
+        assert_eq!(Radius::nearest(1.0, &s), Radius::Xs); // 1 -> 2
+        assert_eq!(Radius::nearest(5.0, &s), Radius::Md); // 5 -> 6
+        assert_eq!(Radius::nearest(7.0, &s), Radius::Lg); // 7 -> 8
+        assert_eq!(Radius::nearest(10.0, &s), Radius::Xl); // 10 -> 12
+        assert_eq!(Radius::nearest(14.0, &s), Radius::Xl); // 14 -> 12
     }
 
     /// The point of a scale: a theme moves every step at once, so a component

@@ -9,7 +9,7 @@
 //! function `(input_lovelace, &ImpactCurvePool) -> impact_fraction` that
 //! computes the price impact for a given input amount and pool.
 
-use egui::{Color32, CornerRadius, Pos2, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Pos2, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::theme::{Radius, ThemeExt};
 
