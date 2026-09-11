@@ -1,3 +1,14 @@
+// `#[macro_use]` rather than a `use`: `macro_rules!` macros are textually
+// scoped, so the module has to be declared before the `stories!` invocation in
+// `mod app` below.
+//
+// NOT cfg'd to wasm, deliberately. The app itself is wasm-only, which means a
+// native `cargo test` cannot reach the real registry at all — so the macro's own
+// tests are the only ones that run on the host. Gating the macro too would leave
+// it with no coverage anywhere.
+#[macro_use]
+mod registry;
+
 #[cfg(target_arch = "wasm32")]
 mod stories;
 
@@ -15,156 +26,211 @@ mod app {
     // Story Registry
     // ========================================================================
 
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    pub enum Story {
-        Formatting,
-        Distribution,
-        Marquee,
-        Buttons,
-        ProgressBar,
-        BulletBar,
-        Sparkline,
-        MetricCard,
-        PerfStrip,
-        TokenHistory,
-        TokenKinetic,
-        TokenParticles,
-        StatStrip,
-        SevenSegment,
-        FlipCounter,
-        AsyncData,
-        MeshPlayground,
-        PerspectiveText,
-        TcgCard,
-        PrintingTimeline,
-        AssetCard,
-        RadarChart,
-        RangeBar,
-        PipRow,
-        PriceTimeline,
-        Leaderboard,
-        ListingGrid,
-        FocusList,
-        CardBrowser,
-        IconGallery,
-        WalletButton,
-        TraitFilter,
-        WalletEditor,
-        SwapModal,
-        TraitDelta,
-        CoverageDeltaBar,
-        AssetStrip,
-        TradeTable,
-        SigningStatus,
-        TxFlight,
-        StakeSession,
-        ListingComposer,
-        FeeReport,
-        TxEstimate,
-        TradeFlow,
-        WalletAssetPicker,
-        UtxoMap,
-        ManagedWalletUtxos,
-        DistributionWaterfall,
-        // DEX split swap
-        SlippageSelector,
-        AmountInput,
-        SplitAllocationBar,
-        RouteSummary,
-        PoolLiquidity,
-        PriceImpactCurve,
-        VariantSplit,
-        CollectionComposition,
-        // Loan dashboard
-        ExposureBar,
-        DataTable,
-        // Ranked-list dashboards
-        LeaderboardTable,
-        // Mint dashboard
-        SupplyBar,
-        OrderList,
-        // Utility
-        FileUpload,
-        // Media
-        ImageTextEditor,
-        // TX Cart
-        TxCart,
-        // Grouping
-        GroupedSection,
-        OfferTile,
-        CornerAction,
-        // Wallet
-        WalletIdentityHeader,
-        PersonaStrip,
-        FungiblesRow,
-        // Auth / admin
-        MnemonicDisplay,
-        WalletList,
-        CollectionList,
-        // Mint configuration
-        ThemeStates,
-        BackgroundToasts,
-        Skeleton,
-        Chip,
-        PartyBadge,
-        FlowLedger,
-        ActivityFeed,
-        TxCard,
-        ImageStack,
-        ChannelBands,
-        CustodyWalk,
-        ClaimCard,
-        CapitalFlow,
-        CapBand,
-        TimeSpine,
-        TimeSpineDensity,
-        CoverageLanes,
-        FlowMatrix,
-        FlowRing,
-        FlowStave,
-        PartyAnnotator,
-        TagList,
-        TokenMultiselect,
-        TypeaheadSearch,
-        RelationshipEditor,
-        CommandPalette,
-        EventWiring,
-        WiringEditor,
-        ConversationHistory,
-        AgentConfig,
-        Select,
-        UiMachine,
-        NamedGroupList,
-        RarityTargetEditor,
-        PaletteEditor,
-        SlotTable,
-        PropertyList,
-        IdPill,
-        PhaseCard,
-        ButtonGroup,
-        PaneNav,
-        Toast,
-        Timestamp,
-        ErrorNote,
-        Gated,
-        AccessGate,
-        UserBadge,
-        TierLadder,
-        AboutModal,
-        ServiceBanner,
-        QuantityStepper,
-        MintCheckout,
-        Viewport,
-        Drawer,
-        Disclosure,
+    // The `enum`, the sidebar ordering, the group headings and the render
+    // dispatch, from one declaration per story. See `crate::registry` for what
+    // was broken before and why this shape.
+    //
+    // `label()` and `description()` stay hand-written below: they are exhaustive
+    // matches, so the compiler already catches an omission, and moving 129 prose
+    // strings would risk pairing one with the wrong story for no safety gain.
+    stories! {
+        enum Story for StorybookApp;
+
+        group "Primitives" {
+            Formatting => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::formatting::show(ui);
+            Distribution => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::distribution::show(ui, &mut a.distribution_chart);
+            Marquee => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::marquee::show(ui, &mut a.marquee, &mut a.marquee_messages);
+            Buttons => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::buttons::show(ui);
+            ThemeStates => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::theme_states::show(ui);
+            BackgroundToasts => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::background::show(ui);
+            Skeleton => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::skeleton::show(ui);
+            Chip => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::chip::show(ui);
+            PartyBadge => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::party_badge::show(ui);
+            FlowLedger => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_ledger::show(ui);
+            ActivityFeed => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::activity_feed::show(ui);
+            TxCard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_card::show(ui, &mut a.tx_card_state);
+            ImageStack => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::image_stack::show(ui, &mut a.image_stack_state);
+            ChannelBands => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::channel_bands::show(ui);
+            CustodyWalk => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::custody_walk::show(ui);
+            ClaimCard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::claim_card::show(ui, &mut a.claim_card_state);
+            CapitalFlow => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::capital_flow::show(ui, &mut a.capital_flow_state);
+            CapBand => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::cap_band::show(ui, &mut a.cap_band_state);
+            TimeSpine => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::time_spine::show(ui, &mut a.time_spine_state);
+            TimeSpineDensity => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::time_spine_density::show(ui, &mut a.time_spine_density_state);
+            CoverageLanes => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::coverage_lanes::show(ui, &mut a.coverage_lanes_state);
+            FlowMatrix => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_matrix::show(ui, &mut a.flow_matrix_state);
+            FlowRing => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_ring::show(ui, &mut a.flow_ring_state);
+            FlowStave => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_stave::show(ui, &mut a.flow_stave_state);
+            PartyAnnotator => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::party_annotator::show(ui, &mut a.party_annotator_state);
+            TagList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tag_list::show(ui, &mut a.tag_list_state);
+            TokenMultiselect => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_multiselect::show(ui, &mut a.token_multiselect_state);
+            TypeaheadSearch => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::typeahead_search::show(ui);
+            RelationshipEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::relationship_editor::show(ui, &mut a.relationship_editor_state);
+            CommandPalette => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::command_palette::show(ui, &mut a.command_palette_state);
+            EventWiring => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::event_wiring::show(ui, &mut a.event_wiring_state);
+            WiringEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wiring_editor::show(ui, &mut a.wiring_editor_state);
+            ConversationHistory => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::conversation_history::show(ui, &mut a.conversation_history_state);
+            AgentConfig => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::agent_config::show(ui, &mut a.agent_config_state);
+            Select => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::select::show(ui, &mut a.select_state);
+            UiMachine => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::machine::show(ui, &mut a.machine_state);
+            NamedGroupList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::named_group_list::show(ui, &mut a.named_group_list_state);
+            RarityTargetEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::rarity_target_editor::show(ui, &mut a.rarity_target_editor_state);
+            PaletteEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::palette_editor::show(ui, &mut a.palette_editor_state);
+            SlotTable => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::slot_table::show(ui, &mut a.slot_table_state);
+            IdPill => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::id_pill::show(ui);
+            PropertyList => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::property_list::show(ui);
+            ButtonGroup => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::button_group::show(ui, &mut a.button_group_state);
+            PaneNav => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::pane_nav::show(ui, &mut a.pane_nav_state);
+            Toast => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::toast::show(ui, &mut a.toast_state);
+            Timestamp => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::timestamp::show(ui);
+            ErrorNote => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::error_note::show(ui);
+            Gated => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::gated::show(ui);
+            AccessGate => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::access_gate::show(ui);
+            Viewport => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::viewport::show(ui);
+            Drawer => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::drawer::show(ui);
+            Disclosure => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::disclosure::show(ui, &mut a.disclosure_state);
+            UserBadge => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::user_badge::show(ui);
+            TierLadder => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::tier_ladder::show(ui);
+            AboutModal => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::about_modal::show(ui);
+            ServiceBanner => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::service_banner::show(ui);
+        }
+
+        group "Data Visualization" {
+            ProgressBar => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::progress_bar::show(ui, &mut a.progress_bar_state);
+            BulletBar => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::bullet_bar::show(ui, &mut a.bullet_bar_state);
+            Sparkline => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::sparkline::show(ui, &mut a.sparkline_state);
+            MetricCard => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::metric_card::show(ui);
+            PerfStrip => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::perf_strip::show(ui, &mut a.perf_strip_state);
+            TokenHistory => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_history::show(ui);
+            TokenKinetic => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_kinetic::show(ui);
+            TokenParticles => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_particles::show(ui);
+            StatStrip => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::stat_strip::show(ui);
+            SevenSegment => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::seven_segment::show(ui, &mut a.seven_segment_state);
+            FlipCounter => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flip_counter::show(ui, &mut a.flip_counter_state);
+            AsyncData => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::async_data::show(ui, &mut a.async_data_state);
+            MeshPlayground => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::mesh_playground::show(ui, &mut a.mesh_playground_state);
+            PerspectiveText => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::perspective_text::show(ui, &mut a.perspective_text_state);
+            TcgCard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tcg_card::show(ui, &mut a.tcg_card_state);
+            PrintingTimeline => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::printing_timeline::show(ui, &mut a.printing_timeline_state);
+            AssetCard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::asset_card::show(ui, &mut a.asset_card_state);
+            RadarChart => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::radar_chart::show(ui, &mut a.radar_chart_state);
+            RangeBar => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::range_bar::show(ui, &mut a.range_bar_state);
+            PipRow => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::pip_row::show(ui, &mut a.pip_row_state);
+            PriceTimeline => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::price_timeline::show(ui, &mut a.price_timeline_state);
+            Leaderboard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::leaderboard::show(ui, &mut a.leaderboard_state);
+            FocusList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::focus_list::show(ui, &mut a.focus_list_state);
+            CardBrowser => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::card_browser::show(ui, &mut a.card_browser_state);
+            IconGallery => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::icon_gallery::show(ui, &mut a.icon_gallery_state);
+            TraitFilter => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::trait_filter::show(ui, &mut a.trait_filter_state);
+        }
+
+        // Was TWO groups both named "Wallet", separated in the old ordering by the
+        // Trade Desk run — so the sidebar rendered the heading twice. Merged, with
+        // each former block's order preserved.
+        group "Wallet" {
+            WalletButton => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet::show(ui, &mut a.wallet_btn, &mut a.wallet_connector);
+            WalletEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_editor::show(ui, &mut a.wallet_editor_state);
+            TxFlight => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_flight::show(ui, &mut a.tx_flight_state);
+            StakeSession => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::stake_session::show(ui, &mut a.stake_session_state);
+            ListingComposer => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::listing_composer::show(ui, &mut a.listing_composer_state);
+            UtxoMap => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::utxo_map::show(ui, &mut a.utxo_map_state, &mut a.wallet_btn, &mut a.wallet_connector);
+            ManagedWalletUtxos => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::managed_wallet_utxos::show(ui, &mut a.managed_wallet_utxos_state);
+            DistributionWaterfall => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::distribution_waterfall::show(ui, &mut a.distribution_waterfall_state);
+            WalletIdentityHeader => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_identity_header::show(ui, &mut a.wallet_identity_header_state);
+            PersonaStrip => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::persona_strip::show(ui);
+            FungiblesRow => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::fungibles_row::show(ui);
+        }
+
+        group "Swap" {
+            // Wants a `Context` as well as the `Ui`; cloned first because
+            // `ui.ctx()` would hold a borrow across the call.
+            SwapModal => |a: &mut StorybookApp, ui: &mut egui::Ui| {
+                let ctx = ui.ctx().clone();
+                stories::swap::show(&ctx, ui, &mut a.swap_modal, &mut a.swap_progress)
+            };
+        }
+
+        group "Trade Desk" {
+            TraitDelta => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::trait_delta::show(ui);
+            CoverageDeltaBar => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::coverage_delta_bar::show(ui);
+            AssetStrip => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::asset_strip::show(ui, &mut a.asset_strip_state);
+            TradeTable => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::trade_table::show(ui, &mut a.trade_table_state);
+            SigningStatus => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::signing_status::show(ui, &mut a.signing_status_state);
+            FeeReport => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::fee_report::show(ui, &mut a.fee_report_state);
+            TxEstimate => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_estimate::show(ui, &mut a.tx_estimate_state);
+            TradeFlow => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::trade_flow::show(ui, &mut a.trade_flow_state);
+            WalletAssetPicker => |a: &mut StorybookApp, ui: &mut egui::Ui| {
+                let ctx = ui.ctx().clone();
+                stories::wallet_asset_picker::show(&ctx, ui, &mut a.wallet_asset_picker_state)
+            };
+        }
+
+        group "DEX Split Swap" {
+            SlippageSelector => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::slippage_selector::show(ui, &mut a.slippage_selector_state);
+            AmountInput => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::amount_input::show(ui, &mut a.amount_input_state);
+            SplitAllocationBar => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::split_allocation_bar::show(ui);
+            RouteSummary => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::route_summary::show(ui);
+            PoolLiquidity => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::pool_liquidity::show(ui);
+            PriceImpactCurve => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::price_impact_curve::show(ui);
+        }
+
+        group "Collection CSP" {
+            VariantSplit => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::variant_split::show(ui);
+            CollectionComposition => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::collection_composition::show(ui);
+        }
+
+        group "Loan Dashboard" {
+            ExposureBar => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::exposure_bar::show(ui);
+            DataTable => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::data_table::show(ui, &mut a.data_table_state);
+        }
+
+        group "Ranked Lists" {
+            LeaderboardTable => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::leaderboard_table::show(ui);
+        }
+
+        group "Mint Dashboard" {
+            SupplyBar => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::supply_bar::show(ui);
+            OrderList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::order_list::show(ui, &mut a.order_list_state);
+        }
+
+        group "Utility" {
+            FileUpload => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::file_upload::show(ui, &mut a.file_upload_state);
+        }
+
+        group "Media" {
+            ImageTextEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::image_text_editor::show(ui, &mut a.image_text_editor_state);
+        }
+
+        // `ListingGrid` reported "TX Cart" while sitting in the Data-Visualization
+        // run of the old ordering, so it appeared under the wrong heading.
+        group "TX Cart" {
+            ListingGrid => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::listing_grid::show(ui, &mut a.listing_grid_state);
+            TxCart => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_cart::show(ui, &mut a.tx_cart_state);
+        }
+
+        group "Layout" {
+            GroupedSection => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::grouped_section::show(ui);
+            OfferTile => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::offer_tile::show(ui);
+            CornerAction => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::corner_action::show(ui);
+        }
+
+        group "Auth / Admin" {
+            MnemonicDisplay => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::mnemonic_display::show(ui, &mut a.mnemonic_display_state);
+            WalletList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_list::show(ui, &mut a.wallet_list_state);
+            CollectionList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::collection_list::show(ui, &mut a.collection_list_state);
+        }
+
+        group "Mint Configuration" {
+            PhaseCard => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::phase_card::show(ui);
+            QuantityStepper => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::quantity_stepper::show(ui, &mut a.quantity_stepper_state);
+            MintCheckout => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::mint_checkout::show(ui, &mut a.mint_checkout_state);
+        }
     }
 
     impl Story {
-        fn all() -> &'static [Self] {
+        #[allow(dead_code)]
+        fn legacy_all_TO_DELETE() -> &'static [Self] {
             &[
-                // Primitives — foundational composables. Add new
-                // foundation widgets (Chip / IdPill / PropertyList shape)
-                // to this group, not at the end of the list.
                 Self::Formatting,
                 Self::Distribution,
                 Self::Marquee,
@@ -307,32 +373,6 @@ mod app {
             ]
         }
 
-        /// URL-safe identifier for deep-linking a story: `#/party-badge`.
-        ///
-        /// Derived from the label rather than hand-maintained, so a new story
-        /// is addressable the moment it has a name — one registration site
-        /// fewer to forget.
-        fn slug(&self) -> String {
-            self.label()
-                .to_lowercase()
-                .chars()
-                .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-                .collect::<String>()
-                .split('-')
-                .filter(|p| !p.is_empty())
-                .collect::<Vec<_>>()
-                .join("-")
-        }
-
-        /// Resolve a slug back to a story, ignoring any leading `#` / `#/`.
-        fn from_slug(raw: &str) -> Option<Self> {
-            let want = raw.trim_start_matches('#').trim_start_matches('/');
-            if want.is_empty() {
-                return None;
-            }
-            Self::all().iter().find(|s| s.slug() == want).copied()
-        }
-
         fn label(&self) -> &'static str {
             match self {
                 Self::Formatting => "Formatting",
@@ -467,7 +507,8 @@ mod app {
             }
         }
 
-        fn category(&self) -> &'static str {
+        #[allow(dead_code)]
+        fn legacy_category_TO_DELETE(&self) -> &'static str {
             match self {
                 Self::Formatting
                 | Self::Distribution
