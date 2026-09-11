@@ -582,34 +582,55 @@ impl Theme {
         }
     }
 
-    /// Same neutral base, a different accent.
+    /// A marketplace-native dark palette, in the idiom collectors arriving from
+    /// other chains already know.
     ///
-    /// Mirrors `macroquad-widgets`' preset vocabulary so the two renderers stay
-    /// in step. Each accent is drawn from the **already contrast-validated**
-    /// ramp rather than a fresh colour — a preset that ships an unchecked accent
-    /// is how a theme lands below AA.
-    const fn with_accent(name: &'static str, accent: Color32) -> Self {
+    /// **A whole palette, not an accent swap.** The first pass at presets varied
+    /// only `color.accent`, which the widget suite reads 35 times out of ~800 —
+    /// about 4% of what gets painted, so the switcher appeared to do nothing.
+    /// A preset has to move the backgrounds and the text ramp to read as a
+    /// different product.
+    ///
+    /// Rounder than the house theme too (8/12/16 against 3/4/8): the look is as
+    /// much shape as colour.
+    pub const fn opensea() -> Self {
         Self {
-            name,
+            name: "opensea",
             color: ColorTokens {
-                accent,
-                ..ColorTokens::tokyo_night()
+                // Near-black and neutral rather than Tokyo Night's indigo cast.
+                bg_primary: Color32::from_rgb(12, 13, 16),
+                bg_secondary: Color32::from_rgb(22, 24, 29),
+                bg_highlight: Color32::from_rgb(34, 37, 44),
+
+                text_primary: Color32::from_rgb(247, 248, 249),
+                text_secondary: Color32::from_rgb(180, 186, 196),
+                text_muted: Color32::from_rgb(142, 150, 163),
+
+                accent_blue: Color32::from_rgb(59, 142, 240),
+                accent_cyan: Color32::from_rgb(56, 189, 248),
+                accent_green: Color32::from_rgb(52, 199, 123),
+                accent_yellow: Color32::from_rgb(245, 181, 68),
+                accent_orange: Color32::from_rgb(251, 146, 60),
+                accent_red: Color32::from_rgb(244, 88, 110),
+                accent_magenta: Color32::from_rgb(192, 132, 252),
+
+                accent: Color32::from_rgb(59, 142, 240),
+                success: Color32::from_rgb(52, 199, 123),
+                warning: Color32::from_rgb(245, 181, 68),
+                error: Color32::from_rgb(244, 88, 110),
+                // Lighter than the reference UI's own hairlines, which sit near
+                // 1.4:1 against the page — under this crate's visibility floor.
+                // `border_is_visible` is the negotiation point, not the source.
+                border: Color32::from_rgb(56, 61, 71),
+            },
+            geometry: Geometry {
+                radius_small: 8,
+                radius_medium: 12,
+                radius_large: 16,
+                border_width: 1.0,
             },
             ..Self::tokyo_night()
         }
-    }
-
-    pub const fn ember() -> Self {
-        Self::with_accent("ember", raw::ACCENT_ORANGE)
-    }
-    pub const fn iris() -> Self {
-        Self::with_accent("iris", raw::ACCENT_MAGENTA)
-    }
-    pub const fn aqua() -> Self {
-        Self::with_accent("aqua", raw::ACCENT_CYAN)
-    }
-    pub const fn rose() -> Self {
-        Self::with_accent("rose", raw::ACCENT_RED)
     }
 
     /// Square corners, compact density, no overshoot — the preset that proves
@@ -630,13 +651,19 @@ impl Theme {
 
     /// Every preset. Contrast floors are asserted across all of these, so a new
     /// theme cannot ship below AA — add yours here or it is not covered.
+    /// Every preset. Contrast floors run across all of these, so a new theme
+    /// cannot ship below AA — add yours here or it is not covered.
+    ///
+    /// Deliberately short. An earlier list carried `ember` / `iris` / `aqua` /
+    /// `rose`, which varied `color.accent` and nothing else; since the suite
+    /// reads that token 35 times out of ~800, they were indistinguishable from
+    /// the default in use. Four presets that do nothing are worse than none —
+    /// they teach a reader the switcher is broken. A preset earns its place by
+    /// moving the backgrounds and the text ramp.
     pub const PRESETS: &'static [fn() -> Theme] = &[
         Theme::tokyo_night,
         Theme::tokyo_night_mono,
-        Theme::ember,
-        Theme::iris,
-        Theme::aqua,
-        Theme::rose,
+        Theme::opensea,
         Theme::industrial,
     ];
 
