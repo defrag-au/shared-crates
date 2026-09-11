@@ -46,7 +46,7 @@
 //! }
 //! ```
 
-use egui::{Color32, Frame, RichText, Stroke, Ui};
+use egui::{Color32, Frame, RichText, Ui};
 
 use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
@@ -167,8 +167,8 @@ impl<'a> PhaseCard<'a> {
 
     fn show_inner(self, ui: &mut Ui, response: &mut PhaseCardResponse) {
         Frame::new()
-            .fill(Color32::from_rgb(22, 24, 32))
-            .stroke(Stroke::new(1.0_f32, Color32::from_rgb(40, 44, 60)))
+            .fill(ui.tokens().color.bg_secondary)
+            .stroke(ui.tokens().geometry.border(ui.tokens().color.border))
             .corner_radius(ui.tokens().corner(Radius::Md))
             .inner_margin(ui.tokens().margin(Space::Lg))
             .show(ui, |ui| {
@@ -186,7 +186,7 @@ impl<'a> PhaseCard<'a> {
                     ui.label(
                         RichText::new(format!("priority {}", self.row.priority))
                             .small()
-                            .color(Color32::from_gray(140)),
+                            .color(ui.tokens().color.text_muted),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if self.show_delete && delete_button(ui, &self.row.phase_key) {
@@ -214,7 +214,7 @@ impl<'a> PhaseCard<'a> {
                 ui.label(
                     RichText::new("Gates")
                         .small()
-                        .color(Color32::from_gray(150)),
+                        .color(ui.tokens().color.text_muted),
                 );
                 ui.horizontal_wrapped(|ui| {
                     ui.set_item_gap_x(Space::Sm);
@@ -259,7 +259,7 @@ fn delete_button(ui: &mut Ui, phase_key: &str) -> bool {
     let (label, colour) = if confirming {
         ("Confirm delete", Color32::LIGHT_RED)
     } else {
-        ("Delete", Color32::from_gray(180))
+        ("Delete", ui.tokens().color.text_secondary)
     };
     let clicked = ui
         .small_button(RichText::new(label).small().color(colour))

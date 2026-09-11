@@ -60,15 +60,16 @@ pub struct FlipCounter {
     num_slots: usize,
     /// Caller override; `None` asks the theme at render time. A `new` cannot read
     /// the context, so a colour default has to be deferred or it bakes one theme in.
+    // `None` asks the theme at render time — `new()` has no `Ui` to ask.
     text_color: Option<Color32>,
-    card_color: Color32,
-    card_color_bottom: Color32,
+    card_color: Option<Color32>,
+    card_color_bottom: Option<Color32>,
     card_height: f32,
     card_width: f32,
     card_gap: f32,
     flip_speed: f32,
-    divider_color: Color32,
-    border_color: Color32,
+    divider_color: Option<Color32>,
+    border_color: Option<Color32>,
 }
 
 impl FlipCounter {
@@ -77,14 +78,14 @@ impl FlipCounter {
             digits: vec![DigitFlip::new(' '); num_slots],
             num_slots,
             text_color: None,
-            card_color: Color32::from_rgb(45, 45, 65),
-            card_color_bottom: Color32::from_rgb(38, 38, 56),
+            card_color: None,
+            card_color_bottom: None,
             card_height: 60.0,
             card_width: 40.0,
             card_gap: 4.0,
             flip_speed: 3.0,
-            divider_color: Color32::from_rgb(20, 20, 35),
-            border_color: Color32::from_rgb(60, 60, 80),
+            divider_color: None,
+            border_color: None,
         }
     }
 
@@ -121,7 +122,16 @@ impl FlipCounter {
     pub fn show(&mut self, ui: &mut Ui) {
         // Resolved once and passed down: the `&self` paint helpers cannot ask the
         // context themselves, and a cached field would be stale before `show`.
-        let text = self.text_color.unwrap_or(ui.tokens().color.text_primary);
+        let c = ui.tokens().color;
+        let text = self.text_color.unwrap_or(c.text_primary);
+        // A flip card is a physical object: the top face catches light, the
+        // bottom is in its own shadow, the divider is the gap between them.
+        // Three tiers of the theme's background ramp say that without inventing
+        // a second palette.
+        let card_color = self.card_color.unwrap_or(c.bg_highlight);
+        let card_color_bottom = self.card_color_bottom.unwrap_or(c.bg_secondary);
+        let divider_color = self.divider_color.unwrap_or(c.bg_primary);
+        let border_color = self.border_color.unwrap_or(c.border);
         let dt = ui.input(|i| i.stable_dt).min(0.1); // clamp to avoid jumps
         let mut needs_repaint = false;
 
@@ -157,7 +167,7 @@ impl FlipCounter {
         let half_h = self.card_height / 2.0;
         let font_size = self.card_height * 0.55;
         let corner = 4.0;
-        let border_stroke = egui::Stroke::new(1.0_f32, self.border_color);
+        let border_stroke = egui::Stroke::new(1.0_f32, border_color);
 
         // Pre-compute font texture UV normalizer once per frame
         let font_tex_size = ui.ctx().fonts(|f| f.font_image_size());
@@ -208,12 +218,12 @@ impl FlipCounter {
                     let t = (1.0 - p) * 2.0;
                     (30.0 * t * t) as u8
                 };
-                let shadowed_bot = darken(self.card_color_bottom, bot_shadow);
+                let shadowed_bot = darken(card_color_bottom, bot_shadow);
 
                 // Draw each half-card with its own border
                 painter.rect_filled(bot_rect, corner, shadowed_bot);
                 painter.rect_stroke(bot_rect, corner, border_stroke, egui::StrokeKind::Inside);
-                painter.rect_filled(top_rect, corner, self.card_color);
+                painter.rect_filled(top_rect, corner, card_color);
                 painter.rect_stroke(top_rect, corner, border_stroke, egui::StrokeKind::Inside);
 
                 // Base text on both halves
@@ -248,7 +258,7 @@ impl FlipCounter {
                         let top_y = hinge_y - flip_h;
                         let pinch = slot_w * 0.06 * (1.0 - cos_a);
                         let shadow = (40.0 * (1.0 - cos_a)) as u8;
-                        let flap_color = darken(self.card_color, shadow);
+                        let flap_color = darken(card_color, shadow);
 
                         // Near edge (falling toward viewer) expands outward
                         let corners = [
@@ -294,7 +304,7 @@ impl FlipCounter {
                         let bot_y = hinge_y + flip_h;
                         let pinch = slot_w * 0.06 * (1.0 - cos_a);
                         let shadow = (40.0 * (1.0 - cos_a)) as u8;
-                        let flap_color = darken(self.card_color_bottom, shadow);
+                        let flap_color = darken(card_color_bottom, shadow);
 
                         // Near edge (unfolding toward viewer) expands outward
                         let corners = [
@@ -321,9 +331,9 @@ impl FlipCounter {
                 }
             } else {
                 // Static: draw each half-card with border, both halves show current digit
-                painter.rect_filled(bot_rect, corner, self.card_color_bottom);
+                painter.rect_filled(bot_rect, corner, card_color_bottom);
                 painter.rect_stroke(bot_rect, corner, border_stroke, egui::StrokeKind::Inside);
-                painter.rect_filled(top_rect, corner, self.card_color);
+                painter.rect_filled(top_rect, corner, card_color);
                 painter.rect_stroke(top_rect, corner, border_stroke, egui::StrokeKind::Inside);
 
                 self.draw_clipped_char(
@@ -350,7 +360,7 @@ impl FlipCounter {
                     Pos2::new(card_x, hinge_y),
                     Pos2::new(card_x + slot_w, hinge_y),
                 ],
-                egui::Stroke::new(1.5_f32, self.divider_color),
+                egui::Stroke::new(1.5_f32, divider_color),
             );
 
             card_x += slot_w;

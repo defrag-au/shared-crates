@@ -47,14 +47,16 @@ pub enum PipRowMode {
         /// Corner radius of each pip.
         pip_rounding: f32,
         /// Overflow text color ("+N more").
-        overflow_color: Color32,
+        /// `None` asks the theme at render time — a `Default` has no `Ui`.
+        overflow_color: Option<Color32>,
     },
     /// Continuous heatmap where brightness encodes local density.
     Density {
         /// Number of bins across the bar width.
         bins: usize,
-        /// Base color (brightness/alpha modulated by density).
-        color: Color32,
+        /// Base color (brightness/alpha modulated by density). `None` asks the
+        /// theme at render time — a `Default` has no `Ui`.
+        color: Option<Color32>,
         /// Minimum opacity for bins with at least one value (0.0–1.0).
         min_alpha: f32,
     },
@@ -65,7 +67,7 @@ impl Default for PipRowMode {
         Self::Pips {
             pip_width: 4.0,
             pip_rounding: 1.0,
-            overflow_color: Color32::from_rgb(160, 160, 180),
+            overflow_color: None,
         }
     }
 }
@@ -75,7 +77,7 @@ impl PipRowMode {
     pub fn density() -> Self {
         Self::Density {
             bins: 40,
-            color: Color32::from_rgb(125, 207, 255),
+            color: None,
             min_alpha: 0.15,
         }
     }
@@ -92,7 +94,8 @@ pub struct PipRowConfig {
     /// Height of the bar within each row.
     pub bar_height: f32,
     /// Bar background color.
-    pub bar_color: Color32,
+    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
+    pub bar_color: Option<Color32>,
     /// Bar corner radius.
     pub bar_rounding: f32,
     /// Label font size.
@@ -108,7 +111,7 @@ impl Default for PipRowConfig {
             label_width: 200.0,
             row_height: 26.0,
             bar_height: 18.0,
-            bar_color: Color32::from_rgb(40, 43, 55),
+            bar_color: None,
             bar_rounding: 3.0,
             label_font_size: 12.0,
             empty_font_size: 10.0,
@@ -186,13 +189,20 @@ impl PipRowResponse {
 const PIP_HOVER_RADIUS: f32 = 12.0;
 
 /// Crosshair line color.
-const CROSSHAIR_COLOR: Color32 = Color32::from_rgb(160, 160, 180);
+fn crosshair_color(ui: &egui::Ui) -> Color32 {
+    ui.tokens().color.text_secondary
+}
 
-/// Highlight stroke for hovered pips.
-const PIP_HIGHLIGHT_COLOR: Color32 = Color32::from_rgb(240, 240, 255);
+/// Highlight stroke for hovered pips — the brightest thing on the row, because
+/// it answers "which one am I reading?".
+fn pip_highlight_color(ui: &egui::Ui) -> Color32 {
+    ui.tokens().color.text_primary
+}
 
 /// Highlight stroke for hovered density bin.
-const BIN_HIGHLIGHT_COLOR: Color32 = Color32::from_rgb(220, 220, 240);
+fn bin_highlight_color(ui: &egui::Ui) -> Color32 {
+    ui.tokens().color.text_primary
+}
 
 // ============================================================================
 // Drawing
@@ -237,8 +247,11 @@ pub fn show(
     );
 
     // Bar background
-    ui.painter()
-        .rect_filled(bar_rect, config.bar_rounding, config.bar_color);
+    ui.painter().rect_filled(
+        bar_rect,
+        config.bar_rounding,
+        config.bar_color.unwrap_or(ui.tokens().color.bg_highlight),
+    );
 
     // Detect hover position within the bar
     let bar_hover_x = row_resp
@@ -314,7 +327,7 @@ pub fn show(
                         ui.painter().rect_stroke(
                             pip_rect.expand(1.0),
                             *pip_rounding + 1.0,
-                            Stroke::new(1.0_f32, PIP_HIGHLIGHT_COLOR),
+                            Stroke::new(1.0_f32, pip_highlight_color(ui)),
                             egui::StrokeKind::Outside,
                         );
                     }
@@ -326,7 +339,7 @@ pub fn show(
                         Align2::RIGHT_CENTER,
                         format!("+{}", data.pips.len() - max_pips),
                         FontId::proportional(ui.text_size(TextSize::Xs)),
-                        *overflow_color,
+                        overflow_color.unwrap_or(ui.tokens().color.text_secondary),
                     );
                 }
 
@@ -354,7 +367,7 @@ pub fn show(
                     global_max,
                     bar_rect,
                     *bins,
-                    *color,
+                    color.unwrap_or(ui.tokens().color.accent_cyan),
                     *min_alpha,
                     bar_hover_x,
                 );
@@ -386,7 +399,7 @@ pub fn show(
                 Pos2::new(hover_x, bar_rect.top()),
                 Pos2::new(hover_x, bar_rect.bottom()),
             ],
-            Stroke::new(0.5_f32, CROSSHAIR_COLOR),
+            Stroke::new(0.5_f32, crosshair_color(ui)),
         );
     }
 
@@ -453,7 +466,7 @@ fn draw_density(
             ui.painter().rect_stroke(
                 bin_rect,
                 0.0,
-                Stroke::new(1.0_f32, BIN_HIGHLIGHT_COLOR),
+                Stroke::new(1.0_f32, bin_highlight_color(ui)),
                 egui::StrokeKind::Inside,
             );
         }
@@ -468,21 +481,26 @@ fn draw_density(
 /// - 0.0 → green
 /// - 0.5 → yellow
 /// - 1.0 → red
-pub fn heat_color(t: f32) -> Color32 {
-    let t = t.clamp(0.0, 1.0);
-    if t < 0.5 {
-        let s = t * 2.0;
-        Color32::from_rgb(
-            (158.0 + (224.0 - 158.0) * s) as u8,
-            (206.0 + (175.0 - 206.0) * s) as u8,
-            (106.0 + (104.0 - 106.0) * s) as u8,
-        )
-    } else {
-        let s = (t - 0.5) * 2.0;
-        Color32::from_rgb(
-            (224.0 + (247.0 - 224.0) * s) as u8,
-            (175.0 + (118.0 - 175.0) * s) as u8,
-            (104.0 + (142.0 - 104.0) * s) as u8,
-        )
-    }
+/// # Two things changed here, and both were latent bugs
+///
+/// The endpoints were `(158,206,106)`, `(224,175,104)` and `(247,118,142)` —
+/// which are, exactly, the default theme's `accent_green` / `accent_yellow` /
+/// `accent_red`. The ramp was already the theme's; it just could not follow it.
+///
+/// And the interpolation was per-channel in **sRGB**, which is not
+/// perceptually even: a linear sweep through gamma-encoded channels bunches up
+/// at one end and can dip in lightness through the middle. Routing it through
+/// [`crate::encoding::Diverging`] interpolates in Oklab instead, so equal steps
+/// of `t` look like equal steps.
+pub fn heat_color(ui: &egui::Ui, t: f32) -> Color32 {
+    let c = ui.tokens().color;
+    // A heat scale is bipolar with a *visible* midpoint — unlike the flow
+    // encoding, whose neutral recedes into the surface, "borderline" here is a
+    // reading in its own right.
+    let ramp = crate::encoding::Diverging {
+        positive: c.error,
+        negative: c.success,
+        neutral: c.warning,
+    };
+    ramp.at(t.clamp(0.0, 1.0) * 2.0 - 1.0)
 }

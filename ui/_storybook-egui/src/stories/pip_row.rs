@@ -219,14 +219,16 @@ pub fn show(ui: &mut egui::Ui, state: &mut PipRowState) {
     let mode = if state.use_density {
         PipRowMode::Density {
             bins: state.density_bins,
-            color: egui::Color32::from_rgb(125, 207, 255),
+            // `None` = the theme's, which is what a caller gets by default and
+            // what this story should be demonstrating.
+            color: None,
             min_alpha: state.density_min_alpha,
         }
     } else {
         PipRowMode::Pips {
             pip_width: state.pip_width,
             pip_rounding: 1.0,
-            overflow_color: egui::Color32::from_rgb(160, 160, 180),
+            overflow_color: None,
         }
     };
     let config = PipRowConfig {
@@ -243,7 +245,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PipRowState) {
             .iter()
             .map(|&v| Pip {
                 value: v,
-                color: heat_color((v / global_max) as f32),
+                color: heat_color(ui, (v / global_max) as f32),
             })
             .collect();
 
@@ -274,7 +276,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PipRowState) {
                     for hp in hovered.iter().take(6) {
                         ui.label(
                             egui::RichText::new(format!("{:.1}", hp.value))
-                                .color(heat_color((hp.value / global_max) as f32))
+                                .color(heat_color(ui, (hp.value / global_max) as f32))
                                 .size(10.0),
                         );
                     }

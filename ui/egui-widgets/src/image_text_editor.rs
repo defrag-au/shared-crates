@@ -13,7 +13,7 @@ use egui::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::theme::{Space, SpaceExt};
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -313,6 +313,9 @@ impl ImageTextEditor {
                 egui::vec2(text_width, font_size * 1.2),
             );
 
+            // The overlay's own colours are AUTHORED CONTENT — the caption the
+            // user typed and coloured — not chrome. A theme must not repaint
+            // them any more than it repaints the image underneath.
             let text_color = Color32::from_rgba_unmultiplied(
                 overlay.color[0],
                 overlay.color[1],
@@ -381,7 +384,10 @@ impl ImageTextEditor {
                 painter.rect_stroke(
                     text_rect.expand(2.0),
                     2.0,
-                    Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(100, 180, 255, 180)),
+                    Stroke::new(
+                        1.0_f32,
+                        crate::theme::with_alpha(ui.tokens().color.accent, 180),
+                    ),
                     egui::StrokeKind::Outside,
                 );
 
@@ -394,7 +400,7 @@ impl ImageTextEditor {
                     text_rect.right_bottom(),
                 ];
                 for (ci, corner) in corners.iter().enumerate() {
-                    painter.circle_filled(*corner, handle_radius, Color32::from_rgb(100, 180, 255));
+                    painter.circle_filled(*corner, handle_radius, ui.tokens().color.accent);
                     painter.circle_stroke(
                         *corner,
                         handle_radius,

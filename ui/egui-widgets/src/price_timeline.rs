@@ -97,9 +97,10 @@ pub struct PriceTimelineConfig {
     pub connect: Option<Color32>,
     /// Base mark radius; automatically shrunk for dense scatters.
     pub point_radius: f32,
-    pub background: Color32,
-    pub grid_color: Color32,
-    pub label_color: Color32,
+    // `None` asks the theme at render time — a `Default` has no `Ui` to ask.
+    pub background: Option<Color32>,
+    pub grid_color: Option<Color32>,
+    pub label_color: Option<Color32>,
 }
 
 impl Default for PriceTimelineConfig {
@@ -111,9 +112,9 @@ impl Default for PriceTimelineConfig {
             log_y: LogMode::Auto,
             connect: None,
             point_radius: 3.0,
-            background: Color32::from_rgb(30, 32, 42),
-            grid_color: Color32::from_rgb(52, 56, 72),
-            label_color: Color32::from_rgb(140, 145, 165),
+            background: None,
+            grid_color: None,
+            label_color: None,
         }
     }
 }
@@ -199,8 +200,14 @@ const DENSE_THRESHOLD: usize = 200;
 /// Log scale kicks in (in `Auto`) when max/min exceeds this.
 const AUTO_LOG_RATIO: f64 = 20.0;
 
-const CROSSHAIR_COLOR: Color32 = Color32::from_rgb(160, 160, 180);
-const HIGHLIGHT_RING: Color32 = Color32::from_rgb(240, 240, 255);
+fn crosshair_color(ui: &egui::Ui) -> Color32 {
+    ui.tokens().color.text_secondary
+}
+/// The ring around the hovered point — brighter than anything else on the
+/// chart, because it answers "which one am I reading?".
+fn highlight_ring(ui: &egui::Ui) -> Color32 {
+    ui.tokens().color.text_primary
+}
 
 /// Left gutter for y tick labels / right gutter for reference-line labels.
 const GUTTER_LEFT: f32 = 6.0;
@@ -219,6 +226,11 @@ pub fn show(
     config: &PriceTimelineConfig,
 ) -> PriceTimelineResponse {
     let width = ui.available_width().max(120.0);
+    // Resolved once: a `Default` config cannot know the theme.
+    let c = ui.tokens().color;
+    let background = config.background.unwrap_or(c.bg_secondary);
+    let grid_color = config.grid_color.unwrap_or(c.border);
+    let label_color = config.label_color.unwrap_or(c.text_muted);
     let (outer_rect, response) =
         ui.allocate_exact_size(Vec2::new(width, config.height), Sense::click_and_drag());
     let plot_rect = Rect::from_min_max(
@@ -226,7 +238,7 @@ pub fn show(
         Pos2::new(outer_rect.max.x - 4.0, outer_rect.max.y - GUTTER_BOTTOM),
     );
     let painter = ui.painter().with_clip_rect(outer_rect);
-    painter.rect_filled(outer_rect, 4.0, config.background);
+    painter.rect_filled(outer_rect, 4.0, background);
 
     // ---- domains --------------------------------------------------------
     let now = if config.now_secs > 0 {
@@ -332,7 +344,7 @@ pub fn show(
             Align2::RIGHT_TOP,
             "zoomed \u{00b7} double-click to reset",
             FontId::proportional(ui.text_size(TextSize::Xs)),
-            config.label_color,
+            label_color,
         );
     }
 
@@ -361,7 +373,7 @@ pub fn show(
             Align2::CENTER_CENTER,
             "no data",
             FontId::proportional(ui.text_size(TextSize::Sm)),
-            config.label_color,
+            label_color,
         );
         return PriceTimelineResponse {
             response,
@@ -406,14 +418,14 @@ pub fn show(
         let y = y_of(v);
         painter.line_segment(
             [Pos2::new(plot_rect.min.x, y), Pos2::new(plot_rect.max.x, y)],
-            Stroke::new(0.5_f32, config.grid_color),
+            Stroke::new(0.5_f32, grid_color),
         );
         painter.text(
             Pos2::new(plot_rect.min.x + 2.0, y - 1.0),
             Align2::LEFT_BOTTOM,
             format_compact(v),
             FontId::proportional(ui.text_size(TextSize::Xs)),
-            config.label_color,
+            label_color,
         );
     }
     // X gridlines at round time intervals (7d, 14d, … back from "now"), drawn
@@ -429,14 +441,14 @@ pub fn show(
         let x = x_of(t);
         painter.line_segment(
             [Pos2::new(x, plot_rect.min.y), Pos2::new(x, plot_rect.max.y)],
-            Stroke::new(0.5_f32, config.grid_color),
+            Stroke::new(0.5_f32, grid_color),
         );
         painter.text(
             Pos2::new(x, outer_rect.max.y - 2.0),
             Align2::CENTER_BOTTOM,
             age_label(now - t),
             FontId::proportional(ui.text_size(TextSize::Xs)),
-            config.label_color,
+            label_color,
         );
         t -= step;
     }
@@ -449,7 +461,7 @@ pub fn show(
             age_label(now - x_max)
         },
         FontId::proportional(ui.text_size(TextSize::Xs)),
-        config.label_color,
+        label_color,
     );
 
     // ---- reference bands (under everything else) ------------------------
@@ -627,7 +639,7 @@ pub fn show(
             || nearby.contains(&i)
             || pinned_indices.contains(&i)
         {
-            painter.circle_stroke(*pos, r + 1.5, Stroke::new(1.0_f32, HIGHLIGHT_RING));
+            painter.circle_stroke(*pos, r + 1.5, Stroke::new(1.0_f32, highlight_ring(ui)));
         }
     }
 
@@ -660,7 +672,7 @@ pub fn show(
                 Pos2::new(cursor.x, plot_rect.min.y),
                 Pos2::new(cursor.x, plot_rect.max.y),
             ],
-            Stroke::new(0.5_f32, CROSSHAIR_COLOR),
+            Stroke::new(0.5_f32, crosshair_color(ui)),
         );
         if !nearby.is_empty() {
             tooltip_anchor = Some(Pos2::new(cursor.x, plot_rect.max.y + 4.0));

@@ -114,7 +114,7 @@ pub fn show(
     let image_url = data.image_url(AssetImageSize::Thumbnail);
     let browser_config = crate::CardBrowserConfig {
         rounding: 4.0,
-        bg_card_hover: Some(Color32::from_rgb(40, 40, 55)),
+        bg_card_hover: None,
         ..Default::default()
     };
     let loading = card_browser::draw_thumbnail(ui, card_rect, Some(&image_url), &browser_config);
@@ -141,7 +141,7 @@ pub fn show(
                 sw: 4,
                 se: 4,
             },
-            Color32::from_rgba_premultiplied(15, 15, 25, 220),
+            theme::with_alpha(ui.tokens().color.bg_primary, 220),
         );
 
         // Name at top of overlay
@@ -203,7 +203,7 @@ pub fn show(
                 sw: 4,
                 se: 4,
             },
-            Color32::from_rgba_premultiplied(15, 15, 25, 200),
+            theme::with_alpha(ui.tokens().color.bg_primary, 200),
         );
         let name_rect = egui::Rect::from_min_size(
             egui::pos2(banner_rect.min.x + 4.0, banner_rect.min.y),
@@ -236,7 +236,7 @@ pub fn show(
         painter.rect_filled(
             badge_rect,
             ui.tokens().corner(Radius::Sm),
-            Color32::from_rgba_premultiplied(15, 15, 25, 210),
+            theme::with_alpha(ui.tokens().color.bg_primary, 210),
         );
         painter.text(
             badge_rect.center(),
@@ -263,7 +263,7 @@ pub fn show(
         painter.rect_filled(
             badge_rect,
             ui.tokens().corner(Radius::Sm),
-            Color32::from_rgba_premultiplied(15, 15, 25, 210),
+            theme::with_alpha(ui.tokens().color.bg_primary, 210),
         );
         painter.text(
             badge_rect.center(),
