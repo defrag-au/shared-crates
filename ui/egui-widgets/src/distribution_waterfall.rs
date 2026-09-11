@@ -38,7 +38,7 @@ pub enum WaterfallMode {
 impl WaterfallMode {
     fn badge(self) -> (&'static str, Color32) {
         match self {
-            WaterfallMode::Projected => ("PROJECTED", theme::ACCENT_BLUE),
+            WaterfallMode::Projected => ("PROJECTED", t.color.accent_blue),
             WaterfallMode::Live => ("LIVE", theme::ACCENT_GREEN),
             WaterfallMode::Final => ("FINAL", theme::TEXT_SECONDARY),
         }
@@ -108,9 +108,9 @@ impl DistributionWaterfall {
     /// palette; the highlighted party stays vivid while the rest dim.
     fn party_color(&self, idx: usize, name: &str) -> Color32 {
         const PALETTE: [Color32; 5] = [
-            theme::ACCENT_BLUE,
+            t.color.accent_blue,
             theme::ACCENT_MAGENTA,
-            theme::ACCENT_CYAN,
+            t.color.accent_cyan,
             theme::ACCENT_GREEN,
             theme::ACCENT_ORANGE,
         ];

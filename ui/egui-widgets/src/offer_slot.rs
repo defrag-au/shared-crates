@@ -9,7 +9,7 @@ use egui::{Color32, CornerRadius, Vec2};
 use crate::card_browser;
 use crate::icons::PhosphorIcon;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};
-use crate::theme;
+use crate::theme::{self, ThemeExt};
 
 // ============================================================================
 // Types
@@ -108,7 +108,7 @@ pub fn show(
     let rounding = CornerRadius::same(4);
 
     // Card background (visible while image loads)
-    painter.rect_filled(card_rect, rounding, theme::BG_SECONDARY);
+    painter.rect_filled(card_rect, rounding, ui.tokens().color.bg_secondary);
 
     // Full-bleed thumbnail
     let image_url = data.image_url(AssetImageSize::Thumbnail);
@@ -154,7 +154,7 @@ pub fn show(
             egui::Align2::LEFT_CENTER,
             &data.name,
             egui::FontId::monospace(8.0),
-            theme::TEXT_PRIMARY,
+            ui.tokens().color.text_primary,
         );
 
         // Quantity text input
@@ -214,7 +214,7 @@ pub fn show(
             egui::Align2::LEFT_CENTER,
             &data.name,
             egui::FontId::monospace(config.font_size),
-            theme::TEXT_PRIMARY,
+            ui.tokens().color.text_primary,
         );
     }
 
@@ -222,7 +222,7 @@ pub fn show(
     if data.is_fungible && !has_qty_input && data.quantity > 0 {
         let qty_text = super::wallet_asset_picker::format_quantity(data.quantity);
         let font = egui::FontId::monospace(8.0);
-        let galley = painter.layout_no_wrap(qty_text.clone(), font.clone(), theme::TEXT_PRIMARY);
+        let galley = painter.layout_no_wrap(qty_text.clone(), font.clone(), ui.tokens().color.text_primary);
         let badge_w = galley.size().x + 6.0;
         let badge_h = 14.0;
         let badge_rect = egui::Rect::from_min_size(
@@ -239,13 +239,13 @@ pub fn show(
             egui::Align2::CENTER_CENTER,
             &qty_text,
             font,
-            theme::ACCENT_YELLOW,
+            ui.tokens().color.accent_yellow,
         );
     } else if !data.is_fungible && data.quantity > 1 {
         // Non-fungible with quantity > 1 (shouldn't happen, but safe fallback)
         let qty_text = super::wallet_asset_picker::format_quantity(data.quantity);
         let font = egui::FontId::monospace(8.0);
-        let galley = painter.layout_no_wrap(qty_text.clone(), font.clone(), theme::TEXT_PRIMARY);
+        let galley = painter.layout_no_wrap(qty_text.clone(), font.clone(), ui.tokens().color.text_primary);
         let badge_w = galley.size().x + 6.0;
         let badge_h = 14.0;
         let badge_rect = egui::Rect::from_min_size(
@@ -262,7 +262,7 @@ pub fn show(
             egui::Align2::CENTER_CENTER,
             &qty_text,
             font,
-            theme::ACCENT_YELLOW,
+            ui.tokens().color.accent_yellow,
         );
     }
 
@@ -271,7 +271,7 @@ pub fn show(
         let total = data.total_ranked.unwrap_or(10000);
         theme::rarity_rank_color(rank, total)
     } else {
-        theme::BG_HIGHLIGHT
+        ui.tokens().color.bg_highlight
     };
     let border_width = if hovered { 2.0_f32 } else { 1.5_f32 };
     painter.rect_stroke(
@@ -285,7 +285,7 @@ pub fn show(
     card_response.clone().on_hover_ui(|ui| {
         ui.label(
             egui::RichText::new(&data.name)
-                .color(theme::TEXT_PRIMARY)
+                .color(ui.tokens().color.text_primary)
                 .size(11.0)
                 .strong(),
         );
@@ -306,7 +306,7 @@ pub fn show(
                     "Balance: {}",
                     super::wallet_asset_picker::format_quantity(bal)
                 ))
-                .color(theme::TEXT_MUTED)
+                .color(ui.tokens().color.text_muted)
                 .size(10.0),
             );
         }
@@ -324,11 +324,11 @@ pub fn show(
             .is_some_and(|p| p.distance(btn_center) <= btn_r);
 
         let (bg, x_color) = if cursor_in_btn {
-            (Color32::from_black_alpha(235), theme::ACCENT_RED)
+            (Color32::from_black_alpha(235), ui.tokens().color.accent_red)
         } else if hovered {
-            (Color32::from_black_alpha(220), theme::TEXT_PRIMARY)
+            (Color32::from_black_alpha(220), ui.tokens().color.text_primary)
         } else {
-            (Color32::from_black_alpha(160), theme::TEXT_SECONDARY)
+            (Color32::from_black_alpha(160), ui.tokens().color.text_secondary)
         };
 
         painter.circle_filled(btn_center, btn_r, bg);
@@ -373,7 +373,7 @@ pub fn show_ada_card(
     let (card_rect, _) = ui.allocate_exact_size(card_size, egui::Sense::hover());
 
     let painter = ui.painter_at(card_rect);
-    painter.rect_filled(card_rect, CornerRadius::same(4), theme::BG_SECONDARY);
+    painter.rect_filled(card_rect, CornerRadius::same(4), ui.tokens().color.bg_secondary);
 
     // Large coins icon
     let icon_center = egui::pos2(card_rect.center().x, card_rect.center().y - 14.0);
@@ -382,7 +382,7 @@ pub fn show_ada_card(
         egui::Align2::CENTER_CENTER,
         PhosphorIcon::Coins.codepoint().to_string(),
         egui::FontId::new(28.0, crate::icons::phosphor_family()),
-        theme::ACCENT_YELLOW,
+        ui.tokens().color.accent_yellow,
     );
 
     let mut new_lovelace = None;
@@ -423,7 +423,7 @@ pub fn show_ada_card(
             egui::Align2::CENTER_CENTER,
             "ADA",
             egui::FontId::monospace(config.font_size),
-            theme::ACCENT_YELLOW,
+            ui.tokens().color.accent_yellow,
         );
     } else {
         // Read-only amount
@@ -438,14 +438,14 @@ pub fn show_ada_card(
             egui::Align2::CENTER_CENTER,
             &amount_text,
             egui::FontId::monospace(14.0),
-            theme::TEXT_PRIMARY,
+            ui.tokens().color.text_primary,
         );
         painter.text(
             egui::pos2(card_rect.center().x, card_rect.center().y + 24.0),
             egui::Align2::CENTER_CENTER,
             "ADA",
             egui::FontId::monospace(config.font_size),
-            theme::ACCENT_YELLOW,
+            ui.tokens().color.accent_yellow,
         );
     }
 
@@ -471,13 +471,13 @@ pub fn show_add_card(ui: &mut egui::Ui, config: &OfferSlotConfig) -> bool {
 
     // Border and fill
     let (border_color, icon_color, text_color) = if hovered {
-        (theme::ACCENT_CYAN, theme::ACCENT_CYAN, theme::TEXT_PRIMARY)
+        (ui.tokens().color.accent_cyan, ui.tokens().color.accent_cyan, ui.tokens().color.text_primary)
     } else {
-        (theme::TEXT_MUTED, theme::TEXT_MUTED, theme::TEXT_MUTED)
+        (ui.tokens().color.text_muted, ui.tokens().color.text_muted, ui.tokens().color.text_muted)
     };
 
     if hovered {
-        painter.rect_filled(card_rect, rounding, theme::BG_HIGHLIGHT);
+        painter.rect_filled(card_rect, rounding, ui.tokens().color.bg_highlight);
     }
 
     draw_dashed_rect(&painter, card_rect, 4.0, border_color);
