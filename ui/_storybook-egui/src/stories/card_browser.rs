@@ -2,7 +2,8 @@
 
 use egui::{Color32, Pos2, Rect, Vec2};
 use egui_widgets::asset_card::{
-    AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES, RARITIES,
+    AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES, RARITY_NAMES,
+    rarity_colors_of,
 };
 use egui_widgets::card_browser::{self, CardBrowserConfig, CardBrowserState};
 use egui_widgets::theme::Space;
@@ -136,6 +137,11 @@ fn decode_hex_name(hex: &str) -> String {
 const PRESET_NAMES: [&str; 4] = ["NFT Portfolio", "Marketplace", "Minimal", "AssetCard 3D"];
 
 fn build_preset_items(preset: usize) -> Vec<DemoItem> {
+    // A fixture has no `Ui`, so it names a theme instead of writing literals.
+    // The widgets that *render* these items read the active theme; only this
+    // demo data is pinned. (The rest of this fixture's colours are part of the
+    // storybook-scaffolding debt tracked separately.)
+    let tier_colors = rarity_colors_of(&egui_widgets::theme::ColorTokens::tokyo_night());
     match preset {
         0 => PIRATE_HEX
             .iter()
@@ -230,20 +236,20 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                 let effect_index = i % EFFECT_NAMES.len();
                 DemoItem {
                     name,
-                    subtitle: format!("{} - {}", RARITIES[rarity].0, EFFECT_NAMES[effect_index]),
+                    subtitle: format!("{} - {}", RARITY_NAMES[rarity], EFFECT_NAMES[effect_index]),
                     badge: if rarity >= 3 {
-                        Some(RARITIES[rarity].0.into())
+                        Some(RARITY_NAMES[rarity].into())
                     } else {
                         None
                     },
-                    badge_color: RARITIES[rarity].1,
+                    badge_color: tier_colors[rarity],
                     price: Some(50.0 + (rarity as f64 * 100.0)),
                     detail_lines: vec![
-                        ("Rarity".into(), RARITIES[rarity].0.into()),
+                        ("Rarity".into(), RARITY_NAMES[rarity].into()),
                         ("Effect".into(), EFFECT_NAMES[effect_index].into()),
                         ("Collection".into(), "Hodlcroft Pirates".into()),
                     ],
-                    accent: RARITIES[rarity].1,
+                    accent: tier_colors[rarity],
                     image_url: Some(iiif_url(hex, ImageSize::Thumb)),
                     rarity,
                     effect_index,
@@ -535,8 +541,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
             // Rarity label for AssetCard 3D preset
             if preset == 3 {
                 ui.label(
-                    egui::RichText::new(RARITIES[item.rarity].0)
-                        .color(RARITIES[item.rarity].1)
+                    egui::RichText::new(RARITY_NAMES[item.rarity])
+                        .color(egui_widgets::asset_card::rarity_colors(ui)[item.rarity])
                         .size(12.0)
                         .strong(),
                 );

@@ -33,7 +33,10 @@ pub use mesh::{
 };
 
 // Overlay
-pub use overlay::{CardMask, RARITIES, draw_tile_overlay, rarity_color, rarity_glow};
+pub use overlay::{
+    CardMask, RARITY_NAMES, draw_tile_overlay, rarity_color, rarity_colors, rarity_colors_of,
+    rarity_glow,
+};
 
 // High-level reusable widget
 pub use widget::{AssetCard, AssetCardState, CardEffectKind, CardImage};

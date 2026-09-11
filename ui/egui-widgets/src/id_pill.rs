@@ -70,8 +70,9 @@ pub struct IdPill<'a> {
     /// wins; [`IdPill::pool_pm(false)`] suppresses.
     auto_pool_pm: bool,
     layout: IdPillLayout,
-    label_color: Color32,
-    value_color: Color32,
+    /// `None` asks the theme at render time — a constructor has no `Ui` to ask.
+    label_color: Option<Color32>,
+    value_color: Option<Color32>,
 }
 
 /// Outcome of one `IdPill::show()` call.
@@ -105,8 +106,8 @@ impl<'a> IdPill<'a> {
             link: None,
             auto_pool_pm: true,
             layout: IdPillLayout::Stacked,
-            label_color: Color32::from_gray(140),
-            value_color: Color32::from_gray(220),
+            label_color: None,
+            value_color: None,
         }
     }
 
@@ -132,8 +133,10 @@ impl<'a> IdPill<'a> {
             link: None,
             auto_pool_pm: true,
             layout: IdPillLayout::Inline,
-            label_color: Color32::from_gray(140),
-            value_color: Color32::from_gray(160),
+            label_color: None,
+            // A UTxO ref is an identifier, not a headline — it sits a tier
+            // quieter than the stacked pill's value, which is `text_primary`.
+            value_color: None,
         }
     }
 
@@ -229,14 +232,36 @@ impl<'a> IdPill<'a> {
     }
 
     /// Override the muted label colour.
+    /// The label tint, resolved against the theme when not overridden.
+    fn label_col(&self, ui: &Ui) -> Color32 {
+        self.label_color.unwrap_or(ui.tokens().color.text_muted)
+    }
+
+    /// The value tint, resolved against the theme when not overridden.
+    ///
+    /// Falls out of the layout rather than being a second default: a stacked
+    /// pill is a standalone display and its value is the headline, while an
+    /// inline pill is a dense row where the value sits beside other text and
+    /// should not shout. That is exactly the distinction the two literals here
+    /// used to encode (gray 220 vs gray 160) without saying why.
+    fn value_col(&self, ui: &Ui) -> Color32 {
+        self.value_color.unwrap_or_else(|| {
+            let c = ui.tokens().color;
+            match self.layout {
+                IdPillLayout::Stacked => c.text_primary,
+                IdPillLayout::Inline => c.text_secondary,
+            }
+        })
+    }
+
     pub fn label_color(mut self, c: Color32) -> Self {
-        self.label_color = c;
+        self.label_color = Some(c);
         self
     }
 
     /// Override the value colour.
     pub fn value_color(mut self, c: Color32) -> Self {
-        self.value_color = c;
+        self.value_color = Some(c);
         self
     }
 
@@ -294,9 +319,10 @@ impl<'a> IdPill<'a> {
         right_align_copy: bool,
     ) {
         // Subtle dark fill + thin border — matches the crate's
-        // framed-block palette (Chip uses similar tones).
-        let fill = Color32::from_rgb(22, 24, 30);
-        let stroke = Color32::from_rgb(48, 52, 64);
+        // framed-block palette (Chip uses the same tokens).
+        let c = ui.tokens().color;
+        let fill = c.bg_primary;
+        let stroke = c.border;
         egui::Frame::new()
             .fill(fill)
             .stroke(egui::Stroke::new(1.0_f32, stroke))
@@ -305,27 +331,27 @@ impl<'a> IdPill<'a> {
             .show(ui, |ui| {
                 // Header: small muted label on its own row.
                 if let Some(label) = self.label {
-                    ui.label(RichText::new(label).small().color(self.label_color));
+                    ui.label(RichText::new(label).small().color(self.label_col(ui)));
                 }
                 // Body row: monospace value + copy button.
                 ui.horizontal(|ui| {
                     let copy_budget = if self.copyable { 22.0 } else { 0.0 };
                     let display =
                         self.choose_display_with_budget(ui, ui.available_width() - copy_budget);
-                    ui.label(RichText::new(display).monospace().color(self.value_color))
+                    ui.label(RichText::new(display).monospace().color(self.value_col(ui)))
                         .on_hover_text(self.value_full.as_ref());
                     if !self.copyable {
                         return;
                     }
                     let clicked = if right_align_copy {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.small_button(PhosphorIcon::Copy.rich_text(12.0, self.label_color))
+                            ui.small_button(PhosphorIcon::Copy.rich_text(12.0, self.label_col(ui)))
                                 .on_hover_text("Copy to clipboard")
                                 .clicked()
                         })
                         .inner
                     } else {
-                        ui.small_button(PhosphorIcon::Copy.rich_text(12.0, self.label_color))
+                        ui.small_button(PhosphorIcon::Copy.rich_text(12.0, self.label_col(ui)))
                             .on_hover_text("Copy to clipboard")
                             .clicked()
                     };
@@ -335,7 +361,7 @@ impl<'a> IdPill<'a> {
                     }
                     if let Some(url) = &self.link
                         && ui
-                            .small_button(PhosphorIcon::Eye.rich_text(12.0, self.label_color))
+                            .small_button(PhosphorIcon::Eye.rich_text(12.0, self.label_col(ui)))
                             .on_hover_text(format!("Open {url}"))
                             .clicked()
                     {
@@ -351,10 +377,12 @@ impl<'a> IdPill<'a> {
     /// alignment within a vertical stack of Inline pills.
     fn show_inline(self, ui: &mut Ui) -> IdPillResponse {
         let mut response = IdPillResponse::default();
+        // Resolved before the body, because `value_short` is moved out of
+        // `self` partway through and the accessors borrow it.
+        let (label_col, value_col) = (self.label_col(ui), self.value_col(ui));
         ui.horizontal(|ui| {
             if let Some(label) = self.label {
-                let label_widget =
-                    egui::Label::new(RichText::new(label).small().color(self.label_color));
+                let label_widget = egui::Label::new(RichText::new(label).small().color(label_col));
                 if let Some(w) = self.label_min_width {
                     ui.add_sized([w, ui.spacing().interact_size.y], label_widget);
                 } else {
@@ -364,12 +392,8 @@ impl<'a> IdPill<'a> {
             let short = self.value_short.unwrap_or_else(|| {
                 truncate_middle(self.value_full.as_ref(), self.widths.0, self.widths.1)
             });
-            let value_widget = egui::Label::new(
-                RichText::new(short)
-                    .monospace()
-                    .small()
-                    .color(self.value_color),
-            );
+            let value_widget =
+                egui::Label::new(RichText::new(short).monospace().small().color(value_col));
             let value_resp = if let Some(w) = self.value_min_width {
                 ui.add_sized([w, ui.spacing().interact_size.y], value_widget)
             } else {
@@ -379,7 +403,7 @@ impl<'a> IdPill<'a> {
             if self.copyable {
                 install_phosphor_font(ui.ctx());
                 if ui
-                    .small_button(PhosphorIcon::Copy.rich_text(11.0, self.label_color).small())
+                    .small_button(PhosphorIcon::Copy.rich_text(11.0, label_col).small())
                     .on_hover_text("Copy to clipboard")
                     .clicked()
                 {
@@ -390,7 +414,7 @@ impl<'a> IdPill<'a> {
             if let Some(url) = &self.link {
                 install_phosphor_font(ui.ctx());
                 if ui
-                    .small_button(PhosphorIcon::Eye.rich_text(11.0, self.label_color).small())
+                    .small_button(PhosphorIcon::Eye.rich_text(11.0, label_col).small())
                     .on_hover_text(format!("Open {url}"))
                     .clicked()
                 {

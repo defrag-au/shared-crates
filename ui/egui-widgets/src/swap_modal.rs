@@ -19,8 +19,27 @@ use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 // Config
 // ============================================================================
 
-/// Theme colors for the swap modal.
+/// Per-surface colour overrides for the swap modal.
+///
+/// Every field is `None` by default and resolves against the active theme —
+/// see [`SwapModalTheme::resolved`]. The previous `Default` was seven literals
+/// in a **green nobody else uses** (`#44ff44` accent on a `#0f1914` ground):
+/// a modal that arrived in its own private palette regardless of the product it
+/// opened over, and which no theme switch could touch.
+#[derive(Clone, Copy, Debug, Default)]
 pub struct SwapModalTheme {
+    pub accent: Option<Color32>,
+    pub text_primary: Option<Color32>,
+    pub text_secondary: Option<Color32>,
+    pub text_muted: Option<Color32>,
+    pub error: Option<Color32>,
+    pub success: Option<Color32>,
+    pub bg: Option<Color32>,
+}
+
+/// [`SwapModalTheme`] with every `None` filled in. Same field names, so a draw
+/// site reads the same either way.
+pub struct ResolvedSwapTheme {
     pub accent: Color32,
     pub text_primary: Color32,
     pub text_secondary: Color32,
@@ -30,16 +49,18 @@ pub struct SwapModalTheme {
     pub bg: Color32,
 }
 
-impl Default for SwapModalTheme {
-    fn default() -> Self {
-        Self {
-            accent: Color32::from_rgb(68, 255, 68),
-            text_primary: Color32::from_rgb(200, 255, 220),
-            text_secondary: Color32::from_rgb(120, 180, 140),
-            text_muted: Color32::from_rgb(60, 100, 70),
-            error: Color32::from_rgb(255, 68, 68),
-            success: Color32::from_rgb(68, 255, 136),
-            bg: Color32::from_rgb(15, 25, 20),
+impl SwapModalTheme {
+    /// Takes tokens rather than a `Ui` because the modal's frame is built from
+    /// a `Context` before any `Ui` exists.
+    pub fn resolved(&self, c: &crate::theme::ColorTokens) -> ResolvedSwapTheme {
+        ResolvedSwapTheme {
+            accent: self.accent.unwrap_or(c.accent),
+            text_primary: self.text_primary.unwrap_or(c.text_primary),
+            text_secondary: self.text_secondary.unwrap_or(c.text_secondary),
+            text_muted: self.text_muted.unwrap_or(c.text_muted),
+            error: self.error.unwrap_or(c.error),
+            success: self.success.unwrap_or(c.success),
+            bg: self.bg.unwrap_or(c.bg_secondary),
         }
     }
 }
@@ -223,7 +244,7 @@ impl SwapModal {
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .frame(
                 egui::Frame::window(&ctx.global_style())
-                    .fill(self.config.theme.bg)
+                    .fill(self.config.theme.resolved(&ctx.tokens().color).bg)
                     .inner_margin(ctx.tokens().margin(Space::Xl2)),
             )
             .show(ctx, |ui| {
@@ -265,10 +286,11 @@ impl SwapModal {
     ) -> SwapModalAction {
         // Copy theme colors up front (Color32 is Copy) to avoid borrowing self.config
         // through the closures that also need &mut self fields.
-        let accent = self.config.theme.accent;
-        let bg = self.config.theme.bg;
-        let text_secondary = self.config.theme.text_secondary;
-        let text_muted = self.config.theme.text_muted;
+        let t = self.config.theme.resolved(&ui.tokens().color);
+        let accent = t.accent;
+        let bg = t.bg;
+        let text_secondary = t.text_secondary;
+        let text_muted = t.text_muted;
 
         let mut action = SwapModalAction::None;
 
@@ -498,7 +520,7 @@ impl SwapModal {
     }
 
     fn draw_preview(&self, ui: &mut egui::Ui, preview: Option<&SwapPreviewData>, loading: bool) {
-        let theme = &self.config.theme;
+        let theme = self.config.theme.resolved(&ui.tokens().color);
 
         ui.separator();
         ui.gap(Space::Base);
@@ -574,7 +596,7 @@ impl SwapModal {
         suffix: &str,
         value_color: Color32,
     ) {
-        let theme = &self.config.theme;
+        let theme = self.config.theme.resolved(&ui.tokens().color);
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(label)
@@ -599,7 +621,7 @@ impl SwapModal {
     }
 
     fn draw_success(&mut self, ui: &mut egui::Ui, tx_hash: &str) -> SwapModalAction {
-        let theme = &self.config.theme;
+        let theme = self.config.theme.resolved(&ui.tokens().color);
         let mut action = SwapModalAction::None;
 
         ui.gap(Space::Xl);
@@ -648,7 +670,7 @@ impl SwapModal {
     }
 
     fn draw_error(&mut self, ui: &mut egui::Ui, message: &str) -> SwapModalAction {
-        let theme = &self.config.theme;
+        let theme = self.config.theme.resolved(&ui.tokens().color);
         let mut action = SwapModalAction::None;
 
         ui.gap(Space::Xl);

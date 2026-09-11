@@ -316,7 +316,7 @@ impl<'a> AssetCard<'a> {
         let proj_border = project_points(&border_outer, center, ax, ay, self.perspective);
 
         // 3. Rarity glow ring (Rare+).
-        if let Some(glow) = rarity_glow(self.rarity) {
+        if let Some(glow) = rarity_glow(ui, self.rarity) {
             let glow_outer = expand_outline(&outline, self.border + self.glow);
             let proj_glow = project_points(&glow_outer, center, ax, ay, self.perspective);
             draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
@@ -327,7 +327,7 @@ impl<'a> AssetCard<'a> {
             &painter,
             &proj_outline,
             &proj_border,
-            rarity_color(self.rarity),
+            rarity_color(ui, self.rarity),
         );
 
         // 5. Art quad (textured when ready, else placeholder fill).
@@ -386,14 +386,14 @@ impl<'a> AssetCard<'a> {
         }
 
         // 7. Travelling spark streak (Rare+), self-animating.
-        if self.show_spark && rarity_glow(self.rarity).is_some() {
+        if self.show_spark && rarity_glow(ui, self.rarity).is_some() {
             let dt = ui.input(|i| i.stable_dt).min(0.1);
             state.spark_phase = (state.spark_phase + dt * 0.3) % 1.0;
             draw_spark_streak(
                 &painter,
                 &proj_outline,
                 state.spark_phase,
-                rarity_color(self.rarity),
+                rarity_color(ui, self.rarity),
             );
             ui.ctx().request_repaint();
         }

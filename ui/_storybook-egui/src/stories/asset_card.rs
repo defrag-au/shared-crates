@@ -7,7 +7,7 @@ use egui_widgets::asset_card::{
     draw_tile_overlay, expand_outline, project_3d, project_points, rarity_color, rarity_glow,
     rounded_rect_vertices, update_tilt, with_badge, AuroraCurtain, BrushedMetal, CardEffect,
     CardMask, DiffractionGrating, Glitter, PrismaticDispersion, StreakHolo, ThinFilmIridescence,
-    TiltState, EFFECT_NAMES, RARITIES,
+    TiltState, EFFECT_NAMES, RARITY_NAMES, rarity_colors,
 };
 
 use crate::{ACCENT, TEXT_MUTED};
@@ -171,13 +171,13 @@ fn demo_square(
     let proj_outline = project_points(&outline, center, ax, ay, perspective);
     let proj_border = project_points(&border_outer, center, ax, ay, perspective);
 
-    if let Some(glow) = rarity_glow(rarity) {
+    if let Some(glow) = rarity_glow(ui, rarity) {
         let glow_outer = expand_outline(&outline, 6.0);
         let proj_glow = project_points(&glow_outer, center, ax, ay, perspective);
         draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
     }
 
-    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(rarity));
+    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(ui, rarity));
 
     if let Some(tex) = art_tex {
         draw_textured_quad(&painter, proj4, tex, Color32::WHITE);
@@ -204,7 +204,7 @@ fn demo_square(
     }
 
     if spark_enabled && rarity >= 2 {
-        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(rarity));
+        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(ui, rarity));
     }
 
     draw_tile_overlay(
@@ -254,13 +254,13 @@ fn demo_hex(
     let proj_outline = project_points(&outline, center, ax, ay, perspective);
     let proj_border = project_points(&border_outer, center, ax, ay, perspective);
 
-    if let Some(glow) = rarity_glow(rarity) {
+    if let Some(glow) = rarity_glow(ui, rarity) {
         let glow_outer = expand_outline(&outline, 6.0);
         let proj_glow = project_points(&glow_outer, center, ax, ay, perspective);
         draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
     }
 
-    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(rarity));
+    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(ui, rarity));
 
     let art_center = project_3d(center, center, ax, ay, perspective);
     if let Some(tex) = art_tex {
@@ -300,7 +300,7 @@ fn demo_hex(
     }
 
     if spark_enabled && rarity >= 2 {
-        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(rarity));
+        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(ui, rarity));
     }
 
     draw_tile_overlay(
@@ -355,13 +355,13 @@ fn demo_rounded_square(
     let proj_outline = project_points(&outline, center, ax, ay, perspective);
     let proj_border = project_points(&border_outer, center, ax, ay, perspective);
 
-    if let Some(glow) = rarity_glow(rarity) {
+    if let Some(glow) = rarity_glow(ui, rarity) {
         let glow_outer = expand_outline(&outline, 6.0);
         let proj_glow = project_points(&glow_outer, center, ax, ay, perspective);
         draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
     }
 
-    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(rarity));
+    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(ui, rarity));
 
     let art_verts = rounded_rect_vertices(center, half, half, corner_radius, segs);
     let art_proj = project_points(&art_verts, center, ax, ay, perspective);
@@ -395,7 +395,7 @@ fn demo_rounded_square(
     }
 
     if spark_enabled && rarity >= 2 {
-        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(rarity));
+        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(ui, rarity));
     }
 
     draw_tile_overlay(
@@ -432,9 +432,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
     });
     ui.horizontal(|ui| {
         ui.label("Rarity:");
-        for (i, (name, color)) in RARITIES.iter().enumerate() {
+        let tier_colors = rarity_colors(ui);
+        for (i, name) in RARITY_NAMES.iter().enumerate() {
             let text = if state.rarity == i {
-                egui::RichText::new(*name).color(*color).strong()
+                egui::RichText::new(*name).color(tier_colors[i]).strong()
             } else {
                 egui::RichText::new(*name).color(TEXT_MUTED)
             };
