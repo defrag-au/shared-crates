@@ -45,7 +45,7 @@
 use egui::{RichText, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 /// One thing a reader should expect: an icon, a headline, and a line saying
 /// what it means for them.
@@ -170,7 +170,7 @@ fn status_chip(ui: &mut Ui, status: &str) {
         .fill(ui.tokens().color.warning.gamma_multiply(0.18))
         .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.warning))
         .inner_margin(egui::Margin::symmetric(5, 1))
-        .corner_radius(4.0)
+        .corner_radius(ui.tokens().corner(Radius::Base))
         .show(ui, |ui| {
             ui.label(
                 RichText::new(status)

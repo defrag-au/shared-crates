@@ -8,6 +8,8 @@
 
 use egui::{Color32, Pos2, Rect, RichText, Stroke, Vec2};
 
+use crate::theme::{Radius, ThemeExt};
+
 // ── Config ───────────────────────────────────────────────────────
 
 pub struct PrintingTimelineConfig {
@@ -165,7 +167,7 @@ pub fn show(
                     // Use egui's built-in image widget
                     let image = egui::Image::new(url.as_str())
                         .fit_to_exact_size(Vec2::new(config.node_width, config.thumb_height))
-                        .corner_radius(4.0);
+                        .corner_radius(ui.tokens().corner(Radius::Base));
                     ui.put(thumb_rect, image);
                 }
 

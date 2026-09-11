@@ -26,6 +26,8 @@
 
 use std::borrow::Cow;
 
+use crate::theme::{Radius, ThemeExt};
+
 use egui::{Align, Color32, Layout, RichText, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
@@ -298,7 +300,7 @@ impl<'a> IdPill<'a> {
         egui::Frame::new()
             .fill(fill)
             .stroke(egui::Stroke::new(1.0_f32, stroke))
-            .corner_radius(egui::CornerRadius::same(4))
+            .corner_radius(ui.tokens().corner(Radius::Base))
             .inner_margin(egui::Margin::symmetric(8, 6))
             .show(ui, |ui| {
                 // Header: small muted label on its own row.

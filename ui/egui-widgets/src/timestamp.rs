@@ -15,6 +15,8 @@
 
 use egui::{Color32, CornerRadius, Frame, Margin, Response, RichText, Stroke, Ui, Widget};
 
+use crate::theme::{Radius, ThemeExt};
+
 use crate::relative_time::relative_label;
 
 /// Format unix seconds as ISO-8601 (UTC), `YYYY-MM-DD HH:MM[:SS]`. Dep-free (the
@@ -102,7 +104,7 @@ impl Widget for Timestamp {
             Frame::new()
                 .fill(Color32::from_gray(30))
                 .stroke(Stroke::new(1.0_f32, Color32::from_gray(55)))
-                .corner_radius(CornerRadius::same(4))
+                .corner_radius(ui.tokens().corner(Radius::Base))
                 .inner_margin(Margin::symmetric(6, 1))
                 .show(ui, |ui| ui.label(rich))
                 .response

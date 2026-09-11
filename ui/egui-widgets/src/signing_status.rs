@@ -7,7 +7,7 @@
 use egui::RichText;
 
 use crate::icons::PhosphorIcon;
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 // ============================================================================
 // Types
@@ -96,7 +96,7 @@ pub fn show(
 
     egui::Frame::new()
         .fill(ui.tokens().color.bg_secondary)
-        .corner_radius(6.0)
+        .corner_radius(ui.tokens().corner(Radius::Md))
         .inner_margin(12.0)
         .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .show(ui, |ui| {

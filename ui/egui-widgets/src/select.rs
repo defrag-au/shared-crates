@@ -39,7 +39,7 @@
 use egui::{Align, Color32, Layout, Margin, Sense, Ui, vec2};
 
 use crate::icons::install_phosphor_font;
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 use crate::{PhosphorIcon, theme};
 
 /// One row in the menu.
@@ -293,7 +293,7 @@ impl<'a> Select<'a> {
 
         let frame = egui::Frame::new()
             .fill(ui.tokens().color.bg_secondary)
-            .corner_radius(6.0)
+            .corner_radius(ui.tokens().corner(Radius::Md))
             // The border IS the state indicator, as a focus ring is on the web.
             .stroke(theme::hairline(if open {
                 ui.tokens().color.accent
@@ -471,7 +471,7 @@ impl<'a> Select<'a> {
                     ui.style_mut().interaction.selectable_labels = false;
                     egui::Frame::new()
                         .fill(ui.tokens().color.bg_secondary)
-                        .corner_radius(6.0)
+                        .corner_radius(ui.tokens().corner(Radius::Md))
                         .stroke(theme::hairline(ui.tokens().color.border))
                         .inner_margin(Margin::same(4))
                         .show(ui, |ui| {
@@ -654,7 +654,7 @@ impl<'a> MultiSelect<'a> {
 
         let frame = egui::Frame::new()
             .fill(ui.tokens().color.bg_secondary)
-            .corner_radius(6.0)
+            .corner_radius(ui.tokens().corner(Radius::Md))
             .stroke(theme::hairline(if open {
                 ui.tokens().color.accent
             } else {
@@ -774,7 +774,7 @@ impl<'a> MultiSelect<'a> {
                     ui.style_mut().interaction.selectable_labels = false;
                     egui::Frame::new()
                         .fill(ui.tokens().color.bg_secondary)
-                        .corner_radius(6.0)
+                        .corner_radius(ui.tokens().corner(Radius::Md))
                         .stroke(theme::hairline(ui.tokens().color.border))
                         .inner_margin(Margin::same(4))
                         .show(ui, |ui| {

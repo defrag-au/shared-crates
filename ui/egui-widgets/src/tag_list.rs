@@ -9,6 +9,8 @@
 
 use egui::{Color32, CornerRadius, Sense, Stroke, Ui, Vec2};
 
+use crate::theme::{Radius, ThemeExt};
+
 use crate::chip::ChipVariant;
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -67,7 +69,7 @@ impl<'a> TagList<'a> {
                 // The wrap happens here: if the chip won't fit the remaining row,
                 // the wrapped layout moves to the next line before placing it.
                 let (rect, r) = ui.allocate_exact_size(size, Sense::click());
-                let cr = CornerRadius::same(3);
+                let cr = ui.tokens().corner(Radius::Sm);
                 painter.rect_filled(rect, cr, bg);
                 if let Some(b) = border {
                     painter.rect_stroke(

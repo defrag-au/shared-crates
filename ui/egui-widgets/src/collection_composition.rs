@@ -10,7 +10,7 @@
 
 use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2};
 
-use crate::theme::{self, ThemeExt};
+use crate::theme::{self, Radius, ThemeExt};
 
 // ============================================================================
 // Types
@@ -197,7 +197,7 @@ fn layer_stack(
         if i % 2 == 0 {
             p.rect_filled(
                 rect,
-                CornerRadius::same(4),
+                ui.tokens().corner(Radius::Base),
                 ui.tokens().color.bg_secondary.gamma_multiply(0.5),
             );
         }
@@ -216,7 +216,7 @@ fn layer_stack(
             let badge = Rect::from_min_size(Pos2::new(bx, name_y - 8.0), Vec2::new(20.0, 16.0));
             p.rect_filled(
                 badge,
-                CornerRadius::same(4),
+                ui.tokens().corner(Radius::Base),
                 variant_color(vi, &ui.tokens()).gamma_multiply(0.30),
             );
             p.text(
@@ -273,10 +273,10 @@ fn layer_stack(
                 cfg.cell,
             );
             let hot = pointer.map(|pp| cell.contains(pp)).unwrap_or(false);
-            p.rect_filled(cell, CornerRadius::same(4), ui.tokens().color.bg_highlight);
+            p.rect_filled(cell, ui.tokens().corner(Radius::Base), ui.tokens().color.bg_highlight);
             p.rect_stroke(
                 cell,
-                CornerRadius::same(4),
+                ui.tokens().corner(Radius::Base),
                 Stroke::new(
                     if hot { 1.5_f32 } else { 1.0_f32 },
                     if hot {

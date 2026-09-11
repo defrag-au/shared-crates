@@ -11,7 +11,7 @@
 
 use egui::{Color32, CornerRadius, Pos2, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 // ============================================================================
 // Types
@@ -139,7 +139,7 @@ pub fn show(
     }
 
     let painter = ui.painter();
-    let rounding = CornerRadius::same(4);
+    let rounding = ui.tokens().corner(Radius::Base);
 
     // Background
     painter.rect_filled(rect, rounding, ui.tokens().color.bg_secondary);

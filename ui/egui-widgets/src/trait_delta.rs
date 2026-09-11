@@ -6,7 +6,7 @@
 
 use egui::{Color32, RichText, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 // ============================================================================
 // Types
@@ -110,7 +110,7 @@ fn draw_chips(
 
             egui::Frame::new()
                 .fill(bg)
-                .corner_radius(4.0)
+                .corner_radius(ui.tokens().corner(Radius::Base))
                 .inner_margin(egui::Margin::symmetric(6, 2))
                 .stroke(egui::Stroke::new(1.0_f32, color.linear_multiply(0.3)))
                 .show(ui, |ui| {

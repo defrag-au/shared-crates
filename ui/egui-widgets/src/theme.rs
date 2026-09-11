@@ -393,31 +393,170 @@ impl Density {
 // Geometry
 // ============================================================================
 
-/// Which corner rounding a surface takes.
+/// A step on the corner-radius ramp.
+///
+/// # Steps, not roles
+///
+/// Tailwind's model, and deliberately not the one this started as. The first
+/// shape was `Small` / `Medium` / `Large` meaning *chip* / *card* / *modal*,
+/// which sounds tidier and is worse for two reasons:
+///
+/// - **Migration becomes a judgement call.** The suite carries 155 hardcoded
+///   radii at 1, 2, 3, 4, 5, 6, 7, 8, 10 and 14. Mapping those onto three roles
+///   means deciding what each of 155 sites *is*. Mapping them onto a ramp is
+///   nearest-value, and only **six** sites shift at all.
+/// - **Three steps cannot express the range.** 3 and 4 are both "card-ish" and
+///   both common (22 and 44 sites); collapsing them loses a real distinction.
+///
+/// A component picks a step; the **theme decides what the step is worth** (see
+/// [`RadiusScale`]). That is what lets one override make a whole product rounder
+/// rather than re-deciding 155 call sites.
+///
+/// [`Radius::None`] and [`Radius::Full`] are absolutes rather than scale entries:
+/// square is square, and a pill is as round as its height allows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Radius {
-    /// Chips, pills, inline tags.
-    Small,
-    /// Cards, panels — the common case.
-    Medium,
-    /// Modals, drawers, hero surfaces.
-    Large,
+    /// Square. Always 0, whatever the theme.
+    None,
+    Xs,
+    Sm,
+    /// The default step.
+    Base,
+    Md,
+    Lg,
+    Xl,
+    /// A pill — as round as the shape allows, whatever the theme.
+    Full,
 }
 
 impl Radius {
-    pub const ALL: &'static [Radius] = &[Radius::Small, Radius::Medium, Radius::Large];
+    pub const ALL: &'static [Radius] = &[
+        Radius::None,
+        Radius::Xs,
+        Radius::Sm,
+        Radius::Base,
+        Radius::Md,
+        Radius::Lg,
+        Radius::Xl,
+        Radius::Full,
+    ];
+
+    /// The nearest step to a raw pixel value.
+    ///
+    /// Exists for the migration and for callers still holding a number. Snapping
+    /// to the ramp **is** the intended operation — an arbitrary radius is the
+    /// thing a scale is meant to eliminate.
+    ///
+    /// **Ties round up**, and only zero returns [`Radius::None`].
+    ///
+    /// Both rules exist because the default ramp has 1px gaps in places, so ties
+    /// are common rather than exotic — 1 sits between `None` and `Xs`, 5 between
+    /// `Base` and `Md`, 7 between `Md` and `Lg`. Without a stated rule the answer
+    /// would be whichever step the loop happened to reach first, which is not a
+    /// decision, it is an accident.
+    ///
+    /// Rounding up is the safer direction: a shape that comes out slightly too
+    /// round reads as a style choice, whereas one that snaps down to square reads
+    /// as a bug. The same reasoning makes `None` reachable only from an exact
+    /// zero — a caller that wanted square wrote `0`; anything above it asked to
+    /// be rounded.
+    pub fn nearest(px: f32, scale: &RadiusScale) -> Self {
+        if px <= 0.0 {
+            return Radius::None;
+        }
+        let mut best = Radius::Xs;
+        let mut best_gap = f32::MAX;
+        for step in [
+            Radius::Xs,
+            Radius::Sm,
+            Radius::Base,
+            Radius::Md,
+            Radius::Lg,
+            Radius::Xl,
+        ] {
+            let gap = (scale.get(step) as f32 - px).abs();
+            // `<=` so a later — therefore rounder — step wins a tie.
+            if gap <= best_gap {
+                best_gap = gap;
+                best = step;
+            }
+        }
+        best
+    }
 }
 
-/// The geometry axis: a rounding ramp and the border weight.
+/// What each [`Radius`] step is worth — Tailwind's `theme.borderRadius`.
 ///
-/// The suite carries sixty-odd inline `CornerRadius::same(3|4|6|8)` literals.
-/// Collapsing them onto three named steps is what makes "sharp industrial" versus
-/// "soft product" a one-value swap.
+/// A theme overrides these rather than picking different steps, so "make the
+/// whole product rounder" is one value change per step instead of an audit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RadiusScale {
+    pub xs: u8,
+    pub sm: u8,
+    pub base: u8,
+    pub md: u8,
+    pub lg: u8,
+    pub xl: u8,
+}
+
+impl RadiusScale {
+    /// The values the suite already used, in their observed proportions.
+    pub const fn tokyo_night() -> Self {
+        Self {
+            xs: 2,
+            sm: 3,
+            base: 4,
+            md: 6,
+            lg: 8,
+            xl: 12,
+        }
+    }
+
+    /// Every step square. Proves the axis is honoured, and a useful fixture.
+    pub const fn square() -> Self {
+        Self {
+            xs: 0,
+            sm: 0,
+            base: 0,
+            md: 0,
+            lg: 0,
+            xl: 0,
+        }
+    }
+
+    /// Roughly double — the marketplace idiom, where cards are 12px and filter
+    /// chips are pills.
+    pub const fn round() -> Self {
+        Self {
+            xs: 4,
+            sm: 6,
+            base: 8,
+            md: 12,
+            lg: 16,
+            xl: 24,
+        }
+    }
+
+    pub fn get(&self, r: Radius) -> u8 {
+        match r {
+            Radius::None => 0,
+            Radius::Xs => self.xs,
+            Radius::Sm => self.sm,
+            Radius::Base => self.base,
+            Radius::Md => self.md,
+            Radius::Lg => self.lg,
+            Radius::Xl => self.xl,
+            // `CornerRadius` is u8 per corner, so this pills anything up to
+            // ~510pt tall — every chip, button and tag in the suite.
+            Radius::Full => u8::MAX,
+        }
+    }
+}
+
+/// The geometry axis: the rounding ramp and the border weight.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Geometry {
-    pub radius_small: u8,
-    pub radius_medium: u8,
-    pub radius_large: u8,
+    pub radius: RadiusScale,
     /// Border weight. One pixel throughout today — see [`hairline`].
     pub border_width: f32,
 }
@@ -426,9 +565,7 @@ impl Geometry {
     /// Today's de-facto values, read off the existing call sites.
     pub const fn tokyo_night() -> Self {
         Self {
-            radius_small: 3,
-            radius_medium: 4,
-            radius_large: 8,
+            radius: RadiusScale::tokyo_night(),
             border_width: 1.0,
         }
     }
@@ -436,19 +573,13 @@ impl Geometry {
     /// Fully square — proves the axis is honoured, and a useful test fixture.
     pub const fn square() -> Self {
         Self {
-            radius_small: 0,
-            radius_medium: 0,
-            radius_large: 0,
+            radius: RadiusScale::square(),
             border_width: 1.0,
         }
     }
 
     pub fn corner(&self, r: Radius) -> CornerRadius {
-        CornerRadius::same(match r {
-            Radius::Small => self.radius_small,
-            Radius::Medium => self.radius_medium,
-            Radius::Large => self.radius_large,
-        })
+        CornerRadius::same(self.radius.get(r))
     }
 
     /// A border stroke at this theme's weight.
@@ -624,9 +755,7 @@ impl Theme {
                 border: Color32::from_rgb(56, 61, 71),
             },
             geometry: Geometry {
-                radius_small: 8,
-                radius_medium: 12,
-                radius_large: 16,
+                radius: RadiusScale::round(),
                 border_width: 1.0,
             },
             ..Self::tokyo_night()
@@ -1260,6 +1389,72 @@ mod tests {
             );
         }
         assert!(Theme::by_name("no such theme").is_none());
+    }
+
+    /// The ramp has to cover what the suite actually used, or the migration is a
+    /// judgement call rather than a snap.
+    ///
+    /// These are the real observed radii and their counts across 155 sites. Only
+    /// the four marked shift at all — everything else lands exactly.
+    #[test]
+    fn the_radius_ramp_covers_the_values_the_suite_used() {
+        let s = RadiusScale::tokyo_night();
+        let exact = [
+            (2.0, Radius::Xs),   // 8 sites
+            (3.0, Radius::Sm),   // 22 sites
+            (4.0, Radius::Base), // 44 sites
+            (6.0, Radius::Md),   // 42 sites
+            (8.0, Radius::Lg),   // 14 sites
+            (12.0, Radius::Xl),
+        ];
+        for (px, want) in exact {
+            assert_eq!(Radius::nearest(px, &s), want, "{px} should land exactly");
+            assert_eq!(s.get(want) as f32, px);
+        }
+
+        // Zero is the only thing that means square.
+        assert_eq!(Radius::nearest(0.0, &s), Radius::None);
+
+        // The outliers, and what they snap to — 6 sites in total. Every one of
+        // these is a tie against the default ramp, so they are all decided by the
+        // round-up rule rather than by distance.
+        assert_eq!(Radius::nearest(1.0, &s), Radius::Xs); // 1 → 2
+        assert_eq!(Radius::nearest(5.0, &s), Radius::Md); // 5 → 6
+        assert_eq!(Radius::nearest(7.0, &s), Radius::Lg); // 7 → 8
+        assert_eq!(Radius::nearest(10.0, &s), Radius::Xl); // 10 → 12
+        assert_eq!(Radius::nearest(14.0, &s), Radius::Xl); // 14 → 12
+    }
+
+    /// The point of a scale: a theme moves every step at once, so a component
+    /// that picked `Base` gets rounder without being touched.
+    #[test]
+    fn overriding_the_scale_moves_every_step() {
+        let house = Theme::tokyo_night();
+        let round = Theme::opensea();
+        for step in Radius::ALL {
+            let (a, b) = (
+                house.geometry.radius.get(*step),
+                round.geometry.radius.get(*step),
+            );
+            assert!(
+                b >= a,
+                "`{step:?}` did not get rounder: {a} → {b}",
+                step = step
+            );
+        }
+        // And at least one step must actually differ, or the override is inert.
+        assert_ne!(house.geometry.radius, round.geometry.radius);
+    }
+
+    /// `None` and `Full` are absolutes, not scale entries — square is square, and
+    /// a pill is a pill, whatever the theme says.
+    #[test]
+    fn none_and_full_ignore_the_theme() {
+        for preset in Theme::PRESETS {
+            let g = preset().geometry;
+            assert_eq!(g.corner(Radius::None), CornerRadius::same(0));
+            assert_eq!(g.corner(Radius::Full), CornerRadius::same(u8::MAX));
+        }
     }
 
     #[test]

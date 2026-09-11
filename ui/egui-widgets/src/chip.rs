@@ -35,6 +35,8 @@
 
 use egui::{Color32, CornerRadius, RichText, Sense, Stroke, Ui};
 
+use crate::theme::{Radius, ThemeExt};
+
 use crate::icons::{PhosphorIcon, install_phosphor_font};
 use crate::viewport::Breakpoint;
 
@@ -288,7 +290,7 @@ impl<'a> Chip<'a> {
 
         ui.painter().rect(
             rect,
-            CornerRadius::same(3),
+            ui.tokens().corner(Radius::Sm),
             bg,
             border.map_or(Stroke::NONE, |b| Stroke::new(1.0_f32, b)),
             egui::StrokeKind::Inside,

@@ -48,6 +48,8 @@
 
 use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke, Ui};
 
+use crate::theme::{Radius, ThemeExt};
+
 use crate::chip::{Chip, ChipVariant};
 use crate::property_list::PropertyList;
 
@@ -167,7 +169,7 @@ impl<'a> PhaseCard<'a> {
         Frame::new()
             .fill(Color32::from_rgb(22, 24, 32))
             .stroke(Stroke::new(1.0_f32, Color32::from_rgb(40, 44, 60)))
-            .corner_radius(CornerRadius::same(6))
+            .corner_radius(ui.tokens().corner(Radius::Md))
             .inner_margin(Margin::same(10))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());

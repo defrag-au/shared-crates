@@ -55,6 +55,8 @@
 
 use egui::{Color32, CornerRadius, Frame, Margin, Response, RichText, Sense, Stroke, Ui, Vec2};
 
+use crate::theme::{Radius, ThemeExt};
+
 /// How firmly a party's identity is known.
 ///
 /// Mirrors `chain_ledger::Basis`, deliberately re-declared rather than imported
@@ -188,7 +190,7 @@ impl<'a> PartyBadge<'a> {
 
         let frame = Frame::NONE
             .inner_margin(Margin::symmetric(5, 2))
-            .corner_radius(CornerRadius::same(3));
+            .corner_radius(ui.tokens().corner(Radius::Sm));
 
         let resp = frame
             .show(ui, |ui| {

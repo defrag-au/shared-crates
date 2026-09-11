@@ -42,6 +42,8 @@
 
 use egui::{Align2, Color32, CornerRadius, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
+use crate::theme::{Radius, ThemeExt};
+
 use crate::selection::Selection;
 use crate::time_spine::SpineState;
 
@@ -266,7 +268,7 @@ impl<'a> FlowMatrix<'a> {
                     // An empty cell is information too — keep the grid legible.
                     painter.rect_filled(
                         cr,
-                        CornerRadius::same(2),
+                        ui.tokens().corner(Radius::Xs),
                         ui.visuals().faint_bg_color.linear_multiply(0.4),
                     );
                     continue;
@@ -277,12 +279,12 @@ impl<'a> FlowMatrix<'a> {
                     + 0.75 * (((v.gross.max(1) as f64).ln() - lo_log) / span_log).clamp(0.0, 1.0))
                     as f32;
                 let base = if v.net < 0 { OUT } else { IN };
-                painter.rect_filled(cr, CornerRadius::same(2), base.gamma_multiply(t));
+                painter.rect_filled(cr, ui.tokens().corner(Radius::Xs), base.gamma_multiply(t));
                 if response.hover_pos().is_some_and(|p| cr.contains(p)) {
                     hovered = Some((r.to_string(), c.to_string()));
                     painter.rect_stroke(
                         cr,
-                        CornerRadius::same(2),
+                        ui.tokens().corner(Radius::Xs),
                         Stroke::new(1.5_f32, ink),
                         egui::StrokeKind::Inside,
                     );

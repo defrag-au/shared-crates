@@ -36,7 +36,7 @@ use crate::button_group::{ButtonGroup, ButtonGroupButton};
 use crate::error_note::ErrorNote;
 use crate::icons::PhosphorIcon;
 use crate::property_list::PropertyList;
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 // ============================================================================
 // Types
@@ -250,7 +250,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
 
     egui::Frame::new()
         .fill(ui.tokens().color.bg_secondary)
-        .corner_radius(6.0)
+        .corner_radius(ui.tokens().corner(Radius::Md))
         .inner_margin(12.0)
         .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .show(ui, |ui| {

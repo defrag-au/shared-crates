@@ -13,7 +13,7 @@
 use egui::{Color32, RichText, Ui, Vec2};
 
 use crate::icons::PhosphorIcon;
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 /// A `−  [n]  +` quantity control.
 pub struct QuantityStepper {
@@ -90,7 +90,7 @@ impl QuantityStepper {
                     PhosphorIcon::Minus.rich_text(16.0, ui.tokens().color.text_primary),
                 )
                 .min_size(btn)
-                .corner_radius(6.0),
+                .corner_radius(ui.tokens().corner(Radius::Md)),
             );
             if dec.clicked() {
                 value = value.saturating_sub(1).max(self.min);
@@ -103,7 +103,7 @@ impl QuantityStepper {
             egui::Frame::new()
                 .fill(ui.tokens().color.bg_primary)
                 .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
-                .corner_radius(6.0)
+                .corner_radius(ui.tokens().corner(Radius::Md))
                 .show(ui, |ui| {
                     ui.allocate_ui_with_layout(
                         Vec2::new(self.readout_width, self.button_size),
@@ -126,7 +126,7 @@ impl QuantityStepper {
                     PhosphorIcon::Plus.rich_text(16.0, ui.tokens().color.text_primary),
                 )
                 .min_size(btn)
-                .corner_radius(6.0),
+                .corner_radius(ui.tokens().corner(Radius::Md)),
             );
             if inc.clicked() {
                 value = (value + 1).min(self.max);

@@ -8,7 +8,7 @@
 //! (e.g. `AssetCard` with 3D tilt) through the [`CardRenderContext::response`] field.
 
 use crate::image_loader::CachedSpinner;
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
 
 // ============================================================================
@@ -425,7 +425,7 @@ pub fn draw_thumbnail(
         egui::Image::new(url)
             .fit_to_exact_size(thumb_rect.size())
             .show_loading_spinner(false)
-            .corner_radius(4)
+            .corner_radius(ui.tokens().corner(Radius::Base))
             .paint_at(ui, thumb_rect);
         false
     } else {

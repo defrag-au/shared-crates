@@ -76,6 +76,7 @@ use egui::{
 };
 
 use crate::party_badge::{PartyBadge, PartyBasis};
+use crate::theme::{Radius, ThemeExt};
 
 /// How far a claim has got towards being something you could cite.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -293,7 +294,7 @@ impl<'a> ClaimCard<'a> {
         let inner = Frame::NONE
             .fill(ui.visuals().faint_bg_color)
             .inner_margin(Margin::symmetric(10, 7))
-            .corner_radius(CornerRadius::same(3))
+            .corner_radius(ui.tokens().corner(Radius::Sm))
             // Dashed below for anything provisional; a solid border would read
             // as ordinary card chrome.
             .stroke(Stroke::NONE)

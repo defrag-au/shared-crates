@@ -32,6 +32,7 @@ use egui::{
 use crate::mint_arrivals::{Arrival, pile_offset};
 use crate::motion::{Easing, tween, tween_bool, tween_from};
 use crate::selection::Selection;
+use crate::theme::{Radius, ThemeExt};
 use crate::time_spine::SpineState;
 
 pub struct ArrivalFieldResponse {
@@ -355,7 +356,7 @@ impl<'a> ArrivalField<'a> {
             let bg = Rect::from_min_size(at, galley.size()).expand2(vec2(4.0, 2.0));
             painter.rect_filled(
                 bg,
-                CornerRadius::same(3),
+                ui.tokens().corner(Radius::Sm),
                 ui.visuals().extreme_bg_color.linear_multiply(0.85),
             );
             painter.galley(at, galley, ink);

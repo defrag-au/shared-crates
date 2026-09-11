@@ -9,7 +9,7 @@ use egui::{Color32, CornerRadius, Rect, Vec2};
 
 use crate::card_browser;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 // ============================================================================
 // Types
@@ -123,7 +123,7 @@ pub fn show(
 
     let hover_pos = strip_response.hover_pos();
     let painter = ui.painter_at(strip_rect);
-    let rounding = CornerRadius::same(4);
+    let rounding = ui.tokens().corner(Radius::Base);
 
     // Determine which card is hovered (topmost = rightmost at overlap point)
     let hovered_idx = hover_pos.and_then(|pos| {

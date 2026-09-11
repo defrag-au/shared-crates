@@ -8,7 +8,7 @@
 
 use egui::{Color32, FontId, RichText, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 /// Font sizes the card paints with. Named because [`MetricCard::natural_size`]
 /// has to measure with exactly the same ones — a measurement that drifts from
@@ -179,7 +179,7 @@ impl<'a> MetricCard<'a> {
 
         let frame = egui::Frame::NONE
             .fill(bg_color)
-            .corner_radius(6.0)
+            .corner_radius(ui.tokens().corner(Radius::Md))
             .inner_margin(12.0)
             .stroke(egui::Stroke::new(1.0_f32, border_color));
 

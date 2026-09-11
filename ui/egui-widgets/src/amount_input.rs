@@ -8,7 +8,7 @@
 use egui::{Color32, RichText};
 
 use crate::buttons::UiButtonExt;
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 // ============================================================================
 // Types
@@ -129,13 +129,13 @@ pub fn show(
                         .size(10.0),
                 )
                 .fill(accent)
-                .corner_radius(4.0)
+                .corner_radius(ui.tokens().corner(Radius::Base))
                 .min_size(egui::vec2(40.0, 28.0))
             } else {
                 egui::Button::new(RichText::new("MAX").color(accent).size(10.0))
                     .fill(Color32::TRANSPARENT)
                     .stroke(egui::Stroke::new(1.0_f32, accent))
-                    .corner_radius(4.0)
+                    .corner_radius(ui.tokens().corner(Radius::Base))
                     .min_size(egui::vec2(40.0, 28.0))
             };
 
@@ -221,17 +221,18 @@ fn toggle_button(
     selected: bool,
     accent: Color32,
     on_accent: Color32,
+    corner: egui::CornerRadius,
 ) -> egui::Button<'_> {
     if selected {
         egui::Button::new(RichText::new(label).color(on_accent).strong().size(11.0))
             .fill(accent)
-            .corner_radius(4.0)
+            .corner_radius(corner)
             .min_size(egui::vec2(70.0, 28.0))
     } else {
         egui::Button::new(RichText::new(label).color(accent).size(11.0))
             .fill(Color32::TRANSPARENT)
             .stroke(egui::Stroke::new(1.0_f32, accent))
-            .corner_radius(4.0)
+            .corner_radius(corner)
             .min_size(egui::vec2(70.0, 28.0))
     }
 }

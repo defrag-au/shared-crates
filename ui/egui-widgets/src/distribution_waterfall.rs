@@ -21,7 +21,7 @@
 
 use egui::{Color32, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
 
-use crate::theme::{self, ThemeExt};
+use crate::theme::{self, Radius, ThemeExt};
 
 /// Where in its lifecycle the figures come from. Drives the badge + framing
 /// only; the waterfall shape is identical across modes.
@@ -266,7 +266,7 @@ fn badge(ui: &mut Ui, text: &str, color: Color32) {
             36,
         ))
         .stroke(Stroke::new(1.0_f32, color))
-        .corner_radius(egui::CornerRadius::same(3))
+        .corner_radius(ui.tokens().corner(Radius::Sm))
         .inner_margin(egui::Margin::symmetric(5, 1))
         .show(ui, |ui| {
             ui.label(RichText::new(text).small().strong().color(color));

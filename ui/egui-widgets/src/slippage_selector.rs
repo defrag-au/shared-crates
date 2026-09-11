@@ -7,7 +7,7 @@
 use egui::{Color32, RichText};
 
 use crate::buttons::UiButtonExt;
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 
 // ============================================================================
 // Types
@@ -196,13 +196,13 @@ fn toggle_button<'a>(
     if selected {
         egui::Button::new(RichText::new(label).color(on_accent).strong().size(10.0))
             .fill(accent)
-            .corner_radius(4.0)
+            .corner_radius(ui.tokens().corner(Radius::Base))
             .min_size(egui::vec2(36.0, 22.0))
     } else {
         egui::Button::new(RichText::new(label).color(muted).size(10.0))
             .fill(Color32::TRANSPARENT)
             .stroke(egui::Stroke::new(1.0_f32, muted))
-            .corner_radius(4.0)
+            .corner_radius(ui.tokens().corner(Radius::Base))
             .min_size(egui::vec2(36.0, 22.0))
     }
 }

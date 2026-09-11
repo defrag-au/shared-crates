@@ -6,7 +6,7 @@
 //! ("background: red") and its value alone ("red"), so typing either
 //! a category prefix or a value prefix finds matching entries.
 
-use crate::theme::ThemeExt;
+use crate::theme::{Radius, ThemeExt};
 use egui::{Color32, Rect, RichText, Vec2};
 use std::collections::HashSet;
 
@@ -295,7 +295,7 @@ pub fn show(
             .show(ui.ctx(), |ui| {
                 egui::Frame::new()
                     .fill(ui.tokens().color.bg_secondary)
-                    .corner_radius(4.0)
+                    .corner_radius(ui.tokens().corner(Radius::Base))
                     .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.bg_highlight))
                     .inner_margin(6.0)
                     .show(ui, |ui| {
@@ -328,7 +328,7 @@ pub fn show(
             .show(ui.ctx(), |ui| {
                 egui::Frame::new()
                     .fill(ui.tokens().color.bg_secondary)
-                    .corner_radius(4.0)
+                    .corner_radius(ui.tokens().corner(Radius::Base))
                     .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.bg_highlight))
                     .inner_margin(6.0)
                     .show(ui, |ui| {
