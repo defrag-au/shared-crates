@@ -87,10 +87,10 @@ pub struct CollectionRow {
     pub wallet_account_index: u32,
     /// Display title (operator-set, e.g. "Foobar").
     pub title: String,
-    /// Lifecycle status: `draft` / `ingesting` / `ready` / `live` /
-    /// `paused` / `sold_out` / `ended`. Unknown values render neutral
-    /// grey. Lowercase by convention; the widget uppercases for display.
-    pub status: String,
+    /// Lifecycle status. Build one from the wire string with
+    /// `CollectionStatus::from(s)`; unknown values survive as
+    /// [`CollectionStatus::Custom`] and render neutral grey.
+    pub status: CollectionStatus,
     /// CIP-25 / CIP-68 standard (lowercase: `cip25` / `cip68`). Drives
     /// the standard-chip colour; unknown values render neutral grey.
     pub standard: String,
@@ -336,27 +336,141 @@ pub struct CollectionListResponse {
 // the widget extraction.
 // ─────────────────────────────────────────────────────────────────────
 
-const ROW_BG: Color32 = Color32::from_rgb(22, 22, 32);
-const ROW_BG_ARCHIVED: Color32 = Color32::from_rgb(18, 18, 24);
-const ROW_STROKE: Color32 = Color32::from_rgb(40, 40, 56);
-const META_GREY: Color32 = Color32::from_gray(140);
-const KEYHASH_GREY: Color32 = Color32::from_gray(150);
+/// A collection's lifecycle status.
+///
+/// Was a `String`, which is what let `row.status == "live"` sit in the supply-bar
+/// branch: a typo there compiles, never matches, and silently renders every live
+/// collection with the neutral fill. The wire set is not frozen, so `Custom`
+/// keeps it open exactly as [`crate::order_list::OrderStatus`] does — an unknown
+/// status still round-trips through [`CollectionStatus::as_str`] rather than
+/// being erased.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum CollectionStatus {
+    Draft,
+    Ingesting,
+    Ready,
+    Live,
+    Paused,
+    SoldOut,
+    Ended,
+    /// Any other lifecycle string (unknown / legacy / future).
+    Custom(String),
+}
+
+impl CollectionStatus {
+    /// The canonical statuses, in lifecycle order.
+    pub const KNOWN: [CollectionStatus; 7] = [
+        CollectionStatus::Draft,
+        CollectionStatus::Ingesting,
+        CollectionStatus::Ready,
+        CollectionStatus::Live,
+        CollectionStatus::Paused,
+        CollectionStatus::SoldOut,
+        CollectionStatus::Ended,
+    ];
+
+    /// The wire string — round-trips with [`CollectionStatus::from`].
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Draft => "draft",
+            Self::Ingesting => "ingesting",
+            Self::Ready => "ready",
+            Self::Live => "live",
+            Self::Paused => "paused",
+            Self::SoldOut => "sold_out",
+            Self::Ended => "ended",
+            Self::Custom(s) => s,
+        }
+    }
+
+    /// The chip fill for this status. Foreground is not chosen here — see
+    /// [`status_chip_colours`].
+    fn fill(&self, c: &crate::theme::ColorTokens) -> Color32 {
+        match self {
+            Self::Draft => c.text_muted,
+            Self::Ingesting => c.accent_blue,
+            Self::Ready => c.accent_cyan,
+            Self::Live => c.success,
+            Self::Paused => c.warning,
+            Self::SoldOut => c.accent_magenta,
+            Self::Ended => c.text_secondary,
+            Self::Custom(_) => c.text_muted,
+        }
+    }
+}
+
+impl From<&str> for CollectionStatus {
+    fn from(s: &str) -> Self {
+        match s {
+            "draft" => Self::Draft,
+            "ingesting" => Self::Ingesting,
+            "ready" => Self::Ready,
+            "live" => Self::Live,
+            "paused" => Self::Paused,
+            "sold_out" => Self::SoldOut,
+            "ended" => Self::Ended,
+            other => Self::Custom(other.to_string()),
+        }
+    }
+}
+
+impl From<String> for CollectionStatus {
+    fn from(s: String) -> Self {
+        // Reuse the &str match, but move the string into `Custom` (no re-alloc)
+        // when it isn't a known variant.
+        match Self::from(s.as_str()) {
+            Self::Custom(_) => Self::Custom(s),
+            known => known,
+        }
+    }
+}
+
+// **Functions, not `const`s** — see the same block in `wallet_list`: a `const`
+// cannot read the theme, and this block is most of what a roster row paints.
+
+fn row_bg(ui: &Ui) -> Color32 {
+    ui.tokens().color.bg_secondary
+}
+fn row_bg_archived(ui: &Ui) -> Color32 {
+    ui.tokens().color.bg_primary
+}
+fn row_stroke(ui: &Ui) -> Color32 {
+    ui.tokens().color.border
+}
+fn meta_grey(ui: &Ui) -> Color32 {
+    ui.tokens().color.text_muted
+}
+fn keyhash_grey(ui: &Ui) -> Color32 {
+    ui.tokens().color.text_muted
+}
 
 // Standard chips: CIP-25 = soft purple, CIP-68 = soft teal. Distinct
 // enough to scan at a glance; tonal palette matches the wallet-role
 // chips (cool blue / soft green / neutral grey).
-const STD_CIP25_CHIP: Color32 = Color32::from_rgb(190, 170, 220);
-const STD_CIP68_CHIP: Color32 = Color32::from_rgb(170, 220, 200);
-const STD_UNKNOWN_CHIP: Color32 = Color32::from_gray(150);
+fn std_cip25_chip(ui: &Ui) -> Color32 {
+    ui.tokens().color.accent_magenta
+}
+fn std_cip68_chip(ui: &Ui) -> Color32 {
+    ui.tokens().color.accent_cyan
+}
+fn std_unknown_chip(ui: &Ui) -> Color32 {
+    ui.tokens().color.text_muted
+}
 
 // Network chip is intentionally muted — it's environmental context,
 // not the primary identity of the collection.
-const NETWORK_CHIP: Color32 = Color32::from_rgb(120, 130, 150);
+fn network_chip_colour(ui: &Ui) -> Color32 {
+    ui.tokens().color.text_muted
+}
 
 // Supply-bar minted fill — shifts by status (live = green, otherwise neutral
 // cyan); the `SupplyBar` widget owns the track + ordered-band colours.
-const BAR_FILL_NEUTRAL: Color32 = Color32::from_rgb(120, 160, 200);
-const BAR_FILL_LIVE: Color32 = Color32::from_rgb(140, 200, 140);
+fn bar_fill_neutral(ui: &Ui) -> Color32 {
+    ui.tokens().color.accent_blue
+}
+fn bar_fill_live(ui: &Ui) -> Color32 {
+    ui.tokens().color.accent_green
+}
 
 impl<'a> CollectionList<'a> {
     pub fn new(rows: &'a [CollectionRow]) -> Self {
@@ -475,7 +589,7 @@ impl<'a> CollectionList<'a> {
                 format!("Show {archived_total} archived")
             };
             if ui
-                .add(egui::Button::new(RichText::new(label).small().color(META_GREY)).small())
+                .add(egui::Button::new(RichText::new(label).small().color(meta_grey(ui))).small())
                 .clicked()
             {
                 ui.ctx()
@@ -515,10 +629,14 @@ fn render_card(
     // rely on the glyph being available. Idempotent.
     install_phosphor_font(ui.ctx());
     let archived = row.archived_at.is_some();
-    let fill = if archived { ROW_BG_ARCHIVED } else { ROW_BG };
+    let fill = if archived {
+        row_bg_archived(ui)
+    } else {
+        row_bg(ui)
+    };
     Frame::new()
         .fill(fill)
-        .stroke(Stroke::new(1.0_f32, ROW_STROKE))
+        .stroke(Stroke::new(1.0_f32, row_stroke(ui)))
         .corner_radius(ui.tokens().corner(Radius::Lg))
         .inner_margin(ui.tokens().margin_xy(Space::Xl2, Space::Xl))
         .show(ui, |ui| {
@@ -532,7 +650,7 @@ fn render_card(
             ui.horizontal(|ui| {
                 let title = RichText::new(&row.title).heading();
                 ui.label(if archived {
-                    title.color(META_GREY)
+                    title.color(meta_grey(ui))
                 } else {
                     title
                 });
@@ -579,7 +697,7 @@ fn render_card(
                     RichText::new(format!("{} / {}", row.minted_count, row.total_supply))
                         .monospace()
                         .small()
-                        .color(META_GREY),
+                        .color(meta_grey(ui)),
                 );
                 let pct = if row.total_supply == 0 {
                     0.0
@@ -592,17 +710,17 @@ fn render_card(
                     format!("{:.0}%", pct * 100.0)
                 };
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new(label).small().color(KEYHASH_GREY));
+                    ui.label(RichText::new(label).small().color(keyhash_grey(ui)));
                 });
             });
 
             // Two-band supply bar (`SupplyBar` widget): minted (fulfilled) then
             // the ordered backlog, so a drop shows fulfilled-vs-ordered at a glance.
             ui.gap(Space::Xs);
-            let bar_fill_colour = if row.status == "live" {
-                BAR_FILL_LIVE
+            let bar_fill_colour = if row.status == CollectionStatus::Live {
+                bar_fill_live(ui)
             } else {
-                BAR_FILL_NEUTRAL
+                bar_fill_neutral(ui)
             };
             crate::SupplyBar::new(row.minted_count, row.ordered_awaiting, row.total_supply)
                 .minted_color(bar_fill_colour)
@@ -724,17 +842,21 @@ fn render_list_row(
     // rely on the glyph being available. Idempotent.
     install_phosphor_font(ui.ctx());
     let archived = row.archived_at.is_some();
-    let fill = if archived { ROW_BG_ARCHIVED } else { ROW_BG };
+    let fill = if archived {
+        row_bg_archived(ui)
+    } else {
+        row_bg(ui)
+    };
     Frame::new()
         .fill(fill)
-        .stroke(Stroke::new(1.0_f32, ROW_STROKE))
+        .stroke(Stroke::new(1.0_f32, row_stroke(ui)))
         .corner_radius(ui.tokens().corner(Radius::Base))
         .inner_margin(ui.tokens().margin_xy(Space::Lg, Space::Md))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 let title = RichText::new(&row.title).strong();
                 ui.label(if archived {
-                    title.color(META_GREY)
+                    title.color(meta_grey(ui))
                 } else {
                     title
                 });
@@ -746,7 +868,7 @@ fn render_list_row(
                     RichText::new(format!("{}/{}", row.minted_count, row.total_supply))
                         .monospace()
                         .small()
-                        .color(META_GREY),
+                        .color(meta_grey(ui)),
                 );
                 standard_chip(ui, &row.standard);
                 network_chip(ui, &row.network);
@@ -755,7 +877,7 @@ fn render_list_row(
                         "wallet #{} · {}",
                         row.wallet_account_index, row.policy_id_short
                     ))
-                    .color(KEYHASH_GREY)
+                    .color(keyhash_grey(ui))
                     .monospace()
                     .small(),
                 );
@@ -771,7 +893,7 @@ fn render_list_row(
                         refuel_button(ui, row, pool, response);
                     }
                     if ui
-                        .small_button(PhosphorIcon::Copy.rich_text(11.0, META_GREY).small())
+                        .small_button(PhosphorIcon::Copy.rich_text(11.0, meta_grey(ui)).small())
                         .on_hover_text("Copy policy_id to clipboard")
                         .clicked()
                     {
@@ -814,14 +936,14 @@ fn render_wallet_pill(
         }
         pill.show(ui);
     } else {
-        ui.label(RichText::new(label).small().color(META_GREY));
+        ui.label(RichText::new(label).small().color(meta_grey(ui)));
     }
 
     ui.gap(Space::Xs);
     ui.horizontal(|ui| {
         if let Some(idx) = account_index
             && ui
-                .small_button(RichText::new("Inspect").small().color(META_GREY))
+                .small_button(RichText::new("Inspect").small().color(meta_grey(ui)))
                 .on_hover_text("Open this wallet's UTxOs")
                 .clicked()
         {
@@ -1067,25 +1189,20 @@ fn render_operator_actions(
     }
 }
 
-/// Filled chip with the status text in uppercase. Colour mirrors the
-/// portal's previous `status_colour()` helper.
-fn status_chip(ui: &mut Ui, status: &str) {
-    let (fg, bg) = status_chip_colours(status);
-    chip(ui, &status.to_uppercase(), fg, bg);
+/// Filled chip with the status text in uppercase.
+fn status_chip(ui: &mut Ui, status: &CollectionStatus) {
+    let (fg, bg) = status_chip_colours(ui, status);
+    chip(ui, &status.as_str().to_uppercase(), fg, bg);
 }
 
 fn standard_chip(ui: &mut Ui, standard: &str) {
     let colour = match standard.to_ascii_lowercase().as_str() {
-        "cip25" => STD_CIP25_CHIP,
-        "cip68" => STD_CIP68_CHIP,
-        _ => STD_UNKNOWN_CHIP,
+        "cip25" => std_cip25_chip(ui),
+        "cip68" => std_cip68_chip(ui),
+        _ => std_unknown_chip(ui),
     };
-    chip(
-        ui,
-        &standard.to_uppercase(),
-        Color32::from_rgb(20, 20, 30),
-        colour,
-    );
+    let fg = ui.tokens().color.on(colour);
+    chip(ui, &standard.to_uppercase(), fg, colour);
 }
 
 fn network_chip(ui: &mut Ui, network: &str) {
@@ -1094,7 +1211,9 @@ fn network_chip(ui: &mut Ui, network: &str) {
         .strip_prefix("cardano:")
         .unwrap_or(network)
         .to_uppercase();
-    chip(ui, &trimmed, Color32::WHITE, NETWORK_CHIP);
+    let bg = network_chip_colour(ui);
+    let fg = ui.tokens().color.on(bg);
+    chip(ui, &trimmed, fg, bg);
 }
 
 fn chip(ui: &mut Ui, text: &str, fg: Color32, bg: Color32) {
@@ -1107,28 +1226,16 @@ fn chip(ui: &mut Ui, text: &str, fg: Color32, bg: Color32) {
         });
 }
 
-/// Status-to-chip-colour palette. Foreground is dark-on-light for the
-/// vibrant statuses (live / ready / ingesting / sold_out), light-on-dark
-/// for the neutral ones (draft / paused / ended). Same RGB values as the
-/// portal's previous `status_colour()` helper.
-fn status_chip_colours(status: &str) -> (Color32, Color32) {
-    match status {
-        "draft" => (Color32::from_rgb(20, 20, 30), Color32::from_gray(170)),
-        "ingesting" => (
-            Color32::from_rgb(20, 20, 30),
-            Color32::from_rgb(180, 180, 220),
-        ),
-        "ready" => (
-            Color32::from_rgb(20, 20, 30),
-            Color32::from_rgb(180, 220, 220),
-        ),
-        "live" => (Color32::from_rgb(20, 20, 30), Color32::LIGHT_GREEN),
-        "paused" => (Color32::from_rgb(20, 20, 30), Color32::LIGHT_YELLOW),
-        "sold_out" => (
-            Color32::from_rgb(20, 20, 30),
-            Color32::from_rgb(220, 180, 240),
-        ),
-        "ended" => (Color32::WHITE, Color32::from_gray(140)),
-        _ => (Color32::from_rgb(20, 20, 30), Color32::from_gray(160)),
-    }
+/// Status-to-chip-colour palette.
+///
+/// Only the **fill** is chosen here; the foreground comes from
+/// [`ColorTokens::on`], which is why the old hand-maintained "dark-on-light for
+/// the vibrant ones, light-on-dark for the neutral ones" split is gone. That
+/// split was a per-status guess that had to be re-made every time a colour
+/// moved — and it cannot survive a theme swap at all, because which side is
+/// "light" depends on the palette.
+fn status_chip_colours(ui: &Ui, status: &CollectionStatus) -> (Color32, Color32) {
+    let c = ui.tokens().color;
+    let fill = status.fill(&c);
+    (c.on(fill), fill)
 }

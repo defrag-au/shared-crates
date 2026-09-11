@@ -23,7 +23,7 @@ use crate::chip::{Chip, ChipVariant};
 use crate::error_note::{ErrorNote, summarize_error};
 use crate::icons::{PhosphorIcon, install_phosphor_font};
 use crate::relative_time::relative_label;
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, Theme, ThemeExt};
 use crate::timestamp::Timestamp;
 
 // ─────────────────────────────────────────────────────────────────────
@@ -116,14 +116,19 @@ impl OrderStatus {
     }
 
     /// A distinct accent colour for the filter-chip dot + selected tint.
-    pub fn accent(&self) -> Color32 {
+    ///
+    /// Takes the theme for the same reason [`ChipVariant::palette`] does: the
+    /// filter strip is the most colour-dense part of this widget, and six
+    /// literals here meant the strip looked identical under every theme.
+    pub fn accent(&self, t: &Theme) -> Color32 {
+        let c = &t.color;
         match self {
-            Self::Failed => Color32::from_rgb(200, 90, 90),
-            Self::Pending | Self::Fulfilling => Color32::from_rgb(210, 180, 110),
-            Self::Submitted => Color32::from_rgb(120, 170, 210),
-            Self::Confirmed | Self::Delivered => Color32::from_rgb(140, 200, 140),
-            Self::Unfulfilled => Color32::from_rgb(120, 140, 170),
-            Self::Custom(_) => Color32::from_gray(150),
+            Self::Failed => c.error,
+            Self::Pending | Self::Fulfilling => c.warning,
+            Self::Submitted => c.accent_blue,
+            Self::Confirmed | Self::Delivered => c.success,
+            Self::Unfulfilled => c.text_secondary,
+            Self::Custom(_) => c.text_muted,
         }
     }
 }
@@ -305,13 +310,13 @@ impl<'a> OrderList<'a> {
             ui.label(
                 RichText::new(format!("{} {scope}", self.rows.len()))
                     .small()
-                    .color(Color32::from_gray(185)),
+                    .color(ui.tokens().color.text_secondary),
             );
             if let Some(f) = self.fetched_at {
                 ui.label(
                     RichText::new(format!("· fetched {}", relative_label(self.now - f)))
                         .small()
-                        .color(Color32::from_gray(140)),
+                        .color(ui.tokens().color.text_muted),
                 );
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -335,7 +340,8 @@ impl<'a> OrderList<'a> {
 
         if let Some(e) = self.error {
             ui.gap(Space::Xs);
-            ui.colored_label(Color32::from_rgb(220, 120, 120), format!("error: {e}"));
+            let err = ui.tokens().color.error;
+            ui.colored_label(err, format!("error: {e}"));
         }
 
         // ── Summary + filter strip: per-status count badges, MULTI-select ─
@@ -370,7 +376,7 @@ impl<'a> OrderList<'a> {
                 ui,
                 "all",
                 self.rows.len(),
-                Color32::from_gray(150),
+                ui.tokens().color.text_muted,
                 active.is_empty(),
             ) {
                 active.clear();
@@ -382,7 +388,8 @@ impl<'a> OrderList<'a> {
                     continue;
                 }
                 let selected = active.iter().any(|s| s == st.as_str());
-                if filter_chip(ui, st.as_str(), n, st.accent(), selected) {
+                let accent = st.accent(&ui.tokens());
+                if filter_chip(ui, st.as_str(), n, accent, selected) {
                     toggle_status(&mut active, st.as_str());
                 }
             }
@@ -404,7 +411,7 @@ impl<'a> OrderList<'a> {
                     .filter(|r| r.status.as_str() == key)
                     .count();
                 let selected = active.iter().any(|s| s == key);
-                if filter_chip(ui, key, n, Color32::from_gray(150), selected) {
+                if filter_chip(ui, key, n, ui.tokens().color.text_muted, selected) {
                     toggle_status(&mut active, key);
                 }
             }
@@ -430,13 +437,13 @@ impl<'a> OrderList<'a> {
         if self.rows.is_empty() {
             if !self.loading {
                 ui.gap(Space::Base);
-                ui.colored_label(Color32::from_gray(150), "No orders yet.");
+                ui.colored_label(ui.tokens().color.text_muted, "No orders yet.");
             }
             return resp;
         }
         if filtered.is_empty() {
             ui.gap(Space::Base);
-            ui.colored_label(Color32::from_gray(150), "No orders match the filter.");
+            ui.colored_label(ui.tokens().color.text_muted, "No orders match the filter.");
             return resp;
         }
 
@@ -504,13 +511,13 @@ fn filter_chip(ui: &mut Ui, label: &str, count: usize, accent: Color32, selected
         (
             Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 55),
             Stroke::new(1.0_f32, accent),
-            Color32::from_gray(235),
+            ui.tokens().color.text_primary,
         )
     } else {
         (
-            Color32::from_gray(34),
+            ui.tokens().color.bg_highlight,
             Stroke::NONE,
-            Color32::from_gray(200),
+            ui.tokens().color.text_secondary,
         )
     };
     let resp = Frame::new()
@@ -568,7 +575,7 @@ fn toggle_status(active: &mut Vec<String>, key: &str) {
 /// the label, so every badge is the same width and the row content after it
 /// lines up into a clean column.
 fn status_badge(ui: &mut Ui, status: &OrderStatus, inner_w: f32) {
-    let (fg, bg, border) = status.chip_variant().palette();
+    let (fg, bg, border) = status.chip_variant().palette(&ui.tokens());
     let mut frame = Frame::new()
         .fill(bg)
         .corner_radius(ui.tokens().corner(Radius::Sm))
@@ -641,9 +648,9 @@ fn render_row(ui: &mut Ui, o: &OrderRow, now: i64, badge_w: f32, resp: &mut Orde
         // right beside the date.) `rich_text` needs the font installed.
         install_phosphor_font(ui.ctx());
         let icon_color = if o.detail_open {
-            Color32::from_gray(225)
+            ui.tokens().color.text_primary
         } else {
-            Color32::from_gray(125)
+            ui.tokens().color.text_muted
         };
         let hist = ui
             .add(Label::new(PhosphorIcon::List.rich_text(14.0, icon_color)).sense(Sense::click()));
@@ -666,26 +673,30 @@ fn render_row(ui: &mut Ui, o: &OrderRow, now: i64, badge_w: f32, resp: &mut Orde
             &o.order_id,
             truncate_middle(&o.order_id, 10, 6),
             "order id",
-            Color32::from_gray(150),
+            ui.tokens().color.text_muted,
         );
-        ui.label(RichText::new("->").small().color(Color32::from_gray(110)));
+        ui.label(
+            RichText::new("->")
+                .small()
+                .color(ui.tokens().color.text_muted),
+        );
         copy_label(
             ui,
             &o.recipient,
             truncate_middle(&o.recipient, 10, 6),
             "recipient",
-            Color32::from_gray(190),
+            ui.tokens().color.text_secondary,
         );
         ui.label(
             RichText::new(format!("×{}", o.quantity))
                 .small()
-                .color(Color32::from_gray(150)),
+                .color(ui.tokens().color.text_muted),
         );
         if let Some(p) = o.paid_lovelace {
             ui.label(
                 RichText::new(format!("{} ADA", fmt_ada(p)))
                     .small()
-                    .color(Color32::from_gray(170)),
+                    .color(ui.tokens().color.text_muted),
             );
         }
 
@@ -720,7 +731,7 @@ fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
                     ui.label(
                         RichText::new("loading history…")
                             .small()
-                            .color(Color32::from_gray(150)),
+                            .color(ui.tokens().color.text_muted),
                     );
                 });
             }
@@ -739,7 +750,7 @@ fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
                 ui.label(
                     RichText::new("no events recorded")
                         .small()
-                        .color(Color32::from_gray(140)),
+                        .color(ui.tokens().color.text_muted),
                 );
             }
             return;
@@ -754,7 +765,7 @@ fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
                         tx,
                         format!("tx {}", truncate_middle(tx, 8, 6)),
                         "tx hash",
-                        Color32::from_gray(160),
+                        ui.tokens().color.text_muted,
                     );
                 }
                 if let Some(d) = &e.detail {
@@ -764,7 +775,7 @@ fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
                     let lbl = ui.label(
                         RichText::new(&summary.headline)
                             .small()
-                            .color(Color32::from_gray(150)),
+                            .color(ui.tokens().color.text_muted),
                     );
                     if summary.detail.trim() != summary.headline.trim() {
                         lbl.on_hover_text(summary.detail);
@@ -786,7 +797,7 @@ fn render_mints(ui: &mut Ui, fulfilments: &[FulfilmentRow]) {
         RichText::new(format!("mints · {} tx", fulfilments.len()))
             .small()
             .strong()
-            .color(Color32::from_gray(170)),
+            .color(ui.tokens().color.text_muted),
     );
     for f in fulfilments {
         ui.horizontal(|ui| {
@@ -795,14 +806,14 @@ fn render_mints(ui: &mut Ui, fulfilments: &[FulfilmentRow]) {
             ui.label(
                 RichText::new(format!("×{}", f.minted))
                     .small()
-                    .color(Color32::from_gray(180)),
+                    .color(ui.tokens().color.text_secondary),
             );
             copy_label(
                 ui,
                 &f.tx_hash,
                 format!("tx {}", truncate_middle(&f.tx_hash, 8, 6)),
                 "mint tx",
-                Color32::from_gray(160),
+                ui.tokens().color.text_muted,
             );
         });
     }

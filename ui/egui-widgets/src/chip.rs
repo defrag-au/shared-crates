@@ -35,7 +35,7 @@
 
 use egui::{Color32, RichText, Sense, Stroke, Ui};
 
-use crate::theme::{ColorTokens, Radius, Theme, ThemeExt};
+use crate::theme::{Radius, Theme, ThemeExt};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
 use crate::viewport::Breakpoint;
@@ -214,7 +214,7 @@ impl<'a> Chip<'a> {
     /// Render the chip inline at the current `Ui` cursor. The chip
     /// allocates a small filled frame; the caller does spacing.
     pub fn show(self, ui: &mut Ui) -> ChipResponse {
-        let (fg, bg, border) = self.variant.palette();
+        let (fg, bg, border) = self.variant.palette(&ui.tokens());
         let mut response = ChipResponse::default();
         let label_text = if self.upper {
             self.text.to_ascii_uppercase()

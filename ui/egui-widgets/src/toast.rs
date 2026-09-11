@@ -79,7 +79,13 @@ use egui::{
 
 use crate::error_note::summarize_error;
 use crate::icons::{PhosphorIcon, install_phosphor_font};
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, Theme, ThemeExt};
+
+/// Mix `a` into `b` by `t` (0 = all `b`, 1 = all `a`), per channel.
+fn blend(a: Color32, b: Color32, t: f32) -> Color32 {
+    let m = |x: u8, y: u8| (x as f32 * t + y as f32 * (1.0 - t)).round() as u8;
+    Color32::from_rgb(m(a.r(), b.r()), m(a.g(), b.g()), m(a.b(), b.b()))
+}
 
 /// ~3 seconds at 60 fps. Used as the default lifetime for toasts pushed
 /// through the convenience helpers on [`ToastQueue`].
@@ -109,40 +115,31 @@ impl ToastKind {
     /// `(fill, stroke, icon_tint, text_tint)` — kept aligned with the
     /// crate's framed-block palette (Chip / IdPill / portal Refuel
     /// toast) so toasts visually belong to the same UI family.
-    fn palette(self) -> (Color32, Color32, Color32, Color32) {
+    fn palette(self, t: &Theme) -> (Color32, Color32, Color32, Color32) {
+        let c = &t.color;
+        // A toast is a tinted card, not a filled badge: the severity colour is
+        // the border and the icon, while the fill stays near the page so a
+        // stack of them doesn't read as five alerts. `gamma_multiply` keeps the
+        // hue and drops the energy, so the recipe holds for any palette —
+        // which is the point of deriving these instead of listing twenty
+        // literals that only ever suited Tokyo Night.
+        let tint = |severity: Color32| {
+            (
+                blend(severity, c.bg_secondary, 0.12),
+                severity.gamma_multiply(0.55),
+                severity,
+                c.text_primary,
+            )
+        };
         match self {
-            ToastKind::Success => (
-                Color32::from_rgb(24, 36, 28),
-                Color32::from_rgb(60, 100, 70),
-                Color32::from_rgb(180, 220, 180),
-                Color32::from_rgb(220, 235, 220),
-            ),
-            ToastKind::Error => (
-                Color32::from_rgb(40, 24, 24),
-                Color32::from_rgb(110, 60, 60),
-                Color32::from_rgb(230, 160, 160),
-                Color32::from_rgb(240, 210, 210),
-            ),
-            ToastKind::Warning => (
-                Color32::from_rgb(40, 34, 22),
-                Color32::from_rgb(120, 100, 50),
-                Color32::from_rgb(235, 210, 140),
-                Color32::from_rgb(240, 225, 190),
-            ),
-            ToastKind::Info => (
-                Color32::from_rgb(22, 28, 38),
-                Color32::from_rgb(60, 80, 110),
-                Color32::from_rgb(160, 190, 230),
-                Color32::from_rgb(210, 220, 240),
-            ),
+            ToastKind::Success => tint(c.success),
+            ToastKind::Error => tint(c.error),
+            ToastKind::Warning => tint(c.warning),
+            ToastKind::Info => tint(c.accent),
             // Deliberately quieter than Info: background work is ambient, and
-            // a running task should not compete with a result.
-            ToastKind::Progress => (
-                Color32::from_rgb(26, 28, 34),
-                Color32::from_rgb(70, 76, 92),
-                Color32::from_rgb(150, 160, 185),
-                Color32::from_rgb(200, 208, 225),
-            ),
+            // a running task should not compete with a result. So it tints off
+            // the muted text tier rather than an accent.
+            ToastKind::Progress => tint(c.text_muted),
         }
     }
 
@@ -486,7 +483,7 @@ pub fn show_toasts(ctx: &Context, queue: &mut ToastQueue) {
 
 /// Render one toast. Returns `true` when the user clicked its close `×`.
 fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
-    let (fill, stroke, icon_col, text_col) = toast.kind.palette();
+    let (fill, stroke, icon_col, text_col) = toast.kind.palette(&ui.tokens());
     // Error toasts get the cleaned-up display: the distilled reason on the
     // toast, the full single-line form behind the copy button.
     let summary = (toast.kind == ToastKind::Error).then(|| summarize_error(&toast.message));

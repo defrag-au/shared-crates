@@ -54,7 +54,7 @@ impl<'a> TagList<'a> {
         const GAP: f32 = 6.0; // space between label and ×
 
         let mut resp = TagListResponse::default();
-        let (fg, bg, border) = self.variant.palette();
+        let (fg, bg, border) = self.variant.palette(&ui.tokens());
         let font = egui::FontId::proportional(12.0);
 
         ui.horizontal_wrapped(|ui| {

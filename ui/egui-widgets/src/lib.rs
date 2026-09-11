@@ -212,7 +212,7 @@ pub use claim_card::{
 };
 pub use collection_list::{
     CollectionControl, CollectionControls, CollectionList, CollectionListAction,
-    CollectionListLayout, CollectionListResponse, CollectionRow,
+    CollectionListLayout, CollectionListResponse, CollectionRow, CollectionStatus,
 };
 pub use command_palette::{CommandPalette, PaletteAction, PaletteState};
 pub use corner_action::{Corner, CornerAction};

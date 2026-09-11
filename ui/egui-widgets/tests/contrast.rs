@@ -212,14 +212,23 @@ fn border_is_visible() {
 }
 
 #[test]
-fn default_chip_variant_is_readable() {
-    // `Chip`'s variants carry their own literal pairs rather than theme tokens,
-    // so this one is theme-independent — still checked, because the default
-    // variant is the one nobody picks deliberately.
-    let (fg, bg, _) = egui_widgets::chip::ChipVariant::Muted.palette();
-    let ratio = contrast(fg, bg);
-    assert!(
-        ratio >= 4.5,
-        "ChipVariant::Muted (the default) is {ratio:.2}:1 — below WCAG AA"
-    );
+fn every_chip_variant_is_readable_in_every_theme() {
+    // Was `default_chip_variant_is_readable`, and only checked `Muted`, because
+    // `ChipVariant` carried six literal pairs and there was no theme to vary.
+    // Now that the palette is derived from tokens, every variant is a claim
+    // about every preset — so the same 4.5:1 floor runs across the matrix.
+    //
+    // This is the test that would have caught the real hazard in deriving them:
+    // a theme with a pale `warning` and a white-ish `on()` pick.
+    for t in presets() {
+        for variant in egui_widgets::chip::ChipVariant::ALL {
+            let (fg, bg, _) = variant.palette(&t);
+            let ratio = contrast(fg, bg);
+            assert!(
+                ratio >= 4.5,
+                "`{}` / `{variant:?}` is {ratio:.2}:1 — below WCAG AA",
+                t.name
+            );
+        }
+    }
 }

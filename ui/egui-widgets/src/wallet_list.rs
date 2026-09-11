@@ -185,19 +185,47 @@ pub struct WalletListResponse {
 // Colours — kept private. The chip palette matches `mnemonic_display`
 // (cool blue for "platform-managed", soft green for "collection",
 // neutral grey for "custom"); rebalance here, not at the call site.
+//
+// **Functions, not `const`s.** A `const` cannot read the theme, so this block
+// used to be eleven literals that every preset rendered identically — and a
+// wallet roster is mostly this block, so the theme switcher did essentially
+// nothing to this widget. The names and the roles they encode are unchanged;
+// only the source of the value moved.
 // ─────────────────────────────────────────────────────────────────────
 
-const ROLE_PRIMARY_CHIP: Color32 = Color32::from_rgb(150, 180, 230);
-const ROLE_COLLECTION_CHIP: Color32 = Color32::from_rgb(180, 220, 180);
-const ROLE_CUSTOM_CHIP: Color32 = Color32::from_gray(150);
-const META_GREY: Color32 = Color32::from_gray(140);
-const KEYHASH_GREY: Color32 = Color32::from_gray(150);
-const SECTION_HEADER: Color32 = Color32::from_gray(170);
-const ROW_BG: Color32 = Color32::from_rgb(22, 22, 32);
-const ROW_BG_PRIMARY: Color32 = Color32::from_rgb(26, 30, 44);
-const ROW_BG_ARCHIVED: Color32 = Color32::from_rgb(18, 18, 24);
-const ROW_STROKE: Color32 = Color32::from_rgb(40, 40, 56);
-const ROW_STROKE_PRIMARY: Color32 = Color32::from_rgb(60, 80, 110);
+fn role_primary_chip(ui: &Ui) -> Color32 {
+    ui.tokens().color.accent_blue
+}
+fn role_collection_chip(ui: &Ui) -> Color32 {
+    ui.tokens().color.accent_green
+}
+fn role_custom_chip(ui: &Ui) -> Color32 {
+    ui.tokens().color.text_muted
+}
+fn meta_grey(ui: &Ui) -> Color32 {
+    ui.tokens().color.text_muted
+}
+fn keyhash_grey(ui: &Ui) -> Color32 {
+    ui.tokens().color.text_muted
+}
+fn section_header(ui: &Ui) -> Color32 {
+    ui.tokens().color.text_secondary
+}
+fn row_bg(ui: &Ui) -> Color32 {
+    ui.tokens().color.bg_secondary
+}
+fn row_bg_primary(ui: &Ui) -> Color32 {
+    ui.tokens().color.bg_highlight
+}
+fn row_bg_archived(ui: &Ui) -> Color32 {
+    ui.tokens().color.bg_primary
+}
+fn row_stroke(ui: &Ui) -> Color32 {
+    ui.tokens().color.border
+}
+fn row_stroke_primary(ui: &Ui) -> Color32 {
+    ui.tokens().color.accent
+}
 
 impl<'a> WalletList<'a> {
     pub fn new(rows: &'a [WalletListRow]) -> Self {
@@ -362,7 +390,7 @@ impl<'a> WalletList<'a> {
                 format!("Show {archived_total} archived")
             };
             if ui
-                .add(egui::Button::new(RichText::new(label).small().color(META_GREY)).small())
+                .add(egui::Button::new(RichText::new(label).small().color(meta_grey(ui))).small())
                 .clicked()
             {
                 ui.ctx()
@@ -398,10 +426,15 @@ fn render_bucket(
     if show_header {
         ui.gap(Space::Xs);
         ui.horizontal(|ui| {
-            ui.label(RichText::new(title).color(SECTION_HEADER).small().strong());
+            ui.label(
+                RichText::new(title)
+                    .color(section_header(ui))
+                    .small()
+                    .strong(),
+            );
             ui.label(
                 RichText::new(format!("({})", rows.len()))
-                    .color(META_GREY)
+                    .color(meta_grey(ui))
                     .small(),
             );
         });
@@ -478,9 +511,9 @@ fn render_row(
 ) {
     let archived = row.archived_at.is_some();
     let (fill, stroke) = match (row.role, archived) {
-        (_, true) => (ROW_BG_ARCHIVED, ROW_STROKE),
-        (WalletListRole::Primary, false) => (ROW_BG_PRIMARY, ROW_STROKE_PRIMARY),
-        _ => (ROW_BG, ROW_STROKE),
+        (_, true) => (row_bg_archived(ui), row_stroke(ui)),
+        (WalletListRole::Primary, false) => (row_bg_primary(ui), row_stroke_primary(ui)),
+        _ => (row_bg(ui), row_stroke(ui)),
     };
 
     Frame::new()
@@ -495,7 +528,7 @@ fn render_row(
                     RichText::new(format!("#{}", row.account_index))
                         .monospace()
                         .color(if archived {
-                            META_GREY
+                            meta_grey(ui)
                         } else {
                             Color32::from_gray(200)
                         }),
@@ -504,7 +537,7 @@ fn render_row(
                 // ── Label ───────────────────────────────────────────
                 let label_text = RichText::new(&row.label).strong();
                 let label_text = if archived {
-                    label_text.color(META_GREY)
+                    label_text.color(meta_grey(ui))
                 } else {
                     label_text
                 };
@@ -512,16 +545,16 @@ fn render_row(
 
                 // ── Role chip ───────────────────────────────────────
                 let (chip_text, chip_colour) = match row.role {
-                    WalletListRole::Primary => ("primary", ROLE_PRIMARY_CHIP),
-                    WalletListRole::Collection => ("collection", ROLE_COLLECTION_CHIP),
-                    WalletListRole::Custom => ("custom", ROLE_CUSTOM_CHIP),
+                    WalletListRole::Primary => ("primary", role_primary_chip(ui)),
+                    WalletListRole::Collection => ("collection", role_collection_chip(ui)),
+                    WalletListRole::Custom => ("custom", role_custom_chip(ui)),
                 };
                 ui.colored_label(chip_colour, RichText::new(chip_text).small());
 
                 // 'collection' wallets are always auto-created — chipping
                 // both would be noise. Show 'auto' only outside that bucket.
                 if row.auto_created && row.role != WalletListRole::Collection {
-                    ui.colored_label(META_GREY, RichText::new("auto").small());
+                    ui.colored_label(meta_grey(ui), RichText::new("auto").small());
                 }
 
                 if archived {
@@ -596,7 +629,7 @@ fn render_row(
 
                     ui.label(
                         RichText::new(&row.address_short)
-                            .color(KEYHASH_GREY)
+                            .color(keyhash_grey(ui))
                             .monospace()
                             .small(),
                     );
@@ -614,14 +647,14 @@ fn render_card(
 ) {
     let archived = row.archived_at.is_some();
     let (fill, stroke) = match (row.role, archived) {
-        (_, true) => (ROW_BG_ARCHIVED, ROW_STROKE),
-        (WalletListRole::Primary, false) => (ROW_BG_PRIMARY, ROW_STROKE_PRIMARY),
-        _ => (ROW_BG, ROW_STROKE),
+        (_, true) => (row_bg_archived(ui), row_stroke(ui)),
+        (WalletListRole::Primary, false) => (row_bg_primary(ui), row_stroke_primary(ui)),
+        _ => (row_bg(ui), row_stroke(ui)),
     };
     let (role_text, role_colour) = match row.role {
-        WalletListRole::Primary => ("PRIMARY", ROLE_PRIMARY_CHIP),
-        WalletListRole::Collection => ("COLLECTION", ROLE_COLLECTION_CHIP),
-        WalletListRole::Custom => ("CUSTOM", ROLE_CUSTOM_CHIP),
+        WalletListRole::Primary => ("PRIMARY", role_primary_chip(ui)),
+        WalletListRole::Collection => ("COLLECTION", role_collection_chip(ui)),
+        WalletListRole::Custom => ("CUSTOM", role_custom_chip(ui)),
     };
 
     Frame::new()
@@ -644,7 +677,7 @@ fn render_card(
             ui.horizontal(|ui| {
                 let title = RichText::new(&row.label).heading();
                 let title = if archived {
-                    title.color(META_GREY)
+                    title.color(meta_grey(ui))
                 } else {
                     title
                 };
@@ -652,7 +685,7 @@ fn render_card(
                 ui.label(
                     RichText::new(format!("#{}", row.account_index))
                         .monospace()
-                        .color(META_GREY),
+                        .color(meta_grey(ui)),
                 );
 
                 // Filled role pill — same palette as the inline list
@@ -672,7 +705,7 @@ fn render_card(
                     });
 
                 if row.auto_created && row.role != WalletListRole::Collection {
-                    ui.colored_label(META_GREY, RichText::new("auto").small());
+                    ui.colored_label(meta_grey(ui), RichText::new("auto").small());
                 }
                 if archived {
                     ui.colored_label(Color32::LIGHT_YELLOW, RichText::new("archived").small());
@@ -728,7 +761,7 @@ fn render_card(
                 ui.label(
                     RichText::new(&row.address_short)
                         .monospace()
-                        .color(KEYHASH_GREY),
+                        .color(keyhash_grey(ui)),
                 );
                 if let Some(full) = &row.address_full {
                     let copy = ui

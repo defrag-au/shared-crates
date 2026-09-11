@@ -47,7 +47,7 @@ fn row(
         policy_id_short: truncate_middle(policy_id, 8, 6),
         wallet_account_index,
         title: title.to_string(),
-        status: status.to_string(),
+        status: status.into(),
         standard: standard.to_string(),
         network: network.to_string(),
         total_supply,
