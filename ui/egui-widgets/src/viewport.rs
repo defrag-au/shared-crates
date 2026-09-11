@@ -78,6 +78,9 @@ const MEDIUM_MAX: f32 = 1200.0;
 ///
 /// Ordered narrow → wide, and `PartialOrd` is derived, so `bp >=
 /// Breakpoint::Medium` reads the way it looks.
+///
+/// `Send + Sync + 'static` via the derives below is what lets
+/// [`override_breakpoint`] park one in `ctx.data`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Breakpoint {
     /// Under 700pt — a phone in portrait, or a narrow split window.
@@ -88,10 +91,50 @@ pub enum Breakpoint {
     Wide,
 }
 
+/// Where a forced breakpoint lives on the context.
+fn forced_id() -> egui::Id {
+    egui::Id::new("egui_widgets::forced_breakpoint")
+}
+
+/// Force every [`Breakpoint::from_ctx`] / [`Breakpoint::from_ui`] answer,
+/// regardless of the real viewport width. `None` restores measurement.
+///
+/// **For review surfaces, not for apps.** A real app must answer from the
+/// viewport it is actually in; an app that forces one is lying to itself. The
+/// storybook forces it because "what does this table do at Compact" is a
+/// question you want to ask at a desk, and the alternative — resizing the window
+/// to 390pt — cannot be put in a URL or a screenshot script.
+///
+/// Note this does **not** change the available width, so a widget that also
+/// consults `ui.available_width()` will see a wide one. That is the honest
+/// limitation: forcing the breakpoint tests the *decisions* keyed off it, not
+/// the geometry. For real narrow geometry, shrink the viewport (the storybook's
+/// `?nav=0` plus `cdp-shot.mjs` exists for exactly that).
+pub fn override_breakpoint(ctx: &Context, bp: Option<Breakpoint>) {
+    ctx.data_mut(|d| match bp {
+        Some(bp) => {
+            d.insert_temp(forced_id(), bp);
+        }
+        None => d.remove::<Breakpoint>(forced_id()),
+    });
+}
+
+/// The forced breakpoint, if one is installed.
+pub fn forced_breakpoint(ctx: &Context) -> Option<Breakpoint> {
+    ctx.data(|d| d.get_temp::<Breakpoint>(forced_id()))
+}
+
 impl Breakpoint {
     /// Every breakpoint, narrow → wide. For storybook pickers and tests that
     /// must cover the set rather than the two someone remembered.
     pub const ALL: [Self; 3] = [Self::Compact, Self::Medium, Self::Wide];
+
+    /// The breakpoint whose [`Self::label`] matches, for `?bp=` URL params.
+    pub fn by_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|b| b.label().eq_ignore_ascii_case(name))
+    }
 
     /// Classify a width in points.
     pub fn from_width(points: f32) -> Self {
@@ -107,7 +150,14 @@ impl Breakpoint {
     /// Classify the context's safe content area.
     ///
     /// Uses `content_rect`, so the notch and status bar are already excluded.
+    ///
+    /// Honours an [`override_breakpoint`] if one is installed, so a review
+    /// surface can ask "what does this do on a phone" without resizing the
+    /// window to one.
     pub fn from_ctx(ctx: &Context) -> Self {
+        if let Some(forced) = forced_breakpoint(ctx) {
+            return forced;
+        }
         Self::from_width(ctx.content_rect().width())
     }
 
@@ -412,6 +462,50 @@ mod tests {
         assert_eq!(Breakpoint::Compact.header_layout(), HeaderLayout::Stacked);
         assert_eq!(Breakpoint::Medium.header_layout(), HeaderLayout::Inline);
         assert_eq!(Breakpoint::Wide.header_layout(), HeaderLayout::Inline);
+    }
+
+    /// A forced breakpoint must win over the measured one, and clearing it must
+    /// hand measurement back — otherwise a review surface silently pins every
+    /// later frame to whatever it last looked at.
+    #[test]
+    fn a_forced_breakpoint_overrides_measurement_and_clears_cleanly() {
+        let ctx = Context::default();
+        let measured = Breakpoint::from_ctx(&ctx);
+
+        // Force the one the default test viewport is NOT, so this cannot pass by
+        // coincidence.
+        let forced = Breakpoint::ALL
+            .into_iter()
+            .find(|b| *b != measured)
+            .expect("three breakpoints exist");
+
+        override_breakpoint(&ctx, Some(forced));
+        assert_eq!(forced_breakpoint(&ctx), Some(forced));
+        assert_eq!(Breakpoint::from_ctx(&ctx), forced);
+
+        override_breakpoint(&ctx, None);
+        assert_eq!(forced_breakpoint(&ctx), None);
+        assert_eq!(Breakpoint::from_ctx(&ctx), measured);
+    }
+
+    /// `from_width` is the pure classifier and must stay unaffected by an
+    /// override — forcing a breakpoint is a statement about the *surface*, not a
+    /// redefinition of what 390pt means.
+    #[test]
+    fn forcing_a_breakpoint_does_not_change_what_a_width_classifies_as() {
+        let ctx = Context::default();
+        override_breakpoint(&ctx, Some(Breakpoint::Wide));
+        assert_eq!(Breakpoint::from_width(390.0), Breakpoint::Compact);
+        override_breakpoint(&ctx, None);
+    }
+
+    #[test]
+    fn every_breakpoint_round_trips_through_its_label() {
+        // `?bp=` in the storybook URL depends on this being total.
+        for bp in Breakpoint::ALL {
+            assert_eq!(Breakpoint::by_name(bp.label()), Some(bp));
+        }
+        assert!(Breakpoint::by_name("phablet").is_none());
     }
 
     /// A phone must not be handed a layout that assumes room beside the

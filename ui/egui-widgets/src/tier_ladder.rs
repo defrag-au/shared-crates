@@ -34,7 +34,7 @@
 use egui::{Color32, RichText, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
-use crate::theme;
+use crate::theme::ThemeExt;
 
 /// Where a rung sits relative to the reader.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -210,7 +210,11 @@ impl<'a> TierLadder<'a> {
 
             ui.label(RichText::new(self.title).size(16.0).strong());
             if let Some(intro) = self.intro {
-                ui.label(RichText::new(intro).small().color(theme::TEXT_MUTED));
+                ui.label(
+                    RichText::new(intro)
+                        .small()
+                        .color(ui.tokens().color.text_muted),
+                );
             }
             ui.add_space(10.0);
 
@@ -251,9 +255,9 @@ impl<'a> TierLadder<'a> {
 fn rung_row(ui: &mut Ui, rung: &TierRung<'_>) {
     let current = rung.standing == Standing::Current;
     let (marker, marker_color) = match rung.standing {
-        Standing::Current => (PhosphorIcon::CheckCircle, theme::ACCENT),
-        Standing::Held => (PhosphorIcon::Check, theme::SUCCESS),
-        Standing::Locked => (PhosphorIcon::Lock, theme::TEXT_MUTED),
+        Standing::Current => (PhosphorIcon::CheckCircle, ui.tokens().color.accent),
+        Standing::Held => (PhosphorIcon::Check, ui.tokens().color.success),
+        Standing::Locked => (PhosphorIcon::Lock, ui.tokens().color.text_muted),
     };
 
     // The current rung is filled rather than merely coloured. Colour alone
@@ -261,7 +265,7 @@ fn rung_row(ui: &mut Ui, rung: &TierRung<'_>) {
     // and a word carry it for everyone else.
     let frame = egui::Frame::default()
         .fill(if current {
-            theme::BG_HIGHLIGHT
+            ui.tokens().color.bg_highlight
         } else {
             Color32::TRANSPARENT
         })
@@ -274,9 +278,9 @@ fn rung_row(ui: &mut Ui, rung: &TierRung<'_>) {
             ui.add_space(2.0);
 
             let name = RichText::new(rung.label).strong().color(if current {
-                theme::TEXT_PRIMARY
+                ui.tokens().color.text_primary
             } else {
-                theme::TEXT_SECONDARY
+                ui.tokens().color.text_secondary
             });
             ui.label(name);
 
@@ -284,13 +288,17 @@ fn rung_row(ui: &mut Ui, rung: &TierRung<'_>) {
                 ui.label(
                     RichText::new("no wallet needed")
                         .small()
-                        .color(theme::TEXT_MUTED),
+                        .color(ui.tokens().color.text_muted),
                 );
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if current {
-                    ui.label(RichText::new("you are here").small().color(theme::ACCENT));
+                    ui.label(
+                        RichText::new("you are here")
+                            .small()
+                            .color(ui.tokens().color.accent),
+                    );
                 }
             });
         });
@@ -304,7 +312,7 @@ fn rung_row(ui: &mut Ui, rung: &TierRung<'_>) {
                 ui.label(
                     RichText::new(rung.gives)
                         .small()
-                        .color(theme::TEXT_SECONDARY),
+                        .color(ui.tokens().color.text_secondary),
                 );
             });
         }
@@ -340,7 +348,9 @@ fn rung_row(ui: &mut Ui, rung: &TierRung<'_>) {
                     // Measured WITH the card it belongs to, and broken before
                     // the pair: a line ending in a dangling "or" reads as a
                     // sentence that lost its second half.
-                    let or = RichText::new("or").small().color(theme::TEXT_MUTED);
+                    let or = RichText::new("or")
+                        .small()
+                        .color(ui.tokens().color.text_muted);
                     let mut want = route_width(ui, route);
                     if i > 0 {
                         want += or_width(ui) + ui.spacing().item_spacing.x * 2.0;
@@ -418,8 +428,8 @@ fn or_width(ui: &Ui) -> f32 {
 fn route_card(ui: &mut Ui, route: &TierRoute<'_>) {
     let buyable = route.buy_url.is_some();
     let frame = egui::Frame::default()
-        .fill(theme::BG_SECONDARY)
-        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+        .fill(ui.tokens().color.bg_secondary)
+        .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .inner_margin(egui::Margin::symmetric(7, 4))
         .corner_radius(6.0);
 
@@ -436,11 +446,11 @@ fn route_card(ui: &mut Ui, route: &TierRoute<'_>) {
             ui.label(
                 RichText::new(&route.need)
                     .strong()
-                    .color(theme::TEXT_PRIMARY),
+                    .color(ui.tokens().color.text_primary),
             );
-            ui.label(RichText::new(route.label).color(theme::TEXT_SECONDARY));
+            ui.label(RichText::new(route.label).color(ui.tokens().color.text_secondary));
             if buyable {
-                ui.label(PhosphorIcon::ArrowsDownUp.rich_text(11.0, theme::ACCENT));
+                ui.label(PhosphorIcon::ArrowsDownUp.rich_text(11.0, ui.tokens().color.accent));
             }
         });
     });

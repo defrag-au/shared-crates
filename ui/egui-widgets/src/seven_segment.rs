@@ -111,11 +111,11 @@ impl<'a> SevenSegmentDisplay<'a> {
             match ch {
                 '0'..='9' => {
                     let digit = (ch as u8 - b'0') as usize;
-                    self.draw_digit(&painter, lit, cx, cy, scale, SEGMENTS[digit]);
+                    self.draw_digit(&painter, lit, Pos2::new(cx, cy), scale, SEGMENTS[digit]);
                     cx += w + char_gap;
                 }
                 '-' => {
-                    self.draw_digit(&painter, lit, cx, cy, scale, 0b0000001);
+                    self.draw_digit(&painter, lit, Pos2::new(cx, cy), scale, 0b0000001);
                     cx += w + char_gap;
                 }
                 ':' => {
@@ -145,7 +145,7 @@ impl<'a> SevenSegmentDisplay<'a> {
         }
     }
 
-    /// Draw one digit at (ox, oy) using the reference grid scaled by `s`.
+    /// Draw one digit at `origin` using the reference grid scaled by `s`.
     ///
     /// Reference grid (48 x 80, element_width=10):
     ///
@@ -156,21 +156,12 @@ impl<'a> SevenSegmentDisplay<'a> {
     /// Seg 4 (e, lower-L V): (0,41)  (4,41)  (10,46) (10,69) (6,74)  (0,69)
     /// Seg 5 (c, lower-R V): (38,46) (44,41) (48,41) (48,69) (43,74) (38,70)
     /// Seg 6 (d, bot H):    (11,70) (37,70) (43,75) (37,80) (11,80) (6,75)
-    fn draw_digit(
-        &self,
-        painter: &egui::Painter,
-        lit: Lit,
-        ox: f32,
-        oy: f32,
-        s: f32,
-        segments: u8,
-    ) {
+    fn draw_digit(&self, painter: &egui::Painter, lit: Lit, origin: Pos2, s: f32, segments: u8) {
         // a: top horizontal (bit 6)
         self.draw_seg(
             painter,
             lit,
-            ox,
-            oy,
+            origin,
             s,
             &[(11, 0), (37, 0), (43, 5), (37, 10), (11, 10), (6, 5)],
             segments & 0b1000000 != 0,
@@ -179,8 +170,7 @@ impl<'a> SevenSegmentDisplay<'a> {
         self.draw_seg(
             painter,
             lit,
-            ox,
-            oy,
+            origin,
             s,
             &[(0, 11), (5, 6), (10, 11), (10, 29), (4, 39), (0, 39)],
             segments & 0b0000010 != 0,
@@ -189,8 +179,7 @@ impl<'a> SevenSegmentDisplay<'a> {
         self.draw_seg(
             painter,
             lit,
-            ox,
-            oy,
+            origin,
             s,
             &[(38, 11), (43, 6), (48, 11), (48, 39), (44, 39), (38, 29)],
             segments & 0b0100000 != 0,
@@ -199,8 +188,7 @@ impl<'a> SevenSegmentDisplay<'a> {
         self.draw_seg(
             painter,
             lit,
-            ox,
-            oy,
+            origin,
             s,
             &[(11, 35), (37, 35), (43, 40), (37, 45), (11, 45), (5, 40)],
             segments & 0b0000001 != 0,
@@ -209,8 +197,7 @@ impl<'a> SevenSegmentDisplay<'a> {
         self.draw_seg(
             painter,
             lit,
-            ox,
-            oy,
+            origin,
             s,
             &[(0, 41), (4, 41), (10, 46), (10, 69), (6, 74), (0, 69)],
             segments & 0b0000100 != 0,
@@ -219,8 +206,7 @@ impl<'a> SevenSegmentDisplay<'a> {
         self.draw_seg(
             painter,
             lit,
-            ox,
-            oy,
+            origin,
             s,
             &[(38, 46), (44, 41), (48, 41), (48, 69), (43, 74), (38, 70)],
             segments & 0b0010000 != 0,
@@ -229,20 +215,21 @@ impl<'a> SevenSegmentDisplay<'a> {
         self.draw_seg(
             painter,
             lit,
-            ox,
-            oy,
+            origin,
             s,
             &[(11, 70), (37, 70), (43, 75), (37, 80), (11, 80), (6, 75)],
             segments & 0b0001000 != 0,
         );
     }
 
+    /// `origin` is the digit's top-left in screen space; `s` scales the reference
+    /// grid onto it. Taken as one `Pos2` rather than two floats so the argument
+    /// count stays inside clippy's limit now that the colours travel too.
     fn draw_seg(
         &self,
         painter: &egui::Painter,
         lit: Lit,
-        ox: f32,
-        oy: f32,
+        origin: Pos2,
         s: f32,
         pts: &[(i32, i32)],
         on: bool,
@@ -250,7 +237,7 @@ impl<'a> SevenSegmentDisplay<'a> {
         let color = if on { lit.on } else { lit.off };
         let points: Vec<Pos2> = pts
             .iter()
-            .map(|&(px, py)| Pos2::new(ox + px as f32 * s, oy + py as f32 * s))
+            .map(|&(px, py)| Pos2::new(origin.x + px as f32 * s, origin.y + py as f32 * s))
             .collect();
         painter.add(egui::Shape::convex_polygon(
             points,

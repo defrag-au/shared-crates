@@ -47,7 +47,7 @@
 //!
 //! See `cnft.dev-workers/docs/design/EGUI_THEMING_AND_LAYOUT.md`.
 
-use egui::{Color32, CornerRadius, FontId, Stroke, TextStyle, Visuals};
+use egui::{Color32, CornerRadius, FontId, Stroke, TextStyle, Ui, Visuals};
 use std::sync::Arc;
 
 // ============================================================================
@@ -582,9 +582,72 @@ impl Theme {
         }
     }
 
+    /// Same neutral base, a different accent.
+    ///
+    /// Mirrors `macroquad-widgets`' preset vocabulary so the two renderers stay
+    /// in step. Each accent is drawn from the **already contrast-validated**
+    /// ramp rather than a fresh colour — a preset that ships an unchecked accent
+    /// is how a theme lands below AA.
+    const fn with_accent(name: &'static str, accent: Color32) -> Self {
+        Self {
+            name,
+            color: ColorTokens {
+                accent,
+                ..ColorTokens::tokyo_night()
+            },
+            ..Self::tokyo_night()
+        }
+    }
+
+    pub const fn ember() -> Self {
+        Self::with_accent("ember", raw::ACCENT_ORANGE)
+    }
+    pub const fn iris() -> Self {
+        Self::with_accent("iris", raw::ACCENT_MAGENTA)
+    }
+    pub const fn aqua() -> Self {
+        Self::with_accent("aqua", raw::ACCENT_CYAN)
+    }
+    pub const fn rose() -> Self {
+        Self::with_accent("rose", raw::ACCENT_RED)
+    }
+
+    /// Square corners, compact density, no overshoot — the preset that proves
+    /// the **non-colour** axes are real.
+    ///
+    /// Exists because a switcher whose presets only vary hue demonstrates
+    /// nothing about geometry, density or motion, which is most of what a theme
+    /// is. Same palette as the default on purpose: everything that differs here
+    /// differs in shape and rhythm.
+    pub const fn industrial() -> Self {
+        Self {
+            name: "industrial",
+            geometry: Geometry::square(),
+            density: Density::Compact,
+            ..Self::tokyo_night()
+        }
+    }
+
     /// Every preset. Contrast floors are asserted across all of these, so a new
     /// theme cannot ship below AA — add yours here or it is not covered.
-    pub const PRESETS: &'static [fn() -> Theme] = &[Theme::tokyo_night, Theme::tokyo_night_mono];
+    pub const PRESETS: &'static [fn() -> Theme] = &[
+        Theme::tokyo_night,
+        Theme::tokyo_night_mono,
+        Theme::ember,
+        Theme::iris,
+        Theme::aqua,
+        Theme::rose,
+        Theme::industrial,
+    ];
+
+    /// The preset whose [`Theme::name`] matches, for `?theme=` URL params and
+    /// switcher round-tripping. Names are the slug: lowercase, spaces intact.
+    pub fn by_name(name: &str) -> Option<Theme> {
+        Self::PRESETS
+            .iter()
+            .map(|p| p())
+            .find(|t| t.name.eq_ignore_ascii_case(name))
+    }
 
     /// Same theme, different density — the common per-surface override.
     pub fn with_density(mut self, density: Density) -> Self {
@@ -684,8 +747,16 @@ pub fn apply_style(ctx: &egui::Context, theme: &Theme) {
     // prefers-color-scheme and set_global_style only writes the ACTIVE theme's
     // style — pin dark first so a light-mode device gets the same app.
     ctx.set_theme(egui::ThemePreference::Dark);
+    ctx.set_global_style(style_for(theme, (*ctx.global_style()).clone()));
+}
 
-    let mut style = (*ctx.global_style()).clone();
+/// `base` with this theme's decisions written over it.
+///
+/// Split out of [`apply_style`] so a theme can be applied to **one `Ui`** rather
+/// than the whole context — which is what [`scoped`] needs, and therefore what
+/// lets two themes render side by side in a single frame.
+pub fn style_for(theme: &Theme, base: egui::Style) -> egui::Style {
+    let mut style = base;
     let c = &theme.color;
 
     style
@@ -760,7 +831,52 @@ pub fn apply_style(ctx: &egui::Context, theme: &Theme) {
     style.spacing.item_spacing = theme.density.item_spacing();
     style.spacing.button_padding = theme.density.button_padding();
 
-    ctx.set_global_style(style);
+    style
+}
+
+/// Render `add` under `theme`, leaving the surrounding theme untouched.
+///
+/// # Why this needs to do two things
+///
+/// A theme reaches a widget by two separate routes, and a swap that only does
+/// one of them is the kind of bug that looks like the theme "half works":
+///
+/// 1. **[`ThemeExt::tokens`] reads `ctx.data` live**, at the moment a widget
+///    asks. Swapping that alone re-tints everything a widget paints explicitly.
+/// 2. **egui's own `Style` is snapshotted onto each `Ui` from its parent**, not
+///    read from the context per call. So `ctx.set_global_style` mid-frame does
+///    *not* reach a `Ui` that already exists — a plain `ui.label()`, button
+///    padding and item spacing would all keep the outer theme.
+///
+/// So this swaps the context data *and* sets the child `Ui`'s style. Both are
+/// restored on the way out, including if `add` panics is **not** guaranteed —
+/// this is a review affordance, not a transaction.
+///
+/// # What it is for
+///
+/// Rendering the same surface under two themes in one frame, which is how a
+/// reviewer sees a palette regression rather than having to flip between two
+/// screenshots. The storybook's A/B mode is this function twice.
+///
+/// It also means a real app can preview a theme inside its own settings screen,
+/// which is why this lives here and not in the storybook.
+pub fn scoped<R>(ui: &mut Ui, theme: &Theme, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let ctx = ui.ctx().clone();
+    let previous = ctx.tokens();
+    let scoped = Arc::new(theme.clone());
+    ctx.data_mut(|d| d.insert_temp(theme_id(), scoped.clone()));
+
+    let out = ui
+        .scope(|ui| {
+            // `Ui::style` hands back `&Arc<Style>`, so this needs two derefs to
+            // clone the `Style` rather than bump the `Arc`.
+            ui.set_style(style_for(&scoped, (**ui.style()).clone()));
+            add(ui)
+        })
+        .inner;
+
+    ctx.data_mut(|d| d.insert_temp(theme_id(), previous));
+    out
 }
 
 // ============================================================================
@@ -1014,6 +1130,103 @@ mod tests {
         assert_eq!(scale.small, t.small);
         assert_eq!(scale.heading, t.heading);
         assert_eq!(scale.prose, t.prose);
+    }
+
+    /// The `ctx.data` half of [`scoped`]: what a widget reads through
+    /// `ui.tokens()` must be the scoped theme inside, and the outer one after.
+    #[test]
+    fn a_scoped_theme_is_visible_inside_and_restored_after() {
+        let ember = Theme {
+            name: "ember",
+            color: ColorTokens {
+                accent: Color32::from_rgb(246, 158, 76),
+                ..ColorTokens::tokyo_night()
+            },
+            ..Theme::tokyo_night()
+        };
+
+        egui::__run_test_ui(|ui| {
+            install_theme(ui.ctx(), Theme::tokyo_night());
+            let outer = ui.tokens().color.accent;
+
+            let inner = scoped(ui, &ember, |ui| ui.tokens().color.accent);
+
+            assert_eq!(inner, ember.color.accent, "scope did not take effect");
+            assert_ne!(inner, outer, "the two themes must differ for this to prove anything");
+            assert_eq!(
+                ui.tokens().color.accent,
+                outer,
+                "the surrounding theme was not restored"
+            );
+        });
+    }
+
+    /// The `Style` half. This is the one that silently does not happen: egui
+    /// snapshots `Style` onto each `Ui` from its parent, so swapping only
+    /// `ctx.data` leaves plain labels, spacing and padding on the OUTER theme.
+    #[test]
+    fn a_scoped_theme_also_reaches_eguis_own_style() {
+        let spacious = Theme::tokyo_night().with_density(Density::Spacious);
+
+        egui::__run_test_ui(|ui| {
+            install_theme(ui.ctx(), Theme::tokyo_night().with_density(Density::Compact));
+            let outer = ui.style().spacing.item_spacing;
+
+            let inner = scoped(ui, &spacious, |ui| ui.style().spacing.item_spacing);
+
+            assert_eq!(inner, Density::Spacious.item_spacing());
+            assert_ne!(inner, outer);
+            assert_eq!(
+                ui.style().spacing.item_spacing,
+                outer,
+                "the child Ui's style must not leak back out"
+            );
+        });
+    }
+
+    /// A switcher is only a demonstration if the presets actually differ. This
+    /// catches the failure mode where every preset is a recolour of one theme —
+    /// or worse, identical.
+    #[test]
+    fn the_presets_differ_from_each_other() {
+        let all: Vec<Theme> = Theme::PRESETS.iter().map(|p| p()).collect();
+        for (i, a) in all.iter().enumerate() {
+            for b in all.iter().skip(i + 1) {
+                assert_ne!(a, b, "`{}` and `{}` are the same theme", a.name, b.name);
+            }
+        }
+    }
+
+    /// At least one preset must vary something that is NOT colour, or the whole
+    /// "theming beyond colour" claim is untested.
+    #[test]
+    fn at_least_one_preset_varies_a_non_colour_axis() {
+        let base = Theme::tokyo_night();
+        let varies = Theme::PRESETS.iter().map(|p| p()).any(|t| {
+            t.geometry != base.geometry
+                || t.density != base.density
+                || t.text != base.text
+                || t.motion != base.motion
+        });
+        assert!(
+            varies,
+            "every preset differs only by colour — geometry/density/type/motion are unproven"
+        );
+    }
+
+    #[test]
+    fn every_preset_round_trips_through_its_name() {
+        // `?theme=` in the storybook URL depends on this being total.
+        for preset in Theme::PRESETS {
+            let t = preset();
+            assert_eq!(
+                Theme::by_name(t.name).as_ref().map(|r| r.name),
+                Some(t.name),
+                "`{}` does not resolve by name",
+                t.name
+            );
+        }
+        assert!(Theme::by_name("no such theme").is_none());
     }
 
     #[test]

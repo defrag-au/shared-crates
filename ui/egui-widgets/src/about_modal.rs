@@ -45,7 +45,7 @@
 use egui::{RichText, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
-use crate::theme;
+use crate::theme::ThemeExt;
 
 /// One thing a reader should expect: an icon, a headline, and a line saying
 /// what it means for them.
@@ -130,7 +130,11 @@ impl<'a> AboutModal<'a> {
                 }
             });
             if let Some(intro) = self.intro {
-                ui.label(RichText::new(intro).small().color(theme::TEXT_MUTED));
+                ui.label(
+                    RichText::new(intro)
+                        .small()
+                        .color(ui.tokens().color.text_muted),
+                );
             }
 
             for point in &self.points {
@@ -163,12 +167,17 @@ impl<'a> AboutModal<'a> {
 /// by the host from the same two theme colours.
 fn status_chip(ui: &mut Ui, status: &str) {
     egui::Frame::default()
-        .fill(theme::WARNING.gamma_multiply(0.18))
-        .stroke(egui::Stroke::new(1.0_f32, theme::WARNING))
+        .fill(ui.tokens().color.warning.gamma_multiply(0.18))
+        .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.warning))
         .inner_margin(egui::Margin::symmetric(5, 1))
         .corner_radius(4.0)
         .show(ui, |ui| {
-            ui.label(RichText::new(status).color(theme::WARNING).small().strong());
+            ui.label(
+                RichText::new(status)
+                    .color(ui.tokens().color.warning)
+                    .small()
+                    .strong(),
+            );
         });
 }
 
@@ -184,7 +193,7 @@ fn point_row(ui: &mut Ui, point: &AboutPoint<'_>) {
             egui::Align2::CENTER_TOP,
             point.icon.codepoint(),
             egui::FontId::new(15.0, crate::icons::phosphor_family()),
-            theme::WARNING,
+            ui.tokens().color.warning,
         );
         // The text column takes what is left, so the detail wraps against the
         // modal's edge rather than pushing the modal wider.
@@ -193,7 +202,7 @@ fn point_row(ui: &mut Ui, point: &AboutPoint<'_>) {
             ui.label(
                 RichText::new(point.detail)
                     .small()
-                    .color(theme::TEXT_SECONDARY),
+                    .color(ui.tokens().color.text_secondary),
             );
         });
     });

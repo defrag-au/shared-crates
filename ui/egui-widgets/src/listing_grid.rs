@@ -10,7 +10,7 @@
 use crate::corner_action::{Corner, CornerAction};
 use crate::icons::PhosphorIcon;
 use crate::image_loader::CachedSpinner;
-use crate::theme;
+use crate::theme::ThemeExt;
 use egui::{Color32, RichText, Sense, Vec2};
 
 /// Whether a listing can actually be bought.
@@ -152,8 +152,9 @@ pub struct ListingGridConfig {
     pub spacing: f32,
     pub bg_color: Color32,
     pub bg_hover_color: Color32,
-    pub text_primary: Color32,
-    pub text_muted: Color32,
+    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
+    pub text_primary: Option<Color32>,
+    pub text_muted: Option<Color32>,
     pub accent_green: Color32,
     pub rounding: f32,
 }
@@ -166,8 +167,8 @@ impl Default for ListingGridConfig {
             spacing: 8.0,
             bg_color: Color32::from_rgb(30, 31, 48),
             bg_hover_color: Color32::from_rgb(45, 46, 68),
-            text_primary: crate::theme::TEXT_PRIMARY,
-            text_muted: crate::theme::TEXT_MUTED,
+            text_primary: None,
+            text_muted: None,
             accent_green: Color32::from_rgb(158, 206, 106),
             rounding: 6.0,
         }
@@ -205,7 +206,11 @@ impl ListingGrid {
         if listings.is_empty() {
             ui.label(
                 RichText::new("No listings found")
-                    .color(self.config.text_muted)
+                    .color(
+                        self.config
+                            .text_muted
+                            .unwrap_or(ui.tokens().color.text_muted),
+                    )
                     .size(11.0),
             );
             return ListingGridResponse::default();
@@ -220,7 +225,11 @@ impl ListingGrid {
             let mut hovered_idx: Option<usize> = None;
             let mut add_to_cart_idx: Option<usize> = None;
             let mut clicked_idx: Option<usize> = None;
-            let spinner = CachedSpinner::new(ui, 12.0, cfg.text_muted);
+            let spinner = CachedSpinner::new(
+                ui,
+                12.0,
+                cfg.text_muted.unwrap_or(ui.tokens().color.text_muted),
+            );
             let mut any_pending = false;
 
             for (card_idx, listing) in listings.iter().enumerate() {
@@ -297,7 +306,7 @@ impl ListingGrid {
                         egui::Align2::CENTER_CENTER,
                         "?",
                         egui::FontId::proportional(20.0),
-                        cfg.text_muted,
+                        cfg.text_muted.unwrap_or(ui.tokens().color.text_muted),
                     );
                 }
 
@@ -415,7 +424,7 @@ impl ListingGrid {
                         ui.painter().rect_stroke(
                             rect,
                             cfg.rounding,
-                            egui::Stroke::new(2.0_f32, theme::ACCENT_GREEN),
+                            egui::Stroke::new(2.0_f32, ui.tokens().color.accent_green),
                             egui::StrokeKind::Inside,
                         );
                         CornerAction::new(PhosphorIcon::Check)
@@ -449,7 +458,7 @@ impl ListingGrid {
                             egui::Align2::CENTER_CENTER,
                             reason.label(),
                             egui::FontId::proportional(9.0),
-                            theme::ACCENT_RED,
+                            ui.tokens().color.accent_red,
                         );
                     }
                 }

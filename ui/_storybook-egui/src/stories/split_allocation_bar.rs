@@ -5,6 +5,9 @@ use egui_widgets::split_allocation_bar::{self, AllocationSegment, SplitAllocatio
 use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
 
 pub fn show(ui: &mut egui::Ui) {
+    // The DEX series ramp comes from the active theme now, so the fixtures have
+    // to resolve it rather than name a constant.
+    let t = egui_widgets::theme::ThemeExt::tokens(ui);
     ui.label(
         egui::RichText::new("SplitAllocationBar Widget")
             .color(ACCENT)
@@ -43,13 +46,13 @@ pub fn show(ui: &mut egui::Ui) {
                         label: "Splash".into(),
                         amount_lovelace: 780_000_000,
                         fraction: 0.78,
-                        color: split_allocation_bar::dex_color(0),
+                        color: split_allocation_bar::dex_color(0, &t),
                     },
                     AllocationSegment {
                         label: "CSWAP".into(),
                         amount_lovelace: 220_000_000,
                         fraction: 0.22,
-                        color: split_allocation_bar::dex_color(1),
+                        color: split_allocation_bar::dex_color(1, &t),
                     },
                 ];
                 split_allocation_bar::show(ui, &segments, &SplitAllocationBarConfig::default());
@@ -79,19 +82,19 @@ pub fn show(ui: &mut egui::Ui) {
                         label: "Splash".into(),
                         amount_lovelace: 550_000_000,
                         fraction: 0.55,
-                        color: split_allocation_bar::dex_color(0),
+                        color: split_allocation_bar::dex_color(0, &t),
                     },
                     AllocationSegment {
                         label: "Minswap".into(),
                         amount_lovelace: 300_000_000,
                         fraction: 0.30,
-                        color: split_allocation_bar::dex_color(1),
+                        color: split_allocation_bar::dex_color(1, &t),
                     },
                     AllocationSegment {
                         label: "CSWAP".into(),
                         amount_lovelace: 150_000_000,
                         fraction: 0.15,
-                        color: split_allocation_bar::dex_color(2),
+                        color: split_allocation_bar::dex_color(2, &t),
                     },
                 ];
                 split_allocation_bar::show(ui, &segments, &SplitAllocationBarConfig::default());
@@ -120,7 +123,7 @@ pub fn show(ui: &mut egui::Ui) {
                     label: "Splash".into(),
                     amount_lovelace: 1_000_000_000,
                     fraction: 1.0,
-                    color: split_allocation_bar::dex_color(0),
+                    color: split_allocation_bar::dex_color(0, &t),
                 }];
                 split_allocation_bar::show(ui, &segments, &SplitAllocationBarConfig::default());
             });
@@ -149,13 +152,13 @@ pub fn show(ui: &mut egui::Ui) {
                         label: "Splash".into(),
                         amount_lovelace: 600_000_000,
                         fraction: 0.60,
-                        color: split_allocation_bar::dex_color(0),
+                        color: split_allocation_bar::dex_color(0, &t),
                     },
                     AllocationSegment {
                         label: "CSWAP".into(),
                         amount_lovelace: 400_000_000,
                         fraction: 0.40,
-                        color: split_allocation_bar::dex_color(1),
+                        color: split_allocation_bar::dex_color(1, &t),
                     },
                 ];
                 let config = SplitAllocationBarConfig {

@@ -5,7 +5,7 @@
 
 use egui::RichText;
 
-use crate::theme;
+use crate::theme::ThemeExt;
 
 // ============================================================================
 // Types
@@ -62,10 +62,10 @@ pub fn show(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConfig) {
     let has_breakdown = data.sides.iter().any(|s| s.net_ada.is_some());
 
     egui::Frame::new()
-        .fill(theme::BG_SECONDARY)
+        .fill(ui.tokens().color.bg_secondary)
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+        .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .show(ui, |ui| {
             if has_breakdown {
                 draw_detailed(ui, data, config);
@@ -80,7 +80,7 @@ fn draw_compact(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConfi
     ui.horizontal(|ui| {
         ui.label(
             RichText::new("FEES")
-                .color(theme::TEXT_MUTED)
+                .color(ui.tokens().color.text_muted)
                 .size(config.heading_size)
                 .strong(),
         );
@@ -91,7 +91,7 @@ fn draw_compact(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConfi
             if i > 0 {
                 ui.label(
                     RichText::new("|")
-                        .color(theme::TEXT_MUTED)
+                        .color(ui.tokens().color.text_muted)
                         .size(config.font_size),
                 );
             }
@@ -103,14 +103,14 @@ fn draw_compact(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConfi
         if data.total_lovelace == 0 {
             ui.label(
                 RichText::new("No platform fees!")
-                    .color(theme::ACCENT_GREEN)
+                    .color(ui.tokens().color.accent_green)
                     .size(config.font_size)
                     .strong(),
             );
         } else {
             ui.label(
                 RichText::new(format!("Total: {}", format_lovelace(data.total_lovelace)))
-                    .color(theme::TEXT_MUTED)
+                    .color(ui.tokens().color.text_muted)
                     .size(config.font_size),
             );
         }
@@ -121,7 +121,7 @@ fn draw_compact(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConfi
 fn draw_detailed(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConfig) {
     ui.label(
         RichText::new("COSTS")
-            .color(theme::TEXT_MUTED)
+            .color(ui.tokens().color.text_muted)
             .size(config.heading_size)
             .strong(),
     );
@@ -134,7 +134,7 @@ fn draw_detailed(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConf
 
             ui.label(
                 RichText::new(format!("{}:", side.label))
-                    .color(theme::TEXT_PRIMARY)
+                    .color(ui.tokens().color.text_primary)
                     .size(config.font_size)
                     .strong(),
             );
@@ -148,12 +148,12 @@ fn draw_detailed(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConf
             {
                 ui.label(
                     RichText::new("·")
-                        .color(theme::TEXT_MUTED)
+                        .color(ui.tokens().color.text_muted)
                         .size(config.font_size),
                 );
                 ui.label(
                     RichText::new(format!("Network {}", format_lovelace(net_fee)))
-                        .color(theme::TEXT_MUTED)
+                        .color(ui.tokens().color.text_muted)
                         .size(config.font_size),
                 );
             }
@@ -164,12 +164,12 @@ fn draw_detailed(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConf
             {
                 ui.label(
                     RichText::new("·")
-                        .color(theme::TEXT_MUTED)
+                        .color(ui.tokens().color.text_muted)
                         .size(config.font_size),
                 );
                 ui.label(
                     RichText::new(format!("UTxO {}", format_lovelace(utxo_cost)))
-                        .color(theme::TEXT_MUTED)
+                        .color(ui.tokens().color.text_muted)
                         .size(config.font_size),
                 );
             }
@@ -185,14 +185,14 @@ fn draw_detailed(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConf
 
             ui.label(
                 RichText::new("Net:")
-                    .color(theme::TEXT_MUTED)
+                    .color(ui.tokens().color.text_muted)
                     .size(config.font_size)
                     .strong(),
             );
 
             for side in &data.sides {
                 if let Some(net) = side.net_ada {
-                    let (text, color) = format_net_ada(&side.label, net);
+                    let (text, color) = format_net_ada(&side.label, net, &ui.tokens());
                     ui.label(RichText::new(text).color(color).size(config.font_size));
                 }
             }
@@ -205,28 +205,28 @@ fn draw_side_platform_fee(ui: &mut egui::Ui, side: &SideFeeData, font_size: f32)
     if side.waived {
         ui.label(
             RichText::new("FREE")
-                .color(theme::ACCENT_GREEN)
+                .color(ui.tokens().color.accent_green)
                 .size(font_size)
                 .strong(),
         );
         if let Some(reason) = &side.waiver_reason {
             ui.label(
                 RichText::new(format!("({reason})"))
-                    .color(theme::TEXT_MUTED)
+                    .color(ui.tokens().color.text_muted)
                     .size(font_size),
             );
         }
     } else {
         ui.label(
             RichText::new(format_lovelace(side.fee_lovelace))
-                .color(theme::ACCENT_YELLOW)
+                .color(ui.tokens().color.accent_yellow)
                 .size(font_size),
         );
     }
 }
 
 /// Format net ADA with color coding: green for positive, red for negative.
-fn format_net_ada(label: &str, lovelace: i64) -> (String, egui::Color32) {
+fn format_net_ada(label: &str, lovelace: i64, t: &crate::theme::Theme) -> (String, egui::Color32) {
     let ada = lovelace as f64 / 1_000_000.0;
     let sign = if lovelace >= 0 { "+" } else { "" };
     let text = if ada.abs().fract() == 0.0 {
@@ -235,11 +235,11 @@ fn format_net_ada(label: &str, lovelace: i64) -> (String, egui::Color32) {
         format!("{label} {sign}{ada:.2} ADA")
     };
     let color = if lovelace > 0 {
-        theme::ACCENT_GREEN
+        t.color.accent_green
     } else if lovelace < 0 {
-        theme::ACCENT_RED
+        t.color.accent_red
     } else {
-        theme::TEXT_MUTED
+        t.color.text_muted
     };
     (text, color)
 }

@@ -10,7 +10,7 @@
 
 use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::{self, ThemeExt};
 
 // ============================================================================
 // Types
@@ -108,7 +108,7 @@ pub struct CompositionResponse {
 pub fn show_header(ui: &mut Ui, comp: &CollectionComposition) {
     ui.label(
         egui::RichText::new(&comp.title)
-            .color(theme::TEXT_PRIMARY)
+            .color(ui.tokens().color.text_primary)
             .strong()
             .size(18.0),
     );
@@ -123,13 +123,13 @@ pub fn show_header(ui: &mut Ui, comp: &CollectionComposition) {
                 ui.vertical(|ui| {
                     ui.label(
                         egui::RichText::new(&s.value)
-                            .color(theme::ACCENT)
+                            .color(ui.tokens().color.accent)
                             .strong()
                             .size(18.0),
                     );
                     ui.label(
                         egui::RichText::new(&s.label)
-                            .color(theme::TEXT_MUTED)
+                            .color(ui.tokens().color.text_muted)
                             .size(10.5),
                     );
                 });
@@ -143,7 +143,7 @@ pub fn show_header(ui: &mut Ui, comp: &CollectionComposition) {
             "Layer stack, front on top — the % is how often the layer appears in a token; \
              cells are its values, with weights shown only where overridden.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(ui.tokens().color.text_muted)
         .size(10.5),
     );
 }
@@ -198,7 +198,7 @@ fn layer_stack(
             p.rect_filled(
                 rect,
                 CornerRadius::same(4),
-                theme::BG_SECONDARY.gamma_multiply(0.5),
+                ui.tokens().color.bg_secondary.gamma_multiply(0.5),
             );
         }
 
@@ -209,7 +209,7 @@ fn layer_stack(
             Align2::LEFT_CENTER,
             &layer.name,
             FontId::proportional(13.0),
-            theme::TEXT_PRIMARY,
+            ui.tokens().color.text_primary,
         );
         let mut bx = rect.left() + cfg.gutter + 144.0;
         for (vi, v) in layer.variants.iter().enumerate() {
@@ -217,21 +217,21 @@ fn layer_stack(
             p.rect_filled(
                 badge,
                 CornerRadius::same(4),
-                variant_color(vi).gamma_multiply(0.30),
+                variant_color(vi, &ui.tokens()).gamma_multiply(0.30),
             );
             p.text(
                 badge.center(),
                 Align2::CENTER_CENTER,
                 v,
                 FontId::proportional(10.0),
-                variant_color(vi),
+                variant_color(vi, &ui.tokens()),
             );
             bx += 24.0;
         }
         let present_col = if layer.present_pct >= 99.5 {
-            theme::SUCCESS
+            ui.tokens().color.success
         } else {
-            theme::ACCENT
+            ui.tokens().color.accent
         };
         // Show 2 decimals for present-but-rare layers (e.g. 0.18%) so they don't read 0%.
         let present_txt = if layer.present_pct > 0.0 && layer.present_pct < 1.0 {
@@ -273,13 +273,17 @@ fn layer_stack(
                 cfg.cell,
             );
             let hot = pointer.map(|pp| cell.contains(pp)).unwrap_or(false);
-            p.rect_filled(cell, CornerRadius::same(4), theme::BG_HIGHLIGHT);
+            p.rect_filled(cell, CornerRadius::same(4), ui.tokens().color.bg_highlight);
             p.rect_stroke(
                 cell,
                 CornerRadius::same(4),
                 Stroke::new(
                     if hot { 1.5_f32 } else { 1.0_f32 },
-                    if hot { theme::ACCENT } else { theme::BORDER },
+                    if hot {
+                        ui.tokens().color.accent
+                    } else {
+                        ui.tokens().color.border
+                    },
                 ),
                 egui::StrokeKind::Inside,
             );
@@ -294,7 +298,7 @@ fn layer_stack(
                     Align2::CENTER_CENTER,
                     txt,
                     FontId::proportional(9.0),
-                    theme::TEXT_SECONDARY,
+                    ui.tokens().color.text_secondary,
                 );
             }
             if hot {
@@ -325,7 +329,7 @@ fn layer_stack(
             spine_x,
             gutter_right,
             &ys,
-            theme::ACCENT_CYAN.gamma_multiply(0.85),
+            ui.tokens().color.accent_cyan.gamma_multiply(0.85),
         );
     }
 
@@ -396,14 +400,16 @@ fn arc(path: &mut Vec<Pos2>, c: Pos2, r: f32, from_deg: f32, to_deg: f32) {
 }
 
 /// A colour for variant `index`, cycling the accent palette (matches `variant_split`).
-fn variant_color(index: usize) -> Color32 {
-    const PALETTE: &[Color32] = &[
-        theme::ACCENT_BLUE,
-        theme::ACCENT_GREEN,
-        theme::ACCENT_MAGENTA,
-        theme::ACCENT_ORANGE,
-        theme::ACCENT_CYAN,
-        theme::ACCENT_YELLOW,
+fn variant_color(index: usize, t: &theme::Theme) -> Color32 {
+    // A `let`, not a `const`: the palette comes from the active theme now, and a
+    // const could only ever bake one.
+    let palette = [
+        t.color.accent_blue,
+        t.color.accent_green,
+        t.color.accent_magenta,
+        t.color.accent_orange,
+        t.color.accent_cyan,
+        t.color.accent_yellow,
     ];
-    PALETTE[index % PALETTE.len()]
+    palette[index % palette.len()]
 }

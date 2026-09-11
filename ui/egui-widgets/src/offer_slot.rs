@@ -114,7 +114,7 @@ pub fn show(
     let image_url = data.image_url(AssetImageSize::Thumbnail);
     let browser_config = crate::CardBrowserConfig {
         rounding: 4.0,
-        bg_card_hover: Color32::from_rgb(40, 40, 55),
+        bg_card_hover: Some(Color32::from_rgb(40, 40, 55)),
         ..Default::default()
     };
     let loading = card_browser::draw_thumbnail(ui, card_rect, Some(&image_url), &browser_config);
@@ -222,7 +222,11 @@ pub fn show(
     if data.is_fungible && !has_qty_input && data.quantity > 0 {
         let qty_text = super::wallet_asset_picker::format_quantity(data.quantity);
         let font = egui::FontId::monospace(8.0);
-        let galley = painter.layout_no_wrap(qty_text.clone(), font.clone(), ui.tokens().color.text_primary);
+        let galley = painter.layout_no_wrap(
+            qty_text.clone(),
+            font.clone(),
+            ui.tokens().color.text_primary,
+        );
         let badge_w = galley.size().x + 6.0;
         let badge_h = 14.0;
         let badge_rect = egui::Rect::from_min_size(
@@ -245,7 +249,11 @@ pub fn show(
         // Non-fungible with quantity > 1 (shouldn't happen, but safe fallback)
         let qty_text = super::wallet_asset_picker::format_quantity(data.quantity);
         let font = egui::FontId::monospace(8.0);
-        let galley = painter.layout_no_wrap(qty_text.clone(), font.clone(), ui.tokens().color.text_primary);
+        let galley = painter.layout_no_wrap(
+            qty_text.clone(),
+            font.clone(),
+            ui.tokens().color.text_primary,
+        );
         let badge_w = galley.size().x + 6.0;
         let badge_h = 14.0;
         let badge_rect = egui::Rect::from_min_size(
@@ -326,9 +334,15 @@ pub fn show(
         let (bg, x_color) = if cursor_in_btn {
             (Color32::from_black_alpha(235), ui.tokens().color.accent_red)
         } else if hovered {
-            (Color32::from_black_alpha(220), ui.tokens().color.text_primary)
+            (
+                Color32::from_black_alpha(220),
+                ui.tokens().color.text_primary,
+            )
         } else {
-            (Color32::from_black_alpha(160), ui.tokens().color.text_secondary)
+            (
+                Color32::from_black_alpha(160),
+                ui.tokens().color.text_secondary,
+            )
         };
 
         painter.circle_filled(btn_center, btn_r, bg);
@@ -373,7 +387,11 @@ pub fn show_ada_card(
     let (card_rect, _) = ui.allocate_exact_size(card_size, egui::Sense::hover());
 
     let painter = ui.painter_at(card_rect);
-    painter.rect_filled(card_rect, CornerRadius::same(4), ui.tokens().color.bg_secondary);
+    painter.rect_filled(
+        card_rect,
+        CornerRadius::same(4),
+        ui.tokens().color.bg_secondary,
+    );
 
     // Large coins icon
     let icon_center = egui::pos2(card_rect.center().x, card_rect.center().y - 14.0);
@@ -471,9 +489,17 @@ pub fn show_add_card(ui: &mut egui::Ui, config: &OfferSlotConfig) -> bool {
 
     // Border and fill
     let (border_color, icon_color, text_color) = if hovered {
-        (ui.tokens().color.accent_cyan, ui.tokens().color.accent_cyan, ui.tokens().color.text_primary)
+        (
+            ui.tokens().color.accent_cyan,
+            ui.tokens().color.accent_cyan,
+            ui.tokens().color.text_primary,
+        )
     } else {
-        (ui.tokens().color.text_muted, ui.tokens().color.text_muted, ui.tokens().color.text_muted)
+        (
+            ui.tokens().color.text_muted,
+            ui.tokens().color.text_muted,
+            ui.tokens().color.text_muted,
+        )
     };
 
     if hovered {

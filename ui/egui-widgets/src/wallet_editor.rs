@@ -6,7 +6,7 @@
 
 use egui::{Color32, RichText};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 
 // ============================================================================
 // Types
@@ -99,14 +99,14 @@ pub fn show(
     // Heading
     ui.label(
         RichText::new(config.heading)
-            .color(theme::TEXT_SECONDARY)
+            .color(ui.tokens().color.text_secondary)
             .size(config.heading_size),
     );
     if let Some(subtitle) = config.subtitle {
         ui.add_space(2.0);
         ui.label(
             RichText::new(subtitle)
-                .color(theme::TEXT_MUTED)
+                .color(ui.tokens().color.text_muted)
                 .size(config.font_size),
         );
     }
@@ -126,8 +126,10 @@ pub fn show(
         }
         if ui
             .add(
-                egui::Button::new(crate::PhosphorIcon::Plus.rich_text(14.0, theme::ACCENT_CYAN))
-                    .frame(false),
+                egui::Button::new(
+                    crate::PhosphorIcon::Plus.rich_text(14.0, ui.tokens().color.accent_cyan),
+                )
+                .frame(false),
             )
             .clicked()
         {
@@ -161,7 +163,8 @@ pub fn show(
         // Hover highlight
         let hovered = ui.rect_contains_pointer(row_rect);
         if hovered {
-            ui.painter().rect_filled(row_rect, 2.0, theme::BG_HIGHLIGHT);
+            ui.painter()
+                .rect_filled(row_rect, 2.0, ui.tokens().color.bg_highlight);
         }
 
         ui.horizontal(|ui| {
@@ -175,14 +178,14 @@ pub fn show(
                 WalletEntryStatus::Ready => {
                     ui.label(
                         RichText::new("\u{2022}")
-                            .color(theme::ACCENT_GREEN)
+                            .color(ui.tokens().color.accent_green)
                             .size(14.0),
                     );
                 }
                 WalletEntryStatus::Failed(_) => {
                     ui.label(
                         RichText::new("!")
-                            .color(theme::ACCENT_RED)
+                            .color(ui.tokens().color.accent_red)
                             .size(12.0)
                             .strong(),
                     );
@@ -200,7 +203,7 @@ pub fn show(
             if entry.is_browser_wallet {
                 ui.label(
                     RichText::new("(browser)")
-                        .color(theme::TEXT_MUTED)
+                        .color(ui.tokens().color.text_muted)
                         .size(8.0),
                 );
             }
@@ -209,7 +212,7 @@ pub fn show(
             if let WalletEntryStatus::Failed(ref msg) = entry.status {
                 ui.label(
                     RichText::new(msg.as_str())
-                        .color(theme::ACCENT_RED)
+                        .color(ui.tokens().color.accent_red)
                         .size(9.0),
                 );
             }
@@ -222,9 +225,9 @@ pub fn show(
 
             // Remove button
             let remove_color = if hovered {
-                theme::TEXT_SECONDARY
+                ui.tokens().color.text_secondary
             } else {
-                theme::TEXT_MUTED
+                ui.tokens().color.text_muted
             };
             if ui
                 .add(

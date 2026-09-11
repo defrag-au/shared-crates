@@ -6,6 +6,9 @@ use egui_widgets::split_allocation_bar::dex_color;
 use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
 
 pub fn show(ui: &mut egui::Ui) {
+    // The DEX series ramp comes from the active theme now, so the fixtures have
+    // to resolve it rather than name a constant.
+    let t = egui_widgets::theme::ThemeExt::tokens(ui);
     ui.label(
         egui::RichText::new("RouteSummary Widget")
             .color(ACCENT)
@@ -43,14 +46,14 @@ pub fn show(ui: &mut egui::Ui) {
                     legs: vec![
                         RouteLeg {
                             dex_label: "Splash".into(),
-                            color: dex_color(0),
+                            color: dex_color(0, &t),
                             input_lovelace: 780_000_000,
                             expected_tokens: 6_912_743,
                             price_per_token: 0.000113,
                         },
                         RouteLeg {
                             dex_label: "CSWAP".into(),
-                            color: dex_color(1),
+                            color: dex_color(1, &t),
                             input_lovelace: 220_000_000,
                             expected_tokens: 1_949_748,
                             price_per_token: 0.000113,
@@ -87,21 +90,21 @@ pub fn show(ui: &mut egui::Ui) {
                     legs: vec![
                         RouteLeg {
                             dex_label: "Splash".into(),
-                            color: dex_color(0),
+                            color: dex_color(0, &t),
                             input_lovelace: 1_100_000_000,
                             expected_tokens: 6_500_000,
                             price_per_token: 0.000169,
                         },
                         RouteLeg {
                             dex_label: "Minswap".into(),
-                            color: dex_color(1),
+                            color: dex_color(1, &t),
                             input_lovelace: 600_000_000,
                             expected_tokens: 3_450_000,
                             price_per_token: 0.000174,
                         },
                         RouteLeg {
                             dex_label: "CSWAP".into(),
-                            color: dex_color(2),
+                            color: dex_color(2, &t),
                             input_lovelace: 300_000_000,
                             expected_tokens: 1_680_000,
                             price_per_token: 0.000179,
@@ -137,7 +140,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let data = RouteSummaryData {
                     legs: vec![RouteLeg {
                         dex_label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         input_lovelace: 100_000_000,
                         expected_tokens: 892_000,
                         price_per_token: 0.000112,

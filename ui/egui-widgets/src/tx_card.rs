@@ -942,7 +942,11 @@ fn party_clause(
         }
         // `$boef bought from $elchapojr · 1h ago` — the tight edit's time.
         if let Some((when, now)) = inline_time {
-            ui.label(RichText::new("·").size(size).color(ui.tokens().color.text_muted));
+            ui.label(
+                RichText::new("·")
+                    .size(size)
+                    .color(ui.tokens().color.text_muted),
+            );
             relative_time(ui, when, now, size);
         }
     });
@@ -952,7 +956,9 @@ fn party_clause(
 
 /// The relative age — `1h ago` — with a pinned "now" for stories.
 fn relative_time(ui: &mut Ui, when: i64, now: Option<i64>, size: f32) {
-    let mut rel = RelativeTime::new(when).size(size).color(ui.tokens().color.text_muted);
+    let mut rel = RelativeTime::new(when)
+        .size(size)
+        .color(ui.tokens().color.text_muted);
     if let Some(now) = now {
         rel = rel.now(now);
     }

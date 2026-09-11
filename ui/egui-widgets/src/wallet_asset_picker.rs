@@ -468,7 +468,7 @@ fn draw_picker_card(
     };
     let browser_config = crate::CardBrowserConfig {
         rounding: 4.0,
-        bg_card_hover: Color32::from_rgb(40, 40, 55),
+        bg_card_hover: Some(Color32::from_rgb(40, 40, 55)),
         ..Default::default()
     };
     let loading = card_browser::draw_thumbnail(ui, card_rect, Some(&image_url), &browser_config);

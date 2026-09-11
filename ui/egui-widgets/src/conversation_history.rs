@@ -37,7 +37,7 @@ use egui::Ui;
 use gateway_wiring::{RecentActivity, TraceKind, TraceStep};
 
 use crate::relative_time::relative_label;
-use crate::theme;
+use crate::theme::ThemeExt;
 
 /// After this long with no trace, a turn stops saying "waiting" and admits
 /// nothing is coming. Comfortably longer than a slow model turn — this is
@@ -91,7 +91,7 @@ pub fn conversation_header(ui: &mut Ui, entries: &[RecentActivity], state: &mut 
     ui.horizontal(|ui| {
         ui.strong("Conversation");
         ui.colored_label(
-            theme::TEXT_MUTED,
+            ui.tokens().color.text_muted,
             match entries.len() {
                 0 => "nothing yet".to_string(),
                 n => format!("{n} messages · {misses} fired nothing"),
@@ -125,7 +125,7 @@ pub fn conversation_list(
     if shown.is_empty() {
         ui.add_space(8.0);
         ui.colored_label(
-            theme::TEXT_MUTED,
+            ui.tokens().color.text_muted,
             if state.misses_only && !entries.is_empty() {
                 "No misses — everything here matched a binding."
             } else {
@@ -156,14 +156,16 @@ pub fn conversation_turn(ui: &mut Ui, entry: &RecentActivity, now_ms: f64) -> Hi
         // Filled for a hit, hollow for a miss: the whole feed is scannable on
         // this one column without reading a word of it.
         let (mark, color) = match &entry.matched_binding {
-            Some(_) => ("●", theme::SUCCESS),
-            None => ("○", theme::TEXT_MUTED),
+            Some(_) => ("●", ui.tokens().color.success),
+            None => ("○", ui.tokens().color.text_muted),
         };
         ui.colored_label(color, mark);
         if ui
             .add(
-                egui::Label::new(egui::RichText::new(&entry.author).color(theme::TEXT_MUTED))
-                    .sense(egui::Sense::click()),
+                egui::Label::new(
+                    egui::RichText::new(&entry.author).color(ui.tokens().color.text_muted),
+                )
+                .sense(egui::Sense::click()),
             )
             .on_hover_text("filter to this person")
             .clicked()
@@ -176,14 +178,14 @@ pub fn conversation_turn(ui: &mut Ui, entry: &RecentActivity, now_ms: f64) -> Hi
         // the message I sent 30 seconds ago" meant counting rows.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let delta_secs = ((now_ms - entry.at_ms) / 1000.0) as i64;
-            ui.colored_label(theme::TEXT_MUTED, relative_label(delta_secs));
+            ui.colored_label(ui.tokens().color.text_muted, relative_label(delta_secs));
         });
     });
 
     // A miss explains itself and stops — there is no working out to show.
     if let Some(note) = &entry.note {
         indented(ui, |ui| {
-            ui.colored_label(theme::ACCENT_YELLOW, format!("⊘  {note}"));
+            ui.colored_label(ui.tokens().color.accent_yellow, format!("⊘  {note}"));
         });
         return response;
     }
@@ -194,7 +196,7 @@ pub fn conversation_turn(ui: &mut Ui, entry: &RecentActivity, now_ms: f64) -> Hi
                 // The dropped-trace case. Saying "waiting…" forever promises
                 // an answer that is never arriving.
                 ui.colored_label(
-                    theme::ACCENT_YELLOW,
+                    ui.tokens().color.accent_yellow,
                     match &entry.matched_binding {
                         Some(binding) => format!(
                             "⊘  dispatched to {binding}, but no trace came back — \
@@ -205,7 +207,7 @@ pub fn conversation_turn(ui: &mut Ui, entry: &RecentActivity, now_ms: f64) -> Hi
                 );
             } else {
                 ui.colored_label(
-                    theme::TEXT_MUTED,
+                    ui.tokens().color.text_muted,
                     match &entry.matched_binding {
                         // Dispatched, nothing back yet. Says so rather than
                         // looking like an answer that never came.
@@ -233,21 +235,23 @@ pub fn conversation_turn(ui: &mut Ui, entry: &RecentActivity, now_ms: f64) -> Hi
             // that no test catches. The denylist checks which characters you
             // use; nothing checks which font you asked for.
             ui.horizontal(|ui| {
-                ui.label(crate::PhosphorIcon::Warning.rich_text(13.0, theme::ACCENT_YELLOW));
-                ui.colored_label(theme::ACCENT_YELLOW, note);
+                ui.label(
+                    crate::PhosphorIcon::Warning.rich_text(13.0, ui.tokens().color.accent_yellow),
+                );
+                ui.colored_label(ui.tokens().color.accent_yellow, note);
             });
         }
 
         // Level 3 — what it said back.
         if let Some(reply) = &trace.reply {
             ui.horizontal_wrapped(|ui| {
-                ui.colored_label(theme::SUCCESS, "💬");
+                ui.colored_label(ui.tokens().color.success, "💬");
                 ui.label(reply);
             });
         }
 
         if let Some(tokens) = trace.token_summary() {
-            ui.colored_label(theme::TEXT_MUTED, tokens);
+            ui.colored_label(ui.tokens().color.text_muted, tokens);
         }
     });
 
@@ -264,9 +268,9 @@ pub fn trace_step(ui: &mut Ui, step: &TraceStep) {
         TraceKind::Note => "•",
     };
     let colour = if step.ok {
-        theme::TEXT_MUTED
+        ui.tokens().color.text_muted
     } else {
-        theme::ACCENT_RED
+        ui.tokens().color.accent_red
     };
 
     ui.horizontal_wrapped(|ui| {

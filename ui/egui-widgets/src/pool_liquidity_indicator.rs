@@ -6,7 +6,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 
 // ============================================================================
 // Types
@@ -74,10 +74,10 @@ pub fn show(ui: &mut Ui, pools: &[PoolInfo], config: &PoolLiquidityConfig) {
         }
 
         egui::Frame::new()
-            .fill(theme::BG_SECONDARY)
+            .fill(ui.tokens().color.bg_secondary)
             .corner_radius(6.0)
             .inner_margin(10.0)
-            .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+            .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
             .show(ui, |ui| {
                 draw_pool_card(ui, pool, max_reserves, config);
             });
@@ -98,7 +98,7 @@ fn draw_pool_card(ui: &mut Ui, pool: &PoolInfo, max_reserves: u64, config: &Pool
         // DEX label
         ui.label(
             RichText::new(&pool.dex_label)
-                .color(theme::TEXT_PRIMARY)
+                .color(ui.tokens().color.text_primary)
                 .strong()
                 .size(config.font_size),
         );
@@ -108,7 +108,7 @@ fn draw_pool_card(ui: &mut Ui, pool: &PoolInfo, max_reserves: u64, config: &Pool
         let fee_text = format!("{fee_pct:.1}%");
         ui.label(
             RichText::new(fee_text)
-                .color(theme::TEXT_MUTED)
+                .color(ui.tokens().color.text_muted)
                 .size(config.font_size - 1.0),
         );
 
@@ -144,7 +144,7 @@ fn draw_pool_card(ui: &mut Ui, pool: &PoolInfo, max_reserves: u64, config: &Pool
         let rounding = CornerRadius::same(2);
 
         // Track
-        painter.rect_filled(bar_rect, rounding, theme::BG_HIGHLIGHT);
+        painter.rect_filled(bar_rect, rounding, ui.tokens().color.bg_highlight);
 
         // Fill
         if depth_fraction > 0.0 {
@@ -171,14 +171,14 @@ fn draw_pool_card(ui: &mut Ui, pool: &PoolInfo, max_reserves: u64, config: &Pool
         let tvl_ada = pool.ada_reserves as f64 / 1_000_000.0;
         ui.label(
             RichText::new(format!("TVL: {}", format_ada_compact(tvl_ada)))
-                .color(theme::TEXT_SECONDARY)
+                .color(ui.tokens().color.text_secondary)
                 .size(config.font_size),
         );
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.label(
                 RichText::new(format!("Spot: {:.6} ADA", pool.spot_price))
-                    .color(theme::TEXT_SECONDARY)
+                    .color(ui.tokens().color.text_secondary)
                     .size(config.font_size),
             );
         });
@@ -186,17 +186,17 @@ fn draw_pool_card(ui: &mut Ui, pool: &PoolInfo, max_reserves: u64, config: &Pool
 
     // Price impact row
     let impact_color = if pool.price_impact >= config.impact_danger_threshold {
-        theme::ACCENT_RED
+        ui.tokens().color.accent_red
     } else if pool.price_impact >= config.impact_warn_threshold {
-        theme::ACCENT_YELLOW
+        ui.tokens().color.accent_yellow
     } else {
-        theme::ACCENT_GREEN
+        ui.tokens().color.accent_green
     };
 
     ui.horizontal(|ui| {
         ui.label(
             RichText::new("Price impact")
-                .color(theme::TEXT_MUTED)
+                .color(ui.tokens().color.text_muted)
                 .size(config.font_size),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

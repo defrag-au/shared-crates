@@ -237,7 +237,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
                             );
                             ui.label(
                                 egui::RichText::new(format!("{ltv:.1}%"))
-                                    .color(egui_widgets::exposure_bar::ltv_risk_color(ltv))
+                                    .color(egui_widgets::exposure_bar::ltv_risk_color(
+                                        ltv,
+                                        &egui_widgets::theme::ThemeExt::tokens(ui),
+                                    ))
                                     .size(11.0)
                                     .strong(),
                             );

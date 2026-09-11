@@ -13,6 +13,9 @@ fn make_impact_fn() -> Box<price_impact_curve::PriceImpactFn> {
 }
 
 pub fn show(ui: &mut egui::Ui) {
+    // The DEX series ramp comes from the active theme now, so the fixtures have
+    // to resolve it rather than name a constant.
+    let t = egui_widgets::theme::ThemeExt::tokens(ui);
     let impact_fn = make_impact_fn();
 
     ui.label(
@@ -61,7 +64,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let pools = vec![
                     ImpactCurvePool {
                         label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         ada_reserves: 90_000_000_000, // 90K ADA
                         token_reserves: 800_000_000,
                         fee_bps: 78,
@@ -69,7 +72,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     ImpactCurvePool {
                         label: "CSWAP".into(),
-                        color: dex_color(1),
+                        color: dex_color(1, &t),
                         ada_reserves: 30_000_000_000, // 30K ADA
                         token_reserves: 270_000_000,
                         fee_bps: 85,
@@ -114,7 +117,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let pools = vec![
                     ImpactCurvePool {
                         label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         ada_reserves: 90_000_000_000,
                         token_reserves: 800_000_000,
                         fee_bps: 78,
@@ -122,7 +125,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     ImpactCurvePool {
                         label: "CSWAP".into(),
-                        color: dex_color(1),
+                        color: dex_color(1, &t),
                         ada_reserves: 30_000_000_000,
                         token_reserves: 270_000_000,
                         fee_bps: 85,
@@ -167,7 +170,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let pools = vec![
                     ImpactCurvePool {
                         label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         ada_reserves: 120_000_000_000, // 120K ADA
                         token_reserves: 1_050_000_000,
                         fee_bps: 78,
@@ -175,7 +178,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     ImpactCurvePool {
                         label: "Minswap".into(),
-                        color: dex_color(1),
+                        color: dex_color(1, &t),
                         ada_reserves: 60_000_000_000, // 60K ADA
                         token_reserves: 525_000_000,
                         fee_bps: 30,
@@ -183,7 +186,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     ImpactCurvePool {
                         label: "CSWAP".into(),
-                        color: dex_color(2),
+                        color: dex_color(2, &t),
                         ada_reserves: 25_000_000_000, // 25K ADA
                         token_reserves: 220_000_000,
                         fee_bps: 85,

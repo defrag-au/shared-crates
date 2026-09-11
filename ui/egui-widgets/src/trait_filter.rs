@@ -6,7 +6,7 @@
 //! ("background: red") and its value alone ("red"), so typing either
 //! a category prefix or a value prefix finds matching entries.
 
-use crate::theme;
+use crate::theme::ThemeExt;
 use egui::{Color32, Rect, RichText, Vec2};
 use std::collections::HashSet;
 
@@ -294,9 +294,9 @@ pub fn show(
             .fixed_pos(egui::pos2(input_rect.min.x, input_rect.max.y + 2.0))
             .show(ui.ctx(), |ui| {
                 egui::Frame::new()
-                    .fill(theme::BG_SECONDARY)
+                    .fill(ui.tokens().color.bg_secondary)
                     .corner_radius(4.0)
-                    .stroke(egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT))
+                    .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.bg_highlight))
                     .inner_margin(6.0)
                     .show(ui, |ui| {
                         ui.set_max_width(input_rect.width().max(200.0));
@@ -327,14 +327,14 @@ pub fn show(
             .fixed_pos(egui::pos2(input_rect.min.x, input_rect.max.y + 2.0))
             .show(ui.ctx(), |ui| {
                 egui::Frame::new()
-                    .fill(theme::BG_SECONDARY)
+                    .fill(ui.tokens().color.bg_secondary)
                     .corner_radius(4.0)
-                    .stroke(egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT))
+                    .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.bg_highlight))
                     .inner_margin(6.0)
                     .show(ui, |ui| {
                         ui.label(
                             RichText::new("No matching traits")
-                                .color(theme::TEXT_MUTED)
+                                .color(ui.tokens().color.text_muted)
                                 .size(10.0),
                         );
                     });
@@ -428,7 +428,7 @@ fn paint_suggestions(
         for (category, items) in &groups {
             ui.label(
                 RichText::new(*category)
-                    .color(theme::TEXT_MUTED)
+                    .color(ui.tokens().color.text_muted)
                     .size(9.0)
                     .strong(),
             );
@@ -440,14 +440,14 @@ fn paint_suggestions(
                 let resp = ui.horizontal(|ui| {
                     ui.add_space(8.0);
                     let bg = if is_cursor {
-                        theme::BG_HIGHLIGHT
+                        ui.tokens().color.bg_highlight
                     } else {
                         Color32::TRANSPARENT
                     };
                     let text_color = if is_cursor {
-                        theme::ACCENT_CYAN
+                        ui.tokens().color.accent_cyan
                     } else {
-                        theme::TEXT_PRIMARY
+                        ui.tokens().color.text_primary
                     };
 
                     let resp =
@@ -489,12 +489,12 @@ fn paint_suggestions(
             let entry = &entries[entry_idx];
             let is_cursor = cursor == Some(suggestion_pos);
             let text_color = if is_cursor {
-                theme::ACCENT_CYAN
+                ui.tokens().color.accent_cyan
             } else {
-                theme::TEXT_PRIMARY
+                ui.tokens().color.text_primary
             };
             let bg = if is_cursor {
-                theme::BG_HIGHLIGHT
+                ui.tokens().color.bg_highlight
             } else {
                 Color32::TRANSPARENT
             };

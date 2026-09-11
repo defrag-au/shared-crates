@@ -8,7 +8,7 @@
 use egui::{Color32, RichText};
 
 use crate::buttons::UiButtonExt;
-use crate::theme;
+use crate::theme::ThemeExt;
 
 // ============================================================================
 // Types
@@ -49,7 +49,8 @@ pub struct AmountInputConfig {
     /// Minimum ADA required for a valid swap.
     pub min_ada: f64,
     /// Accent color for selected/active states.
-    pub accent: Color32,
+    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
+    pub accent: Option<Color32>,
 }
 
 impl Default for AmountInputConfig {
@@ -58,7 +59,7 @@ impl Default for AmountInputConfig {
             presets: vec![100, 250, 500],
             max_ada: None,
             min_ada: 5.0,
-            accent: theme::ACCENT,
+            accent: None,
         }
     }
 }
@@ -92,6 +93,11 @@ pub fn show(
     state: &mut AmountInputState,
     config: &AmountInputConfig,
 ) -> AmountInputResponse {
+    // Resolved once, ahead of the closures: a `Default` config cannot know the
+    // theme, so the accent arrives here.
+    let t = ui.tokens();
+    let accent = config.accent.unwrap_or(t.color.accent);
+    let on_accent = t.color.bg_primary;
     let mut action = AmountInputAction::None;
 
     // Preset buttons row
@@ -99,7 +105,7 @@ pub fn show(
         for (idx, &ada) in config.presets.iter().enumerate() {
             let is_selected = state.selected_preset == Some(idx);
             let label = format!("{ada} ADA");
-            let btn = toggle_button(&label, is_selected, config.accent);
+            let btn = toggle_button(&label, is_selected, accent, on_accent);
 
             if ui.add_clickable(btn).clicked() {
                 state.selected_preset = Some(idx);
@@ -118,17 +124,17 @@ pub fn show(
             let btn = if is_max {
                 egui::Button::new(
                     RichText::new("MAX")
-                        .color(theme::BG_PRIMARY)
+                        .color(ui.tokens().color.bg_primary)
                         .strong()
                         .size(10.0),
                 )
-                .fill(config.accent)
+                .fill(accent)
                 .corner_radius(4.0)
                 .min_size(egui::vec2(40.0, 28.0))
             } else {
-                egui::Button::new(RichText::new("MAX").color(config.accent).size(10.0))
+                egui::Button::new(RichText::new("MAX").color(accent).size(10.0))
                     .fill(Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::new(1.0_f32, config.accent))
+                    .stroke(egui::Stroke::new(1.0_f32, accent))
                     .corner_radius(4.0)
                     .min_size(egui::vec2(40.0, 28.0))
             };
@@ -154,7 +160,11 @@ pub fn show(
                     .font(egui::FontId::monospace(14.0))
                     .hint_text("Amount"),
             );
-            ui.label(RichText::new("ADA").color(theme::TEXT_MUTED).size(12.0));
+            ui.label(
+                RichText::new("ADA")
+                    .color(ui.tokens().color.text_muted)
+                    .size(12.0),
+            );
 
             if response.changed() {
                 state.selected_preset = None;
@@ -180,14 +190,14 @@ pub fn show(
         if ada < config.min_ada {
             ui.label(
                 RichText::new(format!("Minimum {:.0} ADA required", config.min_ada))
-                    .color(theme::WARNING)
+                    .color(ui.tokens().color.warning)
                     .size(10.0),
             );
         }
     } else if !state.text.is_empty() {
         ui.label(
             RichText::new("Enter a valid ADA amount")
-                .color(theme::ERROR)
+                .color(ui.tokens().color.error)
                 .size(10.0),
         );
     }
@@ -203,17 +213,20 @@ pub fn show(
 // ============================================================================
 
 /// Create a toggle-style button (filled when selected, outline when not).
-fn toggle_button(label: &str, selected: bool, accent: Color32) -> egui::Button<'_> {
+/// `on_accent` is the text colour for the filled state — the page background, so
+/// the label reads against the accent fill. Passed in because this helper has no
+/// `Ui` to ask the theme with.
+fn toggle_button(
+    label: &str,
+    selected: bool,
+    accent: Color32,
+    on_accent: Color32,
+) -> egui::Button<'_> {
     if selected {
-        egui::Button::new(
-            RichText::new(label)
-                .color(theme::BG_PRIMARY)
-                .strong()
-                .size(11.0),
-        )
-        .fill(accent)
-        .corner_radius(4.0)
-        .min_size(egui::vec2(70.0, 28.0))
+        egui::Button::new(RichText::new(label).color(on_accent).strong().size(11.0))
+            .fill(accent)
+            .corner_radius(4.0)
+            .min_size(egui::vec2(70.0, 28.0))
     } else {
         egui::Button::new(RichText::new(label).color(accent).size(11.0))
             .fill(Color32::TRANSPARENT)

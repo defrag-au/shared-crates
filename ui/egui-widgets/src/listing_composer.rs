@@ -18,7 +18,7 @@ use egui::{RichText, Ui};
 
 use crate::amount_input::parse_ada_input;
 use crate::icons::PhosphorIcon;
-use crate::theme;
+use crate::theme::ThemeExt;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -254,7 +254,7 @@ pub fn show(
     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
         ui.label(
             RichText::new(config.title)
-                .color(theme::ACCENT_CYAN)
+                .color(ui.tokens().color.accent_cyan)
                 .size(size + 2.0)
                 .strong(),
         );
@@ -265,7 +265,7 @@ pub fn show(
                 fee_label(config.formula),
                 ada(floor_reach(config))
             ))
-            .color(theme::TEXT_MUTED)
+            .color(ui.tokens().color.text_muted)
             .size(small),
         );
         ui.add_space(6.0);
@@ -273,7 +273,7 @@ pub fn show(
         if state.rows.is_empty() {
             ui.label(
                 RichText::new("Nothing to price yet — pick assets to list.")
-                    .color(theme::TEXT_MUTED)
+                    .color(ui.tokens().color.text_muted)
                     .size(size),
             );
             return;
@@ -291,10 +291,10 @@ pub fn show(
             .min_col_width(88.0)
             .spacing(egui::vec2(14.0, 6.0))
             .show(ui, |ui| {
-                ui.label(text("Asset", theme::TEXT_MUTED, small));
-                ui.label(text("Buyer pays ₳", theme::TEXT_MUTED, small));
-                ui.label(text("Fee", theme::TEXT_MUTED, small));
-                ui.label(text("You receive", theme::TEXT_MUTED, small));
+                ui.label(text("Asset", ui.tokens().color.text_muted, small));
+                ui.label(text("Buyer pays ₳", ui.tokens().color.text_muted, small));
+                ui.label(text("Fee", ui.tokens().color.text_muted, small));
+                ui.label(text("You receive", ui.tokens().color.text_muted, small));
                 ui.label("");
                 ui.end_row();
 
@@ -309,11 +309,15 @@ pub fn show(
                         } else {
                             row.label.clone()
                         };
-                        ui.add(egui::Label::new(text(&name, theme::TEXT_PRIMARY, size)).truncate());
+                        ui.add(
+                            egui::Label::new(text(&name, ui.tokens().color.text_primary, size))
+                                .truncate(),
+                        );
                         if !row.detail.is_empty() {
                             ui.add(
                                 egui::Label::new(
-                                    text(&row.detail, theme::TEXT_MUTED, small).monospace(),
+                                    text(&row.detail, ui.tokens().color.text_muted, small)
+                                        .monospace(),
                                 )
                                 .truncate(),
                             );
@@ -328,11 +332,19 @@ pub fn show(
                     }
                     match quote {
                         RowQuote::Ready(split) => {
-                            ui.label(text(&ada(split.fee), theme::TEXT_SECONDARY, size));
-                            ui.label(text(&ada(split.payout), theme::ACCENT_GREEN, size));
+                            ui.label(text(
+                                &ada(split.fee),
+                                ui.tokens().color.text_secondary,
+                                size,
+                            ));
+                            ui.label(text(
+                                &ada(split.payout),
+                                ui.tokens().color.accent_green,
+                                size,
+                            ));
                         }
                         RowQuote::Blocked(problem) => {
-                            ui.label(text(problem.label(), theme::WARNING, small));
+                            ui.label(text(problem.label(), ui.tokens().color.warning, small));
                             ui.label("");
                         }
                     }
@@ -342,8 +354,10 @@ pub fn show(
                     // remove affordance.
                     if ui
                         .add(
-                            egui::Button::new(PhosphorIcon::X.rich_text(small, theme::TEXT_MUTED))
-                                .frame(false),
+                            egui::Button::new(
+                                PhosphorIcon::X.rich_text(small, ui.tokens().color.text_muted),
+                            )
+                            .frame(false),
                         )
                         .on_hover_text("Remove")
                         .clicked()
@@ -358,10 +372,17 @@ pub fn show(
                 } else {
                     format!("{} of {} priced", totals.ready, totals.rows)
                 };
-                ui.label(text(&ready, theme::TEXT_SECONDARY, size).strong());
-                ui.label(text(&ada(totals.buyer_pays), theme::TEXT_PRIMARY, size).strong());
-                ui.label(text(&ada(totals.fee), theme::TEXT_SECONDARY, size).strong());
-                ui.label(text(&ada(totals.payout), theme::ACCENT_GREEN, size).strong());
+                ui.label(text(&ready, ui.tokens().color.text_secondary, size).strong());
+                ui.label(
+                    text(
+                        &ada(totals.buyer_pays),
+                        ui.tokens().color.text_primary,
+                        size,
+                    )
+                    .strong(),
+                );
+                ui.label(text(&ada(totals.fee), ui.tokens().color.text_secondary, size).strong());
+                ui.label(text(&ada(totals.payout), ui.tokens().color.accent_green, size).strong());
                 ui.label("");
                 ui.end_row();
             });
@@ -375,7 +396,7 @@ pub fn show(
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new("Set every row to")
-                    .color(theme::TEXT_MUTED)
+                    .color(ui.tokens().color.text_muted)
                     .size(small),
             );
             ui.add(

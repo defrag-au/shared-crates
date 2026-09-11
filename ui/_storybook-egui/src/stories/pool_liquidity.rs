@@ -6,6 +6,9 @@ use egui_widgets::split_allocation_bar::dex_color;
 use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
 
 pub fn show(ui: &mut egui::Ui) {
+    // The DEX series ramp comes from the active theme now, so the fixtures have
+    // to resolve it rather than name a constant.
+    let t = egui_widgets::theme::ThemeExt::tokens(ui);
     ui.label(
         egui::RichText::new("PoolLiquidityIndicator Widget")
             .color(ACCENT)
@@ -44,7 +47,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let pools = vec![
                     PoolInfo {
                         dex_label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         ada_reserves: 2_500_000_000_000,
                         token_reserves: 22_000_000_000,
                         fee_bps: 30,
@@ -54,7 +57,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     PoolInfo {
                         dex_label: "CSWAP".into(),
-                        color: dex_color(1),
+                        color: dex_color(1, &t),
                         ada_reserves: 800_000_000_000,
                         token_reserves: 7_100_000_000,
                         fee_bps: 30,
@@ -88,7 +91,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let pools = vec![
                     PoolInfo {
                         dex_label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         ada_reserves: 500_000_000_000,
                         token_reserves: 4_400_000_000,
                         fee_bps: 30,
@@ -98,7 +101,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     PoolInfo {
                         dex_label: "CSWAP".into(),
-                        color: dex_color(1),
+                        color: dex_color(1, &t),
                         ada_reserves: 150_000_000_000,
                         token_reserves: 1_300_000_000,
                         fee_bps: 50,
@@ -132,7 +135,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let pools = vec![
                     PoolInfo {
                         dex_label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         ada_reserves: 3_000_000_000_000,
                         token_reserves: 26_000_000_000,
                         fee_bps: 30,
@@ -142,7 +145,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     PoolInfo {
                         dex_label: "Minswap".into(),
-                        color: dex_color(1),
+                        color: dex_color(1, &t),
                         ada_reserves: 1_200_000_000_000,
                         token_reserves: 10_500_000_000,
                         fee_bps: 30,
@@ -152,7 +155,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     PoolInfo {
                         dex_label: "CSWAP".into(),
-                        color: dex_color(2),
+                        color: dex_color(2, &t),
                         ada_reserves: 400_000_000_000,
                         token_reserves: 3_500_000_000,
                         fee_bps: 50,

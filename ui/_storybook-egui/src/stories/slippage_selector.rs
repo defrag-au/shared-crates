@@ -99,7 +99,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut SlippageSelectorStoryState) {
                             label: "5%".into(),
                         },
                     ],
-                    accent: egui_widgets::theme::ACCENT_CYAN,
+                    // `Some` is the point of this story: it demonstrates the
+                    // caller OVERRIDING the theme's accent.
+                    accent: Some(egui_widgets::theme::ThemeExt::tokens(ui).color.accent_cyan),
                     ..Default::default()
                 };
                 let action = slippage_selector::show(ui, &mut state.custom_presets_state, &config);

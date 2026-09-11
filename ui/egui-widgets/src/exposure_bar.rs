@@ -7,7 +7,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 
 // ============================================================================
 // Types
@@ -34,7 +34,8 @@ pub struct ExposureBarConfig {
     /// Corner radius.
     pub corner_radius: u8,
     /// Background color for the track.
-    pub bg_color: Color32,
+    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
+    pub bg_color: Option<Color32>,
     /// Whether to show the legend row below the bar.
     pub show_legend: bool,
     /// Whether to show "Total Exposure: X ADA" header above the bar.
@@ -54,7 +55,7 @@ impl Default for ExposureBarConfig {
         Self {
             bar_height: 24.0,
             corner_radius: 4,
-            bg_color: theme::BG_SECONDARY,
+            bg_color: None,
             show_legend: true,
             show_total: true,
             min_label_width: 40.0,
@@ -74,13 +75,17 @@ impl Default for ExposureBarConfig {
 /// - Green (< 50%): well-collateralised
 /// - Amber (< 80%): moderate risk
 /// - Red (>= 80%): high risk / under-collateralised
-pub fn ltv_risk_color(ltv_pct: f64) -> Color32 {
+///
+/// Takes the theme rather than reading one: the caller may be painting into a
+/// table cell with no widget of its own, and a baked palette would put the risk
+/// ramp beyond a theme's reach.
+pub fn ltv_risk_color(ltv_pct: f64, t: &crate::theme::Theme) -> Color32 {
     if ltv_pct < 50.0 {
-        theme::SUCCESS
+        t.color.success
     } else if ltv_pct < 80.0 {
-        theme::WARNING
+        t.color.warning
     } else {
-        theme::ERROR
+        t.color.error
     }
 }
 
@@ -102,7 +107,7 @@ pub fn show(ui: &mut Ui, segments: &[ExposureSegment], config: &ExposureBarConfi
                 "Total Exposure: {}",
                 crate::utils::format_lovelace(total_lovelace as i64)
             ))
-            .color(theme::TEXT_PRIMARY)
+            .color(ui.tokens().color.text_primary)
             .size(config.total_size)
             .strong(),
         );
@@ -118,7 +123,11 @@ pub fn show(ui: &mut Ui, segments: &[ExposureSegment], config: &ExposureBarConfi
         let rounding = CornerRadius::same(config.corner_radius);
 
         // Background track
-        painter.rect_filled(rect, rounding, config.bg_color);
+        painter.rect_filled(
+            rect,
+            rounding,
+            config.bg_color.unwrap_or(ui.tokens().color.bg_secondary),
+        );
 
         // Paint segments left to right — fill color from LTV risk
         let mut x = rect.min.x;
@@ -147,7 +156,7 @@ pub fn show(ui: &mut Ui, segments: &[ExposureSegment], config: &ExposureBarConfi
             };
 
             // Fill color from LTV risk — this is the key difference from SplitAllocationBar
-            let fill_color = ltv_risk_color(seg.ltv_pct);
+            let fill_color = ltv_risk_color(seg.ltv_pct, &ui.tokens());
             painter.rect_filled(seg_rect, seg_rounding, fill_color);
 
             // Percentage label inside segment (if wide enough)
@@ -158,7 +167,7 @@ pub fn show(ui: &mut Ui, segments: &[ExposureSegment], config: &ExposureBarConfi
                     egui::Align2::CENTER_CENTER,
                     pct_text,
                     egui::FontId::proportional(config.label_size),
-                    theme::BG_PRIMARY,
+                    ui.tokens().color.bg_primary,
                 );
             }
 
@@ -203,7 +212,7 @@ pub fn show(ui: &mut Ui, segments: &[ExposureSegment], config: &ExposureBarConfi
                 let ada = seg.principal_lovelace as f64 / 1_000_000.0;
                 ui.label(
                     RichText::new(format!("{} {ada:.0} ADA ({:.1}%)", seg.label, seg.ltv_pct))
-                        .color(theme::TEXT_SECONDARY)
+                        .color(ui.tokens().color.text_secondary)
                         .size(config.legend_size),
                 );
                 ui.add_space(8.0);

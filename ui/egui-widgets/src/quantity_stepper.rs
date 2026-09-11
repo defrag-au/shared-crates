@@ -13,7 +13,7 @@
 use egui::{Color32, RichText, Ui, Vec2};
 
 use crate::icons::PhosphorIcon;
-use crate::theme;
+use crate::theme::ThemeExt;
 
 /// A `−  [n]  +` quantity control.
 pub struct QuantityStepper {
@@ -22,7 +22,8 @@ pub struct QuantityStepper {
     max: u32,
     button_size: f32,
     readout_width: f32,
-    accent: Color32,
+    /// `None` asks the theme at render time — a `new` has no `Ui` to ask.
+    accent: Option<Color32>,
 }
 
 /// What the caller does with the stepper's outcome.
@@ -43,7 +44,7 @@ impl QuantityStepper {
             max: u32::MAX,
             button_size: 40.0,
             readout_width: 56.0,
-            accent: theme::ACCENT_GREEN,
+            accent: None,
         }
     }
 
@@ -68,7 +69,7 @@ impl QuantityStepper {
 
     /// Readout number colour (default `ACCENT_GREEN`).
     pub fn accent(mut self, accent: Color32) -> Self {
-        self.accent = accent;
+        self.accent = Some(accent);
         self
     }
 
@@ -85,9 +86,11 @@ impl QuantityStepper {
             // − (disabled at min)
             let dec = ui.add_enabled(
                 value > self.min,
-                egui::Button::new(PhosphorIcon::Minus.rich_text(16.0, theme::TEXT_PRIMARY))
-                    .min_size(btn)
-                    .corner_radius(6.0),
+                egui::Button::new(
+                    PhosphorIcon::Minus.rich_text(16.0, ui.tokens().color.text_primary),
+                )
+                .min_size(btn)
+                .corner_radius(6.0),
             );
             if dec.clicked() {
                 value = value.saturating_sub(1).max(self.min);
@@ -98,8 +101,8 @@ impl QuantityStepper {
 
             // [n] readout — fixed box, centred, same height as the buttons.
             egui::Frame::new()
-                .fill(theme::BG_PRIMARY)
-                .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+                .fill(ui.tokens().color.bg_primary)
+                .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
                 .corner_radius(6.0)
                 .show(ui, |ui| {
                     ui.allocate_ui_with_layout(
@@ -110,7 +113,7 @@ impl QuantityStepper {
                                 RichText::new(value.to_string())
                                     .size(20.0)
                                     .strong()
-                                    .color(self.accent),
+                                    .color(self.accent.unwrap_or(ui.tokens().color.accent_green)),
                             );
                         },
                     );
@@ -119,9 +122,11 @@ impl QuantityStepper {
             // + (disabled at max)
             let inc = ui.add_enabled(
                 value < self.max,
-                egui::Button::new(PhosphorIcon::Plus.rich_text(16.0, theme::TEXT_PRIMARY))
-                    .min_size(btn)
-                    .corner_radius(6.0),
+                egui::Button::new(
+                    PhosphorIcon::Plus.rich_text(16.0, ui.tokens().color.text_primary),
+                )
+                .min_size(btn)
+                .corner_radius(6.0),
             );
             if inc.clicked() {
                 value = (value + 1).min(self.max);

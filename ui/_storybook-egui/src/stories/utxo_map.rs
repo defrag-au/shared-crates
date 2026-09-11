@@ -232,7 +232,7 @@ pub fn show(
                     ))
                     .monospace()
                     .size(10.0)
-                    .color(utxo.tier.color()),
+                    .color(utxo.tier.color(&egui_widgets::theme::ThemeExt::tokens(ui))),
                 );
             }
         } else {
@@ -276,7 +276,7 @@ pub fn show(
                             egui::RichText::new(format!("{ada:.6} ADA"))
                                 .size(16.0)
                                 .strong()
-                                .color(utxo.tier.color()),
+                                .color(utxo.tier.color(&egui_widgets::theme::ThemeExt::tokens(ui))),
                         );
 
                         // Tier badge + description
@@ -285,7 +285,9 @@ pub fn show(
                                 egui::RichText::new(utxo.tier.label())
                                     .size(11.0)
                                     .strong()
-                                    .color(utxo.tier.color()),
+                                    .color(
+                                        utxo.tier.color(&egui_widgets::theme::ThemeExt::tokens(ui)),
+                                    ),
                             );
                             ui.label(
                                 egui::RichText::new(format!(

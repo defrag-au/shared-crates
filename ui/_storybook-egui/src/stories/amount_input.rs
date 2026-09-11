@@ -92,7 +92,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut AmountInputStoryState) {
                     presets: vec![50, 200, 500, 1000],
                     max_ada: Some(1234.0),
                     min_ada: 10.0,
-                    accent: egui_widgets::theme::ACCENT_CYAN,
+                    // `Some` is the point of this story: it demonstrates the
+                    // caller OVERRIDING the theme's accent. `None` would take
+                    // the theme's, which the story beside it already shows.
+                    accent: Some(egui_widgets::theme::ThemeExt::tokens(ui).color.accent_cyan),
                 };
                 let resp = amount_input::show(ui, &mut state.with_max_state, &config);
                 match resp.action {

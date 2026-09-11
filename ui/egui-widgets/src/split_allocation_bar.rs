@@ -7,7 +7,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::{self, ThemeExt};
 
 // ============================================================================
 // Types
@@ -32,7 +32,8 @@ pub struct SplitAllocationBarConfig {
     /// Corner radius.
     pub corner_radius: u8,
     /// Background color for empty/unfilled region.
-    pub bg_color: Color32,
+    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
+    pub bg_color: Option<Color32>,
     /// Minimum segment width (pixels) to show percentage label inside.
     pub min_label_width: f32,
     /// Whether to show the legend row below the bar.
@@ -51,7 +52,7 @@ impl Default for SplitAllocationBarConfig {
         Self {
             bar_height: 20.0,
             corner_radius: 4,
-            bg_color: theme::BG_SECONDARY,
+            bg_color: None,
             min_label_width: 40.0,
             show_legend: true,
             show_tooltip: true,
@@ -66,16 +67,18 @@ impl Default for SplitAllocationBarConfig {
 // ============================================================================
 
 /// Get a color for a DEX by index. Cycles through the accent palette.
-pub fn dex_color(index: usize) -> Color32 {
-    const PALETTE: &[Color32] = &[
-        theme::ACCENT_CYAN,
-        theme::ACCENT_MAGENTA,
-        theme::ACCENT_YELLOW,
-        theme::ACCENT_ORANGE,
-        theme::ACCENT_GREEN,
-        theme::ACCENT_BLUE,
+pub fn dex_color(index: usize, t: &theme::Theme) -> Color32 {
+    // A `let`, not a `const`: the palette comes from the active theme now, and a
+    // const could only ever bake one.
+    let palette = [
+        t.color.accent_cyan,
+        t.color.accent_magenta,
+        t.color.accent_yellow,
+        t.color.accent_orange,
+        t.color.accent_green,
+        t.color.accent_blue,
     ];
-    PALETTE[index % PALETTE.len()]
+    palette[index % palette.len()]
 }
 
 // ============================================================================
@@ -105,7 +108,11 @@ pub fn show(
         let rounding = CornerRadius::same(config.corner_radius);
 
         // Background track
-        painter.rect_filled(rect, rounding, config.bg_color);
+        painter.rect_filled(
+            rect,
+            rounding,
+            config.bg_color.unwrap_or(ui.tokens().color.bg_secondary),
+        );
 
         // Paint segments left to right
         let mut x = rect.min.x;
@@ -143,7 +150,7 @@ pub fn show(
                     egui::Align2::CENTER_CENTER,
                     pct_text,
                     egui::FontId::proportional(config.label_size),
-                    theme::BG_PRIMARY,
+                    ui.tokens().color.bg_primary,
                 );
             }
 
@@ -190,7 +197,7 @@ pub fn show(
                 let pct = (seg.fraction * 100.0).round() as u32;
                 ui.label(
                     RichText::new(format!("{} {pct}%", seg.label))
-                        .color(theme::TEXT_SECONDARY)
+                        .color(ui.tokens().color.text_secondary)
                         .size(config.legend_size),
                 );
                 ui.add_space(8.0);

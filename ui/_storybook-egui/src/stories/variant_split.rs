@@ -4,12 +4,20 @@ use egui_widgets::variant_split::{self, VariantSegment, VariantSplitConfig};
 
 use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
 
-fn seg(variant: &str, share: f32, assets: usize, i: usize) -> VariantSegment {
+/// Takes the theme because the variant ramp is a theme decision now, and a
+/// fixture builder has no `Ui` of its own.
+fn seg(
+    variant: &str,
+    share: f32,
+    assets: usize,
+    i: usize,
+    t: &egui_widgets::theme::Theme,
+) -> VariantSegment {
     VariantSegment {
         variant: variant.into(),
         share,
         asset_count: assets,
-        color: variant_split::variant_color(i),
+        color: variant_split::variant_color(i, t),
     }
 }
 
@@ -35,6 +43,9 @@ fn card(ui: &mut egui::Ui, title: &str, slot: &str, segments: &[VariantSegment])
 }
 
 pub fn show(ui: &mut egui::Ui) {
+    // The variant ramp comes from the active theme now, so the fixtures resolve
+    // it rather than naming a constant.
+    let t = egui_widgets::theme::ThemeExt::tokens(ui);
     ui.label(
         egui::RichText::new("VariantSplit Widget")
             .color(ACCENT)
@@ -57,7 +68,7 @@ pub fn show(ui: &mut egui::Ui) {
             ui,
             "skin -> clothes (real: 26 a vs 7 b, ~81/19)",
             "skin",
-            &[seg("a", 0.81, 26, 0), seg("b", 0.19, 7, 1)],
+            &[seg("a", 0.81, 26, 0, &t), seg("b", 0.19, 7, 1, &t)],
         );
 
         // Three variants with uneven capacity.
@@ -66,9 +77,9 @@ pub fn show(ui: &mut egui::Ui) {
             "Three variants, uneven capacity",
             "body",
             &[
-                seg("forest", 0.55, 22, 0),
-                seg("desert", 0.30, 12, 1),
-                seg("tundra", 0.15, 6, 2),
+                seg("forest", 0.55, 22, 0, &t),
+                seg("desert", 0.30, 12, 1, &t),
+                seg("tundra", 0.15, 6, 2, &t),
             ],
         );
 
@@ -77,7 +88,7 @@ pub fn show(ui: &mut egui::Ui) {
             ui,
             "Balanced capacity (lands near uniform)",
             "eyes",
-            &[seg("open", 0.5, 15, 0), seg("closed", 0.5, 15, 1)],
+            &[seg("open", 0.5, 15, 0, &t), seg("closed", 0.5, 15, 1, &t)],
         );
     });
 }

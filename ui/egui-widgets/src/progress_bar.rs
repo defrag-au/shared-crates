@@ -8,7 +8,35 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::ThemeExt;
+
+/// What the bar's outline is drawn with.
+///
+/// Three states, so an enum rather than an `Option<Stroke>`: the border can take
+/// the theme's weight and colour (the default, which a `new` cannot resolve), an
+/// explicit stroke, or nothing. The public `border(Option<Stroke>)` setter keeps
+/// its signature and maps onto the latter two.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum BarBorder {
+    /// The active theme's border.
+    #[default]
+    Theme,
+    Custom(Stroke),
+    None,
+}
+
+impl BarBorder {
+    fn resolve(self, ui: &Ui) -> Option<Stroke> {
+        match self {
+            Self::Theme => {
+                let t = ui.tokens();
+                Some(t.geometry.border(t.color.border))
+            }
+            Self::Custom(s) => Some(s),
+            Self::None => None,
+        }
+    }
+}
 
 /// Configuration for a progress bar.
 pub struct ProgressBar {
@@ -20,12 +48,12 @@ pub struct ProgressBar {
     detail: Option<String>,
     /// Whether to show the percentage text centered on the bar.
     show_percentage: bool,
-    /// Fill color for the completed portion.
-    fill_color: Color32,
+    /// Fill color for the completed portion. `None` asks the theme at render
+    /// time — a `new` has no `Ui` to ask.
+    fill_color: Option<Color32>,
     /// Background color for the track.
-    track_color: Color32,
-    /// Border stroke around the bar.
-    border: Option<Stroke>,
+    track_color: Option<Color32>,
+    border: BarBorder,
     /// Bar height in pixels.
     height: f32,
     /// Corner rounding radius.
@@ -40,9 +68,9 @@ impl ProgressBar {
             label: None,
             detail: None,
             show_percentage: false,
-            fill_color: theme::ACCENT,
-            track_color: theme::BG_SECONDARY,
-            border: Some(Stroke::new(1.0_f32, theme::BORDER)),
+            fill_color: None,
+            track_color: None,
+            border: BarBorder::Theme,
             height: 16.0,
             rounding: 4,
         }
@@ -81,13 +109,13 @@ impl ProgressBar {
 
     /// Set the fill color.
     pub fn fill_color(mut self, color: Color32) -> Self {
-        self.fill_color = color;
+        self.fill_color = Some(color);
         self
     }
 
     /// Set the track (background) color.
     pub fn track_color(mut self, color: Color32) -> Self {
-        self.track_color = color;
+        self.track_color = Some(color);
         self
     }
 
@@ -105,7 +133,10 @@ impl ProgressBar {
 
     /// Set the border stroke (or `None` for no border).
     pub fn border(mut self, stroke: Option<Stroke>) -> Self {
-        self.border = stroke;
+        self.border = match stroke {
+            Some(s) => BarBorder::Custom(s),
+            None => BarBorder::None,
+        };
         self
     }
 
@@ -115,11 +146,19 @@ impl ProgressBar {
         if self.label.is_some() || self.detail.is_some() {
             ui.horizontal(|ui| {
                 if let Some(label) = &self.label {
-                    ui.label(RichText::new(label).color(theme::TEXT_SECONDARY).small());
+                    ui.label(
+                        RichText::new(label)
+                            .color(ui.tokens().color.text_secondary)
+                            .small(),
+                    );
                 }
                 if let Some(detail) = &self.detail {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new(detail).color(theme::TEXT_MUTED).small());
+                        ui.label(
+                            RichText::new(detail)
+                                .color(ui.tokens().color.text_muted)
+                                .small(),
+                        );
                     });
                 }
             });
@@ -131,18 +170,23 @@ impl ProgressBar {
         let desired_size = Vec2::new(available_width, self.height);
         let (rect, response) = ui.allocate_exact_size(desired_size, Sense::hover());
 
+        let border = self.border.resolve(ui);
+        let t = ui.tokens();
+        let fill_color = self.fill_color.unwrap_or(t.color.accent);
+        let track_color = self.track_color.unwrap_or(t.color.bg_secondary);
+
         if ui.is_rect_visible(rect) {
             let painter = ui.painter();
             let rounding = CornerRadius::same(self.rounding);
 
             // Track background
-            painter.rect_filled(rect, rounding, self.track_color);
+            painter.rect_filled(rect, rounding, track_color);
 
             // Fill
             if self.fraction > 0.0 {
                 let fill_width = rect.width() * self.fraction;
                 let fill_rect = Rect::from_min_size(rect.min, Vec2::new(fill_width, rect.height()));
-                painter.rect_filled(fill_rect, rounding, self.fill_color);
+                painter.rect_filled(fill_rect, rounding, fill_color);
 
                 // If partially filled, clip the right corners of the fill
                 // to avoid rounding artefacts when the fill doesn't reach the end
@@ -157,13 +201,13 @@ impl ProgressBar {
                             ne: 0,
                             se: 0,
                         },
-                        self.fill_color,
+                        fill_color,
                     );
                 }
             }
 
             // Border
-            if let Some(stroke) = self.border {
+            if let Some(stroke) = border {
                 painter.rect_stroke(rect, rounding, stroke, StrokeKind::Outside);
             }
 
@@ -175,7 +219,7 @@ impl ProgressBar {
                     egui::Align2::CENTER_CENTER,
                     pct_text,
                     egui::FontId::proportional(self.height * 0.65),
-                    theme::TEXT_PRIMARY,
+                    ui.tokens().color.text_primary,
                 );
             }
         }

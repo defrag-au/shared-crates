@@ -26,7 +26,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 
 pub struct BulletBar {
     value: f32,
@@ -38,9 +38,10 @@ pub struct BulletBar {
     detail: Option<String>,
     height: f32,
     rounding: u8,
-    fill_color: Color32,
-    track_color: Color32,
-    target_color: Color32,
+    /// `None` asks the theme at render time — a `new` has no `Ui` to ask.
+    fill_color: Option<Color32>,
+    track_color: Option<Color32>,
+    target_color: Option<Color32>,
     /// If set, the fill switches to this color when the value is within
     /// [`tolerance`](Self::tolerance) of the target (a "met goal" cue).
     good_color: Option<Color32>,
@@ -75,9 +76,9 @@ impl BulletBar {
             detail: None,
             height: 14.0,
             rounding: 3,
-            fill_color: theme::ACCENT_BLUE,
-            track_color: theme::BG_SECONDARY,
-            target_color: theme::TEXT_PRIMARY,
+            fill_color: None,
+            track_color: None,
+            target_color: None,
             good_color: None,
             tolerance: 0.0,
             show_percent: false,
@@ -105,17 +106,17 @@ impl BulletBar {
     }
 
     pub fn fill_color(mut self, color: Color32) -> Self {
-        self.fill_color = color;
+        self.fill_color = Some(color);
         self
     }
 
     pub fn target_color(mut self, color: Color32) -> Self {
-        self.target_color = color;
+        self.target_color = Some(color);
         self
     }
 
     /// Turn the fill `good` when within `tolerance` (same units as the scale) of
-    /// the target — e.g. `.good_within(theme::SUCCESS, 0.02)` for ±2%.
+    /// the target — e.g. `.good_within(ui.tokens().color.success, 0.02)` for ±2%.
     pub fn good_within(mut self, color: Color32, tolerance: f32) -> Self {
         self.good_color = Some(color);
         self.tolerance = tolerance.abs();
@@ -140,12 +141,16 @@ impl BulletBar {
         if self.label.is_some() || self.detail.is_some() || self.show_percent {
             ui.horizontal(|ui| {
                 if let Some(lbl) = &self.label {
-                    ui.label(RichText::new(lbl).color(theme::TEXT_SECONDARY).size(11.0));
+                    ui.label(
+                        RichText::new(lbl)
+                            .color(ui.tokens().color.text_secondary)
+                            .size(11.0),
+                    );
                 }
                 if self.show_percent {
                     let vc = match self.good_color {
                         Some(c) if met => c,
-                        _ => theme::TEXT_PRIMARY,
+                        _ => ui.tokens().color.text_primary,
                     };
                     ui.label(
                         RichText::new(format!("{:.0}%", value / self.max * 100.0))
@@ -157,22 +162,35 @@ impl BulletBar {
                     // read as a goal.
                     if let Some(t) = target {
                         // Phosphor arrow (the default font has no U+2192 glyph).
-                        crate::PhosphorIcon::ArrowRight.show(ui, 11.0, theme::TEXT_MUTED);
+                        crate::PhosphorIcon::ArrowRight.show(
+                            ui,
+                            11.0,
+                            ui.tokens().color.text_muted,
+                        );
                         ui.label(
                             RichText::new(format!("{:.0}%", t / self.max * 100.0))
-                                .color(theme::TEXT_MUTED)
+                                .color(ui.tokens().color.text_muted)
                                 .size(11.0),
                         );
                     }
                 }
                 if let Some(detail) = &self.detail {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new(detail).color(theme::TEXT_MUTED).size(11.0));
+                        ui.label(
+                            RichText::new(detail)
+                                .color(ui.tokens().color.text_muted)
+                                .size(11.0),
+                        );
                     });
                 }
             });
             ui.add_space(2.0);
         }
+
+        let t = ui.tokens();
+        let track_color = self.track_color.unwrap_or(t.color.bg_secondary);
+        let fill_color = self.fill_color.unwrap_or(t.color.accent_blue);
+        let target_color = self.target_color.unwrap_or(t.color.text_primary);
 
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), self.height), Sense::hover());
@@ -180,12 +198,12 @@ impl BulletBar {
         let rounding = CornerRadius::same(self.rounding);
 
         // Track.
-        painter.rect_filled(rect, rounding, self.track_color);
+        painter.rect_filled(rect, rounding, track_color);
 
         // Value fill.
         let fill = match self.good_color {
             Some(c) if met => c,
-            _ => self.fill_color,
+            _ => fill_color,
         };
         let frac = value / self.max;
         if frac > 0.0 {
@@ -206,7 +224,7 @@ impl BulletBar {
                         egui::pos2(tx, rect.min.y - 2.0),
                         egui::pos2(tx, rect.max.y + 2.0),
                     ],
-                    Stroke::new(2.0_f32, self.target_color),
+                    Stroke::new(2.0_f32, target_color),
                 );
                 response.on_hover_text(format!("{value:.1} / target {t:.1}"))
             }
@@ -238,12 +256,14 @@ mod tests {
     /// that was never made.
     #[test]
     fn no_target_can_never_be_met() {
-        let b = BulletBar::untargeted(0.0).good_within(theme::SUCCESS, 0.02);
+        let b = BulletBar::untargeted(0.0)
+            .good_within(crate::theme::Theme::tokyo_night().color.success, 0.02);
         let value: f32 = 0.0;
         let met = b.target.is_some_and(|t| (value - t).abs() <= b.tolerance);
         assert!(!met, "0.0 vs an absent target is not a met goal");
 
-        let c = BulletBar::new(0.0, 0.0).good_within(theme::SUCCESS, 0.02);
+        let c = BulletBar::new(0.0, 0.0)
+            .good_within(crate::theme::Theme::tokyo_night().color.success, 0.02);
         let met_zero = c.target.is_some_and(|t| (value - t).abs() <= c.tolerance);
         assert!(met_zero, "0.0 against a stated zero target IS met");
     }

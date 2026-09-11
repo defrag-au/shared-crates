@@ -34,7 +34,7 @@
 
 use egui::{Color32, RichText, Ui};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 use crate::{Chip, ChipVariant, PhosphorIcon};
 
 /// One selectable row in the dropdown. All display strings are caller-formatted.
@@ -102,7 +102,8 @@ pub struct TypeaheadSearch<'a> {
     empty_text: &'a str,
     max_visible_rows: usize,
     autofocus: bool,
-    accent: Color32,
+    /// `None` asks the theme at render time — a `new` has no `Ui` to ask.
+    accent: Option<Color32>,
 }
 
 impl<'a> TypeaheadSearch<'a> {
@@ -123,7 +124,7 @@ impl<'a> TypeaheadSearch<'a> {
             empty_text: "No matches",
             max_visible_rows: 8,
             autofocus: false,
-            accent: theme::ACCENT_CYAN,
+            accent: None,
         }
     }
 
@@ -153,7 +154,7 @@ impl<'a> TypeaheadSearch<'a> {
 
     /// Accent color for the highlighted row and focus ring (default cyan).
     pub fn accent(mut self, color: Color32) -> Self {
-        self.accent = color;
+        self.accent = Some(color);
         self
     }
 
@@ -183,12 +184,15 @@ impl<'a> TypeaheadSearch<'a> {
         // ── Input row: magnifier + single-line edit ──────────────────────
         let edit_id = ui.make_persistent_id((self.id_salt, "edit"));
         let te_response = egui::Frame::new()
-            .fill(theme::BG_SECONDARY)
+            .fill(ui.tokens().color.bg_secondary)
             .corner_radius(8.0)
             .inner_margin(egui::Margin::symmetric(10, 8))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(PhosphorIcon::MagnifyingGlass.rich_text(16.0, theme::TEXT_SECONDARY));
+                    ui.label(
+                        PhosphorIcon::MagnifyingGlass
+                            .rich_text(16.0, ui.tokens().color.text_secondary),
+                    );
                     ui.add_space(4.0);
                     // Frameless edit — the surrounding rounded frame is the
                     // visible affordance. (This egui fork's `frame()` takes a
@@ -198,7 +202,7 @@ impl<'a> TypeaheadSearch<'a> {
                         .frame(egui::Frame::default())
                         .desired_width(f32::INFINITY)
                         .hint_text(self.placeholder)
-                        .text_color(theme::TEXT_PRIMARY);
+                        .text_color(ui.tokens().color.text_primary);
                     ui.add(edit)
                 })
                 .inner
@@ -231,7 +235,7 @@ impl<'a> TypeaheadSearch<'a> {
                 ui.label(
                     RichText::new(self.empty_text)
                         .small()
-                        .color(theme::TEXT_MUTED),
+                        .color(ui.tokens().color.text_muted),
                 );
             }
             return out;
@@ -276,16 +280,16 @@ impl<'a> TypeaheadSearch<'a> {
         // `self.highlight` (the one mutated on hover) — `self.row(&mut self)`
         // would otherwise clash with iterating `self.options`.
         let options = self.options;
-        let accent = self.accent;
+        let accent = self.accent.unwrap_or(ui.tokens().color.accent_cyan);
         let id_salt = self.id_salt;
         let max_visible = self.max_visible_rows;
         let highlight = self.highlight;
 
         ui.add_space(6.0);
         egui::Frame::new()
-            .fill(theme::BG_PRIMARY)
+            .fill(ui.tokens().color.bg_primary)
             .corner_radius(8.0)
-            .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+            .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
             .inner_margin(4.0)
             .show(ui, |ui| {
                 let max_h = row_height * max_visible as f32;
@@ -338,7 +342,8 @@ fn row(
         ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::CLICK);
 
     if highlighted || response.hovered() {
-        ui.painter().rect_filled(rect, 6.0, theme::BG_HIGHLIGHT);
+        ui.painter()
+            .rect_filled(rect, 6.0, ui.tokens().color.bg_highlight);
     }
     if response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -365,11 +370,15 @@ fn row(
         let title_color = if highlighted {
             accent
         } else {
-            theme::TEXT_PRIMARY
+            ui.tokens().color.text_primary
         };
         ui.label(RichText::new(&opt.title).color(title_color).strong());
         if let Some(sub) = &opt.subtitle {
-            ui.label(RichText::new(sub).small().color(theme::TEXT_MUTED));
+            ui.label(
+                RichText::new(sub)
+                    .small()
+                    .color(ui.tokens().color.text_muted),
+            );
         }
     });
 

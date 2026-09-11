@@ -21,7 +21,7 @@
 
 use egui::{Color32, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::{self, ThemeExt};
 
 /// Where in its lifecycle the figures come from. Drives the badge + framing
 /// only; the waterfall shape is identical across modes.
@@ -36,11 +36,13 @@ pub enum WaterfallMode {
 }
 
 impl WaterfallMode {
-    fn badge(self) -> (&'static str, Color32) {
+    /// Takes the theme rather than reading one: a mode is a plain value with no
+    /// `Ui` of its own.
+    fn badge(self, t: &theme::Theme) -> (&'static str, Color32) {
         match self {
             WaterfallMode::Projected => ("PROJECTED", t.color.accent_blue),
-            WaterfallMode::Live => ("LIVE", theme::ACCENT_GREEN),
-            WaterfallMode::Final => ("FINAL", theme::TEXT_SECONDARY),
+            WaterfallMode::Live => ("LIVE", t.color.accent_green),
+            WaterfallMode::Final => ("FINAL", t.color.text_secondary),
         }
     }
 }
@@ -87,11 +89,15 @@ impl DistributionWaterfall {
     pub fn show(&self, ui: &mut Ui) {
         // ── Mode badge + basis caption ────────────────────────────
         ui.horizontal(|ui| {
-            let (txt, col) = self.mode.badge();
+            let (txt, col) = self.mode.badge(&ui.tokens());
             badge(ui, txt, col);
             if !self.basis.is_empty() {
                 ui.add_space(4.0);
-                ui.label(RichText::new(&self.basis).small().color(theme::TEXT_MUTED));
+                ui.label(
+                    RichText::new(&self.basis)
+                        .small()
+                        .color(ui.tokens().color.text_muted),
+                );
             }
         });
         ui.add_space(6.0);
@@ -106,15 +112,17 @@ impl DistributionWaterfall {
 
     /// The colour a deduction / party segment paints in. Parties cycle a
     /// palette; the highlighted party stays vivid while the rest dim.
-    fn party_color(&self, idx: usize, name: &str) -> Color32 {
-        const PALETTE: [Color32; 5] = [
+    fn party_color(&self, idx: usize, name: &str, t: &theme::Theme) -> Color32 {
+        // A `let`, not a `const`: the palette comes from the active theme now, and
+        // a const could only ever bake one.
+        let palette = [
             t.color.accent_blue,
-            theme::ACCENT_MAGENTA,
+            t.color.accent_magenta,
             t.color.accent_cyan,
-            theme::ACCENT_GREEN,
-            theme::ACCENT_ORANGE,
+            t.color.accent_green,
+            t.color.accent_orange,
         ];
-        let c = PALETTE[idx % PALETTE.len()];
+        let c = palette[idx % palette.len()];
         match &self.highlight {
             Some(h) if h != name => dim(c),
             _ => c,
@@ -127,25 +135,25 @@ impl DistributionWaterfall {
         let width = ui.available_width().max(40.0);
         let (rect, _) = ui.allocate_exact_size(Vec2::new(width, h), Sense::hover());
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 3.0, theme::BG_HIGHLIGHT);
+        painter.rect_filled(rect, 3.0, ui.tokens().color.bg_highlight);
 
         // Segments, in waterfall order. Deductions are muted; the platform
         // fee amber; parties take the palette.
         let mut segs: Vec<(u64, Color32)> = Vec::new();
         if self.delivery_lovelace > 0 {
-            segs.push((self.delivery_lovelace, theme::TEXT_MUTED));
+            segs.push((self.delivery_lovelace, ui.tokens().color.text_muted));
         }
         if self.refund_lovelace > 0 {
-            segs.push((self.refund_lovelace, theme::TEXT_SECONDARY));
+            segs.push((self.refund_lovelace, ui.tokens().color.text_secondary));
         }
         if self.network_fee_lovelace > 0 {
-            segs.push((self.network_fee_lovelace, theme::TEXT_MUTED));
+            segs.push((self.network_fee_lovelace, ui.tokens().color.text_muted));
         }
         if self.platform_fee_lovelace > 0 {
-            segs.push((self.platform_fee_lovelace, theme::ACCENT_YELLOW));
+            segs.push((self.platform_fee_lovelace, ui.tokens().color.accent_yellow));
         }
         for (i, p) in self.parties.iter().enumerate() {
-            segs.push((p.lovelace, self.party_color(i, &p.name)));
+            segs.push((p.lovelace, self.party_color(i, &p.name, &ui.tokens())));
         }
 
         let mut x = rect.left();
@@ -162,7 +170,7 @@ impl DistributionWaterfall {
         painter.rect_stroke(
             rect,
             3.0,
-            Stroke::new(0.5_f32, theme::BG_HIGHLIGHT),
+            Stroke::new(0.5_f32, ui.tokens().color.bg_highlight),
             StrokeKind::Inside,
         );
     }
@@ -174,7 +182,7 @@ impl DistributionWaterfall {
             ui,
             "Inbound",
             self.gross_lovelace,
-            theme::TEXT_PRIMARY,
+            ui.tokens().color.text_primary,
             true,
             0.0,
         );
@@ -199,7 +207,7 @@ impl DistributionWaterfall {
             ui,
             "Distributable",
             self.distributable_lovelace,
-            theme::TEXT_PRIMARY,
+            ui.tokens().color.text_primary,
             true,
             0.0,
         );
@@ -208,7 +216,7 @@ impl DistributionWaterfall {
         // emphasised + a "you" marker.
         for (i, p) in self.parties.iter().enumerate() {
             let is_you = self.highlight.as_deref() == Some(p.name.as_str());
-            let color = self.party_color(i, &p.name);
+            let color = self.party_color(i, &p.name, &ui.tokens());
             ui.horizontal(|ui| {
                 ui.add_space(12.0);
                 let mut name = RichText::new(format!("{}  {}%", p.name, p.share_bps / 100))
@@ -220,13 +228,22 @@ impl DistributionWaterfall {
                 ui.label(name);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if is_you {
-                        ui.label(RichText::new("you").small().strong().color(theme::ACCENT));
+                        ui.label(
+                            RichText::new("you")
+                                .small()
+                                .strong()
+                                .color(ui.tokens().color.accent),
+                        );
                         ui.add_space(6.0);
                     }
                     let mut amt = RichText::new(format!("{} ADA", ada(p.lovelace)))
                         .monospace()
                         .small()
-                        .color(if is_you { theme::TEXT_PRIMARY } else { color });
+                        .color(if is_you {
+                            ui.tokens().color.text_primary
+                        } else {
+                            color
+                        });
                     if is_you {
                         amt = amt.strong();
                     }
@@ -292,13 +309,17 @@ fn deduction(ui: &mut Ui, label: &str, note: &str, lovelace: u64) {
         } else {
             format!("- {label}  ({note})")
         };
-        ui.label(RichText::new(text).small().color(theme::TEXT_SECONDARY));
+        ui.label(
+            RichText::new(text)
+                .small()
+                .color(ui.tokens().color.text_secondary),
+        );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.label(
                 RichText::new(format!("{} ADA", ada(lovelace)))
                     .monospace()
                     .small()
-                    .color(theme::TEXT_SECONDARY),
+                    .color(ui.tokens().color.text_secondary),
             );
         });
     });

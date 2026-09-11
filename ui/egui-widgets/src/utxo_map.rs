@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use egui::{Color32, Pos2, Response, Sense, Shape, Stroke, Ui, Vec2};
 use voronoice::{BoundingBox, Point, VoronoiBuilder};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 
 // ============================================================================
 // Public types
@@ -40,7 +40,8 @@ pub struct UtxoMapConfig {
     /// Water color (free ADA). Default: cyan at low opacity.
     pub water_color: Color32,
     /// Border color between cells. Default: theme border.
-    pub border_color: Color32,
+    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
+    pub border_color: Option<Color32>,
     /// Whether to show the consolidation toggle button.
     pub show_consolidation_toggle: bool,
 }
@@ -50,7 +51,7 @@ impl Default for UtxoMapConfig {
         Self {
             size: Vec2::new(400.0, 400.0),
             water_color: Color32::from_rgba_premultiplied(125, 207, 255, 30),
-            border_color: theme::BORDER,
+            border_color: None,
             show_consolidation_toggle: false,
         }
     }
@@ -463,7 +464,7 @@ impl UtxoMapConfig {
         let painter = ui.painter_at(rect);
 
         // Background
-        painter.rect_filled(rect, 4.0, theme::BG_PRIMARY);
+        painter.rect_filled(rect, 4.0, ui.tokens().color.bg_primary);
 
         let mut action = None;
 
@@ -474,7 +475,7 @@ impl UtxoMapConfig {
                     egui::Align2::CENTER_CENTER,
                     "No UTxOs",
                     egui::FontId::proportional(14.0),
-                    theme::TEXT_MUTED,
+                    ui.tokens().color.text_muted,
                 );
             } else {
                 let (polygons_layout, bounds) = tessellate(&layout.cells, layout.water_count);
@@ -526,7 +527,10 @@ impl UtxoMapConfig {
                     painter.add(Shape::convex_polygon(
                         screen_verts,
                         fill,
-                        Stroke::new(0.5_f32, self.border_color),
+                        Stroke::new(
+                            0.5_f32,
+                            self.border_color.unwrap_or(ui.tokens().color.border),
+                        ),
                     ));
                 }
 
@@ -546,7 +550,7 @@ impl UtxoMapConfig {
                             painter.add(Shape::convex_polygon(
                                 screen_verts,
                                 brighten(policy_color(&cell.policy_id), 1.3),
-                                Stroke::new(2.0_f32, theme::ACCENT),
+                                Stroke::new(2.0_f32, ui.tokens().color.accent),
                             ));
                         }
                     }
@@ -578,7 +582,7 @@ impl UtxoMapConfig {
                                 egui::RichText::new(truncate_ref(&utxo_ref))
                                     .monospace()
                                     .size(11.0)
-                                    .color(theme::TEXT_SECONDARY),
+                                    .color(ui.tokens().color.text_secondary),
                             );
                             ui.label(format!("{utxo_assets} assets, {policy_count} policies"));
                             ui.label(format!("{:.2} ADA", utxo_ada as f64 / 1_000_000.0));

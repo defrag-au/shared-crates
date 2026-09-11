@@ -35,7 +35,7 @@ use egui::{RichText, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
 use crate::relative_time::RelativeTime;
-use crate::theme;
+use crate::theme::ThemeExt;
 
 /// How the banner reads. Only the palette differs — the shape is one line
 /// either way, because a service notice that needs a paragraph is a link.
@@ -53,11 +53,11 @@ pub enum BannerTone {
 impl BannerTone {
     /// `(accent, icon)`. The fill and stroke are derived from the accent, so a
     /// tone is one colour decision rather than three that can disagree.
-    fn palette(self) -> (egui::Color32, PhosphorIcon) {
+    fn palette(self, t: &crate::theme::Theme) -> (egui::Color32, PhosphorIcon) {
         match self {
-            Self::Warning => (theme::WARNING, PhosphorIcon::Warning),
-            Self::Info => (theme::ACCENT_BLUE, PhosphorIcon::Eye),
-            Self::Good => (theme::SUCCESS, PhosphorIcon::CheckCircle),
+            Self::Warning => (t.color.warning, PhosphorIcon::Warning),
+            Self::Info => (t.color.accent_blue, PhosphorIcon::Eye),
+            Self::Good => (t.color.success, PhosphorIcon::CheckCircle),
         }
     }
 }
@@ -106,7 +106,7 @@ impl<'a> ServiceBanner<'a> {
     /// always `false` unless [`Self::dismissible`] was set.
     pub fn show(self, ui: &mut Ui) -> bool {
         install_phosphor_font(ui.ctx());
-        let (accent, icon) = self.tone.palette();
+        let (accent, icon) = self.tone.palette(&ui.tokens());
         let mut dismissed = false;
 
         egui::Frame::default()
@@ -136,11 +136,15 @@ impl<'a> ServiceBanner<'a> {
                         egui::Layout::top_down(egui::Align::LEFT),
                         |ui| {
                             ui.set_max_width(text_w);
-                            ui.label(RichText::new(self.message).color(theme::TEXT_PRIMARY));
+                            ui.label(
+                                RichText::new(self.message).color(ui.tokens().color.text_primary),
+                            );
                             if let Some(since) = self.since_unix {
                                 ui.horizontal(|ui| {
                                     ui.label(
-                                        RichText::new("since").small().color(theme::TEXT_MUTED),
+                                        RichText::new("since")
+                                            .small()
+                                            .color(ui.tokens().color.text_muted),
                                     );
                                     ui.add(RelativeTime::new(since));
                                 });
@@ -152,7 +156,8 @@ impl<'a> ServiceBanner<'a> {
                             if ui
                                 .add(
                                     egui::Label::new(
-                                        PhosphorIcon::X.rich_text(13.0, theme::TEXT_MUTED),
+                                        PhosphorIcon::X
+                                            .rich_text(13.0, ui.tokens().color.text_muted),
                                     )
                                     .sense(egui::Sense::click()),
                                 )
@@ -177,10 +182,12 @@ mod tests {
     /// colour is worse than no glyph — it is the wrong signal at a glance.
     #[test]
     fn every_tone_has_a_distinct_icon() {
+        // The icon half of the palette is theme-independent; any theme serves.
+        let t = crate::theme::Theme::tokyo_night();
         let icons = [
-            BannerTone::Warning.palette().1,
-            BannerTone::Info.palette().1,
-            BannerTone::Good.palette().1,
+            BannerTone::Warning.palette(&t).1,
+            BannerTone::Info.palette(&t).1,
+            BannerTone::Good.palette(&t).1,
         ];
         assert_eq!(icons[0], PhosphorIcon::Warning);
         assert_ne!(icons[0], icons[1]);

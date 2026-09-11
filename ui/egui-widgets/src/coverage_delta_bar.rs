@@ -5,7 +5,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 
 // ============================================================================
 // Types
@@ -17,14 +17,15 @@ pub struct CoverageDeltaConfig {
     pub bar_height: f32,
     /// Font size for labels.
     pub font_size: f32,
-    /// Color for the "before" fill.
-    pub before_color: Color32,
+    /// Color for the "before" fill. `None` asks the theme at render time — a
+    /// `Default` has no `Ui` to ask, and a baked colour cannot be re-skinned.
+    pub before_color: Option<Color32>,
     /// Color for the positive delta region.
-    pub gain_color: Color32,
+    pub gain_color: Option<Color32>,
     /// Color for the negative delta region (shown as striped/faded).
-    pub loss_color: Color32,
+    pub loss_color: Option<Color32>,
     /// Background color for the unfilled region.
-    pub bg_color: Color32,
+    pub bg_color: Option<Color32>,
     /// Corner radius.
     pub corner_radius: u8,
 }
@@ -34,10 +35,10 @@ impl Default for CoverageDeltaConfig {
         Self {
             bar_height: 14.0,
             font_size: 10.0,
-            before_color: theme::ACCENT_BLUE,
-            gain_color: theme::ACCENT_GREEN,
-            loss_color: theme::ACCENT_RED,
-            bg_color: theme::BG_SECONDARY,
+            before_color: None,
+            gain_color: None,
+            loss_color: None,
+            bg_color: None,
             corner_radius: 3,
         }
     }
@@ -61,6 +62,14 @@ pub fn show(
 ) {
     crate::install_phosphor_font(ui.ctx());
 
+    // Resolved once, ahead of the closure that reads them: a `Default` config
+    // cannot know the theme, so the colours arrive here.
+    let t = ui.tokens();
+    let gain_color = config.gain_color.unwrap_or(t.color.accent_green);
+    let loss_color = config.loss_color.unwrap_or(t.color.accent_red);
+    let before_color = config.before_color.unwrap_or(t.color.accent_blue);
+    let bg_color = config.bg_color.unwrap_or(t.color.bg_secondary);
+
     let before = before.clamp(0.0, 1.0);
     let after = after.clamp(0.0, 1.0);
     let delta = after - before;
@@ -70,24 +79,20 @@ pub fn show(
         if let Some(lbl) = label {
             ui.label(
                 RichText::new(format!("{lbl}:"))
-                    .color(theme::TEXT_SECONDARY)
+                    .color(ui.tokens().color.text_secondary)
                     .size(config.font_size),
             );
         }
 
         ui.label(
             RichText::new(format!("{:.0}%", before * 100.0))
-                .color(theme::TEXT_PRIMARY)
+                .color(ui.tokens().color.text_primary)
                 .size(config.font_size),
         );
 
-        crate::PhosphorIcon::ArrowRight.show(ui, config.font_size, theme::TEXT_MUTED);
+        crate::PhosphorIcon::ArrowRight.show(ui, config.font_size, ui.tokens().color.text_muted);
 
-        let after_color = if delta >= 0.0 {
-            config.gain_color
-        } else {
-            config.loss_color
-        };
+        let after_color = if delta >= 0.0 { gain_color } else { loss_color };
 
         ui.label(
             RichText::new(format!("{:.0}%", after * 100.0))
@@ -115,7 +120,7 @@ pub fn show(
     let rounding = CornerRadius::same(config.corner_radius);
 
     // Background
-    painter.rect_filled(rect, rounding, config.bg_color);
+    painter.rect_filled(rect, rounding, bg_color);
 
     let min_frac = before.min(after);
     let max_frac = before.max(after);
@@ -126,7 +131,7 @@ pub fn show(
             rect.min,
             egui::pos2(rect.min.x + rect.width() * min_frac, rect.max.y),
         );
-        painter.rect_filled(fill_rect, rounding, config.before_color);
+        painter.rect_filled(fill_rect, rounding, before_color);
     }
 
     // Delta region
@@ -138,10 +143,10 @@ pub fn show(
 
         if delta > 0.0 {
             // Gain: green region between before and after
-            painter.rect_filled(delta_rect, rounding, config.gain_color.linear_multiply(0.6));
+            painter.rect_filled(delta_rect, rounding, gain_color.linear_multiply(0.6));
         } else {
             // Loss: red striped region between after and before
-            painter.rect_filled(delta_rect, rounding, config.loss_color.linear_multiply(0.4));
+            painter.rect_filled(delta_rect, rounding, loss_color.linear_multiply(0.4));
         }
     }
 }

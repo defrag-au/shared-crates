@@ -7,7 +7,7 @@
 use egui::{Color32, RichText};
 
 use crate::buttons::UiButtonExt;
-use crate::theme;
+use crate::theme::ThemeExt;
 
 // ============================================================================
 // Types
@@ -48,7 +48,8 @@ pub struct SlippageSelectorConfig {
     /// Preset slippage options.
     pub presets: Vec<SlippagePreset>,
     /// Accent color for selected state.
-    pub accent: Color32,
+    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
+    pub accent: Option<Color32>,
     /// Threshold in bps below which a "low slippage" warning is shown.
     pub warn_low_bps: u32,
     /// Threshold in bps above which a "high slippage" warning is shown.
@@ -72,7 +73,7 @@ impl Default for SlippageSelectorConfig {
                     label: "3%".into(),
                 },
             ],
-            accent: theme::ACCENT,
+            accent: None,
             warn_low_bps: 30,
             warn_high_bps: 500,
         }
@@ -98,19 +99,25 @@ pub fn show(
     state: &mut SlippageSelectorState,
     config: &SlippageSelectorConfig,
 ) -> SlippageSelectorAction {
+    // Resolved once, ahead of the closures: a `Default` config cannot know the
+    // theme.
+    let t = ui.tokens();
+    let accent = config.accent.unwrap_or(t.color.accent);
+    let on_accent = t.color.bg_primary;
+    let muted = t.color.text_muted;
     let mut action = SlippageSelectorAction::None;
 
     ui.horizontal(|ui| {
         ui.label(
             RichText::new("Slippage:")
-                .color(theme::TEXT_SECONDARY)
+                .color(ui.tokens().color.text_secondary)
                 .size(11.0),
         );
 
         // Preset buttons
         for preset in &config.presets {
             let is_selected = !state.custom_active && state.slippage_bps == preset.bps;
-            let btn = toggle_button(&preset.label, is_selected, config.accent);
+            let btn = toggle_button(&preset.label, is_selected, accent, on_accent, muted);
             if ui.add_clickable(btn).clicked() {
                 state.custom_active = false;
                 if state.slippage_bps != preset.bps {
@@ -121,7 +128,7 @@ pub fn show(
         }
 
         // Custom button
-        let custom_btn = toggle_button("Custom", state.custom_active, config.accent);
+        let custom_btn = toggle_button("Custom", state.custom_active, accent, on_accent, muted);
         if ui.add_clickable(custom_btn).clicked() {
             state.custom_active = true;
             if state.custom_text.is_empty() {
@@ -137,7 +144,11 @@ pub fn show(
                     .font(egui::FontId::monospace(11.0))
                     .hint_text("1.0"),
             );
-            ui.label(RichText::new("%").color(theme::TEXT_MUTED).size(11.0));
+            ui.label(
+                RichText::new("%")
+                    .color(ui.tokens().color.text_muted)
+                    .size(11.0),
+            );
 
             if response.changed()
                 && let Some(bps) = parse_percent_to_bps(&state.custom_text)
@@ -153,13 +164,13 @@ pub fn show(
     if state.slippage_bps > 0 && state.slippage_bps < config.warn_low_bps {
         ui.label(
             RichText::new("Low slippage may cause transaction failure")
-                .color(theme::WARNING)
+                .color(ui.tokens().color.warning)
                 .size(10.0),
         );
     } else if state.slippage_bps > config.warn_high_bps {
         ui.label(
             RichText::new("High slippage — you may receive significantly fewer tokens")
-                .color(theme::WARNING)
+                .color(ui.tokens().color.warning)
                 .size(10.0),
         );
     }
@@ -172,21 +183,25 @@ pub fn show(
 // ============================================================================
 
 /// Create a toggle-style button (filled when selected, outline when not).
-fn toggle_button<'a>(label: &'a str, selected: bool, accent: Color32) -> egui::Button<'a> {
+/// `on_accent` is the text colour for the filled state — the page background, so
+/// the label reads against the accent fill. `muted` is the unselected tint. Both
+/// are passed in because this helper has no `Ui` to ask the theme with.
+fn toggle_button<'a>(
+    label: &'a str,
+    selected: bool,
+    accent: Color32,
+    on_accent: Color32,
+    muted: Color32,
+) -> egui::Button<'a> {
     if selected {
-        egui::Button::new(
-            RichText::new(label)
-                .color(theme::BG_PRIMARY)
-                .strong()
-                .size(10.0),
-        )
-        .fill(accent)
-        .corner_radius(4.0)
-        .min_size(egui::vec2(36.0, 22.0))
+        egui::Button::new(RichText::new(label).color(on_accent).strong().size(10.0))
+            .fill(accent)
+            .corner_radius(4.0)
+            .min_size(egui::vec2(36.0, 22.0))
     } else {
-        egui::Button::new(RichText::new(label).color(theme::TEXT_MUTED).size(10.0))
+        egui::Button::new(RichText::new(label).color(muted).size(10.0))
             .fill(Color32::TRANSPARENT)
-            .stroke(egui::Stroke::new(1.0_f32, theme::TEXT_MUTED))
+            .stroke(egui::Stroke::new(1.0_f32, muted))
             .corner_radius(4.0)
             .min_size(egui::vec2(36.0, 22.0))
     }

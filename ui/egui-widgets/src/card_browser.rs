@@ -8,7 +8,7 @@
 //! (e.g. `AssetCard` with 3D tilt) through the [`CardRenderContext::response`] field.
 
 use crate::image_loader::CachedSpinner;
-use crate::theme;
+use crate::theme::ThemeExt;
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
 
 // ============================================================================
@@ -44,17 +44,18 @@ pub struct CardBrowserConfig {
     /// items are on screen.
     pub grow_to_content: bool,
     /// Card background color (normal).
-    pub bg_card: Color32,
+    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
+    pub bg_card: Option<Color32>,
     /// Card background color (hovered).
-    pub bg_card_hover: Color32,
+    pub bg_card_hover: Option<Color32>,
     /// Card background color (selected).
     pub bg_card_selected: Color32,
     /// Card border color (normal).
     pub border_color: Color32,
     /// Card border color (selected).
-    pub border_selected: Color32,
+    pub border_selected: Option<Color32>,
     /// Muted text / placeholder color.
-    pub text_muted: Color32,
+    pub text_muted: Option<Color32>,
     /// Detail panel background color.
     pub bg_detail: Color32,
     /// Detail panel inner margin.
@@ -90,12 +91,12 @@ impl Default for CardBrowserConfig {
             rounding: 6.0,
             scroll_id: "card_browser",
             grow_to_content: false,
-            bg_card: theme::BG_PRIMARY,
-            bg_card_hover: theme::BG_HIGHLIGHT,
+            bg_card: None,
+            bg_card_hover: None,
             bg_card_selected: Color32::from_rgb(40, 45, 55),
             border_color: Color32::from_rgba_premultiplied(86, 95, 137, 40),
-            border_selected: theme::ACCENT_CYAN,
-            text_muted: theme::TEXT_MUTED,
+            border_selected: None,
+            text_muted: None,
             bg_detail: Color32::from_rgb(30, 32, 42),
             detail_margin: 14.0,
         }
@@ -171,6 +172,14 @@ pub fn show<T>(
     // Ensure Phosphor icon font is available (used for close button etc.)
     crate::install_phosphor_font(ui.ctx());
 
+    // Resolved once, ahead of the closures that read them: a `Default` config
+    // cannot know the theme, so the colours arrive here.
+    let t = ui.tokens();
+    let bg_card = config.bg_card.unwrap_or(t.color.bg_primary);
+    let bg_card_hover = config.bg_card_hover.unwrap_or(t.color.bg_highlight);
+    let border_selected = config.border_selected.unwrap_or(t.color.accent_cyan);
+    let text_muted = config.text_muted.unwrap_or(t.color.text_muted);
+
     let has_selection = state.selected.is_some_and(|idx| idx < items.len());
     let detail_width = if has_selection {
         config.detail_width
@@ -215,7 +224,7 @@ pub fn show<T>(
             let mut grid = |ui: &mut egui::Ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::splat(config.spacing);
-                    let spinner = CachedSpinner::new(ui, 12.0, config.text_muted);
+                    let spinner = CachedSpinner::new(ui, 12.0, text_muted);
                     let _ = spinner; // available for draw_thumbnail callers
 
                     for (idx, item) in items.iter_mut().enumerate() {
@@ -233,9 +242,9 @@ pub fn show<T>(
                         let bg = if is_selected {
                             config.bg_card_selected
                         } else if is_hovered {
-                            config.bg_card_hover
+                            bg_card_hover
                         } else {
-                            config.bg_card
+                            bg_card
                         };
                         ui.painter().rect_filled(rect, config.rounding, bg);
 
@@ -244,7 +253,7 @@ pub fn show<T>(
                             ui.painter().rect_stroke(
                                 rect,
                                 config.rounding,
-                                Stroke::new(3.0_f32, config.border_selected),
+                                Stroke::new(3.0_f32, border_selected),
                                 egui::StrokeKind::Inside,
                             );
                         } else {
@@ -342,7 +351,7 @@ pub fn show<T>(
                     if ui
                         .add(
                             egui::Button::new(
-                                crate::PhosphorIcon::X.rich_text(14.0, config.border_selected),
+                                crate::PhosphorIcon::X.rich_text(14.0, border_selected),
                             )
                             .frame(false),
                         )
@@ -374,24 +383,25 @@ pub fn draw_thumbnail(
     image_url: Option<&str>,
     config: &CardBrowserConfig,
 ) -> bool {
+    let t = ui.tokens();
+    let bg_card_hover = config.bg_card_hover.unwrap_or(t.color.bg_highlight);
+    let text_muted = config.text_muted.unwrap_or(t.color.text_muted);
     let Some(url) = image_url else {
         // No URL — placeholder
-        ui.painter()
-            .rect_filled(thumb_rect, 4.0, config.bg_card_hover);
+        ui.painter().rect_filled(thumb_rect, 4.0, bg_card_hover);
         ui.painter().text(
             thumb_rect.center(),
             egui::Align2::CENTER_CENTER,
             "?",
             egui::FontId::proportional(20.0),
-            config.text_muted,
+            text_muted,
         );
         return false;
     };
 
     let visible = ui.clip_rect().intersects(thumb_rect);
     if !visible {
-        ui.painter()
-            .rect_filled(thumb_rect, 4.0, config.bg_card_hover);
+        ui.painter().rect_filled(thumb_rect, 4.0, bg_card_hover);
         return false;
     }
 
@@ -419,9 +429,8 @@ pub fn draw_thumbnail(
             .paint_at(ui, thumb_rect);
         false
     } else {
-        ui.painter()
-            .rect_filled(thumb_rect, 4.0, config.bg_card_hover);
-        let spinner = CachedSpinner::new(ui, 12.0, config.text_muted);
+        ui.painter().rect_filled(thumb_rect, 4.0, bg_card_hover);
+        let spinner = CachedSpinner::new(ui, 12.0, text_muted);
         spinner.paint(ui, thumb_rect);
         true
     }

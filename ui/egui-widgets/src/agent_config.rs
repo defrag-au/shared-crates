@@ -39,11 +39,12 @@ use gateway_wiring::{
     provider_presets, provider_problems,
 };
 
+use crate::PhosphorIcon;
 use crate::icons::{install_phosphor_font, phosphor_label};
 use crate::relative_time::relative_label;
 use crate::select::{Select, SelectOption};
+use crate::theme::ThemeExt;
 use crate::utils::{format_number, section_heading};
-use crate::{PhosphorIcon, theme};
 
 /// A token-count spinner that reads as a number rather than a digit run.
 ///
@@ -62,7 +63,7 @@ fn token_drag(value: &mut u32, min: u32) -> egui::DragValue<'_> {
 /// A labelled row inside one of the config grids, so labels share a column
 /// edge instead of each field starting wherever its label happened to end.
 fn field_row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> bool) -> bool {
-    ui.label(egui::RichText::new(label).color(theme::TEXT_SECONDARY));
+    ui.label(egui::RichText::new(label).color(ui.tokens().color.text_secondary));
     let changed = add(ui);
     ui.end_row();
     changed
@@ -199,8 +200,8 @@ pub fn provider_picker(ui: &mut Ui, draft: &mut ProviderDraft) -> bool {
                 // `rich_text`, not `as_str` — the codepoint only resolves in
                 // the Phosphor FAMILY, and handing the bare string to a
                 // normal label renders tofu.
-                ui.label(PhosphorIcon::Warning.rich_text(13.0, theme::WARNING));
-                ui.colored_label(theme::WARNING, problem);
+                ui.label(PhosphorIcon::Warning.rich_text(13.0, ui.tokens().color.warning));
+                ui.colored_label(ui.tokens().color.warning, problem);
             });
         }
     }
@@ -230,7 +231,7 @@ pub fn credential_field(
             ui.label(
                 egui::RichText::new(&status.masked_key)
                     .monospace()
-                    .color(theme::TEXT_PRIMARY),
+                    .color(ui.tokens().color.text_primary),
             );
             let set = relative_label(((now_ms - status.set_at_ms) / 1000.0) as i64);
             // For a fresh key "never used" is ordinary; for an old one it is
@@ -244,7 +245,7 @@ pub fn credential_field(
                 }
                 None => "never used".to_string(),
             };
-            ui.colored_label(theme::TEXT_MUTED, format!("set {set} · {used}"));
+            ui.colored_label(ui.tokens().color.text_muted, format!("set {set} · {used}"));
         });
         ui.add_space(4.0);
     }
@@ -253,8 +254,11 @@ pub fn credential_field(
         // The provider's real words, to the admin only. Members get a canned
         // line that says nothing about anyone's billing.
         ui.horizontal(|ui| {
-            ui.label(PhosphorIcon::Warning.rich_text(13.0, theme::ERROR));
-            ui.colored_label(theme::ERROR, format!("last attempt failed: {error}"));
+            ui.label(PhosphorIcon::Warning.rich_text(13.0, ui.tokens().color.error));
+            ui.colored_label(
+                ui.tokens().color.error,
+                format!("last attempt failed: {error}"),
+            );
         });
     }
 
@@ -278,7 +282,7 @@ pub fn credential_field(
             }
         });
         ui.colored_label(
-            theme::TEXT_MUTED,
+            ui.tokens().color.text_muted,
             "Encrypted before it is stored. It is never displayed again — \
              replacing it is the only way to change it.",
         );
@@ -346,7 +350,7 @@ pub fn budget_editor(
             }
         }
     });
-    ui.colored_label(theme::TEXT_MUTED, mode.hint());
+    ui.colored_label(ui.tokens().color.text_muted, mode.hint());
 
     let Some(entitlement) = agent.as_mut() else {
         return;
@@ -359,7 +363,7 @@ pub fn budget_editor(
             response.budget_changed |= ui
                 .add(token_drag(&mut entitlement.default_daily_tokens, 1))
                 .changed();
-            ui.colored_label(theme::TEXT_MUTED, "tokens/day");
+            ui.colored_label(ui.tokens().color.text_muted, "tokens/day");
         });
         return;
     }
@@ -394,7 +398,7 @@ pub fn budget_editor(
             response.refresh_roles = true;
         }
         ui.colored_label(
-            theme::TEXT_MUTED,
+            ui.tokens().color.text_muted,
             match (roles, options.len()) {
                 (None, _) => "roles not loaded".to_string(),
                 (Some(_), n) => format!("{n} roles"),
@@ -425,7 +429,7 @@ pub fn budget_editor(
             }
 
             response.budget_changed |= ui.add(token_drag(&mut tier.daily_tokens, 0)).changed();
-            ui.colored_label(theme::TEXT_MUTED, "tokens/day");
+            ui.colored_label(ui.tokens().color.text_muted, "tokens/day");
 
             // Removing the TIER is pushed to the far right, away from the
             // picker's own clear-the-role `×`. Adjacent, similarly-sized
@@ -467,7 +471,10 @@ pub fn budget_editor(
         .iter()
         .any(|tier| tier.role.trim().is_empty())
     {
-        ui.colored_label(theme::ACCENT_YELLOW, "a tier with no role matches nobody");
+        ui.colored_label(
+            ui.tokens().color.accent_yellow,
+            "a tier with no role matches nobody",
+        );
     }
     // Zero is a real setting (suspend a tier without deleting it), but it is
     // worth saying out loud, since "configured" and "able to ask" look the
@@ -479,7 +486,7 @@ pub fn budget_editor(
         .count();
     if muted > 0 {
         ui.colored_label(
-            theme::TEXT_MUTED,
+            ui.tokens().color.text_muted,
             format!("{muted} tier(s) set to 0 — those members cannot ask"),
         );
     }
@@ -506,12 +513,12 @@ pub fn agent_config_section(
     // thing rather than parts of it.
     ui.label(
         egui::RichText::new("Agentic responses")
-            .color(theme::TEXT_PRIMARY)
+            .color(ui.tokens().color.text_primary)
             .size(19.0)
             .strong(),
     );
     ui.colored_label(
-        theme::TEXT_MUTED,
+        ui.tokens().color.text_muted,
         "The bot answers when mentioned, using your own provider account. \
          You are billed by them directly.",
     );

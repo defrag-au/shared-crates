@@ -19,15 +19,16 @@
 
 use egui::{Color32, CornerRadius, FontId, RichText, Sense, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 
 /// Styling knobs.
 pub struct PersonaStripConfig {
     pub headline_size: f32,
-    pub headline_color: Color32,
+    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
+    pub headline_color: Option<Color32>,
     pub chip_text_size: f32,
-    pub chip_text_color: Color32,
-    pub chip_bg: Color32,
+    pub chip_text_color: Option<Color32>,
+    pub chip_bg: Option<Color32>,
     pub chip_corner_radius: u8,
     pub chip_padding_x: f32,
     pub chip_padding_y: f32,
@@ -39,10 +40,10 @@ impl Default for PersonaStripConfig {
     fn default() -> Self {
         Self {
             headline_size: 13.0,
-            headline_color: theme::TEXT_SECONDARY,
+            headline_color: None,
             chip_text_size: 10.0,
-            chip_text_color: theme::TEXT_SECONDARY,
-            chip_bg: theme::BG_HIGHLIGHT,
+            chip_text_color: None,
+            chip_bg: None,
             chip_corner_radius: 8,
             chip_padding_x: 6.0,
             chip_padding_y: 2.0,
@@ -87,7 +88,10 @@ impl<'a> PersonaStrip<'a> {
                 RichText::new(self.headline)
                     .italics()
                     .size(cfg.headline_size)
-                    .color(cfg.headline_color),
+                    .color(
+                        cfg.headline_color
+                            .unwrap_or(ui.tokens().color.text_secondary),
+                    ),
             );
         }
 
@@ -104,10 +108,13 @@ impl<'a> PersonaStrip<'a> {
 }
 
 fn draw_chip(ui: &mut Ui, label: &str, cfg: &PersonaStripConfig) {
+    let t = ui.tokens();
+    let chip_text = cfg.chip_text_color.unwrap_or(t.color.text_secondary);
+    let chip_bg = cfg.chip_bg.unwrap_or(t.color.bg_highlight);
     let font = FontId::proportional(cfg.chip_text_size);
     let galley = ui
         .painter()
-        .layout_no_wrap(label.to_string(), font.clone(), cfg.chip_text_color);
+        .layout_no_wrap(label.to_string(), font.clone(), chip_text);
     let size = Vec2::new(
         galley.size().x + cfg.chip_padding_x * 2.0,
         galley.size().y + cfg.chip_padding_y * 2.0,
@@ -115,15 +122,11 @@ fn draw_chip(ui: &mut Ui, label: &str, cfg: &PersonaStripConfig) {
     let (rect, _resp) = ui.allocate_exact_size(size, Sense::hover());
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
-        painter.rect_filled(
-            rect,
-            CornerRadius::same(cfg.chip_corner_radius),
-            cfg.chip_bg,
-        );
+        painter.rect_filled(rect, CornerRadius::same(cfg.chip_corner_radius), chip_bg);
         let text_pos = egui::pos2(
             rect.min.x + cfg.chip_padding_x,
             rect.min.y + cfg.chip_padding_y,
         );
-        painter.galley(text_pos, galley, cfg.chip_text_color);
+        painter.galley(text_pos, galley, chip_text);
     }
 }

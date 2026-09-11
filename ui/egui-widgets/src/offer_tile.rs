@@ -46,7 +46,7 @@
 
 use egui::{Color32, RichText, Sense, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 
 /// Tile state — drives frame fill, image tint, and click gating.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -85,18 +85,19 @@ pub struct OfferTileConfig {
     pub frame_corner_radius: u8,
     pub image_corner_radius: u8,
     pub frame_inner_margin: i8,
-    pub bg_active: Color32,
-    pub bg_dimmed: Color32,
+    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
+    pub bg_active: Option<Color32>,
+    pub bg_dimmed: Option<Color32>,
     /// Recessed fill behind a placeholder glyph. Painted inside
     /// the inner content area so placeholder tiles have visual
     /// weight matching image tiles (otherwise the glyph floats on
     /// the frame fill and the tile looks empty by comparison).
-    pub placeholder_bg_active: Color32,
+    pub placeholder_bg_active: Option<Color32>,
     pub placeholder_bg_dimmed: Color32,
-    pub text_primary: Color32,
-    pub text_muted: Color32,
-    pub badge_active: Color32,
-    pub badge_dimmed: Color32,
+    pub text_primary: Option<Color32>,
+    pub text_muted: Option<Color32>,
+    pub badge_active: Option<Color32>,
+    pub badge_dimmed: Option<Color32>,
     pub price_size: f32,
     pub badge_size: f32,
     pub placeholder_glyph_size: f32,
@@ -111,19 +112,19 @@ impl Default for OfferTileConfig {
             frame_corner_radius: 6,
             image_corner_radius: 4,
             frame_inner_margin: 4,
-            bg_active: theme::BG_SECONDARY,
-            bg_dimmed: theme::BG_PRIMARY,
+            bg_active: None,
+            bg_dimmed: None,
             // BG_PRIMARY is one shade darker than BG_SECONDARY,
             // giving the placeholder area an inset look against
             // the active frame. The dimmed counterpart goes
             // darker still so the content area stays visible
             // when the frame itself is BG_PRIMARY.
-            placeholder_bg_active: theme::BG_PRIMARY,
+            placeholder_bg_active: None,
             placeholder_bg_dimmed: Color32::from_rgb(18, 19, 28),
-            text_primary: theme::TEXT_PRIMARY,
-            text_muted: theme::TEXT_MUTED,
-            badge_active: theme::ACCENT_CYAN,
-            badge_dimmed: theme::TEXT_MUTED,
+            text_primary: None,
+            text_muted: None,
+            badge_active: None,
+            badge_dimmed: None,
             price_size: 11.0,
             badge_size: 14.0,
             placeholder_glyph_size: 36.0,
@@ -199,18 +200,25 @@ impl<'a> OfferTile<'a> {
     /// active — dimmed tiles ignore clicks).
     pub fn show(self, ui: &mut Ui) -> egui::Response {
         let cfg = &self.config;
+        // Resolved once: a `Default` config cannot know the theme.
+        let t = ui.tokens();
         let dimmed = !self.state.is_active();
-        let frame_fill = if dimmed { cfg.bg_dimmed } else { cfg.bg_active };
-        let badge_color = if dimmed {
-            cfg.badge_dimmed
+        let frame_fill = if dimmed {
+            cfg.bg_dimmed.unwrap_or(t.color.bg_primary)
         } else {
-            cfg.badge_active
+            cfg.bg_active.unwrap_or(t.color.bg_secondary)
+        };
+        let badge_color = if dimmed {
+            cfg.badge_dimmed.unwrap_or(t.color.text_muted)
+        } else {
+            cfg.badge_active.unwrap_or(t.color.accent_cyan)
         };
         let text_color = if dimmed {
-            cfg.text_muted
+            cfg.text_muted.unwrap_or(t.color.text_muted)
         } else {
-            cfg.text_primary
+            cfg.text_primary.unwrap_or(t.color.text_primary)
         };
+        let placeholder_bg_active = cfg.placeholder_bg_active.unwrap_or(t.color.bg_primary);
 
         // Outer container — fixed size so wrapping rows align.
         // Height = tile + price label + a hair of spacing.
@@ -252,7 +260,7 @@ impl<'a> OfferTile<'a> {
                                 let placeholder_bg = if dimmed {
                                     cfg.placeholder_bg_dimmed
                                 } else {
-                                    cfg.placeholder_bg_active
+                                    placeholder_bg_active
                                 };
                                 painter.rect_filled(
                                     rect,
