@@ -32,6 +32,8 @@ use std::collections::HashMap;
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 
+use crate::theme::ThemeExt;
+
 /// One asset arriving with a holder.
 #[derive(Clone, Debug)]
 pub struct Arrival<'a> {
@@ -146,7 +148,7 @@ impl<'a> MintArrivals<'a> {
         let ink = ui.visuals().text_color();
         let dot = self
             .dot_color
-            .unwrap_or(Color32::from_rgb(0x39, 0x87, 0xe5));
+            .unwrap_or_else(|| ui.tokens().series.inbound());
 
         let (rect, resp) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), self.height), Sense::hover());

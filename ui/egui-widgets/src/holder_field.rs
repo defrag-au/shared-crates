@@ -250,7 +250,7 @@ impl<'a> HolderField<'a> {
         let now = ctx.input(|i| i.time);
         let muted = ui.visuals().weak_text_color();
         let ink = ui.visuals().text_color();
-        let accent = dot_color.unwrap_or(Color32::from_rgb(0x39, 0x87, 0xe5));
+        let accent = dot_color.unwrap_or_else(|| ui.tokens().series.inbound());
         let escrowed =
             escrow_color.unwrap_or_else(|| crate::theme::ThemeExt::tokens(ui).color.accent_orange);
 

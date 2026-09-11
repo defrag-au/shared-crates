@@ -180,7 +180,12 @@ pub fn coverage_tint_emphasis(state: Coverage) -> Color32 {
 
 /// The ground: absence of observation. Grey because colour means somebody
 /// decided — the same call `flow_ring` makes for an unexamined party.
-pub const UNOBSERVED: Color32 = Color32::from_rgb(0x4d, 0x54, 0x78);
+///
+/// Derived from the default theme's [`crate::encoding::SeriesPalette`] rather
+/// than restated, so "unobserved" has one definition across the suite. The
+/// render path reads `ui.tokens().series.unobserved`, which follows the active
+/// theme; this const is the value a caller gets outside a `Ui`.
+pub const UNOBSERVED: Color32 = crate::encoding::SeriesPalette::tokyo_night().unobserved;
 
 pub struct CoverageLanes<'a> {
     lanes: &'a [CoverageLane<'a>],

@@ -535,7 +535,7 @@ fn draw_picker_card(
         (ui.tokens().color.text_muted, 1.0_f32)
     } else if let Some(rank) = asset.rarity_rank {
         let total = asset.total_ranked.unwrap_or(10000);
-        let color = theme::rarity_rank_color(rank, total);
+        let color = theme::rarity_rank_color(rank, total, &ui.tokens().series);
         let width = if hovered { 2.0_f32 } else { 1.5_f32 };
         (color, width)
     } else {
@@ -565,7 +565,7 @@ fn draw_picker_card(
         );
         if let Some(rank) = asset.rarity_rank {
             let total = asset.total_ranked.unwrap_or(0);
-            let rank_color = theme::rarity_rank_color(rank, total);
+            let rank_color = theme::rarity_rank_color(rank, total, &ui.tokens().series);
             let rank_text = if total > 0 {
                 format!("Rank #{rank} / {total}")
             } else {

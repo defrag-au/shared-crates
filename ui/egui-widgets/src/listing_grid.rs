@@ -10,7 +10,7 @@
 use crate::corner_action::{Corner, CornerAction};
 use crate::icons::PhosphorIcon;
 use crate::image_loader::CachedSpinner;
-use crate::theme::{Space, SpaceExt, ThemeExt};
+use crate::theme::{Space, SpaceExt, ThemeExt, with_alpha};
 use egui::{Color32, RichText, Sense, Vec2};
 
 /// Whether a listing can actually be bought.
@@ -152,12 +152,13 @@ pub struct ListingGridConfig {
     /// Gutter between cards. `None` takes the theme's [`Space::Md`] — same
     /// reasoning as the `Option<Color32>` fields below.
     pub spacing: Option<Space>,
-    pub bg_color: Color32,
-    pub bg_hover_color: Color32,
     /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
+    pub bg_color: Option<Color32>,
+    pub bg_hover_color: Option<Color32>,
     pub text_primary: Option<Color32>,
     pub text_muted: Option<Color32>,
-    pub accent_green: Color32,
+    /// The price colour. `None` takes the theme's `success`.
+    pub accent_green: Option<Color32>,
     pub rounding: f32,
 }
 
@@ -167,11 +168,11 @@ impl Default for ListingGridConfig {
             card_width: 84.0,
             thumbnail_size: 100.0,
             spacing: None,
-            bg_color: Color32::from_rgb(30, 31, 48),
-            bg_hover_color: Color32::from_rgb(45, 46, 68),
+            bg_color: None,
+            bg_hover_color: None,
             text_primary: None,
             text_muted: None,
-            accent_green: Color32::from_rgb(158, 206, 106),
+            accent_green: None,
             rounding: 6.0,
         }
     }
@@ -219,6 +220,12 @@ impl ListingGrid {
         }
 
         let cfg = &self.config;
+        // Resolved once, ahead of the closures: a `Default` config cannot know
+        // the theme, so every `Option<Color32>` lands here.
+        let c = ui.tokens().color;
+        let bg_color = cfg.bg_color.unwrap_or(c.bg_secondary);
+        let bg_hover_color = cfg.bg_hover_color.unwrap_or(c.bg_highlight);
+        let accent_green = cfg.accent_green.unwrap_or(c.success);
         // Card is square: thumbnail fills entire card, price banner overlays bottom
         let card_size = Vec2::splat(cfg.card_width);
 
@@ -261,9 +268,9 @@ impl ListingGrid {
 
                 // Card background
                 let bg = if card_hovered {
-                    cfg.bg_hover_color
+                    bg_hover_color
                 } else {
-                    cfg.bg_color
+                    bg_color
                 };
                 ui.painter().rect_filled(rect, cfg.rounding, bg);
 
@@ -327,12 +334,13 @@ impl ListingGrid {
                         sw: cfg.rounding as u8,
                         se: cfg.rounding as u8,
                     },
-                    Color32::from_rgba_premultiplied(15, 15, 25, 200),
+                    with_alpha(c.bg_primary, 200),
                 );
                 let price_color = if is_dimmed {
-                    Color32::from_rgb(96, 130, 80)
+                    // The same price colour, knocked back — not a second green.
+                    accent_green.gamma_multiply(0.55)
                 } else {
-                    cfg.accent_green
+                    accent_green
                 };
                 ui.painter().text(
                     banner_rect.center(),
@@ -352,17 +360,14 @@ impl ListingGrid {
                         egui::pos2(rect.min.x, banner_rect.min.y - banner_h),
                         Vec2::new(cfg.card_width, banner_h),
                     );
-                    ui.painter().rect_filled(
-                        gap_banner_rect,
-                        0,
-                        Color32::from_rgba_premultiplied(158, 206, 106, 220),
-                    );
+                    ui.painter()
+                        .rect_filled(gap_banner_rect, 0, with_alpha(c.success, 220));
                     ui.painter().text(
                         gap_banner_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         format!("Fills {count}"),
                         egui::FontId::monospace(10.0),
-                        Color32::from_rgb(26, 27, 38),
+                        c.on(c.success),
                     );
                 }
 
@@ -380,24 +385,21 @@ impl ListingGrid {
                             sw: 0,
                             se: 0,
                         },
-                        Color32::from_rgba_premultiplied(224, 175, 104, 230),
+                        with_alpha(c.warning, 230),
                     );
                     ui.painter().text(
                         bundle_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         format!("Bundle x{n}"),
                         egui::FontId::monospace(10.0),
-                        Color32::from_rgb(26, 27, 38),
+                        c.on(c.warning),
                     );
                 }
 
                 // Dim overlay for non-fillers
                 if is_dimmed {
-                    ui.painter().rect_filled(
-                        rect,
-                        cfg.rounding,
-                        Color32::from_rgba_premultiplied(18, 19, 30, 120),
-                    );
+                    ui.painter()
+                        .rect_filled(rect, cfg.rounding, with_alpha(c.bg_primary, 120));
                 }
 
                 // Buyability treatment.
@@ -435,11 +437,8 @@ impl ListingGrid {
                             .show(ui, rect, ("in-cart", listing.unit.as_str()));
                     }
                     Buyability::Blocked(reason) => {
-                        ui.painter().rect_filled(
-                            rect,
-                            cfg.rounding,
-                            Color32::from_rgba_premultiplied(18, 19, 30, 150),
-                        );
+                        ui.painter()
+                            .rect_filled(rect, cfg.rounding, with_alpha(c.bg_primary, 150));
                         // Sits immediately above the price, in the card's
                         // status strip — NOT at the top, which the "Bundle ×N"
                         // banner already owns. Putting it there hid the banner
@@ -453,7 +452,7 @@ impl ListingGrid {
                         ui.painter().rect_filled(
                             chip_rect,
                             3.0,
-                            Color32::from_rgba_premultiplied(60, 30, 40, 230),
+                            with_alpha(c.error.gamma_multiply(0.45), 230),
                         );
                         ui.painter().text(
                             chip_rect.center(),

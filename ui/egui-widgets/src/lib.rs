@@ -31,6 +31,7 @@ pub mod disclosure;
 pub mod distribution_waterfall;
 pub mod donut_chart;
 pub mod drawer;
+pub mod encoding;
 pub mod error_note;
 pub mod event_wiring;
 #[cfg(target_arch = "wasm32")]

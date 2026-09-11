@@ -29,6 +29,8 @@ use std::collections::HashMap;
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
+use crate::theme::{Sequential, ThemeExt};
+
 /// One acquisition: a wallet receiving assets at a moment.
 #[derive(Clone, Debug)]
 pub struct Acquisition<'a> {
@@ -142,9 +144,14 @@ pub fn distribution_at(events: &[Acquisition<'_>], at: i64) -> Distribution {
 /// Cohort colours. Deliberately a single-hue ramp, light→dark, not the
 /// categorical palette: these bands are ordered slices of one quantity, and a
 /// categorical set would imply they are unrelated things.
-const TOP1: Color32 = Color32::from_rgb(0x1b, 0x5e, 0x9e);
-const TOP10: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
-const REST: Color32 = Color32::from_rgb(0x8f, 0xbe, 0xf2);
+// Built from [`Sequential::around`] rather than written out: three steps of one
+// hue is exactly what that constructor is for, and generating them keeps the
+// lightness order — the thing that says "more" — structural instead of a
+// property three literals happened to have.
+fn concentration_bands(ui: &Ui) -> [Color32; 3] {
+    let ramp = Sequential::around(ui.tokens().series.inbound());
+    [ramp.at(0.0), ramp.at(0.5), ramp.at(1.0)]
+}
 
 pub struct HolderFormation<'a> {
     events: &'a [Acquisition<'a>],
@@ -204,6 +211,7 @@ impl<'a> HolderFormation<'a> {
             Pos2::new(rect.right(), rect.bottom() - axis_h),
         );
         let painter = ui.painter_at(rect);
+        let bands = concentration_bands(ui);
 
         let x_of =
             |t: i64| plot.left() + ((t - t0) as f64 / (t1 - t0) as f64) as f32 * plot.width();
@@ -248,9 +256,9 @@ impl<'a> HolderFormation<'a> {
                 // and its growth is read against a fixed edge.
                 let mut base = plot.bottom();
                 for (value, color) in [
-                    (p.top1, TOP1),
-                    (p.top10 - p.top1, TOP10),
-                    (p.distributed - p.top10, REST),
+                    (p.top1, bands[0]),
+                    (p.top10 - p.top1, bands[1]),
+                    (p.distributed - p.top10, bands[2]),
                 ] {
                     if value <= 0 {
                         continue;

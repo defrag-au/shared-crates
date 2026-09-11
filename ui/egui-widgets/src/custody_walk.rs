@@ -52,7 +52,7 @@ use egui::{
 };
 
 use crate::party_badge::{PartyBadge, PartyBasis};
-use crate::theme::{Space, SpaceExt};
+use crate::theme::{Space, SpaceExt, ThemeExt};
 use crate::timestamp::format_iso8601;
 
 /// Whether a custody trace is a fact or a reconstruction.
@@ -443,7 +443,7 @@ impl<'a> CustodyWalk<'a> {
     /// more here than which party it names.
     fn node_color(&self, kind: WalkNodeKind, ui: &Ui) -> Color32 {
         match kind {
-            WalkNodeKind::Root => Color32::from_rgb(0x39, 0x87, 0xe5),
+            WalkNodeKind::Root => ui.tokens().series.inbound(),
             WalkNodeKind::Received => Color32::from_rgb(0x19, 0x9e, 0x70),
             // Change is a pass-through, not an origin — neutral, never a hue
             // that would let it read as a source.

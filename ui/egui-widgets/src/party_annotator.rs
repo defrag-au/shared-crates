@@ -38,7 +38,7 @@ use egui::{Color32, Ui};
 use crate::id_pill::IdPill;
 use crate::party_badge::PartyBasis;
 use crate::select::{MultiSelect, Select, SelectOption};
-use crate::theme::{Space, SpaceExt};
+use crate::theme::{Space, SpaceExt, ThemeExt};
 use crate::{Chip, ChipVariant};
 
 /// Where a wallet sits relative to the project. Mirrors the app's stored
@@ -293,7 +293,8 @@ impl<'a> PartyAnnotator<'a> {
                         let options: Vec<SelectOption> = bases
                             .iter()
                             .map(|b| {
-                                SelectOption::new(b.word(), b.word()).swatch(Some(basis_color(*b)))
+                                SelectOption::new(b.word(), b.word())
+                                    .swatch(Some(basis_color(ui, *b)))
                             })
                             .collect();
                         // Salted with the widget's OWN id — `Select` builds its id
@@ -508,11 +509,15 @@ fn field_label(ui: &mut Ui, text: &str, muted: Color32) {
 }
 
 /// Colour for a basis, so a claim never renders like a chain fact.
-pub fn basis_color(b: PartyBasis) -> Color32 {
+pub fn basis_color(ui: &Ui, b: PartyBasis) -> Color32 {
     match b {
-        PartyBasis::Observed => Color32::from_rgb(0x4c, 0xaf, 0x50),
-        PartyBasis::Derived => Color32::from_rgb(0x39, 0x87, 0xe5),
-        PartyBasis::Asserted => Color32::from_rgb(0xe0, 0x8a, 0x2e),
+        PartyBasis::Observed => ui.tokens().color.success,
+        // Derived follows from something recorded; asserted came from outside
+        // the chain. The same in/out encoding the flow views use, because it is
+        // the same distinction: what the chain gave us vs what arrived from
+        // elsewhere.
+        PartyBasis::Derived => ui.tokens().series.inbound(),
+        PartyBasis::Asserted => ui.tokens().series.outbound(),
     }
 }
 

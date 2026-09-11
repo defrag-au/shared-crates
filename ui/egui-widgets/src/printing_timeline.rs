@@ -21,16 +21,18 @@ pub struct PrintingTimelineConfig {
     pub node_spacing: f32,
     /// Radius of the timeline dot.
     pub dot_radius: f32,
+    // `None` asks the theme at render time — a `Default` has no `Ui` to ask,
+    // and baking a colour here would put this widget beyond a theme's reach.
     /// Timeline line color.
-    pub line_color: Color32,
+    pub line_color: Option<Color32>,
     /// Dot color (normal).
-    pub dot_color: Color32,
+    pub dot_color: Option<Color32>,
     /// Dot color (selected).
-    pub dot_selected: Color32,
+    pub dot_selected: Option<Color32>,
     /// Text color for set code.
-    pub text_color: Color32,
+    pub text_color: Option<Color32>,
     /// Muted text color.
-    pub text_muted: Color32,
+    pub text_muted: Option<Color32>,
     /// Whether to show thumbnail images above nodes.
     pub show_thumbnails: bool,
     /// Thumbnail height (if shown).
@@ -44,11 +46,11 @@ impl Default for PrintingTimelineConfig {
             node_width: 40.0,
             node_spacing: 4.0,
             dot_radius: 5.0,
-            line_color: Color32::from_rgb(86, 95, 137),
-            dot_color: Color32::from_rgb(86, 95, 137),
-            dot_selected: Color32::from_rgb(122, 162, 247),
-            text_color: Color32::from_rgb(192, 202, 245),
-            text_muted: Color32::from_rgb(86, 95, 137),
+            line_color: None,
+            dot_color: None,
+            dot_selected: None,
+            text_color: None,
+            text_muted: None,
             show_thumbnails: false,
             thumb_height: 80.0,
         }
@@ -103,8 +105,16 @@ pub fn show(
         hovered: None,
     };
 
+    // Resolved once: a `Default` config cannot know the theme.
+    let c = ui.tokens().color;
+    let line_color = config.line_color.unwrap_or(c.text_muted);
+    let dot_color = config.dot_color.unwrap_or(c.text_muted);
+    let dot_selected = config.dot_selected.unwrap_or(c.accent);
+    let text_color = config.text_color.unwrap_or(c.text_primary);
+    let text_muted = config.text_muted.unwrap_or(c.text_muted);
+
     if nodes.is_empty() {
-        ui.label(RichText::new("No printings").color(config.text_muted));
+        ui.label(RichText::new("No printings").color(text_muted));
         return response;
     }
 
@@ -145,7 +155,7 @@ pub fn show(
                         Pos2::new(first_x, timeline_y),
                         Pos2::new(last_x, timeline_y),
                     ],
-                    Stroke::new(2.0_f32, config.line_color),
+                    Stroke::new(2.0_f32, line_color),
                 );
             }
 
@@ -174,9 +184,9 @@ pub fn show(
                 // Node dot
                 let dot_center = Pos2::new(center_x, timeline_y);
                 let dot_color = if is_selected {
-                    config.dot_selected
+                    dot_selected
                 } else {
-                    rarity_dot_color(&node.rarity, config)
+                    rarity_dot_color(&node.rarity, &c, dot_color)
                 };
                 painter.circle_filled(dot_center, config.dot_radius, dot_color);
 
@@ -221,9 +231,9 @@ pub fn show(
 
                 // Set code label (centered under dot)
                 let code_color = if is_selected {
-                    config.dot_selected
+                    dot_selected
                 } else {
-                    config.text_color
+                    text_color
                 };
                 let set_galley = painter.layout_no_wrap(
                     node.set_code.clone(),
@@ -246,13 +256,13 @@ pub fn show(
                 let date_galley = painter.layout_no_wrap(
                     year.to_string(),
                     egui::FontId::proportional(9.0),
-                    config.text_muted,
+                    text_muted,
                 );
                 let date_w = date_galley.size().x;
                 painter.galley(
                     Pos2::new(center_x - date_w / 2.0, text_top + 11.0),
                     date_galley,
-                    config.text_muted,
+                    text_muted,
                 );
             }
         });
@@ -262,14 +272,17 @@ pub fn show(
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-fn rarity_dot_color(rarity: &str, config: &PrintingTimelineConfig) -> Color32 {
+/// The rarity ramp, off the theme's accent hues rather than six literals — a
+/// mythic printing should read as "the theme's red", not as one fixed pink that
+/// clashes with every palette but the one it was picked against.
+fn rarity_dot_color(rarity: &str, c: &crate::theme::ColorTokens, common: Color32) -> Color32 {
     match rarity {
-        "mythic" => Color32::from_rgb(247, 118, 142),
-        "rare" => Color32::from_rgb(224, 175, 104),
-        "uncommon" => Color32::from_rgb(180, 180, 180),
-        "common" => config.dot_color,
-        "special" => Color32::from_rgb(187, 154, 247),
-        "bonus" => Color32::from_rgb(125, 207, 255),
-        _ => config.dot_color,
+        "mythic" => c.accent_red,
+        "rare" => c.accent_orange,
+        "uncommon" => c.text_secondary,
+        "common" => common,
+        "special" => c.accent_magenta,
+        "bonus" => c.accent_cyan,
+        _ => common,
     }
 }

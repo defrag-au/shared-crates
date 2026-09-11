@@ -352,7 +352,7 @@ pub fn show(
 
                             for pid in &policy_ids {
                                 let assets = &by_policy[pid];
-                                let color = egui_widgets::utxo_map::policy_color(pid);
+                                let color = egui_widgets::utxo_map::policy_color(ui, pid);
 
                                 ui.add_space(4.0);
 

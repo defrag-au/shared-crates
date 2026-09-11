@@ -758,7 +758,7 @@ impl ShelfConfig {
                         Vec2::new(block.rect.width() - 2.0, seg_h.max(2.0)),
                     );
 
-                    let mut c = policy_color(pid);
+                    let mut c = policy_color(ui, pid);
                     if is_dimmed {
                         c = Color32::from_rgba_unmultiplied(
                             c.r(),
@@ -783,7 +783,7 @@ impl ShelfConfig {
             } else if is_policy_highlighted && block.tier != ShelfTier::Dust {
                 let c = new_hovered_policy
                     .as_ref()
-                    .map(|p| policy_color(p))
+                    .map(|p| policy_color(ui, p))
                     .unwrap_or(ui.tokens().color.accent);
                 (c, 1.0_f32)
             } else {

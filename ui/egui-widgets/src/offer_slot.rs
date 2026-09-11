@@ -277,7 +277,7 @@ pub fn show(
     // Rarity border — always visible, color based on rank percentile
     let border_color = if let Some(rank) = data.rarity_rank {
         let total = data.total_ranked.unwrap_or(10000);
-        theme::rarity_rank_color(rank, total)
+        theme::rarity_rank_color(rank, total, &ui.tokens().series)
     } else {
         ui.tokens().color.bg_highlight
     };
@@ -299,7 +299,7 @@ pub fn show(
         );
         if let Some(rank) = data.rarity_rank {
             let total = data.total_ranked.unwrap_or(0);
-            let rank_color = theme::rarity_rank_color(rank, total);
+            let rank_color = theme::rarity_rank_color(rank, total, &ui.tokens().series);
             ui.label(
                 egui::RichText::new(format!("Rank #{rank} / {total}"))
                     .color(rank_color)

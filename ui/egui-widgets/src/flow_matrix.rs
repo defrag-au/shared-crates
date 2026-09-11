@@ -83,10 +83,16 @@ pub struct FlowMatrix<'a> {
     cell: f32,
 }
 
-/// Out of the row's wallet, and into it. Two hues from the catalog's
-/// categorical order — deliberately not red/green.
-const OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
-const IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
+// Out of the row's wallet, and into it — the shared direction encoding, now
+// read from [`crate::encoding::Diverging`] rather than restated here. Still
+// deliberately not red/green. Functions rather than `const`s because a `const`
+// cannot reach the theme.
+fn out_colour(ui: &egui::Ui) -> Color32 {
+    ui.tokens().series.outbound()
+}
+fn in_colour(ui: &egui::Ui) -> Color32 {
+    ui.tokens().series.inbound()
+}
 /// What the empty counterparty is called on screen.
 const UNKNOWN: &str = "unresolved payer";
 
@@ -278,7 +284,11 @@ impl<'a> FlowMatrix<'a> {
                 let t = (0.25
                     + 0.75 * (((v.gross.max(1) as f64).ln() - lo_log) / span_log).clamp(0.0, 1.0))
                     as f32;
-                let base = if v.net < 0 { OUT } else { IN };
+                let base = if v.net < 0 {
+                    out_colour(ui)
+                } else {
+                    in_colour(ui)
+                };
                 painter.rect_filled(cr, ui.tokens().corner(Radius::Xs), base.gamma_multiply(t));
                 if response.hover_pos().is_some_and(|p| cr.contains(p)) {
                     hovered = Some((r.to_string(), c.to_string()));

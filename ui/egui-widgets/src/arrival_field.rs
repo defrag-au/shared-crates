@@ -106,7 +106,7 @@ impl<'a> ArrivalField<'a> {
         let now = ctx.input(|i| i.time);
         let muted = ui.visuals().weak_text_color();
         let ink = ui.visuals().text_color();
-        let accent = dot_color.unwrap_or(Color32::from_rgb(0x39, 0x87, 0xe5));
+        let accent = dot_color.unwrap_or_else(|| ui.tokens().series.inbound());
 
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());

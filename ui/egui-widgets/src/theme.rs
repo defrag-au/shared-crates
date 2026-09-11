@@ -80,8 +80,11 @@ mod raw {
 
     pub const BORDER: Color32 = Color32::from_rgb(65, 72, 104);
 
-    /// Gold, for the top rarity band. Not part of the accent ramp.
-    pub const GOLD: Color32 = Color32::from_rgb(255, 215, 0);
+    // `GOLD` lived here, "for the top rarity band. Not part of the accent ramp."
+    // It is gone because the rarity band is no longer a hand-picked hue — it is
+    // the top of the theme's ordinal ramp (`SeriesPalette::ordinal`), which is
+    // what made the band monotonic. A colour that belongs to exactly one ramp
+    // belongs in that ramp.
 }
 
 // ============================================================================
@@ -230,6 +233,18 @@ impl ColorTokens {
             self.text_primary
         }
     }
+}
+
+/// `color` at `alpha` (0–255) — a scrim, a wash, a translucent band.
+///
+/// Exists because `Color32::from_rgba_premultiplied` is the wrong constructor
+/// for this and reads like the right one: it requires each channel to be
+/// **already** multiplied by alpha, so passing a palette colour straight in
+/// produces an invalid colour that blends additively and comes out far lighter
+/// than intended. That shipped once in this crate's selection wash. Taking a
+/// token and an alpha, and doing the multiply internally, removes the choice.
+pub fn with_alpha(color: Color32, alpha: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
 }
 
 /// WCAG relative luminance of an opaque colour.
@@ -923,6 +938,16 @@ impl MotionTokens {
 }
 
 // ============================================================================
+// Series palette
+// ============================================================================
+
+// The encoding axis lives in its own module — it grew five kinds, each with a
+// different invariant, and it is about *data* rather than about chrome.
+// Re-exported here so `theme::SeriesPalette` keeps resolving: a theme still owns
+// it, it is just no longer defined in the same file.
+pub use crate::encoding::{Diverging, IdentityEnvelope, Sequential, SeriesPalette};
+
+// ============================================================================
 // Theme
 // ============================================================================
 
@@ -942,6 +967,9 @@ pub struct Theme {
     pub spacing: SpaceScale,
     pub geometry: Geometry,
     pub motion: MotionTokens,
+    /// What charts encode with. Separate from [`Self::color`] on purpose — see
+    /// [`SeriesPalette`].
+    pub series: SeriesPalette,
 }
 
 impl Theme {
@@ -955,6 +983,7 @@ impl Theme {
             spacing: SpaceScale::tokyo_night(),
             geometry: Geometry::tokyo_night(),
             motion: MotionTokens::standard(),
+            series: SeriesPalette::tokyo_night(),
         }
     }
 
@@ -1014,6 +1043,7 @@ impl Theme {
                 radius: RadiusScale::round(),
                 border_width: 1.0,
             },
+            series: SeriesPalette::opensea(),
             ..Self::tokyo_night()
         }
     }
@@ -1439,26 +1469,42 @@ pub fn stroke(width: f32, color: Color32) -> Stroke {
 /// Used by offer slots, browse views, pricing panels — anywhere a `#rank`
 /// label is displayed.
 ///
-/// **Reads the default palette, not the active theme.** This is one of the
-/// named semantic ramps, and they move onto `Theme` together in the series-palette
-/// pass so their separability tests travel with them. Taking a `&Theme` here
-/// alone would change a dozen call sites for a third of the benefit.
-pub fn rarity_rank_color(rank: u32, total: u32) -> Color32 {
+/// # Tiered thresholds, ramp colours
+///
+/// The **boundaries** stay hand-picked, because "top 1%" is a threshold
+/// collectors name and a smooth gradient erases the edge they actually care
+/// about. The **colours** now come off [`Sequential`], because the hand-picked
+/// ones were not monotonic and so encoded the ranking wrongly:
+///
+/// ```text
+/// gold   top 1%   L 0.628
+/// amber  top 5%   L 0.475   <- darker than the tier BELOW it
+/// cyan   top 10%  L 0.562
+/// green  top 25%  L 0.525
+/// muted  rest     L 0.120
+/// ```
+///
+/// Five defensible hues that, read as a ramp, told a scanning reader that
+/// top-10% outranked top-5%. Sourcing them from the ordinal ramp makes the
+/// order structural — `Sequential::at` is linear in Oklab lightness, so tiers
+/// at increasing `t` cannot invert, whatever palette a theme supplies.
+pub fn rarity_rank_color(rank: u32, total: u32, series: &SeriesPalette) -> Color32 {
     if total == 0 {
-        return raw::TEXT_MUTED;
+        return series.ordinal.low;
     }
     let pct = rank as f32 / total as f32;
-    if pct <= 0.01 {
-        raw::GOLD // top 1%
+    let t = if pct <= 0.01 {
+        1.0
     } else if pct <= 0.05 {
-        raw::ACCENT_YELLOW // amber — top 5%
+        0.78
     } else if pct <= 0.10 {
-        raw::ACCENT_CYAN // top 10%
+        0.56
     } else if pct <= 0.25 {
-        raw::ACCENT_GREEN // top 25%
+        0.34
     } else {
-        raw::TEXT_MUTED
-    }
+        0.0
+    };
+    series.ordinal.at(t)
 }
 
 // ============================================================================

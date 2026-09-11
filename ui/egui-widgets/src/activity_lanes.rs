@@ -25,6 +25,7 @@
 use egui::{Align2, Color32, Rect, Response, Sense, Stroke, Ui, pos2, vec2};
 
 use crate::selection::Selection;
+use crate::theme::ThemeExt;
 use crate::time_spine::{MarkKind, SpineState, TimeScale};
 
 /// One party's row.
@@ -62,11 +63,21 @@ pub struct ActivityLanes<'a> {
     max_lanes: usize,
 }
 
-const IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
-const OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
+// The shared direction encoding, from [`crate::encoding::Diverging`].
+// Functions rather than `const`s so the theme can reach them.
+fn in_colour(ui: &egui::Ui) -> Color32 {
+    ui.tokens().series.inbound()
+}
+fn out_colour(ui: &egui::Ui) -> Color32 {
+    ui.tokens().series.outbound()
+}
 /// Directionless events. Matches [`crate::time_spine`]'s neutral tint — the two
-/// widgets draw the same `MarkKind` and must not disagree about its colour.
-const NEUTRAL: Color32 = Color32::from_rgb(0x7a, 0x82, 0x94);
+/// widgets draw the same `MarkKind` and must not disagree about its colour,
+/// which is now guaranteed by both reading the same token rather than by both
+/// having been typed the same.
+fn neutral_colour(ui: &egui::Ui) -> Color32 {
+    ui.tokens().series.other
+}
 
 impl<'a> ActivityLanes<'a> {
     pub fn new(
@@ -132,6 +143,9 @@ impl<'a> ActivityLanes<'a> {
         let painter = ui.painter_at(rect);
         let muted = ui.visuals().weak_text_color();
         let ink = ui.visuals().text_color();
+        // Resolved here rather than in the mark loop: the loop runs per tick and
+        // only holds `painter`.
+        let (in_c, out_c, neutral_c) = (in_colour(ui), out_colour(ui), neutral_colour(ui));
         let small = egui::TextStyle::Small.resolve(ui.style());
 
         // Where the ruler is: the SPINE'S scale, not one of our own, so a tick
@@ -215,11 +229,11 @@ impl<'a> ActivityLanes<'a> {
                 // FILTERS, it does not erase, and a still needs the context.
                 let a = if brushed && !in_window { 0.18 } else { 0.85 } * emph.max(0.25);
                 let (y0, y1, col) = match kind {
-                    MarkKind::In => (mid, top + 2.0, IN),
-                    MarkKind::Out => (mid, top + lane_h - 2.0, OUT),
+                    MarkKind::In => (mid, top + 2.0, in_c),
+                    MarkKind::Out => (mid, top + lane_h - 2.0, out_c),
                     // Straddles the midline, as it does on the spine: the two
                     // widgets draw the same kind and must read the same way.
-                    MarkKind::Neutral => (mid - 2.0, mid + 2.0, NEUTRAL),
+                    MarkKind::Neutral => (mid - 2.0, mid + 2.0, neutral_c),
                 };
                 painter.line_segment(
                     [pos2(x, y0), pos2(x, y1)],
