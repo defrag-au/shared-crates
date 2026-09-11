@@ -467,10 +467,10 @@ impl ListingGrid {
                 if resp.clicked() {
                     clicked_idx = Some(card_idx);
                     #[cfg(target_arch = "wasm32")]
-                    if let Some(ref market_url) = listing.marketplace_url {
-                        if let Some(window) = web_sys::window() {
-                            let _ = window.open_with_url_and_target(market_url, "wayup");
-                        }
+                    if let Some(ref market_url) = listing.marketplace_url
+                        && let Some(window) = web_sys::window()
+                    {
+                        let _ = window.open_with_url_and_target(market_url, "wayup");
                     }
                 }
 

@@ -159,10 +159,10 @@ fn read_selected_file(
         });
 
         // Clean up the hidden input element.
-        if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
-            if let Some(el) = doc.get_element_by_id(&input_id) {
-                el.remove();
-            }
+        if let Some(doc) = web_sys::window().and_then(|w| w.document())
+            && let Some(el) = doc.get_element_by_id(&input_id)
+        {
+            el.remove();
         }
     });
 

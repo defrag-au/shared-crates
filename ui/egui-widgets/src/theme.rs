@@ -1152,7 +1152,10 @@ mod tests {
             let inner = scoped(ui, &ember, |ui| ui.tokens().color.accent);
 
             assert_eq!(inner, ember.color.accent, "scope did not take effect");
-            assert_ne!(inner, outer, "the two themes must differ for this to prove anything");
+            assert_ne!(
+                inner, outer,
+                "the two themes must differ for this to prove anything"
+            );
             assert_eq!(
                 ui.tokens().color.accent,
                 outer,
@@ -1169,7 +1172,10 @@ mod tests {
         let spacious = Theme::tokyo_night().with_density(Density::Spacious);
 
         egui::__run_test_ui(|ui| {
-            install_theme(ui.ctx(), Theme::tokyo_night().with_density(Density::Compact));
+            install_theme(
+                ui.ctx(),
+                Theme::tokyo_night().with_density(Density::Compact),
+            );
             let outer = ui.style().spacing.item_spacing;
 
             let inner = scoped(ui, &spacious, |ui| ui.style().spacing.item_spacing);

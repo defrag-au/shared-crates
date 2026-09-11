@@ -991,14 +991,319 @@ mod app {
     // Theme
     // ========================================================================
 
-    // Storybook chrome colours (sidebar only). Stories themselves render
-    // under the REAL shipped theme — see `configure_style` below.
-    const BG_SIDEBAR: egui::Color32 = egui::Color32::from_rgb(20, 20, 40);
-    pub const BG_MAIN: egui::Color32 = egui_widgets::theme::BG_PRIMARY;
-    pub const TEXT_MUTED: egui::Color32 = egui_widgets::theme::TEXT_MUTED;
-    const TEXT_PRIMARY: egui::Color32 = egui_widgets::theme::TEXT_PRIMARY;
-    pub const ACCENT: egui::Color32 = egui::Color32::from_rgb(68, 255, 68);
-    const BG_SELECTED: egui::Color32 = egui::Color32::from_rgb(40, 40, 60);
+    // ── Chrome ───────────────────────────────────────────────────────────────
+    //
+    // The storybook's OWN surface: sidebar, story title, the control bar. These
+    // are **literals on purpose** — the chrome must NOT follow the theme being
+    // reviewed.
+    //
+    // Three of them used to alias `theme::BG_PRIMARY` / `TEXT_MUTED` /
+    // `TEXT_PRIMARY`, which meant switching theme re-skinned the tool along with
+    // the widgets and you could no longer tell which you were looking at. Same
+    // family of mistake as the `override_text_color` bug this module already
+    // carries a warning about: the storybook must not become a surface no user
+    // sees, and it must not disguise itself as one either.
+    //
+    // The story pane is the device; the chrome is the bezel.
+    const CHROME_BG_SIDEBAR: egui::Color32 = egui::Color32::from_rgb(20, 20, 40);
+    const CHROME_BG_MAIN: egui::Color32 = egui::Color32::from_rgb(26, 27, 38);
+    const CHROME_TEXT_MUTED: egui::Color32 = egui::Color32::from_rgb(139, 149, 196);
+    const CHROME_TEXT_PRIMARY: egui::Color32 = egui::Color32::from_rgb(192, 202, 245);
+    const CHROME_ACCENT: egui::Color32 = egui::Color32::from_rgb(68, 255, 68);
+    const CHROME_BG_SELECTED: egui::Color32 = egui::Color32::from_rgb(40, 40, 60);
+
+    // ── Story-facing re-exports (MIGRATION DEBT) ─────────────────────────────
+    //
+    // ~980 call sites across `src/stories/` import these. They are the story
+    // scaffolding — section headings, captions, labels a story draws around the
+    // widget it is demonstrating — NOT the widgets themselves, which read
+    // `ui.tokens()` directly since the colour migration.
+    //
+    // So the theme switcher does change every widget; what it does not yet change
+    // is the prose a story writes around it. `ACCENT` is the worst of them: a
+    // bright green that exists nowhere in any theme, so a story labelled with it
+    // is showing the reader a colour no app ever renders.
+    //
+    // Fixing that is the story triage — mostly DELETING these calls, since a
+    // story that pins a colour cannot demonstrate theming at all. Tracked
+    // separately; left aliased here so the switcher work does not also become a
+    // thousand-site edit.
+    pub const BG_MAIN: egui::Color32 = CHROME_BG_MAIN;
+    pub const TEXT_MUTED: egui::Color32 = CHROME_TEXT_MUTED;
+    const TEXT_PRIMARY: egui::Color32 = CHROME_TEXT_PRIMARY;
+    pub const ACCENT: egui::Color32 = CHROME_ACCENT;
+
+    // ========================================================================
+    // Review controls
+    // ========================================================================
+
+    /// What the reader has asked to review the story *under*: a theme, optionally
+    /// a second theme beside it, a density, a motion mode and a forced breakpoint.
+    ///
+    /// # Why this lives in the URL
+    ///
+    /// Every one of these is a query parameter, and the pickers write back to the
+    /// address bar. That is not a convenience — `tools/cdp-shot.mjs` takes a URL
+    /// and a viewport, so putting the whole review state in the URL makes the
+    /// screenshot matrix addressable **with no changes to the harness at all**.
+    /// Pickers are for humans; parameters are for the matrix; the pickers keep
+    /// them in step so a reader can paste what they are looking at to someone
+    /// else.
+    /// `Clone` but not `Copy`: [`egui_widgets::theme::Theme`] is deliberately not
+    /// `Copy`, because the later axes (series palettes) will not be.
+    #[derive(Clone)]
+    struct ReviewControls {
+        theme: egui_widgets::theme::Theme,
+        /// `Some` renders the story twice, side by side — see [`Self::draw_story`].
+        compare: Option<egui_widgets::theme::Theme>,
+        density: egui_widgets::theme::Density,
+        motion: egui_widgets::theme::MotionMode,
+        /// `None` measures the real viewport, as an app would.
+        breakpoint: Option<egui_widgets::viewport::Breakpoint>,
+    }
+
+    impl Default for ReviewControls {
+        fn default() -> Self {
+            let base = egui_widgets::theme::Theme::tokyo_night();
+            Self {
+                compare: None,
+                density: base.density,
+                motion: base.motion.mode,
+                breakpoint: None,
+                theme: base,
+            }
+        }
+    }
+
+    impl ReviewControls {
+        /// Read the controls out of `?theme=…&vs=…&density=…&motion=…&bp=…`.
+        fn from_query(query: &str) -> Self {
+            let mut out = Self::default();
+            let param = |key: &str| -> Option<String> {
+                query
+                    .trim_start_matches('?')
+                    .split('&')
+                    .filter_map(|kv| kv.split_once('='))
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| v.replace('+', " ").replace("%20", " "))
+            };
+
+            if let Some(name) = param("theme") {
+                if let Some(t) = egui_widgets::theme::Theme::by_name(&name) {
+                    out.density = t.density;
+                    out.motion = t.motion.mode;
+                    out.theme = t;
+                }
+            }
+            if let Some(name) = param("vs") {
+                out.compare = egui_widgets::theme::Theme::by_name(&name);
+            }
+            if let Some(name) = param("density") {
+                if let Some(d) = egui_widgets::theme::Density::ALL
+                    .iter()
+                    .find(|d| d.label().eq_ignore_ascii_case(&name))
+                {
+                    out.density = *d;
+                }
+            }
+            if let Some(name) = param("motion") {
+                out.motion = match name.to_ascii_lowercase().as_str() {
+                    "none" => egui_widgets::theme::MotionMode::None,
+                    "reduced" => egui_widgets::theme::MotionMode::Reduced,
+                    _ => egui_widgets::theme::MotionMode::Full,
+                };
+            }
+            if let Some(name) = param("bp") {
+                out.breakpoint = egui_widgets::viewport::Breakpoint::by_name(&name);
+            }
+            out
+        }
+
+        /// The theme as selected, with the density and motion overrides folded in.
+        fn resolved(&self) -> egui_widgets::theme::Theme {
+            self.theme
+                .clone()
+                .with_density(self.density)
+                .with_motion(self.motion)
+        }
+
+        /// Install the selection for this frame.
+        fn apply(&self, ctx: &egui::Context) {
+            egui_widgets::theme::install_theme(ctx, self.resolved());
+            egui_widgets::viewport::override_breakpoint(ctx, self.breakpoint);
+        }
+
+        /// Render the story under the selected theme — twice, side by side, when a
+        /// comparison theme is set.
+        ///
+        /// The A/B half is the reason `theme::scoped` exists: a palette regression
+        /// is obvious beside its control and nearly invisible when you have to flip
+        /// between two screenshots to find it.
+        fn draw_story(&self, story: Story, app: &mut StorybookApp, ui: &mut egui::Ui) {
+            let Some(other) = self.compare.clone() else {
+                story.draw(app, ui);
+                return;
+            };
+
+            let half = (ui.available_width() - 24.0) * 0.5;
+            let mine = self.resolved();
+            ui.horizontal_top(|ui| {
+                for (theme, side) in [(mine, "A"), (other, "B")] {
+                    ui.allocate_ui(egui::vec2(half, ui.available_height()), |ui| {
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("{side} · {}", theme.name))
+                                    .color(CHROME_TEXT_MUTED)
+                                    .small()
+                                    .strong(),
+                            );
+                            // The per-side theme has to reach BOTH `ui.tokens()`
+                            // and egui's own `Style`, which is what `scoped` does.
+                            egui_widgets::theme::scoped(ui, &theme, |ui| {
+                                story.draw(app, ui);
+                            });
+                        });
+                    });
+                    ui.separator();
+                }
+            });
+        }
+
+        /// The picker row. Writes every change back to the URL so the matrix and
+        /// the reader address the same thing.
+        fn controls(&mut self, ui: &mut egui::Ui) {
+            let before = self.clone();
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new("review")
+                        .color(CHROME_TEXT_MUTED)
+                        .small()
+                        .strong(),
+                );
+
+                for preset in egui_widgets::theme::Theme::PRESETS {
+                    let t = preset();
+                    let on = self.theme.name == t.name;
+                    if chrome_toggle(ui, t.name, on).clicked() {
+                        self.density = t.density;
+                        self.motion = t.motion.mode;
+                        self.theme = t;
+                    }
+                }
+
+                ui.separator();
+                ui.label(egui::RichText::new("vs").color(CHROME_TEXT_MUTED).small());
+                if chrome_toggle(ui, "off", self.compare.is_none()).clicked() {
+                    self.compare = None;
+                }
+                for preset in egui_widgets::theme::Theme::PRESETS {
+                    let t = preset();
+                    let on = self.compare.as_ref().is_some_and(|c| c.name == t.name);
+                    if chrome_toggle(ui, t.name, on).clicked() {
+                        self.compare = Some(t);
+                    }
+                }
+            });
+
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new("density")
+                        .color(CHROME_TEXT_MUTED)
+                        .small()
+                        .strong(),
+                );
+                for d in egui_widgets::theme::Density::ALL {
+                    if chrome_toggle(ui, d.label(), self.density == *d).clicked() {
+                        self.density = *d;
+                    }
+                }
+
+                ui.separator();
+                ui.label(
+                    egui::RichText::new("motion")
+                        .color(CHROME_TEXT_MUTED)
+                        .small()
+                        .strong(),
+                );
+                for m in egui_widgets::theme::MotionMode::ALL {
+                    let name = match m {
+                        egui_widgets::theme::MotionMode::Full => "full",
+                        egui_widgets::theme::MotionMode::Reduced => "reduced",
+                        egui_widgets::theme::MotionMode::None => "none",
+                    };
+                    if chrome_toggle(ui, name, self.motion == *m).clicked() {
+                        self.motion = *m;
+                    }
+                }
+
+                ui.separator();
+                ui.label(
+                    egui::RichText::new("breakpoint")
+                        .color(CHROME_TEXT_MUTED)
+                        .small()
+                        .strong(),
+                );
+                if chrome_toggle(ui, "measured", self.breakpoint.is_none()).clicked() {
+                    self.breakpoint = None;
+                }
+                for bp in egui_widgets::viewport::Breakpoint::ALL {
+                    let on = self.breakpoint == Some(bp);
+                    if chrome_toggle(ui, bp.label(), on).clicked() {
+                        self.breakpoint = Some(bp);
+                    }
+                }
+            });
+
+            if !self.same_as(&before) {
+                set_location_query(&self.to_query());
+            }
+        }
+
+        fn same_as(&self, other: &Self) -> bool {
+            self.theme.name == other.theme.name
+                && self.compare.as_ref().map(|c| c.name) == other.compare.as_ref().map(|c| c.name)
+                && self.density == other.density
+                && self.motion == other.motion
+                && self.breakpoint == other.breakpoint
+        }
+
+        /// The inverse of [`Self::from_query`] — what the address bar should say.
+        fn to_query(&self) -> String {
+            let mut parts = vec![format!("theme={}", self.theme.name.replace(' ', "+"))];
+            if let Some(c) = self.compare.as_ref() {
+                parts.push(format!("vs={}", c.name.replace(' ', "+")));
+            }
+            parts.push(format!("density={}", self.density.label()));
+            parts.push(format!(
+                "motion={}",
+                match self.motion {
+                    egui_widgets::theme::MotionMode::Full => "full",
+                    egui_widgets::theme::MotionMode::Reduced => "reduced",
+                    egui_widgets::theme::MotionMode::None => "none",
+                }
+            ));
+            if let Some(bp) = self.breakpoint {
+                parts.push(format!("bp={}", bp.label()));
+            }
+            parts.join("&")
+        }
+    }
+
+    /// A chrome-coloured toggle. Not `egui_widgets`' own button: the control bar
+    /// must stay legible whatever the theme under review does.
+    fn chrome_toggle(ui: &mut egui::Ui, label: &str, on: bool) -> egui::Response {
+        let text = egui::RichText::new(label).size(10.0).color(if on {
+            CHROME_ACCENT
+        } else {
+            CHROME_TEXT_MUTED
+        });
+        let fill = if on {
+            CHROME_BG_SELECTED
+        } else {
+            egui::Color32::TRANSPARENT
+        };
+        ui.add(egui::Button::new(text).fill(fill).small())
+    }
 
     fn configure_style(ctx: &egui::Context) {
         // Use the shipped theme, not a private one. The old private style set
@@ -1044,6 +1349,45 @@ mod app {
     #[cfg(not(target_arch = "wasm32"))]
     fn set_location_hash(_slug: &str) {}
 
+    /// The review state as it arrived — `?theme=…&vs=…&density=…&motion=…&bp=…`.
+    #[cfg(target_arch = "wasm32")]
+    fn review_from_location() -> ReviewControls {
+        let query = web_sys::window()
+            .and_then(|w| w.location().search().ok())
+            .unwrap_or_default();
+        ReviewControls::from_query(&query)
+    }
+
+    /// Native builds have no address bar; `STORYBOOK_REVIEW` stands in, so the
+    /// same selection works from a shell — `STORYBOOK_REVIEW='theme=ember&vs=iris'`.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn review_from_location() -> ReviewControls {
+        ReviewControls::from_query(&std::env::var("STORYBOOK_REVIEW").unwrap_or_default())
+    }
+
+    /// Write the review selection back to the address bar, preserving `#/story`
+    /// and `nav=0`.
+    ///
+    /// `replace_state` rather than assigning `location.search`, which would
+    /// reload the page and throw away the wasm app mid-frame.
+    #[cfg(target_arch = "wasm32")]
+    fn set_location_query(query: &str) {
+        let Some(w) = web_sys::window() else { return };
+        let keep_nav = w
+            .location()
+            .search()
+            .ok()
+            .is_some_and(|s| s.contains("nav=0"));
+        let hash = w.location().hash().unwrap_or_default();
+        let url = format!("?{query}{}{hash}", if keep_nav { "&nav=0" } else { "" });
+        if let Ok(history) = w.history() {
+            let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&url));
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn set_location_query(_query: &str) {}
+
     /// `?nav=0` drops the story list so the story gets the WHOLE viewport.
     ///
     /// This exists for narrow-width review. The sidebar is a fixed 180px, so a
@@ -1073,6 +1417,9 @@ mod app {
         current_story: Story,
         /// `?nav=0` — see [`nav_hidden`].
         nav_hidden: bool,
+        /// Theme / density / motion / breakpoint under review — see
+        /// [`ReviewControls`].
+        review: ReviewControls,
         // Per-story state
         distribution_chart: egui_widgets::DistributionChart,
         marquee: egui_widgets::Marquee,
@@ -1198,6 +1545,7 @@ mod app {
                 // Read ONCE at startup: with the nav gone there is no way to
                 // change stories, so this is a per-load mode, not a toggle.
                 nav_hidden: nav_hidden(),
+                review: review_from_location(),
                 distribution_chart: egui_widgets::DistributionChart::new(),
                 marquee: egui_widgets::Marquee::default(),
                 marquee_messages: vec![egui_widgets::MarqueeItem {
@@ -1342,7 +1690,7 @@ mod app {
                     egui::RichText::new(story.label()).color(TEXT_PRIMARY)
                 };
                 let fill = if is_selected {
-                    BG_SELECTED
+                    CHROME_BG_SELECTED
                 } else {
                     egui::Color32::TRANSPARENT
                 };
@@ -1376,7 +1724,7 @@ mod app {
                 egui::Panel::left("stories")
                     .default_size(180.0)
                     .resizable(false)
-                    .frame(egui::Frame::side_top_panel(&ctx.global_style()).fill(BG_SIDEBAR))
+                    .frame(egui::Frame::side_top_panel(&ctx.global_style()).fill(CHROME_BG_SIDEBAR))
                     .show_inside(ui, |ui| {
                         ui.add_space(8.0);
                         ui.heading(egui::RichText::new("egui Widgets").color(ACCENT));
@@ -1387,328 +1735,255 @@ mod app {
                     });
             }
 
-            egui::CentralPanel::default()
-                .frame(egui::Frame::central_panel(&ctx.global_style()).fill(BG_MAIN))
-                .show_inside(ui, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        ui.heading(self.current_story.label());
-                        ui.label(
-                            egui::RichText::new(self.current_story.description()).color(TEXT_MUTED),
-                        );
-                        ui.separator();
-                        ui.add_space(8.0);
+            // The review controls are applied BEFORE the story pane draws, so the
+            // story renders under the theme the reader selected this frame rather
+            // than lagging one behind.
+            self.review.apply(&ctx);
 
-                        match self.current_story {
-                            Story::Formatting => stories::formatting::show(ui),
-                            Story::Timestamp => stories::timestamp::show(ui),
-                            Story::ErrorNote => stories::error_note::show(ui),
-                            Story::Gated => stories::gated::show(ui),
-                            Story::AccessGate => stories::access_gate::show(ui),
-                            Story::Viewport => stories::viewport::show(ui),
-                            Story::Drawer => stories::drawer::show(ui),
-                            Story::Disclosure => {
-                                stories::disclosure::show(ui, &mut self.disclosure_state)
-                            }
-                            Story::UserBadge => stories::user_badge::show(ui),
-                            Story::TierLadder => stories::tier_ladder::show(ui),
-                            Story::AboutModal => stories::about_modal::show(ui),
-                            Story::ServiceBanner => stories::service_banner::show(ui),
-                            Story::Distribution => {
-                                stories::distribution::show(ui, &mut self.distribution_chart)
-                            }
-                            Story::Marquee => stories::marquee::show(
-                                ui,
-                                &mut self.marquee,
-                                &mut self.marquee_messages,
-                            ),
-                            Story::Buttons => stories::buttons::show(ui),
-                            Story::ProgressBar => {
-                                stories::progress_bar::show(ui, &mut self.progress_bar_state)
-                            }
-                            Story::BulletBar => {
-                                stories::bullet_bar::show(ui, &mut self.bullet_bar_state)
-                            }
-                            Story::Sparkline => {
-                                stories::sparkline::show(ui, &mut self.sparkline_state)
-                            }
-                            Story::MetricCard => stories::metric_card::show(ui),
-                            Story::PerfStrip => {
-                                stories::perf_strip::show(ui, &mut self.perf_strip_state)
-                            }
-                            Story::TokenHistory => stories::token_history::show(ui),
-                            Story::TokenKinetic => stories::token_kinetic::show(ui),
-                            Story::TokenParticles => stories::token_particles::show(ui),
-                            Story::StatStrip => stories::stat_strip::show(ui),
-                            Story::SevenSegment => {
-                                stories::seven_segment::show(ui, &mut self.seven_segment_state)
-                            }
-                            Story::FlipCounter => {
-                                stories::flip_counter::show(ui, &mut self.flip_counter_state)
-                            }
-                            Story::AsyncData => {
-                                stories::async_data::show(ui, &mut self.async_data_state)
-                            }
-                            Story::MeshPlayground => {
-                                stories::mesh_playground::show(ui, &mut self.mesh_playground_state)
-                            }
-                            Story::PerspectiveText => stories::perspective_text::show(
-                                ui,
-                                &mut self.perspective_text_state,
-                            ),
-                            Story::TcgCard => stories::tcg_card::show(ui, &mut self.tcg_card_state),
-                            Story::PrintingTimeline => stories::printing_timeline::show(
-                                ui,
-                                &mut self.printing_timeline_state,
-                            ),
-                            Story::AssetCard => {
-                                stories::asset_card::show(ui, &mut self.asset_card_state)
-                            }
-                            Story::RadarChart => {
-                                stories::radar_chart::show(ui, &mut self.radar_chart_state)
-                            }
-                            Story::RangeBar => {
-                                stories::range_bar::show(ui, &mut self.range_bar_state)
-                            }
-                            Story::PipRow => stories::pip_row::show(ui, &mut self.pip_row_state),
-                            Story::PriceTimeline => {
-                                stories::price_timeline::show(ui, &mut self.price_timeline_state)
-                            }
-                            Story::Leaderboard => {
-                                stories::leaderboard::show(ui, &mut self.leaderboard_state)
-                            }
-                            Story::ListingGrid => {
-                                stories::listing_grid::show(ui, &mut self.listing_grid_state)
-                            }
-                            Story::FocusList => {
-                                stories::focus_list::show(ui, &mut self.focus_list_state)
-                            }
-                            Story::CardBrowser => {
-                                stories::card_browser::show(ui, &mut self.card_browser_state)
-                            }
-                            Story::IconGallery => {
-                                stories::icon_gallery::show(ui, &mut self.icon_gallery_state)
-                            }
-                            Story::TraitFilter => {
-                                stories::trait_filter::show(ui, &mut self.trait_filter_state)
-                            }
-                            Story::WalletEditor => {
-                                stories::wallet_editor::show(ui, &mut self.wallet_editor_state)
-                            }
-                            Story::WalletButton => stories::wallet::show(
-                                ui,
-                                &mut self.wallet_btn,
-                                &mut self.wallet_connector,
-                            ),
-                            Story::SwapModal => stories::swap::show(
-                                &ctx,
-                                ui,
-                                &mut self.swap_modal,
-                                &mut self.swap_progress,
-                            ),
-                            Story::TraitDelta => stories::trait_delta::show(ui),
-                            Story::CoverageDeltaBar => stories::coverage_delta_bar::show(ui),
-                            Story::TradeTable => {
-                                stories::trade_table::show(ui, &mut self.trade_table_state)
-                            }
-                            Story::SigningStatus => {
-                                stories::signing_status::show(ui, &mut self.signing_status_state)
-                            }
-                            Story::TxFlight => {
-                                stories::tx_flight::show(ui, &mut self.tx_flight_state)
-                            }
-                            Story::ListingComposer => stories::listing_composer::show(
-                                ui,
-                                &mut self.listing_composer_state,
-                            ),
-                            Story::StakeSession => {
-                                stories::stake_session::show(ui, &mut self.stake_session_state)
-                            }
-                            Story::FeeReport => {
-                                stories::fee_report::show(ui, &mut self.fee_report_state)
-                            }
-                            Story::TxEstimate => {
-                                stories::tx_estimate::show(ui, &mut self.tx_estimate_state)
-                            }
-                            Story::TradeFlow => {
-                                stories::trade_flow::show(ui, &mut self.trade_flow_state)
-                            }
-                            Story::WalletAssetPicker => stories::wallet_asset_picker::show(
-                                &ctx,
-                                ui,
-                                &mut self.wallet_asset_picker_state,
-                            ),
-                            Story::AssetStrip => {
-                                stories::asset_strip::show(ui, &mut self.asset_strip_state)
-                            }
-                            Story::UtxoMap => stories::utxo_map::show(
-                                ui,
-                                &mut self.utxo_map_state,
-                                &mut self.wallet_btn,
-                                &mut self.wallet_connector,
-                            ),
-                            Story::ManagedWalletUtxos => stories::managed_wallet_utxos::show(
-                                ui,
-                                &mut self.managed_wallet_utxos_state,
-                            ),
-                            Story::DistributionWaterfall => stories::distribution_waterfall::show(
-                                ui,
-                                &mut self.distribution_waterfall_state,
-                            ),
-                            // DEX split swap
-                            Story::SlippageSelector => stories::slippage_selector::show(
-                                ui,
-                                &mut self.slippage_selector_state,
-                            ),
-                            Story::AmountInput => {
-                                stories::amount_input::show(ui, &mut self.amount_input_state)
-                            }
-                            Story::SplitAllocationBar => stories::split_allocation_bar::show(ui),
-                            Story::RouteSummary => stories::route_summary::show(ui),
-                            Story::PoolLiquidity => stories::pool_liquidity::show(ui),
-                            Story::PriceImpactCurve => stories::price_impact_curve::show(ui),
-                            Story::VariantSplit => stories::variant_split::show(ui),
-                            Story::CollectionComposition => {
-                                stories::collection_composition::show(ui)
-                            }
-                            // Loan dashboard
-                            Story::ExposureBar => stories::exposure_bar::show(ui),
-                            Story::SupplyBar => stories::supply_bar::show(ui),
-                            Story::OrderList => {
-                                stories::order_list::show(ui, &mut self.order_list_state)
-                            }
-                            Story::DataTable => {
-                                stories::data_table::show(ui, &mut self.data_table_state)
-                            }
-                            Story::LeaderboardTable => stories::leaderboard_table::show(ui),
-                            Story::FileUpload => {
-                                stories::file_upload::show(ui, &mut self.file_upload_state)
-                            }
-                            Story::ImageTextEditor => stories::image_text_editor::show(
-                                ui,
-                                &mut self.image_text_editor_state,
-                            ),
-                            Story::GroupedSection => stories::grouped_section::show(ui),
-                            Story::OfferTile => stories::offer_tile::show(ui),
-                            Story::CornerAction => stories::corner_action::show(ui),
-                            Story::TxCart => stories::tx_cart::show(ui, &mut self.tx_cart_state),
-                            Story::WalletIdentityHeader => stories::wallet_identity_header::show(
-                                ui,
-                                &mut self.wallet_identity_header_state,
-                            ),
-                            Story::PersonaStrip => stories::persona_strip::show(ui),
-                            Story::FungiblesRow => stories::fungibles_row::show(ui),
-                            Story::MnemonicDisplay => stories::mnemonic_display::show(
-                                ui,
-                                &mut self.mnemonic_display_state,
-                            ),
-                            Story::WalletList => {
-                                stories::wallet_list::show(ui, &mut self.wallet_list_state)
-                            }
-                            Story::CollectionList => {
-                                stories::collection_list::show(ui, &mut self.collection_list_state)
-                            }
-                            Story::ThemeStates => stories::theme_states::show(ui),
-                            Story::BackgroundToasts => stories::background::show(ui),
-                            Story::Skeleton => stories::skeleton::show(ui),
-                            Story::Chip => stories::chip::show(ui),
-                            Story::PartyBadge => stories::party_badge::show(ui),
-                            Story::FlowLedger => stories::flow_ledger::show(ui),
-                            Story::ActivityFeed => stories::activity_feed::show(ui),
-                            Story::TxCard => stories::tx_card::show(ui, &mut self.tx_card_state),
-                            Story::ImageStack => {
-                                stories::image_stack::show(ui, &mut self.image_stack_state)
-                            }
-                            Story::ChannelBands => stories::channel_bands::show(ui),
-                            Story::CustodyWalk => stories::custody_walk::show(ui),
-                            Story::CapitalFlow => {
-                                stories::capital_flow::show(ui, &mut self.capital_flow_state)
-                            }
-                            Story::CapBand => stories::cap_band::show(ui, &mut self.cap_band_state),
-                            Story::TimeSpine => {
-                                stories::time_spine::show(ui, &mut self.time_spine_state)
-                            }
-                            Story::TimeSpineDensity => stories::time_spine_density::show(
-                                ui,
-                                &mut self.time_spine_density_state,
-                            ),
-                            Story::CoverageLanes => {
-                                stories::coverage_lanes::show(ui, &mut self.coverage_lanes_state)
-                            }
-                            Story::FlowMatrix => {
-                                stories::flow_matrix::show(ui, &mut self.flow_matrix_state)
-                            }
-                            Story::FlowRing => {
-                                stories::flow_ring::show(ui, &mut self.flow_ring_state)
-                            }
-                            Story::FlowStave => {
-                                stories::flow_stave::show(ui, &mut self.flow_stave_state)
-                            }
-                            Story::PartyAnnotator => {
-                                stories::party_annotator::show(ui, &mut self.party_annotator_state)
-                            }
-                            Story::ClaimCard => {
-                                stories::claim_card::show(ui, &mut self.claim_card_state)
-                            }
-                            Story::TagList => stories::tag_list::show(ui, &mut self.tag_list_state),
-                            Story::TokenMultiselect => stories::token_multiselect::show(
-                                ui,
-                                &mut self.token_multiselect_state,
-                            ),
-                            Story::TypeaheadSearch => stories::typeahead_search::show(ui),
-                            Story::RelationshipEditor => stories::relationship_editor::show(
-                                ui,
-                                &mut self.relationship_editor_state,
-                            ),
-                            Story::CommandPalette => {
-                                stories::command_palette::show(ui, &mut self.command_palette_state)
-                            }
-                            Story::EventWiring => {
-                                stories::event_wiring::show(ui, &mut self.event_wiring_state)
-                            }
-                            Story::WiringEditor => {
-                                stories::wiring_editor::show(ui, &mut self.wiring_editor_state)
-                            }
-                            Story::ConversationHistory => stories::conversation_history::show(
-                                ui,
-                                &mut self.conversation_history_state,
-                            ),
-                            Story::AgentConfig => {
-                                stories::agent_config::show(ui, &mut self.agent_config_state)
-                            }
-                            Story::Select => stories::select::show(ui, &mut self.select_state),
-                            Story::UiMachine => stories::machine::show(ui, &mut self.machine_state),
-                            Story::NamedGroupList => stories::named_group_list::show(
-                                ui,
-                                &mut self.named_group_list_state,
-                            ),
-                            Story::RarityTargetEditor => stories::rarity_target_editor::show(
-                                ui,
-                                &mut self.rarity_target_editor_state,
-                            ),
-                            Story::PaletteEditor => {
-                                stories::palette_editor::show(ui, &mut self.palette_editor_state)
-                            }
-                            Story::SlotTable => {
-                                stories::slot_table::show(ui, &mut self.slot_table_state)
-                            }
-                            Story::PropertyList => stories::property_list::show(ui),
-                            Story::IdPill => stories::id_pill::show(ui),
-                            Story::PhaseCard => stories::phase_card::show(ui),
-                            Story::QuantityStepper => stories::quantity_stepper::show(
-                                ui,
-                                &mut self.quantity_stepper_state,
-                            ),
-                            Story::MintCheckout => {
-                                stories::mint_checkout::show(ui, &mut self.mint_checkout_state)
-                            }
-                            Story::ButtonGroup => {
-                                stories::button_group::show(ui, &mut self.button_group_state)
-                            }
-                            Story::PaneNav => stories::pane_nav::show(ui, &mut self.pane_nav_state),
-                            Story::Toast => stories::toast::show(ui, &mut self.toast_state),
-                        }
+            egui::CentralPanel::default()
+                .frame(egui::Frame::central_panel(&ctx.global_style()).fill(CHROME_BG_MAIN))
+                .show_inside(ui, |ui| {
+                    // Chrome, deliberately NOT under the theme being reviewed —
+                    // see `CHROME_*`.
+                    ui.heading(
+                        egui::RichText::new(self.current_story.label()).color(CHROME_TEXT_PRIMARY),
+                    );
+                    ui.label(
+                        egui::RichText::new(self.current_story.description())
+                            .color(CHROME_TEXT_MUTED),
+                    );
+                    if !self.nav_hidden {
+                        self.review.controls(ui);
+                    }
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        let story = self.current_story;
+                        let review = self.review.clone();
+                        review.draw_story(story, self, ui);
                     });
                 });
+        }
+    }
+
+    impl StorybookApp {
+        /// The old inline dispatch. Superseded by the macro-generated
+        /// [`Story::draw`] — kept only until the registry cleanup lands, and
+        /// verified equivalent by diffing its variant set against the macro's.
+        #[allow(dead_code)]
+        fn legacy_dispatch_TO_DELETE(&mut self, ui: &mut egui::Ui) {
+            let ctx = ui.ctx().clone();
+            match self.current_story {
+                Story::Formatting => stories::formatting::show(ui),
+                Story::Timestamp => stories::timestamp::show(ui),
+                Story::ErrorNote => stories::error_note::show(ui),
+                Story::Gated => stories::gated::show(ui),
+                Story::AccessGate => stories::access_gate::show(ui),
+                Story::Viewport => stories::viewport::show(ui),
+                Story::Drawer => stories::drawer::show(ui),
+                Story::Disclosure => stories::disclosure::show(ui, &mut self.disclosure_state),
+                Story::UserBadge => stories::user_badge::show(ui),
+                Story::TierLadder => stories::tier_ladder::show(ui),
+                Story::AboutModal => stories::about_modal::show(ui),
+                Story::ServiceBanner => stories::service_banner::show(ui),
+                Story::Distribution => {
+                    stories::distribution::show(ui, &mut self.distribution_chart)
+                }
+                Story::Marquee => {
+                    stories::marquee::show(ui, &mut self.marquee, &mut self.marquee_messages)
+                }
+                Story::Buttons => stories::buttons::show(ui),
+                Story::ProgressBar => stories::progress_bar::show(ui, &mut self.progress_bar_state),
+                Story::BulletBar => stories::bullet_bar::show(ui, &mut self.bullet_bar_state),
+                Story::Sparkline => stories::sparkline::show(ui, &mut self.sparkline_state),
+                Story::MetricCard => stories::metric_card::show(ui),
+                Story::PerfStrip => stories::perf_strip::show(ui, &mut self.perf_strip_state),
+                Story::TokenHistory => stories::token_history::show(ui),
+                Story::TokenKinetic => stories::token_kinetic::show(ui),
+                Story::TokenParticles => stories::token_particles::show(ui),
+                Story::StatStrip => stories::stat_strip::show(ui),
+                Story::SevenSegment => {
+                    stories::seven_segment::show(ui, &mut self.seven_segment_state)
+                }
+                Story::FlipCounter => stories::flip_counter::show(ui, &mut self.flip_counter_state),
+                Story::AsyncData => stories::async_data::show(ui, &mut self.async_data_state),
+                Story::MeshPlayground => {
+                    stories::mesh_playground::show(ui, &mut self.mesh_playground_state)
+                }
+                Story::PerspectiveText => {
+                    stories::perspective_text::show(ui, &mut self.perspective_text_state)
+                }
+                Story::TcgCard => stories::tcg_card::show(ui, &mut self.tcg_card_state),
+                Story::PrintingTimeline => {
+                    stories::printing_timeline::show(ui, &mut self.printing_timeline_state)
+                }
+                Story::AssetCard => stories::asset_card::show(ui, &mut self.asset_card_state),
+                Story::RadarChart => stories::radar_chart::show(ui, &mut self.radar_chart_state),
+                Story::RangeBar => stories::range_bar::show(ui, &mut self.range_bar_state),
+                Story::PipRow => stories::pip_row::show(ui, &mut self.pip_row_state),
+                Story::PriceTimeline => {
+                    stories::price_timeline::show(ui, &mut self.price_timeline_state)
+                }
+                Story::Leaderboard => stories::leaderboard::show(ui, &mut self.leaderboard_state),
+                Story::ListingGrid => stories::listing_grid::show(ui, &mut self.listing_grid_state),
+                Story::FocusList => stories::focus_list::show(ui, &mut self.focus_list_state),
+                Story::CardBrowser => stories::card_browser::show(ui, &mut self.card_browser_state),
+                Story::IconGallery => stories::icon_gallery::show(ui, &mut self.icon_gallery_state),
+                Story::TraitFilter => stories::trait_filter::show(ui, &mut self.trait_filter_state),
+                Story::WalletEditor => {
+                    stories::wallet_editor::show(ui, &mut self.wallet_editor_state)
+                }
+                Story::WalletButton => {
+                    stories::wallet::show(ui, &mut self.wallet_btn, &mut self.wallet_connector)
+                }
+                Story::SwapModal => {
+                    stories::swap::show(&ctx, ui, &mut self.swap_modal, &mut self.swap_progress)
+                }
+                Story::TraitDelta => stories::trait_delta::show(ui),
+                Story::CoverageDeltaBar => stories::coverage_delta_bar::show(ui),
+                Story::TradeTable => stories::trade_table::show(ui, &mut self.trade_table_state),
+                Story::SigningStatus => {
+                    stories::signing_status::show(ui, &mut self.signing_status_state)
+                }
+                Story::TxFlight => stories::tx_flight::show(ui, &mut self.tx_flight_state),
+                Story::ListingComposer => {
+                    stories::listing_composer::show(ui, &mut self.listing_composer_state)
+                }
+                Story::StakeSession => {
+                    stories::stake_session::show(ui, &mut self.stake_session_state)
+                }
+                Story::FeeReport => stories::fee_report::show(ui, &mut self.fee_report_state),
+                Story::TxEstimate => stories::tx_estimate::show(ui, &mut self.tx_estimate_state),
+                Story::TradeFlow => stories::trade_flow::show(ui, &mut self.trade_flow_state),
+                Story::WalletAssetPicker => stories::wallet_asset_picker::show(
+                    &ctx,
+                    ui,
+                    &mut self.wallet_asset_picker_state,
+                ),
+                Story::AssetStrip => stories::asset_strip::show(ui, &mut self.asset_strip_state),
+                Story::UtxoMap => stories::utxo_map::show(
+                    ui,
+                    &mut self.utxo_map_state,
+                    &mut self.wallet_btn,
+                    &mut self.wallet_connector,
+                ),
+                Story::ManagedWalletUtxos => {
+                    stories::managed_wallet_utxos::show(ui, &mut self.managed_wallet_utxos_state)
+                }
+                Story::DistributionWaterfall => stories::distribution_waterfall::show(
+                    ui,
+                    &mut self.distribution_waterfall_state,
+                ),
+                // DEX split swap
+                Story::SlippageSelector => {
+                    stories::slippage_selector::show(ui, &mut self.slippage_selector_state)
+                }
+                Story::AmountInput => stories::amount_input::show(ui, &mut self.amount_input_state),
+                Story::SplitAllocationBar => stories::split_allocation_bar::show(ui),
+                Story::RouteSummary => stories::route_summary::show(ui),
+                Story::PoolLiquidity => stories::pool_liquidity::show(ui),
+                Story::PriceImpactCurve => stories::price_impact_curve::show(ui),
+                Story::VariantSplit => stories::variant_split::show(ui),
+                Story::CollectionComposition => stories::collection_composition::show(ui),
+                // Loan dashboard
+                Story::ExposureBar => stories::exposure_bar::show(ui),
+                Story::SupplyBar => stories::supply_bar::show(ui),
+                Story::OrderList => stories::order_list::show(ui, &mut self.order_list_state),
+                Story::DataTable => stories::data_table::show(ui, &mut self.data_table_state),
+                Story::LeaderboardTable => stories::leaderboard_table::show(ui),
+                Story::FileUpload => stories::file_upload::show(ui, &mut self.file_upload_state),
+                Story::ImageTextEditor => {
+                    stories::image_text_editor::show(ui, &mut self.image_text_editor_state)
+                }
+                Story::GroupedSection => stories::grouped_section::show(ui),
+                Story::OfferTile => stories::offer_tile::show(ui),
+                Story::CornerAction => stories::corner_action::show(ui),
+                Story::TxCart => stories::tx_cart::show(ui, &mut self.tx_cart_state),
+                Story::WalletIdentityHeader => stories::wallet_identity_header::show(
+                    ui,
+                    &mut self.wallet_identity_header_state,
+                ),
+                Story::PersonaStrip => stories::persona_strip::show(ui),
+                Story::FungiblesRow => stories::fungibles_row::show(ui),
+                Story::MnemonicDisplay => {
+                    stories::mnemonic_display::show(ui, &mut self.mnemonic_display_state)
+                }
+                Story::WalletList => stories::wallet_list::show(ui, &mut self.wallet_list_state),
+                Story::CollectionList => {
+                    stories::collection_list::show(ui, &mut self.collection_list_state)
+                }
+                Story::ThemeStates => stories::theme_states::show(ui),
+                Story::BackgroundToasts => stories::background::show(ui),
+                Story::Skeleton => stories::skeleton::show(ui),
+                Story::Chip => stories::chip::show(ui),
+                Story::PartyBadge => stories::party_badge::show(ui),
+                Story::FlowLedger => stories::flow_ledger::show(ui),
+                Story::ActivityFeed => stories::activity_feed::show(ui),
+                Story::TxCard => stories::tx_card::show(ui, &mut self.tx_card_state),
+                Story::ImageStack => stories::image_stack::show(ui, &mut self.image_stack_state),
+                Story::ChannelBands => stories::channel_bands::show(ui),
+                Story::CustodyWalk => stories::custody_walk::show(ui),
+                Story::CapitalFlow => stories::capital_flow::show(ui, &mut self.capital_flow_state),
+                Story::CapBand => stories::cap_band::show(ui, &mut self.cap_band_state),
+                Story::TimeSpine => stories::time_spine::show(ui, &mut self.time_spine_state),
+                Story::TimeSpineDensity => {
+                    stories::time_spine_density::show(ui, &mut self.time_spine_density_state)
+                }
+                Story::CoverageLanes => {
+                    stories::coverage_lanes::show(ui, &mut self.coverage_lanes_state)
+                }
+                Story::FlowMatrix => stories::flow_matrix::show(ui, &mut self.flow_matrix_state),
+                Story::FlowRing => stories::flow_ring::show(ui, &mut self.flow_ring_state),
+                Story::FlowStave => stories::flow_stave::show(ui, &mut self.flow_stave_state),
+                Story::PartyAnnotator => {
+                    stories::party_annotator::show(ui, &mut self.party_annotator_state)
+                }
+                Story::ClaimCard => stories::claim_card::show(ui, &mut self.claim_card_state),
+                Story::TagList => stories::tag_list::show(ui, &mut self.tag_list_state),
+                Story::TokenMultiselect => {
+                    stories::token_multiselect::show(ui, &mut self.token_multiselect_state)
+                }
+                Story::TypeaheadSearch => stories::typeahead_search::show(ui),
+                Story::RelationshipEditor => {
+                    stories::relationship_editor::show(ui, &mut self.relationship_editor_state)
+                }
+                Story::CommandPalette => {
+                    stories::command_palette::show(ui, &mut self.command_palette_state)
+                }
+                Story::EventWiring => stories::event_wiring::show(ui, &mut self.event_wiring_state),
+                Story::WiringEditor => {
+                    stories::wiring_editor::show(ui, &mut self.wiring_editor_state)
+                }
+                Story::ConversationHistory => {
+                    stories::conversation_history::show(ui, &mut self.conversation_history_state)
+                }
+                Story::AgentConfig => stories::agent_config::show(ui, &mut self.agent_config_state),
+                Story::Select => stories::select::show(ui, &mut self.select_state),
+                Story::UiMachine => stories::machine::show(ui, &mut self.machine_state),
+                Story::NamedGroupList => {
+                    stories::named_group_list::show(ui, &mut self.named_group_list_state)
+                }
+                Story::RarityTargetEditor => {
+                    stories::rarity_target_editor::show(ui, &mut self.rarity_target_editor_state)
+                }
+                Story::PaletteEditor => {
+                    stories::palette_editor::show(ui, &mut self.palette_editor_state)
+                }
+                Story::SlotTable => stories::slot_table::show(ui, &mut self.slot_table_state),
+                Story::PropertyList => stories::property_list::show(ui),
+                Story::IdPill => stories::id_pill::show(ui),
+                Story::PhaseCard => stories::phase_card::show(ui),
+                Story::QuantityStepper => {
+                    stories::quantity_stepper::show(ui, &mut self.quantity_stepper_state)
+                }
+                Story::MintCheckout => {
+                    stories::mint_checkout::show(ui, &mut self.mint_checkout_state)
+                }
+                Story::ButtonGroup => stories::button_group::show(ui, &mut self.button_group_state),
+                Story::PaneNav => stories::pane_nav::show(ui, &mut self.pane_nav_state),
+                Story::Toast => stories::toast::show(ui, &mut self.toast_state),
+            }
         }
     }
 

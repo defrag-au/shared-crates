@@ -126,10 +126,10 @@ impl WalletButton {
                 )
                 .corner_radius(4.0),
             );
-            if btn.clicked() {
-                if let Some(provider) = WalletProvider::from_api_name(&info.api_name) {
-                    action = WalletAction::Connect(provider);
-                }
+            if btn.clicked()
+                && let Some(provider) = WalletProvider::from_api_name(&info.api_name)
+            {
+                action = WalletAction::Connect(provider);
             }
             return action;
         }
@@ -163,10 +163,10 @@ impl WalletButton {
                 );
             }
 
-            if btn.clicked() {
-                if let Some(provider) = WalletProvider::from_api_name(&wallet_info.api_name) {
-                    action = WalletAction::Connect(provider);
-                }
+            if btn.clicked()
+                && let Some(provider) = WalletProvider::from_api_name(&wallet_info.api_name)
+            {
+                action = WalletAction::Connect(provider);
             }
         }
 
@@ -285,10 +285,10 @@ impl WalletButton {
                     .clicked()
                 {
                     // Try to reconnect with the first available wallet
-                    if let Some(info) = connector.available_wallets.first() {
-                        if let Some(provider) = WalletProvider::from_api_name(&info.api_name) {
-                            action = WalletAction::Connect(provider);
-                        }
+                    if let Some(info) = connector.available_wallets.first()
+                        && let Some(provider) = WalletProvider::from_api_name(&info.api_name)
+                    {
+                        action = WalletAction::Connect(provider);
                     }
                 }
             });
