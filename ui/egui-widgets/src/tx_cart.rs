@@ -5,7 +5,7 @@
 //! flow, while the caller handles the actual TX building and signing.
 
 use crate::icons::PhosphorIcon;
-use crate::theme::{Radius, Space, SpaceExt, Theme, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, Theme, ThemeExt};
 use egui::{RichText, Ui};
 
 // ---------------------------------------------------------------------------
@@ -258,7 +258,7 @@ pub fn show_items(
     ui.label(
         RichText::new(config.title)
             .color(ui.tokens().color.text_primary)
-            .size(18.0)
+            .size(ui.text_size(TextSize::Xl2))
             .strong(),
     );
     ui.gap(Space::Sm);
@@ -268,13 +268,13 @@ pub fn show_items(
         ui.label(
             RichText::new("Your cart is empty")
                 .color(ui.tokens().color.text_muted)
-                .size(12.0),
+                .size(ui.text_size(TextSize::Md)),
         );
         ui.gap(Space::Sm);
         ui.label(
             RichText::new("Add offers from the Browse tab")
                 .color(ui.tokens().color.text_muted)
-                .size(10.0),
+                .size(ui.text_size(TextSize::Sm)),
         );
         return action;
     }
@@ -305,7 +305,7 @@ pub fn show_items(
             ui.label(
                 RichText::new(group_label)
                     .color(ui.tokens().color.text_primary)
-                    .size(13.0)
+                    .size(ui.text_size(TextSize::Lg))
                     .strong(),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -315,7 +315,7 @@ pub fn show_items(
                             egui::Button::new(
                                 RichText::new("Clear")
                                     .color(ui.tokens().color.text_muted)
-                                    .size(10.0),
+                                    .size(ui.text_size(TextSize::Sm)),
                             )
                             .frame(false),
                         )
@@ -326,7 +326,7 @@ pub fn show_items(
                 ui.label(
                     RichText::new(format!("{:.0} ADA", group_total))
                         .color(ui.tokens().color.accent_red)
-                        .size(11.0),
+                        .size(ui.text_size(TextSize::Base)),
                 );
             });
         });
@@ -353,7 +353,7 @@ pub fn show_items(
                         ui.label(
                             RichText::new(&item.label)
                                 .color(ui.tokens().color.text_primary)
-                                .size(12.0)
+                                .size(ui.text_size(TextSize::Md))
                                 .strong(),
                         );
                         // Truncated policy ID
@@ -367,7 +367,7 @@ pub fn show_items(
                             ui.label(
                                 RichText::new(truncated)
                                     .color(ui.tokens().color.text_muted)
-                                    .size(9.0)
+                                    .size(ui.text_size(TextSize::Xs))
                                     .monospace(),
                             );
                         }
@@ -389,7 +389,7 @@ pub fn show_items(
                                     ui.label(
                                         RichText::new(short)
                                             .color(ui.tokens().color.accent_green)
-                                            .size(9.0)
+                                            .size(ui.text_size(TextSize::Xs))
                                             .monospace(),
                                     );
                                 });
@@ -398,7 +398,7 @@ pub fn show_items(
                                 ui.label(
                                     RichText::new(other.label())
                                         .color(other.color(&ui.tokens()))
-                                        .size(9.0),
+                                        .size(ui.text_size(TextSize::Xs)),
                                 );
                             }
                         }
@@ -434,13 +434,13 @@ pub fn show_items(
                         ui.label(
                             RichText::new(format!("{:.0} ADA", total))
                                 .color(ui.tokens().color.text_primary)
-                                .size(11.0),
+                                .size(ui.text_size(TextSize::Base)),
                         );
                         if item.quantity > 1 {
                             ui.label(
                                 RichText::new(format!("{}x", item.quantity))
                                     .color(ui.tokens().color.text_muted)
-                                    .size(10.0),
+                                    .size(ui.text_size(TextSize::Sm)),
                             );
                         }
                     });
@@ -467,7 +467,7 @@ pub fn show_items(
                 ui.label(
                     RichText::new(short)
                         .color(ui.tokens().color.accent_red)
-                        .size(9.0),
+                        .size(ui.text_size(TextSize::Xs)),
                 );
             }
 
@@ -516,7 +516,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                     ui.label(
                         RichText::new(format!("Total: {:.0} ADA", total_ada))
                             .color(ui.tokens().color.text_secondary)
-                            .size(11.0),
+                            .size(ui.text_size(TextSize::Base)),
                     );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -525,7 +525,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                                 egui::Button::new(
                                     RichText::new("Prepare")
                                         .color(ui.tokens().color.bg_primary)
-                                        .size(13.0)
+                                        .size(ui.text_size(TextSize::Lg))
                                         .strong(),
                                 )
                                 .fill(ui.tokens().color.accent_green)
@@ -547,7 +547,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                 ui.label(
                     RichText::new("Building transactions...")
                         .color(ui.tokens().color.accent_cyan)
-                        .size(12.0),
+                        .size(ui.text_size(TextSize::Md)),
                 );
             });
         }
@@ -562,7 +562,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                     state.planned_txs.len()
                 ))
                 .color(ui.tokens().color.text_secondary)
-                .size(11.0),
+                .size(ui.text_size(TextSize::Base)),
             );
             ui.gap(Space::Sm);
 
@@ -571,12 +571,12 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                     ui.label(
                         RichText::new(format!("TX {}", i + 1))
                             .color(ui.tokens().color.text_muted)
-                            .size(10.0),
+                            .size(ui.text_size(TextSize::Sm)),
                     );
                     ui.label(
                         RichText::new(&planned.summary)
                             .color(ui.tokens().color.text_primary)
-                            .size(10.0),
+                            .size(ui.text_size(TextSize::Sm)),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
@@ -585,7 +585,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                                 planned.fee as f64 / 1_000_000.0
                             ))
                             .color(ui.tokens().color.text_muted)
-                            .size(9.0),
+                            .size(ui.text_size(TextSize::Xs)),
                         );
                     });
                 });
@@ -598,7 +598,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                         egui::Button::new(
                             RichText::new("< Edit")
                                 .color(ui.tokens().color.text_muted)
-                                .size(11.0),
+                                .size(ui.text_size(TextSize::Base)),
                         )
                         .frame(false),
                     )
@@ -613,7 +613,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                             egui::Button::new(
                                 RichText::new("Sign & Submit")
                                     .color(ui.tokens().color.bg_primary)
-                                    .size(13.0)
+                                    .size(ui.text_size(TextSize::Lg))
                                     .strong(),
                             )
                             .fill(ui.tokens().color.accent_green)
@@ -644,7 +644,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                 ui.label(
                     RichText::new(label)
                         .color(ui.tokens().color.accent_cyan)
-                        .size(12.0),
+                        .size(ui.text_size(TextSize::Md)),
                 );
             });
         }
@@ -657,7 +657,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                 ui.label(
                     RichText::new("All transactions submitted")
                         .color(ui.tokens().color.accent_green)
-                        .size(13.0)
+                        .size(ui.text_size(TextSize::Lg))
                         .strong(),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -666,7 +666,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                             egui::Button::new(
                                 RichText::new("Clear")
                                     .color(ui.tokens().color.text_primary)
-                                    .size(12.0),
+                                    .size(ui.text_size(TextSize::Md)),
                             )
                             .fill(ui.tokens().color.bg_secondary)
                             .corner_radius(ui.tokens().corner(Radius::Md))
@@ -690,7 +690,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
             ui.label(
                 RichText::new(format!("Error: {short}"))
                     .color(ui.tokens().color.accent_red)
-                    .size(11.0),
+                    .size(ui.text_size(TextSize::Base)),
             );
             ui.gap(Space::Sm);
             ui.horizontal(|ui| {
@@ -699,7 +699,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                         egui::Button::new(
                             RichText::new("Retry")
                                 .color(ui.tokens().color.text_primary)
-                                .size(12.0),
+                                .size(ui.text_size(TextSize::Md)),
                         )
                         .fill(ui.tokens().color.bg_secondary)
                         .corner_radius(ui.tokens().corner(Radius::Md))
@@ -718,7 +718,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                         egui::Button::new(
                             RichText::new("Edit cart")
                                 .color(ui.tokens().color.text_primary)
-                                .size(12.0),
+                                .size(ui.text_size(TextSize::Md)),
                         )
                         .fill(ui.tokens().color.bg_secondary)
                         .corner_radius(ui.tokens().corner(Radius::Md))
@@ -734,7 +734,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                         egui::Button::new(
                             RichText::new("Clear")
                                 .color(ui.tokens().color.text_muted)
-                                .size(12.0),
+                                .size(ui.text_size(TextSize::Md)),
                         )
                         .frame(false),
                     )

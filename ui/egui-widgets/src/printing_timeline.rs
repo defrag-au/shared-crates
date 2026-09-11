@@ -8,7 +8,7 @@
 
 use egui::{Color32, Pos2, Rect, RichText, Stroke, Vec2};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, TextSize, ThemeExt};
 
 // ── Config ───────────────────────────────────────────────────────
 
@@ -237,7 +237,7 @@ pub fn show(
                 };
                 let set_galley = painter.layout_no_wrap(
                     node.set_code.clone(),
-                    egui::FontId::monospace(11.0),
+                    egui::FontId::monospace(ui.text_size(TextSize::Base)),
                     code_color,
                 );
                 let set_w = set_galley.size().x;
@@ -255,7 +255,7 @@ pub fn show(
                 };
                 let date_galley = painter.layout_no_wrap(
                     year.to_string(),
-                    egui::FontId::proportional(9.0),
+                    egui::FontId::proportional(ui.text_size(TextSize::Xs)),
                     text_muted,
                 );
                 let date_w = date_galley.size().x;

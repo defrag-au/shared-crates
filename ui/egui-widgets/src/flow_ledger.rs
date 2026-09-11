@@ -54,7 +54,7 @@ use egui::{Color32, Response, RichText, Sense, Ui, Vec2};
 use egui_extras::{Column, TableBuilder};
 
 use crate::party_badge::{PartyBadge, PartyBasis};
-use crate::theme::{Space, SpaceExt};
+use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
 use crate::timestamp::format_iso8601;
 
 /// One movement. `amount` is the party's NET change in the smallest unit —
@@ -366,7 +366,11 @@ impl<'a> FlowLedger<'a> {
             .header(18.0, |mut header| {
                 let head = |h: &mut egui_extras::TableRow, text: &str| {
                     h.col(|ui| {
-                        ui.label(RichText::new(text).size(10.0).color(muted));
+                        ui.label(
+                            RichText::new(text)
+                                .size(ui.text_size(TextSize::Sm))
+                                .color(muted),
+                        );
                     });
                 };
                 head(&mut header, "");
@@ -416,7 +420,7 @@ impl<'a> FlowLedger<'a> {
                     row.col(|ui| {
                         ui.label(
                             RichText::new(format_iso8601(r.timestamp, false))
-                                .size(11.0)
+                                .size(ui.text_size(TextSize::Base))
                                 .monospace()
                                 .color(muted),
                         );
@@ -432,8 +436,12 @@ impl<'a> FlowLedger<'a> {
                         };
                         let sign = if r.is_inflow() { "+" } else { "-" };
                         let text = format!("{sign}{}", (self.format_amount)(r.amount.abs()));
-                        let resp =
-                            ui.label(RichText::new(text).size(11.0).monospace().color(color));
+                        let resp = ui.label(
+                            RichText::new(text)
+                                .size(ui.text_size(TextSize::Base))
+                                .monospace()
+                                .color(color),
+                        );
                         if r.recycled {
                             resp.on_hover_text(
                                 "Round trip — this is the wallet's own money returning, \
@@ -456,7 +464,7 @@ impl<'a> FlowLedger<'a> {
                             let sign = if r.items > 0 { "+" } else { "-" };
                             ui.label(
                                 RichText::new(format!("{sign}{}", r.items.abs()))
-                                    .size(11.0)
+                                    .size(ui.text_size(TextSize::Base))
                                     .monospace()
                                     .color(color),
                             )
@@ -478,7 +486,7 @@ impl<'a> FlowLedger<'a> {
                             // movement, not a direction of it.
                             ui.label(
                                 RichText::new(label)
-                                    .size(11.0)
+                                    .size(ui.text_size(TextSize::Base))
                                     .color(Color32::from_rgb(0xc9, 0xa2, 0x27)),
                             )
                             .on_hover_text(
@@ -515,7 +523,7 @@ impl<'a> FlowLedger<'a> {
                         row.col(|ui| {
                             ui.label(
                                 RichText::new((self.format_amount)(balances[idx]))
-                                    .size(11.0)
+                                    .size(ui.text_size(TextSize::Base))
                                     .monospace()
                                     .color(muted),
                             );
@@ -564,19 +572,19 @@ impl<'a> FlowLedger<'a> {
 
             ui.label(
                 RichText::new(format!("in {}", f(totals.inflow)))
-                    .size(11.0)
+                    .size(ui.text_size(TextSize::Base))
                     .color(muted),
             );
             ui.label(
                 RichText::new(format!("out {}", f(totals.outflow)))
-                    .size(11.0)
+                    .size(ui.text_size(TextSize::Base))
                     .color(muted),
             );
 
             if totals.recycled > 0 {
                 ui.label(
                     RichText::new(format!("recycled {}", f(totals.recycled)))
-                        .size(11.0)
+                        .size(ui.text_size(TextSize::Base))
                         .color(muted),
                 )
                 .on_hover_text(
@@ -585,7 +593,7 @@ impl<'a> FlowLedger<'a> {
                 );
                 ui.label(
                     RichText::new(format!("genuine in {}", f(totals.genuine_inflow())))
-                        .size(11.0)
+                        .size(ui.text_size(TextSize::Base))
                         .color(muted),
                 );
             }
@@ -596,14 +604,14 @@ impl<'a> FlowLedger<'a> {
                 Some(true) => {
                     ui.label(
                         RichText::new("reconciles")
-                            .size(11.0)
+                            .size(ui.text_size(TextSize::Base))
                             .color(Color32::from_rgb(0x4a, 0xba, 0x7a)),
                     );
                 }
                 Some(false) => {
                     ui.label(
                         RichText::new("DOES NOT RECONCILE")
-                            .size(11.0)
+                            .size(ui.text_size(TextSize::Base))
                             .strong()
                             .color(ui.visuals().warn_fg_color),
                     )

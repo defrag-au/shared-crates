@@ -11,7 +11,7 @@
 
 use egui::{Color32, Pos2, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -220,7 +220,7 @@ pub fn show(
                 Pos2::new(rect.min.x + left_margin - 4.0, y),
                 egui::Align2::RIGHT_CENTER,
                 label,
-                egui::FontId::proportional(9.0),
+                egui::FontId::proportional(ui.text_size(TextSize::Xs)),
                 ui.tokens().color.text_muted,
             );
         }
@@ -251,7 +251,7 @@ pub fn show(
                 Pos2::new(x, plot_rect.bottom() + 5.0),
                 egui::Align2::CENTER_TOP,
                 label,
-                egui::FontId::proportional(9.0),
+                egui::FontId::proportional(ui.text_size(TextSize::Xs)),
                 ui.tokens().color.text_muted,
             );
         }
@@ -261,7 +261,7 @@ pub fn show(
             Pos2::new(plot_rect.center().x, rect.max.y - 2.0),
             egui::Align2::CENTER_BOTTOM,
             "ADA Input",
-            egui::FontId::proportional(9.0),
+            egui::FontId::proportional(ui.text_size(TextSize::Xs)),
             ui.tokens().color.text_muted,
         );
     }
@@ -360,7 +360,7 @@ pub fn show(
                 Pos2::new(marker_pos.x + 8.0, marker_pos.y + label_offset),
                 egui::Align2::LEFT_CENTER,
                 label,
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(ui.text_size(TextSize::Sm)),
                 pool.color,
             );
         }
@@ -401,7 +401,7 @@ pub fn show(
                 Pos2::new(plot_rect.right() - 2.0, ref_y - 8.0),
                 egui::Align2::RIGHT_BOTTOM,
                 format!("single: {ref_pct:.2}%"),
-                egui::FontId::proportional(9.0),
+                egui::FontId::proportional(ui.text_size(TextSize::Xs)),
                 ui.tokens().color.text_muted,
             );
         }
@@ -467,7 +467,7 @@ pub fn show(
                 ui.label(
                     RichText::new(text)
                         .color(ui.tokens().color.text_secondary)
-                        .size(10.0),
+                        .size(ui.text_size(TextSize::Sm)),
                 );
                 ui.gap(Space::Md);
             }
@@ -504,7 +504,7 @@ pub fn show(
                 ui.label(
                     RichText::new(format!("single pool: {:.2}%", best_impact * 100.0))
                         .color(ui.tokens().color.text_muted)
-                        .size(10.0),
+                        .size(ui.text_size(TextSize::Sm)),
                 );
             }
         });

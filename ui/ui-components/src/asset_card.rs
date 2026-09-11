@@ -8,11 +8,11 @@
 //!
 //! The component generates IIIF URLs from the asset ID:
 //! - Asset ID format: `{policy_id}{asset_name_hex}` (56+ chars)
-//! - Generated URL: `https://iiif.hodlcroft.com/iiif/3/{policy_id}:{asset_name}/full/{size},/0/default.jpg`
+//! - Generated URL: `https://iiif.hodlcroft.com/iiif/3/{policy_id}:{asset_name}/full/{size},/0/default.auto`
 //!
 //! The IIIF image size is automatically selected based on card size:
 //! - xs, sm, md, lg (≤400px): uses 400px IIIF image (cached, fast)
-//! - xl (>400px): uses 1646px IIIF image (high resolution)
+//! - xl (>400px): uses 1686px IIIF image (high resolution)
 //!
 //! ## Overlay Slots
 //!
@@ -76,7 +76,7 @@ pub enum IiifSize {
     /// 400px width - fast, cached thumbnails
     #[default]
     Thumb,
-    /// 1646px width - high resolution
+    /// 1686px width - high resolution
     Large,
 }
 
@@ -323,9 +323,11 @@ mod tests {
             "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6:506972617465313839"
         ));
 
-        // 1646, not 1686 — the warm derivative. See `image_core::ImageSize`.
+        // 1686 — the width the iiif worker actually pre-warms. 1646 sat here
+        // for a while and was a misremembering of it; check
+        // `image_core::ImageSize`, which checks the worker.
         let large_url = generate_iiif_url(asset_id, IiifSize::Large).unwrap();
-        assert!(large_url.contains("/1646,/"));
+        assert!(large_url.contains("/1686,/"));
     }
 
     #[test]

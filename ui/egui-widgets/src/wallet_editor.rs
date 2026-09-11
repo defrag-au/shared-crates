@@ -6,7 +6,7 @@
 
 use egui::{Color32, RichText};
 
-use crate::theme::{Space, SpaceExt, ThemeExt};
+use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -179,14 +179,14 @@ pub fn show(
                     ui.label(
                         RichText::new("\u{2022}")
                             .color(ui.tokens().color.accent_green)
-                            .size(14.0),
+                            .size(ui.text_size(TextSize::Lg)),
                     );
                 }
                 WalletEntryStatus::Failed(_) => {
                     ui.label(
                         RichText::new("!")
                             .color(ui.tokens().color.accent_red)
-                            .size(12.0)
+                            .size(ui.text_size(TextSize::Md))
                             .strong(),
                     );
                 }
@@ -204,7 +204,7 @@ pub fn show(
                 ui.label(
                     RichText::new("(browser)")
                         .color(ui.tokens().color.text_muted)
-                        .size(8.0),
+                        .size(ui.text_size(TextSize::Xs)),
                 );
             }
 
@@ -213,7 +213,7 @@ pub fn show(
                 ui.label(
                     RichText::new(msg.as_str())
                         .color(ui.tokens().color.accent_red)
-                        .size(9.0),
+                        .size(ui.text_size(TextSize::Xs)),
                 );
             }
 

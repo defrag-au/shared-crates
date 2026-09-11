@@ -9,7 +9,7 @@
 use egui::{Color32, Rect, Sense, Ui, Vec2};
 
 use crate::exposure_bar::ltv_risk_color;
-use crate::theme::{Radius, Space, ThemeExt};
+use crate::theme::{Radius, Space, TextSize, ThemeExt};
 
 // ============================================================================
 // Column widths
@@ -187,7 +187,7 @@ fn draw_header(ui: &mut Ui, config: &DataTableConfig) {
     }
 
     let painter = ui.painter();
-    let font = egui::FontId::proportional(9.0);
+    let font = egui::FontId::proportional(ui.text_size(TextSize::Xs));
     let color = ui.tokens().color.text_muted;
     let y = rect.center().y;
 
@@ -300,7 +300,7 @@ fn draw_row(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
         &item.token_name,
-        egui::FontId::proportional(11.0),
+        egui::FontId::proportional(ui.text_size(TextSize::Base)),
         ui.tokens().color.text_primary,
     );
     x += COL_TOKEN;
@@ -310,7 +310,7 @@ fn draw_row(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
         &item.principal,
-        egui::FontId::monospace(11.0),
+        egui::FontId::monospace(ui.text_size(TextSize::Base)),
         ui.tokens().color.accent_cyan,
     );
     x += COL_PRINCIPAL;
@@ -320,7 +320,7 @@ fn draw_row(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
         &item.collateral,
-        egui::FontId::proportional(10.0),
+        egui::FontId::proportional(ui.text_size(TextSize::Sm)),
         ui.tokens().color.text_secondary,
     );
     x += COL_COLLATERAL;
@@ -343,7 +343,7 @@ fn draw_row(
             egui::pos2(x + 4.0, cy - if config.show_ltv_bar { 2.0 } else { 0.0 }),
             egui::Align2::LEFT_CENTER,
             format!("{ltv:.1}%"),
-            egui::FontId::monospace(10.0),
+            egui::FontId::monospace(ui.text_size(TextSize::Sm)),
             ltv_color,
         );
     } else {
@@ -351,7 +351,7 @@ fn draw_row(
             egui::pos2(x + 4.0, cy),
             egui::Align2::LEFT_CENTER,
             "\u{2014}",
-            egui::FontId::proportional(10.0),
+            egui::FontId::proportional(ui.text_size(TextSize::Sm)),
             ui.tokens().color.text_muted,
         );
     }
@@ -362,7 +362,7 @@ fn draw_row(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
         &item.rate,
-        egui::FontId::monospace(10.0),
+        egui::FontId::monospace(ui.text_size(TextSize::Sm)),
         ui.tokens().color.text_primary,
     );
     x += COL_RATE;
@@ -372,7 +372,7 @@ fn draw_row(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
         &item.duration,
-        egui::FontId::proportional(10.0),
+        egui::FontId::proportional(ui.text_size(TextSize::Sm)),
         ui.tokens().color.text_muted,
     );
     x += COL_DURATION;
@@ -382,7 +382,7 @@ fn draw_row(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
         &item.interest,
-        egui::FontId::monospace(10.0),
+        egui::FontId::monospace(ui.text_size(TextSize::Sm)),
         ui.tokens().color.accent_green,
     );
     x += COL_INTEREST;
@@ -399,7 +399,7 @@ fn draw_row(
             pill_rect.center(),
             egui::Align2::CENTER_CENTER,
             "Cancelling\u{2026}",
-            egui::FontId::proportional(9.0),
+            egui::FontId::proportional(ui.text_size(TextSize::Xs)),
             ui.tokens().color.warning,
         );
     }

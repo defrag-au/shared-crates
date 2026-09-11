@@ -10,7 +10,7 @@
 use crate::corner_action::{Corner, CornerAction};
 use crate::icons::PhosphorIcon;
 use crate::image_loader::CachedSpinner;
-use crate::theme::{Space, SpaceExt, ThemeExt, with_alpha};
+use crate::theme::{Space, SpaceExt, TextSize, ThemeExt, with_alpha};
 use egui::{Color32, RichText, Sense, Vec2};
 
 /// Whether a listing can actually be bought.
@@ -214,7 +214,7 @@ impl ListingGrid {
                             .text_muted
                             .unwrap_or(ui.tokens().color.text_muted),
                     )
-                    .size(11.0),
+                    .size(ui.text_size(TextSize::Base)),
             );
             return ListingGridResponse::default();
         }
@@ -314,7 +314,7 @@ impl ListingGrid {
                         rect.center(),
                         egui::Align2::CENTER_CENTER,
                         "?",
-                        egui::FontId::proportional(20.0),
+                        egui::FontId::proportional(ui.text_size(TextSize::Xl2)),
                         cfg.text_muted.unwrap_or(ui.tokens().color.text_muted),
                     );
                 }
@@ -346,7 +346,7 @@ impl ListingGrid {
                     banner_rect.center(),
                     egui::Align2::CENTER_CENTER,
                     format!("{price_ada:.0} ADA"),
-                    egui::FontId::monospace(10.0),
+                    egui::FontId::monospace(ui.text_size(TextSize::Sm)),
                     price_color,
                 );
 
@@ -366,7 +366,7 @@ impl ListingGrid {
                         gap_banner_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         format!("Fills {count}"),
-                        egui::FontId::monospace(10.0),
+                        egui::FontId::monospace(ui.text_size(TextSize::Sm)),
                         c.on(c.success),
                     );
                 }
@@ -391,7 +391,7 @@ impl ListingGrid {
                         bundle_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         format!("Bundle x{n}"),
-                        egui::FontId::monospace(10.0),
+                        egui::FontId::monospace(ui.text_size(TextSize::Sm)),
                         c.on(c.warning),
                     );
                 }
@@ -458,7 +458,7 @@ impl ListingGrid {
                             chip_rect.center(),
                             egui::Align2::CENTER_CENTER,
                             reason.label(),
-                            egui::FontId::proportional(9.0),
+                            egui::FontId::proportional(ui.text_size(TextSize::Xs)),
                             ui.tokens().color.accent_red,
                         );
                     }

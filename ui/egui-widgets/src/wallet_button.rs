@@ -13,7 +13,7 @@ use egui::{Color32, RichText};
 
 use super::buttons::UiButtonExt;
 use super::wallet::{ConnectionState, WalletConnector, WalletProvider};
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 /// Theme colors for the wallet button widget.
 pub struct WalletButtonTheme {
@@ -109,7 +109,7 @@ impl WalletButton {
                 ui.label(
                     RichText::new("No wallets detected")
                         .color(theme.text_muted)
-                        .size(10.0),
+                        .size(ui.text_size(TextSize::Sm)),
                 );
             });
             return action;
@@ -123,7 +123,7 @@ impl WalletButton {
                 egui::Button::new(
                     RichText::new(format!("Connect {}", info.name))
                         .color(theme.accent)
-                        .size(12.0),
+                        .size(ui.text_size(TextSize::Md)),
                 )
                 .corner_radius(ui.tokens().corner(Radius::Base)),
             );
@@ -142,7 +142,7 @@ impl WalletButton {
                 egui::Button::new(
                     RichText::new(&wallet_info.name)
                         .color(theme.accent)
-                        .size(11.0),
+                        .size(ui.text_size(TextSize::Base)),
                 )
                 .fill(Color32::TRANSPARENT)
                 .stroke(egui::Stroke::new(0.5_f32, theme.text_muted))
@@ -181,7 +181,7 @@ impl WalletButton {
             ui.label(
                 RichText::new("Connecting...")
                     .color(theme.text_muted)
-                    .size(11.0),
+                    .size(ui.text_size(TextSize::Base)),
             );
         });
     }
@@ -204,14 +204,23 @@ impl WalletButton {
             }
 
             if let Some(ref handle) = connector.handle {
-                ui.label(RichText::new(handle).color(accent).size(12.0).strong());
+                ui.label(
+                    RichText::new(handle)
+                        .color(accent)
+                        .size(ui.text_size(TextSize::Md))
+                        .strong(),
+                );
             } else if let Some(ref stake) = connector.stake_address {
                 let truncated = if stake.len() > 20 {
                     format!("{}...{}", &stake[..8], &stake[stake.len() - 6..])
                 } else {
                     stake.clone()
                 };
-                ui.label(RichText::new(truncated).color(text_muted).size(11.0));
+                ui.label(
+                    RichText::new(truncated)
+                        .color(text_muted)
+                        .size(ui.text_size(TextSize::Base)),
+                );
             }
         });
 
@@ -228,7 +237,7 @@ impl WalletButton {
                 ui.label(
                     RichText::new(format!("{ada_display} ADA"))
                         .color(accent)
-                        .size(13.0)
+                        .size(ui.text_size(TextSize::Lg))
                         .strong(),
                 );
 
@@ -237,7 +246,7 @@ impl WalletButton {
                     ui.label(
                         RichText::new(format!("\u{2022} {tokens} tokens"))
                             .color(text_muted)
-                            .size(10.0),
+                            .size(ui.text_size(TextSize::Sm)),
                     );
                 }
             });
@@ -247,10 +256,14 @@ impl WalletButton {
         ui.gap(Space::Sm);
         if ui
             .add_clickable(
-                egui::Button::new(RichText::new("Disconnect").color(text_muted).size(10.0))
-                    .fill(Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::new(0.5_f32, text_muted))
-                    .corner_radius(ui.tokens().corner(Radius::Sm)),
+                egui::Button::new(
+                    RichText::new("Disconnect")
+                        .color(text_muted)
+                        .size(ui.text_size(TextSize::Sm)),
+                )
+                .fill(Color32::TRANSPARENT)
+                .stroke(egui::Stroke::new(0.5_f32, text_muted))
+                .corner_radius(ui.tokens().corner(Radius::Sm)),
             )
             .clicked()
         {
@@ -276,12 +289,18 @@ impl WalletButton {
             } else {
                 error.to_string()
             };
-            ui.label(RichText::new(display_err).color(theme.error).size(10.0));
+            ui.label(
+                RichText::new(display_err)
+                    .color(theme.error)
+                    .size(ui.text_size(TextSize::Sm)),
+            );
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add_clickable(egui::Button::new(
-                        RichText::new("Retry").color(theme.accent).size(10.0),
+                        RichText::new("Retry")
+                            .color(theme.accent)
+                            .size(ui.text_size(TextSize::Sm)),
                     ))
                     .clicked()
                 {

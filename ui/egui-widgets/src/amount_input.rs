@@ -8,7 +8,7 @@
 use egui::{Color32, RichText};
 
 use crate::buttons::UiButtonExt;
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -106,7 +106,14 @@ pub fn show(
         for (idx, &ada) in config.presets.iter().enumerate() {
             let is_selected = state.selected_preset == Some(idx);
             let label = format!("{ada} ADA");
-            let btn = toggle_button(&label, is_selected, accent, on_accent, corner);
+            let btn = toggle_button(
+                &label,
+                is_selected,
+                accent,
+                on_accent,
+                corner,
+                ui.text_size(TextSize::Base),
+            );
 
             if ui.add_clickable(btn).clicked() {
                 state.selected_preset = Some(idx);
@@ -127,17 +134,21 @@ pub fn show(
                     RichText::new("MAX")
                         .color(ui.tokens().color.bg_primary)
                         .strong()
-                        .size(10.0),
+                        .size(ui.text_size(TextSize::Sm)),
                 )
                 .fill(accent)
                 .corner_radius(ui.tokens().corner(Radius::Base))
                 .min_size(egui::vec2(40.0, 28.0))
             } else {
-                egui::Button::new(RichText::new("MAX").color(accent).size(10.0))
-                    .fill(Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::new(1.0_f32, accent))
-                    .corner_radius(ui.tokens().corner(Radius::Base))
-                    .min_size(egui::vec2(40.0, 28.0))
+                egui::Button::new(
+                    RichText::new("MAX")
+                        .color(accent)
+                        .size(ui.text_size(TextSize::Sm)),
+                )
+                .fill(Color32::TRANSPARENT)
+                .stroke(egui::Stroke::new(1.0_f32, accent))
+                .corner_radius(ui.tokens().corner(Radius::Base))
+                .min_size(egui::vec2(40.0, 28.0))
             };
 
             if ui.add_clickable(btn).clicked() {
@@ -158,13 +169,13 @@ pub fn show(
             let response = ui.add(
                 egui::TextEdit::singleline(&mut state.text)
                     .desired_width(140.0)
-                    .font(egui::FontId::monospace(14.0))
+                    .font(egui::FontId::monospace(ui.text_size(TextSize::Lg)))
                     .hint_text("Amount"),
             );
             ui.label(
                 RichText::new("ADA")
                     .color(ui.tokens().color.text_muted)
-                    .size(12.0),
+                    .size(ui.text_size(TextSize::Md)),
             );
 
             if response.changed() {
@@ -192,14 +203,14 @@ pub fn show(
             ui.label(
                 RichText::new(format!("Minimum {:.0} ADA required", config.min_ada))
                     .color(ui.tokens().color.warning)
-                    .size(10.0),
+                    .size(ui.text_size(TextSize::Sm)),
             );
         }
     } else if !state.text.is_empty() {
         ui.label(
             RichText::new("Enter a valid ADA amount")
                 .color(ui.tokens().color.error)
-                .size(10.0),
+                .size(ui.text_size(TextSize::Sm)),
         );
     }
 
@@ -223,14 +234,15 @@ fn toggle_button(
     accent: Color32,
     on_accent: Color32,
     corner: egui::CornerRadius,
+    size: f32,
 ) -> egui::Button<'_> {
     if selected {
-        egui::Button::new(RichText::new(label).color(on_accent).strong().size(11.0))
+        egui::Button::new(RichText::new(label).color(on_accent).strong().size(size))
             .fill(accent)
             .corner_radius(corner)
             .min_size(egui::vec2(70.0, 28.0))
     } else {
-        egui::Button::new(RichText::new(label).color(accent).size(11.0))
+        egui::Button::new(RichText::new(label).color(accent).size(size))
             .fill(Color32::TRANSPARENT)
             .stroke(egui::Stroke::new(1.0_f32, accent))
             .corner_radius(corner)

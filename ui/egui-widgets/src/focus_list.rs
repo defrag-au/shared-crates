@@ -12,7 +12,7 @@
 
 use egui::{Align, Color32, Layout, Rect, Sense, UiBuilder, Vec2};
 
-use crate::theme::{Space, SpaceExt};
+use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
 
 /// Appearance / geometry configuration.
 pub struct FocusListConfig {
@@ -77,7 +77,7 @@ pub fn show(
                 rect.left_center(),
                 egui::Align2::LEFT_CENTER,
                 format!("\u{2026}{count} {label}"),
-                egui::FontId::proportional(9.0),
+                egui::FontId::proportional(ui.text_size(TextSize::Xs)),
                 config.marker_color,
             );
         }

@@ -14,16 +14,20 @@
 //! marquee.show(ui, &items);
 //! ```
 
+use crate::theme::ThemeExt;
+
 /// Configuration for the marquee widget.
 pub struct MarqueeConfig {
     /// Scroll speed in pixels per second.
     pub scroll_speed: f32,
-    /// Font for all text.
-    pub font: egui::FontId,
+    /// Font for all text. `None` asks the theme at render time — a `Default`
+    /// has no `Ui` to ask. A ticker is tabular, so the theme's `Numeric` role
+    /// is what it takes.
+    pub font: Option<egui::FontId>,
     /// Separator between items (e.g. " \u{2022} " for " • ").
     pub separator: String,
-    /// Color of separator text.
-    pub separator_color: egui::Color32,
+    /// Color of separator text. `None` takes the theme's muted tier.
+    pub separator_color: Option<egui::Color32>,
     /// Height of the marquee bar in pixels.
     pub height: f32,
 }
@@ -32,9 +36,9 @@ impl Default for MarqueeConfig {
     fn default() -> Self {
         Self {
             scroll_speed: 40.0,
-            font: egui::FontId::monospace(10.0),
+            font: None,
             separator: "  \u{2022}  ".into(),
-            separator_color: egui::Color32::from_rgb(96, 104, 128),
+            separator_color: None,
             height: 14.0,
         }
     }
@@ -83,8 +87,17 @@ impl Marquee {
         let now = ui.input(|i| i.time);
         let avail_width = ui.available_width();
 
+        // Resolved once: a `Default` config cannot know the theme.
+        let t = ui.tokens();
+        let font = self
+            .config
+            .font
+            .clone()
+            .unwrap_or_else(|| t.font(crate::theme::TextRole::Numeric));
+        let separator_color = self.config.separator_color.unwrap_or(t.color.text_muted);
+
         // Build a single sequence LayoutJob
-        let single_job = self.build_layout_job(items);
+        let single_job = self.build_layout_job(items, &font, separator_color);
 
         // Measure the single sequence width
         let mut measure_job = single_job.clone();
@@ -105,11 +118,7 @@ impl Marquee {
         if content_width <= avail_width {
             // Static centering — content fits, no scrolling needed
             let x = rect.left() + (avail_width - content_width) / 2.0;
-            painter.galley(
-                egui::pos2(x, rect.top()),
-                single_galley,
-                self.config.separator_color,
-            );
+            painter.galley(egui::pos2(x, rect.top()), single_galley, separator_color);
             self.last_time = Some(now);
             return;
         }
@@ -120,7 +129,7 @@ impl Marquee {
         looped_job.append(
             &self.config.separator,
             0.0,
-            egui::TextFormat::simple(self.config.font.clone(), self.config.separator_color),
+            egui::TextFormat::simple(font.clone(), separator_color),
         );
         // Append the second copy
         for (i, item) in items.iter().enumerate() {
@@ -128,13 +137,13 @@ impl Marquee {
                 looped_job.append(
                     &self.config.separator,
                     0.0,
-                    egui::TextFormat::simple(self.config.font.clone(), self.config.separator_color),
+                    egui::TextFormat::simple(font.clone(), separator_color),
                 );
             }
             looped_job.append(
                 &item.text,
                 0.0,
-                egui::TextFormat::simple(self.config.font.clone(), item.color),
+                egui::TextFormat::simple(font.clone(), item.color),
             );
         }
         looped_job.wrap = egui::text::TextWrapping {
@@ -144,7 +153,7 @@ impl Marquee {
         let looped_galley = ui.painter().layout_job(looped_job);
 
         // The width of one full cycle (content + trailing separator)
-        let cycle_width = content_width + self.measure_separator_width(ui);
+        let cycle_width = content_width + self.measure_separator_width(ui, &font, separator_color);
 
         // Delta-time scroll offset accumulation
         if let Some(last) = self.last_time {
@@ -158,7 +167,7 @@ impl Marquee {
 
         // Paint with clipping
         let text_pos = egui::pos2(rect.left() - self.scroll_offset, rect.top());
-        painter.galley(text_pos, looped_galley, self.config.separator_color);
+        painter.galley(text_pos, looped_galley, separator_color);
 
         // Request repaint for smooth animation (~30fps)
         ui.ctx()
@@ -166,32 +175,45 @@ impl Marquee {
     }
 
     /// Build a LayoutJob for a single sequence of items with separators.
-    fn build_layout_job(&self, items: &[MarqueeItem]) -> egui::text::LayoutJob {
+    /// `font` and `separator_color` are passed in rather than read from the
+    /// config: they are now `Option`s resolved against the theme, and this
+    /// helper has no `Ui` to resolve them with.
+    fn build_layout_job(
+        &self,
+        items: &[MarqueeItem],
+        font: &egui::FontId,
+        separator_color: egui::Color32,
+    ) -> egui::text::LayoutJob {
         let mut job = egui::text::LayoutJob::default();
         for (i, item) in items.iter().enumerate() {
             if i > 0 {
                 job.append(
                     &self.config.separator,
                     0.0,
-                    egui::TextFormat::simple(self.config.font.clone(), self.config.separator_color),
+                    egui::TextFormat::simple(font.clone(), separator_color),
                 );
             }
             job.append(
                 &item.text,
                 0.0,
-                egui::TextFormat::simple(self.config.font.clone(), item.color),
+                egui::TextFormat::simple(font.clone(), item.color),
             );
         }
         job
     }
 
     /// Measure the pixel width of the separator string.
-    fn measure_separator_width(&self, ui: &egui::Ui) -> f32 {
+    fn measure_separator_width(
+        &self,
+        ui: &egui::Ui,
+        font: &egui::FontId,
+        separator_color: egui::Color32,
+    ) -> f32 {
         let mut job = egui::text::LayoutJob::default();
         job.append(
             &self.config.separator,
             0.0,
-            egui::TextFormat::simple(self.config.font.clone(), self.config.separator_color),
+            egui::TextFormat::simple(font.clone(), separator_color),
         );
         job.wrap = egui::text::TextWrapping {
             max_width: f32::INFINITY,

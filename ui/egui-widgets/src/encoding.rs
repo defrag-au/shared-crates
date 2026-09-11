@@ -305,6 +305,27 @@ pub struct SeriesPalette {
     /// Value arriving vs leaving — the direction encoding thirteen modules
     /// share.
     pub flow: Diverging,
+    /// A short **ordinal classification**: how close a party is to the subject
+    /// (`flow_ring`'s core / associate / customer). Innermost first; the fourth
+    /// step is [`Self::unobserved`], because "nobody has looked" is the absence
+    /// of a judgement rather than a fourth class.
+    ///
+    /// # Why this is enumerated when [`Sequential`] is generated
+    ///
+    /// Because its stops carry an **external** constraint, and no two-endpoint
+    /// interpolation can be steered to meet one. These dots are drawn over
+    /// chords painted in [`Self::flow`], and a seat must never be mistakable for
+    /// a payment — violet, the obvious first pick, collapses onto the chord blue
+    /// under protanopia at ΔE 5.1. A single-hue lightness ramp (which is what
+    /// `Sequential` would give) was tried and failed differently: associate and
+    /// customer measured ΔE 22 normal / 19 deutan, clearing the floor and still
+    /// reading as one colour on 4px dots. The ramp moves in hue as well —
+    /// pale aqua → green → deep teal — taking that pair to ΔE 53 / 44.
+    ///
+    /// So: generated where the only requirement is monotonicity, enumerated
+    /// where the stops must also dodge colours outside the ramp. Both are
+    /// checked; see `tests/series_palette.rs`.
+    pub classes: [Color32; 3],
     /// Rank, depth, density: anything ordinal.
     pub ordinal: Sequential,
     /// The envelope for hashed identity colours.
@@ -329,6 +350,11 @@ impl SeriesPalette {
                 negative: Color32::from_rgb(0xe0, 0x8a, 0x2e),
                 neutral: Color32::from_rgb(0x2a, 0x2e, 0x3f),
             },
+            classes: [
+                Color32::from_rgb(0xa5, 0xf3, 0xe4), // core — the subject itself
+                Color32::from_rgb(0x3d, 0xdc, 0x84), // paid BY it
+                Color32::from_rgb(0x0f, 0x8f, 0x8a), // bought FROM it
+            ],
             ordinal: Sequential {
                 low: Color32::from_rgb(0x3b, 0x40, 0x5a),
                 high: Color32::from_rgb(0xff, 0xd7, 0x00),
@@ -357,6 +383,15 @@ impl SeriesPalette {
                 negative: Color32::from_rgb(251, 146, 60),
                 neutral: Color32::from_rgb(34, 37, 44),
             },
+            // Same aqua → green → teal band, brightened to this palette. The
+            // band is not a style choice: it is the region that stays clear of
+            // both chord colours under dichromacy, and the validator holds this
+            // preset to it exactly as it holds the default.
+            classes: [
+                Color32::from_rgb(0xa7, 0xf3, 0xd0),
+                Color32::from_rgb(0x34, 0xc7, 0x7b),
+                Color32::from_rgb(0x0d, 0x87, 0x7b),
+            ],
             ordinal: Sequential {
                 low: Color32::from_rgb(45, 49, 58),
                 high: Color32::from_rgb(56, 189, 248),
@@ -387,6 +422,18 @@ impl SeriesPalette {
     /// Value leaving.
     pub fn outbound(&self) -> Color32 {
         self.flow.negative
+    }
+
+    /// The classification tint for `ring`, saturating at [`Self::unobserved`].
+    ///
+    /// Saturating rather than wrapping for the same reason [`Self::nth`] folds:
+    /// past the last named class there is no further judgement to show, and
+    /// recycling `classes[0]` would claim one.
+    pub fn class(&self, ring: u8) -> Color32 {
+        self.classes
+            .get(ring as usize)
+            .copied()
+            .unwrap_or(self.unobserved)
     }
 }
 

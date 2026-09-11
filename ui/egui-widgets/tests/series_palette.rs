@@ -289,6 +289,72 @@ fn every_preset_identity_envelope_clears_its_surface() {
     }
 }
 
+/// THE RING-RAMP VALIDATOR — was `flow_ring`'s own test, now run per preset.
+///
+/// It could not stay where it was: `ring_tint` reads the theme now, so a test
+/// against module `const`s would be checking values nothing renders. Moving it
+/// here is also the point — the constraint it encodes is precisely what a theme
+/// is able to break, so it has to run over every preset rather than over one
+/// hardcoded ramp.
+///
+/// The floors are unchanged, including the stricter pair. Verbatim from the
+/// original: "a seat that collapses onto a chord makes a wallet look like a
+/// payment, and two ring steps that collapse onto each other erase the
+/// classification the whole chart encodes … the associate/customer pair carries
+/// a much higher one because clearing the floor was exactly what it did while
+/// still reading as one colour on 4px dots."
+///
+/// All pairs, not adjacent-only — unlike the categorical ramp these are dots
+/// scattered on one chart, so any two can end up side by side.
+#[test]
+fn every_preset_keeps_classes_separable_from_each_other_and_from_the_chords() {
+    const RING_NORMAL_FLOOR: f64 = 15.0;
+    for t in presets() {
+        let s = t.series;
+        let all: Vec<(&str, Color32)> = vec![
+            ("core", s.class(0)),
+            ("associate", s.class(1)),
+            ("customer", s.class(2)),
+            ("unexamined", s.class(3)),
+            ("chord-out", s.outbound()),
+            ("chord-in", s.inbound()),
+        ];
+        for (i, (na, a)) in all.iter().enumerate() {
+            for (nb, b) in all.iter().skip(i + 1) {
+                let d = delta_e(*a, *b);
+                assert!(
+                    d >= RING_NORMAL_FLOOR,
+                    "`{}` {na} vs {nb}: ΔE {d:.1} < {RING_NORMAL_FLOOR}",
+                    t.name
+                );
+                for (kind, m) in [("protan", PROTAN), ("deutan", DEUTAN)] {
+                    let d = delta_e(simulate(*a, m), simulate(*b, m));
+                    assert!(
+                        d >= CVD_FLOOR,
+                        "`{}` {na} vs {nb} under {kind}: ΔE {d:.1} < {CVD_FLOOR}",
+                        t.name
+                    );
+                }
+            }
+        }
+        // The pair that prompted the original change: one teal hue in lightness
+        // steps measured 22 normal / 19 deutan and still read as one colour.
+        let (assoc, cust) = (s.class(1), s.class(2));
+        assert!(
+            delta_e(assoc, cust) >= 40.0,
+            "`{}` associate vs customer must be obvious, not merely legal: ΔE {:.1}",
+            t.name,
+            delta_e(assoc, cust)
+        );
+        assert!(
+            delta_e(simulate(assoc, DEUTAN), simulate(cust, DEUTAN)) >= 30.0,
+            "`{}` associate vs customer under deutan: ΔE {:.1}",
+            t.name,
+            delta_e(simulate(assoc, DEUTAN), simulate(cust, DEUTAN))
+        );
+    }
+}
+
 /// `nth` folds past the end rather than wrapping. Wrapping would hand series 5
 /// the same colour as series 0 while both still claim to be data — the exact
 /// collision the ramp is capped at five slots to avoid.

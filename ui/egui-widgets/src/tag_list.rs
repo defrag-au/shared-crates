@@ -9,7 +9,7 @@
 
 use egui::{Color32, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 use crate::chip::ChipVariant;
 
@@ -55,7 +55,7 @@ impl<'a> TagList<'a> {
 
         let mut resp = TagListResponse::default();
         let (fg, bg, border) = self.variant.palette(&ui.tokens());
-        let font = egui::FontId::proportional(12.0);
+        let font = egui::FontId::proportional(ui.text_size(TextSize::Md));
 
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = Vec2::new(ui.space(Space::Base), ui.space(Space::Sm));

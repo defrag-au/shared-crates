@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use egui::{Color32, Pos2, Response, Sense, Shape, Stroke, Ui, Vec2};
 use voronoice::{BoundingBox, Point, VoronoiBuilder};
 
-use crate::theme::ThemeExt;
+use crate::theme::{TextSize, ThemeExt};
 
 // ============================================================================
 // Public types
@@ -463,7 +463,7 @@ impl UtxoMapConfig {
                     rect.center(),
                     egui::Align2::CENTER_CENTER,
                     "No UTxOs",
-                    egui::FontId::proportional(14.0),
+                    egui::FontId::proportional(ui.text_size(TextSize::Lg)),
                     ui.tokens().color.text_muted,
                 );
             } else {
@@ -570,7 +570,7 @@ impl UtxoMapConfig {
                             ui.label(
                                 egui::RichText::new(truncate_ref(&utxo_ref))
                                     .monospace()
-                                    .size(11.0)
+                                    .size(ui.text_size(TextSize::Base))
                                     .color(ui.tokens().color.text_secondary),
                             );
                             ui.label(format!("{utxo_assets} assets, {policy_count} policies"));

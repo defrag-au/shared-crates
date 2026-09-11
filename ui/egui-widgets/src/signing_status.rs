@@ -7,7 +7,7 @@
 use egui::RichText;
 
 use crate::icons::PhosphorIcon;
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -167,7 +167,7 @@ pub fn show(
                     ui.label(
                         RichText::new("Both signatures required to execute.")
                             .color(ui.tokens().color.text_muted)
-                            .size(9.0),
+                            .size(ui.text_size(TextSize::Xs)),
                     );
                 }
                 SigningPhase::WalletPending => {
@@ -185,7 +185,7 @@ pub fn show(
                         ui.label(
                             RichText::new("Hardware wallets can take a minute.")
                                 .color(ui.tokens().color.text_muted)
-                                .size(9.0),
+                                .size(ui.text_size(TextSize::Xs)),
                         );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
@@ -256,7 +256,7 @@ pub fn show(
                     ui.label(
                         RichText::new(crate::utils::truncate_hex(tx_hash, 8, 8))
                             .color(ui.tokens().color.text_muted)
-                            .size(9.0),
+                            .size(ui.text_size(TextSize::Xs)),
                     );
                 }
                 SigningPhase::Confirmed { tx_hash } => {
@@ -276,7 +276,7 @@ pub fn show(
                     ui.label(
                         RichText::new(crate::utils::truncate_hex(tx_hash, 8, 8))
                             .color(ui.tokens().color.text_muted)
-                            .size(9.0),
+                            .size(ui.text_size(TextSize::Xs)),
                     );
                 }
             }

@@ -60,7 +60,7 @@ use egui::{Color32, Frame, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::chip::{Chip, ChipVariant};
 use crate::relative_time::RelativeTime;
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 use crate::timestamp::format_iso8601;
 
 /// Assets shown before the overflow pill takes over.
@@ -765,7 +765,7 @@ fn initial_disc(ui: &mut Ui, label: &str, tint: Color32) {
         rect.center(),
         egui::Align2::CENTER_CENTER,
         ch,
-        egui::FontId::proportional(11.0),
+        egui::FontId::proportional(ui.text_size(TextSize::Base)),
         tint,
     );
 }

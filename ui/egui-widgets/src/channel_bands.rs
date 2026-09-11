@@ -50,7 +50,7 @@ use std::collections::BTreeMap;
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{SeriesPalette, Space, SpaceExt};
+use crate::theme::{SeriesPalette, Space, SpaceExt, TextSize, ThemeExt};
 
 /// Categorical hues in fixed order, stepped for a dark surface.
 ///
@@ -285,7 +285,7 @@ impl<'a> ChannelBands<'a> {
             Pos2::new(plot.left(), max_y - 1.0),
             Align2::LEFT_BOTTOM,
             self.fmt(max),
-            FontId::monospace(9.0),
+            FontId::monospace(ui.text_size(TextSize::Xs)),
             muted,
         );
 
@@ -322,7 +322,7 @@ impl<'a> ChannelBands<'a> {
                 Pos2::new(cx, plot.bottom() + 3.0),
                 Align2::CENTER_TOP,
                 self.periods[p],
-                FontId::monospace(9.0),
+                FontId::monospace(ui.text_size(TextSize::Xs)),
                 if is_hovered {
                     ui.visuals().text_color()
                 } else {
@@ -358,7 +358,7 @@ impl<'a> ChannelBands<'a> {
                     Pos2::new(last.x - 6.0, last.y - 6.0),
                     Align2::RIGHT_BOTTOM,
                     self.fmt(*v),
-                    FontId::monospace(9.0),
+                    FontId::monospace(ui.text_size(TextSize::Xs)),
                     ink,
                 );
             }
@@ -397,12 +397,15 @@ impl<'a> ChannelBands<'a> {
                     let (r, _) = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover());
                     ui.painter().rect_filled(r, 1.0, s.color);
                     // Text stays in ink; the swatch beside it carries identity.
-                    ui.label(RichText::new(format!("{} {}", s.name, self.fmt(v))).size(11.0));
+                    ui.label(
+                        RichText::new(format!("{} {}", s.name, self.fmt(v)))
+                            .size(ui.text_size(TextSize::Base)),
+                    );
                 });
             }
             ui.label(
                 RichText::new(format!("total {}", self.fmt(period_total(self.series, p))))
-                    .size(11.0)
+                    .size(ui.text_size(TextSize::Base))
                     .color(ui.visuals().weak_text_color()),
             );
             if let Some((label, values)) = self.overlay {
@@ -411,7 +414,7 @@ impl<'a> ChannelBands<'a> {
                         "{label} {}",
                         self.fmt(values.get(p).copied().unwrap_or(0.0))
                     ))
-                    .size(11.0),
+                    .size(ui.text_size(TextSize::Base)),
                 );
             }
         });
@@ -426,7 +429,11 @@ impl<'a> ChannelBands<'a> {
                     ui.set_item_gap_x(Space::Sm);
                     let (r, _) = ui.allocate_exact_size(Vec2::new(9.0, 9.0), Sense::hover());
                     ui.painter().rect_filled(r, 1.0, s.color);
-                    ui.label(RichText::new(s.name).size(10.0).color(muted));
+                    ui.label(
+                        RichText::new(s.name)
+                            .size(ui.text_size(TextSize::Sm))
+                            .color(muted),
+                    );
                 });
             }
             if let Some((label, _)) = self.overlay {
@@ -438,7 +445,11 @@ impl<'a> ChannelBands<'a> {
                         [Pos2::new(r.left(), c.y), Pos2::new(r.right(), c.y)],
                         Stroke::new(2.0_f32, ui.visuals().text_color()),
                     );
-                    ui.label(RichText::new(label).size(10.0).color(muted));
+                    ui.label(
+                        RichText::new(label)
+                            .size(ui.text_size(TextSize::Sm))
+                            .color(muted),
+                    );
                 });
             }
         });

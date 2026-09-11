@@ -5,7 +5,7 @@
 
 use egui::{Color32, CornerRadius, Pos2, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Space, SpaceExt, ThemeExt};
+use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
 
 /// Configuration for a sparkline chart.
 /// How the sparkline responds to hover.
@@ -328,7 +328,7 @@ impl<'a> Sparkline<'a> {
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 "no data",
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(ui.text_size(TextSize::Sm)),
                 ui.tokens().color.text_muted,
             );
         }

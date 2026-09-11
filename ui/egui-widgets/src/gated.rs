@@ -21,7 +21,7 @@ use authorizations::{EntitlementSet, Feature};
 use egui::{Color32, RichText, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
-use crate::theme::{Space, ThemeExt};
+use crate::theme::{Space, TextSize, ThemeExt};
 
 /// The session's entitlement state as the frontend knows it. Kept as its
 /// own type (rather than a bare `Option<EntitlementSet>`) so apps can store
@@ -106,13 +106,13 @@ pub fn locked_card(ui: &mut Ui, gate: &GateState, feature: Feature) {
                     ui.label(RichText::new(feature.name()).strong());
                     ui.label(
                         RichText::new(feature.locked_hint())
-                            .size(11.0)
+                            .size(ui.text_size(TextSize::Base))
                             .color(ui.visuals().weak_text_color()),
                     );
                     if gate.is_authenticated() {
                         ui.label(
                             RichText::new("Your current session doesn't include this entitlement.")
-                                .size(10.0)
+                                .size(ui.text_size(TextSize::Sm))
                                 .color(ui.visuals().weak_text_color()),
                         );
                     }
@@ -135,7 +135,11 @@ pub fn locked_chip(ui: &mut Ui, feature: Feature) -> egui::Response {
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(PhosphorIcon::Lock.rich_text(12.0, weak));
-                ui.label(RichText::new(feature.name()).size(12.0).color(weak));
+                ui.label(
+                    RichText::new(feature.name())
+                        .size(ui.text_size(TextSize::Md))
+                        .color(weak),
+                );
             });
         })
         .response

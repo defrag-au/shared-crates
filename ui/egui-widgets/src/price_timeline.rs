@@ -21,6 +21,8 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 
+use crate::theme::{TextSize, ThemeExt};
+
 // ============================================================================
 // Public types
 // ============================================================================
@@ -329,7 +331,7 @@ pub fn show(
             Pos2::new(plot_rect.max.x - 2.0, plot_rect.min.y + 2.0),
             Align2::RIGHT_TOP,
             "zoomed \u{00b7} double-click to reset",
-            FontId::proportional(8.0),
+            FontId::proportional(ui.text_size(TextSize::Xs)),
             config.label_color,
         );
     }
@@ -358,7 +360,7 @@ pub fn show(
             outer_rect.center(),
             Align2::CENTER_CENTER,
             "no data",
-            FontId::proportional(10.0),
+            FontId::proportional(ui.text_size(TextSize::Sm)),
             config.label_color,
         );
         return PriceTimelineResponse {
@@ -410,7 +412,7 @@ pub fn show(
             Pos2::new(plot_rect.min.x + 2.0, y - 1.0),
             Align2::LEFT_BOTTOM,
             format_compact(v),
-            FontId::proportional(8.5),
+            FontId::proportional(ui.text_size(TextSize::Xs)),
             config.label_color,
         );
     }
@@ -433,7 +435,7 @@ pub fn show(
             Pos2::new(x, outer_rect.max.y - 2.0),
             Align2::CENTER_BOTTOM,
             age_label(now - t),
-            FontId::proportional(8.5),
+            FontId::proportional(ui.text_size(TextSize::Xs)),
             config.label_color,
         );
         t -= step;
@@ -446,7 +448,7 @@ pub fn show(
         } else {
             age_label(now - x_max)
         },
-        FontId::proportional(8.5),
+        FontId::proportional(ui.text_size(TextSize::Xs)),
         config.label_color,
     );
 
@@ -644,7 +646,7 @@ pub fn show(
             Pos2::new(plot_rect.max.x - 2.0, y - 1.0),
             Align2::RIGHT_BOTTOM,
             &line.label,
-            FontId::proportional(8.5),
+            FontId::proportional(ui.text_size(TextSize::Xs)),
             line.color,
         );
     }

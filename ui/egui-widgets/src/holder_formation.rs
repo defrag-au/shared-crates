@@ -29,7 +29,7 @@ use std::collections::HashMap;
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Sequential, ThemeExt};
+use crate::theme::{Sequential, TextSize, ThemeExt};
 
 /// One acquisition: a wallet receiving assets at a moment.
 #[derive(Clone, Debug)]
@@ -284,7 +284,7 @@ impl<'a> HolderFormation<'a> {
                 Pos2::new(plot.right(), y - 2.0),
                 Align2::RIGHT_BOTTOM,
                 format!("supply {supply}"),
-                FontId::monospace(9.0),
+                FontId::monospace(ui.text_size(TextSize::Xs)),
                 muted,
             );
         }
@@ -306,7 +306,7 @@ impl<'a> HolderFormation<'a> {
             ),
             Align2::CENTER_TOP,
             label,
-            FontId::monospace(9.0),
+            FontId::monospace(ui.text_size(TextSize::Xs)),
             ink,
         );
 
@@ -315,7 +315,7 @@ impl<'a> HolderFormation<'a> {
             Pos2::new(rect.left(), rect.top() + 2.0),
             Align2::LEFT_TOP,
             format!("{} holders", now.holders),
-            FontId::monospace(15.0),
+            FontId::monospace(ui.text_size(TextSize::Xl)),
             ink,
         );
         painter.text(
@@ -326,7 +326,7 @@ impl<'a> HolderFormation<'a> {
                 now.distributed,
                 now.top10_share() * 100.0
             ),
-            FontId::proportional(10.0),
+            FontId::proportional(ui.text_size(TextSize::Sm)),
             muted,
         );
 

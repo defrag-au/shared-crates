@@ -42,7 +42,7 @@ use egui::{Color32, RichText, Sense, Ui, Vec2};
 use crate::icons::{PhosphorIcon, install_phosphor_font};
 use crate::id_pill::{IdPill, IdPillLayout};
 use crate::property_list::PropertyList;
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 /// What the user did with the badge this frame.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -161,7 +161,7 @@ impl<'a> UserBadge<'a> {
                             ui.label(self.icon.rich_text(16.0, ui.visuals().weak_text_color()));
                         }
                     }
-                    ui.label(RichText::new(self.name).size(12.0));
+                    ui.label(RichText::new(self.name).size(ui.text_size(TextSize::Md)));
                     ui.label(
                         PhosphorIcon::CaretDown.rich_text(10.0, ui.visuals().weak_text_color()),
                     );
@@ -189,7 +189,7 @@ impl<'a> UserBadge<'a> {
                 ui.label(RichText::new(self.name).strong());
                 ui.label(
                     RichText::new(self.subtitle)
-                        .size(10.0)
+                        .size(ui.text_size(TextSize::Sm))
                         .color(ui.visuals().weak_text_color()),
                 );
 

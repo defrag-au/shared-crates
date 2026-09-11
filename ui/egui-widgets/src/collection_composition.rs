@@ -10,7 +10,7 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2};
 
-use crate::theme::{self, Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{self, Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -110,7 +110,7 @@ pub fn show_header(ui: &mut Ui, comp: &CollectionComposition) {
         egui::RichText::new(&comp.title)
             .color(ui.tokens().color.text_primary)
             .strong()
-            .size(18.0),
+            .size(ui.text_size(TextSize::Xl2)),
     );
 
     if !comp.stats.is_empty() {
@@ -125,12 +125,12 @@ pub fn show_header(ui: &mut Ui, comp: &CollectionComposition) {
                         egui::RichText::new(&s.value)
                             .color(ui.tokens().color.accent)
                             .strong()
-                            .size(18.0),
+                            .size(ui.text_size(TextSize::Xl2)),
                     );
                     ui.label(
                         egui::RichText::new(&s.label)
                             .color(ui.tokens().color.text_muted)
-                            .size(10.5),
+                            .size(ui.text_size(TextSize::Base)),
                     );
                 });
             }
@@ -144,7 +144,7 @@ pub fn show_header(ui: &mut Ui, comp: &CollectionComposition) {
              cells are its values, with weights shown only where overridden.",
         )
         .color(ui.tokens().color.text_muted)
-        .size(10.5),
+        .size(ui.text_size(TextSize::Base)),
     );
 }
 
@@ -208,7 +208,7 @@ fn layer_stack(
             Pos2::new(x, name_y),
             Align2::LEFT_CENTER,
             &layer.name,
-            FontId::proportional(13.0),
+            FontId::proportional(ui.text_size(TextSize::Lg)),
             ui.tokens().color.text_primary,
         );
         let mut bx = rect.left() + cfg.gutter + 144.0;
@@ -223,7 +223,7 @@ fn layer_stack(
                 badge.center(),
                 Align2::CENTER_CENTER,
                 v,
-                FontId::proportional(10.0),
+                FontId::proportional(ui.text_size(TextSize::Sm)),
                 variant_color(vi, &ui.tokens()),
             );
             bx += 24.0;
@@ -243,7 +243,7 @@ fn layer_stack(
             Pos2::new(rect.left() + cfg.left_col - 12.0, name_y),
             Align2::RIGHT_CENTER,
             present_txt,
-            FontId::proportional(11.0),
+            FontId::proportional(ui.text_size(TextSize::Base)),
             present_col,
         );
 
@@ -301,7 +301,7 @@ fn layer_stack(
                     cell.center(),
                     Align2::CENTER_CENTER,
                     txt,
-                    FontId::proportional(9.0),
+                    FontId::proportional(ui.text_size(TextSize::Xs)),
                     ui.tokens().color.text_secondary,
                 );
             }

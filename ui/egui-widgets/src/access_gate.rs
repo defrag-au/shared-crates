@@ -11,7 +11,7 @@
 use authorizations::Feature;
 use egui::{Align, Layout, RichText, Ui};
 
-use crate::theme::{Space, SpaceExt};
+use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
 
 /// A community that grants access — shown on the requirements screen.
 #[derive(Clone, Debug, Default)]
@@ -104,12 +104,20 @@ impl<'a> AccessGate<'a> {
             // screen whose entire job is to explain how to get in was the one
             // screen nobody could read.
             ui.set_max_width(crate::viewport::fit(ui, 520.0));
-            ui.label(RichText::new(self.feature.name()).color(accent).size(24.0));
+            ui.label(
+                RichText::new(self.feature.name())
+                    .color(accent)
+                    .size(ui.text_size(TextSize::Xl3)),
+            );
             ui.gap(Space::Base);
 
             match self.status {
                 GateStatus::Anonymous => {
-                    ui.label(RichText::new(self.tagline).color(weak).size(13.0));
+                    ui.label(
+                        RichText::new(self.tagline)
+                            .color(weak)
+                            .size(ui.text_size(TextSize::Lg)),
+                    );
                     ui.gap(Space::Xl3);
                     // The one control on the screen — on a phone it gets a
                     // full-width, thumb-sized target rather than a 36pt strip.
@@ -123,7 +131,7 @@ impl<'a> AccessGate<'a> {
                             egui::Button::new(
                                 RichText::new("Sign in with Discord")
                                     .color(accent)
-                                    .size(14.0),
+                                    .size(ui.text_size(TextSize::Lg)),
                             ),
                         )
                         .clicked()
@@ -133,7 +141,8 @@ impl<'a> AccessGate<'a> {
                 }
                 GateStatus::Unqualified => {
                     ui.label(
-                        RichText::new("You're signed in, but don't have access yet.").size(14.0),
+                        RichText::new("You're signed in, but don't have access yet.")
+                            .size(ui.text_size(TextSize::Lg)),
                     );
                     ui.gap(Space::Lg);
                     ui.label(
@@ -141,7 +150,7 @@ impl<'a> AccessGate<'a> {
                             "Access requires a qualifying role in one of these communities:",
                         )
                         .color(weak)
-                        .size(12.0),
+                        .size(ui.text_size(TextSize::Md)),
                     );
                     ui.gap(Space::Lg);
 
@@ -151,24 +160,30 @@ impl<'a> AccessGate<'a> {
                             ui.label(
                                 RichText::new("loading requirements…")
                                     .color(weak)
-                                    .size(11.0),
+                                    .size(ui.text_size(TextSize::Base)),
                             );
                         });
                     } else if self.providers.is_empty() {
                         ui.label(
                             RichText::new("No communities are currently configured for access.")
                                 .color(weak)
-                                .size(12.0),
+                                .size(ui.text_size(TextSize::Md)),
                         );
                     } else {
                         for p in self.providers {
                             ui.horizontal(|ui| {
                                 ui.label(
-                                    RichText::new(format!("• {}", p.label)).strong().size(14.0),
+                                    RichText::new(format!("• {}", p.label))
+                                        .strong()
+                                        .size(ui.text_size(TextSize::Lg)),
                                 );
                                 if let Some(url) = &p.invite_url
                                     && ui
-                                        .button(RichText::new("join").color(accent).size(11.0))
+                                        .button(
+                                            RichText::new("join")
+                                                .color(accent)
+                                                .size(ui.text_size(TextSize::Base)),
+                                        )
                                         .clicked()
                                 {
                                     action = GateAction::Join(url.clone());
@@ -179,7 +194,11 @@ impl<'a> AccessGate<'a> {
                             for req in &p.requirements {
                                 ui.horizontal(|ui| {
                                     ui.gap(Space::Xl2);
-                                    ui.label(RichText::new(req).color(weak).size(12.0));
+                                    ui.label(
+                                        RichText::new(req)
+                                            .color(weak)
+                                            .size(ui.text_size(TextSize::Md)),
+                                    );
                                 });
                             }
                             ui.gap(Space::Sm);
@@ -192,18 +211,26 @@ impl<'a> AccessGate<'a> {
                             "Already joined and have the role? Sign in again to refresh access.",
                         )
                         .color(weak)
-                        .size(11.0),
+                        .size(ui.text_size(TextSize::Base)),
                     );
                     ui.gap(Space::Md);
                     ui.horizontal(|ui| {
                         if ui
-                            .button(RichText::new("Sign in again").color(accent).size(12.0))
+                            .button(
+                                RichText::new("Sign in again")
+                                    .color(accent)
+                                    .size(ui.text_size(TextSize::Md)),
+                            )
                             .clicked()
                         {
                             action = GateAction::Login;
                         }
                         if ui
-                            .button(RichText::new("Sign out").color(weak).size(12.0))
+                            .button(
+                                RichText::new("Sign out")
+                                    .color(weak)
+                                    .size(ui.text_size(TextSize::Md)),
+                            )
                             .clicked()
                         {
                             action = GateAction::SignOut;

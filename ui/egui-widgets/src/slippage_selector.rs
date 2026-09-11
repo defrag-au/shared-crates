@@ -7,7 +7,7 @@
 use egui::{Color32, RichText};
 
 use crate::buttons::UiButtonExt;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -112,13 +112,21 @@ pub fn show(
         ui.label(
             RichText::new("Slippage:")
                 .color(ui.tokens().color.text_secondary)
-                .size(11.0),
+                .size(ui.text_size(TextSize::Base)),
         );
 
         // Preset buttons
         for preset in &config.presets {
             let is_selected = !state.custom_active && state.slippage_bps == preset.bps;
-            let btn = toggle_button(&preset.label, is_selected, accent, on_accent, muted, corner);
+            let btn = toggle_button(
+                &preset.label,
+                is_selected,
+                accent,
+                on_accent,
+                muted,
+                corner,
+                ui.text_size(TextSize::Sm),
+            );
             if ui.add_clickable(btn).clicked() {
                 state.custom_active = false;
                 if state.slippage_bps != preset.bps {
@@ -136,6 +144,7 @@ pub fn show(
             on_accent,
             muted,
             corner,
+            ui.text_size(TextSize::Sm),
         );
         if ui.add_clickable(custom_btn).clicked() {
             state.custom_active = true;
@@ -149,13 +158,13 @@ pub fn show(
             let response = ui.add(
                 egui::TextEdit::singleline(&mut state.custom_text)
                     .desired_width(48.0)
-                    .font(egui::FontId::monospace(11.0))
+                    .font(egui::FontId::monospace(ui.text_size(TextSize::Base)))
                     .hint_text("1.0"),
             );
             ui.label(
                 RichText::new("%")
                     .color(ui.tokens().color.text_muted)
-                    .size(11.0),
+                    .size(ui.text_size(TextSize::Base)),
             );
 
             if response.changed()
@@ -173,13 +182,13 @@ pub fn show(
         ui.label(
             RichText::new("Low slippage may cause transaction failure")
                 .color(ui.tokens().color.warning)
-                .size(10.0),
+                .size(ui.text_size(TextSize::Sm)),
         );
     } else if state.slippage_bps > config.warn_high_bps {
         ui.label(
             RichText::new("High slippage — you may receive significantly fewer tokens")
                 .color(ui.tokens().color.warning)
-                .size(10.0),
+                .size(ui.text_size(TextSize::Sm)),
         );
     }
 
@@ -201,14 +210,15 @@ fn toggle_button<'a>(
     on_accent: Color32,
     muted: Color32,
     corner: egui::CornerRadius,
+    size: f32,
 ) -> egui::Button<'a> {
     if selected {
-        egui::Button::new(RichText::new(label).color(on_accent).strong().size(10.0))
+        egui::Button::new(RichText::new(label).color(on_accent).strong().size(size))
             .fill(accent)
             .corner_radius(corner)
             .min_size(egui::vec2(36.0, 22.0))
     } else {
-        egui::Button::new(RichText::new(label).color(muted).size(10.0))
+        egui::Button::new(RichText::new(label).color(muted).size(size))
             .fill(Color32::TRANSPARENT)
             .stroke(egui::Stroke::new(1.0_f32, muted))
             .corner_radius(corner)

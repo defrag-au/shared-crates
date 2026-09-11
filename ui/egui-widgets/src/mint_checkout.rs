@@ -26,7 +26,7 @@ use egui::{Color32, RichText, Ui};
 use crate::chip::{Chip, ChipVariant};
 use crate::error_note::ErrorNote;
 use crate::quantity_stepper::QuantityStepper;
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 use crate::utils::{format_lovelace, truncate_hex};
 
 /// Whether this wallet may mint right now, in the active phase.
@@ -203,7 +203,7 @@ impl<'a> MintCheckout<'a> {
                 vm.qty,
                 format_lovelace(total as i64)
             ))
-            .size(15.0)
+            .size(ui.text_size(TextSize::Xl))
             .color(ui.tokens().color.text_primary),
         );
         ui.gap(Space::Md);
@@ -212,7 +212,7 @@ impl<'a> MintCheckout<'a> {
         let mint = egui::Button::new(
             RichText::new("Mint")
                 .strong()
-                .size(15.0)
+                .size(ui.text_size(TextSize::Xl))
                 .color(ui.tokens().color.bg_primary),
         )
         .fill(accent)
@@ -272,10 +272,15 @@ fn price_card(ui: &mut Ui, label: &str, value: &str, value_color: Color32) {
                 ui.label(
                     RichText::new(label)
                         .color(ui.tokens().color.text_secondary)
-                        .size(12.0),
+                        .size(ui.text_size(TextSize::Md)),
                 );
                 ui.gap(Space::Xs);
-                ui.label(RichText::new(value).color(value_color).size(22.0).strong());
+                ui.label(
+                    RichText::new(value)
+                        .color(value_color)
+                        .size(ui.text_size(TextSize::Xl3))
+                        .strong(),
+                );
             });
         });
 }

@@ -17,16 +17,25 @@ pub const DEFAULT_IIIF_BASE: &str = "https://iiif.hodlcroft.com/iiif/3";
 /// missing forever. Nothing fails, so nothing gets noticed; it just costs
 /// latency indefinitely.
 ///
-/// It has already happened at least twice: one enum in the estate drifted to
-/// `1686`, another to `1626`, and a storybook asked for 48 and 32. Six
-/// independent copies of this enum is why. There is now one, and adding a
-/// variant means confirming the service actually warms it.
+/// It has already happened repeatedly: an enum in the estate drifted to
+/// `1626`, and a storybook asked for 48 and 32. Six independent copies of this
+/// enum is why.
+///
+/// The subtler one was this crate's own. `Full` read `1646` here for a long
+/// time, with a test asserting it and naming the real width — `1686` — as
+/// "the drift that shipped". It was the other way round: `1646` was a
+/// misremembering, and the test defended it. **The only source of truth is
+/// `ImageSize` in the iiif worker (`workers/iiif/src/image_size.rs`), which is
+/// the code that actually writes the derivatives.** Check there, not here, and
+/// not from memory; nothing in the IIIF specification recommends a width.
+///
+/// Adding a variant means confirming the service actually warms it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub enum ImageSize {
     /// 400px wide. Thumbnails, grids, pickers.
     #[default]
     Thumb,
-    /// 1646px wide. Detail views and print-ish renders.
+    /// 1686px wide. Detail views and print-ish renders.
     Full,
 }
 
@@ -34,10 +43,18 @@ impl ImageSize {
     /// Pixel width, as IIIF's `{w},` parameter takes it.
     pub const fn px(self) -> u32 {
         match self {
-            // Do not "tidy" these to round numbers. They match derivatives the
-            // service generates; a nearby value is a permanent cache miss.
+            // Do not "tidy" these to round numbers, and do not trust memory
+            // for them either — check `ImageSize` in the iiif worker
+            // (`workers/iiif/src/image_size.rs`), which is the thing that
+            // actually generates the derivatives. A nearby value is not a
+            // cache hit; it is a cold render on every first request.
+            //
+            // 1646 lived here for a while and was simply a misremembering of
+            // 1686. Nothing in the IIIF spec recommends any particular width
+            // — the spec has no opinion on sizes at all — so the only source
+            // of truth is what the service warms.
             Self::Thumb => 400,
-            Self::Full => 1646,
+            Self::Full => 1686,
         }
     }
 
@@ -86,17 +103,29 @@ pub fn base_for_network(network: &str) -> &'static str {
 /// Encoding IIIF should return.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Format {
-    /// Photographic art. The right default and what the warm derivatives are.
+    /// Let the service choose, from what it knows the art to be.
+    ///
+    /// The right default, and why: whether a collection wants a lossy or a
+    /// lossless container depends on whether it is pixel art, which is a fact
+    /// derived from bytes only the service decodes. A caller that hard-codes
+    /// `Jpg` for a pixel-art collection gets a blurred, *larger* image than
+    /// the lossless one, and a redirect to correct it. Asking the service is
+    /// both smaller and always current.
     #[default]
+    Auto,
+    /// Photographic art, named explicitly.
     Jpg,
-    /// Lossless. Only where transparency actually matters — a PNG of a
-    /// photographic render is several times the bytes for no visible gain.
+    /// Lossless, named explicitly. Only where transparency actually matters —
+    /// a PNG of a photographic render is several times the bytes for no
+    /// visible gain. Pixel art does not need this spelled out; `Auto` already
+    /// resolves there.
     Png,
 }
 
 impl Format {
     pub const fn extension(self) -> &'static str {
         match self {
+            Self::Auto => "auto",
             Self::Jpg => "jpg",
             Self::Png => "png",
         }
@@ -167,7 +196,7 @@ impl<'a> IiifUrl<'a> {
             base: DEFAULT_IIIF_BASE,
             identifier: identifier.into(),
             size: SizeSpec::Warm(ImageSize::Thumb),
-            format: Format::Jpg,
+            format: Format::default(),
         }
     }
 
@@ -238,9 +267,10 @@ pub fn iiif_url_on(base: &str, policy_id: &str, asset_name_hex: &str, size: Imag
     // The trailing comma in `{w},` is IIIF's "this width, height automatic".
     // It is not a typo and dropping it is a 400 from the service.
     format!(
-        "{}/{policy_id}:{asset_name_hex}/full/{},/0/default.jpg",
+        "{}/{policy_id}:{asset_name_hex}/full/{},/0/default.{}",
         base.trim_end_matches('/'),
-        size.px()
+        size.px(),
+        Format::default().extension()
     )
 }
 
@@ -255,13 +285,18 @@ mod tests {
     fn warm_sizes_are_exactly_the_two_the_service_generates() {
         // The regression this crate exists to prevent. If someone "rounds"
         // these, every image silently starts missing the cache.
+        //
+        // These must equal `ImageSize` in the iiif worker, which is what
+        // actually writes the derivatives: Card = 400, Full = 1686.
         assert_eq!(ImageSize::Thumb.px(), 400);
-        assert_eq!(ImageSize::Full.px(), 1646);
+        assert_eq!(ImageSize::Full.px(), 1686);
 
         assert!(ImageSize::is_warm(400));
-        assert!(ImageSize::is_warm(1646));
+        assert!(ImageSize::is_warm(1686));
         // The values that have actually shipped in this estate by mistake.
-        assert!(!ImageSize::is_warm(1686), "the drift that shipped");
+        // 1646 was this crate's own: a misremembering of 1686 that then got
+        // asserted here, so the test defended the typo.
+        assert!(!ImageSize::is_warm(1646), "the misremembered 1686");
         assert!(!ImageSize::is_warm(1626), "the drift before that");
         assert!(!ImageSize::is_warm(48));
         assert!(!ImageSize::is_warm(32));
@@ -271,8 +306,25 @@ mod tests {
     fn url_shape_matches_what_the_service_serves() {
         assert_eq!(
             iiif_asset_url(POLICY, ASSET, ImageSize::Thumb),
-            format!("https://iiif.hodlcroft.com/iiif/3/{POLICY}:{ASSET}/full/400,/0/default.jpg")
+            format!("https://iiif.hodlcroft.com/iiif/3/{POLICY}:{ASSET}/full/400,/0/default.auto")
         );
+    }
+
+    /// The default defers the container to the service. A caller that knows
+    /// better can still say so, and is taken at their word.
+    #[test]
+    fn the_default_defers_the_format_but_an_explicit_one_is_honoured() {
+        assert_eq!(Format::default(), Format::Auto);
+        assert!(iiif_asset_url(POLICY, ASSET, ImageSize::Thumb).ends_with("/default.auto"));
+
+        assert!(IiifUrl::new(POLICY, ASSET)
+            .format(Format::Jpg)
+            .build()
+            .ends_with("/default.jpg"));
+        assert!(IiifUrl::new(POLICY, ASSET)
+            .format(Format::Png)
+            .build()
+            .ends_with("/default.png"));
     }
 
     #[test]
@@ -286,7 +338,7 @@ mod tests {
                 ASSET,
                 ImageSize::Full
             ),
-            format!("https://iiif-service/iiif/3/{POLICY}:{ASSET}/full/1646,/0/default.jpg")
+            format!("https://iiif-service/iiif/3/{POLICY}:{ASSET}/full/1686,/0/default.auto")
         );
         // A trailing slash on the base must not produce a doubled separator,
         // which some IIIF servers 404 rather than normalise.
@@ -308,11 +360,12 @@ mod tests {
 
     #[test]
     fn the_builder_reproduces_every_shape_found_in_the_estate() {
-        // These are the exact shapes the migration replaces. If the builder
-        // can't reproduce them byte for byte, migrating a call site silently
-        // changes what it fetches.
+        // These are the shapes the migration replaced. Region, size and host
+        // still have to come out byte for byte; the format tail is now
+        // `.auto` by default, which is the one deliberate difference — see
+        // `the_default_defers_the_format_but_an_explicit_one_is_honoured`.
 
-        // bot-db: the only PNG caller.
+        // bot-db: the only PNG caller. Explicit, so unchanged.
         assert_eq!(
             IiifUrl::new(POLICY, ASSET)
                 .custom_px(500)
@@ -324,13 +377,15 @@ mod tests {
         // egui-widgets' square-fit thumbnail.
         assert_eq!(
             IiifUrl::new(POLICY, ASSET).square_fit(48).build(),
-            format!("https://iiif.hodlcroft.com/iiif/3/{POLICY}:{ASSET}/full/!48,48/0/default.jpg")
+            format!(
+                "https://iiif.hodlcroft.com/iiif/3/{POLICY}:{ASSET}/full/!48,48/0/default.auto"
+            )
         );
 
         // game-sessions, on the third host.
         assert_eq!(
             IiifUrl::new(POLICY, ASSET).on(hosts::CNFT_DEV).build(),
-            format!("https://iiif.cnft.dev/iiif/3/{POLICY}:{ASSET}/full/400,/0/default.jpg")
+            format!("https://iiif.cnft.dev/iiif/3/{POLICY}:{ASSET}/full/400,/0/default.auto")
         );
 
         // The service-binding form used inside workers.
@@ -338,7 +393,7 @@ mod tests {
             IiifUrl::new(POLICY, ASSET)
                 .on(hosts::SERVICE_BINDING)
                 .build(),
-            format!("https://iiif-service/iiif/3/{POLICY}:{ASSET}/full/400,/0/default.jpg")
+            format!("https://iiif-service/iiif/3/{POLICY}:{ASSET}/full/400,/0/default.auto")
         );
 
         // And the plain default agrees with the free function, so the two
@@ -357,7 +412,7 @@ mod tests {
             IiifUrl::from_identifier("asset1abcdefghijklmnop")
                 .custom_px(1200)
                 .build(),
-            "https://iiif.hodlcroft.com/iiif/3/asset1abcdefghijklmnop/full/1200,/0/default.jpg"
+            "https://iiif.hodlcroft.com/iiif/3/asset1abcdefghijklmnop/full/1200,/0/default.auto"
         );
         // And the two constructors agree where both apply.
         assert_eq!(
@@ -367,19 +422,19 @@ mod tests {
     }
 
     #[test]
-    fn the_r2_cache_key_matches_the_url_path() {
-        // The bucket key is the URL path minus the host — by the service's
-        // design. Two workers kept their own copies and had diverged.
+    fn the_r2_cache_key_is_the_legacy_shape_the_service_no_longer_reads() {
+        // This key shape predates the iiif service's fingerprint scheme and
+        // its RENDER_VERSION, and the service no longer looks under it — see
+        // the note in `process_image` in workers/iiif. It is kept because
+        // `thumbnail-builder` still writes this shape into the same bucket.
+        //
+        // It deliberately no longer has to match the URL tail: a URL may ask
+        // for `.auto`, which is a request, not a stored object.
         let key = iiif_cache_key(POLICY, ASSET, 400);
         assert_eq!(
             key,
             format!("iiif-cache/{POLICY}/{ASSET}/full/400,/0/default.jpg")
         );
-        // The tail after the identifier is identical in both — that shared
-        // suffix is the thing that must not drift between them.
-        let suffix = "/full/400,/0/default.jpg";
-        assert!(key.ends_with(suffix));
-        assert!(iiif_asset_url(POLICY, ASSET, ImageSize::Thumb).ends_with(suffix));
     }
 
     #[test]

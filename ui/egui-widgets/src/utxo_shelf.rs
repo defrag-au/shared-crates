@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 
 use egui::{Color32, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
 
-use crate::theme::{self, ThemeExt};
+use crate::theme::{self, TextSize, ThemeExt};
 use crate::utxo_map::policy_color;
 
 // ============================================================================
@@ -647,7 +647,7 @@ impl ShelfConfig {
                 label_pos,
                 egui::Align2::LEFT_CENTER,
                 tier.label(),
-                egui::FontId::proportional(11.0),
+                egui::FontId::proportional(ui.text_size(TextSize::Base)),
                 tier.color(&ui.tokens()),
             );
 
@@ -660,7 +660,7 @@ impl ShelfConfig {
                 count_pos,
                 egui::Align2::RIGHT_CENTER,
                 format!("{}", layout.utxo_count),
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(ui.text_size(TextSize::Sm)),
                 ui.tokens().color.text_muted,
             );
 
@@ -679,7 +679,7 @@ impl ShelfConfig {
                     empty_pos,
                     egui::Align2::LEFT_CENTER,
                     empty_text,
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(ui.text_size(TextSize::Sm)),
                     empty_color,
                 );
             }
@@ -702,7 +702,7 @@ impl ShelfConfig {
                     more_rect.left_center(),
                     egui::Align2::LEFT_CENTER,
                     format!("+{hidden} more ({hidden_rows} rows)"),
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(ui.text_size(TextSize::Sm)),
                     label_color,
                 );
             }
@@ -813,7 +813,7 @@ impl ShelfConfig {
                     block.rect.center(),
                     egui::Align2::CENTER_CENTER,
                     label,
-                    egui::FontId::monospace(9.0),
+                    egui::FontId::monospace(ui.text_size(TextSize::Xs)),
                     Color32::from_rgba_unmultiplied(220, 220, 235, text_alpha),
                 );
             }

@@ -20,7 +20,7 @@ use egui::{Color32, RichText, Vec2};
 
 use crate::icons::PhosphorIcon;
 use crate::offer_slot::{self, OfferSlotConfig, OfferSlotData};
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -158,7 +158,7 @@ pub fn show(
             ui.label(
                 RichText::new("Waiting for peer...")
                     .color(ui.tokens().color.text_muted)
-                    .size(10.0),
+                    .size(ui.text_size(TextSize::Sm)),
             );
         });
         ui.gap(Space::Xl);
@@ -232,7 +232,12 @@ pub fn show(
 
 fn draw_offer_heading(ui: &mut egui::Ui, heading: &str, color: Color32, locked: bool) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new(heading).color(color).size(11.0).strong());
+        ui.label(
+            RichText::new(heading)
+                .color(color)
+                .size(ui.text_size(TextSize::Base))
+                .strong(),
+        );
         if locked {
             ui.label(PhosphorIcon::Lock.rich_text(11.0, ui.tokens().color.accent_yellow));
         }
@@ -292,14 +297,14 @@ fn draw_lock_button(
             ui.label(
                 RichText::new("Both sides locked — ready to sign")
                     .color(ui.tokens().color.accent_green)
-                    .size(10.0),
+                    .size(ui.text_size(TextSize::Sm)),
             );
             if ui
                 .add(
                     egui::Button::new(
                         RichText::new("Unlock")
                             .color(ui.tokens().color.text_muted)
-                            .size(10.0),
+                            .size(ui.text_size(TextSize::Sm)),
                     )
                     .fill(ui.tokens().color.bg_secondary)
                     .corner_radius(ui.tokens().corner(Radius::Base)),
@@ -316,14 +321,14 @@ fn draw_lock_button(
             ui.label(
                 RichText::new("Your offer is locked — waiting for peer")
                     .color(ui.tokens().color.accent_yellow)
-                    .size(10.0),
+                    .size(ui.text_size(TextSize::Sm)),
             );
             if ui
                 .add(
                     egui::Button::new(
                         RichText::new("Unlock")
                             .color(ui.tokens().color.text_muted)
-                            .size(10.0),
+                            .size(ui.text_size(TextSize::Sm)),
                     )
                     .fill(ui.tokens().color.bg_secondary)
                     .corner_radius(ui.tokens().corner(Radius::Base)),
@@ -344,7 +349,7 @@ fn draw_lock_button(
         let btn = egui::Button::new(
             RichText::new(label)
                 .color(ui.tokens().color.bg_primary)
-                .size(12.0)
+                .size(ui.text_size(TextSize::Md))
                 .strong(),
         )
         .fill(btn_color)
@@ -441,7 +446,7 @@ fn draw_card_row(
         ui.label(
             RichText::new("No assets offered yet")
                 .color(ui.tokens().color.text_muted)
-                .size(10.0),
+                .size(ui.text_size(TextSize::Sm)),
         );
     }
 }

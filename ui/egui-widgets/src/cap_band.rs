@@ -34,7 +34,7 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Sense, Stroke, Ui, Vec2, pos2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{TextSize, ThemeExt};
 use crate::time_spine::TimeScale;
 
 /// One sample of the band.
@@ -147,7 +147,7 @@ impl<'a> CapBand<'a> {
                 rect.center(),
                 Align2::CENTER_CENTER,
                 "no data in range",
-                FontId::proportional(12.0),
+                FontId::proportional(ui.text_size(TextSize::Md)),
                 ui.tokens().color.text_secondary,
             );
             return CapBandResponse {
@@ -245,14 +245,14 @@ impl<'a> CapBand<'a> {
                 self.notional_label,
                 (self.format_value)(max)
             ),
-            FontId::proportional(11.0),
+            FontId::proportional(ui.text_size(TextSize::Base)),
             self.notional_color,
         );
         p.text(
             rect.left_top() + Vec2::new(6.0, 17.0),
             Align2::LEFT_TOP,
             self.realisable_label,
-            FontId::proportional(11.0),
+            FontId::proportional(ui.text_size(TextSize::Base)),
             self.realisable_color,
         );
 

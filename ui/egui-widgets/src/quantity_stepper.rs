@@ -13,7 +13,7 @@
 use egui::{Color32, RichText, Ui, Vec2};
 
 use crate::icons::PhosphorIcon;
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 /// A `−  [n]  +` quantity control.
 pub struct QuantityStepper {
@@ -111,7 +111,7 @@ impl QuantityStepper {
                         |ui| {
                             ui.label(
                                 RichText::new(value.to_string())
-                                    .size(20.0)
+                                    .size(ui.text_size(TextSize::Xl2))
                                     .strong()
                                     .color(self.accent.unwrap_or(ui.tokens().color.accent_green)),
                             );

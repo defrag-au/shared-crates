@@ -9,7 +9,7 @@ use egui::{Color32, Rect, Vec2};
 
 use crate::card_browser;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -209,7 +209,7 @@ pub fn show(
             ui.label(
                 egui::RichText::new(&items[idx].display_name)
                     .color(ui.tokens().color.text_primary)
-                    .size(10.0)
+                    .size(ui.text_size(TextSize::Sm))
                     .strong(),
             );
         });

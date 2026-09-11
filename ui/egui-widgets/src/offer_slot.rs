@@ -9,7 +9,7 @@ use egui::{Color32, CornerRadius, Vec2};
 use crate::card_browser;
 use crate::icons::PhosphorIcon;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};
-use crate::theme::{self, Radius, ThemeExt};
+use crate::theme::{self, Radius, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -153,7 +153,7 @@ pub fn show(
             name_rect.left_center(),
             egui::Align2::LEFT_CENTER,
             &data.name,
-            egui::FontId::monospace(8.0),
+            egui::FontId::monospace(ui.text_size(TextSize::Xs)),
             ui.tokens().color.text_primary,
         );
 
@@ -175,7 +175,7 @@ pub fn show(
                     .desired_width(input_rect.width())
                     .hint_text(hint)
                     .horizontal_align(egui::Align::Center)
-                    .font(egui::FontId::monospace(10.0)),
+                    .font(egui::FontId::monospace(ui.text_size(TextSize::Sm))),
             );
 
             if resp.changed() {
@@ -221,7 +221,7 @@ pub fn show(
     // Quantity badge (top-left, for FTs — read-only when not editable)
     if data.is_fungible && !has_qty_input && data.quantity > 0 {
         let qty_text = super::wallet_asset_picker::format_quantity(data.quantity);
-        let font = egui::FontId::monospace(8.0);
+        let font = egui::FontId::monospace(ui.text_size(TextSize::Xs));
         let galley = painter.layout_no_wrap(
             qty_text.clone(),
             font.clone(),
@@ -248,7 +248,7 @@ pub fn show(
     } else if !data.is_fungible && data.quantity > 1 {
         // Non-fungible with quantity > 1 (shouldn't happen, but safe fallback)
         let qty_text = super::wallet_asset_picker::format_quantity(data.quantity);
-        let font = egui::FontId::monospace(8.0);
+        let font = egui::FontId::monospace(ui.text_size(TextSize::Xs));
         let galley = painter.layout_no_wrap(
             qty_text.clone(),
             font.clone(),
@@ -294,7 +294,7 @@ pub fn show(
         ui.label(
             egui::RichText::new(&data.name)
                 .color(ui.tokens().color.text_primary)
-                .size(11.0)
+                .size(ui.text_size(TextSize::Base))
                 .strong(),
         );
         if let Some(rank) = data.rarity_rank {
@@ -303,7 +303,7 @@ pub fn show(
             ui.label(
                 egui::RichText::new(format!("Rank #{rank} / {total}"))
                     .color(rank_color)
-                    .size(10.0),
+                    .size(ui.text_size(TextSize::Sm)),
             );
         }
         if data.is_fungible
@@ -315,7 +315,7 @@ pub fn show(
                     super::wallet_asset_picker::format_quantity(bal)
                 ))
                 .color(ui.tokens().color.text_muted)
-                .size(10.0),
+                .size(ui.text_size(TextSize::Sm)),
             );
         }
     });
@@ -423,7 +423,7 @@ pub fn show_ada_card(
                 .desired_width(input_rect.width())
                 .hint_text("0")
                 .horizontal_align(egui::Align::Center)
-                .font(egui::FontId::monospace(11.0)),
+                .font(egui::FontId::monospace(ui.text_size(TextSize::Base))),
         );
 
         if resp.changed() {
@@ -455,7 +455,7 @@ pub fn show_ada_card(
             egui::pos2(card_rect.center().x, card_rect.center().y + 6.0),
             egui::Align2::CENTER_CENTER,
             &amount_text,
-            egui::FontId::monospace(14.0),
+            egui::FontId::monospace(ui.text_size(TextSize::Lg)),
             ui.tokens().color.text_primary,
         );
         painter.text(
@@ -522,7 +522,7 @@ pub fn show_add_card(ui: &mut egui::Ui, config: &OfferSlotConfig) -> bool {
         egui::pos2(card_rect.center().x, card_rect.center().y + 14.0),
         egui::Align2::CENTER_CENTER,
         "Add",
-        egui::FontId::monospace(9.0),
+        egui::FontId::monospace(ui.text_size(TextSize::Xs)),
         text_color,
     );
 

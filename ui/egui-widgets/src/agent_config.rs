@@ -43,7 +43,7 @@ use crate::PhosphorIcon;
 use crate::icons::{install_phosphor_font, phosphor_label};
 use crate::relative_time::relative_label;
 use crate::select::{Select, SelectOption};
-use crate::theme::{Space, SpaceExt, ThemeExt};
+use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
 use crate::utils::{format_number, section_heading};
 
 /// A token-count spinner that reads as a number rather than a digit run.
@@ -514,7 +514,7 @@ pub fn agent_config_section(
     ui.label(
         egui::RichText::new("Agentic responses")
             .color(ui.tokens().color.text_primary)
-            .size(19.0)
+            .size(ui.text_size(TextSize::Xl2))
             .strong(),
     );
     ui.colored_label(

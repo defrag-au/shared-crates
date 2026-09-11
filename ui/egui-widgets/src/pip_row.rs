@@ -10,6 +10,8 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 
+use crate::theme::{TextSize, ThemeExt};
+
 // ============================================================================
 // Public types
 // ============================================================================
@@ -323,7 +325,7 @@ pub fn show(
                         Pos2::new(bar_rect.max.x - 2.0, bar_rect.center().y),
                         Align2::RIGHT_CENTER,
                         format!("+{}", data.pips.len() - max_pips),
-                        FontId::proportional(9.0),
+                        FontId::proportional(ui.text_size(TextSize::Xs)),
                         *overflow_color,
                     );
                 }

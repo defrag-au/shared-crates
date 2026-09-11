@@ -39,7 +39,7 @@
 use egui::{Align, Color32, Layout, Sense, Ui, vec2};
 
 use crate::icons::install_phosphor_font;
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 use crate::{PhosphorIcon, theme};
 
 /// One row in the menu.
@@ -334,7 +334,9 @@ impl<'a> Select<'a> {
                                     Some(value) => {
                                         if let Some(color) = value.swatch {
                                             ui.label(
-                                                egui::RichText::new("●").color(color).size(11.0),
+                                                egui::RichText::new("●")
+                                                    .color(color)
+                                                    .size(ui.text_size(TextSize::Base)),
                                             );
                                         }
                                         if value.warning.is_some() {
@@ -867,7 +869,7 @@ impl<'a> MultiSelect<'a> {
 /// `known` is false for a selected id with no matching option, which renders
 /// warning-tinted rather than vanishing.
 fn chip(ui: &mut Ui, label: &str, swatch: Option<Color32>, known: bool) -> bool {
-    let font = egui::FontId::proportional(12.0);
+    let font = egui::FontId::proportional(ui.text_size(TextSize::Md));
     let fg = if known {
         ui.tokens().color.text_primary
     } else {
@@ -1014,7 +1016,7 @@ fn menu_row(ui: &mut Ui, option: &SelectOption, highlighted: bool, selected: boo
     let label = elided_line(
         ui,
         &option.label,
-        egui::FontId::proportional(13.0),
+        egui::FontId::proportional(ui.text_size(TextSize::Lg)),
         ui.tokens().color.text_primary,
         text_width,
     );
@@ -1027,7 +1029,7 @@ fn menu_row(ui: &mut Ui, option: &SelectOption, highlighted: bool, selected: boo
         let subtitle = elided_line(
             ui,
             subtitle,
-            egui::FontId::proportional(11.0),
+            egui::FontId::proportional(ui.text_size(TextSize::Base)),
             ui.tokens().color.text_muted,
             text_width,
         );

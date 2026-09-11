@@ -32,7 +32,7 @@ use egui::Ui;
 use gateway_wiring::{GatewayLogEntry, LogLevel};
 
 use crate::relative_time::relative_label;
-use crate::theme::{Space, SpaceExt, ThemeExt};
+use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
 
 /// Cross-frame state for the log pane.
 pub struct LogState {
@@ -124,7 +124,7 @@ fn level_selector(ui: &mut Ui, min_level: &mut LogLevel) {
         let colour = level_colour(level, &ui.tokens());
         let label = egui::RichText::new(level.label())
             .monospace()
-            .size(11.0)
+            .size(ui.text_size(TextSize::Base))
             .color(if selected {
                 colour
             } else {
@@ -188,7 +188,7 @@ pub fn gateway_log_line(ui: &mut Ui, entry: &GatewayLogEntry, now_ms: f64) {
             egui::Label::new(
                 egui::RichText::new(relative_label(delta_secs))
                     .monospace()
-                    .size(11.0)
+                    .size(ui.text_size(TextSize::Base))
                     .color(ui.tokens().color.text_muted),
             )
             .truncate(),
@@ -197,7 +197,7 @@ pub fn gateway_log_line(ui: &mut Ui, entry: &GatewayLogEntry, now_ms: f64) {
             egui::Label::new(
                 egui::RichText::new(entry.level.label())
                     .monospace()
-                    .size(11.0)
+                    .size(ui.text_size(TextSize::Base))
                     .color(colour),
             )
             .truncate(),
@@ -207,7 +207,7 @@ pub fn gateway_log_line(ui: &mut Ui, entry: &GatewayLogEntry, now_ms: f64) {
                 egui::Label::new(
                     egui::RichText::new(&entry.target)
                         .monospace()
-                        .size(11.0)
+                        .size(ui.text_size(TextSize::Base))
                         .color(ui.tokens().color.text_muted),
                 )
                 .truncate(),
@@ -224,7 +224,7 @@ pub fn gateway_log_line(ui: &mut Ui, entry: &GatewayLogEntry, now_ms: f64) {
             egui::Label::new(
                 egui::RichText::new(&entry.message)
                     .monospace()
-                    .size(11.0)
+                    .size(ui.text_size(TextSize::Base))
                     .color(message_colour),
             )
             .truncate(),

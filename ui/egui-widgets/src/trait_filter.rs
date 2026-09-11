@@ -6,7 +6,7 @@
 //! ("background: red") and its value alone ("red"), so typing either
 //! a category prefix or a value prefix finds matching entries.
 
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 use egui::{Color32, Rect, RichText, Vec2};
 use std::collections::HashSet;
 
@@ -231,7 +231,7 @@ pub fn show(
                 egui::TextEdit::singleline(&mut state.input)
                     .hint_text(config.placeholder)
                     .desired_width(remaining_width)
-                    .font(egui::FontId::proportional(11.0))
+                    .font(egui::FontId::proportional(ui.text_size(TextSize::Base)))
                     .margin(Vec2::new(4.0, 2.0))
                     .id(input_id),
             )
@@ -335,7 +335,7 @@ pub fn show(
                         ui.label(
                             RichText::new("No matching traits")
                                 .color(ui.tokens().color.text_muted)
-                                .size(10.0),
+                                .size(ui.text_size(TextSize::Sm)),
                         );
                     });
             });
@@ -360,8 +360,8 @@ fn paint_tag(ui: &mut egui::Ui, entry: &FilterEntry, rounding: f32) -> bool {
     };
 
     let label_text = &entry.label;
-    let font = egui::FontId::proportional(10.0);
-    let close_font = egui::FontId::proportional(9.0);
+    let font = egui::FontId::proportional(ui.text_size(TextSize::Sm));
+    let close_font = egui::FontId::proportional(ui.text_size(TextSize::Xs));
 
     let galley = ui
         .painter()
@@ -429,7 +429,7 @@ fn paint_suggestions(
             ui.label(
                 RichText::new(*category)
                     .color(ui.tokens().color.text_muted)
-                    .size(9.0)
+                    .size(ui.text_size(TextSize::Xs))
                     .strong(),
             );
 
@@ -468,7 +468,7 @@ fn paint_suggestions(
                         egui::pos2(text_x, resp.rect.center().y),
                         egui::Align2::LEFT_CENTER,
                         &entry.value,
-                        egui::FontId::proportional(11.0),
+                        egui::FontId::proportional(ui.text_size(TextSize::Base)),
                         text_color,
                     );
 
@@ -508,7 +508,7 @@ fn paint_suggestions(
                     egui::pos2(resp.rect.min.x + 4.0, resp.rect.center().y),
                     egui::Align2::LEFT_CENTER,
                     &entry.label,
-                    egui::FontId::proportional(11.0),
+                    egui::FontId::proportional(ui.text_size(TextSize::Base)),
                     text_color,
                 );
                 resp

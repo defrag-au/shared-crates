@@ -79,7 +79,7 @@ use egui::{
 
 use crate::error_note::summarize_error;
 use crate::icons::{PhosphorIcon, install_phosphor_font};
-use crate::theme::{Radius, Space, SpaceExt, Theme, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, Theme, ThemeExt};
 
 /// Mix `a` into `b` by `t` (0 = all `b`, 1 = all `a`), per channel.
 fn blend(a: Color32, b: Color32, t: f32) -> Color32 {
@@ -532,7 +532,11 @@ fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
                         // Indeterminate: a spinner, because a fake bar that
                         // creeps to 90% and stalls is a lie.
                         None => {
-                            ui.add(egui::Spinner::new().size(12.0).color(icon_col));
+                            ui.add(
+                                egui::Spinner::new()
+                                    .size(ui.text_size(TextSize::Md))
+                                    .color(icon_col),
+                            );
                         }
                     }
                 }

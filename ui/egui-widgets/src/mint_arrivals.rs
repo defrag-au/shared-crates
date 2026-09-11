@@ -32,7 +32,7 @@ use std::collections::HashMap;
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{TextSize, ThemeExt};
 
 /// One asset arriving with a holder.
 #[derive(Clone, Debug)]
@@ -254,14 +254,14 @@ impl<'a> MintArrivals<'a> {
             Pos2::new(rect.left(), rect.top() + 2.0),
             Align2::LEFT_TOP,
             format!("{drawn} assets · {holders} holders"),
-            FontId::monospace(14.0),
+            FontId::monospace(ui.text_size(TextSize::Lg)),
             ink,
         );
         painter.text(
             Pos2::new(rect.left(), rect.top() + 18.0),
             Align2::LEFT_TOP,
             format!("largest single holder: {biggest}"),
-            FontId::proportional(10.0),
+            FontId::proportional(ui.text_size(TextSize::Sm)),
             muted,
         );
 

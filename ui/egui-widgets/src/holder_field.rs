@@ -56,7 +56,7 @@ use egui::{Align2, Color32, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, p
 
 use crate::motion::{Easing, tween, tween_bool, tween_from};
 use crate::selection::Selection;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, TextSize, ThemeExt};
 use crate::time_spine::SpineState;
 
 /// Whether the holder has the asset IN HAND after a move, or somebody else is
@@ -707,7 +707,7 @@ impl<'a> HolderField<'a> {
                     ui.label(
                         egui::RichText::new(format!("{}", shown[i]))
                             .strong()
-                            .size(18.0),
+                            .size(ui.text_size(TextSize::Xl2)),
                     );
                     ui.label(
                         egui::RichText::new(if shown[i] == 1 { "asset" } else { "assets" })

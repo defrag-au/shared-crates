@@ -34,7 +34,7 @@
 use egui::{Color32, RichText, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 /// Where a rung sits relative to the reader.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -208,7 +208,11 @@ impl<'a> TierLadder<'a> {
             ui.set_min_width(420.0_f32.min(room));
             ui.set_max_width(520.0_f32.min(room));
 
-            ui.label(RichText::new(self.title).size(16.0).strong());
+            ui.label(
+                RichText::new(self.title)
+                    .size(ui.text_size(TextSize::Xl))
+                    .strong(),
+            );
             if let Some(intro) = self.intro {
                 ui.label(
                     RichText::new(intro)

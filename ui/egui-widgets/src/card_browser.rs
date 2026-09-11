@@ -8,7 +8,7 @@
 //! (e.g. `AssetCard` with 3D tilt) through the [`CardRenderContext::response`] field.
 
 use crate::image_loader::CachedSpinner;
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
 
 // ============================================================================
@@ -399,7 +399,7 @@ pub fn draw_thumbnail(
             thumb_rect.center(),
             egui::Align2::CENTER_CENTER,
             "?",
-            egui::FontId::proportional(20.0),
+            egui::FontId::proportional(ui.text_size(TextSize::Xl2)),
             text_muted,
         );
         return false;

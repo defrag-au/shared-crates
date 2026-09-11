@@ -37,7 +37,7 @@
 
 use egui::{Color32, FontId, Margin, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 use crate::{SparkHoverStyle, Sparkline, Trend};
 
 /// The sizes and spacings a card paints with.
@@ -573,7 +573,7 @@ impl<'a> StatStrip<'a> {
                     "{:.0}\u{2013}{:.0} \u{00b7} med {:.0}",
                     r.low, r.high, r.mid
                 ))
-                .size(11.0),
+                .size(ui.text_size(TextSize::Base)),
             );
         });
     }
@@ -586,7 +586,7 @@ impl<'a> StatStrip<'a> {
         let painter = ui.painter();
         let galley = painter.layout_no_wrap(
             label.to_owned(),
-            FontId::proportional(11.0),
+            FontId::proportional(ui.text_size(TextSize::Base)),
             ui.tokens().color.text_muted,
         );
         let pill_size = galley.size() + pad * 2.0;
@@ -660,5 +660,9 @@ fn draw_trend(ui: &mut Ui, dir: Trend, label: &str) {
         };
     }
     ui.gap(Space::Sm);
-    ui.label(RichText::new(label).color(color).size(13.0));
+    ui.label(
+        RichText::new(label)
+            .color(color)
+            .size(ui.text_size(TextSize::Lg)),
+    );
 }

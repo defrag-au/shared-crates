@@ -8,7 +8,7 @@
 
 use egui::{Color32, FontId, RichText, Ui, Vec2};
 
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 /// Font sizes the card paints with. Named because [`MetricCard::natural_size`]
 /// has to measure with exactly the same ones — a measurement that drifts from
@@ -190,7 +190,7 @@ impl<'a> MetricCard<'a> {
                 ui.label(
                     RichText::new(self.label)
                         .color(ui.tokens().color.text_secondary)
-                        .size(12.0),
+                        .size(ui.text_size(TextSize::Md)),
                 );
 
                 ui.gap(Space::Sm);
@@ -200,14 +200,14 @@ impl<'a> MetricCard<'a> {
                     ui.label(
                         RichText::new(self.value)
                             .color(value_color)
-                            .size(24.0)
+                            .size(ui.text_size(TextSize::Xl3))
                             .strong(),
                     );
                     if let Some(subtitle) = &self.subtitle {
                         ui.label(
                             RichText::new(subtitle)
                                 .color(ui.tokens().color.text_muted)
-                                .size(13.0),
+                                .size(ui.text_size(TextSize::Lg)),
                         );
                     }
                 });
@@ -265,7 +265,11 @@ impl<'a> MetricCard<'a> {
                             }
                         }
 
-                        ui.label(RichText::new(delta).color(color).size(11.0));
+                        ui.label(
+                            RichText::new(delta)
+                                .color(color)
+                                .size(ui.text_size(TextSize::Base)),
+                        );
                     });
                 }
 

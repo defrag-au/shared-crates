@@ -5268,6 +5268,7 @@ name = "render-protocol"
 version = "0.1.0"
 dependencies = [
  "cardano-assets",
+ "image-core",
  "serde",
  "serde_json",
 ]

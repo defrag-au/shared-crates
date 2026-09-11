@@ -52,7 +52,7 @@ use egui::{
 };
 
 use crate::party_badge::{PartyBadge, PartyBasis};
-use crate::theme::{Space, SpaceExt, ThemeExt};
+use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
 use crate::timestamp::format_iso8601;
 
 /// Whether a custody trace is a fact or a reconstruction.
@@ -496,7 +496,7 @@ impl<'a> CustodyWalk<'a> {
                 Pos2::new(rect.left(), rect.top() + CAPTION_H * 0.5),
                 Align2::LEFT_CENTER,
                 caption,
-                FontId::monospace(11.0),
+                FontId::monospace(ui.text_size(TextSize::Base)),
                 ui.visuals().text_color(),
             );
         }
@@ -574,7 +574,11 @@ impl<'a> CustodyWalk<'a> {
 
         let value = (self.format_value)(n.value);
         let value_w = painter
-            .layout_no_wrap(value.clone(), FontId::monospace(11.0), ink)
+            .layout_no_wrap(
+                value.clone(),
+                FontId::monospace(ui.text_size(TextSize::Base)),
+                ink,
+            )
             .size()
             .x;
 
@@ -597,7 +601,11 @@ impl<'a> CustodyWalk<'a> {
         // A backing plate: labels sit over the ribbons, and unbacked text on a
         // translucent flow is the classic Sankey legibility failure.
         let text_w = painter
-            .layout_no_wrap(text.clone(), FontId::proportional(11.0), color)
+            .layout_no_wrap(
+                text.clone(),
+                FontId::proportional(ui.text_size(TextSize::Base)),
+                color,
+            )
             .size()
             .x;
         // The plate covers the second line too when there is one — a date
@@ -620,14 +628,14 @@ impl<'a> CustodyWalk<'a> {
             Pos2::new(x, y),
             Align2::LEFT_CENTER,
             &value,
-            FontId::monospace(11.0),
+            FontId::monospace(ui.text_size(TextSize::Base)),
             ink,
         );
         painter.text(
             Pos2::new(x + value_w + 8.0, y),
             Align2::LEFT_CENTER,
             &text,
-            FontId::proportional(11.0),
+            FontId::proportional(ui.text_size(TextSize::Base)),
             color,
         );
 
@@ -649,7 +657,7 @@ impl<'a> CustodyWalk<'a> {
                     Pos2::new(x, y + 11.0),
                     Align2::LEFT_CENTER,
                     sub,
-                    FontId::monospace(9.0),
+                    FontId::monospace(ui.text_size(TextSize::Xs)),
                     soft,
                 );
             }
@@ -670,14 +678,14 @@ impl<'a> CustodyWalk<'a> {
                         "{:.1}% of the traced amount",
                         n.value as f64 * 100.0 / traced as f64
                     ))
-                    .size(11.0)
+                    .size(ui.text_size(TextSize::Base))
                     .color(ui.visuals().weak_text_color()),
                 );
             }
             match n.kind {
                 WalkNodeKind::Received => {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("received from").size(11.0));
+                        ui.label(RichText::new("received from").size(ui.text_size(TextSize::Base)));
                         let badge = match n.label {
                             Some(l) => PartyBadge::new(l, n.basis),
                             None => PartyBadge::unlabelled(n.party_key.unwrap_or("")),
@@ -692,7 +700,7 @@ impl<'a> CustodyWalk<'a> {
                              received. The named party got the payment; the walk continues \
                              past it.",
                         )
-                        .size(11.0),
+                        .size(ui.text_size(TextSize::Base)),
                     );
                 }
                 WalkNodeKind::BeyondDepth { .. }
@@ -703,7 +711,7 @@ impl<'a> CustodyWalk<'a> {
                             "Stopped at a bound, not an origin. This share is NOT \
                              attributed to anything — report it as untraced.",
                         )
-                        .size(11.0)
+                        .size(ui.text_size(TextSize::Base))
                         .color(ui.visuals().warn_fg_color),
                     );
                 }
@@ -713,7 +721,7 @@ impl<'a> CustodyWalk<'a> {
                 ui.label(
                     RichText::new(tx)
                         .monospace()
-                        .size(10.0)
+                        .size(ui.text_size(TextSize::Sm))
                         .color(ui.visuals().weak_text_color()),
                 );
             }
@@ -732,12 +740,12 @@ impl<'a> CustodyWalk<'a> {
                 CustodyStrength::Inferred => (warn, ui.visuals().extreme_bg_color),
             };
             let text = RichText::new(self.strength.badge())
-                .size(9.0)
+                .size(ui.text_size(TextSize::Xs))
                 .strong()
                 .color(fg);
             let galley = ui.painter().layout_no_wrap(
                 self.strength.badge().into(),
-                egui::FontId::proportional(9.0),
+                egui::FontId::proportional(ui.text_size(TextSize::Xs)),
                 fg,
             );
             let (rect, _) = ui.allocate_exact_size(
@@ -749,7 +757,7 @@ impl<'a> CustodyWalk<'a> {
                 rect.center() - galley.size() / 2.0,
                 ui.painter().layout_no_wrap(
                     self.strength.badge().into(),
-                    egui::FontId::proportional(9.0),
+                    egui::FontId::proportional(ui.text_size(TextSize::Xs)),
                     fg,
                 ),
                 fg,
@@ -757,12 +765,16 @@ impl<'a> CustodyWalk<'a> {
             let _ = text;
             ui.label(
                 RichText::new(format!("{} leaves", summary.leaf_count))
-                    .size(10.0)
+                    .size(ui.text_size(TextSize::Sm))
                     .color(muted),
             );
 
             if summary.is_complete() {
-                ui.label(RichText::new("every leaf resolved").size(10.0).color(muted));
+                ui.label(
+                    RichText::new("every leaf resolved")
+                        .size(ui.text_size(TextSize::Sm))
+                        .color(muted),
+                );
             } else {
                 ui.label(
                     RichText::new(format!(
@@ -770,7 +782,7 @@ impl<'a> CustodyWalk<'a> {
                         (self.format_value)(summary.bounded),
                         summary.resolved_fraction() * 100.0
                     ))
-                    .size(10.0)
+                    .size(ui.text_size(TextSize::Sm))
                     .strong()
                     .color(warn),
                 )

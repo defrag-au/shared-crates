@@ -41,7 +41,7 @@
 
 use egui::{Align2, Color32, Pos2, Rect, Response, Sense, Stroke, Ui, pos2, vec2};
 
-use crate::flow_ring::{IN, OUT, ring_tint};
+use crate::flow_ring::{in_colour, out_colour, ring_tint};
 use crate::selection::Selection;
 use crate::time_spine::SpineState;
 
@@ -301,6 +301,9 @@ impl<'a> FlowStave<'a> {
                 .map(|i| GUTTER + step * i as f32)
         };
         let muted = ui.visuals().weak_text_color();
+        // Resolved alongside the other frame-level colours; the edge loop below
+        // only holds a painter.
+        let (in_c, out_c) = (in_colour(ui), out_colour(ui));
         let ink = ui.visuals().text_color();
         // Copied out BEFORE any `Frame::show` closure — holding a borrow of
         // `ui.visuals()` across one is the egui trap this crate has hit
@@ -321,7 +324,7 @@ impl<'a> FlowStave<'a> {
                 let is_focal = *k == focal;
                 let tint = match ring_of(k) {
                     _ if is_focal => ink,
-                    Some(r) => ring_tint(r),
+                    Some(r) => ring_tint(ui, r),
                     None => muted,
                 };
                 let name = truncate(&name_of(k), 14);
@@ -388,7 +391,7 @@ impl<'a> FlowStave<'a> {
                     let is_focal = *k == focal;
                     let tint = match ring_of(k) {
                         _ if is_focal => ink,
-                        Some(r) => ring_tint(r),
+                        Some(r) => ring_tint(ui, r),
                         None => muted,
                     };
                     // Faint; the focal lane a touch firmer — it is the subject
@@ -492,16 +495,16 @@ impl<'a> FlowStave<'a> {
                     let (col, from_x) = match e.from {
                         StaveOrigin::Party(p) => {
                             let c = if e.to == focal {
-                                IN
+                                in_c
                             } else if p == focal {
-                                OUT
+                                out_c
                             } else {
                                 muted
                             };
                             (c, lane_x(p))
                         }
                         // Unresolved payers arrive from the chart's edge.
-                        StaveOrigin::Unresolved => (IN, Some(rect.left() + GUTTER + 2.0)),
+                        StaveOrigin::Unresolved => (in_c, Some(rect.left() + GUTTER + 2.0)),
                         StaveOrigin::Mint => (ink, None),
                     };
                     let Some(tx_) = to_x else { continue };

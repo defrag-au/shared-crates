@@ -138,8 +138,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut CoverageLanesState) {
         // The legend. Colour has to be decodable somewhere, and a three-state
         // encoding where one state is "no data" cannot rely on the reader
         // inferring it.
-        legend_swatch(ui, coverage_tint(Coverage::Producing), "hashing");
-        legend_swatch(ui, coverage_tint(Coverage::Idle), "dark (observed)");
+        let (producing, idle) = (
+            coverage_tint(ui, Coverage::Producing),
+            coverage_tint(ui, Coverage::Idle),
+        );
+        legend_swatch(ui, producing, "hashing");
+        legend_swatch(ui, idle, "dark (observed)");
         legend_swatch(ui, egui_widgets::UNOBSERVED, "unobserved");
     });
     ui.add_space(6.0);

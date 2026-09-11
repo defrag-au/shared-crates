@@ -11,7 +11,7 @@ use egui::{Color32, CornerRadius, Vec2};
 use crate::card_browser;
 use crate::icons::PhosphorIcon;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};
-use crate::theme::{self, Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{self, Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -214,7 +214,7 @@ fn draw_picker_content(
             egui::TextEdit::singleline(&mut state.search)
                 .desired_width(ui.available_width())
                 .hint_text("Search...")
-                .font(egui::FontId::monospace(11.0)),
+                .font(egui::FontId::monospace(ui.text_size(TextSize::Base))),
         );
     });
 
@@ -259,7 +259,7 @@ fn draw_picker_content(
                     &mut state.show_unverified,
                     egui::RichText::new("Show unverified collections")
                         .color(ui.tokens().color.text_muted)
-                        .size(10.0),
+                        .size(ui.text_size(TextSize::Sm)),
                 );
 
                 if state.show_unverified {
@@ -267,7 +267,7 @@ fn draw_picker_content(
                     ui.label(
                         egui::RichText::new("Unverified Collections")
                             .color(ui.tokens().color.text_muted)
-                            .size(10.0)
+                            .size(ui.text_size(TextSize::Sm))
                             .strong(),
                     );
                     ui.gap(Space::Sm);
@@ -343,7 +343,7 @@ fn draw_collection_section(
         let mut header = egui::CollapsingHeader::new(
             egui::RichText::new(header_text)
                 .color(header_color)
-                .size(11.0)
+                .size(ui.text_size(TextSize::Base))
                 .strong(),
         )
         .id_salt(&group.policy_id)
@@ -509,7 +509,7 @@ fn draw_picker_card(
         name_rect.left_center(),
         egui::Align2::LEFT_CENTER,
         &asset.display_name,
-        egui::FontId::monospace(8.0),
+        egui::FontId::monospace(ui.text_size(TextSize::Xs)),
         if already_offered {
             ui.tokens().color.text_muted
         } else {
@@ -560,7 +560,7 @@ fn draw_picker_card(
         ui.label(
             egui::RichText::new(&asset.display_name)
                 .color(ui.tokens().color.text_primary)
-                .size(11.0)
+                .size(ui.text_size(TextSize::Base))
                 .strong(),
         );
         if let Some(rank) = asset.rarity_rank {
@@ -571,7 +571,11 @@ fn draw_picker_card(
             } else {
                 format!("Rank #{rank}")
             };
-            ui.label(egui::RichText::new(rank_text).color(rank_color).size(10.0));
+            ui.label(
+                egui::RichText::new(rank_text)
+                    .color(rank_color)
+                    .size(ui.text_size(TextSize::Sm)),
+            );
         }
         if !asset.traits.is_empty() {
             ui.gap(Space::Sm);
@@ -584,18 +588,18 @@ fn draw_picker_card(
                             ui.label(
                                 egui::RichText::new(key)
                                     .color(ui.tokens().color.text_muted)
-                                    .size(10.0),
+                                    .size(ui.text_size(TextSize::Sm)),
                             );
                             ui.label(
                                 egui::RichText::new(value)
                                     .color(ui.tokens().color.text_secondary)
-                                    .size(10.0),
+                                    .size(ui.text_size(TextSize::Sm)),
                             );
                         } else {
                             ui.label(
                                 egui::RichText::new(trait_str)
                                     .color(ui.tokens().color.text_secondary)
-                                    .size(10.0),
+                                    .size(ui.text_size(TextSize::Sm)),
                             );
                             ui.label("");
                         }
@@ -608,7 +612,7 @@ fn draw_picker_card(
             ui.label(
                 egui::RichText::new("Already in offer")
                     .color(ui.tokens().color.text_muted)
-                    .size(9.0),
+                    .size(ui.text_size(TextSize::Xs)),
             );
         }
     });

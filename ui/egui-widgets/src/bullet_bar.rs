@@ -26,7 +26,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Space, SpaceExt, ThemeExt};
+use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
 
 pub struct BulletBar {
     value: f32,
@@ -144,7 +144,7 @@ impl BulletBar {
                     ui.label(
                         RichText::new(lbl)
                             .color(ui.tokens().color.text_secondary)
-                            .size(11.0),
+                            .size(ui.text_size(TextSize::Base)),
                     );
                 }
                 if self.show_percent {
@@ -155,7 +155,7 @@ impl BulletBar {
                     ui.label(
                         RichText::new(format!("{:.0}%", value / self.max * 100.0))
                             .color(vc)
-                            .size(11.0),
+                            .size(ui.text_size(TextSize::Base)),
                     );
                     // The "→ target" half is omitted entirely when there is no
                     // target. An arrow pointing at a blank, or at a 0%, would
@@ -170,7 +170,7 @@ impl BulletBar {
                         ui.label(
                             RichText::new(format!("{:.0}%", t / self.max * 100.0))
                                 .color(ui.tokens().color.text_muted)
-                                .size(11.0),
+                                .size(ui.text_size(TextSize::Base)),
                         );
                     }
                 }
@@ -179,7 +179,7 @@ impl BulletBar {
                         ui.label(
                             RichText::new(detail)
                                 .color(ui.tokens().color.text_muted)
-                                .size(11.0),
+                                .size(ui.text_size(TextSize::Base)),
                         );
                     });
                 }

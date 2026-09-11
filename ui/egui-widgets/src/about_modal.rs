@@ -45,7 +45,7 @@
 use egui::{RichText, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 /// One thing a reader should expect: an icon, a headline, and a line saying
 /// what it means for them.
@@ -124,7 +124,11 @@ impl<'a> AboutModal<'a> {
             ui.set_max_width(500.0_f32.min(room));
 
             ui.horizontal(|ui| {
-                ui.label(RichText::new(self.title).size(16.0).strong());
+                ui.label(
+                    RichText::new(self.title)
+                        .size(ui.text_size(TextSize::Xl))
+                        .strong(),
+                );
                 if let Some(status) = self.status {
                     status_chip(ui, status);
                 }

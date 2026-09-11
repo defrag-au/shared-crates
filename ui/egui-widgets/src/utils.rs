@@ -3,7 +3,7 @@
 
 use egui::{RichText, Ui};
 
-use crate::theme::{Space, SpaceExt, ThemeExt};
+use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
 
 // ============================================================================
 // Number formatting
@@ -142,12 +142,12 @@ pub fn stat_card(ui: &mut Ui, label: &str, value: &str) {
         ui.label(
             RichText::new(label)
                 .color(ui.tokens().color.text_muted)
-                .size(10.0),
+                .size(ui.text_size(TextSize::Sm)),
         );
         ui.label(
             RichText::new(value)
                 .color(ui.tokens().color.text_primary)
-                .size(16.0),
+                .size(ui.text_size(TextSize::Xl)),
         );
     });
 }
@@ -157,7 +157,7 @@ pub fn section_heading(ui: &mut Ui, text: &str) {
     ui.label(
         RichText::new(text)
             .color(ui.tokens().color.text_primary)
-            .size(16.0)
+            .size(ui.text_size(TextSize::Xl))
             .strong(),
     );
     ui.gap(Space::Md);

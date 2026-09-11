@@ -21,7 +21,7 @@
 
 use egui::{Align, Color32, Layout, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 /// A supporting stat shown after the headline value (e.g. `12` / `assets`).
 #[derive(Clone, Debug, Default)]
@@ -161,14 +161,14 @@ pub fn show(
         ui.label(
             RichText::new(&config.empty_text)
                 .color(config.text_muted)
-                .size(10.0),
+                .size(ui.text_size(TextSize::Sm)),
         );
         return None;
     }
 
-    let value_font = egui::FontId::monospace(12.0);
-    let stat_font = egui::FontId::proportional(10.0);
-    let name_font = egui::FontId::proportional(12.0);
+    let value_font = egui::FontId::monospace(ui.text_size(TextSize::Md));
+    let stat_font = egui::FontId::proportional(ui.text_size(TextSize::Sm));
+    let name_font = egui::FontId::proportional(ui.text_size(TextSize::Md));
 
     // Measure every column across every row FIRST. Right-aligning each row
     // independently makes the decimal points wander, which is what makes a
@@ -370,13 +370,17 @@ pub fn header(ui: &mut Ui, name_label: &str, value_label: &str, config: &Leaderb
     ui.horizontal(|ui| {
         ui.spacing_mut().interact_size.y = 0.0;
         ui.add_space(config.rank_width);
-        ui.label(RichText::new(name_label).color(config.text_muted).size(9.0));
+        ui.label(
+            RichText::new(name_label)
+                .color(config.text_muted)
+                .size(ui.text_size(TextSize::Xs)),
+        );
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.gap(Space::Base);
             ui.label(
                 RichText::new(value_label)
                     .color(config.text_muted)
-                    .size(9.0),
+                    .size(ui.text_size(TextSize::Xs)),
             );
         });
     });
