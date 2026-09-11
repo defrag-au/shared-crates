@@ -21,7 +21,7 @@
 
 use egui::{Color32, CursorIcon, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 use crate::{Chip, ChipVariant, PhosphorIcon};
 
 /// The event-source side of the node.
@@ -134,15 +134,17 @@ impl<'a> EventWiring<'a> {
             ui.vertical(|ui| {
                 ui.set_width(NODE_WIDTH);
                 let frame = egui::Frame::group(ui.style())
-                    .fill(tint(theme::BG_SECONDARY))
-                    .stroke(Stroke::new(1.0_f32, tint(theme::ACCENT)))
+                    .fill(tint(ui.tokens().color.bg_secondary))
+                    .stroke(Stroke::new(1.0_f32, tint(ui.tokens().color.accent)))
                     .inner_margin(10.0);
                 let node = frame.show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        self.event.icon.show(ui, 14.0, tint(theme::ACCENT));
+                        self.event
+                            .icon
+                            .show(ui, 14.0, tint(ui.tokens().color.accent));
                         ui.label(
                             RichText::new(&self.event.kind_label)
-                                .color(tint(theme::TEXT_PRIMARY))
+                                .color(tint(ui.tokens().color.text_primary))
                                 .strong(),
                         );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -158,7 +160,7 @@ impl<'a> EventWiring<'a> {
                     ui.add_space(6.0);
                     ui.label(
                         RichText::new("fires on")
-                            .color(tint(theme::TEXT_MUTED))
+                            .color(tint(ui.tokens().color.text_muted))
                             .small(),
                     );
                     ui.horizontal_wrapped(|ui| {
@@ -203,7 +205,7 @@ impl<'a> EventWiring<'a> {
                     ui.horizontal(|ui| {
                         ui.label(
                             RichText::new("cooldown")
-                                .color(tint(theme::TEXT_MUTED))
+                                .color(tint(ui.tokens().color.text_muted))
                                 .small(),
                         );
                         let mut secs = self.event.cooldown_seconds.unwrap_or(0);
@@ -218,7 +220,11 @@ impl<'a> EventWiring<'a> {
                             response.cooldown_set = Some(secs);
                         }
                         if self.event.cooldown_seconds.is_none() {
-                            ui.label(RichText::new("off").color(tint(theme::TEXT_MUTED)).small());
+                            ui.label(
+                                RichText::new("off")
+                                    .color(tint(ui.tokens().color.text_muted))
+                                    .small(),
+                            );
                         }
                     });
                 });
@@ -245,30 +251,32 @@ impl<'a> EventWiring<'a> {
                         CARD_WIDTH
                     };
                     let frame = egui::Frame::group(ui.style())
-                        .fill(tint(theme::BG_HIGHLIGHT))
+                        .fill(tint(ui.tokens().color.bg_highlight))
                         .stroke(Stroke::new(
                             1.0_f32,
                             if is_expanded {
-                                tint(theme::ACCENT_CYAN)
+                                tint(ui.tokens().color.accent_cyan)
                             } else {
-                                tint(theme::BORDER)
+                                tint(ui.tokens().color.border)
                             },
                         ))
                         .inner_margin(8.0);
                     let card = frame.show(ui, |ui| {
                         ui.set_width(card_width - 16.0);
                         ui.horizontal(|ui| {
-                            action.icon.show(ui, 14.0, tint(theme::ACCENT_CYAN));
+                            action
+                                .icon
+                                .show(ui, 14.0, tint(ui.tokens().color.accent_cyan));
                             ui.vertical(|ui| {
                                 ui.label(
                                     RichText::new(&action.title)
-                                        .color(tint(theme::TEXT_PRIMARY))
+                                        .color(tint(ui.tokens().color.text_primary))
                                         .strong(),
                                 );
                                 if let Some(subtitle) = &action.subtitle {
                                     ui.label(
                                         RichText::new(subtitle)
-                                            .color(tint(theme::TEXT_SECONDARY))
+                                            .color(tint(ui.tokens().color.text_secondary))
                                             .small(),
                                     );
                                 }
@@ -315,12 +323,13 @@ impl<'a> EventWiring<'a> {
                     ui.allocate_exact_size(Vec2::new(CARD_WIDTH, 36.0), Sense::click());
                 let hover = add.hovered();
                 let stroke_color = if hover {
-                    theme::ACCENT
+                    ui.tokens().color.accent
                 } else {
-                    tint(theme::TEXT_MUTED)
+                    tint(ui.tokens().color.text_muted)
                 };
                 if hover {
-                    ui.painter().rect_filled(rect, 4.0, theme::BG_HIGHLIGHT);
+                    ui.painter()
+                        .rect_filled(rect, 4.0, ui.tokens().color.bg_highlight);
                 }
                 dashed_rect(ui, rect, Stroke::new(1.0_f32, stroke_color));
                 let painter = ui.painter();
@@ -341,9 +350,9 @@ impl<'a> EventWiring<'a> {
         // ── Wires ─────────────────────────────────────────────────────────
         if let Some(from) = event_port {
             let painter = ui.painter();
-            painter.circle_filled(from, PORT_RADIUS, tint(theme::ACCENT));
+            painter.circle_filled(from, PORT_RADIUS, tint(ui.tokens().color.accent));
             for to in &action_ports {
-                painter.circle_filled(*to, PORT_RADIUS, tint(theme::ACCENT_CYAN));
+                painter.circle_filled(*to, PORT_RADIUS, tint(ui.tokens().color.accent_cyan));
                 let dx = ((to.x - from.x) * 0.5).max(16.0);
                 let shape = egui::epaint::CubicBezierShape::from_points_stroke(
                     [
@@ -354,7 +363,7 @@ impl<'a> EventWiring<'a> {
                     ],
                     false,
                     Color32::TRANSPARENT,
-                    Stroke::new(1.5_f32, tint(theme::ACCENT)),
+                    Stroke::new(1.5_f32, tint(ui.tokens().color.accent)),
                 );
                 painter.add(shape);
             }
@@ -369,7 +378,10 @@ impl<'a> EventWiring<'a> {
 /// which re-registers the response and loses reliably to later widgets.
 fn icon_button(ui: &mut Ui, icon: PhosphorIcon, hover: &str) -> bool {
     let resp = ui
-        .add(egui::Label::new(icon.rich_text(12.0, theme::TEXT_MUTED)).sense(Sense::click()))
+        .add(
+            egui::Label::new(icon.rich_text(12.0, ui.tokens().color.text_muted))
+                .sense(Sense::click()),
+        )
         .on_hover_text(hover)
         .on_hover_cursor(CursorIcon::PointingHand);
     resp.clicked()

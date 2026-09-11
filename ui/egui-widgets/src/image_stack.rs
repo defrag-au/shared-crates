@@ -69,7 +69,7 @@ use egui::{
     Ui, Vec2, emath::Rot2, load::TexturePoll,
 };
 
-use crate::theme;
+use crate::theme::ThemeExt;
 
 /// The most prints a pile will ever draw.
 ///
@@ -310,7 +310,7 @@ impl<'a> ImageStack<'a> {
                 None => {
                     ui.painter().add(Shape::convex_polygon(
                         quad(center, size / 2.0),
-                        theme::BG_HIGHLIGHT,
+                        ui.tokens().color.bg_highlight,
                         Stroke::NONE,
                     ));
                     if let Some(ch) = image.label.chars().next() {
@@ -319,7 +319,7 @@ impl<'a> ImageStack<'a> {
                             egui::Align2::CENTER_CENTER,
                             ch.to_uppercase().to_string(),
                             FontId::proportional(size * 0.4),
-                            theme::TEXT_MUTED,
+                            ui.tokens().color.text_muted,
                         );
                     }
                 }

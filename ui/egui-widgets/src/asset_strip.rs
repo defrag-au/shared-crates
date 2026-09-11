@@ -9,7 +9,7 @@ use egui::{Color32, CornerRadius, Rect, Vec2};
 
 use crate::card_browser;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};
-use crate::theme;
+use crate::theme::ThemeExt;
 
 // ============================================================================
 // Types
@@ -170,7 +170,7 @@ pub fn show(
         let card_rect = Rect::from_min_size(egui::pos2(x, y), Vec2::splat(thumb));
 
         // Background
-        painter.rect_filled(card_rect, rounding, theme::BG_SECONDARY);
+        painter.rect_filled(card_rect, rounding, ui.tokens().color.bg_secondary);
 
         // Thumbnail
         let image_url = iiif_asset_url(
@@ -198,7 +198,7 @@ pub fn show(
         painter.rect_stroke(
             card_rect,
             rounding,
-            egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT),
+            egui::Stroke::new(1.0_f32, ui.tokens().color.bg_highlight),
             egui::StrokeKind::Inside,
         );
     }
@@ -208,7 +208,7 @@ pub fn show(
         strip_response.clone().on_hover_ui_at_pointer(|ui| {
             ui.label(
                 egui::RichText::new(&items[idx].display_name)
-                    .color(theme::TEXT_PRIMARY)
+                    .color(ui.tokens().color.text_primary)
                     .size(10.0)
                     .strong(),
             );

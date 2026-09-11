@@ -36,7 +36,7 @@ use crate::button_group::{ButtonGroup, ButtonGroupButton};
 use crate::error_note::ErrorNote;
 use crate::icons::PhosphorIcon;
 use crate::property_list::PropertyList;
-use crate::theme;
+use crate::theme::ThemeExt;
 
 // ============================================================================
 // Types
@@ -249,14 +249,14 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
     };
 
     egui::Frame::new()
-        .fill(theme::BG_SECONDARY)
+        .fill(ui.tokens().color.bg_secondary)
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+        .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .show(ui, |ui| {
             ui.label(
                 RichText::new(heading)
-                    .color(theme::TEXT_SECONDARY)
+                    .color(ui.tokens().color.text_secondary)
                     .size(config.heading_size)
                     .strong(),
             );
@@ -277,7 +277,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                 ui.add_space(8.0);
                 ui.label(
                     RichText::new(&review.headline)
-                        .color(theme::TEXT_PRIMARY)
+                        .color(ui.tokens().color.text_primary)
                         .size(config.font_size)
                         .strong(),
                 );
@@ -303,7 +303,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                     {
                         ui.label(
                             RichText::new(blocker)
-                                .color(theme::TEXT_MUTED)
+                                .color(ui.tokens().color.text_muted)
                                 .size(config.font_size - 1.0),
                         );
                     }
@@ -325,7 +325,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                     ui.add_space(4.0);
                     ui.label(
                         RichText::new("Nothing is sent until you approve it in your wallet.")
-                            .color(theme::TEXT_MUTED)
+                            .color(ui.tokens().color.text_muted)
                             .size(config.font_size - 1.0),
                     );
                 }
@@ -338,7 +338,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                     ui.add_space(4.0);
                     ui.label(
                         RichText::new("Hardware wallets can take a minute.")
-                            .color(theme::TEXT_MUTED)
+                            .color(ui.tokens().color.text_muted)
                             .size(config.font_size - 1.0),
                     );
                 }
@@ -350,11 +350,11 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                         PhosphorIcon::CheckCircle.show(
                             ui,
                             config.heading_size,
-                            theme::ACCENT_GREEN,
+                            ui.tokens().color.accent_green,
                         );
                         ui.label(
                             RichText::new("On chain")
-                                .color(theme::ACCENT_GREEN)
+                                .color(ui.tokens().color.accent_green)
                                 .size(config.heading_size),
                         );
                     });
@@ -362,7 +362,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                     ui.horizontal(|ui| {
                         ui.label(
                             RichText::new(crate::utils::truncate_hex(tx_hash, 10, 10))
-                                .color(theme::TEXT_MUTED)
+                                .color(ui.tokens().color.text_muted)
                                 .size(config.font_size - 1.0)
                                 .monospace(),
                         );
@@ -384,7 +384,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                 FlightPhase::Failed { stage, error } => {
                     ui.label(
                         RichText::new(format!("{} failed", stage.label()))
-                            .color(theme::ACCENT_RED)
+                            .color(ui.tokens().color.accent_red)
                             .size(config.font_size)
                             .strong(),
                     );
@@ -416,7 +416,7 @@ fn busy_line(ui: &mut egui::Ui, text: &str, font_size: f32) {
         ui.spinner();
         ui.label(
             RichText::new(text)
-                .color(theme::ACCENT_CYAN)
+                .color(ui.tokens().color.accent_cyan)
                 .size(font_size),
         );
     });
@@ -425,28 +425,28 @@ fn busy_line(ui: &mut egui::Ui, text: &str, font_size: f32) {
 /// One ladder row: icon, stage name, status word. The caller owns the grid.
 fn draw_stage_row(ui: &mut egui::Ui, stage: FlightStage, status: StageStatus, font_size: f32) {
     let (word, color) = match status {
-        StageStatus::Pending => ("pending", theme::TEXT_MUTED),
-        StageStatus::Active => ("in progress", theme::ACCENT_CYAN),
-        StageStatus::Done => ("done", theme::ACCENT_GREEN),
-        StageStatus::Failed => ("failed", theme::ACCENT_RED),
+        StageStatus::Pending => ("pending", ui.tokens().color.text_muted),
+        StageStatus::Active => ("in progress", ui.tokens().color.accent_cyan),
+        StageStatus::Done => ("done", ui.tokens().color.accent_green),
+        StageStatus::Failed => ("failed", ui.tokens().color.accent_red),
     };
     match status {
         StageStatus::Pending => {
-            PhosphorIcon::Clock.show(ui, 14.0, theme::TEXT_MUTED);
+            PhosphorIcon::Clock.show(ui, 14.0, ui.tokens().color.text_muted);
         }
         StageStatus::Active => {
             ui.add(egui::Spinner::new().size(12.0));
         }
         StageStatus::Done => {
-            PhosphorIcon::CheckCircle.show(ui, 14.0, theme::ACCENT_GREEN);
+            PhosphorIcon::CheckCircle.show(ui, 14.0, ui.tokens().color.accent_green);
         }
         StageStatus::Failed => {
-            PhosphorIcon::Warning.show(ui, 14.0, theme::ACCENT_RED);
+            PhosphorIcon::Warning.show(ui, 14.0, ui.tokens().color.accent_red);
         }
     }
     ui.label(
         RichText::new(stage.label())
-            .color(theme::TEXT_PRIMARY)
+            .color(ui.tokens().color.text_primary)
             .size(font_size),
     );
     ui.label(RichText::new(word).color(color).size(font_size));

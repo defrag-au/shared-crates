@@ -60,7 +60,7 @@ use egui::{Color32, CornerRadius, Frame, Margin, RichText, Sense, Stroke, Ui, Ve
 
 use crate::chip::{Chip, ChipVariant};
 use crate::relative_time::RelativeTime;
-use crate::theme;
+use crate::theme::ThemeExt;
 use crate::timestamp::format_iso8601;
 
 /// Assets shown before the overflow pill takes over.
@@ -321,7 +321,7 @@ impl<'a> ActivityFeed<'a> {
                 }
                 ui.label(
                     RichText::new(friendly_day(&day))
-                        .color(theme::TEXT_SECONDARY)
+                        .color(ui.tokens().color.text_secondary)
                         .strong(),
                 );
                 ui.add_space(2.0);
@@ -360,8 +360,8 @@ impl<'a> ActivityFeed<'a> {
         // read outside it — see the interact block at the end.
         let mut party_rect = None;
         let inner = Frame::new()
-            .fill(theme::BG_SECONDARY)
-            .stroke(Stroke::new(1.0_f32, theme::BORDER))
+            .fill(ui.tokens().color.bg_secondary)
+            .stroke(Stroke::new(1.0_f32, ui.tokens().color.border))
             .corner_radius(CornerRadius::same(8))
             .inner_margin(Margin::symmetric(12, 10))
             .show(ui, |ui| {
@@ -409,7 +409,7 @@ impl<'a> ActivityFeed<'a> {
                                 ui.add(RelativeTime::new(entry.timestamp));
                                 ui.label(
                                     RichText::new(format!("· {stamp}"))
-                                        .color(theme::TEXT_MUTED)
+                                        .color(ui.tokens().color.text_muted)
                                         .small(),
                                 );
                                 if let Some(cp) = entry.counterparty {
@@ -425,13 +425,17 @@ impl<'a> ActivityFeed<'a> {
                         egui::Layout::top_down(egui::Align::RIGHT),
                         |ui| {
                             let color = if entry.amount >= 0 {
-                                theme::SUCCESS
+                                ui.tokens().color.success
                             } else {
-                                theme::ACCENT_ORANGE
+                                ui.tokens().color.accent_orange
                             };
                             ui.label(RichText::new(amount).color(color).monospace().strong());
                             if let Some(second) = &entry.secondary {
-                                ui.label(RichText::new(second).color(theme::TEXT_MUTED).small());
+                                ui.label(
+                                    RichText::new(second)
+                                        .color(ui.tokens().color.text_muted)
+                                        .small(),
+                                );
                             }
                         },
                     );
@@ -448,7 +452,7 @@ impl<'a> ActivityFeed<'a> {
                         if extra > 0 {
                             ui.label(
                                 RichText::new(format!("+{extra} more"))
-                                    .color(theme::TEXT_MUTED)
+                                    .color(ui.tokens().color.text_muted)
                                     .small(),
                             );
                         }
@@ -461,7 +465,7 @@ impl<'a> ActivityFeed<'a> {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(
                             RichText::new(entry.targets_label)
-                                .color(theme::TEXT_MUTED)
+                                .color(ui.tokens().color.text_muted)
                                 .small(),
                         );
                         for asset in entry.targets.iter().take(self.max_pills) {
@@ -472,7 +476,7 @@ impl<'a> ActivityFeed<'a> {
                         if extra > 0 {
                             ui.label(
                                 RichText::new(format!("+{extra} more"))
-                                    .color(theme::TEXT_MUTED)
+                                    .color(ui.tokens().color.text_muted)
                                     .small(),
                             );
                         }
@@ -505,7 +509,7 @@ impl<'a> ActivityFeed<'a> {
             ui.painter().rect_stroke(
                 inner.response.rect,
                 CornerRadius::same(8),
-                Stroke::new(1.0_f32, theme::ACCENT_BLUE),
+                Stroke::new(1.0_f32, ui.tokens().color.accent_blue),
                 egui::StrokeKind::Inside,
             );
         }
@@ -526,7 +530,7 @@ impl<'a> ActivityFeed<'a> {
             ui.painter().rect_stroke(
                 inner.response.rect,
                 CornerRadius::same(8),
-                Stroke::new(2.0_f32, theme::ACCENT_CYAN),
+                Stroke::new(2.0_f32, ui.tokens().color.accent_cyan),
                 egui::StrokeKind::Inside,
             );
         }
@@ -542,16 +546,24 @@ impl<'a> ActivityFeed<'a> {
     /// is what the card's click is measured against.
     fn party(&self, ui: &mut Ui, caption: &str, who: &str) -> egui::Rect {
         let colour = if self.walkable {
-            theme::ACCENT_BLUE
+            ui.tokens().color.accent_blue
         } else {
-            theme::TEXT_SECONDARY
+            ui.tokens().color.text_secondary
         };
-        ui.label(RichText::new("·").color(theme::TEXT_MUTED).small());
+        ui.label(
+            RichText::new("·")
+                .color(ui.tokens().color.text_muted)
+                .small(),
+        );
         // The caption is inside the hit rect: "from addr1q…" is one phrase,
         // and a link that starts one word into it invites a miss.
         let caption_rect = (!caption.is_empty()).then(|| {
-            ui.label(RichText::new(caption).color(theme::TEXT_MUTED).small())
-                .rect
+            ui.label(
+                RichText::new(caption)
+                    .color(ui.tokens().color.text_muted)
+                    .small(),
+            )
+            .rect
         });
         let mut rect = ui
             .label(
@@ -579,7 +591,7 @@ impl<'a> ActivityFeed<'a> {
             ui.painter().hline(
                 rect.x_range(),
                 rect.bottom() - 1.0,
-                Stroke::new(1.0_f32, theme::ACCENT_BLUE),
+                Stroke::new(1.0_f32, ui.tokens().color.accent_blue),
             );
         }
         rect
@@ -657,11 +669,11 @@ fn pill_width(ui: &Ui, asset: &ActivityAsset<'_>, moved: bool) -> f32 {
 fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>, moved: bool) {
     let arrived = asset.quantity >= 0;
     let tint = if !moved {
-        theme::TEXT_MUTED
+        ui.tokens().color.text_muted
     } else if arrived {
-        theme::SUCCESS
+        ui.tokens().color.success
     } else {
-        theme::ACCENT_ORANGE
+        ui.tokens().color.accent_orange
     };
     // Reserve the whole pill up front so the wrapped row can break BEFORE it,
     // then draw into the rect we were given. See [`pill_width`].
@@ -671,7 +683,7 @@ fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>, moved: bool) {
         return;
     }
     ui.painter()
-        .rect_filled(rect, CornerRadius::same(6), theme::BG_HIGHLIGHT);
+        .rect_filled(rect, CornerRadius::same(6), ui.tokens().color.bg_highlight);
     let ui = &mut ui.new_child(
         egui::UiBuilder::new()
             .max_rect(rect.shrink2(egui::vec2(PILL_PAD_X, PILL_PAD_Y)))
@@ -703,7 +715,7 @@ fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>, moved: bool) {
     }
     ui.label(
         RichText::new(elide(asset.label, PILL_LABEL_CHARS))
-            .color(theme::TEXT_PRIMARY)
+            .color(ui.tokens().color.text_primary)
             .small(),
     );
     // Quantity is a signed badge, not a bare number: on a card the direction

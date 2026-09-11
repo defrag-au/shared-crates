@@ -11,7 +11,7 @@ use egui::{Color32, CornerRadius, Vec2};
 use crate::card_browser;
 use crate::icons::PhosphorIcon;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};
-use crate::theme;
+use crate::theme::{self, ThemeExt};
 
 // ============================================================================
 // Types
@@ -162,8 +162,8 @@ pub fn show(
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
         .frame(
             egui::Frame::window(&ctx.global_style())
-                .fill(theme::BG_PRIMARY)
-                .stroke(egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT))
+                .fill(ctx.tokens().color.bg_primary)
+                .stroke(egui::Stroke::new(1.0_f32, ctx.tokens().color.bg_highlight))
                 .corner_radius(CornerRadius::same(8))
                 .inner_margin(16.0),
         )
@@ -209,7 +209,7 @@ fn draw_picker_content(
 
     // ── Search bar ──
     ui.horizontal(|ui| {
-        PhosphorIcon::MagnifyingGlass.show(ui, 14.0, theme::TEXT_MUTED);
+        PhosphorIcon::MagnifyingGlass.show(ui, 14.0, ui.tokens().color.text_muted);
         ui.add(
             egui::TextEdit::singleline(&mut state.search)
                 .desired_width(ui.available_width())
@@ -258,7 +258,7 @@ fn draw_picker_content(
                 ui.checkbox(
                     &mut state.show_unverified,
                     egui::RichText::new("Show unverified collections")
-                        .color(theme::TEXT_MUTED)
+                        .color(ui.tokens().color.text_muted)
                         .size(10.0),
                 );
 
@@ -266,7 +266,7 @@ fn draw_picker_content(
                     ui.add_space(4.0);
                     ui.label(
                         egui::RichText::new("Unverified Collections")
-                            .color(theme::TEXT_MUTED)
+                            .color(ui.tokens().color.text_muted)
                             .size(10.0)
                             .strong(),
                     );
@@ -335,9 +335,9 @@ fn draw_collection_section(
         };
 
         let header_color = if offered_count > 0 {
-            theme::ACCENT_CYAN
+            ui.tokens().color.accent_cyan
         } else {
-            theme::TEXT_PRIMARY
+            ui.tokens().color.text_primary
         };
 
         let mut header = egui::CollapsingHeader::new(
@@ -392,9 +392,9 @@ fn phosphor_caret_icon(ui: &mut egui::Ui, openness: f32, response: &egui::Respon
         PhosphorIcon::CaretRight
     };
     let color = if response.hovered() {
-        theme::TEXT_PRIMARY
+        ui.tokens().color.text_primary
     } else {
-        theme::TEXT_SECONDARY
+        ui.tokens().color.text_secondary
     };
     let center = response.rect.center();
     icon.paint(
@@ -454,7 +454,7 @@ fn draw_picker_card(
     let rounding = CornerRadius::same(4);
 
     // Background
-    painter.rect_filled(card_rect, rounding, theme::BG_SECONDARY);
+    painter.rect_filled(card_rect, rounding, ui.tokens().color.bg_secondary);
 
     // IIIF thumbnail, from the deployment the host named.
     let image_url = match &config.image_base {
@@ -511,28 +511,28 @@ fn draw_picker_card(
         &asset.display_name,
         egui::FontId::monospace(8.0),
         if already_offered {
-            theme::TEXT_MUTED
+            ui.tokens().color.text_muted
         } else {
-            theme::TEXT_PRIMARY
+            ui.tokens().color.text_primary
         },
     );
 
     // "In offer" checkmark badge (top-left) for already-offered assets
     if already_offered {
         let badge_center = egui::pos2(card_rect.min.x + 10.0, card_rect.min.y + 10.0);
-        painter.circle_filled(badge_center, 8.0, theme::TEXT_MUTED);
+        painter.circle_filled(badge_center, 8.0, ui.tokens().color.text_muted);
         PhosphorIcon::Check.paint(
             &painter,
             badge_center,
             egui::Align2::CENTER_CENTER,
             10.0,
-            theme::BG_PRIMARY,
+            ui.tokens().color.bg_primary,
         );
     }
 
     // Border — already offered (muted), rarity, or default
     let (border_color, border_width) = if already_offered {
-        (theme::TEXT_MUTED, 1.0_f32)
+        (ui.tokens().color.text_muted, 1.0_f32)
     } else if let Some(rank) = asset.rarity_rank {
         let total = asset.total_ranked.unwrap_or(10000);
         let color = theme::rarity_rank_color(rank, total);
@@ -540,9 +540,9 @@ fn draw_picker_card(
         (color, width)
     } else {
         let color = if hovered {
-            theme::TEXT_MUTED
+            ui.tokens().color.text_muted
         } else {
-            theme::BG_HIGHLIGHT
+            ui.tokens().color.bg_highlight
         };
         (color, 1.0_f32)
     };
@@ -559,7 +559,7 @@ fn draw_picker_card(
 
         ui.label(
             egui::RichText::new(&asset.display_name)
-                .color(theme::TEXT_PRIMARY)
+                .color(ui.tokens().color.text_primary)
                 .size(11.0)
                 .strong(),
         );
@@ -581,16 +581,20 @@ fn draw_picker_card(
                 .show(ui, |ui| {
                     for trait_str in &asset.traits {
                         if let Some((key, value)) = trait_str.split_once(':') {
-                            ui.label(egui::RichText::new(key).color(theme::TEXT_MUTED).size(10.0));
+                            ui.label(
+                                egui::RichText::new(key)
+                                    .color(ui.tokens().color.text_muted)
+                                    .size(10.0),
+                            );
                             ui.label(
                                 egui::RichText::new(value)
-                                    .color(theme::TEXT_SECONDARY)
+                                    .color(ui.tokens().color.text_secondary)
                                     .size(10.0),
                             );
                         } else {
                             ui.label(
                                 egui::RichText::new(trait_str)
-                                    .color(theme::TEXT_SECONDARY)
+                                    .color(ui.tokens().color.text_secondary)
                                     .size(10.0),
                             );
                             ui.label("");
@@ -603,7 +607,7 @@ fn draw_picker_card(
             ui.add_space(2.0);
             ui.label(
                 egui::RichText::new("Already in offer")
-                    .color(theme::TEXT_MUTED)
+                    .color(ui.tokens().color.text_muted)
                     .size(9.0),
             );
         }

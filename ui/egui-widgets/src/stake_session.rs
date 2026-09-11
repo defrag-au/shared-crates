@@ -36,7 +36,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error_note::ErrorNote;
 use crate::icons::PhosphorIcon;
-use crate::theme;
+use crate::theme::ThemeExt;
 use crate::user_badge::{UserBadge, UserBadgeAction};
 use crate::wallet::{WalletApi, WalletConnector, WalletProvider};
 use crate::wallet_button::{WalletAction, WalletButton};
@@ -320,7 +320,7 @@ impl<'a> StakeSessionPanel<'a> {
                     if let Some(network) = self.network {
                         ui.label(
                             RichText::new(network)
-                                .color(theme::TEXT_MUTED)
+                                .color(ui.tokens().color.text_muted)
                                 .size(self.font_size - 1.0),
                         );
                     }
@@ -330,7 +330,7 @@ impl<'a> StakeSessionPanel<'a> {
                         "Your wallet signs a challenge; nothing is spent. The worker checks \
                          the stake against its allowlist.",
                     )
-                    .color(theme::TEXT_MUTED)
+                    .color(ui.tokens().color.text_muted)
                     .size(self.font_size - 1.0),
                 );
             }
@@ -339,7 +339,7 @@ impl<'a> StakeSessionPanel<'a> {
                     ui.spinner();
                     ui.label(
                         RichText::new("Check your wallet — sign the challenge there.")
-                            .color(theme::ACCENT_CYAN)
+                            .color(ui.tokens().color.accent_cyan)
                             .size(self.font_size),
                     );
                 });

@@ -285,9 +285,10 @@ pub fn apply_touch_sizing(ctx: &Context, bp: Breakpoint) {
 ///
 /// ```ignore
 /// prose_row(ui, |ui| {
-///     ui.label(RichText::new(line).color(theme::TEXT_MUTED).small());
-///     ui.label(RichText::new("amber").color(theme::ACCENT_ORANGE).small());
-///     ui.label(RichText::new(" = listed").color(theme::TEXT_MUTED).small());
+///     let t = ui.tokens();
+///     ui.label(RichText::new(line).color(t.color.text_muted).small());
+///     ui.label(RichText::new("amber").color(t.color.accent_orange).small());
+///     ui.label(RichText::new(" = listed").color(t.color.text_muted).small());
 /// });
 /// ```
 ///

@@ -7,7 +7,7 @@
 use egui::RichText;
 
 use crate::icons::PhosphorIcon;
-use crate::theme;
+use crate::theme::ThemeExt;
 
 // ============================================================================
 // Types
@@ -95,14 +95,14 @@ pub fn show(
     };
 
     egui::Frame::new()
-        .fill(theme::BG_SECONDARY)
+        .fill(ui.tokens().color.bg_secondary)
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+        .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .show(ui, |ui| {
             ui.label(
                 RichText::new(heading)
-                    .color(theme::TEXT_SECONDARY)
+                    .color(ui.tokens().color.text_secondary)
                     .size(config.heading_size)
                     .strong(),
             );
@@ -136,10 +136,10 @@ pub fn show(
                             .add(
                                 egui::Button::new(
                                     RichText::new("Sign with wallet")
-                                        .color(theme::BG_PRIMARY)
+                                        .color(ui.tokens().color.bg_primary)
                                         .size(config.font_size),
                                 )
-                                .fill(theme::ACCENT_GREEN),
+                                .fill(ui.tokens().color.accent_green),
                             )
                             .clicked()
                         {
@@ -151,7 +151,7 @@ pub fn show(
                                 .add(
                                     egui::Button::new(
                                         RichText::new("Cancel")
-                                            .color(theme::TEXT_MUTED)
+                                            .color(ui.tokens().color.text_muted)
                                             .size(config.font_size),
                                     )
                                     .frame(false),
@@ -166,7 +166,7 @@ pub fn show(
                     ui.add_space(4.0);
                     ui.label(
                         RichText::new("Both signatures required to execute.")
-                            .color(theme::TEXT_MUTED)
+                            .color(ui.tokens().color.text_muted)
                             .size(9.0),
                     );
                 }
@@ -175,7 +175,7 @@ pub fn show(
                         ui.spinner();
                         ui.label(
                             RichText::new("Check your wallet — approve the transaction there.")
-                                .color(theme::ACCENT_CYAN)
+                                .color(ui.tokens().color.accent_cyan)
                                 .size(config.font_size),
                         );
                     });
@@ -184,7 +184,7 @@ pub fn show(
                     ui.horizontal(|ui| {
                         ui.label(
                             RichText::new("Hardware wallets can take a minute.")
-                                .color(theme::TEXT_MUTED)
+                                .color(ui.tokens().color.text_muted)
                                 .size(9.0),
                         );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -192,7 +192,7 @@ pub fn show(
                                 .add(
                                     egui::Button::new(
                                         RichText::new("Cancel")
-                                            .color(theme::TEXT_MUTED)
+                                            .color(ui.tokens().color.text_muted)
                                             .size(config.font_size),
                                     )
                                     .frame(false),
@@ -209,7 +209,7 @@ pub fn show(
                         ui.spinner();
                         ui.label(
                             RichText::new(format!("Waiting for {} to sign...", config.peer_name))
-                                .color(theme::TEXT_SECONDARY)
+                                .color(ui.tokens().color.text_secondary)
                                 .size(config.font_size),
                         );
                     });
@@ -221,7 +221,7 @@ pub fn show(
                                 .add(
                                     egui::Button::new(
                                         RichText::new("Cancel")
-                                            .color(theme::TEXT_MUTED)
+                                            .color(ui.tokens().color.text_muted)
                                             .size(config.font_size),
                                     )
                                     .frame(false),
@@ -238,7 +238,7 @@ pub fn show(
                         ui.spinner();
                         ui.label(
                             RichText::new("Submitting transaction...")
-                                .color(theme::ACCENT_CYAN)
+                                .color(ui.tokens().color.accent_cyan)
                                 .size(config.font_size),
                         );
                     });
@@ -248,14 +248,14 @@ pub fn show(
                         ui.spinner();
                         ui.label(
                             RichText::new("Awaiting confirmation...")
-                                .color(theme::ACCENT_CYAN)
+                                .color(ui.tokens().color.accent_cyan)
                                 .size(config.font_size),
                         );
                     });
                     ui.add_space(2.0);
                     ui.label(
                         RichText::new(crate::utils::truncate_hex(tx_hash, 8, 8))
-                            .color(theme::TEXT_MUTED)
+                            .color(ui.tokens().color.text_muted)
                             .size(9.0),
                     );
                 }
@@ -264,18 +264,18 @@ pub fn show(
                         PhosphorIcon::CheckCircle.show(
                             ui,
                             config.heading_size,
-                            theme::ACCENT_GREEN,
+                            ui.tokens().color.accent_green,
                         );
                         ui.label(
                             RichText::new("Trade complete!")
-                                .color(theme::ACCENT_GREEN)
+                                .color(ui.tokens().color.accent_green)
                                 .size(config.heading_size),
                         );
                     });
                     ui.add_space(2.0);
                     ui.label(
                         RichText::new(crate::utils::truncate_hex(tx_hash, 8, 8))
-                            .color(theme::TEXT_MUTED)
+                            .color(ui.tokens().color.text_muted)
                             .size(9.0),
                     );
                 }
@@ -289,25 +289,25 @@ pub fn show(
 /// surrounding `egui::Grid` and the `end_row()`.
 fn draw_status_row(ui: &mut egui::Ui, label: &str, signed: bool, font_size: f32) {
     if signed {
-        PhosphorIcon::CheckCircle.show(ui, 14.0, theme::ACCENT_GREEN);
+        PhosphorIcon::CheckCircle.show(ui, 14.0, ui.tokens().color.accent_green);
     } else {
-        PhosphorIcon::Clock.show(ui, 14.0, theme::TEXT_MUTED);
+        PhosphorIcon::Clock.show(ui, 14.0, ui.tokens().color.text_muted);
     }
     ui.label(
         RichText::new(label)
-            .color(theme::TEXT_PRIMARY)
+            .color(ui.tokens().color.text_primary)
             .size(font_size),
     );
     if signed {
         ui.label(
             RichText::new("signed")
-                .color(theme::ACCENT_GREEN)
+                .color(ui.tokens().color.accent_green)
                 .size(font_size),
         );
     } else {
         ui.label(
             RichText::new("pending")
-                .color(theme::TEXT_MUTED)
+                .color(ui.tokens().color.text_muted)
                 .size(font_size),
         );
     }

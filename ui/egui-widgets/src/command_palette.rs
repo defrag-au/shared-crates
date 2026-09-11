@@ -17,7 +17,7 @@
 use egui::{Align2, Key, KeyboardShortcut, Modifiers, Ui, Vec2};
 
 use crate::machine::Machine;
-use crate::theme;
+use crate::theme::ThemeExt;
 use crate::typeahead_search::{TypeaheadOption, TypeaheadSearch, filter_options};
 
 enum PalettePhase {
@@ -160,8 +160,8 @@ impl<'a> CommandPalette<'a> {
             .fixed_size(Vec2::new(460.0, 0.0))
             .frame(
                 egui::Frame::window(&ctx.global_style())
-                    .fill(theme::BG_SECONDARY)
-                    .stroke(egui::Stroke::new(1.0_f32, theme::ACCENT)),
+                    .fill(ui.tokens().color.bg_secondary)
+                    .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.accent)),
             )
             .show(&ctx, |ui| {
                 let resp = TypeaheadSearch::new(

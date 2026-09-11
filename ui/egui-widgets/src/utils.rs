@@ -3,7 +3,7 @@
 
 use egui::{RichText, Ui};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 
 // ============================================================================
 // Number formatting
@@ -139,8 +139,16 @@ pub fn now_secs() -> f64 {
 /// Compact stat card: small muted label above a larger primary value.
 pub fn stat_card(ui: &mut Ui, label: &str, value: &str) {
     ui.vertical(|ui| {
-        ui.label(RichText::new(label).color(theme::TEXT_MUTED).size(10.0));
-        ui.label(RichText::new(value).color(theme::TEXT_PRIMARY).size(16.0));
+        ui.label(
+            RichText::new(label)
+                .color(ui.tokens().color.text_muted)
+                .size(10.0),
+        );
+        ui.label(
+            RichText::new(value)
+                .color(ui.tokens().color.text_primary)
+                .size(16.0),
+        );
     });
 }
 
@@ -148,7 +156,7 @@ pub fn stat_card(ui: &mut Ui, label: &str, value: &str) {
 pub fn section_heading(ui: &mut Ui, text: &str) {
     ui.label(
         RichText::new(text)
-            .color(theme::TEXT_PRIMARY)
+            .color(ui.tokens().color.text_primary)
             .size(16.0)
             .strong(),
     );
