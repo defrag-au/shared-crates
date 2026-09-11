@@ -5,6 +5,13 @@
 //! land on — de-emphasis is expressed within the passing range, not by
 //! dropping below it. If a palette change fails here, the test is the
 //! negotiation point, not your monitor.
+//!
+//! The assertions below read the deprecated module consts on purpose, unchanged:
+//! this pass introduces `Theme` without moving any floor, and the floors are the
+//! one thing that must not shift while the palette is being re-homed.
+//! Generalising this into `assert_legible(&Theme)` over `Theme::PRESETS` — so a
+//! NEW theme cannot ship below AA either — is the next pass.
+#![allow(deprecated)]
 
 use egui::Color32;
 use egui_widgets::theme;
