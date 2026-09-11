@@ -5,6 +5,8 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Sense, Stroke, Vec2};
 
+use crate::theme::ThemeExt;
+
 // ============================================================================
 // Public types
 // ============================================================================
@@ -20,14 +22,15 @@ pub struct RadarPoint {
 
 /// Configuration for the radar chart appearance.
 pub struct RadarChartConfig {
+    // `None` asks the theme at render time — a `Default` has no `Ui` to ask.
     /// Color of the data curve and dots.
-    pub curve_color: Color32,
+    pub curve_color: Option<Color32>,
     /// Color of the concentric web rings and axis lines.
-    pub web_color: Color32,
+    pub web_color: Option<Color32>,
     /// Color for axis labels that have data.
-    pub label_color: Color32,
+    pub label_color: Option<Color32>,
     /// Color for axis labels with no data.
-    pub label_muted_color: Color32,
+    pub label_muted_color: Option<Color32>,
     /// Curve line width.
     pub curve_width: f32,
     /// Dot radius on data points.
@@ -43,10 +46,10 @@ pub struct RadarChartConfig {
 impl Default for RadarChartConfig {
     fn default() -> Self {
         Self {
-            curve_color: Color32::from_rgb(125, 207, 255), // cyan
-            web_color: Color32::from_rgba_premultiplied(86, 95, 137, 40),
-            label_color: Color32::from_rgb(220, 220, 235),
-            label_muted_color: Color32::from_rgb(100, 100, 130),
+            curve_color: None,
+            web_color: None,
+            label_color: None,
+            label_muted_color: None,
             curve_width: 1.5,
             dot_radius: 3.0,
             tension: 0.3,
@@ -70,6 +73,15 @@ pub fn show(ui: &mut egui::Ui, points: &[RadarPoint], size: f32, config: &RadarC
         return;
     }
 
+    // Resolved once: a `Default` config cannot know the theme.
+    let c = ui.tokens().color;
+    let curve_color = config.curve_color.unwrap_or(c.accent_cyan);
+    let web_color = config
+        .web_color
+        .unwrap_or_else(|| crate::theme::with_alpha(c.text_muted, 40));
+    let label_color = config.label_color.unwrap_or(c.text_primary);
+    let label_muted_color = config.label_muted_color.unwrap_or(c.text_muted);
+
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
     let painter = ui.painter_at(rect);
     let center = rect.center();
@@ -87,7 +99,7 @@ pub fn show(ui: &mut egui::Ui, points: &[RadarPoint], size: f32, config: &RadarC
     };
 
     // Concentric web rings
-    let web_stroke = Stroke::new(0.5_f32, config.web_color);
+    let web_stroke = Stroke::new(0.5_f32, web_color);
     for r in 1..=config.ring_count {
         let frac = r as f32 / config.ring_count as f32;
         let ring_pts: Vec<Pos2> = (0..n).map(|i| axis_point(i, frac)).collect();
@@ -108,7 +120,7 @@ pub fn show(ui: &mut egui::Ui, points: &[RadarPoint], size: f32, config: &RadarC
         .filter_map(|(i, p)| p.value.map(|v| axis_point(i, v.clamp(0.0, 1.0))))
         .collect();
 
-    let curve_stroke = Stroke::new(config.curve_width, config.curve_color);
+    let curve_stroke = Stroke::new(config.curve_width, curve_color);
     let m = present_pts.len();
 
     if m >= 3 {
@@ -156,7 +168,7 @@ pub fn show(ui: &mut egui::Ui, points: &[RadarPoint], size: f32, config: &RadarC
     for (i, p) in points.iter().enumerate() {
         if let Some(v) = p.value {
             let pt = axis_point(i, v.clamp(0.0, 1.0));
-            painter.circle_filled(pt, config.dot_radius, config.curve_color);
+            painter.circle_filled(pt, config.dot_radius, curve_color);
         }
     }
 
@@ -166,9 +178,9 @@ pub fn show(ui: &mut egui::Ui, points: &[RadarPoint], size: f32, config: &RadarC
         let label_pos = axis_point(i, 1.15);
         let anchor = axis_label_anchor(i, n);
         let color = if p.value.is_some() {
-            config.label_color
+            label_color
         } else {
-            config.label_muted_color
+            label_muted_color
         };
         painter.text(label_pos, anchor, &p.label, label_font.clone(), color);
     }

@@ -10,14 +10,27 @@
 
 use egui::{Color32, CornerRadius, Response, Sense, Ui, Vec2, Widget};
 
-const TRACK: Color32 = Color32::from_rgb(30, 30, 44);
-/// Default minted fill (neutral blue). The host overrides per status (e.g. green
+use crate::theme::ThemeExt;
+
+// `_colour` suffixes: `oversub` is already a local bool in the draw body, and a
+// function silently shadowed by a `bool` is a confusing error to read.
+fn track_colour(ui: &Ui) -> Color32 {
+    ui.tokens().color.bg_highlight
+}
+/// Default minted fill (neutral). The host overrides per status (e.g. green
 /// when the collection is live).
-const MINTED: Color32 = Color32::from_rgb(120, 160, 200);
-/// Ordered backlog — muted amber: "queued, in progress".
-const ORDERED: Color32 = Color32::from_rgb(190, 150, 90);
-/// Oversubscribed ordered band — a hotter amber/red: "more ordered than supply".
-const OVERSUB: Color32 = Color32::from_rgb(210, 120, 90);
+fn minted_colour(ui: &Ui) -> Color32 {
+    ui.tokens().color.accent
+}
+/// Ordered backlog — "queued, in progress".
+fn ordered_colour(ui: &Ui) -> Color32 {
+    ui.tokens().color.warning
+}
+/// Oversubscribed ordered band: "more ordered than supply". A problem, not a
+/// queue, so it takes `error` rather than a hotter amber.
+fn oversub_colour(ui: &Ui) -> Color32 {
+    ui.tokens().color.error
+}
 
 /// A two-band supply progress bar. `minted` and `ordered` are clamped so their
 /// bands never exceed the track; when `ordered` demand would overflow the
@@ -29,10 +42,11 @@ pub struct SupplyBar {
     total: u64,
     height: f32,
     rounding: u8,
-    minted_color: Color32,
-    ordered_color: Color32,
-    oversub_color: Color32,
-    track_color: Color32,
+    // `None` asks the theme at render time — `new()` has no `Ui` to ask.
+    minted_color: Option<Color32>,
+    ordered_color: Option<Color32>,
+    oversub_color: Option<Color32>,
+    track_color: Option<Color32>,
 }
 
 impl SupplyBar {
@@ -44,10 +58,10 @@ impl SupplyBar {
             total,
             height: 4.0,
             rounding: 2,
-            minted_color: MINTED,
-            ordered_color: ORDERED,
-            oversub_color: OVERSUB,
-            track_color: TRACK,
+            minted_color: None,
+            ordered_color: None,
+            oversub_color: None,
+            track_color: None,
         }
     }
 
@@ -59,13 +73,13 @@ impl SupplyBar {
 
     /// Override the minted-band fill (e.g. green for a live collection).
     pub fn minted_color(mut self, c: Color32) -> Self {
-        self.minted_color = c;
+        self.minted_color = Some(c);
         self
     }
 
     /// Override the ordered-band fill.
     pub fn ordered_color(mut self, c: Color32) -> Self {
-        self.ordered_color = c;
+        self.ordered_color = Some(c);
         self
     }
 
@@ -84,7 +98,7 @@ impl SupplyBar {
         }
         let painter = ui.painter();
         let corner = CornerRadius::same(self.rounding);
-        painter.rect_filled(rect, corner, self.track_color);
+        painter.rect_filled(rect, corner, self.track_color.unwrap_or(track_colour(ui)));
         if self.total == 0 {
             return resp;
         }
@@ -101,9 +115,9 @@ impl SupplyBar {
             band.min.x = rect.min.x + rect.width() * minted_pct;
             band.set_width(rect.width() * ordered_pct);
             let c = if oversub {
-                self.oversub_color
+                self.oversub_color.unwrap_or(oversub_colour(ui))
             } else {
-                self.ordered_color
+                self.ordered_color.unwrap_or(ordered_colour(ui))
             };
             painter.rect_filled(band, CornerRadius::ZERO, c);
         }
@@ -111,7 +125,11 @@ impl SupplyBar {
         if minted_pct > 0.0 {
             let mut filled = rect;
             filled.set_width(rect.width() * minted_pct);
-            painter.rect_filled(filled, corner, self.minted_color);
+            painter.rect_filled(
+                filled,
+                corner,
+                self.minted_color.unwrap_or(minted_colour(ui)),
+            );
         }
         resp
     }

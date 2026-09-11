@@ -91,8 +91,7 @@ impl ShelfTier {
 
     /// Subtle background tint for the shelf row.
     pub fn bg_tint(&self, t: &theme::Theme) -> Color32 {
-        let c = self.color(t);
-        Color32::from_rgba_premultiplied(c.r() / 8, c.g() / 8, c.b() / 8, 20)
+        theme::with_alpha(self.color(t), 20)
     }
 }
 
@@ -673,7 +672,7 @@ impl ShelfConfig {
                 let (empty_text, empty_color) = if tier == ShelfTier::Collateral {
                     ("No collateral UTxO", ui.tokens().color.accent_red)
                 } else {
-                    ("empty", Color32::from_rgba_premultiplied(80, 80, 100, 60))
+                    ("empty", theme::with_alpha(ui.tokens().color.text_muted, 60))
                 };
                 painter.text(
                     empty_pos,
@@ -713,7 +712,7 @@ impl ShelfConfig {
                     Pos2::new(rect.left(), shelf_rect.bottom()),
                     Pos2::new(rect.right(), shelf_rect.bottom()),
                 ],
-                Stroke::new(0.5_f32, Color32::from_rgba_premultiplied(80, 80, 100, 40)),
+                Stroke::new(0.5_f32, theme::with_alpha(ui.tokens().color.text_muted, 40)),
             );
         }
 
@@ -740,9 +739,9 @@ impl ShelfConfig {
             // Block background
             let bg = if block.policies.is_empty() {
                 let c = block.tier.color(&ui.tokens());
-                Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (120.0 * dim_alpha) as u8)
+                theme::with_alpha(c, (120.0 * dim_alpha) as u8)
             } else {
-                Color32::from_rgba_premultiplied(30, 30, 45, (200.0 * dim_alpha) as u8)
+                theme::with_alpha(ui.tokens().color.bg_secondary, (200.0 * dim_alpha) as u8)
             };
             painter.rect_filled(block.rect, 3.0, bg);
 
@@ -760,12 +759,7 @@ impl ShelfConfig {
 
                     let mut c = policy_color(ui, pid);
                     if is_dimmed {
-                        c = Color32::from_rgba_unmultiplied(
-                            c.r(),
-                            c.g(),
-                            c.b(),
-                            (c.a() as f32 * dim_alpha) as u8,
-                        );
+                        c = theme::with_alpha(c, (c.a() as f32 * dim_alpha) as u8);
                     }
                     painter.rect_filled(seg_rect, 1.5, c);
                     seg_y += seg_h;
@@ -814,7 +808,7 @@ impl ShelfConfig {
                     egui::Align2::CENTER_CENTER,
                     label,
                     egui::FontId::monospace(ui.text_size(TextSize::Xs)),
-                    Color32::from_rgba_unmultiplied(220, 220, 235, text_alpha),
+                    theme::with_alpha(ui.tokens().color.text_primary, text_alpha),
                 );
             }
         }

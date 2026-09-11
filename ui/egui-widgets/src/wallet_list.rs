@@ -530,7 +530,7 @@ fn render_row(
                         .color(if archived {
                             meta_grey(ui)
                         } else {
-                            Color32::from_gray(200)
+                            ui.tokens().color.text_secondary
                         }),
                 );
 
@@ -698,7 +698,7 @@ fn render_card(
                     .show(ui, |ui| {
                         ui.label(
                             RichText::new(role_text)
-                                .color(Color32::from_rgb(20, 20, 30))
+                                .color(ui.tokens().color.on(role_colour))
                                 .small()
                                 .strong(),
                         );
@@ -783,9 +783,9 @@ fn render_card(
                 ui.gap(Space::Sm);
                 ui.horizontal(|ui| {
                     let fg = match pool.health {
-                        WalletPoolBadgeHealth::Empty => Color32::from_rgb(220, 130, 130),
-                        WalletPoolBadgeHealth::Low => Color32::from_rgb(220, 200, 130),
-                        WalletPoolBadgeHealth::Healthy => Color32::from_rgb(150, 210, 160),
+                        WalletPoolBadgeHealth::Empty => ui.tokens().color.error,
+                        WalletPoolBadgeHealth::Low => ui.tokens().color.warning,
+                        WalletPoolBadgeHealth::Healthy => ui.tokens().color.success,
                     };
                     ui.label(RichText::new("●").small().color(fg));
                     let ada_whole = pool.total_lovelace / 1_000_000;

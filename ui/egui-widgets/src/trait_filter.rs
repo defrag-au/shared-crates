@@ -350,14 +350,15 @@ pub fn show(
 
 /// Paint a single tag chip. Returns `true` if the remove button was clicked.
 fn paint_tag(ui: &mut egui::Ui, entry: &FilterEntry, rounding: f32) -> bool {
+    let c = ui.tokens().color;
     let chip_color = entry
         .color
-        .unwrap_or(Color32::from_rgba_premultiplied(86, 95, 137, 160));
-    let text_color = if is_light(chip_color) {
-        Color32::from_rgb(26, 27, 38)
-    } else {
-        Color32::from_rgb(220, 220, 230)
-    };
+        .unwrap_or_else(|| crate::theme::with_alpha(c.text_muted, 160));
+    // Was a hand-rolled `is_light()` branch picking between two literals.
+    // `ColorTokens::on` does the same thing by measured contrast against the
+    // theme's own ramp, so a caller-supplied chip colour stays legible whatever
+    // palette is active.
+    let text_color = c.on(chip_color);
 
     let label_text = &entry.label;
     let font = egui::FontId::proportional(ui.text_size(TextSize::Sm));
@@ -388,7 +389,7 @@ fn paint_tag(ui: &mut egui::Ui, entry: &FilterEntry, rounding: f32) -> bool {
             Vec2::new(close_width, chip_height),
         );
         let close_color = if resp.hovered() {
-            Color32::from_rgb(247, 118, 142)
+            c.error
         } else {
             text_color.gamma_multiply(0.6)
         };
@@ -523,8 +524,7 @@ fn paint_suggestions(
     clicked
 }
 
-/// Rough check: is this color "light" enough to need dark text?
-fn is_light(c: Color32) -> bool {
-    let luma = c.r() as f32 * 0.299 + c.g() as f32 * 0.587 + c.b() as f32 * 0.114;
-    luma > 160.0
-}
+// `is_light()` lived here — a NTSC-weighted luma against a 160 threshold, used
+// to pick between two hardcoded text colours. Replaced by `ColorTokens::on`,
+// which measures WCAG contrast against the theme's own ramp rather than
+// guessing at a threshold, and returns a colour the theme actually contains.

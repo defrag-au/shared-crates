@@ -321,8 +321,8 @@ impl<'a> FlowLedger<'a> {
         let mut clicked_row = None;
 
         let muted = ui.visuals().weak_text_color();
-        let pos = Color32::from_rgb(0x4a, 0xba, 0x7a);
-        let neg = Color32::from_rgb(0xd0, 0x6b, 0x5c);
+        let pos = ui.tokens().color.success;
+        let neg = ui.tokens().color.error;
 
         let mut builder = TableBuilder::new(ui)
             .striped(true)
@@ -487,7 +487,7 @@ impl<'a> FlowLedger<'a> {
                             ui.label(
                                 RichText::new(label)
                                     .size(ui.text_size(TextSize::Base))
-                                    .color(Color32::from_rgb(0xc9, 0xa2, 0x27)),
+                                    .color(ui.tokens().color.warning),
                             )
                             .on_hover_text(
                                 "Recorded by a marketplace. The price is the SALE, not this \
@@ -605,7 +605,7 @@ impl<'a> FlowLedger<'a> {
                     ui.label(
                         RichText::new("reconciles")
                             .size(ui.text_size(TextSize::Base))
-                            .color(Color32::from_rgb(0x4a, 0xba, 0x7a)),
+                            .color(ui.tokens().color.success),
                     );
                 }
                 Some(false) => {
