@@ -17,7 +17,7 @@ use egui::RichText;
 
 use crate::chip::{Chip, ChipVariant};
 use crate::icons::PhosphorIcon;
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 use crate::utils::format_lovelace;
 
 // ============================================================================
@@ -105,7 +105,7 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
                 .strong(),
         );
     });
-    ui.add_space(8.0);
+    ui.gap(Space::Md);
 
     // Give / arrow / get / net share one label gutter so every row's content
     // starts on the same spine — labels of different widths must not push
@@ -167,9 +167,9 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
         },
     );
 
-    ui.add_space(8.0);
+    ui.gap(Space::Md);
     separator(ui);
-    ui.add_space(6.0);
+    ui.gap(Space::Base);
 
     // Net line — same gutter, so the amount lands on the content spine.
     gutter_row(
@@ -199,7 +199,7 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
 
     // Collapsible "what else is in this transaction" — names the pass-through so
     // the numbers a hardware wallet shows are explained, not surprising.
-    ui.add_space(6.0);
+    ui.gap(Space::Base);
     egui::CollapsingHeader::new(
         RichText::new("What else is in this transaction")
             .color(ui.tokens().color.text_muted)
@@ -240,9 +240,9 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
             );
         }
 
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.set_item_gap_x(Space::Sm);
             ui.label(
                 PhosphorIcon::Warning.rich_text(config.font_size - 1.0, ui.tokens().color.warning),
             );
@@ -275,7 +275,7 @@ fn gutter_row(
     content: impl FnOnce(&mut egui::Ui),
 ) {
     ui.horizontal_top(|ui| {
-        ui.spacing_mut().item_spacing.x = 10.0;
+        ui.set_item_gap_x(Space::Lg);
         ui.allocate_ui_with_layout(
             egui::vec2(LABEL_GUTTER, 20.0),
             egui::Layout::right_to_left(egui::Align::Center),
@@ -296,7 +296,7 @@ fn flow_chips(
     config: &TradeFlowConfig,
 ) {
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
+        ui.set_item_gap_x(Space::Base);
 
         if assets.is_empty() && ada_lovelace == 0 {
             ui.label(
@@ -363,5 +363,5 @@ fn separator(ui: &mut egui::Ui) {
         [egui::pos2(rect.min.x, y), egui::pos2(rect.max.x, y)],
         egui::Stroke::new(1.0_f32, ui.tokens().color.border),
     );
-    ui.add_space(1.0);
+    ui.gap(Space::Xs);
 }

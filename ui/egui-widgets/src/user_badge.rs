@@ -42,7 +42,7 @@ use egui::{Color32, RichText, Sense, Ui, Vec2};
 use crate::icons::{PhosphorIcon, install_phosphor_font};
 use crate::id_pill::{IdPill, IdPillLayout};
 use crate::property_list::PropertyList;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 /// What the user did with the badge this frame.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -140,14 +140,14 @@ impl<'a> UserBadge<'a> {
         // clickable group.
         let pill = egui::Frame::group(ui.style())
             .fill(ui.visuals().faint_bg_color)
-            .inner_margin(egui::Margin::symmetric(8, 4))
+            .inner_margin(ui.tokens().margin_xy(Space::Md, Space::Sm))
             // Exactly half the pill's height, so this is a pill rather than a
             // rounded box — `Full` says that, and stays true if a theme changes
             // the ramp or the padding changes the height.
             .corner_radius(ui.tokens().corner(Radius::Full))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.set_item_gap_x(Space::Base);
                     match self.avatar_url {
                         Some(url) => {
                             ui.add(
@@ -194,7 +194,7 @@ impl<'a> UserBadge<'a> {
                 );
 
                 if let Some((label, value)) = self.identifier {
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     IdPill::new(label, value)
                         .layout(IdPillLayout::Inline)
                         .with_widths(10, 6)
@@ -202,7 +202,7 @@ impl<'a> UserBadge<'a> {
                 }
 
                 if !self.details.is_empty() {
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     let mut list = PropertyList::new();
                     for (label, value) in &self.details {
                         list = list.add(label, value.clone());

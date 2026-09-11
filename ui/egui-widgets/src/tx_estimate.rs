@@ -11,7 +11,7 @@ use egui::RichText;
 
 use crate::fee_report::format_lovelace;
 use crate::icons::PhosphorIcon;
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -88,7 +88,7 @@ pub fn show(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimateConfig)
                 egui::vec2(content_width, f32::INFINITY),
             );
             let mut child = ui.new_child(egui::UiBuilder::new().max_rect(offscreen));
-            child.spacing_mut().item_spacing.y = 3.0;
+            child.set_item_gap_y(Space::Sm);
             draw_cost_lines(&mut child, data, config);
             child.min_rect().height()
         })
@@ -108,7 +108,7 @@ pub fn show(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimateConfig)
         .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.set_item_gap_x(Space::None);
 
                 // Left strip: dark background with rotated heading, flush to frame edge
                 let (heading_rect, _) = ui.allocate_exact_size(
@@ -158,7 +158,7 @@ pub fn show(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimateConfig)
                 // Right side: cost lines with padding
                 ui.vertical(|ui| {
                     ui.add_space(content_margin.top as f32);
-                    ui.spacing_mut().item_spacing.y = 3.0;
+                    ui.set_item_gap_y(Space::Sm);
                     draw_cost_lines(ui, data, config);
                     ui.add_space(content_margin.bottom as f32);
                 });
@@ -228,14 +228,14 @@ fn draw_cost_lines(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimate
     }
 
     // Separator
-    ui.add_space(2.0);
+    ui.gap(Space::Xs);
     let rect = ui.available_rect_before_wrap();
     let y = rect.min.y;
     ui.painter().line_segment(
         [egui::pos2(rect.min.x, y), egui::pos2(rect.max.x, y)],
         egui::Stroke::new(1.0_f32, ui.tokens().color.border),
     );
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     // Net ADA — the hero line
     draw_net_ada(ui, data.net_ada, config.font_size + 1.0);

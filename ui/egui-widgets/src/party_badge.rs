@@ -53,9 +53,9 @@
 //!     .show(ui);
 //! ```
 
-use egui::{Color32, Frame, Margin, Response, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, Response, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 /// How firmly a party's identity is known.
 ///
@@ -189,12 +189,12 @@ impl<'a> PartyBadge<'a> {
         let warn = ui.visuals().warn_fg_color;
 
         let frame = Frame::NONE
-            .inner_margin(Margin::symmetric(5, 2))
+            .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Xs))
             .corner_radius(ui.tokens().corner(Radius::Sm));
 
         let resp = frame
             .show(ui, |ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.set_item_gap_x(Space::Sm);
                 ui.horizontal(|ui| {
                     // Cluster colour sits left, as a thin bar rather than a
                     // fill — a filled background would compete with Chip and

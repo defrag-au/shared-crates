@@ -21,7 +21,7 @@
 
 use egui::{Color32, CursorIcon, Pos2, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 use crate::{Chip, ChipVariant, PhosphorIcon};
 
 /// The event-source side of the node.
@@ -136,7 +136,7 @@ impl<'a> EventWiring<'a> {
                 let frame = egui::Frame::group(ui.style())
                     .fill(tint(ui.tokens().color.bg_secondary))
                     .stroke(Stroke::new(1.0_f32, tint(ui.tokens().color.accent)))
-                    .inner_margin(10.0);
+                    .inner_margin(ui.tokens().margin(Space::Lg));
                 let node = frame.show(ui, |ui| {
                     ui.horizontal(|ui| {
                         self.event
@@ -157,7 +157,7 @@ impl<'a> EventWiring<'a> {
                             }
                         });
                     });
-                    ui.add_space(6.0);
+                    ui.gap(Space::Base);
                     ui.label(
                         RichText::new("fires on")
                             .color(tint(ui.tokens().color.text_muted))
@@ -201,7 +201,7 @@ impl<'a> EventWiring<'a> {
                     }
                     ui.ctx().data_mut(|d| d.insert_temp(draft_id, draft));
 
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     ui.horizontal(|ui| {
                         ui.label(
                             RichText::new("cooldown")
@@ -260,7 +260,7 @@ impl<'a> EventWiring<'a> {
                                 tint(ui.tokens().color.border)
                             },
                         ))
-                        .inner_margin(8.0);
+                        .inner_margin(ui.tokens().margin(Space::Md));
                     let card = frame.show(ui, |ui| {
                         ui.set_width(card_width - 16.0);
                         ui.horizontal(|ui| {
@@ -305,15 +305,15 @@ impl<'a> EventWiring<'a> {
                         // The in-card config expansion — the caller's fields,
                         // rendered inside the card so the flow stays the view.
                         if is_expanded && let Some(content) = expanded_content.take() {
-                            ui.add_space(6.0);
+                            ui.gap(Space::Base);
                             ui.separator();
-                            ui.add_space(4.0);
+                            ui.gap(Space::Sm);
                             content(ui);
                         }
                     });
                     let rect = card.response.rect;
                     action_ports.push(Pos2::new(rect.left(), rect.center().y));
-                    ui.add_space(6.0);
+                    ui.gap(Space::Base);
                 }
 
                 // The add-action port — a dashed card inviting the palette.

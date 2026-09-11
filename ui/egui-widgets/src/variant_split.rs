@@ -10,7 +10,7 @@
 
 use egui::{Align2, Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{self, ThemeExt};
+use crate::theme::{self, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -90,7 +90,7 @@ pub fn show(
                 .size(config.caption_size),
         );
     });
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     let n = segments.iter().filter(|s| s.share > 0.0).count().max(1);
     let available_width = ui.available_width();
@@ -156,7 +156,7 @@ pub fn show(
     }
 
     // Legend: variant · share% · asset count (the driver).
-    ui.add_space(5.0);
+    ui.gap(Space::Base);
     ui.horizontal_wrapped(|ui| {
         for seg in segments {
             if seg.share <= 0.0 {
@@ -180,13 +180,13 @@ pub fn show(
                     .color(ui.tokens().color.text_muted)
                     .size(config.caption_size),
             );
-            ui.add_space(10.0);
+            ui.gap(Space::Lg);
         }
     });
 
     // Caption: the "why", generated from the data.
     if let Some(cap) = why_caption(segments, config.show_uniform_baseline && n > 1) {
-        ui.add_space(2.0);
+        ui.gap(Space::Xs);
         ui.label(
             RichText::new(cap)
                 .color(ui.tokens().color.text_muted)

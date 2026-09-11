@@ -35,7 +35,7 @@ use egui::{RichText, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
 use crate::relative_time::RelativeTime;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, ThemeExt};
 
 /// How the banner reads. Only the palette differs — the shape is one line
 /// either way, because a service notice that needs a paragraph is a link.
@@ -112,7 +112,7 @@ impl<'a> ServiceBanner<'a> {
         egui::Frame::default()
             .fill(accent.gamma_multiply(0.14))
             .stroke(egui::Stroke::new(1.0_f32, accent.gamma_multiply(0.55)))
-            .inner_margin(egui::Margin::symmetric(10, 6))
+            .inner_margin(ui.tokens().margin_xy(Space::Lg, Space::Base))
             .corner_radius(ui.tokens().corner(Radius::Md))
             .show(ui, |ui| {
                 // Claim the row before laying out, so the banner spans the app

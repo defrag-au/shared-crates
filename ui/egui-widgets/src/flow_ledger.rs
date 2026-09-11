@@ -54,6 +54,7 @@ use egui::{Color32, Response, RichText, Sense, Ui, Vec2};
 use egui_extras::{Column, TableBuilder};
 
 use crate::party_badge::{PartyBadge, PartyBasis};
+use crate::theme::{Space, SpaceExt};
 use crate::timestamp::format_iso8601;
 
 /// One movement. `amount` is the party's NET change in the smallest unit —
@@ -556,9 +557,9 @@ impl<'a> FlowLedger<'a> {
     }
 
     fn footer(&self, ui: &mut Ui, totals: &LedgerTotals, muted: Color32) -> Response {
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 12.0;
+            ui.set_item_gap_x(Space::Xl);
             let f = self.format_amount;
 
             ui.label(

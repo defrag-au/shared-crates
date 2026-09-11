@@ -13,7 +13,7 @@
 use egui::{Color32, RichText, Ui, Vec2};
 
 use crate::icons::PhosphorIcon;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 /// A `−  [n]  +` quantity control.
 pub struct QuantityStepper {
@@ -81,7 +81,7 @@ impl QuantityStepper {
         let btn = Vec2::splat(self.button_size);
 
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.set_item_gap_x(Space::Base);
 
             // − (disabled at min)
             let dec = ui.add_enabled(

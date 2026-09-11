@@ -5,7 +5,7 @@
 
 use egui::{Color32, CornerRadius, Pos2, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// Configuration for a sparkline chart.
 /// How the sparkline responds to hover.
@@ -166,7 +166,7 @@ impl<'a> Sparkline<'a> {
                     });
                 }
             });
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
         }
 
         let chart_width = self.width.unwrap_or(ui.available_width());

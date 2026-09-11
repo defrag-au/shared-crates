@@ -9,7 +9,7 @@
 use egui::{Color32, Rect, Sense, Ui, Vec2};
 
 use crate::exposure_bar::ltv_risk_color;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, ThemeExt};
 
 // ============================================================================
 // Column widths
@@ -157,7 +157,7 @@ pub fn show<T>(
                     egui::Frame::new()
                         .fill(config.detail_bg)
                         .corner_radius(ui.tokens().corner(Radius::Base))
-                        .inner_margin(14.0)
+                        .inner_margin(ui.tokens().margin(Space::Xl2))
                         .outer_margin(egui::Margin {
                             left: COL_CHEVRON as i8,
                             right: 0,

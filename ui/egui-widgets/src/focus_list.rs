@@ -12,6 +12,8 @@
 
 use egui::{Align, Color32, Layout, Rect, Sense, UiBuilder, Vec2};
 
+use crate::theme::{Space, SpaceExt};
+
 /// Appearance / geometry configuration.
 pub struct FocusListConfig {
     /// Number of compact row slots — the window size. The window slides to
@@ -84,7 +86,7 @@ pub fn show(
     ui.scope(|ui| {
         // Tight rows — the fixed slot heights are the geometry; default
         // vertical item spacing between them reads as sprawl.
-        ui.spacing_mut().item_spacing.y = 2.0;
+        ui.set_item_gap_y(Space::Xs);
         marker(ui, start, "above");
         for pos in start..end {
             let (rect, _) =
@@ -112,9 +114,9 @@ pub fn show(
         marker(ui, len - end, "below");
     });
 
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
     ui.separator();
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
     detail(ui, focus);
 }
 

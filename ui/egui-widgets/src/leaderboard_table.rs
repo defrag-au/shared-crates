@@ -35,7 +35,7 @@
 use egui::{Color32, RichText, Ui};
 use egui_extras::{Column, TableBuilder};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 use crate::{Chip, ChipVariant, PhosphorIcon};
 
 /// One ranked row. All display strings are caller-formatted.
@@ -184,7 +184,7 @@ impl<'a> LeaderboardTable<'a> {
                     });
                     row.col(|ui| {
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 4.0;
+                            ui.set_item_gap_x(Space::Sm);
                             // Copy affordance left of the identity — copies the
                             // full address for use in other tooling.
                             if let Some(addr) = &r.copy_value {

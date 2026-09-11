@@ -33,7 +33,7 @@
 use egui::{RichText, Ui};
 
 use crate::PhosphorIcon;
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// Click events the section can produce. Today only `BulkAction`
 /// (the right-aligned header button); future variants could add
@@ -173,7 +173,7 @@ impl<'a> GroupedSection<'a> {
             } else {
                 ui.add_space(cfg.hero_placeholder_width);
             }
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
 
             // Title + subtitle column. The bulk-action button sits
             // inline after the title rather than far-right of the
@@ -195,7 +195,7 @@ impl<'a> GroupedSection<'a> {
                     if let Some((visible, label)) = &self.bulk_button
                         && *visible
                     {
-                        ui.add_space(8.0);
+                        ui.gap(Space::Md);
                         if ui
                             .add(
                                 egui::Button::new(

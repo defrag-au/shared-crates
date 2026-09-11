@@ -8,7 +8,7 @@
 use egui::{Color32, RichText};
 
 use crate::buttons::UiButtonExt;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -150,7 +150,7 @@ pub fn show(
         }
     });
 
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     // Text input row
     let text_response = ui

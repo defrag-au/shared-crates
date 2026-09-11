@@ -6,6 +6,8 @@
 
 use egui::{Color32, Ui};
 
+use crate::theme::{Space, SpaceExt};
+
 #[derive(Default, Debug, Clone)]
 pub struct RarityRow {
     pub label: String,
@@ -73,7 +75,7 @@ impl<'a> RarityTargetEditor<'a> {
             } else {
                 "balanced"
             };
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
             ui.colored_label(color, format!("{sum:.0}% / {budget:.0}% — {note}"));
         }
 

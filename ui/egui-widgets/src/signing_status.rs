@@ -7,7 +7,7 @@
 use egui::RichText;
 
 use crate::icons::PhosphorIcon;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -97,7 +97,7 @@ pub fn show(
     egui::Frame::new()
         .fill(ui.tokens().color.bg_secondary)
         .corner_radius(ui.tokens().corner(Radius::Md))
-        .inner_margin(12.0)
+        .inner_margin(ui.tokens().margin(Space::Xl))
         .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .show(ui, |ui| {
             ui.label(
@@ -106,7 +106,7 @@ pub fn show(
                     .size(config.heading_size)
                     .strong(),
             );
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
 
             let you_signed = matches!(
                 phase,
@@ -127,7 +127,7 @@ pub fn show(
                     ui.end_row();
                 });
 
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
 
             match phase {
                 SigningPhase::AwaitingSignatures => {
@@ -163,7 +163,7 @@ pub fn show(
                         });
                     });
 
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     ui.label(
                         RichText::new("Both signatures required to execute.")
                             .color(ui.tokens().color.text_muted)
@@ -180,7 +180,7 @@ pub fn show(
                         );
                     });
 
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     ui.horizontal(|ui| {
                         ui.label(
                             RichText::new("Hardware wallets can take a minute.")
@@ -214,7 +214,7 @@ pub fn show(
                         );
                     });
 
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     ui.horizontal(|ui| {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
@@ -252,7 +252,7 @@ pub fn show(
                                 .size(config.font_size),
                         );
                     });
-                    ui.add_space(2.0);
+                    ui.gap(Space::Xs);
                     ui.label(
                         RichText::new(crate::utils::truncate_hex(tx_hash, 8, 8))
                             .color(ui.tokens().color.text_muted)
@@ -272,7 +272,7 @@ pub fn show(
                                 .size(config.heading_size),
                         );
                     });
-                    ui.add_space(2.0);
+                    ui.gap(Space::Xs);
                     ui.label(
                         RichText::new(crate::utils::truncate_hex(tx_hash, 8, 8))
                             .color(ui.tokens().color.text_muted)

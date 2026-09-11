@@ -6,7 +6,7 @@
 //! ("background: red") and its value alone ("red"), so typing either
 //! a category prefix or a value prefix finds matching entries.
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 use egui::{Color32, Rect, RichText, Vec2};
 use std::collections::HashSet;
 
@@ -206,7 +206,7 @@ pub fn show(
     // ── Tag chips + text input row ──────────────────────────────────
     let row_resp = ui
         .horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
+            ui.spacing_mut().item_spacing = Vec2::splat(ui.space(Space::Sm));
 
             // Paint selected tags
             let mut remove_idx: Option<usize> = None;
@@ -297,7 +297,7 @@ pub fn show(
                     .fill(ui.tokens().color.bg_secondary)
                     .corner_radius(ui.tokens().corner(Radius::Base))
                     .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.bg_highlight))
-                    .inner_margin(6.0)
+                    .inner_margin(ui.tokens().margin(Space::Base))
                     .show(ui, |ui| {
                         ui.set_max_width(input_rect.width().max(200.0));
                         paint_suggestions(
@@ -330,7 +330,7 @@ pub fn show(
                     .fill(ui.tokens().color.bg_secondary)
                     .corner_radius(ui.tokens().corner(Radius::Base))
                     .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.bg_highlight))
-                    .inner_margin(6.0)
+                    .inner_margin(ui.tokens().margin(Space::Base))
                     .show(ui, |ui| {
                         ui.label(
                             RichText::new("No matching traits")
@@ -438,7 +438,7 @@ fn paint_suggestions(
                 let is_cursor = cursor == Some(suggestion_pos);
 
                 let resp = ui.horizontal(|ui| {
-                    ui.add_space(8.0);
+                    ui.gap(Space::Md);
                     let bg = if is_cursor {
                         ui.tokens().color.bg_highlight
                     } else {
@@ -482,7 +482,7 @@ fn paint_suggestions(
                 }
             }
 
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
         }
     } else {
         for (suggestion_pos, &entry_idx) in suggestions.iter().enumerate() {

@@ -5,7 +5,7 @@
 
 use egui::RichText;
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -64,7 +64,7 @@ pub fn show(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConfig) {
     egui::Frame::new()
         .fill(ui.tokens().color.bg_secondary)
         .corner_radius(ui.tokens().corner(Radius::Md))
-        .inner_margin(12.0)
+        .inner_margin(ui.tokens().margin(Space::Xl))
         .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .show(ui, |ui| {
             if has_breakdown {
@@ -85,7 +85,7 @@ fn draw_compact(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConfi
                 .strong(),
         );
 
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
 
         for (i, side) in data.sides.iter().enumerate() {
             if i > 0 {
@@ -98,7 +98,7 @@ fn draw_compact(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConfi
             draw_side_platform_fee(ui, side, config.font_size);
         }
 
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
 
         if data.total_lovelace == 0 {
             ui.label(
@@ -126,11 +126,11 @@ fn draw_detailed(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConf
             .strong(),
     );
 
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     for side in &data.sides {
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.set_item_gap_x(Space::Sm);
 
             ui.label(
                 RichText::new(format!("{}:", side.label))
@@ -179,9 +179,9 @@ fn draw_detailed(ui: &mut egui::Ui, data: &FeeReportData, config: &FeeReportConf
     // Net ADA line
     let any_net = data.sides.iter().any(|s| s.net_ada.is_some());
     if any_net {
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.set_item_gap_x(Space::Sm);
 
             ui.label(
                 RichText::new("Net:")

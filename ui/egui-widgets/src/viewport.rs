@@ -69,6 +69,8 @@
 
 use egui::{Context, Ui};
 
+use crate::theme::{Space, SpaceExt};
+
 /// Compact ceiling, in points — see the module header for why 700.
 const COMPACT_MAX: f32 = 700.0;
 /// Medium ceiling, in points.
@@ -351,7 +353,7 @@ pub fn prose_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> egui::InnerR
     // once it is already running has missed the only moment that mattered.
     ui.scope(|ui| {
         ui.spacing_mut().interact_size = egui::Vec2::ZERO;
-        ui.spacing_mut().item_spacing.y = 0.0;
+        ui.set_item_gap_y(Space::None);
         ui.horizontal_wrapped(add).inner
     })
 }

@@ -47,7 +47,7 @@
 //!
 //! See `cnft.dev-workers/docs/design/EGUI_THEMING_AND_LAYOUT.md`.
 
-use egui::{Color32, CornerRadius, FontId, Stroke, TextStyle, Ui, Visuals};
+use egui::{Color32, CornerRadius, FontId, Margin, Stroke, TextStyle, Ui, Visuals};
 use std::sync::Arc;
 
 // ============================================================================
@@ -209,6 +209,51 @@ impl ColorTokens {
     pub const fn text_ramp(&self) -> [Color32; 3] {
         [self.text_primary, self.text_secondary, self.text_muted]
     }
+
+    /// A foreground **from this palette** that reads on `fill`.
+    ///
+    /// For solid semantic fills — a danger chip, a status pill — where the
+    /// caller knows the background and needs text that survives it. Returns
+    /// whichever end of the theme's own ramp contrasts more, so the answer moves
+    /// with the theme instead of being a hardcoded `Color32::WHITE`.
+    ///
+    /// This is what lets `ChipVariant` carry semantics rather than literals: a
+    /// chip says "this is a failure", the theme says what failure looks like, and
+    /// the label stays legible on whatever that turns out to be. Picking by
+    /// measured ratio rather than by a luminance threshold matters for the
+    /// mid-tone fills (a 60%-luminance amber) where the two are close and a
+    /// threshold guesses wrong.
+    pub fn on(&self, fill: Color32) -> Color32 {
+        if contrast_ratio(self.bg_primary, fill) >= contrast_ratio(self.text_primary, fill) {
+            self.bg_primary
+        } else {
+            self.text_primary
+        }
+    }
+}
+
+/// WCAG relative luminance of an opaque colour.
+fn relative_luminance(c: Color32) -> f32 {
+    fn channel(v: u8) -> f32 {
+        let v = v as f32 / 255.0;
+        if v <= 0.039_28 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    }
+    0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b())
+}
+
+/// WCAG contrast ratio between two opaque colours, in `1.0..=21.0`.
+///
+/// Public because the palette decisions this crate makes — [`ColorTokens::on`],
+/// the contrast suite, a consumer picking a label colour over a chart series —
+/// should all be measuring the same thing.
+pub fn contrast_ratio(a: Color32, b: Color32) -> f32 {
+    let (x, y) = (relative_luminance(a), relative_luminance(b));
+    let (hi, lo) = if x > y { (x, y) } else { (y, x) };
+    (hi + 0.05) / (lo + 0.05)
 }
 
 // ============================================================================
@@ -353,25 +398,38 @@ impl Density {
     pub const ALL: &'static [Density] =
         &[Density::Compact, Density::Comfortable, Density::Spacious];
 
-    /// Gap between successive widgets.
+    /// Gap between successive widgets, **on the default spacing ramp**.
+    ///
+    /// Derived rather than declared, so there is one definition of "a gap" and
+    /// not two that drift. Prefer [`Theme::item_spacing`], which uses the theme's
+    /// own [`SpaceScale`]; this exists for a `Density` held on its own and is
+    /// equivalent whenever that ramp is [`SpaceScale::tokyo_night`].
     pub fn item_spacing(self) -> egui::Vec2 {
-        match self {
-            Self::Compact => egui::vec2(6.0, 4.0),
-            Self::Comfortable => egui::vec2(8.0, 6.0),
-            Self::Spacious => egui::vec2(12.0, 10.0),
-        }
+        Self::item_spacing_on(&SpaceScale::tokyo_night(), self)
     }
 
-    /// Padding inside a button.
+    /// Padding inside a button, on the default spacing ramp. See
+    /// [`Self::item_spacing`] for why this is derived.
     pub fn button_padding(self) -> egui::Vec2 {
-        match self {
-            Self::Compact => egui::vec2(8.0, 4.0),
-            Self::Comfortable => egui::vec2(12.0, 6.0),
-            Self::Spacious => egui::vec2(16.0, 10.0),
-        }
+        Self::button_padding_on(&SpaceScale::tokyo_night(), self)
+    }
+
+    fn item_spacing_on(scale: &SpaceScale, density: Self) -> egui::Vec2 {
+        let m = density.multiplier();
+        egui::vec2(scale.get(Space::Md) * m, scale.get(Space::Base) * m)
+    }
+
+    fn button_padding_on(scale: &SpaceScale, density: Self) -> egui::Vec2 {
+        let m = density.multiplier();
+        egui::vec2(scale.get(Space::Xl) * m, scale.get(Space::Base) * m)
     }
 
     /// Height of one row in a list or table.
+    ///
+    /// **Not** on the spacing ramp, deliberately. A row height is a hit target
+    /// with a usability floor, not a gap: scaling 24px by `Compact`'s 0.75 gives
+    /// 18px, which is below a comfortable click. The steps here are chosen, and a
+    /// theme that wants denser rows changes the density rather than the ramp.
     pub fn row_height(self) -> f32 {
         match self {
             Self::Compact => 20.0,
@@ -380,11 +438,203 @@ impl Density {
         }
     }
 
+    /// What this density multiplies the [`SpaceScale`] by.
+    ///
+    /// This is the knob that makes density matter. Before the spacing ramp existed
+    /// density reached exactly three egui `Style` fields — [`Self::item_spacing`],
+    /// [`Self::button_padding`] and [`Self::row_height`] — while the ~270 explicit
+    /// `add_space` calls that do most of the actual spacing ignored it entirely.
+    /// Routed through [`Theme::space`], one density change now moves every gap in
+    /// the suite.
+    ///
+    /// The ratios are [`Self::item_spacing`]'s own (6 / 8 / 12), which is the
+    /// closest existing analogue: a gap between two things. `button_padding` and
+    /// `row_height` sit nearer 0.67 / 1.33 because a touch target has a floor that
+    /// a gap does not.
+    pub fn multiplier(self) -> f32 {
+        match self {
+            Self::Compact => 0.75,
+            Self::Comfortable => 1.0,
+            Self::Spacious => 1.5,
+        }
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Compact => "compact",
             Self::Comfortable => "comfortable",
             Self::Spacious => "spacious",
+        }
+    }
+}
+
+// ============================================================================
+// Spacing
+// ============================================================================
+
+/// A step on the spacing ramp — gaps, padding and margins.
+///
+/// # Why nine steps, when [`Radius`] has six
+///
+/// Because that is what the estate actually uses. The 271 literal `add_space`
+/// calls in this crate land on:
+///
+/// ```text
+/// 4.0 × 87   6.0 × 49   8.0 × 44   2.0 × 32   10.0 × 19   12.0 × 16
+/// 14.0 × 6    3.0 × 5    5.0 × 3   20.0 × 3   16.0 × 3    18.0 × 2   7.0 × 1   1.0 × 1
+/// ```
+///
+/// 247 of those 271 (91%) sit exactly on `{2, 4, 6, 8, 10, 12}` — a 2px ramp,
+/// already, by convention rather than by design. Collapsing it to Tailwind's
+/// coarser `{4, 8, 12, 16}` would move 98 sites; keeping the 2px granularity in
+/// the body and adding two sparse tail steps moves **none by more than 2px**.
+///
+/// # Why not numeric steps
+///
+/// Tailwind names spacing numerically (`p-2`, `gap-4`) precisely because there
+/// are many steps, and reserves t-shirt sizes for the short ramps. That is the
+/// better model and it is not available here: Rust has no `Space::2`, and the
+/// fractional steps this ramp needs (10px is 2.5 base units) render as
+/// `Space::TwoAndAHalf`, which is worse than `Lg` at every call site. So the
+/// t-shirt names continue up through `Xl2` / `Xl3` — the Rust spelling of
+/// Tailwind's own `2xl` / `3xl`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Space {
+    /// No gap. Always 0, whatever the theme or density.
+    None,
+    /// Hairline separation — 2px. Between a label and its value.
+    Xs,
+    /// 4px. The commonest gap in the suite by a wide margin.
+    Sm,
+    /// 6px. Between rows of a group.
+    Base,
+    /// 8px. Between groups.
+    Md,
+    /// 10px.
+    Lg,
+    /// 12px. Between sections.
+    Xl,
+    /// 16px.
+    Xl2,
+    /// 20px. Page gutters.
+    Xl3,
+}
+
+impl Space {
+    pub const ALL: &'static [Space] = &[
+        Space::None,
+        Space::Xs,
+        Space::Sm,
+        Space::Base,
+        Space::Md,
+        Space::Lg,
+        Space::Xl,
+        Space::Xl2,
+        Space::Xl3,
+    ];
+
+    /// The nearest step to a raw pixel value.
+    ///
+    /// Same contract as [`Radius::nearest`], for the same reasons: **ties round
+    /// up**, and only an exact zero returns [`Space::None`]. A caller that wanted
+    /// no gap wrote `0`; anything above it asked for one, and swallowing it would
+    /// read as a layout bug rather than a style choice.
+    pub fn nearest(px: f32, scale: &SpaceScale) -> Self {
+        if px <= 0.0 {
+            return Space::None;
+        }
+        let mut best = Space::Xs;
+        let mut best_gap = f32::MAX;
+        for step in [
+            Space::Xs,
+            Space::Sm,
+            Space::Base,
+            Space::Md,
+            Space::Lg,
+            Space::Xl,
+            Space::Xl2,
+            Space::Xl3,
+        ] {
+            let gap = (scale.get(step) - px).abs();
+            // `<=` so a later — therefore roomier — step wins a tie.
+            if gap <= best_gap {
+                best_gap = gap;
+                best = step;
+            }
+        }
+        best
+    }
+}
+
+/// What each [`Space`] step is worth — Tailwind's `theme.spacing`.
+///
+/// Read through [`Theme::space`], never directly, so [`Density::multiplier`] gets
+/// applied. [`Self::get`] is the unscaled value and exists for [`Space::nearest`]
+/// and for tests.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpaceScale {
+    pub xs: f32,
+    pub sm: f32,
+    pub base: f32,
+    pub md: f32,
+    pub lg: f32,
+    pub xl: f32,
+    pub xl2: f32,
+    pub xl3: f32,
+}
+
+impl SpaceScale {
+    /// The values the suite already used, in their observed proportions — a 2px
+    /// ramp to 12, then 16 and 20 for the sparse tail.
+    pub const fn tokyo_night() -> Self {
+        Self {
+            xs: 2.0,
+            sm: 4.0,
+            base: 6.0,
+            md: 8.0,
+            lg: 10.0,
+            xl: 12.0,
+            xl2: 16.0,
+            xl3: 20.0,
+        }
+    }
+
+    /// A 3px ramp against the house 2px one — roomier, and the idiom of a
+    /// marketplace that expects to be read rather than monitored.
+    ///
+    /// **1.5×, not 2×, and that is a correction rather than a preference.** The
+    /// first pass doubled every step, which compounds with
+    /// [`Density::multiplier`] — a `Spacious` reader on this theme got 3× the
+    /// house gaps, and the order-list filter strip overflowed its row. A ramp and
+    /// a density that each claim to be "the roomy one" multiply; the ramp is the
+    /// design system's grid and density is the reader's knob, so the ramp moves
+    /// by the smaller amount.
+    pub const fn airy() -> Self {
+        Self {
+            xs: 3.0,
+            sm: 6.0,
+            base: 9.0,
+            md: 12.0,
+            lg: 15.0,
+            xl: 18.0,
+            xl2: 24.0,
+            xl3: 30.0,
+        }
+    }
+
+    /// The unscaled value of a step. Prefer [`Theme::space`], which applies
+    /// density.
+    pub fn get(&self, s: Space) -> f32 {
+        match s {
+            Space::None => 0.0,
+            Space::Xs => self.xs,
+            Space::Sm => self.sm,
+            Space::Base => self.base,
+            Space::Md => self.md,
+            Space::Lg => self.lg,
+            Space::Xl => self.xl,
+            Space::Xl2 => self.xl2,
+            Space::Xl3 => self.xl3,
         }
     }
 }
@@ -687,6 +937,9 @@ pub struct Theme {
     pub color: ColorTokens,
     pub text: TypeScale,
     pub density: Density,
+    /// Gaps, padding and margins. Read via [`Theme::space`], which applies
+    /// [`Density::multiplier`].
+    pub spacing: SpaceScale,
     pub geometry: Geometry,
     pub motion: MotionTokens,
 }
@@ -699,6 +952,7 @@ impl Theme {
             color: ColorTokens::tokyo_night(),
             text: TypeScale::proportional(),
             density: Density::Comfortable,
+            spacing: SpaceScale::tokyo_night(),
             geometry: Geometry::tokyo_night(),
             motion: MotionTokens::standard(),
         }
@@ -722,8 +976,9 @@ impl Theme {
     /// A preset has to move the backgrounds and the text ramp to read as a
     /// different product.
     ///
-    /// Rounder than the house theme too (8/12/16 against 3/4/8): the look is as
-    /// much shape as colour.
+    /// Rounder and roomier than the house theme too (radius 8/12/16 against
+    /// 3/4/8, spacing on a 4px ramp against 2px): the look is as much shape and
+    /// rhythm as it is colour.
     pub const fn opensea() -> Self {
         Self {
             name: "opensea",
@@ -754,6 +1009,7 @@ impl Theme {
                 // `border_is_visible` is the negotiation point, not the source.
                 border: Color32::from_rgb(56, 61, 71),
             },
+            spacing: SpaceScale::airy(),
             geometry: Geometry {
                 radius: RadiusScale::round(),
                 border_width: 1.0,
@@ -822,9 +1078,51 @@ impl Theme {
         self.text.font(role)
     }
 
+    /// Same theme, a different spacing ramp.
+    pub fn with_spacing(mut self, spacing: SpaceScale) -> Self {
+        self.spacing = spacing;
+        self
+    }
+
     /// Shorthand for a corner radius.
     pub fn corner(&self, r: Radius) -> CornerRadius {
         self.geometry.corner(r)
+    }
+
+    /// Pixels for a spacing step, **with density applied**.
+    ///
+    /// The only correct way to read the spacing ramp. `theme.spacing.get(step)`
+    /// skips [`Density::multiplier`] and so ignores the compact/spacious setting
+    /// entirely.
+    pub fn space(&self, s: Space) -> f32 {
+        // `None` must stay exactly zero: multiplying it is a no-op today but
+        // would stop being one if a density ever carried an offset.
+        match s {
+            Space::None => 0.0,
+            _ => self.spacing.get(s) * self.density.multiplier(),
+        }
+    }
+
+    /// A square margin at a spacing step.
+    pub fn margin(&self, s: Space) -> Margin {
+        Margin::same(self.space(s) as i8)
+    }
+
+    /// A margin with independent horizontal and vertical steps — the shape most
+    /// of the suite's frames actually want (`Margin::symmetric(10, 7)` and
+    /// friends).
+    pub fn margin_xy(&self, x: Space, y: Space) -> Margin {
+        Margin::symmetric(self.space(x) as i8, self.space(y) as i8)
+    }
+
+    /// Gap between successive widgets, on **this theme's** ramp.
+    pub fn item_spacing(&self) -> egui::Vec2 {
+        Density::item_spacing_on(&self.spacing, self.density)
+    }
+
+    /// Padding inside a button, on **this theme's** ramp.
+    pub fn button_padding(&self) -> egui::Vec2 {
+        Density::button_padding_on(&self.spacing, self.density)
     }
 }
 
@@ -876,6 +1174,64 @@ impl ThemeExt for egui::Context {
 impl ThemeExt for egui::Ui {
     fn tokens(&self) -> Arc<Theme> {
         ThemeExt::tokens(self.ctx())
+    }
+}
+
+/// Spacing shorthands, so a gap is one call rather than three.
+///
+/// `ui.add_space(ui.tokens().space(Space::Sm))` is what this replaces, and it
+/// appears ~270 times. The long form still works and means the same thing.
+///
+/// # Why `gap` and not `space`
+///
+/// Same hazard as [`ThemeExt::tokens`], checked the same way: a trait method
+/// whose name collides with an inherent `Ui` method is silently unreachable
+/// forever. egui 0.34's `Ui` has no `gap`, `space` or `margin` — only
+/// `add_space` and `spacing`/`spacing_mut` — so either name is free today.
+/// `gap` is used because it cannot be confused with `spacing_mut()`'s
+/// `Spacing` struct, which is a different thing (egui's own global metrics).
+pub trait SpaceExt {
+    /// Insert a gap at this step of the ramp.
+    fn gap(&mut self, s: Space);
+
+    /// Set the **horizontal** gap egui puts between successive widgets, for the
+    /// rest of this `Ui`.
+    ///
+    /// A setter rather than an assignment because
+    /// `ui.spacing_mut().item_spacing.x = ui.space(..)` cannot compile: the place
+    /// expression takes the mutable borrow before the right-hand side is
+    /// evaluated, so every one of the ~48 call sites would otherwise need a
+    /// temporary local.
+    fn set_item_gap_x(&mut self, s: Space);
+
+    /// Set the **vertical** gap between successive widgets. See
+    /// [`Self::set_item_gap_x`].
+    fn set_item_gap_y(&mut self, s: Space);
+
+    /// Pixels for a step, density applied. Shorthand for
+    /// `self.tokens().space(s)`, for the cases that need the number rather than
+    /// the gap — a `Vec2`, a manual `Rect`, a grid pitch.
+    fn space(&self, s: Space) -> f32;
+}
+
+impl SpaceExt for egui::Ui {
+    fn gap(&mut self, s: Space) {
+        let px = self.tokens().space(s);
+        self.add_space(px);
+    }
+
+    fn set_item_gap_x(&mut self, s: Space) {
+        let px = self.tokens().space(s);
+        self.spacing_mut().item_spacing.x = px;
+    }
+
+    fn set_item_gap_y(&mut self, s: Space) {
+        let px = self.tokens().space(s);
+        self.spacing_mut().item_spacing.y = px;
+    }
+
+    fn space(&self, s: Space) -> f32 {
+        self.tokens().space(s)
     }
 }
 
@@ -984,8 +1340,11 @@ pub fn style_for(theme: &Theme, base: egui::Style) -> egui::Style {
 
     style.visuals = visuals;
 
-    style.spacing.item_spacing = theme.density.item_spacing();
-    style.spacing.button_padding = theme.density.button_padding();
+    // From the theme's own ramp, not `theme.density`'s default one, so a preset
+    // that ships a roomier `SpaceScale` moves egui's stock widgets too — which is
+    // most of what a reader notices when they flip the switcher.
+    style.spacing.item_spacing = theme.item_spacing();
+    style.spacing.button_padding = theme.button_padding();
 
     style
 }
@@ -1438,7 +1797,7 @@ mod tests {
             );
             assert!(
                 b >= a,
-                "`{step:?}` did not get rounder: {a} → {b}",
+                "`{step:?}` did not get rounder: {a} -> {b}",
                 step = step
             );
         }
@@ -1464,5 +1823,101 @@ mod tests {
         for preset in Theme::PRESETS {
             assert!(!preset().name.is_empty());
         }
+    }
+
+    /// Same contract as the radius ramp, and the reason the spacing ramp keeps
+    /// 2px granularity instead of adopting Tailwind's 4px one: these are the real
+    /// observed `add_space` values across 271 sites, and 247 of them land exactly.
+    #[test]
+    fn the_space_ramp_covers_the_values_the_suite_used() {
+        let s = SpaceScale::tokyo_night();
+        let exact = [
+            (2.0, Space::Xs),   // 32 sites
+            (4.0, Space::Sm),   // 87 sites
+            (6.0, Space::Base), // 49 sites
+            (8.0, Space::Md),   // 44 sites
+            (10.0, Space::Lg),  // 19 sites
+            (12.0, Space::Xl),  // 16 sites
+            (16.0, Space::Xl2), // 3 sites
+            (20.0, Space::Xl3), // 3 sites
+        ];
+        for (px, want) in exact {
+            assert_eq!(Space::nearest(px, &s), want, "{px} should land exactly");
+            assert_eq!(s.get(want), px);
+        }
+
+        // Zero is the only thing that means "no gap".
+        assert_eq!(Space::nearest(0.0, &s), Space::None);
+
+        // The tail, and what it snaps to — 18 sites. Every one moves by at most
+        // 2px, which is the whole argument for keeping the ramp this fine.
+        assert_eq!(Space::nearest(1.0, &s), Space::Xs); // 1 -> 2
+        assert_eq!(Space::nearest(3.0, &s), Space::Sm); // 3 -> 4  (tie, rounds up)
+        assert_eq!(Space::nearest(5.0, &s), Space::Base); // 5 -> 6  (tie)
+        assert_eq!(Space::nearest(7.0, &s), Space::Md); // 7 -> 8  (tie)
+        assert_eq!(Space::nearest(14.0, &s), Space::Xl2); // 14 -> 16 (tie)
+        assert_eq!(Space::nearest(18.0, &s), Space::Xl3); // 18 -> 20 (tie)
+    }
+
+    /// Density is no longer three hardcoded `Vec2`s that reach three `Style`
+    /// fields — it scales the whole ramp, which is what makes it visible.
+    #[test]
+    fn density_scales_every_spacing_step() {
+        let compact = Theme::tokyo_night().with_density(Density::Compact);
+        let spacious = Theme::tokyo_night().with_density(Density::Spacious);
+
+        for step in Space::ALL {
+            let (c, s) = (compact.space(*step), spacious.space(*step));
+            match step {
+                // The absolutes stay absolute.
+                Space::None => assert_eq!((c, s), (0.0, 0.0)),
+                _ => assert!(c < s, "`{step:?}` did not widen: {c} -> {s}"),
+            }
+        }
+    }
+
+    /// The other half of the scale's point: a theme can move the ramp itself,
+    /// independently of density.
+    #[test]
+    fn a_theme_can_override_the_spacing_ramp() {
+        let house = Theme::tokyo_night();
+        let airy = Theme::opensea();
+        assert_ne!(house.spacing, airy.spacing);
+
+        for step in Space::ALL {
+            let (a, b) = (house.space(*step), airy.space(*step));
+            assert!(b >= a, "`{step:?}` did not get roomier: {a} -> {b}");
+        }
+
+        // And it must reach egui's own metrics, or stock widgets ignore the theme
+        // — the exact failure that made the first switcher look broken.
+        assert_ne!(house.item_spacing(), airy.item_spacing());
+    }
+
+    /// `Density::item_spacing()` is the default-ramp shorthand; on a default-ramp
+    /// theme the two must agree, or there are two definitions of "a gap".
+    #[test]
+    fn the_density_shorthand_matches_the_default_ramp() {
+        for density in Density::ALL {
+            let t = Theme::tokyo_night().with_density(*density);
+            assert_eq!(t.item_spacing(), density.item_spacing());
+            assert_eq!(t.button_padding(), density.button_padding());
+        }
+    }
+
+    /// `gap` has to read the *scoped* theme, not the installed one, or a spacing
+    /// override stops at the first `add_space` — the same half-working failure
+    /// `a_scoped_theme_also_reaches_eguis_own_style` pins for `Style`.
+    #[test]
+    fn gap_follows_a_scoped_theme() {
+        let airy = Theme::opensea();
+        egui::__run_test_ui(|ui| {
+            install_theme(ui.ctx(), Theme::tokyo_night());
+            let outer = ui.space(Space::Md);
+            let inner = scoped(ui, &airy, |ui| ui.space(Space::Md));
+            assert_eq!(outer, Theme::tokyo_night().space(Space::Md));
+            assert_eq!(inner, airy.space(Space::Md));
+            assert_ne!(inner, outer);
+        });
     }
 }

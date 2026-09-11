@@ -6,7 +6,7 @@
 
 use egui::{Color32, RichText, Ui};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -67,7 +67,7 @@ pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
     egui::Frame::new()
         .fill(ui.tokens().color.bg_secondary)
         .corner_radius(ui.tokens().corner(Radius::Md))
-        .inner_margin(12.0)
+        .inner_margin(ui.tokens().margin(Space::Xl))
         .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .show(ui, |ui| {
             // Per-leg rows
@@ -108,14 +108,14 @@ pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
             }
 
             // Separator
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
             let rect = ui.available_rect_before_wrap();
             let y = rect.min.y;
             ui.painter().line_segment(
                 [egui::pos2(rect.min.x, y), egui::pos2(rect.max.x, y)],
                 egui::Stroke::new(1.0_f32, ui.tokens().color.border),
             );
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
 
             // Total output line
             ui.horizontal(|ui| {
@@ -164,7 +164,7 @@ pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
                 let improvement = (data.total_tokens as f64 / single_tokens as f64 - 1.0) * 100.0;
                 let extra = data.total_tokens - single_tokens;
 
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new("Split advantage")

@@ -80,7 +80,7 @@ use egui::{Color32, Response, RichText, Ui, Vec2};
 use perf_probe::{FrameStats, GaugeSnapshot};
 
 use crate::sparkline::{SparkHoverStyle, Sparkline};
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// How often the strip re-reads the probes and re-formats its labels.
 ///
@@ -426,10 +426,10 @@ fn readings(ui: &mut Ui, state: &PerfStripState, show_sparkline: bool, o: Orient
     // content height on a phone. Opt out on the REGION — by the time each label
     // is added the row height is already decided.
     ui.spacing_mut().interact_size = Vec2::ZERO;
-    ui.spacing_mut().item_spacing.x = 6.0;
+    ui.set_item_gap_x(Space::Base);
     // A column of 11pt text at the default 6pt line gap reads as a list of
     // unrelated facts; closed up, it reads as one instrument.
-    ui.spacing_mut().item_spacing.y = 1.0;
+    ui.set_item_gap_y(Space::Xs);
     // NOT SELECTABLE. These are readings, not content: they change four times a
     // second, so a drag across them highlights a value that no longer exists by
     // the time the pointer lands, and a stray click-drag over a HUD pinned in a
@@ -498,7 +498,7 @@ fn readings(ui: &mut Ui, state: &PerfStripState, show_sparkline: bool, o: Orient
         // label that never does. They share one tooltip: they are one reading.
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
             ui.spacing_mut().interact_size = Vec2::ZERO;
-            ui.spacing_mut().item_spacing.x = 5.0;
+            ui.set_item_gap_x(Space::Base);
             atom(ui, name, ui.tokens().color.text_muted, tip);
             atom(ui, value, count_color, tip);
         });

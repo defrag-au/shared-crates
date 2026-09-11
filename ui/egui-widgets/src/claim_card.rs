@@ -71,12 +71,10 @@
 //! .show(ui);
 //! ```
 
-use egui::{
-    Color32, Frame, Margin, Pos2, Response, RichText, Sense, Stroke, Ui, Vec2,
-};
+use egui::{Color32, Frame, Pos2, Response, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::party_badge::{PartyBadge, PartyBasis};
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 /// How far a claim has got towards being something you could cite.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -293,7 +291,7 @@ impl<'a> ClaimCard<'a> {
 
         let inner = Frame::NONE
             .fill(ui.visuals().faint_bg_color)
-            .inner_margin(Margin::symmetric(10, 7))
+            .inner_margin(ui.tokens().margin_xy(Space::Lg, Space::Md))
             .corner_radius(ui.tokens().corner(Radius::Sm))
             // Dashed below for anything provisional; a solid border would read
             // as ordinary card chrome.
@@ -303,7 +301,7 @@ impl<'a> ClaimCard<'a> {
 
                 let top = ui.cursor().top();
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 7.0;
+                    ui.set_item_gap_x(Space::Md);
                     self.state_track(ui, accent, muted);
                     ui.label(
                         RichText::new(status.badge())
@@ -321,7 +319,7 @@ impl<'a> ClaimCard<'a> {
                     });
                 });
 
-                ui.add_space(3.0);
+                ui.gap(Space::Sm);
 
                 // The statement is the one thing that must be legible without
                 // interaction — kept to a single elided line.
@@ -455,7 +453,7 @@ impl<'a> ClaimCard<'a> {
 
     /// The prose, only once asked for.
     fn detail(&self, ui: &mut Ui, accent: Color32, muted: Color32, warn: Color32) {
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
         let cap = |ui: &mut Ui, t: &str| {
             ui.label(RichText::new(t).size(9.0).strong().color(muted));
         };
@@ -484,7 +482,7 @@ impl<'a> ClaimCard<'a> {
         }
 
         if let Some(outcome) = self.outcome {
-            ui.add_space(5.0);
+            ui.gap(Space::Base);
             cap(
                 ui,
                 match self.status {
@@ -494,7 +492,7 @@ impl<'a> ClaimCard<'a> {
             );
             ui.label(RichText::new(outcome).size(11.0).color(accent));
         } else if self.is_unevidenced_verdict() {
-            ui.add_space(5.0);
+            ui.gap(Space::Base);
             ui.label(
                 RichText::new("Marked as tested with no account of the test recorded.")
                     .size(11.0)
@@ -503,11 +501,11 @@ impl<'a> ClaimCard<'a> {
         }
 
         if !self.support.is_empty() {
-            ui.add_space(7.0);
+            ui.gap(Space::Md);
             cap(ui, "RESTS ON");
             for s in self.support {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 5.0;
+                    ui.set_item_gap_x(Space::Base);
                     let badge = PartyBadge::new(s.summary, s.basis).text_size(11.0);
                     let badge = match s.source {
                         Some(src) => badge.source(src),

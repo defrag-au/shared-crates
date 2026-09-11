@@ -13,7 +13,7 @@
 use egui::{Align, Color32, Layout, RichText};
 
 use crate::buttons::UiButtonExt;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Config
@@ -224,7 +224,7 @@ impl SwapModal {
             .frame(
                 egui::Frame::window(&ctx.global_style())
                     .fill(self.config.theme.bg)
-                    .inner_margin(16.0),
+                    .inner_margin(ctx.tokens().margin(Space::Xl2)),
             )
             .show(ctx, |ui| {
                 action = self.draw_content(ui, progress);
@@ -273,7 +273,7 @@ impl SwapModal {
         let mut action = SwapModalAction::None;
 
         // Amount buttons — centered row: culture buys + Custom
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.vertical_centered(|ui| {
             ui.horizontal(|ui| {
                 // Calculate total width to center
@@ -334,7 +334,7 @@ impl SwapModal {
 
         // Custom amount input — only shown when Custom is selected
         if self.selection == Some(AmountSelection::Custom) {
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
             ui.horizontal(|ui| {
                 let total_width = 140.0 + 30.0; // input + "ADA" label approx
                 let avail = ui.available_width();
@@ -358,7 +358,7 @@ impl SwapModal {
             });
         }
 
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
 
         // Slippage selector
         ui.horizontal(|ui| {
@@ -384,7 +384,7 @@ impl SwapModal {
             }
         });
 
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
 
         // Preview section — always visible once an amount is selected
         let has_amount = self.selection.is_some();
@@ -403,7 +403,7 @@ impl SwapModal {
         if has_amount {
             self.draw_preview(ui, preview_data, is_loading);
 
-            ui.add_space(12.0);
+            ui.gap(Space::Xl);
 
             if let Some(stage) = processing_stage {
                 // Processing — show status instead of confirm button
@@ -457,7 +457,7 @@ impl SwapModal {
         let theme = &self.config.theme;
 
         ui.separator();
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
 
         if let Some(p) = preview {
             self.preview_row(
@@ -514,7 +514,7 @@ impl SwapModal {
             }
         }
 
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
         ui.separator();
     }
 
@@ -542,7 +542,7 @@ impl SwapModal {
         let theme = &self.config.theme;
         let mut action = SwapModalAction::None;
 
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
         ui.vertical_centered(|ui| {
             ui.label(
                 RichText::new("Order submitted!")
@@ -550,7 +550,7 @@ impl SwapModal {
                     .strong()
                     .size(14.0),
             );
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
 
             let short = if tx_hash.len() > 20 {
                 format!("{}...{}", &tx_hash[..10], &tx_hash[tx_hash.len() - 10..])
@@ -562,7 +562,7 @@ impl SwapModal {
                 format!("https://cardanoscan.io/transaction/{tx_hash}"),
             );
 
-            ui.add_space(16.0);
+            ui.gap(Space::Xl2);
             if ui
                 .add_clickable(
                     egui::Button::new(RichText::new("New Swap").color(theme.accent).size(12.0))
@@ -576,7 +576,7 @@ impl SwapModal {
                 action = SwapModalAction::Reset;
             }
         });
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
 
         action
     }
@@ -585,7 +585,7 @@ impl SwapModal {
         let theme = &self.config.theme;
         let mut action = SwapModalAction::None;
 
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
         ui.vertical_centered(|ui| {
             let display = if message.len() > 80 {
                 format!("{}...", &message[..77])
@@ -594,7 +594,7 @@ impl SwapModal {
             };
             ui.label(RichText::new(display).color(theme.error).size(11.0));
 
-            ui.add_space(12.0);
+            ui.gap(Space::Xl);
             if ui
                 .add_clickable(
                     egui::Button::new(RichText::new("Try Again").color(theme.accent).size(12.0))
@@ -605,7 +605,7 @@ impl SwapModal {
                 action = SwapModalAction::Reset;
             }
         });
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
 
         action
     }

@@ -86,17 +86,14 @@
 //! if let Some(party) = resp.walk { follow_the_money(party); }
 //! ```
 
-use egui::{
-    Align, Color32, FontId, Frame, Layout, Margin, Response, RichText, Sense, Ui,
-    Vec2,
-};
+use egui::{Align, Color32, FontId, Frame, Layout, Margin, Response, RichText, Sense, Ui, Vec2};
 
 use crate::chip::{Chip, ChipVariant};
 use crate::icons::PhosphorIcon;
 use crate::image_stack::{ImageStack, StackImage};
 use crate::party_badge::PartyBasis;
 use crate::relative_time::RelativeTime;
-use crate::theme::{self, Radius, ThemeExt};
+use crate::theme::{self, Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Density
@@ -796,7 +793,7 @@ fn text_column(
         TxEdit::Tight => {}
         TxEdit::Full => {
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 5.0;
+                ui.set_item_gap_x(Space::Base);
                 relative_time(ui, data.when, now, d.body_size());
                 ui.label(
                     RichText::new(format!("· {}", iso_utc(data.when)))
@@ -837,9 +834,9 @@ fn text_column(
     // row — putting them first is what made the old layout a tag soup with the
     // verdict hidden inside it.
     if !data.tags.is_empty() || caution_in_chip_row.is_some() {
-        ui.add_space(3.0);
+        ui.gap(Space::Sm);
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.set_item_gap_x(Space::Sm);
             // The caution LEADS the row when it is here: it changes the
             // reading, and the chips only refine it.
             if let Some(caution) = caution_in_chip_row {
@@ -849,7 +846,7 @@ fn text_column(
                         .color(ui.tokens().color.accent_orange),
                 );
                 if !data.tags.is_empty() {
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                 }
             }
             for (label, variant) in &data.tags {
@@ -882,7 +879,7 @@ fn party_clause(
     let size = d.body_size();
 
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 5.0;
+        ui.set_item_gap_x(Space::Base);
         match view {
             TxViewpoint::Wallet { who, verb, other } => {
                 let (w, dp) = party(ui, who, size, walkable, walking);
@@ -1110,7 +1107,7 @@ fn headline(ui: &mut Ui, h: &TxHeadline<'_>, d: TxDensity) {
     let colour = h.tone.color(&ui.tokens());
 
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
+        ui.set_item_gap_x(Space::Base);
         ui.label(RichText::new(h.value).size(size).color(colour).strong());
         if let Some(q) = h.qualifier {
             // Sized against the BODY, not against the headline: a qualifier

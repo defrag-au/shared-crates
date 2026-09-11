@@ -26,7 +26,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 pub struct BulletBar {
     value: f32,
@@ -184,7 +184,7 @@ impl BulletBar {
                     });
                 }
             });
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
         }
 
         let t = ui.tokens();

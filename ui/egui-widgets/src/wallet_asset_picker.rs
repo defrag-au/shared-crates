@@ -11,7 +11,7 @@ use egui::{Color32, CornerRadius, Vec2};
 use crate::card_browser;
 use crate::icons::PhosphorIcon;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};
-use crate::theme::{self, Radius, ThemeExt};
+use crate::theme::{self, Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -165,7 +165,7 @@ pub fn show(
                 .fill(ctx.tokens().color.bg_primary)
                 .stroke(egui::Stroke::new(1.0_f32, ctx.tokens().color.bg_highlight))
                 .corner_radius(ctx.tokens().corner(Radius::Lg))
-                .inner_margin(16.0),
+                .inner_margin(ctx.tokens().margin(Space::Xl2)),
         )
         .show(ctx, |ui| {
             ui.set_max_width(config.max_width);
@@ -218,7 +218,7 @@ fn draw_picker_content(
         );
     });
 
-    ui.add_space(8.0);
+    ui.gap(Space::Md);
 
     // Filter out token groups — only show NFT collections
     let verified_groups: Vec<&PickerPolicyGroup> = groups
@@ -254,7 +254,7 @@ fn draw_picker_content(
 
             // ── Unverified collections (behind checkbox) ──
             if !unverified_groups.is_empty() {
-                ui.add_space(8.0);
+                ui.gap(Space::Md);
                 ui.checkbox(
                     &mut state.show_unverified,
                     egui::RichText::new("Show unverified collections")
@@ -263,14 +263,14 @@ fn draw_picker_content(
                 );
 
                 if state.show_unverified {
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     ui.label(
                         egui::RichText::new("Unverified Collections")
                             .color(ui.tokens().color.text_muted)
                             .size(10.0)
                             .strong(),
                     );
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     draw_collection_section(
                         ui,
                         &unverified_groups,
@@ -574,7 +574,7 @@ fn draw_picker_card(
             ui.label(egui::RichText::new(rank_text).color(rank_color).size(10.0));
         }
         if !asset.traits.is_empty() {
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
             egui::Grid::new("trait_tooltip")
                 .num_columns(2)
                 .spacing([8.0, 2.0])
@@ -604,7 +604,7 @@ fn draw_picker_card(
                 });
         }
         if already_offered {
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
             ui.label(
                 egui::RichText::new("Already in offer")
                     .color(ui.tokens().color.text_muted)

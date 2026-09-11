@@ -32,7 +32,7 @@ use egui::Ui;
 use gateway_wiring::{GatewayLogEntry, LogLevel};
 
 use crate::relative_time::relative_label;
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// Cross-frame state for the log pane.
 pub struct LogState {
@@ -108,7 +108,7 @@ pub fn gateway_log_header(ui: &mut Ui, entries: &[GatewayLogEntry], state: &mut 
             level_selector(ui, &mut state.min_level);
         });
     });
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 }
 
 /// The severity floor, as one button per level.
@@ -154,7 +154,7 @@ pub fn gateway_log_list(
     let shown: Vec<&GatewayLogEntry> = entries.iter().rev().filter(|e| state.shows(e)).collect();
 
     if shown.is_empty() {
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
         ui.colored_label(
             ui.tokens().color.text_muted,
             if entries.is_empty() {

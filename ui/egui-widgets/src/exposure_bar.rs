@@ -7,7 +7,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -111,7 +111,7 @@ pub fn show(ui: &mut Ui, segments: &[ExposureSegment], config: &ExposureBarConfi
             .size(config.total_size)
             .strong(),
         );
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
     }
 
     let available_width = ui.available_width();
@@ -197,7 +197,7 @@ pub fn show(ui: &mut Ui, segments: &[ExposureSegment], config: &ExposureBarConfi
 
     // Legend row — token identity color dots + label + ADA + LTV
     if config.show_legend {
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.horizontal(|ui| {
             for seg in segments {
                 if seg.fraction <= 0.0 {
@@ -215,7 +215,7 @@ pub fn show(ui: &mut Ui, segments: &[ExposureSegment], config: &ExposureBarConfi
                         .color(ui.tokens().color.text_secondary)
                         .size(config.legend_size),
                 );
-                ui.add_space(8.0);
+                ui.gap(Space::Md);
             }
         });
     }

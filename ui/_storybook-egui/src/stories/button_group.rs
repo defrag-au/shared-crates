@@ -2,6 +2,7 @@
 //! single-row (no wrap), and a realistic collection-card action bar.
 
 use crate::{ACCENT, TEXT_MUTED};
+use egui_widgets::theme::Space;
 use egui_widgets::{ButtonGroup, ButtonGroupButton, PhosphorIcon};
 
 #[derive(Default)]
@@ -88,7 +89,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ButtonGroupState) {
     section(ui, "Single row (no wrap) — toolbar");
     let resp = ButtonGroup::new()
         .wrap(false)
-        .spacing(8.0)
+        .spacing(Space::Md)
         .add(ButtonGroupButton::new(41, "New").icon(PhosphorIcon::Plus))
         .add(ButtonGroupButton::new(42, "Open").icon(PhosphorIcon::Eye))
         .add(

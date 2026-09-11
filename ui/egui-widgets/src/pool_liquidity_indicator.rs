@@ -6,7 +6,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Ui, Vec2};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -70,13 +70,13 @@ pub fn show(ui: &mut Ui, pools: &[PoolInfo], config: &PoolLiquidityConfig) {
 
     for (i, pool) in pools.iter().enumerate() {
         if i > 0 {
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
         }
 
         egui::Frame::new()
             .fill(ui.tokens().color.bg_secondary)
             .corner_radius(ui.tokens().corner(Radius::Md))
-            .inner_margin(10.0)
+            .inner_margin(ui.tokens().margin(Space::Lg))
             .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
             .show(ui, |ui| {
                 draw_pool_card(ui, pool, max_reserves, config);
@@ -125,7 +125,7 @@ fn draw_pool_card(ui: &mut Ui, pool: &PoolInfo, max_reserves: u64, config: &Pool
         });
     });
 
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     // Relative depth bar
     let depth_fraction = if max_reserves > 0 {
@@ -164,7 +164,7 @@ fn draw_pool_card(ui: &mut Ui, pool: &PoolInfo, max_reserves: u64, config: &Pool
         }
     }
 
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     // Stats row: TVL + spot price
     ui.horizontal(|ui| {

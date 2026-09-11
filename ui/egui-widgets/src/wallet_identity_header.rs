@@ -25,7 +25,7 @@
 use egui::{Color32, RichText, Ui};
 
 use crate::PhosphorIcon;
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// Click events the header can produce.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,7 +126,7 @@ impl<'a> WalletIdentityHeader<'a> {
             );
 
             if self.show_copy {
-                ui.add_space(6.0);
+                ui.gap(Space::Base);
                 let copy_tint = cfg
                     .copy_icon_color
                     .unwrap_or(ui.tokens().color.text_secondary);

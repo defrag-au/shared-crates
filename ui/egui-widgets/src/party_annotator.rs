@@ -38,6 +38,7 @@ use egui::{Color32, Ui};
 use crate::id_pill::IdPill;
 use crate::party_badge::PartyBasis;
 use crate::select::{MultiSelect, Select, SelectOption};
+use crate::theme::{Space, SpaceExt};
 use crate::{Chip, ChipVariant};
 
 /// Where a wallet sits relative to the project. Mirrors the app's stored
@@ -322,7 +323,7 @@ impl<'a> PartyAnnotator<'a> {
             // spotting an address out in the unexamined ring that actually
             // belongs to the team, and pulling it in. Everything else on this
             // form is detail hung off that call.
-            ui.add_space(10.0);
+            ui.gap(Space::Lg);
             field_label(ui, "What is this wallet to the project?", muted);
             {
                 // A select, not a row of toggles. Five mutually-exclusive
@@ -355,7 +356,7 @@ impl<'a> PartyAnnotator<'a> {
             }
 
             // 2 · who is behind it.
-            ui.add_space(10.0);
+            ui.gap(Space::Lg);
             field_label(ui, "Entity — who is behind it", muted);
             let name = ui.add(
                 egui::TextEdit::singleline(&mut draft.entity)
@@ -391,7 +392,7 @@ impl<'a> PartyAnnotator<'a> {
             // text field, and a second row of filtered suggestion buttons —
             // three controls doing what one does, each with its own idea of
             // what a tag looks like.
-            ui.add_space(10.0);
+            ui.gap(Space::Lg);
             field_label(ui, "Tags — what kind of thing it is", muted);
             {
                 // Most-used first (the palette's own order), with the count as
@@ -425,7 +426,7 @@ impl<'a> PartyAnnotator<'a> {
 
             // 4 · how do you know. This IS the basis question for almost every
             // note, so it is asked in plain words rather than as a taxonomy.
-            ui.add_space(10.0);
+            ui.gap(Space::Lg);
             field_label(ui, "Source — how do you know", muted);
             changed |= ui
                 .add(
@@ -443,7 +444,7 @@ impl<'a> PartyAnnotator<'a> {
             // a line with the save controls made the disclosure's height
             // decide where the buttons sat, so they landed differently on
             // every card depending on whether it was expanded.
-            ui.add_space(10.0);
+            ui.gap(Space::Lg);
             egui::CollapsingHeader::new(egui::RichText::new("more").small().color(muted))
                 .id_salt("more")
                 .show_unindented(ui, |ui| {
@@ -461,9 +462,9 @@ impl<'a> PartyAnnotator<'a> {
                         .changed();
                 });
 
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
             ui.separator();
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
             let can_save = dirty || changed;
             ui.horizontal(|ui| {
                 if ui
@@ -503,7 +504,7 @@ impl<'a> PartyAnnotator<'a> {
 /// they were answering. These stay.
 fn field_label(ui: &mut Ui, text: &str, muted: Color32) {
     ui.label(egui::RichText::new(text).small().color(muted));
-    ui.add_space(2.0);
+    ui.gap(Space::Xs);
 }
 
 /// Colour for a basis, so a claim never renders like a chain fact.

@@ -22,7 +22,7 @@
 use egui::{Color32, CornerRadius, FontId, RichText, Sense, Ui, Vec2};
 
 use crate::PhosphorIcon;
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// Styling knobs.
 pub struct FungiblesRowConfig {
@@ -117,7 +117,7 @@ impl<'a> FungiblesRow<'a> {
                     cfg.icon_size,
                     cfg.icon_color.unwrap_or(ui.tokens().color.text_secondary),
                 );
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
             }
             ui.label(
                 RichText::new(self.display_name)
@@ -126,7 +126,7 @@ impl<'a> FungiblesRow<'a> {
                     .strong(),
             );
             if let Some(t) = self.ticker {
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
                 draw_chip(ui, t, cfg);
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -136,7 +136,7 @@ impl<'a> FungiblesRow<'a> {
                             .size(cfg.value_size)
                             .color(cfg.value_color.unwrap_or(ui.tokens().color.text_secondary)),
                     );
-                    ui.add_space(6.0);
+                    ui.gap(Space::Base);
                 }
                 ui.label(
                     RichText::new(self.quantity_text)

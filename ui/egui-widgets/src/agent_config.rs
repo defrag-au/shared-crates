@@ -43,7 +43,7 @@ use crate::PhosphorIcon;
 use crate::icons::{install_phosphor_font, phosphor_label};
 use crate::relative_time::relative_label;
 use crate::select::{Select, SelectOption};
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 use crate::utils::{format_number, section_heading};
 
 /// A token-count spinner that reads as a number rather than a digit run.
@@ -167,7 +167,7 @@ pub fn provider_picker(ui: &mut Ui, draft: &mut ProviderDraft) -> bool {
         }
     });
 
-    ui.add_space(8.0);
+    ui.gap(Space::Md);
     egui::Grid::new("agent_provider_fields")
         .num_columns(2)
         .spacing([12.0, 8.0])
@@ -194,7 +194,7 @@ pub fn provider_picker(ui: &mut Ui, draft: &mut ProviderDraft) -> bool {
     // that stores fine and fails on the first question a member asks.
     let problems = provider_problems(&draft.base_url, &draft.model);
     if !problems.is_empty() {
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         for problem in problems {
             ui.horizontal(|ui| {
                 // `rich_text`, not `as_str` — the codepoint only resolves in
@@ -206,7 +206,7 @@ pub fn provider_picker(ui: &mut Ui, draft: &mut ProviderDraft) -> bool {
         }
     }
     if let Some(preset) = preset_for_base_url(&draft.base_url) {
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.hyperlink_to(format!("Get a {} API key", preset.label), preset.keys_url);
     }
 
@@ -247,7 +247,7 @@ pub fn credential_field(
             };
             ui.colored_label(ui.tokens().color.text_muted, format!("set {set} · {used}"));
         });
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
     }
 
     if let Some(error) = status.and_then(|s| s.last_error.as_deref()) {
@@ -355,7 +355,7 @@ pub fn budget_editor(
     let Some(entitlement) = agent.as_mut() else {
         return;
     };
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     if mode == AgentMode::Everyone {
         ui.horizontal(|ui| {
@@ -406,7 +406,7 @@ pub fn budget_editor(
         );
     });
 
-    ui.add_space(8.0);
+    ui.gap(Space::Md);
     let mut remove_tier: Option<usize> = None;
     for (index, tier) in entitlement.tiers.iter_mut().enumerate() {
         ui.horizontal(|ui| {
@@ -454,7 +454,7 @@ pub fn budget_editor(
         entitlement.tiers.remove(index);
         response.budget_changed = true;
     }
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
     if ui
         .button(phosphor_label(ui, PhosphorIcon::Plus, "Add role tier"))
         .clicked()
@@ -522,21 +522,21 @@ pub fn agent_config_section(
         "The bot answers when mentioned, using your own provider account. \
          You are billed by them directly.",
     );
-    ui.add_space(14.0);
+    ui.gap(Space::Xl2);
 
     // One separated block per concern. They are read in this order once, on
     // setup — pick a provider, give it a key, decide who may spend it — and
     // returned to individually afterwards, which is what the rules are for.
     response.provider_changed = provider_picker(ui, provider);
 
-    ui.add_space(14.0);
+    ui.gap(Space::Xl2);
     ui.separator();
-    ui.add_space(10.0);
+    ui.gap(Space::Lg);
     credential_field(ui, status, credential, now_ms, &mut response);
 
-    ui.add_space(14.0);
+    ui.gap(Space::Xl2);
     ui.separator();
-    ui.add_space(10.0);
+    ui.gap(Space::Lg);
     budget_editor(ui, agent, roles, id_salt, &mut response);
 
     response

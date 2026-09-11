@@ -11,7 +11,7 @@
 
 use egui::{Color32, Pos2, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -446,7 +446,7 @@ pub fn show(
     // ── Legend ──────────────────────────────────────────────────────────
 
     if config.show_legend {
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
         ui.horizontal_wrapped(|ui| {
             for pool in pools {
                 // Colored dot
@@ -469,7 +469,7 @@ pub fn show(
                         .color(ui.tokens().color.text_secondary)
                         .size(10.0),
                 );
-                ui.add_space(8.0);
+                ui.gap(Space::Md);
             }
 
             // Single pool reference in legend

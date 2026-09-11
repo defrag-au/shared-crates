@@ -34,7 +34,7 @@
 use egui::{Color32, RichText, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 /// Where a rung sits relative to the reader.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -216,16 +216,16 @@ impl<'a> TierLadder<'a> {
                         .color(ui.tokens().color.text_muted),
                 );
             }
-            ui.add_space(10.0);
+            ui.gap(Space::Lg);
 
             for (i, rung) in self.rungs.iter().enumerate() {
                 if i > 0 {
-                    ui.add_space(6.0);
+                    ui.gap(Space::Base);
                 }
                 rung_row(ui, rung);
             }
 
-            ui.add_space(12.0);
+            ui.gap(Space::Xl);
             ui.separator();
             ui.horizontal(|ui| {
                 if self.anonymous && ui.button("Connect wallet").clicked() {
@@ -269,13 +269,13 @@ fn rung_row(ui: &mut Ui, rung: &TierRung<'_>) {
         } else {
             Color32::TRANSPARENT
         })
-        .inner_margin(egui::Margin::symmetric(8, 6))
+        .inner_margin(ui.tokens().margin_xy(Space::Md, Space::Base))
         .corner_radius(ui.tokens().corner(Radius::Md));
 
     frame.show(ui, |ui| {
         ui.horizontal(|ui| {
             ui.label(marker.rich_text(14.0, marker_color));
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
 
             let name = RichText::new(rung.label).strong().color(if current {
                 ui.tokens().color.text_primary
@@ -308,7 +308,7 @@ fn rung_row(ui: &mut Ui, rung: &TierRung<'_>) {
         // the same sentence twice, and a blank line's worth of height for it.
         if !rung.gives.is_empty() {
             ui.horizontal(|ui| {
-                ui.add_space(20.0);
+                ui.gap(Space::Xl3);
                 ui.label(
                     RichText::new(rung.gives)
                         .small()
@@ -318,7 +318,7 @@ fn rung_row(ui: &mut Ui, rung: &TierRung<'_>) {
         }
 
         if !rung.routes.is_empty() {
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
             // Routes as CARDS on one wrapping line rather than a stacked
             // sentence per route. Three stacked "or hold N $TOKEN" lines cost
             // as much vertical space as the rung itself, which on a six-rung
@@ -380,7 +380,7 @@ fn rung_row(ui: &mut Ui, rung: &TierRung<'_>) {
 /// named, so a change to the card that forgets this measure is a change that
 /// has to walk past its own comment.
 fn route_width(ui: &Ui, route: &TierRoute<'_>) -> f32 {
-    /// `Margin::symmetric(7, 4)`, both sides.
+    /// `margin_xy(Space::Md, Space::Sm)`, both sides.
     const MARGIN_X: f32 = 7.0;
     /// `fit_to_exact_size(16, 16)`.
     const ICON: f32 = 16.0;
@@ -430,12 +430,12 @@ fn route_card(ui: &mut Ui, route: &TierRoute<'_>) {
     let frame = egui::Frame::default()
         .fill(ui.tokens().color.bg_secondary)
         .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
-        .inner_margin(egui::Margin::symmetric(7, 4))
+        .inner_margin(ui.tokens().margin_xy(Space::Md, Space::Sm))
         .corner_radius(ui.tokens().corner(Radius::Md));
 
     let inner = frame.show(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 5.0;
+            ui.set_item_gap_x(Space::Base);
             if let Some(url) = &route.icon_url {
                 ui.add(
                     egui::Image::new(url)

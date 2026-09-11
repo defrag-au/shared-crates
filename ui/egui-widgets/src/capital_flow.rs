@@ -32,6 +32,7 @@
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::channel_bands::{CHANNEL_PALETTE, OTHER_COLOR};
+use crate::theme::{Space, SpaceExt};
 
 /// One movement of capital out to a destination.
 #[derive(Clone, Debug)]
@@ -346,10 +347,10 @@ pub fn legend(
 ) -> Response {
     let muted = ui.visuals().weak_text_color();
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 12.0;
+        ui.set_item_gap_x(Space::Xl);
         for (i, b) in bands.iter().enumerate() {
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.set_item_gap_x(Space::Sm);
                 let (r, _) = ui.allocate_exact_size(Vec2::new(9.0, 9.0), Sense::hover());
                 ui.painter().rect_filled(r, 1.0, b.color);
                 ui.label(RichText::new(&b.name).size(10.0).color(muted));

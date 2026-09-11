@@ -18,7 +18,7 @@ use egui::{RichText, Ui};
 
 use crate::amount_input::parse_ada_input;
 use crate::icons::PhosphorIcon;
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -268,7 +268,7 @@ pub fn show(
             .color(ui.tokens().color.text_muted)
             .size(small),
         );
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
 
         if state.rows.is_empty() {
             ui.label(
@@ -392,7 +392,7 @@ pub fn show(
         }
 
         // Bulk price + totals.
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new("Set every row to")
@@ -422,7 +422,7 @@ pub fn show(
                     buyer_price_lovelace: lovelace,
                 });
             }
-            ui.add_space(12.0);
+            ui.gap(Space::Xl);
             if ui
                 .add(egui::Button::new(RichText::new("Clear all").size(small)))
                 .clicked()

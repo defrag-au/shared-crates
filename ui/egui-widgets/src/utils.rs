@@ -3,7 +3,7 @@
 
 use egui::{RichText, Ui};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Number formatting
@@ -160,5 +160,5 @@ pub fn section_heading(ui: &mut Ui, text: &str) {
             .size(16.0)
             .strong(),
     );
-    ui.add_space(8.0);
+    ui.gap(Space::Md);
 }

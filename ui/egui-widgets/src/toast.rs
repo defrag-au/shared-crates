@@ -73,13 +73,13 @@
 use std::collections::VecDeque;
 
 use egui::{
-    Align, Align2, Area, Color32, Context, Frame, Id, Label, Layout, Margin, Order,
-    RichText, Sense, Stroke, Ui,
+    Align, Align2, Area, Color32, Context, Frame, Id, Label, Layout, Order, RichText, Sense,
+    Stroke, Ui,
 };
 
 use crate::error_note::summarize_error;
 use crate::icons::{PhosphorIcon, install_phosphor_font};
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 /// ~3 seconds at 60 fps. Used as the default lifetime for toasts pushed
 /// through the convenience helpers on [`ToastQueue`].
@@ -455,7 +455,7 @@ pub fn show_toasts(ctx: &Context, queue: &mut ToastQueue) {
             // swallows scrolls.
             let width = 440.0_f32.min((content_rect.width() - 32.0).max(200.0));
             ui.set_max_width(width);
-            ui.spacing_mut().item_spacing.y = 6.0;
+            ui.set_item_gap_y(Space::Base);
             // TOP-DOWN, rendered newest-first, which puts the oldest nearest
             // the anchor exactly as before.
             //
@@ -507,7 +507,7 @@ fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
         .fill(fill)
         .stroke(Stroke::new(1.0_f32, stroke))
         .corner_radius(ui.tokens().corner(Radius::Md))
-        .inner_margin(Margin::symmetric(12, 8))
+        .inner_margin(ui.tokens().margin_xy(Space::Xl, Space::Md))
         .show(ui, |ui| {
             // Clamped to the viewport, not asserted: 440 is wider than a
             // phone, so the toast set the overlay's footprint to the full

@@ -18,7 +18,7 @@
 use cardano_assets::utxo::{UtxoApi, UtxoTag};
 use egui::{Color32, RichText, Ui};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// The purpose a UTxO serves in a mint + payments wallet — what the block
 /// strip colours by. Derived purely from the UTxO's own shape: a datum means
@@ -206,7 +206,7 @@ impl<'a> ManagedWalletUtxos<'a> {
             .color(ui.tokens().color.text_secondary)
             .small(),
         );
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
 
         // ── Visual UTxO strip ─────────────────────────────────────
         // One block per UTxO, width ∝ lovelace (clamped so tiny ones stay
@@ -252,7 +252,7 @@ impl<'a> ManagedWalletUtxos<'a> {
                 .small(),
             );
         }
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
 
         // ── Spendable ADA (the expected contents) ─────────────────
         ui.label(
@@ -275,14 +275,14 @@ impl<'a> ManagedWalletUtxos<'a> {
                 .small(),
             );
         }
-        ui.add_space(2.0);
+        ui.gap(Space::Xs);
         for u in self.utxos.iter().filter(|u| u.assets.is_empty()) {
             utxo_ref_row(ui, u);
         }
 
         // ── Asset-bearing UTxOs (flagged when unexpected) ─────────
         if b.has_assets() {
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
             if self.assets_unexpected {
                 ui.horizontal(|ui| {
                     crate::icons::install_phosphor_font(ui.ctx());
@@ -323,7 +323,7 @@ impl<'a> ManagedWalletUtxos<'a> {
                     .strong(),
                 );
             }
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
             for u in self.utxos.iter().filter(|u| !u.assets.is_empty()) {
                 utxo_ref_row(ui, u);
                 for aq in &u.assets {
@@ -376,7 +376,7 @@ fn render_block_strip(ui: &mut Ui, utxos: &[UtxoApi], assets_unexpected: bool) {
     order.extend(with_assets);
 
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(3.0, 3.0);
+        ui.spacing_mut().item_spacing = egui::Vec2::splat(ui.space(Space::Sm));
         for u in &order {
             let role = BlockRole::of(u, assets_unexpected);
             let frac = u.lovelace as f32 / max as f32;
@@ -424,9 +424,9 @@ fn render_role_legend(ui: &mut Ui, utxos: &[&UtxoApi], assets_unexpected: bool) 
     if counts.is_empty() {
         return;
     }
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(10.0, 2.0);
+        ui.spacing_mut().item_spacing = egui::vec2(ui.space(Space::Lg), ui.space(Space::Xs));
         for (role, n) in counts.values() {
             let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
             ui.painter()

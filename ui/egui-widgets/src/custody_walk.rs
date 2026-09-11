@@ -52,6 +52,7 @@ use egui::{
 };
 
 use crate::party_badge::{PartyBadge, PartyBasis};
+use crate::theme::{Space, SpaceExt};
 use crate::timestamp::format_iso8601;
 
 /// Whether a custody trace is a fact or a reconstruction.
@@ -458,7 +459,7 @@ impl<'a> CustodyWalk<'a> {
 
         if self.show_header {
             self.header(ui, &summary, muted, warn);
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
         }
 
         if self.nodes.is_empty() {
@@ -721,7 +722,7 @@ impl<'a> CustodyWalk<'a> {
 
     fn header(&self, ui: &mut Ui, summary: &WalkSummary, muted: Color32, warn: Color32) {
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 10.0;
+            ui.set_item_gap_x(Space::Lg);
 
             let (bg, fg) = match self.strength {
                 CustodyStrength::Proven => (

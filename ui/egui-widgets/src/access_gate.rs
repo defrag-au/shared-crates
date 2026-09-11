@@ -11,6 +11,8 @@
 use authorizations::Feature;
 use egui::{Align, Layout, RichText, Ui};
 
+use crate::theme::{Space, SpaceExt};
+
 /// A community that grants access — shown on the requirements screen.
 #[derive(Clone, Debug, Default)]
 pub struct GateProvider {
@@ -103,12 +105,12 @@ impl<'a> AccessGate<'a> {
             // screen nobody could read.
             ui.set_max_width(crate::viewport::fit(ui, 520.0));
             ui.label(RichText::new(self.feature.name()).color(accent).size(24.0));
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
 
             match self.status {
                 GateStatus::Anonymous => {
                     ui.label(RichText::new(self.tagline).color(weak).size(13.0));
-                    ui.add_space(20.0);
+                    ui.gap(Space::Xl3);
                     // The one control on the screen — on a phone it gets a
                     // full-width, thumb-sized target rather than a 36pt strip.
                     let btn = match bp {
@@ -133,7 +135,7 @@ impl<'a> AccessGate<'a> {
                     ui.label(
                         RichText::new("You're signed in, but don't have access yet.").size(14.0),
                     );
-                    ui.add_space(10.0);
+                    ui.gap(Space::Lg);
                     ui.label(
                         RichText::new(
                             "Access requires a qualifying role in one of these communities:",
@@ -141,7 +143,7 @@ impl<'a> AccessGate<'a> {
                         .color(weak)
                         .size(12.0),
                     );
-                    ui.add_space(10.0);
+                    ui.gap(Space::Lg);
 
                     if self.providers.is_empty() && self.providers_loading {
                         ui.horizontal(|ui| {
@@ -176,15 +178,15 @@ impl<'a> AccessGate<'a> {
                             // indented under the community.
                             for req in &p.requirements {
                                 ui.horizontal(|ui| {
-                                    ui.add_space(14.0);
+                                    ui.gap(Space::Xl2);
                                     ui.label(RichText::new(req).color(weak).size(12.0));
                                 });
                             }
-                            ui.add_space(4.0);
+                            ui.gap(Space::Sm);
                         }
                     }
 
-                    ui.add_space(20.0);
+                    ui.gap(Space::Xl3);
                     ui.label(
                         RichText::new(
                             "Already joined and have the role? Sign in again to refresh access.",
@@ -192,7 +194,7 @@ impl<'a> AccessGate<'a> {
                         .color(weak)
                         .size(11.0),
                     );
-                    ui.add_space(8.0);
+                    ui.gap(Space::Md);
                     ui.horizontal(|ui| {
                         if ui
                             .button(RichText::new("Sign in again").color(accent).size(12.0))

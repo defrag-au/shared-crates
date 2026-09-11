@@ -37,7 +37,7 @@ use egui::Ui;
 use gateway_wiring::{RecentActivity, TraceKind, TraceStep};
 
 use crate::relative_time::relative_label;
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// After this long with no trace, a turn stops saying "waiting" and admits
 /// nothing is coming. Comfortably longer than a slow model turn — this is
@@ -104,7 +104,7 @@ pub fn conversation_header(ui: &mut Ui, entries: &[RecentActivity], state: &mut 
                 );
         });
     });
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 }
 
 /// The turns themselves, newest first.
@@ -123,7 +123,7 @@ pub fn conversation_list(
         .collect();
 
     if shown.is_empty() {
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
         ui.colored_label(
             ui.tokens().color.text_muted,
             if state.misses_only && !entries.is_empty() {
@@ -139,7 +139,7 @@ pub fn conversation_list(
         if let Some(author) = conversation_turn(ui, entry, now_ms).author_clicked {
             response.author_clicked = Some(author);
         }
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
     }
 
     response
@@ -299,7 +299,7 @@ pub fn is_awaiting_trace(entry: &RecentActivity, now_ms: f64) -> bool {
 /// and a real indent reads better here than a bullet prefix.
 fn indented(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
     ui.horizontal(|ui| {
-        ui.add_space(18.0);
+        ui.gap(Space::Xl3);
         ui.vertical(add);
     });
 }

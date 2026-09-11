@@ -7,7 +7,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Ui, Vec2};
 
-use crate::theme::{self, ThemeExt};
+use crate::theme::{self, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -180,7 +180,7 @@ pub fn show(
 
     // Legend row
     if config.show_legend {
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         // Wrap so long legends (e.g. many trait values) reflow within a narrow
         // container instead of forcing the parent panel wider.
         ui.horizontal_wrapped(|ui| {
@@ -200,7 +200,7 @@ pub fn show(
                         .color(ui.tokens().color.text_secondary)
                         .size(config.legend_size),
                 );
-                ui.add_space(8.0);
+                ui.gap(Space::Md);
             }
         });
     }

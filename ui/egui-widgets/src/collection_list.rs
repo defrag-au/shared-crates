@@ -57,13 +57,13 @@
 //! }
 //! ```
 
-use egui::{Color32, Frame, Margin, RichText, Stroke, Ui};
+use egui::{Color32, Frame, RichText, Stroke, Ui};
 
 use crate::PhosphorIcon;
 use crate::button_group::{ButtonGroup, ButtonGroupButton};
 use crate::icons::install_phosphor_font;
 use crate::id_pill::{IdPill, IdPillLayout};
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 use crate::wallet_list::{WalletPoolBadge, WalletPoolBadgeHealth};
 
 // ─────────────────────────────────────────────────────────────────────
@@ -468,7 +468,7 @@ impl<'a> CollectionList<'a> {
         // Reveal toggle — only when hiding is enabled and there's something to
         // reveal. Flips the cosmetic flag in egui memory.
         if self.hide_archived && archived_total > 0 {
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
             let label = if show_archived {
                 format!("Hide {archived_total} archived")
             } else {
@@ -520,7 +520,7 @@ fn render_card(
         .fill(fill)
         .stroke(Stroke::new(1.0_f32, ROW_STROKE))
         .corner_radius(ui.tokens().corner(Radius::Lg))
-        .inner_margin(Margin::symmetric(14, 12))
+        .inner_margin(ui.tokens().margin_xy(Space::Xl2, Space::Xl))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
 
@@ -550,7 +550,7 @@ fn render_card(
 
             // ── Action bar ─────────────────────────────────────────
             if has_any_action(controls, row) {
-                ui.add_space(6.0);
+                ui.gap(Space::Base);
                 render_operator_actions(
                     ui, row, archived, controls,
                     true, // wrap — Card layout has its own dedicated bar row
@@ -558,7 +558,7 @@ fn render_card(
                 );
             }
 
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
 
             // ── Identity: policy_id as a stacked pill, above the supply
             //    bar. The policy_id is the collection's primary on-chain
@@ -571,7 +571,7 @@ fn render_card(
                 .with_short(row.policy_id_short.clone())
                 .show(ui);
 
-            ui.add_space(10.0);
+            ui.gap(Space::Lg);
 
             // ── Supply: text + progress bar ──────────────────────────
             ui.horizontal(|ui| {
@@ -598,7 +598,7 @@ fn render_card(
 
             // Two-band supply bar (`SupplyBar` widget): minted (fulfilled) then
             // the ordered backlog, so a drop shows fulfilled-vs-ordered at a glance.
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
             let bar_fill_colour = if row.status == "live" {
                 BAR_FILL_LIVE
             } else {
@@ -608,7 +608,7 @@ fn render_card(
                 .minted_color(bar_fill_colour)
                 .show(ui);
 
-            ui.add_space(10.0);
+            ui.gap(Space::Lg);
 
             // ── Wallets: stacked address pills, each inspectable ──────
             //
@@ -699,7 +699,7 @@ fn render_card(
             //    `CollectionDeposit` account, so its Inspect opens the same
             //    UTxO panel (handy for eyeballing inbound payments).
             if row.deposit_address.is_some() {
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
                 render_wallet_pill(
                     ui,
                     "deposit",
@@ -729,7 +729,7 @@ fn render_list_row(
         .fill(fill)
         .stroke(Stroke::new(1.0_f32, ROW_STROKE))
         .corner_radius(ui.tokens().corner(Radius::Base))
-        .inner_margin(Margin::symmetric(10, 7))
+        .inner_margin(ui.tokens().margin_xy(Space::Lg, Space::Md))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 let title = RichText::new(&row.title).strong();
@@ -817,7 +817,7 @@ fn render_wallet_pill(
         ui.label(RichText::new(label).small().color(META_GREY));
     }
 
-    ui.add_space(2.0);
+    ui.gap(Space::Xs);
     ui.horizontal(|ui| {
         if let Some(idx) = account_index
             && ui
@@ -1101,7 +1101,7 @@ fn chip(ui: &mut Ui, text: &str, fg: Color32, bg: Color32) {
     Frame::new()
         .fill(bg)
         .corner_radius(ui.tokens().corner(Radius::Sm))
-        .inner_margin(Margin::symmetric(6, 1))
+        .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Xs))
         .show(ui, |ui| {
             ui.label(RichText::new(text).color(fg).small().strong());
         });

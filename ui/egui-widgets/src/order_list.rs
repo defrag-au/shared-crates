@@ -17,16 +17,13 @@
 //! The host owns IO: `Refresh` / `SetShowSubmitted` re-fetch server-side;
 //! `ToggleHistory` asks the host to load that order's events into the row.
 
-use egui::{
-    Align, Color32, Frame, Label, Layout, Margin, RichText, ScrollArea, Sense,
-    Stroke, Ui,
-};
+use egui::{Align, Color32, Frame, Label, Layout, RichText, ScrollArea, Sense, Stroke, Ui};
 
 use crate::chip::{Chip, ChipVariant};
 use crate::error_note::{ErrorNote, summarize_error};
 use crate::icons::{PhosphorIcon, install_phosphor_font};
 use crate::relative_time::relative_label;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 use crate::timestamp::Timestamp;
 
 // ─────────────────────────────────────────────────────────────────────
@@ -337,7 +334,7 @@ impl<'a> OrderList<'a> {
         });
 
         if let Some(e) = self.error {
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
             ui.colored_label(Color32::from_rgb(220, 120, 120), format!("error: {e}"));
         }
 
@@ -353,9 +350,9 @@ impl<'a> OrderList<'a> {
             .data_mut(|d| d.get_temp::<String>(search_id))
             .unwrap_or_default();
 
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 5.0;
+            ui.set_item_gap_x(Space::Base);
             // Search keeps a stable left anchor as the chips reflow.
             let changed = ui
                 .add(
@@ -427,18 +424,18 @@ impl<'a> OrderList<'a> {
             })
             .collect();
 
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.separator();
 
         if self.rows.is_empty() {
             if !self.loading {
-                ui.add_space(6.0);
+                ui.gap(Space::Base);
                 ui.colored_label(Color32::from_gray(150), "No orders yet.");
             }
             return resp;
         }
         if filtered.is_empty() {
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
             ui.colored_label(Color32::from_gray(150), "No orders match the filter.");
             return resp;
         }
@@ -463,11 +460,46 @@ impl<'a> OrderList<'a> {
 // Internals
 // ─────────────────────────────────────────────────────────────────────
 
+/// Diameter of the status dot on a filter chip. Named because the wrap
+/// measurement above and the painter below must agree.
+const DOT_DIAMETER: f32 = 7.0;
+
 /// A clickable status-filter pill: a status-colour dot, the label, and the count
 /// in a badge. Selected → translucent-accent fill + accent border. Returns true
 /// on click. The count badge replaces the old trailing-number text so the qty
 /// reads as a distinct chip, and the whole strip is multi-select.
 fn filter_chip(ui: &mut Ui, label: &str, count: usize, accent: Color32, selected: bool) -> bool {
+    // A `Frame` lays out into the REMAINING width and cannot wrap itself, so in a
+    // `horizontal_wrapped` row a chip that does not fit squeezes its label to one
+    // character per line and the row grows to a hundred-odd pixels tall instead of
+    // moving the chip down. `tag_list`'s header documents the same trap; the fix
+    // there and here is to measure first and break the row ourselves.
+    //
+    // Latent until the spacing ramp landed: a roomier theme widens every chip by
+    // its padding, and the old literal padding happened to always fit. Any
+    // `Density::Spacious` surface would have hit it too.
+    let gap = ui.space(Space::Base);
+    let count_text = count.to_string();
+    let small = egui::TextStyle::Small.resolve(ui.style());
+    let painter = ui.painter().clone();
+    let text_w = |s: &str| {
+        painter
+            .layout_no_wrap(s.to_owned(), small.clone(), Color32::WHITE)
+            .size()
+            .x
+    };
+    let needed = ui.space(Space::Md) * 2.0          // chip inner margin
+        + DOT_DIAMETER
+        + gap
+        + text_w(label)
+        + gap
+        + text_w(&count_text)
+        + gap * 2.0     // count badge's own margin
+        + gap; // the row's own gap before the next chip
+    if ui.available_width() < needed {
+        ui.end_row();
+    }
+
     let (fill, stroke, text) = if selected {
         (
             Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 55),
@@ -485,18 +517,26 @@ fn filter_chip(ui: &mut Ui, label: &str, count: usize, accent: Color32, selected
         .fill(fill)
         .stroke(stroke)
         .corner_radius(ui.tokens().corner(Radius::Lg))
-        .inner_margin(Margin::symmetric(8, 2))
+        .inner_margin(ui.tokens().margin_xy(Space::Md, Space::Xs))
         .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.x = 5.0;
+            ui.set_item_gap_x(Space::Base);
+            // `Extend` is the belt to the measurement's braces. The estimate above
+            // decides which ROW a chip lands on; this makes the chip incapable of
+            // stacking its label one character per line even if the estimate is a
+            // pixel out, which is the failure that is actually unacceptable — an
+            // overhanging chip reads as a clipped chip, a stacked one reads as a
+            // broken widget.
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
             // Status-colour dot.
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(7.0, 7.0), Sense::hover());
-            ui.painter().circle_filled(rect.center(), 3.5, accent);
+            let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(DOT_DIAMETER), Sense::hover());
+            ui.painter()
+                .circle_filled(rect.center(), DOT_DIAMETER / 2.0, accent);
             ui.label(RichText::new(label).small().color(text));
             // Count badge.
             Frame::new()
                 .fill(Color32::from_black_alpha(70))
                 .corner_radius(ui.tokens().corner(Radius::Md))
-                .inner_margin(Margin::symmetric(5, 0))
+                .inner_margin(ui.tokens().margin_xy(Space::Base, Space::None))
                 .show(ui, |ui| {
                     ui.label(
                         RichText::new(count.to_string())
@@ -532,7 +572,7 @@ fn status_badge(ui: &mut Ui, status: &OrderStatus, inner_w: f32) {
     let mut frame = Frame::new()
         .fill(bg)
         .corner_radius(ui.tokens().corner(Radius::Sm))
-        .inner_margin(Margin::symmetric(5, 1));
+        .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Xs));
     if let Some(b) = border {
         frame = frame.stroke(Stroke::new(1.0_f32, b));
     }
@@ -592,7 +632,7 @@ fn refund_variant(refund_status: &str) -> Option<ChipVariant> {
 }
 
 fn render_row(ui: &mut Ui, o: &OrderRow, now: i64, badge_w: f32, resp: &mut OrderListResponse) {
-    ui.add_space(3.0);
+    ui.gap(Space::Sm);
     ui.horizontal(|ui| {
         status_badge(ui, &o.status, badge_w);
 
@@ -666,12 +706,12 @@ fn render_row(ui: &mut Ui, o: &OrderRow, now: i64, badge_w: f32, resp: &mut Orde
     if o.detail_open {
         render_history(ui, o, now);
     }
-    ui.add_space(3.0);
+    ui.gap(Space::Sm);
     ui.separator();
 }
 
 fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
-    ui.add_space(2.0);
+    ui.gap(Space::Xs);
     ui.indent(("order_history", &o.order_id), |ui| {
         let Some(events) = &o.events else {
             if o.detail_loading {
@@ -741,7 +781,7 @@ fn render_mints(ui: &mut Ui, fulfilments: &[FulfilmentRow]) {
     if fulfilments.is_empty() {
         return;
     }
-    ui.add_space(2.0);
+    ui.gap(Space::Xs);
     ui.label(
         RichText::new(format!("mints · {} tx", fulfilments.len()))
             .small()
@@ -766,7 +806,7 @@ fn render_mints(ui: &mut Ui, fulfilments: &[FulfilmentRow]) {
             );
         });
     }
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 }
 
 /// Chip variant + label for a `mint_log` status.

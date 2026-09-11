@@ -36,10 +36,10 @@
 //! box shape is a different control with different affordances — react-select
 //! ships both for the same reason.
 
-use egui::{Align, Color32, Layout, Margin, Sense, Ui, vec2};
+use egui::{Align, Color32, Layout, Sense, Ui, vec2};
 
 use crate::icons::install_phosphor_font;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 use crate::{PhosphorIcon, theme};
 
 /// One row in the menu.
@@ -300,7 +300,7 @@ impl<'a> Select<'a> {
             } else {
                 ui.tokens().color.border
             }))
-            .inner_margin(Margin::symmetric(8, 4))
+            .inner_margin(ui.tokens().margin_xy(Space::Md, Space::Sm))
             .show(ui, |ui| {
                 ui.set_width(self.width);
                 ui.horizontal(|ui| {
@@ -473,13 +473,13 @@ impl<'a> Select<'a> {
                         .fill(ui.tokens().color.bg_secondary)
                         .corner_radius(ui.tokens().corner(Radius::Md))
                         .stroke(theme::hairline(ui.tokens().color.border))
-                        .inner_margin(Margin::same(4))
+                        .inner_margin(ui.tokens().margin(Space::Sm))
                         .show(ui, |ui| {
                             ui.set_width(control_rect.width());
                             if filtered.is_empty() {
-                                ui.add_space(4.0);
+                                ui.gap(Space::Sm);
                                 ui.colored_label(ui.tokens().color.text_muted, self.empty_text);
-                                ui.add_space(4.0);
+                                ui.gap(Space::Sm);
                                 return None;
                             }
                             let mut picked = None;
@@ -660,13 +660,13 @@ impl<'a> MultiSelect<'a> {
             } else {
                 ui.tokens().color.border
             }))
-            .inner_margin(Margin::symmetric(6, 4))
+            .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Sm))
             .show(ui, |ui| {
                 ui.set_width(self.width);
                 // `horizontal_wrapped`, not `horizontal`: a control holding
                 // eight chips has to grow downwards rather than off the edge.
                 ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+                    ui.spacing_mut().item_spacing = egui::Vec2::splat(ui.space(Space::Sm));
                     ui.set_min_height(CONTROL_HEIGHT - 8.0);
 
                     for (index, id) in self.selected.iter().enumerate() {
@@ -776,13 +776,13 @@ impl<'a> MultiSelect<'a> {
                         .fill(ui.tokens().color.bg_secondary)
                         .corner_radius(ui.tokens().corner(Radius::Md))
                         .stroke(theme::hairline(ui.tokens().color.border))
-                        .inner_margin(Margin::same(4))
+                        .inner_margin(ui.tokens().margin(Space::Sm))
                         .show(ui, |ui| {
                             ui.set_width(control_rect.width());
                             if available.is_empty() && create.is_none() {
-                                ui.add_space(4.0);
+                                ui.gap(Space::Sm);
                                 ui.colored_label(ui.tokens().color.text_muted, self.empty_text);
-                                ui.add_space(4.0);
+                                ui.gap(Space::Sm);
                                 return None;
                             }
                             let mut picked = None;

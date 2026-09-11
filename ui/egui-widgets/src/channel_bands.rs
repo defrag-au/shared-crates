@@ -50,6 +50,8 @@ use std::collections::BTreeMap;
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, RichText, Sense, Stroke, Ui, Vec2};
 
+use crate::theme::{Space, SpaceExt};
+
 /// Categorical hues in fixed order, stepped for a dark surface.
 ///
 /// Validated against surface `#1a1a2e`: lightness band, chroma floor, adjacent
@@ -409,12 +411,12 @@ impl<'a> ChannelBands<'a> {
     }
 
     fn legend(&self, ui: &mut Ui, muted: Color32) {
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 10.0;
+            ui.set_item_gap_x(Space::Lg);
             for s in self.series {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.set_item_gap_x(Space::Sm);
                     let (r, _) = ui.allocate_exact_size(Vec2::new(9.0, 9.0), Sense::hover());
                     ui.painter().rect_filled(r, 1.0, s.color);
                     ui.label(RichText::new(s.name).size(10.0).color(muted));
@@ -422,7 +424,7 @@ impl<'a> ChannelBands<'a> {
             }
             if let Some((label, _)) = self.overlay {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.set_item_gap_x(Space::Sm);
                     let (r, _) = ui.allocate_exact_size(Vec2::new(9.0, 9.0), Sense::hover());
                     let c = r.center();
                     ui.painter().line_segment(

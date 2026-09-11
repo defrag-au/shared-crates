@@ -21,6 +21,7 @@ use authorizations::{EntitlementSet, Feature};
 use egui::{Color32, RichText, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::theme::{Space, ThemeExt};
 
 /// The session's entitlement state as the frontend knows it. Kept as its
 /// own type (rather than a bare `Option<EntitlementSet>`) so apps can store
@@ -130,7 +131,7 @@ pub fn locked_chip(ui: &mut Ui, feature: Feature) -> egui::Response {
     let weak = ui.visuals().weak_text_color();
     egui::Frame::group(ui.style())
         .fill(ui.visuals().faint_bg_color)
-        .inner_margin(egui::Margin::symmetric(6, 2))
+        .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Xs))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(PhosphorIcon::Lock.rich_text(12.0, weak));

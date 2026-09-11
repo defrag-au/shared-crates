@@ -21,7 +21,7 @@
 
 use egui::{Color32, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
 
-use crate::theme::{self, Radius, ThemeExt};
+use crate::theme::{self, Radius, Space, SpaceExt, ThemeExt};
 
 /// Where in its lifecycle the figures come from. Drives the badge + framing
 /// only; the waterfall shape is identical across modes.
@@ -92,7 +92,7 @@ impl DistributionWaterfall {
             let (txt, col) = self.mode.badge(&ui.tokens());
             badge(ui, txt, col);
             if !self.basis.is_empty() {
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
                 ui.label(
                     RichText::new(&self.basis)
                         .small()
@@ -100,11 +100,11 @@ impl DistributionWaterfall {
                 );
             }
         });
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
 
         // ── Stacked proportion bar (full width = gross) ───────────
         self.render_bar(ui);
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
 
         // ── Labelled breakdown ────────────────────────────────────
         self.render_breakdown(ui);
@@ -201,7 +201,7 @@ impl DistributionWaterfall {
             deduction(ui, "Platform fee", note, self.platform_fee_lovelace);
         }
 
-        ui.add_space(2.0);
+        ui.gap(Space::Xs);
         ui.separator();
         line(
             ui,
@@ -218,7 +218,7 @@ impl DistributionWaterfall {
             let is_you = self.highlight.as_deref() == Some(p.name.as_str());
             let color = self.party_color(i, &p.name, &ui.tokens());
             ui.horizontal(|ui| {
-                ui.add_space(12.0);
+                ui.gap(Space::Xl);
                 let mut name = RichText::new(format!("{}  {}%", p.name, p.share_bps / 100))
                     .small()
                     .color(color);
@@ -234,7 +234,7 @@ impl DistributionWaterfall {
                                 .strong()
                                 .color(ui.tokens().color.accent),
                         );
-                        ui.add_space(6.0);
+                        ui.gap(Space::Base);
                     }
                     let mut amt = RichText::new(format!("{} ADA", ada(p.lovelace)))
                         .monospace()
@@ -267,7 +267,7 @@ fn badge(ui: &mut Ui, text: &str, color: Color32) {
         ))
         .stroke(Stroke::new(1.0_f32, color))
         .corner_radius(ui.tokens().corner(Radius::Sm))
-        .inner_margin(egui::Margin::symmetric(5, 1))
+        .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Xs))
         .show(ui, |ui| {
             ui.label(RichText::new(text).small().strong().color(color));
         });
@@ -303,7 +303,7 @@ fn deduction(ui: &mut Ui, label: &str, note: &str, lovelace: u64) {
         return;
     }
     ui.horizontal(|ui| {
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
         let text = if note.is_empty() {
             format!("- {label}")
         } else {

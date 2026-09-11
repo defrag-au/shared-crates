@@ -56,11 +56,11 @@
 //! if let Some(i) = resp.clicked { open_tx(&entries[i]); }
 //! ```
 
-use egui::{Color32, Frame, Margin, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::chip::{Chip, ChipVariant};
 use crate::relative_time::RelativeTime;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 use crate::timestamp::format_iso8601;
 
 /// Assets shown before the overflow pill takes over.
@@ -317,14 +317,14 @@ impl<'a> ActivityFeed<'a> {
             let day = stamp.get(..10).unwrap_or_default().to_string();
             if self.show_day_headers && last_day.as_deref() != Some(day.as_str()) {
                 if last_day.is_some() {
-                    ui.add_space(6.0);
+                    ui.gap(Space::Base);
                 }
                 ui.label(
                     RichText::new(friendly_day(&day))
                         .color(ui.tokens().color.text_secondary)
                         .strong(),
                 );
-                ui.add_space(2.0);
+                ui.gap(Space::Xs);
                 last_day = Some(day);
             }
             let marked = self.marked == Some(i);
@@ -341,7 +341,7 @@ impl<'a> ActivityFeed<'a> {
                 Hit::Party => resp.walk = Some(i),
                 Hit::Miss => {}
             }
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
         }
         resp
     }
@@ -363,7 +363,7 @@ impl<'a> ActivityFeed<'a> {
             .fill(ui.tokens().color.bg_secondary)
             .stroke(Stroke::new(1.0_f32, ui.tokens().color.border))
             .corner_radius(ui.tokens().corner(Radius::Lg))
-            .inner_margin(Margin::symmetric(12, 10))
+            .inner_margin(ui.tokens().margin_xy(Space::Xl, Space::Lg))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
 
@@ -443,7 +443,7 @@ impl<'a> ActivityFeed<'a> {
 
                 // Bottom: what moved.
                 if !entry.assets.is_empty() {
-                    ui.add_space(6.0);
+                    ui.gap(Space::Base);
                     ui.horizontal_wrapped(|ui| {
                         for asset in entry.assets.iter().take(self.max_pills) {
                             asset_pill(ui, asset, true);
@@ -461,7 +461,7 @@ impl<'a> ActivityFeed<'a> {
 
                 // …and what it was about, if that is a different thing.
                 if !entry.targets.is_empty() {
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     ui.horizontal_wrapped(|ui| {
                         ui.label(
                             RichText::new(entry.targets_label)

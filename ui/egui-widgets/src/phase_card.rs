@@ -46,9 +46,9 @@
 //! }
 //! ```
 
-use egui::{Color32, Frame, Margin, RichText, Stroke, Ui};
+use egui::{Color32, Frame, RichText, Stroke, Ui};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 use crate::chip::{Chip, ChipVariant};
 use crate::property_list::PropertyList;
@@ -170,7 +170,7 @@ impl<'a> PhaseCard<'a> {
             .fill(Color32::from_rgb(22, 24, 32))
             .stroke(Stroke::new(1.0_f32, Color32::from_rgb(40, 44, 60)))
             .corner_radius(ui.tokens().corner(Radius::Md))
-            .inner_margin(Margin::same(10))
+            .inner_margin(ui.tokens().margin(Space::Lg))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
 
@@ -198,7 +198,7 @@ impl<'a> PhaseCard<'a> {
                     });
                 });
 
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
 
                 // ── Properties ──────────────────────────────────────
                 PropertyList::new()
@@ -208,7 +208,7 @@ impl<'a> PhaseCard<'a> {
                     .add("Per wallet", &self.row.per_wallet_display)
                     .show(ui);
 
-                ui.add_space(8.0);
+                ui.gap(Space::Md);
 
                 // ── Gates strip ─────────────────────────────────────
                 ui.label(
@@ -217,7 +217,7 @@ impl<'a> PhaseCard<'a> {
                         .color(Color32::from_gray(150)),
                 );
                 ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.set_item_gap_x(Space::Sm);
                     if self.gates.is_empty() {
                         Chip::new("none — phase ineligible")
                             .variant(ChipVariant::Danger)
@@ -237,7 +237,7 @@ impl<'a> PhaseCard<'a> {
                 });
 
                 if self.show_add_gate {
-                    ui.add_space(2.0);
+                    ui.gap(Space::Xs);
                     if ui.small_button("+ Add gate").clicked() {
                         response.actions.push(PhaseCardAction::AddGate);
                     }

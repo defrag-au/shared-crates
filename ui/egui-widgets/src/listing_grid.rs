@@ -10,7 +10,7 @@
 use crate::corner_action::{Corner, CornerAction};
 use crate::icons::PhosphorIcon;
 use crate::image_loader::CachedSpinner;
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 use egui::{Color32, RichText, Sense, Vec2};
 
 /// Whether a listing can actually be bought.
@@ -149,7 +149,9 @@ pub struct ListingCard {
 pub struct ListingGridConfig {
     pub card_width: f32,
     pub thumbnail_size: f32,
-    pub spacing: f32,
+    /// Gutter between cards. `None` takes the theme's [`Space::Md`] — same
+    /// reasoning as the `Option<Color32>` fields below.
+    pub spacing: Option<Space>,
     pub bg_color: Color32,
     pub bg_hover_color: Color32,
     /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
@@ -164,7 +166,7 @@ impl Default for ListingGridConfig {
         Self {
             card_width: 84.0,
             thumbnail_size: 100.0,
-            spacing: 8.0,
+            spacing: None,
             bg_color: Color32::from_rgb(30, 31, 48),
             bg_hover_color: Color32::from_rgb(45, 46, 68),
             text_primary: None,
@@ -221,7 +223,7 @@ impl ListingGrid {
         let card_size = Vec2::splat(cfg.card_width);
 
         let inner = ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = Vec2::splat(cfg.spacing);
+            ui.spacing_mut().item_spacing = Vec2::splat(ui.space(cfg.spacing.unwrap_or(Space::Md)));
             let mut hovered_idx: Option<usize> = None;
             let mut add_to_cart_idx: Option<usize> = None;
             let mut clicked_idx: Option<usize> = None;

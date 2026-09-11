@@ -36,7 +36,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error_note::ErrorNote;
 use crate::icons::PhosphorIcon;
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 use crate::user_badge::{UserBadge, UserBadgeAction};
 use crate::wallet::{WalletApi, WalletConnector, WalletProvider};
 use crate::wallet_button::{WalletAction, WalletButton};
@@ -306,7 +306,7 @@ impl<'a> StakeSessionPanel<'a> {
             return action;
         }
 
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
         match self.phase {
             StakeSessionPhase::SignedOut => {
                 ui.horizontal(|ui| {
@@ -346,7 +346,7 @@ impl<'a> StakeSessionPanel<'a> {
             }
             StakeSessionPhase::Failed(error) => {
                 ErrorNote::new(error).show(ui);
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
                 if ui
                     .button(RichText::new("Try again").size(self.font_size))
                     .clicked()

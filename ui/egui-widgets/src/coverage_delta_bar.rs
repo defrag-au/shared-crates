@@ -5,7 +5,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -108,7 +108,7 @@ pub fn show(
         );
     });
 
-    ui.add_space(2.0);
+    ui.gap(Space::Xs);
 
     // Bar
     let (rect, _response) = ui.allocate_exact_size(

@@ -5,7 +5,7 @@
 //! flow, while the caller handles the actual TX building and signing.
 
 use crate::icons::PhosphorIcon;
-use crate::theme::{Radius, Theme, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, Theme, ThemeExt};
 use egui::{RichText, Ui};
 
 // ---------------------------------------------------------------------------
@@ -261,16 +261,16 @@ pub fn show_items(
             .size(18.0)
             .strong(),
     );
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     if state.items.is_empty() {
-        ui.add_space(16.0);
+        ui.gap(Space::Xl2);
         ui.label(
             RichText::new("Your cart is empty")
                 .color(ui.tokens().color.text_muted)
                 .size(12.0),
         );
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.label(
             RichText::new("Add offers from the Browse tab")
                 .color(ui.tokens().color.text_muted)
@@ -331,9 +331,9 @@ pub fn show_items(
             });
         });
 
-        ui.add_space(2.0);
+        ui.gap(Space::Xs);
         ui.separator();
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
 
         // Item cards
         for item in items {
@@ -345,7 +345,7 @@ pub fn show_items(
                             .fit_to_exact_size(egui::vec2(44.0, 44.0))
                             .corner_radius(ui.tokens().corner(Radius::Base));
                         ui.add(image);
-                        ui.add_space(6.0);
+                        ui.gap(Space::Base);
                     }
 
                     // Info column
@@ -426,7 +426,7 @@ pub fn show_items(
                             {
                                 remove_id = Some(item.id.clone());
                             }
-                            ui.add_space(4.0);
+                            ui.gap(Space::Sm);
                         }
 
                         // Price
@@ -471,10 +471,10 @@ pub fn show_items(
                 );
             }
 
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
         }
 
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
     }
 
     if let Some(id) = remove_id {
@@ -496,7 +496,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
         return action;
     }
 
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     // Bottom action area
     match &state.phase {
@@ -510,7 +510,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                     .sum();
 
                 ui.separator();
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
 
                 ui.horizontal(|ui| {
                     ui.label(
@@ -554,7 +554,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
 
         TxCartPhase::Preview => {
             ui.separator();
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
 
             ui.label(
                 RichText::new(format!(
@@ -564,7 +564,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                 .color(ui.tokens().color.text_secondary)
                 .size(11.0),
             );
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
 
             for (i, planned) in state.planned_txs.iter().enumerate() {
                 ui.horizontal(|ui| {
@@ -591,7 +591,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                 });
             }
 
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
             ui.horizontal(|ui| {
                 if ui
                     .add(
@@ -651,7 +651,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
 
         TxCartPhase::Done => {
             ui.separator();
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
             ui.horizontal(|ui| {
                 ui.label(PhosphorIcon::CheckCircle.rich_text(16.0, ui.tokens().color.accent_green));
                 ui.label(
@@ -692,7 +692,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                     .color(ui.tokens().color.accent_red)
                     .size(11.0),
             );
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
             ui.horizontal(|ui| {
                 if ui
                     .add(
@@ -709,7 +709,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                 {
                     action = Some(TxCartAction::Execute);
                 }
-                ui.add_space(8.0);
+                ui.gap(Space::Md);
                 // Between "try the identical thing again" and "throw the whole
                 // cart away" there has to be a middle option, or a single bad
                 // item costs the operator everything else they queued.
@@ -728,7 +728,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                 {
                     action = Some(TxCartAction::BackToEditing);
                 }
-                ui.add_space(8.0);
+                ui.gap(Space::Md);
                 if ui
                     .add(
                         egui::Button::new(

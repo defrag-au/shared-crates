@@ -13,6 +13,7 @@ use egui::{Color32, RichText};
 
 use super::buttons::UiButtonExt;
 use super::wallet::{ConnectionState, WalletConnector, WalletProvider};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 /// Theme colors for the wallet button widget.
 pub struct WalletButtonTheme {
@@ -72,7 +73,7 @@ impl WalletButton {
         egui::Frame::new()
             .fill(theme.bg)
             .corner_radius(ui.tokens().corner(Radius::Md))
-            .inner_margin(8.0)
+            .inner_margin(ui.tokens().margin(Space::Md))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
 
@@ -216,7 +217,7 @@ impl WalletButton {
 
         // Balance row
         if let Some(ref balance) = connector.balance {
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
             ui.horizontal(|ui| {
                 let ada = balance.ada();
                 let ada_display = if ada >= 1000.0 {
@@ -243,7 +244,7 @@ impl WalletButton {
         }
 
         // Disconnect at bottom
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         if ui
             .add_clickable(
                 egui::Button::new(RichText::new("Disconnect").color(text_muted).size(10.0))

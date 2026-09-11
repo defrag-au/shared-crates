@@ -53,9 +53,9 @@
 //! }
 //! ```
 
-use egui::{Color32, Frame, Margin, RichText, Stroke, Ui};
+use egui::{Color32, Frame, RichText, Stroke, Ui};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 // ─────────────────────────────────────────────────────────────────────
 // Types
@@ -321,7 +321,7 @@ impl<'a> WalletList<'a> {
         );
 
         if !primary.is_empty() && (!collections.is_empty() || !custom.is_empty()) {
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
         }
 
         render_bucket(
@@ -337,7 +337,7 @@ impl<'a> WalletList<'a> {
         );
 
         if !collections.is_empty() && !custom.is_empty() {
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
         }
 
         render_bucket(
@@ -355,7 +355,7 @@ impl<'a> WalletList<'a> {
         // Reveal toggle — only when hiding is enabled and there's something to
         // reveal. Flips the cosmetic flag stored in egui memory above.
         if self.hide_archived && archived_total > 0 {
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
             let label = if show_archived {
                 format!("Hide {archived_total} archived")
             } else {
@@ -396,7 +396,7 @@ fn render_bucket(
     }
 
     if show_header {
-        ui.add_space(2.0);
+        ui.gap(Space::Xs);
         ui.horizontal(|ui| {
             ui.label(RichText::new(title).color(SECTION_HEADER).small().strong());
             ui.label(
@@ -405,7 +405,7 @@ fn render_bucket(
                     .small(),
             );
         });
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
     }
 
     // Card mode wants a touch more breathing room between tiles than the
@@ -487,7 +487,7 @@ fn render_row(
         .fill(fill)
         .stroke(Stroke::new(1.0_f32, stroke))
         .corner_radius(ui.tokens().corner(Radius::Base))
-        .inner_margin(Margin::symmetric(10, 7))
+        .inner_margin(ui.tokens().margin_xy(Space::Lg, Space::Md))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 // ── Account index ────────────────────────────────────
@@ -628,7 +628,7 @@ fn render_card(
         .fill(fill)
         .stroke(Stroke::new(1.0_f32, stroke))
         .corner_radius(ui.tokens().corner(Radius::Lg))
-        .inner_margin(Margin::symmetric(14, 12))
+        .inner_margin(ui.tokens().margin_xy(Space::Xl2, Space::Xl))
         .show(ui, |ui| {
             // Take the full available width — when laid out in a grid the
             // parent column already constrains us; when single-column we
@@ -661,7 +661,7 @@ fn render_card(
                 Frame::new()
                     .fill(role_colour)
                     .corner_radius(ui.tokens().corner(Radius::Sm))
-                    .inner_margin(Margin::symmetric(7, 1))
+                    .inner_margin(ui.tokens().margin_xy(Space::Md, Space::Xs))
                     .show(ui, |ui| {
                         ui.label(
                             RichText::new(role_text)
@@ -721,7 +721,7 @@ fn render_card(
                 });
             });
 
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
 
             // ── Footer: address + copy ─────────────────────────────
             ui.horizontal(|ui| {
@@ -747,7 +747,7 @@ fn render_card(
             // (U+1F7E0..2) are outside egui's `default_fonts` and
             // render as the missing-glyph box.
             if let Some(pool) = &row.pool {
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
                 ui.horizontal(|ui| {
                     let fg = match pool.health {
                         WalletPoolBadgeHealth::Empty => Color32::from_rgb(220, 130, 130),

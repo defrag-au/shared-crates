@@ -26,7 +26,7 @@
 
 use std::borrow::Cow;
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, ThemeExt};
 
 use egui::{Align, Color32, Layout, RichText, Ui};
 
@@ -301,7 +301,7 @@ impl<'a> IdPill<'a> {
             .fill(fill)
             .stroke(egui::Stroke::new(1.0_f32, stroke))
             .corner_radius(ui.tokens().corner(Radius::Base))
-            .inner_margin(egui::Margin::symmetric(8, 6))
+            .inner_margin(ui.tokens().margin_xy(Space::Md, Space::Base))
             .show(ui, |ui| {
                 // Header: small muted label on its own row.
                 if let Some(label) = self.label {

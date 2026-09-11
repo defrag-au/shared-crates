@@ -45,7 +45,7 @@
 use egui::{RichText, Ui};
 
 use crate::icons::{PhosphorIcon, install_phosphor_font};
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 /// One thing a reader should expect: an icon, a headline, and a line saying
 /// what it means for them.
@@ -138,11 +138,11 @@ impl<'a> AboutModal<'a> {
             }
 
             for point in &self.points {
-                ui.add_space(10.0);
+                ui.gap(Space::Lg);
                 point_row(ui, point);
             }
 
-            ui.add_space(12.0);
+            ui.gap(Space::Xl);
             ui.separator();
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Close").clicked() {
@@ -169,7 +169,7 @@ fn status_chip(ui: &mut Ui, status: &str) {
     egui::Frame::default()
         .fill(ui.tokens().color.warning.gamma_multiply(0.18))
         .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.warning))
-        .inner_margin(egui::Margin::symmetric(5, 1))
+        .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Xs))
         .corner_radius(ui.tokens().corner(Radius::Base))
         .show(ui, |ui| {
             ui.label(

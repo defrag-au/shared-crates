@@ -6,7 +6,7 @@
 
 use egui::{Color32, RichText, Ui, Vec2};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -40,8 +40,9 @@ pub struct TraitDeltaConfig {
     pub gain_color: Option<Color32>,
     /// Color for loss chips.
     pub loss_color: Option<Color32>,
-    /// Spacing between chips.
-    pub chip_spacing: f32,
+    /// Gutter between chips. `None` takes the theme's [`Space::Sm`] — same
+    /// reasoning as the colours above.
+    pub chip_spacing: Option<Space>,
 }
 
 impl Default for TraitDeltaConfig {
@@ -50,7 +51,7 @@ impl Default for TraitDeltaConfig {
             font_size: 10.0,
             gain_color: None,
             loss_color: None,
-            chip_spacing: 4.0,
+            chip_spacing: None,
         }
     }
 }
@@ -71,7 +72,7 @@ pub fn show(ui: &mut Ui, gains: &[TraitItem], losses: &[TraitItem], config: &Tra
     }
 
     if !gains.is_empty() && !losses.is_empty() {
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
     }
 
     if !losses.is_empty() {
@@ -90,9 +91,12 @@ fn draw_chips(
     // Flow-wrap trait chips horizontally
     let available = ui.available_width();
     let mut cursor_x = 0.0_f32;
+    // One value, because the wrap arithmetic below has to agree with the gap
+    // egui actually lays out.
+    let gap = ui.space(config.chip_spacing.unwrap_or(Space::Sm));
 
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = Vec2::new(config.chip_spacing, config.chip_spacing);
+        ui.spacing_mut().item_spacing = Vec2::splat(gap);
 
         for item in traits {
             let label = format!("{prefix} {}: {}", item.category, item.value);
@@ -111,13 +115,13 @@ fn draw_chips(
             egui::Frame::new()
                 .fill(bg)
                 .corner_radius(ui.tokens().corner(Radius::Base))
-                .inner_margin(egui::Margin::symmetric(6, 2))
+                .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Xs))
                 .stroke(egui::Stroke::new(1.0_f32, color.linear_multiply(0.3)))
                 .show(ui, |ui| {
                     ui.label(chip_text);
                 });
 
-            cursor_x += approx_width + config.chip_spacing;
+            cursor_x += approx_width + gap;
         }
     });
 }

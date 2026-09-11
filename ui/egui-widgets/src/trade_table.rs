@@ -20,7 +20,7 @@ use egui::{Color32, RichText, Vec2};
 
 use crate::icons::PhosphorIcon;
 use crate::offer_slot::{self, OfferSlotConfig, OfferSlotData};
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -152,7 +152,7 @@ pub fn show(
     );
 
     if *peer_state == PeerState::WaitingForPeer {
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
         ui.horizontal(|ui| {
             ui.spinner();
             ui.label(
@@ -161,7 +161,7 @@ pub fn show(
                     .size(10.0),
             );
         });
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
     } else {
         draw_card_row(
             ui,
@@ -182,9 +182,9 @@ pub fn show(
     }
 
     // ── Divider ────────────────────────────────────────────────────────
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
     draw_divider(ui, lock_state);
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     // ── Your offer (bottom) ────────────────────────────────────────────
     draw_offer_heading(
@@ -220,7 +220,7 @@ pub fn show(
     );
 
     // ── Lock/Unlock button ─────────────────────────────────────────────
-    ui.add_space(8.0);
+    ui.gap(Space::Md);
     draw_lock_button(ui, lock_state, &mut action);
 
     TradeTableResponse { action }
@@ -237,7 +237,7 @@ fn draw_offer_heading(ui: &mut egui::Ui, heading: &str, color: Color32, locked: 
             ui.label(PhosphorIcon::Lock.rich_text(11.0, ui.tokens().color.accent_yellow));
         }
     });
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 }
 
 fn draw_divider(ui: &mut egui::Ui, lock_state: &LockState) {
@@ -432,7 +432,7 @@ fn draw_card_row(
                 }
             }
         });
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         card_idx = row_end;
     }
 

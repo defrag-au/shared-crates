@@ -8,7 +8,7 @@
 //! (e.g. `AssetCard` with 3D tilt) through the [`CardRenderContext::response`] field.
 
 use crate::image_loader::CachedSpinner;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
 
 // ============================================================================
@@ -31,8 +31,10 @@ pub struct CardBrowserConfig {
     pub text_lines: u8,
     /// Width of the detail panel when a card is selected.
     pub detail_width: f32,
-    /// Spacing between cards.
-    pub spacing: f32,
+    /// Gutter between cards. `None` takes the theme's [`Space::Md`], which is
+    /// what the literal `8.0` here used to mean — see the note beside the
+    /// `Option<Color32>` fields for why this is an `Option`.
+    pub spacing: Option<Space>,
     /// Card corner radius.
     pub rounding: f32,
     /// Scroll area ID salt (must be unique if multiple browsers on one page).
@@ -87,7 +89,7 @@ impl Default for CardBrowserConfig {
             thumb_aspect_ratio: 1.0,
             text_lines: 3,
             detail_width: 420.0,
-            spacing: 8.0,
+            spacing: None,
             rounding: 6.0,
             scroll_id: "card_browser",
             grow_to_content: false,
@@ -179,6 +181,10 @@ pub fn show<T>(
     let bg_card_hover = config.bg_card_hover.unwrap_or(t.color.bg_highlight);
     let border_selected = config.border_selected.unwrap_or(t.color.accent_cyan);
     let text_muted = config.text_muted.unwrap_or(t.color.text_muted);
+    // Same reason: the gutter is part of the theme's rhythm unless a surface
+    // overrides it, and it feeds the column arithmetic below as well as the
+    // layout, so it has to be resolved to one value here.
+    let gutter = t.space(config.spacing.unwrap_or(Space::Md));
 
     let has_selection = state.selected.is_some_and(|idx| idx < items.len());
     let detail_width = if has_selection {
@@ -210,11 +216,11 @@ pub fn show<T>(
             // clicked card stays at the same screen-Y position.
             let mut scroll = egui::ScrollArea::vertical().id_salt(config.scroll_id);
             if let Some((anchor_idx, anchor_screen_y)) = state.scroll_anchor.take() {
-                let cols = ((grid_width + config.spacing) / (config.card_width + config.spacing))
+                let cols = ((grid_width + gutter) / (config.card_width + gutter))
                     .floor()
                     .max(1.0) as usize;
                 let row = anchor_idx / cols;
-                let card_y_in_content = row as f32 * (config.card_height() + config.spacing);
+                let card_y_in_content = row as f32 * (config.card_height() + gutter);
                 let scroll_area_top = ui.cursor().min.y;
                 let screen_y_relative = anchor_screen_y - scroll_area_top;
                 let new_offset = (card_y_in_content - screen_y_relative).max(0.0);
@@ -223,7 +229,7 @@ pub fn show<T>(
 
             let mut grid = |ui: &mut egui::Ui| {
                 ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::splat(config.spacing);
+                    ui.spacing_mut().item_spacing = Vec2::splat(gutter);
                     let spinner = CachedSpinner::new(ui, 12.0, text_muted);
                     let _ = spinner; // available for draw_thumbnail callers
 
@@ -315,7 +321,7 @@ pub fn show<T>(
                 let content_height = scroll_output.content_size.y;
                 let viewport_height = scroll_output.inner_rect.height();
                 let offset = scroll_output.state.offset.y;
-                let threshold = (config.card_height() + config.spacing) * 2.0;
+                let threshold = (config.card_height() + gutter) * 2.0;
                 if content_height > viewport_height
                     && offset + viewport_height >= content_height - threshold
                 {
@@ -328,7 +334,7 @@ pub fn show<T>(
         if let Some(sel_idx) = state.selected
             && sel_idx < items.len()
         {
-            ui.add_space(12.0);
+            ui.gap(Space::Xl);
             ui.vertical(|ui| {
                 ui.set_max_width(config.detail_width);
                 ui.set_min_width(config.detail_width);

@@ -8,7 +8,7 @@
 
 use egui::{Color32, FontId, RichText, Ui, Vec2};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 /// Font sizes the card paints with. Named because [`MetricCard::natural_size`]
 /// has to measure with exactly the same ones — a measurement that drifts from
@@ -180,7 +180,7 @@ impl<'a> MetricCard<'a> {
         let frame = egui::Frame::NONE
             .fill(bg_color)
             .corner_radius(ui.tokens().corner(Radius::Md))
-            .inner_margin(12.0)
+            .inner_margin(ui.tokens().margin(Space::Xl))
             .stroke(egui::Stroke::new(1.0_f32, border_color));
 
         let add_contents = |ui: &mut Ui| {
@@ -193,7 +193,7 @@ impl<'a> MetricCard<'a> {
                         .size(12.0),
                 );
 
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
 
                 // Value row — value + optional subtitle on same line
                 ui.horizontal(|ui| {
@@ -214,9 +214,9 @@ impl<'a> MetricCard<'a> {
 
                 // Trend indicator on its own line
                 if let Some((direction, delta)) = &self.trend {
-                    ui.add_space(2.0);
+                    ui.gap(Space::Xs);
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.set_item_gap_x(Space::Sm);
                         let color = match direction {
                             Trend::Up => ui.tokens().color.success,
                             Trend::Down => ui.tokens().color.error,
@@ -273,7 +273,7 @@ impl<'a> MetricCard<'a> {
                 if let Some(data) = self.sparkline_data
                     && data.len() >= 2
                 {
-                    ui.add_space(8.0);
+                    ui.gap(Space::Md);
                     crate::Sparkline::new(data)
                         .height(32.0)
                         .line_width(1.5)

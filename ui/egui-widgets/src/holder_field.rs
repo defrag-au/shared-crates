@@ -52,9 +52,7 @@
 //! are drawn — "show me what moved in October", with the rest of the field
 //! dimmed away rather than silently dropped.
 
-use egui::{
-    Align2, Color32, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2,
-};
+use egui::{Align2, Color32, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
 use crate::motion::{Easing, tween, tween_bool, tween_from};
 use crate::selection::Selection;

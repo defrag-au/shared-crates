@@ -13,6 +13,8 @@ use egui::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::theme::{Space, SpaceExt};
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Vertical anchor for text positioning.
@@ -524,7 +526,7 @@ impl ImageTextEditor {
         changed |= ui.text_edit_singleline(&mut overlay.text).changed();
 
         // ── Font selector ──
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.label("Font:");
         egui::ComboBox::from_id_salt(ui.id().with("font_select"))
             .selected_text(
@@ -546,14 +548,14 @@ impl ImageTextEditor {
             });
 
         // ── Font size ──
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.label("Font Size:");
         changed |= ui
             .add(egui::Slider::new(&mut overlay.font_scale, 0.02..=0.4).text("scale"))
             .changed();
 
         // ── Letter spacing ──
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.label("Letter Spacing:");
         changed |= ui
             .add(
@@ -564,7 +566,7 @@ impl ImageTextEditor {
             .changed();
 
         // ── Effect selector ──
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.label("Effect:");
         egui::ComboBox::from_id_salt(ui.id().with("effect_select"))
             .selected_text(overlay.effect.label())
@@ -581,7 +583,7 @@ impl ImageTextEditor {
 
         // ── Outline controls (if effect uses outline) ──
         if overlay.effect.has_outline() {
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
             ui.label("Outline Thickness:");
             changed |= ui
                 .add(egui::Slider::new(&mut overlay.outline_scale, 0.01..=0.2).text("px"))
@@ -590,7 +592,7 @@ impl ImageTextEditor {
 
         // ── Shadow controls (if effect uses shadow) ──
         if overlay.effect.has_shadow() {
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
             ui.label("Shadow Offset:");
             ui.horizontal(|ui| {
                 ui.label("X:");
@@ -605,7 +607,7 @@ impl ImageTextEditor {
         }
 
         // ── Colors ──
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.horizontal(|ui| {
             ui.label("Color:");
             let mut c = color_to_rgb(overlay.color);
@@ -634,7 +636,7 @@ impl ImageTextEditor {
         });
 
         // ── Delete ──
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
         if ui
             .button("Delete")
             .on_hover_text("Remove this text overlay")

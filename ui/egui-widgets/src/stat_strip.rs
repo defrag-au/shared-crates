@@ -37,7 +37,7 @@
 
 use egui::{Color32, FontId, Margin, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 use crate::{SparkHoverStyle, Sparkline, Trend};
 
 /// The sizes and spacings a card paints with.
@@ -462,7 +462,7 @@ impl<'a> StatStrip<'a> {
                     if let Some(series) = &w.spark
                         && series.len() >= 2
                     {
-                        ui.add_space(6.0);
+                        ui.gap(Space::Base);
                         let resp = Sparkline::new(series)
                             .height(SPARK_HEIGHT)
                             .line_width(1.5)
@@ -482,7 +482,7 @@ impl<'a> StatStrip<'a> {
 
                     // Price-range bar on the strip-wide shared domain.
                     if let (Some(r), Some((lo, hi))) = (w.range, domain) {
-                        ui.add_space(6.0);
+                        ui.gap(Space::Base);
                         self.draw_range_bar(ui, r, lo, hi);
                     }
 
@@ -626,8 +626,8 @@ fn draw_trend(ui: &mut Ui, dir: Trend, label: &str) {
     };
     // Own the spacing so the arrow hugs its label (default item spacing would
     // wedge them apart); the gap from the headline is added explicitly.
-    ui.spacing_mut().item_spacing.x = 0.0;
-    ui.add_space(8.0);
+    ui.set_item_gap_x(Space::None);
+    ui.gap(Space::Md);
     let size = 9.0;
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
     let c = rect.center();
@@ -659,6 +659,6 @@ fn draw_trend(ui: &mut Ui, dir: Trend, label: &str) {
             )),
         };
     }
-    ui.add_space(3.0);
+    ui.gap(Space::Sm);
     ui.label(RichText::new(label).color(color).size(13.0));
 }

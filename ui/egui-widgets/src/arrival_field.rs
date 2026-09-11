@@ -25,9 +25,7 @@
 //! because a still is what goes in a write-up. Flight and pulses happen only
 //! while the spine is playing.
 
-use egui::{
-    Align2, Color32, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2,
-};
+use egui::{Align2, Color32, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
 use crate::mint_arrivals::{Arrival, pile_offset};
 use crate::motion::{Easing, tween, tween_bool, tween_from};

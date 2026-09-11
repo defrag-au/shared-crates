@@ -19,6 +19,7 @@ use egui::{Color32, Label, RichText, Sense, Ui};
 
 use crate::chip::{Chip, ChipVariant};
 use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::theme::{Space, SpaceExt};
 
 /// The distilled view of a raw error string.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -244,7 +245,7 @@ impl<'a> ErrorNote<'a> {
         let s = summarize_error(self.raw);
         ui.vertical(|ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.set_item_gap_x(Space::Base);
                 install_phosphor_font(ui.ctx());
                 ui.label(PhosphorIcon::Warning.rich_text(13.0, Color32::from_rgb(220, 150, 90)));
                 if let Some(code) = s.status {
@@ -266,7 +267,7 @@ impl<'a> ErrorNote<'a> {
             let raw_id = ui.id().with(("error_note_raw", self.raw));
             let mut open = has_raw && ui.data_mut(|d| d.get_temp::<bool>(raw_id)).unwrap_or(false);
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
+                ui.set_item_gap_x(Space::Md);
                 // Copy: a single-line, de-escaped form — clean to paste back.
                 let copy = ui.add(
                     Label::new(PhosphorIcon::Copy.rich_text(12.0, Color32::from_gray(140)))
@@ -301,7 +302,7 @@ impl<'a> ErrorNote<'a> {
                 }
             });
             if open {
-                ui.add_space(2.0);
+                ui.gap(Space::Xs);
                 ui.label(
                     RichText::new(pretty_detail(&s.detail))
                         .monospace()

@@ -51,7 +51,7 @@
 
 use egui::{Color32, Rect, Sense, Ui, Vec2};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 /// Why the content is not here. See the module docs — this is not decoration,
 /// it decides whether the placeholder moves.
@@ -199,7 +199,7 @@ impl Skeleton {
                             tint(base, 0.12 * fade),
                         );
                     }
-                    ui.add_space(6.0);
+                    ui.gap(Space::Base);
                 }
             }
         }

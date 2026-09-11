@@ -6,7 +6,7 @@
 
 use egui::{Color32, RichText};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -103,14 +103,14 @@ pub fn show(
             .size(config.heading_size),
     );
     if let Some(subtitle) = config.subtitle {
-        ui.add_space(2.0);
+        ui.gap(Space::Xs);
         ui.label(
             RichText::new(subtitle)
                 .color(ui.tokens().color.text_muted)
                 .size(config.font_size),
         );
     }
-    ui.add_space(6.0);
+    ui.gap(Space::Base);
 
     // Input row
     let mut submitted = false;
@@ -152,7 +152,7 @@ pub fn show(
         action = Some(WalletEditorAction::Add(value));
     }
 
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     // Entry list
     for (i, entry) in entries.iter().enumerate() {

@@ -5,6 +5,7 @@ use egui_widgets::asset_card::{
     AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES, RARITIES,
 };
 use egui_widgets::card_browser::{self, CardBrowserConfig, CardBrowserState};
+use egui_widgets::theme::Space;
 use image_core::ImageSize;
 
 use crate::{ACCENT, TEXT_MUTED};
@@ -21,7 +22,10 @@ pub struct CardBrowserStoryState {
     pub card_width: f32,
     pub text_lines: u8,
     pub detail_width: f32,
-    pub spacing: f32,
+    /// `None` = whatever the active theme's ramp says, which is the default a
+    /// caller gets. The other entries step the ramp so a reader can see that the
+    /// gutter is a scale step and not a free pixel count.
+    pub spacing: Option<Space>,
     pub holo_strength: f32,
     pub items: Vec<DemoItem>,
 }
@@ -34,7 +38,7 @@ impl Default for CardBrowserStoryState {
             card_width: 140.0,
             text_lines: 3,
             detail_width: 360.0,
-            spacing: 8.0,
+            spacing: None,
             holo_strength: 0.7,
             items: build_preset_items(0),
         }
@@ -416,7 +420,22 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
     state.text_lines = text_lines_f32 as u8;
     ui.horizontal(|ui| {
         ui.add(egui::Slider::new(&mut state.detail_width, 200.0..=600.0).text("Detail width"));
-        ui.add(egui::Slider::new(&mut state.spacing, 2.0..=16.0).text("Spacing"));
+    });
+    ui.horizontal(|ui| {
+        ui.label("Gutter:");
+        // "Theme" first, because it is the default and the point: a surface that
+        // says nothing inherits the ramp.
+        if ui.selectable_label(state.spacing.is_none(), "theme").clicked() {
+            state.spacing = None;
+        }
+        for step in Space::ALL {
+            if ui
+                .selectable_label(state.spacing == Some(*step), format!("{step:?}"))
+                .clicked()
+            {
+                state.spacing = Some(*step);
+            }
+        }
     });
 
     ui.horizontal(|ui| {

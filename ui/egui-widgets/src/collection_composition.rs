@@ -10,7 +10,7 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2};
 
-use crate::theme::{self, Radius, ThemeExt};
+use crate::theme::{self, Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -114,11 +114,11 @@ pub fn show_header(ui: &mut Ui, comp: &CollectionComposition) {
     );
 
     if !comp.stats.is_empty() {
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
         ui.horizontal(|ui| {
             for (i, s) in comp.stats.iter().enumerate() {
                 if i > 0 {
-                    ui.add_space(18.0);
+                    ui.gap(Space::Xl3);
                 }
                 ui.vertical(|ui| {
                     ui.label(
@@ -137,7 +137,7 @@ pub fn show_header(ui: &mut Ui, comp: &CollectionComposition) {
         });
     }
 
-    ui.add_space(10.0);
+    ui.gap(Space::Lg);
     ui.label(
         egui::RichText::new(
             "Layer stack, front on top — the % is how often the layer appears in a token; \

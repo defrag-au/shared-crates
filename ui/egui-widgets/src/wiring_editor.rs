@@ -24,7 +24,7 @@ use gateway_wiring::{
 
 use crate::PhosphorIcon;
 use crate::event_wiring::{ActionCardVm, EventNodeVm, EventWiring};
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// Cross-frame editor state. The caller holds one per editor and resets it
 /// when the draft it refers to is reloaded (indices go stale with the draft).
@@ -172,7 +172,7 @@ pub fn bindings_editor(
             response.add_action_for = Some(binding_id.clone());
         }
 
-        ui.add_space(16.0);
+        ui.gap(Space::Xl2);
     }
 
     if let Some(index) = remove_binding {
@@ -293,7 +293,7 @@ fn render_action_config(
                 *policy_id = (!trimmed.is_empty()).then(|| trimmed.to_string());
                 dirty = true;
             }
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
 
             ui.label("style");
             let style_name = match style {
@@ -372,7 +372,7 @@ fn render_action_config(
                 }
             }
 
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
             ui.label("trait filters (optional; empty = any owned asset)");
             ui.label(
                 egui::RichText::new(

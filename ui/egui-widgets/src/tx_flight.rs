@@ -36,7 +36,7 @@ use crate::button_group::{ButtonGroup, ButtonGroupButton};
 use crate::error_note::ErrorNote;
 use crate::icons::PhosphorIcon;
 use crate::property_list::PropertyList;
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -251,7 +251,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
     egui::Frame::new()
         .fill(ui.tokens().color.bg_secondary)
         .corner_radius(ui.tokens().corner(Radius::Md))
-        .inner_margin(12.0)
+        .inner_margin(ui.tokens().margin(Space::Xl))
         .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .show(ui, |ui| {
             ui.label(
@@ -260,7 +260,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                     .size(config.heading_size)
                     .strong(),
             );
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
 
             // Stage ladder: three rows sharing a column edge.
             egui::Grid::new(ui.id().with("tx_flight_stages"))
@@ -274,7 +274,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
 
             // The review, from the moment it exists.
             if let Some(review) = phase.review() {
-                ui.add_space(8.0);
+                ui.gap(Space::Md);
                 ui.label(
                     RichText::new(&review.headline)
                         .color(ui.tokens().color.text_primary)
@@ -288,7 +288,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                 list.show(ui);
             }
 
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
 
             match phase {
                 FlightPhase::Idle => {
@@ -322,7 +322,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                             "Discard",
                         ));
                     response.action = group.show(ui).clicked.and_then(FlightAction::from_id);
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     ui.label(
                         RichText::new("Nothing is sent until you approve it in your wallet.")
                             .color(ui.tokens().color.text_muted)
@@ -335,7 +335,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                         "Check your wallet — approve the transaction there.",
                         config.font_size,
                     );
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     ui.label(
                         RichText::new("Hardware wallets can take a minute.")
                             .color(ui.tokens().color.text_muted)
@@ -358,7 +358,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                                 .size(config.heading_size),
                         );
                     });
-                    ui.add_space(2.0);
+                    ui.gap(Space::Xs);
                     ui.horizontal(|ui| {
                         ui.label(
                             RichText::new(crate::utils::truncate_hex(tx_hash, 10, 10))
@@ -374,7 +374,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                             ui.ctx().copy_text(tx_hash.clone());
                         }
                     });
-                    ui.add_space(6.0);
+                    ui.gap(Space::Base);
                     let group = ButtonGroup::new().add(
                         ButtonGroupButton::new(FlightAction::Reset.id(), "Start another")
                             .icon(PhosphorIcon::ArrowsClockwise),
@@ -389,7 +389,7 @@ pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> 
                             .strong(),
                     );
                     ErrorNote::new(error).show(ui);
-                    ui.add_space(6.0);
+                    ui.gap(Space::Base);
                     let mut group = ButtonGroup::new();
                     // A signed transaction is deterministic: resending it is
                     // safe, and a landed one comes back as a duplicate.

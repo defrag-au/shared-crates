@@ -28,9 +28,9 @@
 //! it passes to [`with_confirmation`]. That keeps the widget composable
 //! with parent dialogs / modals that already manage flow state.
 
-use egui::{Color32, Frame, Margin, RichText, Stroke, Ui};
+use egui::{Color32, Frame, RichText, Stroke, Ui};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 /// Layout settings the consumer can tweak before rendering.
 #[derive(Debug, Clone, Copy)]
@@ -102,7 +102,7 @@ impl<'a> MnemonicDisplay<'a> {
                 .fill(Color32::from_rgb(50, 35, 10))
                 .stroke(Stroke::new(1.0_f32, Color32::from_rgb(180, 140, 60)))
                 .corner_radius(ui.tokens().corner(Radius::Base))
-                .inner_margin(Margin::symmetric(12, 8))
+                .inner_margin(ui.tokens().margin_xy(Space::Xl, Space::Md))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         crate::icons::install_phosphor_font(ui.ctx());
@@ -123,7 +123,7 @@ impl<'a> MnemonicDisplay<'a> {
                         .small(),
                     );
                 });
-            ui.add_space(10.0);
+            ui.gap(Space::Lg);
         }
 
         // ── Words grid ───────────────────────────────────────────────────
@@ -131,7 +131,7 @@ impl<'a> MnemonicDisplay<'a> {
             .fill(Color32::from_rgb(16, 16, 24))
             .stroke(Stroke::new(1.0_f32, Color32::from_rgb(40, 40, 56)))
             .corner_radius(ui.tokens().corner(Radius::Md))
-            .inner_margin(Margin::same(14))
+            .inner_margin(ui.tokens().margin(Space::Xl2))
             .show(ui, |ui| {
                 let cols = style.columns.max(1);
                 let rows = words.len().div_ceil(cols);
@@ -147,7 +147,7 @@ impl<'a> MnemonicDisplay<'a> {
                 }
             });
 
-        ui.add_space(10.0);
+        ui.gap(Space::Lg);
 
         // ── Copy + confirm row ───────────────────────────────────────────
         ui.horizontal(|ui| {
@@ -166,7 +166,7 @@ impl<'a> MnemonicDisplay<'a> {
         });
 
         if let Some(confirmed) = self.confirmed {
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
             ui.checkbox(
                 confirmed,
                 RichText::new("I have securely recorded this recovery phrase").strong(),
@@ -195,7 +195,7 @@ fn render_word_cell(ui: &mut Ui, number: usize, word: &str, width: f32) {
         .fill(Color32::from_rgb(24, 24, 36))
         .stroke(Stroke::new(1.0_f32, Color32::from_rgb(50, 50, 70)))
         .corner_radius(ui.tokens().corner(Radius::Sm))
-        .inner_margin(Margin::symmetric(8, 5))
+        .inner_margin(ui.tokens().margin_xy(Space::Md, Space::Base))
         .show(ui, |ui| {
             ui.set_min_width(width);
             ui.horizontal(|ui| {

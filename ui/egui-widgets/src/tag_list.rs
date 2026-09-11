@@ -9,7 +9,7 @@
 
 use egui::{Color32, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 use crate::chip::ChipVariant;
 
@@ -58,7 +58,7 @@ impl<'a> TagList<'a> {
         let font = egui::FontId::proportional(12.0);
 
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+            ui.spacing_mut().item_spacing = Vec2::new(ui.space(Space::Base), ui.space(Space::Sm));
             let painter = ui.painter().clone();
             for (i, tag) in self.tags.iter().enumerate() {
                 let galley = painter.layout_no_wrap(tag.clone(), font.clone(), fg);

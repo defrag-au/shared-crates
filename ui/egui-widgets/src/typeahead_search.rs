@@ -34,7 +34,7 @@
 
 use egui::{Color32, RichText, Ui};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 use crate::{Chip, ChipVariant, PhosphorIcon};
 
 /// One selectable row in the dropdown. All display strings are caller-formatted.
@@ -186,14 +186,14 @@ impl<'a> TypeaheadSearch<'a> {
         let te_response = egui::Frame::new()
             .fill(ui.tokens().color.bg_secondary)
             .corner_radius(ui.tokens().corner(Radius::Lg))
-            .inner_margin(egui::Margin::symmetric(10, 8))
+            .inner_margin(ui.tokens().margin_xy(Space::Lg, Space::Md))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         PhosphorIcon::MagnifyingGlass
                             .rich_text(16.0, ui.tokens().color.text_secondary),
                     );
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     // Frameless edit — the surrounding rounded frame is the
                     // visible affordance. (This egui fork's `frame()` takes a
                     // `Frame`, not a bool; an empty frame draws nothing.)
@@ -231,7 +231,7 @@ impl<'a> TypeaheadSearch<'a> {
         if len == 0 {
             // Non-empty query with no results → a quiet empty state.
             if !self.query.trim().is_empty() {
-                ui.add_space(8.0);
+                ui.gap(Space::Md);
                 ui.label(
                     RichText::new(self.empty_text)
                         .small()
@@ -285,12 +285,12 @@ impl<'a> TypeaheadSearch<'a> {
         let max_visible = self.max_visible_rows;
         let highlight = self.highlight;
 
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
         egui::Frame::new()
             .fill(ui.tokens().color.bg_primary)
             .corner_radius(ui.tokens().corner(Radius::Lg))
             .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
-            .inner_margin(4.0)
+            .inner_margin(ui.tokens().margin(Space::Sm))
             .show(ui, |ui| {
                 let max_h = row_height * max_visible as f32;
                 egui::ScrollArea::vertical()
@@ -304,7 +304,7 @@ impl<'a> TypeaheadSearch<'a> {
                         // (no half-clipped last row), and there are no dead
                         // strips between rows where a click hits nothing.
                         // Rows carry their own inner padding.
-                        ui.spacing_mut().item_spacing.y = 0.0;
+                        ui.set_item_gap_y(Space::None);
                         for (i, opt) in options.iter().enumerate() {
                             let resp = row(ui, i == *highlight, opt, row_height, accent);
                             // Hovering moves the highlight so mouse + keyboard
@@ -355,7 +355,7 @@ fn row(
             .max_rect(rect.shrink2(egui::vec2(8.0, 4.0)))
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
-    content.spacing_mut().item_spacing.x = 8.0;
+    content.set_item_gap_x(Space::Md);
 
     if let Some(url) = &opt.icon_url {
         content.add(
@@ -366,7 +366,7 @@ fn row(
     }
 
     content.vertical(|ui| {
-        ui.spacing_mut().item_spacing.y = 1.0;
+        ui.set_item_gap_y(Space::Xs);
         let title_color = if highlighted {
             accent
         } else {

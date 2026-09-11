@@ -21,7 +21,7 @@
 
 use egui::{Align, Color32, Layout, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 /// A supporting stat shown after the headline value (e.g. `12` / `assets`).
 #[derive(Clone, Debug, Default)]
@@ -372,7 +372,7 @@ pub fn header(ui: &mut Ui, name_label: &str, value_label: &str, config: &Leaderb
         ui.add_space(config.rank_width);
         ui.label(RichText::new(name_label).color(config.text_muted).size(9.0));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
             ui.label(
                 RichText::new(value_label)
                     .color(config.text_muted)

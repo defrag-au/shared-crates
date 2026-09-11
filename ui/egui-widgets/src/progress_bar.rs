@@ -8,7 +8,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// What the bar's outline is drawn with.
 ///
@@ -162,7 +162,7 @@ impl ProgressBar {
                     });
                 }
             });
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
         }
 
         // Allocate space for the bar

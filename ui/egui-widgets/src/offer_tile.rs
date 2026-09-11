@@ -46,7 +46,7 @@
 
 use egui::{Color32, RichText, Sense, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// Tile state — drives frame fill, image tint, and click gating.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -293,7 +293,7 @@ impl<'a> OfferTile<'a> {
                             );
                         }
 
-                        ui.add_space(2.0);
+                        ui.gap(Space::Xs);
                         ui.label(
                             RichText::new(&self.price)
                                 .color(text_color)
