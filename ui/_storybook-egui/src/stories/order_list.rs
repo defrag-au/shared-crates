@@ -106,9 +106,23 @@ fn small_panel(ui: &mut egui::Ui, height: f32, add: impl FnOnce(&mut egui::Ui)) 
 /// A spread of orders across the lifecycle, plus a run of failures so the
 /// "500 failed" headline + filtering read true. Times fan out so the relative
 /// labels show a range (seconds → days).
+/// One fixture row: `(mins_ago, id_suffix, status, refund, qty, paid_ada,
+/// addr_suffix)`.
+///
+/// A named alias rather than the inline 7-tuple it was, so the field list lives
+/// in the type instead of a comment above it that nothing keeps honest.
+type OrderSpec = (
+    i64,
+    &'static str,
+    &'static str,
+    &'static str,
+    u32,
+    Option<u64>,
+    &'static str,
+);
+
 fn demo_rows(open: &HashSet<String>) -> Vec<OrderRow> {
-    // (mins_ago, id_suffix, status, refund, qty, paid_ada, addr_suffix)
-    let spec: &[(i64, &str, &str, &str, u32, Option<u64>, &str)] = &[
+    let spec: &[OrderSpec] = &[
         (0, "01", "pending", "none", 2, Some(200), "t7wq32"),
         (1, "02", "fulfilling", "none", 1, Some(100), "lwfqva"),
         (3, "03", "submitted", "none", 2, Some(200), "8wrtp6"),

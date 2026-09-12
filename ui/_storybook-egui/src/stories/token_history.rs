@@ -86,7 +86,11 @@ fn line(ui: &mut egui::Ui, rect: Rect, vals: &[f64], colour: Color32, log: bool)
         lo = lo.min(pos(*v));
         hi = hi.max(pos(*v));
     }
-    if !(hi > lo) {
+    // `!(hi > lo)` rather than `hi <= lo` was hiding the NaN case: if every
+    // value is NaN then `lo`/`hi` keep their sentinels and neither comparison
+    // holds, which is exactly when this must bail. Spelling it as "not greater"
+    // via `partial_cmp` keeps that behaviour and says so.
+    if !matches!(hi.partial_cmp(&lo), Some(std::cmp::Ordering::Greater)) {
         return;
     }
     let pts: Vec<Pos2> = vals

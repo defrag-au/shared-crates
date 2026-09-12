@@ -13,8 +13,7 @@ pub struct TxCartStoryState {
 
 impl Default for TxCartStoryState {
     fn default() -> Self {
-        let mut cart = TxCartState::default();
-        cart.items = vec![
+        let items = vec![
             TxCartItem {
                 id: "1".into(),
                 label: "Helmies".into(),
@@ -50,7 +49,10 @@ impl Default for TxCartStoryState {
             },
         ];
         Self {
-            cart,
+            cart: TxCartState {
+                items,
+                ..TxCartState::default()
+            },
             last_action: String::new(),
         }
     }

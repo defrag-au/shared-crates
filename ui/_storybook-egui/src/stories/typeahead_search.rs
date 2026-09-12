@@ -77,8 +77,16 @@ pub fn show(ui: &mut egui::Ui) {
     ui.data_mut(|d| d.insert_temp(state_id, st));
 }
 
+/// One fixture option: `(id, label, subtitle, optional (chip_text, variant))`.
+type OptionSeed = (
+    &'static str,
+    &'static str,
+    &'static str,
+    Option<(&'static str, ChipVariant)>,
+);
+
 fn sample_options() -> Vec<TypeaheadOption> {
-    let seed: &[(&str, &str, &str, Option<(&str, ChipVariant)>)] = &[
+    let seed: &[OptionSeed] = &[
         (
             "snek",
             "Snek",

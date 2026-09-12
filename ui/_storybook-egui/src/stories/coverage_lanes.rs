@@ -108,6 +108,15 @@ fn machine_runs() -> Vec<(String, Vec<Run>)> {
                     }
                     let start = T0 + day * DAY + h * HOUR;
                     let end = start + HOUR;
+                    // `allow(clippy::if_same_then_else)`: the two branches emit
+                    // the same run on purpose and must NOT be merged. The first
+                    // is a miner that died on day 5 and never came back; the
+                    // second is one that is curtailed or stopped on schedule.
+                    // Today they look identical because `Run` has one idle
+                    // shape — the moment it distinguishes "dead" from "paused",
+                    // this is where that lands, and a merged condition would
+                    // have to be pulled apart again to get there.
+                    #[allow(clippy::if_same_then_else)]
                     if dead_from.is_some_and(|d| day >= d) {
                         runs.push(Run::idle(start, end));
                     } else if curtailed(h) || daytime_stop(day, h) || (early && h == 19) {

@@ -3,14 +3,9 @@ use egui_widgets::wallet_identity_header::{WalletIdentityAction, WalletIdentityH
 
 const SAMPLE_STAKE: &str = "stake1u9pnzqcrvnt6njaqkexglkqtcktxrdc4lt7mdtsxafjzdfsgm5ex2";
 
+#[derive(Default)]
 pub struct WalletIdentityHeaderStoryState {
     pub last_action: Option<String>,
-}
-
-impl Default for WalletIdentityHeaderStoryState {
-    fn default() -> Self {
-        Self { last_action: None }
-    }
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut WalletIdentityHeaderStoryState) {

@@ -39,8 +39,18 @@ pub fn show(ui: &mut egui::Ui) {
         });
 }
 
+/// One fixture row: `(label, accent, optional (chip_text, variant), value,
+/// share_pct)`.
+type RowSeed = (
+    &'static str,
+    bool,
+    Option<(&'static str, ChipVariant)>,
+    &'static str,
+    f64,
+);
+
 fn sample_rows() -> Vec<LeaderboardRow> {
-    let seed: &[(&str, bool, Option<(&str, ChipVariant)>, &str, f64)] = &[
+    let seed: &[RowSeed] = &[
         (
             "DEX Pool",
             false,

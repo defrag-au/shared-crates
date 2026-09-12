@@ -273,5 +273,8 @@ fn simulate_match_count(entries: &[FilterEntry], selected: &[usize]) -> usize {
             count *= fraction;
         }
     }
-    (count as usize).max(0)
+    // No `.max(0)`: `count` is an `f64` cast to `usize`, and a `usize` cannot be
+    // negative — the clamp read as a guard while doing nothing. The cast itself
+    // saturates at zero, which is the behaviour that was actually wanted.
+    count as usize
 }

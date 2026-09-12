@@ -18,22 +18,13 @@ use egui_widgets::{FlowRing, RingFlow, RingNode, Selection, SpineState};
 const DAY: i64 = 86_400;
 const T0: i64 = 1_750_000_000;
 
+#[derive(Default)]
 pub struct FlowRingState {
     spine: Option<SpineState>,
     selection: Selection,
     /// Nodes the reader has switched off — density control that is not a
     /// threshold someone has to guess.
     off: Vec<String>,
-}
-
-impl Default for FlowRingState {
-    fn default() -> Self {
-        Self {
-            spine: None,
-            selection: Selection::default(),
-            off: Vec::new(),
-        }
-    }
 }
 
 /// The project's own wallets. Ring 0.

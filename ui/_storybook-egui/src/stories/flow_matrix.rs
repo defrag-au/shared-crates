@@ -21,18 +21,10 @@ use egui_widgets::{FlowMatrix, MatrixFlow, Selection, SpineState};
 const DAY: i64 = 86_400;
 const T0: i64 = 1_750_000_000;
 
+#[derive(Default)]
 pub struct FlowMatrixState {
     spine: Option<SpineState>,
     selection: Selection,
-}
-
-impl Default for FlowMatrixState {
-    fn default() -> Self {
-        Self {
-            spine: None,
-            selection: Selection::default(),
-        }
-    }
 }
 
 fn wallets() -> Vec<&'static str> {

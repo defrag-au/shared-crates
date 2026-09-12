@@ -5,18 +5,10 @@ use egui_widgets::command_palette::{CommandPalette, PaletteAction, PaletteState}
 use crate::{accent, muted};
 use egui_widgets::typeahead_search::TypeaheadOption;
 
+#[derive(Default)]
 pub struct CommandPaletteState {
     pub palette: PaletteState,
     pub invoked: Vec<String>,
-}
-
-impl Default for CommandPaletteState {
-    fn default() -> Self {
-        Self {
-            palette: PaletteState::default(),
-            invoked: Vec::new(),
-        }
-    }
 }
 
 fn commands() -> Vec<TypeaheadOption> {

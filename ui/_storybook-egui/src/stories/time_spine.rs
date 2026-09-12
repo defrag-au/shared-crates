@@ -23,22 +23,12 @@ use egui_widgets::{
     PartyFinderState, Selection, SpineState, TimeSpine, WalletIdentity,
 };
 
+#[derive(Default)]
 pub struct TimeSpineState {
     spine: Option<SpineState>,
     selection: Selection,
     finder: PartyFinderState,
     aliases: Option<AliasIndex>,
-}
-
-impl Default for TimeSpineState {
-    fn default() -> Self {
-        Self {
-            spine: None,
-            selection: Selection::default(),
-            finder: PartyFinderState::default(),
-            aliases: None,
-        }
-    }
 }
 
 /// Every holder in the fixture, with the identifiers a real wallet carries:
