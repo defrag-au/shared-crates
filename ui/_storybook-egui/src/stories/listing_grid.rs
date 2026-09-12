@@ -184,7 +184,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ListingGridState) {
         ui.label(
             egui::RichText::new(action)
                 .size(11.0)
-                .color(egui_widgets::theme::ACCENT_GREEN),
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentGreen)),
         );
     } else {
         ui.label(

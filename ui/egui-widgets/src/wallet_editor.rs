@@ -4,9 +4,9 @@
 //! or $handles). The widget is UI-only — it emits [`WalletEditorAction`]s and
 //! the caller handles async resolution, persistence, and data fetching.
 
-use egui::{Color32, RichText};
+use egui::RichText;
 
-use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
+use crate::theme::{Ink, Space, SpaceExt, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -35,7 +35,12 @@ pub struct WalletEditorEntry {
     /// True for auto-connected browser wallets.
     pub is_browser_wallet: bool,
     /// Accent color for the label (green for manual, cyan for browser).
-    pub accent: Color32,
+    ///
+    /// An [`Ink`] rather than a `Color32` because the callers that build these
+    /// entries are list-construction code with no `Ui` in hand — a `Vec` mapped
+    /// out of wallet state. A raw colour there can only be a literal, which is
+    /// how this field came to carry two hardcoded hexes.
+    pub accent: Ink,
 }
 
 /// Configuration for the editor appearance.
@@ -195,7 +200,7 @@ pub fn show(
             // Display label
             ui.label(
                 RichText::new(&entry.display)
-                    .color(entry.accent)
+                    .color(entry.accent.of(ui))
                     .size(config.font_size),
             );
 

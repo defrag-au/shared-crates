@@ -145,7 +145,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
+            crate::highlight(ui),
         ))
         .show(ui, |ui| {
             ui.set_max_width(260.0);
@@ -193,7 +193,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
+            crate::highlight(ui),
         ))
         .show(ui, |ui| {
             let has_assets = !state.groups.is_empty();
@@ -220,7 +220,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
             } else {
                 ui.label(
                     egui::RichText::new(format!("Selected: {}", state.last_selection))
-                        .color(egui_widgets::theme::ACCENT_CYAN)
+                        .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
                         .size(11.0),
                 );
             }

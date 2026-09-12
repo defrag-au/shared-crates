@@ -67,7 +67,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CommandPaletteState) {
     ui.add_space(12.0);
     ui.label(
         egui::RichText::new("Invocation log")
-            .color(theme::TEXT_SECONDARY)
+            .color(crate::secondary(ui))
             .strong(),
     );
     if state.invoked.is_empty() {
@@ -80,7 +80,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CommandPaletteState) {
     for id in state.invoked.iter().rev().take(6) {
         ui.label(
             egui::RichText::new(format!("invoked: {id}"))
-                .color(theme::TEXT_PRIMARY)
+                .color(crate::ink(ui))
                 .small(),
         );
     }

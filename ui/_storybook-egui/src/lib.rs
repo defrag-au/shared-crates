@@ -1060,6 +1060,34 @@ mod app {
         egui_widgets::theme::ThemeExt::tokens(ui).color.bg_primary
     }
 
+    /// A tier between [`ink`] and [`muted`] — secondary labels, units, the
+    /// quieter half of a two-part value.
+    pub fn secondary(ui: &egui::Ui) -> egui::Color32 {
+        egui_widgets::theme::ThemeExt::tokens(ui).color.text_secondary
+    }
+
+    /// A raised panel or a selected row, against [`bg`].
+    pub fn highlight(ui: &egui::Ui) -> egui::Color32 {
+        egui_widgets::theme::ThemeExt::tokens(ui).color.bg_highlight
+    }
+
+    /// Any other token, by name.
+    ///
+    /// The six shorthands above are the story *scaffolding* vocabulary — the
+    /// colours a story uses to write about a widget. This is for the rest: the
+    /// demo data a story invents, where the colour is standing in for a status
+    /// or a series rather than for prose. `tok(ui, Token::Success)` says which,
+    /// and unlike the `theme::SUCCESS` constant it replaced, it follows the
+    /// theme under review.
+    ///
+    /// Deliberately not six more shorthands. A story reaching past the
+    /// scaffolding should have to name the token it wants, because that is the
+    /// moment to ask whether the story is demonstrating the widget or just
+    /// decorating itself.
+    pub fn tok(ui: &egui::Ui, token: egui_widgets::theme::Token) -> egui::Color32 {
+        token.get(&egui_widgets::theme::ThemeExt::tokens(ui).color)
+    }
+
     /// A section heading inside a story.
     ///
     /// Exists because `ui.label(RichText::new(t).color(ACCENT).strong())` was

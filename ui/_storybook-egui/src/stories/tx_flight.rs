@@ -69,7 +69,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxFlightStoryState) {
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new("Jump to:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         let presets: &[(&str, FlightPhase)] = &[
@@ -158,7 +158,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxFlightStoryState) {
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
+                crate::highlight(ui),
             ))
             .show(ui, |ui| {
                 let config = TxFlightConfig {
@@ -197,7 +197,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxFlightStoryState) {
     if !state.last_action.is_empty() {
         ui.label(
             egui::RichText::new(format!("Last action: {}", state.last_action))
-                .color(egui_widgets::theme::ACCENT_CYAN)
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
                 .size(11.0),
         );
     }

@@ -94,7 +94,7 @@ pub fn show(ui: &mut egui::Ui) {
         egui_widgets::StatWindow::new("Floor", "52 ADA").detail("stable"),
     ];
     egui_widgets::StatStrip::new(&holders)
-        .value_color(egui_widgets::theme::ACCENT_CYAN)
+        .value_color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
         .min_card_width(150.0)
         .show(ui);
 

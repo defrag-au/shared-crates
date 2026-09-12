@@ -99,7 +99,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut StakeSessionStoryState) {
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new("Phase:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         let presets: &[(&str, bool, StakeSessionPhase)] = &[
@@ -142,7 +142,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut StakeSessionStoryState) {
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
+                crate::highlight(ui),
             ))
             .show(ui, |ui| {
                 let action =
@@ -192,14 +192,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut StakeSessionStoryState) {
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
+            crate::highlight(ui),
         ))
         .show(ui, |ui| {
             ui.set_width(720.0);
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new("Some app title")
-                        .color(egui_widgets::theme::ACCENT_CYAN)
+                        .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
                         .size(16.0),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
@@ -217,7 +217,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut StakeSessionStoryState) {
     if !state.last_action.is_empty() {
         ui.label(
             egui::RichText::new(format!("Last action: {}", state.last_action))
-                .color(egui_widgets::theme::ACCENT_CYAN)
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
                 .size(11.0),
         );
     }

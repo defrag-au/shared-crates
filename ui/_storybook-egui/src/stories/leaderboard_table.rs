@@ -28,7 +28,7 @@ pub fn show(ui: &mut egui::Ui) {
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
+            crate::highlight(ui),
         ))
         .show(ui, |ui| {
             // Bounded height so the virtual scroll is exercised in the story.

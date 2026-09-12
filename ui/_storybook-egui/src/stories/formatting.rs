@@ -54,9 +54,9 @@ pub fn show(ui: &mut egui::Ui) {
                 let result = egui_widgets::format_ada(*lovelace);
                 let pass = result == *expected;
                 let color = if pass {
-                    egui_widgets::theme::SUCCESS
+                    crate::tok(ui, egui_widgets::theme::Token::Success)
                 } else {
-                    egui_widgets::theme::ERROR
+                    crate::tok(ui, egui_widgets::theme::Token::Error)
                 };
 
                 ui.label(
@@ -101,9 +101,9 @@ pub fn show(ui: &mut egui::Ui) {
                 let result = egui_widgets::format_percent(*input);
                 let pass = result == *expected;
                 let color = if pass {
-                    egui_widgets::theme::SUCCESS
+                    crate::tok(ui, egui_widgets::theme::Token::Success)
                 } else {
-                    egui_widgets::theme::ERROR
+                    crate::tok(ui, egui_widgets::theme::Token::Error)
                 };
 
                 ui.label(
@@ -141,9 +141,9 @@ pub fn show(ui: &mut egui::Ui) {
                 let result = egui_widgets::format_number(*input);
                 let pass = result == *expected;
                 let color = if pass {
-                    egui_widgets::theme::SUCCESS
+                    crate::tok(ui, egui_widgets::theme::Token::Success)
                 } else {
-                    egui_widgets::theme::ERROR
+                    crate::tok(ui, egui_widgets::theme::Token::Error)
                 };
 
                 ui.label(
@@ -186,9 +186,9 @@ pub fn show(ui: &mut egui::Ui) {
                 let result = egui_widgets::format_duration(*input);
                 let pass = result == *expected;
                 let color = if pass {
-                    egui_widgets::theme::SUCCESS
+                    crate::tok(ui, egui_widgets::theme::Token::Success)
                 } else {
-                    egui_widgets::theme::ERROR
+                    crate::tok(ui, egui_widgets::theme::Token::Error)
                 };
 
                 ui.label(

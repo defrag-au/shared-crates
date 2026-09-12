@@ -79,7 +79,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TokenMultiselectState) {
             state.selected.len(),
             state.options.len()
         ))
-        .color(theme::TEXT_SECONDARY)
+        .color(crate::secondary(ui))
         .small(),
     );
 }

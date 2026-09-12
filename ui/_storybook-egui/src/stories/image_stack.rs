@@ -93,7 +93,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
         let backdrop = match state.dark_backdrop {
             // The server card's own background, for comparing like with like.
             true => egui::Color32::from_rgb(11, 11, 16),
-            false => theme::BG_SECONDARY,
+            false => crate::tok(ui, egui_widgets::theme::Token::BgSecondary),
         };
         // A FIXED RECT, PAINTED AND CLIPPED — never a frame sized by its
         // content. The pile's allocation grows with spacing, lift and shadow

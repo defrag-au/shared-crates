@@ -27,9 +27,12 @@ pub struct AsyncDataState {
 impl Default for AsyncDataState {
     fn default() -> Self {
         let (sender, inbox) = UiInbox::channel();
-        let counter = egui_widgets::FlipCounter::new(8)
-            .text_color(egui_widgets::theme::TEXT_PRIMARY)
-            .card_height(50.0);
+        // No `.text_color(…)`: `FlipCounter` already defaults to
+        // `Token::TextPrimary`, so naming it here only pinned it against a
+        // theme switch. (It could be `.text_color(Token::TextPrimary)` now that
+        // the setter takes an `Ink` — but a `Default` impl with no `Ui` is
+        // exactly where restating a default is easiest to get away with.)
+        let counter = egui_widgets::FlipCounter::new(8).card_height(50.0);
 
         Self {
             inbox,
@@ -159,7 +162,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
                                 egui::RichText::new(egui_widgets::format_number(
                                     snap.accrued_total as i64,
                                 ))
-                                .color(egui_widgets::theme::TEXT_PRIMARY)
+                                .color(crate::ink(ui))
                                 .size(20.0)
                                 .strong(),
                             );
@@ -177,7 +180,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
                             ui.label(egui::RichText::new("Rate/hr").color(muted(ui)).size(11.0));
                             ui.label(
                                 egui::RichText::new(format!("{:.1}", snap.effective_rate))
-                                    .color(egui_widgets::theme::ACCENT_CYAN)
+                                    .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
                                     .size(20.0)
                                     .strong(),
                             );
@@ -195,7 +198,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
                             ui.label(egui::RichText::new("Holders").color(muted(ui)).size(11.0));
                             ui.label(
                                 egui::RichText::new(format!("{}", snap.holder_count))
-                                    .color(egui_widgets::theme::SUCCESS)
+                                    .color(crate::tok(ui, egui_widgets::theme::Token::Success))
                                     .size(20.0)
                                     .strong(),
                             );
@@ -233,7 +236,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
         let rate_text = format!("{:>5}", snap.effective_rate as u64);
         egui_widgets::SevenSegmentDisplay::new(&rate_text)
             .digit_height(24.0)
-            .color(egui_widgets::theme::ACCENT_CYAN)
+            .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
             .off_color(egui::Color32::from_rgb(25, 25, 45))
             .show(ui);
     } else {

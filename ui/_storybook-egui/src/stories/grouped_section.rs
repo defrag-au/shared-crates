@@ -47,7 +47,7 @@ pub fn show(ui: &mut egui::Ui) {
     if let Some(GroupedSectionAction::BulkAction) = action {
         ui.label(
             egui::RichText::new("→ BulkAction fired")
-                .color(theme::ACCENT_GREEN)
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentGreen))
                 .size(10.0),
         );
     }

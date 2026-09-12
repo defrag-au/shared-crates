@@ -74,7 +74,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletIdentityHeaderStoryState) {
     if let Some(ref action) = state.last_action {
         ui.label(
             egui::RichText::new(format!("Last action: {action}"))
-                .color(egui_widgets::theme::ACCENT_GREEN)
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentGreen))
                 .small(),
         );
         if ui.small_button("Clear").clicked() {

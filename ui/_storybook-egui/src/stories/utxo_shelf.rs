@@ -163,7 +163,7 @@ pub fn show(
         ui.add_space(4.0);
         ui.label(
             egui::RichText::new(format!("Error: {err}"))
-                .color(egui_widgets::theme::ACCENT_RED)
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentRed))
                 .small(),
         );
     }
@@ -189,9 +189,9 @@ pub fn show(
 
         let collateral_icon = if data.has_collateral { "yes" } else { "NO" };
         let collateral_color = if data.has_collateral {
-            egui_widgets::theme::ACCENT_GREEN
+            crate::tok(ui, egui_widgets::theme::Token::AccentGreen)
         } else {
-            egui_widgets::theme::ACCENT_RED
+            crate::tok(ui, egui_widgets::theme::Token::AccentRed)
         };
 
         ui.horizontal(|ui| {
@@ -256,7 +256,7 @@ pub fn show(
 
                 ui.add_space(8.0);
                 egui::Frame::new()
-                    .fill(egui_widgets::theme::BG_SECONDARY)
+                    .fill(crate::tok(ui, egui_widgets::theme::Token::BgSecondary))
                     .inner_margin(egui::Margin::same(12))
                     .corner_radius(6.0)
                     .show(ui, |ui| {
@@ -266,7 +266,7 @@ pub fn show(
                                 egui::RichText::new(&utxo.utxo_ref)
                                     .monospace()
                                     .size(10.0)
-                                    .color(egui_widgets::theme::TEXT_SECONDARY),
+                                    .color(crate::secondary(ui)),
                             );
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
@@ -322,7 +322,7 @@ pub fn show(
                                     ui.label(
                                         egui::RichText::new(label)
                                             .size(10.0)
-                                            .color(egui_widgets::theme::ACCENT_ORANGE),
+                                            .color(crate::tok(ui, egui_widgets::theme::Token::AccentOrange)),
                                     );
                                 }
                             });
@@ -378,7 +378,7 @@ pub fn show(
                                             egui::RichText::new(&resolved.name)
                                                 .size(10.0)
                                                 .strong()
-                                                .color(egui_widgets::theme::TEXT_SECONDARY),
+                                                .color(crate::secondary(ui)),
                                         );
                                         ui.label(
                                             egui::RichText::new(resolved.token_type.label())
@@ -389,7 +389,7 @@ pub fn show(
                                             ui.label(
                                                 egui::RichText::new("\u{2713}")
                                                     .size(9.0)
-                                                    .color(egui_widgets::theme::ACCENT_GREEN),
+                                                    .color(crate::tok(ui, egui_widgets::theme::Token::AccentGreen)),
                                             );
                                         }
                                         if resolved.has_warnings() {
@@ -399,7 +399,7 @@ pub fn show(
                                                         egui::RichText::new(tag.label())
                                                             .size(9.0)
                                                             .strong()
-                                                            .color(egui_widgets::theme::ACCENT_RED),
+                                                            .color(crate::tok(ui, egui_widgets::theme::Token::AccentRed)),
                                                     );
                                                 }
                                             }
@@ -410,7 +410,7 @@ pub fn show(
                                             egui::RichText::new(*pid)
                                                 .monospace()
                                                 .size(9.0)
-                                                .color(egui_widgets::theme::TEXT_SECONDARY),
+                                                .color(crate::secondary(ui)),
                                         );
                                     }
 

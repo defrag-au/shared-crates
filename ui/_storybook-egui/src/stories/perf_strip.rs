@@ -179,8 +179,8 @@ fn in_situ(ui: &mut egui::Ui, state: &mut PerfStripStory) {
     );
 
     egui::Frame::new()
-        .fill(theme::BG_SECONDARY)
-        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+        .fill(crate::tok(ui, egui_widgets::theme::Token::BgSecondary))
+        .stroke(egui::Stroke::new(1.0_f32, crate::tok(ui, egui_widgets::theme::Token::Border)))
         .corner_radius(6)
         .inner_margin(12.0)
         .show(ui, |ui| {
@@ -197,7 +197,7 @@ fn in_situ(ui: &mut egui::Ui, state: &mut PerfStripStory) {
                         egui::RichText::new(
                             "stake1u8n…7q4z · 412 movements · 38 counterparties · last seen 4 min ago",
                         )
-                        .color(theme::TEXT_SECONDARY),
+                        .color(crate::secondary(ui)),
                     );
                     ui.add_space(6.0);
                     for (label, value) in [

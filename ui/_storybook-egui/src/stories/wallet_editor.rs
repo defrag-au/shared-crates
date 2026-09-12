@@ -33,37 +33,37 @@ fn mock_entries() -> Vec<WalletEditorEntry> {
             display: "$boef".into(),
             status: WalletEntryStatus::Ready,
             is_browser_wallet: false,
-            accent: egui_widgets::theme::ACCENT_GREEN,
+            accent: egui_widgets::theme::Token::AccentGreen.into(),
         },
         WalletEditorEntry {
             display: "$djo".into(),
             status: WalletEntryStatus::Ready,
             is_browser_wallet: false,
-            accent: egui_widgets::theme::ACCENT_GREEN,
+            accent: egui_widgets::theme::Token::AccentGreen.into(),
         },
         WalletEditorEntry {
             display: "$perplord".into(),
             status: WalletEntryStatus::Ready,
             is_browser_wallet: true,
-            accent: egui_widgets::theme::ACCENT_CYAN,
+            accent: egui_widgets::theme::Token::AccentCyan.into(),
         },
         WalletEditorEntry {
             display: "$curiousfutures".into(),
             status: WalletEntryStatus::Resolving,
             is_browser_wallet: false,
-            accent: egui_widgets::theme::ACCENT_GREEN,
+            accent: egui_widgets::theme::Token::AccentGreen.into(),
         },
         WalletEditorEntry {
             display: "stake1q8x...m4xj".into(),
             status: WalletEntryStatus::Loading,
             is_browser_wallet: false,
-            accent: egui_widgets::theme::ACCENT_GREEN,
+            accent: egui_widgets::theme::Token::AccentGreen.into(),
         },
         WalletEditorEntry {
             display: "stake1qy2...k9fp".into(),
             status: WalletEntryStatus::Failed("address not found".into()),
             is_browser_wallet: false,
-            accent: egui_widgets::theme::ACCENT_GREEN,
+            accent: egui_widgets::theme::Token::AccentGreen.into(),
         },
     ]
 }
@@ -95,7 +95,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
+                crate::highlight(ui),
             ))
             .show(ui, |ui| {
                 let config = WalletEditorConfig {
@@ -113,7 +113,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
                                 display: input,
                                 status: WalletEntryStatus::Loading,
                                 is_browser_wallet: false,
-                                accent: egui_widgets::theme::ACCENT_GREEN,
+                                accent: egui_widgets::theme::Token::AccentGreen.into(),
                             });
                         }
                         wallet_editor::WalletEditorAction::Remove(idx) => {

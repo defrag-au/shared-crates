@@ -45,7 +45,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     ui.add_space(4.0);
 
     egui_widgets::SevenSegmentDisplay::new("23:59:48")
-        .color(egui_widgets::theme::ACCENT_CYAN)
+        .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
         .digit_height(36.0)
         .show(ui);
 
@@ -56,19 +56,19 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     ui.add_space(4.0);
 
     egui_widgets::SevenSegmentDisplay::new("1247")
-        .color(egui_widgets::theme::SUCCESS)
+        .color(crate::tok(ui, egui_widgets::theme::Token::Success))
         .digit_height(36.0)
         .show(ui);
     ui.add_space(8.0);
 
     egui_widgets::SevenSegmentDisplay::new("88888")
-        .color(egui_widgets::theme::WARNING)
+        .color(crate::tok(ui, egui_widgets::theme::Token::Warning))
         .digit_height(36.0)
         .show(ui);
     ui.add_space(8.0);
 
     egui_widgets::SevenSegmentDisplay::new("-42")
-        .color(egui_widgets::theme::ERROR)
+        .color(crate::tok(ui, egui_widgets::theme::Token::Error))
         .digit_height(36.0)
         .show(ui);
 
@@ -110,7 +110,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
 
     let display_text = format!("{}", state.counter_value);
     egui_widgets::SevenSegmentDisplay::new(&display_text)
-        .color(egui_widgets::theme::ACCENT_CYAN)
+        .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
         .digit_height(48.0)
         .show(ui);
 
@@ -125,7 +125,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     ui.add_space(4.0);
 
     egui_widgets::SevenSegmentDisplay::new("1247")
-        .color(egui_widgets::theme::SUCCESS)
+        .color(crate::tok(ui, egui_widgets::theme::Token::Success))
         .digit_height(64.0)
         .show(ui);
 

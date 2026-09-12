@@ -13,7 +13,7 @@ const THUMB: f32 = 120.0;
 /// browser paints before an image lands.
 fn placeholder_thumb(ui: &mut egui::Ui, label: &str) -> Rect {
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(THUMB), egui::Sense::hover());
-    ui.painter().rect_filled(rect, 4.0, theme::BG_HIGHLIGHT);
+    ui.painter().rect_filled(rect, 4.0, crate::highlight(ui));
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
@@ -27,9 +27,9 @@ fn placeholder_thumb(ui: &mut egui::Ui, label: &str) -> Rect {
 fn owned_dot(ui: &egui::Ui, thumb: Rect) {
     let r = 5.0;
     let center = egui::pos2(thumb.max.x - r - 4.0, thumb.min.y + r + 4.0);
-    ui.painter().circle_filled(center, r, theme::ACCENT_GREEN);
+    ui.painter().circle_filled(center, r, crate::tok(ui, egui_widgets::theme::Token::AccentGreen));
     ui.painter()
-        .circle_stroke(center, r, egui::Stroke::new(1.0, theme::BG_PRIMARY));
+        .circle_stroke(center, r, egui::Stroke::new(1.0, crate::bg(ui)));
 }
 
 pub fn show(ui: &mut egui::Ui) {
@@ -67,7 +67,7 @@ pub fn show(ui: &mut egui::Ui) {
     if let Some(which) = ui.ctx().data_mut(|d| d.get_temp::<String>(clicked_id)) {
         ui.label(
             egui::RichText::new(format!("→ {which} click registered"))
-                .color(theme::ACCENT_GREEN)
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentGreen))
                 .size(10.0),
         );
     }
@@ -90,7 +90,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         let thumb = placeholder_thumb(ui, "remove");
         CornerAction::new(PhosphorIcon::X)
-            .accent(theme::ACCENT_RED)
+            .accent(crate::tok(ui, egui_widgets::theme::Token::AccentRed))
             .tooltip("Remove")
             .show(ui, thumb, "remove");
 
@@ -98,7 +98,7 @@ pub fn show(ui: &mut egui::Ui) {
         CornerAction::new(PhosphorIcon::Star)
             .corner(Corner::BottomRight)
             .size(20.0)
-            .accent(theme::ACCENT_YELLOW)
+            .accent(crate::tok(ui, egui_widgets::theme::Token::AccentYellow))
             .tooltip("Favourite")
             .show(ui, thumb, "favourite");
 

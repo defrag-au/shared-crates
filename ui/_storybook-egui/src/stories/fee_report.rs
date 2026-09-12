@@ -46,7 +46,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FeeReportStoryState) {
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new("Fee per side (ADA):")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         ui.add(egui::DragValue::new(&mut state.fee_ada).range(0..=100));
@@ -103,7 +103,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FeeReportStoryState) {
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
+                crate::highlight(ui),
             ))
             .show(ui, |ui| {
                 fee_report::show(ui, &data, &FeeReportConfig::default());

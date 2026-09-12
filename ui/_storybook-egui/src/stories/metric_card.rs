@@ -25,13 +25,13 @@ pub fn show(ui: &mut egui::Ui) {
 
         egui_widgets::MetricCard::new("Effective Rate", "5.2")
             .subtitle("/hour")
-            .value_color(egui_widgets::theme::SUCCESS)
+            .value_color(crate::tok(ui, egui_widgets::theme::Token::Success))
             .width(160.0)
             .show(ui);
 
         egui_widgets::MetricCard::new("Active Buffs", "3")
             .subtitle("stacked")
-            .value_color(egui_widgets::theme::WARNING)
+            .value_color(crate::tok(ui, egui_widgets::theme::Token::Warning))
             .width(160.0)
             .show(ui);
     });
@@ -55,7 +55,7 @@ pub fn show(ui: &mut egui::Ui) {
         egui_widgets::MetricCard::new("Treasury", "28.5M")
             .subtitle("$ALIEN remaining")
             .trend(egui_widgets::Trend::Down, "-142K/day")
-            .value_color(egui_widgets::theme::WARNING)
+            .value_color(crate::tok(ui, egui_widgets::theme::Token::Warning))
             .width(180.0)
             .show(ui);
 
@@ -93,14 +93,14 @@ pub fn show(ui: &mut egui::Ui) {
         egui_widgets::MetricCard::new("Accrued Points", "212")
             .trend(egui_widgets::Trend::Up, "+30/hr")
             .sparkline(&accrual_data)
-            .value_color(egui_widgets::theme::ACCENT_CYAN)
+            .value_color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
             .width(220.0)
             .show(ui);
 
         egui_widgets::MetricCard::new("Earning Rate", "20.0/hr")
             .trend(egui_widgets::Trend::Up, "buffed")
             .sparkline(&rate_data)
-            .value_color(egui_widgets::theme::SUCCESS)
+            .value_color(crate::tok(ui, egui_widgets::theme::Token::Success))
             .width(220.0)
             .show(ui);
     });
@@ -120,7 +120,7 @@ pub fn show(ui: &mut egui::Ui) {
         .subtitle("at current burn rate of 142K/day")
         .trend(egui_widgets::Trend::Down, "declining")
         .sparkline(&runway_data)
-        .value_color(egui_widgets::theme::WARNING)
+        .value_color(crate::tok(ui, egui_widgets::theme::Token::Warning))
         .show(ui);
 
     ui.add_space(16.0);

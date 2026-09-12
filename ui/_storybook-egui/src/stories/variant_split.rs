@@ -27,12 +27,12 @@ fn card(ui: &mut egui::Ui, title: &str, slot: &str, segments: &[VariantSegment])
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
+            crate::highlight(ui),
         ))
         .show(ui, |ui| {
             ui.label(
                 egui::RichText::new(title)
-                    .color(egui_widgets::theme::TEXT_SECONDARY)
+                    .color(crate::secondary(ui))
                     .size(11.0)
                     .strong(),
             );

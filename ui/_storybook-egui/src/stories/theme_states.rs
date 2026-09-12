@@ -13,13 +13,15 @@
 
 use crate::{accent, muted};
 use egui::{Color32, RichText, Stroke};
+use egui_widgets::theme::Token;
 
 /// The backgrounds a widget can sit on. Every state below is drawn on each.
-const SURFACES: [(&str, Color32); 3] = [
-    ("BG_PRIMARY", egui_widgets::theme::BG_PRIMARY),
-    ("BG_SECONDARY", egui_widgets::theme::BG_SECONDARY),
-    ("BG_HIGHLIGHT", egui_widgets::theme::BG_HIGHLIGHT),
-];
+///
+/// `Token`, not `Color32`: this is a `const`, so it cannot hold a resolved
+/// colour without freezing one theme into the story whose entire subject is how
+/// states look under a theme. The name in each pair is the token's own
+/// [`Token::name`], so the labels cannot drift from what is drawn.
+const SURFACES: [Token; 3] = [Token::BgPrimary, Token::BgSecondary, Token::BgHighlight];
 
 pub fn show(ui: &mut egui::Ui) {
     ui.label(RichText::new("Theme States").color(accent(ui)).strong());
@@ -46,8 +48,8 @@ pub fn show(ui: &mut egui::Ui) {
         .small(),
     );
     ui.add_space(6.0);
-    for (name, surface) in SURFACES {
-        surface_row(ui, name, surface, |ui| {
+    for token in SURFACES {
+        surface_row(ui, token.name(), crate::tok(ui, token), |ui| {
             let mut selected = 0usize;
             ui.horizontal(|ui| {
                 for (i, label) in ["Summary", "Feed", "Stave"].iter().enumerate() {
@@ -65,8 +67,8 @@ pub fn show(ui: &mut egui::Ui) {
     // ── Buttons across states ──────────────────────────────────────────
     ui.label(RichText::new("Buttons").color(accent(ui)).strong());
     ui.add_space(6.0);
-    for (name, surface) in SURFACES {
-        surface_row(ui, name, surface, |ui| {
+    for token in SURFACES {
+        surface_row(ui, token.name(), crate::tok(ui, token), |ui| {
             ui.horizontal(|ui| {
                 let _ = ui.button("enabled");
                 ui.add_enabled(false, egui::Button::new("disabled"));
@@ -105,7 +107,8 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(6.0);
     let sel = ui.visuals().selection;
     ui.horizontal(|ui| {
-        for (name, surface) in SURFACES {
+        for token in SURFACES {
+            let (name, surface) = (token.name(), crate::tok(ui, token));
             ui.vertical(|ui| {
                 let (rect, _) =
                     ui.allocate_exact_size(egui::vec2(150.0, 34.0), egui::Sense::hover());

@@ -58,7 +58,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaletteEditorState) {
     ui.add_space(8.0);
     ui.label(
         egui::RichText::new(format!("{} palette(s)", state.palettes.len()))
-            .color(theme::TEXT_SECONDARY)
+            .color(crate::secondary(ui))
             .small(),
     );
 }

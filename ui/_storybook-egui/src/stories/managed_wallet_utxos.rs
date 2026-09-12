@@ -165,7 +165,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ManagedWalletUtxosStoryState) {
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
+                crate::highlight(ui),
             ))
             .show(ui, |ui| {
                 ManagedWalletUtxos::new(&utxos)

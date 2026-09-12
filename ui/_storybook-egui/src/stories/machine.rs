@@ -75,9 +75,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut MachineState) {
 
     let (label, color) = match state.save.get() {
         DemoSave::Clean => ("Clean".to_string(), muted(ui)),
-        DemoSave::Dirty => ("Dirty — unsaved edits".to_string(), theme::ACCENT_YELLOW),
-        DemoSave::Saving { op } => (format!("Saving op {op}…"), theme::ACCENT_CYAN),
-        DemoSave::Saved => ("Saved ✓ (auto-reverts)".to_string(), theme::SUCCESS),
+        DemoSave::Dirty => ("Dirty — unsaved edits".to_string(), crate::tok(ui, egui_widgets::theme::Token::AccentYellow)),
+        DemoSave::Saving { op } => (format!("Saving op {op}…"), crate::tok(ui, egui_widgets::theme::Token::AccentCyan)),
+        DemoSave::Saved => ("Saved ✓ (auto-reverts)".to_string(), crate::tok(ui, egui_widgets::theme::Token::Success)),
     };
     ui.label(egui::RichText::new(label).color(color).strong());
     ui.label(
@@ -86,7 +86,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut MachineState) {
             state.save.frames_in_state(),
             state.save.entered()
         ))
-        .color(theme::TEXT_SECONDARY)
+        .color(crate::secondary(ui))
         .small(),
     );
 

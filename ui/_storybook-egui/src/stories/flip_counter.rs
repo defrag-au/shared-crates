@@ -15,13 +15,17 @@ pub struct FlipCounterState {
 
 impl Default for FlipCounterState {
     fn default() -> Self {
+        // `text_color` takes an `Ink`, so a `Default` impl with no `Ui` can
+        // still name a token — which is the whole reason the setters stopped
+        // taking a bare `Color32`. Before, this had to bake a literal.
+        use egui_widgets::theme::Token;
         let mut counter = egui_widgets::FlipCounter::new(6)
-            .text_color(egui_widgets::theme::TEXT_PRIMARY)
+            .text_color(Token::TextPrimary)
             .card_height(60.0);
         counter.set_value("12345");
 
         let mut time_counter = egui_widgets::FlipCounter::new(8)
-            .text_color(egui_widgets::theme::ACCENT_CYAN)
+            .text_color(Token::AccentCyan)
             .card_height(50.0);
         time_counter.set_value("00:00:00");
 

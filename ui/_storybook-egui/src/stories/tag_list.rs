@@ -57,7 +57,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TagListState) {
     ui.add_space(8.0);
     ui.label(
         egui::RichText::new(format!("{} tag(s)", state.tags.len()))
-            .color(theme::TEXT_SECONDARY)
+            .color(crate::secondary(ui))
             .small(),
     );
 }

@@ -43,7 +43,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut BulletBarState) {
     BulletBar::new(state.value, state.target)
         .label("Coverage")
         .show_percent(true)
-        .good_within(theme::SUCCESS, 0.02)
+        .good_within(crate::tok(ui, egui_widgets::theme::Token::Success), 0.02)
         .show(ui);
     ui.add_space(20.0);
 
@@ -63,7 +63,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut BulletBarState) {
         BulletBar::new(actual, target)
             .label(label)
             .show_percent(true)
-            .good_within(theme::SUCCESS, 0.02)
+            .good_within(crate::tok(ui, egui_widgets::theme::Token::Success), 0.02)
             .height(12.0)
             .show(ui);
         ui.add_space(8.0);
@@ -103,7 +103,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut BulletBarState) {
             .label(label)
             .detail(detail)
             .show_percent(true)
-            .good_within(theme::SUCCESS, 0.02)
+            .good_within(crate::tok(ui, egui_widgets::theme::Token::Success), 0.02)
             .height(12.0)
             .show(ui);
         ui.add_space(8.0);

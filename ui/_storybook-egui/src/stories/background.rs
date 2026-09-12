@@ -70,10 +70,10 @@ pub fn show(ui: &mut egui::Ui) {
                     Vec::new()
                 };
                 let plan = bg.plan(t, &jobs);
-                ui.label(RichText::new(format!("{t:.1}s")).color(theme::TEXT_SECONDARY));
+                ui.label(RichText::new(format!("{t:.1}s")).color(crate::secondary(ui)));
                 ui.label(
                     RichText::new(if running { note } else { "—" })
-                        .color(theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .small(),
                 );
                 ui.label(mark(ui, !plan.show.is_empty()));
@@ -83,7 +83,7 @@ pub fn show(ui: &mut egui::Ui) {
                         Some(w) => format!("{w:.2}s"),
                         None => "—".into(),
                     })
-                    .color(theme::TEXT_SECONDARY)
+                    .color(crate::secondary(ui))
                     .small(),
                 );
                 ui.end_row();

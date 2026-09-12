@@ -97,7 +97,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ProgressBarState) {
     egui_widgets::ProgressBar::countdown(state.countdown_elapsed, state.countdown_total)
         .label("speed_boost")
         .detail(format!("{remaining_text} remaining"))
-        .fill_color(egui_widgets::theme::WARNING)
+        .fill_color(crate::tok(ui, egui_widgets::theme::Token::Warning))
         .height(14.0)
         .show(ui);
 
@@ -109,7 +109,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ProgressBarState) {
 
     egui_widgets::ProgressBar::new(0.85)
         .label("Health")
-        .fill_color(egui_widgets::theme::SUCCESS)
+        .fill_color(crate::tok(ui, egui_widgets::theme::Token::Success))
         .height(12.0)
         .show(ui);
     ui.add_space(4.0);
@@ -123,7 +123,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ProgressBarState) {
 
     egui_widgets::ProgressBar::new(0.12)
         .label("Danger")
-        .fill_color(egui_widgets::theme::ERROR)
+        .fill_color(crate::tok(ui, egui_widgets::theme::Token::Error))
         .height(12.0)
         .show(ui);
 

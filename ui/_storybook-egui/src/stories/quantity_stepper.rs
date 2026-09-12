@@ -55,7 +55,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut QuantityStepperStoryState) {
     let r = QuantityStepper::new(state.big)
         .range(1, 100)
         .button_size(48.0)
-        .accent(egui_widgets::theme::ACCENT_BLUE)
+        .accent(crate::tok(ui, egui_widgets::theme::Token::AccentBlue))
         .show(ui);
     if r.changed {
         state.big = r.value;

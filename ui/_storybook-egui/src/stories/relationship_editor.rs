@@ -67,7 +67,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut RelationshipEditorState) {
     ui.add_space(8.0);
     ui.label(
         egui::RichText::new(format!("{} edge(s)", state.edges.len()))
-            .color(theme::TEXT_SECONDARY)
+            .color(crate::secondary(ui))
             .small(),
     );
 }

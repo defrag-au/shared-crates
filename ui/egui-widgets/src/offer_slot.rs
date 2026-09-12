@@ -28,8 +28,12 @@ pub struct OfferSlotData {
     pub rarity_rank: Option<u32>,
     /// Total ranked assets in collection (for rarity coloring).
     pub total_ranked: Option<u32>,
-    /// Accent color for the card border.
-    pub accent: Color32,
+    // Was `pub accent: Color32`, "accent color for the card border". Every
+    // caller filled it in and nothing ever read it — the border is drawn from
+    // the rarity rank and the theme. Found while migrating the last colour
+    // literals: it was the only field that still needed a `Color32` from a
+    // caller with no `Ui`, which is exactly the shape a dead field takes when
+    // it outlives the code that used it.
     /// Quantity (1 for NFTs, >1 for FTs). Badge shown when > 1.
     pub quantity: u64,
     /// Whether this is a fungible token (enables quantity editing).

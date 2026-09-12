@@ -88,7 +88,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut State) {
             ui.label(
                 egui::RichText::new(*addr)
                     .monospace()
-                    .color(egui_widgets::theme::TEXT_SECONDARY)
+                    .color(crate::secondary(ui))
                     .size(10.0),
             );
             ui.add_space(4.0);

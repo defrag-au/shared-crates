@@ -103,7 +103,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
+            crate::highlight(ui),
         ))
         .show(ui, |ui| {
             ui.label(
@@ -132,7 +132,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
+            crate::highlight(ui),
         ))
         .show(ui, |ui| {
             ui.set_max_width(300.0);
@@ -171,7 +171,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
     } else {
         ui.label(
             egui::RichText::new(format!("Last action: {}", state.last_action))
-                .color(egui_widgets::theme::ACCENT_CYAN)
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
                 .size(11.0),
         );
     }

@@ -59,7 +59,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut NamedGroupListState) {
     ui.add_space(8.0);
     ui.label(
         egui::RichText::new(format!("{} group(s)", state.groups.len()))
-            .color(theme::TEXT_SECONDARY)
+            .color(crate::secondary(ui))
             .small(),
     );
 }

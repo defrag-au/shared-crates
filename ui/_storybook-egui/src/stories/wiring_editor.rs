@@ -175,7 +175,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WiringEditorStory) {
     ui.horizontal(|ui| {
         ui.colored_label(
             if state.dirty {
-                theme::ACCENT_YELLOW
+                crate::tok(ui, egui_widgets::theme::Token::AccentYellow)
             } else {
                 muted(ui)
             },

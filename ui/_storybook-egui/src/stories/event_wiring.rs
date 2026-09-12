@@ -159,7 +159,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut EventWiringState) {
     if !state.last.is_empty() {
         ui.label(
             egui::RichText::new(&state.last)
-                .color(theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .small(),
         );
     }

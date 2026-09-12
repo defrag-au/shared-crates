@@ -47,7 +47,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new("Presets:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         if ui.selectable_label(false, "Sell NFT for 5 ADA").clicked() {
@@ -86,14 +86,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new("ADA sending:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         ui.add(egui::DragValue::new(&mut state.ada_sending).range(0..=100));
         ui.add_space(12.0);
         ui.label(
             egui::RichText::new("ADA receiving:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         ui.add(egui::DragValue::new(&mut state.ada_receiving).range(0..=100));
@@ -101,21 +101,21 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new("NFTs offered:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         ui.add(egui::DragValue::new(&mut state.nft_count).range(0..=10));
         ui.add_space(12.0);
         ui.label(
             egui::RichText::new("NFTs receiving:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         ui.add(egui::DragValue::new(&mut state.inbound_nft_count).range(0..=10));
         ui.add_space(12.0);
         ui.label(
             egui::RichText::new("Platform fee (ADA):")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         ui.add(egui::DragValue::new(&mut state.platform_fee_ada).range(0..=10));
@@ -192,7 +192,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
+                crate::highlight(ui),
             ))
             .show(ui, |ui| {
                 tx_estimate::show(ui, &data, &config);

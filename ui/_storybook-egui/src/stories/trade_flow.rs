@@ -51,7 +51,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeFlowStoryState) {
     ui.horizontal_wrapped(|ui| {
         ui.label(
             egui::RichText::new("Presets:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         if ui
@@ -103,7 +103,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeFlowStoryState) {
     let label = |ui: &mut egui::Ui, text: &str| {
         ui.label(
             egui::RichText::new(text)
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
     };
@@ -173,7 +173,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeFlowStoryState) {
             .inner_margin(14.0)
             .stroke(egui::Stroke::new(
                 1.0_f32,
-                egui_widgets::theme::BG_HIGHLIGHT,
+                crate::highlight(ui),
             ))
             .show(ui, |ui| {
                 trade_flow::show(ui, &data, &config);
