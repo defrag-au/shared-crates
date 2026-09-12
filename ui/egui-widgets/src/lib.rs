@@ -55,6 +55,7 @@ pub mod icons;
 pub mod id_pill;
 pub mod image_loader;
 pub mod image_stack;
+pub mod interaction_tip;
 pub mod knob;
 pub mod leaderboard;
 #[cfg(feature = "cardano")]

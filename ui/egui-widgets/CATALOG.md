@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-139 widgets.
+140 widgets.
 
 | module | what it is |
 |---|---|
@@ -65,6 +65,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `id_pill` | `IdPill` — small inline display of a long identifier with a copy affordance |
 | `image_stack` | `ImageStack` — several images as a fanned pile of mounted prints, so a lot of many reads as a lot of many at a glance |
 | `image_text_editor` | Image text overlay editor — place, style, and drag text on top of an image |
+| `interaction_tip` | `InteractionTip` — a hint about a gesture, shown where the gesture is not |
 | `knob` | `Knob` — a rotary control, as a prototype to riff on |
 | `leaderboard` | `Leaderboard` — ranked standings: podium-tinted ranks, an optional prize thumbnail, one headline metric, supporting stats, and a share bar |
 | `leaderboard_table` | `LeaderboardTable` — a dense, virtual-scrolled ranked table |

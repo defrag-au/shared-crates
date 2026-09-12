@@ -14,6 +14,9 @@ use egui_widgets::knob::{Knob, KnobFace, KnobSize, KnobTouch, Readout};
 use egui_widgets::slider_group::{Fader, SliderGroup};
 
 pub struct KnobState {
+    /// Hints shown at the top of the screen while a gesture is live. A tooltip
+    /// cannot do this job on touch — see `egui_widgets::interaction_tip`.
+    pub tips: egui_widgets::interaction_tip::TipQueue,
     // The bench controls.
     pub diameter: f32,
     pub travel: f32,
@@ -33,6 +36,7 @@ pub struct KnobState {
 impl Default for KnobState {
     fn default() -> Self {
         Self {
+            tips: Default::default(),
             diameter: 44.0,
             travel: 160.0,
             readout_index: 0,
@@ -59,6 +63,10 @@ const TOUCHES: [(KnobTouch, &str); 2] = [
 ];
 
 pub fn show(ui: &mut egui::Ui, state: &mut KnobState) {
+    // Drawn against the CONTEXT, so the strip anchors to the top of the screen
+    // rather than to wherever in the scrolled story this call happens to be.
+    egui_widgets::interaction_tip::show(ui.ctx(), &mut state.tips);
+
     crate::heading(ui, "Knob — prototype");
     crate::caption(
         ui,
@@ -146,7 +154,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut KnobState) {
         ui.spacing_mut().item_spacing.x = 24.0;
         for (i, face) in KnobFace::ALL.iter().enumerate() {
             ui.vertical(|ui| {
-                Knob::new(&mut state.per_face[i], 0.0..=1.0)
+                let r = Knob::new(&mut state.per_face[i], 0.0..=1.0)
                     .face(*face)
                     .size(KnobSize::Fixed(state.diameter))
                     .travel(state.travel)
@@ -156,6 +164,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut KnobState) {
                     .label(face.label())
                     .default_value(0.5)
                     .show(ui);
+                // One key for all four, not one per knob: moving between them
+                // should not flicker the strip.
+                if r.engaged {
+                    state
+                        .tips
+                        .hint("knob-drag", "Drag up and down · pull aside for fine");
+                }
             });
         }
     });

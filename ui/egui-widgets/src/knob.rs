@@ -358,12 +358,20 @@ impl<'a> Knob<'a> {
         };
 
         // ── Engaging ────────────────────────────────────────────────────────
-        let hold_progress = match gate {
+        let hold = match gate {
             KnobTouch::HoldToEngage => {
                 crate::touch::advance(ui, id, resp.is_pointer_button_down_on(), engaged)
             }
-            KnobTouch::Direct => 0.0,
+            KnobTouch::Direct => crate::touch::Hold::default(),
         };
+        if hold.just_engaged {
+            // Sensing drag from the next pass is NOT enough — egui fixed the
+            // drag candidate at press time, when this knob was deliberately not
+            // sensing drag, so the scrolling container behind it owns the
+            // gesture until it is taken back explicitly.
+            crate::touch::take_the_drag(ui.ctx(), resp.id);
+        }
+        let hold_progress = hold.progress;
 
         // ── Interaction ─────────────────────────────────────────────────────
         // Fine adjustment, from whichever the device offers. Shift has no finger
@@ -462,7 +470,18 @@ impl<'a> Knob<'a> {
             }
         }
 
-        if let Some(l) = label {
+        // NO TOOLTIP ON TOUCH. egui raises a hover tooltip on a long touch, and
+        // the long touch is this widget's engage gesture — so the two fire
+        // together and the tooltip's `Area` lands under the finger and eats the
+        // drag it was supposed to explain. A tip anchored to the control it
+        // describes cannot work when the gesture that summons it is the gesture
+        // being described; a touch hint has to live somewhere the finger is not,
+        // which is what [`crate::interaction_tip`] is for. Hosts that want one
+        // read `KnobResponse::engaged` and push a hint themselves — the widget
+        // does not reach for a queue it was not given.
+        if let Some(l) = label
+            && !on_touch
+        {
             resp.on_hover_text(format!(
                 "{l} — drag up/down, shift for fine, double-click to reset"
             ));

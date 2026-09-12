@@ -21,6 +21,8 @@ mod app {
     use wasm_bindgen::prelude::*;
 
     use super::stories;
+    use egui_widgets::drawer::{Drawer, DrawerSide};
+    use egui_widgets::viewport::{Breakpoint, PanelMode};
 
     // ========================================================================
     // Story Registry
@@ -1256,6 +1258,9 @@ mod app {
         current_story: Story,
         /// `?nav=0` — see [`nav_hidden`].
         nav_hidden: bool,
+        /// Whether the Compact-layout nav drawer is open. Only consulted when
+        /// the chrome is narrow enough to have one.
+        nav_open: bool,
         /// Theme / density / motion / breakpoint under review — see
         /// [`ReviewControls`].
         review: ReviewControls,
@@ -1387,6 +1392,7 @@ mod app {
                 // Read ONCE at startup: with the nav gone there is no way to
                 // change stories, so this is a per-load mode, not a toggle.
                 nav_hidden: nav_hidden(),
+                nav_open: false,
                 review: review_from_location(),
                 distribution_chart: egui_widgets::DistributionChart::new(),
                 marquee: egui_widgets::Marquee::default(),
@@ -1567,7 +1573,24 @@ mod app {
             // frame and read as far cheaper than the app really is.
             let _frame_scope = egui_widgets::perf_strip::FrameScope::begin();
             let ctx = ui.ctx().clone();
-            if !self.nav_hidden {
+
+            // THE CHROME'S OWN BREAKPOINT, measured — never `Breakpoint::from_ctx`,
+            // which honours the review controls' override. Those exist so a
+            // reader at a desk can ask "what does this story do at Compact";
+            // if the chrome read them too, choosing Compact would fold the nav
+            // away on a 27" monitor and there would be no way back to the
+            // control that did it.
+            let story_before = self.current_story;
+            // `content_rect`, not `screen_rect`: the latter includes the notch
+            // and the home indicator, which is exactly the difference that
+            // matters on the device this is for.
+            let chrome_bp = Breakpoint::from_width(ctx.content_rect().width());
+            let narrow = chrome_bp.panel_mode() == PanelMode::Drawer;
+            // The storybook has been shipping a layout engine it did not use on
+            // itself: 180pt of permanent sidebar is 46% of a phone.
+            egui_widgets::viewport::apply_touch_sizing(&ctx, chrome_bp);
+
+            if !self.nav_hidden && !narrow {
                 egui::Panel::left("stories")
                     .default_size(180.0)
                     .resizable(false)
@@ -1592,24 +1615,76 @@ mod app {
                 .show_inside(ui, |ui| {
                     // Chrome, deliberately NOT under the theme being reviewed —
                     // see `CHROME_*`.
-                    ui.heading(
-                        egui::RichText::new(self.current_story.label()).color(CHROME_TEXT_PRIMARY),
-                    );
-                    ui.label(
-                        egui::RichText::new(self.current_story.description())
-                            .color(CHROME_TEXT_MUTED),
-                    );
+                    ui.horizontal(|ui| {
+                        if !self.nav_hidden && narrow {
+                            // The nav has to be reachable, and a hamburger is
+                            // the one affordance every phone reader already
+                            // knows. `Drawer` is the crate's own answer for a
+                            // side panel at Compact, so the storybook uses it
+                            // rather than growing a second one.
+                            let open = ui
+                                .button(egui::RichText::new("☰").color(CHROME_ACCENT))
+                                .on_hover_text("Stories")
+                                .clicked();
+                            if open {
+                                self.nav_open = true;
+                            }
+                        }
+                        ui.heading(
+                            egui::RichText::new(self.current_story.label())
+                                .color(CHROME_TEXT_PRIMARY),
+                        );
+                    });
+                    // At Compact the description is several lines of chrome
+                    // above the thing being reviewed, on the screen with the
+                    // least room for it.
+                    if !narrow {
+                        ui.label(
+                            egui::RichText::new(self.current_story.description())
+                                .color(CHROME_TEXT_MUTED),
+                        );
+                    }
                     if !self.nav_hidden {
                         self.review.controls(ui);
                     }
                     ui.separator();
                     ui.add_space(8.0);
 
+                    // Drag-to-scroll stays ON. A phone has no other way to move
+                    // a long story, and the gesture conflict it creates with the
+                    // controls inside is now handled where it belongs — see
+                    // `egui_widgets::touch`, which makes a control transparent
+                    // until it is grabbed and then takes the drag explicitly.
+                    // Clearing `drag` here would fix the controls by breaking
+                    // the page.
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         let story = self.current_story;
                         let review = self.review.clone();
                         review.draw_story(story, self, ui);
                     });
+
+                    if narrow {
+                        let mut open = self.nav_open;
+                        Drawer::new("storybook-nav")
+                            .side(DrawerSide::Left)
+                            .width(260.0)
+                            .show(ui, &mut open, |ui| {
+                                ui.heading(
+                                    egui::RichText::new("egui Widgets").color(CHROME_ACCENT),
+                                );
+                                ui.separator();
+                                egui::ScrollArea::vertical().show(ui, |ui| {
+                                    self.draw_sidebar(ui);
+                                });
+                            });
+                        // Picking a story should close the drawer; `draw_sidebar`
+                        // does not know it is in one, so the change is detected
+                        // here instead of teaching it.
+                        if self.nav_open && self.current_story != story_before {
+                            open = false;
+                        }
+                        self.nav_open = open;
+                    }
                 });
         }
     }

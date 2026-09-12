@@ -28,6 +28,28 @@
 //!
 //! Either way the rule is the same, which is the point of this module: one
 //! vocabulary for "has the finger taken hold of this yet".
+//!
+//! ## Which controls should be gated — the rule, learned the hard way
+//!
+//! Not all of them, and the first version of this got it wrong by assuming the
+//! knob's answer generalised. It does not. **Gate a control when contact has no
+//! meaning; leave it alone when contact means something obvious.**
+//!
+//! | | [`crate::knob`] | [`crate::slider_group`] |
+//! |---|---|---|
+//! | model | relative — integrates drag | absolute — positions from x |
+//! | what a tap means | nothing | *put the value here* |
+//! | gesture axis | vertical, same as the page | horizontal, orthogonal to it |
+//! | default | [`Grab::HoldToEngage`] | [`Grab::Direct`] |
+//!
+//! A knob loses nothing by waiting: there is no position to tap, and its drag
+//! axis is the page's, so it is in direct competition. A rail loses its most
+//! natural interaction by waiting, and barely competes for the gesture in the
+//! first place — so gating it produces a slider that ignores you, which is a
+//! worse failure than the one being prevented.
+//!
+//! The tell is the interaction model, not the platform: ask what a single tap
+//! should do. If the answer is "nothing", a gate is free.
 
 use egui::{Id, Ui};
 
@@ -73,22 +95,32 @@ pub fn engaged(ui: &Ui, id: Id) -> bool {
     ui.data(|d| d.get_temp::<bool>(id)).unwrap_or(false)
 }
 
-/// Advance the gate, and report how far through the hold the finger is.
+/// What the gate did this pass.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Hold {
+    /// How far through the hold the finger is, `0.0..=1.0`. `0.0` means no hold
+    /// is in progress — nothing pressed, the finger wandered past
+    /// [`HOLD_SLOP`], or the control is already engaged.
+    pub progress: f32,
+    /// The hold completed on THIS pass. The moment to call
+    /// [`take_the_drag`] — see there for why it cannot wait.
+    pub just_engaged: bool,
+}
+
+/// Advance the gate.
 ///
 /// Call **after** the control has been laid out, passing whether the pointer is
-/// currently pressed on it. `0.0` means no hold is in progress — either nothing
-/// is pressed, the finger has wandered past [`HOLD_SLOP`], or the control is
-/// already engaged.
-pub fn advance(ui: &Ui, id: Id, down_on_target: bool, engaged_now: bool) -> f32 {
+/// currently pressed on it.
+pub fn advance(ui: &Ui, id: Id, down_on_target: bool, engaged_now: bool) -> Hold {
     if !down_on_target {
         // Released — the next gesture starts from scratch.
         if engaged_now {
             ui.data_mut(|d| d.insert_temp(id, false));
         }
-        return 0.0;
+        return Hold::default();
     }
     if engaged_now {
-        return 0.0;
+        return Hold::default();
     }
 
     let (held, wander) = ui.input(|i| {
@@ -101,15 +133,47 @@ pub fn advance(ui: &Ui, id: Id, down_on_target: bool, engaged_now: bool) -> f32 
         (held, wander)
     });
     if wander > HOLD_SLOP {
-        return 0.0;
+        return Hold::default();
     }
-    if held >= HOLD {
+    let done = held >= HOLD;
+    if done {
         ui.data_mut(|d| d.insert_temp(id, true));
     }
     // Nothing else is moving during a still hold, so without this the pass that
     // would complete it never runs.
     ui.ctx().request_repaint();
-    (held / HOLD).clamp(0.0, 1.0) as f32
+    Hold {
+        progress: (held / HOLD).clamp(0.0, 1.0) as f32,
+        just_engaged: done,
+    }
+}
+
+/// Take the drag away from whatever is currently holding it.
+///
+/// # Why changing the sense is not enough
+///
+/// This is the correction to the first version of this gate, and the device
+/// found it. egui picks the drag candidate **once, at press time**, and never
+/// revisits it:
+///
+/// ```ignore
+/// PointerEvent::Pressed { .. } => {
+///     if interaction.potential_drag_id.is_none() {
+///         interaction.potential_drag_id = hits.drag.map(|w| w.id);
+///     }
+/// }
+/// ```
+///
+/// The candidate is cleared only on release. So at the moment the finger lands,
+/// the ungrabbed control is deliberately not sensing drag — and the `ScrollArea`
+/// behind it becomes the candidate. Completing the hold afterwards makes the
+/// control drag-sensitive, but the `is_none()` guard means egui will not look
+/// again, and every subsequent movement scrolls the page.
+///
+/// Transparency is therefore only half the mechanism: the control has to be
+/// transparent *before* the gesture is claimed, and then explicitly claim it.
+pub fn take_the_drag(ctx: &egui::Context, id: Id) {
+    ctx.set_dragged_id(id);
 }
 
 /// Whether this context is being driven by a touch screen.
@@ -149,6 +213,37 @@ mod tests {
         // compile-time failure beats a test-run one.
         const { assert!(HOLD >= 0.1 && HOLD <= 0.25) };
         const { assert!(HOLD_SLOP > 0.0) };
+    }
+
+    #[test]
+    fn taking_the_drag_moves_it_off_whatever_held_it() {
+        // The device found this: sensing drag from the next pass does nothing,
+        // because egui picks the drag candidate at PRESS time and the
+        // `is_none()` guard stops it ever looking again. So engaging has to
+        // claim the gesture explicitly, and claiming it has to dislodge the
+        // scrolling container that legitimately owns it.
+        let ctx = egui::Context::default();
+        let scroller = Id::new("a-scroll-area");
+        let control = Id::new("a-knob");
+
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(400.0, 400.0),
+            )),
+            ..Default::default()
+        });
+        ctx.set_dragged_id(scroller);
+        assert_eq!(ctx.dragged_id(), Some(scroller), "precondition");
+
+        take_the_drag(&ctx, control);
+        assert_eq!(ctx.dragged_id(), Some(control), "the control now holds it");
+        assert_eq!(
+            ctx.drag_stopped_id(),
+            Some(scroller),
+            "and the previous holder is told, so it stops scrolling"
+        );
+        let _ = ctx.end_pass();
     }
 
     #[test]

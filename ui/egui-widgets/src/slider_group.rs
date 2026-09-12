@@ -335,15 +335,29 @@ impl<'a> SliderGroup<'a> {
             rail_width: RailWidth::Fill,
             budget: None,
             rail: None,
-            touch: Grab::default(),
+            // NOT `Grab::default()`, which is `HoldToEngage` and right for a
+            // knob. A rail is a different kind of control — see `touch`.
+            touch: Grab::Direct,
         }
     }
 
     /// How the rails behave under a finger. See [`Grab`].
     ///
-    /// Defaults to [`Grab::HoldToEngage`]. Reach for [`Grab::Direct`] only when
-    /// the bank is somewhere a vertical drag has nothing else to do — a fixed
-    /// panel, or a pane whose `ScrollArea` has `drag` cleared.
+    /// **Defaults to [`Grab::Direct`]** — the opposite of
+    /// [`Knob`](crate::knob::Knob), and the difference is the point.
+    ///
+    /// A knob is a *relative* control: contact means nothing, so a gate costs
+    /// nothing and buys back the page. A rail is *absolute* and horizontal, so
+    /// two things follow. Tapping one has an obvious, correct meaning — put the
+    /// value there — and a gate turns that into a control that ignores you.
+    /// And its gesture is left-to-right while a page scrolls up-and-down, so the
+    /// two barely compete in the first place.
+    ///
+    /// Reach for [`Grab::HoldToEngage`] when a dense bank of rails sits in a
+    /// scrolling pane and readers report they cannot get past it. The trade is
+    /// real in both directions: gated, a rail stops answering a tap; ungated, a
+    /// vertical gesture that begins on a rail is consumed rather than scrolling.
+    /// Rails are thin, so the second is a narrower band than it sounds.
     pub fn touch(mut self, grab: Grab) -> Self {
         self.touch = grab;
         self
@@ -562,13 +576,19 @@ impl<'a> SliderGroup<'a> {
                         grab_id.with("shield"),
                         egui::Sense::click(),
                     );
-                    let progress = crate::touch::advance(
+                    let hold = crate::touch::advance(
                         ui,
                         grab_id,
                         shield.is_pointer_button_down_on(),
                         engaged,
                     );
-                    paint_hold(ui, slider_resp.rect, progress, &theme);
+                    if hold.just_engaged {
+                        // Re-enabling the slider next pass is not enough: egui
+                        // fixed the drag candidate at press time, when the rail
+                        // was disabled and therefore invisible to the hit test.
+                        crate::touch::take_the_drag(ui.ctx(), slider_resp.id);
+                    }
+                    paint_hold(ui, slider_resp.rect, hold.progress, &theme);
                 }
 
                 let now = (row.get_set)(None);
@@ -798,19 +818,31 @@ mod tests {
     }
 
     #[test]
-    fn a_finger_landing_on_a_rail_does_not_write_a_value() {
-        // THE defect the shield exists for. `egui::Slider` positions from the
-        // raw pointer x and `interact_pointer_pos` is populated by
-        // `is_pointer_button_down_on` alone — so without the shield, contact
-        // commits. On a phone that means every mis-tap while scrolling
-        // overwrites a value, in editors that have no undo.
+    fn a_tap_on_a_rail_puts_the_value_there() {
+        // THE DEFAULT, and the device corrected me into it. I had gated this,
+        // reasoning from the knob that contact-commits is a defect — but a knob
+        // is relative and has no position to tap, while a rail is absolute and
+        // horizontal, so "put it there" is the obvious meaning of touching one.
+        // A gate makes a slider that ignores you.
         //
-        // Land far to the left of the rail's midpoint: an unshielded slider
-        // would snap the value towards 0.
+        // The aim is a fifth along the rail, so landing anywhere near it proves
+        // the tap positioned rather than merely changed something.
+        let landed = touch_a_rail(finger_down, SliderGroup::new().touch);
+        assert!(
+            landed < 0.35,
+            "a tap a fifth along should land near there; got {landed}"
+        );
+    }
+
+    #[test]
+    fn the_gate_is_available_for_a_bank_nobody_can_scroll_past() {
+        // Not the default any more, but still the answer when a dense bank of
+        // rails traps a reader in a scrolling pane. Kept honest: the cost of
+        // choosing it is exactly that the tap above stops working.
         let landed = touch_a_rail(finger_down, Grab::HoldToEngage);
         assert_eq!(
             landed, 0.5,
-            "contact alone must not move the value; got {landed}"
+            "gated, contact alone must not move the value; got {landed}"
         );
     }
 
@@ -830,18 +862,6 @@ mod tests {
             landed, 0.5,
             "expected the known first-touch hole; if this now holds, the gate \
              has been made frame-exact and this test is obsolete"
-        );
-    }
-
-    #[test]
-    fn direct_is_still_available_for_a_bank_that_owns_its_gestures() {
-        // The escape hatch has to actually escape, or callers in a fixed panel
-        // are paying for a gate that buys them nothing. Same gesture, opted out
-        // of the shield: the slider gets it and behaves as egui always has.
-        let landed = touch_a_rail(finger_down, Grab::Direct);
-        assert_ne!(
-            landed, 0.5,
-            "Grab::Direct must leave the slider its normal click-to-position"
         );
     }
 

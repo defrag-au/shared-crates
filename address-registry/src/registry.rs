@@ -1073,6 +1073,37 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             ),
         },
     ),
+    // The PREPROD burn sink — ours, and unspendable by construction rather
+    // than by inference.
+    //
+    // $burnsnek is mainnet-only, so testing a burn flow needs a sink on
+    // preprod. Rather than hunt for one, we publish one: a NATIVE script
+    // whose timelocks contradict each other. Note the contrast with the
+    // entry above — that one is "strong inference, not yet proof" pending a
+    // UPLC decompile; this one is nine bytes anybody can read.
+    (
+        "76e1a34faa7042df0fc54a45c53939c3a88ea00348b9327fa8520522",
+        CredentialEntry {
+            category: AC::Script(SC::Burn {
+                evidence: "PREPROD ONLY. Native script, 9 bytes, published by us: \
+                           `820182820402820501` = all [ invalid_before 2, invalid_hereafter 1 ]. \
+                           Per the ledger CDDL, tag 4 is `invalid_before` (valid FROM that slot) \
+                           and tag 5 is `invalid_hereafter` (valid UNTIL that slot), so this \
+                           demands a transaction whose validity interval both starts at or after \
+                           slot 2 AND ends at or before slot 1. No interval satisfies both, at any \
+                           point in the chain's life, so nothing sent here is ever spendable. \
+                           Unlike the mainnet sink above this is PROOF rather than inference: the \
+                           whole script is quoted here, and `preprod_burn_sink_is_unsatisfiable` \
+                           re-derives the credential and the address from those bytes, so a typo \
+                           in either fails the build rather than silently naming a spendable \
+                           address. Address: \
+                           addr_test1wpmwrg604fcy9hc0c49yt3fe88p63r4qqdytjvnl4pfq2gse5r9f5",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr_test1wpmwrg604fcy9hc0c49yt3fe88p63r4qqdytjvnl4pfq2gse5r9f5",
+            ),
+        },
+    ),
 ];
 
 /// What contract owns this payment credential, if any.
@@ -2771,5 +2802,78 @@ mod tests {
         // not a payment address at all
         assert!(!payment_credential_is_script("stake1uxmaqke42j9q6v83lv"));
         assert!(!payment_credential_is_script(""));
+    }
+
+    /// The preprod burn sink is derived here, not pasted.
+    ///
+    /// A burn sink is the one address in this file where being wrong is
+    /// unrecoverable: tokens sent to a SPENDABLE address are not burned,
+    /// they are someone's. So the script bytes are the source of truth and
+    /// both the credential and the address are recomputed from them — a
+    /// typo in either constant fails this test rather than quietly naming
+    /// an address somebody can sweep.
+    #[test]
+    fn preprod_burn_sink_is_unsatisfiable_and_its_address_follows_from_the_script() {
+        use pallas_addresses::{
+            Address, Network, ShelleyAddress, ShelleyDelegationPart, ShelleyPaymentPart,
+        };
+
+        // all [ invalid_before 2, invalid_hereafter 1 ]
+        //   82 01            array(2): script_all
+        //     82             array(2) of sub-scripts
+        //       82 04 02       [4, 2]  invalid_before    — valid FROM slot 2
+        //       82 05 01       [5, 1]  invalid_hereafter — valid UNTIL slot 1
+        //
+        // Spending needs a validity interval that starts at or after 2 and
+        // ends at or before 1. There is no such interval.
+        const SCRIPT_CBOR: [u8; 9] = [0x82, 0x01, 0x82, 0x82, 0x04, 0x02, 0x82, 0x05, 0x01];
+
+        // Script hash = blake2b-224 over (language tag || script bytes),
+        // where the tag for a NATIVE script is 0x00.
+        let mut preimage = vec![0x00u8];
+        preimage.extend_from_slice(&SCRIPT_CBOR);
+        let hash = pallas_crypto::hash::Hasher::<224>::hash(&preimage);
+        let credential = hex::encode(hash);
+
+        assert_eq!(
+            credential, "76e1a34faa7042df0fc54a45c53939c3a88ea00348b9327fa8520522",
+            "the registry credential no longer matches the script it claims to be"
+        );
+
+        // …and the registry really does know it as a burn sink.
+        let entry = lookup_payment_credential(&credential)
+            .expect("the preprod sink must be in the credential registry");
+        assert!(
+            matches!(entry.category, AC::Script(SC::Burn { .. })),
+            "the preprod sink must be categorised as a Burn, not merely as a script"
+        );
+
+        // Enterprise script address on a TESTNET: no stake part, so nothing
+        // about it can be delegated or re-keyed either.
+        let address = ShelleyAddress::new(
+            Network::Testnet,
+            ShelleyPaymentPart::Script(hash),
+            ShelleyDelegationPart::Null,
+        );
+        let bech32 = address.to_bech32().expect("bech32");
+        assert_eq!(
+            bech32, "addr_test1wpmwrg604fcy9hc0c49yt3fe88p63r4qqdytjvnl4pfq2gse5r9f5",
+            "the registry address no longer matches the script it claims to be"
+        );
+
+        // And the address parses back to the same credential — the guard the
+        // dev-dependency comment at the top of this crate exists for.
+        let parsed = Address::from_bech32(&bech32).expect("parses");
+        let Address::Shelley(shelley) = parsed else {
+            panic!("a burn sink must be a Shelley address");
+        };
+        assert!(
+            matches!(shelley.payment(), ShelleyPaymentPart::Script(_)),
+            "a burn sink must have a SCRIPT payment credential — a key credential is spendable"
+        );
+        assert!(
+            matches!(shelley.delegation(), ShelleyDelegationPart::Null),
+            "a burn sink must carry no stake part"
+        );
     }
 }
