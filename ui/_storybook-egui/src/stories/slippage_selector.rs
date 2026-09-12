@@ -1,6 +1,7 @@
 //! Storybook demo for the SlippageSelector widget.
 
 use egui_widgets::slippage_selector::{self, SlippageSelectorConfig, SlippageSelectorState};
+use egui_widgets::theme::Token;
 
 use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
 
@@ -99,9 +100,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut SlippageSelectorStoryState) {
                             label: "5%".into(),
                         },
                     ],
-                    // `Some` is the point of this story: it demonstrates the
-                    // caller OVERRIDING the theme's accent.
-                    accent: Some(egui_widgets::theme::ThemeExt::tokens(ui).color.accent_cyan),
+                    // Overriding the accent is the point of this story. Naming
+                    // the token is enough now; this used to need a `ui` in hand
+                    // just to read the value back out of the theme.
+                    accent: Token::AccentCyan.into(),
                     ..Default::default()
                 };
                 let action = slippage_selector::show(ui, &mut state.custom_presets_state, &config);

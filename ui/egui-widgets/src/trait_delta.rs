@@ -6,7 +6,7 @@
 
 use egui::{Color32, RichText, Ui, Vec2};
 
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Ink, Radius, Space, SpaceExt, ThemeExt, Token};
 
 // ============================================================================
 // Types
@@ -35,11 +35,9 @@ pub struct TraitDeltaConfig {
     /// Font size for trait chips.
     pub font_size: f32,
     /// Color for gain chips.
-    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask, and
-    /// baking a colour here would put this widget beyond a theme's reach.
-    pub gain_color: Option<Color32>,
+    pub gain_color: Ink,
     /// Color for loss chips.
-    pub loss_color: Option<Color32>,
+    pub loss_color: Ink,
     /// Gutter between chips. `None` takes the theme's [`Space::Sm`] — same
     /// reasoning as the colours above.
     pub chip_spacing: Option<Space>,
@@ -49,8 +47,8 @@ impl Default for TraitDeltaConfig {
     fn default() -> Self {
         Self {
             font_size: 10.0,
-            gain_color: None,
-            loss_color: None,
+            gain_color: Ink::Token(Token::AccentGreen),
+            loss_color: Ink::Token(Token::AccentRed),
             chip_spacing: None,
         }
     }
@@ -67,7 +65,7 @@ impl Default for TraitDeltaConfig {
 /// informational text — just the data.
 pub fn show(ui: &mut Ui, gains: &[TraitItem], losses: &[TraitItem], config: &TraitDeltaConfig) {
     if !gains.is_empty() {
-        let gain = config.gain_color.unwrap_or(ui.tokens().color.accent_green);
+        let gain = config.gain_color.of(ui);
         draw_chips(ui, "+", gains, gain, config);
     }
 
@@ -76,7 +74,7 @@ pub fn show(ui: &mut Ui, gains: &[TraitItem], losses: &[TraitItem], config: &Tra
     }
 
     if !losses.is_empty() {
-        let loss = config.loss_color.unwrap_or(ui.tokens().color.accent_red);
+        let loss = config.loss_color.of(ui);
         draw_chips(ui, "-", losses, loss, config);
     }
 }

@@ -56,7 +56,7 @@ use egui::{Align2, Color32, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, p
 
 use crate::motion::{Easing, tween, tween_bool, tween_from};
 use crate::selection::Selection;
-use crate::theme::{Radius, TextSize, ThemeExt};
+use crate::theme::{Ink, Radius, Series, TextSize, ThemeExt, Token};
 use crate::time_spine::SpineState;
 
 /// Whether the holder has the asset IN HAND after a move, or somebody else is
@@ -178,8 +178,8 @@ pub struct HolderField<'a> {
     spine: &'a SpineState,
     selection: &'a mut Selection,
     flight_secs: f32,
-    dot_color: Option<Color32>,
-    escrow_color: Option<Color32>,
+    dot_color: Ink,
+    escrow_color: Ink,
     height: f32,
     label: Option<&'a dyn Fn(&str) -> String>,
 }
@@ -199,8 +199,10 @@ impl<'a> HolderField<'a> {
             // [`BATCH_SPREAD`] of this, so each individual dot flies for
             // ~60% of it. At 0.7s a large sale still read as sudden.
             flight_secs: 1.2,
-            dot_color: None,
-            escrow_color: None,
+            // The resting dot means "value arrived here", which is the flow
+            // ramp's business, not the chrome palette's.
+            dot_color: Ink::Series(Series::Inbound),
+            escrow_color: Ink::Token(Token::AccentOrange),
             height: 320.0,
             label: None,
         }
@@ -211,8 +213,8 @@ impl<'a> HolderField<'a> {
         self
     }
 
-    pub fn dot_color(mut self, c: Color32) -> Self {
-        self.dot_color = Some(c);
+    pub fn dot_color(mut self, c: impl Into<Ink>) -> Self {
+        self.dot_color = c.into();
         self
     }
 
@@ -220,8 +222,8 @@ impl<'a> HolderField<'a> {
     /// `accent_orange` — far enough from the resting blue to
     /// read at 2px, and not the red that would make a routine listing look
     /// like a problem.
-    pub fn escrow_color(mut self, c: Color32) -> Self {
-        self.escrow_color = Some(c);
+    pub fn escrow_color(mut self, c: impl Into<Ink>) -> Self {
+        self.escrow_color = c.into();
         self
     }
 
@@ -250,9 +252,8 @@ impl<'a> HolderField<'a> {
         let now = ctx.input(|i| i.time);
         let muted = ui.visuals().weak_text_color();
         let ink = ui.visuals().text_color();
-        let accent = dot_color.unwrap_or_else(|| ui.tokens().series.inbound());
-        let escrowed =
-            escrow_color.unwrap_or_else(|| crate::theme::ThemeExt::tokens(ui).color.accent_orange);
+        let accent = dot_color.of(ui);
+        let escrowed = escrow_color.of(ui);
 
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());

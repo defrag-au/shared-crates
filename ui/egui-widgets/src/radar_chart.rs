@@ -3,9 +3,9 @@
 //! Draws concentric web rings, axis lines, and a smooth bezier curve through
 //! data points. Supports optional missing axes (skipped in the curve).
 
-use egui::{Align2, Color32, FontId, Pos2, Sense, Stroke, Vec2};
+use egui::{Align2, FontId, Pos2, Sense, Stroke, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Ink, ThemeExt, Token};
 
 // ============================================================================
 // Public types
@@ -22,15 +22,14 @@ pub struct RadarPoint {
 
 /// Configuration for the radar chart appearance.
 pub struct RadarChartConfig {
-    // `None` asks the theme at render time — a `Default` has no `Ui` to ask.
     /// Color of the data curve and dots.
-    pub curve_color: Option<Color32>,
+    pub curve_color: Ink,
     /// Color of the concentric web rings and axis lines.
-    pub web_color: Option<Color32>,
+    pub web_color: Ink,
     /// Color for axis labels that have data.
-    pub label_color: Option<Color32>,
+    pub label_color: Ink,
     /// Color for axis labels with no data.
-    pub label_muted_color: Option<Color32>,
+    pub label_muted_color: Ink,
     /// Curve line width.
     pub curve_width: f32,
     /// Dot radius on data points.
@@ -46,10 +45,10 @@ pub struct RadarChartConfig {
 impl Default for RadarChartConfig {
     fn default() -> Self {
         Self {
-            curve_color: None,
-            web_color: None,
-            label_color: None,
-            label_muted_color: None,
+            curve_color: Ink::Token(Token::AccentCyan),
+            web_color: Ink::Wash(Token::TextMuted, 40),
+            label_color: Ink::Token(Token::TextPrimary),
+            label_muted_color: Ink::Token(Token::TextMuted),
             curve_width: 1.5,
             dot_radius: 3.0,
             tension: 0.3,
@@ -73,14 +72,12 @@ pub fn show(ui: &mut egui::Ui, points: &[RadarPoint], size: f32, config: &RadarC
         return;
     }
 
-    // Resolved once: a `Default` config cannot know the theme.
-    let c = ui.tokens().color;
-    let curve_color = config.curve_color.unwrap_or(c.accent_cyan);
-    let web_color = config
-        .web_color
-        .unwrap_or_else(|| crate::theme::with_alpha(c.text_muted, 40));
-    let label_color = config.label_color.unwrap_or(c.text_primary);
-    let label_muted_color = config.label_muted_color.unwrap_or(c.text_muted);
+    // Resolved once: a `Default` config names its tokens, it cannot hold values.
+    let theme = ui.tokens();
+    let curve_color = config.curve_color.resolve(&theme);
+    let web_color = config.web_color.resolve(&theme);
+    let label_color = config.label_color.resolve(&theme);
+    let label_muted_color = config.label_muted_color.resolve(&theme);
 
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
     let painter = ui.painter_at(rect);

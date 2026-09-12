@@ -320,7 +320,7 @@ pub use swap_modal::{
     SwapProgress,
 };
 pub use tag_list::{TagList, TagListResponse};
-pub use theme::{FontStrategy, rarity_rank_color};
+pub use theme::{FontStrategy, Ink, Series, Token, rarity_rank_color};
 pub use time_spine::{
     CoverageLayer, DensityBin, DensityLayer, FlagsLayer, Hotkeys, MarkKind, MarksLayer, PlayRate,
     SpineCanvas, SpineLayer, SpineState, TimeScale, TimeSpine, TimeSpineResponse, TimeView,

@@ -13,31 +13,45 @@
 use egui::{Align, Color32, Layout, RichText};
 
 use crate::buttons::UiButtonExt;
-use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 // ============================================================================
 // Config
 // ============================================================================
 
-/// Per-surface colour overrides for the swap modal.
+/// Which colour each of the swap modal's surfaces takes.
 ///
-/// Every field is `None` by default and resolves against the active theme —
-/// see [`SwapModalTheme::resolved`]. The previous `Default` was seven literals
-/// in a **green nobody else uses** (`#44ff44` accent on a `#0f1914` ground):
-/// a modal that arrived in its own private palette regardless of the product it
-/// opened over, and which no theme switch could touch.
-#[derive(Clone, Copy, Debug, Default)]
+/// Every field defaults to a named theme token and resolves at render time —
+/// see [`SwapModalTheme::resolved`]. The `Default` before this was seven
+/// literals in a **green nobody else uses** (`#44ff44` accent on a `#0f1914`
+/// ground): a modal that arrived in its own private palette regardless of the
+/// product it opened over, and which no theme switch could touch.
+#[derive(Clone, Copy, Debug)]
 pub struct SwapModalTheme {
-    pub accent: Option<Color32>,
-    pub text_primary: Option<Color32>,
-    pub text_secondary: Option<Color32>,
-    pub text_muted: Option<Color32>,
-    pub error: Option<Color32>,
-    pub success: Option<Color32>,
-    pub bg: Option<Color32>,
+    pub accent: Ink,
+    pub text_primary: Ink,
+    pub text_secondary: Ink,
+    pub text_muted: Ink,
+    pub error: Ink,
+    pub success: Ink,
+    pub bg: Ink,
 }
 
-/// [`SwapModalTheme`] with every `None` filled in. Same field names, so a draw
+impl Default for SwapModalTheme {
+    fn default() -> Self {
+        Self {
+            accent: Ink::Token(Token::Accent),
+            text_primary: Ink::Token(Token::TextPrimary),
+            text_secondary: Ink::Token(Token::TextSecondary),
+            text_muted: Ink::Token(Token::TextMuted),
+            error: Ink::Token(Token::Error),
+            success: Ink::Token(Token::Success),
+            bg: Ink::Token(Token::BgSecondary),
+        }
+    }
+}
+
+/// [`SwapModalTheme`] with every [`Ink`] resolved. Same field names, so a draw
 /// site reads the same either way.
 pub struct ResolvedSwapTheme {
     pub accent: Color32,
@@ -50,17 +64,17 @@ pub struct ResolvedSwapTheme {
 }
 
 impl SwapModalTheme {
-    /// Takes tokens rather than a `Ui` because the modal's frame is built from
-    /// a `Context` before any `Ui` exists.
-    pub fn resolved(&self, c: &crate::theme::ColorTokens) -> ResolvedSwapTheme {
+    /// Takes a `Theme` rather than a `Ui` because the modal's frame is built
+    /// from a `Context` before any `Ui` exists.
+    pub fn resolved(&self, theme: &crate::theme::Theme) -> ResolvedSwapTheme {
         ResolvedSwapTheme {
-            accent: self.accent.unwrap_or(c.accent),
-            text_primary: self.text_primary.unwrap_or(c.text_primary),
-            text_secondary: self.text_secondary.unwrap_or(c.text_secondary),
-            text_muted: self.text_muted.unwrap_or(c.text_muted),
-            error: self.error.unwrap_or(c.error),
-            success: self.success.unwrap_or(c.success),
-            bg: self.bg.unwrap_or(c.bg_secondary),
+            accent: self.accent.resolve(theme),
+            text_primary: self.text_primary.resolve(theme),
+            text_secondary: self.text_secondary.resolve(theme),
+            text_muted: self.text_muted.resolve(theme),
+            error: self.error.resolve(theme),
+            success: self.success.resolve(theme),
+            bg: self.bg.resolve(theme),
         }
     }
 }
@@ -244,7 +258,7 @@ impl SwapModal {
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .frame(
                 egui::Frame::window(&ctx.global_style())
-                    .fill(self.config.theme.resolved(&ctx.tokens().color).bg)
+                    .fill(self.config.theme.resolved(&ctx.tokens()).bg)
                     .inner_margin(ctx.tokens().margin(Space::Xl2)),
             )
             .show(ctx, |ui| {
@@ -286,7 +300,7 @@ impl SwapModal {
     ) -> SwapModalAction {
         // Copy theme colors up front (Color32 is Copy) to avoid borrowing self.config
         // through the closures that also need &mut self fields.
-        let t = self.config.theme.resolved(&ui.tokens().color);
+        let t = self.config.theme.resolved(&ui.tokens());
         let accent = t.accent;
         let bg = t.bg;
         let text_secondary = t.text_secondary;
@@ -520,7 +534,7 @@ impl SwapModal {
     }
 
     fn draw_preview(&self, ui: &mut egui::Ui, preview: Option<&SwapPreviewData>, loading: bool) {
-        let theme = self.config.theme.resolved(&ui.tokens().color);
+        let theme = self.config.theme.resolved(&ui.tokens());
 
         ui.separator();
         ui.gap(Space::Base);
@@ -596,7 +610,7 @@ impl SwapModal {
         suffix: &str,
         value_color: Color32,
     ) {
-        let theme = self.config.theme.resolved(&ui.tokens().color);
+        let theme = self.config.theme.resolved(&ui.tokens());
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(label)
@@ -621,7 +635,7 @@ impl SwapModal {
     }
 
     fn draw_success(&mut self, ui: &mut egui::Ui, tx_hash: &str) -> SwapModalAction {
-        let theme = self.config.theme.resolved(&ui.tokens().color);
+        let theme = self.config.theme.resolved(&ui.tokens());
         let mut action = SwapModalAction::None;
 
         ui.gap(Space::Xl);
@@ -670,7 +684,7 @@ impl SwapModal {
     }
 
     fn draw_error(&mut self, ui: &mut egui::Ui, message: &str) -> SwapModalAction {
-        let theme = self.config.theme.resolved(&ui.tokens().color);
+        let theme = self.config.theme.resolved(&ui.tokens());
         let mut action = SwapModalAction::None;
 
         ui.gap(Space::Xl);

@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use egui::{Color32, Pos2, Response, Sense, Shape, Stroke, Ui, Vec2};
 use voronoice::{BoundingBox, Point, VoronoiBuilder};
 
-use crate::theme::{TextSize, ThemeExt};
+use crate::theme::{Ink, TextSize, ThemeExt, Token};
 
 // ============================================================================
 // Public types
@@ -37,11 +37,24 @@ pub struct UtxoCell {
 pub struct UtxoMapConfig {
     /// Widget dimensions.
     pub size: Vec2,
-    /// Water color (free ADA). Default: cyan at low opacity.
-    pub water_color: Color32,
-    /// Border color between cells. Default: theme border.
-    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
-    pub border_color: Option<Color32>,
+    /// Water color (free ADA). Default: the theme's cyan.
+    ///
+    /// The literal this replaced was
+    /// `from_rgba_premultiplied(125, 207, 255, 30)`, described as "cyan at low
+    /// opacity" — but that constructor expects channels already scaled by
+    /// alpha, so it blended additively and the blue channel **overflowed and
+    /// clipped**: over the primary background it rendered `(148, 231, 255)`,
+    /// i.e. a cyan *brighter* than the token, not a 12% tint of it. The comment
+    /// described the intent; the pixels did the opposite.
+    ///
+    /// Taking the token itself reproduces what actually shipped (within ~20 per
+    /// channel) while following the theme. Deliberately not the literal reading
+    /// of the old comment — `Ink::Wash(Token::AccentCyan, 30)` is a barely-there
+    /// tint that would make the sea vanish into the background, and this widget
+    /// has no story to review such a change in.
+    pub water_color: Ink,
+    /// Border color between cells.
+    pub border_color: Ink,
     /// Whether to show the consolidation toggle button.
     pub show_consolidation_toggle: bool,
 }
@@ -50,8 +63,8 @@ impl Default for UtxoMapConfig {
     fn default() -> Self {
         Self {
             size: Vec2::new(400.0, 400.0),
-            water_color: Color32::from_rgba_premultiplied(125, 207, 255, 30),
-            border_color: None,
+            water_color: Ink::Token(Token::AccentCyan),
+            border_color: Ink::Token(Token::Border),
             show_consolidation_toggle: false,
         }
     }
@@ -500,7 +513,7 @@ impl UtxoMapConfig {
                     let is_water = poly_idx >= land_count;
 
                     let fill = if is_water {
-                        self.water_color
+                        self.water_color.of(ui)
                     } else {
                         let cell = &data.cells[layout.cells[poly_idx].cell_idx];
                         policy_color(ui, &cell.policy_id)
@@ -516,10 +529,7 @@ impl UtxoMapConfig {
                     painter.add(Shape::convex_polygon(
                         screen_verts,
                         fill,
-                        Stroke::new(
-                            0.5_f32,
-                            self.border_color.unwrap_or(ui.tokens().color.border),
-                        ),
+                        Stroke::new(0.5_f32, self.border_color.of(ui)),
                     ));
                 }
 

@@ -8,8 +8,8 @@
 //! (e.g. `AssetCard` with 3D tilt) through the [`CardRenderContext::response`] field.
 
 use crate::image_loader::CachedSpinner;
-use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
-use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
+use egui::{Pos2, Rect, Sense, Stroke, Vec2};
 
 // ============================================================================
 // Config & State
@@ -32,8 +32,8 @@ pub struct CardBrowserConfig {
     /// Width of the detail panel when a card is selected.
     pub detail_width: f32,
     /// Gutter between cards. `None` takes the theme's [`Space::Md`], which is
-    /// what the literal `8.0` here used to mean — see the note beside the
-    /// `Option<Color32>` fields for why this is an `Option`.
+    /// what the literal `8.0` here used to mean — same reasoning as the [`Ink`]
+    /// fields below.
     pub spacing: Option<Space>,
     /// Card corner radius.
     pub rounding: f32,
@@ -46,20 +46,19 @@ pub struct CardBrowserConfig {
     /// items are on screen.
     pub grow_to_content: bool,
     /// Card background color (normal).
-    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
-    pub bg_card: Option<Color32>,
+    pub bg_card: Ink,
     /// Card background color (hovered).
-    pub bg_card_hover: Option<Color32>,
+    pub bg_card_hover: Ink,
     /// Card background color (selected).
-    pub bg_card_selected: Color32,
+    pub bg_card_selected: Ink,
     /// Card border color (normal).
-    pub border_color: Color32,
+    pub border_color: Ink,
     /// Card border color (selected).
-    pub border_selected: Option<Color32>,
+    pub border_selected: Ink,
     /// Muted text / placeholder color.
-    pub text_muted: Option<Color32>,
+    pub text_muted: Ink,
     /// Detail panel background color.
-    pub bg_detail: Color32,
+    pub bg_detail: Ink,
     /// Detail panel inner margin.
     pub detail_margin: f32,
 }
@@ -93,13 +92,19 @@ impl Default for CardBrowserConfig {
             rounding: 6.0,
             scroll_id: "card_browser",
             grow_to_content: false,
-            bg_card: None,
-            bg_card_hover: None,
-            bg_card_selected: Color32::from_rgb(40, 45, 55),
-            border_color: Color32::from_rgba_premultiplied(86, 95, 137, 40),
-            border_selected: None,
-            text_muted: None,
-            bg_detail: Color32::from_rgb(30, 32, 42),
+            bg_card: Ink::Token(Token::BgPrimary),
+            bg_card_hover: Ink::Token(Token::BgHighlight),
+            bg_card_selected: Ink::Token(Token::BgHighlight),
+            // Was `from_rgba_premultiplied(86, 95, 137, 40)` — the constructor
+            // that expects already-scaled channels, so it blended additively and
+            // painted a hairline brighter than any border in the palette. The
+            // token whose whole job is a card edge says this directly.
+            border_color: Ink::Token(Token::Border),
+            border_selected: Ink::Token(Token::AccentCyan),
+            text_muted: Ink::Token(Token::TextMuted),
+            // One step up the background ramp from the cards, so the panel reads
+            // as a surface in front of the grid rather than a hole in it.
+            bg_detail: Ink::Token(Token::BgSecondary),
             detail_margin: 14.0,
         }
     }
@@ -175,12 +180,15 @@ pub fn show<T>(
     crate::install_phosphor_font(ui.ctx());
 
     // Resolved once, ahead of the closures that read them: a `Default` config
-    // cannot know the theme, so the colours arrive here.
+    // names its tokens, so the values arrive here.
     let t = ui.tokens();
-    let bg_card = config.bg_card.unwrap_or(t.color.bg_primary);
-    let bg_card_hover = config.bg_card_hover.unwrap_or(t.color.bg_highlight);
-    let border_selected = config.border_selected.unwrap_or(t.color.accent_cyan);
-    let text_muted = config.text_muted.unwrap_or(t.color.text_muted);
+    let bg_card = config.bg_card.resolve(&t);
+    let bg_card_hover = config.bg_card_hover.resolve(&t);
+    let bg_card_selected = config.bg_card_selected.resolve(&t);
+    let border_color = config.border_color.resolve(&t);
+    let border_selected = config.border_selected.resolve(&t);
+    let text_muted = config.text_muted.resolve(&t);
+    let bg_detail = config.bg_detail.resolve(&t);
     // Same reason: the gutter is part of the theme's rhythm unless a surface
     // overrides it, and it feeds the column arithmetic below as well as the
     // layout, so it has to be resolved to one value here.
@@ -246,7 +254,7 @@ pub fn show<T>(
 
                         // Card background
                         let bg = if is_selected {
-                            config.bg_card_selected
+                            bg_card_selected
                         } else if is_hovered {
                             bg_card_hover
                         } else {
@@ -266,7 +274,7 @@ pub fn show<T>(
                             ui.painter().rect_stroke(
                                 rect,
                                 config.rounding,
-                                Stroke::new(1.0_f32, config.border_color),
+                                Stroke::new(1.0_f32, border_color),
                                 egui::StrokeKind::Inside,
                             );
                         }
@@ -339,7 +347,7 @@ pub fn show<T>(
                 ui.set_max_width(config.detail_width);
                 ui.set_min_width(config.detail_width);
                 let frame_resp = egui::Frame::new()
-                    .fill(config.bg_detail)
+                    .fill(bg_detail)
                     .corner_radius(config.rounding)
                     .inner_margin(config.detail_margin)
                     .show(ui, |ui| {
@@ -390,8 +398,8 @@ pub fn draw_thumbnail(
     config: &CardBrowserConfig,
 ) -> bool {
     let t = ui.tokens();
-    let bg_card_hover = config.bg_card_hover.unwrap_or(t.color.bg_highlight);
-    let text_muted = config.text_muted.unwrap_or(t.color.text_muted);
+    let bg_card_hover = config.bg_card_hover.resolve(&t);
+    let text_muted = config.text_muted.resolve(&t);
     let Some(url) = image_url else {
         // No URL — placeholder
         ui.painter().rect_filled(thumb_rect, 4.0, bg_card_hover);

@@ -21,7 +21,7 @@
 
 use egui::{Align, Color32, Layout, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 /// A supporting stat shown after the headline value (e.g. `12` / `assets`).
 #[derive(Clone, Debug, Default)]
@@ -90,18 +90,17 @@ pub struct LeaderboardConfig {
     pub prize_size: f32,
     /// Thickness of the share bar strip.
     pub bar_height: f32,
-    // `None` asks the theme at render time — a `Default` has no `Ui` to ask.
-    pub bar_color: Option<Color32>,
-    pub bar_color_viewer: Option<Color32>,
+    pub bar_color: Ink,
+    pub bar_color_viewer: Ink,
     /// Track behind the bar, so a short bar still reads as "out of a whole".
-    pub bar_track_color: Option<Color32>,
-    pub text_primary: Option<Color32>,
-    pub text_muted: Option<Color32>,
-    pub value_color: Option<Color32>,
+    pub bar_track_color: Ink,
+    pub text_primary: Ink,
+    pub text_muted: Ink,
+    pub value_color: Ink,
     /// Podium colours for ranks 1, 2 and 3. Gold / silver / bronze is a
     /// convention readers already know, so the *order* is fixed; which gold is
     /// the theme's.
-    pub podium_colors: Option<[Color32; 3]>,
+    pub podium_colors: [Ink; 3],
     /// Message when there are no rows.
     pub empty_text: String,
 }
@@ -114,13 +113,20 @@ impl Default for LeaderboardConfig {
             rank_width: 26.0,
             prize_size: 24.0,
             bar_height: 2.0,
-            bar_color: None,
-            bar_color_viewer: None,
-            bar_track_color: None,
-            text_primary: None,
-            text_muted: None,
-            value_color: None,
-            podium_colors: None,
+            bar_color: Ink::Token(Token::Accent),
+            bar_color_viewer: Ink::Token(Token::Success),
+            // NB `Ink::Wash`, not `from_rgba_premultiplied`: the latter expects
+            // RGB already scaled by alpha, so passing full-brightness channels
+            // with a low alpha renders near-opaque instead of as a tint.
+            bar_track_color: Ink::Wash(Token::Accent, 26),
+            text_primary: Ink::Token(Token::TextPrimary),
+            text_muted: Ink::Token(Token::TextMuted),
+            value_color: Ink::Token(Token::AccentCyan),
+            podium_colors: [
+                Ink::Token(Token::AccentYellow),
+                Ink::Token(Token::TextSecondary),
+                Ink::Token(Token::AccentOrange),
+            ],
             empty_text: "No entries".to_string(),
         }
     }
@@ -136,8 +142,8 @@ pub enum LeaderboardAction {
 /// The config's colours, resolved against a theme.
 ///
 /// Resolved once per frame rather than at each call site: the config's fields
-/// are `Option`s (a `Default` has no `Ui`), and unwrapping them eight times in
-/// a row loop is both noise and an invitation to unwrap one differently.
+/// are [`Ink`]s, and resolving them eight times in a row loop is both noise and
+/// an invitation to resolve one against a different theme.
 struct Palette {
     bar: Color32,
     bar_viewer: Color32,
@@ -150,24 +156,15 @@ struct Palette {
 
 impl LeaderboardConfig {
     fn palette(&self, ui: &Ui) -> Palette {
-        let c = ui.tokens().color;
+        let t = ui.tokens();
         Palette {
-            bar: self.bar_color.unwrap_or(c.accent),
-            bar_viewer: self.bar_color_viewer.unwrap_or(c.success),
-            // NB `with_alpha`, not `from_rgba_premultiplied`: the latter expects
-            // RGB already scaled by alpha, so passing full-brightness channels
-            // with a low alpha renders near-opaque instead of as a tint.
-            bar_track: self
-                .bar_track_color
-                .unwrap_or_else(|| crate::theme::with_alpha(c.accent, 26)),
-            text_primary: self.text_primary.unwrap_or(c.text_primary),
-            text_muted: self.text_muted.unwrap_or(c.text_muted),
-            value: self.value_color.unwrap_or(c.accent_cyan),
-            podium: self.podium_colors.unwrap_or([
-                c.accent_yellow,
-                c.text_secondary,
-                c.accent_orange,
-            ]),
+            bar: self.bar_color.resolve(&t),
+            bar_viewer: self.bar_color_viewer.resolve(&t),
+            bar_track: self.bar_track_color.resolve(&t),
+            text_primary: self.text_primary.resolve(&t),
+            text_muted: self.text_muted.resolve(&t),
+            value: self.value_color.resolve(&t),
+            podium: self.podium_colors.map(|ink| ink.resolve(&t)),
         }
     }
 }

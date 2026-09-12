@@ -10,7 +10,7 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 
-use crate::theme::{TextSize, ThemeExt};
+use crate::theme::{Ink, TextSize, ThemeExt, Token};
 
 // ============================================================================
 // Public types
@@ -47,16 +47,14 @@ pub enum PipRowMode {
         /// Corner radius of each pip.
         pip_rounding: f32,
         /// Overflow text color ("+N more").
-        /// `None` asks the theme at render time — a `Default` has no `Ui`.
-        overflow_color: Option<Color32>,
+        overflow_color: Ink,
     },
     /// Continuous heatmap where brightness encodes local density.
     Density {
         /// Number of bins across the bar width.
         bins: usize,
-        /// Base color (brightness/alpha modulated by density). `None` asks the
-        /// theme at render time — a `Default` has no `Ui`.
-        color: Option<Color32>,
+        /// Base color (brightness/alpha modulated by density).
+        color: Ink,
         /// Minimum opacity for bins with at least one value (0.0–1.0).
         min_alpha: f32,
     },
@@ -67,7 +65,7 @@ impl Default for PipRowMode {
         Self::Pips {
             pip_width: 4.0,
             pip_rounding: 1.0,
-            overflow_color: None,
+            overflow_color: Ink::Token(Token::TextSecondary),
         }
     }
 }
@@ -77,7 +75,7 @@ impl PipRowMode {
     pub fn density() -> Self {
         Self::Density {
             bins: 40,
-            color: None,
+            color: Ink::Token(Token::AccentCyan),
             min_alpha: 0.15,
         }
     }
@@ -94,8 +92,7 @@ pub struct PipRowConfig {
     /// Height of the bar within each row.
     pub bar_height: f32,
     /// Bar background color.
-    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
-    pub bar_color: Option<Color32>,
+    pub bar_color: Ink,
     /// Bar corner radius.
     pub bar_rounding: f32,
     /// Label font size.
@@ -111,7 +108,7 @@ impl Default for PipRowConfig {
             label_width: 200.0,
             row_height: 26.0,
             bar_height: 18.0,
-            bar_color: None,
+            bar_color: Ink::Token(Token::BgHighlight),
             bar_rounding: 3.0,
             label_font_size: 12.0,
             empty_font_size: 10.0,
@@ -250,7 +247,7 @@ pub fn show(
     ui.painter().rect_filled(
         bar_rect,
         config.bar_rounding,
-        config.bar_color.unwrap_or(ui.tokens().color.bg_highlight),
+        config.bar_color.of(ui),
     );
 
     // Detect hover position within the bar
@@ -339,7 +336,7 @@ pub fn show(
                         Align2::RIGHT_CENTER,
                         format!("+{}", data.pips.len() - max_pips),
                         FontId::proportional(ui.text_size(TextSize::Xs)),
-                        overflow_color.unwrap_or(ui.tokens().color.text_secondary),
+                        overflow_color.of(ui),
                     );
                 }
 
@@ -367,7 +364,7 @@ pub fn show(
                     global_max,
                     bar_rect,
                     *bins,
-                    color.unwrap_or(ui.tokens().color.accent_cyan),
+                    color.of(ui),
                     *min_alpha,
                     bar_hover_x,
                 );

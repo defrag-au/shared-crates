@@ -14,7 +14,7 @@
 //! marquee.show(ui, &items);
 //! ```
 
-use crate::theme::ThemeExt;
+use crate::theme::{Ink, ThemeExt, Token};
 
 /// Configuration for the marquee widget.
 pub struct MarqueeConfig {
@@ -26,8 +26,8 @@ pub struct MarqueeConfig {
     pub font: Option<egui::FontId>,
     /// Separator between items (e.g. " \u{2022} " for " • ").
     pub separator: String,
-    /// Color of separator text. `None` takes the theme's muted tier.
-    pub separator_color: Option<egui::Color32>,
+    /// Color of separator text.
+    pub separator_color: Ink,
     /// Height of the marquee bar in pixels.
     pub height: f32,
 }
@@ -38,7 +38,7 @@ impl Default for MarqueeConfig {
             scroll_speed: 40.0,
             font: None,
             separator: "  \u{2022}  ".into(),
-            separator_color: None,
+            separator_color: Ink::Token(Token::TextMuted),
             height: 14.0,
         }
     }
@@ -94,7 +94,7 @@ impl Marquee {
             .font
             .clone()
             .unwrap_or_else(|| t.font(crate::theme::TextRole::Numeric));
-        let separator_color = self.config.separator_color.unwrap_or(t.color.text_muted);
+        let separator_color = self.config.separator_color.resolve(&t);
 
         // Build a single sequence LayoutJob
         let single_job = self.build_layout_job(items, &font, separator_color);

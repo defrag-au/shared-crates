@@ -10,10 +10,10 @@
 //! if resp.changed { qty = resp.value; }
 //! ```
 
-use egui::{Color32, RichText, Ui, Vec2};
+use egui::{RichText, Ui, Vec2};
 
 use crate::icons::PhosphorIcon;
-use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 /// A `−  [n]  +` quantity control.
 pub struct QuantityStepper {
@@ -22,8 +22,7 @@ pub struct QuantityStepper {
     max: u32,
     button_size: f32,
     readout_width: f32,
-    /// `None` asks the theme at render time — a `new` has no `Ui` to ask.
-    accent: Option<Color32>,
+    accent: Ink,
 }
 
 /// What the caller does with the stepper's outcome.
@@ -44,7 +43,7 @@ impl QuantityStepper {
             max: u32::MAX,
             button_size: 40.0,
             readout_width: 56.0,
-            accent: None,
+            accent: Ink::Token(Token::AccentGreen),
         }
     }
 
@@ -67,9 +66,9 @@ impl QuantityStepper {
         self
     }
 
-    /// Readout number colour (default `ACCENT_GREEN`).
-    pub fn accent(mut self, accent: Color32) -> Self {
-        self.accent = Some(accent);
+    /// Readout number colour (default `Token::AccentGreen`).
+    pub fn accent(mut self, accent: impl Into<Ink>) -> Self {
+        self.accent = accent.into();
         self
     }
 
@@ -113,7 +112,7 @@ impl QuantityStepper {
                                 RichText::new(value.to_string())
                                     .size(ui.text_size(TextSize::Xl2))
                                     .strong()
-                                    .color(self.accent.unwrap_or(ui.tokens().color.accent_green)),
+                                    .color(self.accent.of(ui)),
                             );
                         },
                     );

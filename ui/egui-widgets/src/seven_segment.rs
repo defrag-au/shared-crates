@@ -11,7 +11,7 @@
 
 use egui::{Color32, Pos2, Ui};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Ink, ThemeExt, Token};
 
 /// The two colours a segment can take, resolved once per render.
 ///
@@ -38,16 +38,18 @@ const SEGMENTS: [u8; 10] = [
 ];
 
 /// The unlit segment — a barely-there ghost of the lit one, so the digit's
-/// shape reads even where it is off. Not a theme token: it is a fixed low-alpha
-/// wash that works against any dark surface.
-const OFF_SEGMENT: Color32 = Color32::from_rgba_premultiplied(40, 40, 50, 80);
+/// shape reads even where it is off.
+///
+/// Was a fixed `from_rgba_premultiplied(40, 40, 50, 80)` documented as working
+/// "against any dark surface", which conceded the point: on a light theme it is
+/// a dark smudge rather than a ghost. A wash off the muted text token tracks the
+/// theme's own text/ground relationship instead, so it stays a ghost either way.
+const OFF_SEGMENT: Ink = Ink::Wash(Token::TextMuted, 80);
 
 pub struct SevenSegmentDisplay<'a> {
     text: &'a str,
-    /// `None` asks the theme. A `Default`/`new` cannot read the context, so a
-    /// colour default has to be deferred to render time or it bakes one theme in.
-    on_color: Option<Color32>,
-    off_color: Option<Color32>,
+    on_color: Ink,
+    off_color: Ink,
     digit_height: f32,
 }
 
@@ -55,19 +57,19 @@ impl<'a> SevenSegmentDisplay<'a> {
     pub fn new(text: &'a str) -> Self {
         Self {
             text,
-            on_color: None,
-            off_color: None,
+            on_color: Ink::Token(Token::AccentGreen),
+            off_color: OFF_SEGMENT,
             digit_height: 40.0,
         }
     }
 
-    pub fn color(mut self, color: Color32) -> Self {
-        self.on_color = Some(color);
+    pub fn color(mut self, color: impl Into<Ink>) -> Self {
+        self.on_color = color.into();
         self
     }
 
-    pub fn off_color(mut self, color: Color32) -> Self {
-        self.off_color = Some(color);
+    pub fn off_color(mut self, color: impl Into<Ink>) -> Self {
+        self.off_color = color.into();
         self
     }
 
@@ -79,8 +81,8 @@ impl<'a> SevenSegmentDisplay<'a> {
     pub fn show(self, ui: &mut Ui) {
         let t = ui.tokens();
         let lit = Lit {
-            on: self.on_color.unwrap_or(t.color.accent_green),
-            off: self.off_color.unwrap_or(OFF_SEGMENT),
+            on: self.on_color.resolve(&t),
+            off: self.off_color.resolve(&t),
         };
         let h = self.digit_height;
         // Reference grid: 48w x 80h, element_width=10

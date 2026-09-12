@@ -5,7 +5,7 @@
 
 use egui::{Color32, CornerRadius, Pos2, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
+use crate::theme::{Ink, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 /// Configuration for a sparkline chart.
 /// How the sparkline responds to hover.
@@ -25,10 +25,10 @@ pub struct Sparkline<'a> {
     /// Data points (y-values in order, equally spaced on x-axis).
     data: &'a [f64],
     /// Line color.
-    /// `None` asks the theme at render time — a `new` has no `Ui` to ask.
-    line_color: Option<Color32>,
-    /// Optional fill color below the line (semi-transparent recommended).
-    fill_color: Option<Color32>,
+    line_color: Ink,
+    /// Fill below the line (a [`Ink::Wash`] reads best). `None` means *no fill*
+    /// — unlike [`Self::line_color`], where it would have meant "ask the theme".
+    fill_color: Option<Ink>,
     /// Line stroke width.
     line_width: f32,
     /// Chart height in pixels.
@@ -44,7 +44,7 @@ pub struct Sparkline<'a> {
     /// Whether to highlight the last data point with a dot.
     show_endpoint: bool,
     /// Background color.
-    bg_color: Option<Color32>,
+    bg_color: Ink,
     /// Corner rounding.
     rounding: u8,
     /// How hover is handled (crosshair / tooltip / inert).
@@ -56,7 +56,7 @@ impl<'a> Sparkline<'a> {
     pub fn new(data: &'a [f64]) -> Self {
         Self {
             data,
-            line_color: None,
+            line_color: Ink::Token(Token::Accent),
             fill_color: None,
             line_width: 1.5,
             height: 40.0,
@@ -65,7 +65,7 @@ impl<'a> Sparkline<'a> {
             value_text: None,
             show_mean_line: false,
             show_endpoint: true,
-            bg_color: None,
+            bg_color: Ink::Token(Token::BgSecondary),
             rounding: 4,
             hover_style: SparkHoverStyle::default(),
         }
@@ -79,14 +79,14 @@ impl<'a> Sparkline<'a> {
     }
 
     /// Set the line color.
-    pub fn line_color(mut self, color: Color32) -> Self {
-        self.line_color = Some(color);
+    pub fn line_color(mut self, color: impl Into<Ink>) -> Self {
+        self.line_color = color.into();
         self
     }
 
-    /// Enable fill below the line with the given color.
-    pub fn fill(mut self, color: Color32) -> Self {
-        self.fill_color = Some(color);
+    /// Enable fill below the line with the given colour.
+    pub fn fill(mut self, color: impl Into<Ink>) -> Self {
+        self.fill_color = Some(color.into());
         self
     }
 
@@ -133,17 +133,18 @@ impl<'a> Sparkline<'a> {
     }
 
     /// Set the background color.
-    pub fn bg_color(mut self, color: Color32) -> Self {
-        self.bg_color = Some(color);
+    pub fn bg_color(mut self, color: impl Into<Ink>) -> Self {
+        self.bg_color = color.into();
         self
     }
 
     /// Render the sparkline.
     pub fn show(self, ui: &mut Ui) -> egui::Response {
-        // Resolved once: a `new` cannot know the theme.
+        // Resolved once: a `new` names its tokens, it cannot hold values.
         let t = ui.tokens();
-        let line_color = self.line_color.unwrap_or(t.color.accent);
-        let bg_color = self.bg_color.unwrap_or(t.color.bg_secondary);
+        let line_color = self.line_color.resolve(&t);
+        let bg_color = self.bg_color.resolve(&t);
+        let fill_color = self.fill_color.map(|ink| ink.resolve(&t));
 
         // Header row with label + value
         if self.label.is_some() || self.value_text.is_some() {
@@ -207,7 +208,7 @@ impl<'a> Sparkline<'a> {
                 .collect();
 
             // Fill area below line
-            if let Some(fill_color) = self.fill_color {
+            if let Some(fill_color) = fill_color {
                 for window in points.windows(2) {
                     let p0 = window[0];
                     let p1 = window[1];

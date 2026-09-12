@@ -8,7 +8,7 @@
 
 use egui::{Color32, FontId, RichText, Ui, Vec2};
 
-use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 /// Font sizes the card paints with. Named because [`MetricCard::natural_size`]
 /// has to measure with exactly the same ones — a measurement that drifts from
@@ -44,16 +44,15 @@ pub struct MetricCard<'a> {
     /// Optional sparkline data points.
     sparkline_data: Option<&'a [f64]>,
     /// Accent color for the value text.
-    /// `None` asks the theme at render time — a `new` has no `Ui` to ask.
-    value_color: Option<Color32>,
+    value_color: Ink,
     /// Card width (None = available width).
     width: Option<f32>,
     /// Forced card height, so a row can share one baseline.
     height: Option<f32>,
     /// Card background color.
-    bg_color: Option<Color32>,
+    bg_color: Ink,
     /// Border color.
-    border_color: Option<Color32>,
+    border_color: Ink,
 }
 
 impl<'a> MetricCard<'a> {
@@ -65,11 +64,11 @@ impl<'a> MetricCard<'a> {
             subtitle: None,
             trend: None,
             sparkline_data: None,
-            value_color: None,
+            value_color: Ink::Token(Token::TextPrimary),
             width: None,
             height: None,
-            bg_color: None,
-            border_color: None,
+            bg_color: Ink::Token(Token::BgHighlight),
+            border_color: Ink::Token(Token::Border),
         }
     }
 
@@ -92,8 +91,8 @@ impl<'a> MetricCard<'a> {
     }
 
     /// Set the value text color.
-    pub fn value_color(mut self, color: Color32) -> Self {
-        self.value_color = Some(color);
+    pub fn value_color(mut self, color: impl Into<Ink>) -> Self {
+        self.value_color = color.into();
         self
     }
 
@@ -164,18 +163,19 @@ impl<'a> MetricCard<'a> {
     }
 
     /// Set the background color.
-    pub fn bg_color(mut self, color: Color32) -> Self {
-        self.bg_color = Some(color);
+    pub fn bg_color(mut self, color: impl Into<Ink>) -> Self {
+        self.bg_color = color.into();
         self
     }
 
     /// Render the metric card.
     pub fn show(self, ui: &mut Ui) {
-        // Resolved once, ahead of the closure: a `new` cannot know the theme.
+        // Resolved once, ahead of the closure: a `new` names its tokens, it
+        // cannot hold values.
         let t = ui.tokens();
-        let value_color = self.value_color.unwrap_or(t.color.text_primary);
-        let bg_color = self.bg_color.unwrap_or(t.color.bg_highlight);
-        let border_color = self.border_color.unwrap_or(t.color.border);
+        let value_color = self.value_color.resolve(&t);
+        let bg_color = self.bg_color.resolve(&t);
+        let border_color = self.border_color.resolve(&t);
 
         let frame = egui::Frame::NONE
             .fill(bg_color)

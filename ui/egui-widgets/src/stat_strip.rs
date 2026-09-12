@@ -37,7 +37,7 @@
 
 use egui::{Color32, FontId, Margin, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 use crate::{SparkHoverStyle, Sparkline, Trend};
 
 /// The sizes and spacings a card paints with.
@@ -178,9 +178,8 @@ pub struct StatStrip<'a> {
     windows: &'a [StatWindow],
     empty_note: &'a str,
     card_width: f32,
-    /// `None` asks the theme at render time — a `new` has no `Ui` to ask.
-    value_color: Option<Color32>,
-    label_bg: Option<Color32>,
+    value_color: Ink,
+    label_bg: Ink,
 }
 
 impl<'a> StatStrip<'a> {
@@ -190,10 +189,10 @@ impl<'a> StatStrip<'a> {
             windows,
             empty_note: "no data",
             card_width: 190.0,
-            value_color: None,
-            // Recessed (darker than the card) so the window pill reads as an
-            // inset tag rather than more card surface.
-            label_bg: None,
+            value_color: Ink::Token(Token::TextPrimary),
+            // Recessed (further down the background ramp than the card) so the
+            // window pill reads as an inset tag rather than more card surface.
+            label_bg: Ink::Token(Token::BgPrimary),
         }
     }
 
@@ -221,15 +220,15 @@ impl<'a> StatStrip<'a> {
     }
 
     /// Accent color for each headline value. Defaults to the primary text color.
-    pub fn value_color(mut self, color: Color32) -> Self {
-        self.value_color = Some(color);
+    pub fn value_color(mut self, color: impl Into<Ink>) -> Self {
+        self.value_color = color.into();
         self
     }
 
     /// Background of the top-right window pill. Defaults to the recessed
     /// primary background.
-    pub fn label_bg(mut self, color: Color32) -> Self {
-        self.label_bg = Some(color);
+    pub fn label_bg(mut self, color: impl Into<Ink>) -> Self {
+        self.label_bg = color.into();
         self
     }
 
@@ -441,7 +440,7 @@ impl<'a> StatStrip<'a> {
                             ui.label(
                                 RichText::new(&w.headline)
                                     .color(
-                                        self.value_color.unwrap_or(ui.tokens().color.text_primary),
+                                        self.value_color.of(ui),
                                     )
                                     .size(HEADLINE_SIZE)
                                     .strong(),
@@ -466,9 +465,9 @@ impl<'a> StatStrip<'a> {
                         let resp = Sparkline::new(series)
                             .height(SPARK_HEIGHT)
                             .line_width(1.5)
-                            .line_color(self.value_color.unwrap_or(ui.tokens().color.text_primary))
+                            .line_color(self.value_color.of(ui))
                             .fill(tint(
-                                self.value_color.unwrap_or(ui.tokens().color.text_primary),
+                                self.value_color.of(ui),
                                 30,
                             ))
                             .show_endpoint(false)
@@ -544,7 +543,7 @@ impl<'a> StatStrip<'a> {
             Stroke::new(
                 2.0_f32,
                 tint(
-                    self.value_color.unwrap_or(ui.tokens().color.text_primary),
+                    self.value_color.of(ui),
                     160,
                 ),
             ),
@@ -556,7 +555,7 @@ impl<'a> StatStrip<'a> {
                 egui::Rangef::new(cy - 3.0, cy + 3.0),
                 Stroke::new(
                     1.5_f32,
-                    self.value_color.unwrap_or(ui.tokens().color.text_primary),
+                    self.value_color.of(ui),
                 ),
             );
         }
@@ -564,7 +563,7 @@ impl<'a> StatStrip<'a> {
         painter.circle_filled(
             egui::pos2(x_mid, cy),
             2.5,
-            self.value_color.unwrap_or(ui.tokens().color.text_primary),
+            self.value_color.of(ui),
         );
 
         resp.on_hover_ui(|ui| {
@@ -600,7 +599,7 @@ impl<'a> StatStrip<'a> {
         painter.rect_filled(
             pill_rect,
             ui.tokens().corner(Radius::Base),
-            self.label_bg.unwrap_or(ui.tokens().color.bg_primary),
+            self.label_bg.of(ui),
         );
         painter.galley(
             pill_rect.min + pad,

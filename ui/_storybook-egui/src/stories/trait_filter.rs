@@ -1,6 +1,6 @@
 //! Storybook demo for the TraitFilter widget from egui-widgets.
 
-use egui::Color32;
+use egui_widgets::theme::{Ink, Token};
 use egui_widgets::trait_filter::{self, FilterEntry, TraitFilterConfig, TraitFilterState};
 
 use crate::{ACCENT, TEXT_MUTED};
@@ -112,13 +112,17 @@ fn build_mock_entries() -> Vec<FilterEntry> {
         for value in *values {
             // Simulate ownership: ~60% owned
             let owned = idx % 5 != 0;
-            let color = if *value == "None" {
-                Some(Color32::from_rgba_premultiplied(60, 65, 80, 120))
+            // Was three `from_rgba_premultiplied` literals — the constructor
+            // that expects already-scaled channels, so each rendered lighter
+            // than written. As washes they say what they mean (absent / owned /
+            // missing) and follow whatever theme the story is viewed under.
+            let color = Some(if *value == "None" {
+                Ink::Wash(Token::Border, 120)
             } else if owned {
-                Some(Color32::from_rgba_premultiplied(158, 206, 106, 200))
+                Ink::Wash(Token::Success, 200)
             } else {
-                Some(Color32::from_rgba_premultiplied(86, 95, 137, 160))
-            };
+                Ink::Wash(Token::TextMuted, 160)
+            });
             entries.push(FilterEntry {
                 label: format!("{category}: {value}"),
                 category: category.to_string(),

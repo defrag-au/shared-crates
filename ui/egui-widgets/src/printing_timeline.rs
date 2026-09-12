@@ -8,7 +8,7 @@
 
 use egui::{Color32, Pos2, Rect, RichText, Stroke, Vec2};
 
-use crate::theme::{Radius, TextSize, ThemeExt};
+use crate::theme::{Ink, Radius, TextSize, ThemeExt, Token};
 
 // ── Config ───────────────────────────────────────────────────────
 
@@ -21,18 +21,16 @@ pub struct PrintingTimelineConfig {
     pub node_spacing: f32,
     /// Radius of the timeline dot.
     pub dot_radius: f32,
-    // `None` asks the theme at render time — a `Default` has no `Ui` to ask,
-    // and baking a colour here would put this widget beyond a theme's reach.
     /// Timeline line color.
-    pub line_color: Option<Color32>,
+    pub line_color: Ink,
     /// Dot color (normal).
-    pub dot_color: Option<Color32>,
+    pub dot_color: Ink,
     /// Dot color (selected).
-    pub dot_selected: Option<Color32>,
+    pub dot_selected: Ink,
     /// Text color for set code.
-    pub text_color: Option<Color32>,
+    pub text_color: Ink,
     /// Muted text color.
-    pub text_muted: Option<Color32>,
+    pub text_muted: Ink,
     /// Whether to show thumbnail images above nodes.
     pub show_thumbnails: bool,
     /// Thumbnail height (if shown).
@@ -46,11 +44,11 @@ impl Default for PrintingTimelineConfig {
             node_width: 40.0,
             node_spacing: 4.0,
             dot_radius: 5.0,
-            line_color: None,
-            dot_color: None,
-            dot_selected: None,
-            text_color: None,
-            text_muted: None,
+            line_color: Ink::Token(Token::TextMuted),
+            dot_color: Ink::Token(Token::TextMuted),
+            dot_selected: Ink::Token(Token::Accent),
+            text_color: Ink::Token(Token::TextPrimary),
+            text_muted: Ink::Token(Token::TextMuted),
             show_thumbnails: false,
             thumb_height: 80.0,
         }
@@ -105,13 +103,13 @@ pub fn show(
         hovered: None,
     };
 
-    // Resolved once: a `Default` config cannot know the theme.
-    let c = ui.tokens().color;
-    let line_color = config.line_color.unwrap_or(c.text_muted);
-    let dot_color = config.dot_color.unwrap_or(c.text_muted);
-    let dot_selected = config.dot_selected.unwrap_or(c.accent);
-    let text_color = config.text_color.unwrap_or(c.text_primary);
-    let text_muted = config.text_muted.unwrap_or(c.text_muted);
+    // Resolved once: a `Default` config names its tokens, it cannot hold values.
+    let t = ui.tokens();
+    let line_color = config.line_color.resolve(&t);
+    let dot_color = config.dot_color.resolve(&t);
+    let dot_selected = config.dot_selected.resolve(&t);
+    let text_color = config.text_color.resolve(&t);
+    let text_muted = config.text_muted.resolve(&t);
 
     if nodes.is_empty() {
         ui.label(RichText::new("No printings").color(text_muted));
@@ -186,7 +184,7 @@ pub fn show(
                 let dot_color = if is_selected {
                     dot_selected
                 } else {
-                    rarity_dot_color(&node.rarity, &c, dot_color)
+                    rarity_dot_color(&node.rarity, &t.color, dot_color)
                 };
                 painter.circle_filled(dot_center, config.dot_radius, dot_color);
 

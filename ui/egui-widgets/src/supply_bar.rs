@@ -8,29 +8,9 @@
 //! collection's supply). The host computes them (minted = on-chain slots; ordered
 //! = active orders' demand not yet on chain).
 
-use egui::{Color32, CornerRadius, Response, Sense, Ui, Vec2, Widget};
+use egui::{CornerRadius, Response, Sense, Ui, Vec2, Widget};
 
-use crate::theme::ThemeExt;
-
-// `_colour` suffixes: `oversub` is already a local bool in the draw body, and a
-// function silently shadowed by a `bool` is a confusing error to read.
-fn track_colour(ui: &Ui) -> Color32 {
-    ui.tokens().color.bg_highlight
-}
-/// Default minted fill (neutral). The host overrides per status (e.g. green
-/// when the collection is live).
-fn minted_colour(ui: &Ui) -> Color32 {
-    ui.tokens().color.accent
-}
-/// Ordered backlog — "queued, in progress".
-fn ordered_colour(ui: &Ui) -> Color32 {
-    ui.tokens().color.warning
-}
-/// Oversubscribed ordered band: "more ordered than supply". A problem, not a
-/// queue, so it takes `error` rather than a hotter amber.
-fn oversub_colour(ui: &Ui) -> Color32 {
-    ui.tokens().color.error
-}
+use crate::theme::{Ink, ThemeExt, Token};
 
 /// A two-band supply progress bar. `minted` and `ordered` are clamped so their
 /// bands never exceed the track; when `ordered` demand would overflow the
@@ -42,11 +22,15 @@ pub struct SupplyBar {
     total: u64,
     height: f32,
     rounding: u8,
-    // `None` asks the theme at render time — `new()` has no `Ui` to ask.
-    minted_color: Option<Color32>,
-    ordered_color: Option<Color32>,
-    oversub_color: Option<Color32>,
-    track_color: Option<Color32>,
+    /// Minted fill (neutral by default). The host overrides per status — e.g.
+    /// `Token::Success` once the collection is live.
+    minted_color: Ink,
+    /// Ordered backlog — "queued, in progress".
+    ordered_color: Ink,
+    /// Oversubscribed ordered band: "more ordered than supply". A problem, not
+    /// a queue, so it takes `Error` rather than a hotter amber.
+    oversub_color: Ink,
+    track_color: Ink,
 }
 
 impl SupplyBar {
@@ -58,10 +42,10 @@ impl SupplyBar {
             total,
             height: 4.0,
             rounding: 2,
-            minted_color: None,
-            ordered_color: None,
-            oversub_color: None,
-            track_color: None,
+            minted_color: Ink::Token(Token::Accent),
+            ordered_color: Ink::Token(Token::Warning),
+            oversub_color: Ink::Token(Token::Error),
+            track_color: Ink::Token(Token::BgHighlight),
         }
     }
 
@@ -71,15 +55,15 @@ impl SupplyBar {
         self
     }
 
-    /// Override the minted-band fill (e.g. green for a live collection).
-    pub fn minted_color(mut self, c: Color32) -> Self {
-        self.minted_color = Some(c);
+    /// Override the minted-band fill (e.g. `Token::Success` when live).
+    pub fn minted_color(mut self, c: impl Into<Ink>) -> Self {
+        self.minted_color = c.into();
         self
     }
 
     /// Override the ordered-band fill.
-    pub fn ordered_color(mut self, c: Color32) -> Self {
-        self.ordered_color = Some(c);
+    pub fn ordered_color(mut self, c: impl Into<Ink>) -> Self {
+        self.ordered_color = c.into();
         self
     }
 
@@ -96,9 +80,10 @@ impl SupplyBar {
         if !ui.is_rect_visible(rect) {
             return resp;
         }
+        let theme = ui.tokens();
         let painter = ui.painter();
         let corner = CornerRadius::same(self.rounding);
-        painter.rect_filled(rect, corner, self.track_color.unwrap_or(track_colour(ui)));
+        painter.rect_filled(rect, corner, self.track_color.resolve(&theme));
         if self.total == 0 {
             return resp;
         }
@@ -115,9 +100,9 @@ impl SupplyBar {
             band.min.x = rect.min.x + rect.width() * minted_pct;
             band.set_width(rect.width() * ordered_pct);
             let c = if oversub {
-                self.oversub_color.unwrap_or(oversub_colour(ui))
+                self.oversub_color.resolve(&theme)
             } else {
-                self.ordered_color.unwrap_or(ordered_colour(ui))
+                self.ordered_color.resolve(&theme)
             };
             painter.rect_filled(band, CornerRadius::ZERO, c);
         }
@@ -125,11 +110,7 @@ impl SupplyBar {
         if minted_pct > 0.0 {
             let mut filled = rect;
             filled.set_width(rect.width() * minted_pct);
-            painter.rect_filled(
-                filled,
-                corner,
-                self.minted_color.unwrap_or(minted_colour(ui)),
-            );
+            painter.rect_filled(filled, corner, self.minted_color.resolve(&theme));
         }
         resp
     }

@@ -20,12 +20,14 @@
 //!     .show(ui);
 //! ```
 
-use egui::{Color32, Grid, RichText, Ui};
+use egui::{Grid, RichText, Ui};
+
+use crate::theme::{Ink, Token};
 
 /// Builder.
 pub struct PropertyList<'a> {
     items: Vec<(&'a str, String)>,
-    label_color: Color32,
+    label_color: Ink,
     label_align: PropertyLabelAlign,
     id: &'static str,
 }
@@ -41,7 +43,7 @@ impl<'a> Default for PropertyList<'a> {
     fn default() -> Self {
         Self {
             items: Vec::new(),
-            label_color: Color32::from_gray(150),
+            label_color: Ink::Token(Token::TextMuted),
             label_align: PropertyLabelAlign::Left,
             id: "property_list",
         }
@@ -49,8 +51,8 @@ impl<'a> Default for PropertyList<'a> {
 }
 
 impl<'a> PropertyList<'a> {
-    /// Construct an empty `PropertyList`. Default label colour is a
-    /// neutral grey suited to dark backgrounds.
+    /// Construct an empty `PropertyList`. Labels take the theme's muted
+    /// text colour unless [`Self::label_color`] overrides it.
     pub fn new() -> Self {
         Self::default()
     }
@@ -70,9 +72,10 @@ impl<'a> PropertyList<'a> {
         }
     }
 
-    /// Set the label colour (default: neutral grey).
-    pub fn label_color(mut self, c: Color32) -> Self {
-        self.label_color = c;
+    /// Set the label colour — a [`Token`], an [`Ink`], or a literal `Color32`.
+    /// Default: `Token::TextMuted`.
+    pub fn label_color(mut self, c: impl Into<Ink>) -> Self {
+        self.label_color = c.into();
         self
     }
 
@@ -102,6 +105,7 @@ impl<'a> PropertyList<'a> {
         if self.items.is_empty() {
             return;
         }
+        let label_color = self.label_color.of(ui);
         Grid::new(self.id)
             .num_columns(2)
             .spacing([12.0, 4.0])
@@ -109,13 +113,13 @@ impl<'a> PropertyList<'a> {
                 for (label, value) in &self.items {
                     match self.label_align {
                         PropertyLabelAlign::Left => {
-                            ui.label(RichText::new(*label).small().color(self.label_color));
+                            ui.label(RichText::new(*label).small().color(label_color));
                         }
                         PropertyLabelAlign::Right => {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    ui.label(RichText::new(*label).small().color(self.label_color));
+                                    ui.label(RichText::new(*label).small().color(label_color));
                                 },
                             );
                         }

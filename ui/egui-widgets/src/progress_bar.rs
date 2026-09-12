@@ -6,9 +6,9 @@
 //!
 //! Uses the shared Tokyo Night palette by default but accepts custom colors.
 
-use egui::{Color32, CornerRadius, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
+use egui::{CornerRadius, Rect, RichText, Sense, Stroke, StrokeKind, Ui, Vec2};
 
-use crate::theme::{Space, SpaceExt, ThemeExt};
+use crate::theme::{Ink, Space, SpaceExt, ThemeExt, Token};
 
 /// What the bar's outline is drawn with.
 ///
@@ -48,11 +48,10 @@ pub struct ProgressBar {
     detail: Option<String>,
     /// Whether to show the percentage text centered on the bar.
     show_percentage: bool,
-    /// Fill color for the completed portion. `None` asks the theme at render
-    /// time — a `new` has no `Ui` to ask.
-    fill_color: Option<Color32>,
+    /// Fill color for the completed portion.
+    fill_color: Ink,
     /// Background color for the track.
-    track_color: Option<Color32>,
+    track_color: Ink,
     border: BarBorder,
     /// Bar height in pixels.
     height: f32,
@@ -68,8 +67,8 @@ impl ProgressBar {
             label: None,
             detail: None,
             show_percentage: false,
-            fill_color: None,
-            track_color: None,
+            fill_color: Ink::Token(Token::Accent),
+            track_color: Ink::Token(Token::BgSecondary),
             border: BarBorder::Theme,
             height: 16.0,
             rounding: 4,
@@ -108,14 +107,14 @@ impl ProgressBar {
     }
 
     /// Set the fill color.
-    pub fn fill_color(mut self, color: Color32) -> Self {
-        self.fill_color = Some(color);
+    pub fn fill_color(mut self, color: impl Into<Ink>) -> Self {
+        self.fill_color = color.into();
         self
     }
 
     /// Set the track (background) color.
-    pub fn track_color(mut self, color: Color32) -> Self {
-        self.track_color = Some(color);
+    pub fn track_color(mut self, color: impl Into<Ink>) -> Self {
+        self.track_color = color.into();
         self
     }
 
@@ -172,8 +171,8 @@ impl ProgressBar {
 
         let border = self.border.resolve(ui);
         let t = ui.tokens();
-        let fill_color = self.fill_color.unwrap_or(t.color.accent);
-        let track_color = self.track_color.unwrap_or(t.color.bg_secondary);
+        let fill_color = self.fill_color.resolve(&t);
+        let track_color = self.track_color.resolve(&t);
 
         if ui.is_rect_visible(rect) {
             let painter = ui.painter();

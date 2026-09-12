@@ -235,6 +235,249 @@ impl ColorTokens {
     }
 }
 
+// ============================================================================
+// Naming a token, and deferring to it
+// ============================================================================
+
+/// A name for one entry in [`ColorTokens`].
+///
+/// Exists so a colour choice can be *written down* somewhere that has no `Ui`
+/// to ask — a `Default` impl, a const config, a consumer's struct literal. The
+/// value is fetched later, from whichever theme is actually active.
+///
+/// [`ALL`](Self::ALL) is exhaustive, and `get` matches without a wildcard, so
+/// adding a token to `ColorTokens` fails to compile until it is named here too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Token {
+    BgPrimary,
+    BgSecondary,
+    BgHighlight,
+    TextPrimary,
+    TextSecondary,
+    TextMuted,
+    AccentBlue,
+    AccentCyan,
+    AccentGreen,
+    AccentYellow,
+    AccentOrange,
+    AccentRed,
+    AccentMagenta,
+    Accent,
+    Success,
+    Warning,
+    Error,
+    Border,
+}
+
+impl Token {
+    /// Every token, in `ColorTokens` declaration order. Drives the token
+    /// inspector story and the contrast suite.
+    pub const ALL: [Token; 18] = [
+        Token::BgPrimary,
+        Token::BgSecondary,
+        Token::BgHighlight,
+        Token::TextPrimary,
+        Token::TextSecondary,
+        Token::TextMuted,
+        Token::AccentBlue,
+        Token::AccentCyan,
+        Token::AccentGreen,
+        Token::AccentYellow,
+        Token::AccentOrange,
+        Token::AccentRed,
+        Token::AccentMagenta,
+        Token::Accent,
+        Token::Success,
+        Token::Warning,
+        Token::Error,
+        Token::Border,
+    ];
+
+    /// This token's value in `c`.
+    pub const fn get(self, c: &ColorTokens) -> Color32 {
+        match self {
+            Token::BgPrimary => c.bg_primary,
+            Token::BgSecondary => c.bg_secondary,
+            Token::BgHighlight => c.bg_highlight,
+            Token::TextPrimary => c.text_primary,
+            Token::TextSecondary => c.text_secondary,
+            Token::TextMuted => c.text_muted,
+            Token::AccentBlue => c.accent_blue,
+            Token::AccentCyan => c.accent_cyan,
+            Token::AccentGreen => c.accent_green,
+            Token::AccentYellow => c.accent_yellow,
+            Token::AccentOrange => c.accent_orange,
+            Token::AccentRed => c.accent_red,
+            Token::AccentMagenta => c.accent_magenta,
+            Token::Accent => c.accent,
+            Token::Success => c.success,
+            Token::Warning => c.warning,
+            Token::Error => c.error,
+            Token::Border => c.border,
+        }
+    }
+
+    /// The field name, as written in `ColorTokens` — for inspectors and
+    /// assertion messages.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Token::BgPrimary => "bg_primary",
+            Token::BgSecondary => "bg_secondary",
+            Token::BgHighlight => "bg_highlight",
+            Token::TextPrimary => "text_primary",
+            Token::TextSecondary => "text_secondary",
+            Token::TextMuted => "text_muted",
+            Token::AccentBlue => "accent_blue",
+            Token::AccentCyan => "accent_cyan",
+            Token::AccentGreen => "accent_green",
+            Token::AccentYellow => "accent_yellow",
+            Token::AccentOrange => "accent_orange",
+            Token::AccentRed => "accent_red",
+            Token::AccentMagenta => "accent_magenta",
+            Token::Accent => "accent",
+            Token::Success => "success",
+            Token::Warning => "warning",
+            Token::Error => "error",
+            Token::Border => "border",
+        }
+    }
+
+    /// This token at reduced `alpha` — sugar for [`Ink::Wash`].
+    pub const fn wash(self, alpha: u8) -> Ink {
+        Ink::Wash(self, alpha)
+    }
+
+    /// A legible foreground over this token's surface — sugar for [`Ink::On`].
+    pub const fn on(self) -> Ink {
+        Ink::On(self)
+    }
+}
+
+/// A colour drawn from the **encoding** palette rather than the chrome palette.
+///
+/// See [`SeriesPalette`] for why the two are separate. This exists so [`Ink`]
+/// can express every themed colour a widget might want: a dot that means
+/// "arriving" is as much a theme decision as a border, and before this it was
+/// the one category stuck on `Option<Color32>`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Series {
+    /// The `i`th categorical series colour — folds past the last slot, so any
+    /// index is valid. See [`SeriesPalette::nth`].
+    Nth(usize),
+    /// A ring/class tint. See [`SeriesPalette::class`].
+    Class(u8),
+    /// Value arriving — the inbound end of the flow ramp.
+    Inbound,
+    /// Value leaving — the outbound end of the flow ramp.
+    Outbound,
+}
+
+impl Series {
+    /// This entry's value in `s`.
+    pub fn get(self, s: &SeriesPalette) -> Color32 {
+        match self {
+            Series::Nth(i) => s.nth(i),
+            Series::Class(ring) => s.class(ring),
+            Series::Inbound => s.inbound(),
+            Series::Outbound => s.outbound(),
+        }
+    }
+}
+
+/// How a widget decides a colour: **from the theme, or overridden**.
+///
+/// This replaced `Option<Color32>`, which was the wrong type for the job in two
+/// ways. `None` says *absent* — but a themed default is the opposite of absent,
+/// it is the considered answer. And because `None` carries nothing, the token it
+/// stood for had to be named at the far-away resolve site (`x.unwrap_or(c.y)`),
+/// so reading a widget's `Default` told you nothing about what it would look
+/// like, and two resolve sites for one field could silently disagree.
+///
+/// Each arm is a resolution *strategy*, evaluated against the active theme:
+///
+/// - [`Token`](Self::Token) — take a named token as-is.
+/// - [`Wash`](Self::Wash) — a token at reduced alpha: tracks, scrims, webs,
+///   hairlines. Goes through [`with_alpha`], so it cannot reintroduce the
+///   premultiplication bug.
+/// - [`On`](Self::On) — whatever reads legibly *on* that token's surface, via
+///   [`ColorTokens::on`]. For text over a semantic fill.
+/// - [`Series`](Self::Series) — the encoding palette instead of the chrome one,
+///   for the colours that carry data rather than structure.
+/// - [`Fixed`](Self::Fixed) — a literal, escaping the theme deliberately. This
+///   is the arm a reviewer should be suspicious of, which is the point: it is
+///   now a *named* choice rather than the absence of one.
+///
+/// `From<Token>` and `From<Color32>` mean setters taking `impl Into<Ink>` accept
+/// either, so `.color(Color32::RED)` still compiles while `.color(Token::Error)`
+/// becomes expressible — including from a context with no `Ui` in scope, which
+/// is exactly where `Default` impls and consumer config literals live.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ink {
+    /// A named theme token, taken as-is.
+    Token(Token),
+    /// A named theme token at reduced alpha (0–255).
+    Wash(Token, u8),
+    /// A legible foreground over the named token's surface.
+    On(Token),
+    /// An entry from the encoding palette.
+    Series(Series),
+    /// A fixed colour, overriding the theme.
+    Fixed(Color32),
+}
+
+impl Ink {
+    /// Resolve against a theme.
+    pub fn resolve(self, theme: &Theme) -> Color32 {
+        let c = &theme.color;
+        match self {
+            Ink::Token(t) => t.get(c),
+            Ink::Wash(t, a) => with_alpha(t.get(c), a),
+            Ink::On(t) => c.on(t.get(c)),
+            Ink::Series(s) => s.get(&theme.series),
+            Ink::Fixed(color) => color,
+        }
+    }
+
+    /// Resolve against the theme active in `ui`.
+    pub fn of(self, ui: &Ui) -> Color32 {
+        self.resolve(&ui.tokens())
+    }
+
+    /// The chrome token this ink defers to — `None` for [`Ink::Series`] and
+    /// [`Ink::Fixed`].
+    ///
+    /// Lets a test assert that a widget's defaults all go through the theme.
+    pub const fn token(self) -> Option<Token> {
+        match self {
+            Ink::Token(t) | Ink::Wash(t, _) | Ink::On(t) => Some(t),
+            Ink::Series(_) | Ink::Fixed(_) => None,
+        }
+    }
+
+    /// Whether this ink escapes the theme entirely.
+    pub const fn is_fixed(self) -> bool {
+        matches!(self, Ink::Fixed(_))
+    }
+}
+
+impl From<Token> for Ink {
+    fn from(t: Token) -> Self {
+        Ink::Token(t)
+    }
+}
+
+impl From<Series> for Ink {
+    fn from(s: Series) -> Self {
+        Ink::Series(s)
+    }
+}
+
+impl From<Color32> for Ink {
+    fn from(c: Color32) -> Self {
+        Ink::Fixed(c)
+    }
+}
+
 /// `color` at `alpha` (0–255) — a scrim, a wash, a translucent band.
 ///
 /// Exists because `Color32::from_rgba_premultiplied` is the wrong constructor

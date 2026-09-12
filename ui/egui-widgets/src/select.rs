@@ -48,6 +48,12 @@ pub struct SelectOption {
     pub id: String,
     pub label: String,
     /// Leading dot — a Discord role colour, a status, a series tint.
+    ///
+    /// Stays `Option<Color32>` rather than becoming an [`crate::theme::Ink`]:
+    /// this is **content**, not chrome. The colour belongs to the row's
+    /// underlying thing (the role's own brand hex, decoded upstream), so there is
+    /// no theme token it could defer to and nothing for a theme switch to say
+    /// about it. `None` means the row has no swatch.
     pub swatch: Option<Color32>,
     /// Second line, muted. Kept short; this is a menu, not a table.
     pub subtitle: Option<String>,

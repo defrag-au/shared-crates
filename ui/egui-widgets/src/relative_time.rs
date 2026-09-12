@@ -6,7 +6,9 @@
 //! the pure, native-testable [`relative_label`]; the widget wraps it with styling
 //! and a resolved "now" (live on wasm/native, or pinned for deterministic stories).
 
-use egui::{Color32, Response, RichText, Ui, Widget};
+use egui::{Response, RichText, Ui, Widget};
+
+use crate::theme::{Ink, Token};
 
 const MINUTE: i64 = 60;
 const HOUR: i64 = 3_600;
@@ -53,7 +55,7 @@ fn now_secs() -> i64 {
 pub struct RelativeTime {
     timestamp_secs: i64,
     now_override: Option<i64>,
-    color: Color32,
+    color: Ink,
     size: f32,
 }
 
@@ -63,7 +65,7 @@ impl RelativeTime {
         Self {
             timestamp_secs,
             now_override: None,
-            color: Color32::from_gray(150),
+            color: Ink::Token(Token::TextMuted),
             size: 12.0,
         }
     }
@@ -75,9 +77,9 @@ impl RelativeTime {
         self
     }
 
-    /// Override the text colour (default: muted grey).
-    pub fn color(mut self, color: Color32) -> Self {
-        self.color = color;
+    /// Override the text colour (default: `Token::TextMuted`).
+    pub fn color(mut self, color: impl Into<Ink>) -> Self {
+        self.color = color.into();
         self
     }
 
@@ -97,7 +99,8 @@ impl RelativeTime {
 impl Widget for RelativeTime {
     fn ui(self, ui: &mut Ui) -> Response {
         let text = self.label();
-        ui.label(RichText::new(text).color(self.color).size(self.size))
+        let color = self.color.of(ui);
+        ui.label(RichText::new(text).color(color).size(self.size))
     }
 }
 

@@ -8,7 +8,7 @@
 use egui::{Color32, RichText};
 
 use crate::buttons::UiButtonExt;
-use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 // ============================================================================
 // Types
@@ -49,8 +49,7 @@ pub struct AmountInputConfig {
     /// Minimum ADA required for a valid swap.
     pub min_ada: f64,
     /// Accent color for selected/active states.
-    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
-    pub accent: Option<Color32>,
+    pub accent: Ink,
 }
 
 impl Default for AmountInputConfig {
@@ -59,7 +58,7 @@ impl Default for AmountInputConfig {
             presets: vec![100, 250, 500],
             max_ada: None,
             min_ada: 5.0,
-            accent: None,
+            accent: Ink::Token(Token::Accent),
         }
     }
 }
@@ -96,7 +95,7 @@ pub fn show(
     // Resolved once, ahead of the closures: a `Default` config cannot know the
     // theme, so the accent arrives here.
     let t = ui.tokens();
-    let accent = config.accent.unwrap_or(t.color.accent);
+    let accent = config.accent.resolve(&t);
     let on_accent = t.color.bg_primary;
     let corner = t.corner(Radius::Base);
     let mut action = AmountInputAction::None;

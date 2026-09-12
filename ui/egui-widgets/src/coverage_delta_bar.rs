@@ -3,9 +3,9 @@
 //! Renders a horizontal bar showing current coverage percentage and the
 //! projected coverage after a trade, with a delta indicator.
 
-use egui::{Color32, CornerRadius, Rect, RichText, Ui, Vec2};
+use egui::{CornerRadius, Rect, RichText, Ui, Vec2};
 
-use crate::theme::{Space, SpaceExt, ThemeExt};
+use crate::theme::{Ink, Space, SpaceExt, ThemeExt, Token};
 
 // ============================================================================
 // Types
@@ -17,15 +17,14 @@ pub struct CoverageDeltaConfig {
     pub bar_height: f32,
     /// Font size for labels.
     pub font_size: f32,
-    /// Color for the "before" fill. `None` asks the theme at render time — a
-    /// `Default` has no `Ui` to ask, and a baked colour cannot be re-skinned.
-    pub before_color: Option<Color32>,
+    /// Color for the "before" fill.
+    pub before_color: Ink,
     /// Color for the positive delta region.
-    pub gain_color: Option<Color32>,
+    pub gain_color: Ink,
     /// Color for the negative delta region (shown as striped/faded).
-    pub loss_color: Option<Color32>,
+    pub loss_color: Ink,
     /// Background color for the unfilled region.
-    pub bg_color: Option<Color32>,
+    pub bg_color: Ink,
     /// Corner radius.
     pub corner_radius: u8,
 }
@@ -35,10 +34,10 @@ impl Default for CoverageDeltaConfig {
         Self {
             bar_height: 14.0,
             font_size: 10.0,
-            before_color: None,
-            gain_color: None,
-            loss_color: None,
-            bg_color: None,
+            before_color: Ink::Token(Token::AccentBlue),
+            gain_color: Ink::Token(Token::AccentGreen),
+            loss_color: Ink::Token(Token::AccentRed),
+            bg_color: Ink::Token(Token::BgSecondary),
             corner_radius: 3,
         }
     }
@@ -63,12 +62,12 @@ pub fn show(
     crate::install_phosphor_font(ui.ctx());
 
     // Resolved once, ahead of the closure that reads them: a `Default` config
-    // cannot know the theme, so the colours arrive here.
+    // names its tokens, so the values arrive here.
     let t = ui.tokens();
-    let gain_color = config.gain_color.unwrap_or(t.color.accent_green);
-    let loss_color = config.loss_color.unwrap_or(t.color.accent_red);
-    let before_color = config.before_color.unwrap_or(t.color.accent_blue);
-    let bg_color = config.bg_color.unwrap_or(t.color.bg_secondary);
+    let gain_color = config.gain_color.resolve(&t);
+    let loss_color = config.loss_color.resolve(&t);
+    let before_color = config.before_color.resolve(&t);
+    let bg_color = config.bg_color.resolve(&t);
 
     let before = before.clamp(0.0, 1.0);
     let after = after.clamp(0.0, 1.0);

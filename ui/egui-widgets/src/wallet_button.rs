@@ -13,24 +13,36 @@ use egui::{Color32, RichText};
 
 use super::buttons::UiButtonExt;
 use super::wallet::{ConnectionState, WalletConnector, WalletProvider};
-use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
-/// Per-surface colour overrides for the wallet button.
+/// Which colour each of the wallet button's surfaces takes.
 ///
-/// Every field is `None` by default and resolves against the active theme.
-/// The previous `Default` was five literals in the **same `#44ff44` green** that
-/// `SwapModalTheme` carried — a third copy of a colour that exists in no theme,
-/// which is what a per-widget palette becomes once two of them exist.
-#[derive(Clone, Copy, Debug, Default)]
+/// Every field defaults to a named theme token and resolves at render time.
+/// The `Default` before this was five literals in the **same `#44ff44` green**
+/// that `SwapModalTheme` carried — a third copy of a colour that exists in no
+/// theme, which is what a per-widget palette becomes once two of them exist.
+#[derive(Clone, Copy, Debug)]
 pub struct WalletButtonTheme {
-    pub accent: Option<Color32>,
-    pub text_primary: Option<Color32>,
-    pub text_muted: Option<Color32>,
-    pub error: Option<Color32>,
-    pub bg: Option<Color32>,
+    pub accent: Ink,
+    pub text_primary: Ink,
+    pub text_muted: Ink,
+    pub error: Ink,
+    pub bg: Ink,
 }
 
-/// [`WalletButtonTheme`] with every `None` filled in. Same field names, so a
+impl Default for WalletButtonTheme {
+    fn default() -> Self {
+        Self {
+            accent: Ink::Token(Token::Accent),
+            text_primary: Ink::Token(Token::TextPrimary),
+            text_muted: Ink::Token(Token::TextMuted),
+            error: Ink::Token(Token::Error),
+            bg: Ink::Token(Token::BgSecondary),
+        }
+    }
+}
+
+/// [`WalletButtonTheme`] with every [`Ink`] resolved. Same field names, so a
 /// draw site reads the same either way.
 pub struct ResolvedWalletTheme {
     pub accent: Color32,
@@ -41,13 +53,13 @@ pub struct ResolvedWalletTheme {
 }
 
 impl WalletButtonTheme {
-    pub fn resolved(&self, c: &crate::theme::ColorTokens) -> ResolvedWalletTheme {
+    pub fn resolved(&self, theme: &crate::theme::Theme) -> ResolvedWalletTheme {
         ResolvedWalletTheme {
-            accent: self.accent.unwrap_or(c.accent),
-            text_primary: self.text_primary.unwrap_or(c.text_primary),
-            text_muted: self.text_muted.unwrap_or(c.text_muted),
-            error: self.error.unwrap_or(c.error),
-            bg: self.bg.unwrap_or(c.bg_secondary),
+            accent: self.accent.resolve(theme),
+            text_primary: self.text_primary.resolve(theme),
+            text_muted: self.text_muted.resolve(theme),
+            error: self.error.resolve(theme),
+            bg: self.bg.resolve(theme),
         }
     }
 }
@@ -84,7 +96,7 @@ impl WalletButton {
     /// Render the wallet button. Returns an action the caller must handle.
     pub fn show(&mut self, ui: &mut egui::Ui, connector: &WalletConnector) -> WalletAction {
         let mut action = WalletAction::None;
-        let theme = self.theme.resolved(&ui.tokens().color);
+        let theme = self.theme.resolved(&ui.tokens());
 
         egui::Frame::new()
             .fill(theme.bg)
@@ -118,7 +130,7 @@ impl WalletButton {
         connector: &WalletConnector,
     ) -> WalletAction {
         let mut action = WalletAction::None;
-        let theme = self.theme.resolved(&ui.tokens().color);
+        let theme = self.theme.resolved(&ui.tokens());
 
         if connector.available_wallets.is_empty() {
             ui.vertical_centered(|ui| {
@@ -191,7 +203,7 @@ impl WalletButton {
     }
 
     fn draw_connecting(&self, ui: &mut egui::Ui) {
-        let theme = self.theme.resolved(&ui.tokens().color);
+        let theme = self.theme.resolved(&ui.tokens());
         ui.horizontal(|ui| {
             ui.spinner();
             ui.label(
@@ -206,7 +218,7 @@ impl WalletButton {
         let mut action = WalletAction::None;
 
         // Copy theme colors to avoid borrow conflicts
-        let t = self.theme.resolved(&ui.tokens().color);
+        let t = self.theme.resolved(&ui.tokens());
         let text_muted = t.text_muted;
         let accent = t.accent;
 
@@ -297,7 +309,7 @@ impl WalletButton {
         connector: &WalletConnector,
     ) -> WalletAction {
         let mut action = WalletAction::None;
-        let theme = self.theme.resolved(&ui.tokens().color);
+        let theme = self.theme.resolved(&ui.tokens());
 
         ui.horizontal(|ui| {
             // Truncate long error messages

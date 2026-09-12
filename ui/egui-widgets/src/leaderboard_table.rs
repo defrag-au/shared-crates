@@ -32,10 +32,10 @@
 //!     .show(ui);
 //! ```
 
-use egui::{Color32, RichText, Ui};
+use egui::{RichText, Ui};
 use egui_extras::{Column, TableBuilder};
 
-use crate::theme::{Space, SpaceExt, ThemeExt};
+use crate::theme::{Ink, Space, SpaceExt, ThemeExt, Token};
 use crate::{Chip, ChipVariant, PhosphorIcon};
 
 /// One ranked row. All display strings are caller-formatted.
@@ -70,8 +70,7 @@ pub struct LeaderboardTable<'a> {
     show_percent: bool,
     row_height: f32,
     header_height: f32,
-    /// `None` asks the theme at render time — a `new` has no `Ui` to ask.
-    accent_color: Option<Color32>,
+    accent_color: Ink,
     id_salt: &'a str,
 }
 
@@ -86,7 +85,7 @@ impl<'a> LeaderboardTable<'a> {
             show_percent: true,
             row_height: 26.0,
             header_height: 22.0,
-            accent_color: None,
+            accent_color: Ink::Token(Token::AccentCyan),
             id_salt: "leaderboard_table",
         }
     }
@@ -117,8 +116,8 @@ impl<'a> LeaderboardTable<'a> {
     }
 
     /// Color used for accent-flagged labels (default cyan).
-    pub fn accent_color(mut self, color: Color32) -> Self {
-        self.accent_color = Some(color);
+    pub fn accent_color(mut self, color: impl Into<Ink>) -> Self {
+        self.accent_color = color.into();
         self
     }
 
@@ -198,7 +197,7 @@ impl<'a> LeaderboardTable<'a> {
                                 }
                             }
                             let color = if r.accent {
-                                self.accent_color.unwrap_or(ui.tokens().color.accent_cyan)
+                                self.accent_color.of(ui)
                             } else {
                                 ui.tokens().color.text_primary
                             };

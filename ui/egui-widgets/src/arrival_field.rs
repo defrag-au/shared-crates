@@ -25,12 +25,12 @@
 //! because a still is what goes in a write-up. Flight and pulses happen only
 //! while the spine is playing.
 
-use egui::{Align2, Color32, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
+use egui::{Align2, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
 use crate::mint_arrivals::{Arrival, pile_offset};
 use crate::motion::{Easing, tween, tween_bool, tween_from};
 use crate::selection::Selection;
-use crate::theme::{Radius, TextSize, ThemeExt};
+use crate::theme::{Ink, Radius, Series, TextSize, ThemeExt};
 use crate::time_spine::SpineState;
 
 pub struct ArrivalFieldResponse {
@@ -47,7 +47,7 @@ pub struct ArrivalField<'a> {
     spine: &'a SpineState,
     selection: &'a mut Selection,
     flight_secs: f32,
-    dot_color: Option<Color32>,
+    dot_color: Ink,
     height: f32,
     label: Option<&'a dyn Fn(&str) -> String>,
 }
@@ -64,7 +64,9 @@ impl<'a> ArrivalField<'a> {
             spine,
             selection,
             flight_secs: 0.7,
-            dot_color: None,
+            // An arrival IS inbound value — the flow ramp's business, not the
+            // chrome palette's.
+            dot_color: Ink::Series(Series::Inbound),
             height: 320.0,
             label: None,
         }
@@ -76,8 +78,8 @@ impl<'a> ArrivalField<'a> {
         self
     }
 
-    pub fn dot_color(mut self, c: Color32) -> Self {
-        self.dot_color = Some(c);
+    pub fn dot_color(mut self, c: impl Into<Ink>) -> Self {
+        self.dot_color = c.into();
         self
     }
 
@@ -106,7 +108,7 @@ impl<'a> ArrivalField<'a> {
         let now = ctx.input(|i| i.time);
         let muted = ui.visuals().weak_text_color();
         let ink = ui.visuals().text_color();
-        let accent = dot_color.unwrap_or_else(|| ui.tokens().series.inbound());
+        let accent = dot_color.of(ui);
 
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());

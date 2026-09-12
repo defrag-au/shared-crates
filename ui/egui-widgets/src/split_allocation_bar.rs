@@ -7,7 +7,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Ui, Vec2};
 
-use crate::theme::{self, Space, SpaceExt, ThemeExt};
+use crate::theme::{self, Ink, Space, SpaceExt, ThemeExt, Token};
 
 // ============================================================================
 // Types
@@ -32,8 +32,7 @@ pub struct SplitAllocationBarConfig {
     /// Corner radius.
     pub corner_radius: u8,
     /// Background color for empty/unfilled region.
-    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
-    pub bg_color: Option<Color32>,
+    pub bg_color: Ink,
     /// Minimum segment width (pixels) to show percentage label inside.
     pub min_label_width: f32,
     /// Whether to show the legend row below the bar.
@@ -52,7 +51,7 @@ impl Default for SplitAllocationBarConfig {
         Self {
             bar_height: 20.0,
             corner_radius: 4,
-            bg_color: None,
+            bg_color: Ink::Token(Token::BgSecondary),
             min_label_width: 40.0,
             show_legend: true,
             show_tooltip: true,
@@ -111,7 +110,7 @@ pub fn show(
         painter.rect_filled(
             rect,
             rounding,
-            config.bg_color.unwrap_or(ui.tokens().color.bg_secondary),
+            config.bg_color.of(ui),
         );
 
         // Paint segments left to right

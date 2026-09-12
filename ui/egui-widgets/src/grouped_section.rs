@@ -33,7 +33,7 @@
 use egui::{RichText, Ui};
 
 use crate::PhosphorIcon;
-use crate::theme::{Space, SpaceExt, ThemeExt};
+use crate::theme::{Ink, Space, SpaceExt, Token};
 
 /// Click events the section can produce. Today only `BulkAction`
 /// (the right-aligned header button); future variants could add
@@ -52,12 +52,11 @@ pub struct GroupedSectionConfig {
     pub hero_corner_radius: u8,
     pub hero_placeholder_width: f32,
     pub title_size: f32,
-    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
-    pub title_color: Option<egui::Color32>,
+    pub title_color: Ink,
     pub subtitle_size: f32,
-    pub subtitle_color: Option<egui::Color32>,
-    pub badge_color: Option<egui::Color32>,
-    pub bulk_button_color: Option<egui::Color32>,
+    pub subtitle_color: Ink,
+    pub badge_color: Ink,
+    pub bulk_button_color: Ink,
     pub bulk_button_size: f32,
     pub gap_after_header: f32,
 }
@@ -71,11 +70,11 @@ impl Default for GroupedSectionConfig {
             // the title column lines up across mixed-state groups.
             hero_placeholder_width: 36.0,
             title_size: 13.0,
-            title_color: None,
+            title_color: Ink::Token(Token::TextPrimary),
             subtitle_size: 10.0,
-            subtitle_color: None,
-            badge_color: None,
-            bulk_button_color: None,
+            subtitle_color: Ink::Token(Token::TextMuted),
+            badge_color: Ink::Token(Token::AccentGreen),
+            bulk_button_color: Ink::Token(Token::AccentCyan),
             bulk_button_size: 10.0,
             gap_after_header: 6.0,
         }
@@ -184,12 +183,12 @@ impl<'a> GroupedSection<'a> {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(self.title)
-                            .color(cfg.title_color.unwrap_or(ui.tokens().color.text_primary))
+                            .color(cfg.title_color.of(ui))
                             .size(cfg.title_size)
                             .strong(),
                     );
                     if self.is_verified {
-                        let badge = cfg.badge_color.unwrap_or(ui.tokens().color.accent_green);
+                        let badge = cfg.badge_color.of(ui);
                         ui.label(PhosphorIcon::CheckCircle.rich_text(12.0, badge));
                     }
                     if let Some((visible, label)) = &self.bulk_button
@@ -200,10 +199,7 @@ impl<'a> GroupedSection<'a> {
                             .add(
                                 egui::Button::new(
                                     RichText::new(label)
-                                        .color(
-                                            cfg.bulk_button_color
-                                                .unwrap_or(ui.tokens().color.accent_cyan),
-                                        )
+                                        .color(cfg.bulk_button_color.of(ui))
                                         .size(cfg.bulk_button_size),
                                 )
                                 .frame(false),
@@ -217,7 +213,7 @@ impl<'a> GroupedSection<'a> {
                 if let Some(subtitle) = self.subtitle {
                     ui.label(
                         RichText::new(subtitle)
-                            .color(cfg.subtitle_color.unwrap_or(ui.tokens().color.text_muted))
+                            .color(cfg.subtitle_color.of(ui))
                             .size(cfg.subtitle_size),
                     );
                 }

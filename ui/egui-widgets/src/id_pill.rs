@@ -26,7 +26,7 @@
 
 use std::borrow::Cow;
 
-use crate::theme::{Radius, Space, ThemeExt};
+use crate::theme::{Ink, Radius, Space, ThemeExt, Token};
 
 use egui::{Align, Color32, Layout, RichText, Ui};
 
@@ -70,9 +70,11 @@ pub struct IdPill<'a> {
     /// wins; [`IdPill::pool_pm(false)`] suppresses.
     auto_pool_pm: bool,
     layout: IdPillLayout,
-    /// `None` asks the theme at render time — a constructor has no `Ui` to ask.
-    label_color: Option<Color32>,
-    value_color: Option<Color32>,
+    label_color: Ink,
+    /// `None` derives the tint from [`Self::layout`] — see [`Self::value_col`].
+    /// The only default here that is not a fixed token, which is why it stays an
+    /// `Option` while `label_color` is a plain [`Ink`].
+    value_color: Option<Ink>,
 }
 
 /// Outcome of one `IdPill::show()` call.
@@ -106,7 +108,7 @@ impl<'a> IdPill<'a> {
             link: None,
             auto_pool_pm: true,
             layout: IdPillLayout::Stacked,
-            label_color: None,
+            label_color: Ink::Token(Token::TextMuted),
             value_color: None,
         }
     }
@@ -133,7 +135,7 @@ impl<'a> IdPill<'a> {
             link: None,
             auto_pool_pm: true,
             layout: IdPillLayout::Inline,
-            label_color: None,
+            label_color: Ink::Token(Token::TextMuted),
             // A UTxO ref is an identifier, not a headline — it sits a tier
             // quieter than the stacked pill's value, which is `text_primary`.
             value_color: None,
@@ -231,10 +233,9 @@ impl<'a> IdPill<'a> {
         self
     }
 
-    /// Override the muted label colour.
-    /// The label tint, resolved against the theme when not overridden.
+    /// The label tint.
     fn label_col(&self, ui: &Ui) -> Color32 {
-        self.label_color.unwrap_or(ui.tokens().color.text_muted)
+        self.label_color.of(ui)
     }
 
     /// The value tint, resolved against the theme when not overridden.
@@ -245,23 +246,23 @@ impl<'a> IdPill<'a> {
     /// should not shout. That is exactly the distinction the two literals here
     /// used to encode (gray 220 vs gray 160) without saying why.
     fn value_col(&self, ui: &Ui) -> Color32 {
-        self.value_color.unwrap_or_else(|| {
-            let c = ui.tokens().color;
-            match self.layout {
-                IdPillLayout::Stacked => c.text_primary,
-                IdPillLayout::Inline => c.text_secondary,
-            }
-        })
+        self.value_color
+            .unwrap_or(match self.layout {
+                IdPillLayout::Stacked => Ink::Token(Token::TextPrimary),
+                IdPillLayout::Inline => Ink::Token(Token::TextSecondary),
+            })
+            .of(ui)
     }
 
-    pub fn label_color(mut self, c: Color32) -> Self {
-        self.label_color = Some(c);
+    /// Override the muted label colour.
+    pub fn label_color(mut self, c: impl Into<Ink>) -> Self {
+        self.label_color = c.into();
         self
     }
 
     /// Override the value colour.
-    pub fn value_color(mut self, c: Color32) -> Self {
-        self.value_color = Some(c);
+    pub fn value_color(mut self, c: impl Into<Ink>) -> Self {
+        self.value_color = Some(c.into());
         self
     }
 

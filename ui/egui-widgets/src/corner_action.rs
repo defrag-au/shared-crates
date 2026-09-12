@@ -43,10 +43,10 @@
 
 use std::hash::Hash;
 
-use egui::{Align2, Color32, Pos2, Rect, Response, Sense, Ui, Vec2};
+use egui::{Align2, Pos2, Rect, Response, Sense, Ui, Vec2};
 
 use crate::icons::PhosphorIcon;
-use crate::theme::ThemeExt;
+use crate::theme::{Ink, ThemeExt, Token};
 
 /// Which corner of the host rect the button is pinned to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,9 +75,7 @@ pub struct CornerAction {
     size: f32,
     inset: f32,
     shift: f32,
-    /// `None` asks the theme at render time — a `new` has no `Ui` to ask, and
-    /// baking a colour here would put this button beyond a theme's reach.
-    accent: Option<Color32>,
+    accent: Ink,
     tooltip: Option<String>,
 }
 
@@ -91,7 +89,7 @@ impl CornerAction {
             size: 16.0,
             inset: 4.0,
             shift: 0.0,
-            accent: None,
+            accent: Ink::Token(Token::AccentCyan),
             tooltip: None,
         }
     }
@@ -121,8 +119,8 @@ impl CornerAction {
     }
 
     /// Glyph colour at rest, chip fill on hover.
-    pub fn accent(mut self, accent: Color32) -> Self {
-        self.accent = Some(accent);
+    pub fn accent(mut self, accent: impl Into<Ink>) -> Self {
+        self.accent = accent.into();
         self
     }
 
@@ -162,11 +160,13 @@ impl CornerAction {
         let response = ui.interact(rect, id, Sense::click());
 
         let t = ui.tokens();
-        let accent = self.accent.unwrap_or(t.color.accent_cyan);
+        let accent = self.accent.resolve(&t);
         let (bg, fg) = if response.hovered() {
             (accent, t.color.bg_primary)
         } else {
-            (Color32::from_rgba_premultiplied(20, 21, 30, 200), accent)
+            // At rest the chip is a near-opaque scrim over whatever it floats
+            // on — the host's own ground, not a colour of its own.
+            (crate::theme::with_alpha(t.color.bg_primary, 200), accent)
         };
         let painter = ui.painter();
         painter.rect_filled(rect, 3.0, bg);

@@ -34,7 +34,7 @@
 
 use egui::{Color32, RichText, Ui};
 
-use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
+use crate::theme::{Ink, Radius, Space, SpaceExt, ThemeExt, Token};
 use crate::{Chip, ChipVariant, PhosphorIcon};
 
 /// One selectable row in the dropdown. All display strings are caller-formatted.
@@ -102,8 +102,7 @@ pub struct TypeaheadSearch<'a> {
     empty_text: &'a str,
     max_visible_rows: usize,
     autofocus: bool,
-    /// `None` asks the theme at render time — a `new` has no `Ui` to ask.
-    accent: Option<Color32>,
+    accent: Ink,
 }
 
 impl<'a> TypeaheadSearch<'a> {
@@ -124,7 +123,7 @@ impl<'a> TypeaheadSearch<'a> {
             empty_text: "No matches",
             max_visible_rows: 8,
             autofocus: false,
-            accent: None,
+            accent: Ink::Token(Token::AccentCyan),
         }
     }
 
@@ -153,8 +152,8 @@ impl<'a> TypeaheadSearch<'a> {
     }
 
     /// Accent color for the highlighted row and focus ring (default cyan).
-    pub fn accent(mut self, color: Color32) -> Self {
-        self.accent = Some(color);
+    pub fn accent(mut self, color: impl Into<Ink>) -> Self {
+        self.accent = color.into();
         self
     }
 
@@ -280,7 +279,7 @@ impl<'a> TypeaheadSearch<'a> {
         // `self.highlight` (the one mutated on hover) — `self.row(&mut self)`
         // would otherwise clash with iterating `self.options`.
         let options = self.options;
-        let accent = self.accent.unwrap_or(ui.tokens().color.accent_cyan);
+        let accent = self.accent.of(ui);
         let id_salt = self.id_salt;
         let max_visible = self.max_visible_rows;
         let highlight = self.highlight;

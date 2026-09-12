@@ -138,7 +138,6 @@ pub fn show(
     // Draw cards left-to-right (later cards on top), but skip hovered to draw last
     let browser_config = crate::CardBrowserConfig {
         rounding: 4.0,
-        bg_card_hover: Some(Color32::from_rgb(40, 40, 55)),
         ..Default::default()
     };
 

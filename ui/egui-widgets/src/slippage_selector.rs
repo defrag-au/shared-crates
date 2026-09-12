@@ -7,7 +7,7 @@
 use egui::{Color32, RichText};
 
 use crate::buttons::UiButtonExt;
-use crate::theme::{Radius, TextSize, ThemeExt};
+use crate::theme::{Ink, Radius, TextSize, ThemeExt, Token};
 
 // ============================================================================
 // Types
@@ -48,8 +48,7 @@ pub struct SlippageSelectorConfig {
     /// Preset slippage options.
     pub presets: Vec<SlippagePreset>,
     /// Accent color for selected state.
-    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
-    pub accent: Option<Color32>,
+    pub accent: Ink,
     /// Threshold in bps below which a "low slippage" warning is shown.
     pub warn_low_bps: u32,
     /// Threshold in bps above which a "high slippage" warning is shown.
@@ -73,7 +72,7 @@ impl Default for SlippageSelectorConfig {
                     label: "3%".into(),
                 },
             ],
-            accent: None,
+            accent: Ink::Token(Token::Accent),
             warn_low_bps: 30,
             warn_high_bps: 500,
         }
@@ -102,7 +101,7 @@ pub fn show(
     // Resolved once, ahead of the closures: a `Default` config cannot know the
     // theme.
     let t = ui.tokens();
-    let accent = config.accent.unwrap_or(t.color.accent);
+    let accent = config.accent.resolve(&t);
     let on_accent = t.color.bg_primary;
     let muted = t.color.text_muted;
     let corner = t.corner(Radius::Base);

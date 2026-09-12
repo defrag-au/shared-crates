@@ -21,7 +21,7 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 
-use crate::theme::{TextSize, ThemeExt};
+use crate::theme::{Ink, TextSize, ThemeExt, Token};
 
 // ============================================================================
 // Public types
@@ -93,14 +93,15 @@ pub struct PriceTimelineConfig {
     pub window_secs: i64,
     pub log_y: LogMode,
     /// Draw a connecting polyline through the points in time order (sparse
-    /// asset histories read better connected). Color of the line.
-    pub connect: Option<Color32>,
+    /// asset histories read better connected), in this colour. `None` means
+    /// *no line* — unlike the fields below, where `None` would have meant
+    /// "ask the theme", which is why those are [`Ink`].
+    pub connect: Option<Ink>,
     /// Base mark radius; automatically shrunk for dense scatters.
     pub point_radius: f32,
-    // `None` asks the theme at render time — a `Default` has no `Ui` to ask.
-    pub background: Option<Color32>,
-    pub grid_color: Option<Color32>,
-    pub label_color: Option<Color32>,
+    pub background: Ink,
+    pub grid_color: Ink,
+    pub label_color: Ink,
 }
 
 impl Default for PriceTimelineConfig {
@@ -112,9 +113,9 @@ impl Default for PriceTimelineConfig {
             log_y: LogMode::Auto,
             connect: None,
             point_radius: 3.0,
-            background: None,
-            grid_color: None,
-            label_color: None,
+            background: Ink::Token(Token::BgSecondary),
+            grid_color: Ink::Token(Token::Border),
+            label_color: Ink::Token(Token::TextMuted),
         }
     }
 }
@@ -226,11 +227,12 @@ pub fn show(
     config: &PriceTimelineConfig,
 ) -> PriceTimelineResponse {
     let width = ui.available_width().max(120.0);
-    // Resolved once: a `Default` config cannot know the theme.
-    let c = ui.tokens().color;
-    let background = config.background.unwrap_or(c.bg_secondary);
-    let grid_color = config.grid_color.unwrap_or(c.border);
-    let label_color = config.label_color.unwrap_or(c.text_muted);
+    // Resolved once: a `Default` config names its tokens, it cannot hold values.
+    let theme = ui.tokens();
+    let c = theme.color;
+    let background = config.background.resolve(&theme);
+    let grid_color = config.grid_color.resolve(&theme);
+    let label_color = config.label_color.resolve(&theme);
     let (outer_rect, response) =
         ui.allocate_exact_size(Vec2::new(width, config.height), Sense::click_and_drag());
     let plot_rect = Rect::from_min_max(
@@ -474,7 +476,7 @@ pub fn show(
     }
 
     // ---- connecting polyline (time order, visible points only) ----------
-    if let Some(line_color) = config.connect {
+    if let Some(line_color) = config.connect.map(|ink| ink.resolve(&theme)) {
         let mut ordered: Vec<&TimelinePoint> = points
             .iter()
             .zip(&visible)
@@ -621,7 +623,7 @@ pub fn show(
         painter.vline(
             gx,
             plot_rect.y_range(),
-            Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(130, 138, 170, 45)),
+            Stroke::new(1.0_f32, crate::theme::with_alpha(c.text_muted, 45)),
         );
     }
 

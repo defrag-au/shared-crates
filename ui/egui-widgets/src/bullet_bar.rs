@@ -24,9 +24,9 @@
 //!
 //! Builder style, matching the other measure widgets (e.g. `progress_bar`).
 
-use egui::{Color32, CornerRadius, Rect, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{CornerRadius, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
+use crate::theme::{Ink, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 pub struct BulletBar {
     value: f32,
@@ -38,13 +38,15 @@ pub struct BulletBar {
     detail: Option<String>,
     height: f32,
     rounding: u8,
-    /// `None` asks the theme at render time — a `new` has no `Ui` to ask.
-    fill_color: Option<Color32>,
-    track_color: Option<Color32>,
-    target_color: Option<Color32>,
-    /// If set, the fill switches to this color when the value is within
+    fill_color: Ink,
+    track_color: Ink,
+    target_color: Ink,
+    /// If set, the fill switches to this colour when the value is within
     /// [`tolerance`](Self::tolerance) of the target (a "met goal" cue).
-    good_color: Option<Color32>,
+    ///
+    /// Still an `Option` — unlike the fields above, `None` here means the cue is
+    /// *off*, not "ask the theme". `Option<Ink>` keeps both meanings available.
+    good_color: Option<Ink>,
     tolerance: f32,
     show_percent: bool,
 }
@@ -76,9 +78,9 @@ impl BulletBar {
             detail: None,
             height: 14.0,
             rounding: 3,
-            fill_color: None,
-            track_color: None,
-            target_color: None,
+            fill_color: Ink::Token(Token::AccentBlue),
+            track_color: Ink::Token(Token::BgSecondary),
+            target_color: Ink::Token(Token::TextPrimary),
             good_color: None,
             tolerance: 0.0,
             show_percent: false,
@@ -105,20 +107,20 @@ impl BulletBar {
         self
     }
 
-    pub fn fill_color(mut self, color: Color32) -> Self {
-        self.fill_color = Some(color);
+    pub fn fill_color(mut self, color: impl Into<Ink>) -> Self {
+        self.fill_color = color.into();
         self
     }
 
-    pub fn target_color(mut self, color: Color32) -> Self {
-        self.target_color = Some(color);
+    pub fn target_color(mut self, color: impl Into<Ink>) -> Self {
+        self.target_color = color.into();
         self
     }
 
     /// Turn the fill `good` when within `tolerance` (same units as the scale) of
-    /// the target — e.g. `.good_within(ui.tokens().color.success, 0.02)` for ±2%.
-    pub fn good_within(mut self, color: Color32, tolerance: f32) -> Self {
-        self.good_color = Some(color);
+    /// the target — e.g. `.good_within(Token::Success, 0.02)` for ±2%.
+    pub fn good_within(mut self, color: impl Into<Ink>, tolerance: f32) -> Self {
+        self.good_color = Some(color.into());
         self.tolerance = tolerance.abs();
         self
     }
@@ -149,7 +151,7 @@ impl BulletBar {
                 }
                 if self.show_percent {
                     let vc = match self.good_color {
-                        Some(c) if met => c,
+                        Some(ink) if met => ink.of(ui),
                         _ => ui.tokens().color.text_primary,
                     };
                     ui.label(
@@ -188,9 +190,9 @@ impl BulletBar {
         }
 
         let t = ui.tokens();
-        let track_color = self.track_color.unwrap_or(t.color.bg_secondary);
-        let fill_color = self.fill_color.unwrap_or(t.color.accent_blue);
-        let target_color = self.target_color.unwrap_or(t.color.text_primary);
+        let track_color = self.track_color.resolve(&t);
+        let fill_color = self.fill_color.resolve(&t);
+        let target_color = self.target_color.resolve(&t);
 
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), self.height), Sense::hover());
@@ -202,7 +204,7 @@ impl BulletBar {
 
         // Value fill.
         let fill = match self.good_color {
-            Some(c) if met => c,
+            Some(ink) if met => ink.resolve(&t),
             _ => fill_color,
         };
         let frac = value / self.max;

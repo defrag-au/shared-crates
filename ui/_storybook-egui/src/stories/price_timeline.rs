@@ -4,6 +4,7 @@ use egui_widgets::price_timeline::{
     LogMode, PointEmphasis, PointShape, PriceTimelineConfig, ReferenceBand, ReferenceLine,
     TimelinePoint,
 };
+use egui_widgets::theme::{Ink, Token};
 
 use crate::{ACCENT, TEXT_MUTED};
 
@@ -232,9 +233,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PriceTimelineState) {
             2 => LogMode::On,
             _ => LogMode::Auto,
         },
-        connect: state
-            .connect
-            .then_some(egui::Color32::from_rgba_unmultiplied(125, 207, 255, 90)),
+        connect: state.connect.then_some(Ink::Wash(Token::AccentCyan, 90)),
         ..Default::default()
     };
 

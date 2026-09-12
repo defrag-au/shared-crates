@@ -114,7 +114,6 @@ pub fn show(
     let image_url = data.image_url(AssetImageSize::Thumbnail);
     let browser_config = crate::CardBrowserConfig {
         rounding: 4.0,
-        bg_card_hover: None,
         ..Default::default()
     };
     let loading = card_browser::draw_thumbnail(ui, card_rect, Some(&image_url), &browser_config);

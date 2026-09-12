@@ -10,7 +10,7 @@
 use crate::corner_action::{Corner, CornerAction};
 use crate::icons::PhosphorIcon;
 use crate::image_loader::CachedSpinner;
-use crate::theme::{Space, SpaceExt, TextSize, ThemeExt, with_alpha};
+use crate::theme::{Ink, Space, SpaceExt, TextSize, ThemeExt, Token, with_alpha};
 use egui::{Color32, RichText, Sense, Vec2};
 
 /// Whether a listing can actually be bought.
@@ -150,15 +150,13 @@ pub struct ListingGridConfig {
     pub card_width: f32,
     pub thumbnail_size: f32,
     /// Gutter between cards. `None` takes the theme's [`Space::Md`] — same
-    /// reasoning as the `Option<Color32>` fields below.
+    /// reasoning as the [`Ink`] fields below.
     pub spacing: Option<Space>,
-    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
-    pub bg_color: Option<Color32>,
-    pub bg_hover_color: Option<Color32>,
-    pub text_primary: Option<Color32>,
-    pub text_muted: Option<Color32>,
-    /// The price colour. `None` takes the theme's `success`.
-    pub accent_green: Option<Color32>,
+    pub bg_color: Ink,
+    pub bg_hover_color: Ink,
+    pub text_muted: Ink,
+    /// The price colour.
+    pub accent_green: Ink,
     pub rounding: f32,
 }
 
@@ -168,11 +166,10 @@ impl Default for ListingGridConfig {
             card_width: 84.0,
             thumbnail_size: 100.0,
             spacing: None,
-            bg_color: None,
-            bg_hover_color: None,
-            text_primary: None,
-            text_muted: None,
-            accent_green: None,
+            bg_color: Ink::Token(Token::BgSecondary),
+            bg_hover_color: Ink::Token(Token::BgHighlight),
+            text_muted: Ink::Token(Token::TextMuted),
+            accent_green: Ink::Token(Token::Success),
             rounding: 6.0,
         }
     }
@@ -209,23 +206,21 @@ impl ListingGrid {
         if listings.is_empty() {
             ui.label(
                 RichText::new("No listings found")
-                    .color(
-                        self.config
-                            .text_muted
-                            .unwrap_or(ui.tokens().color.text_muted),
-                    )
+                    .color(self.config.text_muted.of(ui))
                     .size(ui.text_size(TextSize::Base)),
             );
             return ListingGridResponse::default();
         }
 
         let cfg = &self.config;
-        // Resolved once, ahead of the closures: a `Default` config cannot know
-        // the theme, so every `Option<Color32>` lands here.
-        let c = ui.tokens().color;
-        let bg_color = cfg.bg_color.unwrap_or(c.bg_secondary);
-        let bg_hover_color = cfg.bg_hover_color.unwrap_or(c.bg_highlight);
-        let accent_green = cfg.accent_green.unwrap_or(c.success);
+        // Resolved once, ahead of the closures: a `Default` config names its
+        // tokens, so every [`Ink`] lands here.
+        let theme = ui.tokens();
+        let c = theme.color;
+        let bg_color = cfg.bg_color.resolve(&theme);
+        let bg_hover_color = cfg.bg_hover_color.resolve(&theme);
+        let accent_green = cfg.accent_green.resolve(&theme);
+        let text_muted = cfg.text_muted.resolve(&theme);
         // Card is square: thumbnail fills entire card, price banner overlays bottom
         let card_size = Vec2::splat(cfg.card_width);
 
@@ -234,11 +229,7 @@ impl ListingGrid {
             let mut hovered_idx: Option<usize> = None;
             let mut add_to_cart_idx: Option<usize> = None;
             let mut clicked_idx: Option<usize> = None;
-            let spinner = CachedSpinner::new(
-                ui,
-                12.0,
-                cfg.text_muted.unwrap_or(ui.tokens().color.text_muted),
-            );
+            let spinner = CachedSpinner::new(ui, 12.0, text_muted);
             let mut any_pending = false;
 
             for (card_idx, listing) in listings.iter().enumerate() {
@@ -315,7 +306,7 @@ impl ListingGrid {
                         egui::Align2::CENTER_CENTER,
                         "?",
                         egui::FontId::proportional(ui.text_size(TextSize::Xl2)),
-                        cfg.text_muted.unwrap_or(ui.tokens().color.text_muted),
+                        text_muted,
                     );
                 }
 

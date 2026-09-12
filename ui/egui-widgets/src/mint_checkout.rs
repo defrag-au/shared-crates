@@ -26,7 +26,7 @@ use egui::{Color32, RichText, Ui};
 use crate::chip::{Chip, ChipVariant};
 use crate::error_note::ErrorNote;
 use crate::quantity_stepper::QuantityStepper;
-use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 use crate::utils::{format_lovelace, truncate_hex};
 
 /// Whether this wallet may mint right now, in the active phase.
@@ -96,25 +96,27 @@ pub struct MintCheckoutResponse {
 /// The buyer-facing mint offer widget. See module docs.
 pub struct MintCheckout<'a> {
     vm: &'a MintCheckoutVm,
-    /// `None` asks the theme at render time — a `new` has no `Ui` to ask.
-    accent: Option<Color32>,
+    accent: Ink,
 }
 
 impl<'a> MintCheckout<'a> {
     pub fn new(vm: &'a MintCheckoutVm) -> Self {
-        Self { vm, accent: None }
+        Self {
+            vm,
+            accent: Ink::Token(Token::AccentGreen),
+        }
     }
 
     /// Accent for the total, stepper readout, and Mint/bundle buttons.
-    pub fn accent(mut self, accent: Color32) -> Self {
-        self.accent = Some(accent);
+    pub fn accent(mut self, accent: impl Into<Ink>) -> Self {
+        self.accent = accent.into();
         self
     }
 
     pub fn show(self, ui: &mut Ui) -> MintCheckoutResponse {
         crate::install_phosphor_font(ui.ctx());
         let vm = self.vm;
-        let accent = self.accent.unwrap_or(ui.tokens().color.accent_green);
+        let accent = self.accent.of(ui);
         let mut actions = Vec::new();
 
         // ── Phase + eligibility chips ───────────────────────────────────

@@ -1,6 +1,7 @@
 //! Storybook demo for the PipRow widget from egui-widgets.
 
 use egui_widgets::pip_row::{heat_color, HoverInfo, Pip, PipRowConfig, PipRowData, PipRowMode};
+use egui_widgets::theme::{Ink, Token};
 
 use crate::{ACCENT, TEXT_MUTED};
 
@@ -217,18 +218,19 @@ pub fn show(ui: &mut egui::Ui, state: &mut PipRowState) {
 
     let (rows, global_max) = preset_data(state.preset);
     let mode = if state.use_density {
+        // The colours name the same tokens the mode constructors default to —
+        // an enum variant has no struct-update syntax to inherit them, and what
+        // this story should demonstrate is what a caller gets by default.
         PipRowMode::Density {
             bins: state.density_bins,
-            // `None` = the theme's, which is what a caller gets by default and
-            // what this story should be demonstrating.
-            color: None,
+            color: Ink::Token(Token::AccentCyan),
             min_alpha: state.density_min_alpha,
         }
     } else {
         PipRowMode::Pips {
             pip_width: state.pip_width,
             pip_rounding: 1.0,
-            overflow_color: None,
+            overflow_color: Ink::Token(Token::TextSecondary),
         }
     };
     let config = PipRowConfig {

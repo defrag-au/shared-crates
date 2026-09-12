@@ -1,6 +1,7 @@
 //! Storybook demo for the AmountInput widget.
 
 use egui_widgets::amount_input::{self, AmountInputAction, AmountInputConfig, AmountInputState};
+use egui_widgets::theme::Token;
 
 use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
 
@@ -92,10 +93,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut AmountInputStoryState) {
                     presets: vec![50, 200, 500, 1000],
                     max_ada: Some(1234.0),
                     min_ada: 10.0,
-                    // `Some` is the point of this story: it demonstrates the
-                    // caller OVERRIDING the theme's accent. `None` would take
-                    // the theme's, which the story beside it already shows.
-                    accent: Some(egui_widgets::theme::ThemeExt::tokens(ui).color.accent_cyan),
+                    // Overriding the accent is the point of this story — the
+                    // story beside it shows the default. Naming the token is
+                    // enough now; this used to need a `ui` in hand just to
+                    // read the value back out of the theme.
+                    accent: Token::AccentCyan.into(),
                 };
                 let resp = amount_input::show(ui, &mut state.with_max_state, &config);
                 match resp.action {

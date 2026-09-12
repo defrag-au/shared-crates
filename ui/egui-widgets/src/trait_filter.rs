@@ -6,7 +6,7 @@
 //! ("background: red") and its value alone ("red"), so typing either
 //! a category prefix or a value prefix finds matching entries.
 
-use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 use egui::{Color32, Rect, RichText, Vec2};
 use std::collections::HashSet;
 
@@ -22,8 +22,9 @@ pub struct FilterEntry {
     pub category: String,
     /// Value name, e.g. "Red".
     pub value: String,
-    /// Optional tag chip color (e.g. green = owned, muted = missing).
-    pub color: Option<Color32>,
+    /// Optional tag chip color (e.g. `Token::Success` = owned, absent =
+    /// missing). `None` falls back to a muted wash.
+    pub color: Option<Ink>,
 }
 
 /// Configuration for the filter widget.
@@ -353,7 +354,8 @@ fn paint_tag(ui: &mut egui::Ui, entry: &FilterEntry, rounding: f32) -> bool {
     let c = ui.tokens().color;
     let chip_color = entry
         .color
-        .unwrap_or_else(|| crate::theme::with_alpha(c.text_muted, 160));
+        .unwrap_or(Ink::Wash(Token::TextMuted, 160))
+        .of(ui);
     // Was a hand-rolled `is_light()` branch picking between two literals.
     // `ColorTokens::on` does the same thing by measured contrast against the
     // theme's own ramp, so a caller-supplied chip colour stays legible whatever
@@ -456,7 +458,7 @@ fn paint_suggestions(
                     if is_cursor {
                         ui.painter().rect_filled(resp.rect, 2.0, bg);
                     }
-                    if let Some(color) = entry.color {
+                    if let Some(color) = entry.color.map(|ink| ink.of(ui)) {
                         let dot_center = egui::pos2(resp.rect.min.x + 12.0, resp.rect.center().y);
                         ui.painter().circle_filled(dot_center, 3.0, color);
                     }

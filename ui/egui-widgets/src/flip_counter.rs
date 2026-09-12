@@ -11,7 +11,7 @@
 use egui::epaint::{Mesh, Vertex};
 use egui::{Color32, Pos2, Rect, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Ink, ThemeExt, Token};
 
 /// Darken a colour by subtracting `amount` from each RGB channel.
 fn darken(c: Color32, amount: u8) -> Color32 {
@@ -58,18 +58,15 @@ impl DigitFlip {
 pub struct FlipCounter {
     digits: Vec<DigitFlip>,
     num_slots: usize,
-    /// Caller override; `None` asks the theme at render time. A `new` cannot read
-    /// the context, so a colour default has to be deferred or it bakes one theme in.
-    // `None` asks the theme at render time — `new()` has no `Ui` to ask.
-    text_color: Option<Color32>,
-    card_color: Option<Color32>,
-    card_color_bottom: Option<Color32>,
+    text_color: Ink,
+    card_color: Ink,
+    card_color_bottom: Ink,
     card_height: f32,
     card_width: f32,
     card_gap: f32,
     flip_speed: f32,
-    divider_color: Option<Color32>,
-    border_color: Option<Color32>,
+    divider_color: Ink,
+    border_color: Ink,
 }
 
 impl FlipCounter {
@@ -77,20 +74,22 @@ impl FlipCounter {
         Self {
             digits: vec![DigitFlip::new(' '); num_slots],
             num_slots,
-            text_color: None,
-            card_color: None,
-            card_color_bottom: None,
+            text_color: Ink::Token(Token::TextPrimary),
+            // The two card halves take different surfaces so the fold line
+            // reads even when the counter is still.
+            card_color: Ink::Token(Token::BgHighlight),
+            card_color_bottom: Ink::Token(Token::BgSecondary),
             card_height: 60.0,
             card_width: 40.0,
             card_gap: 4.0,
             flip_speed: 3.0,
-            divider_color: None,
-            border_color: None,
+            divider_color: Ink::Token(Token::BgPrimary),
+            border_color: Ink::Token(Token::Border),
         }
     }
 
-    pub fn text_color(mut self, color: Color32) -> Self {
-        self.text_color = Some(color);
+    pub fn text_color(mut self, color: impl Into<Ink>) -> Self {
+        self.text_color = color.into();
         self
     }
 
@@ -122,16 +121,16 @@ impl FlipCounter {
     pub fn show(&mut self, ui: &mut Ui) {
         // Resolved once and passed down: the `&self` paint helpers cannot ask the
         // context themselves, and a cached field would be stale before `show`.
-        let c = ui.tokens().color;
-        let text = self.text_color.unwrap_or(c.text_primary);
+        let t = ui.tokens();
+        let text = self.text_color.resolve(&t);
         // A flip card is a physical object: the top face catches light, the
         // bottom is in its own shadow, the divider is the gap between them.
         // Three tiers of the theme's background ramp say that without inventing
         // a second palette.
-        let card_color = self.card_color.unwrap_or(c.bg_highlight);
-        let card_color_bottom = self.card_color_bottom.unwrap_or(c.bg_secondary);
-        let divider_color = self.divider_color.unwrap_or(c.bg_primary);
-        let border_color = self.border_color.unwrap_or(c.border);
+        let card_color = self.card_color.resolve(&t);
+        let card_color_bottom = self.card_color_bottom.resolve(&t);
+        let divider_color = self.divider_color.resolve(&t);
+        let border_color = self.border_color.resolve(&t);
         let dt = ui.input(|i| i.stable_dt).min(0.1); // clamp to avoid jumps
         let mut needs_repaint = false;
 

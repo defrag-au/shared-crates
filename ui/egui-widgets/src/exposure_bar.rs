@@ -7,7 +7,7 @@
 
 use egui::{Color32, CornerRadius, Rect, RichText, Sense, Ui, Vec2};
 
-use crate::theme::{Space, SpaceExt, ThemeExt};
+use crate::theme::{Ink, Space, SpaceExt, ThemeExt, Token};
 
 // ============================================================================
 // Types
@@ -34,8 +34,7 @@ pub struct ExposureBarConfig {
     /// Corner radius.
     pub corner_radius: u8,
     /// Background color for the track.
-    /// `None` asks the theme at render time — a `Default` has no `Ui` to ask.
-    pub bg_color: Option<Color32>,
+    pub bg_color: Ink,
     /// Whether to show the legend row below the bar.
     pub show_legend: bool,
     /// Whether to show "Total Exposure: X ADA" header above the bar.
@@ -55,7 +54,7 @@ impl Default for ExposureBarConfig {
         Self {
             bar_height: 24.0,
             corner_radius: 4,
-            bg_color: None,
+            bg_color: Ink::Token(Token::BgSecondary),
             show_legend: true,
             show_total: true,
             min_label_width: 40.0,
@@ -126,7 +125,7 @@ pub fn show(ui: &mut Ui, segments: &[ExposureSegment], config: &ExposureBarConfi
         painter.rect_filled(
             rect,
             rounding,
-            config.bg_color.unwrap_or(ui.tokens().color.bg_secondary),
+            config.bg_color.of(ui),
         );
 
         // Paint segments left to right — fill color from LTV risk

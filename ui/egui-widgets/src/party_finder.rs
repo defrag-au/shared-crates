@@ -19,9 +19,10 @@
 //! widget only reads it. [`PartyFinder`] renders through the crate's
 //! presentational [`TypeaheadSearch`], so it looks like every other picker.
 
-use egui::{Color32, Ui};
+use egui::Ui;
 
 use crate::selection::Selection;
+use crate::theme::{Ink, Token};
 use crate::typeahead_search::{TypeaheadOption, TypeaheadSearch};
 
 /// Everything a wallet may be called.
@@ -259,7 +260,7 @@ pub struct PartyFinder<'a> {
     state: &'a mut PartyFinderState,
     selection: &'a mut Selection,
     placeholder: &'a str,
-    accent: Option<Color32>,
+    accent: Ink,
     limit: usize,
     key_label: Option<&'a dyn Fn(&str) -> String>,
 }
@@ -277,7 +278,7 @@ impl<'a> PartyFinder<'a> {
             state,
             selection,
             placeholder: "Find a wallet: $handle, stake1…, addr1…, or a label",
-            accent: None,
+            accent: Ink::Token(Token::AccentCyan),
             limit: 12,
             key_label: None,
         }
@@ -302,8 +303,8 @@ impl<'a> PartyFinder<'a> {
         self
     }
 
-    pub fn accent(mut self, c: Color32) -> Self {
-        self.accent = Some(c);
+    pub fn accent(mut self, c: impl Into<Ink>) -> Self {
+        self.accent = c.into();
         self
     }
 
@@ -371,14 +372,12 @@ impl<'a> PartyFinder<'a> {
                     opt
                 })
                 .collect();
-            let mut ta =
+            let resp =
                 TypeaheadSearch::new(id_salt, &mut state.query, &options, &mut state.highlight)
                     .placeholder(placeholder)
-                    .empty_text("no wallet matches — try a handle, stake key, address, or label");
-            if let Some(c) = accent {
-                ta = ta.accent(c);
-            }
-            let resp = ta.show(ui);
+                    .empty_text("no wallet matches — try a handle, stake key, address, or label")
+                    .accent(accent)
+                    .show(ui);
             if let Some(id) = resp.chosen {
                 let (key, matched) = split_row_id(&id);
                 // ADD to the pinned set — finding a second wallet must not
