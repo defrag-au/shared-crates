@@ -161,8 +161,7 @@ fn wash_goes_through_with_alpha_not_premultiplied() {
                 // full-brightness channels it was handed, which then blend
                 // additively and render far lighter than asked for. Comparing
                 // the two constructors is what pins the right one down.
-                let wrong =
-                    Color32::from_rgba_premultiplied(base.r(), base.g(), base.b(), alpha);
+                let wrong = Color32::from_rgba_premultiplied(base.r(), base.g(), base.b(), alpha);
                 // Only where the two CAN differ: at a high alpha the premultiply
                 // rounds to a no-op and both constructors agree, which is
                 // correct rather than a missed bug.
@@ -255,7 +254,10 @@ fn series_arm_reads_the_encoding_palette_not_the_chrome_one() {
             assert_eq!(Ink::Series(Series::Nth(i)).resolve(theme), s.nth(i));
         }
         for ring in 0..3 {
-            assert_eq!(Ink::Series(Series::Class(ring)).resolve(theme), s.class(ring));
+            assert_eq!(
+                Ink::Series(Series::Class(ring)).resolve(theme),
+                s.class(ring)
+            );
         }
     }
 }
@@ -267,7 +269,11 @@ fn inbound_and_outbound_are_distinguishable() {
     // `Ink::Series`.
     for theme in &presets() {
         let (i, o) = (theme.series.inbound(), theme.series.outbound());
-        assert_ne!(i, o, "{}: inbound and outbound are the same colour", theme.name);
+        assert_ne!(
+            i, o,
+            "{}: inbound and outbound are the same colour",
+            theme.name
+        );
     }
 }
 
@@ -359,9 +365,9 @@ fn at_least_one_preset_moves_the_chrome_palette() {
     let all = presets();
     let base = &all[0];
     assert!(
-        all[1..]
+        all[1..].iter().any(|t| Token::ALL
             .iter()
-            .any(|t| Token::ALL.iter().any(|k| k.get(&t.color) != k.get(&base.color))),
+            .any(|k| k.get(&t.color) != k.get(&base.color))),
         "no preset differs from {} on any chrome token",
         base.name
     );

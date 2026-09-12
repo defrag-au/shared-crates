@@ -91,7 +91,8 @@ impl ChipVariant {
     /// looked like it did nothing: the status colours are the part of a dashboard
     /// a reader's eye actually goes to.
     ///
-    /// Foregrounds come from [`ColorTokens::on`] rather than a literal
+    /// Foregrounds come from [`ColorTokens::on`](crate::theme::ColorTokens::on)
+    /// rather than a literal
     /// `Color32::WHITE`, so a theme with a pale `warning` gets dark chip text
     /// automatically instead of an unreadable one.
     pub fn palette(self, t: &Theme) -> (Color32, Color32, Option<Color32>) {

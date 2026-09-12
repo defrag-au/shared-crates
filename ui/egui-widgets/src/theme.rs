@@ -400,7 +400,7 @@ impl Series {
 ///   hairlines. Goes through [`with_alpha`], so it cannot reintroduce the
 ///   premultiplication bug.
 /// - [`On`](Self::On) — whatever reads legibly *on* that token's surface, via
-///   [`ColorTokens::on`]. For text over a semantic fill.
+///   [`ColorTokens::on`](ColorTokens::on). For text over a semantic fill.
 /// - [`Series`](Self::Series) — the encoding palette instead of the chrome one,
 ///   for the colours that carry data rather than structure.
 /// - [`Fixed`](Self::Fixed) — a literal, escaping the theme deliberately. This
@@ -505,7 +505,7 @@ fn relative_luminance(c: Color32) -> f32 {
 
 /// WCAG contrast ratio between two opaque colours, in `1.0..=21.0`.
 ///
-/// Public because the palette decisions this crate makes — [`ColorTokens::on`],
+/// Public because the palette decisions this crate makes — [`ColorTokens::on`](ColorTokens::on),
 /// the contrast suite, a consumer picking a label colour over a chart series —
 /// should all be measuring the same thing.
 pub fn contrast_ratio(a: Color32, b: Color32) -> f32 {
@@ -1347,7 +1347,8 @@ impl MotionTokens {
     /// **overshoot** do not". Duration and travel were enforceable already;
     /// overshoot was not, so a reduced-motion reader still got the one curve
     /// that deliberately moves past its target and comes back —
-    /// [`Easing::OutBack`] — just faster. Routing every easing choice through
+    /// [`OutBack`](crate::motion::Easing::OutBack) — just faster. Routing every
+    /// easing choice through
     /// here is what makes the promise true.
     pub fn easing(&self, easing: crate::motion::Easing) -> crate::motion::Easing {
         use crate::motion::Easing;

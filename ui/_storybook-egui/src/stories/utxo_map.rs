@@ -18,6 +18,7 @@
 //!   Switch themes with many policies on screen and every territory should stay
 //!   separable.
 
+use egui_widgets::slider_group::{Fader, SliderGroup};
 use egui_widgets::utxo_map::{UtxoCell, UtxoMapConfig, UtxoMapData, UtxoMapState};
 
 use crate::{accent, muted};
@@ -195,8 +196,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut UtxoMapStoryState) {
             }
         }
     });
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.size, 200.0..=520.0).text("Size"));
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .fader(Fader::new("Size", &mut state.size, 200.0..=520.0).suffix("px"))
+            .show(ui);
     });
 
     ui.add_space(8.0);

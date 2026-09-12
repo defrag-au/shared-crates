@@ -34,6 +34,31 @@
 //! that happens to have one channel today should not need rewriting when it
 //! gets a second.
 //!
+//! ## The line, after migrating the storybook
+//!
+//! Sweeping 92 call sites settled where the boundary actually falls, and it is
+//! not about how many sliders there are:
+//!
+//! > **Convert when the slider owns its row. Leave it when the row is shared.**
+//!
+//! A slider alone on a line is already trying to be a bank of one and failing at
+//! it — ragged label, 100px rail, boxed readout — so it converts even when there
+//! is only one, and the spine is then consistent with every other control column
+//! in the app. A slider sitting beside a *Flip* button, a checkbox or a colour
+//! picker is part of a sentence, and a three-column bank dropped into the middle
+//! of that sentence reads worse than the plain slider did: the spine has nothing
+//! to align with, and the bank's own width fights the row's.
+//!
+//! Of the 92, 74 converted and 18 stayed — 12 shared rows, plus 6 kept
+//! deliberately as the before/after control group in the `SliderGroup` story.
+//!
+//! The corollary is about *grouping*, not just counting: where a bank was split
+//! across two or three `ui.horizontal` rows or separated by `ui.separator()`,
+//! merge it into ONE group. This widget measures its label column across the
+//! rows it is given, so three groups measure three different widths and the
+//! spine kinks at every boundary — which defeats the only thing that makes nine
+//! channels readable at a glance.
+//!
 //! ## Example
 //!
 //! ```ignore
@@ -135,8 +160,8 @@ impl<'a> Fader<'a> {
         self
     }
 
-    /// Fixed decimal places. Default is derived from the range — see
-    /// [`Fader::auto_decimals`].
+    /// Fixed decimal places. Default is derived from the range: none for an
+    /// integral type or a span of 100+, one for a span of 10+, otherwise two.
     pub fn decimals(mut self, n: usize) -> Self {
         self.decimals = Some(n);
         self
@@ -342,7 +367,8 @@ impl<'a> SliderGroup<'a> {
         self
     }
 
-    /// Rail thickness override. Default scales [`BASE_RAIL`] with density.
+    /// Rail thickness override. Default scales the crate's base rail thickness
+    /// with the theme's density.
     pub fn rail_height(mut self, px: f32) -> Self {
         self.rail = Some(px);
         self
@@ -358,9 +384,7 @@ impl<'a> SliderGroup<'a> {
     pub fn show(mut self, ui: &mut Ui) -> SliderGroupResponse {
         let theme = ui.tokens();
         let gap = ui.space(Space::Md);
-        let rail = self
-            .rail
-            .unwrap_or(BASE_RAIL * theme.density.multiplier());
+        let rail = self.rail.unwrap_or(BASE_RAIL * theme.density.multiplier());
         let font = egui::FontId::proportional(ui.text_size(TextSize::Sm));
         // Monospace for the readout: a proportional digit set changes width as
         // the value changes, so the number visibly shifts while you drag the
@@ -454,17 +478,16 @@ impl<'a> SliderGroup<'a> {
                 let range = row.range.clone();
                 let step = row.step;
                 let integral = row.integral;
-                let mut slider =
-                    egui::Slider::from_get_set(range, |v| (row.get_set)(v))
-                        // The readout is ours, drawn in the column to the
-                        // right. egui's own is a `DragValue` in a filled box,
-                        // which outweighs the control it belongs to.
-                        .show_value(false)
-                        // Travel is the fader's job — an unfilled rail gives no
-                        // sense of how far along the range you are without
-                        // reading the number.
-                        .trailing_fill(true)
-                        .handle_shape(egui::style::HandleShape::Rect { aspect_ratio: 0.45 });
+                let mut slider = egui::Slider::from_get_set(range, |v| (row.get_set)(v))
+                    // The readout is ours, drawn in the column to the
+                    // right. egui's own is a `DragValue` in a filled box,
+                    // which outweighs the control it belongs to.
+                    .show_value(false)
+                    // Travel is the fader's job — an unfilled rail gives no
+                    // sense of how far along the range you are without
+                    // reading the number.
+                    .trailing_fill(true)
+                    .handle_shape(egui::style::HandleShape::Rect { aspect_ratio: 0.45 });
                 if integral {
                     slider = slider.integer();
                 }
@@ -495,11 +518,7 @@ impl<'a> SliderGroup<'a> {
             }
         }
 
-        out.total = self
-            .rows
-            .iter_mut()
-            .map(|r| (r.get_set)(None))
-            .sum::<f64>();
+        out.total = self.rows.iter_mut().map(|r| (r.get_set)(None)).sum::<f64>();
 
         if let Some(budget) = self.budget {
             let verdict = budget.verdict(out.total);
@@ -710,7 +729,11 @@ mod tests {
                 .slider("offset", &mut offset, -10..=10)
                 .show(ui)
         });
-        assert!((r.total - 1.25).abs() < 1e-4, "4 + 0.25 + -3, got {}", r.total);
+        assert!(
+            (r.total - 1.25).abs() < 1e-4,
+            "4 + 0.25 + -3, got {}",
+            r.total
+        );
     }
 
     // ── "plays nicely anywhere" ───────────────────────────────────────────

@@ -1,6 +1,7 @@
 //! Storybook demo for the FocusList widget from egui-widgets.
 
 use egui_widgets::focus_list::{self, FocusListConfig};
+use egui_widgets::slider_group::SliderGroup;
 
 use crate::{accent, muted};
 
@@ -21,12 +22,21 @@ impl Default for FocusListState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut FocusListState) {
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.len, 1..=60).text("items"));
-        ui.add(egui::Slider::new(&mut state.visible_rows, 3..=15).text("visible rows"));
-        state.focus = state.focus.min(state.len - 1);
-        ui.add(egui::Slider::new(&mut state.focus, 0..=state.len - 1).text("focus"));
+    // `focus`'s range depends on `len`, and a bank holds a mutable borrow of
+    // every field it drives at once — so the range is read before the bank and
+    // re-clamped after it, rather than mid-row. One frame of a stale upper bound
+    // is invisible; a focus index past the end of the list is not, hence the
+    // clamp on both sides.
+    state.focus = state.focus.min(state.len - 1);
+    let max_focus = state.len - 1;
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("items", &mut state.len, 1..=60)
+            .slider("visible rows", &mut state.visible_rows, 3..=15)
+            .slider("focus", &mut state.focus, 0..=max_focus)
+            .show(ui);
     });
+    state.focus = state.focus.min(state.len - 1);
     ui.add_space(8.0);
 
     egui::Frame::popup(ui.style()).show(ui, |ui| {

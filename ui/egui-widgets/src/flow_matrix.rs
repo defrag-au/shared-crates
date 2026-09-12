@@ -62,7 +62,7 @@ const BASE_CELL: f32 = 26.0;
 /// switching compact / comfortable / spacious repainted nothing.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CellSize {
-    /// [`BASE_CELL`] scaled by the theme's density.
+    /// The crate's base cell edge, scaled by the theme's density.
     FromDensity,
     /// An exact edge length in px, ignoring density. For a caller that is
     /// matching an adjacent chart rather than following the theme.
@@ -512,7 +512,13 @@ mod tests {
         spine: &SpineState,
         sel: &mut Selection,
     ) -> FlowMatrixResponse {
-        run_themed(flows, spine, sel, Theme::tokyo_night(), CellSize::FromDensity)
+        run_themed(
+            flows,
+            spine,
+            sel,
+            Theme::tokyo_night(),
+            CellSize::FromDensity,
+        )
     }
 
     /// `run`, under a chosen theme — the density axis is only observable from
@@ -748,9 +754,6 @@ mod tests {
         };
         let (s, l) = (measure(&short), measure(&long));
         assert!(l.y > s.y, "header must fit the rotated label: {s:?} {l:?}");
-        assert_eq!(
-            l.x, s.x,
-            "a vertical label costs no width: {s:?} vs {l:?}"
-        );
+        assert_eq!(l.x, s.x, "a vertical label costs no width: {s:?} vs {l:?}");
     }
 }

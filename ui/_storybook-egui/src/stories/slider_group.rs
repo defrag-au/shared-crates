@@ -165,8 +165,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut SliderGroupStoryState) {
     );
     ui.add_space(6.0);
     ui.label(
-        egui::RichText::new("Try it under compact / spacious — the rail, the row height and the gutters all move.")
-            .color(accent(ui))
-            .small(),
+        egui::RichText::new(
+            "Try it under compact / spacious — the rail, the row height and the gutters all move.",
+        )
+        .color(accent(ui))
+        .small(),
     );
 }

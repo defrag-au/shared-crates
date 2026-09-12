@@ -1,6 +1,7 @@
 //! Storybook demo for the RangeBar widget from egui-widgets.
 
 use egui_widgets::range_bar::{RangeBarConfig, RangePoint};
+use egui_widgets::slider_group::SliderGroup;
 
 use crate::{accent, muted};
 
@@ -129,12 +130,12 @@ fn preset_data(index: usize) -> Vec<RangePoint> {
 // ============================================================================
 
 pub fn show(ui: &mut egui::Ui, state: &mut RangeBarState) {
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.max_width, 200.0..=800.0).text("Max width"));
-        ui.add(egui::Slider::new(&mut state.bar_height, 8.0..=32.0).text("Bar height"));
-    });
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.fill_opacity, 0.0..=1.0).text("Fill opacity"));
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Max width", &mut state.max_width, 200.0..=800.0)
+            .slider("Bar height", &mut state.bar_height, 8.0..=32.0)
+            .slider("Fill opacity", &mut state.fill_opacity, 0.0..=1.0)
+            .show(ui);
     });
 
     ui.horizontal(|ui| {

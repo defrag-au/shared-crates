@@ -1,3 +1,5 @@
+use egui_widgets::slider_group::{Fader, SliderGroup};
+
 use crate::{accent, muted};
 
 /// Mutable state for the interactive progress bar demo.
@@ -33,7 +35,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut ProgressBarState) {
     );
     ui.add_space(4.0);
 
-    ui.add(egui::Slider::new(&mut state.fraction, 0.0..=1.0).text("fraction"));
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .fader(Fader::new("fraction", &mut state.fraction, 0.0..=1.0).decimals(2))
+            .show(ui);
+    });
     ui.add_space(8.0);
 
     egui_widgets::ProgressBar::new(state.fraction)

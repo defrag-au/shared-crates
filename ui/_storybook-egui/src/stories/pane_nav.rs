@@ -6,6 +6,7 @@
 //! the first place.
 
 use crate::{accent, muted};
+use egui_widgets::slider_group::{Fader, SliderGroup};
 use egui_widgets::{PaneNavBar, PaneNavEntry, PhosphorIcon};
 
 pub struct PaneNavState {
@@ -151,7 +152,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
         .color(muted(ui))
         .small(),
     );
-    ui.add(egui::Slider::new(&mut state.column_width, 140.0..=700.0).text("column width"));
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .fader(Fader::new("column width", &mut state.column_width, 140.0..=700.0).suffix("px"))
+            .show(ui);
+    });
     ui.add_space(4.0);
 
     egui::Frame::group(ui.style()).show(ui, |ui| {

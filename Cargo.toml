@@ -1,5 +1,7 @@
 [workspace]
 members = [
+    "action-definitions",
+    "action-definitions-derive",
     "address-registry",
     "anvil-api",
     "asset-intents",

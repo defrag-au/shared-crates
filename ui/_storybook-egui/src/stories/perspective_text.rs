@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use egui::epaint::{Mesh, TextShape, Vertex};
 use egui::{Color32, FontId, Pos2, Rect, Vec2};
+use egui_widgets::slider_group::{Fader, SliderGroup};
 
 use crate::{accent, muted};
 
@@ -64,7 +65,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
         .small(),
     );
     ui.add_space(4.0);
-    ui.add(egui::Slider::new(&mut state.scale_y, 0.05..=1.0).text("Y Scale"));
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .fader(Fader::new("Y scale", &mut state.scale_y, 0.05..=1.0).decimals(2))
+            .show(ui);
+    });
     ui.add_space(4.0);
 
     let text = "HELLO WORLD";
@@ -118,7 +123,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
         .small(),
     );
     ui.add_space(4.0);
-    ui.add(egui::Slider::new(&mut state.wave_amount, 0.0..=20.0).text("Wave"));
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Wave", &mut state.wave_amount, 0.0..=20.0)
+            .show(ui);
+    });
     ui.add_space(4.0);
 
     let (rect, _) = ui.allocate_exact_size(Vec2::new(400.0, 60.0), egui::Sense::hover());

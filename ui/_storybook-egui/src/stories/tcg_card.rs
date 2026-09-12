@@ -13,8 +13,9 @@
 
 use egui::epaint::{Mesh, Vertex};
 use egui::{Color32, Pos2, Rect, Vec2};
+use egui_widgets::slider_group::SliderGroup;
 
-use crate::{accent, muted};
+use crate::{accent, controls, muted};
 
 const WHITE_UV: Pos2 = Pos2::new(0.0, 0.0);
 
@@ -945,9 +946,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     );
     ui.add_space(4.0);
 
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.card_width, 140.0..=400.0).text("Width"));
-        ui.add(egui::Slider::new(&mut state.card_height, 200.0..=560.0).text("Height"));
+    controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Width", &mut state.card_width, 140.0..=400.0)
+            .slider("Height", &mut state.card_height, 200.0..=560.0)
+            .show(ui);
     });
 
     ui.horizontal(|ui| {
@@ -1023,13 +1026,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     );
     ui.add_space(4.0);
 
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.max_tilt, 0.0..=30.0).text("Max Tilt"));
-        ui.add(egui::Slider::new(&mut state.pinch_factor, 0.0..=0.2).text("Pinch"));
-    });
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.tilt_ease, 0.01..=0.5).text("Ease"));
-        ui.add(egui::Slider::new(&mut state.shadow_opacity, 0.0..=1.0).text("Shadow"));
+    controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Max tilt", &mut state.max_tilt, 0.0..=30.0)
+            .slider("Pinch", &mut state.pinch_factor, 0.0..=0.2)
+            .slider("Ease", &mut state.tilt_ease, 0.01..=0.5)
+            .slider("Shadow", &mut state.shadow_opacity, 0.0..=1.0)
+            .show(ui);
     });
     ui.add_space(4.0);
 
@@ -1105,13 +1108,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     );
     ui.add_space(4.0);
 
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.hue_range, 0.0..=180.0).text("Hue Range"));
-        ui.add(egui::Slider::new(&mut state.shimmer_width, 0.05..=0.5).text("Shimmer W"));
-    });
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.shimmer_intensity, 0.0..=1.0).text("Intensity"));
-        ui.add(egui::Slider::new(&mut state.overlay_opacity, 0.0..=0.5).text("Opacity"));
+    // "Shimmer W" was an abbreviation forced by two sliders sharing a row; the
+    // bank gives each label its own measured column, so it can say what it means.
+    controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Hue range", &mut state.hue_range, 0.0..=180.0)
+            .slider("Shimmer width", &mut state.shimmer_width, 0.05..=0.5)
+            .slider("Intensity", &mut state.shimmer_intensity, 0.0..=1.0)
+            .slider("Opacity", &mut state.overlay_opacity, 0.0..=0.5)
+            .show(ui);
     });
     ui.add_space(4.0);
 

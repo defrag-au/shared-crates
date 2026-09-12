@@ -6,6 +6,7 @@ use egui_widgets::asset_card::{
     RARITY_NAMES,
 };
 use egui_widgets::card_browser::{self, CardBrowserConfig, CardBrowserState};
+use egui_widgets::slider_group::SliderGroup;
 use egui_widgets::theme::Space;
 use image_core::ImageSize;
 
@@ -413,19 +414,15 @@ fn render_card_text(ui: &mut egui::Ui, ctx: &card_browser::CardRenderContext, it
 // ============================================================================
 
 pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
-    // Controls
-    let mut text_lines_f32 = state.text_lines as f32;
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.card_width, 100.0..=200.0).text("Card width"));
-        ui.add(
-            egui::Slider::new(&mut text_lines_f32, 1.0..=5.0)
-                .step_by(1.0)
-                .text("Text lines"),
-        );
-    });
-    state.text_lines = text_lines_f32 as u8;
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.detail_width, 200.0..=600.0).text("Detail width"));
+    // Controls. `text_lines` used to make a round trip through f32 with
+    // `step_by(1.0)` to get whole steps; a bank row takes the u8 directly and
+    // knows an integral range prints no decimals.
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Card width", &mut state.card_width, 100.0..=200.0)
+            .slider("Text lines", &mut state.text_lines, 1..=5)
+            .slider("Detail width", &mut state.detail_width, 200.0..=600.0)
+            .show(ui);
     });
     ui.horizontal(|ui| {
         ui.label("Gutter:");
@@ -465,7 +462,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
 
     // Global holo-strength dial (AssetCard 3D preset only).
     if state.preset == 3 {
-        ui.add(egui::Slider::new(&mut state.holo_strength, 0.0..=1.0).text("Holo strength"));
+        crate::controls(ui, |ui| {
+            SliderGroup::new()
+                .slider("Holo strength", &mut state.holo_strength, 0.0..=1.0)
+                .show(ui);
+        });
     }
 
     // Summary

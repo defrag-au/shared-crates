@@ -5,6 +5,7 @@
 
 use egui::epaint::{Mesh, Vertex};
 use egui::{Color32, Pos2, Rect, Vec2};
+use egui_widgets::slider_group::{Fader, SliderGroup};
 
 use crate::{accent, muted};
 
@@ -93,7 +94,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut MeshPlaygroundState) {
     ui.label(egui::RichText::new("Drag the slider to pinch the top edge inward. This is how the flip counter sells perspective.").color(muted(ui)).small());
     ui.add_space(4.0);
 
-    ui.add(egui::Slider::new(&mut state.pinch, 0.0..=0.45).text("Pinch"));
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .fader(Fader::new("Pinch", &mut state.pinch, 0.0..=0.45).decimals(2))
+            .show(ui);
+    });
     ui.add_space(4.0);
 
     let (rect, _) = ui.allocate_exact_size(Vec2::new(160.0, 80.0), egui::Sense::hover());

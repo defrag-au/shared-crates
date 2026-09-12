@@ -3,6 +3,7 @@
 use egui_widgets::printing_timeline::{
     PrintingNode, PrintingTimelineConfig, PrintingTimelineState,
 };
+use egui_widgets::slider_group::SliderGroup;
 
 use crate::{accent, muted};
 
@@ -144,10 +145,12 @@ pub fn show(ui: &mut egui::Ui, demo: &mut PrintingTimelineDemo) {
     ui.add_space(8.0);
 
     // Controls
-    ui.horizontal(|ui| {
-        ui.checkbox(&mut demo.show_thumbnails, "Show thumbnails");
-        ui.add(egui::Slider::new(&mut demo.node_width, 32.0..=120.0).text("Node width"));
-        ui.add(egui::Slider::new(&mut demo.height, 60.0..=240.0).text("Height"));
+    ui.checkbox(&mut demo.show_thumbnails, "Show thumbnails");
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Node width", &mut demo.node_width, 32.0..=120.0)
+            .slider("Height", &mut demo.height, 60.0..=240.0)
+            .show(ui);
     });
     ui.add_space(8.0);
 

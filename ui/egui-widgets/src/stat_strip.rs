@@ -439,9 +439,7 @@ impl<'a> StatStrip<'a> {
                         ui.horizontal(|ui| {
                             ui.label(
                                 RichText::new(&w.headline)
-                                    .color(
-                                        self.value_color.of(ui),
-                                    )
+                                    .color(self.value_color.of(ui))
                                     .size(HEADLINE_SIZE)
                                     .strong(),
                             );
@@ -466,10 +464,7 @@ impl<'a> StatStrip<'a> {
                             .height(SPARK_HEIGHT)
                             .line_width(1.5)
                             .line_color(self.value_color.of(ui))
-                            .fill(tint(
-                                self.value_color.of(ui),
-                                30,
-                            ))
+                            .fill(tint(self.value_color.of(ui), 30))
                             .show_endpoint(false)
                             .bg_color(ui.tokens().color.bg_highlight)
                             .hover_style(SparkHoverStyle::CrosshairOnly)
@@ -540,31 +535,18 @@ impl<'a> StatStrip<'a> {
         painter.hline(
             egui::Rangef::new(x_lo, x_hi),
             cy,
-            Stroke::new(
-                2.0_f32,
-                tint(
-                    self.value_color.of(ui),
-                    160,
-                ),
-            ),
+            Stroke::new(2.0_f32, tint(self.value_color.of(ui), 160)),
         );
         // End caps at low and high.
         for x in [x_lo, x_hi] {
             painter.vline(
                 x,
                 egui::Rangef::new(cy - 3.0, cy + 3.0),
-                Stroke::new(
-                    1.5_f32,
-                    self.value_color.of(ui),
-                ),
+                Stroke::new(1.5_f32, self.value_color.of(ui)),
             );
         }
         // Median dot.
-        painter.circle_filled(
-            egui::pos2(x_mid, cy),
-            2.5,
-            self.value_color.of(ui),
-        );
+        painter.circle_filled(egui::pos2(x_mid, cy), 2.5, self.value_color.of(ui));
 
         resp.on_hover_ui(|ui| {
             ui.label(

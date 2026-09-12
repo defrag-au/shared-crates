@@ -312,9 +312,7 @@ pub use selection::{DIM as SELECTION_DIM, Selection};
 pub use service_banner::{BannerTone, ServiceBanner};
 pub use seven_segment::SevenSegmentDisplay;
 pub use skeleton::{Skeleton, SkeletonReason};
-pub use slider_group::{
-    Budget, Fader, LabelWidth, SliderGroup, SliderGroupResponse, Verdict,
-};
+pub use slider_group::{Budget, Fader, LabelWidth, SliderGroup, SliderGroupResponse, Verdict};
 pub use slot_table::{SlotRow, SlotTable};
 pub use sparkline::{SparkHoverStyle, Sparkline};
 pub use stat_strip::{StatRange, StatStrip, StatWindow};

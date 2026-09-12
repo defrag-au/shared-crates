@@ -839,6 +839,28 @@ mod app {
         ui.label(egui::RichText::new(text.into()).color(c).small());
     }
 
+    /// How long a story's control column gets before it stops growing.
+    ///
+    /// A fader with a 1200px throw is not more useful than one with 460 — past
+    /// a point the extra travel buys no precision and costs the reader a long
+    /// mouse journey. So the storybook takes a view on its OWN control column,
+    /// which is a different thing from a widget taking a view on its callers:
+    /// this is one app's layout decision, stated once.
+    const CONTROLS_W: f32 = 460.0;
+
+    /// Run `add` inside a story's control column.
+    ///
+    /// `fit_width` clamps to the CONTAINER, so a narrow pane or a side-by-side
+    /// theme comparison still gets a working bank rather than one that overflows.
+    pub fn controls<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+        use egui_widgets::viewport::LayoutExt as _;
+        ui.scope(|ui| {
+            ui.set_max_width(ui.fit_width(CONTROLS_W));
+            add(ui)
+        })
+        .inner
+    }
+
     // ========================================================================
     // Review controls
     // ========================================================================

@@ -1,9 +1,10 @@
 //! Storybook demo for the PipRow widget from egui-widgets.
 
 use egui_widgets::pip_row::{heat_color, HoverInfo, Pip, PipRowConfig, PipRowData, PipRowMode};
+use egui_widgets::slider_group::SliderGroup;
 use egui_widgets::theme::{Ink, Token};
 
-use crate::{accent, muted};
+use crate::{accent, controls, muted};
 
 // ============================================================================
 // State
@@ -162,10 +163,12 @@ fn preset_data(index: usize) -> (Vec<DemoRow>, f64) {
 // ============================================================================
 
 pub fn show(ui: &mut egui::Ui, state: &mut PipRowState) {
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.label_width, 100.0..=300.0).text("Label width"));
-        ui.add(egui::Slider::new(&mut state.row_height, 16.0..=40.0).text("Row height"));
-        ui.add(egui::Slider::new(&mut state.bar_height, 8.0..=32.0).text("Bar height"));
+    controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Label width", &mut state.label_width, 100.0..=300.0)
+            .slider("Row height", &mut state.row_height, 16.0..=40.0)
+            .slider("Bar height", &mut state.bar_height, 8.0..=32.0)
+            .show(ui);
     });
 
     ui.horizontal(|ui| {
@@ -189,14 +192,21 @@ pub fn show(ui: &mut egui::Ui, state: &mut PipRowState) {
         {
             state.use_density = true;
         }
+    });
 
-        ui.separator();
-
+    // The mode's own parameters. Pips mode has one of them and still gets a
+    // bank: flipping the mode toggle should change which controls are there,
+    // not what a control looks like.
+    controls(ui, |ui| {
         if state.use_density {
-            ui.add(egui::Slider::new(&mut state.density_bins, 10..=80).text("Bins"));
-            ui.add(egui::Slider::new(&mut state.density_min_alpha, 0.05..=0.5).text("Min alpha"));
+            SliderGroup::new()
+                .slider("Bins", &mut state.density_bins, 10..=80)
+                .slider("Min alpha", &mut state.density_min_alpha, 0.05..=0.5)
+                .show(ui);
         } else {
-            ui.add(egui::Slider::new(&mut state.pip_width, 2.0..=10.0).text("Pip width"));
+            SliderGroup::new()
+                .slider("Pip width", &mut state.pip_width, 2.0..=10.0)
+                .show(ui);
         }
     });
 

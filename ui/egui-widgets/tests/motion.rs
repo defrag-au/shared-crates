@@ -158,7 +158,10 @@ fn reaches_the_context_through_theme_ext() {
             "{mode:?} did not reach the context"
         );
         assert_eq!(ctx.travel_allowed(), tokens(*mode).travel_allowed());
-        assert_eq!(ctx.easing(Easing::OutBack), tokens(*mode).easing(Easing::OutBack));
+        assert_eq!(
+            ctx.easing(Easing::OutBack),
+            tokens(*mode).easing(Easing::OutBack)
+        );
     }
 }
 

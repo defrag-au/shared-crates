@@ -1,6 +1,7 @@
 //! `BulletBar` story — value fill against a track with a target marker.
 
 use egui_widgets::bullet_bar::BulletBar;
+use egui_widgets::slider_group::{Fader, SliderGroup};
 
 use crate::{accent, muted};
 
@@ -31,9 +32,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut BulletBarState) {
     );
     ui.add_space(12.0);
 
-    // Interactive single bar.
-    ui.add(egui::Slider::new(&mut state.value, 0.0..=1.0).text("value"));
-    ui.add(egui::Slider::new(&mut state.target, 0.0..=1.0).text("target"));
+    // Interactive single bar. Value and target are a pair you read against each
+    // other, so they belong on one spine.
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .fader(Fader::new("value", &mut state.value, 0.0..=1.0).decimals(2))
+            .fader(Fader::new("target", &mut state.target, 0.0..=1.0).decimals(2))
+            .show(ui);
+    });
     ui.add_space(10.0);
     BulletBar::new(state.value, state.target)
         .label("Coverage")

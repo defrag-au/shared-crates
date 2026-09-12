@@ -244,11 +244,8 @@ pub fn show(
     );
 
     // Bar background
-    ui.painter().rect_filled(
-        bar_rect,
-        config.bar_rounding,
-        config.bar_color.of(ui),
-    );
+    ui.painter()
+        .rect_filled(bar_rect, config.bar_rounding, config.bar_color.of(ui));
 
     // Detect hover position within the bar
     let bar_hover_x = row_resp

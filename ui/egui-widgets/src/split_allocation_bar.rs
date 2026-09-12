@@ -107,11 +107,7 @@ pub fn show(
         let rounding = CornerRadius::same(config.corner_radius);
 
         // Background track
-        painter.rect_filled(
-            rect,
-            rounding,
-            config.bg_color.of(ui),
-        );
+        painter.rect_filled(rect, rounding, config.bg_color.of(ui));
 
         // Paint segments left to right
         let mut x = rect.min.x;

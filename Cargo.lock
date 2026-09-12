@@ -28,6 +28,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "action-definitions"
+version = "0.1.0"
+dependencies = [
+ "action-definitions-derive",
+ "hex",
+ "pallas-codec",
+ "pallas-primitives",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "action-definitions-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "address-registry"
 version = "0.1.0"
 dependencies = [

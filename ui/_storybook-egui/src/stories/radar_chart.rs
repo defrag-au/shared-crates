@@ -1,8 +1,9 @@
 //! Storybook demo for the RadarChart widget from egui-widgets.
 
 use egui_widgets::radar_chart::{RadarChartConfig, RadarPoint};
+use egui_widgets::slider_group::SliderGroup;
 
-use crate::{accent, muted};
+use crate::{accent, controls, muted};
 
 // ============================================================================
 // State
@@ -183,14 +184,14 @@ fn preset_data(index: usize) -> Vec<RadarPoint> {
 // ============================================================================
 
 pub fn show(ui: &mut egui::Ui, state: &mut RadarChartState) {
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.size, 120.0..=400.0).text("Size"));
-        ui.add(egui::Slider::new(&mut state.tension, 0.0..=0.5).text("Tension"));
-    });
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.ring_count, 2..=8).text("Rings"));
-        ui.add(egui::Slider::new(&mut state.dot_radius, 1.0..=6.0).text("Dot size"));
-        ui.add(egui::Slider::new(&mut state.curve_width, 0.5..=4.0).text("Line width"));
+    controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Size", &mut state.size, 120.0..=400.0)
+            .slider("Tension", &mut state.tension, 0.0..=0.5)
+            .slider("Rings", &mut state.ring_count, 2..=8)
+            .slider("Dot size", &mut state.dot_radius, 1.0..=6.0)
+            .slider("Line width", &mut state.curve_width, 0.5..=4.0)
+            .show(ui);
     });
 
     ui.horizontal(|ui| {
