@@ -34,6 +34,26 @@
 //! - **Double-click resets** to [`Knob::default_value`], so exploring is
 //!   reversible without undo.
 //! - **Scroll works while hovered**, for the nudge case.
+//!
+//! ## Under a finger
+//!
+//! A touch screen is not a mouse with a worse pointer; three of the four points
+//! above have no finger equivalent, and the first one actively fights the page.
+//! See [`KnobTouch`] for the gesture routing, and note what changes:
+//!
+//! | | mouse | finger |
+//! |---|---|---|
+//! | take the drag | on movement | after a [`HOLD`](crate::touch::HOLD) rest, by default |
+//! | fine mode | shift | pull sideways, continuously |
+//! | throw | [`BASE_TRAVEL`] | × [`TOUCH_TRAVEL`], i.e. **longer** |
+//! | wheel nudge | yes | no — that gesture is the page |
+//!
+//! The throw is the counter-intuitive one. The instinct is that a small screen
+//! wants a small gesture; the truth is that the device with the least precision
+//! and no modifier key needs *more* pixels per unit, not fewer.
+//!
+//! Reset stays on double-click/double-tap rather than moving to a long press,
+//! because the long press is now how the knob is taken hold of.
 
 use std::ops::RangeInclusive;
 
@@ -50,8 +70,23 @@ const BASE_DIAMETER: f32 = 44.0;
 /// means the whole range is reachable in one gesture on a laptop trackpad.
 const BASE_TRAVEL: f32 = 160.0;
 
-/// Gain multiplier while shift is held.
+/// Gain multiplier at full fine mode — shift on a mouse, fully pulled away on a
+/// touch screen.
 pub const FINE: f32 = 0.2;
+
+/// Travel is multiplied by this under touch.
+///
+/// More pixels per unit, not fewer. A finger is less precise than a mouse and
+/// has no modifier key to fall back on, so the device that can least afford a
+/// twitchy control is exactly the one the mouse-tuned default makes twitchiest.
+const TOUCH_TRAVEL: f32 = 1.6;
+
+/// Horizontal distance from the press at which touch fine mode reaches [`FINE`].
+const PULL_FULL: f32 = 120.0;
+
+/// How a knob behaves under a finger. See [`crate::touch::Grab`], which the
+/// fader bank shares — the question is the same for both, so the vocabulary is.
+pub use crate::touch::Grab as KnobTouch;
 
 /// Where the sweep starts and ends, measured in turns from straight up.
 ///
@@ -137,6 +172,9 @@ pub struct KnobResponse {
     /// The knob is being dragged right now — for a host that wants to show a
     /// bigger readout, or suppress an expensive live preview.
     pub dragging: bool,
+    /// A touch gesture has taken hold of this knob. Distinct from `dragging`:
+    /// the finger is engaged but may not have moved yet.
+    pub engaged: bool,
 }
 
 pub struct Knob<'a> {
@@ -152,6 +190,7 @@ pub struct Knob<'a> {
     default_value: Option<f32>,
     tint: Ink,
     ticks: usize,
+    touch: KnobTouch,
 }
 
 impl<'a> Knob<'a> {
@@ -169,7 +208,14 @@ impl<'a> Knob<'a> {
             default_value: None,
             tint: Ink::Token(Token::Accent),
             ticks: 11,
+            touch: KnobTouch::default(),
         }
+    }
+
+    /// How this knob behaves under a finger. See [`KnobTouch`].
+    pub fn touch(mut self, touch: KnobTouch) -> Self {
+        self.touch = touch;
+        self
     }
 
     pub fn face(mut self, face: KnobFace) -> Self {
@@ -256,11 +302,21 @@ impl<'a> Knob<'a> {
             default_value,
             tint,
             ticks,
+            touch,
         } = self;
 
         let decimals = decimals.unwrap_or(auto);
         let diameter = size.resolve(ui);
-        let travel = travel.unwrap_or(BASE_TRAVEL);
+        // A finger gets a longer throw than a mouse, unless the caller has
+        // named an exact travel — in which case they meant it.
+        // Sticky, and it has to be — see `touch::is_touch`. The knob picks its
+        // SENSE from this, and a sense chosen one frame late is a sense that was
+        // wrong for the gesture that needed it.
+        let on_touch = crate::touch::is_touch(ui);
+        let travel = travel.unwrap_or(match on_touch {
+            true => BASE_TRAVEL * TOUCH_TRAVEL,
+            false => BASE_TRAVEL,
+        });
         let gap = ui.space(Space::Xs);
         let line_h = ui.text_size(TextSize::Sm) + 2.0;
 
@@ -268,7 +324,29 @@ impl<'a> Knob<'a> {
             usize::from(label.is_some()) + usize::from(matches!(readout, Readout::Below));
         let total = vec2(diameter, diameter + caption_rows as f32 * (line_h + gap));
 
-        let (rect, resp) = ui.allocate_exact_size(total, Sense::click_and_drag());
+        // The policy only binds a finger. A mouse scrolls with the wheel, so
+        // nothing is contesting its drag.
+        let gate = match on_touch {
+            true => touch,
+            false => KnobTouch::Direct,
+        };
+        // `next_auto_id` is the id `allocate_exact_size` is about to assign, and
+        // reading it does not advance the counter — which is what lets the sense
+        // be chosen from state stored under that same id.
+        let id = ui.next_auto_id().with("knob-engaged");
+        let engaged = match gate {
+            KnobTouch::Direct => true,
+            KnobTouch::HoldToEngage => crate::touch::engaged(ui, id),
+        };
+        // THE SENSE IS THE WHOLE MECHANISM. Sensing drag is what takes the
+        // gesture off the `ScrollArea`; sensing only click leaves it there. So
+        // an unengaged knob deliberately cannot be dragged.
+        let sense = match engaged {
+            true => Sense::click_and_drag(),
+            false => Sense::click(),
+        };
+
+        let (rect, resp) = ui.allocate_exact_size(total, sense);
         let dial = egui::Rect::from_min_size(rect.min, Vec2::splat(diameter));
 
         let span = *range.end() - *range.start();
@@ -276,26 +354,51 @@ impl<'a> Knob<'a> {
             changed: false,
             value: *value,
             dragging: resp.dragged(),
+            engaged: engaged && gate == KnobTouch::HoldToEngage,
+        };
+
+        // ── Engaging ────────────────────────────────────────────────────────
+        let hold_progress = match gate {
+            KnobTouch::HoldToEngage => {
+                crate::touch::advance(ui, id, resp.is_pointer_button_down_on(), engaged)
+            }
+            KnobTouch::Direct => 0.0,
         };
 
         // ── Interaction ─────────────────────────────────────────────────────
+        // Fine adjustment, from whichever the device offers. Shift has no finger
+        // equivalent, so touch uses pull-away: the further the finger strays
+        // sideways from where it landed, the finer the control gets.
+        let gain = match on_touch {
+            true => ui.input(|i| {
+                let pull = i
+                    .pointer
+                    .press_origin()
+                    .zip(i.pointer.latest_pos())
+                    .map_or(0.0, |(o, p)| (p.x - o.x).abs());
+                gain_for_pull(pull)
+            }),
+            false => gain_for_key(ui.input(|i| i.modifiers.shift_only())),
+        };
+
         if resp.dragged() {
             // UP increases. Screen y grows downward, hence the negation — the
             // one place this has to be said, so it is said once.
             let dy = -resp.drag_delta().y;
-            let fine = ui.input(|i| i.modifiers.shift_only());
-            let next = apply_drag(*value, dy, travel, span, fine);
+            let next = apply_drag(*value, dy, travel, span, gain);
             if next != *value {
                 *value = next.clamp(*range.start(), *range.end());
                 out.changed = true;
             }
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
         }
-        if resp.hovered() {
+        // Wheel only. A touch "scroll" IS the page scrolling, and nudging the
+        // knob as the page moves under it would be the same theft the hold gate
+        // exists to prevent.
+        if resp.hovered() && !on_touch {
             let scroll = ui.input(|i| i.smooth_scroll_delta.y);
             if scroll != 0.0 {
-                let fine = ui.input(|i| i.modifiers.shift_only());
-                let next = apply_drag(*value, scroll, travel, span, fine)
+                let next = apply_drag(*value, scroll, travel, span, gain)
                     .clamp(*range.start(), *range.end());
                 if next != *value {
                     *value = next;
@@ -327,6 +430,24 @@ impl<'a> Knob<'a> {
             };
             paint_face(ui, dial, face, t, accent, track, ticks, colors.bg_highlight);
 
+            // The hold, made visible. A gesture gate nobody can see is a broken
+            // control; a ring that fills under the finger teaches itself in one
+            // use, and shows the exact moment the knob becomes draggable.
+            if hold_progress > 0.0 {
+                ui.painter().add(egui::Shape::line(
+                    arc_points(dial.center(), dial.width() * 0.5 - 1.0, 0.0, hold_progress),
+                    Stroke::new(2.0_f32, accent.gamma_multiply(0.7)),
+                ));
+            }
+            // Engaged, so the reader knows the page will not move under them.
+            if out.engaged {
+                ui.painter().circle_stroke(
+                    dial.center(),
+                    dial.width() * 0.5 - 1.0,
+                    Stroke::new(2.0_f32, accent.gamma_multiply(0.45)),
+                );
+            }
+
             let text = format!("{:.decimals$}{suffix}", *value);
             let mut y = dial.bottom() + gap;
             if matches!(readout, Readout::Below) {
@@ -354,14 +475,28 @@ impl<'a> Knob<'a> {
 ///
 /// Pure, and public to the tests, because the feel IS this function — if the
 /// gain is wrong, no amount of painting fixes it.
-fn apply_drag(value: f32, dy: f32, travel: f32, span: f32, fine: bool) -> f32 {
-    let gain = match fine {
-        true => FINE,
-        false => 1.0,
-    };
+fn apply_drag(value: f32, dy: f32, travel: f32, span: f32, gain: f32) -> f32 {
     // A zero travel would divide by zero and send the knob to an end on the
     // first pixel; it is a caller error, so it is clamped rather than panicking.
     value + dy / travel.max(1.0) * span * gain
+}
+
+/// Fine mode from a modifier key: on or off.
+fn gain_for_key(fine: bool) -> f32 {
+    match fine {
+        true => FINE,
+        false => 1.0,
+    }
+}
+
+/// Fine mode from a finger: continuous, by how far it has strayed sideways.
+///
+/// The pull-away idiom, because a finger has no shift key. It is also better
+/// than a key for this job — the precision is a dial rather than a switch, so
+/// the reader chooses how fine without letting go and re-gripping.
+fn gain_for_pull(pull_px: f32) -> f32 {
+    let t = (pull_px.abs() / PULL_FULL).clamp(0.0, 1.0);
+    1.0 + (FINE - 1.0) * t
 }
 
 /// Turns-from-straight-up for a normalised value.
@@ -502,8 +637,8 @@ mod tests {
     fn up_increases_and_down_decreases() {
         // The one convention a knob cannot get wrong. Screen y grows downward,
         // so this is exactly the sign that is easy to invert by accident.
-        let up = apply_drag(0.5, 10.0, 100.0, 1.0, false);
-        let down = apply_drag(0.5, -10.0, 100.0, 1.0, false);
+        let up = apply_drag(0.5, 10.0, 100.0, 1.0, 1.0);
+        let down = apply_drag(0.5, -10.0, 100.0, 1.0, 1.0);
         assert!(up > 0.5, "dragging up must increase: {up}");
         assert!(down < 0.5, "dragging down must decrease: {down}");
     }
@@ -513,7 +648,7 @@ mod tests {
         // The promise `travel` makes, in the unit the hand works in: drag that
         // many pixels and you have covered the range, whatever the range is.
         for span in [1.0_f32, 20.0, 1000.0] {
-            let moved = apply_drag(0.0, 160.0, 160.0, span, false);
+            let moved = apply_drag(0.0, 160.0, 160.0, span, 1.0);
             assert!(
                 (moved - span).abs() < 1e-3,
                 "span {span} should be covered by 160px, got {moved}"
@@ -523,8 +658,8 @@ mod tests {
 
     #[test]
     fn fine_mode_scales_the_gain_and_nothing_else() {
-        let coarse = apply_drag(0.0, 50.0, 160.0, 1.0, false);
-        let fine = apply_drag(0.0, 50.0, 160.0, 1.0, true);
+        let coarse = apply_drag(0.0, 50.0, 160.0, 1.0, gain_for_key(false));
+        let fine = apply_drag(0.0, 50.0, 160.0, 1.0, gain_for_key(true));
         assert!((fine - coarse * FINE).abs() < 1e-6, "{fine} vs {coarse}");
     }
 
@@ -532,7 +667,7 @@ mod tests {
     fn a_zero_travel_does_not_divide_by_zero() {
         // A caller passing 0 is wrong, but a knob that returns NaN corrupts the
         // host's value and every readout downstream of it.
-        let v = apply_drag(0.5, 10.0, 0.0, 1.0, false);
+        let v = apply_drag(0.5, 10.0, 0.0, 1.0, 1.0);
         assert!(v.is_finite(), "got {v}");
     }
 
@@ -576,6 +711,45 @@ mod tests {
         assert_eq!(Knob::new(&mut v, 0.0..=1.0).auto_decimals(), 2);
         assert_eq!(Knob::new(&mut v, 0.0..=20.0).auto_decimals(), 1);
         assert_eq!(Knob::new(&mut v, 0.0..=2000.0).auto_decimals(), 0);
+    }
+
+    #[test]
+    fn pull_away_reaches_exactly_the_same_fine_as_the_shift_key() {
+        // A finger has no modifier, so precision comes from straying sideways.
+        // Both devices must bottom out at the same gain, or the same parameter
+        // is finer on one than the other and the two disagree about what a
+        // careful adjustment is.
+        assert!(
+            (gain_for_pull(0.0) - 1.0).abs() < 1e-6,
+            "no pull, no change"
+        );
+        assert!((gain_for_pull(PULL_FULL) - FINE).abs() < 1e-6);
+        assert!((gain_for_pull(PULL_FULL) - gain_for_key(true)).abs() < 1e-6);
+        // And it is a dial, not a switch: halfway out is halfway fine.
+        let half = gain_for_pull(PULL_FULL * 0.5);
+        assert!(half < 1.0 && half > FINE, "got {half}");
+    }
+
+    #[test]
+    fn pull_away_is_symmetric_and_cannot_invert_the_gain() {
+        // Straying LEFT is as valid as straying right, and no distance may push
+        // the gain below `FINE` — a negative or runaway gain would send the knob
+        // the wrong way or to an end.
+        assert!((gain_for_pull(-PULL_FULL) - gain_for_pull(PULL_FULL)).abs() < 1e-6);
+        for px in [PULL_FULL * 2.0, 10_000.0, f32::MAX] {
+            let g = gain_for_pull(px);
+            assert!((FINE - 1e-6..=1.0).contains(&g), "pull {px} gave gain {g}");
+        }
+    }
+
+    #[test]
+    fn a_finger_gets_a_longer_throw_than_a_mouse() {
+        // Not shorter. The device with less precision and no modifier key needs
+        // MORE pixels per unit, which is the opposite of the intuition that a
+        // small screen wants a small gesture.
+        let mouse = apply_drag(0.0, 50.0, BASE_TRAVEL, 1.0, 1.0);
+        let finger = apply_drag(0.0, 50.0, BASE_TRAVEL * TOUCH_TRAVEL, 1.0, 1.0);
+        assert!(finger < mouse, "same gesture must move a finger less");
     }
 
     #[test]

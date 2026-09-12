@@ -111,6 +111,7 @@ pub mod time_spine;
 pub mod timestamp;
 pub mod toast;
 pub mod token_multiselect;
+pub mod touch;
 pub mod trade_flow;
 pub mod trait_filter;
 pub mod typeahead_search;

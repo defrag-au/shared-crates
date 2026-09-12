@@ -74,7 +74,8 @@ use std::ops::RangeInclusive;
 
 use egui::{Align, Layout, Ui, emath::Numeric};
 
-use crate::theme::{Ink, Space, SpaceExt, TextSize, ThemeExt, Token};
+use crate::theme::{Ink, Space, SpaceExt, TextSize, Theme, ThemeExt, Token};
+pub use crate::touch::Grab;
 
 /// Rail thickness at [`Density::Comfortable`](crate::theme::Density), in px.
 ///
@@ -317,6 +318,7 @@ pub struct SliderGroup<'a> {
     rail_width: RailWidth,
     budget: Option<Budget>,
     rail: Option<f32>,
+    touch: Grab,
 }
 
 impl<'a> Default for SliderGroup<'a> {
@@ -333,7 +335,18 @@ impl<'a> SliderGroup<'a> {
             rail_width: RailWidth::Fill,
             budget: None,
             rail: None,
+            touch: Grab::default(),
         }
+    }
+
+    /// How the rails behave under a finger. See [`Grab`].
+    ///
+    /// Defaults to [`Grab::HoldToEngage`]. Reach for [`Grab::Direct`] only when
+    /// the bank is somewhere a vertical drag has nothing else to do — a fixed
+    /// panel, or a pane whose `ScrollArea` has `drag` cleared.
+    pub fn touch(mut self, grab: Grab) -> Self {
+        self.touch = grab;
+        self
     }
 
     /// Add a pre-configured channel.
@@ -446,6 +459,16 @@ impl<'a> SliderGroup<'a> {
 
         let row_h = ui.spacing().interact_size.y.max(rail);
         let last = self.rows.len().saturating_sub(1);
+        // The gate only binds a finger; a mouse scrolls with the wheel, so
+        // nothing is contesting its drag and everything below is inert.
+        let on_touch = crate::touch::is_touch(ui);
+        let grab = match on_touch {
+            true => self.touch,
+            false => Grab::Direct,
+        };
+        // Stable per row, and per `SliderGroup` instance because `ui.id()`
+        // differs — two banks in one pane must not share a grab.
+        let group_id = ui.id();
         for (i, row) in self.rows.iter_mut().enumerate() {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = gap;
@@ -494,9 +517,58 @@ impl<'a> SliderGroup<'a> {
                 if let Some(s) = step {
                     slider = slider.step_by(s);
                 }
-                if ui.add(slider).changed() {
+                // ── The shield ──────────────────────────────────────────────
+                // `egui::Slider` is an ABSOLUTE control: it positions from the
+                // raw pointer x, and `interact_pointer_pos` is populated by
+                // `is_pointer_button_down_on` alone. So on a touch screen the
+                // instant a finger lands on a rail the value jumps to wherever
+                // it landed — every mis-tap while scrolling overwrites a value,
+                // in editors with no undo. It also senses drag unconditionally,
+                // so a vertical swipe that starts on a rail is eaten rather than
+                // scrolling the page, and a full-width bank becomes a wall.
+                //
+                // Both are fixed by making the slider transparent until grabbed.
+                // egui's hit test strips CLICK and DRAG from a DISABLED widget,
+                // which is exactly the transparency wanted; `set_opacity` puts
+                // back the fade `disable` applies, so the rail still paints at
+                // full strength and an ungrabbed fader is pixel-identical to an
+                // idle one. It is ungrabbed, not unavailable, and must not look
+                // unavailable.
+                let grab_id = group_id.with(("fader-grab", i));
+                let engaged = match grab {
+                    Grab::Direct => true,
+                    Grab::HoldToEngage => crate::touch::engaged(ui, grab_id),
+                };
+                let slider_resp = ui
+                    .scope(|ui| {
+                        if !engaged {
+                            ui.disable();
+                            ui.set_opacity(1.0);
+                        }
+                        ui.add(slider)
+                    })
+                    .inner;
+                if slider_resp.changed() {
                     out.changed = true;
                     out.changed_row = Some(i);
+                }
+                if grab == Grab::HoldToEngage {
+                    // `interact` registers a hit rect without allocating layout,
+                    // so the readout column does not move. Click sense only: a
+                    // drag sense here would steal the very gesture the shield
+                    // exists to let through.
+                    let shield = ui.interact(
+                        slider_resp.rect,
+                        grab_id.with("shield"),
+                        egui::Sense::click(),
+                    );
+                    let progress = crate::touch::advance(
+                        ui,
+                        grab_id,
+                        shield.is_pointer_button_down_on(),
+                        engaged,
+                    );
+                    paint_hold(ui, slider_resp.rect, progress, &theme);
                 }
 
                 let now = (row.get_set)(None);
@@ -562,6 +634,28 @@ impl From<f32> for Budget {
     }
 }
 
+/// The hold, made visible: a bar growing along the rail under the finger.
+///
+/// A gesture gate nobody can see is just a control that ignores them. The knob
+/// uses a ring because it is round; a rail is linear, so this is a linear fill —
+/// and it deliberately does not look like the value, which grows from the same
+/// edge. It sits UNDER the rail, in a lighter weight, so the two cannot be
+/// confused while both are on screen.
+fn paint_hold(ui: &Ui, rail: egui::Rect, progress: f32, theme: &Theme) {
+    if progress <= 0.0 {
+        return;
+    }
+    let y = rail.bottom() + 2.0;
+    let accent = theme.color.accent;
+    ui.painter().line_segment(
+        [
+            egui::pos2(rail.left(), y),
+            egui::pos2(rail.left() + rail.width() * progress, y),
+        ],
+        egui::Stroke::new(2.0_f32, accent.gamma_multiply(0.7)),
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -593,6 +687,186 @@ mod tests {
         });
         let _ = ctx.end_pass();
         (out.unwrap(), used)
+    }
+
+    /// A finger landing at `at`, as the event stream egui expects.
+    ///
+    /// Both the touch event (so `any_touches` is true and the widget takes the
+    /// touch path) and the synthesised pointer press that egui's own backends
+    /// emit alongside it — without the latter nothing is "down on" anything.
+    fn finger_down(at: Pos2) -> Vec<egui::Event> {
+        vec![
+            egui::Event::Touch {
+                device_id: egui::TouchDeviceId(0),
+                id: egui::TouchId(0),
+                phase: egui::TouchPhase::Start,
+                pos: at,
+                force: None,
+            },
+            egui::Event::PointerMoved(at),
+            egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default(),
+            },
+        ]
+    }
+
+    /// Fixed columns, so the rail's rect is arithmetic rather than a guess.
+    const T_LABEL_W: f32 = 100.0;
+    const T_RAIL_W: f32 = 200.0;
+
+    /// A finger touching somewhere harmless, then lifting.
+    ///
+    /// Stands in for everything a reader does before reaching a fader — opening
+    /// the page, scrolling, tapping a nav item. It is what makes
+    /// `has_touch_screen` true, which is what the gate keys off.
+    fn establishes_a_touch_screen() -> Vec<egui::Event> {
+        let away = Pos2::new(800.0, 380.0);
+        vec![
+            egui::Event::Touch {
+                device_id: egui::TouchDeviceId(0),
+                id: egui::TouchId(9),
+                phase: egui::TouchPhase::Start,
+                pos: away,
+                force: None,
+            },
+            egui::Event::Touch {
+                device_id: egui::TouchDeviceId(0),
+                id: egui::TouchId(9),
+                phase: egui::TouchPhase::End,
+                pos: away,
+                force: None,
+            },
+        ]
+    }
+
+    /// Drive a one-fader bank: settle, establish the device, move the pointer,
+    /// run `gesture` aimed near the LOW end of the rail, observe.
+    ///
+    /// The aim point is derived from the group's own rect rather than written
+    /// down — a hardcoded coordinate that drifts off the rail turns these into
+    /// tests that pass by missing, which is exactly what the first version did.
+    fn touch_a_rail(gesture: impl Fn(Pos2) -> Vec<egui::Event>, grab: Grab) -> f32 {
+        touch_a_rail_from(gesture, grab, establishes_a_touch_screen())
+    }
+
+    fn touch_a_rail_from(
+        gesture: impl Fn(Pos2) -> Vec<egui::Event>,
+        grab: Grab,
+        prelude: Vec<egui::Event>,
+    ) -> f32 {
+        let ctx = egui::Context::default();
+        let mut value = 0.5_f32;
+        let mut aim = Pos2::ZERO;
+
+        let pass = |events: Vec<egui::Event>, value: &mut f32, aim: &mut Pos2| {
+            ctx.begin_pass(egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 400.0))),
+                events,
+                ..Default::default()
+            });
+            let r = egui::Area::new(Id::new("sg")).show(&ctx, |ui| {
+                ui.set_max_width(600.0);
+                SliderGroup::new()
+                    .touch(grab)
+                    .label_width(LabelWidth::Fixed(T_LABEL_W))
+                    .rail_width(RailWidth::Fixed(T_RAIL_W))
+                    .slider("v", value, 0.0..=1.0)
+                    .show(ui);
+            });
+            let g = r.response.rect;
+            // A fifth along the rail — comfortably away from the 0.5 the value
+            // starts at, so "did contact move it" is unambiguous.
+            *aim = Pos2::new(
+                g.left() + T_LABEL_W + T_RAIL_W * 0.2,
+                g.top() + g.height() * 0.5,
+            );
+            let _ = ctx.end_pass();
+        };
+
+        // Four passes, and the shape is forced by egui rather than chosen: it
+        // resolves an interaction at the start of a pass against the widget
+        // rects the PREVIOUS pass registered. So the pointer has to arrive and
+        // be seen before the press can be attributed to anything.
+        pass(prelude, &mut value, &mut aim); // lay out, learn the geometry
+        pass(vec![egui::Event::PointerMoved(aim)], &mut value, &mut aim);
+        pass(gesture(aim), &mut value, &mut aim);
+        pass(Vec::new(), &mut value, &mut aim); // observe
+        value
+    }
+
+    #[test]
+    fn a_finger_landing_on_a_rail_does_not_write_a_value() {
+        // THE defect the shield exists for. `egui::Slider` positions from the
+        // raw pointer x and `interact_pointer_pos` is populated by
+        // `is_pointer_button_down_on` alone — so without the shield, contact
+        // commits. On a phone that means every mis-tap while scrolling
+        // overwrites a value, in editors that have no undo.
+        //
+        // Land far to the left of the rail's midpoint: an unshielded slider
+        // would snap the value towards 0.
+        let landed = touch_a_rail(finger_down, Grab::HoldToEngage);
+        assert_eq!(
+            landed, 0.5,
+            "contact alone must not move the value; got {landed}"
+        );
+    }
+
+    #[test]
+    fn the_very_first_touch_of_a_session_is_a_known_hole() {
+        // PINNING A DEFECT, not asserting a design. egui attributes a press
+        // using the widget rects of the pass BEFORE it, and nothing can know the
+        // device is touch until the first touch arrives — so a session whose
+        // very first contact lands on a rail behaves as a mouse click and writes
+        // a value. Everything after is gated, because the flag is sticky.
+        //
+        // In practice a reader scrolls or taps something before reaching a bank
+        // of faders, so the flag is long since set. If this test starts failing,
+        // the hole has been closed and it should be deleted, not repaired.
+        let landed = touch_a_rail_from(finger_down, Grab::HoldToEngage, Vec::new());
+        assert_ne!(
+            landed, 0.5,
+            "expected the known first-touch hole; if this now holds, the gate \
+             has been made frame-exact and this test is obsolete"
+        );
+    }
+
+    #[test]
+    fn direct_is_still_available_for_a_bank_that_owns_its_gestures() {
+        // The escape hatch has to actually escape, or callers in a fixed panel
+        // are paying for a gate that buys them nothing. Same gesture, opted out
+        // of the shield: the slider gets it and behaves as egui always has.
+        let landed = touch_a_rail(finger_down, Grab::Direct);
+        assert_ne!(
+            landed, 0.5,
+            "Grab::Direct must leave the slider its normal click-to-position"
+        );
+    }
+
+    #[test]
+    fn a_mouse_is_untouched_by_any_of_this() {
+        // No touch event in the stream, so the gate must not engage even with
+        // the default policy — click-to-position on a rail is genuinely useful
+        // with a mouse, and this work must not cost it.
+        // No touch anywhere in the stream — a genuine mouse session.
+        let landed = touch_a_rail_from(
+            |at| {
+                vec![
+                    egui::Event::PointerMoved(at),
+                    egui::Event::PointerButton {
+                        pos: at,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: Default::default(),
+                    },
+                ]
+            },
+            Grab::HoldToEngage,
+            Vec::new(),
+        );
+        assert_ne!(landed, 0.5, "a mouse click on the rail still positions");
     }
 
     #[test]

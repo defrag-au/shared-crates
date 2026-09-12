@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-138 widgets.
+139 widgets.
 
 | module | what it is |
 |---|---|
@@ -124,6 +124,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `timestamp` | `Timestamp` — a tiny atom that renders a unix-seconds timestamp **consistently** as ISO-8601 (UTC), with an optional clean badge presentation |
 | `toast` | `Toast` / `ToastQueue` — transient overlay messages with frame-countdown auto-dismiss, plus keyed **progress** toasts for work happening in the background |
 | `token_multiselect` | token_multiselect — pick a subset from a known set of options |
+| `touch` | Gesture arbitration for value controls under a finger |
 | `trade_flow` | Trade-flow widget — the local user's view of a P2P swap in plain give / get / net terms, decoupled from the raw eUTxO structure |
 | `trade_table` | Trade table widget — TCG-style top/bottom offer display for the trade desk |
 | `trait_delta` | Trait delta widget — shows traits gained and lost in a trade |

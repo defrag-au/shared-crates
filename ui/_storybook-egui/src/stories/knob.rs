@@ -10,7 +10,7 @@
 //! and no amount of reasoning settles it as fast as dragging at 60px and at
 //! 300px back to back.
 
-use egui_widgets::knob::{Knob, KnobFace, KnobSize, Readout};
+use egui_widgets::knob::{Knob, KnobFace, KnobSize, KnobTouch, Readout};
 use egui_widgets::slider_group::{Fader, SliderGroup};
 
 pub struct KnobState {
@@ -18,6 +18,7 @@ pub struct KnobState {
     pub diameter: f32,
     pub travel: f32,
     pub readout_index: usize,
+    pub touch_index: usize,
     pub ticks: u32,
     // One value per face, so each can be left somewhere different.
     pub per_face: [f32; 4],
@@ -35,6 +36,7 @@ impl Default for KnobState {
             diameter: 44.0,
             travel: 160.0,
             readout_index: 0,
+            touch_index: 0,
             ticks: 11,
             per_face: [0.35, 0.6, 0.8, 0.5],
             knob_value: 0.4,
@@ -51,6 +53,11 @@ const READOUTS: [(Readout, &str); 3] = [
     (Readout::None, "none"),
 ];
 
+const TOUCHES: [(KnobTouch, &str); 2] = [
+    (KnobTouch::HoldToEngage, "hold to engage"),
+    (KnobTouch::Direct, "direct"),
+];
+
 pub fn show(ui: &mut egui::Ui, state: &mut KnobState) {
     crate::heading(ui, "Knob — prototype");
     crate::caption(
@@ -64,6 +71,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut KnobState) {
         "Drag up and down — not in a circle, which is miserable with a mouse. \
          Hold shift for fine, double-click to reset, scroll while hovered to \
          nudge.",
+    );
+    crate::caption(
+        ui,
+        "On a touch screen: rest a finger until the ring fills, then drag. Pull \
+         sideways as you drag to get finer — that is the finger's shift key, and \
+         being continuous it is arguably better than one. The throw is longer \
+         under touch, not shorter.",
     );
     ui.add_space(12.0);
 
@@ -93,7 +107,28 @@ pub fn show(ui: &mut egui::Ui, state: &mut KnobState) {
             }
         }
     });
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("touch").color(crate::muted(ui)));
+        for (i, (_, name)) in TOUCHES.iter().enumerate() {
+            if ui.selectable_label(state.touch_index == i, *name).clicked() {
+                state.touch_index = i;
+            }
+        }
+    });
     let readout = READOUTS[state.readout_index].0;
+    let touch = TOUCHES[state.touch_index].0;
+
+    ui.add_space(4.0);
+    crate::caption(
+        ui,
+        "The touch policy does nothing under a mouse — a mouse scrolls with the \
+         wheel, so nothing contests its drag. On a phone, this story pane is a \
+         vertical ScrollArea, which is exactly the case that matters: with \
+         `direct`, a finger landing on a knob cannot scroll the page and the \
+         bank below becomes a band you are stuck on. With `hold to engage`, a \
+         flick scrolls and a short rest takes the knob — watch for the ring \
+         filling under your finger.",
+    );
 
     ui.add_space(14.0);
 
@@ -116,6 +151,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut KnobState) {
                     .size(KnobSize::Fixed(state.diameter))
                     .travel(state.travel)
                     .readout(readout)
+                    .touch(touch)
                     .ticks(state.ticks as usize)
                     .label(face.label())
                     .default_value(0.5)
@@ -144,6 +180,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut KnobState) {
                 .size(KnobSize::Fixed(state.diameter))
                 .travel(state.travel)
                 .readout(readout)
+                .touch(touch)
                 .label(name)
                 .default_value(0.5)
                 .show(ui);
@@ -171,6 +208,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut KnobState) {
                 .size(KnobSize::Fixed(state.diameter))
                 .travel(state.travel)
                 .readout(readout)
+                .touch(touch)
                 .label("knob")
                 .default_value(0.4)
                 .show(ui);
