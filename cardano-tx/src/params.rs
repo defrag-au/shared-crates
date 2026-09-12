@@ -6,6 +6,22 @@
 
 use crate::builder::cost_models::PlutusCostModels;
 
+/// Conway's `minFeeRefScriptCoinsPerByte`, in lovelace, as it currently stands
+/// on mainnet and preprod.
+///
+/// Stated here rather than read from the upstream parameter payload because
+/// none of our providers surfaces it. That makes it a **pin, not a fact**: if
+/// the protocol parameter is ever changed by governance, transactions that use
+/// reference scripts start being rejected `FeeTooSmallUTxO` with no other
+/// symptom, and this is the line to change.
+///
+/// Note that [`TxBuildParams::default()`] leaves this **zero**, because
+/// `Default` derives field-by-field. A test built on `..Default::default()`
+/// therefore prices reference scripts at nothing and will happily pass while
+/// proving the opposite of what it claims. Set it explicitly in any test that
+/// means to exercise the reference-script fee.
+pub const CONWAY_MIN_FEE_REF_SCRIPT_COST_PER_BYTE: u64 = 15;
+
 /// Minimum protocol parameters needed for transaction building.
 ///
 /// These values come from the Cardano node's protocol parameters and are
@@ -119,7 +135,9 @@ impl From<&maestro::ProtocolParameters> for TxBuildParams {
                 .unwrap_or((16_500_000, 10_000_000_000)),
             price_mem,
             price_step,
-            min_fee_ref_script_cost_per_byte: 15,
+            min_fee_ref_script_cost_per_byte: CONWAY_MIN_FEE_REF_SCRIPT_COST_PER_BYTE,
+            // Nothing is known about reference scripts at this point; whoever
+            // builds a transaction that USES one must declare its size.
             ref_script_size: 0,
             cost_models: PlutusCostModels::from(pp),
         }

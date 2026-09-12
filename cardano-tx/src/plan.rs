@@ -286,8 +286,34 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
     /// by name and never fall out of ordinary coin selection. Retire the
     /// deployment record BEFORE the UTxO, or transactions in flight fail with
     /// no diagnosis.
-    pub fn spend_script_refs(mut self) -> Self {
+    ///
+    /// # The size is not optional
+    ///
+    /// `total_ref_script_bytes` is the summed serialised size of every
+    /// reference script among those inputs, as the CHAIN reports it (Koios's
+    /// `reference_script.size`). Conway charges
+    /// `minFeeRefScriptCoinsPerByte` for reference scripts a transaction makes
+    /// available, and **a spent input's script counts** just as a reference
+    /// input's does.
+    ///
+    /// It is a parameter rather than a separate setter because omitting it is
+    /// not a smaller mistake — it is `FeeTooSmallUTxO` at submit, after every
+    /// other check has passed. `evaluateTransaction` does not look at this, so
+    /// no dry run catches it. Measured on preprod: retiring one 1534-byte
+    /// validator was rejected for underpaying by 22,965 lovelace.
+    ///
+    /// Passing the chain's figure slightly OVER-pays, because the ledger counts
+    /// the unwrapped program while the chain reports the CBOR-wrapped bytes
+    /// (three bytes here, 45 lovelace). Over-paying is always accepted;
+    /// under-paying never is. The buy path makes the same trade.
+    pub fn spend_script_refs(mut self, total_ref_script_bytes: u64) -> Self {
         self.spend_script_refs = true;
+        // Added, not assigned: a caller may already have declared reference
+        // INPUTS in `params`, and both kinds are charged.
+        self.params.ref_script_size = self
+            .params
+            .ref_script_size
+            .saturating_add(total_ref_script_bytes);
         self
     }
 
@@ -954,8 +980,50 @@ mod tests {
             coins_per_utxo_byte: 4_310,
             max_tx_size: 16_384,
             max_value_size: 5_000,
+            // Stated, not defaulted: `Default` leaves this ZERO, which prices
+            // every reference script at nothing and would let a test claiming
+            // to exercise the reference-script fee pass while proving nothing.
+            min_fee_ref_script_cost_per_byte:
+                crate::params::CONWAY_MIN_FEE_REF_SCRIPT_COST_PER_BYTE,
             ..Default::default()
         }
+    }
+
+    /// One real observation, kept only as the origin of the rule below.
+    ///
+    /// Retiring the abandonware `ask.spend` validator out of a preprod depot on
+    /// 2026-09-12 was rejected `FeeTooSmallUTxO`: supplied 167,086, expected
+    /// 190,051. The chain reported that script as 1,534 bytes, and the missing
+    /// 22,965 lovelace is the unwrapped program — the wrapped size less its
+    /// three-byte CBOR header — at 15 lovelace each.
+    ///
+    /// Nothing in the system is 1,534 bytes long. Another validator is another
+    /// size, so the tests below exercise the RELATIONSHIP across sizes rather
+    /// than this figure, and production reads each script's size from the
+    /// chain.
+    const OBSERVED: (u64, u64) = (1_534, 22_965);
+
+    /// An arbitrary plausible script size, for the tests that only need SOME
+    /// reference script to be in play. Any value would do; nothing asserts
+    /// against it.
+    const SOME_SCRIPT_BYTES: u64 = 1_200;
+
+    /// A REAL depot native script, not a hand-written stub.
+    ///
+    /// This matters more than it looks. A malformed script makes the staging
+    /// transaction fail to serialise, and the fee calculation then falls back
+    /// to a size estimate — so a test built on a stub silently measures the
+    /// fallback path instead of the real one, and the fee assertions it makes
+    /// are about nothing. That is exactly how the first version of the
+    /// reference-script test passed its rate check while reporting a zero
+    /// charge.
+    fn depot_script() -> Vec<u8> {
+        crate::depot::Depot::from_signers(&[
+            "9ad4da1c6da54e41ecbab2758323f1abcc7b6e6643f5b930065fcb29",
+        ])
+        .expect("a one-signer depot")
+        .script_bytes()
+        .to_vec()
     }
 
     fn addr() -> Address {
@@ -1148,7 +1216,7 @@ mod tests {
         let unsigned = TxPlan::new(addr(), 0, params())
             .must_spend(world.iter())
             .sweep_to(addr())
-            .spend_script_refs()
+            .spend_script_refs(SOME_SCRIPT_BYTES)
             .native_script(native.clone())
             .build()
             .expect("retire must build");
@@ -1175,14 +1243,63 @@ mod tests {
         let unsigned = TxPlan::new(addr(), 0, params())
             .must_spend(world.iter())
             .sweep_to(addr())
-            .spend_script_refs()
-            .native_script(vec![0x82, 0x00, 0x58, 0x1c])
+            .spend_script_refs(SOME_SCRIPT_BYTES * 2)
+            .native_script(depot_script())
             .build()
             .unwrap();
         assert_balanced(&unsigned, &world);
         let outs: Vec<_> = unsigned.staging.outputs.iter().flatten().collect();
         assert_eq!(outs.len(), 1, "one output: everything back to the wallet");
         assert_eq!(outs[0].lovelace, 17_500_000 - unsigned.fee);
+    }
+
+    /// REGRESSION, from a real preprod rejection. Conway charges
+    /// `minFeeRefScriptCoinsPerByte` for reference scripts a transaction makes
+    /// available, and a SPENT input's script counts — not just a reference
+    /// input's. Retiring one 1534-byte validator was rejected for underpaying
+    /// by exactly 22,965 lovelace, which is 1531 × 15.
+    ///
+    /// Nothing catches this before submit: `evaluateTransaction` does not look
+    /// at the reference-script fee, so the build, the review and every dry run
+    /// all pass and the node rejects `FeeTooSmallUTxO`.
+    #[test]
+    fn retiring_pays_conways_reference_script_fee() {
+        let world = vec![script_ref_utxo("aa", 0, 8_000_000)];
+        let rate = params().min_fee_ref_script_cost_per_byte;
+        assert!(rate > 0, "a zero rate would make this test prove nothing");
+
+        let fee_for = |declared: u64| {
+            let tx = TxPlan::new(addr(), 0, params())
+                .must_spend(world.iter())
+                .sweep_to(addr())
+                .spend_script_refs(declared)
+                .native_script(depot_script())
+                .build()
+                .unwrap();
+            assert_balanced(&tx, &world);
+            tx.fee
+        };
+
+        // THE RULE: whatever size is declared, the fee rises by exactly that
+        // many bytes at the protocol's rate. Checked across a spread so this
+        // pins a relationship rather than one validator's dimensions.
+        let baseline = fee_for(0);
+        for bytes in [1, 500, 1_534, 4_000, 25_600] {
+            assert_eq!(
+                fee_for(bytes) - baseline,
+                bytes * rate,
+                "declaring {bytes} reference-script bytes must add {bytes} × {rate}"
+            );
+        }
+
+        // And the rule, applied to the one case measured on chain, covers what
+        // the node actually asked for. Over by the CBOR header is what passing
+        // the chain's reported size costs; under is the rejection.
+        let (observed_bytes, observed_shortfall) = OBSERVED;
+        assert!(
+            fee_for(observed_bytes) - baseline >= observed_shortfall,
+            "the rule must cover the observed preprod shortfall"
+        );
     }
 
     /// A modifier a build mode ignores must fail, not be silently dropped —
@@ -1194,14 +1311,14 @@ mod tests {
         let plain = TxPlan::new(addr(), 0, params())
             .select_from(&pool, Strategy::SmallestSufficient)
             .pay_to(addr(), 5_000_000)
-            .spend_script_refs()
+            .spend_script_refs(SOME_SCRIPT_BYTES)
             .build();
         assert!(plain.is_err(), "plain build must refuse spend_script_refs");
 
         let fold = TxPlan::new(addr(), 0, params())
             .must_spend(pool.iter())
             .pay_to(addr(), 5_000_000)
-            .spend_script_refs()
+            .spend_script_refs(SOME_SCRIPT_BYTES)
             .fold_change()
             .build();
         assert!(fold.is_err(), "fold must refuse spend_script_refs");
@@ -1209,7 +1326,7 @@ mod tests {
         let fold_script = TxPlan::new(addr(), 0, params())
             .must_spend(pool.iter())
             .pay_to(addr(), 5_000_000)
-            .native_script(vec![0x82, 0x00])
+            .native_script(depot_script())
             .fold_change()
             .build();
         assert!(
