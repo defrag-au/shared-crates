@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-135 widgets.
+136 widgets.
 
 | module | what it is |
 |---|---|
@@ -97,7 +97,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `quantity_stepper` | `QuantityStepper` — a compact `−  [n]  +` control with min/max clamping |
 | `radar_chart` | Radar / spider chart widget for N-dimensional normalized data |
 | `range_bar` | Horizontal range bar widget for visualizing a set of labeled price/value points along a gradient |
-| `rarity_target_editor` | rarity_target_editor — a labelled list of 0–100% target sliders with an optional budget indicator (running total vs a budget, coloured over/under/ok) |
+| `rarity_target_editor` | rarity_target_editor — per-trait / per-value 0–100% rarity targets |
 | `relationship_editor` | relationship_editor — edit a list of directed `source → target` edges over a known option set |
 | `relative_time` | `RelativeTime` — a tiny auto-scaling "time ago" label |
 | `role_picker` | `RolePicker` — choose a Discord role by name instead of pasting a snowflake |
@@ -107,6 +107,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `seven_segment` | SevenSegmentDisplay — retro LED-style numeric display |
 | `signing_status` | Signing status widget — concurrent signing checklist for the trade desk |
 | `skeleton` | `Skeleton` — placeholder shapes standing in for content that is not on screen, and a statement of WHY it is not |
+| `slider_group` | `SliderGroup` — a bank of labelled faders on one spine |
 | `slippage_selector` | Reusable slippage selector widget |
 | `slot_table` | slot_table — the trait/slot list with enable / required toggles and an optional z-order field |
 | `sparkline` | Sparkline widget — compact inline line chart for trend visualization |

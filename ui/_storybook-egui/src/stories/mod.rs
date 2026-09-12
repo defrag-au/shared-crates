@@ -58,6 +58,7 @@ pub mod select;
 pub mod service_banner;
 pub mod seven_segment;
 pub mod skeleton;
+pub mod slider_group;
 pub mod slot_table;
 pub mod sparkline;
 #[cfg(target_arch = "wasm32")]

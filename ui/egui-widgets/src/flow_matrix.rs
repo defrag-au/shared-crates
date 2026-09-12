@@ -42,10 +42,48 @@
 
 use egui::{Align2, Color32, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, Theme, ThemeExt};
 
 use crate::selection::Selection;
 use crate::time_spine::SpineState;
+
+/// Cell edge length at [`Density::Comfortable`](crate::theme::Density).
+///
+/// The value this widget shipped with as a hard literal; the other two
+/// densities are it times [`Density::multiplier`](crate::theme::Density::multiplier).
+const BASE_CELL: f32 = 26.0;
+
+/// How big a matrix cell is.
+///
+/// Not a bare `f32`, for the same reason a widget colour is not a bare
+/// `Color32`: the default has to be a function of the active theme, and a plain
+/// number cannot be one. [`Self::FromDensity`] is what makes the density axis
+/// reach this widget at all — every dimension here used to be a literal, so
+/// switching compact / comfortable / spacious repainted nothing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CellSize {
+    /// [`BASE_CELL`] scaled by the theme's density.
+    FromDensity,
+    /// An exact edge length in px, ignoring density. For a caller that is
+    /// matching an adjacent chart rather than following the theme.
+    Fixed(f32),
+}
+
+impl CellSize {
+    fn resolve(self, theme: &Theme) -> f32 {
+        match self {
+            Self::FromDensity => BASE_CELL * theme.density.multiplier(),
+            Self::Fixed(px) => px,
+        }
+        .clamp(10.0, 64.0)
+    }
+}
+
+impl From<f32> for CellSize {
+    fn from(px: f32) -> Self {
+        Self::Fixed(px)
+    }
+}
 
 /// One directed movement of one unit between two parties.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,7 +118,7 @@ pub struct FlowMatrix<'a> {
     label: Option<&'a dyn Fn(&str) -> String>,
     max_rows: usize,
     max_cols: usize,
-    cell: f32,
+    cell: CellSize,
 }
 
 // Out of the row's wallet, and into it — the shared direction encoding, now
@@ -112,7 +150,7 @@ impl<'a> FlowMatrix<'a> {
             label: None,
             max_rows: 14,
             max_cols: 18,
-            cell: 26.0,
+            cell: CellSize::FromDensity,
         }
     }
 
@@ -131,8 +169,10 @@ impl<'a> FlowMatrix<'a> {
         self
     }
 
-    pub fn cell_size(mut self, px: f32) -> Self {
-        self.cell = px.clamp(10.0, 64.0);
+    /// Override the cell edge length — a bare `f32` pins it, [`CellSize`] says
+    /// which. Default is [`CellSize::FromDensity`].
+    pub fn cell_size(mut self, size: impl Into<CellSize>) -> Self {
+        self.cell = size.into();
         self
     }
 
@@ -198,23 +238,63 @@ impl<'a> FlowMatrix<'a> {
         cols.truncate(max_cols);
 
         // ── layout ────────────────────────────────────────────────────────
-        let row_w = 150.0;
-        let head_h = 96.0;
+        //
+        // Measured, not declared. `row_w` was a flat `150.0` and `head_h` a flat
+        // `96.0`, which fit the default type scale and clipped under a larger
+        // one — the OpenSea preset cut the tail off "unresolved payer", the one
+        // column whose whole point is being nameable. Sizing each gutter to the
+        // widest label it has to hold is the same fix under every theme, and it
+        // is what lets the density axis move the cells without the labels
+        // colliding with the grid.
+        let small = egui::TextStyle::Small.resolve(ui.style());
+        let cell = cell.resolve(&ui.tokens());
+        let gap = ui.space(Space::Sm);
+        // Measured through the painter rather than `ui.fonts`, which hands out
+        // a `&Fonts` that cannot lay text out.
+        let measure = ui.painter().clone();
+        let text_w = |s: &str| -> f32 {
+            measure
+                .layout_no_wrap(s.to_owned(), small.clone(), Color32::PLACEHOLDER)
+                .size()
+                .x
+        };
+        let line_h = small.size;
+
+        let row_w = rows
+            .iter()
+            .map(|r| text_w(&truncate(&name(r), 22)))
+            .fold(0.0_f32, f32::max)
+            + gap * 2.0;
+
+        // Clear air between the labels and the top row of cells. Its own step
+        // rather than the general `gap`, because it was the thing most visibly
+        // missing: the labels sat directly on the grid, so the longest ones
+        // read as if they were part of the first row of cells.
+        let head_gap = ui.space(Space::Md);
+
+        // Column labels are rotated a quarter turn, so their text WIDTH is what
+        // the header has to be tall enough for.
+        let head_h = cols
+            .iter()
+            .map(|c| text_w(&truncate(&name(c), 18)))
+            .fold(0.0_f32, f32::max)
+            + head_gap;
+
         let grid_w = cols.len() as f32 * cell;
         let grid_h = rows.len() as f32 * cell;
+        let legend_h = line_h + gap * 2.0;
         let total = Vec2::new(
-            row_w + grid_w.max(60.0) + 8.0,
-            head_h + grid_h.max(30.0) + 26.0,
+            row_w + grid_w.max(60.0) + gap,
+            head_h + grid_h.max(30.0) + legend_h,
         );
         let (rect, response) = ui.allocate_exact_size(total, Sense::click());
         let painter = ui.painter_at(rect.expand(2.0));
         let muted = ui.visuals().weak_text_color();
         let ink = ui.visuals().text_color();
-        let small = egui::TextStyle::Small.resolve(ui.style());
 
         if rows.is_empty() {
             painter.text(
-                rect.left_top() + vec2(0.0, 4.0),
+                rect.left_top() + vec2(0.0, gap),
                 Align2::LEFT_TOP,
                 format!("no {unit_label} moved in this window"),
                 small,
@@ -252,7 +332,7 @@ impl<'a> FlowMatrix<'a> {
             );
             let anchor = pos2(
                 grid_origin.x + ci as f32 * cell + cell * 0.5,
-                grid_origin.y - 6.0,
+                grid_origin.y - head_gap,
             );
             let shape = egui::epaint::TextShape::new(anchor, galley, muted)
                 .with_angle_and_anchor(-std::f32::consts::FRAC_PI_2, Align2::LEFT_CENTER);
@@ -268,7 +348,11 @@ impl<'a> FlowMatrix<'a> {
                         grid_origin.x + ci as f32 * cell,
                         grid_origin.y + ri as f32 * cell,
                     ),
-                    Vec2::splat(cell - 1.5),
+                    // A FRACTION of the cell, not a flat 1.5px: at compact the
+                    // old constant was a fifth of the gutter it is at spacious,
+                    // so cells fused together at one end of the axis and
+                    // floated apart at the other.
+                    Vec2::splat(cell - (cell * 0.06).max(1.0)),
                 );
                 let Some(v) = agg.get(&(*r, *c)) else {
                     // An empty cell is information too — keep the grid legible.
@@ -307,7 +391,7 @@ impl<'a> FlowMatrix<'a> {
             let e = selection.emphasis(r);
             let y = grid_origin.y + ri as f32 * cell + cell * 0.5;
             painter.text(
-                pos2(rect.left() + row_w - 8.0, y),
+                pos2(rect.left() + row_w - gap, y),
                 Align2::RIGHT_CENTER,
                 truncate(&name(r), 22),
                 small.clone(),
@@ -323,7 +407,7 @@ impl<'a> FlowMatrix<'a> {
             ));
         }
         painter.text(
-            pos2(rect.left(), rect.bottom() - 12.0),
+            pos2(rect.left(), rect.bottom() - legend_h + gap),
             Align2::LEFT_TOP,
             note,
             small.clone(),
@@ -428,8 +512,21 @@ mod tests {
         spine: &SpineState,
         sel: &mut Selection,
     ) -> FlowMatrixResponse {
+        run_themed(flows, spine, sel, Theme::tokyo_night(), CellSize::FromDensity)
+    }
+
+    /// `run`, under a chosen theme — the density axis is only observable from
+    /// the outside as a change in the allocated rect.
+    fn run_themed(
+        flows: &[MatrixFlow<'_>],
+        spine: &SpineState,
+        sel: &mut Selection,
+        theme: Theme,
+        cell: CellSize,
+    ) -> FlowMatrixResponse {
         let ctx = egui::Context::default();
         crate::icons::install_fonts(&ctx);
+        crate::theme::install_theme(&ctx, theme);
         let mut out = None;
         let raw = egui::RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(900.0, 600.0))),
@@ -438,10 +535,18 @@ mod tests {
         ctx.begin_pass(raw);
         egui::Area::new(Id::new("fm")).show(&ctx, |ui| {
             ui.set_min_size(vec2(900.0, 600.0));
-            out = Some(FlowMatrix::new(flows, "ADA", spine, sel).show(ui));
+            out = Some(
+                FlowMatrix::new(flows, "ADA", spine, sel)
+                    .cell_size(cell)
+                    .show(ui),
+            );
         });
         let _ = ctx.end_pass();
         out.unwrap()
+    }
+
+    fn at_density(d: crate::theme::Density) -> Theme {
+        Theme::tokyo_night().with_density(d)
     }
 
     fn f<'a>(t: i64, p: &'a str, c: &'a str, q: i64) -> MatrixFlow<'a> {
@@ -519,5 +624,133 @@ mod tests {
         assert_eq!(r.rows_hidden, 16, "30 wallets, 14 shown");
         assert_eq!(r.cols_shown, 18);
         assert_eq!(r.cols_hidden, 12);
+    }
+
+    // ── the density axis ──────────────────────────────────────────────────
+    //
+    // This widget had every dimension as a literal, so it was on the theme's
+    // density axis in name only: switching compact / comfortable / spacious
+    // repainted not one pixel of it. These are the tests that would have
+    // failed then.
+
+    #[test]
+    fn cell_size_follows_density() {
+        use crate::theme::Density;
+        let sizes: Vec<f32> = Density::ALL
+            .iter()
+            .map(|d| CellSize::FromDensity.resolve(&at_density(*d)))
+            .collect();
+        assert!(
+            sizes[0] < sizes[1] && sizes[1] < sizes[2],
+            "compact < comfortable < spacious, got {sizes:?}"
+        );
+        assert_eq!(
+            sizes[1], BASE_CELL,
+            "comfortable is the base the widget used to hardcode"
+        );
+    }
+
+    #[test]
+    fn a_fixed_cell_ignores_density() {
+        use crate::theme::Density;
+        // The escape hatch for a caller matching an adjacent chart. If density
+        // moved it too, "fixed" would not mean anything.
+        for d in Density::ALL {
+            assert_eq!(CellSize::Fixed(30.0).resolve(&at_density(*d)), 30.0);
+        }
+    }
+
+    #[test]
+    fn cell_size_stays_within_its_bounds() {
+        use crate::theme::Density;
+        for d in Density::ALL {
+            let t = at_density(*d);
+            assert!((10.0..=64.0).contains(&CellSize::Fixed(1.0).resolve(&t)));
+            assert!((10.0..=64.0).contains(&CellSize::Fixed(9_000.0).resolve(&t)));
+            assert!((10.0..=64.0).contains(&CellSize::FromDensity.resolve(&t)));
+        }
+    }
+
+    #[test]
+    fn density_changes_the_rendered_footprint() {
+        use crate::theme::Density;
+        let flows = [
+            f(10, "walletA", "payee", -100),
+            f(11, "walletB", "other", -200),
+        ];
+        let size = |d: Density| {
+            let mut sel = Selection::default();
+            run_themed(
+                &flows,
+                &SpineState::new((0, 100)),
+                &mut sel,
+                at_density(d),
+                CellSize::FromDensity,
+            )
+            .response
+            .rect
+            .size()
+        };
+        let (c, m, s) = (
+            size(Density::Compact),
+            size(Density::Comfortable),
+            size(Density::Spacious),
+        );
+        assert!(
+            c.x < m.x && m.x < s.x,
+            "width must widen with density: {c:?} {m:?} {s:?}"
+        );
+        assert!(
+            c.y < m.y && m.y < s.y,
+            "height must grow with density: {c:?} {m:?} {s:?}"
+        );
+    }
+
+    #[test]
+    fn the_label_gutters_are_measured_not_assumed() {
+        // `row_w`/`head_h` were flat literals sized for the default type scale,
+        // so a longer name — or a bigger ramp — ran under the grid. The OpenSea
+        // preset clipped "unresolved payer" to "unresolved paye". Both gutters
+        // must now grow with the text they hold.
+        let short = [f(10, "a", "b", -100)];
+        let long = [f(
+            10,
+            "a wallet with a genuinely long display name",
+            "and a counterparty with one too",
+            -100,
+        )];
+        let measure = |flows: &[MatrixFlow<'_>]| {
+            let mut sel = Selection::default();
+            run(flows, &SpineState::new((0, 100)), &mut sel)
+                .response
+                .rect
+                .size()
+        };
+        let (s, l) = (measure(&short), measure(&long));
+        assert!(l.x > s.x, "row-label gutter must fit the name: {s:?} {l:?}");
+        assert!(l.y > s.y, "header must fit the rotated label: {s:?} {l:?}");
+    }
+
+    #[test]
+    fn a_longer_column_label_only_grows_the_header() {
+        // Labels are vertical, so a longer counterparty name makes the header
+        // TALLER and must not make the widget wider — the column keeps its
+        // width whatever it is called. This is the half of the layout that a
+        // flat `head_h = 96.0` got wrong in the other direction.
+        let short = [f(10, "w", "ab", -100)];
+        let long = [f(10, "w", "a counterparty with a long name", -100)];
+        let measure = |flows: &[MatrixFlow<'_>]| {
+            let mut sel = Selection::default();
+            run(flows, &SpineState::new((0, 100)), &mut sel)
+                .response
+                .rect
+                .size()
+        };
+        let (s, l) = (measure(&short), measure(&long));
+        assert!(l.y > s.y, "header must fit the rotated label: {s:?} {l:?}");
+        assert_eq!(
+            l.x, s.x,
+            "a vertical label costs no width: {s:?} vs {l:?}"
+        );
     }
 }

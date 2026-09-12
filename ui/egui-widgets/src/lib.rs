@@ -94,6 +94,7 @@ pub mod selection;
 pub mod service_banner;
 pub mod seven_segment;
 pub mod skeleton;
+pub mod slider_group;
 pub mod slot_table;
 pub mod sparkline;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
@@ -311,6 +312,9 @@ pub use selection::{DIM as SELECTION_DIM, Selection};
 pub use service_banner::{BannerTone, ServiceBanner};
 pub use seven_segment::SevenSegmentDisplay;
 pub use skeleton::{Skeleton, SkeletonReason};
+pub use slider_group::{
+    Budget, Fader, LabelWidth, SliderGroup, SliderGroupResponse, Verdict,
+};
 pub use slot_table::{SlotRow, SlotTable};
 pub use sparkline::{SparkHoverStyle, Sparkline};
 pub use stat_strip::{StatRange, StatStrip, StatWindow};
@@ -338,7 +342,8 @@ pub use utils::{
     stat_card, truncate_hex,
 };
 pub use viewport::{
-    Breakpoint, HeaderLayout, PanelMode, RecordLayout, apply_touch_sizing, fit, prose_row,
+    Breakpoint, HeaderLayout, LayoutExt, PanelMode, RecordLayout, apply_touch_sizing, fit,
+    prose_row,
 };
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};

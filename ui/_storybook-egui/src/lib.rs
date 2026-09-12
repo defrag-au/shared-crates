@@ -44,6 +44,7 @@ mod app {
             ThemeStates => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::theme_states::show(ui);
             BackgroundToasts => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::background::show(ui);
             Skeleton => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::skeleton::show(ui);
+            SliderGroup => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::slider_group::show(ui, &mut a.slider_group_state);
             Chip => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::chip::show(ui);
             PartyBadge => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::party_badge::show(ui);
             FlowLedger => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_ledger::show(ui);
@@ -309,6 +310,7 @@ mod app {
                 Self::ThemeStates => "Theme States",
                 Self::BackgroundToasts => "Background Toasts",
                 Self::Skeleton => "Skeleton",
+                Self::SliderGroup => "Slider Group",
                 Self::Chip => "Chip",
                 Self::PartyBadge => "Party Badge",
                 Self::FlowLedger => "Flow Ledger",
@@ -592,6 +594,9 @@ mod app {
                 }
                 Self::Skeleton => {
                     "Placeholders for content that is not on screen, and a statement of WHY — Loading pulses because 'wait' is the right instruction, Withheld is static and recedes because waiting produces nothing. The reason is positional so a call site cannot draw one without saying which. Rows or a block; carries no data, so the same shapes appear whether three items are behind the gate or three thousand"
+                }
+                Self::SliderGroup => {
+                    "A bank of labelled faders on one spine — a mixing desk rotated a quarter turn. Replaces stacked `Slider::text()`, whose labels do not line up, whose boxed DragValue outweighs the control it belongs to, and whose rail stays 100px however wide the pane is. Shown beside the version it replaces"
                 }
                 Self::Chip => {
                     "Small filled-tag label with semantic variants (Success / Warning / Danger / Tag / Info / Muted) + optional × remove affordance"
@@ -1233,6 +1238,7 @@ mod app {
         marquee_messages: Vec<egui_widgets::MarqueeItem>,
         progress_bar_state: stories::progress_bar::ProgressBarState,
         disclosure_state: stories::disclosure::State,
+        slider_group_state: stories::slider_group::SliderGroupStoryState,
         bullet_bar_state: stories::bullet_bar::BulletBarState,
         tag_list_state: stories::tag_list::TagListState,
         token_multiselect_state: stories::token_multiselect::TokenMultiselectState,
@@ -1362,6 +1368,7 @@ mod app {
                 }],
                 progress_bar_state: stories::progress_bar::ProgressBarState::default(),
                 disclosure_state: stories::disclosure::State::default(),
+                slider_group_state: stories::slider_group::SliderGroupStoryState::default(),
                 bullet_bar_state: stories::bullet_bar::BulletBarState::default(),
                 tag_list_state: stories::tag_list::TagListState::default(),
                 token_multiselect_state: stories::token_multiselect::TokenMultiselectState::default(

@@ -358,7 +358,13 @@ pub fn prose_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> egui::InnerR
     })
 }
 
-/// Clamp a desired width to what the viewport actually has.
+/// Clamp a desired width to what the **container** actually has.
+///
+/// Container, not viewport — it reads `ui.available_width()`, so a widget
+/// inside a 300pt side panel on a 2000pt screen gets 300. It lives in this
+/// module because this is where layout lives, not because it measures anything
+/// viewport-shaped; the doc used to say "viewport" and that reading is wrong in
+/// exactly the case that matters, a narrow pane on a wide display.
 ///
 /// `Ui::set_max_width` **widens** a `Ui` when less space is available — it
 /// assigns `max_rect.max.x` outright rather than taking a minimum — so
@@ -367,11 +373,31 @@ pub fn prose_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> egui::InnerR
 /// the `AccessGate` sign-in screen, where the tagline was clipped at both ends
 /// on every phone.
 ///
+/// Prefer [`LayoutExt::fit_width`] at a call site — `viewport::fit(ui, …)`
+/// reads as though it consults the window.
+///
 /// ```ignore
 /// ui.set_max_width(fit(ui, 520.0));
 /// ```
 pub fn fit(ui: &Ui, desired: f32) -> f32 {
     desired.min(ui.available_width()).max(1.0)
+}
+
+/// Container-relative sizing, as a method so the call site says so.
+///
+/// `fit_width` and not `fit`: egui's `Ui` has neither today, but `fit` is the
+/// kind of short word a toolkit adds, and an inherent method would silently
+/// shadow this at every call site — the same trap
+/// [`ThemeExt::tokens`](crate::theme::ThemeExt::tokens) carries a warning about.
+pub trait LayoutExt {
+    /// `desired`, or the container's width if that is less. See [`fit`].
+    fn fit_width(&self, desired: f32) -> f32;
+}
+
+impl LayoutExt for Ui {
+    fn fit_width(&self, desired: f32) -> f32 {
+        fit(self, desired)
+    }
 }
 
 #[cfg(test)]
@@ -559,6 +585,40 @@ mod tests {
             assert_eq!(fit(ui, 100.0), 100.0);
             // Never zero or negative, whatever the caller passes.
             assert!(fit(ui, -5.0) > 0.0);
+        });
+    }
+
+    /// `fit` measures the CONTAINER, not the window.
+    ///
+    /// Its doc said "viewport" for a long time, which is wrong in the one case
+    /// that matters — a narrow pane on a wide display — and reads as though the
+    /// function consults the window. A widget inside a 300pt panel on a 2000pt
+    /// screen must be clamped to 300.
+    #[test]
+    fn fit_measures_the_container_not_the_window() {
+        let ctx = Context::default();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(2000.0, 900.0),
+            )),
+            ..Default::default()
+        };
+        let _ = ctx.run_ui(input, |ui| {
+            // The window is 2000 wide, so a viewport reading would return 900.
+            assert_eq!(fit(ui, 900.0), 900.0, "sanity: unconstrained");
+            ui.scope(|ui| {
+                ui.set_max_width(300.0);
+                assert!(
+                    fit(ui, 900.0) <= 300.0,
+                    "clamped to the panel, not the window"
+                );
+                assert_eq!(
+                    ui.fit_width(900.0),
+                    fit(ui, 900.0),
+                    "the method and the function agree"
+                );
+            });
         });
     }
 }
