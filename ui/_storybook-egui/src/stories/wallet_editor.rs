@@ -126,10 +126,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
             .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.set_width(width - 24.0);
-                let config = WalletEditorConfig {
-                    subtitle: Some("Add wallets to analyse trait coverage"),
-                    ..WalletEditorConfig::default()
-                };
+                let config = WalletEditorConfig::default();
                 let resp = wallet_editor::show(ui, &mut state.editor, &state.entries, &config);
 
                 if let Some(action) = resp.action {
@@ -174,6 +171,58 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
                 }
             });
     });
+
+    ui.add_space(12.0);
+    ui.separator();
+    ui.add_space(8.0);
+
+    // ── The command the roster offers ───────────────────────────────────────
+    crate::heading(ui, "What this widget told the app it can do");
+    crate::caption(
+        ui,
+        "The roster above `offer`s a command every pass it draws. Nothing in \
+         this story registered it — the widget did, from where it lives. The \
+         `+` in its corner does not open the form directly; it INVOKES that \
+         command, which is exactly what the palette does, so the two are one \
+         path rather than two implementations that drift.",
+    );
+    ui.add_space(6.0);
+    let offered = egui_widgets::commands::offered(ui.ctx());
+    for c in &offered {
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(&c.id)
+                    .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
+                    .monospace()
+                    .small(),
+            );
+            ui.label(
+                egui::RichText::new(&c.title)
+                    .color(crate::secondary(ui))
+                    .small(),
+            );
+            if let Some(g) = &c.group {
+                ui.label(egui::RichText::new(g).color(muted(ui)).small());
+            }
+            // Firing it from here proves the point: this is a third caller,
+            // and it needs to know nothing but the id.
+            if ui.small_button("invoke").clicked() {
+                egui_widgets::commands::invoke(ui.ctx(), c.id.clone());
+            }
+        });
+    }
+    if offered.is_empty() {
+        crate::caption(ui, "nothing offered — scroll the roster back into view");
+    }
+
+    ui.add_space(6.0);
+    crate::caption(
+        ui,
+        "Scroll the roster off screen and the entry disappears by itself: an \
+         offer is stamped with the pass it happened in, and anything older than \
+         one pass is dropped. A palette entry that cannot reach its widget is \
+         worse than a missing one — it looks like it works and does nothing.",
+    );
 
     ui.add_space(12.0);
     ui.separator();

@@ -23,6 +23,7 @@ pub mod claim_card;
 pub mod collection_composition;
 pub mod collection_list;
 pub mod command_palette;
+pub mod commands;
 #[cfg(feature = "gateway")]
 pub mod conversation_history;
 pub mod corner_action;

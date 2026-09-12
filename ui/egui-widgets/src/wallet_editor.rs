@@ -46,6 +46,7 @@
 
 use egui::{Align, Layout, RichText, Sense, Ui, vec2};
 
+use crate::commands::Command;
 use crate::icons::PhosphorIcon;
 use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 use crate::viewport::Breakpoint;
@@ -206,33 +207,51 @@ impl Submission {
 }
 
 /// Appearance and copy.
+///
+/// No subtitle. It was here, exactly one caller set it, and on the narrow
+/// sidebar this lives in it spent two lines restating what the heading and the
+/// add field already say. In a pane that has room for six wallets, standing
+/// copy is the most expensive kind.
 pub struct WalletEditorConfig<'a> {
     pub heading: &'a str,
-    pub subtitle: Option<&'a str>,
     pub placeholder: &'a str,
     /// Shown where the list would be when there is nothing in it. A roster that
     /// renders nothing reads as broken rather than as empty.
     pub empty_text: &'a str,
+    /// What the `+` and the palette entry are both called.
+    pub add_title: &'a str,
+    /// The [`Command`] id this roster offers. Give two rosters in one app
+    /// different ids, or the palette lists one entry that fires both.
+    pub command_id: &'a str,
 }
 
 impl Default for WalletEditorConfig<'_> {
     fn default() -> Self {
         Self {
             heading: "My Wallets",
-            subtitle: None,
             // Address first, matching the holder-lookup field elsewhere in the
             // same sidebar — two inputs that take the same things should not
             // describe them in two different orders.
             placeholder: "stake1... or $handle",
             empty_text: "No wallets yet",
+            add_title: "Add wallet",
+            command_id: "wallet.add",
         }
     }
 }
+
+/// Width of the add modal, clamped to the viewport by the caller.
+const MODAL_W: f32 = 380.0;
 
 /// Persistent widget state — the input buffer, and nothing else.
 #[derive(Default, Clone, Debug)]
 pub struct WalletEditorState {
     pub input: String,
+    /// The add modal is open.
+    pub adding: bool,
+    /// The field has been focused for this opening. Without it `request_focus`
+    /// runs every pass, which fights the caret and makes the field unusable.
+    focused: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -298,38 +317,19 @@ pub fn show(
     let spine = Spine::measure(ui);
     let mut action: Option<WalletEditorAction> = None;
 
-    ui.label(
-        RichText::new(config.heading)
-            .color(colors.text_secondary)
-            .size(ui.text_size(TextSize::Md)),
-    );
-    if let Some(subtitle) = config.subtitle {
-        ui.gap(Space::Xs);
-        ui.label(
-            RichText::new(subtitle)
-                .color(colors.text_muted)
-                .size(ui.text_size(TextSize::Sm)),
-        );
-    }
-    ui.gap(Space::Base);
-
-    // ── Add ─────────────────────────────────────────────────────────────────
-    let mut submitted = false;
+    // ── Header: title left, `+` pinned to the far corner ────────────────────
+    let button_w = spine.icon + spine.gap * 2.0;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = spine.gap;
-        // The field takes what the `+` does not, measured rather than guessed —
-        // this was `available_width() - 32.0`, and 32 was neither the button's
-        // width nor anything derivable from it.
-        let button_w = spine.icon + spine.gap * 2.0;
-        let field = ui.add(
-            egui::TextEdit::singleline(&mut state.input)
-                .hint_text(config.placeholder)
-                .desired_width((ui.available_width() - button_w - spine.gap).max(40.0))
-                .font(egui::FontId::monospace(ui.text_size(TextSize::Base))),
+        ui.label(
+            RichText::new(config.heading)
+                .color(colors.text_secondary)
+                .size(ui.text_size(TextSize::Md)),
         );
-        if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-            submitted = true;
-        }
+        // Pushed right rather than laid out after the title, so the affordance
+        // sits in the card's corner whatever the heading says.
+        let pad = (ui.available_width() - button_w).max(0.0);
+        ui.add_space(pad);
         let (rect, resp) = ui.allocate_exact_size(vec2(button_w, spine.row_h), Sense::click());
         if resp.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -344,17 +344,33 @@ pub fn show(
                 false => colors.accent_cyan,
             },
         );
+        // The `+` does not open the form. It INVOKES THE COMMAND, which is the
+        // same thing the palette does — so the button and the palette entry are
+        // one path rather than two implementations of one behaviour that drift.
         if resp.on_hover_text("Add wallet").clicked() {
-            submitted = true;
+            crate::commands::invoke(ui.ctx(), config.command_id);
         }
     });
+    ui.gap(Space::Base);
 
-    if submitted && let Some(sub) = Submission::classify(&state.input) {
+    // Offered every pass this widget draws, which is what keeps it in the
+    // palette and what takes it out again when the roster is not on screen.
+    if Command::new(config.command_id, config.add_title)
+        .hint(config.placeholder)
+        .group(config.heading)
+        .icon(PhosphorIcon::Plus)
+        .offer(ui)
+    {
+        state.adding = true;
         state.input.clear();
-        action = Some(WalletEditorAction::Add(sub));
     }
 
-    ui.gap(Space::Sm);
+    // ── Add, in a modal ─────────────────────────────────────────────────────
+    if state.adding
+        && let Some(sub) = add_modal(ui, state, config, &spine)
+    {
+        action = Some(WalletEditorAction::Add(sub));
+    }
 
     // ── The roster ──────────────────────────────────────────────────────────
     if entries.is_empty() {
@@ -579,6 +595,91 @@ const SPIN_SECONDS: f64 = 1.0;
 const SPIN_ARC: f32 = 0.7;
 /// Segments in the arc. Enough that the curve does not read as faceted.
 const SPIN_SEGMENTS: usize = 24;
+
+/// The add form, as a modal. `Some` when something was submitted.
+///
+/// A modal rather than a field parked above the roster: the field was permanent
+/// furniture for an occasional act, and on a narrow sidebar it cost a row of the
+/// list on every frame to serve the one frame someone types in it.
+fn add_modal(
+    ui: &mut Ui,
+    state: &mut WalletEditorState,
+    config: &WalletEditorConfig<'_>,
+    spine: &Spine,
+) -> Option<Submission> {
+    let colors = ui.tokens().color;
+    let mut submitted = false;
+    let mut cancelled = false;
+
+    let modal = egui::Modal::new(egui::Id::new(("wallet-editor-add", config.command_id)))
+        .frame(
+            egui::Frame::new()
+                .fill(colors.bg_secondary)
+                .corner_radius(ui.tokens().corner(Radius::Lg))
+                .stroke(crate::theme::hairline(colors.border))
+                .inner_margin(ui.tokens().margin(Space::Xl)),
+        )
+        .show(ui.ctx(), |ui| {
+            ui.set_width(MODAL_W.min(ui.ctx().content_rect().width() * 0.9));
+            ui.label(
+                RichText::new(config.add_title)
+                    .color(colors.text_primary)
+                    .size(ui.text_size(TextSize::Md)),
+            );
+            ui.gap(Space::Base);
+
+            let field = ui.add(
+                egui::TextEdit::singleline(&mut state.input)
+                    .hint_text(config.placeholder)
+                    .desired_width(ui.available_width())
+                    .font(egui::FontId::monospace(ui.text_size(TextSize::Base))),
+            );
+            // Focused on the pass the modal opens, so the reader can type
+            // straight away — a modal that exists to take one string and then
+            // asks you to click into it has wasted the trip.
+            if !state.focused {
+                field.request_focus();
+                state.focused = true;
+            }
+            if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                submitted = true;
+            }
+
+            ui.gap(Space::Md);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = spine.gap;
+                if ui.button("Cancel").clicked() {
+                    cancelled = true;
+                }
+                // Disabled rather than absent while the field is empty: the
+                // button is where the reader looks to find out what to do next.
+                let ready = Submission::classify(&state.input).is_some();
+                if ui
+                    .add_enabled(ready, egui::Button::new(config.add_title))
+                    .clicked()
+                {
+                    submitted = true;
+                }
+            });
+        });
+
+    if modal.should_close() {
+        cancelled = true;
+    }
+    if cancelled {
+        state.adding = false;
+        state.focused = false;
+        state.input.clear();
+        return None;
+    }
+    if submitted && let Some(sub) = Submission::classify(&state.input) {
+        state.adding = false;
+        state.focused = false;
+        state.input.clear();
+        return Some(sub);
+    }
+    None
+}
 
 /// Where a row's status mark is drawn, whatever the status is.
 ///

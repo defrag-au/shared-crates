@@ -1259,6 +1259,12 @@ mod app {
     /// honest resolution is that the app type IS part of that signature.
     /// Nothing outside the crate constructs one — `mod app` is `cfg`-gated to
     /// wasm and re-exported wholesale.
+    /// Prefix marking a palette entry the SHELL owns, so a story command and a
+    /// navigation entry can share one flat list without a collision. A widget
+    /// id could in principle start with this; the prefix is ugly enough that
+    /// none will.
+    const GOTO: &str = "storybook:goto:";
+
     pub struct StorybookApp {
         current_story: Story,
         /// `?nav=0` — see [`nav_hidden`].
@@ -1269,6 +1275,11 @@ mod app {
         /// Theme / density / motion / breakpoint under review — see
         /// [`ReviewControls`].
         review: ReviewControls,
+        /// ⌘K over every story plus whatever the story on screen offers. The
+        /// storybook is the first real consumer of `egui_widgets::commands`,
+        /// which is the point: a mechanism for widgets to advertise themselves
+        /// is only worth having if the app that shows every widget uses it.
+        palette: egui_widgets::command_palette::PaletteState,
         // Per-story state
         distribution_chart: egui_widgets::DistributionChart,
         marquee: egui_widgets::Marquee,
@@ -1400,6 +1411,7 @@ mod app {
                 nav_hidden: nav_hidden(),
                 nav_open: false,
                 review: review_from_location(),
+                palette: Default::default(),
                 distribution_chart: egui_widgets::DistributionChart::new(),
                 marquee: egui_widgets::Marquee::default(),
                 marquee_messages: vec![egui_widgets::MarqueeItem {
@@ -1525,6 +1537,49 @@ mod app {
                 flow_ring_state: stories::flow_ring::FlowRingState::default(),
                 flow_stave_state: stories::flow_stave::FlowStaveState::default(),
                 party_annotator_state: stories::party_annotator::PartyAnnotatorState::default(),
+            }
+        }
+
+        /// ⌘K: every story, plus whatever the story on screen is offering.
+        ///
+        /// The two sources are merged rather than one replacing the other,
+        /// which is the arrangement a real app wants too: navigation belongs to
+        /// the shell and can never be offered by a widget, while "Add wallet"
+        /// belongs to the roster and the shell should not have to know it
+        /// exists. Neither list is complete on its own.
+        fn draw_palette(&mut self, ui: &mut egui::Ui) {
+            use egui_widgets::typeahead_search::TypeaheadOption;
+
+            let mut options: Vec<TypeaheadOption> = Story::all()
+                .iter()
+                .filter(|s| **s != self.current_story)
+                .map(|s| {
+                    TypeaheadOption::new(format!("{GOTO}{}", s.label()), s.label())
+                        .subtitle(s.category())
+                })
+                .collect();
+            // What the story currently on screen can do. Nothing here knows
+            // what that is — the widgets said so themselves.
+            options.extend(egui_widgets::commands::offered_options(ui.ctx()));
+
+            match egui_widgets::command_palette::CommandPalette::new("storybook", &options)
+                .placeholder("Go to a story, or run something on this one…")
+                .show(ui, &mut self.palette)
+            {
+                egui_widgets::command_palette::PaletteAction::Invoke(id) => {
+                    match id.strip_prefix(GOTO) {
+                        Some(label) => {
+                            if let Some(s) = Story::all().iter().find(|s| s.label() == label) {
+                                self.current_story = *s;
+                            }
+                        }
+                        // Not ours. Hand it back to the registry and whichever
+                        // widget offered it will claim it — the shell never needs
+                        // to learn what the command does.
+                        None => egui_widgets::commands::invoke(ui.ctx(), id),
+                    }
+                }
+                egui_widgets::command_palette::PaletteAction::None => {}
             }
         }
 
@@ -1669,6 +1724,14 @@ mod app {
                         let review = self.review.clone();
                         review.draw_story(story, self, ui);
                     });
+
+                    // AFTER the story, so the offers it made this pass are
+                    // already in the registry. It would work drawn before —
+                    // `commands` keeps an offer live for one pass precisely
+                    // because a palette usually sits above what it lists — but
+                    // there is no reason to spend that grace when the order is
+                    // ours to choose.
+                    self.draw_palette(ui);
 
                     if narrow {
                         let mut open = self.nav_open;
