@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-140 widgets.
+142 widgets.
 
 | module | what it is |
 |---|---|
@@ -81,6 +81,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `named_group_list` | named_group_list — a list of named groups, each a `name` + a member multiselect (+ an optional boolean flag like "allow none") |
 | `offer_slot` | Offer slot widget — a single asset card placed on a trade table |
 | `offer_tile` | `OfferTile` — fixed-size picker tile with state-aware visual treatment and a top-right quantity badge |
+| `option_group` | `OptionGroup` — a set of related choices as **one** control: a single border, hairline separators, no gaps |
 | `order_list` | `OrderList` — the mint-orders dashboard |
 | `palette_editor` | palette_editor — **superseded by [`effect_editor`](crate::effect_editor)** |
 | `pane_nav` | `PaneNavBar` — the shell nav for an app made of capability panes |
@@ -105,6 +106,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `relative_time` | `RelativeTime` — a tiny auto-scaling "time ago" label |
 | `role_picker` | `RolePicker` — choose a Discord role by name instead of pasting a snowflake |
 | `route_summary` | Route summary widget — compact display of split routing results |
+| `script_catalogue` | `ScriptCatalogue` — the compiled scripts in a build artifact, each with whether it can go on chain and what is stopping it |
 | `select` | `Select` — a single-select control with the anatomy of a real select |
 | `service_banner` | `ServiceBanner` — a persistent strip saying the backend is not currently whole, in the operator's own words |
 | `seven_segment` | SevenSegmentDisplay — retro LED-style numeric display |
@@ -144,7 +146,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `wallet` | Framework-agnostic wallet connector for egui frontends |
 | `wallet_asset_picker` | Wallet asset picker — modal widget for browsing and selecting NFTs from a wallet, grouped by policy in an accordion layout |
 | `wallet_button` | Reusable wallet connection button widget for egui frontends |
-| `wallet_editor` | Wallet bundle editor widget |
+| `wallet_editor` | `WalletEditor` — the reader's own roster of wallets: add one by handle or address, watch it resolve, drop it again |
 | `wallet_identity_header` | Wallet identity header — the big "this is who we're showing" strip at the top of a wallet-profile view |
 | `wallet_list` | Wallet roster — the per-client list rendered on the admin portal dashboard |
 | `wallet_mock` | Pseudo-wallet profiles for LOCAL demo modes |

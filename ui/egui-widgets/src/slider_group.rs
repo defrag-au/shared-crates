@@ -480,9 +480,13 @@ impl<'a> SliderGroup<'a> {
             true => self.touch,
             false => Grab::Direct,
         };
-        // Stable per row, and per `SliderGroup` instance because `ui.id()`
-        // differs — two banks in one pane must not share a grab.
-        let group_id = ui.id();
+        // `auto_id_with` and NOT `ui.id()`, which the comment here used to claim
+        // differed per instance. It does not: `Ui::id` is stable by design, and
+        // a plain `ui.scope()` supplies no id salt, so every scope under one
+        // parent shares one. Two banks in two scopes shared their grab state —
+        // engaging a row in one marked the same row in the other. The
+        // allocation counter is the thing that actually differs.
+        let group_id = ui.auto_id_with("slider-group-grab");
         for (i, row) in self.rows.iter_mut().enumerate() {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = gap;

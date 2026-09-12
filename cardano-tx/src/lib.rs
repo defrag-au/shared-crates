@@ -1,5 +1,6 @@
 pub mod blueprint;
 pub mod builder;
+pub mod depot;
 pub mod dex;
 pub mod error;
 pub mod evaluate;

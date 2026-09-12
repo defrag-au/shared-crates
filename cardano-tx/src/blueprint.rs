@@ -41,6 +41,49 @@ pub struct BlueprintValidator {
     #[serde(rename = "compiledCode")]
     pub compiled_code: String,
     pub hash: String,
+    /// Compile-time parameters the validator still expects.
+    ///
+    /// Aiken emits this only while a validator is UNAPPLIED, and drops the
+    /// field once `aiken blueprint apply` has baked the arguments in. So a
+    /// present, non-empty list means these bytes are not the script that will
+    /// ever run: applying the parameters changes the code, and therefore the
+    /// hash, the address and the policy id. Deploying them would park a
+    /// reference nothing can use and record a hash that names nothing.
+    #[serde(default)]
+    pub parameters: Option<Vec<BlueprintParameter>>,
+}
+
+impl BlueprintValidator {
+    /// The parameters still to be applied, by title (`param` when Aiken names
+    /// none). Empty for an applied — i.e. deployable — validator.
+    pub fn pending_parameters(&self) -> Vec<String> {
+        self.parameters
+            .as_deref()
+            .unwrap_or(&[])
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                p.title
+                    .clone()
+                    .unwrap_or_else(|| format!("parameter {}", i + 1))
+            })
+            .collect()
+    }
+
+    /// Has every compile-time parameter been applied? Only then are the bytes
+    /// the script the chain will run.
+    pub fn is_applied(&self) -> bool {
+        self.parameters.as_deref().unwrap_or(&[]).is_empty()
+    }
+}
+
+/// One compile-time parameter a validator is still waiting for. Only the title
+/// is read — the schema matters to whoever applies it, not to the deployer,
+/// whose only decision is "refuse".
+#[derive(Debug, Clone, Deserialize)]
+pub struct BlueprintParameter {
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 /// The Plutus language a blueprint declares, with the byte the ledger
@@ -106,6 +149,12 @@ pub enum BlueprintError {
     },
     /// `compiledCode` is not hex.
     BadHex(String),
+    /// The validator still has compile-time parameters. Its bytes are not the
+    /// script that will run, so nothing may be deployed or recorded from them.
+    Unapplied {
+        title: String,
+        parameters: Vec<String>,
+    },
     /// The bytes do not hash to the declared hash under the declared
     /// language — these are not the bytes the chain would hash to that
     /// address, so nothing should be deployed from them.
@@ -121,6 +170,15 @@ impl std::fmt::Display for BlueprintError {
                 write!(f, "no validator titled {wanted:?}; found {present:?}")
             }
             Self::BadHex(e) => write!(f, "compiledCode is not hex: {e}"),
+            Self::Unapplied { title, parameters } => write!(
+                f,
+                "validator {title:?} still expects {} compile-time parameter(s) ({}) — run \
+                 `aiken blueprint apply` first. Applying them changes the compiled code, and \
+                 with it the hash, the address and the policy id, so these bytes are not the \
+                 script that would ever run",
+                parameters.len(),
+                parameters.join(", ")
+            ),
             Self::HashMismatch { declared, computed } => write!(
                 f,
                 "blueprint declares hash {declared} but its compiledCode hashes to {computed} — \
@@ -184,6 +242,12 @@ impl Blueprint {
                 wanted: title.to_string(),
                 present: self.validators.iter().map(|v| v.title.clone()).collect(),
             })?;
+        if !validator.is_applied() {
+            return Err(BlueprintError::Unapplied {
+                title: validator.title.clone(),
+                parameters: validator.pending_parameters(),
+            });
+        }
         let bytes = hex::decode(&validator.compiled_code)
             .map_err(|e| BlueprintError::BadHex(e.to_string()))?;
         let hash = script_hash(language, &bytes);
@@ -199,6 +263,75 @@ impl Blueprint {
             bytes,
             hash,
         })
+    }
+}
+
+/// One blueprint entry as a catalogue row: what it is called, whether it can
+/// be deployed, and if not, why not.
+#[derive(Debug, Clone)]
+pub struct ValidatorEntry {
+    pub title: String,
+    /// The hash the blueprint declares. Meaningless while `pending_parameters`
+    /// is non-empty — applying them changes it.
+    pub declared_hash: String,
+    /// Compile-time parameters still to be applied. Empty means deployable.
+    pub pending_parameters: Vec<String>,
+}
+
+impl ValidatorEntry {
+    pub fn is_applied(&self) -> bool {
+        self.pending_parameters.is_empty()
+    }
+}
+
+/// One distinct script to park, with every blueprint title that names it.
+///
+/// Aiken emits one blueprint entry per HANDLER — `foo.mint`, `foo.spend` and
+/// the `foo.else` fallback are three entries over one compiled program with
+/// one hash. They are one script and want ONE reference UTxO, so a deployment
+/// set is keyed by hash, never by title. Parking them separately would lock
+/// the ADA several times over for no gain.
+#[derive(Debug, Clone)]
+pub struct DeployableScript {
+    pub script: VerifiedScript,
+    pub titles: Vec<String>,
+}
+
+impl Blueprint {
+    /// Every validator in the blueprint, deployable or not, in file order.
+    /// The UI lists these so an unapplied validator is visibly REFUSED rather
+    /// than silently absent.
+    pub fn catalogue(&self) -> Vec<ValidatorEntry> {
+        self.validators
+            .iter()
+            .map(|v| ValidatorEntry {
+                title: v.title.clone(),
+                declared_hash: v.hash.clone(),
+                pending_parameters: v.pending_parameters(),
+            })
+            .collect()
+    }
+
+    /// Verify `titles` and collapse them to the DISTINCT scripts behind them,
+    /// in first-seen order. Every title must exist, be applied, and hash to
+    /// what it declares, or the whole set is refused — a partial deployment
+    /// set is the one outcome worth preventing outright.
+    pub fn deployable_set(
+        &self,
+        titles: &[String],
+    ) -> Result<Vec<DeployableScript>, BlueprintError> {
+        let mut out: Vec<DeployableScript> = Vec::new();
+        for title in titles {
+            let script = self.verified_script(title)?;
+            match out.iter_mut().find(|d| d.script.hash == script.hash) {
+                Some(existing) => existing.titles.push(title.clone()),
+                None => out.push(DeployableScript {
+                    script,
+                    titles: vec![title.clone()],
+                }),
+            }
+        }
+        Ok(out)
     }
 }
 

@@ -85,6 +85,7 @@ mod app {
             PropertyList => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::property_list::show(ui);
             ButtonGroup => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::button_group::show(ui, &mut a.button_group_state);
             PaneNav => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::pane_nav::show(ui, &mut a.pane_nav_state);
+            OptionGroup => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::option_group::show(ui, &mut a.option_group_state);
             Toast => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::toast::show(ui, &mut a.toast_state);
             Timestamp => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::timestamp::show(ui);
             ErrorNote => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::error_note::show(ui);
@@ -364,6 +365,7 @@ mod app {
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
                 Self::PaneNav => "Pane Nav",
+                Self::OptionGroup => "Option Group",
                 Self::Toast => "Toast",
                 Self::QuantityStepper => "Quantity Stepper",
                 Self::MintCheckout => "Mint Checkout",
@@ -718,6 +720,9 @@ mod app {
                 }
                 Self::PaneNav => {
                     "Shell nav with persistent selection — locked entries show their reason rather than vanishing, hides itself at one destination, wraps inside a constrained column"
+                }
+                Self::OptionGroup => {
+                    "Related choices as ONE control — a single border with hairline separators, in stacked or inline flow, full or icon-only. Picker or selector."
                 }
                 Self::Toast => {
                     "Transient overlay messages with frame-countdown auto-dismiss — Success/Error/Warning/Info, host-owned ToastQueue, bottom-right stack"
@@ -1353,6 +1358,7 @@ mod app {
         // Primitives
         button_group_state: stories::button_group::ButtonGroupState,
         pane_nav_state: stories::pane_nav::PaneNavState,
+        option_group_state: stories::option_group::OptionGroupStoryState,
         toast_state: stories::toast::ToastState,
         claim_card_state: stories::claim_card::ClaimCardState,
         capital_flow_state: stories::capital_flow::CapitalFlowState,
@@ -1504,6 +1510,7 @@ mod app {
                 collection_list_state: stories::collection_list::CollectionListState::default(),
                 button_group_state: stories::button_group::ButtonGroupState::default(),
                 pane_nav_state: stories::pane_nav::PaneNavState::default(),
+                option_group_state: stories::option_group::OptionGroupStoryState::default(),
                 toast_state: stories::toast::ToastState::default(),
                 claim_card_state: stories::claim_card::ClaimCardState::default(),
                 capital_flow_state: stories::capital_flow::CapitalFlowState::default(),

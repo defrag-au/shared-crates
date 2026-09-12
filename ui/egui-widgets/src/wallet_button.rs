@@ -13,6 +13,7 @@ use egui::{Color32, RichText};
 
 use super::buttons::UiButtonExt;
 use super::wallet::{ConnectionState, WalletConnector, WalletProvider};
+use crate::option_group::{GroupDensity, GroupFlow, OptionGroup, OptionGroupItem};
 use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 /// Which colour each of the wallet button's surfaces takes.
@@ -79,18 +80,35 @@ pub enum WalletAction {
 pub struct WalletButton {
     /// Theme colors.
     pub theme: WalletButtonTheme,
+    /// How much of each wallet the picker shows. [`GroupDensity::Compact`]
+    /// keeps the extension's own icon and moves the name to the hover text,
+    /// for a sidebar that cannot spare a row per wallet.
+    pub picker_density: GroupDensity,
 }
 
 impl WalletButton {
     pub fn new() -> Self {
         Self {
             theme: WalletButtonTheme::default(),
+            picker_density: GroupDensity::Full,
         }
     }
 
     /// Create with a custom theme.
     pub fn with_theme(theme: WalletButtonTheme) -> Self {
-        Self { theme }
+        Self {
+            theme,
+            ..Self::new()
+        }
+    }
+
+    /// Show the picker as icons only, with the wallet names as hover text.
+    pub fn compact_picker(mut self, compact: bool) -> Self {
+        self.picker_density = match compact {
+            true => GroupDensity::Compact,
+            false => GroupDensity::Full,
+        };
+        self
     }
 
     /// Render the wallet button. Returns an action the caller must handle.
@@ -163,40 +181,36 @@ impl WalletButton {
             return action;
         }
 
-        // Multiple wallets — show picker directly
-        for wallet_info in &connector.available_wallets {
-            let btn = ui.add_clickable_sized(
-                [ui.available_width(), 30.0],
-                egui::Button::new(
-                    RichText::new(&wallet_info.name)
-                        .color(theme.accent)
-                        .size(ui.text_size(TextSize::Base)),
-                )
-                .fill(Color32::TRANSPARENT)
-                .stroke(egui::Stroke::new(0.5_f32, theme.text_muted))
-                .corner_radius(ui.tokens().corner(Radius::Base)),
-            );
+        // Several wallets — ONE compound control, not a stack of buttons.
+        //
+        // They are alternatives to each other, so they read as one object you
+        // pick within. Drawn as separate bordered buttons they read as several
+        // unrelated things that happen to be adjacent, which is what a toolbar
+        // looks like — and this is not a toolbar.
+        let items: Vec<OptionGroupItem<'_>> = connector
+            .available_wallets
+            .iter()
+            .enumerate()
+            .map(|(i, w)| {
+                let mut item = OptionGroupItem::new(i as u64, &w.name);
+                if let Some(icon) = &w.icon {
+                    item = item.image(icon.as_str());
+                }
+                item
+            })
+            .collect();
 
-            // Paint icon inside the button rect (left side)
-            if let Some(ref icon_url) = wallet_info.icon {
-                let icon_size = 18.0;
-                let icon_rect = egui::Rect::from_min_size(
-                    btn.rect.left_center() - egui::vec2(-8.0, icon_size / 2.0),
-                    egui::vec2(icon_size, icon_size),
-                );
-                ui.put(
-                    icon_rect,
-                    egui::Image::new(icon_url.as_str())
-                        .fit_to_exact_size(egui::vec2(icon_size, icon_size))
-                        .corner_radius(ui.tokens().corner(Radius::Xs)),
-                );
-            }
+        let picked = OptionGroup::new()
+            .flow(GroupFlow::Stacked)
+            .density(self.picker_density)
+            .items(items)
+            .show(ui);
 
-            if btn.clicked()
-                && let Some(provider) = WalletProvider::from_api_name(&wallet_info.api_name)
-            {
-                action = WalletAction::Connect(provider);
-            }
+        if let Some(i) = picked.clicked
+            && let Some(info) = connector.available_wallets.get(i as usize)
+            && let Some(provider) = WalletProvider::from_api_name(&info.api_name)
+        {
+            action = WalletAction::Connect(provider);
         }
 
         action

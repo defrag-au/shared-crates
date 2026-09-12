@@ -54,6 +54,16 @@ const MIN_CHANGE_CUSHION: u64 = 1_500_000;
 /// asset all the way to the size estimate, because it is encoded in the output.
 pub use crate::utxo::AssetAmount;
 
+/// One CIP-33 reference-script output being created.
+struct ScriptOutput {
+    address: Address,
+    language: ScriptKind,
+    script_bytes: Vec<u8>,
+    /// An optional inline datum, so the UTxO can say what it holds. The script
+    /// hash alone cannot; a depot is the thing you come back to much later.
+    datum: Option<Vec<u8>>,
+}
+
 /// A fluent plan for a value transaction with pluggable input selection.
 pub struct TxPlan<'a, U: Selectable> {
     change_address: Address,
@@ -68,13 +78,16 @@ pub struct TxPlan<'a, U: Selectable> {
     /// computed min-UTxO for the asset bundle (never user-supplied — the floor
     /// is a ledger rule, not a knob).
     asset_outputs: Vec<(Address, Vec<AssetAmount>)>,
-    /// CIP-33 reference-script outputs: recipient + language + script bytes.
-    /// Lovelace is the computed min-UTxO for the script's size, like
-    /// `asset_outputs`.
-    script_outputs: Vec<(Address, ScriptKind, Vec<u8>)>,
+    /// CIP-33 reference-script outputs. Lovelace is the computed min-UTxO for
+    /// the script (and label, when present), like `asset_outputs`.
+    script_outputs: Vec<ScriptOutput>,
     metadata: Option<serde_json::Value>,
+    /// A native script attached to the witness set, satisfying inputs that sit
+    /// at its address (a script depot being retired).
+    native_script: Option<Vec<u8>>,
     sweep_to: Option<Address>,
     rehome_assets: bool,
+    spend_script_refs: bool,
     fold_change: bool,
     witnesses: u32,
     valid_from: Option<u64>,
@@ -97,8 +110,10 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
             asset_outputs: Vec::new(),
             script_outputs: Vec::new(),
             metadata: None,
+            native_script: None,
             sweep_to: None,
             rehome_assets: false,
+            spend_script_refs: false,
             fold_change: false,
             witnesses: 1,
             valid_from: None,
@@ -164,12 +179,42 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
     /// be spent: a spend would need a datum the output does not have. That is
     /// what a permanent reference wants, and it is how jpg.store parks theirs.
     pub fn deploy_script_to(
-        mut self,
+        self,
         addr: Address,
         language: ScriptKind,
         script_bytes: Vec<u8>,
     ) -> Self {
-        self.script_outputs.push((addr, language, script_bytes));
+        self.deploy_labelled_script_to(addr, language, script_bytes, None)
+    }
+
+    /// [`TxPlan::deploy_script_to`] with an optional inline datum describing
+    /// what the script IS.
+    ///
+    /// A script hash cannot tell you which of your validators it is, and a
+    /// depot of reference scripts is something you come back to months later.
+    /// The datum rides in the output bytes, so it survives in any UTxO query;
+    /// transaction metadata would not, being attached to the transaction
+    /// rather than the output. It costs a little min-UTxO, which the
+    /// calculation below accounts for.
+    ///
+    /// Only ever park a datum at an address whose script IGNORES datums (a
+    /// native script) or at one you never intend to spend. At a Plutus
+    /// validator's own address a datum is what makes the output spendable at
+    /// all, so adding one there would undo the permanence that parking it
+    /// there was for.
+    pub fn deploy_labelled_script_to(
+        mut self,
+        addr: Address,
+        language: ScriptKind,
+        script_bytes: Vec<u8>,
+        datum: Option<Vec<u8>>,
+    ) -> Self {
+        self.script_outputs.push(ScriptOutput {
+            address: addr,
+            language,
+            script_bytes,
+            datum,
+        });
         self
     }
 
@@ -218,6 +263,34 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         self
     }
 
+    /// Attach a NATIVE script to the witness set, so inputs sitting at that
+    /// script's address can be spent. Native scripts take no datum, no
+    /// redeemer and no execution budget — the ledger evaluates the script
+    /// directly — so this plus the required signatures is the whole witness.
+    ///
+    /// Used to retire a script depot ([`crate::depot`]): the reference-script
+    /// UTxOs sit at a native-script address, and spending them reclaims the
+    /// ADA they lock. Pair it with [`TxPlan::spend_script_refs`], because the
+    /// sweep path skips reference-script inputs by default.
+    pub fn native_script(mut self, script_bytes: Vec<u8>) -> Self {
+        self.native_script = Some(script_bytes);
+        self
+    }
+
+    /// SWEEP modifier: also spend the `must_spend` inputs that CARRY a
+    /// reference script — the one case where destroying a reference is the
+    /// point rather than an accident.
+    ///
+    /// Every other path refuses these deliberately: spending a reference UTxO
+    /// breaks every transaction built to reference it, so it must be asked for
+    /// by name and never fall out of ordinary coin selection. Retire the
+    /// deployment record BEFORE the UTxO, or transactions in flight fail with
+    /// no diagnosis.
+    pub fn spend_script_refs(mut self) -> Self {
+        self.spend_script_refs = true;
+        self
+    }
+
     /// SWEEP modifier: also spend the asset-bearing `must_spend` inputs,
     /// re-outputting ALL their assets in one aggregated min-ADA output to the
     /// change address — so the ADA locked above the assets' minimum joins the
@@ -252,18 +325,30 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         if let Some(target) = self.sweep_to.clone() {
             return self.build_sweep(target);
         }
+        // Sweep-only modifiers are checked BEFORE the fold branch: a modifier
+        // a build mode ignores must fail loudly, never be silently dropped.
+        if self.rehome_assets {
+            return Err(TxBuildError::BuildFailed(
+                "TxPlan: rehome_assets is a sweep modifier — use sweep_to".into(),
+            ));
+        }
+        if self.spend_script_refs {
+            return Err(TxBuildError::BuildFailed(
+                "TxPlan: spend_script_refs is a sweep modifier — use sweep_to".into(),
+            ));
+        }
         if self.fold_change {
             if !self.asset_outputs.is_empty() || !self.script_outputs.is_empty() {
                 return Err(TxBuildError::BuildFailed(
                     "TxPlan: fold_change is pure-ADA only (no asset or script outputs)".into(),
                 ));
             }
+            if self.native_script.is_some() {
+                return Err(TxBuildError::BuildFailed(
+                    "TxPlan: fold_change does not carry a native script witness".into(),
+                ));
+            }
             return self.build_fold();
-        }
-        if self.rehome_assets {
-            return Err(TxBuildError::BuildFailed(
-                "TxPlan: rehome_assets is a sweep modifier — use sweep_to".into(),
-            ));
         }
         if self.outputs.is_empty()
             && self.asset_outputs.is_empty()
@@ -407,17 +492,24 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         // bytes also ride in the tx body, so they count toward the fee below.
         let mut script_outs: Vec<(Output, u64)> = Vec::new();
         let mut script_bytes_total: u64 = 0;
-        for (addr, kind, bytes) in &self.script_outputs {
+        for out in &self.script_outputs {
+            // The label is part of the output, so it is part of the floor.
             let lovelace = crate::utxo::min_ada_with_coefficient(
                 self.params.coins_per_utxo_byte,
                 &[],
-                &crate::OutputParams::with_script_ref(bytes),
+                &crate::OutputParams {
+                    datum_size: out.datum.as_ref().map(|d| d.len()),
+                    script_ref_size: Some(out.script_bytes.len()),
+                },
             );
-            script_bytes_total += bytes.len() as u64;
-            script_outs.push((
-                create_ada_output(addr.clone(), lovelace).set_inline_script(*kind, bytes.clone()),
-                lovelace,
-            ));
+            script_bytes_total +=
+                out.script_bytes.len() as u64 + out.datum.as_ref().map_or(0, |d| d.len() as u64);
+            let mut output = create_ada_output(out.address.clone(), lovelace)
+                .set_inline_script(out.language, out.script_bytes.clone());
+            if let Some(datum) = &out.datum {
+                output = output.set_inline_datum(datum.clone());
+            }
+            script_outs.push((output, lovelace));
         }
 
         let total_pure_outputs: u64 = self.outputs.iter().map(|(_, l)| *l).sum();
@@ -430,6 +522,7 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         let fee_estimate = estimate_simple_fee(&self.params)
             + metadata_bytes.as_ref().map_or(0, |b| b.len() as u64)
             + script_bytes_total
+            + self.native_script.as_ref().map_or(0, |s| s.len() as u64)
             + (asset_outs.len() + asset_change.len() + script_outs.len()) as u64 * 5_000
             + must_spend.len() as u64 * PER_INPUT_FEE_HEADROOM;
         let target = total_pure_outputs
@@ -456,6 +549,7 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         let network_id = self.network_id;
         let params = self.params;
         let (valid_from, valid_until) = (self.valid_from, self.valid_until);
+        let native_script = self.native_script;
         let total_committed = total_pure_outputs + total_asset_lovelace;
 
         converge_fee_with_witnesses(
@@ -472,6 +566,9 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
                 }
                 if let Some(bytes) = &metadata_bytes {
                     tx = tx.add_auxiliary_data(bytes.clone());
+                }
+                if let Some(script) = &native_script {
+                    tx = tx.script(ScriptKind::Native, script.clone());
                 }
                 // Pure change back to self; converge balances the fee around it.
                 let change = input_lovelace
@@ -620,17 +717,24 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
             ));
         }
         check_no_duplicate_inputs(&self.must_spend)?;
+        // A reference-script input is skipped unless it was asked for by name:
+        // spending one breaks every transaction built to reference it, so it
+        // must never fall out of ordinary sweeping.
+        let spend_refs = self.spend_script_refs;
+        let eligible = |u: &&'a U| spend_refs || !u.has_script_ref();
         let pure: Vec<&'a U> = self
             .must_spend
             .iter()
             .copied()
-            .filter(|u| !u.has_assets() && !u.has_script_ref())
+            .filter(|u| !u.has_assets())
+            .filter(eligible)
             .collect();
         let asset_inputs: Vec<&'a U> = if self.rehome_assets {
             self.must_spend
                 .iter()
                 .copied()
-                .filter(|u| u.has_assets() && !u.has_script_ref())
+                .filter(|u| u.has_assets())
+                .filter(eligible)
                 .collect()
         } else {
             Vec::new()
@@ -671,10 +775,12 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         let min_pure_utxo = self.params.min_pure_utxo();
         let fee_estimate = estimate_simple_fee(&self.params)
             + metadata_bytes.as_ref().map_or(0, |b| b.len() as u64)
+            + self.native_script.as_ref().map_or(0, |s| s.len() as u64)
             + asset_home.len() as u64 * 5_000;
         let network_id = self.network_id;
         let params = self.params;
         let (valid_from, valid_until) = (self.valid_from, self.valid_until);
+        let native_script = self.native_script;
 
         converge_fee_with_witnesses(
             move |fee| {
@@ -700,6 +806,9 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
                 }
                 if let Some(bytes) = &metadata_bytes {
                     tx = tx.add_auxiliary_data(bytes.clone());
+                }
+                if let Some(script) = &native_script {
+                    tx = tx.script(ScriptKind::Native, script.clone());
                 }
                 tx = apply_validity(tx, valid_from, valid_until);
                 Ok(tx.fee(fee).network_id(network_id))
@@ -1007,6 +1116,190 @@ mod tests {
             .fold_change()
             .build();
         assert!(fold.is_err(), "fold must refuse a script output");
+    }
+
+    /// A UTxO carrying a reference script.
+    fn script_ref_utxo(h: &str, ix: u32, lovelace: u64) -> UtxoApi {
+        let mut u = ada(h, ix, lovelace);
+        u.tags.push(cardano_assets::UtxoTag::HasScriptRef);
+        u
+    }
+
+    /// RETIRING A DEPOT: sweeping reference-script UTxOs back to a wallet,
+    /// with the depot's native script as the witness. This is the only path
+    /// that may destroy a reference script, and it must be asked for by name.
+    #[test]
+    fn sweep_retires_script_refs_only_when_asked() {
+        let world = vec![script_ref_utxo("aa", 0, 8_000_000)];
+
+        // Default: the reference UTxO is skipped, so there is nothing to sweep.
+        let err = TxPlan::new(addr(), 0, params())
+            .must_spend(world.iter())
+            .sweep_to(addr())
+            .build()
+            .unwrap_err();
+        assert!(
+            format!("{err}").contains("no spendable inputs"),
+            "a reference script must never be swept by accident, got {err}"
+        );
+
+        // Asked for by name, with the depot's native script attached.
+        let native = vec![0x82, 0x00, 0x58, 0x1c];
+        let unsigned = TxPlan::new(addr(), 0, params())
+            .must_spend(world.iter())
+            .sweep_to(addr())
+            .spend_script_refs()
+            .native_script(native.clone())
+            .build()
+            .expect("retire must build");
+        assert_balanced(&unsigned, &world);
+        assert_eq!(unsigned.staging.inputs.iter().flatten().count(), 1);
+
+        // The native script rides in the witness set, keyed by its 0x00-tagged
+        // hash — without it the ledger cannot check who may spend the depot.
+        let scripts = unsigned.staging.scripts.as_ref().expect("witness scripts");
+        assert_eq!(scripts.len(), 1);
+        let entry = scripts.values().next().unwrap();
+        assert!(matches!(entry.kind, ScriptKind::Native));
+        assert_eq!(entry.bytes.as_ref() as &[u8], &native[..]);
+    }
+
+    /// The ADA a depot locks comes back, less the fee. That recovery is the
+    /// whole reason a depot is spendable rather than parked permanently.
+    #[test]
+    fn retiring_several_depot_utxos_returns_their_ada() {
+        let world = vec![
+            script_ref_utxo("aa", 0, 8_000_000),
+            script_ref_utxo("bb", 1, 9_500_000),
+        ];
+        let unsigned = TxPlan::new(addr(), 0, params())
+            .must_spend(world.iter())
+            .sweep_to(addr())
+            .spend_script_refs()
+            .native_script(vec![0x82, 0x00, 0x58, 0x1c])
+            .build()
+            .unwrap();
+        assert_balanced(&unsigned, &world);
+        let outs: Vec<_> = unsigned.staging.outputs.iter().flatten().collect();
+        assert_eq!(outs.len(), 1, "one output: everything back to the wallet");
+        assert_eq!(outs[0].lovelace, 17_500_000 - unsigned.fee);
+    }
+
+    /// A modifier a build mode ignores must fail, not be silently dropped —
+    /// a retire that quietly became an ordinary build would leave the depot
+    /// untouched while reporting success.
+    #[test]
+    fn script_ref_modifiers_are_refused_outside_sweep() {
+        let pool = vec![ada("aa", 0, 50_000_000)];
+        let plain = TxPlan::new(addr(), 0, params())
+            .select_from(&pool, Strategy::SmallestSufficient)
+            .pay_to(addr(), 5_000_000)
+            .spend_script_refs()
+            .build();
+        assert!(plain.is_err(), "plain build must refuse spend_script_refs");
+
+        let fold = TxPlan::new(addr(), 0, params())
+            .must_spend(pool.iter())
+            .pay_to(addr(), 5_000_000)
+            .spend_script_refs()
+            .fold_change()
+            .build();
+        assert!(fold.is_err(), "fold must refuse spend_script_refs");
+
+        let fold_script = TxPlan::new(addr(), 0, params())
+            .must_spend(pool.iter())
+            .pay_to(addr(), 5_000_000)
+            .native_script(vec![0x82, 0x00])
+            .fold_change()
+            .build();
+        assert!(
+            fold_script.is_err(),
+            "fold must refuse a native script it would drop"
+        );
+    }
+
+    /// Deploying to a depot is an ordinary build: several scripts in ONE
+    /// transaction, each its own output, each sized for its own bytes.
+    #[test]
+    fn a_deployment_set_parks_every_script_in_one_transaction() {
+        let pool = vec![ada("aa", 0, 100_000_000)];
+        let small = vec![0xabu8; 400];
+        let large = vec![0xcdu8; 1_600];
+        let unsigned = TxPlan::new(addr(), 0, params())
+            .select_from(&pool, Strategy::SmallestSufficient)
+            .deploy_script_to(addr(), ScriptKind::PlutusV3, small.clone())
+            .deploy_script_to(addr(), ScriptKind::PlutusV3, large.clone())
+            .build()
+            .expect("a multi-script deployment must build");
+        assert_balanced(&unsigned, &pool);
+
+        let script_outs: Vec<_> = unsigned
+            .staging
+            .outputs
+            .iter()
+            .flatten()
+            .filter(|o| o.script.is_some())
+            .collect();
+        assert_eq!(script_outs.len(), 2, "one output per distinct script");
+        assert!(
+            script_outs[1].lovelace > script_outs[0].lovelace,
+            "each output is sized for its own script, not a shared figure"
+        );
+    }
+
+    /// A labelled deployment carries its note as an inline datum, and the
+    /// output's min-UTxO GROWS to pay for it. Sizing the output as if the
+    /// label were free would emit a sub-minimum output the ledger rejects.
+    #[test]
+    fn a_label_rides_in_the_output_and_is_paid_for() {
+        let pool = vec![ada("aa", 0, 100_000_000)];
+        let script = vec![0xabu8; 800];
+        let label = vec![0x9fu8; 64];
+
+        let bare = TxPlan::new(addr(), 0, params())
+            .select_from(&pool, Strategy::SmallestSufficient)
+            .deploy_script_to(addr(), ScriptKind::PlutusV3, script.clone())
+            .build()
+            .unwrap();
+        let labelled = TxPlan::new(addr(), 0, params())
+            .select_from(&pool, Strategy::SmallestSufficient)
+            .deploy_labelled_script_to(
+                addr(),
+                ScriptKind::PlutusV3,
+                script.clone(),
+                Some(label.clone()),
+            )
+            .build()
+            .unwrap();
+        assert_balanced(&labelled, &pool);
+
+        let script_out = |tx: &UnsignedTx| {
+            tx.staging
+                .outputs
+                .iter()
+                .flatten()
+                .find(|o| o.script.is_some())
+                .cloned()
+                .expect("script output")
+        };
+        let bare_out = script_out(&bare);
+        let labelled_out = script_out(&labelled);
+
+        assert!(
+            bare_out.datum.is_none(),
+            "an unlabelled deployment carries no datum"
+        );
+        assert!(
+            labelled_out.datum.is_some(),
+            "the label must reach the output, or it is not on chain at all"
+        );
+        assert!(
+            labelled_out.lovelace > bare_out.lovelace,
+            "the label is part of the output, so it raises the min-UTxO floor: \
+             bare={} labelled={}",
+            bare_out.lovelace,
+            labelled_out.lovelace
+        );
     }
 
     #[test]

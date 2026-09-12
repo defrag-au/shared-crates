@@ -70,6 +70,7 @@ pub mod mnemonic_display;
 pub mod motion;
 pub mod named_group_list;
 pub mod offer_tile;
+pub mod option_group;
 pub mod order_list;
 pub mod palette_editor;
 pub mod pane_nav;
@@ -162,6 +163,9 @@ pub mod leaderboard_table;
 // Generic coverage bar (no cardano deps — usable everywhere, e.g. rarity tuning).
 pub mod coverage_delta_bar;
 pub mod coverage_lanes;
+
+// Build artifacts — what a compiler produced and what of it can ship.
+pub mod script_catalogue;
 
 // Cardano-specific widgets (feature-gated)
 #[cfg(feature = "cardano")]
@@ -317,6 +321,7 @@ pub use relationship_editor::{RelationshipEditor, RelationshipEditorResponse};
 pub use relative_time::{RelativeTime, relative_label};
 pub use role_picker::{RoleOption, RolePicker, RolePickerResponse, RolePickerState};
 pub use screenshot::ScreenshotButton;
+pub use script_catalogue::{ScriptCatalogue, ScriptCatalogueAction, ScriptRow, ScriptStatus};
 pub use selection::{DIM as SELECTION_DIM, Selection};
 pub use service_banner::{BannerTone, ServiceBanner};
 pub use seven_segment::SevenSegmentDisplay;

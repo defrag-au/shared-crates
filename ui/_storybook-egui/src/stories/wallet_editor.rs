@@ -1,19 +1,24 @@
-//! Storybook demo for the WalletEditor widget.
+//! `WalletEditor` story — the reader's own wallet roster.
+//!
+//! The list is live: what you type is classified and added, and the mock
+//! "resolution" runs on a timer so the busy → ready (and busy → failed) paths
+//! are something you watch rather than something you read about in a caption.
 
 use egui_widgets::wallet_editor::{
-    self, WalletEditorConfig, WalletEditorEntry, WalletEditorState, WalletEntryStatus,
+    self, Submission, WalletEditorConfig, WalletEditorEntry, WalletEditorState, WalletEntryStatus,
+    WalletOrigin,
 };
 
-use crate::{accent, bg, muted};
-
-// ============================================================================
-// State
-// ============================================================================
+use crate::{controls, muted};
 
 pub struct WalletEditorStoryState {
     pub editor: WalletEditorState,
     pub entries: Vec<WalletEditorEntry>,
     pub last_action: String,
+    /// Rows still "resolving", as `(index, frames remaining)`. Stands in for the
+    /// async handle lookup the real host runs.
+    pending: Vec<(usize, u32)>,
+    pub sidebar_w: f32,
 }
 
 impl Default for WalletEditorStoryState {
@@ -22,105 +27,147 @@ impl Default for WalletEditorStoryState {
             editor: WalletEditorState::default(),
             entries: mock_entries(),
             last_action: String::new(),
+            pending: Vec::new(),
+            sidebar_w: 320.0,
         }
     }
 }
 
 fn mock_entries() -> Vec<WalletEditorEntry> {
     vec![
-        WalletEditorEntry {
-            display: "$boef".into(),
-            status: WalletEntryStatus::Ready,
-            is_browser_wallet: false,
-            accent: egui_widgets::theme::Token::AccentGreen.into(),
-        },
-        WalletEditorEntry {
-            display: "$djo".into(),
-            status: WalletEntryStatus::Ready,
-            is_browser_wallet: false,
-            accent: egui_widgets::theme::Token::AccentGreen.into(),
-        },
-        WalletEditorEntry {
-            display: "$perplord".into(),
-            status: WalletEntryStatus::Ready,
-            is_browser_wallet: true,
-            accent: egui_widgets::theme::Token::AccentCyan.into(),
-        },
-        WalletEditorEntry {
-            display: "$curiousfutures".into(),
-            status: WalletEntryStatus::Resolving,
-            is_browser_wallet: false,
-            accent: egui_widgets::theme::Token::AccentGreen.into(),
-        },
-        WalletEditorEntry {
-            display: "stake1q8x...m4xj".into(),
-            status: WalletEntryStatus::Loading,
-            is_browser_wallet: false,
-            accent: egui_widgets::theme::Token::AccentGreen.into(),
-        },
-        WalletEditorEntry {
-            display: "stake1qy2...k9fp".into(),
-            status: WalletEntryStatus::Failed("address not found".into()),
-            is_browser_wallet: false,
-            accent: egui_widgets::theme::Token::AccentGreen.into(),
-        },
+        WalletEditorEntry::resolving("stake1u8boef")
+            .handle("boef")
+            .status(WalletEntryStatus::Ready),
+        WalletEditorEntry::resolving("stake1u8djo")
+            .handle("djo")
+            .status(WalletEntryStatus::Ready),
+        // The one the reader did not add. Cyan + a badge, both derived from the
+        // origin rather than chosen at the call site.
+        WalletEditorEntry::resolving("stake1u8perplord")
+            .handle("perplord")
+            .status(WalletEntryStatus::Ready)
+            .origin(WalletOrigin::Browser),
+        WalletEditorEntry::resolving("curiousfutures"),
+        WalletEditorEntry::resolving("stake1q8xkk4m9vhs2n7wlq3zzr5td0pmy6g4cnxj")
+            .status(WalletEntryStatus::Loading),
+        // A long name with no handle AND an error — the row that used to push
+        // the remove button out of its column.
+        WalletEditorEntry::resolving("stake1qy2ffk39dj2mmz8tt5lq0wgc3xn7v4hp9k9fp")
+            .status(WalletEntryStatus::Failed("no such handle".into())),
     ]
 }
 
-// ============================================================================
-// Show
-// ============================================================================
-
 pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
-    ui.label(
-        egui::RichText::new("WalletEditor Widget")
-            .color(accent(ui))
-            .strong(),
+    crate::heading(ui, "WalletEditor");
+    crate::caption(
+        ui,
+        "A reader's own roster: add by handle or address, watch it resolve, drop \
+         it again. Sibling to `wallet_list`, which is the OPERATOR's view of a \
+         client's wallets — same noun, different owner.",
     );
-    ui.label(
-        egui::RichText::new(
-            "Wallet bundle editor with input, status indicators, and remove actions. \
-             The widget emits Add/Remove actions for the caller to handle.",
-        )
-        .color(muted(ui))
-        .size(11.0),
+    crate::caption(
+        ui,
+        "Two colour systems, deliberately: the name's tint is where the entry \
+         came from (permanent), the leading mark is what the app is doing with \
+         it (transient). Both are derived — the origin enum decides the tint and \
+         the badge, so a call site cannot pick a colour that disagrees with the \
+         badge beside it.",
     );
-    ui.add_space(12.0);
+    ui.add_space(10.0);
 
-    // Constrain width to simulate a sidebar
-    ui.allocate_ui(egui::vec2(320.0, ui.available_height()), |ui| {
+    // Tick the mock resolutions.
+    let mut finished: Vec<usize> = Vec::new();
+    for (idx, frames) in &mut state.pending {
+        *frames = frames.saturating_sub(1);
+        if *frames == 0 {
+            finished.push(*idx);
+        }
+    }
+    if !state.pending.is_empty() {
+        ui.ctx().request_repaint();
+    }
+    state.pending.retain(|(_, f)| *f > 0);
+    for idx in finished {
+        if let Some(e) = state.entries.get_mut(idx) {
+            // Every third one fails, so the error row is reachable by using the
+            // widget rather than only by reading the mock data.
+            e.status = match idx % 3 == 2 {
+                true => WalletEntryStatus::Failed("no such handle".into()),
+                false => WalletEntryStatus::Ready,
+            };
+            if e.handle.is_none() && !e.key.starts_with("stake1") {
+                let key = e.key.clone();
+                e.handle = Some(key);
+            }
+        }
+    }
+
+    crate::caption(ui, "The sidebar it lives in is narrow. Drag this to see what the name column does when it runs out of room.");
+    controls(ui, |ui| {
+        egui_widgets::slider_group::SliderGroup::new()
+            .fader(
+                egui_widgets::slider_group::Fader::new(
+                    "sidebar",
+                    &mut state.sidebar_w,
+                    160.0..=520.0,
+                )
+                .suffix("px"),
+            )
+            .show(ui);
+    });
+    ui.add_space(8.0);
+
+    let width = state.sidebar_w;
+    ui.allocate_ui(egui::vec2(width, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(bg(ui))
+            .fill(crate::bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
+                ui.set_width(width - 24.0);
                 let config = WalletEditorConfig {
-                    subtitle: Some("Add wallets to analyze trait coverage"),
+                    subtitle: Some("Add wallets to analyse trait coverage"),
                     ..WalletEditorConfig::default()
                 };
                 let resp = wallet_editor::show(ui, &mut state.editor, &state.entries, &config);
 
                 if let Some(action) = resp.action {
                     match action {
-                        wallet_editor::WalletEditorAction::Add(input) => {
-                            state.last_action = format!("Add: \"{input}\"");
-                            // Simulate adding — in a real app this triggers async resolution
-                            state.entries.push(WalletEditorEntry {
-                                display: input,
-                                status: WalletEntryStatus::Loading,
-                                is_browser_wallet: false,
-                                accent: egui_widgets::theme::Token::AccentGreen.into(),
-                            });
+                        wallet_editor::WalletEditorAction::Add(sub) => {
+                            // The host matches on a NAMED thing. It no longer
+                            // re-sniffs prefixes, which is what let a testnet
+                            // address and a payment address both go wrong.
+                            state.last_action = match &sub {
+                                Submission::Handle(h) => format!("Add handle ${h}"),
+                                Submission::StakeAddress(a) => {
+                                    format!("Add stake address {a}")
+                                }
+                                Submission::PaymentAddress(a) => format!(
+                                    "Add PAYMENT address {a} — a real host would \
+                                     refuse this or convert it, not look it up"
+                                ),
+                            };
+                            let entry = match &sub {
+                                Submission::Handle(h) => WalletEditorEntry::resolving(h.clone()),
+                                Submission::StakeAddress(a) | Submission::PaymentAddress(a) => {
+                                    WalletEditorEntry::resolving(a.clone())
+                                        .status(WalletEntryStatus::Loading)
+                                }
+                            };
+                            state.entries.push(entry);
+                            state.pending.push((state.entries.len() - 1, 90));
                         }
                         wallet_editor::WalletEditorAction::Remove(idx) => {
                             state.last_action = format!(
-                                "Remove: [{}] \"{}\"",
-                                idx,
-                                state.entries.get(idx).map_or("?", |e| &e.display)
+                                "Remove [{idx}] {}",
+                                state.entries.get(idx).map_or("?".into(), |e| e.display())
                             );
                             if idx < state.entries.len() {
                                 state.entries.remove(idx);
+                                // Indices shift, and a stale one would resolve
+                                // the wrong row.
+                                state.pending.clear();
                             }
                         }
                     }
@@ -132,51 +179,32 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
     ui.separator();
     ui.add_space(8.0);
 
-    // Action log
+    crate::heading(ui, "Try");
+    crate::caption(
+        ui,
+        "· `boef` — a bare word is a handle, which is what someone typing one means.\n\
+         · `stake_test1uq…` — a testnet address. Used to be mangled into `$stake_test1…`.\n\
+         · `addr1q9…` — a payment address. Used to go silently to a stake-keyed lookup.\n\
+         · Remove every row to see the empty state.",
+    );
+
+    ui.add_space(8.0);
     if state.last_action.is_empty() {
         ui.label(
-            egui::RichText::new("No actions yet \u{2014} try adding or removing a wallet")
+            egui::RichText::new("no actions yet")
                 .color(muted(ui))
-                .size(11.0),
+                .small(),
         );
     } else {
         ui.label(
-            egui::RichText::new(format!("Last action: {}", state.last_action))
-                .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
-                .size(11.0),
+            egui::RichText::new(&state.last_action)
+                .color(crate::secondary(ui))
+                .small(),
         );
     }
 
-    ui.add_space(8.0);
-    ui.label(
-        egui::RichText::new(format!("{} entries", state.entries.len()))
-            .color(muted(ui))
-            .size(10.0),
-    );
-
-    ui.add_space(16.0);
-    ui.label(
-        egui::RichText::new("Entry States:")
-            .color(accent(ui))
-            .size(11.0)
-            .strong(),
-    );
-    ui.label(
-        egui::RichText::new(
-            "  \u{2022} Ready \u{2014} green dot, data loaded\n  \
-             \u{2022} Resolving \u{2014} spinner, handle lookup\n  \
-             \u{2022} Loading \u{2014} spinner, fetching bundle\n  \
-             \u{2022} Failed \u{2014} red !, inline error message\n  \
-             \u{2022} Browser wallet \u{2014} cyan accent, \"(browser)\" badge",
-        )
-        .color(muted(ui))
-        .size(10.0),
-    );
-
-    // Reset button
-    ui.add_space(12.0);
-    if ui.button("Reset to mock data").clicked() {
-        state.entries = mock_entries();
-        state.last_action.clear();
+    ui.add_space(10.0);
+    if ui.button("Reset").clicked() {
+        *state = WalletEditorStoryState::default();
     }
 }
