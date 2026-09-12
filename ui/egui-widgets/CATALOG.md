@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-136 widgets.
+138 widgets.
 
 | module | what it is |
 |---|---|
@@ -43,6 +43,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `distribution_waterfall` | `DistributionWaterfall` — how a buyer's payment flows down to what lands in each party's wallet under settle-as-you-mint |
 | `donut_chart` | `DistributionChart` — a donut of banded shares with a legend and hover tooltip, for "how is this split" questions |
 | `drawer` | `Drawer` — an edge-anchored slide-over panel with a scrim, for the narrow layout of a surface that has a side panel when it is wide |
+| `effect_editor` | effect_editor — edit the compositor's `[[effect]]` blocks: which slots an effect recolours, how it picks, and the weighted variants it picks from |
 | `encoding` | The colours a chart **encodes with** — as distinct from the ones chrome is painted in |
 | `error_note` | `ErrorNote` — turns an ugly machine error string into a readable note |
 | `event_wiring` | `EventWiring` — one event-source node wired to its action cards, IFTTT made visible |
@@ -64,6 +65,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `id_pill` | `IdPill` — small inline display of a long identifier with a copy affordance |
 | `image_stack` | `ImageStack` — several images as a fanned pile of mounted prints, so a lot of many reads as a lot of many at a glance |
 | `image_text_editor` | Image text overlay editor — place, style, and drag text on top of an image |
+| `knob` | `Knob` — a rotary control, as a prototype to riff on |
 | `leaderboard` | `Leaderboard` — ranked standings: podium-tinted ranks, an optional prize thumbnail, one headline metric, supporting stats, and a share bar |
 | `leaderboard_table` | `LeaderboardTable` — a dense, virtual-scrolled ranked table |
 | `listing_composer` | ListingComposer — price a batch of assets for sale by what the BUYER pays |
@@ -79,7 +81,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `offer_slot` | Offer slot widget — a single asset card placed on a trade table |
 | `offer_tile` | `OfferTile` — fixed-size picker tile with state-aware visual treatment and a top-right quantity badge |
 | `order_list` | `OrderList` — the mint-orders dashboard |
-| `palette_editor` | palette_editor — edit colorization palettes: each palette has a name, a base color, and a list of variants (name + color + weight) |
+| `palette_editor` | palette_editor — **superseded by [`effect_editor`](crate::effect_editor)** |
 | `pane_nav` | `PaneNavBar` — the shell nav for an app made of capability panes |
 | `party_annotator` | `PartyAnnotator` — decide what a wallet IS to the project, on the record |
 | `party_badge` | `PartyBadge` — a counterparty as it should appear everywhere in a forensic trace: resolved name, **how firmly that name is known**, and the cluster it belongs to |

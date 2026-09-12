@@ -76,7 +76,8 @@ mod app {
             UiMachine => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::machine::show(ui, &mut a.machine_state);
             NamedGroupList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::named_group_list::show(ui, &mut a.named_group_list_state);
             RarityTargetEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::rarity_target_editor::show(ui, &mut a.rarity_target_editor_state);
-            PaletteEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::palette_editor::show(ui, &mut a.palette_editor_state);
+            EffectEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::effect_editor::show(ui, &mut a.effect_editor_state);
+            Knob => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::knob::show(ui, &mut a.knob_state);
             SlotTable => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::slot_table::show(ui, &mut a.slot_table_state);
             IdPill => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::id_pill::show(ui);
             PropertyList => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::property_list::show(ui);
@@ -342,7 +343,8 @@ mod app {
                 Self::UiMachine => "Machine",
                 Self::NamedGroupList => "Named Group List",
                 Self::RarityTargetEditor => "Rarity Target Editor",
-                Self::PaletteEditor => "Palette Editor",
+                Self::EffectEditor => "Effect Editor",
+                Self::Knob => "Knob (prototype)",
                 Self::SlotTable => "Slot Table",
                 Self::PropertyList => "Property List",
                 Self::IdPill => "ID Pill",
@@ -691,8 +693,11 @@ mod app {
                 Self::RarityTargetEditor => {
                     "Labelled 0–100% target sliders with a running-total-vs-budget cue — per-trait None% and per-value rarity targets"
                 }
-                Self::PaletteEditor => {
-                    "Colorization palettes — base color + weighted variant colors (the [processing.techniques.colorization] config)"
+                Self::EffectEditor => {
+                    "A named recolouring over a set of slots + its weighted tones — the [[effect]] config, where a variant may be a material"
+                }
+                Self::Knob => {
+                    "PROTOTYPE — a rotary control in four faces, benched against the DragValue and the fader it would replace"
                 }
                 Self::SlotTable => {
                     "Slot list with enable / required toggles + z-order — disabled_traits, defaults.required, z_index_overrides"
@@ -1274,7 +1279,8 @@ mod app {
         machine_state: stories::machine::MachineState,
         named_group_list_state: stories::named_group_list::NamedGroupListState,
         rarity_target_editor_state: stories::rarity_target_editor::RarityTargetEditorState,
-        palette_editor_state: stories::palette_editor::PaletteEditorState,
+        effect_editor_state: stories::effect_editor::EffectEditorState,
+        knob_state: stories::knob::KnobState,
         slot_table_state: stories::slot_table::SlotTableState,
         sparkline_state: stories::sparkline::SparklineState,
         perf_strip_state: stories::perf_strip::PerfStripStory,
@@ -1408,7 +1414,8 @@ mod app {
                 named_group_list_state: stories::named_group_list::NamedGroupListState::default(),
                 rarity_target_editor_state:
                     stories::rarity_target_editor::RarityTargetEditorState::default(),
-                palette_editor_state: stories::palette_editor::PaletteEditorState::default(),
+                effect_editor_state: stories::effect_editor::EffectEditorState::default(),
+                knob_state: stories::knob::KnobState::default(),
                 slot_table_state: stories::slot_table::SlotTableState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 perf_strip_state: stories::perf_strip::PerfStripStory::default(),

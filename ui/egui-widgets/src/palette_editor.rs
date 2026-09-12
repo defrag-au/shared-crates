@@ -1,6 +1,23 @@
-//! palette_editor — edit colorization palettes: each palette has a name, a base
-//! color, and a list of variants (name + color + weight). Backs the
-//! `[processing.techniques.colorization]` palettes in the config editor.
+//! palette_editor — **superseded by [`effect_editor`](crate::effect_editor)**.
+//!
+//! Edits `[processing.techniques.colorization]` palettes: a name, a base colour,
+//! and a list of variants. The compositor replaced that config block with
+//! `[[effect]]`; the shipping project's only remaining mention of it is a
+//! comment saying so. Three things this shape cannot express, all of which the
+//! real config uses:
+//!
+//! - **Global tint.** `base_color` is `Option` in the config and the `None` arm
+//!   is a *mode* — multiply the whole layer, for a grayscale value-map. A
+//!   mandatory `[u8; 3]` here makes it unreachable, and it is the mode the one
+//!   real palette in the repo (skin/neck/hand) runs in.
+//! - **The public label.** A variant's `name` is identity — it lands in
+//!   `asset://…?variant=tan` and is parsed back out — while `label` is the trait
+//!   value written to metadata. One field cannot be both.
+//! - **Pipelines.** A variant may be a whole material (`gold = tint → specular →
+//!   grain`). Shown as a flat swatch, it is indistinguishable from a colour.
+//!
+//! Kept and deprecated rather than deleted so cargo names the call sites when a
+//! consumer bumps its pin, instead of anyone grepping for them.
 //!
 //! Mutates the palette list in place (composite editor with nested rows); returns
 //! `true` when anything changed so the host can re-serialise / re-validate.
@@ -35,6 +52,10 @@
 //! as filled `egui::Button`s, the heaviest objects on rows whose actual content
 //! is a colour and a word.
 
+// The module IS the deprecated thing; its own internals referring to each other
+// are not the call sites the deprecation is meant to surface.
+#![allow(deprecated)]
+
 use egui::{Align, Layout, Sense, Ui, vec2};
 
 use crate::icons::PhosphorIcon;
@@ -54,6 +75,10 @@ const WEIGHT_W: f32 = 64.0;
 /// Point size of the trailing row actions.
 const ACTION_PT: f32 = 13.0;
 
+#[deprecated(
+    since = "0.1.0",
+    note = "models the superseded `[processing.techniques.colorization]` block; use `effect_editor::EffectVariant`, which separates identity (`name`) from the public trait value (`label`) and can carry a pipeline"
+)]
 #[derive(Debug, Clone)]
 pub struct PaletteVariant {
     pub name: String,
@@ -71,6 +96,10 @@ impl Default for PaletteVariant {
     }
 }
 
+#[deprecated(
+    since = "0.1.0",
+    note = "models the superseded `[processing.techniques.colorization]` block; use `effect_editor::Effect`, which carries the slots, the pick/base modes and a `Recolor` that can express global tint"
+)]
 #[derive(Debug, Clone)]
 pub struct Palette {
     pub name: String,
@@ -88,6 +117,10 @@ impl Default for Palette {
     }
 }
 
+#[deprecated(
+    since = "0.1.0",
+    note = "models the superseded `[processing.techniques.colorization]` block; use `effect_editor::EffectEditor`"
+)]
 pub struct PaletteEditor<'a> {
     palettes: &'a mut Vec<Palette>,
     add_label: &'a str,

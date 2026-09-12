@@ -31,6 +31,7 @@ pub mod disclosure;
 pub mod distribution_waterfall;
 pub mod donut_chart;
 pub mod drawer;
+pub mod effect_editor;
 pub mod encoding;
 pub mod error_note;
 pub mod event_wiring;
@@ -54,6 +55,7 @@ pub mod icons;
 pub mod id_pill;
 pub mod image_loader;
 pub mod image_stack;
+pub mod knob;
 pub mod leaderboard;
 #[cfg(feature = "cardano")]
 pub mod listing_composer;
@@ -228,6 +230,7 @@ pub use donut_chart::{
     DistBand, DistributionChart, format_value as format_chart_value, legend_row,
 };
 pub use drawer::{Drawer, DrawerSide};
+pub use effect_editor::{Apply, Base, Effect, EffectEditor, EffectVariant, Pick, Recipe, Recolor};
 pub use error_note::{ErrorNote, ErrorSummary, pretty_json, summarize_error};
 pub use event_wiring::{ActionCardVm, EventNodeVm, EventWiring, EventWiringResponse};
 #[cfg(target_arch = "wasm32")]
@@ -283,6 +286,10 @@ pub use order_list::{
     FulfilmentRow, OrderEventRow, OrderList, OrderListAction, OrderListResponse, OrderRow,
     OrderStatus,
 };
+#[expect(
+    deprecated,
+    reason = "the re-export is deprecated in step with the module"
+)]
 pub use palette_editor::{Palette, PaletteEditor, PaletteVariant};
 pub use pane_nav::{PaneNavBar, PaneNavEntry, PaneNavResponse};
 pub use party_annotator::{
