@@ -1,7 +1,7 @@
 //! Story: `MnemonicDisplay` — the moment-of-truth widget for showing a
 //! freshly-generated BIP-39 phrase exactly once.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::mnemonic_display::MnemonicDisplay;
 
 #[derive(Default)]
@@ -24,7 +24,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut MnemonicDisplayState) {
             "BIP-39 mnemonic display — shown once when provisioning a new client or on \
              GDPR Art. 20 export.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(16.0);
@@ -32,7 +32,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut MnemonicDisplayState) {
     // ── Variant 1: 24 words + confirmation gate ────────────────────────
     ui.label(
         egui::RichText::new("24-word phrase, with confirmation gate")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -41,7 +41,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut MnemonicDisplayState) {
             "The default provisioning flow: parent renders this then enables a \"Continue\" \
              button only once `confirmed` flips true.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -64,7 +64,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut MnemonicDisplayState) {
     // ── Variant 2: 12 words, no confirmation ───────────────────────────
     ui.label(
         egui::RichText::new("12-word phrase, no confirmation gate")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -73,7 +73,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut MnemonicDisplayState) {
             "For lower-stakes flows where the parent already has a confirmation step \
              (e.g. an export modal that closes on its own dismiss button).",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -94,7 +94,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut MnemonicDisplayState) {
     // ── Variant 3: warning banner suppressed ───────────────────────────
     ui.label(
         egui::RichText::new("Banner suppressed (parent provides messaging)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -103,7 +103,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut MnemonicDisplayState) {
             "Use when the surrounding modal already carries the warning text, to avoid \
              duplicate copy.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);

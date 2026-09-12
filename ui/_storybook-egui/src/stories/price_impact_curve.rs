@@ -5,7 +5,7 @@ use egui_widgets::price_impact_curve::{
 };
 use egui_widgets::split_allocation_bar::dex_color;
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 /// Build the price impact function by injecting the real AMM math from cardano-tx.
 fn make_impact_fn() -> Box<price_impact_curve::PriceImpactFn> {
@@ -20,7 +20,7 @@ pub fn show(ui: &mut egui::Ui) {
 
     ui.label(
         egui::RichText::new("PriceImpactCurve Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -29,7 +29,7 @@ pub fn show(ui: &mut egui::Ui) {
              by splitting, you stay in the cheap region of each pool's curve. \
              Hover for exact impact values at any ADA amount.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -38,7 +38,7 @@ pub fn show(ui: &mut egui::Ui) {
         // Scenario 1: Aliens at 1000 ADA — clear split benefit
         // Reserves sized so 1000 ADA creates ~1-3% impact (visible curves)
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -56,7 +56,7 @@ pub fn show(ui: &mut egui::Ui) {
                         "Splash has 3x the depth of CSWAP. The optimizer sends 78% to Splash \
                          where the curve is flatter, keeping both pools in their low-impact zones.",
                     )
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .size(10.0),
                 );
                 ui.add_space(6.0);
@@ -91,7 +91,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Scenario 2: Small amount — no split benefit
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -109,7 +109,7 @@ pub fn show(ui: &mut egui::Ui) {
                         "At small amounts, both curves are nearly flat. Price impact is \
                          negligible, so the optimizer routes 100% to the lower-fee pool.",
                     )
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .size(10.0),
                 );
                 ui.add_space(6.0);
@@ -144,7 +144,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Scenario 3: Large swap, three-way split
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -162,7 +162,7 @@ pub fn show(ui: &mut egui::Ui) {
                         "With three pools, the optimizer distributes load across all of them. \
                          The steeper CSWAP curve gets the smallest allocation.",
                     )
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .size(10.0),
                 );
                 ui.add_space(6.0);

@@ -1,6 +1,6 @@
 //! File upload widget story
 
-use crate::ACCENT;
+use crate::accent;
 
 pub struct FileUploadState {
     image_uploader: egui_widgets::FileUploadButton,
@@ -31,7 +31,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FileUploadState) {
     ui.add_space(12.0);
 
     // ── Upload button (images) ──────────────────────────────────────────
-    ui.label(egui::RichText::new("Image Upload").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Image Upload").color(accent(ui)).strong());
     ui.add_space(4.0);
 
     if let Some(file) = state.image_uploader.show(ui, "Upload Image", "image/*") {
@@ -49,7 +49,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FileUploadState) {
     // ── Any file ────────────────────────────────────────────────────────
     ui.label(
         egui::RichText::new("Any File Upload")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -73,7 +73,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FileUploadState) {
 
     ui.label(
         egui::RichText::new(format!("Uploaded Files ({})", state.uploaded_files.len()))
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);

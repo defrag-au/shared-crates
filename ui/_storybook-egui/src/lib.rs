@@ -133,7 +133,8 @@ mod app {
             TxFlight => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_flight::show(ui, &mut a.tx_flight_state);
             StakeSession => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::stake_session::show(ui, &mut a.stake_session_state);
             ListingComposer => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::listing_composer::show(ui, &mut a.listing_composer_state);
-            UtxoMap => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::utxo_map::show(ui, &mut a.utxo_map_state, &mut a.wallet_btn, &mut a.wallet_connector);
+            UtxoShelf => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::utxo_shelf::show(ui, &mut a.utxo_shelf_state, &mut a.wallet_btn, &mut a.wallet_connector);
+            UtxoMap => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::utxo_map::show(ui, &mut a.utxo_map_state);
             ManagedWalletUtxos => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::managed_wallet_utxos::show(ui, &mut a.managed_wallet_utxos_state);
             DistributionWaterfall => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::distribution_waterfall::show(ui, &mut a.distribution_waterfall_state);
             WalletIdentityHeader => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_identity_header::show(ui, &mut a.wallet_identity_header_state);
@@ -329,6 +330,7 @@ mod app {
                 Self::TxEstimate,
                 Self::TradeFlow,
                 Self::WalletAssetPicker,
+                Self::UtxoShelf,
                 Self::UtxoMap,
                 Self::ManagedWalletUtxos,
                 Self::DistributionWaterfall,
@@ -421,7 +423,8 @@ mod app {
                 Self::TxEstimate => "TX Estimate",
                 Self::TradeFlow => "Trade Flow",
                 Self::WalletAssetPicker => "Wallet Asset Picker",
-                Self::UtxoMap => "UTxO Shelf",
+                Self::UtxoShelf => "UTxO Shelf",
+                Self::UtxoMap => "UTxO Map",
                 Self::ManagedWalletUtxos => "Managed Wallet UTxOs",
                 Self::DistributionWaterfall => "Distribution Waterfall",
                 Self::SlippageSelector => "Slippage Selector",
@@ -607,7 +610,8 @@ mod app {
                 | Self::TxEstimate
                 | Self::TradeFlow
                 | Self::WalletAssetPicker => "Trade Desk",
-                Self::UtxoMap
+                Self::UtxoShelf
+                | Self::UtxoMap
                 | Self::ManagedWalletUtxos
                 | Self::DistributionWaterfall
                 | Self::WalletIdentityHeader
@@ -766,8 +770,11 @@ mod app {
                 Self::AssetStrip => {
                     "Horizontally stacked asset thumbnails with progressive overlap and click-to-remove"
                 }
-                Self::UtxoMap => {
+                Self::UtxoShelf => {
                     "UTxO health shelving unit: classify UTxOs into Collateral, Liquid, Clean, Cluttered, Bloated, Dust tiers"
+                }
+                Self::UtxoMap => {
+                    "Voronoi terrain map of a wallet: one cell per (utxo, policy), land is locked ADA and water is free ADA — territories are the policies"
                 }
                 Self::ManagedWalletUtxos => {
                     "Role-aware UTxO breakdown for a custodial wallet: spendable ADA vs flagged asset-bearing (minted-to-self / stray) UTxOs"
@@ -1012,26 +1019,64 @@ mod app {
     const CHROME_ACCENT: egui::Color32 = egui::Color32::from_rgb(68, 255, 68);
     const CHROME_BG_SELECTED: egui::Color32 = egui::Color32::from_rgb(40, 40, 60);
 
-    // ── Story-facing re-exports (MIGRATION DEBT) ─────────────────────────────
-    //
-    // ~980 call sites across `src/stories/` import these. They are the story
-    // scaffolding — section headings, captions, labels a story draws around the
-    // widget it is demonstrating — NOT the widgets themselves, which read
-    // `ui.tokens()` directly since the colour migration.
-    //
-    // So the theme switcher does change every widget; what it does not yet change
-    // is the prose a story writes around it. `ACCENT` is the worst of them: a
-    // bright green that exists nowhere in any theme, so a story labelled with it
-    // is showing the reader a colour no app ever renders.
-    //
-    // Fixing that is the story triage — mostly DELETING these calls, since a
-    // story that pins a colour cannot demonstrate theming at all. Tracked
-    // separately; left aliased here so the switcher work does not also become a
-    // thousand-site edit.
-    pub const BG_MAIN: egui::Color32 = CHROME_BG_MAIN;
-    pub const TEXT_MUTED: egui::Color32 = CHROME_TEXT_MUTED;
     const TEXT_PRIMARY: egui::Color32 = CHROME_TEXT_PRIMARY;
-    pub const ACCENT: egui::Color32 = CHROME_ACCENT;
+
+    // ── Story scaffolding ────────────────────────────────────────────────────
+    //
+    // The prose a story writes AROUND the widget it demonstrates: section
+    // headings, captions, the "what to check" lists. Inside the bezel, so these
+    // follow the theme under review — unlike the `CHROME_*` constants above,
+    // which must not.
+    //
+    // These are functions taking `ui`, not constants, and that is the whole
+    // point. They were `const ACCENT/TEXT_MUTED/BG_MAIN`, and `ACCENT` was
+    // `#44ff44` — a green that exists in no theme, so every story heading in the
+    // storybook was showing the reader a colour no app can render, while sitting
+    // directly above a widget that had just been migrated to tokens. The
+    // switcher changed the widget and not one word of the text describing it.
+    //
+    // A constant cannot read a theme. That is not an inconvenience to work
+    // around with a cached palette or a per-frame global — it is the type system
+    // stating the actual constraint, which is that a colour is a function of the
+    // active theme and therefore needs something to ask.
+
+    /// The story's own accent — headings, the selected item in a preset row.
+    pub fn accent(ui: &egui::Ui) -> egui::Color32 {
+        egui_widgets::theme::ThemeExt::tokens(ui).color.accent
+    }
+
+    /// Captions, hints, the unselected half of a toggle row.
+    pub fn muted(ui: &egui::Ui) -> egui::Color32 {
+        egui_widgets::theme::ThemeExt::tokens(ui).color.text_muted
+    }
+
+    /// Body text a story writes in its own voice.
+    pub fn ink(ui: &egui::Ui) -> egui::Color32 {
+        egui_widgets::theme::ThemeExt::tokens(ui).color.text_primary
+    }
+
+    /// The ground a story paints its own panels on.
+    pub fn bg(ui: &egui::Ui) -> egui::Color32 {
+        egui_widgets::theme::ThemeExt::tokens(ui).color.bg_primary
+    }
+
+    /// A section heading inside a story.
+    ///
+    /// Exists because `ui.label(RichText::new(t).color(ACCENT).strong())` was
+    /// written out ~400 times. Saying `heading(ui, t)` instead is shorter, and
+    /// more importantly it gives the storybook ONE place to decide what a
+    /// heading looks like — which is what made it possible to notice that every
+    /// one of them was the wrong colour.
+    pub fn heading(ui: &mut egui::Ui, text: impl Into<String>) {
+        let c = accent(ui);
+        ui.label(egui::RichText::new(text.into()).color(c).strong());
+    }
+
+    /// A small muted caption under a heading or beside a control.
+    pub fn caption(ui: &mut egui::Ui, text: impl Into<String>) {
+        let c = muted(ui);
+        ui.label(egui::RichText::new(text.into()).color(c).small());
+    }
 
     // ========================================================================
     // Review controls
@@ -1477,6 +1522,7 @@ mod app {
         listing_composer_state: stories::listing_composer::ListingComposerStoryState,
         trade_table_state: stories::trade_table::TradeTableStoryState,
         wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
+        utxo_shelf_state: stories::utxo_shelf::UtxoShelfStoryState,
         utxo_map_state: stories::utxo_map::UtxoMapStoryState,
         managed_wallet_utxos_state: stories::managed_wallet_utxos::ManagedWalletUtxosStoryState,
         distribution_waterfall_state:
@@ -1550,7 +1596,7 @@ mod app {
                 marquee: egui_widgets::Marquee::default(),
                 marquee_messages: vec![egui_widgets::MarqueeItem {
                     text: "Welcome to the egui Widgets Storybook".into(),
-                    color: ACCENT,
+                    color: CHROME_ACCENT,
                 }],
                 progress_bar_state: stories::progress_bar::ProgressBarState::default(),
                 disclosure_state: stories::disclosure::State::default(),
@@ -1629,6 +1675,7 @@ mod app {
                 trade_table_state: stories::trade_table::TradeTableStoryState::default(),
                 wallet_asset_picker_state:
                     stories::wallet_asset_picker::WalletAssetPickerStoryState::default(),
+                utxo_shelf_state: stories::utxo_shelf::UtxoShelfStoryState::default(),
                 utxo_map_state: stories::utxo_map::UtxoMapStoryState::default(),
                 managed_wallet_utxos_state:
                     stories::managed_wallet_utxos::ManagedWalletUtxosStoryState::default(),
@@ -1678,14 +1725,16 @@ mod app {
                     ui.add_space(8.0);
                     ui.label(
                         egui::RichText::new(current_category)
-                            .color(TEXT_MUTED)
+                            .color(CHROME_TEXT_MUTED)
                             .small()
                             .strong(),
                     );
                 }
                 let is_selected = self.current_story == *story;
                 let text = if is_selected {
-                    egui::RichText::new(story.label()).color(ACCENT).strong()
+                    egui::RichText::new(story.label())
+                        .color(CHROME_ACCENT)
+                        .strong()
                 } else {
                     egui::RichText::new(story.label()).color(TEXT_PRIMARY)
                 };
@@ -1727,7 +1776,7 @@ mod app {
                     .frame(egui::Frame::side_top_panel(&ctx.global_style()).fill(CHROME_BG_SIDEBAR))
                     .show_inside(ui, |ui| {
                         ui.add_space(8.0);
-                        ui.heading(egui::RichText::new("egui Widgets").color(ACCENT));
+                        ui.heading(egui::RichText::new("egui Widgets").color(CHROME_ACCENT));
                         ui.separator();
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             self.draw_sidebar(ui);
@@ -1862,12 +1911,13 @@ mod app {
                     &mut self.wallet_asset_picker_state,
                 ),
                 Story::AssetStrip => stories::asset_strip::show(ui, &mut self.asset_strip_state),
-                Story::UtxoMap => stories::utxo_map::show(
+                Story::UtxoShelf => stories::utxo_shelf::show(
                     ui,
-                    &mut self.utxo_map_state,
+                    &mut self.utxo_shelf_state,
                     &mut self.wallet_btn,
                     &mut self.wallet_connector,
                 ),
+                Story::UtxoMap => stories::utxo_map::show(ui, &mut self.utxo_map_state),
                 Story::ManagedWalletUtxos => {
                     stories::managed_wallet_utxos::show(ui, &mut self.managed_wallet_utxos_state)
                 }

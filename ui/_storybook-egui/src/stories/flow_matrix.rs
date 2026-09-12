@@ -15,7 +15,7 @@
 //!    honest picture of that is a large, clearly-labelled column rather than a
 //!    footnote or a silent omission.
 
-use crate::TEXT_MUTED;
+use crate::muted;
 use egui_widgets::{FlowMatrix, MatrixFlow, Selection, SpineState};
 
 const DAY: i64 = 86_400;
@@ -120,7 +120,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowMatrixState) {
              the exact figures; click one to watch that counterparty everywhere.",
         )
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(8.0);
 
@@ -138,6 +138,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowMatrixState) {
             r.rows_shown, r.cols_shown, r.flows_in_window
         ))
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
 }

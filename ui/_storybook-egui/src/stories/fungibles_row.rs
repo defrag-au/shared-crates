@@ -1,14 +1,14 @@
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::fungibles_row::FungiblesRow;
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Fungibles Row").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Fungibles Row").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Compact single-row display for a Cardano Native Token holding. \
              Optional ticker chip and ADA value. Quantity is right-aligned.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -16,7 +16,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("Wallet-viewer CNT list (real-shaped data)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -37,7 +37,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("With ADA value attached")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -54,7 +54,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("No ticker (unregistered token)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);

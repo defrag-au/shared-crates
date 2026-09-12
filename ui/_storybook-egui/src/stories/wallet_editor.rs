@@ -5,7 +5,7 @@ use egui_widgets::wallet_editor::{
     self, WalletEditorConfig, WalletEditorEntry, WalletEditorState, WalletEntryStatus,
 };
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 // ============================================================================
 // State
@@ -75,7 +75,7 @@ fn mock_entries() -> Vec<WalletEditorEntry> {
 pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
     ui.label(
         egui::RichText::new("WalletEditor Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -83,7 +83,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
             "Wallet bundle editor with input, status indicators, and remove actions. \
              The widget emits Add/Remove actions for the caller to handle.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -91,7 +91,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
     // Constrain width to simulate a sidebar
     ui.allocate_ui(egui::vec2(320.0, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -139,7 +139,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
     if state.last_action.is_empty() {
         ui.label(
             egui::RichText::new("No actions yet \u{2014} try adding or removing a wallet")
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .size(11.0),
         );
     } else {
@@ -153,14 +153,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
     ui.add_space(8.0);
     ui.label(
         egui::RichText::new(format!("{} entries", state.entries.len()))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .size(10.0),
     );
 
     ui.add_space(16.0);
     ui.label(
         egui::RichText::new("Entry States:")
-            .color(ACCENT)
+            .color(accent(ui))
             .size(11.0)
             .strong(),
     );
@@ -172,7 +172,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
              \u{2022} Failed \u{2014} red !, inline error message\n  \
              \u{2022} Browser wallet \u{2014} cyan accent, \"(browser)\" badge",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(10.0),
     );
 

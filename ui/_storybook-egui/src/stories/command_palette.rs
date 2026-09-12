@@ -2,6 +2,8 @@
 
 use egui_widgets::command_palette::{CommandPalette, PaletteAction, PaletteState};
 use egui_widgets::theme;
+
+use crate::{accent, muted};
 use egui_widgets::typeahead_search::TypeaheadOption;
 
 pub struct CommandPaletteState {
@@ -35,7 +37,7 @@ fn commands() -> Vec<TypeaheadOption> {
 pub fn show(ui: &mut egui::Ui, state: &mut CommandPaletteState) {
     ui.label(
         egui::RichText::new("Command Palette")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -44,7 +46,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CommandPaletteState) {
              autofocused fuzzy search over what the app can do right now; enter \
              dispatches, escape dismisses. Rendering rides TypeaheadSearch.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -71,7 +73,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CommandPaletteState) {
     if state.invoked.is_empty() {
         ui.label(
             egui::RichText::new("nothing invoked yet")
-                .color(theme::TEXT_MUTED)
+                .color(muted(ui))
                 .small(),
         );
     }

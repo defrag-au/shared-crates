@@ -9,7 +9,7 @@ use cardano_assets::utxo::{AssetQuantity, UtxoApi};
 use cardano_assets::AssetId;
 use egui_widgets::ManagedWalletUtxos;
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub struct ManagedWalletUtxosStoryState {
     /// Toggle the "assets are an anomaly" framing (mint wallet vs generic).
@@ -66,7 +66,7 @@ fn with_nfts(tx: &str, idx: u32, lovelace: u64, policy: &str, names_hex: &[&str]
 pub fn show(ui: &mut egui::Ui, state: &mut ManagedWalletUtxosStoryState) {
     ui.label(
         egui::RichText::new("ManagedWalletUtxos Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -76,7 +76,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ManagedWalletUtxosStoryState) {
              anomaly (a mint+payments wallet should never hold NFTs — minted-to-self \
              or stray inventory).",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -161,7 +161,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ManagedWalletUtxosStoryState) {
     // Widget
     ui.allocate_ui(egui::vec2(420.0, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(

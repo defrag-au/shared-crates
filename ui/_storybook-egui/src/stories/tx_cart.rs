@@ -4,7 +4,7 @@ use egui_widgets::tx_cart::{
     self, TxCartConfig, TxCartItem, TxCartItemStatus, TxCartPhase, TxCartPlannedTx, TxCartState,
 };
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub struct TxCartStoryState {
     pub cart: TxCartState,
@@ -57,20 +57,20 @@ impl Default for TxCartStoryState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut TxCartStoryState) {
-    ui.label(egui::RichText::new("TxCart Widget").color(ACCENT).strong());
+    ui.label(egui::RichText::new("TxCart Widget").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Batched transaction cart with sequential signing. Groups actions by \
              type, shows per-item status during execution.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
 
     // Phase selector
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Phase:").color(TEXT_MUTED).size(10.0));
+        ui.label(egui::RichText::new("Phase:").color(muted(ui)).size(10.0));
 
         if ui
             .selectable_label(state.cart.phase == TxCartPhase::Editing, "Editing")
@@ -176,7 +176,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCartStoryState) {
         ui.separator();
         ui.label(
             egui::RichText::new(format!("Last action: {}", state.last_action))
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .size(9.0)
                 .monospace(),
         );

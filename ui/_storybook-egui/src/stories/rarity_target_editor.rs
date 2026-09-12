@@ -3,6 +3,8 @@
 use egui_widgets::rarity_target_editor::{RarityRow, RarityTargetEditor};
 use egui_widgets::theme;
 
+use crate::{accent, muted};
+
 pub struct RarityTargetEditorState {
     pub rows: Vec<RarityRow>,
 }
@@ -35,7 +37,7 @@ impl Default for RarityTargetEditorState {
 pub fn show(ui: &mut egui::Ui, state: &mut RarityTargetEditorState) {
     ui.label(
         egui::RichText::new("Rarity Target Editor")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -44,7 +46,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut RarityTargetEditorState) {
              budget cue (over / under / balanced). Drag the sliders to see the \
              budget colour change.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);

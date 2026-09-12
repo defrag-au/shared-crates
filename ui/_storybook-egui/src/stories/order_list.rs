@@ -10,7 +10,7 @@ use std::collections::HashSet;
 
 use egui_widgets::{FulfilmentRow, OrderEventRow, OrderList, OrderListAction, OrderRow};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// Pinned clock so the relative times ("9s ago", "2d ago") are deterministic.
 const NOW: i64 = 1_780_000_000;
@@ -23,7 +23,7 @@ pub struct OrderListState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut OrderListState) {
-    ui.label(egui::RichText::new("Order List").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Order List").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Mint-orders dashboard. Click the status chips to filter, type in the \
@@ -31,7 +31,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut OrderListState) {
              for the absolute UTC. Replaces the old flat list (no dates, \
              \"refund: not_required\" on every line).",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(10.0);
@@ -66,7 +66,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut OrderListState) {
     ui.add_space(18.0);
     ui.label(
         egui::RichText::new("Empty · loading · error")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(6.0);

@@ -3,7 +3,7 @@
 use egui_widgets::tx_estimate::{self, TxEstimateConfig, TxEstimateData};
 use egui_widgets::UtxoCost;
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub struct TxEstimateStoryState {
     pub ada_sending: u64,
@@ -30,7 +30,7 @@ impl Default for TxEstimateStoryState {
 pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
     ui.label(
         egui::RichText::new("TxEstimate Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -38,7 +38,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
             "Per-wallet transaction estimate shown during negotiation. Displays platform fee, \
              network fee, min UTxO, and net ADA impact for the local user only.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -188,7 +188,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
     // Widget
     ui.allocate_ui(egui::vec2(280.0, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -207,7 +207,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
             egui::RichText::new(format!(
                 "platform_fee: {effective_platform} lovelace\nnetwork_fee: {network_fee} lovelace\nmin_utxo: {min_utxo} lovelace\nnet_ada: {net_ada} lovelace"
             ))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .size(10.0)
             .family(egui::FontFamily::Monospace),
         );

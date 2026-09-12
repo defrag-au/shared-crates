@@ -6,7 +6,7 @@
 use egui_widgets::data_table::{self, DataRowItem, DataRowStatus, DataTableConfig, DataTableState};
 use egui_widgets::exposure_bar::{self, ExposureBarConfig, ExposureSegment};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 // ============================================================================
 // Story state
@@ -119,7 +119,7 @@ fn mock_loans() -> Vec<MockLoan> {
 pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
     ui.label(
         egui::RichText::new("DataTable Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -127,7 +127,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
             "Dense row-based table with column headers, LTV micro-bars, selection, \
              and detail panel. Paired with ExposureBar summary above.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -136,7 +136,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
 
     // ── Exposure bar summary ──
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
@@ -165,7 +165,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
 
     // ── Data table ──
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
@@ -213,7 +213,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
                             egui_widgets::theme::TEXT_SECONDARY,
                         ),
                         ("Rate", loan.rate, egui_widgets::theme::TEXT_PRIMARY),
-                        ("Duration", loan.duration, egui_widgets::theme::TEXT_MUTED),
+                        ("Duration", loan.duration, crate::muted(ui)),
                         ("Interest", loan.interest, egui_widgets::theme::ACCENT_GREEN),
                     ];
 
@@ -221,7 +221,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
                         ui.horizontal(|ui| {
                             ui.label(
                                 egui::RichText::new(format!("{label}:"))
-                                    .color(egui_widgets::theme::TEXT_MUTED)
+                                    .color(crate::muted(ui))
                                     .size(11.0),
                             );
                             ui.label(egui::RichText::new(*value).color(*color).size(11.0));
@@ -232,7 +232,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
                         ui.horizontal(|ui| {
                             ui.label(
                                 egui::RichText::new("LTV:")
-                                    .color(egui_widgets::theme::TEXT_MUTED)
+                                    .color(crate::muted(ui))
                                     .size(11.0),
                             );
                             ui.label(

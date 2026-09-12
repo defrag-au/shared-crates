@@ -10,7 +10,7 @@
 //! deployed 577,950, because royalties and other income moved through the same
 //! wallets. That crossing is a finding, which is why the widget does not clamp.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::{
     capital_bands, capital_legend, cumulative_at, Acquisition, Arrival, AssetMove, CapitalFlow,
     FlowEvent, HolderFormation, MintArrivals,
@@ -233,12 +233,12 @@ pub(crate) fn moves() -> Vec<AssetMove<'static>> {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut CapitalFlowState) {
-    ui.label(egui::RichText::new("Capital Flow").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Capital Flow").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "They raised X — watch where it went. Drag the timeline or press play.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(10.0);
@@ -304,7 +304,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CapitalFlowState) {
     ui.add_space(14.0);
     ui.label(
         egui::RichText::new("…and who became a holder")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     let acq = acquisitions();
@@ -317,7 +317,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CapitalFlowState) {
     ui.add_space(14.0);
     ui.label(
         egui::RichText::new("…one asset at a time")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     let arr = arrivals();
@@ -333,14 +333,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut CapitalFlowState) {
              always sits in the same place in its pile, so piles grow outward and never \
              reshuffle — press play and watch the whales form.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.label(
         egui::RichText::new(
             "Two faces of one mint on one playhead: money leaving above, people arriving below.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.label(
@@ -348,7 +348,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CapitalFlowState) {
             "Watch the thin band appear: holder rewards took 2.3% of mint funds — a category \
              the published 80/15/5 split does not contain.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.label(
@@ -356,7 +356,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CapitalFlowState) {
             "The stack crosses the raise line because royalties and other income moved through \
              the same wallets. Clamping to the raise would hide exactly that.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 }

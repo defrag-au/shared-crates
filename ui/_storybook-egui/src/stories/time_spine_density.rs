@@ -28,7 +28,7 @@
 //! because it would attenuate exactly the one-day spikes the lane is for.
 
 use crate::stories::capital_flow::month;
-use crate::TEXT_MUTED;
+use crate::muted;
 use egui_widgets::{format_date, view_centred_on, DensityBin, MarkKind, SpineState, TimeSpine};
 
 const DAY: i64 = 86_400;
@@ -162,7 +162,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineDensityState) {
              a density silhouette, mints and burns kept as marks. Hover a column."
         ))
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(8.0);
 
@@ -212,7 +212,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineDensityState) {
     // the way a reader's wheel would, so the behaviour can be reached
     // without a trackpad — and seen in a screenshot.
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("window:").small().color(TEXT_MUTED));
+        ui.label(egui::RichText::new("window:").small().color(muted(ui)));
         for (label, days) in [("all", DAYS), ("90 days", 90), ("14 days", 14)] {
             if ui.small_button(label).clicked() {
                 spine.view = view_centred_on(spine.playhead, (days * DAY) as f64, domain);

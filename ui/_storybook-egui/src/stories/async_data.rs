@@ -1,7 +1,7 @@
 //! Async Data story — demonstrates `egui_inbox` driving widgets from
 //! simulated external data sources (API polling via spawn_local + gloo_timers).
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::egui_inbox::{UiInbox, UiInboxSender};
 
 /// Simulated balance snapshot from an API.
@@ -64,7 +64,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
     // --- Controls ---
     ui.label(
         egui::RichText::new("Async Data Source")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -72,7 +72,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
             "Demonstrates egui_inbox driving widgets from a simulated API poller. \
              A spawn_local loop sends BalanceSnapshot every 3s through a UiInboxSender.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -116,7 +116,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
             state.update_count
         )
     };
-    ui.label(egui::RichText::new(status).color(TEXT_MUTED).small());
+    ui.label(egui::RichText::new(status).color(muted(ui)).small());
 
     // Request repaint while polling so the "Xs ago" counter ticks
     if state.polling {
@@ -132,10 +132,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
 
     if let Some(ref snap) = state.latest {
         // Metric cards row
-        ui.label(egui::RichText::new("Metric Cards").color(ACCENT).strong());
+        ui.label(egui::RichText::new("Metric Cards").color(accent(ui)).strong());
         ui.label(
             egui::RichText::new("Updated via inbox.read() each frame — only latest value kept")
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .small(),
         );
         ui.add_space(4.0);
@@ -152,7 +152,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
                         ui.vertical(|ui| {
                             ui.label(
                                 egui::RichText::new("Accrued Total")
-                                    .color(TEXT_MUTED)
+                                    .color(muted(ui))
                                     .size(11.0),
                             );
                             ui.label(
@@ -174,7 +174,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
                     .inner_margin(12.0)
                     .show(ui, |ui| {
                         ui.vertical(|ui| {
-                            ui.label(egui::RichText::new("Rate/hr").color(TEXT_MUTED).size(11.0));
+                            ui.label(egui::RichText::new("Rate/hr").color(muted(ui)).size(11.0));
                             ui.label(
                                 egui::RichText::new(format!("{:.1}", snap.effective_rate))
                                     .color(egui_widgets::theme::ACCENT_CYAN)
@@ -192,7 +192,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
                     .inner_margin(12.0)
                     .show(ui, |ui| {
                         ui.vertical(|ui| {
-                            ui.label(egui::RichText::new("Holders").color(TEXT_MUTED).size(11.0));
+                            ui.label(egui::RichText::new("Holders").color(muted(ui)).size(11.0));
                             ui.label(
                                 egui::RichText::new(format!("{}", snap.holder_count))
                                     .color(egui_widgets::theme::SUCCESS)
@@ -207,10 +207,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
         ui.add_space(16.0);
 
         // Flip counter
-        ui.label(egui::RichText::new("Flip Counter").color(ACCENT).strong());
+        ui.label(egui::RichText::new("Flip Counter").color(accent(ui)).strong());
         ui.label(
             egui::RichText::new("Animates to new value when inbox delivers a snapshot")
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .small(),
         );
         ui.add_space(4.0);
@@ -221,12 +221,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
         // Seven segment rate display
         ui.label(
             egui::RichText::new("Seven Segment Rate")
-                .color(ACCENT)
+                .color(accent(ui))
                 .strong(),
         );
         ui.label(
             egui::RichText::new("Shows effective_rate as integer from latest snapshot")
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .small(),
         );
         ui.add_space(4.0);
@@ -246,14 +246,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
                 ui.vertical_centered(|ui| {
                     ui.label(
                         egui::RichText::new("No data yet")
-                            .color(TEXT_MUTED)
+                            .color(muted(ui))
                             .size(14.0),
                     );
                     ui.label(
                         egui::RichText::new(
                             "Click \"Start Polling\" to begin receiving simulated API snapshots",
                         )
-                        .color(TEXT_MUTED)
+                        .color(muted(ui))
                         .small(),
                     );
                 });
@@ -265,7 +265,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
     ui.add_space(8.0);
 
     // Pattern explanation
-    ui.label(egui::RichText::new("Pattern:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Pattern:").color(accent(ui)).strong());
     ui.label("1. UiInbox::channel() creates (sender, inbox) pair");
     ui.label("2. sender.clone() is moved into spawn_local async loop");
     ui.label("3. sender.send(data) auto-triggers ctx.request_repaint()");

@@ -1,17 +1,17 @@
 //! `PropertyList` storybook story.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::{PropertyLabelAlign, PropertyList};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("PropertyList").color(ACCENT).strong());
+    ui.label(egui::RichText::new("PropertyList").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Label/value grid for read-only key data. Two columns, stable widths, \
              muted label colour, default text colour for the value. Used wherever \
              you'd otherwise hand-build an egui::Grid for descriptive metadata.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -19,7 +19,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── Phase-card use case ────────────────────────────────────────────
     ui.label(
         egui::RichText::new("Phase summary (default)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -35,7 +35,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── add_optional + right-aligned labels ────────────────────────────
     ui.label(
         egui::RichText::new("Right-aligned labels + optional rows")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -44,7 +44,7 @@ pub fn show(ui: &mut egui::Ui) {
              scanning axis. `add_optional` keeps optional rows out of the layout \
              without a noisy match at the call site.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -64,7 +64,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── Wallet card use case ───────────────────────────────────────────
     ui.label(
         egui::RichText::new("Wallet card readout")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);

@@ -2,7 +2,7 @@
 
 use egui_widgets::fee_report::{self, FeeReportConfig, FeeReportData, SideFeeData};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub struct FeeReportStoryState {
     pub you_bf_holder: bool,
@@ -23,7 +23,7 @@ impl Default for FeeReportStoryState {
 pub fn show(ui: &mut egui::Ui, state: &mut FeeReportStoryState) {
     ui.label(
         egui::RichText::new("FeeReport Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -31,7 +31,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FeeReportStoryState) {
             "Per-side fee breakdown for trades. Each side pays 1 ADA unless \
              they hold a Black Flag NFT, in which case their fee is waived.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -99,7 +99,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FeeReportStoryState) {
     // Widget
     ui.allocate_ui(egui::vec2(320.0, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(

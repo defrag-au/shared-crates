@@ -1,6 +1,6 @@
 //! `QuantityStepper` storybook story — clamping, sizing, and disabled edges.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::QuantityStepper;
 
 /// Interactive state for the live steppers.
@@ -23,7 +23,7 @@ impl Default for QuantityStepperStoryState {
 pub fn show(ui: &mut egui::Ui, state: &mut QuantityStepperStoryState) {
     ui.label(
         egui::RichText::new("QuantityStepper")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -32,7 +32,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut QuantityStepperStoryState) {
              value; show() returns the clamped value + whether it changed this \
              frame. Fully local — no async, no re-quote. − disables at min, + at max.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -67,6 +67,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut QuantityStepperStoryState) {
 }
 
 fn section(ui: &mut egui::Ui, label: &str) {
-    ui.label(egui::RichText::new(label).color(ACCENT).strong());
+    ui.label(egui::RichText::new(label).color(accent(ui)).strong());
     ui.add_space(4.0);
 }

@@ -1,4 +1,4 @@
-use crate::ACCENT;
+use crate::accent;
 
 /// Real distribution data from Aliens snapshot.
 fn aliens_bands() -> Vec<egui_widgets::DistBand> {
@@ -34,12 +34,12 @@ fn aliens_bands() -> Vec<egui_widgets::DistBand> {
 pub fn show(ui: &mut egui::Ui, chart: &mut egui_widgets::DistributionChart) {
     ui.label(
         egui::RichText::new("Real Aliens distribution data")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Click chart to toggle aligned / cascading arcs")
-            .color(crate::TEXT_MUTED)
+            .color(crate::muted(ui))
             .small(),
     );
     ui.add_space(8.0);
@@ -81,7 +81,7 @@ pub fn show(ui: &mut egui::Ui, chart: &mut egui_widgets::DistributionChart) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
     ui.label("\u{2022} Outermost ring = Circulating (largest, ~71%)");
     ui.label("\u{2022} Innermost ring = Burned (smallest, ~0.1%)");
     ui.label("\u{2022} Click chart \u{2192} animated toggle between aligned and cascading");

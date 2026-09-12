@@ -3,7 +3,7 @@
 use egui_widgets::route_summary::{self, RouteLeg, RouteSummaryConfig, RouteSummaryData};
 use egui_widgets::split_allocation_bar::dex_color;
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub fn show(ui: &mut egui::Ui) {
     // The DEX series ramp comes from the active theme now, so the fixtures have
@@ -11,7 +11,7 @@ pub fn show(ui: &mut egui::Ui) {
     let t = egui_widgets::theme::ThemeExt::tokens(ui);
     ui.label(
         egui::RichText::new("RouteSummary Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -19,7 +19,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Compact split routing result display. Per-leg breakdown with totals \
              and improvement percentage vs best single pool.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -27,7 +27,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.allocate_ui(egui::vec2(400.0, ui.available_height()), |ui| {
         // Two-way split — Aliens at 1000 ADA
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -71,7 +71,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Three-way split — hypothetical
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -122,7 +122,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Single pool — no split advantage
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(

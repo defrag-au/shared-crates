@@ -20,7 +20,7 @@
 use egui::{pos2, Color32, Pos2, Rect, Vec2};
 
 use crate::stories::aliens_fixture::{COHORTS, SERIES};
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 const SUPPLY: f64 = 1_000_000_000.0;
 
@@ -77,8 +77,8 @@ fn frame(ui: &mut egui::Ui, h: f32) -> Rect {
 
 fn caption(ui: &mut egui::Ui, title: &str, note: &str) {
     ui.add_space(12.0);
-    ui.label(egui::RichText::new(title).color(ACCENT).strong());
-    ui.label(egui::RichText::new(note).color(TEXT_MUTED).small());
+    ui.label(egui::RichText::new(title).color(accent(ui)).strong());
+    ui.label(egui::RichText::new(note).color(muted(ui)).small());
     ui.add_space(2.0);
 }
 
@@ -112,14 +112,14 @@ fn bands(ui: &mut egui::Ui, rect: Rect, xs: &[f32]) {
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("Token kinetic — variants on $Aliens")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new(
             "Supply is CONSERVED MASS moving between reservoirs. 200 points, 2026-02 → 2026-08.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 
@@ -226,7 +226,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.separator();
     ui.label(
         egui::RichText::new("What these are testing:")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label("\u{2022} V1 — do named events rescue the safe form, or just decorate it?");

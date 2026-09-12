@@ -1,4 +1,4 @@
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::wallet_identity_header::{WalletIdentityAction, WalletIdentityHeader};
 
 const SAMPLE_STAKE: &str = "stake1u9pnzqcrvnt6njaqkexglkqtcktxrdc4lt7mdtsxafjzdfsgm5ex2";
@@ -16,7 +16,7 @@ impl Default for WalletIdentityHeaderStoryState {
 pub fn show(ui: &mut egui::Ui, state: &mut WalletIdentityHeaderStoryState) {
     ui.label(
         egui::RichText::new("Wallet Identity Header")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -24,7 +24,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletIdentityHeaderStoryState) {
             "Big handle (when present) or shortened stake address, with a copy button \
              on the right. Used at the top of any wallet-profile view.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -32,7 +32,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletIdentityHeaderStoryState) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("With ADA Handle (most common case)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -47,7 +47,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletIdentityHeaderStoryState) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("No handle — falls back to truncated stake")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -60,7 +60,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletIdentityHeaderStoryState) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("Copy disabled (read-only contexts)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);

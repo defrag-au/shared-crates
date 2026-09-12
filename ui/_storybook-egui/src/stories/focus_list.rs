@@ -2,7 +2,7 @@
 
 use egui_widgets::focus_list::{self, FocusListConfig};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub struct FocusListState {
     pub focus: usize,
@@ -43,16 +43,16 @@ pub fn show(ui: &mut egui::Ui, state: &mut FocusListState) {
                 ui.label(
                     egui::RichText::new(format!("{value} ADA"))
                         .color(if focused {
-                            ACCENT
+                            accent(ui)
                         } else {
-                            egui::Color32::from_rgb(220, 220, 235)
+                            egui_widgets::theme::ThemeExt::tokens(ui).color.text_primary
                         })
                         .size(10.0)
                         .strong(),
                 );
                 ui.label(
                     egui::RichText::new(format!("Demo Asset #{:04}", pos * 37 % 10_000))
-                        .color(TEXT_MUTED)
+                        .color(muted(ui))
                         .size(9.0),
                 );
             },
@@ -71,7 +71,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FocusListState) {
                         "The list above never reflows as the focus moves \u{2014} \
                          only the highlight slides and this pane swaps.",
                     )
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .size(9.0),
                 );
             },

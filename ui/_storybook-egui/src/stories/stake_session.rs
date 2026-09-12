@@ -9,7 +9,7 @@ use egui_widgets::stake_session::{
 };
 use egui_widgets::wallet::{ConnectionState, Network, WalletConnector, WalletProvider};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub struct StakeSessionStoryState {
     pub connector: WalletConnector,
@@ -83,7 +83,7 @@ fn fake_connect(connector: &mut WalletConnector, connected: bool) {
 pub fn show(ui: &mut egui::Ui, state: &mut StakeSessionStoryState) {
     ui.label(
         egui::RichText::new("StakeSessionPanel Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -91,7 +91,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut StakeSessionStoryState) {
             "Connect a wallet, sign a worker's challenge, stay signed in. The panel \
              draws the phase the host holds and returns the click to act on.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -138,7 +138,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut StakeSessionStoryState) {
 
     ui.allocate_ui(egui::vec2(360.0, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -183,12 +183,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut StakeSessionStoryState) {
     ui.add_space(16.0);
     ui.label(
         egui::RichText::new("Inside a right-to-left header row (must read the same)")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .size(11.0),
     );
     ui.add_space(4.0);
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(

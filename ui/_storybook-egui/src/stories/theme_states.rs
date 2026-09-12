@@ -11,7 +11,7 @@
 //! numerically. The story is for seeing it; the test is for keeping it. Add a
 //! row here whenever the theme gains a state, and an assertion there.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui::{Color32, RichText, Stroke};
 
 /// The backgrounds a widget can sit on. Every state below is drawn on each.
@@ -22,27 +22,27 @@ const SURFACES: [(&str, Color32); 3] = [
 ];
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(RichText::new("Theme States").color(ACCENT).strong());
+    ui.label(RichText::new("Theme States").color(accent(ui)).strong());
     ui.label(
         RichText::new(
             "Interaction states on every surface. Contrast bugs hide in selected/hovered/\
              disabled and in the translucent washes under them — a resting-state story cannot \
              show them. Mirrored by assertions in tests/contrast.rs.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
 
     // ── Selectable tabs, the case that shipped broken ──────────────────
-    ui.label(RichText::new("Selectable (tabs)").color(ACCENT).strong());
+    ui.label(RichText::new("Selectable (tabs)").color(accent(ui)).strong());
     ui.label(
         RichText::new(
             "egui's interact_selectable takes the selected label's TEXT colour from \
              visuals.selection.stroke and its fill from visuals.selection.bg_fill — so those two \
              are a foreground/background pair, not a border and a fill.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);
@@ -63,7 +63,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // ── Buttons across states ──────────────────────────────────────────
-    ui.label(RichText::new("Buttons").color(ACCENT).strong());
+    ui.label(RichText::new("Buttons").color(accent(ui)).strong());
     ui.add_space(6.0);
     for (name, surface) in SURFACES {
         surface_row(ui, name, surface, |ui| {
@@ -92,14 +92,14 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // ── The selection wash, isolated ───────────────────────────────────
-    ui.label(RichText::new("Selection wash").color(ACCENT).strong());
+    ui.label(RichText::new("Selection wash").color(accent(ui)).strong());
     ui.label(
         RichText::new(
             "Color32 stores PREMULTIPLIED channels: each must be <= alpha. from_rgba_premultiplied \
              with larger channels blends additively and renders far lighter than the tint intended \
              — the original cause of the unreadable tab.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);
@@ -118,7 +118,7 @@ pub fn show(ui: &mut egui::Ui) {
                     egui::TextStyle::Body.resolve(ui.style()),
                     sel.stroke.color,
                 );
-                ui.label(RichText::new(name).color(TEXT_MUTED).small());
+                ui.label(RichText::new(name).color(muted(ui)).small());
             });
         }
     });
@@ -138,7 +138,7 @@ fn surface_row(
         .corner_radius(4.0)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(name).color(TEXT_MUTED).small());
+                ui.label(RichText::new(name).color(muted(ui)).small());
                 ui.add_space(8.0);
                 contents(ui);
             });

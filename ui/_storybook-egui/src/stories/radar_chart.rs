@@ -2,7 +2,7 @@
 
 use egui_widgets::radar_chart::{RadarChartConfig, RadarPoint};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 // ============================================================================
 // State
@@ -197,9 +197,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut RadarChartState) {
         ui.label("Preset:");
         for (i, name) in PRESET_NAMES.iter().enumerate() {
             let text = if state.preset == i {
-                egui::RichText::new(*name).color(ACCENT).strong()
+                egui::RichText::new(*name).color(accent(ui)).strong()
             } else {
-                egui::RichText::new(*name).color(TEXT_MUTED)
+                egui::RichText::new(*name).color(muted(ui))
             };
             if ui.selectable_label(state.preset == i, text).clicked() {
                 state.preset = i;
@@ -223,7 +223,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut RadarChartState) {
     ui.add_space(12.0);
 
     // Legend showing the data values
-    ui.label(egui::RichText::new("Data points:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Data points:").color(accent(ui)).strong());
     for p in &points {
         let val_str = match p.value {
             Some(v) => format!("{:.0}%", v * 100.0),
@@ -232,9 +232,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut RadarChartState) {
         ui.label(
             egui::RichText::new(format!("  {}: {val_str}", p.label))
                 .color(if p.value.is_some() {
-                    egui::Color32::from_rgb(220, 220, 235)
+                    egui_widgets::theme::ThemeExt::tokens(ui).color.text_primary
                 } else {
-                    TEXT_MUTED
+                    muted(ui)
                 })
                 .small(),
         );

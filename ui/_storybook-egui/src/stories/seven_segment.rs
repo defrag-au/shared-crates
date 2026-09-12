@@ -1,4 +1,4 @@
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// Mutable state for the seven-segment demo.
 pub struct SevenSegmentState {
@@ -21,12 +21,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     // --- Basic display ---
     ui.label(
         egui::RichText::new("Integer Counter")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Clean seven-segment digits for point counters and holder counts")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(8.0);
@@ -36,10 +36,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     ui.add_space(16.0);
 
     // --- Time display ---
-    ui.label(egui::RichText::new("Time Display").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Time Display").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new("Colon separator for countdown timers and durations")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -52,7 +52,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     ui.add_space(16.0);
 
     // --- Color variants ---
-    ui.label(egui::RichText::new("Color Variants").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Color Variants").color(accent(ui)).strong());
     ui.add_space(4.0);
 
     egui_widgets::SevenSegmentDisplay::new("1247")
@@ -75,10 +75,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     ui.add_space(16.0);
 
     // --- Animated counter ---
-    ui.label(egui::RichText::new("Live Counter").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Live Counter").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new("Simulates accrual ticking up at 5.2 per second")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -119,7 +119,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     // --- Large scoreboard ---
     ui.label(
         egui::RichText::new("Large Scoreboard")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -133,7 +133,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
     ui.label("- Digits 0-9 render with correct segments lit");
     ui.label("- Colons render as two stacked square dots");
     ui.label("- Minus sign renders as middle segment only");

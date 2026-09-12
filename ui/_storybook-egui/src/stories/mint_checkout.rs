@@ -1,6 +1,6 @@
 //! `MintCheckout` storybook story — every state of the buyer mint panel.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::{
     BundleOffer, CheckoutState, Eligibility, MintCheckout, MintCheckoutAction, MintCheckoutVm,
 };
@@ -19,7 +19,7 @@ impl Default for MintCheckoutStoryState {
 const UNIT: u64 = 100_000_000; // 100 ADA
 
 pub fn show(ui: &mut egui::Ui, state: &mut MintCheckoutStoryState) {
-    ui.label(egui::RichText::new("MintCheckout").color(ACCENT).strong());
+    ui.label(egui::RichText::new("MintCheckout").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Buyer-facing mint offer + CTA as one composed widget — phase + \
@@ -29,7 +29,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut MintCheckoutStoryState) {
              QtyChanged / Mint / SelectBundle actions. Hosts never hand-roll \
              (and mis-nest) this layout.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -145,7 +145,7 @@ fn base_vm(qty: u32, state: CheckoutState) -> MintCheckoutVm {
 }
 
 fn section(ui: &mut egui::Ui, label: &str) {
-    ui.label(egui::RichText::new(label).color(ACCENT).strong());
+    ui.label(egui::RichText::new(label).color(accent(ui)).strong());
     ui.add_space(4.0);
 }
 

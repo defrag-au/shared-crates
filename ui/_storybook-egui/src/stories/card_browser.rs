@@ -9,7 +9,7 @@ use egui_widgets::card_browser::{self, CardBrowserConfig, CardBrowserState};
 use egui_widgets::theme::Space;
 use image_core::ImageSize;
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 const POLICY_ID: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
 
@@ -393,7 +393,7 @@ fn render_card_text(ui: &mut egui::Ui, ctx: &card_browser::CardRenderContext, it
         egui::Align2::LEFT_TOP,
         &item.subtitle,
         egui::FontId::proportional(9.0),
-        TEXT_MUTED,
+        muted(ui),
     );
 
     // Price (if any)
@@ -448,9 +448,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
         ui.label("Preset:");
         for (i, name) in PRESET_NAMES.iter().enumerate() {
             let text = if state.preset == i {
-                egui::RichText::new(*name).color(ACCENT).strong()
+                egui::RichText::new(*name).color(accent(ui)).strong()
             } else {
-                egui::RichText::new(*name).color(TEXT_MUTED)
+                egui::RichText::new(*name).color(muted(ui))
             };
             if ui.selectable_label(state.preset == i, text).clicked() {
                 state.preset = i;
@@ -495,7 +495,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
     // Show computed card height
     ui.label(
         egui::RichText::new(format!("Card height: {:.0}px (auto)", config.card_height()))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .size(10.0),
     );
 
@@ -567,7 +567,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new(format!("{key}:"))
-                            .color(TEXT_MUTED)
+                            .color(muted(ui))
                             .size(11.0),
                     );
                     ui.label(
@@ -591,7 +591,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
     );
 
     ui.add_space(12.0);
-    ui.label(egui::RichText::new("Features:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Features:").color(accent(ui)).strong());
     let features = [
         "Real IIIF thumbnails from Hodlcroft Pirates collection",
         "AssetCard 3D: tilt, holographic effects, spark streaks in CardBrowser",

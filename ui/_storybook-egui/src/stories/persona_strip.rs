@@ -1,14 +1,14 @@
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::persona_strip::PersonaStrip;
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Persona Strip").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Persona Strip").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Italic one-liner + optional chip row. Persona summaries (wallet, collection, \
              holder) all follow this shape — a deterministic phrase derived from tags.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -16,7 +16,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("Headline only — wallet-viewer's current shape")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -26,7 +26,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("Headline + chips — same data with structured tags")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -38,7 +38,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("Many chips — wraps onto multiple rows")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -58,7 +58,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("Empty headline, just chips")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);

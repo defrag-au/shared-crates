@@ -3,6 +3,8 @@
 use egui_widgets::relationship_editor::RelationshipEditor;
 use egui_widgets::theme;
 
+use crate::{accent, muted};
+
 pub struct RelationshipEditorState {
     pub options: Vec<String>,
     pub edges: Vec<(String, String)>,
@@ -29,7 +31,7 @@ impl Default for RelationshipEditorState {
 pub fn show(ui: &mut egui::Ui, state: &mut RelationshipEditorState) {
     ui.label(
         egui::RichText::new("Relationship Editor")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -38,7 +40,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut RelationshipEditorState) {
              variant_flow / dependencies / slot-locks in the config editor (and \
              becomes the wires in the node-graph view).",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);

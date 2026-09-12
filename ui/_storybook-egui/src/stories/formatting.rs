@@ -1,14 +1,14 @@
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("Formatting Utilities")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Shared formatters in egui_widgets::utils for numbers, ADA, percentages, durations, and hex truncation")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(12.0);
@@ -16,12 +16,12 @@ pub fn show(ui: &mut egui::Ui) {
     // --- ADA formatting ---
     ui.label(
         egui::RichText::new("format_ada / format_lovelace")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Lovelace to ADA with comma separators. Decimals only when non-zero.")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -41,11 +41,11 @@ pub fn show(ui: &mut egui::Ui) {
         .num_columns(3)
         .spacing([20.0, 4.0])
         .show(ui, |ui| {
-            ui.label(egui::RichText::new("Lovelace").color(TEXT_MUTED).small());
-            ui.label(egui::RichText::new("format_ada").color(TEXT_MUTED).small());
+            ui.label(egui::RichText::new("Lovelace").color(muted(ui)).small());
+            ui.label(egui::RichText::new("format_ada").color(muted(ui)).small());
             ui.label(
                 egui::RichText::new("format_lovelace")
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .small(),
             );
             ui.end_row();
@@ -72,10 +72,10 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // --- Percentage formatting ---
-    ui.label(egui::RichText::new("format_percent").color(ACCENT).strong());
+    ui.label(egui::RichText::new("format_percent").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new("Drops unnecessary trailing zeros")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -93,8 +93,8 @@ pub fn show(ui: &mut egui::Ui) {
         .num_columns(2)
         .spacing([20.0, 4.0])
         .show(ui, |ui| {
-            ui.label(egui::RichText::new("Input").color(TEXT_MUTED).small());
-            ui.label(egui::RichText::new("Output").color(TEXT_MUTED).small());
+            ui.label(egui::RichText::new("Input").color(muted(ui)).small());
+            ui.label(egui::RichText::new("Output").color(muted(ui)).small());
             ui.end_row();
 
             for (input, expected) in pct_cases {
@@ -117,10 +117,10 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // --- Number formatting ---
-    ui.label(egui::RichText::new("format_number").color(ACCENT).strong());
+    ui.label(egui::RichText::new("format_number").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new("Integer with comma separators")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -159,12 +159,12 @@ pub fn show(ui: &mut egui::Ui) {
     // --- Duration formatting ---
     ui.label(
         egui::RichText::new("format_duration")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Seconds to human-readable duration")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -202,12 +202,12 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // --- RelativeTime widget ---
-    ui.label(egui::RichText::new("RelativeTime").color(ACCENT).strong());
+    ui.label(egui::RichText::new("RelativeTime").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Auto-scaling \"time ago\" — steps s \u{2192} m \u{2192} h \u{2192} d \u{2192} w (vs a raw \"3480s ago\")",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -223,7 +223,7 @@ pub fn show(ui: &mut egui::Ui) {
                 ui.label(
                     egui::RichText::new(format!("now - {delta}s"))
                         .family(egui::FontFamily::Monospace)
-                        .color(TEXT_MUTED),
+                        .color(muted(ui)),
                 );
                 ui.add(egui_widgets::RelativeTime::new(now - delta).now(now));
                 ui.end_row();
@@ -233,10 +233,10 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // --- Hex truncation ---
-    ui.label(egui::RichText::new("truncate_hex").color(ACCENT).strong());
+    ui.label(egui::RichText::new("truncate_hex").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new("Shorten hex strings with ellipsis")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);

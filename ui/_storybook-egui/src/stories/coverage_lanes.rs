@@ -14,7 +14,7 @@
 //! Second read: `miner-06` dies on day 5 and never comes back. You find it by
 //! the shape of its lane against its neighbours, not by reading fifteen rows.
 
-use crate::TEXT_MUTED;
+use crate::muted;
 use egui_widgets::{
     coverage_tint, Coverage, CoverageLane, CoverageLanes, Run, Selection, SpineState, TimeSpine,
 };
@@ -195,14 +195,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut CoverageLanesState) {
     ui.horizontal(|ui| {
         match w.uptime() {
             Some(u) => ui.label(format!("uptime {:.1}%", u * 100.0)),
-            None => ui.colored_label(TEXT_MUTED, "uptime — nothing observed"),
+            None => ui.colored_label(muted(ui), "uptime — nothing observed"),
         };
-        ui.colored_label(TEXT_MUTED, "·");
+        ui.colored_label(muted(ui), "·");
         // Uptime divides by observed time, so it has to travel with the share
         // of the window nobody watched — otherwise 100% over one good hour
         // reads the same as 100% over a month.
         ui.colored_label(
-            TEXT_MUTED,
+            muted(ui),
             format!("blind {:.1}% of window", w.blind_spot() * 100.0),
         );
     });
@@ -211,6 +211,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut CoverageLanesState) {
 fn legend_swatch(ui: &mut egui::Ui, col: egui::Color32, label: &str) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(9.0, 9.0), egui::Sense::hover());
     ui.painter().rect_filled(rect, 1.0, col);
-    ui.colored_label(TEXT_MUTED, label);
+    ui.colored_label(muted(ui), label);
     ui.add_space(6.0);
 }

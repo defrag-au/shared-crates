@@ -1,33 +1,33 @@
 //! `PartyBadge` story — the three bases, the unsourced-assertion warning, and
 //! what an un-annotated party looks like.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::{PartyBadge, PartyBasis};
 
 const CLUSTER_PROJECT: egui::Color32 = egui::Color32::from_rgb(0x5b, 0x8f, 0xd6);
 const CLUSTER_OFFRAMP: egui::Color32 = egui::Color32::from_rgb(0xd6, 0x9b, 0x5b);
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Party Badge").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Party Badge").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "A counterparty plus how firmly its identity is known. The basis is a positional \
              argument on `new` — a call site cannot render a party without stating it.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
 
     // ── The three bases ────────────────────────────────────────────────
-    ui.label(egui::RichText::new("Basis").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Basis").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Shape-coded, not colour-coded, so it survives both themes and colour-vision \
              differences. Filled = observed, half = derived, hollow = asserted. Hover any \
              badge for the basis and source.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -50,7 +50,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── The failure this widget exists to prevent ──────────────────────
     ui.label(
         egui::RichText::new("Unsourced assertion")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -59,7 +59,7 @@ pub fn show(ui: &mut egui::Ui) {
              warning-coloured marker. This is the state that let a figure someone supplied in \
              conversation harden into an established fact in a published write-up.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -75,7 +75,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── Clusters + shape markers ───────────────────────────────────────
     ui.label(
         egui::RichText::new("Clusters and address shape")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -84,7 +84,7 @@ pub fn show(ui: &mut egui::Ui) {
              with Chip or read as a status. `no-stake` marks an address with no staking \
              credential — a shape, never a claim about where the money went.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -107,7 +107,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── Un-annotated ───────────────────────────────────────────────────
     ui.label(
         egui::RichText::new("Not yet labelled")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -115,7 +115,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Renders the middle-elided key in monospace. An un-annotated wallet must never \
              look like a named one — the absence of a label is information.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);

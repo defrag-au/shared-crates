@@ -3,7 +3,7 @@
 use egui_widgets::slippage_selector::{self, SlippageSelectorConfig, SlippageSelectorState};
 use egui_widgets::theme::Token;
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub struct SlippageSelectorStoryState {
     pub default_state: SlippageSelectorState,
@@ -24,14 +24,14 @@ impl Default for SlippageSelectorStoryState {
 pub fn show(ui: &mut egui::Ui, state: &mut SlippageSelectorStoryState) {
     ui.label(
         egui::RichText::new("SlippageSelector Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new(
             "Preset buttons + custom input mode. Shows warnings for unusually high or low slippage.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -39,7 +39,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SlippageSelectorStoryState) {
     ui.allocate_ui(egui::vec2(450.0, ui.available_height()), |ui| {
         // Default config
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -66,7 +66,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SlippageSelectorStoryState) {
 
         // Custom presets with different accent
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -117,12 +117,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut SlippageSelectorStoryState) {
     ui.add_space(12.0);
     ui.label(
         egui::RichText::new(format!("Last action: {}", state.last_action))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .size(10.0),
     );
 
     ui.add_space(8.0);
-    ui.label(egui::RichText::new("Tips:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Tips:").color(accent(ui)).strong());
     ui.label("\u{2022} Click Custom then type a value to see custom input mode");
     ui.label("\u{2022} Try very low (<0.3%) or very high (>5%) values for warnings");
 

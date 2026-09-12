@@ -10,7 +10,7 @@ use egui_widgets::asset_card::{
     TiltState, EFFECT_NAMES, RARITY_NAMES, rarity_colors,
 };
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// IIIF test image: Pirate758 NFT (1:1 aspect)
 const IIIF_ART_URL: &str = "https://iiif.hodlcroft.com/iiif/3/b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6:506972617465373538/full/400,/0/default.jpg";
@@ -437,7 +437,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
             let text = if state.rarity == i {
                 egui::RichText::new(*name).color(tier_colors[i]).strong()
             } else {
-                egui::RichText::new(*name).color(TEXT_MUTED)
+                egui::RichText::new(*name).color(muted(ui))
             };
             if ui.selectable_label(state.rarity == i, text).clicked() {
                 state.rarity = i;
@@ -663,17 +663,17 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
     };
     ui.label(
         egui::RichText::new(format!("Art: {art_status}"))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("1. Square Tile").color(ACCENT).strong());
+    ui.label(egui::RichText::new("1. Square Tile").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Natural 1:1 fit. Art-first with right-edge stats and holographic foil.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -692,12 +692,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
     );
     ui.add_space(16.0);
 
-    ui.label(egui::RichText::new("2. Hex Tile").color(ACCENT).strong());
+    ui.label(egui::RichText::new("2. Hex Tile").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Pointy-top hexagon. Tessellates for game boards. Holographic foil on Rare+.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -718,14 +718,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
 
     ui.label(
         egui::RichText::new("3. Rounded Square")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new(
             "Modern app-icon aesthetic. Generous corner radius with holographic foil.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -748,7 +748,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
     ui.add_space(8.0);
     ui.label(
         egui::RichText::new("Key observations:")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label("- Square: best art utilisation, familiar grid layout");

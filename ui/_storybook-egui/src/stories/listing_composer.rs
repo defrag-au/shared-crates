@@ -14,7 +14,7 @@ use egui_widgets::listing_composer::{
     ListingComposerState,
 };
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub struct ListingComposerStoryState {
     pub composer: ListingComposerState,
@@ -57,7 +57,7 @@ impl Default for ListingComposerStoryState {
 pub fn show(ui: &mut egui::Ui, state: &mut ListingComposerStoryState) {
     ui.label(
         egui::RichText::new("ListingComposer Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -66,13 +66,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut ListingComposerStoryState) {
              seller's payout per row. The 10 ₳ row pays the fee floor, not 5%; the 1.5 ₳ \
              row is below the host's minimum; the unpriced row blocks the build.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
 
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Fee %").color(TEXT_MUTED).size(11.0));
+        ui.label(egui::RichText::new("Fee %").color(muted(ui)).size(11.0));
         let mut pct = match state.config.formula {
             FeeFormula::GrossPercent { pct } => pct,
             FeeFormula::JpgV2 => 2,
@@ -125,7 +125,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ListingComposerStoryState) {
                 &state.last_action
             }
         ))
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
 }

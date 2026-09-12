@@ -29,7 +29,7 @@
 //!   pops far harder against the former, and that difference — not the geometry
 //!   — may be most of why the rendered version looked stronger.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::image_loader::{iiif_asset_url, AssetImageSize};
 use egui_widgets::image_stack::{ImageStack, ImageStackStyle, StackImage};
 use egui_widgets::theme;
@@ -65,14 +65,14 @@ impl Default for ImageStackState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
-    ui.label(egui::RichText::new("Image Stack").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Image Stack").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Several images as a fanned pile of mounted prints — so a lot of many reads as a lot \
              of many. Every proportion is a slider; drag until it looks right, then write the \
              numbers into ImageStackStyle::default().",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -192,7 +192,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
                 ))
                 .monospace()
                 .small()
-                .color(TEXT_MUTED),
+                .color(muted(ui)),
             );
         });
     });
@@ -207,7 +207,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
     // thumbnail.
     ui.label(
         egui::RichText::new("The same pile at the three card densities")
-            .color(ACCENT)
+            .color(accent(ui))
             .small()
             .strong(),
     );
@@ -216,7 +216,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
             "Row / Feature / Poster, at the current style. All three fan — the row below is the \
              evidence that 30px survives it at the tuned defaults.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(10.0);
@@ -235,7 +235,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
                 ("Poster (130)", 130.0, true),
             ] {
                 ui.vertical(|ui| {
-                    ui.label(egui::RichText::new(label).color(TEXT_MUTED).small());
+                    ui.label(egui::RichText::new(label).color(muted(ui)).small());
                     ui.add_space(4.0);
                     ImageStack::new(&images)
                         .size(size)
@@ -253,7 +253,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
     // `fan(false)` is the right call at that scale, rather than assuming it.
     ui.label(
         egui::RichText::new("Row scale: fanned vs single, side by side")
-            .color(ACCENT)
+            .color(accent(ui))
             .small()
             .strong(),
     );
@@ -264,7 +264,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
         |ui| {
             for (label, fan) in [("fanned", true), ("single", false)] {
                 ui.vertical(|ui| {
-                    ui.label(egui::RichText::new(label).color(TEXT_MUTED).small());
+                    ui.label(egui::RichText::new(label).color(muted(ui)).small());
                     ui.add_space(4.0);
                     ImageStack::new(&images)
                         .size(30.0)

@@ -2,6 +2,8 @@
 //! show as removable chips, an "add" menu offers the rest.
 
 use egui_widgets::theme;
+
+use crate::{accent, muted};
 use egui_widgets::token_multiselect::TokenMultiselect;
 
 pub struct TokenMultiselectState {
@@ -32,7 +34,7 @@ impl Default for TokenMultiselectState {
 pub fn show(ui: &mut egui::Ui, state: &mut TokenMultiselectState) {
     ui.label(
         egui::RichText::new("Token Multiselect")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -41,7 +43,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TokenMultiselectState) {
              removable chips (wraps cleanly), and an \"add\" menu lists the rest. \
              Foundation for group/member/required-slot pickers in the config editor.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);

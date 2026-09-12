@@ -10,7 +10,7 @@ use std::sync::Arc;
 use egui::epaint::{Mesh, TextShape, Vertex};
 use egui::{Color32, FontId, Pos2, Rect, Vec2};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 const WHITE_UV: Pos2 = Pos2::new(0.0, 0.0);
 
@@ -52,7 +52,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
     // --- 1. Y-Scale (vertical compression) ---
     ui.label(
         egui::RichText::new("1. Vertical Scale")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -60,7 +60,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
             "Galley mesh vertices scaled on Y axis toward center. \
              Simulates viewing text at an angle.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -106,7 +106,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
     // --- 2. Wave distortion ---
     ui.label(
         egui::RichText::new("2. Wave Distortion")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -114,7 +114,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
             "Each vertex Y offset by sin(x). Demonstrates per-vertex manipulation \
              on actual glyph geometry.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -154,7 +154,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
     // --- 3. Perspective flip — unified card + text surface ---
     ui.label(
         egui::RichText::new("3. Perspective Flip (Unified Surface)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -164,7 +164,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
              coordinate space via raw Shape::mesh(). No TextShape — card and \
              glyphs share the same perspective transform.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -312,7 +312,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
     // --- 4. Vertex colour tinting ---
     ui.label(
         egui::RichText::new("4. Vertex Colour Tinting")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -320,7 +320,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
             "Modifying vertex.color on text glyphs for gradient text effects. \
              GPU interpolates colour across each glyph's triangles.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -358,7 +358,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
     // --- 5. Split-Flap Card (flip counter simulation) ---
     ui.label(
         egui::RichText::new("5. Split-Flap Card")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -368,7 +368,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
              Phase 2: bottom flap unfolds downward. Text on each flap is \
              bilinearly mapped into the perspective trapezoid.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -599,12 +599,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
         let eased = 1.0 - (1.0 - phase_t) * (1.0 - phase_t);
         format!("Phase 2: bottom flap unfolding ({:.0}°)", eased * 90.0)
     };
-    ui.label(egui::RichText::new(phase_text).color(TEXT_MUTED).small());
+    ui.label(egui::RichText::new(phase_text).color(muted(ui)).small());
 
     ui.add_space(24.0);
     ui.separator();
     ui.add_space(8.0);
-    ui.label(egui::RichText::new("Key patterns:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Key patterns:").color(accent(ui)).strong());
     ui.label("- Galley mesh: galley.rows[i].row.visuals.mesh.vertices");
     ui.label("- Mutable access: Arc::make_mut(&mut galley).rows → Arc::make_mut(&mut row)");
     ui.label("- TextShape: modify vertices in-place, draw at a screen position");

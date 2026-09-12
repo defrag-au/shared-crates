@@ -155,7 +155,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ListingGridState) {
             state.cart.len()
         ))
         .size(11.0)
-        .color(egui_widgets::theme::TEXT_MUTED),
+        .color(crate::muted(ui)),
     );
     ui.add_space(6.0);
 
@@ -190,7 +190,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ListingGridState) {
         ui.label(
             egui::RichText::new("Hover a card — buyable ones offer a +; blocked ones say why")
                 .size(11.0)
-                .color(egui_widgets::theme::TEXT_MUTED),
+                .color(crate::muted(ui)),
         );
     }
 }

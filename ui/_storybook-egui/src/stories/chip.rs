@@ -1,22 +1,22 @@
 //! `Chip` storybook story — every variant + the removable affordance.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::{Chip, ChipVariant};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Chip").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Chip").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Small filled-tag label with optional × remove. Semantic variants pick a palette \
              so the call site says what the chip means rather than which colour to use.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
 
     // ── Every variant in one row ───────────────────────────────────────
-    ui.label(egui::RichText::new("Variants").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Variants").color(accent(ui)).strong());
     ui.add_space(4.0);
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
@@ -33,7 +33,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── Removable (gate chip use case) ─────────────────────────────────
     ui.label(
         egui::RichText::new("Removable (gate chips)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -41,7 +41,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Removable chips emit `removed = true` on the × click. \
              The host drops the row from its model.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -66,7 +66,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── Tooltip + upper-case ───────────────────────────────────────────
     ui.label(
         egui::RichText::new("Tooltip + upper-case")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -74,7 +74,7 @@ pub fn show(ui: &mut egui::Ui) {
             "`upper_case(true)` matches the old `status_chip` rendering. \
              `on_hover_text` attaches a tooltip — hover the chip below.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -105,7 +105,7 @@ pub fn show(ui: &mut egui::Ui) {
              the body being hit either way. Click the chip — the counter proves the \
              response is live, which it was NOT before the frame started sensing clicks.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -124,7 +124,7 @@ pub fn show(ui: &mut egui::Ui) {
         ui.label(
             egui::RichText::new(format!("clicked {clicks}×"))
                 .small()
-                .color(TEXT_MUTED),
+                .color(muted(ui)),
         );
     });
     ui.data_mut(|d| d.insert_temp(id, clicks));

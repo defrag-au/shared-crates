@@ -18,7 +18,7 @@
 //! were no tags to show instead. Click a party and the response reports
 //! `walk`, not `clicked`.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::{ActivityAsset, ActivityEntry, ActivityFeed, ActivityTag, ChipVariant};
 
 fn ada(v: i128) -> String {
@@ -26,13 +26,13 @@ fn ada(v: i128) -> String {
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Activity Feed").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Activity Feed").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "A wallet's transactions as day-grouped cards: what it was, what moved, what it \
              cost. Assets are named, never counted — \"+2 items\" is the thing this replaces.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -179,19 +179,19 @@ pub fn show(ui: &mut egui::Ui) {
         // set — showing them as one line keeps that visible.
         (_, Some(i)) => ui.label(
             egui::RichText::new(format!("walk to the party on card {i}"))
-                .color(ACCENT)
+                .color(accent(ui))
                 .small(),
         ),
         (Some(i), None) => ui.label(
             egui::RichText::new(format!("clicked card {i}"))
-                .color(ACCENT)
+                .color(accent(ui))
                 .small(),
         ),
         (None, None) => ui.label(
             egui::RichText::new(
                 "cards are clickable — hover for the tx id, or click a party to walk to it",
             )
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
         ),
     };

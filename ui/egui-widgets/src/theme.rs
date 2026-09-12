@@ -1340,6 +1340,26 @@ impl MotionTokens {
     pub fn travel_allowed(&self) -> bool {
         self.mode == MotionMode::Full
     }
+
+    /// The easing curve to actually use, given the mode.
+    ///
+    /// [`MotionMode::Reduced`] is documented as "cross-fades survive; travel and
+    /// **overshoot** do not". Duration and travel were enforceable already;
+    /// overshoot was not, so a reduced-motion reader still got the one curve
+    /// that deliberately moves past its target and comes back —
+    /// [`Easing::OutBack`] — just faster. Routing every easing choice through
+    /// here is what makes the promise true.
+    pub fn easing(&self, easing: crate::motion::Easing) -> crate::motion::Easing {
+        use crate::motion::Easing;
+        match (self.mode, easing) {
+            (MotionMode::Full, e) => e,
+            // The nearest curve with the same "settle" character and no
+            // overshoot, so the motion still reads as landing rather than
+            // stopping dead.
+            (_, Easing::OutBack) => Easing::OutCubic,
+            (_, e) => e,
+        }
+    }
 }
 
 // ============================================================================
@@ -1628,6 +1648,39 @@ pub trait ThemeExt {
     /// reasoning as [`ThemeExt::tokens`] itself.
     fn text_size(&self, size: TextSize) -> f32 {
         self.tokens().text_size(size)
+    }
+
+    /// How long a transition at `speed` should take, in seconds, with the
+    /// theme's [`MotionMode`] already applied.
+    ///
+    /// This is the whole point of the motion axis: a widget asks for a *speed*
+    /// and never sees a duration it has to reason about. Passing a literal
+    /// `0.3` instead — which is what every animated widget in this crate used
+    /// to do — puts that widget beyond the reach of both the theme and the
+    /// reduced-motion setting, and no test can tell, because a hardcoded
+    /// duration animates perfectly well.
+    ///
+    /// Returns `0.0` under [`MotionMode::None`], which the tween helpers treat
+    /// as "snap", so screenshot mode needs no branch at the call site.
+    fn duration(&self, speed: Speed) -> f32 {
+        self.tokens().motion.duration(speed)
+    }
+
+    /// Whether positional travel is permitted.
+    ///
+    /// Gate anything that MOVES on this — a dot flying in, a panel sliding.
+    /// Cross-fades and opacity are fine under reduced motion and should not be
+    /// gated; see [`MotionTokens::travel_allowed`].
+    fn travel_allowed(&self) -> bool {
+        self.tokens().motion.travel_allowed()
+    }
+
+    /// The easing to use, degraded for the active [`MotionMode`].
+    ///
+    /// Pair with [`Self::duration`] at every tween call site:
+    /// `tween(ctx, id, target, ui.duration(Speed::Normal), ui.easing(Easing::OutBack))`.
+    fn easing(&self, easing: crate::motion::Easing) -> crate::motion::Easing {
+        self.tokens().motion.easing(easing)
     }
 }
 

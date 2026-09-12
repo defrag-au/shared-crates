@@ -11,17 +11,17 @@
 
 use egui_widgets::{AboutModal, AboutPoint, PhosphorIcon};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("About Modal").color(ACCENT).strong());
+    ui.label(egui::RichText::new("About Modal").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "What a product is, what state it is in, and what to expect from it. \
              Opened from the BETA badge — a badge alone is decoration readers skip, \
              so the caveats it stands for never land.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);

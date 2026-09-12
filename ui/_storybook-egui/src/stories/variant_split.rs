@@ -2,7 +2,7 @@
 
 use egui_widgets::variant_split::{self, VariantSegment, VariantSplitConfig};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 /// Takes the theme because the variant ramp is a theme decision now, and a
 /// fixture builder has no `Ui` of its own.
@@ -23,7 +23,7 @@ fn seg(
 
 fn card(ui: &mut egui::Ui, title: &str, slot: &str, segments: &[VariantSegment]) {
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
@@ -48,7 +48,7 @@ pub fn show(ui: &mut egui::Ui) {
     let t = egui_widgets::theme::ThemeExt::tokens(ui);
     ui.label(
         egui::RichText::new("VariantSplit Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -57,7 +57,7 @@ pub fn show(ui: &mut egui::Ui) {
              share is weighted by downstream asset capacity, so the split isn't uniform. \
              Dotted ticks mark the naive uniform baseline; the gap is the cardinality skew.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);

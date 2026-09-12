@@ -8,6 +8,8 @@
 use egui_widgets::select::{MultiSelect, Select, SelectOption};
 use egui_widgets::theme;
 
+use crate::{accent, muted};
+
 /// Note what is NOT in here: any `SelectState`. The control keeps its own
 /// open/filter state in egui temp memory, so a host holds only the VALUES —
 /// which is what made putting one in a loop practical.
@@ -62,7 +64,7 @@ fn providers() -> Vec<SelectOption> {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
-    ui.label(egui::RichText::new("Select").color(theme::ACCENT).strong());
+    ui.label(egui::RichText::new("Select").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "One bordered control — value, clear, separator, chevron — with a floating \
@@ -70,10 +72,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
              filter, ↑↓ to move, Enter to choose, Esc to close.",
         )
         .small()
-        .color(theme::TEXT_MUTED),
+        .color(muted(ui)),
     );
     if !state.last.is_empty() {
-        ui.colored_label(theme::TEXT_MUTED, &state.last);
+        ui.colored_label(muted(ui), &state.last);
     }
     ui.add_space(12.0);
 
@@ -84,7 +86,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
             "Muted placeholder, no clear affordance until there is something to clear.",
         )
         .small()
-        .color(theme::TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(4.0);
     let roles = state.roles.clone();
@@ -111,7 +113,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
             "A row can carry a second line — enough for a model name, not a table.",
         )
         .small()
-        .color(theme::TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(4.0);
     let provider_options = providers();
@@ -139,7 +141,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
              id renders flagged rather than blank.",
         )
         .small()
-        .color(theme::TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(6.0);
 
@@ -168,7 +170,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
                     cleared = Some(index);
                 }
                 ui.label("500,000");
-                ui.colored_label(theme::TEXT_MUTED, "tokens/day");
+                ui.colored_label(muted(ui), "tokens/day");
                 ui.end_row();
             }
         });
@@ -190,7 +192,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
              selects above reaches the same state.)",
         )
         .small()
-        .color(theme::TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(4.0);
     Select::new("empty", &[])
@@ -208,7 +210,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
              run of picks; Backspace on an empty filter removes the last chip.",
         )
         .small()
-        .color(theme::TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(6.0);
 

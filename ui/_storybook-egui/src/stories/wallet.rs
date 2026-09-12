@@ -1,4 +1,4 @@
-use crate::TEXT_MUTED;
+use crate::muted;
 
 pub fn show(
     ui: &mut egui::Ui,
@@ -12,7 +12,7 @@ pub fn show(
     if connector.available_wallets.is_empty() {
         ui.label(
             egui::RichText::new("No wallet extensions found. Install Eternl, Lace, etc.")
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .small(),
         );
     }
@@ -52,7 +52,7 @@ pub fn show(
     if let Some(ref addr) = connector.stake_address {
         ui.label(
             egui::RichText::new(format!("Stake: {addr}"))
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .small(),
         );
     }

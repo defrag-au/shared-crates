@@ -1,7 +1,7 @@
 //! `ClaimCard` story — four real claims from the investigation this widget came
 //! out of, one in each state, with a live expand toggle.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::{ClaimCard, ClaimSupport, FalsifierStatus, PartyBasis};
 
 #[derive(Default)]
@@ -10,11 +10,11 @@ pub struct ClaimCardState {
 }
 
 fn note(ui: &mut egui::Ui, text: &str) {
-    ui.label(egui::RichText::new(text).color(TEXT_MUTED).small());
+    ui.label(egui::RichText::new(text).color(muted(ui)).small());
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut ClaimCardState) {
-    ui.label(egui::RichText::new("Claim Card").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Claim Card").color(accent(ui)).strong());
     note(
         ui,
         "Scannable first: the three-pip track is stated → falsifiable → tested. Click any card \

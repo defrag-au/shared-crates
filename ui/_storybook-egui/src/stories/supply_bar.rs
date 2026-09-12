@@ -4,16 +4,16 @@
 
 use egui_widgets::SupplyBar;
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Supply Bar").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Supply Bar").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Two bands: minted (fulfilled, left) then the ordered backlog, over the \
              unsold track. Oversubscription is tinted, not silently clamped.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(10.0);
@@ -48,7 +48,7 @@ pub fn show(ui: &mut egui::Ui) {
                 ui.label(
                     egui::RichText::new(format!("{minted} / {total}  ({pct:.0}%)"))
                         .small()
-                        .color(TEXT_MUTED),
+                        .color(muted(ui)),
                 );
             });
         });

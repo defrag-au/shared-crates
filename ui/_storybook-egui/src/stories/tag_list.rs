@@ -3,6 +3,8 @@
 use egui_widgets::tag_list::TagList;
 use egui_widgets::theme;
 
+use crate::{accent, muted};
+
 pub struct TagListState {
     pub tags: Vec<String>,
 }
@@ -25,7 +27,7 @@ impl Default for TagListState {
 pub fn show(ui: &mut egui::Ui, state: &mut TagListState) {
     ui.label(
         egui::RichText::new("Tag List")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -34,7 +36,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TagListState) {
              for active filters / selected facets. Resize the window narrow to see \
              it reflow onto multiple lines.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);

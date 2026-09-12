@@ -3,7 +3,7 @@
 use egui_widgets::trade_flow::{self, TradeFlowConfig, TradeFlowData};
 use egui_widgets::FlowAsset;
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub struct TradeFlowStoryState {
     pub give_nfts: u32,
@@ -32,7 +32,7 @@ impl Default for TradeFlowStoryState {
 pub fn show(ui: &mut egui::Ui, state: &mut TradeFlowStoryState) {
     ui.label(
         egui::RichText::new("TradeFlow Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -42,7 +42,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeFlowStoryState) {
              returned as change) so the inflated \"send\" a hardware wallet shows reads as an \
              explained mechanic, not a surprise.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -168,7 +168,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeFlowStoryState) {
     // Widget
     ui.allocate_ui(egui::vec2(360.0, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(14.0)
             .stroke(egui::Stroke::new(
@@ -189,7 +189,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeFlowStoryState) {
                  network_fee: {network_fee} lovelace\npeer_passthrough: {} lovelace",
                 state.peer_passthrough_ada * 1_000_000
             ))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .size(10.0)
             .family(egui::FontFamily::Monospace),
         );

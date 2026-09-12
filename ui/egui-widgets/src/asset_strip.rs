@@ -9,7 +9,7 @@ use egui::{Color32, Rect, Vec2};
 
 use crate::card_browser;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};
-use crate::theme::{Radius, TextSize, ThemeExt};
+use crate::theme::{Radius, Speed, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -143,10 +143,13 @@ pub fn show(
 
     // Animate dim overlay on non-hovered cards (smooth fade in/out)
     let any_hovered = hovered_idx.is_some();
+    let travel = ui.travel_allowed();
+    // A fade, so it survives reduced motion — only its duration follows the
+    // theme.
     let dim_t = ui.ctx().animate_bool_with_time_and_easing(
         strip_response.id.with("dim"),
         any_hovered,
-        0.15,
+        ui.duration(Speed::Fast),
         egui::emath::easing::cubic_out,
     );
 
@@ -154,15 +157,17 @@ pub fn show(
     for (i, item) in items.iter().enumerate() {
         let is_hovered = hovered_idx == Some(i);
 
-        // Animate vertical lift — cubic_out for snappy rise, smooth settle
+        // Animate vertical lift — cubic_out for snappy rise, smooth settle.
+        // This one MOVES the card, so reduced motion drops it entirely rather
+        // than merely shortening it; the dim fade above still marks the hover.
         let anim_id = strip_response.id.with(("lift", i));
         let t = ui.ctx().animate_bool_with_time_and_easing(
             anim_id,
             is_hovered,
-            0.18,
+            ui.duration(Speed::Normal),
             egui::emath::easing::cubic_out,
         );
-        let lift = t * lift_amount;
+        let lift = if travel { t * lift_amount } else { 0.0 };
 
         let x = strip_rect.min.x + step * i as f32;
         let y = baseline_y - lift;

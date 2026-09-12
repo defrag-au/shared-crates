@@ -2,7 +2,7 @@
 
 use egui_widgets::range_bar::{RangeBarConfig, RangePoint};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 // ============================================================================
 // State
@@ -141,9 +141,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut RangeBarState) {
         ui.label("Preset:");
         for (i, name) in PRESET_NAMES.iter().enumerate() {
             let text = if state.preset == i {
-                egui::RichText::new(*name).color(ACCENT).strong()
+                egui::RichText::new(*name).color(accent(ui)).strong()
             } else {
-                egui::RichText::new(*name).color(TEXT_MUTED)
+                egui::RichText::new(*name).color(muted(ui))
             };
             if ui.selectable_label(state.preset == i, text).clicked() {
                 state.preset = i;
@@ -166,7 +166,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut RangeBarState) {
     ui.add_space(12.0);
 
     // Legend
-    ui.label(egui::RichText::new("Data points:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Data points:").color(accent(ui)).strong());
     for p in &points {
         ui.label(
             egui::RichText::new(format!("  {}: {:.0}", p.label, p.value))

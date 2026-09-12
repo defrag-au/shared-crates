@@ -1,10 +1,10 @@
 //! `PhaseCard` storybook story — every common state of a phase row.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::{GateChip, PhaseCard, PhaseCardAction, PhaseCardRow};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("PhaseCard").color(ACCENT).strong());
+    ui.label(egui::RichText::new("PhaseCard").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Read-only display of one mint phase row — header (name + status + \
@@ -13,7 +13,7 @@ pub fn show(ui: &mut egui::Ui) {
              host beside its form state; the card emits Edit/Delete/AddGate/RemoveGate \
              actions for the host to dispatch.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -124,7 +124,7 @@ pub fn show(ui: &mut egui::Ui) {
 }
 
 fn section(ui: &mut egui::Ui, label: &str) {
-    ui.label(egui::RichText::new(label).color(ACCENT).strong());
+    ui.label(egui::RichText::new(label).color(accent(ui)).strong());
     ui.add_space(4.0);
 }
 

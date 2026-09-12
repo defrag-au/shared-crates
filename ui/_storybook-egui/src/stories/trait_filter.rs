@@ -3,7 +3,7 @@
 use egui_widgets::theme::{Ink, Token};
 use egui_widgets::trait_filter::{self, FilterEntry, TraitFilterConfig, TraitFilterState};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 // ============================================================================
 // Mock data
@@ -160,7 +160,7 @@ impl Default for TraitFilterStoryState {
 pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
     ui.label(
         egui::RichText::new("TraitFilter Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -168,7 +168,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
             "Compound-key prefix trie with dual indexing. \
              Type a category name (\"Back\") or value (\"Re\") to search.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(8.0);
@@ -187,7 +187,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
                 "No filters active \u{2014} {} total entries",
                 state.entries.len()
             ))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .size(11.0),
         );
     } else {
@@ -201,7 +201,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
 
         ui.label(
             egui::RichText::new(format!("Active filters ({}): AND logic", tags.len()))
-                .color(ACCENT)
+                .color(accent(ui))
                 .size(11.0)
                 .strong(),
         );
@@ -219,7 +219,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
         ui.add_space(4.0);
         ui.label(
             egui::RichText::new(format!("{match_count} assets would match"))
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .size(10.0),
         );
     }
@@ -236,7 +236,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
     ui.add_space(16.0);
     ui.label(
         egui::RichText::new("Try:")
-            .color(ACCENT)
+            .color(accent(ui))
             .size(11.0)
             .strong(),
     );
@@ -248,7 +248,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
              \u{2022} Backspace on empty input removes last tag\n  \
              \u{2022} Up/Down + Enter for keyboard nav",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(10.0),
     );
 }

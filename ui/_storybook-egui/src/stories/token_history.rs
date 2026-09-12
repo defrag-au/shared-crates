@@ -22,7 +22,7 @@
 use egui::{pos2, Color32, Pos2, Rect, Vec2};
 
 use crate::stories::wrt_fixture::{COHORTS, SERIES};
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// The validated ordinal liquidity ramp — one hue, immovable → liquid.
 ///
@@ -53,8 +53,8 @@ fn plot_frame(ui: &mut egui::Ui, height: f32) -> Rect {
 
 fn caption(ui: &mut egui::Ui, title: &str, note: &str) {
     ui.add_space(10.0);
-    ui.label(egui::RichText::new(title).color(ACCENT).strong());
-    ui.label(egui::RichText::new(note).color(TEXT_MUTED).small());
+    ui.label(egui::RichText::new(title).color(accent(ui)).strong());
+    ui.label(egui::RichText::new(note).color(muted(ui)).small());
     ui.add_space(2.0);
 }
 
@@ -108,14 +108,14 @@ fn line(ui: &mut egui::Ui, rect: Rect, vals: &[f64], colour: Color32, log: bool)
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("Token history — candidate forms, real WRT data")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new(
             "240 points, 2022-03 → 2026-08. Exploration surface: pick a form, then build it.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 
@@ -208,7 +208,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.separator();
     ui.label(
         egui::RichText::new("What to decide:")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label("\u{2022} A vs A′ — does log earn its place? (a 30× range says yes)");

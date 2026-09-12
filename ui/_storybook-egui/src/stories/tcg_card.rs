@@ -14,7 +14,7 @@
 use egui::epaint::{Mesh, Vertex};
 use egui::{Color32, Pos2, Rect, Vec2};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 const WHITE_UV: Pos2 = Pos2::new(0.0, 0.0);
 
@@ -931,12 +931,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     let template = state.template.as_ref().unwrap_or(&fallback);
 
     // --- 1. Card Frame ---
-    ui.label(egui::RichText::new("1. Card Frame").color(ACCENT).strong());
+    ui.label(egui::RichText::new("1. Card Frame").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Template-driven layout: art background, frame overlay, text in mask-defined regions.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -952,7 +952,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
             let text = if state.rarity == i {
                 egui::RichText::new(*name).color(*color).strong()
             } else {
-                egui::RichText::new(*name).color(TEXT_MUTED)
+                egui::RichText::new(*name).color(muted(ui))
             };
             if ui.selectable_label(state.rarity == i, text).clicked() {
                 state.rarity = i;
@@ -980,7 +980,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
         egui::RichText::new(format!(
             "Template: {tmpl_status}  |  Frame: {frame_status}  |  Art: {art_status}"
         ))
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -1009,12 +1009,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     // --- 2. Perspective Tilt ---
     ui.label(
         egui::RichText::new("2. Perspective Tilt (Mouse-Driven)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Card tilts toward the mouse cursor. All layers bilinearly mapped.")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -1089,14 +1089,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     // --- 3. Holographic / Foil Effect ---
     ui.label(
         egui::RichText::new("3. Holographic / Foil Effect")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new(
             "Specular streak, iridescence, and fresnel edge glow. Hover to see the effect.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -1161,12 +1161,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     // --- 4. Card Flip ---
     ui.label(
         egui::RichText::new("4. Card Flip (Front / Back)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Physics-based 180° flip with vertical lift and edge thickness.")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -1301,7 +1301,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
             "Showing: {face_label} (base: {face_state}, lift: {lift:.1}px, width: {:.0}%)",
             width_fraction * 100.0
         ))
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 
@@ -1310,14 +1310,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     // --- 5. Assembled Card ---
     ui.label(
         egui::RichText::new("5. Assembled Card")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new(
             "All effects combined: perspective tilt, holographic overlay (Rare+), click to flip.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -1413,7 +1413,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     ui.add_space(24.0);
     ui.separator();
     ui.add_space(8.0);
-    ui.label(egui::RichText::new("Key patterns:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Key patterns:").color(accent(ui)).strong());
     ui.label("- Template-driven: frame.png overlay + mask.png colour-keyed regions");
     ui.label("- Art: cover-cropped 1:1 into template art region, behind frame");
     ui.label("- Perspective: all layers bilinearly mapped into tilted quad");

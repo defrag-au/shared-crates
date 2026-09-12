@@ -66,7 +66,7 @@ use egui::{
 use statig::prelude::*;
 
 use crate::motion::{Easing, tween, tween_bool};
-use crate::theme::{Radius, ThemeExt};
+use crate::theme::{Radius, Speed, ThemeExt};
 
 // Colours for [`MarkKind`] now come from the theme's `Diverging` flow encoding
 // — the same one `activity_lanes` and `flow_matrix` read, which is what makes
@@ -1565,12 +1565,15 @@ impl<'a> TimeSpine<'a> {
             .x_from_time_f32(state.playhead as f64)
             .unwrap_or(ruler.right())
             .clamp(head_x.min, head_x.max);
+        // Not gated on `travel_allowed`: the playhead's position IS the datum,
+        // so freezing it would not reduce motion, it would lie. Under
+        // `MotionMode::None` the duration is 0.0 and it simply snaps.
         let x = tween(
             ui.ctx(),
             id.with("playhead"),
             target_x,
-            0.18,
-            Easing::OutCubic,
+            ui.duration(Speed::Normal),
+            ui.easing(Easing::OutCubic),
         );
         let ph_col = visuals.strong_text_color();
         painter.line_segment(
@@ -1647,8 +1650,8 @@ impl<'a> TimeSpine<'a> {
             ui.ctx(),
             id.with("glow"),
             state.playing,
-            0.25,
-            Easing::InOutCubic,
+            ui.duration(Speed::Normal),
+            ui.easing(Easing::InOutCubic),
         );
         if glow > 0.0 {
             painter.circle_filled(

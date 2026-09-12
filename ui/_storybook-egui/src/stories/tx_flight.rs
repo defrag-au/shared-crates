@@ -5,7 +5,7 @@ use egui_widgets::tx_flight::{
     self, FlightAction, FlightPhase, FlightReview, FlightStage, TxFlightConfig,
 };
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub struct TxFlightStoryState {
     pub phase: FlightPhase,
@@ -52,7 +52,7 @@ const SIMULATED_FRAMES: u32 = 90;
 pub fn show(ui: &mut egui::Ui, state: &mut TxFlightStoryState) {
     ui.label(
         egui::RichText::new("TxFlight Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -60,7 +60,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxFlightStoryState) {
             "One server-built, wallet-signed transaction as a checklist. The host \
              owns the async work; this story fakes it with a frame countdown.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -154,7 +154,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxFlightStoryState) {
 
     ui.allocate_ui(egui::vec2(360.0, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(

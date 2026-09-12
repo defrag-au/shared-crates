@@ -1,22 +1,22 @@
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("Windowed Stat Strip")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new(
             "A horizontal row of stat cards — the same metric summarised across time windows",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
 
     // --- Sales activity: full data across all windows ---
-    ui.label(egui::RichText::new("Sales activity").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Sales activity").color(accent(ui)).strong());
     ui.add_space(4.0);
 
     let active = [
@@ -55,12 +55,12 @@ pub fn show(ui: &mut egui::Ui) {
     // --- Sparse: quiet near windows fall back to the empty note ---
     ui.label(
         egui::RichText::new("Sparse activity")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Empty windows keep their zeroed headline and show the empty note")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -83,7 +83,7 @@ pub fn show(ui: &mut egui::Ui) {
     // --- Accent color + custom width ---
     ui.label(
         egui::RichText::new("Accent + narrow cards")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -116,7 +116,7 @@ pub fn show(ui: &mut egui::Ui) {
     // and a visibly ragged strip does.
     ui.label(
         egui::RichText::new("Unequal trend widths (regression case)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -125,7 +125,7 @@ pub fn show(ui: &mut egui::Ui) {
              the same height, and share one caption baseline — and the strip must fill the \
              container rather than trail off.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -167,7 +167,7 @@ pub fn show(ui: &mut egui::Ui) {
     // the columns are chosen up front now, so every row is full but the last.
     ui.label(
         egui::RichText::new("Narrow container (wraps into even rows)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -181,7 +181,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // --- All-empty state ---
-    ui.label(egui::RichText::new("All empty").color(ACCENT).strong());
+    ui.label(egui::RichText::new("All empty").color(accent(ui)).strong());
     ui.add_space(4.0);
 
     let empty = [
@@ -197,7 +197,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
     ui.label("\u{2022} Every card is the SAME width, whatever its trend string");
     ui.label("\u{2022} Every card is the same height, with or without a sparkline");
     ui.label("\u{2022} Captions share one baseline along the bottom of the row");

@@ -1,7 +1,7 @@
 //! `ButtonGroup` storybook story — text-only, with-icons, disabled,
 //! single-row (no wrap), and a realistic collection-card action bar.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::theme::Space;
 use egui_widgets::{ButtonGroup, ButtonGroupButton, PhosphorIcon};
 
@@ -11,7 +11,7 @@ pub struct ButtonGroupState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut ButtonGroupState) {
-    ui.label(egui::RichText::new("ButtonGroup").color(ACCENT).strong());
+    ui.label(egui::RichText::new("ButtonGroup").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Row of related action buttons with shared layout. Each button \
@@ -20,7 +20,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ButtonGroupState) {
              Default layout is horizontal_wrapped — narrow surfaces spill \
              onto a second line instead of overlapping siblings.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -63,7 +63,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ButtonGroupState) {
              `hover_text` becomes the disabled-hover hint so the operator \
              sees the reason a button is unavailable.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -110,7 +110,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ButtonGroupState) {
              Activity, Configure, Scan, + Ingest, + Seed stubs. This is the \
              pattern `collection_list.rs` will use after the refactor.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -140,7 +140,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ButtonGroupState) {
 }
 
 fn section(ui: &mut egui::Ui, label: &str) {
-    ui.label(egui::RichText::new(label).color(ACCENT).strong());
+    ui.label(egui::RichText::new(label).color(accent(ui)).strong());
     ui.add_space(4.0);
 }
 

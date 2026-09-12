@@ -6,7 +6,7 @@
 //! while a channel four weeks old carries the largest payout in the wallet's
 //! history. In a monthly total none of that is visible.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::channel_bands::assign_colors_from;
 use egui_widgets::theme::ThemeExt;
 use egui_widgets::{ChannelBands, ChannelSeries};
@@ -14,13 +14,13 @@ use egui_widgets::{ChannelBands, ChannelSeries};
 const PERIODS: [&str; 10] = ["09", "10", "11", "12", "01", "02", "03", "04", "05", "06"];
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Channel Bands").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Channel Bands").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Where the money came from, period by period. Stacked composition over a discrete \
              time axis, with an optional same-unit reference line.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -85,7 +85,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Months are 2025-09 → 2026-06. The line is what reached holders — same unit, same \
              axis as the bars, so it is a reference line and not a second scale.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.label(
@@ -94,7 +94,7 @@ pub fn show(ui: &mut egui::Ui) {
              reads zero — and the tallest payout in the wallet's history sits above a bar made \
              entirely of a channel that was four weeks old. Hover any month for the breakdown.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 }

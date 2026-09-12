@@ -3,7 +3,7 @@
 use egui_widgets::pool_liquidity_indicator::{self, PoolInfo, PoolLiquidityConfig};
 use egui_widgets::split_allocation_bar::dex_color;
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub fn show(ui: &mut egui::Ui) {
     // The DEX series ramp comes from the active theme now, so the fixtures have
@@ -11,7 +11,7 @@ pub fn show(ui: &mut egui::Ui) {
     let t = egui_widgets::theme::ThemeExt::tokens(ui);
     ui.label(
         egui::RichText::new("PoolLiquidityIndicator Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -19,7 +19,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Per-pool depth and health context cards. Shows relative depth bars, \
              TVL, spot price, price impact (color-coded), and allocation fraction.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -29,7 +29,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.allocate_ui(egui::vec2(400.0, ui.available_height()), |ui| {
         // Healthy split — low impact on both
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -73,7 +73,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         // High impact scenario
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -117,7 +117,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Three pools
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(

@@ -5,7 +5,7 @@
 //! itself, and the constrained-column layout that made a side panel clip in
 //! the first place.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::{PaneNavBar, PaneNavEntry, PhosphorIcon};
 
 pub struct PaneNavState {
@@ -33,7 +33,7 @@ impl Default for PaneNavState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
-    ui.label(egui::RichText::new("PaneNavBar").color(ACCENT).strong());
+    ui.label(egui::RichText::new("PaneNavBar").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Shell nav for an app made of capability panes. Persistent \
@@ -42,7 +42,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
              REASON rather than vanishing — \"you may not, and here is why\" \
              is a different message from \"this does not exist\".",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -58,7 +58,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
     }
     ui.label(
         egui::RichText::new(format!("selected = {}", state.selected))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
 
@@ -73,7 +73,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
              the backend enforces. Locking is never the control — a locked \
              pane must still be refused by its backend.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     let resp = PaneNavBar::new(state.locked_selected)
@@ -103,7 +103,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
              between this line and the next, and the response says shown = \
              false so the caller skips its own spacing too.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     let resp = PaneNavBar::new(0)
@@ -111,7 +111,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
         .show(ui);
     ui.label(
         egui::RichText::new(format!("↑ nothing drew · shown = {}", resp.shown))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
 
@@ -121,7 +121,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
     // it rather than to the strip below.
     ui.label(
         egui::RichText::new("…and the same nav with always_show(true):")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     let resp = PaneNavBar::new(0)
@@ -130,7 +130,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
         .show(ui);
     ui.label(
         egui::RichText::new(format!("shown = {}", resp.shown))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
 
@@ -148,7 +148,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
              row rather than pushing destinations off the edge where they \
              cannot be reached.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add(egui::Slider::new(&mut state.column_width, 140.0..=700.0).text("column width"));
@@ -186,7 +186,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
              strip stops being one row, and whether what it becomes is usable \
              with a thumb.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);
@@ -194,7 +194,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaneNavState) {
     for (width, note) in WIDTH_LADDER {
         ui.label(
             egui::RichText::new(format!("{width:.0}pt — {note}"))
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .small(),
         );
         egui::Frame::group(ui.style()).show(ui, |ui| {

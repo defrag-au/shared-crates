@@ -56,7 +56,7 @@ use egui::{Align2, Color32, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, p
 
 use crate::motion::{Easing, tween, tween_bool, tween_from};
 use crate::selection::Selection;
-use crate::theme::{Ink, Radius, Series, TextSize, ThemeExt, Token};
+use crate::theme::{Ink, Radius, Series, Speed, TextSize, ThemeExt, Token};
 use crate::time_spine::SpineState;
 
 /// Whether the holder has the asset IN HAND after a move, or somebody else is
@@ -254,6 +254,11 @@ impl<'a> HolderField<'a> {
         let ink = ui.visuals().text_color();
         let accent = dot_color.of(ui);
         let escrowed = escrow_color.of(ui);
+        // Read once: the paint loops below run per dot and have no `ui`, and a
+        // per-dot theme lookup would be the same answer a thousand times.
+        let travel = ui.travel_allowed();
+        let dur_normal = ui.duration(Speed::Normal);
+        let ease_settle = ui.easing(Easing::OutCubic);
 
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
@@ -410,7 +415,13 @@ impl<'a> HolderField<'a> {
 
         // ── emitter ───────────────────────────────────────────────────────
         let playing = spine.playing;
-        let glow = tween_bool(&ctx, id.with("emit"), playing, 0.3, Easing::InOutCubic);
+        let glow = tween_bool(
+            &ctx,
+            id.with("emit"),
+            playing,
+            dur_normal,
+            ui.easing(Easing::InOutCubic),
+        );
         painter.circle_filled(source, 2.5, muted);
         if glow > 0.0 {
             painter.circle_stroke(
@@ -428,8 +439,8 @@ impl<'a> HolderField<'a> {
                 &ctx,
                 id.with(("emph", p.as_str())),
                 target,
-                0.18,
-                Easing::OutCubic,
+                dur_normal,
+                ease_settle,
             ));
         }
 
@@ -517,10 +528,14 @@ impl<'a> HolderField<'a> {
                 (Some(prev), None) => layout.centres[prev],
                 (None, _) => source,
             };
-            let t = if playing {
-                tween_from(&ctx, dot_id, 0.0, 1.0, flight_secs, Easing::OutCubic)
+            // `travel_allowed` is exactly this: the leg between two seats is
+            // the one thing here that MOVES, so reduced motion drops it and the
+            // dot appears in its new seat. Emphasis and rings are opacity and
+            // survive.
+            let t = if playing && travel {
+                tween_from(&ctx, dot_id, 0.0, 1.0, flight_secs, ease_settle)
             } else {
-                tween_from(&ctx, dot_id, 1.0, 1.0, 0.0, Easing::OutCubic)
+                tween_from(&ctx, dot_id, 1.0, 1.0, 0.0, ease_settle)
             };
             // A NEW move retargets the same key: reset progress so it flies the
             // new leg rather than snapping.
@@ -647,7 +662,7 @@ impl<'a> HolderField<'a> {
         if let Some(i) = sel_idx {
             let c = layout.centres[i];
             let ring_r = layout.radii[i] + dot_r + 3.0;
-            let a = tween_bool(&ctx, id.with("ring"), true, 0.15, Easing::OutCubic);
+            let a = tween_bool(&ctx, id.with("ring"), true, dur_normal, ease_settle);
             painter.circle_stroke(
                 c,
                 ring_r,

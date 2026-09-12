@@ -2,7 +2,7 @@
 
 use egui_widgets::split_allocation_bar::{self, AllocationSegment, SplitAllocationBarConfig};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub fn show(ui: &mut egui::Ui) {
     // The DEX series ramp comes from the active theme now, so the fixtures have
@@ -10,7 +10,7 @@ pub fn show(ui: &mut egui::Ui) {
     let t = egui_widgets::theme::ThemeExt::tokens(ui);
     ui.label(
         egui::RichText::new("SplitAllocationBar Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -18,7 +18,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Segmented horizontal bar showing ADA allocation across DEXes. \
              Hover for tooltips, percentage labels inside wide segments.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -26,7 +26,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.allocate_ui(egui::vec2(450.0, ui.available_height()), |ui| {
         // Two-way split (typical: 78/22)
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -62,7 +62,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Three-way split
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -104,7 +104,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Single pool (100%)
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -132,7 +132,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         // No legend variant
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(

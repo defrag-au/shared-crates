@@ -2,12 +2,12 @@
 
 use egui_widgets::trait_delta::{self, TraitDeltaConfig, TraitItem};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("TraitDelta Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -15,7 +15,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Trait chips showing what changes hands in a trade. \
              Green (+) for gains, red (-) for losses. No labels, just data.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -25,7 +25,7 @@ pub fn show(ui: &mut egui::Ui) {
     // Example 1: Both gains and losses
     ui.allocate_ui(egui::vec2(400.0, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -58,7 +58,7 @@ pub fn show(ui: &mut egui::Ui) {
     // Example 2: Only gains
     ui.allocate_ui(egui::vec2(400.0, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -89,7 +89,7 @@ pub fn show(ui: &mut egui::Ui) {
     // Example 3: Only losses
     ui.allocate_ui(egui::vec2(400.0, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(

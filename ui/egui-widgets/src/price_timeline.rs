@@ -21,7 +21,7 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 
-use crate::theme::{Ink, TextSize, ThemeExt, Token};
+use crate::theme::{Ink, Speed, TextSize, ThemeExt, Token};
 
 // ============================================================================
 // Public types
@@ -329,12 +329,16 @@ pub fn show(
     // The stored window is the TARGET; the rendered window eases toward it so
     // reset (and gesture steps) glide instead of snapping. Input math above
     // always uses the target, keeping anchors exact.
+    // Not gated on `travel_allowed`: the window IS the reading, so snapping it
+    // is the reduced-motion behaviour, not freezing it. `MotionMode::None`
+    // yields 0.0 and does exactly that.
+    let zoom_secs = ui.duration(Speed::Normal);
     let z_lo_r = ui
         .ctx()
-        .animate_value_with_time(zoom_id.with("anim_lo"), z_lo, 0.2);
+        .animate_value_with_time(zoom_id.with("anim_lo"), z_lo, zoom_secs);
     let z_hi_r = ui
         .ctx()
-        .animate_value_with_time(zoom_id.with("anim_hi"), z_hi, 0.2)
+        .animate_value_with_time(zoom_id.with("anim_hi"), z_hi, zoom_secs)
         .max(z_lo_r + 0.001);
     let base_span = (base_max - base_min).max(1) as f64;
     let x_min = base_min + (base_span * z_lo_r as f64) as i64;

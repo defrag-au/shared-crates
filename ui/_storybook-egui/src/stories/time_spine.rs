@@ -17,7 +17,7 @@
 //! the framework was never the problem. If no, that is evidence for D3.
 
 use crate::stories::capital_flow::{ada, arrivals, events, month, moves, RAISED};
-use crate::TEXT_MUTED;
+use crate::muted;
 use egui_widgets::{
     capital_bands, format_date, AliasIndex, CapitalFlow, HolderField, MarkKind, PartyFinder,
     PartyFinderState, Selection, SpineState, TimeSpine, WalletIdentity,
@@ -106,7 +106,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineState) {
              brush a range; press play. Hover a pile.",
         )
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(6.0);
 
@@ -256,6 +256,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineState) {
             }
         ))
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
 }

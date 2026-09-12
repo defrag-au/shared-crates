@@ -3,7 +3,7 @@
 
 use egui_widgets::gated::{gated, GateState, LockedStyle};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// The registry is a closed enum, so a story shows a real feature rather
 /// than inventing one — which is arguably better: what renders here is
@@ -11,14 +11,14 @@ use crate::{ACCENT, TEXT_MUTED};
 const DEMO_FEATURE: authorizations::Feature = authorizations::Feature::VisualSearch;
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Gated").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Gated").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Entitlement-gated rendering. The same `Feature` variant drives backend \
              enforcement and these locked affordances, so the id, name, and unlock \
              copy never drift. Immediate mode: the grant decision re-runs each frame.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);

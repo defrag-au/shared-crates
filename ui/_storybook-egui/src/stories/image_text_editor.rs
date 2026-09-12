@@ -1,6 +1,6 @@
 //! Image text editor story — demonstrates text overlay placement on images.
 
-use crate::ACCENT;
+use crate::accent;
 use egui_widgets::image_text_editor::TextEffect;
 use egui_widgets::{ImageTextEditor, TextOverlay};
 
@@ -53,9 +53,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageTextEditorState) {
             .load_texture("sample_image", color_image, egui::TextureOptions::LINEAR)
     });
 
+    // Hoisted: `ui.columns` borrows `ui` mutably for the whole closure, so the
+    // theme has to be read before it rather than at each label inside.
+    let acc = accent(ui);
     ui.columns(2, |cols| {
         // Left: image editor
-        cols[0].label(egui::RichText::new("Image Editor").color(ACCENT).strong());
+        cols[0].label(egui::RichText::new("Image Editor").color(acc).strong());
         cols[0].add_space(4.0);
         let available = cols[0].available_size();
         let editor_size = egui::vec2(available.x.min(500.0), available.x.min(500.0));
@@ -64,7 +67,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageTextEditorState) {
         // Right: properties panel
         cols[1].label(
             egui::RichText::new("Text Properties")
-                .color(ACCENT)
+                .color(acc)
                 .strong(),
         );
         cols[1].add_space(4.0);
@@ -77,7 +80,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageTextEditorState) {
         // Overlay list
         cols[1].label(
             egui::RichText::new(format!("Overlays ({})", state.editor.overlays.len()))
-                .color(ACCENT)
+                .color(acc)
                 .strong(),
         );
         cols[1].add_space(4.0);
@@ -95,7 +98,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageTextEditorState) {
                 )
             };
             let text = if selected {
-                egui::RichText::new(label).strong().color(ACCENT)
+                egui::RichText::new(label).strong().color(acc)
             } else {
                 egui::RichText::new(label)
             };

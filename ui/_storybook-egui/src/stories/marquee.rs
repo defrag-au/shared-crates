@@ -1,4 +1,4 @@
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 const BUY_COLOR: egui::Color32 = egui::Color32::from_rgb(68, 255, 68);
 const SELL_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 68, 68);
@@ -42,7 +42,7 @@ pub fn show(
 
     ui.label(
         egui::RichText::new(format!("{} messages", messages.len()))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(8.0);
@@ -61,7 +61,7 @@ pub fn show(
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
     ui.label("\u{2022} Single short message \u{2192} centers statically, no scroll");
     ui.label("\u{2022} Many messages \u{2192} smooth continuous scroll");
     ui.label("\u{2022} Add message during scroll \u{2192} no position jump");

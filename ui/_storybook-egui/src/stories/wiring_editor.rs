@@ -25,6 +25,8 @@
 //! survive being a pane" is a click rather than a deploy.
 
 use egui_widgets::theme;
+
+use crate::{accent, muted};
 use egui_widgets::wiring_editor::{self, WiringEditorState};
 use gateway_wiring::{
     action_choices, AgentEntitlement, AgentTier, EventBinding, EventSource, GuildRole, RenderStyle,
@@ -141,7 +143,7 @@ fn fixture_roles() -> Vec<GuildRole> {
 pub fn show(ui: &mut egui::Ui, state: &mut WiringEditorStory) {
     ui.label(
         egui::RichText::new("Wiring Editor")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -151,7 +153,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WiringEditorStory) {
              width-constrained column — a SidePanel here renders nothing.",
         )
         .small()
-        .color(theme::TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(8.0);
 
@@ -175,7 +177,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WiringEditorStory) {
             if state.dirty {
                 theme::ACCENT_YELLOW
             } else {
-                theme::TEXT_MUTED
+                muted(ui)
             },
             if state.dirty {
                 "unsaved edits"
@@ -184,7 +186,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WiringEditorStory) {
             },
         );
         if !state.last.is_empty() {
-            ui.colored_label(theme::TEXT_MUTED, &state.last);
+            ui.colored_label(muted(ui), &state.last);
         }
     });
     ui.add_space(8.0);

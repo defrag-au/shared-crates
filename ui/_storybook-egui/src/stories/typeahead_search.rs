@@ -7,7 +7,7 @@
 
 use egui_widgets::{filter_options, ChipVariant, TypeaheadOption, TypeaheadSearch};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// Story state persisted across frames via egui temp memory.
 #[derive(Clone, Default)]
@@ -20,7 +20,7 @@ struct StoryState {
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("TypeaheadSearch Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -29,7 +29,7 @@ pub fn show(ui: &mut egui::Ui) {
              the query + highlight; options are ranked server-side or via \
              `filter_options`. Up/Down to move, Enter or click to choose.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -48,7 +48,7 @@ pub fn show(ui: &mut egui::Ui) {
         .collect();
 
     egui::Frame::new()
-        .fill(crate::BG_MAIN)
+        .fill(crate::bg(ui))
         .corner_radius(8.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
@@ -70,7 +70,7 @@ pub fn show(ui: &mut egui::Ui) {
                 ui.add_space(10.0);
                 ui.label(
                     egui::RichText::new(format!("Selected: {chosen}"))
-                        .color(ACCENT)
+                        .color(accent(ui))
                         .size(12.0),
                 );
             }

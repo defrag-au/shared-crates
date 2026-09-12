@@ -1,20 +1,20 @@
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("Dashboard Metric Cards")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Compact stat cards for KPIs with optional trends and sparklines")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(12.0);
 
     // --- Row of basic cards ---
-    ui.label(egui::RichText::new("Basic Cards").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Basic Cards").color(accent(ui)).strong());
     ui.add_space(4.0);
 
     ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
@@ -41,7 +41,7 @@ pub fn show(ui: &mut egui::Ui) {
     // --- Cards with trends ---
     ui.label(
         egui::RichText::new("With Trend Indicators")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -70,12 +70,12 @@ pub fn show(ui: &mut egui::Ui) {
     // --- Cards with inline sparklines ---
     ui.label(
         egui::RichText::new("With Sparklines")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Cards can embed a sparkline for recent trend data")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -108,7 +108,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // --- Full-width card ---
-    ui.label(egui::RichText::new("Full Width").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Full Width").color(accent(ui)).strong());
     ui.add_space(4.0);
 
     let runway_data = [
@@ -134,12 +134,12 @@ pub fn show(ui: &mut egui::Ui) {
     // where the row renders visibly ragged.
     ui.label(
         egui::RichText::new("Stat row — uniform width, varied values")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("every card requests width(150); a row must not depend on the values")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -155,7 +155,7 @@ pub fn show(ui: &mut egui::Ui) {
 
     ui.label(
         egui::RichText::new("per-card width(150) — every card a different width")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
@@ -169,7 +169,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(10.0);
     ui.label(
         egui::RichText::new("MetricRow — measured, so every card shares one edge")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     STATS
@@ -182,7 +182,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(10.0);
     ui.label(
         egui::RichText::new("mixed heights — a trend on one card must not stagger the row")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     egui_widgets::MetricRow::new()
@@ -198,7 +198,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
     ui.label("\u{2022} Cards show label, value, optional subtitle");
     ui.label("\u{2022} Trend arrows: green up, red down, muted flat");
     ui.label("\u{2022} Sparkline embeds inside card with matching value color");

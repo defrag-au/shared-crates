@@ -139,13 +139,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut CapBandState) {
                 ui.label(format!("realisable {:.0} .. {:.0} ADA", s.low, s.high));
                 ui.separator();
                 ui.colored_label(
-                    crate::TEXT_MUTED,
+                    crate::muted(ui),
                     format!("honesty ratio {lo:.1}% .. {hi:.1}%"),
                 );
             });
         }
         None => {
-            ui.colored_label(crate::TEXT_MUTED, "no sample at the playhead");
+            ui.colored_label(crate::muted(ui), "no sample at the playhead");
         }
     }
 }

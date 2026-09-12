@@ -3,7 +3,7 @@
 use egui_widgets::pip_row::{heat_color, HoverInfo, Pip, PipRowConfig, PipRowData, PipRowMode};
 use egui_widgets::theme::{Ink, Token};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 // ============================================================================
 // State
@@ -171,14 +171,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut PipRowState) {
     ui.horizontal(|ui| {
         ui.label("Mode:");
         let pips_text = if !state.use_density {
-            egui::RichText::new("Pips").color(ACCENT).strong()
+            egui::RichText::new("Pips").color(accent(ui)).strong()
         } else {
-            egui::RichText::new("Pips").color(TEXT_MUTED)
+            egui::RichText::new("Pips").color(muted(ui))
         };
         let density_text = if state.use_density {
-            egui::RichText::new("Density").color(ACCENT).strong()
+            egui::RichText::new("Density").color(accent(ui)).strong()
         } else {
-            egui::RichText::new("Density").color(TEXT_MUTED)
+            egui::RichText::new("Density").color(muted(ui))
         };
         if ui.selectable_label(!state.use_density, pips_text).clicked() {
             state.use_density = false;
@@ -204,9 +204,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut PipRowState) {
         ui.label("Preset:");
         for (i, name) in PRESET_NAMES.iter().enumerate() {
             let text = if state.preset == i {
-                egui::RichText::new(*name).color(ACCENT).strong()
+                egui::RichText::new(*name).color(accent(ui)).strong()
             } else {
-                egui::RichText::new(*name).color(TEXT_MUTED)
+                egui::RichText::new(*name).color(muted(ui))
             };
             if ui.selectable_label(state.preset == i, text).clicked() {
                 state.preset = i;
@@ -285,7 +285,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PipRowState) {
                     if hovered.len() > 6 {
                         ui.label(
                             egui::RichText::new(format!("...and {} more", hovered.len() - 6))
-                                .color(TEXT_MUTED)
+                                .color(muted(ui))
                                 .size(9.0),
                         );
                     }
@@ -305,7 +305,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PipRowState) {
     }
 
     ui.add_space(12.0);
-    ui.label(egui::RichText::new("Features:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Features:").color(accent(ui)).strong());
     let features = [
         "Two modes: Pips (individual marks) and Density (binned heatmap)",
         "Pips: heat_color() green\u{2192}yellow\u{2192}red gradient, auto-truncates with \"+N more\"",

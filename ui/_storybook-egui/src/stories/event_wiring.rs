@@ -3,6 +3,8 @@
 use egui_widgets::command_palette::{CommandPalette, PaletteAction, PaletteState};
 use egui_widgets::event_wiring::{ActionCardVm, EventNodeVm, EventWiring};
 use egui_widgets::theme;
+
+use crate::{accent, muted};
 use egui_widgets::typeahead_search::TypeaheadOption;
 use egui_widgets::PhosphorIcon;
 
@@ -44,7 +46,7 @@ impl Default for EventWiringState {
 pub fn show(ui: &mut egui::Ui, state: &mut EventWiringState) {
     ui.label(
         egui::RichText::new("Event Wiring")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -54,7 +56,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut EventWiringState) {
              the command palette. Small-scale node-link on purpose (see \
              flow_matrix's argument for anything bigger).",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);

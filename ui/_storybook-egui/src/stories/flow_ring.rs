@@ -12,7 +12,7 @@
 //! it held at that exact moment; click to pin it and everything unrelated
 //! recedes.
 
-use crate::TEXT_MUTED;
+use crate::muted;
 use egui_widgets::{FlowRing, RingFlow, RingNode, Selection, SpineState};
 
 const DAY: i64 = 86_400;
@@ -173,7 +173,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowRingState) {
              genuinely in flight.",
         )
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(4.0);
 
@@ -186,7 +186,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowRingState) {
     // Density control: switching a wallet off keeps its seat, so nothing that
     // is still on ever moves.
     ui.horizontal_wrapped(|ui| {
-        ui.label(egui::RichText::new("active:").small().color(TEXT_MUTED));
+        ui.label(egui::RichText::new("active:").small().color(muted(ui)));
         for k in INNER.iter().chain(OUTER.iter()) {
             let on = !state.off.iter().any(|o| o == k);
             if ui.selectable_label(on, *k).clicked() {
@@ -229,6 +229,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowRingState) {
             r.in_flight, r.particles, r.nodes_shown, r.nodes_inactive
         ))
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
 }

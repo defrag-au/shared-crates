@@ -10,7 +10,7 @@ use egui_widgets::wallet_asset_picker::{
     self, PickerAsset, PickerPolicyGroup, WalletAssetPickerConfig, WalletAssetPickerState,
 };
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 // ── Wallet → Picker conversion ────────────────────────────────────────────
 
@@ -126,7 +126,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
     // ── Header ──
     ui.label(
         egui::RichText::new("WalletAssetPicker Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -134,14 +134,14 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
             "Modal asset browser with accordion policy groups, \
              search filter, and card grid selection. Connect a wallet to browse real NFTs.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
 
     // ── Wallet connection ──
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
@@ -181,7 +181,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
     // ── Status ──
     ui.label(
         egui::RichText::new(&state.status_msg)
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .size(10.0),
     );
 
@@ -189,7 +189,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
 
     // ── Picker trigger + result ──
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
@@ -204,7 +204,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
             if !has_assets {
                 ui.label(
                     egui::RichText::new("Connect a wallet first")
-                        .color(TEXT_MUTED)
+                        .color(muted(ui))
                         .size(10.0),
                 );
             }
@@ -214,7 +214,7 @@ pub fn show(ctx: &egui::Context, ui: &mut egui::Ui, state: &mut WalletAssetPicke
             if state.last_selection.is_empty() {
                 ui.label(
                     egui::RichText::new("No asset selected yet")
-                        .color(TEXT_MUTED)
+                        .color(muted(ui))
                         .size(11.0),
                 );
             } else {

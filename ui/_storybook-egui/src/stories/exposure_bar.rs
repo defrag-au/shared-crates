@@ -2,12 +2,12 @@
 
 use egui_widgets::exposure_bar::{self, ExposureBarConfig, ExposureSegment};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("ExposureBar Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -15,7 +15,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Stacked horizontal bar showing total ADA exposure by collateral token, \
              colored by LTV risk. Green < 50%, amber < 80%, red >= 80%.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -23,7 +23,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.allocate_ui(egui::vec2(500.0, ui.available_height()), |ui| {
         // ── Multi-token mixed risk ──
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -76,7 +76,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         // ── All green (safe portfolio) ──
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -114,7 +114,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         // ── Single token high risk ──
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(
@@ -143,7 +143,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         // ── Compact (no legend/total) ──
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
             .stroke(egui_widgets::theme::hairline(

@@ -7,7 +7,7 @@ use egui_widgets::trade_table::{
     self, LockState, PeerState, TradeOffer, TradeTableConfig, TradeTableState,
 };
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 const POLICY_ID: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
 
@@ -94,7 +94,7 @@ const EXTRA_PIRATES: &[(&str, u32)] = &[
 pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
     ui.label(
         egui::RichText::new("TradeTable Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -102,7 +102,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
             "TCG-style top/bottom trade layout with lock/unlock, \
              ADA sweetener, and real IIIF thumbnails.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(8.0);
@@ -154,7 +154,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
 
     // Trade table
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
         .stroke(egui_widgets::theme::hairline(
@@ -226,7 +226,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
             egui::RichText::new(
                 "No actions yet -- try adding/removing assets, locking, or adjusting ADA",
             )
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .size(11.0),
         );
     } else {
@@ -254,7 +254,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
             state.your_offer.assets.len(),
             state.their_offer.assets.len()
         ))
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(10.0),
     );
 

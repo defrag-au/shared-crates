@@ -117,6 +117,7 @@ pub mod trait_delta;
 pub mod tx_estimate;
 pub mod tx_flight;
 pub mod utxo_map;
+pub mod utxo_shelf;
 pub mod wallet_asset_picker;
 
 // TX cart

@@ -3,6 +3,8 @@
 use egui_widgets::machine::Machine;
 use egui_widgets::theme;
 
+use crate::{accent, muted};
+
 #[derive(Debug)]
 pub enum DemoSave {
     Clean,
@@ -26,14 +28,14 @@ impl Default for MachineState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut MachineState) {
-    ui.label(egui::RichText::new("Machine").color(theme::ACCENT).strong());
+    ui.label(egui::RichText::new("Machine").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Plain-enum UI state with entry-frame detection and frame-TTL \
              auto-revert — replaces the dirty/pending/flash boolean trio with \
              one matchable state. Tick once per frame, after rendering.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -72,7 +74,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut MachineState) {
     ui.add_space(12.0);
 
     let (label, color) = match state.save.get() {
-        DemoSave::Clean => ("Clean".to_string(), theme::TEXT_MUTED),
+        DemoSave::Clean => ("Clean".to_string(), muted(ui)),
         DemoSave::Dirty => ("Dirty — unsaved edits".to_string(), theme::ACCENT_YELLOW),
         DemoSave::Saving { op } => (format!("Saving op {op}…"), theme::ACCENT_CYAN),
         DemoSave::Saved => ("Saved ✓ (auto-reverts)".to_string(), theme::SUCCESS),

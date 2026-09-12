@@ -3,6 +3,8 @@
 use egui_widgets::bullet_bar::BulletBar;
 use egui_widgets::theme;
 
+use crate::{accent, muted};
+
 pub struct BulletBarState {
     pub value: f32,
     pub target: f32,
@@ -20,7 +22,7 @@ impl Default for BulletBarState {
 pub fn show(ui: &mut egui::Ui, state: &mut BulletBarState) {
     ui.label(
         egui::RichText::new("Bullet Bar")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -29,7 +31,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut BulletBarState) {
              classic \"am I hitting target?\" measure. Use it for rarity \
              actual-vs-target, coverage, budgets, or progress-to-goal.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -48,7 +50,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut BulletBarState) {
     // Small-multiples: per-value rarity targets (fill = actual share, tick = target).
     ui.label(
         egui::RichText::new("Per-value targets (rarity)")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(6.0);
@@ -73,12 +75,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut BulletBarState) {
     // 2026-08-30, shares of the external raise).
     ui.label(
         egui::RichText::new("Measured vs advertised — MONEY (share of the raise)")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Both categories were published, so both carry a target tick.")
-            .color(theme::TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(8.0);
@@ -112,7 +114,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut BulletBarState) {
     // in-kind distribution on the money axis renders it as an empty bar.
     ui.label(
         egui::RichText::new("SUPPLY (share of units minted) — never advertised")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -126,7 +128,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut BulletBarState) {
              group produces exactly the misreading the two-unit model exists to \
              prevent — so they are separate groups, with the unit in the heading.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);

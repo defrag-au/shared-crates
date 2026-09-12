@@ -5,7 +5,7 @@ use egui::{Rect, Vec2};
 use egui_widgets::corner_action::{Corner, CornerAction};
 use egui_widgets::{theme, PhosphorIcon};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 const THUMB: f32 = 120.0;
 
@@ -19,7 +19,7 @@ fn placeholder_thumb(ui: &mut egui::Ui, label: &str) -> Rect {
         egui::Align2::CENTER_CENTER,
         label,
         egui::FontId::proportional(10.0),
-        theme::TEXT_MUTED,
+        muted(ui),
     );
     rect
 }
@@ -33,20 +33,20 @@ fn owned_dot(ui: &egui::Ui, thumb: Rect) {
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Corner Action").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Corner Action").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "An icon button pinned to a corner of something already drawn. Takes the \
              click so the card under it doesn't also select.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
 
     ui.label(
         egui::RichText::new("Four corners, default chip")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -75,7 +75,7 @@ pub fn show(ui: &mut egui::Ui) {
 
     ui.label(
         egui::RichText::new("Beside an existing badge, other accents, other sizes")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -119,7 +119,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Rest: dark chip, accent glyph. Hover: accent chip, dark glyph. \
              The chip is 16pt by default, 4pt in from the edges.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(10.0),
     );
 }

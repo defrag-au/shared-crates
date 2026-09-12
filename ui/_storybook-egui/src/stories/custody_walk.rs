@@ -1,7 +1,7 @@
 //! `CustodyWalk` story — the real UTxO trace behind the Mekka 2026-06-05
 //! payout, plus the same walk cut short so the PARTIAL state is visible.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::{CustodyStrength, CustodyWalk, PartyBasis, WalkNode};
 
 fn ada(v: i128) -> String {
@@ -9,13 +9,13 @@ fn ada(v: i128) -> String {
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Custody Walk").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Custody Walk").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Where one specific sum came from. Each row is a share of its parent; leaves are \
              where the money actually entered the wallet.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -23,7 +23,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── The real thing ─────────────────────────────────────────────────
     ui.label(
         egui::RichText::new("Complete walk — every leaf resolved")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -66,7 +66,7 @@ pub fn show(ui: &mut egui::Ui) {
              wallet's, so the flow continues past the payee instead of stopping and naming \
              it as the source.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 
@@ -75,7 +75,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── The state that must never be silent ────────────────────────────
     ui.label(
         egui::RichText::new("Partial walk — bounds are leaves, not omissions")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -84,7 +84,7 @@ pub fn show(ui: &mut egui::Ui) {
              reads PARTIAL and the untraced value is stated — a walk that quietly stops looks \
              exactly like one that finished.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -114,7 +114,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── Account chains ─────────────────────────────────────────────────
     ui.label(
         egui::RichText::new("Account chain — INFERRED, not proven")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -123,7 +123,7 @@ pub fn show(ui: &mut egui::Ui) {
              reconstructed from instruction ordering. Same layout, different badge — because \
              rendering them identically invites someone to call a reconstruction a trace.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);

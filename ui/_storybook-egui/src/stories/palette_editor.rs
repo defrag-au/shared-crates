@@ -3,6 +3,8 @@
 use egui_widgets::palette_editor::{Palette, PaletteEditor, PaletteVariant};
 use egui_widgets::theme;
 
+use crate::{accent, muted};
+
 pub struct PaletteEditorState {
     pub palettes: Vec<Palette>,
 }
@@ -33,7 +35,7 @@ impl Default for PaletteEditorState {
 pub fn show(ui: &mut egui::Ui, state: &mut PaletteEditorState) {
     ui.label(
         egui::RichText::new("Palette Editor")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -41,7 +43,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PaletteEditorState) {
             "Colorization palettes — a base color (the source pixels to recolor) \
              plus weighted variant colors. Backs the colorization config.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
