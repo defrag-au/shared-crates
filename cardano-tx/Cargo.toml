@@ -37,3 +37,7 @@ tokio = { workspace = true, features = ["rt", "macros"] }
 # Decodes built transactions so tests can assert on what was actually
 # serialised, rather than on the builder's own intermediate state.
 pallas-traverse = { workspace = true }
+# Tests only. The CIP-68 `extra` parameter exists for the action protocol's
+# fuel tank, so one test drives a REAL `FuelBody` through it end to end —
+# the alternative is a hand-rolled map that agrees with nothing.
+action-definitions = { path = "../action-definitions" }

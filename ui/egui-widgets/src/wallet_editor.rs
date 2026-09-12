@@ -279,6 +279,15 @@ struct Spine {
     gap: f32,
     row_h: f32,
     icon: f32,
+    /// Kept clear at the container's right edge.
+    ///
+    /// The widget right-aligns to `available_width`, which is correct, but it
+    /// cannot know what is on the other side of that edge. Inside a padded card
+    /// the trailing gap alone read fine; in the collection-ownership sidebar the
+    /// same code puts the `+` and every `×` about four pixels from a scrollbar.
+    /// A trailing affordance wants room to be a target rather than part of the
+    /// furniture beside it.
+    edge: f32,
 }
 
 impl Spine {
@@ -286,6 +295,7 @@ impl Spine {
         let gap = ui.space(Space::Sm);
         let icon = ui.text_size(TextSize::Sm);
         let text = ui.text_size(TextSize::Base);
+        let edge = ui.space(Space::Md);
         Self {
             // Padded on BOTH sides. It was `icon + gap` with the gap only on
             // the right, which was invisible while the mark was a small dot and
@@ -293,6 +303,7 @@ impl Spine {
             // sat flush against the card's edge.
             mark: icon + gap * 2.0,
             remove: icon + gap * 2.0,
+            edge,
             gap,
             // Finger-sized where a finger is what is available. A roster is a
             // list of tap targets, and 20px of it is not one. The padding is
@@ -328,7 +339,7 @@ pub fn show(
         );
         // Pushed right rather than laid out after the title, so the affordance
         // sits in the card's corner whatever the heading says.
-        let pad = (ui.available_width() - button_w).max(0.0);
+        let pad = (ui.available_width() - button_w - spine.edge).max(0.0);
         ui.add_space(pad);
         let (rect, resp) = ui.allocate_exact_size(vec2(button_w, spine.row_h), Sense::click());
         if resp.hovered() {
@@ -404,7 +415,13 @@ pub fn show(
                 _ => spine.row_h,
             };
             let (row, resp) =
-                ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::hover());
+            // Short of the container edge, so the `×` column lands where the
+            // `+` above it does and the hover highlight stops before whatever
+            // is beside the widget.
+            ui.allocate_exact_size(
+                vec2((ui.available_width() - spine.edge).max(0.0), row_h),
+                Sense::hover(),
+            );
             let hovered = resp.hovered();
             if hovered {
                 ui.painter()

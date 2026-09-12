@@ -723,6 +723,7 @@ dependencies = [
 name = "cardano-tx"
 version = "0.1.0"
 dependencies = [
+ "action-definitions",
  "address-registry",
  "async-trait",
  "cardano-assets",

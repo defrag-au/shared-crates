@@ -214,16 +214,26 @@ impl<'a> TypeaheadSearch<'a> {
             *self.highlight = 0;
         }
 
-        // Focus once on first appearance, if requested.
+        // Focus on every APPEARANCE, if requested.
+        //
+        // This was a `focused_once` bool that was set and never cleared, so the
+        // field focused the first time it was ever drawn in the session and
+        // never again — a command palette autofocused on its first open and
+        // then made you click into it for the rest of the session.
+        //
+        // Remembering the pass it was last drawn in answers the real question
+        // instead. Drawn last pass means it is still open and the caret belongs
+        // wherever the reader put it; a gap means it went away and came back,
+        // which is an appearance. No coordination with whatever owns the
+        // open/closed flag, so nothing has to remember to reset anything.
         if self.autofocus {
-            let focused_once = ui.make_persistent_id((self.id_salt, "focused_once"));
-            let already = ui
-                .data_mut(|d| d.get_temp::<bool>(focused_once))
-                .unwrap_or(false);
-            if !already {
+            let seen = ui.make_persistent_id((self.id_salt, "last_drawn_pass"));
+            let now = ui.ctx().cumulative_pass_nr();
+            let last = ui.data(|d| d.get_temp::<u64>(seen));
+            if reappeared(last, now) {
                 ui.memory_mut(|m| m.request_focus(edit_id));
-                ui.data_mut(|d| d.insert_temp(focused_once, true));
             }
+            ui.data_mut(|d| d.insert_temp(seen, now));
         }
 
         let len = self.options.len();
@@ -440,10 +450,41 @@ pub fn filter_options<'a>(
     scored.into_iter().take(limit).map(|(_, _, o)| o).collect()
 }
 
+/// Whether this is a fresh appearance rather than a continuation.
+///
+/// `last_drawn` is the pass the widget was last drawn in. Adjacent passes mean
+/// it never went away; a gap — or nothing at all — means it has just appeared.
+fn reappeared(last_drawn: Option<u64>, now: u64) -> bool {
+    match last_drawn {
+        Some(last) => now.saturating_sub(last) > 1,
+        None => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use egui::pos2;
+
+    #[test]
+    fn autofocus_fires_on_every_appearance_not_just_the_first() {
+        // The bug: a `focused_once` bool, set and never cleared. A command
+        // palette autofocused on its first open of the session and then made
+        // you click into the field every time after.
+        assert!(reappeared(None, 0), "never drawn — an appearance");
+        assert!(reappeared(None, 900), "and still one much later");
+        assert!(reappeared(Some(3), 40), "closed and reopened");
+        assert!(reappeared(Some(0), 2), "even a single missed pass counts");
+    }
+
+    #[test]
+    fn autofocus_leaves_the_caret_alone_while_it_stays_open() {
+        // The other half, and the reason this is not just "focus every pass":
+        // stealing focus on a pass where the reader is already typing would put
+        // the caret back to where egui wants it rather than where they left it.
+        assert!(!reappeared(Some(7), 7), "drawn twice in one pass");
+        assert!(!reappeared(Some(7), 8), "and on consecutive passes");
+    }
 
     fn opt(title: &str) -> TypeaheadOption {
         TypeaheadOption::new(title.to_lowercase(), title)
