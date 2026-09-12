@@ -1,0 +1,16 @@
+[package]
+name = "action-definitions-derive"
+version.workspace = true
+authors.workspace = true
+edition = "2021"
+description = "#[derive(PlutusCodec)] — integer-keyed PlutusData maps with unknown-field preservation"
+
+# A proc-macro crate compiles for the HOST, never for the target, so it costs
+# build time rather than artifact size in a wasm/wasip2 consumer.
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full", "parsing", "extra-traits"] }

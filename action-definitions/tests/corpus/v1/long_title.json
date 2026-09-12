@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "owner": "01010101010101010101010101010101010101010101010101010101",
+  "trigger": {
+    "kind": "burn",
+    "sink": "7171717171717171717171717171717171717171717171717171717171"
+  },
+  "filter": {
+    "accepts": [
+      {
+        "policy": "02020202020202020202020202020202020202020202020202020202",
+        "name": "50455250",
+        "raw_per_unit": 1000000
+      }
+    ],
+    "traits": [],
+    "actors": null,
+    "min_units": null
+  },
+  "window": {
+    "opens_slot": 100000,
+    "closes_slot": 200000,
+    "confirm_depth": 300
+  },
+  "grants": [
+    {
+      "mode": {
+        "mode": "guaranteed",
+        "per_unit": 1
+      },
+      "effect": {
+        "effect": "notify",
+        "route": "03030303030303030303030303030303"
+      },
+      "fuel_cost": null
+    }
+  ],
+  "limits": {
+    "per_actor_max_units": null,
+    "total_max_units": null,
+    "max_claims_per_actor": null
+  },
+  "title": "A very long campaign title that exceeds the sixty-four byte definite bytestring limit and must therefore be chunked",
+  "supersedes": null,
+  "fuel": "04040404040404040404040404040404040404040404040404040404283232322974616e6b",
+  "escrow": null
+}

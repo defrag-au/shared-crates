@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "owner": "01010101010101010101010101010101010101010101010101010101",
+  "trigger": {
+    "kind": "mint",
+    "policy": "07070707070707070707070707070707070707070707070707070707"
+  },
+  "filter": {
+    "accepts": [],
+    "traits": [],
+    "actors": null,
+    "min_units": null
+  },
+  "window": {
+    "opens_slot": 100000,
+    "closes_slot": 200000,
+    "confirm_depth": 300
+  },
+  "grants": [
+    {
+      "mode": {
+        "mode": "guaranteed",
+        "per_unit": 1
+      },
+      "effect": {
+        "effect": "notify",
+        "route": "03030303030303030303030303030303"
+      },
+      "fuel_cost": null
+    }
+  ],
+  "limits": {
+    "per_actor_max_units": null,
+    "total_max_units": null,
+    "max_claims_per_actor": null
+  },
+  "title": "Mint feed",
+  "supersedes": null,
+  "fuel": "04040404040404040404040404040404040404040404040404040404283232322974616e6b",
+  "escrow": null
+}
