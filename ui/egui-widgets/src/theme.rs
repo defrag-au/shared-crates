@@ -1399,6 +1399,16 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// This theme with its type scale taken from `fonts`.
+    ///
+    /// The pairing `configure_style` used to do inline, as a builder — so
+    /// [`crate::install`] can take one finished `Theme` rather than a theme and
+    /// a font strategy that only combine one way.
+    pub fn with_fonts(mut self, fonts: FontStrategy) -> Self {
+        self.text = fonts.type_scale();
+        self
+    }
+
     /// The palette and metrics this crate has always shipped.
     pub const fn tokyo_night() -> Self {
         Self {

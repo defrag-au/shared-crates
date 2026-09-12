@@ -231,6 +231,8 @@ pub use custody_walk::{
     CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode, WalkNodeKind, WalkSummary,
     summarize as summarize_walk,
 };
+pub use defaults::{install, install_assets};
+#[expect(deprecated, reason = "the re-export is deprecated in step with the item")]
 pub use defaults::install_defaults;
 pub use distribution_waterfall::{DistributionWaterfall, WaterfallMode, WaterfallParty};
 pub use donut_chart::{
