@@ -65,11 +65,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageTextEditorState) {
         state.editor.show(&mut cols[0], texture, editor_size);
 
         // Right: properties panel
-        cols[1].label(
-            egui::RichText::new("Text Properties")
-                .color(acc)
-                .strong(),
-        );
+        cols[1].label(egui::RichText::new("Text Properties").color(acc).strong());
         cols[1].add_space(4.0);
         state.editor.show_properties(&mut cols[1]);
 

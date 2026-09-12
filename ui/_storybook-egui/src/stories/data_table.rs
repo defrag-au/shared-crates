@@ -143,9 +143,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
         .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(
-            crate::highlight(ui),
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             // Build segments from loans that have LTV data
             let with_ltv: Vec<&MockLoan> = loans.iter().filter(|l| l.ltv_pct.is_some()).collect();
@@ -172,9 +170,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
         .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(
-            crate::highlight(ui),
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             let config = DataTableConfig::default();
 
@@ -211,14 +207,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
                             loan.principal,
                             crate::tok(ui, egui_widgets::theme::Token::AccentCyan),
                         ),
-                        (
-                            "Collateral",
-                            loan.collateral,
-                            crate::secondary(ui),
-                        ),
+                        ("Collateral", loan.collateral, crate::secondary(ui)),
                         ("Rate", loan.rate, crate::ink(ui)),
                         ("Duration", loan.duration, crate::muted(ui)),
-                        ("Interest", loan.interest, crate::tok(ui, egui_widgets::theme::Token::AccentGreen)),
+                        (
+                            "Interest",
+                            loan.interest,
+                            crate::tok(ui, egui_widgets::theme::Token::AccentGreen),
+                        ),
                     ];
 
                     for (label, value, color) in pairs {
@@ -268,7 +264,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
                                         .color(crate::tok(ui, egui_widgets::theme::Token::Error))
                                         .size(11.0),
                                 )
-                                .fill(crate::tok(ui, egui_widgets::theme::Token::Error).linear_multiply(0.15))
+                                .fill(
+                                    crate::tok(ui, egui_widgets::theme::Token::Error)
+                                        .linear_multiply(0.15),
+                                )
                                 .corner_radius(4.0),
                             )
                             .clicked()

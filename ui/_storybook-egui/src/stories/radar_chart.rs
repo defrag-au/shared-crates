@@ -223,7 +223,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut RadarChartState) {
     ui.add_space(12.0);
 
     // Legend showing the data values
-    ui.label(egui::RichText::new("Data points:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Data points:")
+            .color(accent(ui))
+            .strong(),
+    );
     for p in &points {
         let val_str = match p.value {
             Some(v) => format!("{:.0}%", v * 100.0),

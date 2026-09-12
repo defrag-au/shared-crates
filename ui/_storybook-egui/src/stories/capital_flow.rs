@@ -233,7 +233,11 @@ pub(crate) fn moves() -> Vec<AssetMove<'static>> {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut CapitalFlowState) {
-    ui.label(egui::RichText::new("Capital Flow").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Capital Flow")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "They raised X — watch where it went. Drag the timeline or press play.",

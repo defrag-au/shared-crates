@@ -1,7 +1,6 @@
 //! `RarityTargetEditor` story — labelled 0–100% sliders with a budget cue.
 
 use egui_widgets::rarity_target_editor::{RarityRow, RarityTargetEditor};
-use egui_widgets::theme;
 
 use crate::{accent, muted};
 

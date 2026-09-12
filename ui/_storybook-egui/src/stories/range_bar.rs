@@ -166,7 +166,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut RangeBarState) {
     ui.add_space(12.0);
 
     // Legend
-    ui.label(egui::RichText::new("Data points:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Data points:")
+            .color(accent(ui))
+            .strong(),
+    );
     for p in &points {
         ui.label(
             egui::RichText::new(format!("  {}: {:.0}", p.label, p.value))

@@ -45,7 +45,11 @@ fn holder_rungs() -> Vec<TierRung<'static>> {
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Tier Ladder").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Tier Ladder")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "The whole access ladder as a modal — what each rung gives, every way to \

@@ -28,9 +28,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Positive Delta (+4%)")
@@ -49,9 +47,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Large Positive Delta (+15%)")
@@ -70,9 +66,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Negative Delta (-5%)")
@@ -91,9 +85,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("No Change (0%)")
@@ -112,9 +104,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Without Label")

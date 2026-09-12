@@ -1,7 +1,6 @@
 //! `SlotTable` story — slot list with enable / required toggles + z-order.
 
 use egui_widgets::slot_table::{SlotRow, SlotTable};
-use egui_widgets::theme;
 
 use crate::{accent, muted};
 
@@ -32,11 +31,7 @@ impl Default for SlotTableState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut SlotTableState) {
-    ui.label(
-        egui::RichText::new("Slot Table")
-            .color(accent(ui))
-            .strong(),
-    );
+    ui.label(egui::RichText::new("Slot Table").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "The slot list with enable / required toggles + z-order — backs \

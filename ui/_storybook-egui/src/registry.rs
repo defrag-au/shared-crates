@@ -56,6 +56,12 @@
 //! ```
 
 /// Declare the story registry. See the module docs for the why.
+///
+/// `allow(unused_macros)`: the only non-test consumer is `mod app`, which is
+/// `#[cfg(target_arch = "wasm32")]`. A plain native `cargo check` compiles
+/// neither that module nor the tests below, so the macro looks dead on exactly
+/// one of the three build configurations it serves.
+#[allow(unused_macros)]
 macro_rules! stories {
     (
         enum $enum:ident for $app:ty;
@@ -168,8 +174,12 @@ macro_rules! stories {
 mod tests {
     /// A stand-in app with one piece of per-story state, so the test exercises
     /// both the stateless and the stateful closure shapes.
+    ///
+    /// `pub` for the same reason `StorybookApp` is: the macro generates a
+    /// `pub fn draw(&self, app: &mut $app, …)`, so the app type is part of a
+    /// public signature whether or not anything outside can name it.
     #[derive(Default)]
-    struct DemoApp {
+    pub struct DemoApp {
         counter: u32,
     }
 

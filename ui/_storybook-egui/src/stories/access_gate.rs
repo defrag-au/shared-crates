@@ -10,7 +10,11 @@ use crate::{accent, muted};
 const DEMO_ACCESS: authorizations::Feature = authorizations::Feature::AppAccess;
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Access Gate").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Access Gate")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "The front door for a gated tool: a sign-in prompt for anonymous \

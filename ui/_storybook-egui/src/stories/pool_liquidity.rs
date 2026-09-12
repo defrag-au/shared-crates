@@ -32,9 +32,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Healthy Split \u{2014} Low Impact")
@@ -76,9 +74,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("High Impact Scenario")
@@ -120,9 +116,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Three-Pool Comparison")

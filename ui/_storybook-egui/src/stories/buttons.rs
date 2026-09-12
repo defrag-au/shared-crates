@@ -31,13 +31,9 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(4.0);
     ui.add_clickable_sized(
         [200.0, 40.0],
-        egui::Button::new(
-            egui::RichText::new("200 x 40 Sized")
-                .color(bg(ui))
-                .strong(),
-        )
-        .fill(accent(ui))
-        .corner_radius(6.0),
+        egui::Button::new(egui::RichText::new("200 x 40 Sized").color(bg(ui)).strong())
+            .fill(accent(ui))
+            .corner_radius(6.0),
     );
 
     ui.add_space(16.0);

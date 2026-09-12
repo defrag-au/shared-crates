@@ -61,7 +61,11 @@ pub fn show(
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("\u{2022} Single short message \u{2192} centers statically, no scroll");
     ui.label("\u{2022} Many messages \u{2192} smooth continuous scroll");
     ui.label("\u{2022} Add message during scroll \u{2192} no position jump");

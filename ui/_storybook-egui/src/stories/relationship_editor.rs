@@ -1,7 +1,6 @@
 //! `RelationshipEditor` story — directed `source → target` edges over an option set.
 
 use egui_widgets::relationship_editor::RelationshipEditor;
-use egui_widgets::theme;
 
 use crate::{accent, muted};
 

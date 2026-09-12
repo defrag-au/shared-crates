@@ -37,7 +37,11 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(12.0);
 
     // ── Selectable tabs, the case that shipped broken ──────────────────
-    ui.label(RichText::new("Selectable (tabs)").color(accent(ui)).strong());
+    ui.label(
+        RichText::new("Selectable (tabs)")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         RichText::new(
             "egui's interact_selectable takes the selected label's TEXT colour from \

@@ -41,9 +41,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Aliens \u{2014} 1000 ADA (78/22 split)")
@@ -94,9 +92,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Small Swap \u{2014} 50 ADA (no split)")
@@ -147,9 +143,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Large Swap \u{2014} 5000 ADA three-way split")

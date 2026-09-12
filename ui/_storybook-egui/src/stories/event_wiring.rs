@@ -2,7 +2,6 @@
 
 use egui_widgets::command_palette::{CommandPalette, PaletteAction, PaletteState};
 use egui_widgets::event_wiring::{ActionCardVm, EventNodeVm, EventWiring};
-use egui_widgets::theme;
 
 use crate::{accent, muted};
 use egui_widgets::typeahead_search::TypeaheadOption;

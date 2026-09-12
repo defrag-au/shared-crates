@@ -2,7 +2,11 @@ use crate::{accent, muted};
 use egui_widgets::fungibles_row::FungiblesRow;
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Fungibles Row").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Fungibles Row")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Compact single-row display for a Cardano Native Token holding. \

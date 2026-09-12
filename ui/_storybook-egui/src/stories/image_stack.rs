@@ -32,7 +32,6 @@
 use crate::{accent, muted};
 use egui_widgets::image_loader::{iiif_asset_url, AssetImageSize};
 use egui_widgets::image_stack::{ImageStack, ImageStackStyle, StackImage};
-use egui_widgets::theme;
 
 /// Real assets, so the treatment is judged against real artwork. A pile of grey
 /// placeholder squares looks fine at any settings and tells you nothing.
@@ -65,7 +64,11 @@ impl Default for ImageStackState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
-    ui.label(egui::RichText::new("Image Stack").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Image Stack")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Several images as a fanned pile of mounted prints — so a lot of many reads as a lot \

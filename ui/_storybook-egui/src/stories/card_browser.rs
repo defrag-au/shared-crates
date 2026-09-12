@@ -2,8 +2,8 @@
 
 use egui::{Color32, Pos2, Rect, Vec2};
 use egui_widgets::asset_card::{
-    AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES, RARITY_NAMES,
-    rarity_colors_of,
+    rarity_colors_of, AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES,
+    RARITY_NAMES,
 };
 use egui_widgets::card_browser::{self, CardBrowserConfig, CardBrowserState};
 use egui_widgets::theme::Space;
@@ -431,7 +431,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
         ui.label("Gutter:");
         // "Theme" first, because it is the default and the point: a surface that
         // says nothing inherits the ramp.
-        if ui.selectable_label(state.spacing.is_none(), "theme").clicked() {
+        if ui
+            .selectable_label(state.spacing.is_none(), "theme")
+            .clicked()
+        {
             state.spacing = None;
         }
         for step in Space::ALL {

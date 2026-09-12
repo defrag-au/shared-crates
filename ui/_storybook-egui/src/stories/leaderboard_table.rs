@@ -27,9 +27,7 @@ pub fn show(ui: &mut egui::Ui) {
         .fill(crate::bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(
-            crate::highlight(ui),
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             // Bounded height so the virtual scroll is exercised in the story.
             ui.allocate_ui(egui::vec2(ui.available_width().min(620.0), 320.0), |ui| {

@@ -24,8 +24,6 @@
 //! the editor inside the portal shell's actual hosting context, so "does this
 //! survive being a pane" is a click rather than a deploy.
 
-use egui_widgets::theme;
-
 use crate::{accent, muted};
 use egui_widgets::wiring_editor::{self, WiringEditorState};
 use gateway_wiring::{

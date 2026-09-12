@@ -19,7 +19,11 @@ fn ada(v: i128) -> String {
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Flow Ledger").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Flow Ledger")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "A wallet's movements in time order — net amounts only, with a running balance and \

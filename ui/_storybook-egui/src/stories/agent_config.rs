@@ -13,7 +13,6 @@
 use egui_widgets::agent_config::{
     agent_config_section, AgentConfigResponse, CredentialDraft, ProviderDraft,
 };
-use egui_widgets::theme;
 
 use crate::{accent, muted};
 use gateway_wiring::{AgentEntitlement, AgentTier, GuildRole, ProviderStatus};

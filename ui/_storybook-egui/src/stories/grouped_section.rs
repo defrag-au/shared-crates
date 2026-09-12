@@ -1,6 +1,5 @@
 use crate::{accent, muted};
 use egui_widgets::grouped_section::{GroupedSection, GroupedSectionAction};
-use egui_widgets::theme;
 
 /// 64×64 placeholder hero baked into the storybook binary so the
 /// section visualises with a real image without needing network
@@ -115,7 +114,11 @@ pub fn show(ui: &mut egui::Ui) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("\u{2022} Hero image renders at 32×32 with rounded corners");
     ui.label("\u{2022} Verified badge appears next to title when `verified(true)`");
     ui.label("\u{2022} Subtitle below title in muted text, optional");

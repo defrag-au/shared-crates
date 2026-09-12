@@ -72,7 +72,11 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // --- Percentage formatting ---
-    ui.label(egui::RichText::new("format_percent").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("format_percent")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new("Drops unnecessary trailing zeros")
             .color(muted(ui))
@@ -117,7 +121,11 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // --- Number formatting ---
-    ui.label(egui::RichText::new("format_number").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("format_number")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new("Integer with comma separators")
             .color(muted(ui))
@@ -202,7 +210,11 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // --- RelativeTime widget ---
-    ui.label(egui::RichText::new("RelativeTime").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("RelativeTime")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Auto-scaling \"time ago\" — steps s \u{2192} m \u{2192} h \u{2192} d \u{2192} w (vs a raw \"3480s ago\")",
@@ -233,7 +245,11 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // --- Hex truncation ---
-    ui.label(egui::RichText::new("truncate_hex").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("truncate_hex")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new("Shorten hex strings with ellipsis")
             .color(muted(ui))

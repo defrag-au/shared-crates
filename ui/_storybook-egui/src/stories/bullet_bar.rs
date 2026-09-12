@@ -1,7 +1,6 @@
 //! `BulletBar` story — value fill against a track with a target marker.
 
 use egui_widgets::bullet_bar::BulletBar;
-use egui_widgets::theme;
 
 use crate::{accent, muted};
 
@@ -20,11 +19,7 @@ impl Default for BulletBarState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut BulletBarState) {
-    ui.label(
-        egui::RichText::new("Bullet Bar")
-            .color(accent(ui))
-            .strong(),
-    );
+    ui.label(egui::RichText::new("Bullet Bar").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "A value fill against a track with a vertical target marker — the \

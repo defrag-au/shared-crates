@@ -1,7 +1,6 @@
 //! `PaletteEditor` story — colorization palettes (name + base color + variants).
 
 use egui_widgets::palette_editor::{Palette, PaletteEditor, PaletteVariant};
-use egui_widgets::theme;
 
 use crate::{accent, muted};
 

@@ -67,9 +67,7 @@ fn card(ui: &mut egui::Ui, comp: &CollectionComposition) {
         .fill(bg(ui))
         .corner_radius(8.0)
         .inner_margin(16.0)
-        .stroke(egui_widgets::theme::hairline(
-            crate::highlight(ui),
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             collection_composition::show_header(ui, comp);
             ui.separator();

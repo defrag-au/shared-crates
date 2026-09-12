@@ -1,7 +1,6 @@
 //! `TagList` story — a wrapping row of removable chips with a clear button.
 
 use egui_widgets::tag_list::TagList;
-use egui_widgets::theme;
 
 use crate::{accent, muted};
 
@@ -25,11 +24,7 @@ impl Default for TagListState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut TagListState) {
-    ui.label(
-        egui::RichText::new("Tag List")
-            .color(accent(ui))
-            .strong(),
-    );
+    ui.label(egui::RichText::new("Tag List").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "A wrapping row of removable chips with an optional clear-all button — \

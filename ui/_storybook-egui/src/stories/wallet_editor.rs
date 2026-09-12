@@ -1,6 +1,5 @@
 //! Storybook demo for the WalletEditor widget.
 
-use egui::Color32;
 use egui_widgets::wallet_editor::{
     self, WalletEditorConfig, WalletEditorEntry, WalletEditorState, WalletEntryStatus,
 };
@@ -94,9 +93,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 let config = WalletEditorConfig {
                     subtitle: Some("Add wallets to analyze trait coverage"),
@@ -145,7 +142,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
     } else {
         ui.label(
             egui::RichText::new(format!("Last action: {}", state.last_action))
-                .color(Color32::from_rgb(125, 207, 255))
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
                 .size(11.0),
         );
     }

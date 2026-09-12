@@ -1,8 +1,6 @@
 //! `TokenMultiselect` story — pick a subset from a known option set; selected
 //! show as removable chips, an "add" menu offers the rest.
 
-use egui_widgets::theme;
-
 use crate::{accent, muted};
 use egui_widgets::token_multiselect::TokenMultiselect;
 

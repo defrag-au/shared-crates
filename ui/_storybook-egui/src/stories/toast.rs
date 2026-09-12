@@ -179,7 +179,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
     ui.add_space(16.0);
 
     // ── Queue state ────────────────────────────────────────────────────
-    ui.label(egui::RichText::new("Queue state").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Queue state")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Live count + a clear-all (e.g. on a route change). Default \

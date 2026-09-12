@@ -4,7 +4,11 @@ use crate::{accent, muted};
 use egui_widgets::{PropertyLabelAlign, PropertyList};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("PropertyList").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("PropertyList")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Label/value grid for read-only key data. Two columns, stable widths, \

@@ -3,7 +3,7 @@
 
 use egui::{Rect, Vec2};
 use egui_widgets::corner_action::{Corner, CornerAction};
-use egui_widgets::{theme, PhosphorIcon};
+use egui_widgets::PhosphorIcon;
 
 use crate::{accent, muted};
 
@@ -27,13 +27,21 @@ fn placeholder_thumb(ui: &mut egui::Ui, label: &str) -> Rect {
 fn owned_dot(ui: &egui::Ui, thumb: Rect) {
     let r = 5.0;
     let center = egui::pos2(thumb.max.x - r - 4.0, thumb.min.y + r + 4.0);
-    ui.painter().circle_filled(center, r, crate::tok(ui, egui_widgets::theme::Token::AccentGreen));
+    ui.painter().circle_filled(
+        center,
+        r,
+        crate::tok(ui, egui_widgets::theme::Token::AccentGreen),
+    );
     ui.painter()
-        .circle_stroke(center, r, egui::Stroke::new(1.0, crate::bg(ui)));
+        .circle_stroke(center, r, egui::Stroke::new(1.0_f32, crate::bg(ui)));
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Corner Action").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Corner Action")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "An icon button pinned to a corner of something already drawn. Takes the \

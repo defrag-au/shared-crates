@@ -19,7 +19,11 @@ impl Default for MintCheckoutStoryState {
 const UNIT: u64 = 100_000_000; // 100 ADA
 
 pub fn show(ui: &mut egui::Ui, state: &mut MintCheckoutStoryState) {
-    ui.label(egui::RichText::new("MintCheckout").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("MintCheckout")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Buyer-facing mint offer + CTA as one composed widget — phase + \

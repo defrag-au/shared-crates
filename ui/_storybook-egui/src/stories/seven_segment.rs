@@ -36,7 +36,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     ui.add_space(16.0);
 
     // --- Time display ---
-    ui.label(egui::RichText::new("Time Display").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Time Display")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new("Colon separator for countdown timers and durations")
             .color(muted(ui))
@@ -52,7 +56,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     ui.add_space(16.0);
 
     // --- Color variants ---
-    ui.label(egui::RichText::new("Color Variants").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Color Variants")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.add_space(4.0);
 
     egui_widgets::SevenSegmentDisplay::new("1247")
@@ -75,7 +83,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     ui.add_space(16.0);
 
     // --- Animated counter ---
-    ui.label(egui::RichText::new("Live Counter").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Live Counter")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new("Simulates accrual ticking up at 5.2 per second")
             .color(muted(ui))
@@ -133,7 +145,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("- Digits 0-9 render with correct segments lit");
     ui.label("- Colons render as two stacked square dots");
     ui.label("- Minus sign renders as middle segment only");

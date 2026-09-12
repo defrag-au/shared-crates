@@ -171,10 +171,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeFlowStoryState) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(14.0)
-            .stroke(egui::Stroke::new(
-                1.0_f32,
-                crate::highlight(ui),
-            ))
+            .stroke(egui::Stroke::new(1.0_f32, crate::highlight(ui)))
             .show(ui, |ui| {
                 trade_flow::show(ui, &data, &config);
             });

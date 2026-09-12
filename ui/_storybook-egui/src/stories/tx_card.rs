@@ -319,7 +319,12 @@ fn card(ui: &mut egui::Ui, data: &TxCardData<'_>, d: TxDensity, walking: bool) -
 
 fn section(ui: &mut egui::Ui, title: &str, why: &str) {
     ui.add_space(6.0);
-    ui.label(egui::RichText::new(title).color(accent(ui)).small().strong());
+    ui.label(
+        egui::RichText::new(title)
+            .color(accent(ui))
+            .small()
+            .strong(),
+    );
     ui.label(egui::RichText::new(why).color(muted(ui)).small());
     ui.add_space(6.0);
 }

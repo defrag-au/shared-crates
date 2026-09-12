@@ -16,8 +16,8 @@
 //! What to look for: does motion + linkage make it stop feeling flat? If yes,
 //! the framework was never the problem. If no, that is evidence for D3.
 
-use crate::stories::capital_flow::{ada, arrivals, events, month, moves, RAISED};
 use crate::muted;
+use crate::stories::capital_flow::{ada, arrivals, events, month, moves, RAISED};
 use egui_widgets::{
     capital_bands, format_date, AliasIndex, CapitalFlow, HolderField, MarkKind, PartyFinder,
     PartyFinderState, Selection, SpineState, TimeSpine, WalletIdentity,

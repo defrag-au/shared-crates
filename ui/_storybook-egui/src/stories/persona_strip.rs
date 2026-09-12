@@ -2,7 +2,11 @@ use crate::{accent, muted};
 use egui_widgets::persona_strip::PersonaStrip;
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Persona Strip").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Persona Strip")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Italic one-liner + optional chip row. Persona summaries (wallet, collection, \

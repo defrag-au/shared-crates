@@ -11,7 +11,11 @@ pub struct ButtonGroupState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut ButtonGroupState) {
-    ui.label(egui::RichText::new("ButtonGroup").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("ButtonGroup")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Row of related action buttons with shared layout. Each button \

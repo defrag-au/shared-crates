@@ -64,7 +64,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut SparklineState) {
     ui.add_space(16.0);
 
     // --- Live animated sparkline ---
-    ui.label(egui::RichText::new("Live Animation").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Live Animation")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new("Simulates real-time accrual data")
             .color(muted(ui))
@@ -153,7 +157,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut SparklineState) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("\u{2022} Hover \u{2192} crosshair + value tooltip at nearest point");
     ui.label("\u{2022} Mean line shown as dashed horizontal reference");
     ui.label("\u{2022} Fill gradient fades from line color to transparent at bottom");

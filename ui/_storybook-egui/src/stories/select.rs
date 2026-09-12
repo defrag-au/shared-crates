@@ -6,7 +6,6 @@
 //! every row. The old three-loose-buttons row failed exactly there.
 
 use egui_widgets::select::{MultiSelect, Select, SelectOption};
-use egui_widgets::theme;
 
 use crate::{accent, muted};
 

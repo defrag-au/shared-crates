@@ -27,8 +27,8 @@
 //! read for loud, quiet and silent. Smoothing was considered and rejected
 //! because it would attenuate exactly the one-day spikes the lane is for.
 
-use crate::stories::capital_flow::month;
 use crate::muted;
+use crate::stories::capital_flow::month;
 use egui_widgets::{format_date, view_centred_on, DensityBin, MarkKind, SpineState, TimeSpine};
 
 const DAY: i64 = 86_400;

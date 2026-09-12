@@ -9,7 +9,11 @@ fn ada(v: i128) -> String {
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Custody Walk").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Custody Walk")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Where one specific sum came from. Each row is a share of its parent; leaves are \

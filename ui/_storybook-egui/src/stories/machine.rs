@@ -1,7 +1,6 @@
 //! `Machine` story — the save lifecycle as one state, no flag trio.
 
 use egui_widgets::machine::Machine;
-use egui_widgets::theme;
 
 use crate::{accent, muted};
 
@@ -75,9 +74,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut MachineState) {
 
     let (label, color) = match state.save.get() {
         DemoSave::Clean => ("Clean".to_string(), muted(ui)),
-        DemoSave::Dirty => ("Dirty — unsaved edits".to_string(), crate::tok(ui, egui_widgets::theme::Token::AccentYellow)),
-        DemoSave::Saving { op } => (format!("Saving op {op}…"), crate::tok(ui, egui_widgets::theme::Token::AccentCyan)),
-        DemoSave::Saved => ("Saved ✓ (auto-reverts)".to_string(), crate::tok(ui, egui_widgets::theme::Token::Success)),
+        DemoSave::Dirty => (
+            "Dirty — unsaved edits".to_string(),
+            crate::tok(ui, egui_widgets::theme::Token::AccentYellow),
+        ),
+        DemoSave::Saving { op } => (
+            format!("Saving op {op}…"),
+            crate::tok(ui, egui_widgets::theme::Token::AccentCyan),
+        ),
+        DemoSave::Saved => (
+            "Saved ✓ (auto-reverts)".to_string(),
+            crate::tok(ui, egui_widgets::theme::Token::Success),
+        ),
     };
     ui.label(egui::RichText::new(label).color(color).strong());
     ui.label(

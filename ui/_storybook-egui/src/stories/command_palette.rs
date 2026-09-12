@@ -1,7 +1,6 @@
 //! `CommandPalette` story — modal ⌘K launcher over a caller-supplied command set.
 
 use egui_widgets::command_palette::{CommandPalette, PaletteAction, PaletteState};
-use egui_widgets::theme;
 
 use crate::{accent, muted};
 use egui_widgets::typeahead_search::TypeaheadOption;

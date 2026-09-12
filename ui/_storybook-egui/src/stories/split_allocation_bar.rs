@@ -29,9 +29,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Two-Way Split (78/22)")
@@ -65,9 +63,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Three-Way Split (55/30/15)")
@@ -107,9 +103,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Single Pool (100%)")
@@ -135,9 +129,7 @@ pub fn show(ui: &mut egui::Ui) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Without Legend")

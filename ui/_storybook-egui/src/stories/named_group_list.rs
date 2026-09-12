@@ -1,7 +1,6 @@
 //! `NamedGroupList` story — named groups with member multiselects + a flag.
 
 use egui_widgets::named_group_list::{NamedGroup, NamedGroupList};
-use egui_widgets::theme;
 
 use crate::{accent, muted};
 

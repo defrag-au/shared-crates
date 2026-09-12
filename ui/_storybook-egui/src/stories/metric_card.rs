@@ -14,7 +14,11 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(12.0);
 
     // --- Row of basic cards ---
-    ui.label(egui::RichText::new("Basic Cards").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Basic Cards")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.add_space(4.0);
 
     ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
@@ -198,7 +202,11 @@ pub fn show(ui: &mut egui::Ui) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("\u{2022} Cards show label, value, optional subtitle");
     ui.label("\u{2022} Trend arrows: green up, red down, muted flat");
     ui.label("\u{2022} Sparkline embeds inside card with matching value color");

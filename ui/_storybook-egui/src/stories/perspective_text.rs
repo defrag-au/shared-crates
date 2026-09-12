@@ -604,7 +604,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerspectiveTextState) {
     ui.add_space(24.0);
     ui.separator();
     ui.add_space(8.0);
-    ui.label(egui::RichText::new("Key patterns:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Key patterns:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("- Galley mesh: galley.rows[i].row.visuals.mesh.vertices");
     ui.label("- Mutable access: Arc::make_mut(&mut galley).rows → Arc::make_mut(&mut row)");
     ui.label("- TextShape: modify vertices in-place, draw at a screen position");

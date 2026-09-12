@@ -8,7 +8,11 @@ const CLUSTER_PROJECT: egui::Color32 = egui::Color32::from_rgb(0x5b, 0x8f, 0xd6)
 const CLUSTER_OFFRAMP: egui::Color32 = egui::Color32::from_rgb(0xd6, 0x9b, 0x5b);
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Party Badge").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Party Badge")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "A counterparty plus how firmly its identity is known. The basis is a positional \

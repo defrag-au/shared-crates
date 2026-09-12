@@ -26,7 +26,11 @@ fn ada(v: i128) -> String {
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Activity Feed").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Activity Feed")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "A wallet's transactions as day-grouped cards: what it was, what moved, what it \

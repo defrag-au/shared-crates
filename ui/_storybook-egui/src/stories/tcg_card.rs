@@ -931,7 +931,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     let template = state.template.as_ref().unwrap_or(&fallback);
 
     // --- 1. Card Frame ---
-    ui.label(egui::RichText::new("1. Card Frame").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("1. Card Frame")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Template-driven layout: art background, frame overlay, text in mask-defined regions.",
@@ -1413,7 +1417,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     ui.add_space(24.0);
     ui.separator();
     ui.add_space(8.0);
-    ui.label(egui::RichText::new("Key patterns:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Key patterns:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("- Template-driven: frame.png overlay + mask.png colour-keyed regions");
     ui.label("- Art: cover-cropped 1:1 into template art region, behind frame");
     ui.label("- Perspective: all layers bilinearly mapped into tilted quad");

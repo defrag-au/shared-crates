@@ -4,10 +4,10 @@ use egui::{Color32, Pos2, Rect, Vec2};
 use egui_widgets::asset_card::{
     base_outline, draw_colored_fan, draw_colored_ring, draw_effect_fan, draw_effect_quad,
     draw_quad, draw_spark_streak, draw_textured_fan, draw_textured_fan_rect_uv, draw_textured_quad,
-    draw_tile_overlay, expand_outline, project_3d, project_points, rarity_color, rarity_glow,
-    rounded_rect_vertices, update_tilt, with_badge, AuroraCurtain, BrushedMetal, CardEffect,
-    CardMask, DiffractionGrating, Glitter, PrismaticDispersion, StreakHolo, ThinFilmIridescence,
-    TiltState, EFFECT_NAMES, RARITY_NAMES, rarity_colors,
+    draw_tile_overlay, expand_outline, project_3d, project_points, rarity_color, rarity_colors,
+    rarity_glow, rounded_rect_vertices, update_tilt, with_badge, AuroraCurtain, BrushedMetal,
+    CardEffect, CardMask, DiffractionGrating, Glitter, PrismaticDispersion, StreakHolo,
+    ThinFilmIridescence, TiltState, EFFECT_NAMES, RARITY_NAMES,
 };
 
 use crate::{accent, muted};
@@ -177,7 +177,12 @@ fn demo_square(
         draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
     }
 
-    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(ui, rarity));
+    draw_colored_ring(
+        &painter,
+        &proj_outline,
+        &proj_border,
+        rarity_color(ui, rarity),
+    );
 
     if let Some(tex) = art_tex {
         draw_textured_quad(&painter, proj4, tex, Color32::WHITE);
@@ -204,7 +209,12 @@ fn demo_square(
     }
 
     if spark_enabled && rarity >= 2 {
-        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(ui, rarity));
+        draw_spark_streak(
+            &painter,
+            &proj_outline,
+            spark_phase,
+            rarity_color(ui, rarity),
+        );
     }
 
     draw_tile_overlay(
@@ -260,7 +270,12 @@ fn demo_hex(
         draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
     }
 
-    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(ui, rarity));
+    draw_colored_ring(
+        &painter,
+        &proj_outline,
+        &proj_border,
+        rarity_color(ui, rarity),
+    );
 
     let art_center = project_3d(center, center, ax, ay, perspective);
     if let Some(tex) = art_tex {
@@ -300,7 +315,12 @@ fn demo_hex(
     }
 
     if spark_enabled && rarity >= 2 {
-        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(ui, rarity));
+        draw_spark_streak(
+            &painter,
+            &proj_outline,
+            spark_phase,
+            rarity_color(ui, rarity),
+        );
     }
 
     draw_tile_overlay(
@@ -361,7 +381,12 @@ fn demo_rounded_square(
         draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
     }
 
-    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(ui, rarity));
+    draw_colored_ring(
+        &painter,
+        &proj_outline,
+        &proj_border,
+        rarity_color(ui, rarity),
+    );
 
     let art_verts = rounded_rect_vertices(center, half, half, corner_radius, segs);
     let art_proj = project_points(&art_verts, center, ax, ay, perspective);
@@ -395,7 +420,12 @@ fn demo_rounded_square(
     }
 
     if spark_enabled && rarity >= 2 {
-        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(ui, rarity));
+        draw_spark_streak(
+            &painter,
+            &proj_outline,
+            spark_phase,
+            rarity_color(ui, rarity),
+        );
     }
 
     draw_tile_overlay(
@@ -668,7 +698,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
     );
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("1. Square Tile").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("1. Square Tile")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Natural 1:1 fit. Art-first with right-edge stats and holographic foil.",
@@ -692,7 +726,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
     );
     ui.add_space(16.0);
 
-    ui.label(egui::RichText::new("2. Hex Tile").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("2. Hex Tile")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Pointy-top hexagon. Tessellates for game boards. Holographic foil on Rare+.",

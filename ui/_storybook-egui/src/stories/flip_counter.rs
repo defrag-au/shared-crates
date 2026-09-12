@@ -45,7 +45,11 @@ impl Default for FlipCounterState {
 
 pub fn show(ui: &mut egui::Ui, state: &mut FlipCounterState) {
     // --- Points counter ---
-    ui.label(egui::RichText::new("Points Counter").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Points Counter")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new("Split-flap style counter with flip animation on digit change")
             .color(muted(ui))
@@ -143,7 +147,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlipCounterState) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("- Digits flip with top-half-down then bottom-half-in animation");
     ui.label("- Cards show split line across the middle");
     ui.label("- Top half slightly lighter than bottom half");

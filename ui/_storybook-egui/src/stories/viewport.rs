@@ -102,7 +102,11 @@ pub fn show(ui: &mut egui::Ui) {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(egui::RichText::new(bp.label()).color(colour).strong());
                         if is_current {
-                            ui.label(egui::RichText::new("you are here").color(accent(ui)).small());
+                            ui.label(
+                                egui::RichText::new("you are here")
+                                    .color(accent(ui))
+                                    .small(),
+                            );
                         }
                     });
                     for (field, value) in FIELDS.iter().zip(values) {

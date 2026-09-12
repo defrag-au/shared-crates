@@ -141,9 +141,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut StakeSessionStoryState) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 let action =
                     StakeSessionPanel::new(&state.connector, &state.phase, "abandonware admin")
@@ -191,9 +189,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut StakeSessionStoryState) {
         .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(
-            crate::highlight(ui),
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             ui.set_width(720.0);
             ui.horizontal(|ui| {

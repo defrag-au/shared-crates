@@ -10,7 +10,11 @@ pub fn show(
     ui.add_space(8.0);
 
     // State control buttons
-    ui.label(egui::RichText::new("Progress State").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Progress State")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.add_space(4.0);
     ui.horizontal_wrapped(|ui| {
         if ui.button("Idle").clicked() {

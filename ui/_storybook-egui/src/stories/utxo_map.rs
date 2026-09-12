@@ -240,7 +240,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut UtxoMapStoryState) {
     );
 
     ui.add_space(10.0);
-    ui.label(egui::RichText::new("What to check:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("What to check:")
+            .color(accent(ui))
+            .strong(),
+    );
     for line in [
         "'Mostly ADA' — the sea must read as sea, not as the panel background.",
         "'Fully locked' — no water at all; nothing should look missing.",

@@ -12,10 +12,13 @@
 use crate::{accent, muted};
 use egui::RichText;
 use egui_widgets::background::{BackgroundToasts, Job};
-use egui_widgets::theme;
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(RichText::new("Background Toasts").color(accent(ui)).strong());
+    ui.label(
+        RichText::new("Background Toasts")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         RichText::new(
             "Declare which jobs are running; the toasts follow. Owns the settle delay (so quick \

@@ -149,11 +149,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerfStripStory) {
 
 /// A small muted caption above an example.
 fn caption(ui: &mut egui::Ui, text: &str) {
-    ui.label(
-        egui::RichText::new(text)
-            .size(11.0)
-            .color(crate::muted(ui)),
-    );
+    ui.label(egui::RichText::new(text).size(11.0).color(crate::muted(ui)));
     ui.add_space(3.0);
 }
 
@@ -171,7 +167,6 @@ fn caption(ui: &mut egui::Ui, text: &str) {
 /// seeing them together is what tells you which one a given surface can afford.
 fn in_situ(ui: &mut egui::Ui, state: &mut PerfStripStory) {
     use crate::muted;
-    use egui_widgets::theme;
 
     caption(
         ui,

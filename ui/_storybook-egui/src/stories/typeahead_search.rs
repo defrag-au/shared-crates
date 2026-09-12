@@ -51,9 +51,7 @@ pub fn show(ui: &mut egui::Ui) {
         .fill(crate::bg(ui))
         .corner_radius(8.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(
-            crate::highlight(ui),
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             ui.set_max_width(ui.available_width().min(460.0));
             let resp =

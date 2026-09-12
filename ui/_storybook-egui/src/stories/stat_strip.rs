@@ -16,7 +16,11 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(12.0);
 
     // --- Sales activity: full data across all windows ---
-    ui.label(egui::RichText::new("Sales activity").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Sales activity")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.add_space(4.0);
 
     let active = [
@@ -197,7 +201,11 @@ pub fn show(ui: &mut egui::Ui) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("\u{2022} Every card is the SAME width, whatever its trend string");
     ui.label("\u{2022} Every card is the same height, with or without a sparkline");
     ui.label("\u{2022} Captions share one baseline along the bottom of the row");

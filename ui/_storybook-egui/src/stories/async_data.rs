@@ -135,7 +135,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
 
     if let Some(ref snap) = state.latest {
         // Metric cards row
-        ui.label(egui::RichText::new("Metric Cards").color(accent(ui)).strong());
+        ui.label(
+            egui::RichText::new("Metric Cards")
+                .color(accent(ui))
+                .strong(),
+        );
         ui.label(
             egui::RichText::new("Updated via inbox.read() each frame — only latest value kept")
                 .color(muted(ui))
@@ -210,7 +214,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
         ui.add_space(16.0);
 
         // Flip counter
-        ui.label(egui::RichText::new("Flip Counter").color(accent(ui)).strong());
+        ui.label(
+            egui::RichText::new("Flip Counter")
+                .color(accent(ui))
+                .strong(),
+        );
         ui.label(
             egui::RichText::new("Animates to new value when inbox delivers a snapshot")
                 .color(muted(ui))

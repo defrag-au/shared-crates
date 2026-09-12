@@ -14,7 +14,11 @@ use egui_widgets::{ChannelBands, ChannelSeries};
 const PERIODS: [&str; 10] = ["09", "10", "11", "12", "01", "02", "03", "04", "05", "06"];
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Channel Bands").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Channel Bands")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Where the money came from, period by period. Stacked composition over a discrete \

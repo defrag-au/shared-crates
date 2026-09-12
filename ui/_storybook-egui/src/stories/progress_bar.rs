@@ -104,7 +104,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut ProgressBarState) {
     ui.add_space(16.0);
 
     // --- Color variants ---
-    ui.label(egui::RichText::new("Color Variants").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Color Variants")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.add_space(4.0);
 
     egui_widgets::ProgressBar::new(0.85)
@@ -131,7 +135,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut ProgressBarState) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("\u{2022} Drag slider \u{2192} bar updates in real time");
     ui.label("\u{2022} Hover bar \u{2192} tooltip shows percentage");
     ui.label("\u{2022} Countdown: animate \u{2192} fills from right to left");

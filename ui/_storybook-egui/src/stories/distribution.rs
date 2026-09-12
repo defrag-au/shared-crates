@@ -81,7 +81,11 @@ pub fn show(ui: &mut egui::Ui, chart: &mut egui_widgets::DistributionChart) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("\u{2022} Outermost ring = Circulating (largest, ~71%)");
     ui.label("\u{2022} Innermost ring = Burned (smallest, ~0.1%)");
     ui.label("\u{2022} Click chart \u{2192} animated toggle between aligned and cascading");

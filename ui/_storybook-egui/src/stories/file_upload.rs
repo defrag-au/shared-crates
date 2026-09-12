@@ -31,7 +31,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut FileUploadState) {
     ui.add_space(12.0);
 
     // ── Upload button (images) ──────────────────────────────────────────
-    ui.label(egui::RichText::new("Image Upload").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Image Upload")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.add_space(4.0);
 
     if let Some(file) = state.image_uploader.show(ui, "Upload Image", "image/*") {

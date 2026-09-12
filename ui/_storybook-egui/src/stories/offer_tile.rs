@@ -1,6 +1,5 @@
 use crate::{accent, muted};
 use egui_widgets::offer_tile::{OfferTile, OfferTileState};
-use egui_widgets::theme;
 
 /// Same placeholder hero we use in the GroupedSection story —
 /// avoids hauling in another asset just for the tile preview.
@@ -133,7 +132,11 @@ pub fn show(ui: &mut egui::Ui) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("\u{2022} Active tile renders full-colour with hover cursor + click events");
     ui.label("\u{2022} InCart / Spent tiles dim the frame and tint the image; clicks are inert");
     ui.label("\u{2022} Tooltip is consumer-supplied; usually disambiguates dimmed states");

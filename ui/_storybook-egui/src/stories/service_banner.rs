@@ -12,7 +12,11 @@ use egui_widgets::{BannerTone, ServiceBanner};
 use crate::{accent, muted};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Service Banner").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Service Banner")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "A persistent strip saying the backend is not whole, in the operator's own \

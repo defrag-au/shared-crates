@@ -14,7 +14,11 @@ use egui_widgets::{AboutModal, AboutPoint, PhosphorIcon};
 use crate::{accent, muted};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("About Modal").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("About Modal")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "What a product is, what state it is in, and what to expect from it. \

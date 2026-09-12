@@ -178,7 +178,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut MeshPlaygroundState) {
     ui.add_space(16.0);
 
     // --- 5. Wave mesh ---
-    ui.label(egui::RichText::new("5. Wave Mesh").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("5. Wave Mesh")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(egui::RichText::new("Multi-segment mesh with sinusoidal vertex displacement. Shows how to build strip geometry.").color(muted(ui)).small());
     ui.add_space(4.0);
 
@@ -224,7 +228,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut MeshPlaygroundState) {
     ui.add_space(16.0);
 
     // --- 6. Diamond / polygon ---
-    ui.label(egui::RichText::new("6. N-gon Fan").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("6. N-gon Fan")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Triangle fan from center point. Any convex polygon can be built this way.",
@@ -271,7 +279,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut MeshPlaygroundState) {
     ui.add_space(24.0);
     ui.separator();
     ui.add_space(8.0);
-    ui.label(egui::RichText::new("Key patterns:").color(accent(ui)).strong());
+    ui.label(
+        egui::RichText::new("Key patterns:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("- Mesh::default() uses TextureId::Managed(0) with WHITE_UV at (0,0)");
     ui.label("- Vertex colours are interpolated by the GPU across triangles");
     ui.label("- Rotation/transforms are done in vertex math, not GPU transforms");

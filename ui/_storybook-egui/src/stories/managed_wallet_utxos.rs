@@ -164,9 +164,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ManagedWalletUtxosStoryState) {
             .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                crate::highlight(ui),
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ManagedWalletUtxos::new(&utxos)
                     .assets_unexpected(state.assets_unexpected)
