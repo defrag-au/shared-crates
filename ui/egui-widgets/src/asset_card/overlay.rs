@@ -501,7 +501,7 @@ pub fn draw_tile_overlay(
     angle_y: f32,
     perspective: f32,
 ) {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     let text_color = ui.tokens().color.text_primary;
     let rarity_col = rarity_color(ui, rarity);
     let pill_bg = crate::theme::with_alpha(ui.tokens().color.bg_primary, 200);

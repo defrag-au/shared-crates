@@ -2,8 +2,6 @@
 
 use egui_widgets::palette_editor::{Palette, PaletteEditor, PaletteVariant};
 
-use crate::{accent, muted};
-
 pub struct PaletteEditorState {
     pub palettes: Vec<Palette>,
 }
@@ -23,7 +21,10 @@ impl Default for PaletteEditorState {
                     PaletteVariant {
                         name: "bronze".into(),
                         color: [200, 149, 109],
-                        weight: 1.0,
+                        // Not 1.0 like the others: equal weights hide whether
+                        // the column is actually right-aligned and sized for
+                        // the widest value it can hold.
+                        weight: 12.5,
                     },
                 ],
             }],
@@ -32,18 +33,18 @@ impl Default for PaletteEditorState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut PaletteEditorState) {
-    ui.label(
-        egui::RichText::new("Palette Editor")
-            .color(accent(ui))
-            .strong(),
+    crate::heading(ui, "Palette Editor");
+    crate::caption(
+        ui,
+        "Colorization palettes — a base color (the source pixels to recolor) \
+         plus weighted variant colors. Backs the colorization config.",
     );
-    ui.label(
-        egui::RichText::new(
-            "Colorization palettes — a base color (the source pixels to recolor) \
-             plus weighted variant colors. Backs the colorization config.",
-        )
-        .color(muted(ui))
-        .small(),
+    crate::caption(
+        ui,
+        "A palette and its variants are rows of one grid: the variants indent so \
+         the hierarchy reads down the left edge, while the weight and the \
+         trailing action stay on one axis down the right. Add variants and type \
+         long names — the card holds its width and the columns hold their edges.",
     );
     ui.add_space(12.0);
 

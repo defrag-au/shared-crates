@@ -60,7 +60,7 @@
 
 use egui::{RichText, Ui, WidgetText};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
 use crate::theme::{Space, SpaceExt};
 
 /// Builder.
@@ -163,7 +163,7 @@ impl<'a> ButtonGroup<'a> {
     pub fn show(self, ui: &mut Ui) -> ButtonGroupResponse {
         // Any button might carry a Phosphor icon. Idempotent.
         if self.buttons.iter().any(|b| b.icon.is_some()) {
-            install_phosphor_font(ui.ctx());
+            crate::icons::ensure_fonts(ui);
         }
         let mut response = ButtonGroupResponse::default();
         let render_row = |ui: &mut Ui| {

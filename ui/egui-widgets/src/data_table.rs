@@ -122,7 +122,7 @@ pub fn show<T>(
     mut render_row: impl FnMut(&T) -> DataRowItem,
     mut render_detail: impl FnMut(&mut Ui, usize, &T),
 ) -> DataTableResponse {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     let mut response = DataTableResponse {
         selected_changed: false,

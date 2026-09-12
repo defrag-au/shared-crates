@@ -535,7 +535,7 @@ impl<'a> FlowLedger<'a> {
                             let (Some(url_for), Some(tx)) = (self.explorer, r.tx_id) else {
                                 return;
                             };
-                            crate::icons::install_phosphor_font(ui.ctx());
+                            crate::icons::ensure_fonts(ui);
                             if ui
                                 .small_button(
                                     crate::icons::PhosphorIcon::Eye

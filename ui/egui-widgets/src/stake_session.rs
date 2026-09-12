@@ -278,7 +278,7 @@ impl<'a> StakeSessionPanel<'a> {
     }
 
     fn draw_body(self, ui: &mut egui::Ui) -> StakeSessionAction {
-        crate::install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
 
         // Signed in: the badge is the whole strip. The wallet is implied.
         if let StakeSessionPhase::SignedIn(session) = self.phase {

@@ -18,7 +18,7 @@
 use egui::{Label, RichText, Sense, Ui};
 
 use crate::chip::{Chip, ChipVariant};
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
 use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// The distilled view of a raw error string.
@@ -246,7 +246,7 @@ impl<'a> ErrorNote<'a> {
         ui.vertical(|ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.set_item_gap_x(Space::Base);
-                install_phosphor_font(ui.ctx());
+                crate::icons::ensure_fonts(ui);
                 let warn = ui.tokens().color.warning;
                 ui.label(PhosphorIcon::Warning.rich_text(13.0, warn));
                 if let Some(code) = s.status {

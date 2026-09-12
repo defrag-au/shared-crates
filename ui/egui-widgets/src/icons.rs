@@ -6,6 +6,7 @@
 //! Call [`install_phosphor_font`] once during app setup, then use [`PhosphorIcon`]
 //! to render icons with arbitrary size and color.
 
+use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use egui::{Color32, FontFamily, FontId, Pos2, RichText, Ui};
@@ -18,9 +19,80 @@ pub const PHOSPHOR_FAMILY_NAME: &str = "phosphor-icons";
 /// install itself is guarded per-context.
 static FONT_INSTALLED: AtomicBool = AtomicBool::new(false);
 
+thread_local! {
+    /// Whether the Phosphor family is bound in the context currently being laid
+    /// out, as last observed by [`ensure_fonts`].
+    ///
+    /// # Why this is not simply a bool on the context
+    ///
+    /// [`phosphor_family`] is the funnel every icon passes through — all ~57
+    /// `rich_text` call sites in this crate and every one downstream — and it
+    /// takes no `Context`, so it cannot ask. A thread-local can be consulted
+    /// from there, and egui lays a context out on one thread at a time.
+    ///
+    /// It starts **true**, deliberately. False would mean any caller that never
+    /// reaches [`ensure_fonts`] silently loses its icons; true means such a
+    /// caller behaves exactly as it did before this existed. The value only
+    /// becomes false where we have positively observed the family missing.
+    static PHOSPHOR_READY: Cell<bool> = const { Cell::new(true) };
+}
+
 /// Font family for Phosphor icons.
+///
+/// Falls back to [`FontFamily::Proportional`] for the single pass between
+/// [`install_phosphor_font`] queueing the font and egui binding it — see
+/// [`ensure_fonts`]. Laying text out in an unbound family is not a soft failure
+/// in epaint, it is a panic (`"… is not bound to any fonts"`), and in a wasm
+/// host that is a white screen.
 pub fn phosphor_family() -> FontFamily {
-    FontFamily::Name(PHOSPHOR_FAMILY_NAME.into())
+    if PHOSPHOR_READY.with(Cell::get) {
+        FontFamily::Name(PHOSPHOR_FAMILY_NAME.into())
+    } else {
+        FontFamily::Proportional
+    }
+}
+
+/// Make this crate's icons safe to lay out in the pass that is running now, and
+/// report whether they will actually render.
+///
+/// Every widget in this crate calls this at the top of its `show`. Takes a
+/// [`Ui`] rather than a [`egui::Context`] on purpose: a `Ui` only exists inside
+/// a pass, which is what makes the readiness probe below safe — `Context::fonts`
+/// panics before the first pass, which is exactly where a host installs fonts.
+///
+/// # The one-pass gap this closes
+///
+/// `Context::set_fonts` does not install anything; it stores the definitions on
+/// [`egui::Memory`] and egui binds them at the *start of the next pass*. So the
+/// `install_phosphor_font` call at the top of a widget's `show` cannot serve the
+/// pass that triggered it — the very next line asking for a Phosphor glyph
+/// panicked. Every current host installs fonts at startup and so never met it,
+/// which is precisely why it sat here unnoticed: the self-install advertised as
+/// being "for safety" was load-bearing for nobody and protected no one.
+pub fn ensure_fonts(ui: &Ui) -> bool {
+    ensure_fonts_in_pass(ui.ctx())
+}
+
+/// [`ensure_fonts`] for a caller that is rendering but holds only a
+/// [`egui::Context`] — a toast queue, a modal that opens its own `Window`.
+///
+/// # Panics
+///
+/// Named for its one precondition: `Context::fonts` panics before the first
+/// pass, so the caller must already be inside one. A `&Ui` or a `&Painter`
+/// proves that on its own, which is why [`ensure_fonts`] is the one to reach
+/// for. Do **not** call this from `App::new` — that is
+/// [`install_phosphor_font`]'s job.
+pub fn ensure_fonts_in_pass(ctx: &egui::Context) -> bool {
+    install_phosphor_font(ctx);
+    // What egui is actually holding, not what we asked it for.
+    let ready = ctx.fonts(|f| {
+        f.families()
+            .iter()
+            .any(|family| matches!(family, FontFamily::Name(n) if &**n == PHOSPHOR_FAMILY_NAME))
+    });
+    PHOSPHOR_READY.with(|c| c.set(ready));
+    ready
 }
 
 /// Name of the bundled broad-coverage fallback font.
@@ -34,18 +106,26 @@ pub const FALLBACK_FAMILY_NAME: &str = "dejavu-fallback";
 /// Cyrillic, arrows, maths and many symbols) catches them. Intentional icons should
 /// still use [`PhosphorIcon`]; this is the safety net for arbitrary *data* strings.
 ///
-/// Safe to call multiple times — only installs once per process. Call before
-/// [`crate::theme::configure_style`].
+/// Safe to call multiple times — only queues once per context.
+///
+/// **Call this at startup**, from `App::new` with `&cc.egui_ctx`, before
+/// [`crate::theme::configure_style`]. It only *queues* the definitions: egui
+/// binds them at the start of the next pass, so calling it from inside a pass
+/// leaves that pass without icons. Widgets in this crate call [`ensure_fonts`]
+/// instead, which handles that gap; this is the host's entry point, and takes a
+/// [`egui::Context`] because at startup there is no [`Ui`] yet.
 pub fn install_phosphor_font(ctx: &egui::Context) {
     // Guarded PER CONTEXT, not per process. Fonts live in the context, so a
     // process-wide flag means the SECOND context in a process (a second
     // viewport, a test running beside another) never gets them and either
     // renders tofu or panics with "not bound to any fonts".
-    let installed = egui::Id::new("egui-widgets/fonts-installed");
-    if ctx.data(|d| d.get_temp::<bool>(installed)).unwrap_or(false) {
+    //
+    // "queued", not "installed": all this does is hand egui the definitions.
+    let queued = egui::Id::new("egui-widgets/fonts-installed");
+    if ctx.data(|d| d.get_temp::<bool>(queued)).unwrap_or(false) {
         return;
     }
-    ctx.data_mut(|d| d.insert_temp(installed, true));
+    ctx.data_mut(|d| d.insert_temp(queued, true));
     FONT_INSTALLED.store(true, Ordering::Relaxed);
 
     let mut fonts = egui::FontDefinitions::default();
@@ -80,6 +160,10 @@ pub fn install_phosphor_font(ctx: &egui::Context) {
     }
 
     ctx.set_fonts(fonts);
+    // The icons are missing until the pass after this one, and an egui host
+    // only repaints when something asks it to. Without this the first frame
+    // that can draw icons waits on the next mouse move.
+    ctx.request_repaint();
 }
 
 /// Alias for [`install_phosphor_font`] — installs all bundled fonts (Phosphor icons +
@@ -88,7 +172,12 @@ pub fn install_fonts(ctx: &egui::Context) {
     install_phosphor_font(ctx);
 }
 
-/// Returns true if the font has already been installed.
+/// Whether [`install_phosphor_font`] has ever been called in this process.
+///
+/// Note what this does **not** tell you: whether the font is bound in any
+/// particular context, or usable in the pass you are in. Fonts live on a
+/// context and arrive a pass later than the call that queued them. Use
+/// [`ensure_fonts`] for the question you almost certainly mean.
 pub fn phosphor_font_installed() -> bool {
     FONT_INSTALLED.load(Ordering::Relaxed)
 }
@@ -229,6 +318,11 @@ impl PhosphorIcon {
     }
 
     /// Create [`RichText`] for this icon with the given size and color.
+    ///
+    /// Resolves its family through [`phosphor_family`], so it is safe to lay
+    /// out in a pass where the font is not yet bound **provided** something has
+    /// called [`ensure_fonts`] on this thread — which every widget in this crate
+    /// does before it draws.
     pub fn rich_text(self, size: f32, color: Color32) -> RichText {
         RichText::new(self.as_str())
             .font(FontId::new(size, phosphor_family()))
@@ -236,14 +330,12 @@ impl PhosphorIcon {
     }
 
     /// Display this icon as an egui label.
-    /// Automatically installs the Phosphor font if not already registered.
     pub fn show(self, ui: &mut Ui, size: f32, color: Color32) -> egui::Response {
-        install_phosphor_font(ui.ctx());
+        ensure_fonts(ui);
         ui.label(self.rich_text(size, color))
     }
 
     /// Paint this icon at a specific position using the painter.
-    /// Automatically installs the Phosphor font if not already registered.
     pub fn paint(
         self,
         painter: &egui::Painter,
@@ -252,7 +344,8 @@ impl PhosphorIcon {
         size: f32,
         color: Color32,
     ) {
-        install_phosphor_font(painter.ctx());
+        // A `Painter` exists only inside a pass, same as a `Ui`.
+        ensure_fonts_in_pass(painter.ctx());
         painter.text(
             pos,
             align,
@@ -413,4 +506,77 @@ pub fn phosphor_label(ui: &Ui, icon: PhosphorIcon, label: &str) -> egui::WidgetT
         },
     );
     job.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui::{Id, Pos2, Rect};
+
+    /// Draw an icon on a context that has never had fonts installed, `passes`
+    /// times, and report whether the icon was ever laid out in its real family.
+    fn draw_icon_on_a_fresh_context(passes: usize) -> Vec<bool> {
+        let ctx = egui::Context::default();
+        let mut observed = Vec::new();
+        for _ in 0..passes {
+            ctx.begin_pass(egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 200.0))),
+                ..Default::default()
+            });
+            egui::Area::new(Id::new("icon")).show(&ctx, |ui| {
+                // The call every widget in this crate makes, followed
+                // immediately by laying a glyph out — the sequence that panicked.
+                let ready = ensure_fonts(ui);
+                PhosphorIcon::X.show(ui, 12.0, Color32::WHITE);
+                observed.push(ready);
+            });
+            let _ = ctx.end_pass();
+        }
+        observed
+    }
+
+    #[test]
+    fn a_host_that_never_installed_the_fonts_does_not_panic() {
+        // `Context::set_fonts` hands egui the definitions and egui binds them at
+        // the START OF THE NEXT PASS. So the self-install at the top of a
+        // widget's `show` could never serve the pass that triggered it, and the
+        // next line asking for a Phosphor glyph took the whole app down —
+        // a white screen under wasm. This test is the regression: reaching the
+        // assert at all is the thing being asserted.
+        let observed = draw_icon_on_a_fresh_context(1);
+        assert_eq!(observed, vec![false], "pass 1 cannot have the font yet");
+    }
+
+    #[test]
+    fn the_icons_arrive_on_the_very_next_pass() {
+        // The fallback is for exactly one pass. If it were sticky, every host
+        // that forgot the startup call would silently render no icons forever,
+        // which is a worse failure than the panic because nothing reports it.
+        let observed = draw_icon_on_a_fresh_context(3);
+        assert_eq!(observed, vec![false, true, true]);
+    }
+
+    #[test]
+    fn the_family_reported_follows_readiness() {
+        // `phosphor_family` is the funnel: it is what makes ~57 `rich_text` call
+        // sites safe without any of them being touched.
+        PHOSPHOR_READY.with(|c| c.set(false));
+        assert_eq!(phosphor_family(), FontFamily::Proportional);
+        PHOSPHOR_READY.with(|c| c.set(true));
+        assert_eq!(
+            phosphor_family(),
+            FontFamily::Name(PHOSPHOR_FAMILY_NAME.into())
+        );
+    }
+
+    #[test]
+    fn readiness_defaults_to_optimistic_on_a_fresh_thread() {
+        // False would mean any caller that never reaches `ensure_fonts` — a
+        // downstream crate building its own `FontId` from `phosphor_family` —
+        // silently loses its icons. It must behave exactly as it did before.
+        let on_its_own_thread = std::thread::spawn(|| PHOSPHOR_READY.with(Cell::get))
+            .join()
+            .unwrap();
+        assert!(on_its_own_thread);
+    }
 }

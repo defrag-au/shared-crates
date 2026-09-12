@@ -114,7 +114,7 @@ impl<'a> MintCheckout<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> MintCheckoutResponse {
-        crate::install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
         let vm = self.vm;
         let accent = self.accent.of(ui);
         let mut actions = Vec::new();

@@ -73,7 +73,7 @@ impl QuantityStepper {
     }
 
     pub fn show(self, ui: &mut Ui) -> QuantityStepperResponse {
-        crate::install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
 
         let mut value = self.value.clamp(self.min, self.max);
         let start = value;

@@ -20,7 +20,7 @@
 use authorizations::{EntitlementSet, Feature};
 use egui::{Color32, RichText, Ui};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
 use crate::theme::{Space, TextSize, ThemeExt};
 
 /// The session's entitlement state as the frontend knows it. Kept as its
@@ -96,7 +96,7 @@ pub fn gated(
 /// copy from the feature registry (plus a "session expired?" nudge when
 /// the user is authenticated but lacks the entitlement).
 pub fn locked_card(ui: &mut Ui, gate: &GateState, feature: Feature) {
-    install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     egui::Frame::group(ui.style())
         .fill(ui.visuals().faint_bg_color)
         .show(ui, |ui| {
@@ -125,7 +125,7 @@ pub fn locked_card(ui: &mut Ui, gate: &GateState, feature: Feature) {
 /// so callers can attach tooltips or clicks (e.g. open an "how to unlock"
 /// modal).
 pub fn locked_chip(ui: &mut Ui, feature: Feature) -> egui::Response {
-    install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     // A button label is single-font, so the Phosphor glyph and the latin
     // name can't share one string — compose a chip-shaped frame instead.
     let weak = ui.visuals().weak_text_color();

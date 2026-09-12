@@ -38,7 +38,6 @@
 
 use egui::{Align, Color32, Layout, Sense, Ui, vec2};
 
-use crate::icons::install_phosphor_font;
 use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 use crate::{PhosphorIcon, theme};
 
@@ -255,7 +254,7 @@ impl<'a> Select<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> SelectResponse {
-        install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
         let mut out = SelectResponse::default();
         // The control's parts are affordances, not copyable text — selectable
         // labels put an I-beam over the click target and fight it.
@@ -615,7 +614,7 @@ impl<'a> MultiSelect<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> MultiSelectResponse {
-        install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
         let mut out = MultiSelectResponse::default();
         ui.style_mut().interaction.selectable_labels = false;
 

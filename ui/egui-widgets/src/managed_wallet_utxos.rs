@@ -228,7 +228,7 @@ impl<'a> ManagedWalletUtxos<'a> {
                 String::new()
             };
             ui.horizontal(|ui| {
-                crate::icons::install_phosphor_font(ui.ctx());
+                crate::icons::ensure_fonts(ui);
                 ui.label(
                     crate::PhosphorIcon::Warning.rich_text(12.0, ui.tokens().color.accent_yellow),
                 );
@@ -285,7 +285,7 @@ impl<'a> ManagedWalletUtxos<'a> {
             ui.gap(Space::Md);
             if self.assets_unexpected {
                 ui.horizontal(|ui| {
-                    crate::icons::install_phosphor_font(ui.ctx());
+                    crate::icons::ensure_fonts(ui);
                     ui.label(
                         crate::PhosphorIcon::Warning.rich_text(12.0, ui.tokens().color.accent_red),
                     );

@@ -30,7 +30,7 @@ use crate::theme::{Ink, Radius, Space, ThemeExt, Token};
 
 use egui::{Align, Color32, Layout, RichText, Ui};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
 
 /// Visual layout pick — `IdPill::layout(…)` consumes one of these.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -286,7 +286,7 @@ impl<'a> IdPill<'a> {
     fn show_stacked(self, ui: &mut Ui) -> IdPillResponse {
         let mut response = IdPillResponse::default();
         if self.copyable {
-            install_phosphor_font(ui.ctx());
+            crate::icons::ensure_fonts(ui);
         }
         // `min_width` caps the frame's *outer* width so a column of
         // pills shares a uniform border AND stays at the natural
@@ -402,7 +402,7 @@ impl<'a> IdPill<'a> {
             };
             value_resp.on_hover_text(self.value_full.as_ref());
             if self.copyable {
-                install_phosphor_font(ui.ctx());
+                crate::icons::ensure_fonts(ui);
                 if ui
                     .small_button(PhosphorIcon::Copy.rich_text(11.0, label_col).small())
                     .on_hover_text("Copy to clipboard")
@@ -413,7 +413,7 @@ impl<'a> IdPill<'a> {
                 }
             }
             if let Some(url) = &self.link {
-                install_phosphor_font(ui.ctx());
+                crate::icons::ensure_fonts(ui);
                 if ui
                     .small_button(PhosphorIcon::Eye.rich_text(11.0, label_col).small())
                     .on_hover_text(format!("Open {url}"))

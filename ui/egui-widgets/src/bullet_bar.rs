@@ -132,7 +132,7 @@ impl BulletBar {
     }
 
     pub fn show(self, ui: &mut Ui) -> egui::Response {
-        crate::install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
         let value = self.value.clamp(0.0, self.max);
         let target = self.target.map(|t| t.clamp(0.0, self.max));
         // Without a target nothing can be "met", so the good colour never

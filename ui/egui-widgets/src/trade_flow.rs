@@ -91,7 +91,7 @@ impl Default for TradeFlowConfig {
 
 /// Render the trade-flow card. The caller supplies the surrounding frame.
 pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     // Heading
     ui.horizontal(|ui| {

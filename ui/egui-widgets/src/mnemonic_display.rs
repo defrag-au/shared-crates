@@ -108,7 +108,7 @@ impl<'a> MnemonicDisplay<'a> {
                 .inner_margin(ui.tokens().margin_xy(Space::Xl, Space::Md))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        crate::icons::install_phosphor_font(ui.ctx());
+                        crate::icons::ensure_fonts(ui);
                         let warn = c.warning;
                         ui.label(crate::PhosphorIcon::Warning.rich_text(13.0, warn));
                         ui.label(

@@ -100,7 +100,7 @@ pub fn show(
     config: &OfferSlotConfig,
     qty_input: Option<&mut String>,
 ) -> OfferSlotResponse {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     let mut action = None;
     let card_size = Vec2::splat(config.size);
@@ -384,7 +384,7 @@ pub fn show_ada_card(
     ada_input: Option<&mut String>,
     config: &OfferSlotConfig,
 ) -> Option<u64> {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     let card_size = Vec2::splat(config.size);
     let (card_rect, _) = ui.allocate_exact_size(card_size, egui::Sense::hover());
@@ -481,7 +481,7 @@ pub fn show_ada_card(
 ///
 /// Returns `true` if clicked.
 pub fn show_add_card(ui: &mut egui::Ui, config: &OfferSlotConfig) -> bool {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     let card_size = Vec2::splat(config.size);
     let (card_rect, response) = ui.allocate_exact_size(card_size, egui::Sense::click());

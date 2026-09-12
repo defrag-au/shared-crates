@@ -44,7 +44,7 @@
 
 use egui::{RichText, Ui};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
 use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 /// One thing a reader should expect: an icon, a headline, and a line saying
@@ -112,7 +112,7 @@ impl<'a> AboutModal<'a> {
         if !*open {
             return;
         }
-        install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
 
         let mut dismissed = false;
         let response = egui::Modal::new(egui::Id::new("about_modal")).show(ui.ctx(), |ui| {

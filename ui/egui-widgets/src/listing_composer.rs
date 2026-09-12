@@ -243,7 +243,7 @@ pub fn show(
     state: &mut ListingComposerState,
     config: &ListingComposerConfig,
 ) -> Option<ListingComposerAction> {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     let mut action = None;
     let size = config.font_size;
     let small = size - 2.0;

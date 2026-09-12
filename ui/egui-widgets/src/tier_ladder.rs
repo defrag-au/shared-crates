@@ -33,7 +33,7 @@
 
 use egui::{Color32, RichText, Ui};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
 use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 /// Where a rung sits relative to the reader.
@@ -195,7 +195,7 @@ impl<'a> TierLadder<'a> {
         if !*open {
             return TierLadderAction::None;
         }
-        install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
 
         let mut action = TierLadderAction::None;
         let response = egui::Modal::new(egui::Id::new("tier_ladder_modal")).show(ui.ctx(), |ui| {

@@ -40,7 +40,7 @@ use gateway_wiring::{
 };
 
 use crate::PhosphorIcon;
-use crate::icons::{install_phosphor_font, phosphor_label};
+use crate::icons::phosphor_label;
 use crate::relative_time::relative_label;
 use crate::select::{Select, SelectOption};
 use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
@@ -134,7 +134,7 @@ pub struct AgentConfigResponse {
 
 /// Provider selection: preset buttons, then the two fields they fill.
 pub fn provider_picker(ui: &mut Ui, draft: &mut ProviderDraft) -> bool {
-    install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     let mut changed = false;
     let current = preset_for_base_url(&draft.base_url);
 
@@ -221,7 +221,7 @@ pub fn credential_field(
     now_ms: f64,
     response: &mut AgentConfigResponse,
 ) {
-    install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     section_heading(ui, "API key");
 
     if let Some(status) = status {
@@ -329,7 +329,7 @@ pub fn budget_editor(
 ) {
     let mode = AgentMode::of(agent.as_ref());
 
-    install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     section_heading(ui, "Who may ask");
 
     ui.horizontal_wrapped(|ui| {
@@ -506,7 +506,7 @@ pub fn agent_config_section(
     now_ms: f64,
 ) -> AgentConfigResponse {
     let mut response = AgentConfigResponse::default();
-    install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     // The screen's own title, a size above the three section headings under
     // it — without that step the sections read as siblings of the whole

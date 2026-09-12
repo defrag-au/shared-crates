@@ -148,7 +148,7 @@ pub fn conversation_list(
 /// One turn: the request, the working out, the answer.
 pub fn conversation_turn(ui: &mut Ui, entry: &RecentActivity, now_ms: f64) -> HistoryResponse {
     // The family has to exist before a `FontId` can name it.
-    crate::icons::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     let mut response = HistoryResponse::default();
 
     // Level 1 — what someone actually asked.

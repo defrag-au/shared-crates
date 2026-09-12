@@ -39,7 +39,7 @@
 
 use egui::{Color32, RichText, Sense, Ui, Vec2};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
 use crate::id_pill::{IdPill, IdPillLayout};
 use crate::property_list::PropertyList;
 use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
@@ -134,7 +134,7 @@ impl<'a> UserBadge<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> UserBadgeAction {
-        install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
 
         // The pill: avatar (or fallback glyph) + name, laid out as one
         // clickable group.

@@ -149,7 +149,7 @@ pub fn show(
         return WalletAssetPickerResponse { action };
     }
 
-    crate::install_phosphor_font(ctx);
+    crate::icons::ensure_fonts_in_pass(ctx);
 
     let mut still_open = true;
 
@@ -191,7 +191,7 @@ pub fn show_inline(
     groups: &[PickerPolicyGroup],
     config: &WalletAssetPickerConfig,
 ) -> WalletAssetPickerResponse {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     let action = draw_picker_content(ui, state, groups, config);
     WalletAssetPickerResponse { action }
 }

@@ -61,7 +61,6 @@ use egui::{Color32, Frame, RichText, Stroke, Ui};
 
 use crate::PhosphorIcon;
 use crate::button_group::{ButtonGroup, ButtonGroupButton};
-use crate::icons::install_phosphor_font;
 use crate::id_pill::{IdPill, IdPillLayout};
 use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 use crate::wallet_list::{WalletPoolBadge, WalletPoolBadgeHealth};
@@ -627,7 +626,7 @@ fn render_card(
     // `PhosphorIcon::*.rich_text()` doesn't auto-install the font (unlike
     // `.show()`); the inline copy / chip / configure buttons below all
     // rely on the glyph being available. Idempotent.
-    install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     let archived = row.archived_at.is_some();
     let fill = if archived {
         row_bg_archived(ui)
@@ -840,7 +839,7 @@ fn render_list_row(
     // `PhosphorIcon::*.rich_text()` doesn't auto-install the font (unlike
     // `.show()`); the inline copy / chip / configure buttons below all
     // rely on the glyph being available. Idempotent.
-    install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     let archived = row.archived_at.is_some();
     let fill = if archived {
         row_bg_archived(ui)

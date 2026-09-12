@@ -21,7 +21,7 @@ use egui::{Align, Color32, Frame, Label, Layout, RichText, ScrollArea, Sense, St
 
 use crate::chip::{Chip, ChipVariant};
 use crate::error_note::{ErrorNote, summarize_error};
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
 use crate::relative_time::relative_label;
 use crate::theme::{Radius, Space, SpaceExt, Theme, ThemeExt};
 use crate::timestamp::Timestamp;
@@ -646,7 +646,7 @@ fn render_row(ui: &mut Ui, o: &OrderRow, now: i64, badge_w: f32, resp: &mut Orde
         // History toggle — a Phosphor list (event-log) glyph next to the status,
         // brighter when the drawer is open. (Not a clock: that read as "time"
         // right beside the date.) `rich_text` needs the font installed.
-        install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
         let icon_color = if o.detail_open {
             ui.tokens().color.text_primary
         } else {

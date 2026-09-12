@@ -83,7 +83,7 @@ pub fn show(
     peer_signed: bool,
     config: &SigningStatusConfig,
 ) -> SigningStatusResponse {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     let mut action = None;
 

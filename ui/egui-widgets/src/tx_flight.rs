@@ -235,7 +235,7 @@ pub struct TxFlightResponse {
 
 /// Draw the flight and return what was clicked.
 pub fn show(ui: &mut egui::Ui, phase: &FlightPhase, config: &TxFlightConfig) -> TxFlightResponse {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     let mut response = TxFlightResponse::default();
 
     let heading = match phase {

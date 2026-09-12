@@ -76,7 +76,7 @@ pub fn show(
         return AssetStripResponse { clicked };
     }
 
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     let n = items.len();
     let thumb = config.thumb_size;

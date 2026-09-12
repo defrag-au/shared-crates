@@ -59,7 +59,7 @@ pub fn show(
     label: Option<&str>,
     config: &CoverageDeltaConfig,
 ) {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     // Resolved once, ahead of the closure that reads them: a `Default` config
     // names its tokens, so the values arrive here.

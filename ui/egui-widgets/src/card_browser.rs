@@ -177,7 +177,7 @@ pub fn show<T>(
     mut render_detail: impl FnMut(&mut egui::Ui, usize, &mut T),
 ) -> CardBrowserResponse {
     // Ensure Phosphor icon font is available (used for close button etc.)
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     // Resolved once, ahead of the closures that read them: a `Default` config
     // names its tokens, so the values arrive here.

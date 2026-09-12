@@ -136,9 +136,8 @@ impl<'a> RelationshipEditor<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> RelationshipEditorResponse {
-        // The → and × are Phosphor icons (the default font lacks U+2192). Self-
-        // install for safety; hosts should also install_phosphor_font at startup.
-        crate::install_phosphor_font(ui.ctx());
+        // The → and × are Phosphor icons (the default font lacks U+2192).
+        crate::icons::ensure_fonts(ui);
         let colors = ThemeExt::tokens(ui).color;
         let spine = Spine::measure(ui);
         let mut resp = RelationshipEditorResponse::default();
@@ -307,12 +306,12 @@ mod tests {
         let mut resp = RelationshipEditorResponse::default();
 
         // TWO PASSES, and the first one is not incidental. `ctx.set_fonts` only
-        // takes effect at the START of a pass, so the self-install inside
-        // `show` cannot serve the frame that triggered it — laying out a
-        // Phosphor glyph in that same pass panics with "not bound to any
-        // fonts". Every host of this crate installs the fonts at startup and so
-        // never meets it; a bare `Context` does. Warming up here is what real
-        // usage looks like, and the click events go on the measured pass only.
+        // takes effect at the START of a pass, so the fonts a widget asks for
+        // are not bound until the pass after it asked. `ensure_fonts` keeps that
+        // pass from panicking by falling back to the proportional family — but a
+        // fallback glyph is a different WIDTH, and these tests measure x
+        // positions. So the first pass is discarded and the events go on the
+        // measured one, which is also what a running app looks like.
         let frame = |events: Vec<egui::Event>, resp: &mut RelationshipEditorResponse| {
             let raw = egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1200.0, 800.0))),

@@ -97,7 +97,7 @@ pub fn show(
     entries: &[WalletEditorEntry],
     config: &WalletEditorConfig,
 ) -> WalletEditorResponse {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     let mut action: Option<WalletEditorAction> = None;
 

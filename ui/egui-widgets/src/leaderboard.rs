@@ -187,7 +187,7 @@ pub fn show(
     rows: &[LeaderboardRow],
     config: &LeaderboardConfig,
 ) -> Option<LeaderboardAction> {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     let p = config.palette(ui);
 
     if rows.is_empty() {

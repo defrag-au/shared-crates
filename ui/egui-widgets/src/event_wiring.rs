@@ -117,7 +117,7 @@ impl<'a> EventWiring<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> EventWiringResponse {
-        crate::install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
         let mut response = EventWiringResponse::default();
         // Node/card labels are affordances, not copyable data — selectable
         // labels put the cursor into text-select and fight the click targets.

@@ -132,7 +132,7 @@ pub fn show(
     lock_state: &LockState,
     config: &TradeTableConfig,
 ) -> TradeTableResponse {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     let mut action = None;
     let you_locked = lock_state.you_locked;

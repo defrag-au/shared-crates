@@ -33,7 +33,7 @@
 
 use egui::{RichText, Ui};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
 use crate::relative_time::RelativeTime;
 use crate::theme::{Radius, Space, ThemeExt};
 
@@ -105,7 +105,7 @@ impl<'a> ServiceBanner<'a> {
     /// Draw the banner. Returns `true` if the reader dismissed it, which is
     /// always `false` unless [`Self::dismissible`] was set.
     pub fn show(self, ui: &mut Ui) -> bool {
-        install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
         let (accent, icon) = self.tone.palette(&ui.tokens());
         let mut dismissed = false;
 

@@ -78,7 +78,7 @@ use egui::{
 };
 
 use crate::error_note::summarize_error;
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
 use crate::theme::{Radius, Space, SpaceExt, TextSize, Theme, ThemeExt};
 
 /// Mix `a` into `b` by `t` (0 = all `b`, 1 = all `a`), per channel.
@@ -404,9 +404,11 @@ pub fn show_toasts(ctx: &Context, queue: &mut ToastQueue) {
         return;
     }
 
-    // Some toast paths land before any other widget has installed the
-    // Phosphor font (e.g. an error toast from a boot-time fetch).
-    install_phosphor_font(ctx);
+    // Some toast paths land before any other widget has installed the Phosphor
+    // font (e.g. an error toast from a boot-time fetch) — which is the exact
+    // case that used to panic, since queueing the font cannot serve the pass
+    // that queued it. `ensure_fonts_in_pass` falls back for that one pass.
+    crate::icons::ensure_fonts_in_pass(ctx);
 
     // Tick the timed (non-sticky) toasts. Only keep the paint pump turning if
     // there's actually a countdown to advance — sticky toasts repaint on input.

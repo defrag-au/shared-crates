@@ -37,7 +37,7 @@ use egui::{Color32, RichText, Sense, Stroke, Ui};
 
 use crate::theme::{Radius, Theme, ThemeExt};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
 use crate::viewport::Breakpoint;
 
 /// Horizontal padding inside the chip, each side.
@@ -274,7 +274,7 @@ impl<'a> Chip<'a> {
             // Phosphor `X` for the remove affordance, per the crate's
             // no-raw-Unicode rule. Installed before measuring: an uninstalled
             // font lays the glyph out as a fallback of a different width.
-            install_phosphor_font(ui.ctx());
+            crate::icons::ensure_fonts(ui);
         }
         let text = RichText::new(&label_text).small().color(fg);
         let galley = egui::WidgetText::from(text).into_galley(
