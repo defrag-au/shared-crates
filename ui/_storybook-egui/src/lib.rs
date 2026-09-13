@@ -1388,7 +1388,11 @@ mod app {
     impl StorybookApp {
         fn new(cc: &eframe::CreationContext<'_>) -> Self {
             configure_style(&cc.egui_ctx);
-            egui_widgets::install_defaults(&cc.egui_ctx);
+            // `install_assets` and NOT `install`: the storybook is the case that
+            // escape hatch exists for. `ReviewControls::apply` installs a theme
+            // every pass from what the reader picked, so binding one here would
+            // be overwritten before the first widget drew.
+            egui_widgets::install_assets(&cc.egui_ctx);
             // Inter as the primary proportional face (from the font bucket), in front of
             // the bundled default + DejaVu fallback. Async fetch; swaps in once it lands.
             egui_widgets::fonts::load_remote_font(
