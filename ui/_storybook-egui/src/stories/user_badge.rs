@@ -4,17 +4,17 @@
 use egui_widgets::icons::PhosphorIcon;
 use egui_widgets::user_badge::{UserBadge, UserBadgeAction};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("User Badge").color(ACCENT).strong());
+    ui.label(egui::RichText::new("User Badge").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "A compact logged-in-as pill. Click it for a popup with the session's \
              identity block and sign-out. Data-only inputs — reusable by any app, \
              whether the session came from an OAuth login or a signed wallet.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);

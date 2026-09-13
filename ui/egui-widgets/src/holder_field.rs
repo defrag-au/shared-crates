@@ -52,12 +52,11 @@
 //! are drawn — "show me what moved in October", with the rest of the field
 //! dimmed away rather than silently dropped.
 
-use egui::{
-    Align2, Color32, CornerRadius, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2,
-};
+use egui::{Align2, Color32, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
 use crate::motion::{Easing, tween, tween_bool, tween_from};
 use crate::selection::Selection;
+use crate::theme::{Ink, Radius, Series, Speed, TextSize, ThemeExt, Token};
 use crate::time_spine::SpineState;
 
 /// Whether the holder has the asset IN HAND after a move, or somebody else is
@@ -179,8 +178,8 @@ pub struct HolderField<'a> {
     spine: &'a SpineState,
     selection: &'a mut Selection,
     flight_secs: f32,
-    dot_color: Option<Color32>,
-    escrow_color: Option<Color32>,
+    dot_color: Ink,
+    escrow_color: Ink,
     height: f32,
     label: Option<&'a dyn Fn(&str) -> String>,
 }
@@ -200,8 +199,10 @@ impl<'a> HolderField<'a> {
             // [`BATCH_SPREAD`] of this, so each individual dot flies for
             // ~60% of it. At 0.7s a large sale still read as sudden.
             flight_secs: 1.2,
-            dot_color: None,
-            escrow_color: None,
+            // The resting dot means "value arrived here", which is the flow
+            // ramp's business, not the chrome palette's.
+            dot_color: Ink::Series(Series::Inbound),
+            escrow_color: Ink::Token(Token::AccentOrange),
             height: 320.0,
             label: None,
         }
@@ -212,17 +213,17 @@ impl<'a> HolderField<'a> {
         self
     }
 
-    pub fn dot_color(mut self, c: Color32) -> Self {
-        self.dot_color = Some(c);
+    pub fn dot_color(mut self, c: impl Into<Ink>) -> Self {
+        self.dot_color = c.into();
         self
     }
 
-    /// The tint for a dot in [`Custody::Escrowed`]. Defaults to
-    /// [`crate::theme::ACCENT_ORANGE`] — far enough from the resting blue to
+    /// The tint for a dot in [`Custody::Escrowed`]. Defaults to the theme's
+    /// `accent_orange` — far enough from the resting blue to
     /// read at 2px, and not the red that would make a routine listing look
     /// like a problem.
-    pub fn escrow_color(mut self, c: Color32) -> Self {
-        self.escrow_color = Some(c);
+    pub fn escrow_color(mut self, c: impl Into<Ink>) -> Self {
+        self.escrow_color = c.into();
         self
     }
 
@@ -251,8 +252,13 @@ impl<'a> HolderField<'a> {
         let now = ctx.input(|i| i.time);
         let muted = ui.visuals().weak_text_color();
         let ink = ui.visuals().text_color();
-        let accent = dot_color.unwrap_or(Color32::from_rgb(0x39, 0x87, 0xe5));
-        let escrowed = escrow_color.unwrap_or(crate::theme::ACCENT_ORANGE);
+        let accent = dot_color.of(ui);
+        let escrowed = escrow_color.of(ui);
+        // Read once: the paint loops below run per dot and have no `ui`, and a
+        // per-dot theme lookup would be the same answer a thousand times.
+        let travel = ui.travel_allowed();
+        let dur_normal = ui.duration(Speed::Normal);
+        let ease_settle = ui.easing(Easing::OutCubic);
 
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
@@ -409,7 +415,13 @@ impl<'a> HolderField<'a> {
 
         // ── emitter ───────────────────────────────────────────────────────
         let playing = spine.playing;
-        let glow = tween_bool(&ctx, id.with("emit"), playing, 0.3, Easing::InOutCubic);
+        let glow = tween_bool(
+            &ctx,
+            id.with("emit"),
+            playing,
+            dur_normal,
+            ui.easing(Easing::InOutCubic),
+        );
         painter.circle_filled(source, 2.5, muted);
         if glow > 0.0 {
             painter.circle_stroke(
@@ -427,8 +439,8 @@ impl<'a> HolderField<'a> {
                 &ctx,
                 id.with(("emph", p.as_str())),
                 target,
-                0.18,
-                Easing::OutCubic,
+                dur_normal,
+                ease_settle,
             ));
         }
 
@@ -516,10 +528,14 @@ impl<'a> HolderField<'a> {
                 (Some(prev), None) => layout.centres[prev],
                 (None, _) => source,
             };
-            let t = if playing {
-                tween_from(&ctx, dot_id, 0.0, 1.0, flight_secs, Easing::OutCubic)
+            // `travel_allowed` is exactly this: the leg between two seats is
+            // the one thing here that MOVES, so reduced motion drops it and the
+            // dot appears in its new seat. Emphasis and rings are opacity and
+            // survive.
+            let t = if playing && travel {
+                tween_from(&ctx, dot_id, 0.0, 1.0, flight_secs, ease_settle)
             } else {
-                tween_from(&ctx, dot_id, 1.0, 1.0, 0.0, Easing::OutCubic)
+                tween_from(&ctx, dot_id, 1.0, 1.0, 0.0, ease_settle)
             };
             // A NEW move retargets the same key: reset progress so it flies the
             // new leg rather than snapping.
@@ -646,7 +662,7 @@ impl<'a> HolderField<'a> {
         if let Some(i) = sel_idx {
             let c = layout.centres[i];
             let ring_r = layout.radii[i] + dot_r + 3.0;
-            let a = tween_bool(&ctx, id.with("ring"), true, 0.15, Easing::OutCubic);
+            let a = tween_bool(&ctx, id.with("ring"), true, dur_normal, ease_settle);
             painter.circle_stroke(
                 c,
                 ring_r,
@@ -677,7 +693,7 @@ impl<'a> HolderField<'a> {
             let bg = Rect::from_min_size(at, galley.size()).expand2(vec2(4.0, 2.0));
             painter.rect_filled(
                 bg,
-                CornerRadius::same(3),
+                ui.tokens().corner(Radius::Sm),
                 ui.visuals().extreme_bg_color.linear_multiply(0.85),
             );
             painter.galley(at, galley, ink);
@@ -707,7 +723,7 @@ impl<'a> HolderField<'a> {
                     ui.label(
                         egui::RichText::new(format!("{}", shown[i]))
                             .strong()
-                            .size(18.0),
+                            .size(ui.text_size(TextSize::Xl2)),
                     );
                     ui.label(
                         egui::RichText::new(if shown[i] == 1 { "asset" } else { "assets" })

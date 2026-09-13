@@ -1,5 +1,5 @@
-use rand::rngs::SmallRng;
 use rand::SeedableRng;
+use rand::rngs::SmallRng;
 use wfc::{Direction, SolveResult, Tileset, WfcSolver};
 
 /// Simple 2-tile test: grass and water. Both self-adjacent.

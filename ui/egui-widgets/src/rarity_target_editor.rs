@@ -1,10 +1,21 @@
-//! rarity_target_editor — a labelled list of 0–100% target sliders with an
-//! optional budget indicator (running total vs a budget, coloured over/under/ok).
-//! For per-trait None% and per-value rarity targets in the config editor.
+//! rarity_target_editor — per-trait / per-value 0–100% rarity targets.
+//!
+//! A thin configuration of [`SliderGroup`](crate::slider_group::SliderGroup):
+//! every row is a percentage, and the budget is however much of the trait is
+//! being allocated (usually 100).
+//!
+//! It used to be its own hand-rolled stack of `egui::Slider`s with a hardcoded
+//! `label_width: 140.0` and three literal colours for the over/under/balanced
+//! cue. All three of those were the general problem in local disguise — the
+//! labels did not line up, the width clipped under a larger type ramp, and the
+//! cue could not follow a theme. What is left here is the only thing that was
+//! ever specific to rarity: the rows are percentages.
 //!
 //! Mutates the rows in place; returns `true` when a value changed.
 
-use egui::{Color32, Ui};
+use egui::Ui;
+
+use crate::slider_group::{Budget, Fader, SliderGroup};
 
 #[derive(Default, Debug, Clone)]
 pub struct RarityRow {
@@ -17,7 +28,7 @@ pub struct RarityTargetEditor<'a> {
     /// If set, show the running total against this budget (e.g. 100.0) with an
     /// over/under/ok colour cue.
     budget: Option<f32>,
-    label_width: f32,
+    label_width: Option<f32>,
 }
 
 impl<'a> RarityTargetEditor<'a> {
@@ -25,7 +36,7 @@ impl<'a> RarityTargetEditor<'a> {
         Self {
             rows,
             budget: None,
-            label_width: 140.0,
+            label_width: None,
         }
     }
 
@@ -35,48 +46,23 @@ impl<'a> RarityTargetEditor<'a> {
         self
     }
 
+    /// Pin the label column. Left alone it is measured from the labels, which
+    /// is what the old flat `140.0` could not do.
     pub fn label_width(mut self, w: f32) -> Self {
-        self.label_width = w;
+        self.label_width = Some(w);
         self
     }
 
     pub fn show(self, ui: &mut Ui) -> bool {
-        let mut changed = false;
-        for row in self.rows.iter_mut() {
-            ui.horizontal(|ui| {
-                ui.add_sized(
-                    [self.label_width, ui.spacing().interact_size.y],
-                    egui::Label::new(row.label.as_str()).truncate(),
-                );
-                if ui
-                    .add(egui::Slider::new(&mut row.percent, 0.0..=100.0).suffix("%"))
-                    .changed()
-                {
-                    changed = true;
-                }
-            });
+        let mut group = self.rows.iter_mut().fold(SliderGroup::new(), |g, row| {
+            g.fader(Fader::new(row.label.clone(), &mut row.percent, 0.0..=100.0).suffix("%"))
+        });
+        if let Some(w) = self.label_width {
+            group = group.label_width(w);
         }
-
-        if let Some(budget) = self.budget {
-            let sum: f32 = self.rows.iter().map(|r| r.percent).sum();
-            let color = if sum > budget + 0.05 {
-                Color32::from_rgb(230, 120, 90) // over
-            } else if sum < budget - 0.05 {
-                Color32::from_rgb(225, 185, 90) // under
-            } else {
-                Color32::from_rgb(120, 200, 120) // ok
-            };
-            let note = if sum > budget + 0.05 {
-                "over budget"
-            } else if sum < budget - 0.05 {
-                "under budget"
-            } else {
-                "balanced"
-            };
-            ui.add_space(2.0);
-            ui.colored_label(color, format!("{sum:.0}% / {budget:.0}% — {note}"));
+        if let Some(b) = self.budget {
+            group = group.budget(Budget::new(b as f64));
         }
-
-        changed
+        group.show(ui).changed
     }
 }

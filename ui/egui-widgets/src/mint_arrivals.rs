@@ -32,6 +32,8 @@ use std::collections::HashMap;
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 
+use crate::theme::{Ink, Series, TextSize, ThemeExt};
+
 /// One asset arriving with a holder.
 #[derive(Clone, Debug)]
 pub struct Arrival<'a> {
@@ -105,7 +107,7 @@ pub struct MintArrivals<'a> {
     /// How long, in the series' own time units, a newly-arrived dot spends
     /// flying in. Zero disables the flight entirely.
     flight: i64,
-    dot_color: Option<Color32>,
+    dot_color: Ink,
     height: f32,
 }
 
@@ -115,7 +117,9 @@ impl<'a> MintArrivals<'a> {
             arrivals,
             playhead,
             flight: 0,
-            dot_color: None,
+            // A mint IS inbound value — the flow ramp's business, not the
+            // chrome palette's.
+            dot_color: Ink::Series(Series::Inbound),
             height: 320.0,
         }
     }
@@ -131,8 +135,8 @@ impl<'a> MintArrivals<'a> {
         self
     }
 
-    pub fn dot_color(mut self, c: Color32) -> Self {
-        self.dot_color = Some(c);
+    pub fn dot_color(mut self, c: impl Into<Ink>) -> Self {
+        self.dot_color = c.into();
         self
     }
 
@@ -144,9 +148,7 @@ impl<'a> MintArrivals<'a> {
     pub fn show(self, ui: &mut Ui) -> Response {
         let muted = ui.visuals().weak_text_color();
         let ink = ui.visuals().text_color();
-        let dot = self
-            .dot_color
-            .unwrap_or(Color32::from_rgb(0x39, 0x87, 0xe5));
+        let dot = self.dot_color.of(ui);
 
         let (rect, resp) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), self.height), Sense::hover());
@@ -252,14 +254,14 @@ impl<'a> MintArrivals<'a> {
             Pos2::new(rect.left(), rect.top() + 2.0),
             Align2::LEFT_TOP,
             format!("{drawn} assets · {holders} holders"),
-            FontId::monospace(14.0),
+            FontId::monospace(ui.text_size(TextSize::Lg)),
             ink,
         );
         painter.text(
             Pos2::new(rect.left(), rect.top() + 18.0),
             Align2::LEFT_TOP,
             format!("largest single holder: {biggest}"),
-            FontId::proportional(10.0),
+            FontId::proportional(ui.text_size(TextSize::Sm)),
             muted,
         );
 

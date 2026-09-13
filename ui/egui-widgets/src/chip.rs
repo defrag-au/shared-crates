@@ -33,9 +33,11 @@
 //! if resp.removed { dispatch(RemoveGate { id }); }
 //! ```
 
-use egui::{Color32, CornerRadius, RichText, Sense, Stroke, Ui};
+use egui::{Color32, RichText, Sense, Stroke, Ui};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::theme::{Radius, Theme, ThemeExt};
+
+use crate::icons::PhosphorIcon;
 use crate::viewport::Breakpoint;
 
 /// Horizontal padding inside the chip, each side.
@@ -68,28 +70,46 @@ pub enum ChipVariant {
 }
 
 impl ChipVariant {
-    /// Return the (foreground, background, optional border) triple. The
-    /// border is only set on `Tag` / `Info` variants — the filled
-    /// success/warning/danger chips don't need extra structure.
-    pub fn palette(self) -> (Color32, Color32, Option<Color32>) {
+    pub const ALL: &'static [ChipVariant] = &[
+        ChipVariant::Success,
+        ChipVariant::Warning,
+        ChipVariant::Danger,
+        ChipVariant::Tag,
+        ChipVariant::Info,
+        ChipVariant::Muted,
+    ];
+
+    /// The (foreground, background, optional border) triple **for a theme**. The
+    /// border is only set on `Tag` / `Info` — the filled success/warning/danger
+    /// chips don't need extra structure.
+    ///
+    /// # Why this takes a `Theme`
+    ///
+    /// It used to carry six literal pairs, and `Chip` is drawn by fifteen modules
+    /// — so switching theme repainted the page around the chips and left the
+    /// chips themselves untouched. That is most of why the first theme switcher
+    /// looked like it did nothing: the status colours are the part of a dashboard
+    /// a reader's eye actually goes to.
+    ///
+    /// Foregrounds come from [`ColorTokens::on`](crate::theme::ColorTokens::on)
+    /// rather than a literal
+    /// `Color32::WHITE`, so a theme with a pale `warning` gets dark chip text
+    /// automatically instead of an unreadable one.
+    pub fn palette(self, t: &Theme) -> (Color32, Color32, Option<Color32>) {
+        let c = &t.color;
         match self {
-            Self::Success => (Color32::from_rgb(18, 28, 18), Color32::LIGHT_GREEN, None),
-            Self::Warning => (Color32::from_rgb(40, 30, 10), Color32::LIGHT_YELLOW, None),
-            Self::Danger => (Color32::WHITE, Color32::from_rgb(180, 80, 80), None),
-            Self::Tag => (
-                Color32::from_gray(220),
-                Color32::from_rgb(30, 40, 60),
-                Some(Color32::from_rgb(60, 80, 110)),
-            ),
-            Self::Info => (
-                Color32::from_gray(220),
-                Color32::from_rgb(26, 44, 44),
-                Some(Color32::from_rgb(60, 100, 100)),
-            ),
-            // Darker fill than the old gray(140): white-on-gray(140) was
-            // 3.4:1 — and Muted is the default variant, so the accidental
-            // chip was the unreadable one.
-            Self::Muted => (Color32::WHITE, Color32::from_gray(90), None),
+            Self::Success => (c.on(c.success), c.success, None),
+            Self::Warning => (c.on(c.warning), c.warning, None),
+            Self::Danger => (c.on(c.error), c.error, None),
+            // Outlined rather than filled: these two are enumerations, not
+            // verdicts, and a page of filled chips has no hierarchy left.
+            Self::Tag => (c.text_secondary, c.bg_highlight, Some(c.border)),
+            Self::Info => (c.accent_cyan, c.bg_highlight, Some(c.accent_cyan)),
+            // `Muted` is the DEFAULT variant — the one a call site gets without
+            // choosing — so it has to be readable without anyone having thought
+            // about it. `text_primary` on `bg_highlight` is pinned at AA by
+            // `text_ramp_clears_wcag_aa_on_every_background`.
+            Self::Muted => (c.text_primary, c.bg_highlight, None),
         }
     }
 }
@@ -195,7 +215,7 @@ impl<'a> Chip<'a> {
     /// Render the chip inline at the current `Ui` cursor. The chip
     /// allocates a small filled frame; the caller does spacing.
     pub fn show(self, ui: &mut Ui) -> ChipResponse {
-        let (fg, bg, border) = self.variant.palette();
+        let (fg, bg, border) = self.variant.palette(&ui.tokens());
         let mut response = ChipResponse::default();
         let label_text = if self.upper {
             self.text.to_ascii_uppercase()
@@ -254,7 +274,7 @@ impl<'a> Chip<'a> {
             // Phosphor `X` for the remove affordance, per the crate's
             // no-raw-Unicode rule. Installed before measuring: an uninstalled
             // font lays the glyph out as a fallback of a different width.
-            install_phosphor_font(ui.ctx());
+            crate::icons::ensure_fonts(ui);
         }
         let text = RichText::new(&label_text).small().color(fg);
         let galley = egui::WidgetText::from(text).into_galley(
@@ -288,7 +308,7 @@ impl<'a> Chip<'a> {
 
         ui.painter().rect(
             rect,
-            CornerRadius::same(3),
+            ui.tokens().corner(Radius::Sm),
             bg,
             border.map_or(Stroke::NONE, |b| Stroke::new(1.0_f32, b)),
             egui::StrokeKind::Inside,

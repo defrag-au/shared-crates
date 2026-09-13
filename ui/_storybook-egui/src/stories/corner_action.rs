@@ -2,10 +2,10 @@
 //! thumbnail.
 
 use egui::{Rect, Vec2};
+use egui_widgets::PhosphorIcon;
 use egui_widgets::corner_action::{Corner, CornerAction};
-use egui_widgets::{theme, PhosphorIcon};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 const THUMB: f32 = 120.0;
 
@@ -13,13 +13,13 @@ const THUMB: f32 = 120.0;
 /// browser paints before an image lands.
 fn placeholder_thumb(ui: &mut egui::Ui, label: &str) -> Rect {
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(THUMB), egui::Sense::hover());
-    ui.painter().rect_filled(rect, 4.0, theme::BG_HIGHLIGHT);
+    ui.painter().rect_filled(rect, 4.0, crate::highlight(ui));
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
         label,
         egui::FontId::proportional(10.0),
-        theme::TEXT_MUTED,
+        muted(ui),
     );
     rect
 }
@@ -27,26 +27,34 @@ fn placeholder_thumb(ui: &mut egui::Ui, label: &str) -> Rect {
 fn owned_dot(ui: &egui::Ui, thumb: Rect) {
     let r = 5.0;
     let center = egui::pos2(thumb.max.x - r - 4.0, thumb.min.y + r + 4.0);
-    ui.painter().circle_filled(center, r, theme::ACCENT_GREEN);
+    ui.painter().circle_filled(
+        center,
+        r,
+        crate::tok(ui, egui_widgets::theme::Token::AccentGreen),
+    );
     ui.painter()
-        .circle_stroke(center, r, egui::Stroke::new(1.0, theme::BG_PRIMARY));
+        .circle_stroke(center, r, egui::Stroke::new(1.0_f32, crate::bg(ui)));
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Corner Action").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Corner Action")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "An icon button pinned to a corner of something already drawn. Takes the \
              click so the card under it doesn't also select.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
 
     ui.label(
         egui::RichText::new("Four corners, default chip")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -67,7 +75,7 @@ pub fn show(ui: &mut egui::Ui) {
     if let Some(which) = ui.ctx().data_mut(|d| d.get_temp::<String>(clicked_id)) {
         ui.label(
             egui::RichText::new(format!("→ {which} click registered"))
-                .color(theme::ACCENT_GREEN)
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentGreen))
                 .size(10.0),
         );
     }
@@ -75,7 +83,7 @@ pub fn show(ui: &mut egui::Ui) {
 
     ui.label(
         egui::RichText::new("Beside an existing badge, other accents, other sizes")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -90,7 +98,7 @@ pub fn show(ui: &mut egui::Ui) {
 
         let thumb = placeholder_thumb(ui, "remove");
         CornerAction::new(PhosphorIcon::X)
-            .accent(theme::ACCENT_RED)
+            .accent(crate::tok(ui, egui_widgets::theme::Token::AccentRed))
             .tooltip("Remove")
             .show(ui, thumb, "remove");
 
@@ -98,7 +106,7 @@ pub fn show(ui: &mut egui::Ui) {
         CornerAction::new(PhosphorIcon::Star)
             .corner(Corner::BottomRight)
             .size(20.0)
-            .accent(theme::ACCENT_YELLOW)
+            .accent(crate::tok(ui, egui_widgets::theme::Token::AccentYellow))
             .tooltip("Favourite")
             .show(ui, thumb, "favourite");
 
@@ -119,7 +127,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Rest: dark chip, accent glyph. Hover: accent chip, dark glyph. \
              The chip is 16pt by default, 4pt in from the edges.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(10.0),
     );
 }

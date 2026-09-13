@@ -4,7 +4,7 @@
 use cardano_assets::AssetId;
 use egui_widgets::asset_strip::{self, AssetStripConfig, AssetStripItem};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 const POLICY_ID: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
 
@@ -54,7 +54,7 @@ impl Default for AssetStripStoryState {
 pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
     ui.label(
         egui::RichText::new("AssetStrip Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -62,7 +62,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
             "Horizontally stacked asset thumbnails with progressive overlap. \
              Hover to lift a card, click to remove. Add items to see overlap increase.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -90,7 +90,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
         }
         ui.label(
             egui::RichText::new(format!("{} items", state.items.len()))
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .size(10.0),
         );
     });
@@ -99,16 +99,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
 
     // Strip at default size (72px)
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             ui.label(
                 egui::RichText::new("Default (72px)")
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .size(10.0),
             );
             ui.add_space(4.0);
@@ -128,17 +126,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
 
     // Strip at smaller size (48px) in a narrow container
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             ui.set_max_width(300.0);
             ui.label(
                 egui::RichText::new("Small (48px) in 300px container")
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .size(10.0),
             );
             ui.add_space(4.0);
@@ -165,13 +161,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
     if state.last_action.is_empty() {
         ui.label(
             egui::RichText::new("Hover a card to lift it, click to remove")
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .size(11.0),
         );
     } else {
         ui.label(
             egui::RichText::new(format!("Last action: {}", state.last_action))
-                .color(egui_widgets::theme::ACCENT_CYAN)
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
                 .size(11.0),
         );
     }

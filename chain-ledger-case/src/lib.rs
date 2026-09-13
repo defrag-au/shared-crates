@@ -25,8 +25,8 @@ pub mod export;
 pub mod records;
 pub mod schema;
 
-pub use export::{export, verify, CaseExport, CasePayload, VerifyError};
+pub use export::{CaseExport, CasePayload, VerifyError, export, verify};
 pub use records::{
-    basis_str, chain_str, ClaimRecord, ClusterRecord, NoteRecord, PartyRecord, SupportRecord,
+    ClaimRecord, ClusterRecord, NoteRecord, PartyRecord, SupportRecord, basis_str, chain_str,
 };
-pub use schema::{can_open, DDL, SCHEMA_VERSION};
+pub use schema::{DDL, SCHEMA_VERSION, can_open};

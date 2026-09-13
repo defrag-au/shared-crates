@@ -207,14 +207,14 @@ fn url_fragment() -> Option<String> {
 }
 
 fn clear_fragment() {
-    if let Some(win) = web_sys::window() {
-        if let Ok(history) = win.history() {
-            let path = win
-                .location()
-                .pathname()
-                .unwrap_or_else(|_| "/".to_string());
-            let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&path));
-        }
+    if let Some(win) = web_sys::window()
+        && let Ok(history) = win.history()
+    {
+        let path = win
+            .location()
+            .pathname()
+            .unwrap_or_else(|_| "/".to_string());
+        let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&path));
     }
 }
 

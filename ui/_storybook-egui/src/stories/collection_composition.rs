@@ -10,7 +10,7 @@ use egui_widgets::collection_composition::{
     CompositionStat, ValueShare,
 };
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 // Swatch %s are the WITHIN-SLOT share (sum to ~100% across a slot's values); the layer's
 // presence % is the separate right-hand value in the left column.
@@ -64,12 +64,10 @@ fn layer(name: &str, present: f32, variants: &[&str], values: Vec<ValueShare>) -
 
 fn card(ui: &mut egui::Ui, comp: &CollectionComposition) {
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(8.0)
         .inner_margin(16.0)
-        .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             collection_composition::show_header(ui, comp);
             ui.separator();
@@ -81,7 +79,7 @@ fn card(ui: &mut egui::Ui, comp: &CollectionComposition) {
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("CollectionComposition Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -90,7 +88,7 @@ pub fn show(ui: &mut egui::Ui) {
              per-asset overrides. Right-hand % is presence. Hover a cell to preview the \
              asset top-right. Rounded brackets group variant_flow-coupled slots.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);

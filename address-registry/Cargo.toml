@@ -1,7 +1,7 @@
 [package]
 name = "address-registry"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 phf = { version = "0.11", features = ["macros"] }
@@ -16,3 +16,7 @@ tracing = "0.1"
 # hold a string that is not an address, which is exactly what happened, so the
 # guard test decodes them for real.
 pallas-addresses = { workspace = true }
+# The preprod burn sink's credential is DERIVED from its script bytes rather
+# than pasted, so the guard test needs blake2b-224 and hex. Tests only.
+pallas-crypto = { workspace = true }
+hex = { workspace = true }

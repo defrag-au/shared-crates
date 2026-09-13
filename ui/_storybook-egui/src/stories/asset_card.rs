@@ -2,15 +2,17 @@
 
 use egui::{Color32, Pos2, Rect, Vec2};
 use egui_widgets::asset_card::{
-    base_outline, draw_colored_fan, draw_colored_ring, draw_effect_fan, draw_effect_quad,
-    draw_quad, draw_spark_streak, draw_textured_fan, draw_textured_fan_rect_uv, draw_textured_quad,
-    draw_tile_overlay, expand_outline, project_3d, project_points, rarity_color, rarity_glow,
-    rounded_rect_vertices, update_tilt, with_badge, AuroraCurtain, BrushedMetal, CardEffect,
-    CardMask, DiffractionGrating, Glitter, PrismaticDispersion, StreakHolo, ThinFilmIridescence,
-    TiltState, EFFECT_NAMES, RARITIES,
+    AuroraCurtain, BrushedMetal, CardEffect, CardMask, DiffractionGrating, EFFECT_NAMES, Glitter,
+    PrismaticDispersion, RARITY_NAMES, StreakHolo, ThinFilmIridescence, TiltState, base_outline,
+    draw_colored_fan, draw_colored_ring, draw_effect_fan, draw_effect_quad, draw_quad,
+    draw_spark_streak, draw_textured_fan, draw_textured_fan_rect_uv, draw_textured_quad,
+    draw_tile_overlay, expand_outline, project_3d, project_points, rarity_color, rarity_colors,
+    rarity_glow, rounded_rect_vertices, update_tilt, with_badge,
 };
 
-use crate::{ACCENT, TEXT_MUTED};
+use egui_widgets::slider_group::SliderGroup;
+
+use crate::{accent, controls, muted};
 
 /// IIIF test image: Pirate758 NFT (1:1 aspect)
 const IIIF_ART_URL: &str = "https://iiif.hodlcroft.com/iiif/3/b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6:506972617465373538/full/400,/0/default.jpg";
@@ -171,13 +173,18 @@ fn demo_square(
     let proj_outline = project_points(&outline, center, ax, ay, perspective);
     let proj_border = project_points(&border_outer, center, ax, ay, perspective);
 
-    if let Some(glow) = rarity_glow(rarity) {
+    if let Some(glow) = rarity_glow(ui, rarity) {
         let glow_outer = expand_outline(&outline, 6.0);
         let proj_glow = project_points(&glow_outer, center, ax, ay, perspective);
         draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
     }
 
-    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(rarity));
+    draw_colored_ring(
+        &painter,
+        &proj_outline,
+        &proj_border,
+        rarity_color(ui, rarity),
+    );
 
     if let Some(tex) = art_tex {
         draw_textured_quad(&painter, proj4, tex, Color32::WHITE);
@@ -204,7 +211,12 @@ fn demo_square(
     }
 
     if spark_enabled && rarity >= 2 {
-        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(rarity));
+        draw_spark_streak(
+            &painter,
+            &proj_outline,
+            spark_phase,
+            rarity_color(ui, rarity),
+        );
     }
 
     draw_tile_overlay(
@@ -254,13 +266,18 @@ fn demo_hex(
     let proj_outline = project_points(&outline, center, ax, ay, perspective);
     let proj_border = project_points(&border_outer, center, ax, ay, perspective);
 
-    if let Some(glow) = rarity_glow(rarity) {
+    if let Some(glow) = rarity_glow(ui, rarity) {
         let glow_outer = expand_outline(&outline, 6.0);
         let proj_glow = project_points(&glow_outer, center, ax, ay, perspective);
         draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
     }
 
-    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(rarity));
+    draw_colored_ring(
+        &painter,
+        &proj_outline,
+        &proj_border,
+        rarity_color(ui, rarity),
+    );
 
     let art_center = project_3d(center, center, ax, ay, perspective);
     if let Some(tex) = art_tex {
@@ -300,7 +317,12 @@ fn demo_hex(
     }
 
     if spark_enabled && rarity >= 2 {
-        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(rarity));
+        draw_spark_streak(
+            &painter,
+            &proj_outline,
+            spark_phase,
+            rarity_color(ui, rarity),
+        );
     }
 
     draw_tile_overlay(
@@ -355,13 +377,18 @@ fn demo_rounded_square(
     let proj_outline = project_points(&outline, center, ax, ay, perspective);
     let proj_border = project_points(&border_outer, center, ax, ay, perspective);
 
-    if let Some(glow) = rarity_glow(rarity) {
+    if let Some(glow) = rarity_glow(ui, rarity) {
         let glow_outer = expand_outline(&outline, 6.0);
         let proj_glow = project_points(&glow_outer, center, ax, ay, perspective);
         draw_colored_ring(&painter, &proj_border, &proj_glow, glow);
     }
 
-    draw_colored_ring(&painter, &proj_outline, &proj_border, rarity_color(rarity));
+    draw_colored_ring(
+        &painter,
+        &proj_outline,
+        &proj_border,
+        rarity_color(ui, rarity),
+    );
 
     let art_verts = rounded_rect_vertices(center, half, half, corner_radius, segs);
     let art_proj = project_points(&art_verts, center, ax, ay, perspective);
@@ -395,7 +422,12 @@ fn demo_rounded_square(
     }
 
     if spark_enabled && rarity >= 2 {
-        draw_spark_streak(&painter, &proj_outline, spark_phase, rarity_color(rarity));
+        draw_spark_streak(
+            &painter,
+            &proj_outline,
+            spark_phase,
+            rarity_color(ui, rarity),
+        );
     }
 
     draw_tile_overlay(
@@ -424,19 +456,24 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
 
     let art_texture = try_load_texture(ui.ctx(), IIIF_ART_URL);
 
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.size, 100.0..=300.0).text("Size"));
-        ui.add(
-            egui::Slider::new(&mut state.perspective_distance, 200.0..=2000.0).text("Perspective"),
-        );
+    controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Size", &mut state.size, 100.0..=300.0)
+            .slider(
+                "Perspective",
+                &mut state.perspective_distance,
+                200.0..=2000.0,
+            )
+            .show(ui);
     });
     ui.horizontal(|ui| {
         ui.label("Rarity:");
-        for (i, (name, color)) in RARITIES.iter().enumerate() {
+        let tier_colors = rarity_colors(ui);
+        for (i, name) in RARITY_NAMES.iter().enumerate() {
             let text = if state.rarity == i {
-                egui::RichText::new(*name).color(*color).strong()
+                egui::RichText::new(*name).color(tier_colors[i]).strong()
             } else {
-                egui::RichText::new(*name).color(TEXT_MUTED)
+                egui::RichText::new(*name).color(muted(ui))
             };
             if ui.selectable_label(state.rarity == i, text).clicked() {
                 state.rarity = i;
@@ -457,96 +494,60 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
         });
 
         match state.effect_index {
-            0 => {
-                ui.horizontal(|ui| {
-                    ui.add(egui::Slider::new(&mut state.hue_range, 0.0..=180.0).text("Hue Range"));
-                    ui.add(
-                        egui::Slider::new(&mut state.shimmer_width, 0.05..=0.5).text("Shimmer W"),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::Slider::new(&mut state.shimmer_intensity, 0.0..=1.0)
-                            .text("Intensity"),
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut state.overlay_opacity, 0.0..=0.5).text("Opacity"),
-                    );
-                });
-            }
-            1 => {
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::Slider::new(&mut state.iri_min, 100.0..=500.0).text("Film Min (nm)"),
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut state.iri_range, 100.0..=800.0)
-                            .text("Film Range (nm)"),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::Slider::new(&mut state.fresnel_power, 1.0..=10.0)
-                            .text("Fresnel Power"),
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut state.iri_intensity, 0.05..=1.0).text("Intensity"),
-                    );
-                });
-            }
-            2 => {
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::Slider::new(&mut state.grating_spacing, 800.0..=3000.0)
-                            .text("Spacing"),
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut state.grating_angle, 0.0..=std::f32::consts::PI)
-                            .text("Angle"),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.add(egui::Slider::new(&mut state.max_orders, 1..=8).text("Orders"));
-                    ui.add(
-                        egui::Slider::new(&mut state.diffraction_intensity, 0.5..=3.0)
-                            .text("Intensity"),
-                    );
-                });
-            }
-            3 => {
-                ui.horizontal(|ui| {
-                    ui.add(egui::Slider::new(&mut state.glitter_scale, 10.0..=80.0).text("Scale"));
-                    ui.add(
-                        egui::Slider::new(&mut state.sparkle_sharpness, 50.0..=500.0)
-                            .text("Sharpness"),
-                    );
-                });
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::Slider::new(&mut state.sparkle_threshold, 0.0..=1.0)
-                            .text("Threshold"),
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut state.glitter_z_depth, 0.1..=1.0).text("Z Depth"),
-                    );
-                });
-            }
+            // Each effect's parameters are a BANK — related quantities balanced
+            // against each other, which is what `SliderGroup` is for. They were
+            // two-per-`horizontal` rows, so no two labels lined up and the
+            // number for each control sat in a box heavier than the control.
+            0 => controls(ui, |ui| {
+                SliderGroup::new()
+                    .slider("Hue range", &mut state.hue_range, 0.0..=180.0)
+                    .slider("Shimmer width", &mut state.shimmer_width, 0.05..=0.5)
+                    .slider("Intensity", &mut state.shimmer_intensity, 0.0..=1.0)
+                    .slider("Opacity", &mut state.overlay_opacity, 0.0..=0.5)
+                    .show(ui);
+            }),
+            1 => controls(ui, |ui| {
+                SliderGroup::new()
+                    .slider("Film min (nm)", &mut state.iri_min, 100.0..=500.0)
+                    .slider("Film range (nm)", &mut state.iri_range, 100.0..=800.0)
+                    .slider("Fresnel power", &mut state.fresnel_power, 1.0..=10.0)
+                    .slider("Intensity", &mut state.iri_intensity, 0.05..=1.0)
+                    .show(ui);
+            }),
+            2 => controls(ui, |ui| {
+                SliderGroup::new()
+                    .slider("Spacing", &mut state.grating_spacing, 800.0..=3000.0)
+                    .slider(
+                        "Angle",
+                        &mut state.grating_angle,
+                        0.0..=std::f32::consts::PI,
+                    )
+                    .slider("Orders", &mut state.max_orders, 1..=8)
+                    .slider("Intensity", &mut state.diffraction_intensity, 0.5..=3.0)
+                    .show(ui);
+            }),
+            3 => controls(ui, |ui| {
+                SliderGroup::new()
+                    .slider("Scale", &mut state.glitter_scale, 10.0..=80.0)
+                    .slider("Sharpness", &mut state.sparkle_sharpness, 50.0..=500.0)
+                    .slider("Threshold", &mut state.sparkle_threshold, 0.0..=1.0)
+                    .slider("Z depth", &mut state.glitter_z_depth, 0.1..=1.0)
+                    .show(ui);
+            }),
             4 => {
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::Slider::new(&mut state.roughness_along, 0.01..=0.5)
-                            .text("Roughness Along"),
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut state.roughness_perp, 0.1..=2.0)
-                            .text("Roughness Perp"),
-                    );
+                controls(ui, |ui| {
+                    SliderGroup::new()
+                        .slider("Roughness along", &mut state.roughness_along, 0.01..=0.5)
+                        .slider("Roughness perp", &mut state.roughness_perp, 0.1..=2.0)
+                        .slider(
+                            "Brush angle",
+                            &mut state.brush_angle,
+                            0.0..=std::f32::consts::PI,
+                        )
+                        .show(ui);
                 });
+                // Not a fader, so not in the bank.
                 ui.horizontal(|ui| {
-                    ui.add(
-                        egui::Slider::new(&mut state.brush_angle, 0.0..=std::f32::consts::PI)
-                            .text("Brush Angle"),
-                    );
                     ui.label("Metal:");
                     for (i, name) in ["Silver", "Gold", "Copper"].iter().enumerate() {
                         if ui
@@ -558,40 +559,23 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
                     }
                 });
             }
-            5 => {
-                ui.horizontal(|ui| {
-                    ui.add(egui::Slider::new(&mut state.aurora_freq1, 3.0..=15.0).text("Freq 1"));
-                    ui.add(egui::Slider::new(&mut state.aurora_freq2, 3.0..=15.0).text("Freq 2"));
-                });
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::Slider::new(&mut state.curtain_sharpness, 2.0..=8.0)
-                            .text("Sharpness"),
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut state.vertical_falloff, 0.5..=3.0).text("V Falloff"),
-                    );
-                    ui.add(
-                        egui::Slider::new(&mut state.aurora_brightness, 0.3..=2.0)
-                            .text("Brightness"),
-                    );
-                });
-            }
-            6 => {
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::Slider::new(&mut state.prism_dispersion, 0.01..=0.15)
-                            .text("Dispersion"),
-                    );
-                    ui.add(egui::Slider::new(&mut state.prism_spread, 0.02..=0.2).text("Spread"));
-                });
-                ui.horizontal(|ui| {
-                    ui.add(egui::Slider::new(&mut state.facet_scale, 4.0..=20.0).text("Facets"));
-                    ui.add(
-                        egui::Slider::new(&mut state.prism_intensity, 0.5..=3.0).text("Intensity"),
-                    );
-                });
-            }
+            5 => controls(ui, |ui| {
+                SliderGroup::new()
+                    .slider("Freq 1", &mut state.aurora_freq1, 3.0..=15.0)
+                    .slider("Freq 2", &mut state.aurora_freq2, 3.0..=15.0)
+                    .slider("Sharpness", &mut state.curtain_sharpness, 2.0..=8.0)
+                    .slider("V falloff", &mut state.vertical_falloff, 0.5..=3.0)
+                    .slider("Brightness", &mut state.aurora_brightness, 0.3..=2.0)
+                    .show(ui);
+            }),
+            6 => controls(ui, |ui| {
+                SliderGroup::new()
+                    .slider("Dispersion", &mut state.prism_dispersion, 0.01..=0.15)
+                    .slider("Spread", &mut state.prism_spread, 0.02..=0.2)
+                    .slider("Facets", &mut state.facet_scale, 4.0..=20.0)
+                    .slider("Intensity", &mut state.prism_intensity, 0.5..=3.0)
+                    .show(ui);
+            }),
             _ => {}
         }
 
@@ -662,17 +646,21 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
     };
     ui.label(
         egui::RichText::new(format!("Art: {art_status}"))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("1. Square Tile").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("1. Square Tile")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Natural 1:1 fit. Art-first with right-edge stats and holographic foil.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -691,12 +679,16 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
     );
     ui.add_space(16.0);
 
-    ui.label(egui::RichText::new("2. Hex Tile").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("2. Hex Tile")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Pointy-top hexagon. Tessellates for game boards. Holographic foil on Rare+.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -717,14 +709,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
 
     ui.label(
         egui::RichText::new("3. Rounded Square")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new(
             "Modern app-icon aesthetic. Generous corner radius with holographic foil.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -747,7 +739,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetCardState) {
     ui.add_space(8.0);
     ui.label(
         egui::RichText::new("Key observations:")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label("- Square: best art utilisation, familiar grid layout");

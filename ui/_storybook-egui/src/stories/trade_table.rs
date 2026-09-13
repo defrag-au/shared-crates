@@ -7,7 +7,7 @@ use egui_widgets::trade_table::{
     self, LockState, PeerState, TradeOffer, TradeTableConfig, TradeTableState,
 };
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 const POLICY_ID: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
 
@@ -33,14 +33,13 @@ fn decode_hex_name(hex: &str) -> String {
     String::from_utf8(bytes).unwrap_or_else(|_| hex.to_string())
 }
 
-fn make_slot(hex: &str, rank: u32, accent: Color32) -> OfferSlotData {
+fn make_slot(hex: &str, rank: u32) -> OfferSlotData {
     OfferSlotData {
         name: decode_hex_name(hex),
         policy_id: POLICY_ID.into(),
         asset_name_hex: hex.into(),
         rarity_rank: Some(rank),
         total_ranked: Some(2000),
-        accent,
         quantity: 1,
         is_fungible: false,
         wallet_balance: None,
@@ -63,14 +62,14 @@ impl Default for TradeTableStoryState {
             your_offer: TradeOffer {
                 assets: YOUR_PIRATES
                     .iter()
-                    .map(|(hex, rank)| make_slot(hex, *rank, egui_widgets::theme::ACCENT_GREEN))
+                    .map(|(hex, rank)| make_slot(hex, *rank))
                     .collect(),
                 lovelace: 25_000_000,
             },
             their_offer: TradeOffer {
                 assets: THEIR_PIRATES
                     .iter()
-                    .map(|(hex, rank)| make_slot(hex, *rank, egui_widgets::theme::ACCENT_CYAN))
+                    .map(|(hex, rank)| make_slot(hex, *rank))
                     .collect(),
                 lovelace: 0,
             },
@@ -94,7 +93,7 @@ const EXTRA_PIRATES: &[(&str, u32)] = &[
 pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
     ui.label(
         egui::RichText::new("TradeTable Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -102,7 +101,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
             "TCG-style top/bottom trade layout with lock/unlock, \
              ADA sweetener, and real IIIF thumbnails.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(8.0);
@@ -112,7 +111,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
         // Peer state toggle
         ui.label(
             egui::RichText::new("Peer:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         if ui
@@ -133,7 +132,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
         // Simulate peer lock toggle
         ui.label(
             egui::RichText::new("Peer locked:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         if ui
@@ -154,12 +153,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
 
     // Trade table
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             let config = TradeTableConfig::default();
             let resp = trade_table::show(
@@ -178,11 +175,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
                         state.last_action = "Add asset clicked".into();
                         let extra_idx = state.next_idx % EXTRA_PIRATES.len();
                         let (hex, rank) = EXTRA_PIRATES[extra_idx];
-                        state.your_offer.assets.push(make_slot(
-                            hex,
-                            rank,
-                            egui_widgets::theme::ACCENT_GREEN,
-                        ));
+                        state.your_offer.assets.push(make_slot(hex, rank));
                         state.next_idx += 1;
                     }
                     trade_table::TradeTableAction::RemoveYourAsset(idx) => {
@@ -226,7 +219,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
             egui::RichText::new(
                 "No actions yet -- try adding/removing assets, locking, or adjusting ADA",
             )
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .size(11.0),
         );
     } else {
@@ -254,7 +247,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TradeTableStoryState) {
             state.your_offer.assets.len(),
             state.their_offer.assets.len()
         ))
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(10.0),
     );
 

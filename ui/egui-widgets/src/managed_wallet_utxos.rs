@@ -18,7 +18,7 @@
 use cardano_assets::utxo::{UtxoApi, UtxoTag};
 use egui::{Color32, RichText, Ui};
 
-use crate::theme;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// The purpose a UTxO serves in a mint + payments wallet — what the block
 /// strip colours by. Derived purely from the UTxO's own shape: a datum means
@@ -53,12 +53,14 @@ impl BlockRole {
         }
     }
 
-    fn color(self) -> Color32 {
+    /// Takes the theme rather than reading one: a role is a plain value with no
+    /// `Ui` of its own.
+    fn color(self, t: &crate::theme::Theme) -> Color32 {
         match self {
-            BlockRole::Fuel => theme::ACCENT_GREEN,
-            BlockRole::Liquid => theme::ACCENT_BLUE,
-            BlockRole::AssetAnomaly => theme::ACCENT_RED,
-            BlockRole::Asset => theme::ACCENT_YELLOW,
+            BlockRole::Fuel => t.color.accent_green,
+            BlockRole::Liquid => t.color.accent_blue,
+            BlockRole::AssetAnomaly => t.color.accent_red,
+            BlockRole::Asset => t.color.accent_yellow,
         }
     }
 
@@ -188,7 +190,7 @@ impl<'a> ManagedWalletUtxos<'a> {
     /// Render the breakdown into `ui`.
     pub fn show(self, ui: &mut Ui) {
         if self.utxos.is_empty() {
-            ui.colored_label(theme::TEXT_MUTED, "No UTxOs at this address.");
+            ui.colored_label(ui.tokens().color.text_muted, "No UTxOs at this address.");
             return;
         }
         let b = UtxoBreakdown::of(self.utxos);
@@ -201,10 +203,10 @@ impl<'a> ManagedWalletUtxos<'a> {
                 plural(self.utxos.len()),
                 ada(b.total_lovelace),
             ))
-            .color(theme::TEXT_SECONDARY)
+            .color(ui.tokens().color.text_secondary)
             .small(),
         );
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
 
         // ── Visual UTxO strip ─────────────────────────────────────
         // One block per UTxO, width ∝ lovelace (clamped so tiny ones stay
@@ -226,14 +228,16 @@ impl<'a> ManagedWalletUtxos<'a> {
                 String::new()
             };
             ui.horizontal(|ui| {
-                crate::icons::install_phosphor_font(ui.ctx());
-                ui.label(crate::PhosphorIcon::Warning.rich_text(12.0, theme::ACCENT_YELLOW));
+                crate::icons::ensure_fonts(ui);
+                ui.label(
+                    crate::PhosphorIcon::Warning.rich_text(12.0, ui.tokens().color.accent_yellow),
+                );
                 ui.label(
                     RichText::new(format!(
                         "Fragmented — {} spendable UTxOs{small}",
                         b.ada_only_count
                     ))
-                    .color(theme::ACCENT_YELLOW)
+                    .color(ui.tokens().color.accent_yellow)
                     .small()
                     .strong(),
                 );
@@ -244,11 +248,11 @@ impl<'a> ManagedWalletUtxos<'a> {
                      that can crowd the 16 KB tx limit. Consider consolidating (a Fund/no-op \
                      self-send merges them).",
                 )
-                .color(theme::TEXT_SECONDARY)
+                .color(ui.tokens().color.text_secondary)
                 .small(),
             );
         }
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
 
         // ── Spendable ADA (the expected contents) ─────────────────
         ui.label(
@@ -258,7 +262,7 @@ impl<'a> ManagedWalletUtxos<'a> {
                 b.ada_only_count,
                 plural(b.ada_only_count),
             ))
-            .color(theme::ACCENT_GREEN)
+            .color(ui.tokens().color.accent_green)
             .small()
             .strong(),
         );
@@ -267,22 +271,24 @@ impl<'a> ManagedWalletUtxos<'a> {
                 RichText::new(
                     "Buyer payments + operating float — what funds minting and the inline payouts.",
                 )
-                .color(theme::TEXT_MUTED)
+                .color(ui.tokens().color.text_muted)
                 .small(),
             );
         }
-        ui.add_space(2.0);
+        ui.gap(Space::Xs);
         for u in self.utxos.iter().filter(|u| u.assets.is_empty()) {
             utxo_ref_row(ui, u);
         }
 
         // ── Asset-bearing UTxOs (flagged when unexpected) ─────────
         if b.has_assets() {
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
             if self.assets_unexpected {
                 ui.horizontal(|ui| {
-                    crate::icons::install_phosphor_font(ui.ctx());
-                    ui.label(crate::PhosphorIcon::Warning.rich_text(12.0, theme::ACCENT_RED));
+                    crate::icons::ensure_fonts(ui);
+                    ui.label(
+                        crate::PhosphorIcon::Warning.rich_text(12.0, ui.tokens().color.accent_red),
+                    );
                     ui.label(
                         RichText::new(format!(
                             "Holds assets — {} UTxO{} carrying {} token{}",
@@ -291,7 +297,7 @@ impl<'a> ManagedWalletUtxos<'a> {
                             b.token_count,
                             plural(b.token_count),
                         ))
-                        .color(theme::ACCENT_RED)
+                        .color(ui.tokens().color.accent_red)
                         .small()
                         .strong(),
                     );
@@ -302,7 +308,7 @@ impl<'a> ManagedWalletUtxos<'a> {
                          likely minted to the wallet itself or sent in by mistake — move or burn \
                          them so they don't get spent as fee/change.",
                     )
-                    .color(theme::ACCENT_YELLOW)
+                    .color(ui.tokens().color.accent_yellow)
                     .small(),
                 );
             } else {
@@ -312,12 +318,12 @@ impl<'a> ManagedWalletUtxos<'a> {
                         b.asset_bearing_count,
                         plural(b.asset_bearing_count),
                     ))
-                    .color(theme::TEXT_SECONDARY)
+                    .color(ui.tokens().color.text_secondary)
                     .small()
                     .strong(),
                 );
             }
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
             for u in self.utxos.iter().filter(|u| !u.assets.is_empty()) {
                 utxo_ref_row(ui, u);
                 for aq in &u.assets {
@@ -333,9 +339,9 @@ impl<'a> ManagedWalletUtxos<'a> {
                         String::new()
                     };
                     let color = if self.assets_unexpected {
-                        theme::ACCENT_YELLOW
+                        ui.tokens().color.accent_yellow
                     } else {
-                        theme::TEXT_SECONDARY
+                        ui.tokens().color.text_secondary
                     };
                     ui.label(
                         RichText::new(format!(
@@ -370,13 +376,14 @@ fn render_block_strip(ui: &mut Ui, utxos: &[UtxoApi], assets_unexpected: bool) {
     order.extend(with_assets);
 
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(3.0, 3.0);
+        ui.spacing_mut().item_spacing = egui::Vec2::splat(ui.space(Space::Sm));
         for u in &order {
             let role = BlockRole::of(u, assets_unexpected);
             let frac = u.lovelace as f32 / max as f32;
             let w = (MIN_W + frac * (MAX_W - MIN_W)).clamp(MIN_W, MAX_W);
             let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, H), egui::Sense::hover());
-            ui.painter().rect_filled(rect, 2.0, role.color());
+            ui.painter()
+                .rect_filled(rect, 2.0, role.color(&ui.tokens()));
             let head = &u.tx_hash[..u.tx_hash.len().min(8)];
             let mut tip = format!(
                 "{head}…#{} · {} ADA · {}",
@@ -417,15 +424,16 @@ fn render_role_legend(ui: &mut Ui, utxos: &[&UtxoApi], assets_unexpected: bool) 
     if counts.is_empty() {
         return;
     }
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(10.0, 2.0);
+        ui.spacing_mut().item_spacing = egui::vec2(ui.space(Space::Lg), ui.space(Space::Xs));
         for (role, n) in counts.values() {
             let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-            ui.painter().rect_filled(rect, 2.0, role.color());
+            ui.painter()
+                .rect_filled(rect, 2.0, role.color(&ui.tokens()));
             ui.label(
                 RichText::new(format!("{} ({n})", role.label()))
-                    .color(theme::TEXT_SECONDARY)
+                    .color(ui.tokens().color.text_secondary)
                     .small(),
             );
         }
@@ -441,7 +449,7 @@ fn utxo_ref_row(ui: &mut Ui, u: &UtxoApi) {
             RichText::new(format!("{} ADA", ada(u.lovelace)))
                 .monospace()
                 .small()
-                .color(theme::TEXT_PRIMARY),
+                .color(ui.tokens().color.text_primary),
         );
     });
 }

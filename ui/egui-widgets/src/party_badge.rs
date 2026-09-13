@@ -53,7 +53,9 @@
 //!     .show(ui);
 //! ```
 
-use egui::{Color32, CornerRadius, Frame, Margin, Response, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, Response, RichText, Sense, Stroke, Ui, Vec2};
+
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 /// How firmly a party's identity is known.
 ///
@@ -187,12 +189,12 @@ impl<'a> PartyBadge<'a> {
         let warn = ui.visuals().warn_fg_color;
 
         let frame = Frame::NONE
-            .inner_margin(Margin::symmetric(5, 2))
-            .corner_radius(CornerRadius::same(3));
+            .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Xs))
+            .corner_radius(ui.tokens().corner(Radius::Sm));
 
         let resp = frame
             .show(ui, |ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.set_item_gap_x(Space::Sm);
                 ui.horizontal(|ui| {
                     // Cluster colour sits left, as a thin bar rather than a
                     // fill — a filled background would compete with Chip and
@@ -282,12 +284,17 @@ impl<'a> PartyBadge<'a> {
             ui.label(RichText::new(label).strong());
         }
         if let Some(key) = self.key {
-            ui.label(RichText::new(key).monospace().size(11.0).color(muted));
+            ui.label(
+                RichText::new(key)
+                    .monospace()
+                    .size(ui.text_size(TextSize::Base))
+                    .color(muted),
+            );
         }
 
         ui.label(
             RichText::new(format!("basis: {}", self.basis.word()))
-                .size(11.0)
+                .size(ui.text_size(TextSize::Base))
                 .color(muted),
         );
 
@@ -295,14 +302,14 @@ impl<'a> PartyBadge<'a> {
             (PartyBasis::Asserted, None) => {
                 ui.label(
                     RichText::new("ASSERTED WITH NO SOURCE — treat as unverified")
-                        .size(11.0)
+                        .size(ui.text_size(TextSize::Base))
                         .color(ui.visuals().warn_fg_color),
                 );
             }
             (_, Some(src)) => {
                 ui.label(
                     RichText::new(format!("source: {src}"))
-                        .size(11.0)
+                        .size(ui.text_size(TextSize::Base))
                         .color(muted),
                 );
             }
@@ -312,12 +319,16 @@ impl<'a> PartyBadge<'a> {
         if let Some((name, _)) = self.cluster {
             ui.label(
                 RichText::new(format!("cluster: {name}"))
-                    .size(11.0)
+                    .size(ui.text_size(TextSize::Base))
                     .color(muted),
             );
         }
         if let Some(detail) = self.detail {
-            ui.label(RichText::new(detail).size(11.0).color(muted));
+            ui.label(
+                RichText::new(detail)
+                    .size(ui.text_size(TextSize::Base))
+                    .color(muted),
+            );
         }
     }
 }

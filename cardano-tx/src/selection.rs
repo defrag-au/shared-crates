@@ -176,7 +176,7 @@ pub fn select_all_utxos_for_max<'a>(
                     plutus_cost_models: None,
                 },
                 &held,
-                &crate::OutputParams { datum_size: None },
+                &crate::OutputParams::default(),
             );
             utxo.lovelace > min_required
         })

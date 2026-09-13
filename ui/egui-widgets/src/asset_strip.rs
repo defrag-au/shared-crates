@@ -5,11 +5,11 @@
 //! with the index of the clicked item.
 
 use cardano_assets::AssetId;
-use egui::{Color32, CornerRadius, Rect, Vec2};
+use egui::{Color32, Rect, Vec2};
 
 use crate::card_browser;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};
-use crate::theme;
+use crate::theme::{Radius, Speed, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -76,7 +76,7 @@ pub fn show(
         return AssetStripResponse { clicked };
     }
 
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     let n = items.len();
     let thumb = config.thumb_size;
@@ -123,7 +123,7 @@ pub fn show(
 
     let hover_pos = strip_response.hover_pos();
     let painter = ui.painter_at(strip_rect);
-    let rounding = CornerRadius::same(4);
+    let rounding = ui.tokens().corner(Radius::Base);
 
     // Determine which card is hovered (topmost = rightmost at overlap point)
     let hovered_idx = hover_pos.and_then(|pos| {
@@ -138,16 +138,18 @@ pub fn show(
     // Draw cards left-to-right (later cards on top), but skip hovered to draw last
     let browser_config = crate::CardBrowserConfig {
         rounding: 4.0,
-        bg_card_hover: Color32::from_rgb(40, 40, 55),
         ..Default::default()
     };
 
     // Animate dim overlay on non-hovered cards (smooth fade in/out)
     let any_hovered = hovered_idx.is_some();
+    let travel = ui.travel_allowed();
+    // A fade, so it survives reduced motion — only its duration follows the
+    // theme.
     let dim_t = ui.ctx().animate_bool_with_time_and_easing(
         strip_response.id.with("dim"),
         any_hovered,
-        0.15,
+        ui.duration(Speed::Fast),
         egui::emath::easing::cubic_out,
     );
 
@@ -155,22 +157,24 @@ pub fn show(
     for (i, item) in items.iter().enumerate() {
         let is_hovered = hovered_idx == Some(i);
 
-        // Animate vertical lift — cubic_out for snappy rise, smooth settle
+        // Animate vertical lift — cubic_out for snappy rise, smooth settle.
+        // This one MOVES the card, so reduced motion drops it entirely rather
+        // than merely shortening it; the dim fade above still marks the hover.
         let anim_id = strip_response.id.with(("lift", i));
         let t = ui.ctx().animate_bool_with_time_and_easing(
             anim_id,
             is_hovered,
-            0.18,
+            ui.duration(Speed::Normal),
             egui::emath::easing::cubic_out,
         );
-        let lift = t * lift_amount;
+        let lift = if travel { t * lift_amount } else { 0.0 };
 
         let x = strip_rect.min.x + step * i as f32;
         let y = baseline_y - lift;
         let card_rect = Rect::from_min_size(egui::pos2(x, y), Vec2::splat(thumb));
 
         // Background
-        painter.rect_filled(card_rect, rounding, theme::BG_SECONDARY);
+        painter.rect_filled(card_rect, rounding, ui.tokens().color.bg_secondary);
 
         // Thumbnail
         let image_url = iiif_asset_url(
@@ -198,7 +202,7 @@ pub fn show(
         painter.rect_stroke(
             card_rect,
             rounding,
-            egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT),
+            egui::Stroke::new(1.0_f32, ui.tokens().color.bg_highlight),
             egui::StrokeKind::Inside,
         );
     }
@@ -208,8 +212,8 @@ pub fn show(
         strip_response.clone().on_hover_ui_at_pointer(|ui| {
             ui.label(
                 egui::RichText::new(&items[idx].display_name)
-                    .color(theme::TEXT_PRIMARY)
-                    .size(10.0)
+                    .color(ui.tokens().color.text_primary)
+                    .size(ui.text_size(TextSize::Sm))
                     .strong(),
             );
         });

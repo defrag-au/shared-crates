@@ -4,11 +4,11 @@ use cardano_assets::AssetId;
 use leptos::prelude::*;
 use ui_components::{AssetModal, WalletNftGallery};
 use wallet_core::{
-    detect_wallets, detect_wallets_with_info, ConnectionState, Network, WalletApi, WalletInfo,
-    WalletProvider,
+    ConnectionState, Network, WalletApi, WalletInfo, WalletProvider, detect_wallets,
+    detect_wallets_with_info,
 };
-use wallet_leptos::{use_wallet, WalletProvider as WalletProviderComponent};
-use wallet_pallas::{decode_balance, PolicyGroup, WalletBalance};
+use wallet_leptos::{WalletProvider as WalletProviderComponent, use_wallet};
+use wallet_pallas::{PolicyGroup, WalletBalance, decode_balance};
 use wasm_bindgen_futures::spawn_local;
 
 // ============================================================================

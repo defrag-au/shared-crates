@@ -2,7 +2,7 @@
 name = "tiers"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Configurable holding-based access tiers: qualification, resolution, and upsell"
 
 # PURE — no I/O, no wasm-bindgen, no worker deps. The same crate is consumed

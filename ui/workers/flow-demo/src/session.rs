@@ -6,7 +6,7 @@
 use crate::types::*;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use ui_flow_protocol::{encode, OpId, PresenceInfo, PresenceStatus, ServerMessage};
+use ui_flow_protocol::{OpId, PresenceInfo, PresenceStatus, ServerMessage, encode};
 use worker::*;
 
 /// Storage keys for persisted state

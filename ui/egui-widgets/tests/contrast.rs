@@ -1,13 +1,24 @@
-//! Contrast floors for the theme palette.
+//! Contrast floors for **every** theme the crate ships.
 //!
 //! Most of this suite renders text at 9–12px, where WCAG AA requires 4.5:1.
 //! Every tier of the text ramp must clear that on every background it can
 //! land on — de-emphasis is expressed within the passing range, not by
 //! dropping below it. If a palette change fails here, the test is the
 //! negotiation point, not your monitor.
+//!
+//! ## Why this runs over `Theme::PRESETS`
+//!
+//! It used to read the module constants, which meant it checked exactly one
+//! palette. The moment a second preset existed, that was a hole: a new theme
+//! could ship below AA and nothing would say so. The floors and the checks here
+//! are unchanged — they are simply applied to every theme now, with the theme's
+//! name in the failure message.
+//!
+//! **Adding a preset to `Theme::PRESETS` is what enrols it.** A palette not in
+//! that list is not covered.
 
 use egui::Color32;
-use egui_widgets::theme;
+use egui_widgets::theme::{self, Theme};
 
 /// sRGB channel linearization (WCAG 2.0).
 fn linearize(c: u8) -> f64 {
@@ -30,12 +41,6 @@ fn contrast(a: Color32, b: Color32) -> f64 {
     (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
 }
 
-const BACKGROUNDS: [(&str, Color32); 3] = [
-    ("BG_PRIMARY", theme::BG_PRIMARY),
-    ("BG_SECONDARY", theme::BG_SECONDARY),
-    ("BG_HIGHLIGHT", theme::BG_HIGHLIGHT),
-];
-
 /// Composite a translucent colour over an opaque one. `Color32` stores
 /// PREMULTIPLIED channels, so the source contributes its channels directly and
 /// the destination is attenuated by the remaining alpha.
@@ -49,14 +54,28 @@ fn over(fg: Color32, bg: Color32) -> Color32 {
     )
 }
 
-/// The style as an app actually gets it — selection colours live in
-/// `configure_style`, not in the palette constants, so testing the constants
-/// alone missed them entirely.
-fn configured() -> egui::Visuals {
+/// Every theme under test, by name.
+fn presets() -> Vec<Theme> {
+    Theme::PRESETS.iter().map(|p| p()).collect()
+}
+
+/// Every background a text colour can land on, for one theme.
+fn backgrounds(t: &Theme) -> [(&'static str, Color32); 3] {
+    [
+        ("bg_primary", t.color.bg_primary),
+        ("bg_secondary", t.color.bg_secondary),
+        ("bg_highlight", t.color.bg_highlight),
+    ]
+}
+
+/// The style as an app actually gets it — selection colours are derived in
+/// `apply_style`, not stored in the tokens, so testing the tokens alone missed
+/// them entirely.
+fn configured(t: &Theme) -> egui::Visuals {
     let ctx = egui::Context::default();
-    theme::configure_style(&ctx, theme::FontStrategy::proportional());
+    theme::install_theme(&ctx, t.clone());
     // `global_style`, not `ui.style()` — this is the context-wide style
-    // `configure_style` writes, which is exactly what the renaming was for.
+    // `install_theme` writes.
     ctx.global_style().visuals.clone()
 }
 
@@ -66,24 +85,27 @@ fn translucent_theme_colours_are_valid_premultiplied() {
     // Violating it doesn't error — it blends additively, so a 16% tint renders
     // as a bright wash. That is how accent-on-accent shipped on the selected
     // tab, and this catches the whole class rather than the one instance.
-    let v = configured();
-    for (name, c) in [
-        ("selection.bg_fill", v.selection.bg_fill),
-        ("panel_fill", v.panel_fill),
-        ("window_fill", v.window_fill),
-        ("faint_bg_color", v.faint_bg_color),
-        ("extreme_bg_color", v.extreme_bg_color),
-    ] {
-        let a = c.a();
-        assert!(
-            c.r() <= a && c.g() <= a && c.b() <= a,
-            "{name} = rgba({}, {}, {}, {a}) is not valid premultiplied — a \
-             channel exceeds alpha, so it will blend additively and render \
-             lighter than intended",
-            c.r(),
-            c.g(),
-            c.b(),
-        );
+    for t in presets() {
+        let v = configured(&t);
+        for (name, c) in [
+            ("selection.bg_fill", v.selection.bg_fill),
+            ("panel_fill", v.panel_fill),
+            ("window_fill", v.window_fill),
+            ("faint_bg_color", v.faint_bg_color),
+            ("extreme_bg_color", v.extreme_bg_color),
+        ] {
+            let a = c.a();
+            assert!(
+                c.r() <= a && c.g() <= a && c.b() <= a,
+                "[{}] {name} = rgba({}, {}, {}, {a}) is not valid premultiplied — \
+                 a channel exceeds alpha, so it will blend additively and render \
+                 lighter than intended",
+                t.name,
+                c.r(),
+                c.g(),
+                c.b(),
+            );
+        }
     }
 }
 
@@ -93,85 +115,120 @@ fn selection_text_clears_wcag_aa_on_every_background() {
     // `selection.stroke`, so that colour is the SELECTED LABEL'S TEXT sitting
     // on `selection.bg_fill`. A selected tab is the most-clicked thing on a
     // surface and was the least readable.
-    let v = configured();
-    for (bg_name, bg) in BACKGROUNDS {
-        let wash = over(v.selection.bg_fill, bg);
-        let ratio = contrast(v.selection.stroke.color, wash);
-        assert!(
-            ratio >= 4.5,
-            "selected text on the selection wash over {bg_name} is \
-             {ratio:.2}:1 — below WCAG AA (4.5:1)"
-        );
-    }
-}
-
-#[test]
-fn text_ramp_clears_wcag_aa_on_every_background() {
-    let ramp = [
-        ("TEXT_PRIMARY", theme::TEXT_PRIMARY),
-        ("TEXT_SECONDARY", theme::TEXT_SECONDARY),
-        ("TEXT_MUTED", theme::TEXT_MUTED),
-    ];
-    for (bg_name, bg) in BACKGROUNDS {
-        for (fg_name, fg) in ramp {
-            let ratio = contrast(fg, bg);
+    for t in presets() {
+        let v = configured(&t);
+        for (bg_name, bg) in backgrounds(&t) {
+            let wash = over(v.selection.bg_fill, bg);
+            let ratio = contrast(v.selection.stroke.color, wash);
             assert!(
                 ratio >= 4.5,
-                "{fg_name} on {bg_name} is {ratio:.2}:1 — below WCAG AA (4.5:1)"
+                "[{}] selected text on the selection wash over {bg_name} is \
+                 {ratio:.2}:1 — below WCAG AA (4.5:1)",
+                t.name
             );
         }
     }
 }
 
 #[test]
+fn text_ramp_clears_wcag_aa_on_every_background() {
+    for t in presets() {
+        let ramp = [
+            ("text_primary", t.color.text_primary),
+            ("text_secondary", t.color.text_secondary),
+            ("text_muted", t.color.text_muted),
+        ];
+        for (bg_name, bg) in backgrounds(&t) {
+            for (fg_name, fg) in ramp {
+                let ratio = contrast(fg, bg);
+                assert!(
+                    ratio >= 4.5,
+                    "[{}] {fg_name} on {bg_name} is {ratio:.2}:1 — below WCAG AA (4.5:1)",
+                    t.name
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn text_hierarchy_is_ordered() {
-    assert!(
-        luminance(theme::TEXT_PRIMARY) > luminance(theme::TEXT_SECONDARY),
-        "TEXT_PRIMARY must be brighter than TEXT_SECONDARY"
-    );
-    assert!(
-        luminance(theme::TEXT_SECONDARY) > luminance(theme::TEXT_MUTED),
-        "TEXT_SECONDARY must be brighter than TEXT_MUTED"
-    );
+    for t in presets() {
+        assert!(
+            luminance(t.color.text_primary) > luminance(t.color.text_secondary),
+            "[{}] text_primary must be brighter than text_secondary",
+            t.name
+        );
+        assert!(
+            luminance(t.color.text_secondary) > luminance(t.color.text_muted),
+            "[{}] text_secondary must be brighter than text_muted",
+            t.name
+        );
+    }
 }
 
 #[test]
 fn accents_clear_wcag_aa_on_cards() {
-    let accents = [
-        ("ACCENT_BLUE", theme::ACCENT_BLUE),
-        ("ACCENT_CYAN", theme::ACCENT_CYAN),
-        ("ACCENT_GREEN", theme::ACCENT_GREEN),
-        ("ACCENT_YELLOW", theme::ACCENT_YELLOW),
-        ("ACCENT_ORANGE", theme::ACCENT_ORANGE),
-        ("ACCENT_RED", theme::ACCENT_RED),
-        ("ACCENT_MAGENTA", theme::ACCENT_MAGENTA),
-    ];
-    for (name, accent) in accents {
-        let ratio = contrast(accent, theme::BG_SECONDARY);
-        assert!(
-            ratio >= 4.5,
-            "{name} on BG_SECONDARY is {ratio:.2}:1 — below WCAG AA (4.5:1)"
-        );
+    for t in presets() {
+        let accents = [
+            ("accent_blue", t.color.accent_blue),
+            ("accent_cyan", t.color.accent_cyan),
+            ("accent_green", t.color.accent_green),
+            ("accent_yellow", t.color.accent_yellow),
+            ("accent_orange", t.color.accent_orange),
+            ("accent_red", t.color.accent_red),
+            ("accent_magenta", t.color.accent_magenta),
+            // The semantic tokens are separately settable, so they need checking
+            // in their own right — a theme may point `success` somewhere the ramp
+            // does not go.
+            ("accent", t.color.accent),
+            ("success", t.color.success),
+            ("warning", t.color.warning),
+            ("error", t.color.error),
+        ];
+        for (name, accent) in accents {
+            let ratio = contrast(accent, t.color.bg_secondary);
+            assert!(
+                ratio >= 4.5,
+                "[{}] {name} on bg_secondary is {ratio:.2}:1 — below WCAG AA (4.5:1)",
+                t.name
+            );
+        }
     }
 }
 
 #[test]
 fn border_is_visible() {
     // Borders aren't text: they don't need 4.5:1, they need to exist.
-    // BORDER == BG_HIGHLIGHT (1.24:1) was the old failure mode.
-    let ratio = contrast(theme::BORDER, theme::BG_PRIMARY);
-    assert!(
-        ratio >= 1.5,
-        "BORDER on BG_PRIMARY is {ratio:.2}:1 — panel edges are invisible"
-    );
+    // border == bg_highlight (1.24:1) was the old failure mode.
+    for t in presets() {
+        let ratio = contrast(t.color.border, t.color.bg_primary);
+        assert!(
+            ratio >= 1.5,
+            "[{}] border on bg_primary is {ratio:.2}:1 — panel edges are invisible",
+            t.name
+        );
+    }
 }
 
 #[test]
-fn default_chip_variant_is_readable() {
-    let (fg, bg, _) = egui_widgets::chip::ChipVariant::Muted.palette();
-    let ratio = contrast(fg, bg);
-    assert!(
-        ratio >= 4.5,
-        "ChipVariant::Muted (the default) is {ratio:.2}:1 — below WCAG AA"
-    );
+fn every_chip_variant_is_readable_in_every_theme() {
+    // Was `default_chip_variant_is_readable`, and only checked `Muted`, because
+    // `ChipVariant` carried six literal pairs and there was no theme to vary.
+    // Now that the palette is derived from tokens, every variant is a claim
+    // about every preset — so the same 4.5:1 floor runs across the matrix.
+    //
+    // This is the test that would have caught the real hazard in deriving them:
+    // a theme with a pale `warning` and a white-ish `on()` pick.
+    for t in presets() {
+        for variant in egui_widgets::chip::ChipVariant::ALL {
+            let (fg, bg, _) = variant.palette(&t);
+            let ratio = contrast(fg, bg);
+            assert!(
+                ratio >= 4.5,
+                "`{}` / `{variant:?}` is {ratio:.2}:1 — below WCAG AA",
+                t.name
+            );
+        }
+    }
 }

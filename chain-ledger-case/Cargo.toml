@@ -2,7 +2,7 @@
 name = "chain-ledger-case"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Case-file schema, records and checksummed export for chain-ledger. No database driver."
 
 # No SQLite driver, deliberately.

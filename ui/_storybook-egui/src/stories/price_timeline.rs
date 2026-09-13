@@ -4,8 +4,9 @@ use egui_widgets::price_timeline::{
     LogMode, PointEmphasis, PointShape, PriceTimelineConfig, ReferenceBand, ReferenceLine,
     TimelinePoint,
 };
+use egui_widgets::theme::{Ink, Token};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 // ============================================================================
 // State
@@ -192,9 +193,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut PriceTimelineState) {
         ui.label("Preset:");
         for (i, name) in PRESET_NAMES.iter().enumerate() {
             let text = if state.preset == i {
-                egui::RichText::new(*name).color(ACCENT).strong()
+                egui::RichText::new(*name).color(accent(ui)).strong()
             } else {
-                egui::RichText::new(*name).color(TEXT_MUTED)
+                egui::RichText::new(*name).color(muted(ui))
             };
             if ui.selectable_label(state.preset == i, text).clicked() {
                 state.preset = i;
@@ -204,9 +205,9 @@ pub fn show(ui: &mut egui::Ui, state: &mut PriceTimelineState) {
         ui.label("Log y:");
         for (i, name) in LOG_NAMES.iter().enumerate() {
             let text = if state.log_mode == i {
-                egui::RichText::new(*name).color(ACCENT).strong()
+                egui::RichText::new(*name).color(accent(ui)).strong()
             } else {
-                egui::RichText::new(*name).color(TEXT_MUTED)
+                egui::RichText::new(*name).color(muted(ui))
             };
             if ui.selectable_label(state.log_mode == i, text).clicked() {
                 state.log_mode = i;
@@ -232,9 +233,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PriceTimelineState) {
             2 => LogMode::On,
             _ => LogMode::Auto,
         },
-        connect: state
-            .connect
-            .then_some(egui::Color32::from_rgba_unmultiplied(125, 207, 255, 90)),
+        connect: state.connect.then_some(Ink::Wash(Token::AccentCyan, 90)),
         ..Default::default()
     };
 
@@ -259,7 +258,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PriceTimelineState) {
                 egui::Align2::CENTER_CENTER,
                 "img",
                 egui::FontId::proportional(9.0),
-                TEXT_MUTED,
+                muted(ui),
             );
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
@@ -282,7 +281,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PriceTimelineState) {
                 );
                 ui.label(
                     egui::RichText::new(format!("{age_days}d ago"))
-                        .color(TEXT_MUTED)
+                        .color(muted(ui))
                         .size(9.0),
                 );
             });
@@ -303,7 +302,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PriceTimelineState) {
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new(format!("{cat}:"))
-                                .color(TEXT_MUTED)
+                                .color(muted(ui))
                                 .size(9.0),
                         );
                         ui.label(
@@ -343,7 +342,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PriceTimelineState) {
                     focus_pos + 1,
                     order.len()
                 ))
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .size(8.0),
             );
             egui_widgets::focus_list::show(
@@ -366,7 +365,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PriceTimelineState) {
                             "{age_days}d ago \u{00b7} Demo Asset #{:04}",
                             i * 37 % 10_000
                         ))
-                        .color(TEXT_MUTED)
+                        .color(muted(ui))
                         .size(9.0),
                     );
                 },
@@ -378,7 +377,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PriceTimelineState) {
                 } else {
                     "click to pin \u{00b7} zoom in (pinch / ctrl+scroll) for detail"
                 })
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .size(8.0),
             );
             return;

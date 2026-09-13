@@ -25,13 +25,12 @@
 //! because a still is what goes in a write-up. Flight and pulses happen only
 //! while the spine is playing.
 
-use egui::{
-    Align2, Color32, CornerRadius, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2,
-};
+use egui::{Align2, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
 use crate::mint_arrivals::{Arrival, pile_offset};
 use crate::motion::{Easing, tween, tween_bool, tween_from};
 use crate::selection::Selection;
+use crate::theme::{Ink, Radius, Series, Speed, TextSize, ThemeExt};
 use crate::time_spine::SpineState;
 
 pub struct ArrivalFieldResponse {
@@ -48,7 +47,7 @@ pub struct ArrivalField<'a> {
     spine: &'a SpineState,
     selection: &'a mut Selection,
     flight_secs: f32,
-    dot_color: Option<Color32>,
+    dot_color: Ink,
     height: f32,
     label: Option<&'a dyn Fn(&str) -> String>,
 }
@@ -65,7 +64,9 @@ impl<'a> ArrivalField<'a> {
             spine,
             selection,
             flight_secs: 0.7,
-            dot_color: None,
+            // An arrival IS inbound value — the flow ramp's business, not the
+            // chrome palette's.
+            dot_color: Ink::Series(Series::Inbound),
             height: 320.0,
             label: None,
         }
@@ -77,8 +78,8 @@ impl<'a> ArrivalField<'a> {
         self
     }
 
-    pub fn dot_color(mut self, c: Color32) -> Self {
-        self.dot_color = Some(c);
+    pub fn dot_color(mut self, c: impl Into<Ink>) -> Self {
+        self.dot_color = c.into();
         self
     }
 
@@ -107,7 +108,12 @@ impl<'a> ArrivalField<'a> {
         let now = ctx.input(|i| i.time);
         let muted = ui.visuals().weak_text_color();
         let ink = ui.visuals().text_color();
-        let accent = dot_color.unwrap_or(Color32::from_rgb(0x39, 0x87, 0xe5));
+        let accent = dot_color.of(ui);
+        // Read once: the paint loops below run per dot and have no `ui`, and a
+        // per-dot theme lookup would be the same answer a thousand times.
+        let travel = ui.travel_allowed();
+        let dur_normal = ui.duration(Speed::Normal);
+        let ease_settle = ui.easing(Easing::OutCubic);
 
         let (rect, response) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
@@ -210,7 +216,13 @@ impl<'a> ArrivalField<'a> {
 
         // ── emitter (the source) ───────────────────────────────────────────
         let playing = spine.playing;
-        let glow = tween_bool(&ctx, id.with("emit"), playing, 0.3, Easing::InOutCubic);
+        let glow = tween_bool(
+            &ctx,
+            id.with("emit"),
+            playing,
+            ui.duration(Speed::Normal),
+            ui.easing(Easing::InOutCubic),
+        );
         painter.circle_filled(source, 2.5, muted);
         if glow > 0.0 {
             painter.circle_stroke(
@@ -233,8 +245,8 @@ impl<'a> ArrivalField<'a> {
                 &ctx,
                 id.with(("emph", *h)),
                 target,
-                0.18,
-                Easing::OutCubic,
+                ui.duration(Speed::Normal),
+                ui.easing(Easing::OutCubic),
             ));
         }
         // Landing pulses: per pile, the wall-clock moment the newest dot lands.
@@ -271,10 +283,14 @@ impl<'a> ArrivalField<'a> {
                 // Flight progress 0→1, keyed per dot. Playing: a fresh dot starts
                 // at 0 and eases to 1. Scrubbed: snap to 1 (and record it) so a
                 // later play doesn't replay every settled dot.
-                let t = if playing {
-                    tween_from(&ctx, dot_id, 0.0, 1.0, flight_secs, Easing::OutCubic)
+                // `travel_allowed` is exactly this: the arc is the one thing
+                // here that MOVES across the field, so reduced motion drops the
+                // flight and the dot simply appears in its pile. The pulse and
+                // the emitter glow are opacity and survive.
+                let t = if playing && travel {
+                    tween_from(&ctx, dot_id, 0.0, 1.0, flight_secs, ease_settle)
                 } else {
-                    tween_from(&ctx, dot_id, 1.0, 1.0, 0.0, Easing::OutCubic)
+                    tween_from(&ctx, dot_id, 1.0, 1.0, 0.0, ease_settle)
                 };
                 if t < 1.0 {
                     // In flight: arc from the emitter, fanned per pile so
@@ -332,7 +348,7 @@ impl<'a> ArrivalField<'a> {
         {
             let c = centre_of(i);
             let ring_r = radius_of(i) + dot_r + 3.0;
-            let ring_a = tween_bool(&ctx, id.with("ring"), true, 0.15, Easing::OutCubic);
+            let ring_a = tween_bool(&ctx, id.with("ring"), true, dur_normal, ease_settle);
             painter.circle_stroke(
                 c,
                 ring_r,
@@ -355,7 +371,7 @@ impl<'a> ArrivalField<'a> {
             let bg = Rect::from_min_size(at, galley.size()).expand2(vec2(4.0, 2.0));
             painter.rect_filled(
                 bg,
-                CornerRadius::same(3),
+                ui.tokens().corner(Radius::Sm),
                 ui.visuals().extreme_bg_color.linear_multiply(0.85),
             );
             painter.galley(at, galley, ink);
@@ -388,7 +404,7 @@ impl<'a> ArrivalField<'a> {
                     ui.label(
                         egui::RichText::new(format!("{}", shown[i]))
                             .strong()
-                            .size(18.0),
+                            .size(ui.text_size(TextSize::Xl2)),
                     );
                     ui.label(
                         egui::RichText::new(if shown[i] == 1 { "asset" } else { "assets" })

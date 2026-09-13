@@ -267,23 +267,23 @@ impl<'a> CborExtractor<'a> {
     ) -> Result<super::marketplace_parsers::MarketplaceOperation> {
         if let PlutusData::Array(arr) = data {
             // Validate array bounds
-            if let Some(min_items) = type_def.min_items {
-                if arr.len() < min_items {
-                    return Err(DatumParsingError::SchemaValidation(format!(
-                        "Array too short: {} < {}",
-                        arr.len(),
-                        min_items
-                    )));
-                }
+            if let Some(min_items) = type_def.min_items
+                && arr.len() < min_items
+            {
+                return Err(DatumParsingError::SchemaValidation(format!(
+                    "Array too short: {} < {}",
+                    arr.len(),
+                    min_items
+                )));
             }
-            if let Some(max_items) = type_def.max_items {
-                if arr.len() > max_items {
-                    return Err(DatumParsingError::SchemaValidation(format!(
-                        "Array too long: {} > {}",
-                        arr.len(),
-                        max_items
-                    )));
-                }
+            if let Some(max_items) = type_def.max_items
+                && arr.len() > max_items
+            {
+                return Err(DatumParsingError::SchemaValidation(format!(
+                    "Array too long: {} > {}",
+                    arr.len(),
+                    max_items
+                )));
             }
 
             debug!("Processing array with {} items", arr.len());
@@ -324,33 +324,33 @@ impl<'a> CborExtractor<'a> {
     ) -> Result<super::marketplace_parsers::MarketplaceOperation> {
         if let PlutusData::Constr(constr) = data {
             // Validate constructor tag if specified
-            if let Some(expected_tag) = type_def.constructor_tag {
-                if constr.tag != expected_tag {
-                    return Err(DatumParsingError::SchemaValidation(format!(
-                        "Wrong constructor tag: {} != {}",
-                        constr.tag, expected_tag
-                    )));
-                }
+            if let Some(expected_tag) = type_def.constructor_tag
+                && constr.tag != expected_tag
+            {
+                return Err(DatumParsingError::SchemaValidation(format!(
+                    "Wrong constructor tag: {} != {}",
+                    constr.tag, expected_tag
+                )));
             }
 
             // Validate field count
-            if let Some(min_fields) = type_def.min_fields {
-                if constr.fields.len() < min_fields {
-                    return Err(DatumParsingError::SchemaValidation(format!(
-                        "Too few fields: {} < {}",
-                        constr.fields.len(),
-                        min_fields
-                    )));
-                }
+            if let Some(min_fields) = type_def.min_fields
+                && constr.fields.len() < min_fields
+            {
+                return Err(DatumParsingError::SchemaValidation(format!(
+                    "Too few fields: {} < {}",
+                    constr.fields.len(),
+                    min_fields
+                )));
             }
-            if let Some(max_fields) = type_def.max_fields {
-                if constr.fields.len() > max_fields {
-                    return Err(DatumParsingError::SchemaValidation(format!(
-                        "Too many fields: {} > {}",
-                        constr.fields.len(),
-                        max_fields
-                    )));
-                }
+            if let Some(max_fields) = type_def.max_fields
+                && constr.fields.len() > max_fields
+            {
+                return Err(DatumParsingError::SchemaValidation(format!(
+                    "Too many fields: {} > {}",
+                    constr.fields.len(),
+                    max_fields
+                )));
             }
 
             debug!(
@@ -460,14 +460,13 @@ impl<'a> CborExtractor<'a> {
                 // Try different payout structures:
 
                 // 1. Simple array with amount at index 1 (original JPG.store style)
-                if let PlutusData::Array(payout_fields) = payout {
-                    if payout_fields.len() >= 2 {
-                        if let Ok(amount) = self.extract_uint_value(&payout_fields[1]) {
-                            debug!("Found amount in array at index 1: {}", amount);
-                            total = total.saturating_add(amount);
-                            continue;
-                        }
-                    }
+                if let PlutusData::Array(payout_fields) = payout
+                    && payout_fields.len() >= 2
+                    && let Ok(amount) = self.extract_uint_value(&payout_fields[1])
+                {
+                    debug!("Found amount in array at index 1: {}", amount);
+                    total = total.saturating_add(amount);
+                    continue;
                 }
 
                 // 2. Constructor-based structure (JPG.store V2 style) - recursively search for amounts
@@ -499,13 +498,12 @@ impl<'a> CborExtractor<'a> {
 
             for payout in payouts.iter() {
                 // Wayup style: constructor with fields[1] containing the amount
-                if let PlutusData::Constr(payout_constr) = payout {
-                    if payout_constr.fields.len() >= 2 {
-                        if let Ok(amount) = self.extract_uint_value(&payout_constr.fields[1]) {
-                            debug!("Extracted Wayup payout amount: {} lovelace", amount);
-                            total = total.saturating_add(amount);
-                        }
-                    }
+                if let PlutusData::Constr(payout_constr) = payout
+                    && payout_constr.fields.len() >= 2
+                    && let Ok(amount) = self.extract_uint_value(&payout_constr.fields[1])
+                {
+                    debug!("Extracted Wayup payout amount: {} lovelace", amount);
+                    total = total.saturating_add(amount);
                 }
             }
 
@@ -631,14 +629,15 @@ impl<'a> CborExtractor<'a> {
         type_def: &TypeDefinition,
     ) -> Result<String> {
         // First try field-based extraction (for simple schemas)
-        if let Some(field_name) = &self.schema.extraction.policy_path {
-            if let Some(fields) = &type_def.fields {
-                for field in fields {
-                    if field.name == *field_name && field.index < arr.len() {
-                        if let Ok(policy_id) = self.extract_bytes_value(&arr[field.index]) {
-                            return Ok(policy_id);
-                        }
-                    }
+        if let Some(field_name) = &self.schema.extraction.policy_path
+            && let Some(fields) = &type_def.fields
+        {
+            for field in fields {
+                if field.name == *field_name
+                    && field.index < arr.len()
+                    && let Ok(policy_id) = self.extract_bytes_value(&arr[field.index])
+                {
+                    return Ok(policy_id);
                 }
             }
         }
@@ -661,25 +660,26 @@ impl<'a> CborExtractor<'a> {
         type_def: &TypeDefinition,
     ) -> Option<String> {
         // First try field-based extraction (for simple schemas)
-        if let Some(field_name) = &self.schema.extraction.asset_name_path {
-            if let Some(fields) = &type_def.fields {
-                for field in fields {
-                    if field.name == *field_name && field.index < arr.len() {
-                        if let Ok(bytes_hex) = self.extract_bytes_value(&arr[field.index]) {
-                            return Some(bytes_hex);
-                        }
-                    }
+        if let Some(field_name) = &self.schema.extraction.asset_name_path
+            && let Some(fields) = &type_def.fields
+        {
+            for field in fields {
+                if field.name == *field_name
+                    && field.index < arr.len()
+                    && let Ok(bytes_hex) = self.extract_bytes_value(&arr[field.index])
+                {
+                    return Some(bytes_hex);
                 }
             }
         }
 
         // Fallback to recursive search (for complex structures like JPG.store)
         // We need the policy ID to search for asset names within that policy's map
-        if let Some(policy_id) = self.find_policy_id_in_data(arr) {
-            if let Some(asset_name) = self.find_asset_name_in_data(arr, &policy_id) {
-                debug!("Found asset name via recursive search: {}", asset_name);
-                return Some(asset_name);
-            }
+        if let Some(policy_id) = self.find_policy_id_in_data(arr)
+            && let Some(asset_name) = self.find_asset_name_in_data(arr, &policy_id)
+        {
+            debug!("Found asset name via recursive search: {}", asset_name);
+            return Some(asset_name);
         }
 
         None

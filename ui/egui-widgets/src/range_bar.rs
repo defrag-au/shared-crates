@@ -6,6 +6,8 @@
 
 use egui::{Color32, Pos2, Sense, Stroke, Vec2};
 
+use crate::theme::{TextSize, ThemeExt};
+
 // ============================================================================
 // Public types
 // ============================================================================
@@ -90,7 +92,7 @@ pub fn show(ui: &mut egui::Ui, points: &[RangePoint], config: &RangeBarConfig) {
         ui.label(
             egui::RichText::new(format!("{}: {:.0}", p.label, p.value))
                 .color(p.color)
-                .size(13.0)
+                .size(ui.text_size(TextSize::Lg))
                 .strong(),
         );
         return;

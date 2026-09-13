@@ -37,6 +37,7 @@
 use egui::{Align2, Color32, Rect, Response, Sense, Stroke, Ui, pos2, vec2};
 
 use crate::selection::Selection;
+use crate::theme::ThemeExt;
 use crate::time_spine::{SpineState, TimeScale};
 
 /// What was true of an entity over a span.
@@ -161,26 +162,37 @@ pub struct CoverageLanesResponse {
 ///
 /// One function, so no call site re-derives a state colour — the rule
 /// `flow_ring::ring_tint` already sets.
-pub fn coverage_tint(state: Coverage) -> Color32 {
-    match state {
-        Coverage::Producing => Color32::from_rgb(0x0d, 0x93, 0x84),
-        Coverage::Idle => Color32::from_rgb(0xb0, 0x6a, 0x1e),
-    }
+/// Both states come off the theme's classification band and flow encoding, and
+/// are then **darkened** — the lightness step is the load-bearing part here, not
+/// the hue. See [`coverage_tint_emphasis`]: these fill large areas, and the
+/// bright step glares across a wall of hour cells.
+pub fn coverage_tint(ui: &Ui, state: Coverage) -> Color32 {
+    coverage_tint_emphasis(ui, state).gamma_multiply(0.62)
 }
 
 /// The emphasis step, for hover and selection. Passes every separation check but
 /// sits above the lightness band, so it is never used for large areas — a wall
 /// of hour cells at this lightness glares.
-pub fn coverage_tint_emphasis(state: Coverage) -> Color32 {
+pub fn coverage_tint_emphasis(ui: &Ui, state: Coverage) -> Color32 {
+    let s = ui.tokens().series;
     match state {
-        Coverage::Producing => Color32::from_rgb(0x19, 0xc2, 0xad),
-        Coverage::Idle => Color32::from_rgb(0xe0, 0x8a, 0x2e),
+        // Producing takes the classification band's deep end — the same band
+        // `flow_ring`'s seats use, and for the same reason: it has to stay clear
+        // of the direction colours.
+        Coverage::Producing => s.class(2),
+        // Idle IS the outbound hue: an idle window is value not arriving.
+        Coverage::Idle => s.outbound(),
     }
 }
 
 /// The ground: absence of observation. Grey because colour means somebody
 /// decided — the same call `flow_ring` makes for an unexamined party.
-pub const UNOBSERVED: Color32 = Color32::from_rgb(0x4d, 0x54, 0x78);
+///
+/// Derived from the default theme's [`crate::encoding::SeriesPalette`] rather
+/// than restated, so "unobserved" has one definition across the suite. The
+/// render path reads `ui.tokens().series.unobserved`, which follows the active
+/// theme; this const is the value a caller gets outside a `Ui`.
+pub const UNOBSERVED: Color32 = crate::encoding::SeriesPalette::tokyo_night().unobserved;
 
 pub struct CoverageLanes<'a> {
     lanes: &'a [CoverageLane<'a>],
@@ -351,9 +363,9 @@ impl<'a> CoverageLanes<'a> {
 
                 let state = cell.state();
                 let col = if is_hover {
-                    coverage_tint_emphasis(state)
+                    coverage_tint_emphasis(ui, state)
                 } else {
-                    coverage_tint(state)
+                    coverage_tint(ui, state)
                 };
                 let h = match state {
                     // A visible stub, because observed-zero must not look like

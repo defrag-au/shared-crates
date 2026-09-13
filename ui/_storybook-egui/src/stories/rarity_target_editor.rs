@@ -1,7 +1,8 @@
 //! `RarityTargetEditor` story — labelled 0–100% sliders with a budget cue.
 
 use egui_widgets::rarity_target_editor::{RarityRow, RarityTargetEditor};
-use egui_widgets::theme;
+
+use crate::{accent, muted};
 
 pub struct RarityTargetEditorState {
     pub rows: Vec<RarityRow>,
@@ -35,7 +36,7 @@ impl Default for RarityTargetEditorState {
 pub fn show(ui: &mut egui::Ui, state: &mut RarityTargetEditorState) {
     ui.label(
         egui::RichText::new("Rarity Target Editor")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -44,7 +45,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut RarityTargetEditorState) {
              budget cue (over / under / balanced). Drag the sliders to see the \
              budget colour change.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -54,6 +55,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut RarityTargetEditorState) {
     }
     ui.add_space(8.0);
 
+    // The editor fills what it is given, like every other fill-width widget
+    // here, so the CALLER decides how long the faders get. `fit_width` clamps to
+    // the CONTAINER and not a bare `set_max_width`, which widens a `Ui` when
+    // less space is available.
+    use egui_widgets::viewport::LayoutExt as _;
+    ui.set_max_width(ui.fit_width(560.0));
     RarityTargetEditor::new(&mut state.rows)
         .budget(100.0)
         .show(ui);

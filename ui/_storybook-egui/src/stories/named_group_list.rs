@@ -1,7 +1,8 @@
 //! `NamedGroupList` story — named groups with member multiselects + a flag.
 
 use egui_widgets::named_group_list::{NamedGroup, NamedGroupList};
-use egui_widgets::theme;
+
+use crate::{accent, muted};
 
 pub struct NamedGroupListState {
     pub options: Vec<String>,
@@ -30,7 +31,7 @@ impl Default for NamedGroupListState {
 pub fn show(ui: &mut egui::Ui, state: &mut NamedGroupListState) {
     ui.label(
         egui::RichText::new("Named Group List")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -39,7 +40,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut NamedGroupListState) {
              backs exclusive groups (allow_none), bundled sets, linked traits. \
              Composes the Token Multiselect widget.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -57,7 +58,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut NamedGroupListState) {
     ui.add_space(8.0);
     ui.label(
         egui::RichText::new(format!("{} group(s)", state.groups.len()))
-            .color(theme::TEXT_SECONDARY)
+            .color(crate::secondary(ui))
             .small(),
     );
 }

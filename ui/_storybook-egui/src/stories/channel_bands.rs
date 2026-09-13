@@ -6,26 +6,42 @@
 //! while a channel four weeks old carries the largest payout in the wallet's
 //! history. In a monthly total none of that is visible.
 
-use crate::{ACCENT, TEXT_MUTED};
-use egui_widgets::{assign_colors, ChannelBands, ChannelSeries};
+use crate::{accent, muted};
+use egui_widgets::channel_bands::assign_colors_from;
+use egui_widgets::theme::ThemeExt;
+use egui_widgets::{ChannelBands, ChannelSeries};
 
 const PERIODS: [&str; 10] = ["09", "10", "11", "12", "01", "02", "03", "04", "05", "06"];
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Channel Bands").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Channel Bands")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Where the money came from, period by period. Stacked composition over a discrete \
              time axis, with an optional same-unit reference line.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
 
-    // Colours assigned once over the full channel set, by name — so hiding a
-    // channel could never repaint the others.
-    let colors = assign_colors(&["off-ramp", "conduit", "project wallets", "recycled"]);
+    // Colours assigned over the FULL channel set, by name — so hiding a channel
+    // could never repaint the others.
+    //
+    // Re-derived every frame against the active theme, which is safe and is not
+    // what the "assign once" note guards against: the hazard is deriving colour
+    // from an index into a *filtered* list, because then hiding one channel
+    // shifts every channel after it. The name list here is complete and stable,
+    // so slot assignment is stable; only what each slot is worth moves with the
+    // theme.
+    let colors = assign_colors_from(
+        &["off-ramp", "conduit", "project wallets", "recycled"],
+        &ui.tokens().series,
+    );
 
     let series = vec![
         ChannelSeries::new(
@@ -73,7 +89,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Months are 2025-09 → 2026-06. The line is what reached holders — same unit, same \
              axis as the bars, so it is a reference line and not a second scale.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.label(
@@ -82,7 +98,7 @@ pub fn show(ui: &mut egui::Ui) {
              reads zero — and the tallest payout in the wallet's history sits above a bar made \
              entirely of a channel that was four weeks old. Hover any month for the breakdown.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 }

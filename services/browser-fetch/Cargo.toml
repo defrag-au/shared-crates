@@ -13,7 +13,7 @@
 name = "browser-fetch"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "JSON fetch for wasm frontends: typed errors that carry the response body"
 
 [dependencies]

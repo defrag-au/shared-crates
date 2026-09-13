@@ -50,6 +50,8 @@ use std::collections::BTreeMap;
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, RichText, Sense, Stroke, Ui, Vec2};
 
+use crate::theme::{SeriesPalette, Space, SpaceExt, TextSize, ThemeExt};
+
 /// Categorical hues in fixed order, stepped for a dark surface.
 ///
 /// Validated against surface `#1a1a2e`: lightness band, chroma floor, adjacent
@@ -57,17 +59,17 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, Response, RichText, Sense, Strok
 /// contrast all pass. Do not reorder — the checks are on *adjacent* pairs, so
 /// the order is part of what passed. Do not extend by inventing a sixth: fold
 /// to "Other" instead.
-pub const CHANNEL_PALETTE: [Color32; 5] = [
-    Color32::from_rgb(0x39, 0x87, 0xe5), // blue
-    Color32::from_rgb(0xd9, 0x59, 0x26), // orange
-    Color32::from_rgb(0x19, 0x9e, 0x70), // aqua
-    Color32::from_rgb(0xc9, 0x85, 0x00), // yellow
-    Color32::from_rgb(0xd5, 0x51, 0x81), // magenta
-];
+/// These are now **derived from the default theme's [`SeriesPalette`]** rather
+/// than restated here. The values are unchanged; what moved is that there is one
+/// definition instead of two that could drift, and
+/// `tests/series_palette.rs` holds *every* preset's ramp to the separation
+/// floors this comment describes — so a theme supplying its own ramp cannot
+/// quietly ship a pair a protanope can't separate.
+pub const CHANNEL_PALETTE: [Color32; 5] = SeriesPalette::tokyo_night().categorical;
 
 /// Neutral for the folded "Other" band — deliberately outside the categorical
 /// order so it never reads as one more channel.
-pub const OTHER_COLOR: Color32 = Color32::from_rgb(0x6b, 0x6b, 0x80);
+pub const OTHER_COLOR: Color32 = SeriesPalette::tokyo_night().other;
 
 /// The label a folded band carries.
 pub const OTHER_LABEL: &str = "Other";
@@ -82,13 +84,20 @@ pub const OTHER_LABEL: &str = "Other";
 /// Names past [`CHANNEL_PALETTE`] receive [`OTHER_COLOR`]; use [`fold_to_other`]
 /// to collapse their values to match.
 pub fn assign_colors(names: &[&str]) -> BTreeMap<String, Color32> {
+    assign_colors_from(names, &SeriesPalette::tokyo_night())
+}
+
+/// [`assign_colors`] against a specific theme's ramp.
+///
+/// Separate entry point rather than a `Ui` argument because the assignment is
+/// deliberately **not** a render-time decision — see the note above about
+/// deriving colour from a filtered index. The caller holds the theme, makes the
+/// assignment once over the complete channel set, and keeps it.
+pub fn assign_colors_from(names: &[&str], palette: &SeriesPalette) -> BTreeMap<String, Color32> {
     names
         .iter()
         .enumerate()
-        .map(|(i, n)| {
-            let c = CHANNEL_PALETTE.get(i).copied().unwrap_or(OTHER_COLOR);
-            ((*n).to_string(), c)
-        })
+        .map(|(i, n)| ((*n).to_string(), palette.nth(i)))
         .collect()
 }
 
@@ -276,7 +285,7 @@ impl<'a> ChannelBands<'a> {
             Pos2::new(plot.left(), max_y - 1.0),
             Align2::LEFT_BOTTOM,
             self.fmt(max),
-            FontId::monospace(9.0),
+            FontId::monospace(ui.text_size(TextSize::Xs)),
             muted,
         );
 
@@ -313,7 +322,7 @@ impl<'a> ChannelBands<'a> {
                 Pos2::new(cx, plot.bottom() + 3.0),
                 Align2::CENTER_TOP,
                 self.periods[p],
-                FontId::monospace(9.0),
+                FontId::monospace(ui.text_size(TextSize::Xs)),
                 if is_hovered {
                     ui.visuals().text_color()
                 } else {
@@ -349,7 +358,7 @@ impl<'a> ChannelBands<'a> {
                     Pos2::new(last.x - 6.0, last.y - 6.0),
                     Align2::RIGHT_BOTTOM,
                     self.fmt(*v),
-                    FontId::monospace(9.0),
+                    FontId::monospace(ui.text_size(TextSize::Xs)),
                     ink,
                 );
             }
@@ -388,12 +397,15 @@ impl<'a> ChannelBands<'a> {
                     let (r, _) = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover());
                     ui.painter().rect_filled(r, 1.0, s.color);
                     // Text stays in ink; the swatch beside it carries identity.
-                    ui.label(RichText::new(format!("{} {}", s.name, self.fmt(v))).size(11.0));
+                    ui.label(
+                        RichText::new(format!("{} {}", s.name, self.fmt(v)))
+                            .size(ui.text_size(TextSize::Base)),
+                    );
                 });
             }
             ui.label(
                 RichText::new(format!("total {}", self.fmt(period_total(self.series, p))))
-                    .size(11.0)
+                    .size(ui.text_size(TextSize::Base))
                     .color(ui.visuals().weak_text_color()),
             );
             if let Some((label, values)) = self.overlay {
@@ -402,34 +414,42 @@ impl<'a> ChannelBands<'a> {
                         "{label} {}",
                         self.fmt(values.get(p).copied().unwrap_or(0.0))
                     ))
-                    .size(11.0),
+                    .size(ui.text_size(TextSize::Base)),
                 );
             }
         });
     }
 
     fn legend(&self, ui: &mut Ui, muted: Color32) {
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 10.0;
+            ui.set_item_gap_x(Space::Lg);
             for s in self.series {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.set_item_gap_x(Space::Sm);
                     let (r, _) = ui.allocate_exact_size(Vec2::new(9.0, 9.0), Sense::hover());
                     ui.painter().rect_filled(r, 1.0, s.color);
-                    ui.label(RichText::new(s.name).size(10.0).color(muted));
+                    ui.label(
+                        RichText::new(s.name)
+                            .size(ui.text_size(TextSize::Sm))
+                            .color(muted),
+                    );
                 });
             }
             if let Some((label, _)) = self.overlay {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
+                    ui.set_item_gap_x(Space::Sm);
                     let (r, _) = ui.allocate_exact_size(Vec2::new(9.0, 9.0), Sense::hover());
                     let c = r.center();
                     ui.painter().line_segment(
                         [Pos2::new(r.left(), c.y), Pos2::new(r.right(), c.y)],
                         Stroke::new(2.0_f32, ui.visuals().text_color()),
                     );
-                    ui.label(RichText::new(label).size(10.0).color(muted));
+                    ui.label(
+                        RichText::new(label)
+                            .size(ui.text_size(TextSize::Sm))
+                            .color(muted),
+                    );
                 });
             }
         });

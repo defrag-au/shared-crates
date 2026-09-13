@@ -1,8 +1,8 @@
 use rand::prelude::*;
 
+use crate::Direction;
 use crate::grid::WfcGrid;
 use crate::tileset::{TileId, Tileset};
-use crate::Direction;
 
 /// Result of a WFC solve attempt.
 #[derive(Debug)]

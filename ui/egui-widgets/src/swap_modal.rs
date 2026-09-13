@@ -13,13 +13,47 @@
 use egui::{Align, Color32, Layout, RichText};
 
 use crate::buttons::UiButtonExt;
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 // ============================================================================
 // Config
 // ============================================================================
 
-/// Theme colors for the swap modal.
+/// Which colour each of the swap modal's surfaces takes.
+///
+/// Every field defaults to a named theme token and resolves at render time —
+/// see [`SwapModalTheme::resolved`]. The `Default` before this was seven
+/// literals in a **green nobody else uses** (`#44ff44` accent on a `#0f1914`
+/// ground): a modal that arrived in its own private palette regardless of the
+/// product it opened over, and which no theme switch could touch.
+#[derive(Clone, Copy, Debug)]
 pub struct SwapModalTheme {
+    pub accent: Ink,
+    pub text_primary: Ink,
+    pub text_secondary: Ink,
+    pub text_muted: Ink,
+    pub error: Ink,
+    pub success: Ink,
+    pub bg: Ink,
+}
+
+impl Default for SwapModalTheme {
+    fn default() -> Self {
+        Self {
+            accent: Ink::Token(Token::Accent),
+            text_primary: Ink::Token(Token::TextPrimary),
+            text_secondary: Ink::Token(Token::TextSecondary),
+            text_muted: Ink::Token(Token::TextMuted),
+            error: Ink::Token(Token::Error),
+            success: Ink::Token(Token::Success),
+            bg: Ink::Token(Token::BgSecondary),
+        }
+    }
+}
+
+/// [`SwapModalTheme`] with every [`Ink`] resolved. Same field names, so a draw
+/// site reads the same either way.
+pub struct ResolvedSwapTheme {
     pub accent: Color32,
     pub text_primary: Color32,
     pub text_secondary: Color32,
@@ -29,16 +63,18 @@ pub struct SwapModalTheme {
     pub bg: Color32,
 }
 
-impl Default for SwapModalTheme {
-    fn default() -> Self {
-        Self {
-            accent: Color32::from_rgb(68, 255, 68),
-            text_primary: Color32::from_rgb(200, 255, 220),
-            text_secondary: Color32::from_rgb(120, 180, 140),
-            text_muted: Color32::from_rgb(60, 100, 70),
-            error: Color32::from_rgb(255, 68, 68),
-            success: Color32::from_rgb(68, 255, 136),
-            bg: Color32::from_rgb(15, 25, 20),
+impl SwapModalTheme {
+    /// Takes a `Theme` rather than a `Ui` because the modal's frame is built
+    /// from a `Context` before any `Ui` exists.
+    pub fn resolved(&self, theme: &crate::theme::Theme) -> ResolvedSwapTheme {
+        ResolvedSwapTheme {
+            accent: self.accent.resolve(theme),
+            text_primary: self.text_primary.resolve(theme),
+            text_secondary: self.text_secondary.resolve(theme),
+            text_muted: self.text_muted.resolve(theme),
+            error: self.error.resolve(theme),
+            success: self.success.resolve(theme),
+            bg: self.bg.resolve(theme),
         }
     }
 }
@@ -222,8 +258,8 @@ impl SwapModal {
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .frame(
                 egui::Frame::window(&ctx.global_style())
-                    .fill(self.config.theme.bg)
-                    .inner_margin(16.0),
+                    .fill(self.config.theme.resolved(&ctx.tokens()).bg)
+                    .inner_margin(ctx.tokens().margin(Space::Xl2)),
             )
             .show(ctx, |ui| {
                 action = self.draw_content(ui, progress);
@@ -264,15 +300,16 @@ impl SwapModal {
     ) -> SwapModalAction {
         // Copy theme colors up front (Color32 is Copy) to avoid borrowing self.config
         // through the closures that also need &mut self fields.
-        let accent = self.config.theme.accent;
-        let bg = self.config.theme.bg;
-        let text_secondary = self.config.theme.text_secondary;
-        let text_muted = self.config.theme.text_muted;
+        let t = self.config.theme.resolved(&ui.tokens());
+        let accent = t.accent;
+        let bg = t.bg;
+        let text_secondary = t.text_secondary;
+        let text_muted = t.text_muted;
 
         let mut action = SwapModalAction::None;
 
         // Amount buttons — centered row: culture buys + Custom
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.vertical_centered(|ui| {
             ui.horizontal(|ui| {
                 // Calculate total width to center
@@ -291,16 +328,25 @@ impl SwapModal {
                     let btn_label = format!("{} ADA", cb.ada_amount);
 
                     let button = if is_selected {
-                        egui::Button::new(RichText::new(&btn_label).color(bg).strong().size(12.0))
-                            .fill(accent)
-                            .corner_radius(6.0)
-                            .min_size(egui::vec2(btn_width, 36.0))
+                        egui::Button::new(
+                            RichText::new(&btn_label)
+                                .color(bg)
+                                .strong()
+                                .size(ui.text_size(TextSize::Md)),
+                        )
+                        .fill(accent)
+                        .corner_radius(ui.tokens().corner(Radius::Md))
+                        .min_size(egui::vec2(btn_width, 36.0))
                     } else {
-                        egui::Button::new(RichText::new(&btn_label).color(accent).size(12.0))
-                            .fill(Color32::TRANSPARENT)
-                            .stroke(egui::Stroke::new(1.0_f32, accent))
-                            .corner_radius(6.0)
-                            .min_size(egui::vec2(btn_width, 36.0))
+                        egui::Button::new(
+                            RichText::new(&btn_label)
+                                .color(accent)
+                                .size(ui.text_size(TextSize::Md)),
+                        )
+                        .fill(Color32::TRANSPARENT)
+                        .stroke(egui::Stroke::new(1.0_f32, accent))
+                        .corner_radius(ui.tokens().corner(Radius::Md))
+                        .min_size(egui::vec2(btn_width, 36.0))
                     };
 
                     if ui.add_clickable(button).clicked() {
@@ -313,16 +359,25 @@ impl SwapModal {
                 // Custom button
                 let is_custom = self.selection == Some(AmountSelection::Custom);
                 let custom_btn = if is_custom {
-                    egui::Button::new(RichText::new("Custom").color(bg).strong().size(12.0))
-                        .fill(accent)
-                        .corner_radius(6.0)
-                        .min_size(egui::vec2(btn_width, 36.0))
+                    egui::Button::new(
+                        RichText::new("Custom")
+                            .color(bg)
+                            .strong()
+                            .size(ui.text_size(TextSize::Md)),
+                    )
+                    .fill(accent)
+                    .corner_radius(ui.tokens().corner(Radius::Md))
+                    .min_size(egui::vec2(btn_width, 36.0))
                 } else {
-                    egui::Button::new(RichText::new("Custom").color(accent).size(12.0))
-                        .fill(Color32::TRANSPARENT)
-                        .stroke(egui::Stroke::new(1.0_f32, accent))
-                        .corner_radius(6.0)
-                        .min_size(egui::vec2(btn_width, 36.0))
+                    egui::Button::new(
+                        RichText::new("Custom")
+                            .color(accent)
+                            .size(ui.text_size(TextSize::Md)),
+                    )
+                    .fill(Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::new(1.0_f32, accent))
+                    .corner_radius(ui.tokens().corner(Radius::Md))
+                    .min_size(egui::vec2(btn_width, 36.0))
                 };
 
                 if ui.add_clickable(custom_btn).clicked() {
@@ -333,7 +388,7 @@ impl SwapModal {
 
         // Custom amount input — only shown when Custom is selected
         if self.selection == Some(AmountSelection::Custom) {
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
             ui.horizontal(|ui| {
                 let total_width = 140.0 + 30.0; // input + "ADA" label approx
                 let avail = ui.available_width();
@@ -344,10 +399,14 @@ impl SwapModal {
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut self.input_text)
                         .desired_width(140.0)
-                        .font(egui::FontId::monospace(14.0))
+                        .font(egui::FontId::monospace(ui.text_size(TextSize::Lg)))
                         .hint_text("Amount"),
                 );
-                ui.label(RichText::new("ADA").color(text_muted).size(12.0));
+                ui.label(
+                    RichText::new("ADA")
+                        .color(text_muted)
+                        .size(ui.text_size(TextSize::Md)),
+                );
 
                 if response.changed()
                     && let Some(lovelace) = self.input_lovelace()
@@ -357,24 +416,37 @@ impl SwapModal {
             });
         }
 
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
 
         // Slippage selector
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Slippage:").color(text_secondary).size(11.0));
+            ui.label(
+                RichText::new("Slippage:")
+                    .color(text_secondary)
+                    .size(ui.text_size(TextSize::Base)),
+            );
             for &(bps, label) in SLIPPAGE_OPTIONS {
                 let is_selected = self.slippage_bps == bps;
                 let btn = if is_selected {
-                    egui::Button::new(RichText::new(label).color(bg).strong().size(10.0))
-                        .fill(accent)
-                        .corner_radius(4.0)
-                        .min_size(egui::vec2(36.0, 22.0))
+                    egui::Button::new(
+                        RichText::new(label)
+                            .color(bg)
+                            .strong()
+                            .size(ui.text_size(TextSize::Sm)),
+                    )
+                    .fill(accent)
+                    .corner_radius(ui.tokens().corner(Radius::Base))
+                    .min_size(egui::vec2(36.0, 22.0))
                 } else {
-                    egui::Button::new(RichText::new(label).color(text_muted).size(10.0))
-                        .fill(Color32::TRANSPARENT)
-                        .stroke(egui::Stroke::new(1.0_f32, text_muted))
-                        .corner_radius(4.0)
-                        .min_size(egui::vec2(36.0, 22.0))
+                    egui::Button::new(
+                        RichText::new(label)
+                            .color(text_muted)
+                            .size(ui.text_size(TextSize::Sm)),
+                    )
+                    .fill(Color32::TRANSPARENT)
+                    .stroke(egui::Stroke::new(1.0_f32, text_muted))
+                    .corner_radius(ui.tokens().corner(Radius::Base))
+                    .min_size(egui::vec2(36.0, 22.0))
                 };
                 if ui.add_clickable(btn).clicked() && self.slippage_bps != bps {
                     self.slippage_bps = bps;
@@ -383,7 +455,7 @@ impl SwapModal {
             }
         });
 
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
 
         // Preview section — always visible once an amount is selected
         let has_amount = self.selection.is_some();
@@ -402,7 +474,7 @@ impl SwapModal {
         if has_amount {
             self.draw_preview(ui, preview_data, is_loading);
 
-            ui.add_space(12.0);
+            ui.gap(Space::Xl);
 
             if let Some(stage) = processing_stage {
                 // Processing — show status instead of confirm button
@@ -414,7 +486,11 @@ impl SwapModal {
                             ui.add_space((avail - total_width) / 2.0);
                         }
                         ui.spinner();
-                        ui.label(RichText::new(stage).color(text_secondary).size(12.0));
+                        ui.label(
+                            RichText::new(stage)
+                                .color(text_secondary)
+                                .size(ui.text_size(TextSize::Md)),
+                        );
                     });
                 });
             } else {
@@ -422,13 +498,18 @@ impl SwapModal {
                 let can_confirm = preview_data.is_some() && self.input_lovelace().is_some();
                 let confirm_btn = ui.add_clickable_sized(
                     [ui.available_width(), 36.0],
-                    egui::Button::new(RichText::new("Confirm Swap").color(bg).strong().size(14.0))
-                        .fill(if can_confirm {
-                            accent
-                        } else {
-                            accent.gamma_multiply(0.3)
-                        })
-                        .corner_radius(6.0),
+                    egui::Button::new(
+                        RichText::new("Confirm Swap")
+                            .color(bg)
+                            .strong()
+                            .size(ui.text_size(TextSize::Lg)),
+                    )
+                    .fill(if can_confirm {
+                        accent
+                    } else {
+                        accent.gamma_multiply(0.3)
+                    })
+                    .corner_radius(ui.tokens().corner(Radius::Md)),
                 );
                 if can_confirm
                     && confirm_btn.clicked()
@@ -444,7 +525,7 @@ impl SwapModal {
                 ui.label(
                     RichText::new("Select an amount to get started")
                         .color(text_muted)
-                        .size(10.0),
+                        .size(ui.text_size(TextSize::Sm)),
                 );
             });
         }
@@ -453,10 +534,10 @@ impl SwapModal {
     }
 
     fn draw_preview(&self, ui: &mut egui::Ui, preview: Option<&SwapPreviewData>, loading: bool) {
-        let theme = &self.config.theme;
+        let theme = self.config.theme.resolved(&ui.tokens());
 
         ui.separator();
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
 
         if let Some(p) = preview {
             self.preview_row(
@@ -499,7 +580,11 @@ impl SwapModal {
 
             for label in ["You receive", "Price", "DEX fees", "Total cost"] {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(label).color(theme.text_muted).size(11.0));
+                    ui.label(
+                        RichText::new(label)
+                            .color(theme.text_muted)
+                            .size(ui.text_size(TextSize::Base)),
+                    );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let (rect, _) =
                             ui.allocate_exact_size(egui::vec2(80.0, 12.0), egui::Sense::hover());
@@ -513,7 +598,7 @@ impl SwapModal {
             }
         }
 
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
         ui.separator();
     }
 
@@ -525,31 +610,43 @@ impl SwapModal {
         suffix: &str,
         value_color: Color32,
     ) {
-        let theme = &self.config.theme;
+        let theme = self.config.theme.resolved(&ui.tokens());
         ui.horizontal(|ui| {
-            ui.label(RichText::new(label).color(theme.text_muted).size(11.0));
+            ui.label(
+                RichText::new(label)
+                    .color(theme.text_muted)
+                    .size(ui.text_size(TextSize::Base)),
+            );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if !suffix.is_empty() {
-                    ui.label(RichText::new(suffix).color(theme.text_muted).size(11.0));
+                    ui.label(
+                        RichText::new(suffix)
+                            .color(theme.text_muted)
+                            .size(ui.text_size(TextSize::Base)),
+                    );
                 }
-                ui.label(RichText::new(value).color(value_color).size(12.0));
+                ui.label(
+                    RichText::new(value)
+                        .color(value_color)
+                        .size(ui.text_size(TextSize::Md)),
+                );
             });
         });
     }
 
     fn draw_success(&mut self, ui: &mut egui::Ui, tx_hash: &str) -> SwapModalAction {
-        let theme = &self.config.theme;
+        let theme = self.config.theme.resolved(&ui.tokens());
         let mut action = SwapModalAction::None;
 
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
         ui.vertical_centered(|ui| {
             ui.label(
                 RichText::new("Order submitted!")
                     .color(theme.success)
                     .strong()
-                    .size(14.0),
+                    .size(ui.text_size(TextSize::Lg)),
             );
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
 
             let short = if tx_hash.len() > 20 {
                 format!("{}...{}", &tx_hash[..10], &tx_hash[tx_hash.len() - 10..])
@@ -557,15 +654,21 @@ impl SwapModal {
                 tx_hash.to_string()
             };
             ui.hyperlink_to(
-                RichText::new(short).color(theme.accent).size(11.0),
+                RichText::new(short)
+                    .color(theme.accent)
+                    .size(ui.text_size(TextSize::Base)),
                 format!("https://cardanoscan.io/transaction/{tx_hash}"),
             );
 
-            ui.add_space(16.0);
+            ui.gap(Space::Xl2);
             if ui
                 .add_clickable(
-                    egui::Button::new(RichText::new("New Swap").color(theme.accent).size(12.0))
-                        .corner_radius(4.0),
+                    egui::Button::new(
+                        RichText::new("New Swap")
+                            .color(theme.accent)
+                            .size(ui.text_size(TextSize::Md)),
+                    )
+                    .corner_radius(ui.tokens().corner(Radius::Base)),
                 )
                 .clicked()
             {
@@ -575,36 +678,44 @@ impl SwapModal {
                 action = SwapModalAction::Reset;
             }
         });
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
 
         action
     }
 
     fn draw_error(&mut self, ui: &mut egui::Ui, message: &str) -> SwapModalAction {
-        let theme = &self.config.theme;
+        let theme = self.config.theme.resolved(&ui.tokens());
         let mut action = SwapModalAction::None;
 
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
         ui.vertical_centered(|ui| {
             let display = if message.len() > 80 {
                 format!("{}...", &message[..77])
             } else {
                 message.to_string()
             };
-            ui.label(RichText::new(display).color(theme.error).size(11.0));
+            ui.label(
+                RichText::new(display)
+                    .color(theme.error)
+                    .size(ui.text_size(TextSize::Base)),
+            );
 
-            ui.add_space(12.0);
+            ui.gap(Space::Xl);
             if ui
                 .add_clickable(
-                    egui::Button::new(RichText::new("Try Again").color(theme.accent).size(12.0))
-                        .corner_radius(4.0),
+                    egui::Button::new(
+                        RichText::new("Try Again")
+                            .color(theme.accent)
+                            .size(ui.text_size(TextSize::Md)),
+                    )
+                    .corner_radius(ui.tokens().corner(Radius::Base)),
                 )
                 .clicked()
             {
                 action = SwapModalAction::Reset;
             }
         });
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
 
         action
     }

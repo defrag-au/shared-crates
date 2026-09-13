@@ -29,10 +29,10 @@
 //! A uniform random scatter (the first attempt) encodes amount only as density,
 //! which the eye is bad at, and it looked like static rather than substance.
 
-use egui::{pos2, vec2, Color32, Pos2, Rect, Vec2};
+use egui::{Color32, Pos2, Rect, Vec2, pos2, vec2};
 
 use crate::stories::aliens_fixture::{COHORTS, POOL_META, POOL_SERIES, SERIES};
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 const SUPPLY: f64 = 1_000_000_000.0;
 const N: usize = 1100;
@@ -184,7 +184,7 @@ fn date(ts: i64) -> String {
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("Supply as a settling fluid — $Aliens")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -192,7 +192,7 @@ pub fn show(ui: &mut egui::Ui) {
             "1,100 particles, each 1/1100th of supply — conserved. Each pool is its own vessel and \
              appears when it is CREATED: Splash 2026-02-22, CSwap 2026-03-18.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);
@@ -377,7 +377,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Watch: the launchpad (script) drains; Splash appears, then CSwap 24 days later; the \
              vesting vessel charges then partly discharges — and what is left stays, past maturity.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 }

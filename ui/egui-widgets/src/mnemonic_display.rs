@@ -28,7 +28,9 @@
 //! it passes to [`with_confirmation`]. That keeps the widget composable
 //! with parent dialogs / modals that already manage flow state.
 
-use egui::{Color32, CornerRadius, Frame, Margin, RichText, Stroke, Ui};
+use egui::{Frame, RichText, Stroke, Ui};
+
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt, with_alpha};
 
 /// Layout settings the consumer can tweak before rendering.
 #[derive(Debug, Clone, Copy)]
@@ -96,15 +98,18 @@ impl<'a> MnemonicDisplay<'a> {
 
         // ── Warning banner ───────────────────────────────────────────────
         if style.show_warning {
+            let c = ui.tokens().color;
             Frame::new()
-                .fill(Color32::from_rgb(50, 35, 10))
-                .stroke(Stroke::new(1.0_f32, Color32::from_rgb(180, 140, 60)))
-                .corner_radius(CornerRadius::same(4))
-                .inner_margin(Margin::symmetric(12, 8))
+                // A tinted card, not a filled one: the panel is a caution, and a
+                // solid amber block under this much prose is unreadable.
+                .fill(with_alpha(c.warning, 28))
+                .stroke(Stroke::new(1.0_f32, c.warning.gamma_multiply(0.6)))
+                .corner_radius(ui.tokens().corner(Radius::Base))
+                .inner_margin(ui.tokens().margin_xy(Space::Xl, Space::Md))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        crate::icons::install_phosphor_font(ui.ctx());
-                        let warn = Color32::from_rgb(240, 210, 140);
+                        crate::icons::ensure_fonts(ui);
+                        let warn = c.warning;
                         ui.label(crate::PhosphorIcon::Warning.rich_text(13.0, warn));
                         ui.label(
                             RichText::new("This phrase is shown ONCE. Write it down.")
@@ -117,19 +122,19 @@ impl<'a> MnemonicDisplay<'a> {
                             "Anyone with these words controls the wallet. Store offline; \
                              never paste into chat, email, or screenshots.",
                         )
-                        .color(Color32::from_rgb(200, 180, 140))
+                        .color(c.text_secondary)
                         .small(),
                     );
                 });
-            ui.add_space(10.0);
+            ui.gap(Space::Lg);
         }
 
         // ── Words grid ───────────────────────────────────────────────────
         Frame::new()
-            .fill(Color32::from_rgb(16, 16, 24))
-            .stroke(Stroke::new(1.0_f32, Color32::from_rgb(40, 40, 56)))
-            .corner_radius(CornerRadius::same(6))
-            .inner_margin(Margin::same(14))
+            .fill(ui.tokens().color.bg_primary)
+            .stroke(ui.tokens().geometry.border(ui.tokens().color.border))
+            .corner_radius(ui.tokens().corner(Radius::Md))
+            .inner_margin(ui.tokens().margin(Space::Xl2))
             .show(ui, |ui| {
                 let cols = style.columns.max(1);
                 let rows = words.len().div_ceil(cols);
@@ -145,7 +150,7 @@ impl<'a> MnemonicDisplay<'a> {
                 }
             });
 
-        ui.add_space(10.0);
+        ui.gap(Space::Lg);
 
         // ── Copy + confirm row ───────────────────────────────────────────
         ui.horizontal(|ui| {
@@ -158,13 +163,13 @@ impl<'a> MnemonicDisplay<'a> {
                 RichText::new(
                     "(prefer writing it down — clipboard contents can leak to other apps)",
                 )
-                .color(Color32::from_gray(140))
+                .color(ui.tokens().color.text_muted)
                 .small(),
             );
         });
 
         if let Some(confirmed) = self.confirmed {
-            ui.add_space(8.0);
+            ui.gap(Space::Md);
             ui.checkbox(
                 confirmed,
                 RichText::new("I have securely recorded this recovery phrase").strong(),
@@ -190,16 +195,16 @@ pub struct MnemonicDisplayOutput {
 
 fn render_word_cell(ui: &mut Ui, number: usize, word: &str, width: f32) {
     Frame::new()
-        .fill(Color32::from_rgb(24, 24, 36))
-        .stroke(Stroke::new(1.0_f32, Color32::from_rgb(50, 50, 70)))
-        .corner_radius(CornerRadius::same(3))
-        .inner_margin(Margin::symmetric(8, 5))
+        .fill(ui.tokens().color.bg_secondary)
+        .stroke(ui.tokens().geometry.border(ui.tokens().color.border))
+        .corner_radius(ui.tokens().corner(Radius::Sm))
+        .inner_margin(ui.tokens().margin_xy(Space::Md, Space::Base))
         .show(ui, |ui| {
             ui.set_min_width(width);
             ui.horizontal(|ui| {
                 ui.label(
                     RichText::new(format!("{number:>2}."))
-                        .color(Color32::from_gray(120))
+                        .color(ui.tokens().color.text_muted)
                         .monospace()
                         .small(),
                 );

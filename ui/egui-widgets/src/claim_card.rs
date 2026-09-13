@@ -71,11 +71,10 @@
 //! .show(ui);
 //! ```
 
-use egui::{
-    Color32, CornerRadius, Frame, Margin, Pos2, Response, RichText, Sense, Stroke, Ui, Vec2,
-};
+use egui::{Color32, Frame, Pos2, Response, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::party_badge::{PartyBadge, PartyBasis};
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 /// How far a claim has got towards being something you could cite.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -292,8 +291,8 @@ impl<'a> ClaimCard<'a> {
 
         let inner = Frame::NONE
             .fill(ui.visuals().faint_bg_color)
-            .inner_margin(Margin::symmetric(10, 7))
-            .corner_radius(CornerRadius::same(3))
+            .inner_margin(ui.tokens().margin_xy(Space::Lg, Space::Md))
+            .corner_radius(ui.tokens().corner(Radius::Sm))
             // Dashed below for anything provisional; a solid border would read
             // as ordinary card chrome.
             .stroke(Stroke::NONE)
@@ -302,16 +301,21 @@ impl<'a> ClaimCard<'a> {
 
                 let top = ui.cursor().top();
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 7.0;
+                    ui.set_item_gap_x(Space::Md);
                     self.state_track(ui, accent, muted);
                     ui.label(
                         RichText::new(status.badge())
-                            .size(9.0)
+                            .size(ui.text_size(TextSize::Xs))
                             .strong()
                             .color(accent),
                     );
                     if let Some(id) = self.id {
-                        ui.label(RichText::new(id).size(9.0).monospace().color(muted));
+                        ui.label(
+                            RichText::new(id)
+                                .size(ui.text_size(TextSize::Xs))
+                                .monospace()
+                                .color(muted),
+                        );
                     }
                     // Support composition, right-aligned: one mark per piece of
                     // evidence, shaped by how firmly it is known.
@@ -320,17 +324,21 @@ impl<'a> ClaimCard<'a> {
                     });
                 });
 
-                ui.add_space(3.0);
+                ui.gap(Space::Sm);
 
                 // The statement is the one thing that must be legible without
                 // interaction — kept to a single elided line.
                 let statement = match status {
                     FalsifierStatus::Refuted => RichText::new(self.statement)
-                        .size(12.0)
+                        .size(ui.text_size(TextSize::Md))
                         .strikethrough()
                         .color(muted),
-                    FalsifierStatus::Survived => RichText::new(self.statement).size(12.0).strong(),
-                    _ => RichText::new(self.statement).size(12.0).color(muted),
+                    FalsifierStatus::Survived => RichText::new(self.statement)
+                        .size(ui.text_size(TextSize::Md))
+                        .strong(),
+                    _ => RichText::new(self.statement)
+                        .size(ui.text_size(TextSize::Md))
+                        .color(muted),
                 };
                 let line = ui.add(
                     egui::Label::new(statement)
@@ -454,15 +462,24 @@ impl<'a> ClaimCard<'a> {
 
     /// The prose, only once asked for.
     fn detail(&self, ui: &mut Ui, accent: Color32, muted: Color32, warn: Color32) {
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
         let cap = |ui: &mut Ui, t: &str| {
-            ui.label(RichText::new(t).size(9.0).strong().color(muted));
+            ui.label(
+                RichText::new(t)
+                    .size(ui.text_size(TextSize::Xs))
+                    .strong()
+                    .color(muted),
+            );
         };
 
         match self.falsifier {
             Some(f) => {
                 cap(ui, "WOULD REFUTE THIS");
-                ui.label(RichText::new(f).size(11.0).italics());
+                ui.label(
+                    RichText::new(f)
+                        .size(ui.text_size(TextSize::Base))
+                        .italics(),
+                );
             }
             None => {
                 ui.label(
@@ -471,7 +488,7 @@ impl<'a> ClaimCard<'a> {
                     } else {
                         "No falsifier yet."
                     })
-                    .size(10.0)
+                    .size(ui.text_size(TextSize::Sm))
                     .italics()
                     .color(if self.claims_a_test_it_never_states() {
                         warn
@@ -483,7 +500,7 @@ impl<'a> ClaimCard<'a> {
         }
 
         if let Some(outcome) = self.outcome {
-            ui.add_space(5.0);
+            ui.gap(Space::Base);
             cap(
                 ui,
                 match self.status {
@@ -491,22 +508,26 @@ impl<'a> ClaimCard<'a> {
                     _ => "WHEN RUN",
                 },
             );
-            ui.label(RichText::new(outcome).size(11.0).color(accent));
+            ui.label(
+                RichText::new(outcome)
+                    .size(ui.text_size(TextSize::Base))
+                    .color(accent),
+            );
         } else if self.is_unevidenced_verdict() {
-            ui.add_space(5.0);
+            ui.gap(Space::Base);
             ui.label(
                 RichText::new("Marked as tested with no account of the test recorded.")
-                    .size(11.0)
+                    .size(ui.text_size(TextSize::Base))
                     .color(warn),
             );
         }
 
         if !self.support.is_empty() {
-            ui.add_space(7.0);
+            ui.gap(Space::Md);
             cap(ui, "RESTS ON");
             for s in self.support {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 5.0;
+                    ui.set_item_gap_x(Space::Base);
                     let badge = PartyBadge::new(s.summary, s.basis).text_size(11.0);
                     let badge = match s.source {
                         Some(src) => badge.source(src),
@@ -516,7 +537,7 @@ impl<'a> ClaimCard<'a> {
                     if let Some(r) = s.reference {
                         ui.label(
                             RichText::new(r)
-                                .size(10.0)
+                                .size(ui.text_size(TextSize::Sm))
                                 .monospace()
                                 .color(muted.gamma_multiply(0.8)),
                         );

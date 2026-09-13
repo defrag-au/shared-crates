@@ -2,12 +2,15 @@
 
 use egui::{Color32, Pos2, Rect, Vec2};
 use egui_widgets::asset_card::{
-    AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES, RARITIES,
+    AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES, RARITY_NAMES,
+    rarity_colors_of,
 };
 use egui_widgets::card_browser::{self, CardBrowserConfig, CardBrowserState};
+use egui_widgets::slider_group::SliderGroup;
+use egui_widgets::theme::Space;
 use image_core::ImageSize;
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 const POLICY_ID: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
 
@@ -21,7 +24,10 @@ pub struct CardBrowserStoryState {
     pub card_width: f32,
     pub text_lines: u8,
     pub detail_width: f32,
-    pub spacing: f32,
+    /// `None` = whatever the active theme's ramp says, which is the default a
+    /// caller gets. The other entries step the ramp so a reader can see that the
+    /// gutter is a scale step and not a free pixel count.
+    pub spacing: Option<Space>,
     pub holo_strength: f32,
     pub items: Vec<DemoItem>,
 }
@@ -34,7 +40,7 @@ impl Default for CardBrowserStoryState {
             card_width: 140.0,
             text_lines: 3,
             detail_width: 360.0,
-            spacing: 8.0,
+            spacing: None,
             holo_strength: 0.7,
             items: build_preset_items(0),
         }
@@ -132,6 +138,11 @@ fn decode_hex_name(hex: &str) -> String {
 const PRESET_NAMES: [&str; 4] = ["NFT Portfolio", "Marketplace", "Minimal", "AssetCard 3D"];
 
 fn build_preset_items(preset: usize) -> Vec<DemoItem> {
+    // A fixture has no `Ui`, so it names a theme instead of writing literals.
+    // The widgets that *render* these items read the active theme; only this
+    // demo data is pinned. (The rest of this fixture's colours are part of the
+    // storybook-scaffolding debt tracked separately.)
+    let tier_colors = rarity_colors_of(&egui_widgets::theme::ColorTokens::tokyo_night());
     match preset {
         0 => PIRATE_HEX
             .iter()
@@ -226,20 +237,20 @@ fn build_preset_items(preset: usize) -> Vec<DemoItem> {
                 let effect_index = i % EFFECT_NAMES.len();
                 DemoItem {
                     name,
-                    subtitle: format!("{} - {}", RARITIES[rarity].0, EFFECT_NAMES[effect_index]),
+                    subtitle: format!("{} - {}", RARITY_NAMES[rarity], EFFECT_NAMES[effect_index]),
                     badge: if rarity >= 3 {
-                        Some(RARITIES[rarity].0.into())
+                        Some(RARITY_NAMES[rarity].into())
                     } else {
                         None
                     },
-                    badge_color: RARITIES[rarity].1,
+                    badge_color: tier_colors[rarity],
                     price: Some(50.0 + (rarity as f64 * 100.0)),
                     detail_lines: vec![
-                        ("Rarity".into(), RARITIES[rarity].0.into()),
+                        ("Rarity".into(), RARITY_NAMES[rarity].into()),
                         ("Effect".into(), EFFECT_NAMES[effect_index].into()),
                         ("Collection".into(), "Hodlcroft Pirates".into()),
                     ],
-                    accent: RARITIES[rarity].1,
+                    accent: tier_colors[rarity],
                     image_url: Some(iiif_url(hex, ImageSize::Thumb)),
                     rarity,
                     effect_index,
@@ -383,7 +394,7 @@ fn render_card_text(ui: &mut egui::Ui, ctx: &card_browser::CardRenderContext, it
         egui::Align2::LEFT_TOP,
         &item.subtitle,
         egui::FontId::proportional(9.0),
-        TEXT_MUTED,
+        muted(ui),
     );
 
     // Price (if any)
@@ -403,29 +414,43 @@ fn render_card_text(ui: &mut egui::Ui, ctx: &card_browser::CardRenderContext, it
 // ============================================================================
 
 pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
-    // Controls
-    let mut text_lines_f32 = state.text_lines as f32;
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.card_width, 100.0..=200.0).text("Card width"));
-        ui.add(
-            egui::Slider::new(&mut text_lines_f32, 1.0..=5.0)
-                .step_by(1.0)
-                .text("Text lines"),
-        );
+    // Controls. `text_lines` used to make a round trip through f32 with
+    // `step_by(1.0)` to get whole steps; a bank row takes the u8 directly and
+    // knows an integral range prints no decimals.
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Card width", &mut state.card_width, 100.0..=200.0)
+            .slider("Text lines", &mut state.text_lines, 1..=5)
+            .slider("Detail width", &mut state.detail_width, 200.0..=600.0)
+            .show(ui);
     });
-    state.text_lines = text_lines_f32 as u8;
     ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.detail_width, 200.0..=600.0).text("Detail width"));
-        ui.add(egui::Slider::new(&mut state.spacing, 2.0..=16.0).text("Spacing"));
+        ui.label("Gutter:");
+        // "Theme" first, because it is the default and the point: a surface that
+        // says nothing inherits the ramp.
+        if ui
+            .selectable_label(state.spacing.is_none(), "theme")
+            .clicked()
+        {
+            state.spacing = None;
+        }
+        for step in Space::ALL {
+            if ui
+                .selectable_label(state.spacing == Some(*step), format!("{step:?}"))
+                .clicked()
+            {
+                state.spacing = Some(*step);
+            }
+        }
     });
 
     ui.horizontal(|ui| {
         ui.label("Preset:");
         for (i, name) in PRESET_NAMES.iter().enumerate() {
             let text = if state.preset == i {
-                egui::RichText::new(*name).color(ACCENT).strong()
+                egui::RichText::new(*name).color(accent(ui)).strong()
             } else {
-                egui::RichText::new(*name).color(TEXT_MUTED)
+                egui::RichText::new(*name).color(muted(ui))
             };
             if ui.selectable_label(state.preset == i, text).clicked() {
                 state.preset = i;
@@ -437,7 +462,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
 
     // Global holo-strength dial (AssetCard 3D preset only).
     if state.preset == 3 {
-        ui.add(egui::Slider::new(&mut state.holo_strength, 0.0..=1.0).text("Holo strength"));
+        crate::controls(ui, |ui| {
+            SliderGroup::new()
+                .slider("Holo strength", &mut state.holo_strength, 0.0..=1.0)
+                .show(ui);
+        });
     }
 
     // Summary
@@ -470,7 +499,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
     // Show computed card height
     ui.label(
         egui::RichText::new(format!("Card height: {:.0}px (auto)", config.card_height()))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .size(10.0),
     );
 
@@ -516,8 +545,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
             // Rarity label for AssetCard 3D preset
             if preset == 3 {
                 ui.label(
-                    egui::RichText::new(RARITIES[item.rarity].0)
-                        .color(RARITIES[item.rarity].1)
+                    egui::RichText::new(RARITY_NAMES[item.rarity])
+                        .color(egui_widgets::asset_card::rarity_colors(ui)[item.rarity])
                         .size(12.0)
                         .strong(),
                 );
@@ -542,7 +571,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new(format!("{key}:"))
-                            .color(TEXT_MUTED)
+                            .color(muted(ui))
                             .size(11.0),
                     );
                     ui.label(
@@ -566,7 +595,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
     );
 
     ui.add_space(12.0);
-    ui.label(egui::RichText::new("Features:").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Features:").color(accent(ui)).strong());
     let features = [
         "Real IIIF thumbnails from Hodlcroft Pirates collection",
         "AssetCard 3D: tilt, holographic effects, spark streaks in CardBrowser",

@@ -13,7 +13,9 @@
 //! ui.add(Timestamp::new(ts).badge(true).with_seconds(true));   // framed chip, :SS
 //! ```
 
-use egui::{Color32, CornerRadius, Frame, Margin, Response, RichText, Stroke, Ui, Widget};
+use egui::{Color32, Frame, Response, RichText, Stroke, Ui, Widget};
+
+use crate::theme::{Radius, Space, ThemeExt};
 
 use crate::relative_time::relative_label;
 
@@ -102,8 +104,8 @@ impl Widget for Timestamp {
             Frame::new()
                 .fill(Color32::from_gray(30))
                 .stroke(Stroke::new(1.0_f32, Color32::from_gray(55)))
-                .corner_radius(CornerRadius::same(4))
-                .inner_margin(Margin::symmetric(6, 1))
+                .corner_radius(ui.tokens().corner(Radius::Base))
+                .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Xs))
                 .show(ui, |ui| ui.label(rich))
                 .response
         } else {

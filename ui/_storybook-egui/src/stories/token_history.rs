@@ -19,10 +19,10 @@
 //! featureless on this token**. It is drawn anyway, precisely so that can be
 //! seen rather than argued about.
 
-use egui::{pos2, Color32, Pos2, Rect, Vec2};
+use egui::{Color32, Pos2, Rect, Vec2, pos2};
 
 use crate::stories::wrt_fixture::{COHORTS, SERIES};
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// The validated ordinal liquidity ramp — one hue, immovable → liquid.
 ///
@@ -53,8 +53,8 @@ fn plot_frame(ui: &mut egui::Ui, height: f32) -> Rect {
 
 fn caption(ui: &mut egui::Ui, title: &str, note: &str) {
     ui.add_space(10.0);
-    ui.label(egui::RichText::new(title).color(ACCENT).strong());
-    ui.label(egui::RichText::new(note).color(TEXT_MUTED).small());
+    ui.label(egui::RichText::new(title).color(accent(ui)).strong());
+    ui.label(egui::RichText::new(note).color(muted(ui)).small());
     ui.add_space(2.0);
 }
 
@@ -74,19 +74,17 @@ fn line(ui: &mut egui::Ui, rect: Rect, vals: &[f64], colour: Color32, log: bool)
         .copied()
         .filter(|v| *v > 0.0)
         .fold(f64::MAX, f64::min);
-    let pos = |v: f64| -> f64 {
-        if log {
-            v.max(floor).ln()
-        } else {
-            v
-        }
-    };
+    let pos = |v: f64| -> f64 { if log { v.max(floor).ln() } else { v } };
     let (mut lo, mut hi) = (f64::MAX, f64::MIN);
     for v in vals {
         lo = lo.min(pos(*v));
         hi = hi.max(pos(*v));
     }
-    if !(hi > lo) {
+    // `!(hi > lo)` rather than `hi <= lo` was hiding the NaN case: if every
+    // value is NaN then `lo`/`hi` keep their sentinels and neither comparison
+    // holds, which is exactly when this must bail. Spelling it as "not greater"
+    // via `partial_cmp` keeps that behaviour and says so.
+    if !matches!(hi.partial_cmp(&lo), Some(std::cmp::Ordering::Greater)) {
         return;
     }
     let pts: Vec<Pos2> = vals
@@ -108,14 +106,14 @@ fn line(ui: &mut egui::Ui, rect: Rect, vals: &[f64], colour: Color32, log: bool)
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("Token history — candidate forms, real WRT data")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new(
             "240 points, 2022-03 → 2026-08. Exploration surface: pick a form, then build it.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 
@@ -208,7 +206,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.separator();
     ui.label(
         egui::RichText::new("What to decide:")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label("\u{2022} A vs A′ — does log earn its place? (a 30× range says yes)");

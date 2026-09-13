@@ -11,9 +11,10 @@
 //! key, because the widget has no way to render one.
 
 use egui_widgets::agent_config::{
-    agent_config_section, AgentConfigResponse, CredentialDraft, ProviderDraft,
+    AgentConfigResponse, CredentialDraft, ProviderDraft, agent_config_section,
 };
-use egui_widgets::theme;
+
+use crate::{accent, muted};
 use gateway_wiring::{AgentEntitlement, AgentTier, GuildRole, ProviderStatus};
 
 const NOW_MS: f64 = 1_780_000_000_000.0;
@@ -122,7 +123,7 @@ fn status(state: KeyState, provider: &ProviderDraft) -> Option<ProviderStatus> {
 pub fn show(ui: &mut egui::Ui, state: &mut AgentConfigStory) {
     ui.label(
         egui::RichText::new("Agent Config (BYO key)")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -131,7 +132,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AgentConfigStory) {
              there is no fixture here holding one, because the widget cannot render one.",
         )
         .small()
-        .color(theme::TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(8.0);
 
@@ -167,7 +168,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut AgentConfigStory) {
         }
     });
     if !state.last.is_empty() {
-        ui.colored_label(theme::TEXT_MUTED, &state.last);
+        ui.colored_label(muted(ui), &state.last);
     }
     ui.add_space(8.0);
     ui.separator();

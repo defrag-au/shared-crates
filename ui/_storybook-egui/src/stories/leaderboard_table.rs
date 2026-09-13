@@ -2,12 +2,12 @@
 
 use egui_widgets::{ChipVariant, LeaderboardRow, LeaderboardTable};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("LeaderboardTable Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -16,7 +16,7 @@ pub fn show(ui: &mut egui::Ui) {
              handles), optional semantic badge, pre-formatted value, and share. \
              Used for token holders, top traders, wallet rankings.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -24,12 +24,10 @@ pub fn show(ui: &mut egui::Ui) {
     let rows = sample_rows();
 
     egui::Frame::new()
-        .fill(crate::BG_MAIN)
+        .fill(crate::bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             // Bounded height so the virtual scroll is exercised in the story.
             ui.allocate_ui(egui::vec2(ui.available_width().min(620.0), 320.0), |ui| {
@@ -41,8 +39,18 @@ pub fn show(ui: &mut egui::Ui) {
         });
 }
 
+/// One fixture row: `(label, accent, optional (chip_text, variant), value,
+/// share_pct)`.
+type RowSeed = (
+    &'static str,
+    bool,
+    Option<(&'static str, ChipVariant)>,
+    &'static str,
+    f64,
+);
+
 fn sample_rows() -> Vec<LeaderboardRow> {
-    let seed: &[(&str, bool, Option<(&str, ChipVariant)>, &str, f64)] = &[
+    let seed: &[RowSeed] = &[
         (
             "DEX Pool",
             false,

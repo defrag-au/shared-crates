@@ -3,7 +3,7 @@
 //! This implements the server-side game logic for the Black Flag memory game,
 //! supporting both turn-taking and race modes with 2-8 players.
 
-use crate::assets::{fetch_game_cards, AssetId};
+use crate::assets::{AssetId, fetch_game_cards};
 use crate::types::*;
 
 /// Helper trait for looking up cards by CardId
@@ -23,7 +23,7 @@ impl CardLookup for Vec<Card> {
 }
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use ui_flow_protocol::{encode, OpId, PresenceInfo, PresenceStatus, ServerMessage};
+use ui_flow_protocol::{OpId, PresenceInfo, PresenceStatus, ServerMessage, encode};
 use worker::*;
 
 /// Storage keys for persisted state
@@ -510,8 +510,8 @@ impl MemoryGameSessionDO {
             .collect();
 
         // Shuffle turn order
-        use rand::seq::SliceRandom;
         use rand::SeedableRng;
+        use rand::seq::SliceRandom;
         let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
         state.turn_order.shuffle(&mut rng);
 
@@ -782,33 +782,32 @@ impl MemoryGameSessionDO {
         state.turn_state = new_turn_state;
 
         // If we just transitioned to BothReady, handle match/no-match resolution
-        if was_both_ready {
-            if let TurnState::BothReady {
+        if was_both_ready
+            && let TurnState::BothReady {
                 first,
                 second,
                 is_match,
                 ..
             } = &state.turn_state
-            {
-                let first = first.clone();
-                let second = second.clone();
-                let is_match = *is_match;
+        {
+            let first = first.clone();
+            let second = second.clone();
+            let is_match = *is_match;
 
-                if is_match {
-                    tracing::info!(%first, %second, "Match found - resolving immediately");
-                    // Use the current turn player, not the ACK sender
-                    let current_player_id = state.turn_order.get(state.current_turn).cloned();
-                    self.resolve_match(&mut state, &first, &second, current_player_id.as_deref())
-                        .await;
-                } else {
-                    // Schedule the flip-back after delay using Duration
-                    let delay_ms = state.config.flip_delay_ms;
-                    let duration = std::time::Duration::from_millis(delay_ms);
-                    tracing::info!(?duration, "No match - scheduling alarm");
-                    match self.state.storage().set_alarm(duration).await {
-                        Ok(_) => tracing::info!("Alarm set successfully"),
-                        Err(e) => tracing::error!("Failed to set alarm: {:?}", e),
-                    }
+            if is_match {
+                tracing::info!(%first, %second, "Match found - resolving immediately");
+                // Use the current turn player, not the ACK sender
+                let current_player_id = state.turn_order.get(state.current_turn).cloned();
+                self.resolve_match(&mut state, &first, &second, current_player_id.as_deref())
+                    .await;
+            } else {
+                // Schedule the flip-back after delay using Duration
+                let delay_ms = state.config.flip_delay_ms;
+                let duration = std::time::Duration::from_millis(delay_ms);
+                tracing::info!(?duration, "No match - scheduling alarm");
+                match self.state.storage().set_alarm(duration).await {
+                    Ok(_) => tracing::info!("Alarm set successfully"),
+                    Err(e) => tracing::error!("Failed to set alarm: {:?}", e),
                 }
             }
         }
@@ -832,29 +831,28 @@ impl MemoryGameSessionDO {
             is_match,
             ..
         } = &state.turn_state
+            && !is_match
         {
-            if !is_match {
-                // Flip cards back
-                let delta = MemoryDelta::CardsReset {
-                    card_ids: [first.clone(), second.clone()],
-                    for_player: None,
-                };
-                self.broadcast_delta(delta).await;
+            // Flip cards back
+            let delta = MemoryDelta::CardsReset {
+                card_ids: [first.clone(), second.clone()],
+                for_player: None,
+            };
+            self.broadcast_delta(delta).await;
 
-                // Advance turn
-                state.current_turn = (state.current_turn + 1) % state.turn_order.len();
-                let next_player = state.turn_order[state.current_turn].clone();
+            // Advance turn
+            state.current_turn = (state.current_turn + 1) % state.turn_order.len();
+            let next_player = state.turn_order[state.current_turn].clone();
 
-                let delta = MemoryDelta::TurnChanged {
-                    user_id: next_player,
-                };
-                self.broadcast_delta(delta).await;
+            let delta = MemoryDelta::TurnChanged {
+                user_id: next_player,
+            };
+            self.broadcast_delta(delta).await;
 
-                // Reset turn state for next player
-                state.turn_state = TurnState::AwaitingFirst;
+            // Reset turn state for next player
+            state.turn_state = TurnState::AwaitingFirst;
 
-                self.save_game_state(&state).await;
-            }
+            self.save_game_state(&state).await;
         }
 
         Ok(())

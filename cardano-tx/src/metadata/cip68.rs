@@ -16,7 +16,7 @@ use super::MetadataError;
 /// CIP-68 datum version (1 = initial version)
 const CIP68_VERSION: i64 = 1;
 
-/// Build a CIP-68 datum from [`AssetMetadata`].
+/// Build a CIP-68 datum from [`AssetMetadata`], with an empty `extra`.
 ///
 /// The datum structure follows CIP-68:
 /// ```text
@@ -24,7 +24,45 @@ const CIP68_VERSION: i64 = 1;
 /// ```
 ///
 /// Returns CBOR bytes suitable for use as an inline datum on reference tokens.
+///
+/// Use [`build_cip68_datum_with_extra`] when the third field carries
+/// something — a mint that leaves it empty and a mint that fills it are the
+/// same datum shape, and this is the thin wrapper so callers that do not care
+/// are not made to say so.
 pub fn build_cip68_datum(metadata: &AssetMetadata) -> Result<Vec<u8>, MetadataError> {
+    build_cip68_datum_with_extra(metadata, empty_extra())
+}
+
+/// The `extra` a datum carries when it carries nothing.
+///
+/// An empty ARRAY rather than an absent field or a unit: CIP-68 fixes the
+/// envelope at three fields, so the third has to be *something*, and this is
+/// the shape already on chain for every reference token this crate has ever
+/// minted. Changing it would change those datums' bytes.
+pub fn empty_extra() -> PlutusData {
+    PlutusData::Array(MaybeIndefArray::Def(vec![]))
+}
+
+/// Build a CIP-68 datum whose `extra` field carries `extra`.
+///
+/// CIP-68's third field is free-form PlutusData, and this is what makes it
+/// usable: a reference token can be a rendered NFT to every wallet and
+/// explorer — name, image, description, out of `metadata` — *and* carry
+/// application state a validator reads, in the same datum, with no second
+/// UTxO and no parallel registry.
+///
+/// The on-chain action protocol's fuel tank is the case this was added for
+/// (`ONCHAIN_ACTION_PROTOCOL.md` §1.2): `metadata` renders the subscription
+/// in the holder's wallet while `extra` holds the credit balance the fuel
+/// validator decodes. **The validator reads `extra` only and treats
+/// `metadata` as opaque bytes that must be unchanged across every continuing
+/// output** — so whatever goes in here must encode identically on every
+/// rebuild, which is why the schema crate's codec is canonical by
+/// construction.
+pub fn build_cip68_datum_with_extra(
+    metadata: &AssetMetadata,
+    extra: PlutusData,
+) -> Result<Vec<u8>, MetadataError> {
     let metadata_map = metadata_to_plutus_map(metadata)?;
 
     // Build the CIP-68 constructor: Constr 0 with [metadata, version, extra]
@@ -35,7 +73,7 @@ pub fn build_cip68_datum(metadata: &AssetMetadata) -> Result<Vec<u8>, MetadataEr
         fields: MaybeIndefArray::Def(vec![
             metadata_map,
             PlutusData::BigInt(BigInt::Int(CIP68_VERSION.into())),
-            PlutusData::Array(MaybeIndefArray::Def(vec![])), // extra = empty array
+            extra,
         ]),
     });
 
@@ -158,6 +196,28 @@ mod tests {
     use crate::metadata::cip67;
     use cardano_assets::{PrimitiveOrList, Traits};
 
+    /// The smallest well-formed metadata, for tests about the ENVELOPE
+    /// rather than about metadata contents.
+    fn sample_metadata(name: &str) -> AssetMetadata {
+        AssetMetadata::Flattened {
+            name: name.to_string(),
+            image: PrimitiveOrList::Primitive("ipfs://QmTest123".to_string()),
+            media_type: Some("image/png".to_string()),
+            project: None,
+            description: None,
+            files: None,
+            publisher: None,
+            discord: None,
+            twitter: None,
+            website: None,
+            github: None,
+            medium: None,
+            sha256: None,
+            url: None,
+            traits: Traits::new(),
+        }
+    }
+
     #[test]
     fn test_build_simple_cip68_datum() {
         let metadata = AssetMetadata::Flattened {
@@ -184,6 +244,105 @@ mod tests {
         // The datum should start with tag 121 (Constr 0) which is 0xd8 0x79
         assert_eq!(datum_bytes[0], 0xd8);
         assert_eq!(datum_bytes[1], 0x79);
+    }
+
+    /// Adding the `extra` parameter must not have moved a single byte for
+    /// callers that never asked for one.
+    ///
+    /// `wallet-operations` mints CIP-68 reference tokens with this function,
+    /// and those datums are on chain. A wrapper that produced even slightly
+    /// different bytes would change the datum of every future mint away from
+    /// the shape the existing ones use.
+    #[test]
+    fn the_empty_extra_wrapper_is_byte_identical_to_the_old_behaviour() {
+        let metadata = sample_metadata("Test NFT");
+
+        let wrapper = build_cip68_datum(&metadata).expect("build");
+        let explicit =
+            build_cip68_datum_with_extra(&metadata, empty_extra()).expect("build with extra");
+        assert_eq!(wrapper, explicit);
+
+        // …and the empty extra really is an empty definite array (0x80),
+        // which is what the on-chain datums carry.
+        assert_eq!(*wrapper.last().expect("non-empty"), 0x80);
+    }
+
+    /// End to end with the REAL type: a fuel tank's datum, built here,
+    /// decoded back through the schema crate.
+    ///
+    /// This is the join the protocol depends on — `cardano-tx` writes the
+    /// envelope, `action-definitions` owns what goes in `extra`, and the
+    /// fuel validator decodes exactly what comes out. A test that used a
+    /// hand-rolled map would prove the two agree with a third thing that
+    /// nobody ships.
+    #[test]
+    fn a_real_fuel_body_round_trips_through_the_cip68_envelope() {
+        use action_definitions::FuelBody;
+        use action_definitions::codec::{Bytes, Cip68Envelope, PlutusCodec};
+        use pallas_primitives::Fragment;
+
+        let tank = FuelBody {
+            balance: 1_000,
+            reconciled_at: 12_345,
+            reconciled_seq: 7,
+            receipts_hash: Bytes::from(vec![0xab; 32]),
+            scope: None,
+            unknown: Default::default(),
+        };
+
+        let metadata = sample_metadata("Defrag Fuel");
+        let bytes = build_cip68_datum_with_extra(&metadata, tank.to_data()).expect("build");
+
+        // What the fuel validator sees.
+        let data = PlutusData::decode_fragment(&bytes).expect("ledger-valid");
+        let envelope = Cip68Envelope::from_data(&data).expect("a real CIP-68 datum");
+        assert_eq!(envelope.version, Cip68Envelope::CIP68_VERSION);
+        assert_eq!(
+            FuelBody::from_data(&envelope.extra).expect("extra decodes"),
+            tank,
+            "the balance the validator reads must be the balance we wrote"
+        );
+
+        // And `metadata` is still a map a wallet can render — the half the
+        // validator treats as opaque and requires unchanged.
+        assert_eq!(
+            action_definitions::codec::shape_of(&envelope.metadata),
+            "map"
+        );
+    }
+
+    /// The case the parameter was added for: a fuel tank renders as an NFT
+    /// and carries a balance a validator reads, in one datum.
+    #[test]
+    fn an_extra_payload_lands_in_the_third_field_without_disturbing_metadata() {
+        use pallas_primitives::PlutusData;
+
+        let metadata = sample_metadata("Defrag Fuel");
+
+        // Stand-in for a `FuelBody`: an integer-keyed map, as the schema
+        // crate encodes one.
+        let extra = PlutusData::Map(pallas_codec::utils::KeyValuePairs::Def(vec![(
+            PlutusData::BigInt(BigInt::Int(0.into())),
+            PlutusData::BigInt(BigInt::Int(1_000.into())),
+        )]));
+
+        let with_extra = build_cip68_datum_with_extra(&metadata, extra).expect("build");
+        let without = build_cip68_datum(&metadata).expect("build");
+
+        assert_ne!(with_extra, without, "the payload must actually be carried");
+
+        // The metadata half is untouched — the fuel validator compares those
+        // bytes across every continuing output, so a change here would break
+        // every TopUp.
+        let shared_prefix = with_extra
+            .iter()
+            .zip(without.iter())
+            .take_while(|(a, b)| a == b)
+            .count();
+        assert!(
+            shared_prefix > 10,
+            "metadata and version should be byte-identical; only the third field differs"
+        );
     }
 
     #[test]

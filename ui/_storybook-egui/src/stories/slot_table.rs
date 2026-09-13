@@ -1,7 +1,8 @@
 //! `SlotTable` story — slot list with enable / required toggles + z-order.
 
 use egui_widgets::slot_table::{SlotRow, SlotTable};
-use egui_widgets::theme;
+
+use crate::{accent, muted};
 
 pub struct SlotTableState {
     pub rows: Vec<SlotRow>,
@@ -30,18 +31,14 @@ impl Default for SlotTableState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut SlotTableState) {
-    ui.label(
-        egui::RichText::new("Slot Table")
-            .color(theme::ACCENT)
-            .strong(),
-    );
+    ui.label(egui::RichText::new("Slot Table").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "The slot list with enable / required toggles + z-order — backs \
              disabled_traits, defaults.required, and z_index_overrides. Required \
              is disabled for disabled slots.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);

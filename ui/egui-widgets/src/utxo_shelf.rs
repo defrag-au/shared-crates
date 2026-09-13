@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 
 use egui::{Color32, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::{self, TextSize, ThemeExt};
 use crate::utxo_map::policy_color;
 
 // ============================================================================
@@ -75,22 +75,23 @@ impl ShelfTier {
         }
     }
 
-    pub fn color(&self) -> Color32 {
+    /// Takes the theme rather than reading one: a tier is a plain value with no
+    /// `Ui` of its own.
+    pub fn color(&self, t: &theme::Theme) -> Color32 {
         match self {
-            Self::Collateral => theme::ACCENT_GREEN,
-            Self::ScriptLocked => theme::ACCENT_ORANGE,
-            Self::Liquid => theme::ACCENT_BLUE,
-            Self::Clean => theme::ACCENT_CYAN,
-            Self::Cluttered => theme::ACCENT_YELLOW,
-            Self::Bloated => theme::ACCENT_RED,
-            Self::Dust => theme::TEXT_MUTED,
+            Self::Collateral => t.color.accent_green,
+            Self::ScriptLocked => t.color.accent_orange,
+            Self::Liquid => t.color.accent_blue,
+            Self::Clean => t.color.accent_cyan,
+            Self::Cluttered => t.color.accent_yellow,
+            Self::Bloated => t.color.accent_red,
+            Self::Dust => t.color.text_muted,
         }
     }
 
     /// Subtle background tint for the shelf row.
-    pub fn bg_tint(&self) -> Color32 {
-        let c = self.color();
-        Color32::from_rgba_premultiplied(c.r() / 8, c.g() / 8, c.b() / 8, 20)
+    pub fn bg_tint(&self, t: &theme::Theme) -> Color32 {
+        theme::with_alpha(self.color(t), 20)
     }
 }
 
@@ -637,7 +638,7 @@ impl ShelfConfig {
             let shelf_h = shelf_rect.height();
 
             // Shelf background
-            painter.rect_filled(shelf_rect, 2.0, tier.bg_tint());
+            painter.rect_filled(shelf_rect, 2.0, tier.bg_tint(&ui.tokens()));
 
             // Shelf label (vertically centered in shelf)
             let label_pos = Pos2::new(rect.left() + 8.0, shelf_y + shelf_h / 2.0);
@@ -645,8 +646,8 @@ impl ShelfConfig {
                 label_pos,
                 egui::Align2::LEFT_CENTER,
                 tier.label(),
-                egui::FontId::proportional(11.0),
-                tier.color(),
+                egui::FontId::proportional(ui.text_size(TextSize::Base)),
+                tier.color(&ui.tokens()),
             );
 
             // UTxO count badge
@@ -658,8 +659,8 @@ impl ShelfConfig {
                 count_pos,
                 egui::Align2::RIGHT_CENTER,
                 format!("{}", layout.utxo_count),
-                egui::FontId::proportional(10.0),
-                theme::TEXT_MUTED,
+                egui::FontId::proportional(ui.text_size(TextSize::Sm)),
+                ui.tokens().color.text_muted,
             );
 
             // Empty shelf indicator
@@ -669,15 +670,15 @@ impl ShelfConfig {
                     shelf_y + shelf_h / 2.0,
                 );
                 let (empty_text, empty_color) = if tier == ShelfTier::Collateral {
-                    ("No collateral UTxO", theme::ACCENT_RED)
+                    ("No collateral UTxO", ui.tokens().color.accent_red)
                 } else {
-                    ("empty", Color32::from_rgba_premultiplied(80, 80, 100, 60))
+                    ("empty", theme::with_alpha(ui.tokens().color.text_muted, 60))
                 };
                 painter.text(
                     empty_pos,
                     egui::Align2::LEFT_CENTER,
                     empty_text,
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(ui.text_size(TextSize::Sm)),
                     empty_color,
                 );
             }
@@ -692,15 +693,15 @@ impl ShelfConfig {
                 let hidden_rows = layout.total_rows - layout.visible_rows;
                 let is_hovered = mouse_pos.is_some_and(|mp| more_rect.contains(mp));
                 let label_color = if is_hovered {
-                    theme::ACCENT
+                    ui.tokens().color.accent
                 } else {
-                    theme::TEXT_MUTED
+                    ui.tokens().color.text_muted
                 };
                 painter.text(
                     more_rect.left_center(),
                     egui::Align2::LEFT_CENTER,
                     format!("+{hidden} more ({hidden_rows} rows)"),
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(ui.text_size(TextSize::Sm)),
                     label_color,
                 );
             }
@@ -711,7 +712,7 @@ impl ShelfConfig {
                     Pos2::new(rect.left(), shelf_rect.bottom()),
                     Pos2::new(rect.right(), shelf_rect.bottom()),
                 ],
-                Stroke::new(0.5_f32, Color32::from_rgba_premultiplied(80, 80, 100, 40)),
+                Stroke::new(0.5_f32, theme::with_alpha(ui.tokens().color.text_muted, 40)),
             );
         }
 
@@ -737,10 +738,10 @@ impl ShelfConfig {
 
             // Block background
             let bg = if block.policies.is_empty() {
-                let c = block.tier.color();
-                Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), (120.0 * dim_alpha) as u8)
+                let c = block.tier.color(&ui.tokens());
+                theme::with_alpha(c, (120.0 * dim_alpha) as u8)
             } else {
-                Color32::from_rgba_premultiplied(30, 30, 45, (200.0 * dim_alpha) as u8)
+                theme::with_alpha(ui.tokens().color.bg_secondary, (200.0 * dim_alpha) as u8)
             };
             painter.rect_filled(block.rect, 3.0, bg);
 
@@ -756,14 +757,9 @@ impl ShelfConfig {
                         Vec2::new(block.rect.width() - 2.0, seg_h.max(2.0)),
                     );
 
-                    let mut c = policy_color(pid);
+                    let mut c = policy_color(ui, pid);
                     if is_dimmed {
-                        c = Color32::from_rgba_unmultiplied(
-                            c.r(),
-                            c.g(),
-                            c.b(),
-                            (c.a() as f32 * dim_alpha) as u8,
-                        );
+                        c = theme::with_alpha(c, (c.a() as f32 * dim_alpha) as u8);
                     }
                     painter.rect_filled(seg_rect, 1.5, c);
                     seg_y += seg_h;
@@ -777,12 +773,12 @@ impl ShelfConfig {
                 .is_some_and(|s| *s == block.utxo_ref);
 
             let (border_color, border_width) = if is_selected {
-                (theme::ACCENT, 2.5_f32)
+                (ui.tokens().color.accent, 2.5_f32)
             } else if is_policy_highlighted && block.tier != ShelfTier::Dust {
                 let c = new_hovered_policy
                     .as_ref()
-                    .map(|p| policy_color(p))
-                    .unwrap_or(theme::ACCENT);
+                    .map(|p| policy_color(ui, p))
+                    .unwrap_or(ui.tokens().color.accent);
                 (c, 1.0_f32)
             } else {
                 (Color32::TRANSPARENT, 0.0_f32)
@@ -811,8 +807,8 @@ impl ShelfConfig {
                     block.rect.center(),
                     egui::Align2::CENTER_CENTER,
                     label,
-                    egui::FontId::monospace(9.0),
-                    Color32::from_rgba_unmultiplied(220, 220, 235, text_alpha),
+                    egui::FontId::monospace(ui.text_size(TextSize::Xs)),
+                    theme::with_alpha(ui.tokens().color.text_primary, text_alpha),
                 );
             }
         }

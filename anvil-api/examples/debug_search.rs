@@ -135,10 +135,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 for asset in &response.results {
                     println!("  - {} ({})", asset.name, asset.unit);
-                    if let Some(rank) = asset.attributes.get("Rank") {
-                        if rank.contains("Swab") {
-                            println!("    ✓ Rank attribute contains 'Swab': {}", rank);
-                        }
+                    if let Some(rank) = asset.attributes.get("Rank")
+                        && rank.contains("Swab")
+                    {
+                        println!("    ✓ Rank attribute contains 'Swab': {}", rank);
                     }
                 }
             }

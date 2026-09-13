@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use egui::{Color32, Pos2, Response, Sense, Shape, Stroke, Ui, Vec2};
 use voronoice::{BoundingBox, Point, VoronoiBuilder};
 
-use crate::theme;
+use crate::theme::{Ink, TextSize, ThemeExt, Token};
 
 // ============================================================================
 // Public types
@@ -37,10 +37,24 @@ pub struct UtxoCell {
 pub struct UtxoMapConfig {
     /// Widget dimensions.
     pub size: Vec2,
-    /// Water color (free ADA). Default: cyan at low opacity.
-    pub water_color: Color32,
-    /// Border color between cells. Default: theme border.
-    pub border_color: Color32,
+    /// Water color (free ADA). Default: the theme's cyan.
+    ///
+    /// The literal this replaced was
+    /// `from_rgba_premultiplied(125, 207, 255, 30)`, described as "cyan at low
+    /// opacity" — but that constructor expects channels already scaled by
+    /// alpha, so it blended additively and the blue channel **overflowed and
+    /// clipped**: over the primary background it rendered `(148, 231, 255)`,
+    /// i.e. a cyan *brighter* than the token, not a 12% tint of it. The comment
+    /// described the intent; the pixels did the opposite.
+    ///
+    /// Taking the token itself reproduces what actually shipped (within ~20 per
+    /// channel) while following the theme. Deliberately not the literal reading
+    /// of the old comment — `Ink::Wash(Token::AccentCyan, 30)` is a barely-there
+    /// tint that would make the sea vanish into the background, and this widget
+    /// has no story to review such a change in.
+    pub water_color: Ink,
+    /// Border color between cells.
+    pub border_color: Ink,
     /// Whether to show the consolidation toggle button.
     pub show_consolidation_toggle: bool,
 }
@@ -49,8 +63,8 @@ impl Default for UtxoMapConfig {
     fn default() -> Self {
         Self {
             size: Vec2::new(400.0, 400.0),
-            water_color: Color32::from_rgba_premultiplied(125, 207, 255, 30),
-            border_color: theme::BORDER,
+            water_color: Ink::Token(Token::AccentCyan),
+            border_color: Ink::Token(Token::Border),
             show_consolidation_toggle: false,
         }
     }
@@ -118,46 +132,35 @@ struct ComputedLayout {
 // Color helpers
 // ============================================================================
 
-/// Deterministic policy color from theme palette.
-pub fn policy_color(policy_id: &str) -> Color32 {
+/// Deterministic policy colour — an **identity** encoding.
+///
+/// # Why this needed a theme envelope rather than a palette
+///
+/// There is no Nth colour when N is "every policy on chain", so no ramp can
+/// serve this: the hue has to come from the hash. What the theme *can* own is
+/// the envelope — how saturated and how light those hues are allowed to be —
+/// which is what keeps an arbitrary hue legible on this particular surface.
+/// Hue is the hash's to choose; legibility is the theme's. See
+/// [`crate::encoding::IdentityEnvelope`].
+///
+/// The old version walked its own HSL cube (72 hues × 3 saturations × 3
+/// lightnesses). Varying lightness per-policy is the part that had to go: it
+/// meant a third of all policies rendered at L 0.45 regardless of the surface
+/// they landed on, so on a near-black theme some policies were simply hard to
+/// see, determined by their name. The envelope fixes lightness and lets only
+/// hue vary — `every_preset_identity_envelope_clears_its_surface` checks all 72.
+pub fn policy_color(ui: &Ui, policy_id: &str) -> Color32 {
+    let series = ui.tokens().series;
     if policy_id.is_empty() {
-        return Color32::from_rgb(180, 170, 150);
+        return series.unobserved;
     }
-    let hash = simple_hash(policy_id);
-    // Use HSL with wide hue distribution for maximum visual distinction.
-    // 72 hue steps × 3 saturation × 3 lightness = 648 perceptually distinct colors.
-    let hue = (hash % 72) as f32 * 5.0; // 0..360 in 5° steps
-    let sat = match (hash / 72) % 3 {
-        0 => 0.50,
-        1 => 0.65,
-        _ => 0.40,
-    };
-    let lit = match (hash / 216) % 3 {
-        0 => 0.55,
-        1 => 0.45,
-        _ => 0.65,
-    };
-    hsl_to_rgb(hue, sat, lit)
+    series.identity.color(simple_hash(policy_id) as u64)
 }
 
-fn hsl_to_rgb(h: f32, s: f32, l: f32) -> Color32 {
-    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
-    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
-    let m = l - c / 2.0;
-    let (r1, g1, b1) = match h as u32 {
-        0..60 => (c, x, 0.0),
-        60..120 => (x, c, 0.0),
-        120..180 => (0.0, c, x),
-        180..240 => (0.0, x, c),
-        240..300 => (x, 0.0, c),
-        _ => (c, 0.0, x),
-    };
-    Color32::from_rgb(
-        ((r1 + m) * 255.0) as u8,
-        ((g1 + m) * 255.0) as u8,
-        ((b1 + m) * 255.0) as u8,
-    )
-}
+// `hsl_to_rgb` lived here, walking a 72×3×3 HSL cube for policy colours. It is
+// gone: `IdentityEnvelope` generates in Oklab, where equal steps are
+// perceptually equal, and fixes lightness so the theme — not the policy's name —
+// decides whether a colour clears the surface.
 
 pub fn simple_hash(s: &str) -> usize {
     let mut h: usize = 5381;
@@ -463,7 +466,7 @@ impl UtxoMapConfig {
         let painter = ui.painter_at(rect);
 
         // Background
-        painter.rect_filled(rect, 4.0, theme::BG_PRIMARY);
+        painter.rect_filled(rect, 4.0, ui.tokens().color.bg_primary);
 
         let mut action = None;
 
@@ -473,8 +476,8 @@ impl UtxoMapConfig {
                     rect.center(),
                     egui::Align2::CENTER_CENTER,
                     "No UTxOs",
-                    egui::FontId::proportional(14.0),
-                    theme::TEXT_MUTED,
+                    egui::FontId::proportional(ui.text_size(TextSize::Lg)),
+                    ui.tokens().color.text_muted,
                 );
             } else {
                 let (polygons_layout, bounds) = tessellate(&layout.cells, layout.water_count);
@@ -510,10 +513,10 @@ impl UtxoMapConfig {
                     let is_water = poly_idx >= land_count;
 
                     let fill = if is_water {
-                        self.water_color
+                        self.water_color.of(ui)
                     } else {
                         let cell = &data.cells[layout.cells[poly_idx].cell_idx];
-                        policy_color(&cell.policy_id)
+                        policy_color(ui, &cell.policy_id)
                     };
 
                     if !is_water
@@ -526,7 +529,7 @@ impl UtxoMapConfig {
                     painter.add(Shape::convex_polygon(
                         screen_verts,
                         fill,
-                        Stroke::new(0.5_f32, self.border_color),
+                        Stroke::new(0.5_f32, self.border_color.of(ui)),
                     ));
                 }
 
@@ -545,8 +548,8 @@ impl UtxoMapConfig {
                                 verts.iter().map(|&(x, y)| to_screen(x, y)).collect();
                             painter.add(Shape::convex_polygon(
                                 screen_verts,
-                                brighten(policy_color(&cell.policy_id), 1.3),
-                                Stroke::new(2.0_f32, theme::ACCENT),
+                                brighten(policy_color(ui, &cell.policy_id), 1.3),
+                                Stroke::new(2.0_f32, ui.tokens().color.accent),
                             ));
                         }
                     }
@@ -577,8 +580,8 @@ impl UtxoMapConfig {
                             ui.label(
                                 egui::RichText::new(truncate_ref(&utxo_ref))
                                     .monospace()
-                                    .size(11.0)
-                                    .color(theme::TEXT_SECONDARY),
+                                    .size(ui.text_size(TextSize::Base))
+                                    .color(ui.tokens().color.text_secondary),
                             );
                             ui.label(format!("{utxo_assets} assets, {policy_count} policies"));
                             ui.label(format!("{:.2} ADA", utxo_ada as f64 / 1_000_000.0));
@@ -782,11 +785,15 @@ mod tests {
         }
     }
 
+    /// Identity colours get compared between screenshots and across sessions,
+    /// so the same policy must keep its colour. Now needs a `Ui` because the
+    /// envelope is a theme axis — the determinism claim is unchanged.
     #[test]
     fn test_policy_color_deterministic() {
-        let c1 = policy_color("abc123");
-        let c2 = policy_color("abc123");
-        assert_eq!(c1, c2);
+        egui::__run_test_ui(|ui| {
+            assert_eq!(policy_color(ui, "abc123"), policy_color(ui, "abc123"));
+            assert_ne!(policy_color(ui, "abc123"), policy_color(ui, "zzz999"));
+        });
     }
 
     #[test]

@@ -1,7 +1,8 @@
 //! `Machine` story — the save lifecycle as one state, no flag trio.
 
 use egui_widgets::machine::Machine;
-use egui_widgets::theme;
+
+use crate::{accent, muted};
 
 #[derive(Debug)]
 pub enum DemoSave {
@@ -26,14 +27,14 @@ impl Default for MachineState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut MachineState) {
-    ui.label(egui::RichText::new("Machine").color(theme::ACCENT).strong());
+    ui.label(egui::RichText::new("Machine").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Plain-enum UI state with entry-frame detection and frame-TTL \
              auto-revert — replaces the dirty/pending/flash boolean trio with \
              one matchable state. Tick once per frame, after rendering.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -72,10 +73,19 @@ pub fn show(ui: &mut egui::Ui, state: &mut MachineState) {
     ui.add_space(12.0);
 
     let (label, color) = match state.save.get() {
-        DemoSave::Clean => ("Clean".to_string(), theme::TEXT_MUTED),
-        DemoSave::Dirty => ("Dirty — unsaved edits".to_string(), theme::ACCENT_YELLOW),
-        DemoSave::Saving { op } => (format!("Saving op {op}…"), theme::ACCENT_CYAN),
-        DemoSave::Saved => ("Saved ✓ (auto-reverts)".to_string(), theme::SUCCESS),
+        DemoSave::Clean => ("Clean".to_string(), muted(ui)),
+        DemoSave::Dirty => (
+            "Dirty — unsaved edits".to_string(),
+            crate::tok(ui, egui_widgets::theme::Token::AccentYellow),
+        ),
+        DemoSave::Saving { op } => (
+            format!("Saving op {op}…"),
+            crate::tok(ui, egui_widgets::theme::Token::AccentCyan),
+        ),
+        DemoSave::Saved => (
+            "Saved ✓ (auto-reverts)".to_string(),
+            crate::tok(ui, egui_widgets::theme::Token::Success),
+        ),
     };
     ui.label(egui::RichText::new(label).color(color).strong());
     ui.label(
@@ -84,7 +94,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut MachineState) {
             state.save.frames_in_state(),
             state.save.entered()
         ))
-        .color(theme::TEXT_SECONDARY)
+        .color(crate::secondary(ui))
         .small(),
     );
 

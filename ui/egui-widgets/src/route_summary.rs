@@ -6,7 +6,7 @@
 
 use egui::{Color32, RichText, Ui};
 
-use crate::theme;
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -65,10 +65,10 @@ impl Default for RouteSummaryConfig {
 /// Render the route summary panel.
 pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
     egui::Frame::new()
-        .fill(theme::BG_SECONDARY)
-        .corner_radius(6.0)
-        .inner_margin(12.0)
-        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+        .fill(ui.tokens().color.bg_secondary)
+        .corner_radius(ui.tokens().corner(Radius::Md))
+        .inner_margin(ui.tokens().margin(Space::Xl))
+        .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .show(ui, |ui| {
             // Per-leg rows
             for leg in &data.legs {
@@ -84,7 +84,7 @@ pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
                     // DEX label
                     ui.label(
                         RichText::new(&leg.dex_label)
-                            .color(theme::TEXT_SECONDARY)
+                            .color(ui.tokens().color.text_secondary)
                             .size(config.font_size),
                     );
 
@@ -92,7 +92,7 @@ pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
                     let ada = leg.input_lovelace as f64 / 1_000_000.0;
                     ui.label(
                         RichText::new(format!("{ada:.0} ADA"))
-                            .color(theme::TEXT_MUTED)
+                            .color(ui.tokens().color.text_muted)
                             .size(config.font_size),
                     );
 
@@ -100,7 +100,7 @@ pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             RichText::new(format_tokens(leg.expected_tokens))
-                                .color(theme::TEXT_PRIMARY)
+                                .color(ui.tokens().color.text_primary)
                                 .size(config.font_size),
                         );
                     });
@@ -108,32 +108,32 @@ pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
             }
 
             // Separator
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
             let rect = ui.available_rect_before_wrap();
             let y = rect.min.y;
             ui.painter().line_segment(
                 [egui::pos2(rect.min.x, y), egui::pos2(rect.max.x, y)],
-                egui::Stroke::new(1.0_f32, theme::BORDER),
+                egui::Stroke::new(1.0_f32, ui.tokens().color.border),
             );
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
 
             // Total output line
             ui.horizontal(|ui| {
                 ui.label(
                     RichText::new("Total")
-                        .color(theme::TEXT_PRIMARY)
+                        .color(ui.tokens().color.text_primary)
                         .strong()
                         .size(config.total_size),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(
                         RichText::new(&data.token_name)
-                            .color(theme::TEXT_MUTED)
+                            .color(ui.tokens().color.text_muted)
                             .size(config.total_size),
                     );
                     ui.label(
                         RichText::new(format_tokens(data.total_tokens))
-                            .color(theme::ACCENT_GREEN)
+                            .color(ui.tokens().color.accent_green)
                             .strong()
                             .size(config.total_size),
                     );
@@ -144,13 +144,13 @@ pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
             ui.horizontal(|ui| {
                 ui.label(
                     RichText::new("Blended price")
-                        .color(theme::TEXT_MUTED)
+                        .color(ui.tokens().color.text_muted)
                         .size(config.font_size),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(
                         RichText::new(format!("{:.6} ADA", data.blended_price))
-                            .color(theme::TEXT_SECONDARY)
+                            .color(ui.tokens().color.text_secondary)
                             .size(config.font_size),
                     );
                 });
@@ -164,11 +164,11 @@ pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
                 let improvement = (data.total_tokens as f64 / single_tokens as f64 - 1.0) * 100.0;
                 let extra = data.total_tokens - single_tokens;
 
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new("Split advantage")
-                            .color(theme::TEXT_MUTED)
+                            .color(ui.tokens().color.text_muted)
                             .size(config.font_size),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -176,7 +176,7 @@ pub fn show(ui: &mut Ui, data: &RouteSummaryData, config: &RouteSummaryConfig) {
                             RichText::new(
                                 format!("+{} ({improvement:.2}%)", format_tokens(extra),),
                             )
-                            .color(theme::ACCENT_GREEN)
+                            .color(ui.tokens().color.accent_green)
                             .size(config.font_size),
                         );
                     });

@@ -1,6 +1,6 @@
+use crate::Vec2;
 use crate::spatial::SpatialGrid;
 use crate::streamline::Streamline;
-use crate::Vec2;
 
 /// A node in the road graph (intersection or endpoint).
 #[derive(Debug, Clone)]

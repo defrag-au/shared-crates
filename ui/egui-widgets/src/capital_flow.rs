@@ -32,6 +32,7 @@
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::channel_bands::{CHANNEL_PALETTE, OTHER_COLOR};
+use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
 
 /// One movement of capital out to a destination.
 #[derive(Clone, Debug)]
@@ -267,7 +268,7 @@ impl<'a> CapitalFlow<'a> {
             Pos2::new(plot.right(), raise_y - 2.0),
             Align2::RIGHT_BOTTOM,
             format!("raised {}", (self.format_value)(self.raised)),
-            FontId::monospace(9.0),
+            FontId::monospace(ui.text_size(TextSize::Xs)),
             muted,
         );
 
@@ -289,7 +290,7 @@ impl<'a> CapitalFlow<'a> {
             ),
             Align2::CENTER_TOP,
             label,
-            FontId::monospace(9.0),
+            FontId::monospace(ui.text_size(TextSize::Xs)),
             ink,
         );
 
@@ -306,7 +307,7 @@ impl<'a> CapitalFlow<'a> {
             Pos2::new(rect.left(), rect.top() + 2.0),
             Align2::LEFT_TOP,
             format!("{} deployed", (self.format_value)(state.deployed)),
-            FontId::monospace(15.0),
+            FontId::monospace(ui.text_size(TextSize::Xl)),
             ink,
         );
         let tail = if state.beyond_raise > 0 {
@@ -324,7 +325,7 @@ impl<'a> CapitalFlow<'a> {
             Pos2::new(rect.left(), rect.top() + 20.0),
             Align2::LEFT_TOP,
             tail,
-            FontId::proportional(10.0),
+            FontId::proportional(ui.text_size(TextSize::Sm)),
             if state.beyond_raise > 0 {
                 ui.visuals().warn_fg_color
             } else {
@@ -346,16 +347,20 @@ pub fn legend(
 ) -> Response {
     let muted = ui.visuals().weak_text_color();
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 12.0;
+        ui.set_item_gap_x(Space::Xl);
         for (i, b) in bands.iter().enumerate() {
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.set_item_gap_x(Space::Sm);
                 let (r, _) = ui.allocate_exact_size(Vec2::new(9.0, 9.0), Sense::hover());
                 ui.painter().rect_filled(r, 1.0, b.color);
-                ui.label(RichText::new(&b.name).size(10.0).color(muted));
+                ui.label(
+                    RichText::new(&b.name)
+                        .size(ui.text_size(TextSize::Sm))
+                        .color(muted),
+                );
                 ui.label(
                     RichText::new(format_value(at.get(i).copied().unwrap_or(0)))
-                        .size(10.0)
+                        .size(ui.text_size(TextSize::Sm))
                         .monospace(),
                 );
             });

@@ -8,17 +8,17 @@
 
 use egui_widgets::Breakpoint;
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Breakpoint").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Breakpoint").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "How wide the surface is, as three named sizes rather than a number \
              every call site re-compares. Read from content_rect, so the notch \
              and status bar are already excluded.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -28,7 +28,7 @@ pub fn show(ui: &mut egui::Ui) {
 
     ui.label(
         egui::RichText::new(format!("{width:.0}pt → {}", current.label()))
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(10.0);
@@ -72,14 +72,14 @@ pub fn show(ui: &mut egui::Ui) {
                 .show(ui, |ui| {
                     ui.label("");
                     for h in FIELDS {
-                        ui.label(egui::RichText::new(h).color(TEXT_MUTED).small());
+                        ui.label(egui::RichText::new(h).color(muted(ui)).small());
                     }
                     ui.label("");
                     ui.end_row();
 
                     for (bp, values) in &rows {
                         let is_current = *bp == current;
-                        let colour = if is_current { ACCENT } else { TEXT_MUTED };
+                        let colour = if is_current { accent(ui) } else { muted(ui) };
                         ui.label(egui::RichText::new(bp.label()).color(colour).strong());
                         for v in values {
                             ui.label(egui::RichText::new(v).color(colour).small());
@@ -96,18 +96,22 @@ pub fn show(ui: &mut egui::Ui) {
         egui_widgets::RecordLayout::Cards => {
             for (bp, values) in &rows {
                 let is_current = *bp == current;
-                let colour = if is_current { ACCENT } else { TEXT_MUTED };
+                let colour = if is_current { accent(ui) } else { muted(ui) };
                 egui::Frame::group(ui.style()).show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     ui.horizontal_wrapped(|ui| {
                         ui.label(egui::RichText::new(bp.label()).color(colour).strong());
                         if is_current {
-                            ui.label(egui::RichText::new("you are here").color(ACCENT).small());
+                            ui.label(
+                                egui::RichText::new("you are here")
+                                    .color(accent(ui))
+                                    .small(),
+                            );
                         }
                     });
                     for (field, value) in FIELDS.iter().zip(values) {
                         ui.horizontal_wrapped(|ui| {
-                            ui.label(egui::RichText::new(*field).color(TEXT_MUTED).small());
+                            ui.label(egui::RichText::new(*field).color(muted(ui)).small());
                             ui.label(egui::RichText::new(value).color(colour).small());
                         });
                     }
@@ -124,7 +128,7 @@ pub fn show(ui: &mut egui::Ui) {
              being possible. The number follows the decision it exists to make, \
              not a device.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -135,7 +139,7 @@ pub fn show(ui: &mut egui::Ui) {
              grouped with Wide is visible here rather than re-decided (and \
              silently forgotten) at each use.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 }

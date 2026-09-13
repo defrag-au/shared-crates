@@ -51,9 +51,9 @@
 //! the viewpoint is an enum rather than a flag — a `Pair` has no verb slot to
 //! fill, so nothing here can claim a policy bought something.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::chip::ChipVariant;
-use egui_widgets::image_loader::{iiif_asset_url, AssetImageSize};
+use egui_widgets::image_loader::{AssetImageSize, iiif_asset_url};
 use egui_widgets::party_badge::PartyBasis;
 use egui_widgets::{
     Tone, TxArt, TxCard, TxCardData, TxDensity, TxHeadline, TxParty, TxPrint, TxVerb, TxViewpoint,
@@ -93,20 +93,20 @@ pub struct TxCardState {
 pub fn show(ui: &mut egui::Ui, state: &mut TxCardState) {
     let density = state.density.get_or_insert(TxDensity::Feature);
 
-    ui.label(egui::RichText::new("Tx Card").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Tx Card").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "One transaction as a VERDICT — what it was, who it was between, and the one figure \
              that says it. The feed row this replaces led with the wallet's net; the social card \
              for the same transaction leads with the price. This is the card's ranking, in the app.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(10.0);
 
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Density").color(TEXT_MUTED).small());
+        ui.label(egui::RichText::new("Density").color(muted(ui)).small());
         for d in TxDensity::ALL {
             if ui.selectable_label(*density == d, d.label()).clicked() {
                 *density = d;
@@ -116,13 +116,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxCardState) {
         ui.checkbox(&mut state.walking, "walk in flight");
         ui.label(
             egui::RichText::new("— changes what a below-floor source says")
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .small(),
         );
     });
     ui.add_space(4.0);
     if let Some(action) = &state.last_action {
-        ui.label(egui::RichText::new(action).color(ACCENT).small());
+        ui.label(egui::RichText::new(action).color(accent(ui)).small());
     }
     ui.add_space(12.0);
 
@@ -319,8 +319,13 @@ fn card(ui: &mut egui::Ui, data: &TxCardData<'_>, d: TxDensity, walking: bool) -
 
 fn section(ui: &mut egui::Ui, title: &str, why: &str) {
     ui.add_space(6.0);
-    ui.label(egui::RichText::new(title).color(ACCENT).small().strong());
-    ui.label(egui::RichText::new(why).color(TEXT_MUTED).small());
+    ui.label(
+        egui::RichText::new(title)
+            .color(accent(ui))
+            .small()
+            .strong(),
+    );
+    ui.label(egui::RichText::new(why).color(muted(ui)).small());
     ui.add_space(6.0);
 }
 

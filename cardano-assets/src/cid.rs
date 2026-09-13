@@ -49,26 +49,26 @@ impl AssetMetadata {
         let mut seen = HashSet::new();
         let mut out = Vec::new();
 
-        if let Some(cid) = cid_from_url(&image.dechunked()) {
-            if seen.insert(cid.clone()) {
-                out.push(ExtractedCid {
-                    cid,
-                    role: CidRole::Image,
-                    media_type: None,
-                });
-            }
+        if let Some(cid) = cid_from_url(&image.dechunked())
+            && seen.insert(cid.clone())
+        {
+            out.push(ExtractedCid {
+                cid,
+                role: CidRole::Image,
+                media_type: None,
+            });
         }
 
         if let Some(files) = files {
             for file in files {
-                if let Some(cid) = cid_from_url(&file.get_src()) {
-                    if seen.insert(cid.clone()) {
-                        out.push(ExtractedCid {
-                            cid,
-                            role: CidRole::File,
-                            media_type: Some(file.media_type().to_owned()),
-                        });
-                    }
+                if let Some(cid) = cid_from_url(&file.get_src())
+                    && seen.insert(cid.clone())
+                {
+                    out.push(ExtractedCid {
+                        cid,
+                        role: CidRole::File,
+                        media_type: Some(file.media_type().to_owned()),
+                    });
                 }
             }
         }

@@ -16,29 +16,19 @@
 //! What to look for: does motion + linkage make it stop feeling flat? If yes,
 //! the framework was never the problem. If no, that is evidence for D3.
 
-use crate::stories::capital_flow::{ada, arrivals, events, month, moves, RAISED};
-use crate::TEXT_MUTED;
+use crate::muted;
+use crate::stories::capital_flow::{RAISED, ada, arrivals, events, month, moves};
 use egui_widgets::{
-    capital_bands, format_date, AliasIndex, CapitalFlow, HolderField, MarkKind, PartyFinder,
-    PartyFinderState, Selection, SpineState, TimeSpine, WalletIdentity,
+    AliasIndex, CapitalFlow, HolderField, MarkKind, PartyFinder, PartyFinderState, Selection,
+    SpineState, TimeSpine, WalletIdentity, capital_bands, format_date,
 };
 
+#[derive(Default)]
 pub struct TimeSpineState {
     spine: Option<SpineState>,
     selection: Selection,
     finder: PartyFinderState,
     aliases: Option<AliasIndex>,
-}
-
-impl Default for TimeSpineState {
-    fn default() -> Self {
-        Self {
-            spine: None,
-            selection: Selection::default(),
-            finder: PartyFinderState::default(),
-            aliases: None,
-        }
-    }
 }
 
 /// Every holder in the fixture, with the identifiers a real wallet carries:
@@ -106,7 +96,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineState) {
              brush a range; press play. Hover a pile.",
         )
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(6.0);
 
@@ -256,6 +246,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut TimeSpineState) {
             }
         ))
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
 }

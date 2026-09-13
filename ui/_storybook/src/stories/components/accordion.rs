@@ -1,6 +1,6 @@
 //! Accordion component story
 
-use crate::stories::helpers::{resolve_iiif_image, AttributeCard};
+use crate::stories::helpers::{AttributeCard, resolve_iiif_image};
 use cardano_assets::AssetId;
 use leptos::prelude::*;
 use ui_components::{Accordion, AccordionItem};

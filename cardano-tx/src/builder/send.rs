@@ -110,7 +110,7 @@ pub fn build_send_max(deps: &TxDeps, to_addr: &Address) -> Result<UnsignedTx, Tx
             let min_ada = crate::calculate_min_ada_with_params(
                 &to_maestro_params(&deps.params),
                 &held,
-                &crate::OutputParams { datum_size: None },
+                &crate::OutputParams::default(),
             );
             total_reserved_for_assets += min_ada;
             utxo_min_ada.push((utxo, min_ada));
@@ -204,7 +204,7 @@ pub fn build_send_assets(
     let min_ada_for_assets = crate::calculate_min_ada_with_params(
         &to_maestro_params(&deps.params),
         &sent_amounts,
-        &crate::OutputParams { datum_size: None },
+        &crate::OutputParams::default(),
     );
 
     // 4. Build recipient output with assets
@@ -218,7 +218,7 @@ pub fn build_send_assets(
     let mut min_ada_for_change = crate::calculate_min_ada_with_params(
         &to_maestro_params(&deps.params),
         &change_assets,
-        &crate::OutputParams { datum_size: None },
+        &crate::OutputParams::default(),
     );
 
     // 7. Rough fee estimate
@@ -247,7 +247,7 @@ pub fn build_send_assets(
         min_ada_for_change = crate::calculate_min_ada_with_params(
             &to_maestro_params(&deps.params),
             &new_change_assets,
-            &crate::OutputParams { datum_size: None },
+            &crate::OutputParams::default(),
         );
     }
 
@@ -334,7 +334,7 @@ pub fn build_consolidate(deps: &TxDeps, max_inputs: u32) -> Result<UnsignedTx, T
         crate::calculate_min_ada_with_params(
             &to_maestro_params(&deps.params),
             &packed,
-            &crate::OutputParams { datum_size: None },
+            &crate::OutputParams::default(),
         )
     } else {
         0

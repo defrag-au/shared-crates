@@ -1,4 +1,4 @@
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// Mutable state for the seven-segment demo.
 pub struct SevenSegmentState {
@@ -21,12 +21,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     // --- Basic display ---
     ui.label(
         egui::RichText::new("Integer Counter")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Clean seven-segment digits for point counters and holder counts")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(8.0);
@@ -36,49 +36,61 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     ui.add_space(16.0);
 
     // --- Time display ---
-    ui.label(egui::RichText::new("Time Display").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Time Display")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new("Colon separator for countdown timers and durations")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
 
     egui_widgets::SevenSegmentDisplay::new("23:59:48")
-        .color(egui_widgets::theme::ACCENT_CYAN)
+        .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
         .digit_height(36.0)
         .show(ui);
 
     ui.add_space(16.0);
 
     // --- Color variants ---
-    ui.label(egui::RichText::new("Color Variants").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Color Variants")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.add_space(4.0);
 
     egui_widgets::SevenSegmentDisplay::new("1247")
-        .color(egui_widgets::theme::SUCCESS)
+        .color(crate::tok(ui, egui_widgets::theme::Token::Success))
         .digit_height(36.0)
         .show(ui);
     ui.add_space(8.0);
 
     egui_widgets::SevenSegmentDisplay::new("88888")
-        .color(egui_widgets::theme::WARNING)
+        .color(crate::tok(ui, egui_widgets::theme::Token::Warning))
         .digit_height(36.0)
         .show(ui);
     ui.add_space(8.0);
 
     egui_widgets::SevenSegmentDisplay::new("-42")
-        .color(egui_widgets::theme::ERROR)
+        .color(crate::tok(ui, egui_widgets::theme::Token::Error))
         .digit_height(36.0)
         .show(ui);
 
     ui.add_space(16.0);
 
     // --- Animated counter ---
-    ui.label(egui::RichText::new("Live Counter").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Live Counter")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new("Simulates accrual ticking up at 5.2 per second")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -110,7 +122,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
 
     let display_text = format!("{}", state.counter_value);
     egui_widgets::SevenSegmentDisplay::new(&display_text)
-        .color(egui_widgets::theme::ACCENT_CYAN)
+        .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
         .digit_height(48.0)
         .show(ui);
 
@@ -119,13 +131,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     // --- Large scoreboard ---
     ui.label(
         egui::RichText::new("Large Scoreboard")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
 
     egui_widgets::SevenSegmentDisplay::new("1247")
-        .color(egui_widgets::theme::SUCCESS)
+        .color(crate::tok(ui, egui_widgets::theme::Token::Success))
         .digit_height(64.0)
         .show(ui);
 
@@ -133,7 +145,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut SevenSegmentState) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("- Digits 0-9 render with correct segments lit");
     ui.label("- Colons render as two stacked square dots");
     ui.label("- Minus sign renders as middle segment only");

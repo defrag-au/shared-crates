@@ -50,6 +50,14 @@ pub struct TxBuilder {
     collateral: Option<CollateralConfig>,
     /// Track highest Plutus version used (for cost model selection)
     max_script_kind: Option<ScriptKind>,
+    /// Native scripts witnessing inputs at native-script addresses.
+    ///
+    /// Nothing like a Plutus script: no redeemer, no execution units, no
+    /// collateral, and it is not "run" — the ledger simply checks the required
+    /// signatures are present. The motivating case is a UTxO parked at a
+    /// "these keys may spend" address so a wallet's coin selection cannot
+    /// reach it.
+    native_scripts: Vec<Vec<u8>>,
     /// Track UTxO refs already added as inputs (tx_hash, output_index) to avoid double-spend.
     used_input_refs: HashSet<(String, u32)>,
     /// Sum of lovelace from explicitly added inputs (for coin selection).
@@ -70,9 +78,27 @@ impl TxBuilder {
             auxiliary_data: None,
             collateral: None,
             max_script_kind: None,
+            native_scripts: Vec::new(),
             used_input_refs: HashSet::new(),
             input_lovelace: 0,
         }
+    }
+
+    /// Witness an input held at a native-script address.
+    ///
+    /// Add the UTxO with [`Self::input`] as usual — a native-script input is
+    /// an ordinary input as far as balancing goes — then hand the script's
+    /// bytes here so they land in the witness set. Also declare whichever
+    /// signers the script requires with [`Self::with_signer`], or the ledger
+    /// has no signature to check it against.
+    ///
+    /// Deliberately NOT `spend_script_utxo`: that path builds a redeemer and
+    /// execution units, and a native script has neither.
+    pub fn native_script(mut self, script_bytes: Vec<u8>) -> Self {
+        if !self.native_scripts.contains(&script_bytes) {
+            self.native_scripts.push(script_bytes);
+        }
+        self
     }
 
     // --- Inputs ---
@@ -154,6 +180,19 @@ impl TxBuilder {
         self
     }
 
+    /// How many outputs are already staged — the index the NEXT output will
+    /// get. A validator that locates its outputs by index (the jpg-style
+    /// buy's settlement blocks) needs this when it is not the first thing in
+    /// the transaction.
+    pub fn output_count(&self) -> usize {
+        self.outputs.len()
+    }
+
+    /// True once any Plutus script input or mint has been staged.
+    pub fn has_scripts(&self) -> bool {
+        self.max_script_kind.is_some()
+    }
+
     // --- Minting ---
 
     /// Add a minting operation.
@@ -166,8 +205,14 @@ impl TxBuilder {
     // --- Signing & Validity ---
 
     /// Require a specific signer (disclosed signer / required signer).
+    ///
+    /// Idempotent: several parts of one transaction may each demand the same
+    /// key (two cancels by one owner), and the body's required-signer set
+    /// must carry it once.
     pub fn with_signer(mut self, pkh: Hash<28>) -> Self {
-        self.required_signers.push(pkh);
+        if !self.required_signers.contains(&pkh) {
+            self.required_signers.push(pkh);
+        }
         self
     }
 
@@ -417,6 +462,7 @@ impl TxBuilder {
             auxiliary_data: self.auxiliary_data,
             collateral_input,
             max_script_kind: self.max_script_kind,
+            native_scripts: self.native_scripts,
             network_id: self.deps.network_id,
             change_address: self.deps.from_address,
             params: self.deps.params,
@@ -469,6 +515,7 @@ struct PreparedTx {
     auxiliary_data: Option<Vec<u8>>,
     collateral_input: Option<Input>,
     max_script_kind: Option<ScriptKind>,
+    native_scripts: Vec<Vec<u8>>,
     network_id: u8,
     change_address: Address,
     params: crate::params::TxBuildParams,
@@ -525,6 +572,7 @@ impl PreparedTx {
                     &self.auxiliary_data,
                     &self.collateral_input,
                     self.max_script_kind,
+                    &self.native_scripts,
                     self.network_id,
                     effective_fee,
                     &self.params.cost_models,
@@ -557,12 +605,20 @@ fn assemble_tx(
     auxiliary_data: &Option<Vec<u8>>,
     collateral_input: &Option<Input>,
     max_script_kind: Option<ScriptKind>,
+    native_scripts: &[Vec<u8>],
     network_id: u8,
     fee: u64,
     cost_models: &super::cost_models::PlutusCostModels,
 ) -> Result<StagingTransaction, TxBuildError> {
     let mut tx = StagingTransaction::new();
     let mut wanted_refs: Vec<Input> = Vec::new();
+
+    // Native-script witnesses. No redeemer and no execution units — the
+    // ledger checks the required signatures rather than running anything, so
+    // these do not touch the cost models or collateral.
+    for script in native_scripts {
+        tx = tx.script(ScriptKind::Native, script.clone());
+    }
 
     // 1. Inputs + script context
     for (input, script_ctx) in inputs {
@@ -645,9 +701,14 @@ fn assemble_tx(
         }
     }
 
-    // 5. Required signers
+    // 5. Required signers — DEDUPLICATED, for the same reason as the
+    // reference inputs: Conway encodes them as a `set`, and one owner
+    // cancelling two listings in one transaction asks for their key twice.
+    let mut disclosed: HashSet<[u8; 28]> = HashSet::new();
     for pkh in required_signers {
-        tx = tx.disclosed_signer(*pkh);
+        if disclosed.insert(**pkh) {
+            tx = tx.disclosed_signer(*pkh);
+        }
     }
 
     // 6. Validity interval
@@ -719,7 +780,10 @@ fn with_budget_margin(units: ExUnits) -> ExUnits {
 fn spend_redeemer_index(all_refs: &[(Vec<u8>, u64)], script_ref: &(Vec<u8>, u64)) -> Option<u64> {
     let mut sorted = all_refs.to_vec();
     sorted.sort();
-    sorted.iter().position(|r| r == script_ref).map(|p| p as u64)
+    sorted
+        .iter()
+        .position(|r| r == script_ref)
+        .map(|p| p as u64)
 }
 
 /// Return the "higher" Plutus version (V3 > V2 > V1).
@@ -784,6 +848,66 @@ mod tests {
         let unsigned = result.unwrap();
         assert!(unsigned.fee > 0);
         assert!(unsigned.fee < 1_000_000);
+    }
+
+    /// A native script rides in the witness set, and nothing else changes.
+    ///
+    /// It is not a Plutus script: no redeemer, no execution units, and — the
+    /// part that matters — **it must not make the transaction look like it
+    /// needs collateral**. Demanding a collateral UTxO for a transaction that
+    /// runs no Plutus would refuse builds that are perfectly valid.
+    #[test]
+    fn a_native_script_witnesses_without_demanding_collateral() {
+        let deps = test_deps();
+        let to_addr = deps.from_address.clone();
+        let input_utxo = deps.utxos[0].clone();
+        // `ScriptAny [ScriptPubkey h]` — "this key may spend", the shape a
+        // depot address uses.
+        let script_bytes = vec![0x82, 0x01, 0x81, 0x82, 0x00, 0x41, 0xab];
+
+        let builder = TxBuilder::new(deps)
+            .input(&input_utxo)
+            .unwrap()
+            .native_script(script_bytes.clone())
+            .pay_to(&to_addr, 2_000_000);
+
+        assert!(
+            !builder.has_scripts(),
+            "a native script is not a Plutus script and needs no collateral"
+        );
+
+        let unsigned = builder.build().expect("build");
+        let scripts = unsigned.staging.scripts.as_ref().expect("witness set");
+        assert!(
+            scripts.values().any(|s| s.bytes.as_ref() == script_bytes),
+            "the native script did not reach the witness set"
+        );
+    }
+
+    /// The same script handed over twice is one witness, not two. Duplicates
+    /// inflate the transaction and, past the size cap, break it.
+    #[test]
+    fn a_native_script_is_not_witnessed_twice() {
+        let deps = test_deps();
+        let input_utxo = deps.utxos[0].clone();
+        let script_bytes = vec![0x82, 0x01, 0x81, 0x82, 0x00, 0x41, 0xab];
+
+        let unsigned = TxBuilder::new(deps)
+            .input(&input_utxo)
+            .unwrap()
+            .native_script(script_bytes.clone())
+            .native_script(script_bytes.clone())
+            .build()
+            .expect("build");
+
+        let scripts = unsigned.staging.scripts.as_ref().expect("witness set");
+        assert_eq!(
+            scripts
+                .values()
+                .filter(|s| s.bytes.as_ref() == script_bytes)
+                .count(),
+            1
+        );
     }
 
     /// Σ inputs must equal Σ outputs + staged fee — the balance invariant.
@@ -975,6 +1099,7 @@ mod tests {
             &None,
             &None,
             Some(ScriptKind::PlutusV2),
+            &[],
             1,
             200_000,
             &crate::builder::cost_models::PlutusCostModels::EMPTY,
@@ -988,6 +1113,59 @@ mod tests {
             "three requests for one reference script must collapse to a single \
              reference input; got {refs}, which the ledger rejects as a duplicate set entry"
         );
+    }
+
+    /// One owner cancelling two listings in one transaction asks for their
+    /// key twice; the body's required-signer set must carry it once. Conway
+    /// decodes the field as a set and rejects a duplicate entry outright, so
+    /// the transaction never even reaches phase-2 — it fails at evaluate as
+    /// an undecodable body.
+    #[test]
+    fn duplicate_required_signer_is_emitted_once() {
+        use pallas_txbuilder::BuildConway;
+
+        let owner = Hash::from([0x42; 28]);
+        let inputs = vec![(Input::new(Hash::from([0x01; 32]), 0), None)];
+        let tx = assemble_tx(
+            &inputs,
+            &[],
+            &[],
+            &[],
+            &[owner, owner],
+            &ValidityInterval::default(),
+            &None,
+            &None,
+            None,
+            &[],
+            1,
+            200_000,
+            &crate::builder::cost_models::PlutusCostModels::EMPTY,
+        )
+        .expect("assembles");
+
+        let built = tx.build_conway_raw().expect("serialises");
+        let signers = count_required_signers(&built.tx_bytes.0);
+        assert_eq!(
+            signers, 1,
+            "two requests for one signer must collapse to a single required signer; \
+             got {signers}, which the ledger rejects as a duplicate set entry"
+        );
+
+        // And the fluent entry point refuses the duplicate before assembly.
+        let builder = TxBuilder::new(test_deps())
+            .with_signer(owner)
+            .with_signer(owner);
+        assert_eq!(builder.required_signers.len(), 1);
+    }
+
+    /// Count required signers (body key 14) in a serialised tx.
+    fn count_required_signers(cbor: &[u8]) -> usize {
+        use pallas_traverse::MultiEraTx;
+        let tx = MultiEraTx::decode(cbor).expect("tx decodes");
+        tx.required_signers()
+            .as_alonzo()
+            .map(|s| s.len())
+            .unwrap_or(0)
     }
 
     /// Count reference inputs (body key 18) in a serialised tx.

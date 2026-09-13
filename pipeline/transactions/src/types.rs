@@ -259,20 +259,20 @@ impl TxDatum {
             pallas_primitives::alonzo::PlutusData::Map(map) => {
                 for (key, val) in map.iter() {
                     // Check if the key is a policy ID (28 bytes = 56 hex chars)
-                    if let pallas_primitives::alonzo::PlutusData::BoundedBytes(key_bytes) = key {
-                        if key_bytes.len() == 28 {
-                            let policy_id = hex::encode(key_bytes.as_slice());
-                            // Extract asset names from the constructor structure
-                            let asset_names = Self::extract_asset_names_from_constructor(val);
+                    if let pallas_primitives::alonzo::PlutusData::BoundedBytes(key_bytes) = key
+                        && key_bytes.len() == 28
+                    {
+                        let policy_id = hex::encode(key_bytes.as_slice());
+                        // Extract asset names from the constructor structure
+                        let asset_names = Self::extract_asset_names_from_constructor(val);
 
-                            if asset_names.is_empty() {
-                                // Collection offer - no specific asset
-                                policy_assets.push((policy_id, None));
-                            } else {
-                                // Specific asset offers
-                                for asset_name in asset_names {
-                                    policy_assets.push((policy_id.clone(), Some(asset_name)));
-                                }
+                        if asset_names.is_empty() {
+                            // Collection offer - no specific asset
+                            policy_assets.push((policy_id, None));
+                        } else {
+                            // Specific asset offers
+                            for asset_name in asset_names {
+                                policy_assets.push((policy_id.clone(), Some(asset_name)));
                             }
                         }
                     }

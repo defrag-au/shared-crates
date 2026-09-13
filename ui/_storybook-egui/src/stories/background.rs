@@ -9,20 +9,23 @@
 //! The live half underneath lets you start and stop real work and watch the
 //! toasts follow.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui::RichText;
 use egui_widgets::background::{BackgroundToasts, Job};
-use egui_widgets::theme;
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(RichText::new("Background Toasts").color(ACCENT).strong());
+    ui.label(
+        RichText::new("Background Toasts")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         RichText::new(
             "Declare which jobs are running; the toasts follow. Owns the settle delay (so quick \
              work finishes silently), the quiet dismissal (finishing is not news), and the \
              repaint scheduling that makes the delay mean something on an idle surface.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -30,7 +33,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── The decision table ─────────────────────────────────────────────
     ui.label(
         RichText::new("What it decides, over time")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -39,7 +42,7 @@ pub fn show(ui: &mut egui::Ui) {
              version always forgets: during the delay no toast exists, so nothing is asking for \
              frames, and the notice lands whenever the host next happens to redraw.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);
@@ -59,7 +62,7 @@ pub fn show(ui: &mut egui::Ui) {
         .striped(true)
         .show(ui, |ui| {
             for h in ["t", "running", "show", "dismiss", "wake_after"] {
-                ui.label(RichText::new(h).color(TEXT_MUTED).small());
+                ui.label(RichText::new(h).color(muted(ui)).small());
             }
             ui.end_row();
 
@@ -70,20 +73,20 @@ pub fn show(ui: &mut egui::Ui) {
                     Vec::new()
                 };
                 let plan = bg.plan(t, &jobs);
-                ui.label(RichText::new(format!("{t:.1}s")).color(theme::TEXT_SECONDARY));
+                ui.label(RichText::new(format!("{t:.1}s")).color(crate::secondary(ui)));
                 ui.label(
                     RichText::new(if running { note } else { "—" })
-                        .color(theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .small(),
                 );
-                ui.label(mark(!plan.show.is_empty()));
-                ui.label(mark(!plan.dismiss.is_empty()));
+                ui.label(mark(ui, !plan.show.is_empty()));
+                ui.label(mark(ui, !plan.dismiss.is_empty()));
                 ui.label(
                     RichText::new(match plan.wake_after {
                         Some(w) => format!("{w:.2}s"),
                         None => "—".into(),
                     })
-                    .color(theme::TEXT_SECONDARY)
+                    .color(crate::secondary(ui))
                     .small(),
                 );
                 ui.end_row();
@@ -93,13 +96,13 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // ── Live ───────────────────────────────────────────────────────────
-    ui.label(RichText::new("Live").color(ACCENT).strong());
+    ui.label(RichText::new("Live").color(accent(ui)).strong());
     ui.label(
         RichText::new(
             "Toggle work on and off. The quick one finishes inside the delay and is never \
              announced — which is the point, not a bug.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);
@@ -150,10 +153,12 @@ pub fn show(ui: &mut egui::Ui) {
     ui.data_mut(|d| d.insert_temp(id.with("toasts"), queue));
 }
 
-fn mark(on: bool) -> RichText {
+/// Takes `ui` because both colours are the theme's now — a free function with
+/// no `Ui` had nothing to ask.
+fn mark(ui: &egui::Ui, on: bool) -> RichText {
     if on {
-        RichText::new("●").color(theme::SUCCESS)
+        RichText::new("●").color(egui_widgets::theme::ThemeExt::tokens(ui).color.success)
     } else {
-        RichText::new("·").color(theme::TEXT_MUTED)
+        RichText::new("·").color(muted(ui))
     }
 }

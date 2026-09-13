@@ -2,13 +2,16 @@
 name = "render-protocol"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Wire protocol for asking a graphics service to render markup to an image"
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 # `cip14` gates the CIP-14 `Fingerprint` type — the whole point of `asset://`.
 cardano-assets = { path = "../../cardano-assets", features = ["cip14"] }
+# For the warm pixel widths only. Dependency-free by design, so a wire-protocol
+# crate can carry it without dragging in a runtime.
+image-core = { path = "../../ui/image-core" }
 
 [dev-dependencies]
 serde_json = { workspace = true }

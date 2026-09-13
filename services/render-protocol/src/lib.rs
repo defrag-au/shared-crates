@@ -204,7 +204,12 @@ impl fmt::Display for AssetUriError {
             Self::MissingSize => f.write_str("expected `asset://{fingerprint}/{size}`"),
             Self::InvalidFingerprint => f.write_str("not a CIP-14 fingerprint"),
             Self::UnsupportedSize(s) => {
-                write!(f, "unsupported size `{s}`: expected 400 or 1646")
+                write!(
+                    f,
+                    "unsupported size `{s}`: expected {} or {}",
+                    ImageSize::Thumb.pixels(),
+                    ImageSize::Full.pixels()
+                )
             }
         }
     }
@@ -395,7 +400,7 @@ impl FromStr for R2Uri {
 ///
 /// `asset://` carries one because a resizer stands behind it. A registry logo
 /// is a single bitmap at whatever size the project uploaded — usually 64–256px
-/// — and nothing resizes it. Asking for `/1646` would be a request the
+/// — and nothing resizes it. Asking for `/1686` would be a request the
 /// renderer could only ignore, so the shape does not offer it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TokenUri {
@@ -512,20 +517,31 @@ impl FromStr for LogoUri {
 /// these two. That is exactly the kind of cost that never surfaces as a failure
 /// and so never gets noticed; restricting the type makes it a deliberate choice
 /// to add a width rather than an accident.
+///
+/// This is the *wire* form — it needs serde, which [`image_core::ImageSize`]
+/// deliberately cannot have. The pixel widths themselves are not restated
+/// here; [`ImageSize::pixels`] delegates, so there is still exactly one place
+/// in the estate that decides what a warm width is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ImageSize {
-    /// 400px — thumbnails, grid cells, composites.
+    /// Thumbnails, grid cells, composites.
     Thumb,
-    /// 1646px — full-size single-asset display.
+    /// Full-size single-asset display.
     Full,
 }
 
 impl ImageSize {
     pub fn pixels(self) -> u32 {
-        match self {
-            Self::Thumb => 400,
-            Self::Full => 1646,
+        image_core::ImageSize::from(self).px()
+    }
+}
+
+impl From<ImageSize> for image_core::ImageSize {
+    fn from(size: ImageSize) -> Self {
+        match size {
+            ImageSize::Thumb => image_core::ImageSize::Thumb,
+            ImageSize::Full => image_core::ImageSize::Full,
         }
     }
 }
@@ -534,9 +550,19 @@ impl FromStr for ImageSize {
     type Err = AssetUriError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // The numeric forms are matched against the live widths rather than
+        // written out, so this cannot drift from `pixels()` the way a literal
+        // would. `1646` is accepted as a legacy alias for `Full`: it was a
+        // misremembering of 1686 that was canonical here long enough to have
+        // been emitted into `asset://` URIs, and rejecting it now would break
+        // them for no gain.
+        const LEGACY_FULL: &str = "1646";
+
         match s {
-            "400" | "thumb" => Ok(Self::Thumb),
-            "1646" | "full" => Ok(Self::Full),
+            "thumb" => Ok(Self::Thumb),
+            "full" | LEGACY_FULL => Ok(Self::Full),
+            numeric if numeric == Self::Thumb.pixels().to_string() => Ok(Self::Thumb),
+            numeric if numeric == Self::Full.pixels().to_string() => Ok(Self::Full),
             other => Err(AssetUriError::UnsupportedSize(other.to_string())),
         }
     }
@@ -550,6 +576,30 @@ mod tests {
     /// an invented one would fail for the wrong reason. From the CIP-14 test
     /// vectors in `cardano-assets`.
     const FP: &str = "asset1rjklcrnsdzqp65wjgrg55sy9723kw09mlgvlc3";
+
+    /// The widths come from `image_core`, which checks the iiif worker. This
+    /// crate must not grow its own opinion of them again.
+    #[test]
+    fn warm_widths_are_whatever_image_core_says() {
+        assert_eq!(ImageSize::Thumb.pixels(), image_core::ImageSize::Thumb.px());
+        assert_eq!(ImageSize::Full.pixels(), image_core::ImageSize::Full.px());
+        assert_eq!(ImageSize::Full.pixels(), 1686);
+    }
+
+    /// `1646` was canonical here long enough to have been emitted into
+    /// `asset://` URIs before it was identified as a misremembering of 1686.
+    /// Those URIs must keep resolving.
+    #[test]
+    fn the_legacy_full_width_still_parses() {
+        assert_eq!("1646".parse::<ImageSize>().unwrap(), ImageSize::Full);
+        assert_eq!("1686".parse::<ImageSize>().unwrap(), ImageSize::Full);
+        assert_eq!("full".parse::<ImageSize>().unwrap(), ImageSize::Full);
+        assert_eq!("400".parse::<ImageSize>().unwrap(), ImageSize::Thumb);
+        assert_eq!("thumb".parse::<ImageSize>().unwrap(), ImageSize::Thumb);
+
+        // Still not a free-for-all — that is the point of the enum.
+        assert!("1200".parse::<ImageSize>().is_err());
+    }
 
     #[test]
     fn asset_uri_round_trips() {
@@ -669,13 +719,17 @@ mod policy_asset_tests {
     /// Both halves become URL path segments, so non-hex must not parse.
     #[test]
     fn non_hex_identifiers_are_rejected() {
-        assert!(format!("asset://{POLICY}:../../etc/x/400")
-            .parse::<AssetUri>()
-            .is_err());
+        assert!(
+            format!("asset://{POLICY}:../../etc/x/400")
+                .parse::<AssetUri>()
+                .is_err()
+        );
         assert!("asset://short:abcd/400".parse::<AssetUri>().is_err());
-        assert!(format!("asset://{POLICY}:zzzz/400")
-            .parse::<AssetUri>()
-            .is_err());
+        assert!(
+            format!("asset://{POLICY}:zzzz/400")
+                .parse::<AssetUri>()
+                .is_err()
+        );
     }
 
     #[test]
@@ -724,9 +778,11 @@ mod r2_tests {
     /// confusion worth catching at parse rather than as a failed lookup.
     #[test]
     fn a_bucket_name_is_not_a_binding_name() {
-        assert!(format!("r2://augminted-dev/{KEY}")
-            .parse::<R2Uri>()
-            .is_err());
+        assert!(
+            format!("r2://augminted-dev/{KEY}")
+                .parse::<R2Uri>()
+                .is_err()
+        );
     }
 
     #[test]
@@ -786,9 +842,11 @@ mod token_tests {
             .unwrap();
         assert_eq!(uri.asset_name_hex, ALIENS_NAME);
         // `/400` appended is read as part of the name, which is not hex.
-        assert!(format!("token://{ALIENS_POLICY}/{ALIENS_NAME}/400")
-            .parse::<TokenUri>()
-            .is_err());
+        assert!(
+            format!("token://{ALIENS_POLICY}/{ALIENS_NAME}/400")
+                .parse::<TokenUri>()
+                .is_err()
+        );
     }
 
     #[test]

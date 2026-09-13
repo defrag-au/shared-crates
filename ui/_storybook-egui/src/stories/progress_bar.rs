@@ -1,4 +1,6 @@
-use crate::{ACCENT, TEXT_MUTED};
+use egui_widgets::slider_group::{Fader, SliderGroup};
+
+use crate::{accent, muted};
 
 /// Mutable state for the interactive progress bar demo.
 pub struct ProgressBarState {
@@ -23,17 +25,21 @@ pub fn show(ui: &mut egui::Ui, state: &mut ProgressBarState) {
     // --- Basic progress bar ---
     ui.label(
         egui::RichText::new("Basic Progress Bar")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Drag the slider to change progress")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
 
-    ui.add(egui::Slider::new(&mut state.fraction, 0.0..=1.0).text("fraction"));
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .fader(Fader::new("fraction", &mut state.fraction, 0.0..=1.0).decimals(2))
+            .show(ui);
+    });
     ui.add_space(8.0);
 
     egui_widgets::ProgressBar::new(state.fraction)
@@ -46,7 +52,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ProgressBarState) {
     // --- With percentage overlay ---
     ui.label(
         egui::RichText::new("With Percentage Overlay")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -61,12 +67,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut ProgressBarState) {
     // --- Countdown style ---
     ui.label(
         egui::RichText::new("Countdown Timer")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Simulates a buff expiry countdown")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -97,33 +103,37 @@ pub fn show(ui: &mut egui::Ui, state: &mut ProgressBarState) {
     egui_widgets::ProgressBar::countdown(state.countdown_elapsed, state.countdown_total)
         .label("speed_boost")
         .detail(format!("{remaining_text} remaining"))
-        .fill_color(egui_widgets::theme::WARNING)
+        .fill_color(crate::tok(ui, egui_widgets::theme::Token::Warning))
         .height(14.0)
         .show(ui);
 
     ui.add_space(16.0);
 
     // --- Color variants ---
-    ui.label(egui::RichText::new("Color Variants").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Color Variants")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.add_space(4.0);
 
     egui_widgets::ProgressBar::new(0.85)
         .label("Health")
-        .fill_color(egui_widgets::theme::SUCCESS)
+        .fill_color(crate::tok(ui, egui_widgets::theme::Token::Success))
         .height(12.0)
         .show(ui);
     ui.add_space(4.0);
 
     egui_widgets::ProgressBar::new(0.35)
         .label("Shield")
-        .fill_color(egui_widgets::theme::ACCENT)
+        .fill_color(crate::accent(ui))
         .height(12.0)
         .show(ui);
     ui.add_space(4.0);
 
     egui_widgets::ProgressBar::new(0.12)
         .label("Danger")
-        .fill_color(egui_widgets::theme::ERROR)
+        .fill_color(crate::tok(ui, egui_widgets::theme::Token::Error))
         .height(12.0)
         .show(ui);
 
@@ -131,7 +141,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut ProgressBarState) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("\u{2022} Drag slider \u{2192} bar updates in real time");
     ui.label("\u{2022} Hover bar \u{2192} tooltip shows percentage");
     ui.label("\u{2022} Countdown: animate \u{2192} fills from right to left");

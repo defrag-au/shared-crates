@@ -44,7 +44,7 @@
 
 use egui::{Align2, Id, Margin, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 use crate::viewport::Breakpoint;
 
 /// Which edge the drawer slides in from.
@@ -161,9 +161,9 @@ impl Drawer {
 
         let margin = Breakpoint::from_ctx(&ctx).gutter();
         let frame = egui::Frame::new()
-            .fill(theme::BG_PRIMARY)
+            .fill(ui.tokens().color.bg_primary)
             .inner_margin(Margin::same(margin as i8))
-            .stroke(egui::Stroke::new(1.0_f32, theme::BORDER));
+            .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border));
 
         // Content height inside the frame's own margins.
         let inner_height = (viewport.height() - margin * 2.0).max(1.0);

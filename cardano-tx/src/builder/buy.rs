@@ -29,6 +29,7 @@
 //! the UTxO is rejected with `NotAllowedSupplementalDatums`. Which applies is
 //! per-listing, carried on [`ParsedListing::datum_is_inline`].
 
+use address_registry::RegistryNetwork;
 use cardano_assets::utxo::UtxoApi;
 use pallas_addresses::Address;
 use pallas_crypto::hash::Hash;
@@ -152,6 +153,36 @@ where
         .await
 }
 
+/// The least a marketplace fee output can carry: the ledger's min-UTxO for
+/// THAT output — a datum-tagged, ADA-only output — or the contract's own
+/// minimum, whichever is higher.
+///
+/// The min-UTxO is where the recurring 1,155,080 comes from (268 bytes ×
+/// 4310); it is not a magic constant and hardcoding it would silently drift
+/// with the protocol parameter. Public because the floor decides what a
+/// buyer pays on a cheap listing, so a seller pricing "what the buyer pays"
+/// needs the same figure the buy will be built with.
+pub fn fee_output_floor(params: &TxBuildParams, fee: &address_registry::MarketplaceFee) -> u64 {
+    // Every datum tag is a 32-byte hash carried as a CBOR byte string —
+    // `58 20` then the digest, 34 bytes on the wire — so a placeholder of
+    // that exact shape sizes the output identically. Sizing it as the bare
+    // 32 bytes once put the floor 2 × coins_per_utxo_byte low, and the node
+    // rejected a real buy with `BabbageOutputTooSmallUTxO` after evaluation
+    // had passed (evaluation never checks min-UTxO).
+    let placeholder = placeholder_datum_tag();
+    let datum_params = crate::utxo::OutputParams::with_datum(&placeholder);
+    crate::utxo::min_ada_with_coefficient(params.coins_per_utxo_byte, &[], &datum_params)
+        .max(fee.minimum_lovelace)
+}
+
+/// A datum tag of the exact wire shape [`fee_output_datum_tag`] produces,
+/// with a zero digest.
+fn placeholder_datum_tag() -> Vec<u8> {
+    let mut cbor = vec![0x58, 0x20];
+    cbor.extend_from_slice(&[0u8; 32]);
+    cbor
+}
+
 /// Total reference-script bytes this buy will be charged for under Conway's
 /// `minFeeRefScriptCoinsPerByte`.
 ///
@@ -161,13 +192,13 @@ where
 /// `ref_script_size` per action-type and buys fell into the `else` branch — is
 /// rejected by the node with `FeeTooSmallUTxO`. Neither figure is checked by
 /// `evaluateTransaction`, so a wrong one survives every dry run.
-fn reference_script_size(listings: &[ParsedListing]) -> u64 {
+pub fn reference_script_size(listings: &[ParsedListing], network: RegistryNetwork) -> u64 {
     let mut counted: Vec<&str> = Vec::new();
     let mut total = 0;
     for listing in listings {
         let hash = listing
             .marketplace_version
-            .script_reference()
+            .script_reference(network)
             .map(|r| r.script_hash)
             .unwrap_or_default();
         if !counted.contains(&hash) {
@@ -179,7 +210,50 @@ fn reference_script_size(listings: &[ParsedListing]) -> u64 {
 }
 
 /// Assemble the buy into a [`TxBuilder`], shared by both entry points.
-fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, TxBuildError> {
+/// A buy as a transaction of its own: a fresh builder over the buyer's
+/// UTxOs, the buys staged, then validity and collateral. Composers that
+/// put a buy beside other work use [`add_buys`] on their own builder.
+pub fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, TxBuildError> {
+    let network = RegistryNetwork::from_network_id(deps.network_id);
+    let mut params = deps.params.clone();
+    params.ref_script_size = reference_script_size(listings, network);
+    let builder = TxBuilder::new(TxDeps {
+        utxos: deps.buyer_utxos.clone(),
+        params,
+        from_address: deps.buyer_address.clone(),
+        network_id: deps.network_id,
+    });
+    let mut builder = add_buys(builder, deps, listings)?;
+
+    if let Some((from, to)) = deps.validity_slots {
+        builder = builder.valid_from(from).valid_to(to);
+    }
+    builder = match &deps.collateral_utxo {
+        Some(utxo) => {
+            let tx_hash = decode_tx_hash(&utxo.tx_hash)?;
+            builder.with_collateral(CollateralConfig::Manual(Input::new(
+                Hash::from(tx_hash),
+                utxo.output_index as u64,
+            )))
+        }
+        None => builder.with_collateral(CollateralConfig::Auto),
+    };
+    Ok(builder)
+}
+
+/// Stage the buys onto `builder`, which may already carry other work.
+///
+/// The settlement blocks are laid out from wherever the builder's outputs
+/// currently end, and each redeemer names that offset — so a buy can follow
+/// other outputs, but nothing may be inserted BEFORE these once staged.
+/// The builder's params must already carry the reference script's size
+/// ([`reference_script_size`]) and the caller sets collateral; both belong
+/// to the transaction, not to one part of it.
+pub fn add_buys(
+    mut builder: TxBuilder,
+    deps: &BuyDeps,
+    listings: &[ParsedListing],
+) -> Result<TxBuilder, TxBuildError> {
     if listings.is_empty() {
         return Err(TxBuildError::BuildFailed(
             "No listings provided".to_string(),
@@ -242,15 +316,8 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
     //
     // Distinct by script hash, since a sweep across one generation reads that
     // validator once no matter how many listings it spends.
-    let mut params = deps.params.clone();
-    params.ref_script_size = reference_script_size(listings);
-
-    let mut builder = TxBuilder::new(TxDeps {
-        utxos: deps.buyer_utxos.clone(),
-        params: params.clone(),
-        from_address: deps.buyer_address.clone(),
-        network_id: deps.network_id,
-    });
+    // Reference UTxOs and fee addresses are per network; the deps say which.
+    let network = RegistryNetwork::from_network_id(deps.network_id);
 
     // Reference inputs are NOT added here: `spend_script_utxo` derives them
     // from `ScriptSource::Reference` and the assembler deduplicates, so a sweep
@@ -267,10 +334,11 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
         .iter()
         .map(|listing| {
             let version = listing.marketplace_version;
-            let script_ref = version.script_reference().ok_or_else(|| {
+            let script_ref = version.script_reference(network).ok_or_else(|| {
                 TxBuildError::BuildFailed(format!(
-                    "No reference script registered for {version:?} — a buy cannot supply the \
-                     validator. Add it to address-registry's `script_reference()`."
+                    "No reference script registered for {version:?} on {network:?} — a buy \
+                     cannot supply the validator. Add it to address-registry's \
+                     `script_reference()`."
                 ))
             })?;
             if !version.buy_supported() {
@@ -292,7 +360,12 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
     // that offset in the redeemer, so the outputs must be placed before the
     // spends can be described. See `build_payout_outputs`.
     let buyer_outputs = build_buyer_asset_outputs(deps, listings)?;
-    let blocks = build_settlement_blocks(listings, buyer_outputs.len(), &deps.params)?;
+    let blocks = build_settlement_blocks(
+        listings,
+        builder.output_count() + buyer_outputs.len(),
+        &deps.params,
+        network,
+    )?;
 
     for (i, listing) in listings.iter().enumerate() {
         let (script_ref, redeemer) = &contracts[i];
@@ -355,21 +428,6 @@ fn prepare_buy(deps: &BuyDeps, listings: &[ParsedListing]) -> Result<TxBuilder, 
     {
         builder = builder.with_signer(Hash::from(extract_payment_key_hash(&deps.buyer_address)?));
     }
-
-    if let Some((from, to)) = deps.validity_slots {
-        builder = builder.valid_from(from).valid_to(to);
-    }
-
-    builder = match &deps.collateral_utxo {
-        Some(utxo) => {
-            let tx_hash = decode_tx_hash(&utxo.tx_hash)?;
-            builder.with_collateral(CollateralConfig::Manual(Input::new(
-                Hash::from(tx_hash),
-                utxo.output_index as u64,
-            )))
-        }
-        None => builder.with_collateral(CollateralConfig::Auto),
-    };
 
     Ok(builder)
 }
@@ -502,6 +560,7 @@ fn build_settlement_blocks(
     listings: &[ParsedListing],
     leading_outputs: usize,
     params: &TxBuildParams,
+    network: RegistryNetwork,
 ) -> Result<Vec<SettlementBlock>, TxBuildError> {
     let mut blocks = Vec::with_capacity(listings.len());
     let mut next = leading_outputs;
@@ -510,24 +569,13 @@ fn build_settlement_blocks(
         let mut outputs = Vec::new();
         let block_start = next;
 
-        if let Some(fee) = listing.marketplace_version.marketplace_fee() {
+        if let Some(fee) = listing.marketplace_version.marketplace_fee(network) {
             let payouts_total: u64 = listing.payouts.iter().map(|p| p.lovelace).sum();
 
             // The fee output must carry the contract's `datum_tag`, which binds
             // it to this exact spend — see `fee_output_datum_tag`.
             let marker = fee_output_datum_tag(listing)?;
-            let datum_params = crate::utxo::OutputParams::with_datum(&marker);
-
-            // The floor is the ledger's min-UTxO for THIS output — with the
-            // datum counted. That is where the recurring 1,155,080 comes from
-            // (268 bytes × 4310); it is not a magic constant, and hardcoding it
-            // would silently drift with the protocol parameter.
-            let floor = crate::utxo::min_ada_with_coefficient(
-                params.coins_per_utxo_byte,
-                &[],
-                &datum_params,
-            )
-            .max(fee.minimum_lovelace);
+            let floor = fee_output_floor(params, &fee);
             let amount = fee.due_on_payouts(payouts_total).max(floor);
 
             let address = Address::from_bech32(fee.address).map_err(|e| {
@@ -665,21 +713,20 @@ mod tests {
         };
 
         assert_eq!(
-            reference_script_size(&[listing(1_000_000)]),
+            reference_script_size(&[listing(1_000_000)], RegistryNetwork::Mainnet),
             1673,
             "a single V2 buy bills the validator once"
         );
         assert_eq!(
-            reference_script_size(&[
-                listing(1_000_000),
-                listing(2_000_000),
-                listing(3_000_000)
-            ]),
+            reference_script_size(
+                &[listing(1_000_000), listing(2_000_000), listing(3_000_000)],
+                RegistryNetwork::Mainnet
+            ),
             1673,
             "a 3-listing sweep reads ONE validator, so it bills 1673 — not 3×"
         );
         assert_eq!(
-            reference_script_size(&[]),
+            reference_script_size(&[], RegistryNetwork::Mainnet),
             0,
             "no listings, nothing referenced"
         );
@@ -714,10 +761,13 @@ mod tests {
 
         // Real sizes from Koios: V1's script is 2561 B, V2/V3's is 1673 B.
         assert_eq!(
-            reference_script_size(&[
-                listing(MarketplaceType::JpgStoreV1, 2561),
-                listing(MarketplaceType::JpgStoreV2, 1673),
-            ]),
+            reference_script_size(
+                &[
+                    listing(MarketplaceType::JpgStoreV1, 2561),
+                    listing(MarketplaceType::JpgStoreV2, 1673),
+                ],
+                RegistryNetwork::Mainnet
+            ),
             2561 + 1673,
         );
     }
@@ -770,7 +820,13 @@ mod tests {
 
         // V1 charges no separate fee output, so each block is just its payouts.
         let listings = [listing(100), listing(250)];
-        let blocks = build_settlement_blocks(&listings, 0, &TxBuildParams::default()).unwrap();
+        let blocks = build_settlement_blocks(
+            &listings,
+            0,
+            &TxBuildParams::default(),
+            RegistryNetwork::Mainnet,
+        )
+        .unwrap();
         let outputs: Vec<_> = blocks.iter().flat_map(|b| b.outputs.iter()).collect();
         assert_eq!(
             outputs.len(),
@@ -827,12 +883,33 @@ mod tests {
         assert_eq!(&tag[2..], Hasher::<256>::hash(&preimage).as_ref());
     }
 
+    /// The floor is the min-UTxO of a datum-TAGGED ADA-only output at the
+    /// current coefficient: `268 × 4310 = 1,155,080`, the figure every cheap
+    /// jpg buy pays on chain. A placeholder sized as the bare 32-byte digest
+    /// (not its 34-byte CBOR byte string) once put this 8,620 lovelace low;
+    /// evaluation passed and the node rejected the buy with
+    /// `BabbageOutputTooSmallUTxO`. This pins the on-chain figure.
+    #[test]
+    fn fee_output_floor_is_the_on_chain_min_utxo() {
+        let params = TxBuildParams {
+            coins_per_utxo_byte: 4310,
+            ..TxBuildParams::default()
+        };
+        let fee = MarketplaceType::JpgStoreV2
+            .marketplace_fee(RegistryNetwork::Mainnet)
+            .unwrap();
+        assert_eq!(placeholder_datum_tag().len(), 34);
+        assert_eq!(fee_output_floor(&params, &fee), 1_155_080);
+    }
+
     /// The fee must reproduce the contract's integer arithmetic exactly:
     /// `payouts_sum * 50 / 49 / 50`. The check is `quantity >= marketplace_fee`,
     /// so computing a cleaner equivalent that lands one lovelace low fails.
     #[test]
     fn marketplace_fee_matches_the_contract_arithmetic() {
-        let fee = MarketplaceType::JpgStoreV2.marketplace_fee().unwrap();
+        let fee = MarketplaceType::JpgStoreV2
+            .marketplace_fee(RegistryNetwork::Mainnet)
+            .unwrap();
 
         // Real buy `556db775…`: 470.4 ADA of payouts, 9.6 ADA fee on chain.
         assert_eq!(fee.due_on_payouts(470_400_000), 9_600_000);
@@ -931,7 +1008,7 @@ mod tests {
             MarketplaceType::JpgStoreV3,
         ] {
             assert!(
-                version.script_reference().is_some(),
+                version.script_reference(RegistryNetwork::Mainnet).is_some(),
                 "{version:?} needs a reference script"
             );
             let redeemer = version.buy_redeemer().expect("redeemer");
@@ -985,7 +1062,8 @@ mod tests {
         };
 
         let listings = [listing(3), listing(2), listing(1)];
-        let blocks = build_settlement_blocks(&listings, LEADING, &params).unwrap();
+        let blocks =
+            build_settlement_blocks(&listings, LEADING, &params, RegistryNetwork::Mainnet).unwrap();
 
         let indices: Vec<usize> = blocks.iter().map(|b| b.redeemer_index).collect();
         assert_eq!(indices, vec![1, 5, 8], "each redeemer names its fee output");

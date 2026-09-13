@@ -2,7 +2,7 @@
 name = "anvil-api"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Client library for Anvil API"
 
 [dependencies]

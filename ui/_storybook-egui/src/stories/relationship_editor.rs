@@ -1,7 +1,6 @@
 //! `RelationshipEditor` story — directed `source → target` edges over an option set.
 
 use egui_widgets::relationship_editor::RelationshipEditor;
-use egui_widgets::theme;
 
 pub struct RelationshipEditorState {
     pub options: Vec<String>,
@@ -27,25 +26,31 @@ impl Default for RelationshipEditorState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut RelationshipEditorState) {
-    ui.label(
-        egui::RichText::new("Relationship Editor")
-            .color(theme::ACCENT)
-            .strong(),
+    crate::heading(ui, "Relationship Editor");
+    crate::caption(
+        ui,
+        "Directed edges (source to target) over a known option set — backs \
+         variant_flow / dependencies / slot-locks in the config editor (and \
+         becomes the wires in the node-graph view).",
     );
-    ui.label(
-        egui::RichText::new(
-            "Directed edges (source to target) over a known option set — backs \
-             variant_flow / dependencies / slot-locks in the config editor (and \
-             becomes the wires in the node-graph view).",
-        )
-        .color(theme::TEXT_MUTED)
-        .small(),
+    crate::caption(
+        ui,
+        "Every row sits on the same four columns — source, arrow, target, \
+         remove — so the list and the add row below it read as one grid rather \
+         than two stacked widgets. Add an edge with a long name to watch the \
+         column truncate instead of shunting the arrow sideways.",
     );
     ui.add_space(12.0);
 
-    if ui.button("Reset").clicked() {
-        *state = RelationshipEditorState::default();
-    }
+    ui.horizontal(|ui| {
+        if ui.button("Reset").clicked() {
+            *state = RelationshipEditorState::default();
+        }
+        // Reaching the empty state is the only way to see `empty_text`.
+        if ui.button("Clear all").clicked() {
+            state.edges.clear();
+        }
+    });
     ui.add_space(8.0);
 
     let resp = RelationshipEditor::new("story_variant_flow", &state.edges, &state.options)
@@ -65,7 +70,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut RelationshipEditorState) {
     ui.add_space(8.0);
     ui.label(
         egui::RichText::new(format!("{} edge(s)", state.edges.len()))
-            .color(theme::TEXT_SECONDARY)
+            .color(crate::secondary(ui))
             .small(),
     );
 }

@@ -7,7 +7,7 @@
 use macroquad::prelude::*;
 
 use crate::button::{Button, ButtonVariant};
-use crate::painter::{draw_rounded_rect, Painter};
+use crate::painter::{Painter, draw_rounded_rect};
 
 pub struct QuantityStepperVm {
     pub qty: u32,

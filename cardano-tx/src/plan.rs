@@ -32,7 +32,7 @@
 //!   ([`SelectError::DuplicateMustSpend`]), not at the ledger.
 
 use pallas_addresses::Address;
-use pallas_txbuilder::{Output, StagingTransaction};
+use pallas_txbuilder::{Output, ScriptKind, StagingTransaction};
 use std::collections::{BTreeMap, HashSet};
 
 use crate::builder::{UnsignedTx, converge_fee_with_witnesses};
@@ -54,6 +54,16 @@ const MIN_CHANGE_CUSHION: u64 = 1_500_000;
 /// asset all the way to the size estimate, because it is encoded in the output.
 pub use crate::utxo::AssetAmount;
 
+/// One CIP-33 reference-script output being created.
+struct ScriptOutput {
+    address: Address,
+    language: ScriptKind,
+    script_bytes: Vec<u8>,
+    /// An optional inline datum, so the UTxO can say what it holds. The script
+    /// hash alone cannot; a depot is the thing you come back to much later.
+    datum: Option<Vec<u8>>,
+}
+
 /// A fluent plan for a value transaction with pluggable input selection.
 pub struct TxPlan<'a, U: Selectable> {
     change_address: Address,
@@ -68,9 +78,16 @@ pub struct TxPlan<'a, U: Selectable> {
     /// computed min-UTxO for the asset bundle (never user-supplied — the floor
     /// is a ledger rule, not a knob).
     asset_outputs: Vec<(Address, Vec<AssetAmount>)>,
+    /// CIP-33 reference-script outputs. Lovelace is the computed min-UTxO for
+    /// the script (and label, when present), like `asset_outputs`.
+    script_outputs: Vec<ScriptOutput>,
     metadata: Option<serde_json::Value>,
+    /// A native script attached to the witness set, satisfying inputs that sit
+    /// at its address (a script depot being retired).
+    native_script: Option<Vec<u8>>,
     sweep_to: Option<Address>,
     rehome_assets: bool,
+    spend_script_refs: bool,
     fold_change: bool,
     witnesses: u32,
     valid_from: Option<u64>,
@@ -91,9 +108,12 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
             strategy: Strategy::ManualOnly,
             outputs: Vec::new(),
             asset_outputs: Vec::new(),
+            script_outputs: Vec::new(),
             metadata: None,
+            native_script: None,
             sweep_to: None,
             rehome_assets: false,
+            spend_script_refs: false,
             fold_change: false,
             witnesses: 1,
             valid_from: None,
@@ -149,6 +169,55 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         self
     }
 
+    /// Park a validator on chain as a CIP-33 reference script in an output at
+    /// `addr`, so later transactions can reference it instead of carrying the
+    /// script bytes in their witness set. The output's lovelace is the
+    /// computed min-UTxO for the script's size (a ledger rule, not a knob —
+    /// about 8 ADA for a 1.5 KB Plutus V2 validator).
+    ///
+    /// Put it at the validator's OWN address with no datum and it can never
+    /// be spent: a spend would need a datum the output does not have. That is
+    /// what a permanent reference wants, and it is how jpg.store parks theirs.
+    pub fn deploy_script_to(
+        self,
+        addr: Address,
+        language: ScriptKind,
+        script_bytes: Vec<u8>,
+    ) -> Self {
+        self.deploy_labelled_script_to(addr, language, script_bytes, None)
+    }
+
+    /// [`TxPlan::deploy_script_to`] with an optional inline datum describing
+    /// what the script IS.
+    ///
+    /// A script hash cannot tell you which of your validators it is, and a
+    /// depot of reference scripts is something you come back to months later.
+    /// The datum rides in the output bytes, so it survives in any UTxO query;
+    /// transaction metadata would not, being attached to the transaction
+    /// rather than the output. It costs a little min-UTxO, which the
+    /// calculation below accounts for.
+    ///
+    /// Only ever park a datum at an address whose script IGNORES datums (a
+    /// native script) or at one you never intend to spend. At a Plutus
+    /// validator's own address a datum is what makes the output spendable at
+    /// all, so adding one there would undo the permanence that parking it
+    /// there was for.
+    pub fn deploy_labelled_script_to(
+        mut self,
+        addr: Address,
+        language: ScriptKind,
+        script_bytes: Vec<u8>,
+        datum: Option<Vec<u8>>,
+    ) -> Self {
+        self.script_outputs.push(ScriptOutput {
+            address: addr,
+            language,
+            script_bytes,
+            datum,
+        });
+        self
+    }
+
     /// Attach CIP-25/674 metadata (e.g. the `refund:<order_id>` lines).
     pub fn metadata(mut self, md: serde_json::Value) -> Self {
         self.metadata = Some(md);
@@ -194,6 +263,60 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         self
     }
 
+    /// Attach a NATIVE script to the witness set, so inputs sitting at that
+    /// script's address can be spent. Native scripts take no datum, no
+    /// redeemer and no execution budget — the ledger evaluates the script
+    /// directly — so this plus the required signatures is the whole witness.
+    ///
+    /// Used to retire a script depot ([`crate::depot`]): the reference-script
+    /// UTxOs sit at a native-script address, and spending them reclaims the
+    /// ADA they lock. Pair it with [`TxPlan::spend_script_refs`], because the
+    /// sweep path skips reference-script inputs by default.
+    pub fn native_script(mut self, script_bytes: Vec<u8>) -> Self {
+        self.native_script = Some(script_bytes);
+        self
+    }
+
+    /// SWEEP modifier: also spend the `must_spend` inputs that CARRY a
+    /// reference script — the one case where destroying a reference is the
+    /// point rather than an accident.
+    ///
+    /// Every other path refuses these deliberately: spending a reference UTxO
+    /// breaks every transaction built to reference it, so it must be asked for
+    /// by name and never fall out of ordinary coin selection. Retire the
+    /// deployment record BEFORE the UTxO, or transactions in flight fail with
+    /// no diagnosis.
+    ///
+    /// # The size is not optional
+    ///
+    /// `total_ref_script_bytes` is the summed serialised size of every
+    /// reference script among those inputs, as the CHAIN reports it (Koios's
+    /// `reference_script.size`). Conway charges
+    /// `minFeeRefScriptCoinsPerByte` for reference scripts a transaction makes
+    /// available, and **a spent input's script counts** just as a reference
+    /// input's does.
+    ///
+    /// It is a parameter rather than a separate setter because omitting it is
+    /// not a smaller mistake — it is `FeeTooSmallUTxO` at submit, after every
+    /// other check has passed. `evaluateTransaction` does not look at this, so
+    /// no dry run catches it. Measured on preprod: retiring one 1534-byte
+    /// validator was rejected for underpaying by 22,965 lovelace.
+    ///
+    /// Passing the chain's figure slightly OVER-pays, because the ledger counts
+    /// the unwrapped program while the chain reports the CBOR-wrapped bytes
+    /// (three bytes here, 45 lovelace). Over-paying is always accepted;
+    /// under-paying never is. The buy path makes the same trade.
+    pub fn spend_script_refs(mut self, total_ref_script_bytes: u64) -> Self {
+        self.spend_script_refs = true;
+        // Added, not assigned: a caller may already have declared reference
+        // INPUTS in `params`, and both kinds are charged.
+        self.params.ref_script_size = self
+            .params
+            .ref_script_size
+            .saturating_add(total_ref_script_bytes);
+        self
+    }
+
     /// SWEEP modifier: also spend the asset-bearing `must_spend` inputs,
     /// re-outputting ALL their assets in one aggregated min-ADA output to the
     /// change address — so the ADA locked above the assets' minimum joins the
@@ -228,20 +351,35 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         if let Some(target) = self.sweep_to.clone() {
             return self.build_sweep(target);
         }
-        if self.fold_change {
-            if !self.asset_outputs.is_empty() {
-                return Err(TxBuildError::BuildFailed(
-                    "TxPlan: fold_change is pure-ADA only (no asset outputs)".into(),
-                ));
-            }
-            return self.build_fold();
-        }
+        // Sweep-only modifiers are checked BEFORE the fold branch: a modifier
+        // a build mode ignores must fail loudly, never be silently dropped.
         if self.rehome_assets {
             return Err(TxBuildError::BuildFailed(
                 "TxPlan: rehome_assets is a sweep modifier — use sweep_to".into(),
             ));
         }
-        if self.outputs.is_empty() && self.asset_outputs.is_empty() {
+        if self.spend_script_refs {
+            return Err(TxBuildError::BuildFailed(
+                "TxPlan: spend_script_refs is a sweep modifier — use sweep_to".into(),
+            ));
+        }
+        if self.fold_change {
+            if !self.asset_outputs.is_empty() || !self.script_outputs.is_empty() {
+                return Err(TxBuildError::BuildFailed(
+                    "TxPlan: fold_change is pure-ADA only (no asset or script outputs)".into(),
+                ));
+            }
+            if self.native_script.is_some() {
+                return Err(TxBuildError::BuildFailed(
+                    "TxPlan: fold_change does not carry a native script witness".into(),
+                ));
+            }
+            return self.build_fold();
+        }
+        if self.outputs.is_empty()
+            && self.asset_outputs.is_empty()
+            && self.script_outputs.is_empty()
+        {
             return Err(TxBuildError::BuildFailed("TxPlan: no outputs".into()));
         }
         let min_pure_utxo = self.params.min_pure_utxo();
@@ -376,15 +514,42 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
             ));
         }
 
+        // Reference-script outputs, min-ADA sized for the script bytes. The
+        // bytes also ride in the tx body, so they count toward the fee below.
+        let mut script_outs: Vec<(Output, u64)> = Vec::new();
+        let mut script_bytes_total: u64 = 0;
+        for out in &self.script_outputs {
+            // The label is part of the output, so it is part of the floor.
+            let lovelace = crate::utxo::min_ada_with_coefficient(
+                self.params.coins_per_utxo_byte,
+                &[],
+                &crate::OutputParams {
+                    datum_size: out.datum.as_ref().map(|d| d.len()),
+                    script_ref_size: Some(out.script_bytes.len()),
+                },
+            );
+            script_bytes_total +=
+                out.script_bytes.len() as u64 + out.datum.as_ref().map_or(0, |d| d.len() as u64);
+            let mut output = create_ada_output(out.address.clone(), lovelace)
+                .set_inline_script(out.language, out.script_bytes.clone());
+            if let Some(datum) = &out.datum {
+                output = output.set_inline_datum(datum.clone());
+            }
+            script_outs.push((output, lovelace));
+        }
+
         let total_pure_outputs: u64 = self.outputs.iter().map(|(_, l)| *l).sum();
         let total_asset_lovelace: u64 = asset_outs.iter().map(|(_, l)| *l).sum::<u64>()
-            + asset_change.iter().map(|(_, l)| *l).sum::<u64>();
+            + asset_change.iter().map(|(_, l)| *l).sum::<u64>()
+            + script_outs.iter().map(|(_, l)| *l).sum::<u64>();
         // Target estimate only (the converged fee is exact): base + metadata +
-        // a rough per-asset-output weight + per-input headroom for the inputs
-        // already committed.
+        // script bytes + a rough per-asset-output weight + per-input headroom
+        // for the inputs already committed.
         let fee_estimate = estimate_simple_fee(&self.params)
             + metadata_bytes.as_ref().map_or(0, |b| b.len() as u64)
-            + (asset_outs.len() + asset_change.len()) as u64 * 5_000
+            + script_bytes_total
+            + self.native_script.as_ref().map_or(0, |s| s.len() as u64)
+            + (asset_outs.len() + asset_change.len() + script_outs.len()) as u64 * 5_000
             + must_spend.len() as u64 * PER_INPUT_FEE_HEADROOM;
         let target = total_pure_outputs
             .saturating_add(total_asset_lovelace)
@@ -410,6 +575,7 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         let network_id = self.network_id;
         let params = self.params;
         let (valid_from, valid_until) = (self.valid_from, self.valid_until);
+        let native_script = self.native_script;
         let total_committed = total_pure_outputs + total_asset_lovelace;
 
         converge_fee_with_witnesses(
@@ -421,11 +587,14 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
                 for (addr, amount) in &outputs {
                     tx = tx.output(create_ada_output(addr.clone(), *amount));
                 }
-                for (out, _) in asset_outs.iter().chain(&asset_change) {
+                for (out, _) in asset_outs.iter().chain(&asset_change).chain(&script_outs) {
                     tx = tx.output(out.clone());
                 }
                 if let Some(bytes) = &metadata_bytes {
                     tx = tx.add_auxiliary_data(bytes.clone());
+                }
+                if let Some(script) = &native_script {
+                    tx = tx.script(ScriptKind::Native, script.clone());
                 }
                 // Pure change back to self; converge balances the fee around it.
                 let change = input_lovelace
@@ -567,18 +736,31 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
     /// the excess ADA locked above the assets' minimum into the sweep. Mirrors
     /// `build_send_max`/`build_consolidate` (sweep-to-self + rehome).
     fn build_sweep(self, target: Address) -> Result<UnsignedTx, TxBuildError> {
+        if !self.script_outputs.is_empty() {
+            return Err(TxBuildError::BuildFailed(
+                "TxPlan sweep: deploy_script_to is not a sweep modifier — build a plain plan"
+                    .into(),
+            ));
+        }
         check_no_duplicate_inputs(&self.must_spend)?;
+        // A reference-script input is skipped unless it was asked for by name:
+        // spending one breaks every transaction built to reference it, so it
+        // must never fall out of ordinary sweeping.
+        let spend_refs = self.spend_script_refs;
+        let eligible = |u: &&'a U| spend_refs || !u.has_script_ref();
         let pure: Vec<&'a U> = self
             .must_spend
             .iter()
             .copied()
-            .filter(|u| !u.has_assets() && !u.has_script_ref())
+            .filter(|u| !u.has_assets())
+            .filter(eligible)
             .collect();
         let asset_inputs: Vec<&'a U> = if self.rehome_assets {
             self.must_spend
                 .iter()
                 .copied()
-                .filter(|u| u.has_assets() && !u.has_script_ref())
+                .filter(|u| u.has_assets())
+                .filter(eligible)
                 .collect()
         } else {
             Vec::new()
@@ -619,10 +801,12 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
         let min_pure_utxo = self.params.min_pure_utxo();
         let fee_estimate = estimate_simple_fee(&self.params)
             + metadata_bytes.as_ref().map_or(0, |b| b.len() as u64)
+            + self.native_script.as_ref().map_or(0, |s| s.len() as u64)
             + asset_home.len() as u64 * 5_000;
         let network_id = self.network_id;
         let params = self.params;
         let (valid_from, valid_until) = (self.valid_from, self.valid_until);
+        let native_script = self.native_script;
 
         converge_fee_with_witnesses(
             move |fee| {
@@ -648,6 +832,9 @@ impl<'a, U: Selectable> TxPlan<'a, U> {
                 }
                 if let Some(bytes) = &metadata_bytes {
                     tx = tx.add_auxiliary_data(bytes.clone());
+                }
+                if let Some(script) = &native_script {
+                    tx = tx.script(ScriptKind::Native, script.clone());
                 }
                 tx = apply_validity(tx, valid_from, valid_until);
                 Ok(tx.fee(fee).network_id(network_id))
@@ -738,7 +925,7 @@ fn min_ada_for_assets(params: &TxBuildParams, assets: &[AssetAmount]) -> u64 {
     crate::calculate_min_ada_with_params(
         &crate::builder::send::to_maestro_params(params),
         assets,
-        &crate::OutputParams { datum_size: None },
+        &crate::OutputParams::default(),
     )
 }
 
@@ -793,8 +980,50 @@ mod tests {
             coins_per_utxo_byte: 4_310,
             max_tx_size: 16_384,
             max_value_size: 5_000,
+            // Stated, not defaulted: `Default` leaves this ZERO, which prices
+            // every reference script at nothing and would let a test claiming
+            // to exercise the reference-script fee pass while proving nothing.
+            min_fee_ref_script_cost_per_byte:
+                crate::params::CONWAY_MIN_FEE_REF_SCRIPT_COST_PER_BYTE,
             ..Default::default()
         }
+    }
+
+    /// One real observation, kept only as the origin of the rule below.
+    ///
+    /// Retiring the abandonware `ask.spend` validator out of a preprod depot on
+    /// 2026-09-12 was rejected `FeeTooSmallUTxO`: supplied 167,086, expected
+    /// 190,051. The chain reported that script as 1,534 bytes, and the missing
+    /// 22,965 lovelace is the unwrapped program — the wrapped size less its
+    /// three-byte CBOR header — at 15 lovelace each.
+    ///
+    /// Nothing in the system is 1,534 bytes long. Another validator is another
+    /// size, so the tests below exercise the RELATIONSHIP across sizes rather
+    /// than this figure, and production reads each script's size from the
+    /// chain.
+    const OBSERVED: (u64, u64) = (1_534, 22_965);
+
+    /// An arbitrary plausible script size, for the tests that only need SOME
+    /// reference script to be in play. Any value would do; nothing asserts
+    /// against it.
+    const SOME_SCRIPT_BYTES: u64 = 1_200;
+
+    /// A REAL depot native script, not a hand-written stub.
+    ///
+    /// This matters more than it looks. A malformed script makes the staging
+    /// transaction fail to serialise, and the fee calculation then falls back
+    /// to a size estimate — so a test built on a stub silently measures the
+    /// fallback path instead of the real one, and the fee assertions it makes
+    /// are about nothing. That is exactly how the first version of the
+    /// reference-script test passed its rate check while reporting a zero
+    /// charge.
+    fn depot_script() -> Vec<u8> {
+        crate::depot::Depot::from_signers(&[
+            "9ad4da1c6da54e41ecbab2758323f1abcc7b6e6643f5b930065fcb29",
+        ])
+        .expect("a one-signer depot")
+        .script_bytes()
+        .to_vec()
     }
 
     fn addr() -> Address {
@@ -887,6 +1116,307 @@ mod tests {
             .build()
             .unwrap();
         assert_balanced(&unsigned, &pool);
+    }
+
+    /// A reference-script deployment: the script output carries the bytes,
+    /// is sized for them (the script dominates its min-UTxO), and the build
+    /// still balances. A 1.5 KB validator wants roughly 8 ADA at 4310/byte.
+    #[test]
+    fn deploy_script_output_carries_script_and_balances() {
+        let pool = vec![ada("aa", 0, 50_000_000)];
+        let script_bytes = vec![0x59, 0x05, 0xfb]
+            .into_iter()
+            .chain(std::iter::repeat_n(0xabu8, 1531))
+            .collect::<Vec<u8>>();
+        let unsigned = TxPlan::new(addr(), 0, params())
+            .select_from(&pool, Strategy::SmallestSufficient)
+            .deploy_script_to(addr(), ScriptKind::PlutusV2, script_bytes.clone())
+            .build()
+            .unwrap();
+        assert_balanced(&unsigned, &pool);
+
+        let outputs: Vec<_> = unsigned.staging.outputs.iter().flatten().collect();
+        let script_out = outputs
+            .iter()
+            .find(|o| o.script.is_some())
+            .expect("one output carries the script");
+        assert_eq!(
+            script_out.script.as_ref().unwrap().bytes.as_ref() as &[u8],
+            &script_bytes[..],
+            "the output carries exactly the bytes handed in"
+        );
+        let expected_min = crate::utxo::min_ada_with_coefficient(
+            4_310,
+            &[],
+            &crate::OutputParams::with_script_ref(&script_bytes),
+        );
+        assert_eq!(
+            script_out.lovelace, expected_min,
+            "sized by the script's min-UTxO"
+        );
+        assert!(
+            (7_000_000..=9_000_000).contains(&script_out.lovelace),
+            "a 1.5 KB script locks ~8 ADA, got {}",
+            script_out.lovelace
+        );
+        // The script bytes ride in the body, so the fee reflects them.
+        assert!(
+            unsigned.fee > 155_381 + 44 * 1_534,
+            "fee must cover the script bytes, got {}",
+            unsigned.fee
+        );
+    }
+
+    /// Reference scripts are only a plain-build feature; the other modes say so.
+    #[test]
+    fn deploy_script_is_refused_by_sweep_and_fold() {
+        let pool = vec![ada("aa", 0, 50_000_000)];
+        let sweep = TxPlan::new(addr(), 0, params())
+            .must_spend(&pool)
+            .deploy_script_to(addr(), ScriptKind::PlutusV2, vec![0u8; 100])
+            .sweep_to(addr())
+            .build();
+        assert!(sweep.is_err(), "sweep must refuse a script output");
+        let fold = TxPlan::new(addr(), 0, params())
+            .must_spend(&pool)
+            .pay_to(addr(), 5_000_000)
+            .deploy_script_to(addr(), ScriptKind::PlutusV2, vec![0u8; 100])
+            .fold_change()
+            .build();
+        assert!(fold.is_err(), "fold must refuse a script output");
+    }
+
+    /// A UTxO carrying a reference script.
+    fn script_ref_utxo(h: &str, ix: u32, lovelace: u64) -> UtxoApi {
+        let mut u = ada(h, ix, lovelace);
+        u.tags.push(cardano_assets::UtxoTag::HasScriptRef);
+        u
+    }
+
+    /// RETIRING A DEPOT: sweeping reference-script UTxOs back to a wallet,
+    /// with the depot's native script as the witness. This is the only path
+    /// that may destroy a reference script, and it must be asked for by name.
+    #[test]
+    fn sweep_retires_script_refs_only_when_asked() {
+        let world = vec![script_ref_utxo("aa", 0, 8_000_000)];
+
+        // Default: the reference UTxO is skipped, so there is nothing to sweep.
+        let err = TxPlan::new(addr(), 0, params())
+            .must_spend(world.iter())
+            .sweep_to(addr())
+            .build()
+            .unwrap_err();
+        assert!(
+            format!("{err}").contains("no spendable inputs"),
+            "a reference script must never be swept by accident, got {err}"
+        );
+
+        // Asked for by name, with the depot's native script attached.
+        let native = vec![0x82, 0x00, 0x58, 0x1c];
+        let unsigned = TxPlan::new(addr(), 0, params())
+            .must_spend(world.iter())
+            .sweep_to(addr())
+            .spend_script_refs(SOME_SCRIPT_BYTES)
+            .native_script(native.clone())
+            .build()
+            .expect("retire must build");
+        assert_balanced(&unsigned, &world);
+        assert_eq!(unsigned.staging.inputs.iter().flatten().count(), 1);
+
+        // The native script rides in the witness set, keyed by its 0x00-tagged
+        // hash — without it the ledger cannot check who may spend the depot.
+        let scripts = unsigned.staging.scripts.as_ref().expect("witness scripts");
+        assert_eq!(scripts.len(), 1);
+        let entry = scripts.values().next().unwrap();
+        assert!(matches!(entry.kind, ScriptKind::Native));
+        assert_eq!(entry.bytes.as_ref() as &[u8], &native[..]);
+    }
+
+    /// The ADA a depot locks comes back, less the fee. That recovery is the
+    /// whole reason a depot is spendable rather than parked permanently.
+    #[test]
+    fn retiring_several_depot_utxos_returns_their_ada() {
+        let world = vec![
+            script_ref_utxo("aa", 0, 8_000_000),
+            script_ref_utxo("bb", 1, 9_500_000),
+        ];
+        let unsigned = TxPlan::new(addr(), 0, params())
+            .must_spend(world.iter())
+            .sweep_to(addr())
+            .spend_script_refs(SOME_SCRIPT_BYTES * 2)
+            .native_script(depot_script())
+            .build()
+            .unwrap();
+        assert_balanced(&unsigned, &world);
+        let outs: Vec<_> = unsigned.staging.outputs.iter().flatten().collect();
+        assert_eq!(outs.len(), 1, "one output: everything back to the wallet");
+        assert_eq!(outs[0].lovelace, 17_500_000 - unsigned.fee);
+    }
+
+    /// REGRESSION, from a real preprod rejection. Conway charges
+    /// `minFeeRefScriptCoinsPerByte` for reference scripts a transaction makes
+    /// available, and a SPENT input's script counts — not just a reference
+    /// input's. Retiring one 1534-byte validator was rejected for underpaying
+    /// by exactly 22,965 lovelace, which is 1531 × 15.
+    ///
+    /// Nothing catches this before submit: `evaluateTransaction` does not look
+    /// at the reference-script fee, so the build, the review and every dry run
+    /// all pass and the node rejects `FeeTooSmallUTxO`.
+    #[test]
+    fn retiring_pays_conways_reference_script_fee() {
+        let world = vec![script_ref_utxo("aa", 0, 8_000_000)];
+        let rate = params().min_fee_ref_script_cost_per_byte;
+        assert!(rate > 0, "a zero rate would make this test prove nothing");
+
+        let fee_for = |declared: u64| {
+            let tx = TxPlan::new(addr(), 0, params())
+                .must_spend(world.iter())
+                .sweep_to(addr())
+                .spend_script_refs(declared)
+                .native_script(depot_script())
+                .build()
+                .unwrap();
+            assert_balanced(&tx, &world);
+            tx.fee
+        };
+
+        // THE RULE: whatever size is declared, the fee rises by exactly that
+        // many bytes at the protocol's rate. Checked across a spread so this
+        // pins a relationship rather than one validator's dimensions.
+        let baseline = fee_for(0);
+        for bytes in [1, 500, 1_534, 4_000, 25_600] {
+            assert_eq!(
+                fee_for(bytes) - baseline,
+                bytes * rate,
+                "declaring {bytes} reference-script bytes must add {bytes} × {rate}"
+            );
+        }
+
+        // And the rule, applied to the one case measured on chain, covers what
+        // the node actually asked for. Over by the CBOR header is what passing
+        // the chain's reported size costs; under is the rejection.
+        let (observed_bytes, observed_shortfall) = OBSERVED;
+        assert!(
+            fee_for(observed_bytes) - baseline >= observed_shortfall,
+            "the rule must cover the observed preprod shortfall"
+        );
+    }
+
+    /// A modifier a build mode ignores must fail, not be silently dropped —
+    /// a retire that quietly became an ordinary build would leave the depot
+    /// untouched while reporting success.
+    #[test]
+    fn script_ref_modifiers_are_refused_outside_sweep() {
+        let pool = vec![ada("aa", 0, 50_000_000)];
+        let plain = TxPlan::new(addr(), 0, params())
+            .select_from(&pool, Strategy::SmallestSufficient)
+            .pay_to(addr(), 5_000_000)
+            .spend_script_refs(SOME_SCRIPT_BYTES)
+            .build();
+        assert!(plain.is_err(), "plain build must refuse spend_script_refs");
+
+        let fold = TxPlan::new(addr(), 0, params())
+            .must_spend(pool.iter())
+            .pay_to(addr(), 5_000_000)
+            .spend_script_refs(SOME_SCRIPT_BYTES)
+            .fold_change()
+            .build();
+        assert!(fold.is_err(), "fold must refuse spend_script_refs");
+
+        let fold_script = TxPlan::new(addr(), 0, params())
+            .must_spend(pool.iter())
+            .pay_to(addr(), 5_000_000)
+            .native_script(depot_script())
+            .fold_change()
+            .build();
+        assert!(
+            fold_script.is_err(),
+            "fold must refuse a native script it would drop"
+        );
+    }
+
+    /// Deploying to a depot is an ordinary build: several scripts in ONE
+    /// transaction, each its own output, each sized for its own bytes.
+    #[test]
+    fn a_deployment_set_parks_every_script_in_one_transaction() {
+        let pool = vec![ada("aa", 0, 100_000_000)];
+        let small = vec![0xabu8; 400];
+        let large = vec![0xcdu8; 1_600];
+        let unsigned = TxPlan::new(addr(), 0, params())
+            .select_from(&pool, Strategy::SmallestSufficient)
+            .deploy_script_to(addr(), ScriptKind::PlutusV3, small.clone())
+            .deploy_script_to(addr(), ScriptKind::PlutusV3, large.clone())
+            .build()
+            .expect("a multi-script deployment must build");
+        assert_balanced(&unsigned, &pool);
+
+        let script_outs: Vec<_> = unsigned
+            .staging
+            .outputs
+            .iter()
+            .flatten()
+            .filter(|o| o.script.is_some())
+            .collect();
+        assert_eq!(script_outs.len(), 2, "one output per distinct script");
+        assert!(
+            script_outs[1].lovelace > script_outs[0].lovelace,
+            "each output is sized for its own script, not a shared figure"
+        );
+    }
+
+    /// A labelled deployment carries its note as an inline datum, and the
+    /// output's min-UTxO GROWS to pay for it. Sizing the output as if the
+    /// label were free would emit a sub-minimum output the ledger rejects.
+    #[test]
+    fn a_label_rides_in_the_output_and_is_paid_for() {
+        let pool = vec![ada("aa", 0, 100_000_000)];
+        let script = vec![0xabu8; 800];
+        let label = vec![0x9fu8; 64];
+
+        let bare = TxPlan::new(addr(), 0, params())
+            .select_from(&pool, Strategy::SmallestSufficient)
+            .deploy_script_to(addr(), ScriptKind::PlutusV3, script.clone())
+            .build()
+            .unwrap();
+        let labelled = TxPlan::new(addr(), 0, params())
+            .select_from(&pool, Strategy::SmallestSufficient)
+            .deploy_labelled_script_to(
+                addr(),
+                ScriptKind::PlutusV3,
+                script.clone(),
+                Some(label.clone()),
+            )
+            .build()
+            .unwrap();
+        assert_balanced(&labelled, &pool);
+
+        let script_out = |tx: &UnsignedTx| {
+            tx.staging
+                .outputs
+                .iter()
+                .flatten()
+                .find(|o| o.script.is_some())
+                .cloned()
+                .expect("script output")
+        };
+        let bare_out = script_out(&bare);
+        let labelled_out = script_out(&labelled);
+
+        assert!(
+            bare_out.datum.is_none(),
+            "an unlabelled deployment carries no datum"
+        );
+        assert!(
+            labelled_out.datum.is_some(),
+            "the label must reach the output, or it is not on chain at all"
+        );
+        assert!(
+            labelled_out.lovelace > bare_out.lovelace,
+            "the label is part of the output, so it raises the min-UTxO floor: \
+             bare={} labelled={}",
+            bare_out.lovelace,
+            labelled_out.lovelace
+        );
     }
 
     #[test]

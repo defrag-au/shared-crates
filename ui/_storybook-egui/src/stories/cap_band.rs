@@ -22,7 +22,7 @@
 //! a normal and throws long diagonal rays across the panel — it shipped that
 //! way once and was only caught by looking at it.
 
-use egui_widgets::{cap_band::honesty_ratio, CapBand, CapSample, SpineState, TimeSpine};
+use egui_widgets::{CapBand, CapSample, SpineState, TimeSpine, cap_band::honesty_ratio};
 
 const DAY: i64 = 86_400;
 const T0: i64 = 1_771_128_940; // the real mint time, so the ruler reads sensibly
@@ -139,13 +139,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut CapBandState) {
                 ui.label(format!("realisable {:.0} .. {:.0} ADA", s.low, s.high));
                 ui.separator();
                 ui.colored_label(
-                    crate::TEXT_MUTED,
+                    crate::muted(ui),
                     format!("honesty ratio {lo:.1}% .. {hi:.1}%"),
                 );
             });
         }
         None => {
-            ui.colored_label(crate::TEXT_MUTED, "no sample at the playhead");
+            ui.colored_label(crate::muted(ui), "no sample at the playhead");
         }
     }
 }

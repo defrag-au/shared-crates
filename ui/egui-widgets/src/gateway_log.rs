@@ -32,7 +32,7 @@ use egui::Ui;
 use gateway_wiring::{GatewayLogEntry, LogLevel};
 
 use crate::relative_time::relative_label;
-use crate::theme;
+use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
 
 /// Cross-frame state for the log pane.
 pub struct LogState {
@@ -86,7 +86,7 @@ pub fn gateway_log_header(ui: &mut Ui, entries: &[GatewayLogEntry], state: &mut 
     ui.horizontal(|ui| {
         ui.strong("Listener log");
         ui.colored_label(
-            theme::TEXT_MUTED,
+            ui.tokens().color.text_muted,
             match entries.len() {
                 0 => "nothing yet".to_string(),
                 n if shown == n => format!("{n} lines"),
@@ -96,7 +96,7 @@ pub fn gateway_log_header(ui: &mut Ui, entries: &[GatewayLogEntry], state: &mut 
         // Worth its own colour: it is the number that decides whether you
         // bother reading the rest.
         if problems > 0 {
-            ui.colored_label(theme::ACCENT_YELLOW, format!("{problems} warn+"));
+            ui.colored_label(ui.tokens().color.accent_yellow, format!("{problems} warn+"));
         }
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -108,7 +108,7 @@ pub fn gateway_log_header(ui: &mut Ui, entries: &[GatewayLogEntry], state: &mut 
             level_selector(ui, &mut state.min_level);
         });
     });
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 }
 
 /// The severity floor, as one button per level.
@@ -121,11 +121,15 @@ fn level_selector(ui: &mut Ui, min_level: &mut LogLevel) {
     // rather than at the far end of the row.
     for level in LogLevel::all().into_iter().rev() {
         let selected = *min_level == level;
-        let colour = level_colour(level);
+        let colour = level_colour(level, &ui.tokens());
         let label = egui::RichText::new(level.label())
             .monospace()
-            .size(11.0)
-            .color(if selected { colour } else { theme::TEXT_MUTED });
+            .size(ui.text_size(TextSize::Base))
+            .color(if selected {
+                colour
+            } else {
+                ui.tokens().color.text_muted
+            });
         if ui
             .selectable_label(selected, label)
             .on_hover_text(format!("{} and above", level.label()))
@@ -150,9 +154,9 @@ pub fn gateway_log_list(
     let shown: Vec<&GatewayLogEntry> = entries.iter().rev().filter(|e| state.shows(e)).collect();
 
     if shown.is_empty() {
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
         ui.colored_label(
-            theme::TEXT_MUTED,
+            ui.tokens().color.text_muted,
             if entries.is_empty() {
                 "Nothing logged yet. Lines appear as the listener works."
             } else {
@@ -176,7 +180,7 @@ pub fn gateway_log_list(
 /// destroys exactly that, so a long line is truncated on screen and the full
 /// text is on hover.
 pub fn gateway_log_line(ui: &mut Ui, entry: &GatewayLogEntry, now_ms: f64) {
-    let colour = level_colour(entry.level);
+    let colour = level_colour(entry.level, &ui.tokens());
     let delta_secs = ((now_ms - entry.at_ms) / 1000.0) as i64;
 
     ui.horizontal(|ui| {
@@ -184,8 +188,8 @@ pub fn gateway_log_line(ui: &mut Ui, entry: &GatewayLogEntry, now_ms: f64) {
             egui::Label::new(
                 egui::RichText::new(relative_label(delta_secs))
                     .monospace()
-                    .size(11.0)
-                    .color(theme::TEXT_MUTED),
+                    .size(ui.text_size(TextSize::Base))
+                    .color(ui.tokens().color.text_muted),
             )
             .truncate(),
         );
@@ -193,7 +197,7 @@ pub fn gateway_log_line(ui: &mut Ui, entry: &GatewayLogEntry, now_ms: f64) {
             egui::Label::new(
                 egui::RichText::new(entry.level.label())
                     .monospace()
-                    .size(11.0)
+                    .size(ui.text_size(TextSize::Base))
                     .color(colour),
             )
             .truncate(),
@@ -203,8 +207,8 @@ pub fn gateway_log_line(ui: &mut Ui, entry: &GatewayLogEntry, now_ms: f64) {
                 egui::Label::new(
                     egui::RichText::new(&entry.target)
                         .monospace()
-                        .size(11.0)
-                        .color(theme::TEXT_MUTED),
+                        .size(ui.text_size(TextSize::Base))
+                        .color(ui.tokens().color.text_muted),
                 )
                 .truncate(),
             );
@@ -214,13 +218,13 @@ pub fn gateway_log_line(ui: &mut Ui, entry: &GatewayLogEntry, now_ms: f64) {
         let message_colour = if entry.level >= LogLevel::Warn {
             colour
         } else {
-            theme::TEXT_SECONDARY
+            ui.tokens().color.text_secondary
         };
         ui.add(
             egui::Label::new(
                 egui::RichText::new(&entry.message)
                     .monospace()
-                    .size(11.0)
+                    .size(ui.text_size(TextSize::Base))
                     .color(message_colour),
             )
             .truncate(),
@@ -231,13 +235,13 @@ pub fn gateway_log_line(ui: &mut Ui, entry: &GatewayLogEntry, now_ms: f64) {
 
 /// Severity to colour. One mapping, so the level chip and its message can
 /// never disagree about how bad a line is.
-pub fn level_colour(level: LogLevel) -> egui::Color32 {
+pub fn level_colour(level: LogLevel, t: &crate::theme::Theme) -> egui::Color32 {
     match level {
-        LogLevel::Error => theme::ACCENT_RED,
-        LogLevel::Warn => theme::ACCENT_YELLOW,
-        LogLevel::Info => theme::ACCENT_BLUE,
-        LogLevel::Debug => theme::TEXT_MUTED,
-        LogLevel::Trace => theme::TEXT_MUTED,
+        LogLevel::Error => t.color.accent_red,
+        LogLevel::Warn => t.color.accent_yellow,
+        LogLevel::Info => t.color.accent_blue,
+        LogLevel::Debug => t.color.text_muted,
+        LogLevel::Trace => t.color.text_muted,
     }
 }
 

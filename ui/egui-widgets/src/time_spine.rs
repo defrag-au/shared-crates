@@ -66,19 +66,19 @@ use egui::{
 use statig::prelude::*;
 
 use crate::motion::{Easing, tween, tween_bool};
+use crate::theme::{Radius, Speed, ThemeExt};
 
-/// Colours for [`MarkKind`]. Two categories, so two hues from the catalog's
-/// categorical order — never a red/green pair, which reads as good/bad rather
-/// than in/out.
-const MARK_IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
-const MARK_OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
-/// Directionless events — deliberately UNSATURATED rather than a third hue.
-///
-/// A hue would read as a third category competing with in and out; these are
-/// the events that decline the question, and they are usually the majority. A
-/// grey lets a burst of them still show as density while leaving the two
-/// directional colours as the thing the eye picks out.
-const MARK_NEUTRAL: Color32 = Color32::from_rgb(0x7a, 0x82, 0x94);
+// Colours for [`MarkKind`] now come from the theme's `Diverging` flow encoding
+// — the same one `activity_lanes` and `flow_matrix` read, which is what makes
+// the three widgets agree about a mark by construction rather than by having
+// been typed the same. Never a red/green pair, which reads as good/bad rather
+// than in/out; `Diverging` is documented to that effect.
+//
+// Directionless events take `series.other` — deliberately UNSATURATED rather
+// than a third hue. A hue would read as a third category competing with in and
+// out; these are the events that decline the question, and they are usually the
+// majority. A neutral lets a burst of them still show as density while leaving
+// the two directional colours as the thing the eye picks out.
 /// Half-height of a neutral mark, in points. Small: it straddles the midline
 /// instead of rising from it, so it must not read as a short In and a short
 /// Out drawn on top of each other.
@@ -785,6 +785,11 @@ pub struct SpineCanvas<'c> {
     /// The lane under the baseline, where layers ordinarily draw.
     pub lane: Rect,
     pub visuals: &'c egui::Visuals,
+    /// The theme's encoding palette, for layers that draw **data** rather than
+    /// chrome. Beside `visuals` for the same reason: a layer is handed what it
+    /// needs to agree with the rest of the frame, instead of reaching for a
+    /// literal and drifting.
+    pub series: crate::encoding::SeriesPalette,
     /// The caller's tick formatter, so a layer's tooltip dates match the
     /// ruler's.
     pub format_tick: &'c dyn Fn(i64, i64) -> String,
@@ -839,7 +844,7 @@ pub struct MarksLayer<'a>(pub &'a [(i64, MarkKind)]);
 
 impl SpineLayer for MarksLayer<'_> {
     fn paint(&self, c: &SpineCanvas<'_>) -> Option<String> {
-        paint_marks(c.painter, c.scale, &c.ruler, &c.lane, self.0);
+        paint_marks(c.painter, c.scale, &c.ruler, &c.lane, self.0, &c.series);
         None
     }
 }
@@ -882,8 +887,8 @@ impl SpineLayer for FlagsLayer<'_> {
             // In at the top, out at the base — the same sides the hairline
             // marks use.
             let (col, top) = match kind {
-                MarkKind::In => (MARK_IN, c.lane.top()),
-                MarkKind::Out => (MARK_OUT, c.lane.bottom() - PIP.y),
+                MarkKind::In => (c.series.inbound(), c.lane.top()),
+                MarkKind::Out => (c.series.outbound(), c.lane.bottom() - PIP.y),
                 MarkKind::Neutral => continue,
             };
             let pip = Rect::from_min_size(pos2((x - PIP.x * 0.5).round(), top), PIP);
@@ -1310,6 +1315,7 @@ impl<'a> TimeSpine<'a> {
             ruler,
             lane: brush_lane,
             visuals,
+            series: ui.tokens().series,
             format_tick,
             hover: ui
                 .input(|i| i.pointer.hover_pos())
@@ -1538,7 +1544,7 @@ impl<'a> TimeSpine<'a> {
             );
             let mut fill = visuals.selection.bg_fill;
             fill = fill.linear_multiply(0.55);
-            painter.rect_filled(r, CornerRadius::same(2), fill);
+            painter.rect_filled(r, ui.tokens().corner(Radius::Xs), fill);
             let edge = Stroke::new(1.5_f32, visuals.selection.stroke.color);
             painter.line_segment([r.left_top(), r.left_bottom()], edge);
             painter.line_segment([r.right_top(), r.right_bottom()], edge);
@@ -1559,12 +1565,15 @@ impl<'a> TimeSpine<'a> {
             .x_from_time_f32(state.playhead as f64)
             .unwrap_or(ruler.right())
             .clamp(head_x.min, head_x.max);
+        // Not gated on `travel_allowed`: the playhead's position IS the datum,
+        // so freezing it would not reduce motion, it would lie. Under
+        // `MotionMode::None` the duration is 0.0 and it simply snaps.
         let x = tween(
             ui.ctx(),
             id.with("playhead"),
             target_x,
-            0.18,
-            Easing::OutCubic,
+            ui.duration(Speed::Normal),
+            ui.easing(Easing::OutCubic),
         );
         let ph_col = visuals.strong_text_color();
         painter.line_segment(
@@ -1608,14 +1617,14 @@ impl<'a> TimeSpine<'a> {
         let badge = Rect::from_min_size(pos2(bx, rect.bottom() - badge_size.y - 1.0), badge_size);
         painter.rect_filled(
             badge,
-            CornerRadius::same(3),
+            ui.tokens().corner(Radius::Sm),
             // Opaque, not a tint: a translucent chip over dense marks is the
             // same illegibility with extra steps.
             visuals.extreme_bg_color,
         );
         painter.rect_stroke(
             badge,
-            CornerRadius::same(3),
+            ui.tokens().corner(Radius::Sm),
             Stroke::new(1.0_f32, ph_col.linear_multiply(0.6)),
             egui::StrokeKind::Inside,
         );
@@ -1641,8 +1650,8 @@ impl<'a> TimeSpine<'a> {
             ui.ctx(),
             id.with("glow"),
             state.playing,
-            0.25,
-            Easing::InOutCubic,
+            ui.duration(Speed::Normal),
+            ui.easing(Easing::InOutCubic),
         );
         if glow > 0.0 {
             painter.circle_filled(
@@ -1669,6 +1678,7 @@ fn paint_marks(
     ruler: &Rect,
     brush_lane: &Rect,
     marks: &[(i64, MarkKind)],
+    series: &crate::encoding::SeriesPalette,
 ) {
     let mid = brush_lane.center().y;
     for &(t, kind) in marks {
@@ -1679,12 +1689,12 @@ fn paint_marks(
             continue;
         }
         let (y0, y1, col) = match kind {
-            MarkKind::In => (mid, brush_lane.top() + 1.0, MARK_IN),
-            MarkKind::Out => (mid, brush_lane.bottom() - 1.0, MARK_OUT),
+            MarkKind::In => (mid, brush_lane.top() + 1.0, series.inbound()),
+            MarkKind::Out => (mid, brush_lane.bottom() - 1.0, series.outbound()),
             // Straddles the midline: the SHAPE says "no direction" before the
             // colour does, which matters because these are usually the
             // majority of the lane.
-            MarkKind::Neutral => (mid - NEUTRAL_HALF, mid + NEUTRAL_HALF, MARK_NEUTRAL),
+            MarkKind::Neutral => (mid - NEUTRAL_HALF, mid + NEUTRAL_HALF, series.other),
         };
         painter.line_segment(
             [pos2(x, y0), pos2(x, y1)],

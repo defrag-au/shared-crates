@@ -24,7 +24,8 @@
 //! - Default: `horizontal_wrapped` — a narrow surface spills onto the
 //!   next row rather than overlapping siblings. Switch to `wrapped(false)`
 //!   for fixed-width contexts.
-//! - Item spacing default = 4px; override with `spacing(f32)`.
+//! - Item spacing comes from the theme's [`Space::Sm`] step; override with
+//!   `spacing(Space)`.
 //! - Icons render via `phosphor_with_text` (LayoutJob mixing Phosphor +
 //!   proportional fonts) so a button label stays crisp even when the
 //!   icon family isn't pre-installed on the parent Ui — the widget
@@ -59,13 +60,14 @@
 
 use egui::{RichText, Ui, WidgetText};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
+use crate::theme::{Space, SpaceExt};
 
 /// Builder.
 pub struct ButtonGroup<'a> {
     buttons: Vec<ButtonGroupButton<'a>>,
     wrap: bool,
-    spacing: f32,
+    spacing: Space,
 }
 
 /// Outcome of one `ButtonGroup::show()` call.
@@ -124,13 +126,13 @@ impl<'a> Default for ButtonGroup<'a> {
         Self {
             buttons: Vec::new(),
             wrap: true,
-            spacing: 4.0,
+            spacing: Space::Sm,
         }
     }
 }
 
 impl<'a> ButtonGroup<'a> {
-    /// New empty group. Default layout: horizontal-wrapped, 4px spacing.
+    /// New empty group. Default layout: horizontal-wrapped, [`Space::Sm`] gap.
     pub fn new() -> Self {
         Self::default()
     }
@@ -149,9 +151,11 @@ impl<'a> ButtonGroup<'a> {
         self
     }
 
-    /// Set item spacing in pixels. Default `4.0`.
-    pub fn spacing(mut self, px: f32) -> Self {
-        self.spacing = px;
+    /// Set the gap between buttons to a step of the theme's spacing ramp.
+    /// Default [`Space::Sm`]. A step rather than a pixel count so one theme
+    /// change moves every group in the suite.
+    pub fn spacing(mut self, step: Space) -> Self {
+        self.spacing = step;
         self
     }
 
@@ -159,11 +163,11 @@ impl<'a> ButtonGroup<'a> {
     pub fn show(self, ui: &mut Ui) -> ButtonGroupResponse {
         // Any button might carry a Phosphor icon. Idempotent.
         if self.buttons.iter().any(|b| b.icon.is_some()) {
-            install_phosphor_font(ui.ctx());
+            crate::icons::ensure_fonts(ui);
         }
         let mut response = ButtonGroupResponse::default();
         let render_row = |ui: &mut Ui| {
-            ui.spacing_mut().item_spacing.x = self.spacing;
+            ui.set_item_gap_x(self.spacing);
             for button in &self.buttons {
                 if let Some(id) = render_one(ui, button) {
                     response.clicked = Some(id);

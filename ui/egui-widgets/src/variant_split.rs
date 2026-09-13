@@ -10,7 +10,7 @@
 
 use egui::{Align2, Color32, CornerRadius, FontId, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::{self, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -52,16 +52,18 @@ impl Default for VariantSplitConfig {
 }
 
 /// A colour for variant `index`, cycling the accent palette.
-pub fn variant_color(index: usize) -> Color32 {
-    const PALETTE: &[Color32] = &[
-        theme::ACCENT_BLUE,
-        theme::ACCENT_GREEN,
-        theme::ACCENT_MAGENTA,
-        theme::ACCENT_ORANGE,
-        theme::ACCENT_CYAN,
-        theme::ACCENT_YELLOW,
+pub fn variant_color(index: usize, t: &theme::Theme) -> Color32 {
+    // A `let`, not a `const`: the palette comes from the active theme now, and a
+    // const could only ever bake one.
+    let palette = [
+        t.color.accent_blue,
+        t.color.accent_green,
+        t.color.accent_magenta,
+        t.color.accent_orange,
+        t.color.accent_cyan,
+        t.color.accent_yellow,
     ];
-    PALETTE[index % PALETTE.len()]
+    palette[index % palette.len()]
 }
 
 // ============================================================================
@@ -77,14 +79,18 @@ pub fn show(
 ) -> egui::Response {
     // Header: slot name + role.
     ui.horizontal(|ui| {
-        ui.label(RichText::new(slot).color(theme::TEXT_PRIMARY).strong());
+        ui.label(
+            RichText::new(slot)
+                .color(ui.tokens().color.text_primary)
+                .strong(),
+        );
         ui.label(
             RichText::new("variant source")
-                .color(theme::TEXT_MUTED)
+                .color(ui.tokens().color.text_muted)
                 .size(config.caption_size),
         );
     });
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     let n = segments.iter().filter(|s| s.share > 0.0).count().max(1);
     let available_width = ui.available_width();
@@ -96,7 +102,7 @@ pub fn show(
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
         let rounding = CornerRadius::same(config.corner_radius);
-        painter.rect_filled(rect, rounding, theme::BG_SECONDARY);
+        painter.rect_filled(rect, rounding, ui.tokens().color.bg_secondary);
 
         // Derived segments, left to right.
         let mut x = rect.min.x;
@@ -125,7 +131,7 @@ pub fn show(
                     Align2::CENTER_CENTER,
                     format!("{} · {}%", seg.variant, (seg.share * 100.0).round() as u32),
                     FontId::proportional(config.label_size),
-                    theme::BG_PRIMARY,
+                    ui.tokens().color.bg_primary,
                 );
             }
             x += w;
@@ -141,7 +147,7 @@ pub fn show(
                 while y < bot {
                     painter.line_segment(
                         [egui::pos2(tx, y), egui::pos2(tx, (y + 3.0).min(bot))],
-                        Stroke::new(1.0_f32, theme::TEXT_PRIMARY.gamma_multiply(0.5)),
+                        Stroke::new(1.0_f32, ui.tokens().color.text_primary.gamma_multiply(0.5)),
                     );
                     y += 6.0;
                 }
@@ -150,7 +156,7 @@ pub fn show(
     }
 
     // Legend: variant · share% · asset count (the driver).
-    ui.add_space(5.0);
+    ui.gap(Space::Base);
     ui.horizontal_wrapped(|ui| {
         for seg in segments {
             if seg.share <= 0.0 {
@@ -166,24 +172,24 @@ pub fn show(
                     seg.variant,
                     (seg.share * 100.0).round() as u32
                 ))
-                .color(theme::TEXT_SECONDARY)
+                .color(ui.tokens().color.text_secondary)
                 .size(config.label_size),
             );
             ui.label(
                 RichText::new(format!("· {} assets", seg.asset_count))
-                    .color(theme::TEXT_MUTED)
+                    .color(ui.tokens().color.text_muted)
                     .size(config.caption_size),
             );
-            ui.add_space(10.0);
+            ui.gap(Space::Lg);
         }
     });
 
     // Caption: the "why", generated from the data.
     if let Some(cap) = why_caption(segments, config.show_uniform_baseline && n > 1) {
-        ui.add_space(2.0);
+        ui.gap(Space::Xs);
         ui.label(
             RichText::new(cap)
-                .color(theme::TEXT_MUTED)
+                .color(ui.tokens().color.text_muted)
                 .size(config.caption_size)
                 .italics(),
         );

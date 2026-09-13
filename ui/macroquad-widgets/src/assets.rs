@@ -28,7 +28,7 @@
 
 use std::collections::HashMap;
 
-use macroquad::experimental::coroutines::{start_coroutine, Coroutine};
+use macroquad::experimental::coroutines::{Coroutine, start_coroutine};
 use macroquad::prelude::*;
 
 use crate::fonts::{FontFiles, Fonts, Slot};

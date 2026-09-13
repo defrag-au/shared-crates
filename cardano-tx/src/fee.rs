@@ -151,12 +151,20 @@ pub fn calculate_fee_with_witnesses(
 
     let witnesses = num_witnesses.max(1);
 
+    // Charged whichever path we take below. Both fallbacks used to return
+    // without it, so a transaction that failed to serialise for measurement
+    // was ALSO quietly priced as if it used no reference scripts — two
+    // under-estimates stacked, surfacing only as `FeeTooSmallUTxO` at submit.
+    let ref_script_fee = params.ref_script_size * params.min_fee_ref_script_cost_per_byte;
+
     let base_fee = {
         let built = match tx.clone().build_conway_raw() {
             Ok(b) => b,
             Err(_) => {
                 let estimated_size = estimate_tx_size(tx, witnesses);
-                return estimated_size * params.min_fee_coefficient + params.min_fee_constant;
+                return estimated_size * params.min_fee_coefficient
+                    + params.min_fee_constant
+                    + ref_script_fee;
             }
         };
 
@@ -172,7 +180,9 @@ pub fn calculate_fee_with_witnesses(
                 Ok(s) => s,
                 Err(_) => {
                     let estimated_size = estimate_tx_size(tx, witnesses);
-                    return estimated_size * params.min_fee_coefficient + params.min_fee_constant;
+                    return estimated_size * params.min_fee_coefficient
+                        + params.min_fee_constant
+                        + ref_script_fee;
                 }
             };
         }
@@ -180,8 +190,6 @@ pub fn calculate_fee_with_witnesses(
         let tx_size = signed.tx_bytes.0.len() as u64;
         tx_size * params.min_fee_coefficient + params.min_fee_constant
     };
-
-    let ref_script_fee = params.ref_script_size * params.min_fee_ref_script_cost_per_byte;
 
     // +1 to handle any remaining ceiling rounding across all fee components
     base_fee + execution_fee_from_redeemers(tx, params) + ref_script_fee + 1

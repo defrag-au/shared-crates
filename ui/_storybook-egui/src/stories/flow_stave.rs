@@ -13,7 +13,7 @@
 //! playhead line sweeps the chart and the future dims. Click an event to
 //! move the playhead there.
 
-use crate::TEXT_MUTED;
+use crate::muted;
 use egui_widgets::{
     FlowStave, Reconciliation, Selection, SpineState, StaveEvent, StaveLane, StaveOrigin,
 };
@@ -216,7 +216,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowStaveState) {
              collector, batches mint in, assets forward to a founder minutes later.",
         )
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(4.0);
 
@@ -240,7 +240,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowStaveState) {
         ui.label(
             egui::RichText::new(format!("subject: {}", state.focal))
                 .small()
-                .color(TEXT_MUTED),
+                .color(muted(ui)),
         );
     });
 
@@ -265,7 +265,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowStaveState) {
         ui.add_space(4.0);
         ui.group(|ui| {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("event").small().color(TEXT_MUTED));
+                ui.label(egui::RichText::new("event").small().color(muted(ui)));
                 ui.label(format!("{from} → {}: {}", e.to, e.label));
                 if ui.small_button("×").clicked() {
                     state.detail = None;
@@ -290,6 +290,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowStaveState) {
             r.events_shown, r.events_clipped
         ))
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
 }

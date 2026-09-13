@@ -15,9 +15,9 @@ pub use worker::{durable_object, event};
 pub mod prelude {
     // Worker core types and traits
     pub use worker::{
-        console_debug, console_error, console_log, console_warn, durable_object, event, Bucket,
-        Context, Date, DateInit, Delay, Env, Error, Request, Response, Result, RouteContext,
-        Router,
+        Bucket, Context, Date, DateInit, Delay, Env, Error, Request, Response, Result,
+        RouteContext, Router, console_debug, console_error, console_log, console_warn,
+        durable_object, event,
     };
 
     // Queue support
@@ -33,8 +33,8 @@ pub mod prelude {
     pub use worker::{ObjectNamespace, State as DurableObjectState};
 
     // wasm-bindgen essentials
-    pub use wasm_bindgen::prelude::*;
     pub use wasm_bindgen::JsCast;
+    pub use wasm_bindgen::prelude::*;
     pub use wasm_bindgen_futures::JsFuture;
 
     // JavaScript interop

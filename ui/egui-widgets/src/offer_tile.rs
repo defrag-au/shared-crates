@@ -46,7 +46,7 @@
 
 use egui::{Color32, RichText, Sense, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::{Ink, Space, SpaceExt, ThemeExt, Token};
 
 /// Tile state — drives frame fill, image tint, and click gating.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -85,18 +85,18 @@ pub struct OfferTileConfig {
     pub frame_corner_radius: u8,
     pub image_corner_radius: u8,
     pub frame_inner_margin: i8,
-    pub bg_active: Color32,
-    pub bg_dimmed: Color32,
+    pub bg_active: Ink,
+    pub bg_dimmed: Ink,
     /// Recessed fill behind a placeholder glyph. Painted inside
     /// the inner content area so placeholder tiles have visual
     /// weight matching image tiles (otherwise the glyph floats on
     /// the frame fill and the tile looks empty by comparison).
-    pub placeholder_bg_active: Color32,
-    pub placeholder_bg_dimmed: Color32,
-    pub text_primary: Color32,
-    pub text_muted: Color32,
-    pub badge_active: Color32,
-    pub badge_dimmed: Color32,
+    pub placeholder_bg_active: Ink,
+    pub placeholder_bg_dimmed: Ink,
+    pub text_primary: Ink,
+    pub text_muted: Ink,
+    pub badge_active: Ink,
+    pub badge_dimmed: Ink,
     pub price_size: f32,
     pub badge_size: f32,
     pub placeholder_glyph_size: f32,
@@ -111,19 +111,21 @@ impl Default for OfferTileConfig {
             frame_corner_radius: 6,
             image_corner_radius: 4,
             frame_inner_margin: 4,
-            bg_active: theme::BG_SECONDARY,
-            bg_dimmed: theme::BG_PRIMARY,
-            // BG_PRIMARY is one shade darker than BG_SECONDARY,
-            // giving the placeholder area an inset look against
-            // the active frame. The dimmed counterpart goes
-            // darker still so the content area stays visible
-            // when the frame itself is BG_PRIMARY.
-            placeholder_bg_active: theme::BG_PRIMARY,
-            placeholder_bg_dimmed: Color32::from_rgb(18, 19, 28),
-            text_primary: theme::TEXT_PRIMARY,
-            text_muted: theme::TEXT_MUTED,
-            badge_active: theme::ACCENT_CYAN,
-            badge_dimmed: theme::TEXT_MUTED,
+            bg_active: Ink::Token(Token::BgSecondary),
+            bg_dimmed: Ink::Token(Token::BgPrimary),
+            // The primary background sits a shade away from the secondary one,
+            // giving the placeholder area an inset look against the active
+            // frame. The dimmed frame is already `BgPrimary`, so its
+            // placeholder needs a different surface or the content area
+            // vanishes into it — a partial step towards `BgSecondary` reads as
+            // distinct without guessing at "one shade darker", which no token
+            // names and which inverts between a dark and a light theme.
+            placeholder_bg_active: Ink::Token(Token::BgPrimary),
+            placeholder_bg_dimmed: Ink::Wash(Token::BgSecondary, 90),
+            text_primary: Ink::Token(Token::TextPrimary),
+            text_muted: Ink::Token(Token::TextMuted),
+            badge_active: Ink::Token(Token::AccentCyan),
+            badge_dimmed: Ink::Token(Token::TextMuted),
             price_size: 11.0,
             badge_size: 14.0,
             placeholder_glyph_size: 36.0,
@@ -199,18 +201,27 @@ impl<'a> OfferTile<'a> {
     /// active — dimmed tiles ignore clicks).
     pub fn show(self, ui: &mut Ui) -> egui::Response {
         let cfg = &self.config;
+        // Resolved once: a `Default` config names its tokens, it cannot hold
+        // values.
+        let t = ui.tokens();
         let dimmed = !self.state.is_active();
-        let frame_fill = if dimmed { cfg.bg_dimmed } else { cfg.bg_active };
-        let badge_color = if dimmed {
-            cfg.badge_dimmed
+        let frame_fill = if dimmed {
+            cfg.bg_dimmed.resolve(&t)
         } else {
-            cfg.badge_active
+            cfg.bg_active.resolve(&t)
+        };
+        let badge_color = if dimmed {
+            cfg.badge_dimmed.resolve(&t)
+        } else {
+            cfg.badge_active.resolve(&t)
         };
         let text_color = if dimmed {
-            cfg.text_muted
+            cfg.text_muted.resolve(&t)
         } else {
-            cfg.text_primary
+            cfg.text_primary.resolve(&t)
         };
+        let placeholder_bg_active = cfg.placeholder_bg_active.resolve(&t);
+        let placeholder_bg_dimmed = cfg.placeholder_bg_dimmed.resolve(&t);
 
         // Outer container — fixed size so wrapping rows align.
         // Height = tile + price label + a hair of spacing.
@@ -250,9 +261,9 @@ impl<'a> OfferTile<'a> {
                                 // glyph floats on the frame and
                                 // the tile reads as empty.
                                 let placeholder_bg = if dimmed {
-                                    cfg.placeholder_bg_dimmed
+                                    placeholder_bg_dimmed
                                 } else {
-                                    cfg.placeholder_bg_active
+                                    placeholder_bg_active
                                 };
                                 painter.rect_filled(
                                     rect,
@@ -285,7 +296,7 @@ impl<'a> OfferTile<'a> {
                             );
                         }
 
-                        ui.add_space(2.0);
+                        ui.gap(Space::Xs);
                         ui.label(
                             RichText::new(&self.price)
                                 .color(text_color)

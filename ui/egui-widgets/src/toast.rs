@@ -73,12 +73,19 @@
 use std::collections::VecDeque;
 
 use egui::{
-    Align, Align2, Area, Color32, Context, CornerRadius, Frame, Id, Label, Layout, Margin, Order,
-    RichText, Sense, Stroke, Ui,
+    Align, Align2, Area, Color32, Context, Frame, Id, Label, Layout, Order, RichText, Sense,
+    Stroke, Ui,
 };
 
 use crate::error_note::summarize_error;
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
+use crate::theme::{Radius, Space, SpaceExt, TextSize, Theme, ThemeExt};
+
+/// Mix `a` into `b` by `t` (0 = all `b`, 1 = all `a`), per channel.
+fn blend(a: Color32, b: Color32, t: f32) -> Color32 {
+    let m = |x: u8, y: u8| (x as f32 * t + y as f32 * (1.0 - t)).round() as u8;
+    Color32::from_rgb(m(a.r(), b.r()), m(a.g(), b.g()), m(a.b(), b.b()))
+}
 
 /// ~3 seconds at 60 fps. Used as the default lifetime for toasts pushed
 /// through the convenience helpers on [`ToastQueue`].
@@ -108,40 +115,31 @@ impl ToastKind {
     /// `(fill, stroke, icon_tint, text_tint)` — kept aligned with the
     /// crate's framed-block palette (Chip / IdPill / portal Refuel
     /// toast) so toasts visually belong to the same UI family.
-    fn palette(self) -> (Color32, Color32, Color32, Color32) {
+    fn palette(self, t: &Theme) -> (Color32, Color32, Color32, Color32) {
+        let c = &t.color;
+        // A toast is a tinted card, not a filled badge: the severity colour is
+        // the border and the icon, while the fill stays near the page so a
+        // stack of them doesn't read as five alerts. `gamma_multiply` keeps the
+        // hue and drops the energy, so the recipe holds for any palette —
+        // which is the point of deriving these instead of listing twenty
+        // literals that only ever suited Tokyo Night.
+        let tint = |severity: Color32| {
+            (
+                blend(severity, c.bg_secondary, 0.12),
+                severity.gamma_multiply(0.55),
+                severity,
+                c.text_primary,
+            )
+        };
         match self {
-            ToastKind::Success => (
-                Color32::from_rgb(24, 36, 28),
-                Color32::from_rgb(60, 100, 70),
-                Color32::from_rgb(180, 220, 180),
-                Color32::from_rgb(220, 235, 220),
-            ),
-            ToastKind::Error => (
-                Color32::from_rgb(40, 24, 24),
-                Color32::from_rgb(110, 60, 60),
-                Color32::from_rgb(230, 160, 160),
-                Color32::from_rgb(240, 210, 210),
-            ),
-            ToastKind::Warning => (
-                Color32::from_rgb(40, 34, 22),
-                Color32::from_rgb(120, 100, 50),
-                Color32::from_rgb(235, 210, 140),
-                Color32::from_rgb(240, 225, 190),
-            ),
-            ToastKind::Info => (
-                Color32::from_rgb(22, 28, 38),
-                Color32::from_rgb(60, 80, 110),
-                Color32::from_rgb(160, 190, 230),
-                Color32::from_rgb(210, 220, 240),
-            ),
+            ToastKind::Success => tint(c.success),
+            ToastKind::Error => tint(c.error),
+            ToastKind::Warning => tint(c.warning),
+            ToastKind::Info => tint(c.accent),
             // Deliberately quieter than Info: background work is ambient, and
-            // a running task should not compete with a result.
-            ToastKind::Progress => (
-                Color32::from_rgb(26, 28, 34),
-                Color32::from_rgb(70, 76, 92),
-                Color32::from_rgb(150, 160, 185),
-                Color32::from_rgb(200, 208, 225),
-            ),
+            // a running task should not compete with a result. So it tints off
+            // the muted text tier rather than an accent.
+            ToastKind::Progress => tint(c.text_muted),
         }
     }
 
@@ -406,9 +404,11 @@ pub fn show_toasts(ctx: &Context, queue: &mut ToastQueue) {
         return;
     }
 
-    // Some toast paths land before any other widget has installed the
-    // Phosphor font (e.g. an error toast from a boot-time fetch).
-    install_phosphor_font(ctx);
+    // Some toast paths land before any other widget has installed the Phosphor
+    // font (e.g. an error toast from a boot-time fetch) — which is the exact
+    // case that used to panic, since queueing the font cannot serve the pass
+    // that queued it. `ensure_fonts_in_pass` falls back for that one pass.
+    crate::icons::ensure_fonts_in_pass(ctx);
 
     // Tick the timed (non-sticky) toasts. Only keep the paint pump turning if
     // there's actually a countdown to advance — sticky toasts repaint on input.
@@ -454,7 +454,7 @@ pub fn show_toasts(ctx: &Context, queue: &mut ToastQueue) {
             // swallows scrolls.
             let width = 440.0_f32.min((content_rect.width() - 32.0).max(200.0));
             ui.set_max_width(width);
-            ui.spacing_mut().item_spacing.y = 6.0;
+            ui.set_item_gap_y(Space::Base);
             // TOP-DOWN, rendered newest-first, which puts the oldest nearest
             // the anchor exactly as before.
             //
@@ -485,7 +485,7 @@ pub fn show_toasts(ctx: &Context, queue: &mut ToastQueue) {
 
 /// Render one toast. Returns `true` when the user clicked its close `×`.
 fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
-    let (fill, stroke, icon_col, text_col) = toast.kind.palette();
+    let (fill, stroke, icon_col, text_col) = toast.kind.palette(&ui.tokens());
     // Error toasts get the cleaned-up display: the distilled reason on the
     // toast, the full single-line form behind the copy button.
     let summary = (toast.kind == ToastKind::Error).then(|| summarize_error(&toast.message));
@@ -505,8 +505,8 @@ fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
     Frame::new()
         .fill(fill)
         .stroke(Stroke::new(1.0_f32, stroke))
-        .corner_radius(CornerRadius::same(6))
-        .inner_margin(Margin::symmetric(12, 8))
+        .corner_radius(ui.tokens().corner(Radius::Md))
+        .inner_margin(ui.tokens().margin_xy(Space::Xl, Space::Md))
         .show(ui, |ui| {
             // Clamped to the viewport, not asserted: 440 is wider than a
             // phone, so the toast set the overlay's footprint to the full
@@ -525,7 +525,7 @@ fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
                         Some(f) => {
                             let (rect, _) =
                                 ui.allocate_exact_size(egui::vec2(56.0, 6.0), Sense::hover());
-                            let r = CornerRadius::same(3);
+                            let r = ui.tokens().corner(Radius::Sm);
                             ui.painter().rect_filled(rect, r, stroke);
                             let mut done = rect;
                             done.set_right(rect.left() + rect.width() * f);
@@ -534,7 +534,11 @@ fn render_one(ui: &mut Ui, toast: &Toast) -> bool {
                         // Indeterminate: a spinner, because a fake bar that
                         // creeps to 90% and stalls is a lie.
                         None => {
-                            ui.add(egui::Spinner::new().size(12.0).color(icon_col));
+                            ui.add(
+                                egui::Spinner::new()
+                                    .size(ui.text_size(TextSize::Md))
+                                    .color(icon_col),
+                            );
                         }
                     }
                 }

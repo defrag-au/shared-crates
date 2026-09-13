@@ -13,7 +13,7 @@
 //! below nor in `NON_METADATA_FIXTURES` (with a reason). So a new
 //! fixture can't silently go unverified under v2 — you must classify it.
 
-use cardano_assets::{asset_from_metadata_json, Asset, AssetMetadata, Traits};
+use cardano_assets::{Asset, AssetMetadata, Traits, asset_from_metadata_json};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;

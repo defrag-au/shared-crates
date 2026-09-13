@@ -14,9 +14,9 @@
 //! Second read: `miner-06` dies on day 5 and never comes back. You find it by
 //! the shape of its lane against its neighbours, not by reading fifteen rows.
 
-use crate::TEXT_MUTED;
+use crate::muted;
 use egui_widgets::{
-    coverage_tint, Coverage, CoverageLane, CoverageLanes, Run, Selection, SpineState, TimeSpine,
+    Coverage, CoverageLane, CoverageLanes, Run, Selection, SpineState, TimeSpine, coverage_tint,
 };
 
 const HOUR: i64 = 3_600;
@@ -108,6 +108,15 @@ fn machine_runs() -> Vec<(String, Vec<Run>)> {
                     }
                     let start = T0 + day * DAY + h * HOUR;
                     let end = start + HOUR;
+                    // `allow(clippy::if_same_then_else)`: the two branches emit
+                    // the same run on purpose and must NOT be merged. The first
+                    // is a miner that died on day 5 and never came back; the
+                    // second is one that is curtailed or stopped on schedule.
+                    // Today they look identical because `Run` has one idle
+                    // shape — the moment it distinguishes "dead" from "paused",
+                    // this is where that lands, and a merged condition would
+                    // have to be pulled apart again to get there.
+                    #[allow(clippy::if_same_then_else)]
                     if dead_from.is_some_and(|d| day >= d) {
                         runs.push(Run::idle(start, end));
                     } else if curtailed(h) || daytime_stop(day, h) || (early && h == 19) {
@@ -138,8 +147,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut CoverageLanesState) {
         // The legend. Colour has to be decodable somewhere, and a three-state
         // encoding where one state is "no data" cannot rely on the reader
         // inferring it.
-        legend_swatch(ui, coverage_tint(Coverage::Producing), "hashing");
-        legend_swatch(ui, coverage_tint(Coverage::Idle), "dark (observed)");
+        let (producing, idle) = (
+            coverage_tint(ui, Coverage::Producing),
+            coverage_tint(ui, Coverage::Idle),
+        );
+        legend_swatch(ui, producing, "hashing");
+        legend_swatch(ui, idle, "dark (observed)");
         legend_swatch(ui, egui_widgets::UNOBSERVED, "unobserved");
     });
     ui.add_space(6.0);
@@ -191,14 +204,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut CoverageLanesState) {
     ui.horizontal(|ui| {
         match w.uptime() {
             Some(u) => ui.label(format!("uptime {:.1}%", u * 100.0)),
-            None => ui.colored_label(TEXT_MUTED, "uptime — nothing observed"),
+            None => ui.colored_label(muted(ui), "uptime — nothing observed"),
         };
-        ui.colored_label(TEXT_MUTED, "·");
+        ui.colored_label(muted(ui), "·");
         // Uptime divides by observed time, so it has to travel with the share
         // of the window nobody watched — otherwise 100% over one good hour
         // reads the same as 100% over a month.
         ui.colored_label(
-            TEXT_MUTED,
+            muted(ui),
             format!("blind {:.1}% of window", w.blind_spot() * 100.0),
         );
     });
@@ -207,6 +220,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut CoverageLanesState) {
 fn legend_swatch(ui: &mut egui::Ui, col: egui::Color32, label: &str) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(9.0, 9.0), egui::Sense::hover());
     ui.painter().rect_filled(rect, 1.0, col);
-    ui.colored_label(TEXT_MUTED, label);
+    ui.colored_label(muted(ui), label);
     ui.add_space(6.0);
 }

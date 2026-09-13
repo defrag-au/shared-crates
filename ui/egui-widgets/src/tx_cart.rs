@@ -5,7 +5,7 @@
 //! flow, while the caller handles the actual TX building and signing.
 
 use crate::icons::PhosphorIcon;
-use crate::theme;
+use crate::theme::{Radius, Space, SpaceExt, TextSize, Theme, ThemeExt};
 use egui::{RichText, Ui};
 
 // ---------------------------------------------------------------------------
@@ -69,15 +69,18 @@ impl TxCartItemStatus {
         }
     }
 
-    pub fn color(&self) -> egui::Color32 {
+    /// Takes the theme rather than reading one: a status is a plain value with no
+    /// `Ui` of its own, and baking the palette here would make the cart the one
+    /// widget a theme could not reach.
+    pub fn color(&self, t: &Theme) -> egui::Color32 {
         match self {
-            TxCartItemStatus::Pending => theme::TEXT_MUTED,
-            TxCartItemStatus::Building => theme::ACCENT_CYAN,
-            TxCartItemStatus::Signing => theme::ACCENT_CYAN,
-            TxCartItemStatus::Signed => theme::ACCENT_GREEN,
-            TxCartItemStatus::Submitting => theme::ACCENT_CYAN,
-            TxCartItemStatus::Submitted { .. } => theme::ACCENT_GREEN,
-            TxCartItemStatus::Error { .. } => theme::ACCENT_RED,
+            TxCartItemStatus::Pending => t.color.text_muted,
+            TxCartItemStatus::Building => t.color.accent_cyan,
+            TxCartItemStatus::Signing => t.color.accent_cyan,
+            TxCartItemStatus::Signed => t.color.accent_green,
+            TxCartItemStatus::Submitting => t.color.accent_cyan,
+            TxCartItemStatus::Submitted { .. } => t.color.accent_green,
+            TxCartItemStatus::Error { .. } => t.color.accent_red,
         }
     }
 
@@ -254,24 +257,24 @@ pub fn show_items(
     // Title
     ui.label(
         RichText::new(config.title)
-            .color(theme::TEXT_PRIMARY)
-            .size(18.0)
+            .color(ui.tokens().color.text_primary)
+            .size(ui.text_size(TextSize::Xl2))
             .strong(),
     );
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     if state.items.is_empty() {
-        ui.add_space(16.0);
+        ui.gap(Space::Xl2);
         ui.label(
             RichText::new("Your cart is empty")
-                .color(theme::TEXT_MUTED)
-                .size(12.0),
+                .color(ui.tokens().color.text_muted)
+                .size(ui.text_size(TextSize::Md)),
         );
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.label(
             RichText::new("Add offers from the Browse tab")
-                .color(theme::TEXT_MUTED)
-                .size(10.0),
+                .color(ui.tokens().color.text_muted)
+                .size(ui.text_size(TextSize::Sm)),
         );
         return action;
     }
@@ -301,8 +304,8 @@ pub fn show_items(
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(group_label)
-                    .color(theme::TEXT_PRIMARY)
-                    .size(13.0)
+                    .color(ui.tokens().color.text_primary)
+                    .size(ui.text_size(TextSize::Lg))
                     .strong(),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -310,7 +313,9 @@ pub fn show_items(
                     && ui
                         .add(
                             egui::Button::new(
-                                RichText::new("Clear").color(theme::TEXT_MUTED).size(10.0),
+                                RichText::new("Clear")
+                                    .color(ui.tokens().color.text_muted)
+                                    .size(ui.text_size(TextSize::Sm)),
                             )
                             .frame(false),
                         )
@@ -320,15 +325,15 @@ pub fn show_items(
                 }
                 ui.label(
                     RichText::new(format!("{:.0} ADA", group_total))
-                        .color(theme::ACCENT_RED)
-                        .size(11.0),
+                        .color(ui.tokens().color.accent_red)
+                        .size(ui.text_size(TextSize::Base)),
                 );
             });
         });
 
-        ui.add_space(2.0);
+        ui.gap(Space::Xs);
         ui.separator();
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
 
         // Item cards
         for item in items {
@@ -338,17 +343,17 @@ pub fn show_items(
                     if let Some(ref url) = item.image_url {
                         let image = egui::Image::new(url.as_str())
                             .fit_to_exact_size(egui::vec2(44.0, 44.0))
-                            .corner_radius(egui::CornerRadius::same(4));
+                            .corner_radius(ui.tokens().corner(Radius::Base));
                         ui.add(image);
-                        ui.add_space(6.0);
+                        ui.gap(Space::Base);
                     }
 
                     // Info column
                     ui.vertical(|ui| {
                         ui.label(
                             RichText::new(&item.label)
-                                .color(theme::TEXT_PRIMARY)
-                                .size(12.0)
+                                .color(ui.tokens().color.text_primary)
+                                .size(ui.text_size(TextSize::Md))
                                 .strong(),
                         );
                         // Truncated policy ID
@@ -361,8 +366,8 @@ pub fn show_items(
                             };
                             ui.label(
                                 RichText::new(truncated)
-                                    .color(theme::TEXT_MUTED)
-                                    .size(9.0)
+                                    .color(ui.tokens().color.text_muted)
+                                    .size(ui.text_size(TextSize::Xs))
                                     .monospace(),
                             );
                         }
@@ -379,19 +384,21 @@ pub fn show_items(
                                 ui.horizontal(|ui| {
                                     ui.label(
                                         PhosphorIcon::CheckCircle
-                                            .rich_text(10.0, theme::ACCENT_GREEN),
+                                            .rich_text(10.0, ui.tokens().color.accent_green),
                                     );
                                     ui.label(
                                         RichText::new(short)
-                                            .color(theme::ACCENT_GREEN)
-                                            .size(9.0)
+                                            .color(ui.tokens().color.accent_green)
+                                            .size(ui.text_size(TextSize::Xs))
                                             .monospace(),
                                     );
                                 });
                             }
                             other => {
                                 ui.label(
-                                    RichText::new(other.label()).color(other.color()).size(9.0),
+                                    RichText::new(other.label())
+                                        .color(other.color(&ui.tokens()))
+                                        .size(ui.text_size(TextSize::Xs)),
                                 );
                             }
                         }
@@ -410,7 +417,8 @@ pub fn show_items(
                             if ui
                                 .add(
                                     egui::Button::new(
-                                        PhosphorIcon::Trash.rich_text(14.0, theme::TEXT_MUTED),
+                                        PhosphorIcon::Trash
+                                            .rich_text(14.0, ui.tokens().color.text_muted),
                                     )
                                     .frame(false),
                                 )
@@ -418,21 +426,21 @@ pub fn show_items(
                             {
                                 remove_id = Some(item.id.clone());
                             }
-                            ui.add_space(4.0);
+                            ui.gap(Space::Sm);
                         }
 
                         // Price
                         let total = item.ada_per_item * item.quantity as f64;
                         ui.label(
                             RichText::new(format!("{:.0} ADA", total))
-                                .color(theme::TEXT_PRIMARY)
-                                .size(11.0),
+                                .color(ui.tokens().color.text_primary)
+                                .size(ui.text_size(TextSize::Base)),
                         );
                         if item.quantity > 1 {
                             ui.label(
                                 RichText::new(format!("{}x", item.quantity))
-                                    .color(theme::TEXT_MUTED)
-                                    .size(10.0),
+                                    .color(ui.tokens().color.text_muted)
+                                    .size(ui.text_size(TextSize::Sm)),
                             );
                         }
                     });
@@ -443,8 +451,8 @@ pub fn show_items(
             // Card border
             ui.painter().rect_stroke(
                 card_rect.expand(2.0),
-                egui::CornerRadius::same(6),
-                egui::Stroke::new(0.5_f32, theme::BORDER),
+                ui.tokens().corner(Radius::Md),
+                egui::Stroke::new(0.5_f32, ui.tokens().color.border),
                 egui::StrokeKind::Outside,
             );
 
@@ -456,13 +464,17 @@ pub fn show_items(
                 } else {
                     short.to_string()
                 };
-                ui.label(RichText::new(short).color(theme::ACCENT_RED).size(9.0));
+                ui.label(
+                    RichText::new(short)
+                        .color(ui.tokens().color.accent_red)
+                        .size(ui.text_size(TextSize::Xs)),
+                );
             }
 
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
         }
 
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
     }
 
     if let Some(id) = remove_id {
@@ -484,7 +496,7 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
         return action;
     }
 
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     // Bottom action area
     match &state.phase {
@@ -498,13 +510,13 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                     .sum();
 
                 ui.separator();
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
 
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(format!("Total: {:.0} ADA", total_ada))
-                            .color(theme::TEXT_SECONDARY)
-                            .size(11.0),
+                            .color(ui.tokens().color.text_secondary)
+                            .size(ui.text_size(TextSize::Base)),
                     );
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -512,12 +524,12 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                             .add(
                                 egui::Button::new(
                                     RichText::new("Prepare")
-                                        .color(theme::BG_PRIMARY)
-                                        .size(13.0)
+                                        .color(ui.tokens().color.bg_primary)
+                                        .size(ui.text_size(TextSize::Lg))
                                         .strong(),
                                 )
-                                .fill(theme::ACCENT_GREEN)
-                                .corner_radius(egui::CornerRadius::same(6))
+                                .fill(ui.tokens().color.accent_green)
+                                .corner_radius(ui.tokens().corner(Radius::Md))
                                 .min_size(egui::vec2(100.0, 32.0)),
                             )
                             .clicked()
@@ -534,37 +546,37 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                 ui.spinner();
                 ui.label(
                     RichText::new("Building transactions...")
-                        .color(theme::ACCENT_CYAN)
-                        .size(12.0),
+                        .color(ui.tokens().color.accent_cyan)
+                        .size(ui.text_size(TextSize::Md)),
                 );
             });
         }
 
         TxCartPhase::Preview => {
             ui.separator();
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
 
             ui.label(
                 RichText::new(format!(
                     "{} transaction(s) to sign",
                     state.planned_txs.len()
                 ))
-                .color(theme::TEXT_SECONDARY)
-                .size(11.0),
+                .color(ui.tokens().color.text_secondary)
+                .size(ui.text_size(TextSize::Base)),
             );
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
 
             for (i, planned) in state.planned_txs.iter().enumerate() {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(format!("TX {}", i + 1))
-                            .color(theme::TEXT_MUTED)
-                            .size(10.0),
+                            .color(ui.tokens().color.text_muted)
+                            .size(ui.text_size(TextSize::Sm)),
                     );
                     ui.label(
                         RichText::new(&planned.summary)
-                            .color(theme::TEXT_PRIMARY)
-                            .size(10.0),
+                            .color(ui.tokens().color.text_primary)
+                            .size(ui.text_size(TextSize::Sm)),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
@@ -572,19 +584,21 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                                 "{:.2} ADA fee",
                                 planned.fee as f64 / 1_000_000.0
                             ))
-                            .color(theme::TEXT_MUTED)
-                            .size(9.0),
+                            .color(ui.tokens().color.text_muted)
+                            .size(ui.text_size(TextSize::Xs)),
                         );
                     });
                 });
             }
 
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
             ui.horizontal(|ui| {
                 if ui
                     .add(
                         egui::Button::new(
-                            RichText::new("< Edit").color(theme::TEXT_MUTED).size(11.0),
+                            RichText::new("< Edit")
+                                .color(ui.tokens().color.text_muted)
+                                .size(ui.text_size(TextSize::Base)),
                         )
                         .frame(false),
                     )
@@ -598,12 +612,12 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                         .add(
                             egui::Button::new(
                                 RichText::new("Sign & Submit")
-                                    .color(theme::BG_PRIMARY)
-                                    .size(13.0)
+                                    .color(ui.tokens().color.bg_primary)
+                                    .size(ui.text_size(TextSize::Lg))
                                     .strong(),
                             )
-                            .fill(theme::ACCENT_GREEN)
-                            .corner_radius(egui::CornerRadius::same(6))
+                            .fill(ui.tokens().color.accent_green)
+                            .corner_radius(ui.tokens().corner(Radius::Md))
                             .min_size(egui::vec2(120.0, 32.0)),
                         )
                         .clicked()
@@ -627,29 +641,35 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                 } else {
                     format!("Submitting {completed}/{total}...")
                 };
-                ui.label(RichText::new(label).color(theme::ACCENT_CYAN).size(12.0));
+                ui.label(
+                    RichText::new(label)
+                        .color(ui.tokens().color.accent_cyan)
+                        .size(ui.text_size(TextSize::Md)),
+                );
             });
         }
 
         TxCartPhase::Done => {
             ui.separator();
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
             ui.horizontal(|ui| {
-                ui.label(PhosphorIcon::CheckCircle.rich_text(16.0, theme::ACCENT_GREEN));
+                ui.label(PhosphorIcon::CheckCircle.rich_text(16.0, ui.tokens().color.accent_green));
                 ui.label(
                     RichText::new("All transactions submitted")
-                        .color(theme::ACCENT_GREEN)
-                        .size(13.0)
+                        .color(ui.tokens().color.accent_green)
+                        .size(ui.text_size(TextSize::Lg))
                         .strong(),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
                         .add(
                             egui::Button::new(
-                                RichText::new("Clear").color(theme::TEXT_PRIMARY).size(12.0),
+                                RichText::new("Clear")
+                                    .color(ui.tokens().color.text_primary)
+                                    .size(ui.text_size(TextSize::Md)),
                             )
-                            .fill(theme::BG_SECONDARY)
-                            .corner_radius(egui::CornerRadius::same(6))
+                            .fill(ui.tokens().color.bg_secondary)
+                            .corner_radius(ui.tokens().corner(Radius::Md))
                             .min_size(egui::vec2(70.0, 28.0)),
                         )
                         .clicked()
@@ -669,25 +689,27 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
             };
             ui.label(
                 RichText::new(format!("Error: {short}"))
-                    .color(theme::ACCENT_RED)
-                    .size(11.0),
+                    .color(ui.tokens().color.accent_red)
+                    .size(ui.text_size(TextSize::Base)),
             );
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
             ui.horizontal(|ui| {
                 if ui
                     .add(
                         egui::Button::new(
-                            RichText::new("Retry").color(theme::TEXT_PRIMARY).size(12.0),
+                            RichText::new("Retry")
+                                .color(ui.tokens().color.text_primary)
+                                .size(ui.text_size(TextSize::Md)),
                         )
-                        .fill(theme::BG_SECONDARY)
-                        .corner_radius(egui::CornerRadius::same(6))
+                        .fill(ui.tokens().color.bg_secondary)
+                        .corner_radius(ui.tokens().corner(Radius::Md))
                         .min_size(egui::vec2(80.0, 30.0)),
                     )
                     .clicked()
                 {
                     action = Some(TxCartAction::Execute);
                 }
-                ui.add_space(8.0);
+                ui.gap(Space::Md);
                 // Between "try the identical thing again" and "throw the whole
                 // cart away" there has to be a middle option, or a single bad
                 // item costs the operator everything else they queued.
@@ -695,22 +717,24 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
                     .add(
                         egui::Button::new(
                             RichText::new("Edit cart")
-                                .color(theme::TEXT_PRIMARY)
-                                .size(12.0),
+                                .color(ui.tokens().color.text_primary)
+                                .size(ui.text_size(TextSize::Md)),
                         )
-                        .fill(theme::BG_SECONDARY)
-                        .corner_radius(egui::CornerRadius::same(6))
+                        .fill(ui.tokens().color.bg_secondary)
+                        .corner_radius(ui.tokens().corner(Radius::Md))
                         .min_size(egui::vec2(80.0, 30.0)),
                     )
                     .clicked()
                 {
                     action = Some(TxCartAction::BackToEditing);
                 }
-                ui.add_space(8.0);
+                ui.gap(Space::Md);
                 if ui
                     .add(
                         egui::Button::new(
-                            RichText::new("Clear").color(theme::TEXT_MUTED).size(12.0),
+                            RichText::new("Clear")
+                                .color(ui.tokens().color.text_muted)
+                                .size(ui.text_size(TextSize::Md)),
                         )
                         .frame(false),
                     )

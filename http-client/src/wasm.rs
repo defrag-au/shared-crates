@@ -1,6 +1,6 @@
 use crate::{HttpError, HttpMethod, ResponseDetails};
 use gloo_net::http::Request;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
 use tracing::debug;
 

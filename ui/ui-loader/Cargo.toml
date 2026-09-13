@@ -1,7 +1,7 @@
 [package]
 name = "ui-loader"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 description = "Framework-agnostic loading orchestrator for WASM widgets"
 license = "MIT"
 

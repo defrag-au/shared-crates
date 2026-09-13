@@ -52,6 +52,7 @@
 use egui::{Align2, Color32, Pos2, Response, Sense, Stroke, Ui, pos2, vec2};
 
 use crate::selection::Selection;
+use crate::theme::ThemeExt;
 use crate::time_spine::SpineState;
 
 /// A party's seat on the ring. Position depends only on `hop` and index, so it
@@ -218,58 +219,63 @@ fn fmt_quantum(q: u64, scale: f64) -> String {
 }
 
 /// Outbound value — shared by every flow face so direction never changes hue
-/// between widgets.
-pub(crate) const OUT: Color32 = Color32::from_rgb(0xe0, 0x8a, 0x2e);
-/// Inbound value — see [`OUT`].
-pub(crate) const IN: Color32 = Color32::from_rgb(0x39, 0x87, 0xe5);
+/// between widgets. That sharing is now enforced rather than hoped for: the
+/// value comes from the theme's `Diverging` flow encoding, which the other
+/// twelve modules read too.
+pub(crate) fn out_colour(ui: &Ui) -> Color32 {
+    ui.tokens().series.outbound()
+}
+/// Inbound value — see [`out_colour`].
+pub(crate) fn in_colour(ui: &Ui) -> Color32 {
+    ui.tokens().series.inbound()
+}
 /// Per-flow particle cap. A single huge payment must not drown the frame.
 const MAX_DOTS: usize = 40;
 
-/// Ring tints, innermost first — a green→teal ordinal ramp plus a neutral
-/// outer step.
-///
-/// ## Why this band, and why these exact values
-///
-/// The ring index is ordinal (how close to the project), so it moves along ONE
-/// safe band rather than taking four unrelated hues. The band is constrained
-/// from two directions: the chords drawn ACROSS these rings are [`OUT`] orange
-/// and [`IN`] blue, and a seat dot must never be mistakable for a payment.
-/// Violet, the obvious first pick, **fails** — it collapses onto the chord
-/// blue under protanopia at ΔE 5.1.
-///
-/// ## Lightness alone was not enough (fixed 2026-08-21)
-///
-/// The first ramp took one teal hue in lightness steps, and in use the middle
-/// two — associate and customer — read as the same colour: ΔE 22 normal, 19
-/// under deuteranopia, which clears the floor and still fails the eye, because
-/// the seats are 4px dots seen at a glance rather than swatches side by side.
-/// The ramp now moves in HUE as well (pale aqua → green → deep teal), taking
-/// that pair to **ΔE 53 normal / 44 deutan**. Every pair, including against
-/// both chord colours, is asserted in
-/// `the_ring_ramp_stays_separable_including_under_colour_blindness`.
-///
-/// ## The last step is deliberately colourless
-///
-/// Unexamined is not a fourth class — it is the ABSENCE of a judgement, which
-/// the store models as `None`. So colour means somebody decided, grey means
-/// nobody has yet, and the work remaining reads as colour draining out of the
-/// view. Grey also sits at 2.32:1 on the surface, under the 3:1 mark floor:
-/// legitimate here only because it is never the sole cue — the sidebar always
-/// prints the address beside it and the ring gives it the outermost band.
-const RING_TINTS: [Color32; 4] = [
-    Color32::from_rgb(0xa5, 0xf3, 0xe4), // core — the project itself
-    Color32::from_rgb(0x3d, 0xdc, 0x84), // associates — paid BY the project
-    Color32::from_rgb(0x0f, 0x8f, 0x8a), // customers — bought from it
-    Color32::from_rgb(0x4d, 0x54, 0x78), // nobody has looked yet
-];
+// ── Why the ring band is the band it is ──────────────────────────────────
+//
+// The values moved to `SeriesPalette::classes` (+ `unobserved` for the
+// outermost step) and the validator moved to `tests/series_palette.rs`, where
+// it runs over every preset rather than over one hardcoded array. The reasoning
+// stays here, beside the chart it constrains, because it is what a theme has to
+// respect when it supplies its own band.
+//
+// ## Why this band, and why these exact values
+//
+// The ring index is ordinal (how close to the project), so it moves along ONE
+// safe band rather than taking four unrelated hues. The band is constrained
+// from two directions: the chords drawn ACROSS these rings are the outbound
+// orange and inbound blue, and a seat dot must never be mistakable for a
+// payment. Violet, the obvious first pick, **fails** — it collapses onto the
+// chord blue under protanopia at ΔE 5.1.
+//
+// ## Lightness alone was not enough (fixed 2026-08-21)
+//
+// The first ramp took one teal hue in lightness steps, and in use the middle
+// two — associate and customer — read as the same colour: ΔE 22 normal, 19
+// under deuteranopia, which clears the floor and still fails the eye, because
+// the seats are 4px dots seen at a glance rather than swatches side by side.
+// The ramp now moves in HUE as well (pale aqua → green → deep teal), taking
+// that pair to **ΔE 53 normal / 44 deutan**. This is also why `classes` is
+// enumerated rather than generated from two endpoints: a `Sequential` lerp
+// would reproduce exactly the single-band ramp that failed.
+//
+// ## The last step is deliberately colourless
+//
+// Unexamined is not a fourth class — it is the ABSENCE of a judgement, which
+// the store models as `None`. So colour means somebody decided, grey means
+// nobody has yet, and the work remaining reads as colour draining out of the
+// view. Grey also sits at 2.32:1 on the surface, under the 3:1 mark floor:
+// legitimate here only because it is never the sole cue — the sidebar always
+// prints the address beside it and the ring gives it the outermost band.
 
 /// The colour for a ring index, saturating at the outermost.
 ///
 /// Public because the party list has to paint the same dot: a wallet's colour
 /// is its classification, and two call sites deriving it separately is how a
 /// legend starts lying.
-pub fn ring_tint(ring: u8) -> Color32 {
-    RING_TINTS[(ring as usize).min(RING_TINTS.len() - 1)]
+pub fn ring_tint(ui: &Ui, ring: u8) -> Color32 {
+    ui.tokens().series.class(ring)
 }
 
 impl<'a> FlowRing<'a> {
@@ -405,7 +411,7 @@ impl<'a> FlowRing<'a> {
             painter.circle_stroke(
                 centre,
                 r,
-                Stroke::new(1.0_f32, ring_tint(h).gamma_multiply(0.22)),
+                Stroke::new(1.0_f32, ring_tint(ui, h).gamma_multiply(0.22)),
             );
         }
 
@@ -506,9 +512,9 @@ impl<'a> FlowRing<'a> {
             // within the pair is carried by the taper (wide origin, narrow
             // destination), as it always was.
             let col = match a.ring.cmp(&b.ring) {
-                std::cmp::Ordering::Greater => IN,
-                std::cmp::Ordering::Less => OUT,
-                std::cmp::Ordering::Equal => ring_tint(a.ring),
+                std::cmp::Ordering::Greater => in_colour(ui),
+                std::cmp::Ordering::Less => out_colour(ui),
+                std::cmp::Ordering::Equal => ring_tint(ui, a.ring),
             };
             // Weight by share of the heaviest pair, on a log scale — treasury
             // flows span orders of magnitude, so a linear ramp shows one chord.
@@ -540,9 +546,9 @@ impl<'a> FlowRing<'a> {
             let involved = watched.as_deref().is_none_or(|w| w == f.from || w == f.to);
             let alpha = if involved { 1.0 } else { 0.16 };
             let col = if watched.as_deref() == Some(f.to) {
-                IN
+                in_colour(ui)
             } else {
-                OUT
+                out_colour(ui)
             };
             // The SAME route the chord was stroked along, so a train never
             // peels away from its own line.
@@ -636,7 +642,7 @@ impl<'a> FlowRing<'a> {
             // repainting anyone's identity — colour follows the entity, never
             // its rank in the current view.
             let col = if on {
-                ring_tint(n.hop).gamma_multiply(emph)
+                ring_tint(ui, n.hop).gamma_multiply(emph)
             } else {
                 muted.gamma_multiply(0.35)
             };
@@ -1163,146 +1169,35 @@ mod tests {
         ]
     }
 
-    /// CIELAB of an sRGB colour — enough for ΔE76, which is what the palette
-    /// floors are stated in.
-    fn lab(c: Color32) -> [f64; 3] {
-        let lin = |v: u8| {
-            let v = v as f64 / 255.0;
-            if v <= 0.04045 {
-                v / 12.92
-            } else {
-                ((v + 0.055) / 1.055).powf(2.4)
-            }
-        };
-        let (r, g, b) = (lin(c.r()), lin(c.g()), lin(c.b()));
-        let (x, y, z) = (
-            (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047,
-            0.2126 * r + 0.7152 * g + 0.0722 * b,
-            (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883,
-        );
-        let f = |t: f64| {
-            if t > 0.008_856 {
-                t.cbrt()
-            } else {
-                7.787 * t + 16.0 / 116.0
-            }
-        };
-        let (fx, fy, fz) = (f(x), f(y), f(z));
-        [116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz)]
-    }
-
-    fn delta_e(a: Color32, b: Color32) -> f64 {
-        lab(a)
-            .iter()
-            .zip(lab(b).iter())
-            .map(|(x, y)| (x - y).powi(2))
-            .sum::<f64>()
-            .sqrt()
-    }
-
-    /// Machado et al. (2009) severity-1.0 simulation of dichromatic vision.
-    fn simulate(c: Color32, m: [[f64; 3]; 3]) -> Color32 {
-        let lin = |v: u8| {
-            let v = v as f64 / 255.0;
-            if v <= 0.04045 {
-                v / 12.92
-            } else {
-                ((v + 0.055) / 1.055).powf(2.4)
-            }
-        };
-        let enc = |v: f64| {
-            let v = v.clamp(0.0, 1.0);
-            let s = if v <= 0.003_130_8 {
-                12.92 * v
-            } else {
-                1.055 * v.powf(1.0 / 2.4) - 0.055
-            };
-            (s * 255.0).round() as u8
-        };
-        let (r, g, b) = (lin(c.r()), lin(c.g()), lin(c.b()));
-        Color32::from_rgb(
-            enc(m[0][0] * r + m[0][1] * g + m[0][2] * b),
-            enc(m[1][0] * r + m[1][1] * g + m[1][2] * b),
-            enc(m[2][0] * r + m[2][1] * g + m[2][2] * b),
-        )
-    }
-
-    const PROTAN: [[f64; 3]; 3] = [
-        [0.152_286, 1.052_583, -0.204_868],
-        [0.114_503, 0.786_281, 0.099_216],
-        [-0.003_882, -0.048_116, 1.051_998],
-    ];
-    const DEUTAN: [[f64; 3]; 3] = [
-        [0.367_322, 0.860_646, -0.227_968],
-        [0.280_085, 0.672_501, 0.047_413],
-        [-0.011_820, 0.042_940, 0.968_881],
-    ];
-
-    /// THE PALETTE VALIDATOR, as a test rather than a script somebody ran once.
-    ///
-    /// Every pair of {four ring tints, both chord colours} must stay apart
-    /// under normal vision AND under both common dichromacies — a seat that
-    /// collapses onto a chord makes a wallet look like a payment, and two ring
-    /// steps that collapse onto each other erase the classification the whole
-    /// chart encodes. The floors are the ones the ramp was originally chosen
-    /// against; the associate/customer pair carries a much higher one because
-    /// clearing the floor was exactly what it did while still reading as one
-    /// colour on 4px dots.
-    #[test]
-    fn the_ring_ramp_stays_separable_including_under_colour_blindness() {
-        const NORMAL_FLOOR: f64 = 15.0;
-        const CVD_FLOOR: f64 = 8.0;
-        let all: Vec<(&str, Color32)> = vec![
-            ("core", ring_tint(0)),
-            ("associate", ring_tint(1)),
-            ("customer", ring_tint(2)),
-            ("unexamined", ring_tint(3)),
-            ("chord-out", OUT),
-            ("chord-in", IN),
-        ];
-        for (i, (na, a)) in all.iter().enumerate() {
-            for (nb, b) in all.iter().skip(i + 1) {
-                assert!(
-                    delta_e(*a, *b) >= NORMAL_FLOOR,
-                    "{na} vs {nb}: ΔE {:.1} < {NORMAL_FLOOR}",
-                    delta_e(*a, *b)
-                );
-                for (kind, m) in [("protan", PROTAN), ("deutan", DEUTAN)] {
-                    let d = delta_e(simulate(*a, m), simulate(*b, m));
-                    assert!(
-                        d >= CVD_FLOOR,
-                        "{na} vs {nb} under {kind}: ΔE {d:.1} < {CVD_FLOOR}"
-                    );
-                }
-            }
-        }
-        // The pair that prompted the change: one teal hue in lightness steps
-        // measured 22 normal / 19 deutan and still read as one colour.
-        let (assoc, cust) = (ring_tint(1), ring_tint(2));
-        assert!(
-            delta_e(assoc, cust) >= 40.0,
-            "associate vs customer must be obvious, not merely legal: ΔE {:.1}",
-            delta_e(assoc, cust)
-        );
-        assert!(delta_e(simulate(assoc, DEUTAN), simulate(cust, DEUTAN)) >= 30.0);
-    }
+    // THE PALETTE VALIDATOR — and the ΔE76 / dichromacy harness it needed —
+    // moved to `tests/series_palette.rs` as
+    // `every_preset_keeps_classes_separable_from_each_other_and_from_the_chords`.
+    //
+    // Not deleted, relocated, and with wider coverage: the ramp is a theme axis
+    // now, so a validator that ran once over module `const`s would be checking
+    // values nothing renders. Every floor is carried over unchanged, including
+    // the stricter associate/customer pair — and it now runs over every preset,
+    // which is the only place a theme could break it.
 
     /// The tints are chosen against the chords by a validator, so the thing
     /// worth pinning in code is that nothing silently reuses a chord colour or
     /// panics past the last ring.
     #[test]
     fn ring_tints_are_distinct_and_never_a_chord_colour() {
-        let tints: Vec<Color32> = (0..4).map(ring_tint).collect();
-        for (i, a) in tints.iter().enumerate() {
-            for b in tints.iter().skip(i + 1) {
-                assert_ne!(a, b, "two rings share a tint");
+        egui::__run_test_ui(|ui| {
+            let tints: Vec<Color32> = (0..4).map(|r| ring_tint(ui, r)).collect();
+            let (out, inb) = (ui.tokens().series.outbound(), ui.tokens().series.inbound());
+            for (i, a) in tints.iter().enumerate() {
+                for b in tints.iter().skip(i + 1) {
+                    assert_ne!(a, b, "two rings share a tint");
+                }
+                assert_ne!(*a, out, "a seat must not wear the outbound chord colour");
+                assert_ne!(*a, inb, "a seat must not wear the inbound chord colour");
             }
-            assert_ne!(*a, OUT, "a seat must not wear the outbound chord colour");
-            assert_ne!(*a, IN, "a seat must not wear the inbound chord colour");
-        }
-        // Past the last ring the outermost tint holds, rather than panicking:
-        // `max_hop` is data-driven and a caller may hand over anything.
-        assert_eq!(ring_tint(9), ring_tint(3));
+            // Past the last ring the outermost tint holds, rather than panicking:
+            // `max_hop` is data-driven and a caller may hand over anything.
+            assert_eq!(ring_tint(ui, 9), ring_tint(ui, 3));
+        });
     }
 
     /// Four rings of seats, for the chord-routing tests.

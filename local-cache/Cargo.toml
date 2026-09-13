@@ -1,7 +1,7 @@
 [package]
 name = "local-cache"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 description = "Namespaced, TTL'd, size-bounded client-side cache over a pluggable store (localStorage by default)"
 
 [features]

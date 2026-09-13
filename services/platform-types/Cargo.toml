@@ -2,7 +2,7 @@
 name = "platform-types"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Wire types shared between defrag platform services and their HTTP clients"
 
 [dependencies]

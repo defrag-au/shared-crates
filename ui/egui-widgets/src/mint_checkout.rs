@@ -26,7 +26,7 @@ use egui::{Color32, RichText, Ui};
 use crate::chip::{Chip, ChipVariant};
 use crate::error_note::ErrorNote;
 use crate::quantity_stepper::QuantityStepper;
-use crate::theme;
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 use crate::utils::{format_lovelace, truncate_hex};
 
 /// Whether this wallet may mint right now, in the active phase.
@@ -96,26 +96,27 @@ pub struct MintCheckoutResponse {
 /// The buyer-facing mint offer widget. See module docs.
 pub struct MintCheckout<'a> {
     vm: &'a MintCheckoutVm,
-    accent: Color32,
+    accent: Ink,
 }
 
 impl<'a> MintCheckout<'a> {
     pub fn new(vm: &'a MintCheckoutVm) -> Self {
         Self {
             vm,
-            accent: theme::ACCENT_GREEN,
+            accent: Ink::Token(Token::AccentGreen),
         }
     }
 
     /// Accent for the total, stepper readout, and Mint/bundle buttons.
-    pub fn accent(mut self, accent: Color32) -> Self {
-        self.accent = accent;
+    pub fn accent(mut self, accent: impl Into<Ink>) -> Self {
+        self.accent = accent.into();
         self
     }
 
     pub fn show(self, ui: &mut Ui) -> MintCheckoutResponse {
-        crate::install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
         let vm = self.vm;
+        let accent = self.accent.of(ui);
         let mut actions = Vec::new();
 
         // ── Phase + eligibility chips ───────────────────────────────────
@@ -145,16 +146,16 @@ impl<'a> MintCheckout<'a> {
         let max_per_wallet = (*max_per_wallet).max(1);
         let busy = matches!(vm.state, CheckoutState::Working(_));
 
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
 
         // ── Quantity ────────────────────────────────────────────────────
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Quantity").color(theme::TEXT_SECONDARY));
-            ui.add_space(10.0);
+            ui.label(RichText::new("Quantity").color(ui.tokens().color.text_secondary));
+            ui.gap(Space::Lg);
             ui.add_enabled_ui(!busy, |ui| {
                 let resp = QuantityStepper::new(vm.qty)
                     .range(1, max_per_wallet)
-                    .accent(self.accent)
+                    .accent(accent)
                     .show(ui);
                 if resp.changed {
                     actions.push(MintCheckoutAction::QtyChanged(resp.value));
@@ -162,39 +163,39 @@ impl<'a> MintCheckout<'a> {
             });
         });
 
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
 
         // ── Price each / Total — fixed-width cards, top-aligned ──────────
         let unit = vm.unit_price_lovelace;
         let total = unit.saturating_mul(vm.qty as u64);
         ui.with_layout(egui::Layout::left_to_right(egui::Align::TOP), |ui| {
-            ui.spacing_mut().item_spacing.x = 10.0;
+            ui.set_item_gap_x(Space::Lg);
             price_card(
                 ui,
                 "Price each",
                 &format_lovelace(unit as i64),
-                theme::TEXT_PRIMARY,
+                ui.tokens().color.text_primary,
             );
-            price_card(ui, "Total", &format_lovelace(total as i64), self.accent);
+            price_card(ui, "Total", &format_lovelace(total as i64), accent);
         });
 
         // ── Bundles (optional) ──────────────────────────────────────────
         if !vm.bundles.is_empty() {
-            ui.add_space(14.0);
+            ui.gap(Space::Xl2);
             ui.label(
                 RichText::new("Bundles")
-                    .color(theme::TEXT_SECONDARY)
+                    .color(ui.tokens().color.text_secondary)
                     .strong(),
             );
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
             for bundle in &vm.bundles {
-                if bundle_card(ui, bundle, unit, busy, self.accent) {
+                if bundle_card(ui, bundle, unit, busy, accent) {
                     actions.push(MintCheckoutAction::SelectBundle(bundle.sku_key.clone()));
                 }
             }
         }
 
-        ui.add_space(14.0);
+        ui.gap(Space::Xl2);
 
         // ── Purchase summary + Mint ─────────────────────────────────────
         let noun = if vm.qty == 1 { "NFT" } else { "NFTs" };
@@ -204,49 +205,49 @@ impl<'a> MintCheckout<'a> {
                 vm.qty,
                 format_lovelace(total as i64)
             ))
-            .size(15.0)
-            .color(theme::TEXT_PRIMARY),
+            .size(ui.text_size(TextSize::Xl))
+            .color(ui.tokens().color.text_primary),
         );
-        ui.add_space(8.0);
+        ui.gap(Space::Md);
 
         let can_mint = matches!(vm.state, CheckoutState::Idle | CheckoutState::Error(_));
         let mint = egui::Button::new(
             RichText::new("Mint")
                 .strong()
-                .size(15.0)
-                .color(theme::BG_PRIMARY),
+                .size(ui.text_size(TextSize::Xl))
+                .color(ui.tokens().color.bg_primary),
         )
-        .fill(self.accent)
+        .fill(accent)
         .min_size(egui::vec2(ui.available_width(), 44.0))
-        .corner_radius(8.0);
+        .corner_radius(ui.tokens().corner(Radius::Lg));
         if ui.add_enabled(can_mint, mint).clicked() {
             actions.push(MintCheckoutAction::Mint);
         }
 
         // ── Post-submit state ───────────────────────────────────────────
-        ui.add_space(10.0);
+        ui.gap(Space::Lg);
         match &vm.state {
             CheckoutState::Idle => {}
             CheckoutState::Working(msg) => {
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label(RichText::new(msg).color(theme::ACCENT_CYAN));
+                    ui.label(RichText::new(msg).color(ui.tokens().color.accent_cyan));
                 });
             }
             CheckoutState::Submitted { tx, status } => {
                 Chip::new("Payment submitted")
                     .variant(ChipVariant::Success)
                     .show(ui);
-                ui.add_space(6.0);
+                ui.gap(Space::Base);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Order").color(theme::TEXT_SECONDARY));
+                    ui.label(RichText::new("Order").color(ui.tokens().color.text_secondary));
                     let (variant, label) = order_status_view(status);
                     Chip::new(&label).variant(variant).show(ui);
                 });
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
                 ui.hyperlink_to(
                     RichText::new(format!("view tx {}", truncate_hex(tx, 8, 6)))
-                        .color(theme::ACCENT_BLUE),
+                        .color(ui.tokens().color.accent_blue),
                     format!("/{tx}"),
                 );
             }
@@ -263,16 +264,25 @@ impl<'a> MintCheckout<'a> {
 /// price-each / total — fixed width + top alignment so they never stagger.
 fn price_card(ui: &mut Ui, label: &str, value: &str, value_color: Color32) {
     egui::Frame::new()
-        .fill(theme::BG_HIGHLIGHT)
-        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
-        .corner_radius(8.0)
-        .inner_margin(12.0)
+        .fill(ui.tokens().color.bg_highlight)
+        .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
+        .corner_radius(ui.tokens().corner(Radius::Lg))
+        .inner_margin(ui.tokens().margin(Space::Xl))
         .show(ui, |ui| {
             ui.set_width(150.0);
             ui.vertical(|ui| {
-                ui.label(RichText::new(label).color(theme::TEXT_SECONDARY).size(12.0));
-                ui.add_space(2.0);
-                ui.label(RichText::new(value).color(value_color).size(22.0).strong());
+                ui.label(
+                    RichText::new(label)
+                        .color(ui.tokens().color.text_secondary)
+                        .size(ui.text_size(TextSize::Md)),
+                );
+                ui.gap(Space::Xs);
+                ui.label(
+                    RichText::new(value)
+                        .color(value_color)
+                        .size(ui.text_size(TextSize::Xl3))
+                        .strong(),
+                );
             });
         });
 }
@@ -286,23 +296,23 @@ fn bundle_card(ui: &mut Ui, bundle: &BundleOffer, unit: u64, busy: bool, accent:
     let mut clicked = false;
 
     egui::Frame::new()
-        .fill(theme::BG_SECONDARY)
-        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
-        .corner_radius(8.0)
-        .inner_margin(10.0)
+        .fill(ui.tokens().color.bg_secondary)
+        .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
+        .corner_radius(ui.tokens().corner(Radius::Lg))
+        .inner_margin(ui.tokens().margin(Space::Lg))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
                     ui.label(
                         RichText::new(&bundle.label)
-                            .color(theme::TEXT_PRIMARY)
+                            .color(ui.tokens().color.text_primary)
                             .strong(),
                     );
                     if saving > 0 {
                         ui.label(
                             RichText::new(format!("save {}", format_lovelace(saving as i64)))
-                                .color(theme::ACCENT_GREEN)
+                                .color(ui.tokens().color.accent_green)
                                 .small(),
                         );
                     }
@@ -317,17 +327,20 @@ fn bundle_card(ui: &mut Ui, bundle: &BundleOffer, unit: u64, busy: bool, accent:
                     } else {
                         "Sold out".to_string()
                     };
-                    let btn =
-                        egui::Button::new(RichText::new(label).strong().color(theme::BG_PRIMARY))
-                            .fill(accent)
-                            .corner_radius(6.0);
+                    let btn = egui::Button::new(
+                        RichText::new(label)
+                            .strong()
+                            .color(ui.tokens().color.bg_primary),
+                    )
+                    .fill(accent)
+                    .corner_radius(ui.tokens().corner(Radius::Md));
                     if ui.add_enabled(bundle.available && !busy, btn).clicked() {
                         clicked = true;
                     }
                 });
             });
         });
-    ui.add_space(6.0);
+    ui.gap(Space::Base);
     clicked
 }
 

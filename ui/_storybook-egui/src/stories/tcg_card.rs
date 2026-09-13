@@ -13,8 +13,9 @@
 
 use egui::epaint::{Mesh, Vertex};
 use egui::{Color32, Pos2, Rect, Vec2};
+use egui_widgets::slider_group::SliderGroup;
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, controls, muted};
 
 const WHITE_UV: Pos2 = Pos2::new(0.0, 0.0);
 
@@ -931,19 +932,25 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     let template = state.template.as_ref().unwrap_or(&fallback);
 
     // --- 1. Card Frame ---
-    ui.label(egui::RichText::new("1. Card Frame").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("1. Card Frame")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Template-driven layout: art background, frame overlay, text in mask-defined regions.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
 
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.card_width, 140.0..=400.0).text("Width"));
-        ui.add(egui::Slider::new(&mut state.card_height, 200.0..=560.0).text("Height"));
+    controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Width", &mut state.card_width, 140.0..=400.0)
+            .slider("Height", &mut state.card_height, 200.0..=560.0)
+            .show(ui);
     });
 
     ui.horizontal(|ui| {
@@ -952,7 +959,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
             let text = if state.rarity == i {
                 egui::RichText::new(*name).color(*color).strong()
             } else {
-                egui::RichText::new(*name).color(TEXT_MUTED)
+                egui::RichText::new(*name).color(muted(ui))
             };
             if ui.selectable_label(state.rarity == i, text).clicked() {
                 state.rarity = i;
@@ -980,7 +987,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
         egui::RichText::new(format!(
             "Template: {tmpl_status}  |  Frame: {frame_status}  |  Art: {art_status}"
         ))
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -1009,23 +1016,23 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     // --- 2. Perspective Tilt ---
     ui.label(
         egui::RichText::new("2. Perspective Tilt (Mouse-Driven)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Card tilts toward the mouse cursor. All layers bilinearly mapped.")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
 
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.max_tilt, 0.0..=30.0).text("Max Tilt"));
-        ui.add(egui::Slider::new(&mut state.pinch_factor, 0.0..=0.2).text("Pinch"));
-    });
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.tilt_ease, 0.01..=0.5).text("Ease"));
-        ui.add(egui::Slider::new(&mut state.shadow_opacity, 0.0..=1.0).text("Shadow"));
+    controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Max tilt", &mut state.max_tilt, 0.0..=30.0)
+            .slider("Pinch", &mut state.pinch_factor, 0.0..=0.2)
+            .slider("Ease", &mut state.tilt_ease, 0.01..=0.5)
+            .slider("Shadow", &mut state.shadow_opacity, 0.0..=1.0)
+            .show(ui);
     });
     ui.add_space(4.0);
 
@@ -1089,25 +1096,27 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     // --- 3. Holographic / Foil Effect ---
     ui.label(
         egui::RichText::new("3. Holographic / Foil Effect")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new(
             "Specular streak, iridescence, and fresnel edge glow. Hover to see the effect.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
 
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.hue_range, 0.0..=180.0).text("Hue Range"));
-        ui.add(egui::Slider::new(&mut state.shimmer_width, 0.05..=0.5).text("Shimmer W"));
-    });
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.shimmer_intensity, 0.0..=1.0).text("Intensity"));
-        ui.add(egui::Slider::new(&mut state.overlay_opacity, 0.0..=0.5).text("Opacity"));
+    // "Shimmer W" was an abbreviation forced by two sliders sharing a row; the
+    // bank gives each label its own measured column, so it can say what it means.
+    controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Hue range", &mut state.hue_range, 0.0..=180.0)
+            .slider("Shimmer width", &mut state.shimmer_width, 0.05..=0.5)
+            .slider("Intensity", &mut state.shimmer_intensity, 0.0..=1.0)
+            .slider("Opacity", &mut state.overlay_opacity, 0.0..=0.5)
+            .show(ui);
     });
     ui.add_space(4.0);
 
@@ -1161,12 +1170,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     // --- 4. Card Flip ---
     ui.label(
         egui::RichText::new("4. Card Flip (Front / Back)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Physics-based 180° flip with vertical lift and edge thickness.")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -1301,7 +1310,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
             "Showing: {face_label} (base: {face_state}, lift: {lift:.1}px, width: {:.0}%)",
             width_fraction * 100.0
         ))
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 
@@ -1310,14 +1319,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     // --- 5. Assembled Card ---
     ui.label(
         egui::RichText::new("5. Assembled Card")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new(
             "All effects combined: perspective tilt, holographic overlay (Rare+), click to flip.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -1413,7 +1422,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut TcgCardState) {
     ui.add_space(24.0);
     ui.separator();
     ui.add_space(8.0);
-    ui.label(egui::RichText::new("Key patterns:").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Key patterns:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("- Template-driven: frame.png overlay + mask.png colour-keyed regions");
     ui.label("- Art: cover-cropped 1:1 into template art region, behind frame");
     ui.label("- Perspective: all layers bilinearly mapped into tilted quad");

@@ -19,12 +19,12 @@ mod video;
 
 pub use queue::{QueueHandle, QueueStatus, WebhookPayload, WebhookStatus};
 pub use video::{
-    FalFile, PromptExpansion, VideoOutput, VideoRequest, VideoResolution, H3_MAX_IMAGE_TO_VIDEO,
-    H3_MAX_TEXT_TO_VIDEO,
+    FalFile, H3_MAX_IMAGE_TO_VIDEO, H3_MAX_TEXT_TO_VIDEO, PromptExpansion, VideoOutput,
+    VideoRequest, VideoResolution,
 };
 
 use http_client::HttpClient;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 const BASE_URL: &str = "https://fal.run";
 

@@ -15,10 +15,11 @@
 //! renders that headline with the full de-escaped text behind a "show raw"
 //! toggle.
 
-use egui::{Color32, Label, RichText, Sense, Ui};
+use egui::{Label, RichText, Sense, Ui};
 
 use crate::chip::{Chip, ChipVariant};
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// The distilled view of a raw error string.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -244,9 +245,10 @@ impl<'a> ErrorNote<'a> {
         let s = summarize_error(self.raw);
         ui.vertical(|ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 6.0;
-                install_phosphor_font(ui.ctx());
-                ui.label(PhosphorIcon::Warning.rich_text(13.0, Color32::from_rgb(220, 150, 90)));
+                ui.set_item_gap_x(Space::Base);
+                crate::icons::ensure_fonts(ui);
+                let warn = ui.tokens().color.warning;
+                ui.label(PhosphorIcon::Warning.rich_text(13.0, warn));
                 if let Some(code) = s.status {
                     Chip::new(&format!("HTTP {code}"))
                         .variant(ChipVariant::Danger)
@@ -255,7 +257,7 @@ impl<'a> ErrorNote<'a> {
                 ui.label(
                     RichText::new(&s.headline)
                         .small()
-                        .color(Color32::from_rgb(228, 184, 174)),
+                        .color(ui.tokens().color.text_primary),
                 );
             });
 
@@ -266,10 +268,10 @@ impl<'a> ErrorNote<'a> {
             let raw_id = ui.id().with(("error_note_raw", self.raw));
             let mut open = has_raw && ui.data_mut(|d| d.get_temp::<bool>(raw_id)).unwrap_or(false);
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
+                ui.set_item_gap_x(Space::Md);
                 // Copy: a single-line, de-escaped form — clean to paste back.
                 let copy = ui.add(
-                    Label::new(PhosphorIcon::Copy.rich_text(12.0, Color32::from_gray(140)))
+                    Label::new(PhosphorIcon::Copy.rich_text(12.0, ui.tokens().color.text_muted))
                         .sense(Sense::click()),
                 );
                 if copy.hovered() {
@@ -287,7 +289,7 @@ impl<'a> ErrorNote<'a> {
                             RichText::new(if open { "hide raw" } else { "show raw" })
                                 .small()
                                 .underline()
-                                .color(Color32::from_gray(135)),
+                                .color(ui.tokens().color.text_muted),
                         )
                         .sense(Sense::click()),
                     );
@@ -301,12 +303,12 @@ impl<'a> ErrorNote<'a> {
                 }
             });
             if open {
-                ui.add_space(2.0);
+                ui.gap(Space::Xs);
                 ui.label(
                     RichText::new(pretty_detail(&s.detail))
                         .monospace()
                         .small()
-                        .color(Color32::from_gray(150)),
+                        .color(ui.tokens().color.text_muted),
                 );
             }
         });

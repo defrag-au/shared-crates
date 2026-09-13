@@ -8,8 +8,8 @@
 
 use std::collections::HashMap;
 
-use koios::koios_transaction::{KoiosTransaction, KoisUtxo};
 use koios::KoiosApi;
+use koios::koios_transaction::{KoiosTransaction, KoisUtxo};
 use tracing::info;
 use transactions::{MintOperation, RawTxData, TxDatum, TxInput, TxOutput};
 
@@ -146,13 +146,13 @@ fn koios_assets_to_map(utxo: &KoisUtxo) -> HashMap<String, u64> {
 /// (schema-independent — the classifier decodes it via pallas), else the bare
 /// datum hash.
 fn koios_utxo_datum(utxo: &KoisUtxo) -> Option<TxDatum> {
-    if let Some(inline) = &utxo.inline_datum {
-        if let Some(bytes) = &inline.bytes {
-            return Some(TxDatum::Bytes {
-                hash: utxo.datum_hash.clone().unwrap_or_default(),
-                bytes: bytes.clone(),
-            });
-        }
+    if let Some(inline) = &utxo.inline_datum
+        && let Some(bytes) = &inline.bytes
+    {
+        return Some(TxDatum::Bytes {
+            hash: utxo.datum_hash.clone().unwrap_or_default(),
+            bytes: bytes.clone(),
+        });
     }
     utxo.datum_hash
         .as_ref()

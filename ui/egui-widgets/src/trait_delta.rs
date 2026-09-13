@@ -6,7 +6,7 @@
 
 use egui::{Color32, RichText, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::{Ink, Radius, Space, SpaceExt, ThemeExt, Token};
 
 // ============================================================================
 // Types
@@ -35,20 +35,21 @@ pub struct TraitDeltaConfig {
     /// Font size for trait chips.
     pub font_size: f32,
     /// Color for gain chips.
-    pub gain_color: Color32,
+    pub gain_color: Ink,
     /// Color for loss chips.
-    pub loss_color: Color32,
-    /// Spacing between chips.
-    pub chip_spacing: f32,
+    pub loss_color: Ink,
+    /// Gutter between chips. `None` takes the theme's [`Space::Sm`] — same
+    /// reasoning as the colours above.
+    pub chip_spacing: Option<Space>,
 }
 
 impl Default for TraitDeltaConfig {
     fn default() -> Self {
         Self {
             font_size: 10.0,
-            gain_color: theme::ACCENT_GREEN,
-            loss_color: theme::ACCENT_RED,
-            chip_spacing: 4.0,
+            gain_color: Ink::Token(Token::AccentGreen),
+            loss_color: Ink::Token(Token::AccentRed),
+            chip_spacing: None,
         }
     }
 }
@@ -64,15 +65,17 @@ impl Default for TraitDeltaConfig {
 /// informational text — just the data.
 pub fn show(ui: &mut Ui, gains: &[TraitItem], losses: &[TraitItem], config: &TraitDeltaConfig) {
     if !gains.is_empty() {
-        draw_chips(ui, "+", gains, config.gain_color, config);
+        let gain = config.gain_color.of(ui);
+        draw_chips(ui, "+", gains, gain, config);
     }
 
     if !gains.is_empty() && !losses.is_empty() {
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
     }
 
     if !losses.is_empty() {
-        draw_chips(ui, "-", losses, config.loss_color, config);
+        let loss = config.loss_color.of(ui);
+        draw_chips(ui, "-", losses, loss, config);
     }
 }
 
@@ -86,9 +89,12 @@ fn draw_chips(
     // Flow-wrap trait chips horizontally
     let available = ui.available_width();
     let mut cursor_x = 0.0_f32;
+    // One value, because the wrap arithmetic below has to agree with the gap
+    // egui actually lays out.
+    let gap = ui.space(config.chip_spacing.unwrap_or(Space::Sm));
 
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = Vec2::new(config.chip_spacing, config.chip_spacing);
+        ui.spacing_mut().item_spacing = Vec2::splat(gap);
 
         for item in traits {
             let label = format!("{prefix} {}: {}", item.category, item.value);
@@ -106,14 +112,14 @@ fn draw_chips(
 
             egui::Frame::new()
                 .fill(bg)
-                .corner_radius(4.0)
-                .inner_margin(egui::Margin::symmetric(6, 2))
+                .corner_radius(ui.tokens().corner(Radius::Base))
+                .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Xs))
                 .stroke(egui::Stroke::new(1.0_f32, color.linear_multiply(0.3)))
                 .show(ui, |ui| {
                     ui.label(chip_text);
                 });
 
-            cursor_x += approx_width + config.chip_spacing;
+            cursor_x += approx_width + gap;
         }
     });
 }

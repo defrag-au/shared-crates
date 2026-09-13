@@ -5,7 +5,7 @@
 
 use egui::{Color32, CornerRadius, Pos2, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::{Ink, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 /// Configuration for a sparkline chart.
 /// How the sparkline responds to hover.
@@ -25,9 +25,10 @@ pub struct Sparkline<'a> {
     /// Data points (y-values in order, equally spaced on x-axis).
     data: &'a [f64],
     /// Line color.
-    line_color: Color32,
-    /// Optional fill color below the line (semi-transparent recommended).
-    fill_color: Option<Color32>,
+    line_color: Ink,
+    /// Fill below the line (a [`Ink::Wash`] reads best). `None` means *no fill*
+    /// — unlike [`Self::line_color`], where it would have meant "ask the theme".
+    fill_color: Option<Ink>,
     /// Line stroke width.
     line_width: f32,
     /// Chart height in pixels.
@@ -43,7 +44,7 @@ pub struct Sparkline<'a> {
     /// Whether to highlight the last data point with a dot.
     show_endpoint: bool,
     /// Background color.
-    bg_color: Color32,
+    bg_color: Ink,
     /// Corner rounding.
     rounding: u8,
     /// How hover is handled (crosshair / tooltip / inert).
@@ -55,7 +56,7 @@ impl<'a> Sparkline<'a> {
     pub fn new(data: &'a [f64]) -> Self {
         Self {
             data,
-            line_color: theme::ACCENT,
+            line_color: Ink::Token(Token::Accent),
             fill_color: None,
             line_width: 1.5,
             height: 40.0,
@@ -64,7 +65,7 @@ impl<'a> Sparkline<'a> {
             value_text: None,
             show_mean_line: false,
             show_endpoint: true,
-            bg_color: theme::BG_SECONDARY,
+            bg_color: Ink::Token(Token::BgSecondary),
             rounding: 4,
             hover_style: SparkHoverStyle::default(),
         }
@@ -78,14 +79,14 @@ impl<'a> Sparkline<'a> {
     }
 
     /// Set the line color.
-    pub fn line_color(mut self, color: Color32) -> Self {
-        self.line_color = color;
+    pub fn line_color(mut self, color: impl Into<Ink>) -> Self {
+        self.line_color = color.into();
         self
     }
 
-    /// Enable fill below the line with the given color.
-    pub fn fill(mut self, color: Color32) -> Self {
-        self.fill_color = Some(color);
+    /// Enable fill below the line with the given colour.
+    pub fn fill(mut self, color: impl Into<Ink>) -> Self {
+        self.fill_color = Some(color.into());
         self
     }
 
@@ -132,31 +133,41 @@ impl<'a> Sparkline<'a> {
     }
 
     /// Set the background color.
-    pub fn bg_color(mut self, color: Color32) -> Self {
-        self.bg_color = color;
+    pub fn bg_color(mut self, color: impl Into<Ink>) -> Self {
+        self.bg_color = color.into();
         self
     }
 
     /// Render the sparkline.
     pub fn show(self, ui: &mut Ui) -> egui::Response {
+        // Resolved once: a `new` names its tokens, it cannot hold values.
+        let t = ui.tokens();
+        let line_color = self.line_color.resolve(&t);
+        let bg_color = self.bg_color.resolve(&t);
+        let fill_color = self.fill_color.map(|ink| ink.resolve(&t));
+
         // Header row with label + value
         if self.label.is_some() || self.value_text.is_some() {
             ui.horizontal(|ui| {
                 if let Some(label) = &self.label {
-                    ui.label(RichText::new(label).color(theme::TEXT_SECONDARY).small());
+                    ui.label(
+                        RichText::new(label)
+                            .color(ui.tokens().color.text_secondary)
+                            .small(),
+                    );
                 }
                 if let Some(value) = &self.value_text {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             RichText::new(value)
-                                .color(theme::TEXT_PRIMARY)
+                                .color(ui.tokens().color.text_primary)
                                 .small()
                                 .strong(),
                         );
                     });
                 }
             });
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
         }
 
         let chart_width = self.width.unwrap_or(ui.available_width());
@@ -168,7 +179,7 @@ impl<'a> Sparkline<'a> {
             let rounding = CornerRadius::same(self.rounding);
 
             // Background
-            painter.rect_filled(rect, rounding, self.bg_color);
+            painter.rect_filled(rect, rounding, bg_color);
 
             // Compute data bounds with padding
             let padding = 4.0;
@@ -197,7 +208,7 @@ impl<'a> Sparkline<'a> {
                 .collect();
 
             // Fill area below line
-            if let Some(fill_color) = self.fill_color {
+            if let Some(fill_color) = fill_color {
                 for window in points.windows(2) {
                     let p0 = window[0];
                     let p1 = window[1];
@@ -246,14 +257,14 @@ impl<'a> Sparkline<'a> {
                     let end_x = (x + dash_len).min(plot_rect.right());
                     painter.line_segment(
                         [Pos2::new(x, mean_y), Pos2::new(end_x, mean_y)],
-                        Stroke::new(1.0_f32, theme::TEXT_MUTED),
+                        Stroke::new(1.0_f32, ui.tokens().color.text_muted),
                     );
                     x += dash_len + gap_len;
                 }
             }
 
             // Line
-            let line_stroke = Stroke::new(self.line_width, self.line_color);
+            let line_stroke = Stroke::new(self.line_width, line_color);
             for window in points.windows(2) {
                 painter.line_segment([window[0], window[1]], line_stroke);
             }
@@ -262,8 +273,12 @@ impl<'a> Sparkline<'a> {
             if self.show_endpoint
                 && let Some(&last) = points.last()
             {
-                painter.circle_filled(last, 3.0, self.line_color);
-                painter.circle_stroke(last, 3.0, Stroke::new(1.0_f32, theme::BG_PRIMARY));
+                painter.circle_filled(last, 3.0, line_color);
+                painter.circle_stroke(
+                    last,
+                    3.0,
+                    Stroke::new(1.0_f32, ui.tokens().color.bg_primary),
+                );
             }
 
             // Hover: crosshair highlight + (optionally) the nearest-value tooltip.
@@ -277,8 +292,12 @@ impl<'a> Sparkline<'a> {
                     let point = points[idx];
 
                     // Highlight dot
-                    painter.circle_filled(point, 4.0, self.line_color);
-                    painter.circle_stroke(point, 4.0, Stroke::new(1.5_f32, theme::TEXT_PRIMARY));
+                    painter.circle_filled(point, 4.0, line_color);
+                    painter.circle_stroke(
+                        point,
+                        4.0,
+                        Stroke::new(1.5_f32, ui.tokens().color.text_primary),
+                    );
 
                     // Vertical crosshair
                     painter.line_segment(
@@ -286,7 +305,7 @@ impl<'a> Sparkline<'a> {
                             Pos2::new(point.x, plot_rect.top()),
                             Pos2::new(point.x, plot_rect.bottom()),
                         ],
-                        Stroke::new(0.5_f32, theme::TEXT_MUTED),
+                        Stroke::new(0.5_f32, ui.tokens().color.text_muted),
                     );
 
                     // Built-in value tooltip (unless the caller owns it).
@@ -305,13 +324,13 @@ impl<'a> Sparkline<'a> {
         } else if ui.is_rect_visible(rect) {
             // Not enough data — show placeholder
             let painter = ui.painter();
-            painter.rect_filled(rect, CornerRadius::same(self.rounding), self.bg_color);
+            painter.rect_filled(rect, CornerRadius::same(self.rounding), bg_color);
             painter.text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 "no data",
-                egui::FontId::proportional(10.0),
-                theme::TEXT_MUTED,
+                egui::FontId::proportional(ui.text_size(TextSize::Sm)),
+                ui.tokens().color.text_muted,
             );
         }
 

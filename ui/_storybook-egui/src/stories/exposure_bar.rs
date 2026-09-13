@@ -2,12 +2,12 @@
 
 use egui_widgets::exposure_bar::{self, ExposureBarConfig, ExposureSegment};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("ExposureBar Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -15,7 +15,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Stacked horizontal bar showing total ADA exposure by collateral token, \
              colored by LTV risk. Green < 50%, amber < 80%, red >= 80%.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -23,16 +23,14 @@ pub fn show(ui: &mut egui::Ui) {
     ui.allocate_ui(egui::vec2(500.0, ui.available_height()), |ui| {
         // ── Multi-token mixed risk ──
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Multi-Token Mixed Risk")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -45,28 +43,28 @@ pub fn show(ui: &mut egui::Ui) {
                         principal_lovelace: 3_355_000_000,
                         fraction: 3_355_000_000.0 / total as f32,
                         ltv_pct: 89.8,
-                        color: egui_widgets::theme::ACCENT_MAGENTA,
+                        color: crate::tok(ui, egui_widgets::theme::Token::AccentMagenta),
                     },
                     ExposureSegment {
                         label: "SNEK".into(),
                         principal_lovelace: 2_500_000_000,
                         fraction: 2_500_000_000.0 / total as f32,
                         ltv_pct: 45.2,
-                        color: egui_widgets::theme::ACCENT_GREEN,
+                        color: crate::tok(ui, egui_widgets::theme::Token::AccentGreen),
                     },
                     ExposureSegment {
                         label: "ANGELS".into(),
                         principal_lovelace: 2_000_000_000,
                         fraction: 2_000_000_000.0 / total as f32,
                         ltv_pct: 72.1,
-                        color: egui_widgets::theme::ACCENT_CYAN,
+                        color: crate::tok(ui, egui_widgets::theme::Token::AccentCyan),
                     },
                     ExposureSegment {
                         label: "HOSKY".into(),
                         principal_lovelace: 1_500_000_000,
                         fraction: 1_500_000_000.0 / total as f32,
                         ltv_pct: 35.0,
-                        color: egui_widgets::theme::ACCENT_YELLOW,
+                        color: crate::tok(ui, egui_widgets::theme::Token::AccentYellow),
                     },
                 ];
                 exposure_bar::show(ui, &segments, &ExposureBarConfig::default());
@@ -76,16 +74,14 @@ pub fn show(ui: &mut egui::Ui) {
 
         // ── All green (safe portfolio) ──
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("All Green (Well-Collateralised)")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -97,14 +93,14 @@ pub fn show(ui: &mut egui::Ui) {
                         principal_lovelace: 5_000_000_000,
                         fraction: 0.6,
                         ltv_pct: 32.0,
-                        color: egui_widgets::theme::ACCENT_BLUE,
+                        color: crate::tok(ui, egui_widgets::theme::Token::AccentBlue),
                     },
                     ExposureSegment {
                         label: "LENFI".into(),
                         principal_lovelace: 3_333_000_000,
                         fraction: 0.4,
                         ltv_pct: 41.5,
-                        color: egui_widgets::theme::ACCENT_ORANGE,
+                        color: crate::tok(ui, egui_widgets::theme::Token::AccentOrange),
                     },
                 ];
                 exposure_bar::show(ui, &segments, &ExposureBarConfig::default());
@@ -114,16 +110,14 @@ pub fn show(ui: &mut egui::Ui) {
 
         // ── Single token high risk ──
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Single Token High Risk")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -134,7 +128,7 @@ pub fn show(ui: &mut egui::Ui) {
                     principal_lovelace: 6_000_000_000,
                     fraction: 1.0,
                     ltv_pct: 92.3,
-                    color: egui_widgets::theme::ACCENT_MAGENTA,
+                    color: crate::tok(ui, egui_widgets::theme::Token::AccentMagenta),
                 }];
                 exposure_bar::show(ui, &segments, &ExposureBarConfig::default());
             });
@@ -143,16 +137,14 @@ pub fn show(ui: &mut egui::Ui) {
 
         // ── Compact (no legend/total) ──
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Compact (No Legend / No Total)")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -165,14 +157,14 @@ pub fn show(ui: &mut egui::Ui) {
                         principal_lovelace: 3_000_000_000,
                         fraction: 3_000_000_000.0 / total as f32,
                         ltv_pct: 55.0,
-                        color: egui_widgets::theme::ACCENT_GREEN,
+                        color: crate::tok(ui, egui_widgets::theme::Token::AccentGreen),
                     },
                     ExposureSegment {
                         label: "NIGHT".into(),
                         principal_lovelace: 2_000_000_000,
                         fraction: 2_000_000_000.0 / total as f32,
                         ltv_pct: 85.0,
-                        color: egui_widgets::theme::ACCENT_MAGENTA,
+                        color: crate::tok(ui, egui_widgets::theme::Token::AccentMagenta),
                     },
                 ];
                 let config = ExposureBarConfig {

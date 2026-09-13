@@ -2,7 +2,7 @@
 name = "city-gen"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Procedural city layout generation using tensor fields and streamline tracing"
 
 [dependencies]

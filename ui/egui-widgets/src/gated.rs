@@ -20,7 +20,8 @@
 use authorizations::{EntitlementSet, Feature};
 use egui::{Color32, RichText, Ui};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
+use crate::theme::{Space, TextSize, ThemeExt};
 
 /// The session's entitlement state as the frontend knows it. Kept as its
 /// own type (rather than a bare `Option<EntitlementSet>`) so apps can store
@@ -95,7 +96,7 @@ pub fn gated(
 /// copy from the feature registry (plus a "session expired?" nudge when
 /// the user is authenticated but lacks the entitlement).
 pub fn locked_card(ui: &mut Ui, gate: &GateState, feature: Feature) {
-    install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     egui::Frame::group(ui.style())
         .fill(ui.visuals().faint_bg_color)
         .show(ui, |ui| {
@@ -105,13 +106,13 @@ pub fn locked_card(ui: &mut Ui, gate: &GateState, feature: Feature) {
                     ui.label(RichText::new(feature.name()).strong());
                     ui.label(
                         RichText::new(feature.locked_hint())
-                            .size(11.0)
+                            .size(ui.text_size(TextSize::Base))
                             .color(ui.visuals().weak_text_color()),
                     );
                     if gate.is_authenticated() {
                         ui.label(
                             RichText::new("Your current session doesn't include this entitlement.")
-                                .size(10.0)
+                                .size(ui.text_size(TextSize::Sm))
                                 .color(ui.visuals().weak_text_color()),
                         );
                     }
@@ -124,17 +125,21 @@ pub fn locked_card(ui: &mut Ui, gate: &GateState, feature: Feature) {
 /// so callers can attach tooltips or clicks (e.g. open an "how to unlock"
 /// modal).
 pub fn locked_chip(ui: &mut Ui, feature: Feature) -> egui::Response {
-    install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     // A button label is single-font, so the Phosphor glyph and the latin
     // name can't share one string — compose a chip-shaped frame instead.
     let weak = ui.visuals().weak_text_color();
     egui::Frame::group(ui.style())
         .fill(ui.visuals().faint_bg_color)
-        .inner_margin(egui::Margin::symmetric(6, 2))
+        .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Xs))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(PhosphorIcon::Lock.rich_text(12.0, weak));
-                ui.label(RichText::new(feature.name()).size(12.0).color(weak));
+                ui.label(
+                    RichText::new(feature.name())
+                        .size(ui.text_size(TextSize::Md))
+                        .color(weak),
+                );
             });
         })
         .response

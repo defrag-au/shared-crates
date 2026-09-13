@@ -13,9 +13,39 @@ use egui::{Color32, RichText};
 
 use super::buttons::UiButtonExt;
 use super::wallet::{ConnectionState, WalletConnector, WalletProvider};
+use crate::option_group::{GroupDensity, GroupFlow, OptionGroup, OptionGroupItem};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
-/// Theme colors for the wallet button widget.
+/// Which colour each of the wallet button's surfaces takes.
+///
+/// Every field defaults to a named theme token and resolves at render time.
+/// The `Default` before this was five literals in the **same `#44ff44` green**
+/// that `SwapModalTheme` carried — a third copy of a colour that exists in no
+/// theme, which is what a per-widget palette becomes once two of them exist.
+#[derive(Clone, Copy, Debug)]
 pub struct WalletButtonTheme {
+    pub accent: Ink,
+    pub text_primary: Ink,
+    pub text_muted: Ink,
+    pub error: Ink,
+    pub bg: Ink,
+}
+
+impl Default for WalletButtonTheme {
+    fn default() -> Self {
+        Self {
+            accent: Ink::Token(Token::Accent),
+            text_primary: Ink::Token(Token::TextPrimary),
+            text_muted: Ink::Token(Token::TextMuted),
+            error: Ink::Token(Token::Error),
+            bg: Ink::Token(Token::BgSecondary),
+        }
+    }
+}
+
+/// [`WalletButtonTheme`] with every [`Ink`] resolved. Same field names, so a
+/// draw site reads the same either way.
+pub struct ResolvedWalletTheme {
     pub accent: Color32,
     pub text_primary: Color32,
     pub text_muted: Color32,
@@ -23,14 +53,14 @@ pub struct WalletButtonTheme {
     pub bg: Color32,
 }
 
-impl Default for WalletButtonTheme {
-    fn default() -> Self {
-        Self {
-            accent: Color32::from_rgb(68, 255, 68),
-            text_primary: Color32::from_rgb(200, 255, 220),
-            text_muted: Color32::from_rgb(96, 104, 128),
-            error: Color32::from_rgb(255, 68, 68),
-            bg: Color32::from_rgb(20, 30, 25),
+impl WalletButtonTheme {
+    pub fn resolved(&self, theme: &crate::theme::Theme) -> ResolvedWalletTheme {
+        ResolvedWalletTheme {
+            accent: self.accent.resolve(theme),
+            text_primary: self.text_primary.resolve(theme),
+            text_muted: self.text_muted.resolve(theme),
+            error: self.error.resolve(theme),
+            bg: self.bg.resolve(theme),
         }
     }
 }
@@ -50,29 +80,46 @@ pub enum WalletAction {
 pub struct WalletButton {
     /// Theme colors.
     pub theme: WalletButtonTheme,
+    /// How much of each wallet the picker shows. [`GroupDensity::Compact`]
+    /// keeps the extension's own icon and moves the name to the hover text,
+    /// for a sidebar that cannot spare a row per wallet.
+    pub picker_density: GroupDensity,
 }
 
 impl WalletButton {
     pub fn new() -> Self {
         Self {
             theme: WalletButtonTheme::default(),
+            picker_density: GroupDensity::Full,
         }
     }
 
     /// Create with a custom theme.
     pub fn with_theme(theme: WalletButtonTheme) -> Self {
-        Self { theme }
+        Self {
+            theme,
+            ..Self::new()
+        }
+    }
+
+    /// Show the picker as icons only, with the wallet names as hover text.
+    pub fn compact_picker(mut self, compact: bool) -> Self {
+        self.picker_density = match compact {
+            true => GroupDensity::Compact,
+            false => GroupDensity::Full,
+        };
+        self
     }
 
     /// Render the wallet button. Returns an action the caller must handle.
     pub fn show(&mut self, ui: &mut egui::Ui, connector: &WalletConnector) -> WalletAction {
         let mut action = WalletAction::None;
-        let theme = &self.theme;
+        let theme = self.theme.resolved(&ui.tokens());
 
         egui::Frame::new()
             .fill(theme.bg)
-            .corner_radius(6.0)
-            .inner_margin(8.0)
+            .corner_radius(ui.tokens().corner(Radius::Md))
+            .inner_margin(ui.tokens().margin(Space::Md))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
 
@@ -101,14 +148,14 @@ impl WalletButton {
         connector: &WalletConnector,
     ) -> WalletAction {
         let mut action = WalletAction::None;
-        let theme = &self.theme;
+        let theme = self.theme.resolved(&ui.tokens());
 
         if connector.available_wallets.is_empty() {
             ui.vertical_centered(|ui| {
                 ui.label(
                     RichText::new("No wallets detected")
                         .color(theme.text_muted)
-                        .size(10.0),
+                        .size(ui.text_size(TextSize::Sm)),
                 );
             });
             return action;
@@ -122,65 +169,61 @@ impl WalletButton {
                 egui::Button::new(
                     RichText::new(format!("Connect {}", info.name))
                         .color(theme.accent)
-                        .size(12.0),
+                        .size(ui.text_size(TextSize::Md)),
                 )
-                .corner_radius(4.0),
+                .corner_radius(ui.tokens().corner(Radius::Base)),
             );
-            if btn.clicked() {
-                if let Some(provider) = WalletProvider::from_api_name(&info.api_name) {
-                    action = WalletAction::Connect(provider);
-                }
+            if btn.clicked()
+                && let Some(provider) = WalletProvider::from_api_name(&info.api_name)
+            {
+                action = WalletAction::Connect(provider);
             }
             return action;
         }
 
-        // Multiple wallets — show picker directly
-        for wallet_info in &connector.available_wallets {
-            let btn = ui.add_clickable_sized(
-                [ui.available_width(), 30.0],
-                egui::Button::new(
-                    RichText::new(&wallet_info.name)
-                        .color(theme.accent)
-                        .size(11.0),
-                )
-                .fill(Color32::TRANSPARENT)
-                .stroke(egui::Stroke::new(0.5_f32, theme.text_muted))
-                .corner_radius(4.0),
-            );
-
-            // Paint icon inside the button rect (left side)
-            if let Some(ref icon_url) = wallet_info.icon {
-                let icon_size = 18.0;
-                let icon_rect = egui::Rect::from_min_size(
-                    btn.rect.left_center() - egui::vec2(-8.0, icon_size / 2.0),
-                    egui::vec2(icon_size, icon_size),
-                );
-                ui.put(
-                    icon_rect,
-                    egui::Image::new(icon_url.as_str())
-                        .fit_to_exact_size(egui::vec2(icon_size, icon_size))
-                        .corner_radius(2.0),
-                );
-            }
-
-            if btn.clicked() {
-                if let Some(provider) = WalletProvider::from_api_name(&wallet_info.api_name) {
-                    action = WalletAction::Connect(provider);
+        // Several wallets — ONE compound control, not a stack of buttons.
+        //
+        // They are alternatives to each other, so they read as one object you
+        // pick within. Drawn as separate bordered buttons they read as several
+        // unrelated things that happen to be adjacent, which is what a toolbar
+        // looks like — and this is not a toolbar.
+        let items: Vec<OptionGroupItem<'_>> = connector
+            .available_wallets
+            .iter()
+            .enumerate()
+            .map(|(i, w)| {
+                let mut item = OptionGroupItem::new(i as u64, &w.name);
+                if let Some(icon) = &w.icon {
+                    item = item.image(icon.as_str());
                 }
-            }
+                item
+            })
+            .collect();
+
+        let picked = OptionGroup::new()
+            .flow(GroupFlow::Stacked)
+            .density(self.picker_density)
+            .items(items)
+            .show(ui);
+
+        if let Some(i) = picked.clicked
+            && let Some(info) = connector.available_wallets.get(i as usize)
+            && let Some(provider) = WalletProvider::from_api_name(&info.api_name)
+        {
+            action = WalletAction::Connect(provider);
         }
 
         action
     }
 
     fn draw_connecting(&self, ui: &mut egui::Ui) {
-        let theme = &self.theme;
+        let theme = self.theme.resolved(&ui.tokens());
         ui.horizontal(|ui| {
             ui.spinner();
             ui.label(
                 RichText::new("Connecting...")
                     .color(theme.text_muted)
-                    .size(11.0),
+                    .size(ui.text_size(TextSize::Base)),
             );
         });
     }
@@ -189,8 +232,9 @@ impl WalletButton {
         let mut action = WalletAction::None;
 
         // Copy theme colors to avoid borrow conflicts
-        let text_muted = self.theme.text_muted;
-        let accent = self.theme.accent;
+        let t = self.theme.resolved(&ui.tokens());
+        let text_muted = t.text_muted;
+        let accent = t.accent;
 
         // Top row: icon + handle/address
         ui.horizontal(|ui| {
@@ -198,25 +242,34 @@ impl WalletButton {
                 ui.add(
                     egui::Image::new(icon_url.as_str())
                         .fit_to_exact_size(egui::vec2(20.0, 20.0))
-                        .corner_radius(3.0),
+                        .corner_radius(ui.tokens().corner(Radius::Sm)),
                 );
             }
 
             if let Some(ref handle) = connector.handle {
-                ui.label(RichText::new(handle).color(accent).size(12.0).strong());
+                ui.label(
+                    RichText::new(handle)
+                        .color(accent)
+                        .size(ui.text_size(TextSize::Md))
+                        .strong(),
+                );
             } else if let Some(ref stake) = connector.stake_address {
                 let truncated = if stake.len() > 20 {
                     format!("{}...{}", &stake[..8], &stake[stake.len() - 6..])
                 } else {
                     stake.clone()
                 };
-                ui.label(RichText::new(truncated).color(text_muted).size(11.0));
+                ui.label(
+                    RichText::new(truncated)
+                        .color(text_muted)
+                        .size(ui.text_size(TextSize::Base)),
+                );
             }
         });
 
         // Balance row
         if let Some(ref balance) = connector.balance {
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
             ui.horizontal(|ui| {
                 let ada = balance.ada();
                 let ada_display = if ada >= 1000.0 {
@@ -227,7 +280,7 @@ impl WalletButton {
                 ui.label(
                     RichText::new(format!("{ada_display} ADA"))
                         .color(accent)
-                        .size(13.0)
+                        .size(ui.text_size(TextSize::Lg))
                         .strong(),
                 );
 
@@ -236,20 +289,24 @@ impl WalletButton {
                     ui.label(
                         RichText::new(format!("\u{2022} {tokens} tokens"))
                             .color(text_muted)
-                            .size(10.0),
+                            .size(ui.text_size(TextSize::Sm)),
                     );
                 }
             });
         }
 
         // Disconnect at bottom
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         if ui
             .add_clickable(
-                egui::Button::new(RichText::new("Disconnect").color(text_muted).size(10.0))
-                    .fill(Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::new(0.5_f32, text_muted))
-                    .corner_radius(3.0),
+                egui::Button::new(
+                    RichText::new("Disconnect")
+                        .color(text_muted)
+                        .size(ui.text_size(TextSize::Sm)),
+                )
+                .fill(Color32::TRANSPARENT)
+                .stroke(egui::Stroke::new(0.5_f32, text_muted))
+                .corner_radius(ui.tokens().corner(Radius::Sm)),
             )
             .clicked()
         {
@@ -266,7 +323,7 @@ impl WalletButton {
         connector: &WalletConnector,
     ) -> WalletAction {
         let mut action = WalletAction::None;
-        let theme = &self.theme;
+        let theme = self.theme.resolved(&ui.tokens());
 
         ui.horizontal(|ui| {
             // Truncate long error messages
@@ -275,20 +332,26 @@ impl WalletButton {
             } else {
                 error.to_string()
             };
-            ui.label(RichText::new(display_err).color(theme.error).size(10.0));
+            ui.label(
+                RichText::new(display_err)
+                    .color(theme.error)
+                    .size(ui.text_size(TextSize::Sm)),
+            );
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
                     .add_clickable(egui::Button::new(
-                        RichText::new("Retry").color(theme.accent).size(10.0),
+                        RichText::new("Retry")
+                            .color(theme.accent)
+                            .size(ui.text_size(TextSize::Sm)),
                     ))
                     .clicked()
                 {
                     // Try to reconnect with the first available wallet
-                    if let Some(info) = connector.available_wallets.first() {
-                        if let Some(provider) = WalletProvider::from_api_name(&info.api_name) {
-                            action = WalletAction::Connect(provider);
-                        }
+                    if let Some(info) = connector.available_wallets.first()
+                        && let Some(provider) = WalletProvider::from_api_name(&info.api_name)
+                    {
+                        action = WalletAction::Connect(provider);
                     }
                 }
             });

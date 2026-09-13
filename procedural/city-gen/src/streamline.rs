@@ -1,6 +1,6 @@
+use crate::Vec2;
 use crate::spatial::SpatialGrid;
 use crate::tensor::TensorField;
-use crate::Vec2;
 
 /// Configuration for streamline tracing.
 pub struct StreamlineConfig {
@@ -235,11 +235,7 @@ fn rk4_step(field: &TensorField, pos: Vec2, h: f32, is_major: bool, reverse: boo
         } else {
             tensor.minor()
         };
-        if reverse {
-            -v
-        } else {
-            v
-        }
+        if reverse { -v } else { v }
     };
 
     let k1 = dir(pos);

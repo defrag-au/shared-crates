@@ -3,9 +3,9 @@
 //! Renders a horizontal bar showing current coverage percentage and the
 //! projected coverage after a trade, with a delta indicator.
 
-use egui::{Color32, CornerRadius, Rect, RichText, Ui, Vec2};
+use egui::{CornerRadius, Rect, RichText, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::{Ink, Space, SpaceExt, ThemeExt, Token};
 
 // ============================================================================
 // Types
@@ -18,13 +18,13 @@ pub struct CoverageDeltaConfig {
     /// Font size for labels.
     pub font_size: f32,
     /// Color for the "before" fill.
-    pub before_color: Color32,
+    pub before_color: Ink,
     /// Color for the positive delta region.
-    pub gain_color: Color32,
+    pub gain_color: Ink,
     /// Color for the negative delta region (shown as striped/faded).
-    pub loss_color: Color32,
+    pub loss_color: Ink,
     /// Background color for the unfilled region.
-    pub bg_color: Color32,
+    pub bg_color: Ink,
     /// Corner radius.
     pub corner_radius: u8,
 }
@@ -34,10 +34,10 @@ impl Default for CoverageDeltaConfig {
         Self {
             bar_height: 14.0,
             font_size: 10.0,
-            before_color: theme::ACCENT_BLUE,
-            gain_color: theme::ACCENT_GREEN,
-            loss_color: theme::ACCENT_RED,
-            bg_color: theme::BG_SECONDARY,
+            before_color: Ink::Token(Token::AccentBlue),
+            gain_color: Ink::Token(Token::AccentGreen),
+            loss_color: Ink::Token(Token::AccentRed),
+            bg_color: Ink::Token(Token::BgSecondary),
             corner_radius: 3,
         }
     }
@@ -59,7 +59,15 @@ pub fn show(
     label: Option<&str>,
     config: &CoverageDeltaConfig,
 ) {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
+
+    // Resolved once, ahead of the closure that reads them: a `Default` config
+    // names its tokens, so the values arrive here.
+    let t = ui.tokens();
+    let gain_color = config.gain_color.resolve(&t);
+    let loss_color = config.loss_color.resolve(&t);
+    let before_color = config.before_color.resolve(&t);
+    let bg_color = config.bg_color.resolve(&t);
 
     let before = before.clamp(0.0, 1.0);
     let after = after.clamp(0.0, 1.0);
@@ -70,24 +78,20 @@ pub fn show(
         if let Some(lbl) = label {
             ui.label(
                 RichText::new(format!("{lbl}:"))
-                    .color(theme::TEXT_SECONDARY)
+                    .color(ui.tokens().color.text_secondary)
                     .size(config.font_size),
             );
         }
 
         ui.label(
             RichText::new(format!("{:.0}%", before * 100.0))
-                .color(theme::TEXT_PRIMARY)
+                .color(ui.tokens().color.text_primary)
                 .size(config.font_size),
         );
 
-        crate::PhosphorIcon::ArrowRight.show(ui, config.font_size, theme::TEXT_MUTED);
+        crate::PhosphorIcon::ArrowRight.show(ui, config.font_size, ui.tokens().color.text_muted);
 
-        let after_color = if delta >= 0.0 {
-            config.gain_color
-        } else {
-            config.loss_color
-        };
+        let after_color = if delta >= 0.0 { gain_color } else { loss_color };
 
         ui.label(
             RichText::new(format!("{:.0}%", after * 100.0))
@@ -103,7 +107,7 @@ pub fn show(
         );
     });
 
-    ui.add_space(2.0);
+    ui.gap(Space::Xs);
 
     // Bar
     let (rect, _response) = ui.allocate_exact_size(
@@ -115,7 +119,7 @@ pub fn show(
     let rounding = CornerRadius::same(config.corner_radius);
 
     // Background
-    painter.rect_filled(rect, rounding, config.bg_color);
+    painter.rect_filled(rect, rounding, bg_color);
 
     let min_frac = before.min(after);
     let max_frac = before.max(after);
@@ -126,7 +130,7 @@ pub fn show(
             rect.min,
             egui::pos2(rect.min.x + rect.width() * min_frac, rect.max.y),
         );
-        painter.rect_filled(fill_rect, rounding, config.before_color);
+        painter.rect_filled(fill_rect, rounding, before_color);
     }
 
     // Delta region
@@ -138,10 +142,10 @@ pub fn show(
 
         if delta > 0.0 {
             // Gain: green region between before and after
-            painter.rect_filled(delta_rect, rounding, config.gain_color.linear_multiply(0.6));
+            painter.rect_filled(delta_rect, rounding, gain_color.linear_multiply(0.6));
         } else {
             // Loss: red striped region between after and before
-            painter.rect_filled(delta_rect, rounding, config.loss_color.linear_multiply(0.4));
+            painter.rect_filled(delta_rect, rounding, loss_color.linear_multiply(0.4));
         }
     }
 }

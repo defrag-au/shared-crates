@@ -87,7 +87,7 @@ pub fn build_cip25_mint(
     let min_ada = crate::calculate_min_ada_with_params(
         &super::send::to_maestro_params(&deps.params),
         &minted_amounts,
-        &crate::OutputParams { datum_size: None },
+        &crate::OutputParams::default(),
     );
 
     let estimated_fee = calculate_mint_fee(&deps.params, script_bytes.len(), metadata.is_some());
@@ -398,7 +398,7 @@ pub fn build_cip25_mint_multi_with_change_and_refunds(
         per_group_min_ada.push(crate::calculate_min_ada_with_params(
             &maestro_params,
             &amounts,
-            &crate::OutputParams { datum_size: None },
+            &crate::OutputParams::default(),
         ));
     }
     let total_output_min_ada: u64 = per_group_min_ada.iter().sum();

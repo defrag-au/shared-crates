@@ -1,18 +1,18 @@
 //! `Skeleton` storybook story — the two reasons side by side, because the
 //! whole point of the widget is that they must not look alike.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::{Skeleton, SkeletonReason};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Skeleton").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Skeleton").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Placeholder shapes for content that is not on screen — and a statement of WHY. \
              The reason is a constructor argument, not a setter, so a call site cannot draw one \
              without saying which it means.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -20,7 +20,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── The distinction the widget exists for ───────────────────────────
     ui.label(
         egui::RichText::new("Loading vs Withheld")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -31,7 +31,7 @@ pub fn show(ui: &mut egui::Ui) {
              never arrive. The withheld rows also recede, which says the list continues past \
              what is readable.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -42,7 +42,7 @@ pub fn show(ui: &mut egui::Ui) {
         ] {
             ui.vertical(|ui| {
                 ui.set_width(300.0);
-                ui.label(egui::RichText::new(label).color(TEXT_MUTED).small());
+                ui.label(egui::RichText::new(label).color(muted(ui)).small());
                 ui.add_space(6.0);
                 Skeleton::rows(3, reason).show(ui);
             });
@@ -55,7 +55,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── In place, which is the only way to judge the handover ───────────
     ui.label(
         egui::RichText::new("In place: real rows, then the gate")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -65,7 +65,7 @@ pub fn show(ui: &mut egui::Ui) {
              window, the other has never done anything. Match `row_height` to the real row above \
              or the handover reads as a layout jump rather than the same list continuing.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);
@@ -84,7 +84,7 @@ pub fn show(ui: &mut egui::Ui) {
             ui.add_space(4.0);
             ui.label(
                 egui::RichText::new("3,201 more before 2026-08-26")
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .small(),
             );
         });
@@ -94,7 +94,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── The other shape ─────────────────────────────────────────────────
     ui.label(
         egui::RichText::new("Blocks — thumbnails and panels")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -103,7 +103,7 @@ pub fn show(ui: &mut egui::Ui) {
              when the image lands. An asset still being fetched is Loading; one the reader is \
              not entitled to see is Withheld.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);
@@ -116,12 +116,12 @@ pub fn show(ui: &mut egui::Ui) {
         ui.vertical(|ui| {
             ui.label(
                 egui::RichText::new("loading · withheld")
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .small(),
             );
             ui.label(
                 egui::RichText::new("same shape, different motion")
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .small(),
             );
         });
@@ -132,7 +132,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── Shaping it to what it replaces ──────────────────────────────────
     ui.label(
         egui::RichText::new("Shaped to its content")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -141,7 +141,7 @@ pub fn show(ui: &mut egui::Ui) {
              quantity chosen by the caller — never the number of hidden items. A placeholder \
              that leaked the shape of its content would defeat the gate it illustrates.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);
@@ -153,7 +153,7 @@ pub fn show(ui: &mut egui::Ui) {
         ] {
             ui.vertical(|ui| {
                 ui.set_width(220.0);
-                ui.label(egui::RichText::new(label).color(TEXT_MUTED).small());
+                ui.label(egui::RichText::new(label).color(muted(ui)).small());
                 ui.add_space(4.0);
                 Skeleton::rows(2, SkeletonReason::Withheld)
                     .bars(widths)
@@ -173,7 +173,7 @@ fn fake_row(ui: &mut egui::Ui, title: &str, detail: &str) {
             ui.set_width(ui.available_width());
             ui.vertical(|ui| {
                 ui.label(egui::RichText::new(title).strong());
-                ui.label(egui::RichText::new(detail).color(TEXT_MUTED).small());
+                ui.label(egui::RichText::new(detail).color(muted(ui)).small());
             });
         });
     ui.add_space(6.0);

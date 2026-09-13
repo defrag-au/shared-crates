@@ -1,8 +1,9 @@
 //! Storybook demo for the RangeBar widget from egui-widgets.
 
 use egui_widgets::range_bar::{RangeBarConfig, RangePoint};
+use egui_widgets::slider_group::SliderGroup;
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 // ============================================================================
 // State
@@ -129,21 +130,21 @@ fn preset_data(index: usize) -> Vec<RangePoint> {
 // ============================================================================
 
 pub fn show(ui: &mut egui::Ui, state: &mut RangeBarState) {
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.max_width, 200.0..=800.0).text("Max width"));
-        ui.add(egui::Slider::new(&mut state.bar_height, 8.0..=32.0).text("Bar height"));
-    });
-    ui.horizontal(|ui| {
-        ui.add(egui::Slider::new(&mut state.fill_opacity, 0.0..=1.0).text("Fill opacity"));
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Max width", &mut state.max_width, 200.0..=800.0)
+            .slider("Bar height", &mut state.bar_height, 8.0..=32.0)
+            .slider("Fill opacity", &mut state.fill_opacity, 0.0..=1.0)
+            .show(ui);
     });
 
     ui.horizontal(|ui| {
         ui.label("Preset:");
         for (i, name) in PRESET_NAMES.iter().enumerate() {
             let text = if state.preset == i {
-                egui::RichText::new(*name).color(ACCENT).strong()
+                egui::RichText::new(*name).color(accent(ui)).strong()
             } else {
-                egui::RichText::new(*name).color(TEXT_MUTED)
+                egui::RichText::new(*name).color(muted(ui))
             };
             if ui.selectable_label(state.preset == i, text).clicked() {
                 state.preset = i;
@@ -166,7 +167,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut RangeBarState) {
     ui.add_space(12.0);
 
     // Legend
-    ui.label(egui::RichText::new("Data points:").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Data points:")
+            .color(accent(ui))
+            .strong(),
+    );
     for p in &points {
         ui.label(
             egui::RichText::new(format!("  {}: {:.0}", p.label, p.value))

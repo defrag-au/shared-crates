@@ -17,7 +17,7 @@ use egui::RichText;
 
 use crate::chip::{Chip, ChipVariant};
 use crate::icons::PhosphorIcon;
-use crate::theme;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 use crate::utils::format_lovelace;
 
 // ============================================================================
@@ -91,19 +91,21 @@ impl Default for TradeFlowConfig {
 
 /// Render the trade-flow card. The caller supplies the surrounding frame.
 pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     // Heading
     ui.horizontal(|ui| {
-        ui.label(PhosphorIcon::Handshake.rich_text(config.heading_size + 1.0, theme::ACCENT));
+        ui.label(
+            PhosphorIcon::Handshake.rich_text(config.heading_size + 1.0, ui.tokens().color.accent),
+        );
         ui.label(
             RichText::new("TRADE FLOW")
-                .color(theme::TEXT_SECONDARY)
+                .color(ui.tokens().color.text_secondary)
                 .size(config.heading_size)
                 .strong(),
         );
     });
-    ui.add_space(8.0);
+    ui.gap(Space::Md);
 
     // Give / arrow / get / net share one label gutter so every row's content
     // starts on the same spine — labels of different widths must not push
@@ -114,7 +116,7 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
         |ui| {
             ui.label(
                 RichText::new("You give")
-                    .color(theme::ACCENT_RED)
+                    .color(ui.tokens().color.accent_red)
                     .size(config.font_size)
                     .strong(),
             );
@@ -135,7 +137,9 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
     gutter_row(
         ui,
         |ui| {
-            ui.label(PhosphorIcon::ArrowDown.rich_text(config.font_size, theme::TEXT_MUTED));
+            ui.label(
+                PhosphorIcon::ArrowDown.rich_text(config.font_size, ui.tokens().color.text_muted),
+            );
         },
         |_ui| {},
     );
@@ -146,7 +150,7 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
         |ui| {
             ui.label(
                 RichText::new("You get")
-                    .color(theme::ACCENT_GREEN)
+                    .color(ui.tokens().color.accent_green)
                     .size(config.font_size)
                     .strong(),
             );
@@ -163,9 +167,9 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
         },
     );
 
-    ui.add_space(8.0);
+    ui.gap(Space::Md);
     separator(ui);
-    ui.add_space(6.0);
+    ui.gap(Space::Base);
 
     // Net line — same gutter, so the amount lands on the content spine.
     gutter_row(
@@ -173,16 +177,16 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
         |ui| {
             ui.label(
                 RichText::new("Net")
-                    .color(theme::TEXT_MUTED)
+                    .color(ui.tokens().color.text_muted)
                     .size(config.font_size)
                     .strong(),
             );
         },
         |ui| {
             let (sign, color) = if data.net_ada >= 0 {
-                ("+", theme::ACCENT_GREEN)
+                ("+", ui.tokens().color.accent_green)
             } else {
-                ("", theme::ACCENT_RED)
+                ("", ui.tokens().color.accent_red)
             };
             ui.label(
                 RichText::new(format!("{sign}{}", format_lovelace(data.net_ada)))
@@ -195,10 +199,10 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
 
     // Collapsible "what else is in this transaction" — names the pass-through so
     // the numbers a hardware wallet shows are explained, not surprising.
-    ui.add_space(6.0);
+    ui.gap(Space::Base);
     egui::CollapsingHeader::new(
         RichText::new("What else is in this transaction")
-            .color(theme::TEXT_MUTED)
+            .color(ui.tokens().color.text_muted)
             .size(config.font_size - 1.0),
     )
     .id_salt("trade_flow_detail")
@@ -236,16 +240,18 @@ pub fn show(ui: &mut egui::Ui, data: &TradeFlowData, config: &TradeFlowConfig) {
             );
         }
 
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            ui.label(PhosphorIcon::Warning.rich_text(config.font_size - 1.0, theme::WARNING));
+            ui.set_item_gap_x(Space::Sm);
+            ui.label(
+                PhosphorIcon::Warning.rich_text(config.font_size - 1.0, ui.tokens().color.warning),
+            );
             ui.label(
                 RichText::new(
                     "A hardware wallet shows raw UTxO movement, so it reports this rebalancing as \
                      part of a larger \"send\". Your actual net is shown above.",
                 )
-                .color(theme::TEXT_MUTED)
+                .color(ui.tokens().color.text_muted)
                 .size(config.font_size - 2.0)
                 .italics(),
             );
@@ -269,7 +275,7 @@ fn gutter_row(
     content: impl FnOnce(&mut egui::Ui),
 ) {
     ui.horizontal_top(|ui| {
-        ui.spacing_mut().item_spacing.x = 10.0;
+        ui.set_item_gap_x(Space::Lg);
         ui.allocate_ui_with_layout(
             egui::vec2(LABEL_GUTTER, 20.0),
             egui::Layout::right_to_left(egui::Align::Center),
@@ -290,12 +296,12 @@ fn flow_chips(
     config: &TradeFlowConfig,
 ) {
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
+        ui.set_item_gap_x(Space::Base);
 
         if assets.is_empty() && ada_lovelace == 0 {
             ui.label(
                 RichText::new("— nothing —")
-                    .color(theme::TEXT_MUTED)
+                    .color(ui.tokens().color.text_muted)
                     .size(config.font_size)
                     .italics(),
             );
@@ -334,7 +340,7 @@ fn detail_line(
     ui.horizontal(|ui| {
         let resp = ui.label(
             RichText::new(label)
-                .color(theme::TEXT_MUTED)
+                .color(ui.tokens().color.text_muted)
                 .size(config.font_size - 1.0),
         );
         if let Some(h) = hover {
@@ -343,7 +349,7 @@ fn detail_line(
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.label(
                 RichText::new(value)
-                    .color(theme::TEXT_SECONDARY)
+                    .color(ui.tokens().color.text_secondary)
                     .size(config.font_size - 1.0),
             );
         });
@@ -355,7 +361,7 @@ fn separator(ui: &mut egui::Ui) {
     let y = rect.min.y;
     ui.painter().line_segment(
         [egui::pos2(rect.min.x, y), egui::pos2(rect.max.x, y)],
-        egui::Stroke::new(1.0_f32, theme::BORDER),
+        egui::Stroke::new(1.0_f32, ui.tokens().color.border),
     );
-    ui.add_space(1.0);
+    ui.gap(Space::Xs);
 }

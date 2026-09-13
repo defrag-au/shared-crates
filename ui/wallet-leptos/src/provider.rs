@@ -2,8 +2,8 @@
 
 use crate::context::WalletContext;
 use leptos::prelude::*;
-use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::closure::Closure;
 
 /// Provides wallet context to child components
 ///

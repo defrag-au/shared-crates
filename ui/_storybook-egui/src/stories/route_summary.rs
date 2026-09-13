@@ -3,12 +3,15 @@
 use egui_widgets::route_summary::{self, RouteLeg, RouteSummaryConfig, RouteSummaryData};
 use egui_widgets::split_allocation_bar::dex_color;
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub fn show(ui: &mut egui::Ui) {
+    // The DEX series ramp comes from the active theme now, so the fixtures have
+    // to resolve it rather than name a constant.
+    let t = egui_widgets::theme::ThemeExt::tokens(ui);
     ui.label(
         egui::RichText::new("RouteSummary Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -16,7 +19,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Compact split routing result display. Per-leg breakdown with totals \
              and improvement percentage vs best single pool.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -24,16 +27,14 @@ pub fn show(ui: &mut egui::Ui) {
     ui.allocate_ui(egui::vec2(400.0, ui.available_height()), |ui| {
         // Two-way split — Aliens at 1000 ADA
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Aliens \u{2014} 1000 ADA Split (78/22)")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -43,14 +44,14 @@ pub fn show(ui: &mut egui::Ui) {
                     legs: vec![
                         RouteLeg {
                             dex_label: "Splash".into(),
-                            color: dex_color(0),
+                            color: dex_color(0, &t),
                             input_lovelace: 780_000_000,
                             expected_tokens: 6_912_743,
                             price_per_token: 0.000113,
                         },
                         RouteLeg {
                             dex_label: "CSWAP".into(),
-                            color: dex_color(1),
+                            color: dex_color(1, &t),
                             input_lovelace: 220_000_000,
                             expected_tokens: 1_949_748,
                             price_per_token: 0.000113,
@@ -68,16 +69,14 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Three-way split — hypothetical
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("PERP COIN \u{2014} 2000 ADA Three-Way Split")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -87,21 +86,21 @@ pub fn show(ui: &mut egui::Ui) {
                     legs: vec![
                         RouteLeg {
                             dex_label: "Splash".into(),
-                            color: dex_color(0),
+                            color: dex_color(0, &t),
                             input_lovelace: 1_100_000_000,
                             expected_tokens: 6_500_000,
                             price_per_token: 0.000169,
                         },
                         RouteLeg {
                             dex_label: "Minswap".into(),
-                            color: dex_color(1),
+                            color: dex_color(1, &t),
                             input_lovelace: 600_000_000,
                             expected_tokens: 3_450_000,
                             price_per_token: 0.000174,
                         },
                         RouteLeg {
                             dex_label: "CSWAP".into(),
-                            color: dex_color(2),
+                            color: dex_color(2, &t),
                             input_lovelace: 300_000_000,
                             expected_tokens: 1_680_000,
                             price_per_token: 0.000179,
@@ -119,16 +118,14 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Single pool — no split advantage
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Single Pool (no split advantage)")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -137,7 +134,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let data = RouteSummaryData {
                     legs: vec![RouteLeg {
                         dex_label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         input_lovelace: 100_000_000,
                         expected_tokens: 892_000,
                         price_per_token: 0.000112,

@@ -10,7 +10,7 @@
 use crate::corner_action::{Corner, CornerAction};
 use crate::icons::PhosphorIcon;
 use crate::image_loader::CachedSpinner;
-use crate::theme;
+use crate::theme::{Ink, Space, SpaceExt, TextSize, ThemeExt, Token, with_alpha};
 use egui::{Color32, RichText, Sense, Vec2};
 
 /// Whether a listing can actually be bought.
@@ -42,6 +42,15 @@ pub enum BlockedReason {
     /// One member of a multi-asset bundle: the price shown is the whole
     /// bundle's, and the escrow can only be spent as a unit.
     BundleMember,
+    /// Someone has submitted a purchase and the chain has not confirmed it
+    /// yet. Resolves itself either way within a block or two.
+    PendingSale,
+    /// The seller has submitted a cancel or re-price and the chain has not
+    /// confirmed it yet. Buying it now would race the owner's own spend.
+    PendingCancel,
+    /// The connected wallet is the seller. Cancel it from the seller side
+    /// instead; buying your own listing only pays the fee.
+    OwnListing,
 }
 
 impl BlockedReason {
@@ -52,6 +61,9 @@ impl BlockedReason {
             BlockedReason::DatumUnavailable => "No datum",
             BlockedReason::UnsupportedContract => "Unsupported",
             BlockedReason::BundleMember => "Bundle",
+            BlockedReason::PendingSale => "Buying…",
+            BlockedReason::PendingCancel => "Cancelling…",
+            BlockedReason::OwnListing => "Yours",
         }
     }
 
@@ -71,14 +83,29 @@ impl BlockedReason {
                 "Part of a multi-asset bundle. The price shown is for the whole \
                  bundle, which must be bought as a unit."
             }
+            BlockedReason::PendingSale => {
+                "A purchase has been submitted and is waiting for the chain. If it \
+                 fails, the listing is offered again."
+            }
+            BlockedReason::PendingCancel => {
+                "The seller has submitted a cancel or re-price and it is waiting for \
+                 the chain. If it fails, the listing is offered again."
+            }
+            BlockedReason::OwnListing => {
+                "You listed this. Cancel or re-price it from the seller side rather \
+                 than buying it back."
+            }
         }
     }
 
     /// Every variant, for stories and exhaustive review.
-    pub const ALL: [BlockedReason; 3] = [
+    pub const ALL: [BlockedReason; 6] = [
         BlockedReason::DatumUnavailable,
         BlockedReason::UnsupportedContract,
         BlockedReason::BundleMember,
+        BlockedReason::PendingSale,
+        BlockedReason::PendingCancel,
+        BlockedReason::OwnListing,
     ];
 }
 
@@ -122,12 +149,14 @@ pub struct ListingCard {
 pub struct ListingGridConfig {
     pub card_width: f32,
     pub thumbnail_size: f32,
-    pub spacing: f32,
-    pub bg_color: Color32,
-    pub bg_hover_color: Color32,
-    pub text_primary: Color32,
-    pub text_muted: Color32,
-    pub accent_green: Color32,
+    /// Gutter between cards. `None` takes the theme's [`Space::Md`] — same
+    /// reasoning as the [`Ink`] fields below.
+    pub spacing: Option<Space>,
+    pub bg_color: Ink,
+    pub bg_hover_color: Ink,
+    pub text_muted: Ink,
+    /// The price colour.
+    pub accent_green: Ink,
     pub rounding: f32,
 }
 
@@ -136,12 +165,11 @@ impl Default for ListingGridConfig {
         Self {
             card_width: 84.0,
             thumbnail_size: 100.0,
-            spacing: 8.0,
-            bg_color: Color32::from_rgb(30, 31, 48),
-            bg_hover_color: Color32::from_rgb(45, 46, 68),
-            text_primary: crate::theme::TEXT_PRIMARY,
-            text_muted: crate::theme::TEXT_MUTED,
-            accent_green: Color32::from_rgb(158, 206, 106),
+            spacing: None,
+            bg_color: Ink::Token(Token::BgSecondary),
+            bg_hover_color: Ink::Token(Token::BgHighlight),
+            text_muted: Ink::Token(Token::TextMuted),
+            accent_green: Ink::Token(Token::Success),
             rounding: 6.0,
         }
     }
@@ -178,22 +206,30 @@ impl ListingGrid {
         if listings.is_empty() {
             ui.label(
                 RichText::new("No listings found")
-                    .color(self.config.text_muted)
-                    .size(11.0),
+                    .color(self.config.text_muted.of(ui))
+                    .size(ui.text_size(TextSize::Base)),
             );
             return ListingGridResponse::default();
         }
 
         let cfg = &self.config;
+        // Resolved once, ahead of the closures: a `Default` config names its
+        // tokens, so every [`Ink`] lands here.
+        let theme = ui.tokens();
+        let c = theme.color;
+        let bg_color = cfg.bg_color.resolve(&theme);
+        let bg_hover_color = cfg.bg_hover_color.resolve(&theme);
+        let accent_green = cfg.accent_green.resolve(&theme);
+        let text_muted = cfg.text_muted.resolve(&theme);
         // Card is square: thumbnail fills entire card, price banner overlays bottom
         let card_size = Vec2::splat(cfg.card_width);
 
         let inner = ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = Vec2::splat(cfg.spacing);
+            ui.spacing_mut().item_spacing = Vec2::splat(ui.space(cfg.spacing.unwrap_or(Space::Md)));
             let mut hovered_idx: Option<usize> = None;
             let mut add_to_cart_idx: Option<usize> = None;
             let mut clicked_idx: Option<usize> = None;
-            let spinner = CachedSpinner::new(ui, 12.0, cfg.text_muted);
+            let spinner = CachedSpinner::new(ui, 12.0, text_muted);
             let mut any_pending = false;
 
             for (card_idx, listing) in listings.iter().enumerate() {
@@ -223,9 +259,9 @@ impl ListingGrid {
 
                 // Card background
                 let bg = if card_hovered {
-                    cfg.bg_hover_color
+                    bg_hover_color
                 } else {
-                    cfg.bg_color
+                    bg_color
                 };
                 ui.painter().rect_filled(rect, cfg.rounding, bg);
 
@@ -269,8 +305,8 @@ impl ListingGrid {
                         rect.center(),
                         egui::Align2::CENTER_CENTER,
                         "?",
-                        egui::FontId::proportional(20.0),
-                        cfg.text_muted,
+                        egui::FontId::proportional(ui.text_size(TextSize::Xl2)),
+                        text_muted,
                     );
                 }
 
@@ -289,18 +325,19 @@ impl ListingGrid {
                         sw: cfg.rounding as u8,
                         se: cfg.rounding as u8,
                     },
-                    Color32::from_rgba_premultiplied(15, 15, 25, 200),
+                    with_alpha(c.bg_primary, 200),
                 );
                 let price_color = if is_dimmed {
-                    Color32::from_rgb(96, 130, 80)
+                    // The same price colour, knocked back — not a second green.
+                    accent_green.gamma_multiply(0.55)
                 } else {
-                    cfg.accent_green
+                    accent_green
                 };
                 ui.painter().text(
                     banner_rect.center(),
                     egui::Align2::CENTER_CENTER,
                     format!("{price_ada:.0} ADA"),
-                    egui::FontId::monospace(10.0),
+                    egui::FontId::monospace(ui.text_size(TextSize::Sm)),
                     price_color,
                 );
 
@@ -314,17 +351,14 @@ impl ListingGrid {
                         egui::pos2(rect.min.x, banner_rect.min.y - banner_h),
                         Vec2::new(cfg.card_width, banner_h),
                     );
-                    ui.painter().rect_filled(
-                        gap_banner_rect,
-                        0,
-                        Color32::from_rgba_premultiplied(158, 206, 106, 220),
-                    );
+                    ui.painter()
+                        .rect_filled(gap_banner_rect, 0, with_alpha(c.success, 220));
                     ui.painter().text(
                         gap_banner_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         format!("Fills {count}"),
-                        egui::FontId::monospace(10.0),
-                        Color32::from_rgb(26, 27, 38),
+                        egui::FontId::monospace(ui.text_size(TextSize::Sm)),
+                        c.on(c.success),
                     );
                 }
 
@@ -342,24 +376,21 @@ impl ListingGrid {
                             sw: 0,
                             se: 0,
                         },
-                        Color32::from_rgba_premultiplied(224, 175, 104, 230),
+                        with_alpha(c.warning, 230),
                     );
                     ui.painter().text(
                         bundle_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         format!("Bundle x{n}"),
-                        egui::FontId::monospace(10.0),
-                        Color32::from_rgb(26, 27, 38),
+                        egui::FontId::monospace(ui.text_size(TextSize::Sm)),
+                        c.on(c.warning),
                     );
                 }
 
                 // Dim overlay for non-fillers
                 if is_dimmed {
-                    ui.painter().rect_filled(
-                        rect,
-                        cfg.rounding,
-                        Color32::from_rgba_premultiplied(18, 19, 30, 120),
-                    );
+                    ui.painter()
+                        .rect_filled(rect, cfg.rounding, with_alpha(c.bg_primary, 120));
                 }
 
                 // Buyability treatment.
@@ -388,7 +419,7 @@ impl ListingGrid {
                         ui.painter().rect_stroke(
                             rect,
                             cfg.rounding,
-                            egui::Stroke::new(2.0_f32, theme::ACCENT_GREEN),
+                            egui::Stroke::new(2.0_f32, ui.tokens().color.accent_green),
                             egui::StrokeKind::Inside,
                         );
                         CornerAction::new(PhosphorIcon::Check)
@@ -397,11 +428,8 @@ impl ListingGrid {
                             .show(ui, rect, ("in-cart", listing.unit.as_str()));
                     }
                     Buyability::Blocked(reason) => {
-                        ui.painter().rect_filled(
-                            rect,
-                            cfg.rounding,
-                            Color32::from_rgba_premultiplied(18, 19, 30, 150),
-                        );
+                        ui.painter()
+                            .rect_filled(rect, cfg.rounding, with_alpha(c.bg_primary, 150));
                         // Sits immediately above the price, in the card's
                         // status strip — NOT at the top, which the "Bundle ×N"
                         // banner already owns. Putting it there hid the banner
@@ -415,14 +443,14 @@ impl ListingGrid {
                         ui.painter().rect_filled(
                             chip_rect,
                             3.0,
-                            Color32::from_rgba_premultiplied(60, 30, 40, 230),
+                            with_alpha(c.error.gamma_multiply(0.45), 230),
                         );
                         ui.painter().text(
                             chip_rect.center(),
                             egui::Align2::CENTER_CENTER,
                             reason.label(),
-                            egui::FontId::proportional(9.0),
-                            theme::ACCENT_RED,
+                            egui::FontId::proportional(ui.text_size(TextSize::Xs)),
+                            ui.tokens().color.accent_red,
                         );
                     }
                 }
@@ -431,10 +459,10 @@ impl ListingGrid {
                 if resp.clicked() {
                     clicked_idx = Some(card_idx);
                     #[cfg(target_arch = "wasm32")]
-                    if let Some(ref market_url) = listing.marketplace_url {
-                        if let Some(window) = web_sys::window() {
-                            let _ = window.open_with_url_and_target(market_url, "wayup");
-                        }
+                    if let Some(ref market_url) = listing.marketplace_url
+                        && let Some(window) = web_sys::window()
+                    {
+                        let _ = window.open_with_url_and_target(market_url, "wayup");
                     }
                 }
 

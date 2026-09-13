@@ -56,11 +56,11 @@
 //! if let Some(i) = resp.clicked { open_tx(&entries[i]); }
 //! ```
 
-use egui::{Color32, CornerRadius, Frame, Margin, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, RichText, Sense, Stroke, Ui, Vec2};
 
 use crate::chip::{Chip, ChipVariant};
 use crate::relative_time::RelativeTime;
-use crate::theme;
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 use crate::timestamp::format_iso8601;
 
 /// Assets shown before the overflow pill takes over.
@@ -317,14 +317,14 @@ impl<'a> ActivityFeed<'a> {
             let day = stamp.get(..10).unwrap_or_default().to_string();
             if self.show_day_headers && last_day.as_deref() != Some(day.as_str()) {
                 if last_day.is_some() {
-                    ui.add_space(6.0);
+                    ui.gap(Space::Base);
                 }
                 ui.label(
                     RichText::new(friendly_day(&day))
-                        .color(theme::TEXT_SECONDARY)
+                        .color(ui.tokens().color.text_secondary)
                         .strong(),
                 );
-                ui.add_space(2.0);
+                ui.gap(Space::Xs);
                 last_day = Some(day);
             }
             let marked = self.marked == Some(i);
@@ -341,7 +341,7 @@ impl<'a> ActivityFeed<'a> {
                 Hit::Party => resp.walk = Some(i),
                 Hit::Miss => {}
             }
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
         }
         resp
     }
@@ -360,10 +360,10 @@ impl<'a> ActivityFeed<'a> {
         // read outside it — see the interact block at the end.
         let mut party_rect = None;
         let inner = Frame::new()
-            .fill(theme::BG_SECONDARY)
-            .stroke(Stroke::new(1.0_f32, theme::BORDER))
-            .corner_radius(CornerRadius::same(8))
-            .inner_margin(Margin::symmetric(12, 10))
+            .fill(ui.tokens().color.bg_secondary)
+            .stroke(Stroke::new(1.0_f32, ui.tokens().color.border))
+            .corner_radius(ui.tokens().corner(Radius::Lg))
+            .inner_margin(ui.tokens().margin_xy(Space::Xl, Space::Lg))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
 
@@ -409,7 +409,7 @@ impl<'a> ActivityFeed<'a> {
                                 ui.add(RelativeTime::new(entry.timestamp));
                                 ui.label(
                                     RichText::new(format!("· {stamp}"))
-                                        .color(theme::TEXT_MUTED)
+                                        .color(ui.tokens().color.text_muted)
                                         .small(),
                                 );
                                 if let Some(cp) = entry.counterparty {
@@ -425,13 +425,17 @@ impl<'a> ActivityFeed<'a> {
                         egui::Layout::top_down(egui::Align::RIGHT),
                         |ui| {
                             let color = if entry.amount >= 0 {
-                                theme::SUCCESS
+                                ui.tokens().color.success
                             } else {
-                                theme::ACCENT_ORANGE
+                                ui.tokens().color.accent_orange
                             };
                             ui.label(RichText::new(amount).color(color).monospace().strong());
                             if let Some(second) = &entry.secondary {
-                                ui.label(RichText::new(second).color(theme::TEXT_MUTED).small());
+                                ui.label(
+                                    RichText::new(second)
+                                        .color(ui.tokens().color.text_muted)
+                                        .small(),
+                                );
                             }
                         },
                     );
@@ -439,7 +443,7 @@ impl<'a> ActivityFeed<'a> {
 
                 // Bottom: what moved.
                 if !entry.assets.is_empty() {
-                    ui.add_space(6.0);
+                    ui.gap(Space::Base);
                     ui.horizontal_wrapped(|ui| {
                         for asset in entry.assets.iter().take(self.max_pills) {
                             asset_pill(ui, asset, true);
@@ -448,7 +452,7 @@ impl<'a> ActivityFeed<'a> {
                         if extra > 0 {
                             ui.label(
                                 RichText::new(format!("+{extra} more"))
-                                    .color(theme::TEXT_MUTED)
+                                    .color(ui.tokens().color.text_muted)
                                     .small(),
                             );
                         }
@@ -457,11 +461,11 @@ impl<'a> ActivityFeed<'a> {
 
                 // …and what it was about, if that is a different thing.
                 if !entry.targets.is_empty() {
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     ui.horizontal_wrapped(|ui| {
                         ui.label(
                             RichText::new(entry.targets_label)
-                                .color(theme::TEXT_MUTED)
+                                .color(ui.tokens().color.text_muted)
                                 .small(),
                         );
                         for asset in entry.targets.iter().take(self.max_pills) {
@@ -472,7 +476,7 @@ impl<'a> ActivityFeed<'a> {
                         if extra > 0 {
                             ui.label(
                                 RichText::new(format!("+{extra} more"))
-                                    .color(theme::TEXT_MUTED)
+                                    .color(ui.tokens().color.text_muted)
                                     .small(),
                             );
                         }
@@ -504,8 +508,8 @@ impl<'a> ActivityFeed<'a> {
         if response.hovered() && !on_party {
             ui.painter().rect_stroke(
                 inner.response.rect,
-                CornerRadius::same(8),
-                Stroke::new(1.0_f32, theme::ACCENT_BLUE),
+                ui.tokens().corner(Radius::Lg),
+                Stroke::new(1.0_f32, ui.tokens().color.accent_blue),
                 egui::StrokeKind::Inside,
             );
         }
@@ -525,8 +529,8 @@ impl<'a> ActivityFeed<'a> {
         if marked {
             ui.painter().rect_stroke(
                 inner.response.rect,
-                CornerRadius::same(8),
-                Stroke::new(2.0_f32, theme::ACCENT_CYAN),
+                ui.tokens().corner(Radius::Lg),
+                Stroke::new(2.0_f32, ui.tokens().color.accent_cyan),
                 egui::StrokeKind::Inside,
             );
         }
@@ -542,16 +546,24 @@ impl<'a> ActivityFeed<'a> {
     /// is what the card's click is measured against.
     fn party(&self, ui: &mut Ui, caption: &str, who: &str) -> egui::Rect {
         let colour = if self.walkable {
-            theme::ACCENT_BLUE
+            ui.tokens().color.accent_blue
         } else {
-            theme::TEXT_SECONDARY
+            ui.tokens().color.text_secondary
         };
-        ui.label(RichText::new("·").color(theme::TEXT_MUTED).small());
+        ui.label(
+            RichText::new("·")
+                .color(ui.tokens().color.text_muted)
+                .small(),
+        );
         // The caption is inside the hit rect: "from addr1q…" is one phrase,
         // and a link that starts one word into it invites a miss.
         let caption_rect = (!caption.is_empty()).then(|| {
-            ui.label(RichText::new(caption).color(theme::TEXT_MUTED).small())
-                .rect
+            ui.label(
+                RichText::new(caption)
+                    .color(ui.tokens().color.text_muted)
+                    .small(),
+            )
+            .rect
         });
         let mut rect = ui
             .label(
@@ -579,7 +591,7 @@ impl<'a> ActivityFeed<'a> {
             ui.painter().hline(
                 rect.x_range(),
                 rect.bottom() - 1.0,
-                Stroke::new(1.0_f32, theme::ACCENT_BLUE),
+                Stroke::new(1.0_f32, ui.tokens().color.accent_blue),
             );
         }
         rect
@@ -657,11 +669,11 @@ fn pill_width(ui: &Ui, asset: &ActivityAsset<'_>, moved: bool) -> f32 {
 fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>, moved: bool) {
     let arrived = asset.quantity >= 0;
     let tint = if !moved {
-        theme::TEXT_MUTED
+        ui.tokens().color.text_muted
     } else if arrived {
-        theme::SUCCESS
+        ui.tokens().color.success
     } else {
-        theme::ACCENT_ORANGE
+        ui.tokens().color.accent_orange
     };
     // Reserve the whole pill up front so the wrapped row can break BEFORE it,
     // then draw into the rect we were given. See [`pill_width`].
@@ -670,8 +682,11 @@ fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>, moved: bool) {
     if !ui.is_rect_visible(rect) {
         return;
     }
-    ui.painter()
-        .rect_filled(rect, CornerRadius::same(6), theme::BG_HIGHLIGHT);
+    ui.painter().rect_filled(
+        rect,
+        ui.tokens().corner(Radius::Md),
+        ui.tokens().color.bg_highlight,
+    );
     let ui = &mut ui.new_child(
         egui::UiBuilder::new()
             .max_rect(rect.shrink2(egui::vec2(PILL_PAD_X, PILL_PAD_Y)))
@@ -695,7 +710,7 @@ fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>, moved: bool) {
             if ui.is_rect_visible(icon) {
                 egui::Image::new(url)
                     .fit_to_exact_size(Vec2::splat(PILL_ICON))
-                    .corner_radius(CornerRadius::same(4))
+                    .corner_radius(ui.tokens().corner(Radius::Base))
                     .paint_at(ui, icon);
             }
         }
@@ -703,7 +718,7 @@ fn asset_pill(ui: &mut Ui, asset: &ActivityAsset<'_>, moved: bool) {
     }
     ui.label(
         RichText::new(elide(asset.label, PILL_LABEL_CHARS))
-            .color(theme::TEXT_PRIMARY)
+            .color(ui.tokens().color.text_primary)
             .small(),
     );
     // Quantity is a signed badge, not a bare number: on a card the direction
@@ -750,7 +765,7 @@ fn initial_disc(ui: &mut Ui, label: &str, tint: Color32) {
         rect.center(),
         egui::Align2::CENTER_CENTER,
         ch,
-        egui::FontId::proportional(11.0),
+        egui::FontId::proportional(ui.text_size(TextSize::Base)),
         tint,
     );
 }

@@ -43,7 +43,8 @@
 
 use egui::{RichText, Ui};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font, phosphor_label};
+use crate::icons::{PhosphorIcon, phosphor_label};
+use crate::theme::{Space, SpaceExt};
 
 /// One destination in the nav.
 pub struct PaneNavEntry<'a> {
@@ -135,7 +136,7 @@ impl<'a> PaneNavBar<'a> {
         // Unconditional: a locked entry gets a padlock whether or not it
         // carries an icon of its own, so "any entry has an icon" is not the
         // right question. Idempotent.
-        install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
         response.shown = true;
 
         // `horizontal_wrapped`, not `horizontal`: a narrow viewport should
@@ -149,7 +150,7 @@ impl<'a> PaneNavBar<'a> {
         let min_size = egui::vec2(0.0, min_h);
 
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.set_item_gap_x(Space::Base);
             for entry in &self.entries {
                 match entry.locked {
                     None => {
@@ -195,7 +196,7 @@ impl<'a> PaneNavBar<'a> {
                 }
             }
         });
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         response
     }
 }

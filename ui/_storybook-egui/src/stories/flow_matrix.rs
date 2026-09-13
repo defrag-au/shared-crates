@@ -15,24 +15,16 @@
 //!    honest picture of that is a large, clearly-labelled column rather than a
 //!    footnote or a silent omission.
 
-use crate::TEXT_MUTED;
+use crate::muted;
 use egui_widgets::{FlowMatrix, MatrixFlow, Selection, SpineState};
 
 const DAY: i64 = 86_400;
 const T0: i64 = 1_750_000_000;
 
+#[derive(Default)]
 pub struct FlowMatrixState {
     spine: Option<SpineState>,
     selection: Selection,
-}
-
-impl Default for FlowMatrixState {
-    fn default() -> Self {
-        Self {
-            spine: None,
-            selection: Selection::default(),
-        }
-    }
 }
 
 fn wallets() -> Vec<&'static str> {
@@ -120,7 +112,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowMatrixState) {
              the exact figures; click one to watch that counterparty everywhere.",
         )
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(8.0);
 
@@ -138,6 +130,6 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowMatrixState) {
             r.rows_shown, r.cols_shown, r.flows_in_window
         ))
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
 }

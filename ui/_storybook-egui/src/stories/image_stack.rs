@@ -29,10 +29,10 @@
 //!   pops far harder against the former, and that difference — not the geometry
 //!   — may be most of why the rendered version looked stronger.
 
-use crate::{ACCENT, TEXT_MUTED};
-use egui_widgets::image_loader::{iiif_asset_url, AssetImageSize};
+use crate::{accent, muted};
+use egui_widgets::image_loader::{AssetImageSize, iiif_asset_url};
 use egui_widgets::image_stack::{ImageStack, ImageStackStyle, StackImage};
-use egui_widgets::theme;
+use egui_widgets::slider_group::{Fader, SliderGroup};
 
 /// Real assets, so the treatment is judged against real artwork. A pile of grey
 /// placeholder squares looks fine at any settings and tells you nothing.
@@ -65,14 +65,18 @@ impl Default for ImageStackState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
-    ui.label(egui::RichText::new("Image Stack").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Image Stack")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Several images as a fanned pile of mounted prints — so a lot of many reads as a lot \
              of many. Every proportion is a slider; drag until it looks right, then write the \
              numbers into ImageStackStyle::default().",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -93,7 +97,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
         let backdrop = match state.dark_backdrop {
             // The server card's own background, for comparing like with like.
             true => egui::Color32::from_rgb(11, 11, 16),
-            false => theme::BG_SECONDARY,
+            false => crate::tok(ui, egui_widgets::theme::Token::BgSecondary),
         };
         // A FIXED RECT, PAINTED AND CLIPPED — never a frame sized by its
         // content. The pile's allocation grows with spacing, lift and shadow
@@ -117,59 +121,45 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
 
         ui.add_space(20.0);
 
-        // ── The sliders ──────────────────────────────────────────────────
+        // ── The desk ─────────────────────────────────────────────────────
         ui.vertical(|ui| {
             let s = &mut state.style;
-            ui.spacing_mut().slider_width = 180.0;
-            // The value box beside each slider is sized to its text, so
-            // `0.070` and `9.3` and `150` came out three different widths and
-            // the labels after them jittered as the digits changed. A fixed
-            // box width and fixed decimals hold every row still.
-            ui.spacing_mut().interact_size.x = 64.0;
+            // One bank, not three separated ones. `SliderGroup` measures its
+            // label column across the rows it is given, so three groups would
+            // measure three different widths and the spine would kink twice —
+            // and the spine is the thing that makes nine channels readable.
+            //
+            // This also deletes the hand-patching that used to live here:
+            // `slider_width = 180`, `interact_size.x = 64` and a `fixed_decimals`
+            // on every row, all of it fighting a value box that sized itself to
+            // its text and so jittered the labels after it as digits changed.
+            // The bank's readout column is sized to the widest value the RANGE
+            // can print, which is the same fix made structural.
+            crate::controls(ui, |ui| {
+                SliderGroup::new()
+                    .fader(Fader::new("size", &mut state.size, 24.0..=240.0).suffix("px"))
+                    .slider("images", &mut state.count, 1..=5)
+                    .fader(Fader::new("mount", &mut s.mount, 0.0..=0.20).decimals(3))
+                    // Past 1.0 the prints stop overlapping and spread out with a gap.
+                    .fader(Fader::new("spacing", &mut s.spacing, 0.0..=1.30).decimals(3))
+                    .fader(Fader::new("lift", &mut s.lift, 0.0..=0.20).decimals(3))
+                    .fader(
+                        Fader::new("tilt spread", &mut s.tilt_deg, 0.0..=20.0)
+                            .decimals(1)
+                            .suffix("°"),
+                    )
+                    .fader(
+                        Fader::new("shadow offset", &mut s.shadow_offset, 0.0..=0.20).decimals(3),
+                    )
+                    .fader(
+                        Fader::new("shadow spread", &mut s.shadow_spread, 0.0..=0.30).decimals(3),
+                    )
+                    .slider("shadow alpha", &mut s.shadow_alpha, 0..=255)
+                    .show(ui);
+            });
 
-            ui.add(
-                egui::Slider::new(&mut state.size, 24.0..=240.0)
-                    .fixed_decimals(0)
-                    .text("size (px)"),
-            );
-            ui.add(egui::Slider::new(&mut state.count, 1..=5).text("images"));
+            ui.add_space(6.0);
             ui.checkbox(&mut state.dark_backdrop, "server-card backdrop (#0b0b10)");
-            ui.separator();
-
-            ui.add(
-                egui::Slider::new(&mut s.mount, 0.0..=0.20)
-                    .fixed_decimals(3)
-                    .text("mount"),
-            );
-            // Past 1.0 the prints stop overlapping and spread out with a gap.
-            ui.add(
-                egui::Slider::new(&mut s.spacing, 0.0..=1.30)
-                    .fixed_decimals(3)
-                    .text("spacing"),
-            );
-            ui.add(
-                egui::Slider::new(&mut s.lift, 0.0..=0.20)
-                    .fixed_decimals(3)
-                    .text("lift"),
-            );
-            ui.add(
-                egui::Slider::new(&mut s.tilt_deg, 0.0..=20.0)
-                    .fixed_decimals(1)
-                    .text("tilt spread (deg)"),
-            );
-            ui.separator();
-
-            ui.add(
-                egui::Slider::new(&mut s.shadow_offset, 0.0..=0.20)
-                    .fixed_decimals(3)
-                    .text("shadow offset"),
-            );
-            ui.add(
-                egui::Slider::new(&mut s.shadow_spread, 0.0..=0.30)
-                    .fixed_decimals(3)
-                    .text("shadow spread"),
-            );
-            ui.add(egui::Slider::new(&mut s.shadow_alpha, 0..=255).text("shadow alpha"));
 
             ui.add_space(8.0);
             if ui.button("reset to default").clicked() {
@@ -192,7 +182,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
                 ))
                 .monospace()
                 .small()
-                .color(TEXT_MUTED),
+                .color(muted(ui)),
             );
         });
     });
@@ -207,7 +197,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
     // thumbnail.
     ui.label(
         egui::RichText::new("The same pile at the three card densities")
-            .color(ACCENT)
+            .color(accent(ui))
             .small()
             .strong(),
     );
@@ -216,7 +206,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
             "Row / Feature / Poster, at the current style. All three fan — the row below is the \
              evidence that 30px survives it at the tuned defaults.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(10.0);
@@ -235,7 +225,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
                 ("Poster (130)", 130.0, true),
             ] {
                 ui.vertical(|ui| {
-                    ui.label(egui::RichText::new(label).color(TEXT_MUTED).small());
+                    ui.label(egui::RichText::new(label).color(muted(ui)).small());
                     ui.add_space(4.0);
                     ImageStack::new(&images)
                         .size(size)
@@ -253,7 +243,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
     // `fan(false)` is the right call at that scale, rather than assuming it.
     ui.label(
         egui::RichText::new("Row scale: fanned vs single, side by side")
-            .color(ACCENT)
+            .color(accent(ui))
             .small()
             .strong(),
     );
@@ -264,7 +254,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageStackState) {
         |ui| {
             for (label, fan) in [("fanned", true), ("single", false)] {
                 ui.vertical(|ui| {
-                    ui.label(egui::RichText::new(label).color(TEXT_MUTED).small());
+                    ui.label(egui::RichText::new(label).color(muted(ui)).small());
                     ui.add_space(4.0);
                     ImageStack::new(&images)
                         .size(30.0)

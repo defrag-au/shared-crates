@@ -35,9 +35,10 @@
 //! in already-formatted headlines/captions plus raw series/spreads, so the
 //! widget stays currency- and domain-agnostic.
 
-use egui::{Color32, CornerRadius, FontId, Margin, Rect, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, FontId, Margin, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::{SparkHoverStyle, Sparkline, Trend, theme};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
+use crate::{SparkHoverStyle, Sparkline, Trend};
 
 /// The sizes and spacings a card paints with.
 ///
@@ -177,8 +178,8 @@ pub struct StatStrip<'a> {
     windows: &'a [StatWindow],
     empty_note: &'a str,
     card_width: f32,
-    value_color: Color32,
-    label_bg: Color32,
+    value_color: Ink,
+    label_bg: Ink,
 }
 
 impl<'a> StatStrip<'a> {
@@ -188,10 +189,10 @@ impl<'a> StatStrip<'a> {
             windows,
             empty_note: "no data",
             card_width: 190.0,
-            value_color: theme::TEXT_PRIMARY,
-            // Recessed (darker than the card) so the window pill reads as an
-            // inset tag rather than more card surface.
-            label_bg: theme::BG_PRIMARY,
+            value_color: Ink::Token(Token::TextPrimary),
+            // Recessed (further down the background ramp than the card) so the
+            // window pill reads as an inset tag rather than more card surface.
+            label_bg: Ink::Token(Token::BgPrimary),
         }
     }
 
@@ -219,15 +220,15 @@ impl<'a> StatStrip<'a> {
     }
 
     /// Accent color for each headline value. Defaults to the primary text color.
-    pub fn value_color(mut self, color: Color32) -> Self {
-        self.value_color = color;
+    pub fn value_color(mut self, color: impl Into<Ink>) -> Self {
+        self.value_color = color.into();
         self
     }
 
     /// Background of the top-right window pill. Defaults to the recessed
     /// primary background.
-    pub fn label_bg(mut self, color: Color32) -> Self {
-        self.label_bg = color;
+    pub fn label_bg(mut self, color: impl Into<Ink>) -> Self {
+        self.label_bg = color.into();
         self
     }
 
@@ -402,15 +403,15 @@ impl<'a> StatStrip<'a> {
         // Top margin reserves room for the corner pill (painted absolutely
         // below) so the headline always clears it, whatever the card width.
         let frame = egui::Frame::NONE
-            .fill(theme::BG_HIGHLIGHT)
-            .corner_radius(6.0)
+            .fill(ui.tokens().color.bg_highlight)
+            .corner_radius(ui.tokens().corner(Radius::Md))
             .inner_margin(Margin {
                 left: MARGIN_X as i8,
                 right: MARGIN_X as i8,
                 top: MARGIN_TOP as i8,
                 bottom: MARGIN_BOTTOM as i8,
             })
-            .stroke(egui::Stroke::new(1.0_f32, theme::BORDER));
+            .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border));
 
         let inner_w = card_w - MARGIN_X * 2.0;
         ui.allocate_ui(Vec2::new(card_w, card_h), |ui| {
@@ -438,7 +439,7 @@ impl<'a> StatStrip<'a> {
                         ui.horizontal(|ui| {
                             ui.label(
                                 RichText::new(&w.headline)
-                                    .color(self.value_color)
+                                    .color(self.value_color.of(ui))
                                     .size(HEADLINE_SIZE)
                                     .strong(),
                             );
@@ -458,14 +459,14 @@ impl<'a> StatStrip<'a> {
                     if let Some(series) = &w.spark
                         && series.len() >= 2
                     {
-                        ui.add_space(6.0);
+                        ui.gap(Space::Base);
                         let resp = Sparkline::new(series)
                             .height(SPARK_HEIGHT)
                             .line_width(1.5)
-                            .line_color(self.value_color)
-                            .fill(tint(self.value_color, 30))
+                            .line_color(self.value_color.of(ui))
+                            .fill(tint(self.value_color.of(ui), 30))
                             .show_endpoint(false)
-                            .bg_color(theme::BG_HIGHLIGHT)
+                            .bg_color(ui.tokens().color.bg_highlight)
                             .hover_style(SparkHoverStyle::CrosshairOnly)
                             .show(ui);
                         if let Some(bucket) = hovered_bucket(&resp, series.len()) {
@@ -475,7 +476,7 @@ impl<'a> StatStrip<'a> {
 
                     // Price-range bar on the strip-wide shared domain.
                     if let (Some(r), Some((lo, hi))) = (w.range, domain) {
-                        ui.add_space(6.0);
+                        ui.gap(Space::Base);
                         self.draw_range_bar(ui, r, lo, hi);
                     }
 
@@ -491,8 +492,8 @@ impl<'a> StatStrip<'a> {
                     let slack = ui.available_height() - DETAIL_SIZE * 1.4;
                     ui.add_space(slack.max(4.0));
                     let (detail, color) = match &w.detail {
-                        Some(d) => (d.as_str(), theme::TEXT_SECONDARY),
-                        None => (self.empty_note, theme::TEXT_MUTED),
+                        Some(d) => (d.as_str(), ui.tokens().color.text_secondary),
+                        None => (self.empty_note, ui.tokens().color.text_muted),
                     };
                     ui.label(RichText::new(detail).color(color).size(DETAIL_SIZE));
                 });
@@ -528,24 +529,24 @@ impl<'a> StatStrip<'a> {
         painter.hline(
             rect.x_range(),
             cy,
-            Stroke::new(1.0_f32, tint(theme::TEXT_MUTED, 70)),
+            Stroke::new(1.0_f32, tint(ui.tokens().color.text_muted, 70)),
         );
         // This window's low→high whisker.
         painter.hline(
             egui::Rangef::new(x_lo, x_hi),
             cy,
-            Stroke::new(2.0_f32, tint(self.value_color, 160)),
+            Stroke::new(2.0_f32, tint(self.value_color.of(ui), 160)),
         );
         // End caps at low and high.
         for x in [x_lo, x_hi] {
             painter.vline(
                 x,
                 egui::Rangef::new(cy - 3.0, cy + 3.0),
-                Stroke::new(1.5_f32, self.value_color),
+                Stroke::new(1.5_f32, self.value_color.of(ui)),
             );
         }
         // Median dot.
-        painter.circle_filled(egui::pos2(x_mid, cy), 2.5, self.value_color);
+        painter.circle_filled(egui::pos2(x_mid, cy), 2.5, self.value_color.of(ui));
 
         resp.on_hover_ui(|ui| {
             ui.label(
@@ -553,7 +554,7 @@ impl<'a> StatStrip<'a> {
                     "{:.0}\u{2013}{:.0} \u{00b7} med {:.0}",
                     r.low, r.high, r.mid
                 ))
-                .size(11.0),
+                .size(ui.text_size(TextSize::Base)),
             );
         });
     }
@@ -566,8 +567,8 @@ impl<'a> StatStrip<'a> {
         let painter = ui.painter();
         let galley = painter.layout_no_wrap(
             label.to_owned(),
-            FontId::proportional(11.0),
-            theme::TEXT_MUTED,
+            FontId::proportional(ui.text_size(TextSize::Base)),
+            ui.tokens().color.text_muted,
         );
         let pill_size = galley.size() + pad * 2.0;
         let pill_rect = Rect::from_min_size(
@@ -577,8 +578,16 @@ impl<'a> StatStrip<'a> {
             ),
             pill_size,
         );
-        painter.rect_filled(pill_rect, CornerRadius::same(4), self.label_bg);
-        painter.galley(pill_rect.min + pad, galley, theme::TEXT_SECONDARY);
+        painter.rect_filled(
+            pill_rect,
+            ui.tokens().corner(Radius::Base),
+            self.label_bg.of(ui),
+        );
+        painter.galley(
+            pill_rect.min + pad,
+            galley,
+            ui.tokens().color.text_secondary,
+        );
     }
 }
 
@@ -592,14 +601,14 @@ fn tint(color: Color32, alpha: u8) -> Color32 {
 /// label, left to right).
 fn draw_trend(ui: &mut Ui, dir: Trend, label: &str) {
     let color = match dir {
-        Trend::Up => theme::SUCCESS,
-        Trend::Down => theme::ERROR,
-        Trend::Flat => theme::TEXT_MUTED,
+        Trend::Up => ui.tokens().color.success,
+        Trend::Down => ui.tokens().color.error,
+        Trend::Flat => ui.tokens().color.text_muted,
     };
     // Own the spacing so the arrow hugs its label (default item spacing would
     // wedge them apart); the gap from the headline is added explicitly.
-    ui.spacing_mut().item_spacing.x = 0.0;
-    ui.add_space(8.0);
+    ui.set_item_gap_x(Space::None);
+    ui.gap(Space::Md);
     let size = 9.0;
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
     let c = rect.center();
@@ -631,6 +640,10 @@ fn draw_trend(ui: &mut Ui, dir: Trend, label: &str) {
             )),
         };
     }
-    ui.add_space(3.0);
-    ui.label(RichText::new(label).color(color).size(13.0));
+    ui.gap(Space::Sm);
+    ui.label(
+        RichText::new(label)
+            .color(color)
+            .size(ui.text_size(TextSize::Lg)),
+    );
 }

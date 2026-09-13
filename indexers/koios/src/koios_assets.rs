@@ -1,18 +1,18 @@
 use crate::koios_serde::as_f64;
 
 use nom::{
+    IResult, Parser,
     bytes::complete::{tag, take_until},
     character::complete::{char, digit1},
     combinator::map_res,
     multi::separated_list0,
     sequence::{delimited as del, separated_pair},
-    IResult, Parser,
-};
-use serde::{
-    de::{self, value::SeqAccessDeserializer, SeqAccess, Visitor},
-    Serialize,
 };
 use serde::{Deserialize, Deserializer};
+use serde::{
+    Serialize,
+    de::{self, SeqAccess, Visitor, value::SeqAccessDeserializer},
+};
 use std::{fmt, vec::IntoIter};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

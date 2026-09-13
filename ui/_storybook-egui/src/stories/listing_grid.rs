@@ -103,6 +103,24 @@ fn fixture() -> Vec<ListingCard> {
         Buyability::Blocked(BlockedReason::UnsupportedContract),
     ));
 
+    // Live-book states: someone else's buy is in flight, a seller's cancel
+    // is in flight, and one of our own.
+    cards.push(card(
+        "MartianSpawn0777",
+        26.0,
+        Buyability::Blocked(BlockedReason::PendingSale),
+    ));
+    cards.push(card(
+        "MartianSpawn0790",
+        28.0,
+        Buyability::Blocked(BlockedReason::PendingCancel),
+    ));
+    cards.push(card(
+        "MartianSpawn0801",
+        30.0,
+        Buyability::Blocked(BlockedReason::OwnListing),
+    ));
+
     cards
 }
 
@@ -137,7 +155,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ListingGridState) {
             state.cart.len()
         ))
         .size(11.0)
-        .color(egui_widgets::theme::TEXT_MUTED),
+        .color(crate::muted(ui)),
     );
     ui.add_space(6.0);
 
@@ -166,13 +184,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut ListingGridState) {
         ui.label(
             egui::RichText::new(action)
                 .size(11.0)
-                .color(egui_widgets::theme::ACCENT_GREEN),
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentGreen)),
         );
     } else {
         ui.label(
             egui::RichText::new("Hover a card — buyable ones offer a +; blocked ones say why")
                 .size(11.0)
-                .color(egui_widgets::theme::TEXT_MUTED),
+                .color(crate::muted(ui)),
         );
     }
 }

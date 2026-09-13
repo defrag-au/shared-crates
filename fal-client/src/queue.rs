@@ -16,7 +16,7 @@
 
 use std::fmt::Write as _;
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{FalClient, FalError};
 

@@ -2,7 +2,7 @@
 //! dashboard. Covers the realistic layouts: fresh client (1 wallet), client
 //! with collections, mixed roles, and archived rows.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::wallet_list::{
     WalletList, WalletListAction, WalletListLayout, WalletListRole, WalletListRow,
 };
@@ -63,7 +63,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
              is populated. Each row shows the bech32 enterprise address (truncated) \
              with a copy-to-clipboard icon.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(16.0);
@@ -71,7 +71,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
     // ── Variant 1: fresh client (single Primary) ───────────────────────
     ui.label(
         egui::RichText::new("Fresh client — single Primary wallet")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -80,7 +80,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
             "Right after self-provision. No collections yet. No section header — \
              the widget collapses to a clean one-row layout.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -102,7 +102,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
     // ── Variant 2: client with a couple of collections ─────────────────
     ui.label(
         egui::RichText::new("With collections — section headers appear")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -111,7 +111,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
             "Once a second bucket is populated, the widget surfaces \"Primary\" \
              and \"Collections (N)\" headers so users can scan.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -173,7 +173,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
     // ── Variant 3: many collections + an archived row ──────────────────
     ui.label(
         egui::RichText::new("Many collections, with one archived")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -183,7 +183,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
              button (the action is idempotent server-side but the affordance would \
              be confusing).",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -247,7 +247,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
     // ── Variant 3b: hide archived behind a toggle ──────────────────────
     ui.label(
         egui::RichText::new("Archived hidden by default (.with_hide_archived)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -259,7 +259,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
              doesn't round-trip through the host. JRYNers (#4) is the archived \
              one; note it stays hidden until revealed.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -273,7 +273,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
     // ── Variant 4: mixed roles including Custom ────────────────────────
     ui.label(
         egui::RichText::new("Mixed — including a Custom wallet")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -282,7 +282,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
             "Advanced users may add operator-named wallets outside the collection \
              lifecycle. They get their own bucket below Collections.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -330,7 +330,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
     // ── Variant 5: card layout — single Primary ────────────────────────
     ui.label(
         egui::RichText::new("Card layout — single Primary")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -341,7 +341,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
              focal element of the surface (an \"Identities\" sub-page, say) \
              rather than one row in a long list.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -365,7 +365,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
     // ── Variant 6: card layout — multi-bucket with archived ────────────
     ui.label(
         egui::RichText::new("Card layout — multiple wallets, with archived")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -375,7 +375,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
              button. The same row VMs feed both layouts — only the per-card geometry \
              differs.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -433,7 +433,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
     // ── Variant 7: card layout, 2-column grid ──────────────────────────
     ui.label(
         egui::RichText::new("Card layout — 2-column grid")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -444,7 +444,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
              at 2-wide. Last row of an odd-count bucket leaves a trailing empty \
              cell to keep the grid aligned.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -511,7 +511,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
     // ── Variant 8: list layout, 2-column grid ──────────────────────────
     ui.label(
         egui::RichText::new("List layout — 2-column grid")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -521,7 +521,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletListState) {
              surfaces. List rows are tighter, so 2 columns is the usable max — \
              3+ crowds the truncated address.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);

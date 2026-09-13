@@ -2,7 +2,7 @@
 
 use egui_widgets::signing_status::{self, SigningPhase, SigningStatusConfig};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub struct SigningStatusStoryState {
     pub phase: SigningPhase,
@@ -23,7 +23,7 @@ impl Default for SigningStatusStoryState {
 pub fn show(ui: &mut egui::Ui, state: &mut SigningStatusStoryState) {
     ui.label(
         egui::RichText::new("SigningStatus Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -31,7 +31,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SigningStatusStoryState) {
             "Concurrent signing checklist for the trade desk. Shows each party's \
              signing progress and provides Sign/Cancel actions.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -40,7 +40,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SigningStatusStoryState) {
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new("Phase:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
 
@@ -85,12 +85,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut SigningStatusStoryState) {
     // Widget
     ui.allocate_ui(egui::vec2(320.0, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 let config = SigningStatusConfig {
                     peer_name: "$boef".into(),
@@ -119,7 +117,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SigningStatusStoryState) {
     if !state.last_action.is_empty() {
         ui.label(
             egui::RichText::new(format!("Last action: {}", state.last_action))
-                .color(egui_widgets::theme::ACCENT_CYAN)
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
                 .size(11.0),
         );
     }

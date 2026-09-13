@@ -14,7 +14,7 @@ pub mod datum;
 mod tests;
 pub mod transaction;
 
-pub use datum::{extract_jpg_store_payments, extract_potential_prices, PaymentDistribution};
+pub use datum::{PaymentDistribution, extract_jpg_store_payments, extract_potential_prices};
 pub use transaction::*;
 
 #[derive(Deserialize)]

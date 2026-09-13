@@ -7,7 +7,9 @@
 //! `horizontal_wrapped` layout, so it flows onto the next line when it won't fit
 //! (a `Frame`-based chip instead lays out in the remaining width and can't wrap).
 
-use egui::{Color32, CornerRadius, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Sense, Stroke, Ui, Vec2};
+
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 use crate::chip::ChipVariant;
 
@@ -52,11 +54,11 @@ impl<'a> TagList<'a> {
         const GAP: f32 = 6.0; // space between label and ×
 
         let mut resp = TagListResponse::default();
-        let (fg, bg, border) = self.variant.palette();
-        let font = egui::FontId::proportional(12.0);
+        let (fg, bg, border) = self.variant.palette(&ui.tokens());
+        let font = egui::FontId::proportional(ui.text_size(TextSize::Md));
 
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
+            ui.spacing_mut().item_spacing = Vec2::new(ui.space(Space::Base), ui.space(Space::Sm));
             let painter = ui.painter().clone();
             for (i, tag) in self.tags.iter().enumerate() {
                 let galley = painter.layout_no_wrap(tag.clone(), font.clone(), fg);
@@ -67,7 +69,7 @@ impl<'a> TagList<'a> {
                 // The wrap happens here: if the chip won't fit the remaining row,
                 // the wrapped layout moves to the next line before placing it.
                 let (rect, r) = ui.allocate_exact_size(size, Sense::click());
-                let cr = CornerRadius::same(3);
+                let cr = ui.tokens().corner(Radius::Sm);
                 painter.rect_filled(rect, cr, bg);
                 if let Some(b) = border {
                     painter.rect_stroke(

@@ -1,9 +1,9 @@
 //! Storybook demo for the TraitFilter widget from egui-widgets.
 
-use egui::Color32;
+use egui_widgets::theme::{Ink, Token};
 use egui_widgets::trait_filter::{self, FilterEntry, TraitFilterConfig, TraitFilterState};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 // ============================================================================
 // Mock data
@@ -112,13 +112,17 @@ fn build_mock_entries() -> Vec<FilterEntry> {
         for value in *values {
             // Simulate ownership: ~60% owned
             let owned = idx % 5 != 0;
-            let color = if *value == "None" {
-                Some(Color32::from_rgba_premultiplied(60, 65, 80, 120))
+            // Was three `from_rgba_premultiplied` literals — the constructor
+            // that expects already-scaled channels, so each rendered lighter
+            // than written. As washes they say what they mean (absent / owned /
+            // missing) and follow whatever theme the story is viewed under.
+            let color = Some(if *value == "None" {
+                Ink::Wash(Token::Border, 120)
             } else if owned {
-                Some(Color32::from_rgba_premultiplied(158, 206, 106, 200))
+                Ink::Wash(Token::Success, 200)
             } else {
-                Some(Color32::from_rgba_premultiplied(86, 95, 137, 160))
-            };
+                Ink::Wash(Token::TextMuted, 160)
+            });
             entries.push(FilterEntry {
                 label: format!("{category}: {value}"),
                 category: category.to_string(),
@@ -156,7 +160,7 @@ impl Default for TraitFilterStoryState {
 pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
     ui.label(
         egui::RichText::new("TraitFilter Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -164,7 +168,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
             "Compound-key prefix trie with dual indexing. \
              Type a category name (\"Back\") or value (\"Re\") to search.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(8.0);
@@ -183,7 +187,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
                 "No filters active \u{2014} {} total entries",
                 state.entries.len()
             ))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .size(11.0),
         );
     } else {
@@ -197,7 +201,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
 
         ui.label(
             egui::RichText::new(format!("Active filters ({}): AND logic", tags.len()))
-                .color(ACCENT)
+                .color(accent(ui))
                 .size(11.0)
                 .strong(),
         );
@@ -215,7 +219,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
         ui.add_space(4.0);
         ui.label(
             egui::RichText::new(format!("{match_count} assets would match"))
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .size(10.0),
         );
     }
@@ -232,7 +236,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
     ui.add_space(16.0);
     ui.label(
         egui::RichText::new("Try:")
-            .color(ACCENT)
+            .color(accent(ui))
             .size(11.0)
             .strong(),
     );
@@ -244,7 +248,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TraitFilterStoryState) {
              \u{2022} Backspace on empty input removes last tag\n  \
              \u{2022} Up/Down + Enter for keyboard nav",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(10.0),
     );
 }
@@ -269,5 +273,8 @@ fn simulate_match_count(entries: &[FilterEntry], selected: &[usize]) -> usize {
             count *= fraction;
         }
     }
-    (count as usize).max(0)
+    // No `.max(0)`: `count` is an `f64` cast to `usize`, and a `usize` cannot be
+    // negative — the clamp read as a guard while doing nothing. The cast itself
+    // saturates at zero, which is the behaviour that was actually wanted.
+    count as usize
 }

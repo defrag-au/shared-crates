@@ -10,7 +10,7 @@ use std::collections::HashSet;
 
 use egui_widgets::{FulfilmentRow, OrderEventRow, OrderList, OrderListAction, OrderRow};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// Pinned clock so the relative times ("9s ago", "2d ago") are deterministic.
 const NOW: i64 = 1_780_000_000;
@@ -23,7 +23,7 @@ pub struct OrderListState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut OrderListState) {
-    ui.label(egui::RichText::new("Order List").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Order List").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Mint-orders dashboard. Click the status chips to filter, type in the \
@@ -31,7 +31,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut OrderListState) {
              for the absolute UTC. Replaces the old flat list (no dates, \
              \"refund: not_required\" on every line).",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(10.0);
@@ -66,7 +66,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut OrderListState) {
     ui.add_space(18.0);
     ui.label(
         egui::RichText::new("Empty · loading · error")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(6.0);
@@ -106,9 +106,23 @@ fn small_panel(ui: &mut egui::Ui, height: f32, add: impl FnOnce(&mut egui::Ui)) 
 /// A spread of orders across the lifecycle, plus a run of failures so the
 /// "500 failed" headline + filtering read true. Times fan out so the relative
 /// labels show a range (seconds → days).
+/// One fixture row: `(mins_ago, id_suffix, status, refund, qty, paid_ada,
+/// addr_suffix)`.
+///
+/// A named alias rather than the inline 7-tuple it was, so the field list lives
+/// in the type instead of a comment above it that nothing keeps honest.
+type OrderSpec = (
+    i64,
+    &'static str,
+    &'static str,
+    &'static str,
+    u32,
+    Option<u64>,
+    &'static str,
+);
+
 fn demo_rows(open: &HashSet<String>) -> Vec<OrderRow> {
-    // (mins_ago, id_suffix, status, refund, qty, paid_ada, addr_suffix)
-    let spec: &[(i64, &str, &str, &str, u32, Option<u64>, &str)] = &[
+    let spec: &[OrderSpec] = &[
         (0, "01", "pending", "none", 2, Some(200), "t7wq32"),
         (1, "02", "fulfilling", "none", 1, Some(100), "lwfqva"),
         (3, "03", "submitted", "none", 2, Some(200), "8wrtp6"),

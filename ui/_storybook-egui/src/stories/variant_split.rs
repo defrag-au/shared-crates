@@ -2,29 +2,35 @@
 
 use egui_widgets::variant_split::{self, VariantSegment, VariantSplitConfig};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
-fn seg(variant: &str, share: f32, assets: usize, i: usize) -> VariantSegment {
+/// Takes the theme because the variant ramp is a theme decision now, and a
+/// fixture builder has no `Ui` of its own.
+fn seg(
+    variant: &str,
+    share: f32,
+    assets: usize,
+    i: usize,
+    t: &egui_widgets::theme::Theme,
+) -> VariantSegment {
     VariantSegment {
         variant: variant.into(),
         share,
         asset_count: assets,
-        color: variant_split::variant_color(i),
+        color: variant_split::variant_color(i, t),
     }
 }
 
 fn card(ui: &mut egui::Ui, title: &str, slot: &str, segments: &[VariantSegment]) {
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             ui.label(
                 egui::RichText::new(title)
-                    .color(egui_widgets::theme::TEXT_SECONDARY)
+                    .color(crate::secondary(ui))
                     .size(11.0)
                     .strong(),
             );
@@ -35,9 +41,12 @@ fn card(ui: &mut egui::Ui, title: &str, slot: &str, segments: &[VariantSegment])
 }
 
 pub fn show(ui: &mut egui::Ui) {
+    // The variant ramp comes from the active theme now, so the fixtures resolve
+    // it rather than naming a constant.
+    let t = egui_widgets::theme::ThemeExt::tokens(ui);
     ui.label(
         egui::RichText::new("VariantSplit Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -46,7 +55,7 @@ pub fn show(ui: &mut egui::Ui) {
              share is weighted by downstream asset capacity, so the split isn't uniform. \
              Dotted ticks mark the naive uniform baseline; the gap is the cardinality skew.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -57,7 +66,7 @@ pub fn show(ui: &mut egui::Ui) {
             ui,
             "skin -> clothes (real: 26 a vs 7 b, ~81/19)",
             "skin",
-            &[seg("a", 0.81, 26, 0), seg("b", 0.19, 7, 1)],
+            &[seg("a", 0.81, 26, 0, &t), seg("b", 0.19, 7, 1, &t)],
         );
 
         // Three variants with uneven capacity.
@@ -66,9 +75,9 @@ pub fn show(ui: &mut egui::Ui) {
             "Three variants, uneven capacity",
             "body",
             &[
-                seg("forest", 0.55, 22, 0),
-                seg("desert", 0.30, 12, 1),
-                seg("tundra", 0.15, 6, 2),
+                seg("forest", 0.55, 22, 0, &t),
+                seg("desert", 0.30, 12, 1, &t),
+                seg("tundra", 0.15, 6, 2, &t),
             ],
         );
 
@@ -77,7 +86,7 @@ pub fn show(ui: &mut egui::Ui) {
             ui,
             "Balanced capacity (lands near uniform)",
             "eyes",
-            &[seg("open", 0.5, 15, 0), seg("closed", 0.5, 15, 1)],
+            &[seg("open", 0.5, 15, 0, &t), seg("closed", 0.5, 15, 1, &t)],
         );
     });
 }

@@ -21,6 +21,8 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 
+use crate::theme::{Ink, Speed, TextSize, ThemeExt, Token};
+
 // ============================================================================
 // Public types
 // ============================================================================
@@ -91,13 +93,15 @@ pub struct PriceTimelineConfig {
     pub window_secs: i64,
     pub log_y: LogMode,
     /// Draw a connecting polyline through the points in time order (sparse
-    /// asset histories read better connected). Color of the line.
-    pub connect: Option<Color32>,
+    /// asset histories read better connected), in this colour. `None` means
+    /// *no line* — unlike the fields below, where `None` would have meant
+    /// "ask the theme", which is why those are [`Ink`].
+    pub connect: Option<Ink>,
     /// Base mark radius; automatically shrunk for dense scatters.
     pub point_radius: f32,
-    pub background: Color32,
-    pub grid_color: Color32,
-    pub label_color: Color32,
+    pub background: Ink,
+    pub grid_color: Ink,
+    pub label_color: Ink,
 }
 
 impl Default for PriceTimelineConfig {
@@ -109,9 +113,9 @@ impl Default for PriceTimelineConfig {
             log_y: LogMode::Auto,
             connect: None,
             point_radius: 3.0,
-            background: Color32::from_rgb(30, 32, 42),
-            grid_color: Color32::from_rgb(52, 56, 72),
-            label_color: Color32::from_rgb(140, 145, 165),
+            background: Ink::Token(Token::BgSecondary),
+            grid_color: Ink::Token(Token::Border),
+            label_color: Ink::Token(Token::TextMuted),
         }
     }
 }
@@ -197,8 +201,14 @@ const DENSE_THRESHOLD: usize = 200;
 /// Log scale kicks in (in `Auto`) when max/min exceeds this.
 const AUTO_LOG_RATIO: f64 = 20.0;
 
-const CROSSHAIR_COLOR: Color32 = Color32::from_rgb(160, 160, 180);
-const HIGHLIGHT_RING: Color32 = Color32::from_rgb(240, 240, 255);
+fn crosshair_color(ui: &egui::Ui) -> Color32 {
+    ui.tokens().color.text_secondary
+}
+/// The ring around the hovered point — brighter than anything else on the
+/// chart, because it answers "which one am I reading?".
+fn highlight_ring(ui: &egui::Ui) -> Color32 {
+    ui.tokens().color.text_primary
+}
 
 /// Left gutter for y tick labels / right gutter for reference-line labels.
 const GUTTER_LEFT: f32 = 6.0;
@@ -217,6 +227,12 @@ pub fn show(
     config: &PriceTimelineConfig,
 ) -> PriceTimelineResponse {
     let width = ui.available_width().max(120.0);
+    // Resolved once: a `Default` config names its tokens, it cannot hold values.
+    let theme = ui.tokens();
+    let c = theme.color;
+    let background = config.background.resolve(&theme);
+    let grid_color = config.grid_color.resolve(&theme);
+    let label_color = config.label_color.resolve(&theme);
     let (outer_rect, response) =
         ui.allocate_exact_size(Vec2::new(width, config.height), Sense::click_and_drag());
     let plot_rect = Rect::from_min_max(
@@ -224,7 +240,7 @@ pub fn show(
         Pos2::new(outer_rect.max.x - 4.0, outer_rect.max.y - GUTTER_BOTTOM),
     );
     let painter = ui.painter().with_clip_rect(outer_rect);
-    painter.rect_filled(outer_rect, 4.0, config.background);
+    painter.rect_filled(outer_rect, 4.0, background);
 
     // ---- domains --------------------------------------------------------
     let now = if config.now_secs > 0 {
@@ -313,12 +329,16 @@ pub fn show(
     // The stored window is the TARGET; the rendered window eases toward it so
     // reset (and gesture steps) glide instead of snapping. Input math above
     // always uses the target, keeping anchors exact.
+    // Not gated on `travel_allowed`: the window IS the reading, so snapping it
+    // is the reduced-motion behaviour, not freezing it. `MotionMode::None`
+    // yields 0.0 and does exactly that.
+    let zoom_secs = ui.duration(Speed::Normal);
     let z_lo_r = ui
         .ctx()
-        .animate_value_with_time(zoom_id.with("anim_lo"), z_lo, 0.2);
+        .animate_value_with_time(zoom_id.with("anim_lo"), z_lo, zoom_secs);
     let z_hi_r = ui
         .ctx()
-        .animate_value_with_time(zoom_id.with("anim_hi"), z_hi, 0.2)
+        .animate_value_with_time(zoom_id.with("anim_hi"), z_hi, zoom_secs)
         .max(z_lo_r + 0.001);
     let base_span = (base_max - base_min).max(1) as f64;
     let x_min = base_min + (base_span * z_lo_r as f64) as i64;
@@ -329,8 +349,8 @@ pub fn show(
             Pos2::new(plot_rect.max.x - 2.0, plot_rect.min.y + 2.0),
             Align2::RIGHT_TOP,
             "zoomed \u{00b7} double-click to reset",
-            FontId::proportional(8.0),
-            config.label_color,
+            FontId::proportional(ui.text_size(TextSize::Xs)),
+            label_color,
         );
     }
 
@@ -358,8 +378,8 @@ pub fn show(
             outer_rect.center(),
             Align2::CENTER_CENTER,
             "no data",
-            FontId::proportional(10.0),
-            config.label_color,
+            FontId::proportional(ui.text_size(TextSize::Sm)),
+            label_color,
         );
         return PriceTimelineResponse {
             response,
@@ -404,14 +424,14 @@ pub fn show(
         let y = y_of(v);
         painter.line_segment(
             [Pos2::new(plot_rect.min.x, y), Pos2::new(plot_rect.max.x, y)],
-            Stroke::new(0.5_f32, config.grid_color),
+            Stroke::new(0.5_f32, grid_color),
         );
         painter.text(
             Pos2::new(plot_rect.min.x + 2.0, y - 1.0),
             Align2::LEFT_BOTTOM,
             format_compact(v),
-            FontId::proportional(8.5),
-            config.label_color,
+            FontId::proportional(ui.text_size(TextSize::Xs)),
+            label_color,
         );
     }
     // X gridlines at round time intervals (7d, 14d, … back from "now"), drawn
@@ -427,14 +447,14 @@ pub fn show(
         let x = x_of(t);
         painter.line_segment(
             [Pos2::new(x, plot_rect.min.y), Pos2::new(x, plot_rect.max.y)],
-            Stroke::new(0.5_f32, config.grid_color),
+            Stroke::new(0.5_f32, grid_color),
         );
         painter.text(
             Pos2::new(x, outer_rect.max.y - 2.0),
             Align2::CENTER_BOTTOM,
             age_label(now - t),
-            FontId::proportional(8.5),
-            config.label_color,
+            FontId::proportional(ui.text_size(TextSize::Xs)),
+            label_color,
         );
         t -= step;
     }
@@ -446,8 +466,8 @@ pub fn show(
         } else {
             age_label(now - x_max)
         },
-        FontId::proportional(8.5),
-        config.label_color,
+        FontId::proportional(ui.text_size(TextSize::Xs)),
+        label_color,
     );
 
     // ---- reference bands (under everything else) ------------------------
@@ -460,7 +480,7 @@ pub fn show(
     }
 
     // ---- connecting polyline (time order, visible points only) ----------
-    if let Some(line_color) = config.connect {
+    if let Some(line_color) = config.connect.map(|ink| ink.resolve(&theme)) {
         let mut ordered: Vec<&TimelinePoint> = points
             .iter()
             .zip(&visible)
@@ -607,7 +627,7 @@ pub fn show(
         painter.vline(
             gx,
             plot_rect.y_range(),
-            Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(130, 138, 170, 45)),
+            Stroke::new(1.0_f32, crate::theme::with_alpha(c.text_muted, 45)),
         );
     }
 
@@ -625,7 +645,7 @@ pub fn show(
             || nearby.contains(&i)
             || pinned_indices.contains(&i)
         {
-            painter.circle_stroke(*pos, r + 1.5, Stroke::new(1.0_f32, HIGHLIGHT_RING));
+            painter.circle_stroke(*pos, r + 1.5, Stroke::new(1.0_f32, highlight_ring(ui)));
         }
     }
 
@@ -644,7 +664,7 @@ pub fn show(
             Pos2::new(plot_rect.max.x - 2.0, y - 1.0),
             Align2::RIGHT_BOTTOM,
             &line.label,
-            FontId::proportional(8.5),
+            FontId::proportional(ui.text_size(TextSize::Xs)),
             line.color,
         );
     }
@@ -658,7 +678,7 @@ pub fn show(
                 Pos2::new(cursor.x, plot_rect.min.y),
                 Pos2::new(cursor.x, plot_rect.max.y),
             ],
-            Stroke::new(0.5_f32, CROSSHAIR_COLOR),
+            Stroke::new(0.5_f32, crosshair_color(ui)),
         );
         if !nearby.is_empty() {
             tooltip_anchor = Some(Pos2::new(cursor.x, plot_rect.max.y + 4.0));

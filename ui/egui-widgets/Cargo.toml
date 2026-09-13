@@ -6,7 +6,12 @@ edition.workspace = true
 [features]
 default = ["cardano"]
 image-editor = ["dep:ab_glyph"]
-cardano = ["dep:cardano-assets", "dep:wallet-core", "dep:wallet-pallas"]
+cardano = [
+    "dep:cardano-assets",
+    "dep:wallet-core",
+    "dep:wallet-pallas",
+    "dep:address-registry",
+]
 # The shared binding editor over gateway-wiring's vocabulary. A feature so
 # consumers that only want a widget or two (the portal builds with
 # default-features = false) opt into the gateway coupling explicitly.
@@ -31,11 +36,16 @@ perf-probe = { workspace = true }
 ehttp = "0.7"
 image = { workspace = true, features = ["jpeg"] }
 cardano-assets = { workspace = true, optional = true }
+# The marketplace fee formulas — see `listing_composer`, which prices a
+# listing by what the buyer pays and needs the contract's exact arithmetic.
+address-registry = { path = "../../address-registry", optional = true }
 # The gateway trigger-wiring vocabulary AND its rules — see `wiring_editor`.
 gateway-wiring = { path = "../../services/gateway-wiring", optional = true }
 # The transaction verdict shape — see `verdict_card`.
 tx-verdict = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"] }
+# `stake_session` persists a session as JSON in localStorage.
+serde_json = { workspace = true }
 log = { workspace = true }
 # Hierarchical FSM for widget interaction state — see `time_spine::tape`.
 statig = { workspace = true }
@@ -44,6 +54,11 @@ voronoice = "0.2"
 ab_glyph = { version = "0.2", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# `discord_session` wraps `discord_auth::web::Session` as an `AuthStrategy`.
+# wasm-only because that type is localStorage + URL-fragment machinery; the
+# crate takes no dependency on it off-target, and `discord-auth` takes none on
+# this crate, so there is no cycle.
+discord-auth = { workspace = true, features = ["web"] }
 egui_inbox = { workspace = true }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
@@ -65,6 +80,12 @@ web-sys = { workspace = true, features = [
     "WorkerGlobalScope",
     "Document", "Element", "HtmlElement", "HtmlInputElement",
     "FileList", "File", "FileReader",
+    # `stake_session` persists a worker session in localStorage.
+    "Storage",
+    # `auth_worker` drops the `?token=` from the URL after an OAuth callback,
+    # via `history.replaceState` — assigning `location.search` instead would
+    # reload the page and kill the wasm app mid-frame.
+    "History",
 ] }
 js-sys = { workspace = true }
 wallet-core = { workspace = true, optional = true }

@@ -192,8 +192,8 @@ impl AssetId {
     /// Useful for compact binary storage and personality derivation.
     #[cfg(feature = "cip14")]
     pub fn fingerprint_bytes(&self) -> Result<[u8; 20], AssetIdError> {
-        use blake2::digest::{Update, VariableOutput};
         use blake2::Blake2bVar;
+        use blake2::digest::{Update, VariableOutput};
 
         let bytes = self
             .as_bytes()

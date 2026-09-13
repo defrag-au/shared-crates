@@ -6,7 +6,7 @@
 use egui_widgets::data_table::{self, DataRowItem, DataRowStatus, DataTableConfig, DataTableState};
 use egui_widgets::exposure_bar::{self, ExposureBarConfig, ExposureSegment};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 // ============================================================================
 // Story state
@@ -32,7 +32,11 @@ struct MockLoan {
     status: DataRowStatus,
     // For exposure bar
     principal_lovelace: u64,
-    color: egui::Color32,
+    /// A `Token`, not a `Color32`: this is demo data built by a free function
+    /// with no `Ui`, so it cannot hold a resolved colour without pinning one
+    /// theme. Naming the token here and resolving at the draw site is the same
+    /// split the widgets themselves now use.
+    color: egui_widgets::theme::Token,
 }
 
 fn mock_loans() -> Vec<MockLoan> {
@@ -47,7 +51,7 @@ fn mock_loans() -> Vec<MockLoan> {
             interest: "120 ADA",
             status: DataRowStatus::Active,
             principal_lovelace: 3_000_000_000,
-            color: egui_widgets::theme::ACCENT_MAGENTA,
+            color: egui_widgets::theme::Token::AccentMagenta,
         },
         MockLoan {
             token: "SNEK",
@@ -59,7 +63,7 @@ fn mock_loans() -> Vec<MockLoan> {
             interest: "87 ADA",
             status: DataRowStatus::Active,
             principal_lovelace: 2_500_000_000,
-            color: egui_widgets::theme::ACCENT_GREEN,
+            color: egui_widgets::theme::Token::AccentGreen,
         },
         MockLoan {
             token: "ANGELS",
@@ -71,7 +75,7 @@ fn mock_loans() -> Vec<MockLoan> {
             interest: "100 ADA",
             status: DataRowStatus::Active,
             principal_lovelace: 2_000_000_000,
-            color: egui_widgets::theme::ACCENT_CYAN,
+            color: egui_widgets::theme::Token::AccentCyan,
         },
         MockLoan {
             token: "HOSKY",
@@ -83,7 +87,7 @@ fn mock_loans() -> Vec<MockLoan> {
             interest: "7 ADA",
             status: DataRowStatus::Active,
             principal_lovelace: 355_000_000,
-            color: egui_widgets::theme::ACCENT_YELLOW,
+            color: egui_widgets::theme::Token::AccentYellow,
         },
         MockLoan {
             token: "WMT",
@@ -95,7 +99,7 @@ fn mock_loans() -> Vec<MockLoan> {
             interest: "63 ADA",
             status: DataRowStatus::Active,
             principal_lovelace: 1_000_000_000,
-            color: egui_widgets::theme::ACCENT_BLUE,
+            color: egui_widgets::theme::Token::AccentBlue,
         },
         MockLoan {
             token: "NIGHT",
@@ -107,7 +111,7 @@ fn mock_loans() -> Vec<MockLoan> {
             interest: "20 ADA",
             status: DataRowStatus::PendingCancel,
             principal_lovelace: 500_000_000,
-            color: egui_widgets::theme::ACCENT_MAGENTA,
+            color: egui_widgets::theme::Token::AccentMagenta,
         },
     ]
 }
@@ -119,7 +123,7 @@ fn mock_loans() -> Vec<MockLoan> {
 pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
     ui.label(
         egui::RichText::new("DataTable Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -127,7 +131,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
             "Dense row-based table with column headers, LTV micro-bars, selection, \
              and detail panel. Paired with ExposureBar summary above.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -136,12 +140,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
 
     // ── Exposure bar summary ──
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             // Build segments from loans that have LTV data
             let with_ltv: Vec<&MockLoan> = loans.iter().filter(|l| l.ltv_pct.is_some()).collect();
@@ -154,7 +156,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
                     principal_lovelace: l.principal_lovelace,
                     fraction: l.principal_lovelace as f32 / total as f32,
                     ltv_pct: l.ltv_pct.unwrap_or(0.0),
-                    color: l.color,
+                    color: crate::tok(ui, l.color),
                 })
                 .collect();
 
@@ -165,12 +167,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
 
     // ── Data table ──
     egui::Frame::new()
-        .fill(BG_MAIN)
+        .fill(bg(ui))
         .corner_radius(6.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             let config = DataTableConfig::default();
 
@@ -195,7 +195,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
                 |ui, _idx, loan| {
                     ui.label(
                         egui::RichText::new(format!("{} Loan Details", loan.token))
-                            .color(egui_widgets::theme::TEXT_PRIMARY)
+                            .color(crate::ink(ui))
                             .size(14.0)
                             .strong(),
                     );
@@ -205,23 +205,23 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
                         (
                             "Principal",
                             loan.principal,
-                            egui_widgets::theme::ACCENT_CYAN,
+                            crate::tok(ui, egui_widgets::theme::Token::AccentCyan),
                         ),
+                        ("Collateral", loan.collateral, crate::secondary(ui)),
+                        ("Rate", loan.rate, crate::ink(ui)),
+                        ("Duration", loan.duration, crate::muted(ui)),
                         (
-                            "Collateral",
-                            loan.collateral,
-                            egui_widgets::theme::TEXT_SECONDARY,
+                            "Interest",
+                            loan.interest,
+                            crate::tok(ui, egui_widgets::theme::Token::AccentGreen),
                         ),
-                        ("Rate", loan.rate, egui_widgets::theme::TEXT_PRIMARY),
-                        ("Duration", loan.duration, egui_widgets::theme::TEXT_MUTED),
-                        ("Interest", loan.interest, egui_widgets::theme::ACCENT_GREEN),
                     ];
 
                     for (label, value, color) in pairs {
                         ui.horizontal(|ui| {
                             ui.label(
                                 egui::RichText::new(format!("{label}:"))
-                                    .color(egui_widgets::theme::TEXT_MUTED)
+                                    .color(crate::muted(ui))
                                     .size(11.0),
                             );
                             ui.label(egui::RichText::new(*value).color(*color).size(11.0));
@@ -232,12 +232,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
                         ui.horizontal(|ui| {
                             ui.label(
                                 egui::RichText::new("LTV:")
-                                    .color(egui_widgets::theme::TEXT_MUTED)
+                                    .color(crate::muted(ui))
                                     .size(11.0),
                             );
                             ui.label(
                                 egui::RichText::new(format!("{ltv:.1}%"))
-                                    .color(egui_widgets::exposure_bar::ltv_risk_color(ltv))
+                                    .color(egui_widgets::exposure_bar::ltv_risk_color(
+                                        ltv,
+                                        &egui_widgets::theme::ThemeExt::tokens(ui),
+                                    ))
                                     .size(11.0)
                                     .strong(),
                             );
@@ -249,7 +252,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
                     if loan.status == DataRowStatus::PendingCancel {
                         ui.label(
                             egui::RichText::new("Cancellation pending...")
-                                .color(egui_widgets::theme::WARNING)
+                                .color(crate::tok(ui, egui_widgets::theme::Token::Warning))
                                 .size(11.0),
                         );
                     } else {
@@ -258,10 +261,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut DataTableStoryState) {
                             .add(
                                 egui::Button::new(
                                     egui::RichText::new("Cancel Offer")
-                                        .color(egui_widgets::theme::ERROR)
+                                        .color(crate::tok(ui, egui_widgets::theme::Token::Error))
                                         .size(11.0),
                                 )
-                                .fill(egui_widgets::theme::ERROR.linear_multiply(0.15))
+                                .fill(
+                                    crate::tok(ui, egui_widgets::theme::Token::Error)
+                                        .linear_multiply(0.15),
+                                )
                                 .corner_radius(4.0),
                             )
                             .clicked()

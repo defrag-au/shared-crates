@@ -22,8 +22,9 @@ use gateway_wiring::{
     text_to_variants, variants_to_text,
 };
 
+use crate::PhosphorIcon;
 use crate::event_wiring::{ActionCardVm, EventNodeVm, EventWiring};
-use crate::{PhosphorIcon, theme};
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// Cross-frame editor state. The caller holds one per editor and resets it
 /// when the draft it refers to is reloaded (indices go stale with the draft).
@@ -171,7 +172,7 @@ pub fn bindings_editor(
             response.add_action_for = Some(binding_id.clone());
         }
 
-        ui.add_space(16.0);
+        ui.gap(Space::Xl2);
     }
 
     if let Some(index) = remove_binding {
@@ -263,7 +264,7 @@ fn render_action_config(
                      with the bot config.",
                 )
                 .small()
-                .color(theme::TEXT_MUTED),
+                .color(ui.tokens().color.text_muted),
             );
         }
         WiredAction::React { emoji } => {
@@ -274,7 +275,7 @@ fn render_action_config(
                              (normalized on save)",
                 )
                 .small()
-                .color(theme::TEXT_MUTED),
+                .color(ui.tokens().color.text_muted),
             );
             if ui.text_edit_singleline(emoji).changed() {
                 dirty = true;
@@ -292,7 +293,7 @@ fn render_action_config(
                 *policy_id = (!trimmed.is_empty()).then(|| trimmed.to_string());
                 dirty = true;
             }
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
 
             ui.label("style");
             let style_name = match style {
@@ -371,7 +372,7 @@ fn render_action_config(
                 }
             }
 
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
             ui.label("trait filters (optional; empty = any owned asset)");
             ui.label(
                 egui::RichText::new(
@@ -379,7 +380,7 @@ fn render_action_config(
                      — lines are unioned, categories on a line must all match",
                 )
                 .small()
-                .color(theme::TEXT_MUTED),
+                .color(ui.tokens().color.text_muted),
             );
             if ui
                 .add(
@@ -415,19 +416,19 @@ pub fn agent_entitlement_readonly(
     let mode = AgentMode::of(agent);
     ui.horizontal(|ui| {
         ui.strong("Agent");
-        ui.colored_label(theme::TEXT_MUTED, mode.label());
+        ui.colored_label(ui.tokens().color.text_muted, mode.label());
     });
 
     match agent {
         None => {
             ui.colored_label(
-                theme::TEXT_MUTED,
+                ui.tokens().color.text_muted,
                 "This server is not entitled to the agent — talk to Augminted to enable it.",
             );
         }
         Some(agent) if mode == AgentMode::Everyone => {
             ui.colored_label(
-                theme::TEXT_MUTED,
+                ui.tokens().color.text_muted,
                 format!("Every member: {} tokens/day", agent.default_daily_tokens),
             );
         }
@@ -438,17 +439,20 @@ pub fn agent_entitlement_readonly(
                     .map(|r| format!("@{}", r.name))
                     .unwrap_or_else(|| tier.role.clone());
                 ui.colored_label(
-                    theme::TEXT_MUTED,
+                    ui.tokens().color.text_muted,
                     format!("{name}: {} tokens/day", tier.daily_tokens),
                 );
             }
             if agent.default_daily_tokens > 0 {
                 ui.colored_label(
-                    theme::TEXT_MUTED,
+                    ui.tokens().color.text_muted,
                     format!("everyone else: {} tokens/day", agent.default_daily_tokens),
                 );
             }
         }
     }
-    ui.colored_label(theme::TEXT_MUTED, "Entitlements are set by Augminted.");
+    ui.colored_label(
+        ui.tokens().color.text_muted,
+        "Entitlements are set by Augminted.",
+    );
 }

@@ -17,15 +17,13 @@
 //! The host owns IO: `Refresh` / `SetShowSubmitted` re-fetch server-side;
 //! `ToggleHistory` asks the host to load that order's events into the row.
 
-use egui::{
-    Align, Color32, CornerRadius, Frame, Label, Layout, Margin, RichText, ScrollArea, Sense,
-    Stroke, Ui,
-};
+use egui::{Align, Color32, Frame, Label, Layout, RichText, ScrollArea, Sense, Stroke, Ui};
 
 use crate::chip::{Chip, ChipVariant};
 use crate::error_note::{ErrorNote, summarize_error};
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
 use crate::relative_time::relative_label;
+use crate::theme::{Radius, Space, SpaceExt, Theme, ThemeExt};
 use crate::timestamp::Timestamp;
 
 // ─────────────────────────────────────────────────────────────────────
@@ -118,14 +116,19 @@ impl OrderStatus {
     }
 
     /// A distinct accent colour for the filter-chip dot + selected tint.
-    pub fn accent(&self) -> Color32 {
+    ///
+    /// Takes the theme for the same reason [`ChipVariant::palette`] does: the
+    /// filter strip is the most colour-dense part of this widget, and six
+    /// literals here meant the strip looked identical under every theme.
+    pub fn accent(&self, t: &Theme) -> Color32 {
+        let c = &t.color;
         match self {
-            Self::Failed => Color32::from_rgb(200, 90, 90),
-            Self::Pending | Self::Fulfilling => Color32::from_rgb(210, 180, 110),
-            Self::Submitted => Color32::from_rgb(120, 170, 210),
-            Self::Confirmed | Self::Delivered => Color32::from_rgb(140, 200, 140),
-            Self::Unfulfilled => Color32::from_rgb(120, 140, 170),
-            Self::Custom(_) => Color32::from_gray(150),
+            Self::Failed => c.error,
+            Self::Pending | Self::Fulfilling => c.warning,
+            Self::Submitted => c.accent_blue,
+            Self::Confirmed | Self::Delivered => c.success,
+            Self::Unfulfilled => c.text_secondary,
+            Self::Custom(_) => c.text_muted,
         }
     }
 }
@@ -307,13 +310,13 @@ impl<'a> OrderList<'a> {
             ui.label(
                 RichText::new(format!("{} {scope}", self.rows.len()))
                     .small()
-                    .color(Color32::from_gray(185)),
+                    .color(ui.tokens().color.text_secondary),
             );
             if let Some(f) = self.fetched_at {
                 ui.label(
                     RichText::new(format!("· fetched {}", relative_label(self.now - f)))
                         .small()
-                        .color(Color32::from_gray(140)),
+                        .color(ui.tokens().color.text_muted),
                 );
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -336,8 +339,9 @@ impl<'a> OrderList<'a> {
         });
 
         if let Some(e) = self.error {
-            ui.add_space(2.0);
-            ui.colored_label(Color32::from_rgb(220, 120, 120), format!("error: {e}"));
+            ui.gap(Space::Xs);
+            let err = ui.tokens().color.error;
+            ui.colored_label(err, format!("error: {e}"));
         }
 
         // ── Summary + filter strip: per-status count badges, MULTI-select ─
@@ -352,9 +356,9 @@ impl<'a> OrderList<'a> {
             .data_mut(|d| d.get_temp::<String>(search_id))
             .unwrap_or_default();
 
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 5.0;
+            ui.set_item_gap_x(Space::Base);
             // Search keeps a stable left anchor as the chips reflow.
             let changed = ui
                 .add(
@@ -372,7 +376,7 @@ impl<'a> OrderList<'a> {
                 ui,
                 "all",
                 self.rows.len(),
-                Color32::from_gray(150),
+                ui.tokens().color.text_muted,
                 active.is_empty(),
             ) {
                 active.clear();
@@ -384,7 +388,8 @@ impl<'a> OrderList<'a> {
                     continue;
                 }
                 let selected = active.iter().any(|s| s == st.as_str());
-                if filter_chip(ui, st.as_str(), n, st.accent(), selected) {
+                let accent = st.accent(&ui.tokens());
+                if filter_chip(ui, st.as_str(), n, accent, selected) {
                     toggle_status(&mut active, st.as_str());
                 }
             }
@@ -406,7 +411,7 @@ impl<'a> OrderList<'a> {
                     .filter(|r| r.status.as_str() == key)
                     .count();
                 let selected = active.iter().any(|s| s == key);
-                if filter_chip(ui, key, n, Color32::from_gray(150), selected) {
+                if filter_chip(ui, key, n, ui.tokens().color.text_muted, selected) {
                     toggle_status(&mut active, key);
                 }
             }
@@ -426,19 +431,19 @@ impl<'a> OrderList<'a> {
             })
             .collect();
 
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         ui.separator();
 
         if self.rows.is_empty() {
             if !self.loading {
-                ui.add_space(6.0);
-                ui.colored_label(Color32::from_gray(150), "No orders yet.");
+                ui.gap(Space::Base);
+                ui.colored_label(ui.tokens().color.text_muted, "No orders yet.");
             }
             return resp;
         }
         if filtered.is_empty() {
-            ui.add_space(6.0);
-            ui.colored_label(Color32::from_gray(150), "No orders match the filter.");
+            ui.gap(Space::Base);
+            ui.colored_label(ui.tokens().color.text_muted, "No orders match the filter.");
             return resp;
         }
 
@@ -462,40 +467,83 @@ impl<'a> OrderList<'a> {
 // Internals
 // ─────────────────────────────────────────────────────────────────────
 
+/// Diameter of the status dot on a filter chip. Named because the wrap
+/// measurement above and the painter below must agree.
+const DOT_DIAMETER: f32 = 7.0;
+
 /// A clickable status-filter pill: a status-colour dot, the label, and the count
 /// in a badge. Selected → translucent-accent fill + accent border. Returns true
 /// on click. The count badge replaces the old trailing-number text so the qty
 /// reads as a distinct chip, and the whole strip is multi-select.
 fn filter_chip(ui: &mut Ui, label: &str, count: usize, accent: Color32, selected: bool) -> bool {
+    // A `Frame` lays out into the REMAINING width and cannot wrap itself, so in a
+    // `horizontal_wrapped` row a chip that does not fit squeezes its label to one
+    // character per line and the row grows to a hundred-odd pixels tall instead of
+    // moving the chip down. `tag_list`'s header documents the same trap; the fix
+    // there and here is to measure first and break the row ourselves.
+    //
+    // Latent until the spacing ramp landed: a roomier theme widens every chip by
+    // its padding, and the old literal padding happened to always fit. Any
+    // `Density::Spacious` surface would have hit it too.
+    let gap = ui.space(Space::Base);
+    let count_text = count.to_string();
+    let small = egui::TextStyle::Small.resolve(ui.style());
+    let painter = ui.painter().clone();
+    let text_w = |s: &str| {
+        painter
+            .layout_no_wrap(s.to_owned(), small.clone(), Color32::WHITE)
+            .size()
+            .x
+    };
+    let needed = ui.space(Space::Md) * 2.0          // chip inner margin
+        + DOT_DIAMETER
+        + gap
+        + text_w(label)
+        + gap
+        + text_w(&count_text)
+        + gap * 2.0     // count badge's own margin
+        + gap; // the row's own gap before the next chip
+    if ui.available_width() < needed {
+        ui.end_row();
+    }
+
     let (fill, stroke, text) = if selected {
         (
             Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 55),
             Stroke::new(1.0_f32, accent),
-            Color32::from_gray(235),
+            ui.tokens().color.text_primary,
         )
     } else {
         (
-            Color32::from_gray(34),
+            ui.tokens().color.bg_highlight,
             Stroke::NONE,
-            Color32::from_gray(200),
+            ui.tokens().color.text_secondary,
         )
     };
     let resp = Frame::new()
         .fill(fill)
         .stroke(stroke)
-        .corner_radius(CornerRadius::same(7))
-        .inner_margin(Margin::symmetric(8, 2))
+        .corner_radius(ui.tokens().corner(Radius::Lg))
+        .inner_margin(ui.tokens().margin_xy(Space::Md, Space::Xs))
         .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.x = 5.0;
+            ui.set_item_gap_x(Space::Base);
+            // `Extend` is the belt to the measurement's braces. The estimate above
+            // decides which ROW a chip lands on; this makes the chip incapable of
+            // stacking its label one character per line even if the estimate is a
+            // pixel out, which is the failure that is actually unacceptable — an
+            // overhanging chip reads as a clipped chip, a stacked one reads as a
+            // broken widget.
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
             // Status-colour dot.
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(7.0, 7.0), Sense::hover());
-            ui.painter().circle_filled(rect.center(), 3.5, accent);
+            let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(DOT_DIAMETER), Sense::hover());
+            ui.painter()
+                .circle_filled(rect.center(), DOT_DIAMETER / 2.0, accent);
             ui.label(RichText::new(label).small().color(text));
             // Count badge.
             Frame::new()
                 .fill(Color32::from_black_alpha(70))
-                .corner_radius(CornerRadius::same(6))
-                .inner_margin(Margin::symmetric(5, 0))
+                .corner_radius(ui.tokens().corner(Radius::Md))
+                .inner_margin(ui.tokens().margin_xy(Space::Base, Space::None))
                 .show(ui, |ui| {
                     ui.label(
                         RichText::new(count.to_string())
@@ -527,11 +575,11 @@ fn toggle_status(active: &mut Vec<String>, key: &str) {
 /// the label, so every badge is the same width and the row content after it
 /// lines up into a clean column.
 fn status_badge(ui: &mut Ui, status: &OrderStatus, inner_w: f32) {
-    let (fg, bg, border) = status.chip_variant().palette();
+    let (fg, bg, border) = status.chip_variant().palette(&ui.tokens());
     let mut frame = Frame::new()
         .fill(bg)
-        .corner_radius(CornerRadius::same(3))
-        .inner_margin(Margin::symmetric(5, 1));
+        .corner_radius(ui.tokens().corner(Radius::Sm))
+        .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Xs));
     if let Some(b) = border {
         frame = frame.stroke(Stroke::new(1.0_f32, b));
     }
@@ -591,18 +639,18 @@ fn refund_variant(refund_status: &str) -> Option<ChipVariant> {
 }
 
 fn render_row(ui: &mut Ui, o: &OrderRow, now: i64, badge_w: f32, resp: &mut OrderListResponse) {
-    ui.add_space(3.0);
+    ui.gap(Space::Sm);
     ui.horizontal(|ui| {
         status_badge(ui, &o.status, badge_w);
 
         // History toggle — a Phosphor list (event-log) glyph next to the status,
         // brighter when the drawer is open. (Not a clock: that read as "time"
         // right beside the date.) `rich_text` needs the font installed.
-        install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
         let icon_color = if o.detail_open {
-            Color32::from_gray(225)
+            ui.tokens().color.text_primary
         } else {
-            Color32::from_gray(125)
+            ui.tokens().color.text_muted
         };
         let hist = ui
             .add(Label::new(PhosphorIcon::List.rich_text(14.0, icon_color)).sense(Sense::click()));
@@ -625,26 +673,30 @@ fn render_row(ui: &mut Ui, o: &OrderRow, now: i64, badge_w: f32, resp: &mut Orde
             &o.order_id,
             truncate_middle(&o.order_id, 10, 6),
             "order id",
-            Color32::from_gray(150),
+            ui.tokens().color.text_muted,
         );
-        ui.label(RichText::new("->").small().color(Color32::from_gray(110)));
+        ui.label(
+            RichText::new("->")
+                .small()
+                .color(ui.tokens().color.text_muted),
+        );
         copy_label(
             ui,
             &o.recipient,
             truncate_middle(&o.recipient, 10, 6),
             "recipient",
-            Color32::from_gray(190),
+            ui.tokens().color.text_secondary,
         );
         ui.label(
             RichText::new(format!("×{}", o.quantity))
                 .small()
-                .color(Color32::from_gray(150)),
+                .color(ui.tokens().color.text_muted),
         );
         if let Some(p) = o.paid_lovelace {
             ui.label(
                 RichText::new(format!("{} ADA", fmt_ada(p)))
                     .small()
-                    .color(Color32::from_gray(170)),
+                    .color(ui.tokens().color.text_muted),
             );
         }
 
@@ -665,12 +717,12 @@ fn render_row(ui: &mut Ui, o: &OrderRow, now: i64, badge_w: f32, resp: &mut Orde
     if o.detail_open {
         render_history(ui, o, now);
     }
-    ui.add_space(3.0);
+    ui.gap(Space::Sm);
     ui.separator();
 }
 
 fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
-    ui.add_space(2.0);
+    ui.gap(Space::Xs);
     ui.indent(("order_history", &o.order_id), |ui| {
         let Some(events) = &o.events else {
             if o.detail_loading {
@@ -679,7 +731,7 @@ fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
                     ui.label(
                         RichText::new("loading history…")
                             .small()
-                            .color(Color32::from_gray(150)),
+                            .color(ui.tokens().color.text_muted),
                     );
                 });
             }
@@ -698,7 +750,7 @@ fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
                 ui.label(
                     RichText::new("no events recorded")
                         .small()
-                        .color(Color32::from_gray(140)),
+                        .color(ui.tokens().color.text_muted),
                 );
             }
             return;
@@ -713,7 +765,7 @@ fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
                         tx,
                         format!("tx {}", truncate_middle(tx, 8, 6)),
                         "tx hash",
-                        Color32::from_gray(160),
+                        ui.tokens().color.text_muted,
                     );
                 }
                 if let Some(d) = &e.detail {
@@ -723,7 +775,7 @@ fn render_history(ui: &mut Ui, o: &OrderRow, now: i64) {
                     let lbl = ui.label(
                         RichText::new(&summary.headline)
                             .small()
-                            .color(Color32::from_gray(150)),
+                            .color(ui.tokens().color.text_muted),
                     );
                     if summary.detail.trim() != summary.headline.trim() {
                         lbl.on_hover_text(summary.detail);
@@ -740,12 +792,12 @@ fn render_mints(ui: &mut Ui, fulfilments: &[FulfilmentRow]) {
     if fulfilments.is_empty() {
         return;
     }
-    ui.add_space(2.0);
+    ui.gap(Space::Xs);
     ui.label(
         RichText::new(format!("mints · {} tx", fulfilments.len()))
             .small()
             .strong()
-            .color(Color32::from_gray(170)),
+            .color(ui.tokens().color.text_muted),
     );
     for f in fulfilments {
         ui.horizontal(|ui| {
@@ -754,18 +806,18 @@ fn render_mints(ui: &mut Ui, fulfilments: &[FulfilmentRow]) {
             ui.label(
                 RichText::new(format!("×{}", f.minted))
                     .small()
-                    .color(Color32::from_gray(180)),
+                    .color(ui.tokens().color.text_secondary),
             );
             copy_label(
                 ui,
                 &f.tx_hash,
                 format!("tx {}", truncate_middle(&f.tx_hash, 8, 6)),
                 "mint tx",
-                Color32::from_gray(160),
+                ui.tokens().color.text_muted,
             );
         });
     }
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 }
 
 /// Chip variant + label for a `mint_log` status.

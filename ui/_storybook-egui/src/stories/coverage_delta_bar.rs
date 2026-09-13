@@ -2,12 +2,12 @@
 
 use egui_widgets::coverage_delta_bar::{self, CoverageDeltaConfig};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("CoverageDeltaBar Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -15,7 +15,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Before/after coverage bar showing trait coverage change from a trade. \
              Green region = gain, red region = loss.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -25,16 +25,14 @@ pub fn show(ui: &mut egui::Ui) {
     ui.allocate_ui(egui::vec2(400.0, ui.available_height()), |ui| {
         // Positive delta
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Positive Delta (+4%)")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -46,16 +44,14 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Large positive delta
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Large Positive Delta (+15%)")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -67,16 +63,14 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Negative delta
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Negative Delta (-5%)")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -88,16 +82,14 @@ pub fn show(ui: &mut egui::Ui) {
 
         // No change
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("No Change (0%)")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -109,16 +101,14 @@ pub fn show(ui: &mut egui::Ui) {
 
         // No label variant
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Without Label")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );

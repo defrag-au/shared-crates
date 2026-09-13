@@ -3,20 +3,20 @@
 
 use egui_widgets::Timestamp;
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// Pinned clock so the hover relative times are deterministic.
 const NOW: i64 = 1_780_000_000;
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Timestamp").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Timestamp").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "One atom for every timestamp in the app — ISO-8601 (UTC), fixed \
              monospace size (so it can't drift like `.small().monospace()` does), \
              with the full form + relative \"x ago\" on hover. Optional badge.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -34,7 +34,7 @@ pub fn show(ui: &mut egui::Ui) {
     for (note, ts) in samples {
         ui.horizontal(|ui| {
             ui.add(Timestamp::new(ts).now(NOW));
-            ui.label(egui::RichText::new(note).small().color(TEXT_MUTED));
+            ui.label(egui::RichText::new(note).small().color(muted(ui)));
         });
     }
 
@@ -59,7 +59,7 @@ pub fn show(ui: &mut egui::Ui) {
             .now(NOW)
             .with_seconds(true)
             .size(15.0)
-            .color(ACCENT),
+            .color(accent(ui)),
     );
 }
 

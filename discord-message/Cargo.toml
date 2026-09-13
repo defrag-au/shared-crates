@@ -2,7 +2,7 @@
 name = "discord-message"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Serde-only model of a Discord message, and its renderer to Discord's wire JSON"
 
 [dependencies]

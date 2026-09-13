@@ -9,9 +9,9 @@
 //! function `(input_lovelace, &ImpactCurvePool) -> impact_fraction` that
 //! computes the price impact for a given input amount and pool.
 
-use egui::{Color32, CornerRadius, Pos2, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Color32, Pos2, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -139,14 +139,14 @@ pub fn show(
     }
 
     let painter = ui.painter();
-    let rounding = CornerRadius::same(4);
+    let rounding = ui.tokens().corner(Radius::Base);
 
     // Background
-    painter.rect_filled(rect, rounding, theme::BG_SECONDARY);
+    painter.rect_filled(rect, rounding, ui.tokens().color.bg_secondary);
     painter.rect_stroke(
         rect,
         rounding,
-        Stroke::new(1.0_f32, theme::BORDER),
+        Stroke::new(1.0_f32, ui.tokens().color.border),
         egui::StrokeKind::Outside,
     );
 
@@ -204,7 +204,7 @@ pub fn show(
                     let end_x = (x + dash_len).min(plot_rect.right());
                     painter.line_segment(
                         [Pos2::new(x, y), Pos2::new(end_x, y)],
-                        Stroke::new(0.5_f32, theme::BG_HIGHLIGHT),
+                        Stroke::new(0.5_f32, ui.tokens().color.bg_highlight),
                     );
                     x += dash_len + gap_len;
                 }
@@ -220,8 +220,8 @@ pub fn show(
                 Pos2::new(rect.min.x + left_margin - 4.0, y),
                 egui::Align2::RIGHT_CENTER,
                 label,
-                egui::FontId::proportional(9.0),
-                theme::TEXT_MUTED,
+                egui::FontId::proportional(ui.text_size(TextSize::Xs)),
+                ui.tokens().color.text_muted,
             );
         }
 
@@ -238,7 +238,7 @@ pub fn show(
                     Pos2::new(x, plot_rect.bottom()),
                     Pos2::new(x, plot_rect.bottom() + 3.0),
                 ],
-                Stroke::new(0.5_f32, theme::TEXT_MUTED),
+                Stroke::new(0.5_f32, ui.tokens().color.text_muted),
             );
 
             // Label
@@ -251,8 +251,8 @@ pub fn show(
                 Pos2::new(x, plot_rect.bottom() + 5.0),
                 egui::Align2::CENTER_TOP,
                 label,
-                egui::FontId::proportional(9.0),
-                theme::TEXT_MUTED,
+                egui::FontId::proportional(ui.text_size(TextSize::Xs)),
+                ui.tokens().color.text_muted,
             );
         }
 
@@ -261,8 +261,8 @@ pub fn show(
             Pos2::new(plot_rect.center().x, rect.max.y - 2.0),
             egui::Align2::CENTER_BOTTOM,
             "ADA Input",
-            egui::FontId::proportional(9.0),
-            theme::TEXT_MUTED,
+            egui::FontId::proportional(ui.text_size(TextSize::Xs)),
+            ui.tokens().color.text_muted,
         );
     }
 
@@ -272,7 +272,7 @@ pub fn show(
             Pos2::new(plot_rect.left(), plot_rect.bottom()),
             Pos2::new(plot_rect.right(), plot_rect.bottom()),
         ],
-        Stroke::new(1.0_f32, theme::BORDER),
+        Stroke::new(1.0_f32, ui.tokens().color.border),
     );
 
     // ── Draw curves ────────────────────────────────────────────────────
@@ -345,7 +345,11 @@ pub fn show(
 
             // Outer ring + filled dot
             painter.circle_filled(marker_pos, 5.0, pool.color);
-            painter.circle_stroke(marker_pos, 5.0, Stroke::new(1.5_f32, theme::BG_PRIMARY));
+            painter.circle_stroke(
+                marker_pos,
+                5.0,
+                Stroke::new(1.5_f32, ui.tokens().color.bg_primary),
+            );
 
             // Label next to marker
             let impact_pct = impact_at_alloc * 100.0;
@@ -356,7 +360,7 @@ pub fn show(
                 Pos2::new(marker_pos.x + 8.0, marker_pos.y + label_offset),
                 egui::Align2::LEFT_CENTER,
                 label,
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(ui.text_size(TextSize::Sm)),
                 pool.color,
             );
         }
@@ -386,7 +390,7 @@ pub fn show(
                 let end_x = (x + dash_len).min(plot_rect.right());
                 painter.line_segment(
                     [Pos2::new(x, ref_y), Pos2::new(end_x, ref_y)],
-                    Stroke::new(1.0_f32, theme::TEXT_MUTED),
+                    Stroke::new(1.0_f32, ui.tokens().color.text_muted),
                 );
                 x += dash_len + gap_len;
             }
@@ -397,8 +401,8 @@ pub fn show(
                 Pos2::new(plot_rect.right() - 2.0, ref_y - 8.0),
                 egui::Align2::RIGHT_BOTTOM,
                 format!("single: {ref_pct:.2}%"),
-                egui::FontId::proportional(9.0),
-                theme::TEXT_MUTED,
+                egui::FontId::proportional(ui.text_size(TextSize::Xs)),
+                ui.tokens().color.text_muted,
             );
         }
     }
@@ -418,7 +422,7 @@ pub fn show(
                 Pos2::new(hover_pos.x, plot_rect.top()),
                 Pos2::new(hover_pos.x, plot_rect.bottom()),
             ],
-            Stroke::new(0.5_f32, theme::TEXT_MUTED),
+            Stroke::new(0.5_f32, ui.tokens().color.text_muted),
         );
 
         // Find impact for each pool at this x position and show tooltip
@@ -442,7 +446,7 @@ pub fn show(
     // ── Legend ──────────────────────────────────────────────────────────
 
     if config.show_legend {
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
         ui.horizontal_wrapped(|ui| {
             for pool in pools {
                 // Colored dot
@@ -460,8 +464,12 @@ pub fn show(
                     pool.label.clone()
                 };
 
-                ui.label(RichText::new(text).color(theme::TEXT_SECONDARY).size(10.0));
-                ui.add_space(8.0);
+                ui.label(
+                    RichText::new(text)
+                        .color(ui.tokens().color.text_secondary)
+                        .size(ui.text_size(TextSize::Sm)),
+                );
+                ui.gap(Space::Md);
             }
 
             // Single pool reference in legend
@@ -482,21 +490,21 @@ pub fn show(
                             Pos2::new(dash_rect.left(), y),
                             Pos2::new(dash_rect.left() + 6.0, y),
                         ],
-                        Stroke::new(1.5_f32, theme::TEXT_MUTED),
+                        Stroke::new(1.5_f32, ui.tokens().color.text_muted),
                     );
                     painter.line_segment(
                         [
                             Pos2::new(dash_rect.left() + 10.0, y),
                             Pos2::new(dash_rect.right(), y),
                         ],
-                        Stroke::new(1.5_f32, theme::TEXT_MUTED),
+                        Stroke::new(1.5_f32, ui.tokens().color.text_muted),
                     );
                 }
 
                 ui.label(
                     RichText::new(format!("single pool: {:.2}%", best_impact * 100.0))
-                        .color(theme::TEXT_MUTED)
-                        .size(10.0),
+                        .color(ui.tokens().color.text_muted)
+                        .size(ui.text_size(TextSize::Sm)),
                 );
             }
         });

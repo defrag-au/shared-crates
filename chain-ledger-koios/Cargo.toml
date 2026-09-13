@@ -2,7 +2,7 @@
 name = "chain-ledger-koios"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Koios JSON → chain-ledger model. A format adapter; brings no HTTP client."
 
 # Deliberately no HTTP client and no async runtime.

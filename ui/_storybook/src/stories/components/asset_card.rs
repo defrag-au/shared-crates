@@ -3,7 +3,7 @@
 use crate::stories::helpers::AttributeCard;
 use cardano_assets::AssetId;
 use leptos::prelude::*;
-use ui_components::{children_fn, AssetCard, AssetModal, Badge, CardSize, StatPill};
+use ui_components::{AssetCard, AssetModal, Badge, CardSize, StatPill, children_fn};
 
 #[component]
 pub fn AssetCardStory() -> impl IntoView {

@@ -10,6 +10,8 @@ pub mod agent_config;
 pub mod animated_counter;
 pub mod arrival_field;
 pub mod asset_card;
+pub mod auth;
+pub mod auth_worker;
 pub mod background;
 pub mod bullet_bar;
 pub mod button_group;
@@ -23,14 +25,18 @@ pub mod claim_card;
 pub mod collection_composition;
 pub mod collection_list;
 pub mod command_palette;
+pub mod commands;
 #[cfg(feature = "gateway")]
 pub mod conversation_history;
 pub mod corner_action;
 pub mod detail_split;
 pub mod disclosure;
+pub mod discord_session;
 pub mod distribution_waterfall;
 pub mod donut_chart;
 pub mod drawer;
+pub mod effect_editor;
+pub mod encoding;
 pub mod error_note;
 pub mod event_wiring;
 #[cfg(target_arch = "wasm32")]
@@ -53,7 +59,11 @@ pub mod icons;
 pub mod id_pill;
 pub mod image_loader;
 pub mod image_stack;
+pub mod interaction_tip;
+pub mod knob;
 pub mod leaderboard;
+#[cfg(feature = "cardano")]
+pub mod listing_composer;
 pub mod listing_grid;
 pub mod machine;
 pub mod marquee;
@@ -64,6 +74,7 @@ pub mod mnemonic_display;
 pub mod motion;
 pub mod named_group_list;
 pub mod offer_tile;
+pub mod option_group;
 pub mod order_list;
 pub mod palette_editor;
 pub mod pane_nav;
@@ -91,8 +102,13 @@ pub mod selection;
 pub mod service_banner;
 pub mod seven_segment;
 pub mod skeleton;
+pub mod slider_group;
 pub mod slot_table;
 pub mod sparkline;
+#[cfg(feature = "cardano")]
+pub mod stake_auth;
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub mod stake_session;
 pub mod stat_strip;
 pub mod supply_bar;
 pub mod swap_modal;
@@ -103,6 +119,7 @@ pub mod time_spine;
 pub mod timestamp;
 pub mod toast;
 pub mod token_multiselect;
+pub mod touch;
 pub mod trade_flow;
 pub mod trait_filter;
 pub mod typeahead_search;
@@ -114,6 +131,11 @@ pub mod viewport;
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet_button;
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub use stake_session::{
+    SignedChallenge, StakeSessionAction, StakeSessionPanel, StakeSessionPhase, StoredStakeSession,
+    sign_challenge,
+};
 #[cfg(feature = "cardano")]
 pub mod wallet_editor;
 pub mod wallet_identity_header;
@@ -148,6 +170,9 @@ pub mod leaderboard_table;
 pub mod coverage_delta_bar;
 pub mod coverage_lanes;
 
+// Build artifacts — what a compiler produced and what of it can ship.
+pub mod script_catalogue;
+
 // Cardano-specific widgets (feature-gated)
 #[cfg(feature = "cardano")]
 pub mod asset_strip;
@@ -167,6 +192,7 @@ pub mod tx_card;
 pub mod tx_cart;
 #[cfg(feature = "cardano")]
 pub mod tx_estimate;
+pub mod tx_flight;
 #[cfg(feature = "cardano")]
 pub mod utxo_map;
 #[cfg(feature = "cardano")]
@@ -202,7 +228,7 @@ pub use claim_card::{
 };
 pub use collection_list::{
     CollectionControl, CollectionControls, CollectionList, CollectionListAction,
-    CollectionListLayout, CollectionListResponse, CollectionRow,
+    CollectionListLayout, CollectionListResponse, CollectionRow, CollectionStatus,
 };
 pub use command_palette::{CommandPalette, PaletteAction, PaletteState};
 pub use corner_action::{Corner, CornerAction};
@@ -210,12 +236,18 @@ pub use custody_walk::{
     CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode, WalkNodeKind, WalkSummary,
     summarize as summarize_walk,
 };
+#[expect(
+    deprecated,
+    reason = "the re-export is deprecated in step with the item"
+)]
 pub use defaults::install_defaults;
+pub use defaults::{install, install_assets};
 pub use distribution_waterfall::{DistributionWaterfall, WaterfallMode, WaterfallParty};
 pub use donut_chart::{
     DistBand, DistributionChart, format_value as format_chart_value, legend_row,
 };
 pub use drawer::{Drawer, DrawerSide};
+pub use effect_editor::{Apply, Base, Effect, EffectEditor, EffectVariant, Pick, Recipe, Recolor};
 pub use error_note::{ErrorNote, ErrorSummary, pretty_json, summarize_error};
 pub use event_wiring::{ActionCardVm, EventNodeVm, EventWiring, EventWiringResponse};
 #[cfg(target_arch = "wasm32")]
@@ -238,11 +270,18 @@ pub use icons::{PhosphorIcon, install_phosphor_font};
 pub use id_pill::{
     IdPill, IdPillLayout, IdPillResponse, stacked_width_for as id_pill_stacked_width_for,
 };
-pub use image_loader::{AssetImageSize, iiif_asset_url};
+pub use image_loader::{
+    AssetImageSize, iiif_asset_url, iiif_asset_url_on, iiif_base_for_network, iiif_hosts,
+};
 pub use image_stack::{ImageStack, ImageStackStyle, StackImage};
 #[cfg(feature = "image-editor")]
 pub use image_text_editor::{
     FontChoice, ImageTextEditor, TextEffect, TextOverlay, TextOverlayAnchor,
+};
+#[cfg(feature = "cardano")]
+pub use listing_composer::{
+    ComposerRow, ComposerTotals, ListingComposerAction, ListingComposerConfig,
+    ListingComposerState, RowProblem, RowQuote,
 };
 pub use listing_grid::{
     BlockedReason, Buyability, ListingCard, ListingGrid, ListingGridConfig, ListingGridResponse,
@@ -264,6 +303,10 @@ pub use order_list::{
     FulfilmentRow, OrderEventRow, OrderList, OrderListAction, OrderListResponse, OrderRow,
     OrderStatus,
 };
+#[expect(
+    deprecated,
+    reason = "the re-export is deprecated in step with the module"
+)]
 pub use palette_editor::{Palette, PaletteEditor, PaletteVariant};
 pub use pane_nav::{PaneNavBar, PaneNavEntry, PaneNavResponse};
 pub use party_annotator::{
@@ -289,10 +332,12 @@ pub use relationship_editor::{RelationshipEditor, RelationshipEditorResponse};
 pub use relative_time::{RelativeTime, relative_label};
 pub use role_picker::{RoleOption, RolePicker, RolePickerResponse, RolePickerState};
 pub use screenshot::ScreenshotButton;
+pub use script_catalogue::{ScriptCatalogue, ScriptCatalogueAction, ScriptRow, ScriptStatus};
 pub use selection::{DIM as SELECTION_DIM, Selection};
 pub use service_banner::{BannerTone, ServiceBanner};
 pub use seven_segment::SevenSegmentDisplay;
 pub use skeleton::{Skeleton, SkeletonReason};
+pub use slider_group::{Budget, Fader, LabelWidth, SliderGroup, SliderGroupResponse, Verdict};
 pub use slot_table::{SlotRow, SlotTable};
 pub use sparkline::{SparkHoverStyle, Sparkline};
 pub use stat_strip::{StatRange, StatStrip, StatWindow};
@@ -302,7 +347,7 @@ pub use swap_modal::{
     SwapProgress,
 };
 pub use tag_list::{TagList, TagListResponse};
-pub use theme::{FontStrategy, rarity_rank_color};
+pub use theme::{FontStrategy, Ink, Series, Token, rarity_rank_color};
 pub use time_spine::{
     CoverageLayer, DensityBin, DensityLayer, FlagsLayer, Hotkeys, MarkKind, MarksLayer, PlayRate,
     SpineCanvas, SpineLayer, SpineState, TimeScale, TimeSpine, TimeSpineResponse, TimeView,
@@ -320,7 +365,8 @@ pub use utils::{
     stat_card, truncate_hex,
 };
 pub use viewport::{
-    Breakpoint, HeaderLayout, PanelMode, RecordLayout, apply_touch_sizing, fit, prose_row,
+    Breakpoint, HeaderLayout, LayoutExt, PanelMode, RecordLayout, apply_touch_sizing, fit,
+    prose_row,
 };
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub use wallet_button::{WalletAction, WalletButton, WalletButtonTheme};
@@ -388,6 +434,9 @@ pub use tx_card::{
 };
 #[cfg(feature = "cardano")]
 pub use tx_estimate::{TxEstimateConfig, TxEstimateData, UtxoCost};
+pub use tx_flight::{
+    FlightAction, FlightPhase, FlightReview, FlightStage, TxFlightConfig, TxFlightResponse,
+};
 #[cfg(feature = "cardano")]
 pub use utxo_map::{
     UtxoCell, UtxoMapAction, UtxoMapConfig, UtxoMapData, UtxoMapResponse, UtxoMapState,

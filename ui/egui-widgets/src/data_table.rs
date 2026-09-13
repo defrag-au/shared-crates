@@ -6,10 +6,10 @@
 //! [`DataRowItem`] structs and render the detail panel, keeping the widget
 //! fully generic.
 
-use egui::{Color32, CornerRadius, Rect, Sense, Ui, Vec2};
+use egui::{Color32, Rect, Sense, Ui, Vec2};
 
 use crate::exposure_bar::ltv_risk_color;
-use crate::theme;
+use crate::theme::{Radius, Space, TextSize, ThemeExt};
 
 // ============================================================================
 // Column widths
@@ -122,7 +122,7 @@ pub fn show<T>(
     mut render_row: impl FnMut(&T) -> DataRowItem,
     mut render_detail: impl FnMut(&mut Ui, usize, &T),
 ) -> DataTableResponse {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     let mut response = DataTableResponse {
         selected_changed: false,
@@ -156,8 +156,8 @@ pub fn show<T>(
                 if state.selected_index == Some(idx) {
                     egui::Frame::new()
                         .fill(config.detail_bg)
-                        .corner_radius(4.0)
-                        .inner_margin(14.0)
+                        .corner_radius(ui.tokens().corner(Radius::Base))
+                        .inner_margin(ui.tokens().margin(Space::Xl2))
                         .outer_margin(egui::Margin {
                             left: COL_CHEVRON as i8,
                             right: 0,
@@ -187,8 +187,8 @@ fn draw_header(ui: &mut Ui, config: &DataTableConfig) {
     }
 
     let painter = ui.painter();
-    let font = egui::FontId::proportional(9.0);
-    let color = theme::TEXT_MUTED;
+    let font = egui::FontId::proportional(ui.text_size(TextSize::Xs));
+    let color = ui.tokens().color.text_muted;
     let y = rect.center().y;
 
     let headers = [
@@ -222,7 +222,7 @@ fn draw_header(ui: &mut Ui, config: &DataTableConfig) {
     painter.hline(
         rect.min.x..=rect.max.x,
         rect.max.y,
-        egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT),
+        egui::Stroke::new(1.0_f32, ui.tokens().color.bg_highlight),
     );
 }
 
@@ -249,7 +249,7 @@ fn draw_row(
 
     // Row background
     let bg = if is_selected {
-        theme::BG_HIGHLIGHT
+        ui.tokens().color.bg_highlight
     } else if is_hovered {
         Color32::from_rgba_premultiplied(41, 46, 66, 128)
     } else if idx.is_multiple_of(2) {
@@ -269,9 +269,9 @@ fn draw_row(
         crate::PhosphorIcon::CaretRight
     };
     let chevron_color = if is_selected || is_hovered {
-        theme::TEXT_SECONDARY
+        ui.tokens().color.text_secondary
     } else {
-        theme::TEXT_MUTED
+        ui.tokens().color.text_muted
     };
     chevron.paint(
         painter,
@@ -290,7 +290,7 @@ fn draw_row(
         );
         let image = egui::Image::new(url.as_str())
             .fit_to_exact_size(Vec2::splat(config.icon_size))
-            .corner_radius(CornerRadius::same(2));
+            .corner_radius(ui.tokens().corner(Radius::Xs));
         image.paint_at(ui, icon_rect);
     }
     x += COL_ICON;
@@ -300,8 +300,8 @@ fn draw_row(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
         &item.token_name,
-        egui::FontId::proportional(11.0),
-        theme::TEXT_PRIMARY,
+        egui::FontId::proportional(ui.text_size(TextSize::Base)),
+        ui.tokens().color.text_primary,
     );
     x += COL_TOKEN;
 
@@ -310,8 +310,8 @@ fn draw_row(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
         &item.principal,
-        egui::FontId::monospace(11.0),
-        theme::ACCENT_CYAN,
+        egui::FontId::monospace(ui.text_size(TextSize::Base)),
+        ui.tokens().color.accent_cyan,
     );
     x += COL_PRINCIPAL;
 
@@ -320,20 +320,20 @@ fn draw_row(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
         &item.collateral,
-        egui::FontId::proportional(10.0),
-        theme::TEXT_SECONDARY,
+        egui::FontId::proportional(ui.text_size(TextSize::Sm)),
+        ui.tokens().color.text_secondary,
     );
     x += COL_COLLATERAL;
 
     // ── LTV ──
     if let Some(ltv) = item.ltv_pct {
-        let ltv_color = ltv_risk_color(ltv);
+        let ltv_color = ltv_risk_color(ltv, &ui.tokens());
 
         // Optional micro-bar behind the text
         if config.show_ltv_bar {
             let bar_rect =
                 Rect::from_min_size(egui::pos2(x + 2.0, cy + 6.0), Vec2::new(COL_LTV - 8.0, 3.0));
-            painter.rect_filled(bar_rect, 1.0, theme::BG_SECONDARY);
+            painter.rect_filled(bar_rect, 1.0, ui.tokens().color.bg_secondary);
             let fill_width = (bar_rect.width() * (ltv as f32 / 100.0).min(1.0)).max(0.0);
             let fill_rect = Rect::from_min_size(bar_rect.min, Vec2::new(fill_width, 3.0));
             painter.rect_filled(fill_rect, 1.0, ltv_color.linear_multiply(0.5));
@@ -343,7 +343,7 @@ fn draw_row(
             egui::pos2(x + 4.0, cy - if config.show_ltv_bar { 2.0 } else { 0.0 }),
             egui::Align2::LEFT_CENTER,
             format!("{ltv:.1}%"),
-            egui::FontId::monospace(10.0),
+            egui::FontId::monospace(ui.text_size(TextSize::Sm)),
             ltv_color,
         );
     } else {
@@ -351,8 +351,8 @@ fn draw_row(
             egui::pos2(x + 4.0, cy),
             egui::Align2::LEFT_CENTER,
             "\u{2014}",
-            egui::FontId::proportional(10.0),
-            theme::TEXT_MUTED,
+            egui::FontId::proportional(ui.text_size(TextSize::Sm)),
+            ui.tokens().color.text_muted,
         );
     }
     x += COL_LTV;
@@ -362,8 +362,8 @@ fn draw_row(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
         &item.rate,
-        egui::FontId::monospace(10.0),
-        theme::TEXT_PRIMARY,
+        egui::FontId::monospace(ui.text_size(TextSize::Sm)),
+        ui.tokens().color.text_primary,
     );
     x += COL_RATE;
 
@@ -372,8 +372,8 @@ fn draw_row(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
         &item.duration,
-        egui::FontId::proportional(10.0),
-        theme::TEXT_MUTED,
+        egui::FontId::proportional(ui.text_size(TextSize::Sm)),
+        ui.tokens().color.text_muted,
     );
     x += COL_DURATION;
 
@@ -382,21 +382,25 @@ fn draw_row(
         egui::pos2(x + 4.0, cy),
         egui::Align2::LEFT_CENTER,
         &item.interest,
-        egui::FontId::monospace(10.0),
-        theme::ACCENT_GREEN,
+        egui::FontId::monospace(ui.text_size(TextSize::Sm)),
+        ui.tokens().color.accent_green,
     );
     x += COL_INTEREST;
 
     // ── Status ──
     if item.status == DataRowStatus::PendingCancel {
         let pill_rect = Rect::from_min_size(egui::pos2(x + 4.0, cy - 8.0), Vec2::new(72.0, 16.0));
-        painter.rect_filled(pill_rect, 8.0, theme::WARNING.linear_multiply(0.2));
+        painter.rect_filled(
+            pill_rect,
+            8.0,
+            ui.tokens().color.warning.linear_multiply(0.2),
+        );
         painter.text(
             pill_rect.center(),
             egui::Align2::CENTER_CENTER,
             "Cancelling\u{2026}",
-            egui::FontId::proportional(9.0),
-            theme::WARNING,
+            egui::FontId::proportional(ui.text_size(TextSize::Xs)),
+            ui.tokens().color.warning,
         );
     }
 

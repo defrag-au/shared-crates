@@ -21,7 +21,7 @@
 
 use egui::{Color32, Ui};
 
-use crate::theme;
+use crate::theme::ThemeExt;
 use crate::{PhosphorIcon, TypeaheadOption, TypeaheadSearch};
 
 /// One role offered by the picker.
@@ -146,7 +146,9 @@ impl<'a> RolePicker<'a> {
                     // "still loading" and "this role is gone" want completely
                     // different reactions from the reader.
                     (false, None) => {
-                        ui.label(PhosphorIcon::Warning.rich_text(14.0, theme::ACCENT_YELLOW));
+                        ui.label(
+                            PhosphorIcon::Warning.rich_text(14.0, ui.tokens().color.accent_yellow),
+                        );
                         let response = ui.button(self.selected);
                         if response.clicked() {
                             self.state.searching = true;
@@ -167,7 +169,7 @@ impl<'a> RolePicker<'a> {
                 // wrong.
                 if !self.selected.is_empty()
                     && ui
-                        .button(PhosphorIcon::X.rich_text(14.0, theme::TEXT_MUTED))
+                        .button(PhosphorIcon::X.rich_text(14.0, ui.tokens().color.text_muted))
                         .clicked()
                 {
                     out.cleared = true;

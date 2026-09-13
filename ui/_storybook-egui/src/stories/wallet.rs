@@ -1,4 +1,4 @@
-use crate::TEXT_MUTED;
+use crate::muted;
 
 pub fn show(
     ui: &mut egui::Ui,
@@ -12,9 +12,31 @@ pub fn show(
     if connector.available_wallets.is_empty() {
         ui.label(
             egui::RichText::new("No wallet extensions found. Install Eternl, Lace, etc.")
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .small(),
         );
+    }
+    crate::caption(
+        ui,
+        "The picker is ONE control — a single border with hairline separators, \
+         not a stack of buttons. The wallets are alternatives to each other, so \
+         they read as one object you pick within rather than several unrelated \
+         things that happen to be adjacent.",
+    );
+    ui.add_space(6.0);
+
+    // Compact is the sidebar case: the extension's own icon is the most
+    // recognisable thing about a wallet, and the name becomes the hover text.
+    let mut compact =
+        wallet_btn.picker_density == egui_widgets::option_group::GroupDensity::Compact;
+    if ui
+        .checkbox(&mut compact, "compact picker (icons only)")
+        .changed()
+    {
+        wallet_btn.picker_density = match compact {
+            true => egui_widgets::option_group::GroupDensity::Compact,
+            false => egui_widgets::option_group::GroupDensity::Full,
+        };
     }
     ui.add_space(8.0);
 
@@ -52,7 +74,7 @@ pub fn show(
     if let Some(ref addr) = connector.stake_address {
         ui.label(
             egui::RichText::new(format!("Stake: {addr}"))
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .small(),
         );
     }

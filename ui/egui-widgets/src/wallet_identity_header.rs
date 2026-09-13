@@ -22,10 +22,10 @@
 //! }
 //! ```
 
-use egui::{Color32, RichText, Ui};
+use egui::{RichText, Ui};
 
 use crate::PhosphorIcon;
-use crate::theme;
+use crate::theme::{Ink, Space, SpaceExt, Token};
 
 /// Click events the header can produce.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,10 +38,10 @@ pub enum WalletIdentityAction {
 pub struct WalletIdentityConfig {
     pub primary_size: f32,
     pub secondary_size: f32,
-    pub primary_color: Color32,
-    pub secondary_color: Color32,
+    pub primary_color: Ink,
+    pub secondary_color: Ink,
     pub copy_icon_size: f32,
-    pub copy_icon_color: Color32,
+    pub copy_icon_color: Ink,
     /// How many characters of the stake address to keep at each end when
     /// truncating for display (used when no handle is present).
     pub stake_truncate_lead: usize,
@@ -53,10 +53,10 @@ impl Default for WalletIdentityConfig {
         Self {
             primary_size: 22.0,
             secondary_size: 11.0,
-            primary_color: theme::TEXT_PRIMARY,
-            secondary_color: theme::TEXT_SECONDARY,
+            primary_color: Ink::Token(Token::TextPrimary),
+            secondary_color: Ink::Token(Token::TextSecondary),
             copy_icon_size: 14.0,
-            copy_icon_color: theme::TEXT_SECONDARY,
+            copy_icon_color: Ink::Token(Token::TextSecondary),
             stake_truncate_lead: 12,
             stake_truncate_tail: 6,
         }
@@ -121,12 +121,13 @@ impl<'a> WalletIdentityHeader<'a> {
                 RichText::new(primary)
                     .size(cfg.primary_size)
                     .strong()
-                    .color(cfg.primary_color),
+                    .color(cfg.primary_color.of(ui)),
             );
 
             if self.show_copy {
-                ui.add_space(6.0);
-                let resp = PhosphorIcon::Copy.show(ui, cfg.copy_icon_size, cfg.copy_icon_color);
+                ui.gap(Space::Base);
+                let copy_tint = cfg.copy_icon_color.of(ui);
+                let resp = PhosphorIcon::Copy.show(ui, cfg.copy_icon_size, copy_tint);
                 if resp.clicked() {
                     action = Some(WalletIdentityAction::CopyStake);
                 }
@@ -139,7 +140,7 @@ impl<'a> WalletIdentityHeader<'a> {
             ui.label(
                 RichText::new(self.stake_address)
                     .size(cfg.secondary_size)
-                    .color(cfg.secondary_color)
+                    .color(cfg.secondary_color.of(ui))
                     .monospace(),
             );
         }

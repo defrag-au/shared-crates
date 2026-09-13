@@ -39,9 +39,10 @@
 
 use egui::{Color32, RichText, Sense, Ui, Vec2};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font};
+use crate::icons::PhosphorIcon;
 use crate::id_pill::{IdPill, IdPillLayout};
 use crate::property_list::PropertyList;
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 /// What the user did with the badge this frame.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -133,30 +134,34 @@ impl<'a> UserBadge<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> UserBadgeAction {
-        install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
 
         // The pill: avatar (or fallback glyph) + name, laid out as one
         // clickable group.
         let pill = egui::Frame::group(ui.style())
             .fill(ui.visuals().faint_bg_color)
-            .inner_margin(egui::Margin::symmetric(8, 4))
-            .corner_radius(14.0)
+            .inner_margin(ui.tokens().margin_xy(Space::Md, Space::Sm))
+            // Exactly half the pill's height, so this is a pill rather than a
+            // rounded box — `Full` says that, and stays true if a theme changes
+            // the ramp or the padding changes the height.
+            .corner_radius(ui.tokens().corner(Radius::Full))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.set_item_gap_x(Space::Base);
                     match self.avatar_url {
                         Some(url) => {
                             ui.add(
                                 egui::Image::new(url)
                                     .fit_to_exact_size(Vec2::splat(20.0))
-                                    .corner_radius(10.0),
+                                    // Half of the 20pt avatar — a circle.
+                                    .corner_radius(ui.tokens().corner(Radius::Full)),
                             );
                         }
                         None => {
                             ui.label(self.icon.rich_text(16.0, ui.visuals().weak_text_color()));
                         }
                     }
-                    ui.label(RichText::new(self.name).size(12.0));
+                    ui.label(RichText::new(self.name).size(ui.text_size(TextSize::Md)));
                     ui.label(
                         PhosphorIcon::CaretDown.rich_text(10.0, ui.visuals().weak_text_color()),
                     );
@@ -184,12 +189,12 @@ impl<'a> UserBadge<'a> {
                 ui.label(RichText::new(self.name).strong());
                 ui.label(
                     RichText::new(self.subtitle)
-                        .size(10.0)
+                        .size(ui.text_size(TextSize::Sm))
                         .color(ui.visuals().weak_text_color()),
                 );
 
                 if let Some((label, value)) = self.identifier {
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     IdPill::new(label, value)
                         .layout(IdPillLayout::Inline)
                         .with_widths(10, 6)
@@ -197,7 +202,7 @@ impl<'a> UserBadge<'a> {
                 }
 
                 if !self.details.is_empty() {
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     let mut list = PropertyList::new();
                     for (label, value) in &self.details {
                         list = list.add(label, value.clone());

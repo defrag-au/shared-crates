@@ -45,7 +45,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(err) => {
             eprintln!("❌ Error: {:?}", err);
-            println!("\n💡 Make sure you have ANVIL_API_KEY set in your .env file if authentication is required");
+            println!(
+                "\n💡 Make sure you have ANVIL_API_KEY set in your .env file if authentication is required"
+            );
         }
     }
 

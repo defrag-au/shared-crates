@@ -11,7 +11,7 @@ use egui::RichText;
 
 use crate::fee_report::format_lovelace;
 use crate::icons::PhosphorIcon;
-use crate::theme;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -88,7 +88,7 @@ pub fn show(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimateConfig)
                 egui::vec2(content_width, f32::INFINITY),
             );
             let mut child = ui.new_child(egui::UiBuilder::new().max_rect(offscreen));
-            child.spacing_mut().item_spacing.y = 3.0;
+            child.set_item_gap_y(Space::Sm);
             draw_cost_lines(&mut child, data, config);
             child.min_rect().height()
         })
@@ -99,16 +99,16 @@ pub fn show(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimateConfig)
 
     // Pass 2: paint for real — outer frame has no inner margin, we manage layout manually
     egui::Frame::new()
-        .fill(theme::BG_SECONDARY)
+        .fill(ui.tokens().color.bg_secondary)
         .corner_radius(corner)
         .inner_margin(egui::Margin {
             right: content_margin.right,
             ..Default::default()
         })
-        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+        .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.set_item_gap_x(Space::None);
 
                 // Left strip: dark background with rotated heading, flush to frame edge
                 let (heading_rect, _) = ui.allocate_exact_size(
@@ -132,9 +132,11 @@ pub fn show(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimateConfig)
                 // Layout the heading galley and paint it rotated -90°
                 let font =
                     egui::FontId::new(config.heading_size - 1.0, egui::FontFamily::Proportional);
-                let galley =
-                    ui.painter()
-                        .layout_no_wrap("TX ESTIMATE".into(), font, theme::TEXT_PRIMARY);
+                let galley = ui.painter().layout_no_wrap(
+                    "TX ESTIMATE".into(),
+                    font,
+                    ui.tokens().color.text_primary,
+                );
 
                 // Rotate -90° around the text's center point.
                 // with_angle_and_anchor keeps the anchor point (CENTER_CENTER)
@@ -142,11 +144,12 @@ pub fn show(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimateConfig)
                 // center. So we set pos such that pos + a0 = heading_rect.center().
                 let galley_center = galley.rect.center().to_vec2();
                 let pos = heading_rect.center() - galley_center;
-                let shape = egui::epaint::TextShape::new(pos, galley, theme::TEXT_PRIMARY)
-                    .with_angle_and_anchor(
-                        -std::f32::consts::FRAC_PI_2,
-                        egui::Align2::CENTER_CENTER,
-                    );
+                let shape =
+                    egui::epaint::TextShape::new(pos, galley, ui.tokens().color.text_primary)
+                        .with_angle_and_anchor(
+                            -std::f32::consts::FRAC_PI_2,
+                            egui::Align2::CENTER_CENTER,
+                        );
                 ui.painter().add(shape);
 
                 // Gap between strip and content
@@ -155,7 +158,7 @@ pub fn show(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimateConfig)
                 // Right side: cost lines with padding
                 ui.vertical(|ui| {
                     ui.add_space(content_margin.top as f32);
-                    ui.spacing_mut().item_spacing.y = 3.0;
+                    ui.set_item_gap_y(Space::Sm);
                     draw_cost_lines(ui, data, config);
                     ui.add_space(content_margin.bottom as f32);
                 });
@@ -173,7 +176,7 @@ fn draw_cost_lines(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimate
             ui,
             "Platform fee",
             &format_lovelace(data.platform_fee),
-            theme::ACCENT_YELLOW,
+            ui.tokens().color.accent_yellow,
             config.font_size,
         );
     }
@@ -184,7 +187,7 @@ fn draw_cost_lines(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimate
             ui,
             "Network fee",
             &format!("~{}", format_lovelace(data.network_fee)),
-            theme::TEXT_SECONDARY,
+            ui.tokens().color.text_secondary,
             config.font_size,
         );
     }
@@ -208,7 +211,7 @@ fn draw_cost_lines(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimate
             ui,
             "UTxO overhead",
             &format!("~{}", format_lovelace(outbound_total)),
-            theme::TEXT_SECONDARY,
+            ui.tokens().color.text_secondary,
             config.font_size,
         );
     }
@@ -219,20 +222,20 @@ fn draw_cost_lines(ui: &mut egui::Ui, data: &TxEstimateData, config: &TxEstimate
             ui,
             "UTxO deposit (in)",
             &format!("+~{}", format_lovelace(inbound_total)),
-            theme::ACCENT_CYAN,
+            ui.tokens().color.accent_cyan,
             config.font_size,
         );
     }
 
     // Separator
-    ui.add_space(2.0);
+    ui.gap(Space::Xs);
     let rect = ui.available_rect_before_wrap();
     let y = rect.min.y;
     ui.painter().line_segment(
         [egui::pos2(rect.min.x, y), egui::pos2(rect.max.x, y)],
-        egui::Stroke::new(1.0_f32, theme::BORDER),
+        egui::Stroke::new(1.0_f32, ui.tokens().color.border),
     );
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     // Net ADA — the hero line
     draw_net_ada(ui, data.net_ada, config.font_size + 1.0);
@@ -253,7 +256,7 @@ fn cost_line(
     ui.horizontal(|ui| {
         ui.label(
             RichText::new(label)
-                .color(theme::TEXT_SECONDARY)
+                .color(ui.tokens().color.text_secondary)
                 .size(font_size),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -267,20 +270,20 @@ fn cost_line_waived(ui: &mut egui::Ui, font_size: f32, reason: Option<&str>) {
     ui.horizontal(|ui| {
         ui.label(
             RichText::new("Platform fee")
-                .color(theme::TEXT_SECONDARY)
+                .color(ui.tokens().color.text_secondary)
                 .size(font_size),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if let Some(reason) = reason {
                 ui.label(
                     RichText::new(format!("({reason})"))
-                        .color(theme::TEXT_MUTED)
+                        .color(ui.tokens().color.text_muted)
                         .size(font_size),
                 );
             }
             ui.label(
                 RichText::new("FREE")
-                    .color(theme::ACCENT_GREEN)
+                    .color(ui.tokens().color.accent_green)
                     .size(font_size)
                     .strong(),
             );
@@ -292,11 +295,19 @@ fn cost_line_waived(ui: &mut egui::Ui, font_size: f32, reason: Option<&str>) {
 fn draw_net_ada(ui: &mut egui::Ui, lovelace: i64, font_size: f32) {
     let ada = lovelace as f64 / 1_000_000.0;
     let (sign, icon, color) = if lovelace > 0 {
-        ("+", Some(PhosphorIcon::ArrowUp), theme::ACCENT_GREEN)
+        (
+            "+",
+            Some(PhosphorIcon::ArrowUp),
+            ui.tokens().color.accent_green,
+        )
     } else if lovelace < 0 {
-        ("", Some(PhosphorIcon::ArrowDown), theme::ACCENT_RED)
+        (
+            "",
+            Some(PhosphorIcon::ArrowDown),
+            ui.tokens().color.accent_red,
+        )
     } else {
-        ("", None, theme::TEXT_MUTED)
+        ("", None, ui.tokens().color.text_muted)
     };
 
     let value_text = if ada.abs().fract() == 0.0 {
@@ -308,7 +319,7 @@ fn draw_net_ada(ui: &mut egui::Ui, lovelace: i64, font_size: f32) {
     ui.horizontal(|ui| {
         ui.label(
             RichText::new("Net ADA")
-                .color(theme::TEXT_PRIMARY)
+                .color(ui.tokens().color.text_primary)
                 .size(font_size)
                 .strong(),
         );

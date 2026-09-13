@@ -8,7 +8,7 @@
 
 use egui_widgets::{DistributionWaterfall, WaterfallMode, WaterfallParty};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub struct DistributionWaterfallStoryState {
     /// 0 = Projected, 1 = Live, 2 = Final.
@@ -78,7 +78,7 @@ fn build(
 pub fn show(ui: &mut egui::Ui, state: &mut DistributionWaterfallStoryState) {
     ui.label(
         egui::RichText::new("DistributionWaterfall Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -87,7 +87,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut DistributionWaterfallStoryState) {
              50% of the distributable — after NFT min-ADA, network fee, and the \
              platform fee come off the top. Same shape Projected → Live → Final.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -129,12 +129,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut DistributionWaterfallStoryState) {
 
     ui.allocate_ui(egui::vec2(380.0, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 wf.show(ui);
             });

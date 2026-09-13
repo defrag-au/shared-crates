@@ -8,7 +8,7 @@
 use egui::{Color32, RichText};
 
 use crate::buttons::UiButtonExt;
-use crate::theme;
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 // ============================================================================
 // Types
@@ -49,7 +49,7 @@ pub struct AmountInputConfig {
     /// Minimum ADA required for a valid swap.
     pub min_ada: f64,
     /// Accent color for selected/active states.
-    pub accent: Color32,
+    pub accent: Ink,
 }
 
 impl Default for AmountInputConfig {
@@ -58,7 +58,7 @@ impl Default for AmountInputConfig {
             presets: vec![100, 250, 500],
             max_ada: None,
             min_ada: 5.0,
-            accent: theme::ACCENT,
+            accent: Ink::Token(Token::Accent),
         }
     }
 }
@@ -92,6 +92,12 @@ pub fn show(
     state: &mut AmountInputState,
     config: &AmountInputConfig,
 ) -> AmountInputResponse {
+    // Resolved once, ahead of the closures: a `Default` config cannot know the
+    // theme, so the accent arrives here.
+    let t = ui.tokens();
+    let accent = config.accent.resolve(&t);
+    let on_accent = t.color.bg_primary;
+    let corner = t.corner(Radius::Base);
     let mut action = AmountInputAction::None;
 
     // Preset buttons row
@@ -99,7 +105,14 @@ pub fn show(
         for (idx, &ada) in config.presets.iter().enumerate() {
             let is_selected = state.selected_preset == Some(idx);
             let label = format!("{ada} ADA");
-            let btn = toggle_button(&label, is_selected, config.accent);
+            let btn = toggle_button(
+                &label,
+                is_selected,
+                accent,
+                on_accent,
+                corner,
+                ui.text_size(TextSize::Base),
+            );
 
             if ui.add_clickable(btn).clicked() {
                 state.selected_preset = Some(idx);
@@ -118,19 +131,23 @@ pub fn show(
             let btn = if is_max {
                 egui::Button::new(
                     RichText::new("MAX")
-                        .color(theme::BG_PRIMARY)
+                        .color(ui.tokens().color.bg_primary)
                         .strong()
-                        .size(10.0),
+                        .size(ui.text_size(TextSize::Sm)),
                 )
-                .fill(config.accent)
-                .corner_radius(4.0)
+                .fill(accent)
+                .corner_radius(ui.tokens().corner(Radius::Base))
                 .min_size(egui::vec2(40.0, 28.0))
             } else {
-                egui::Button::new(RichText::new("MAX").color(config.accent).size(10.0))
-                    .fill(Color32::TRANSPARENT)
-                    .stroke(egui::Stroke::new(1.0_f32, config.accent))
-                    .corner_radius(4.0)
-                    .min_size(egui::vec2(40.0, 28.0))
+                egui::Button::new(
+                    RichText::new("MAX")
+                        .color(accent)
+                        .size(ui.text_size(TextSize::Sm)),
+                )
+                .fill(Color32::TRANSPARENT)
+                .stroke(egui::Stroke::new(1.0_f32, accent))
+                .corner_radius(ui.tokens().corner(Radius::Base))
+                .min_size(egui::vec2(40.0, 28.0))
             };
 
             if ui.add_clickable(btn).clicked() {
@@ -143,7 +160,7 @@ pub fn show(
         }
     });
 
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     // Text input row
     let text_response = ui
@@ -151,10 +168,14 @@ pub fn show(
             let response = ui.add(
                 egui::TextEdit::singleline(&mut state.text)
                     .desired_width(140.0)
-                    .font(egui::FontId::monospace(14.0))
+                    .font(egui::FontId::monospace(ui.text_size(TextSize::Lg)))
                     .hint_text("Amount"),
             );
-            ui.label(RichText::new("ADA").color(theme::TEXT_MUTED).size(12.0));
+            ui.label(
+                RichText::new("ADA")
+                    .color(ui.tokens().color.text_muted)
+                    .size(ui.text_size(TextSize::Md)),
+            );
 
             if response.changed() {
                 state.selected_preset = None;
@@ -180,15 +201,15 @@ pub fn show(
         if ada < config.min_ada {
             ui.label(
                 RichText::new(format!("Minimum {:.0} ADA required", config.min_ada))
-                    .color(theme::WARNING)
-                    .size(10.0),
+                    .color(ui.tokens().color.warning)
+                    .size(ui.text_size(TextSize::Sm)),
             );
         }
     } else if !state.text.is_empty() {
         ui.label(
             RichText::new("Enter a valid ADA amount")
-                .color(theme::ERROR)
-                .size(10.0),
+                .color(ui.tokens().color.error)
+                .size(ui.text_size(TextSize::Sm)),
         );
     }
 
@@ -203,28 +224,33 @@ pub fn show(
 // ============================================================================
 
 /// Create a toggle-style button (filled when selected, outline when not).
-fn toggle_button(label: &str, selected: bool, accent: Color32) -> egui::Button<'_> {
+/// `on_accent` is the text colour for the filled state — the page background, so
+/// the label reads against the accent fill. Passed in because this helper has no
+/// `Ui` to ask the theme with.
+fn toggle_button(
+    label: &str,
+    selected: bool,
+    accent: Color32,
+    on_accent: Color32,
+    corner: egui::CornerRadius,
+    size: f32,
+) -> egui::Button<'_> {
     if selected {
-        egui::Button::new(
-            RichText::new(label)
-                .color(theme::BG_PRIMARY)
-                .strong()
-                .size(11.0),
-        )
-        .fill(accent)
-        .corner_radius(4.0)
-        .min_size(egui::vec2(70.0, 28.0))
+        egui::Button::new(RichText::new(label).color(on_accent).strong().size(size))
+            .fill(accent)
+            .corner_radius(corner)
+            .min_size(egui::vec2(70.0, 28.0))
     } else {
-        egui::Button::new(RichText::new(label).color(accent).size(11.0))
+        egui::Button::new(RichText::new(label).color(accent).size(size))
             .fill(Color32::TRANSPARENT)
             .stroke(egui::Stroke::new(1.0_f32, accent))
-            .corner_radius(4.0)
+            .corner_radius(corner)
             .min_size(egui::vec2(70.0, 28.0))
     }
 }
 
 /// Parse ADA text input to lovelace. Accepts integers and decimals.
-fn parse_ada_input(text: &str) -> Option<u64> {
+pub fn parse_ada_input(text: &str) -> Option<u64> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return None;

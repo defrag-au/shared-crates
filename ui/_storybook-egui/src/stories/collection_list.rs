@@ -3,7 +3,7 @@
 //! mid-mint ingesting, live with a real fill %, plus standard/network
 //! variants (cip25 / cip68, preprod / mainnet) and the 2-column grid.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::collection_list::{
     CollectionControl, CollectionList, CollectionListAction, CollectionListLayout, CollectionRow,
 };
@@ -47,7 +47,7 @@ fn row(
         policy_id_short: truncate_middle(policy_id, 8, 6),
         wallet_account_index,
         title: title.to_string(),
-        status: status.to_string(),
+        status: status.into(),
         standard: standard.to_string(),
         network: network.to_string(),
         total_supply,
@@ -126,7 +126,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
              Action buttons fire `CollectionListAction` events; the parent owns \
              the forms below.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(16.0);
@@ -134,7 +134,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     // ── Variant 1: fresh draft, no inventory yet ───────────────────────
     ui.label(
         egui::RichText::new("Fresh draft — supply target set, no mints yet")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -144,7 +144,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
              The supply bar is empty; the copy button on the policy_id is the \
              primary value of the card for `mintctl clone-policy` operators.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -171,7 +171,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     // ── Variant 2: mid-mint, ingesting ─────────────────────────────────
     ui.label(
         egui::RichText::new("Mid-mint — ingesting with a partial fill")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -181,7 +181,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
              the second (amber) band is the ordered-but-unminted backlog. Status \
              chip colour-codes the lifecycle phase (ingesting / ready / live).",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -224,7 +224,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     // ── Variant 3: live + cip68 ────────────────────────────────────────
     ui.label(
         egui::RichText::new("Live mint — CIP-68 with progress")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -233,7 +233,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
             "Live status drives the bar fill to green. CIP-68 standard chip is a \
              distinct soft-teal to distinguish from CIP-25's soft-purple.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -261,7 +261,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     // ── Variant 3b: supply-bar states (fulfilled vs ordered) ───────────
     ui.label(
         egui::RichText::new("Supply bar — fulfilled vs ordered vs oversubscribed")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -272,7 +272,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
              oversubscribed — the band fills the remainder in a hotter amber rather \
              than silently looking full.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -334,7 +334,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     // ── Variant 4: 2-column grid, mixed statuses ───────────────────────
     ui.label(
         egui::RichText::new("Mixed — 2-column grid across the lifecycle")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -344,7 +344,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
              scannable summary — draft / ingesting / ready / live / paused / \
              sold_out / ended each have their own palette.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -424,7 +424,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     // ── Variant 5: form-open toggles ───────────────────────────────────
     ui.label(
         egui::RichText::new("Toggle states — Test mint / Seed stubs open")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -435,7 +435,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
              renders the button label as `− Test mint` instead of `🧪 Test mint` \
              for a clear close-affordance.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -477,7 +477,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     // ── Variant 6: collection-centric — wallet + pool + Refuel ─────────
     ui.label(
         egui::RichText::new("Collection-centric — wallet sub-line + Refuel")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -491,7 +491,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
              10 ADA fuel slots). The widget self-disables when the pool is already \
              Healthy or a refuel is in flight — the host doesn't have to check.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -568,7 +568,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
     // ── Variant 7: list layout ─────────────────────────────────────────
     ui.label(
         egui::RichText::new("List layout — compact for dense surfaces")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -578,7 +578,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
              row — same chips, no supply bar, no separate footer. Good for an \
              admin index view of dozens of collections.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -603,7 +603,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CollectionListState) {
         ui.add_space(8.0);
         ui.label(
             egui::RichText::new("Action receipts")
-                .color(ACCENT)
+                .color(accent(ui))
                 .strong()
                 .small(),
         );

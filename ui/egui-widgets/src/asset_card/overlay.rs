@@ -1,4 +1,5 @@
 use crate::icons::{PhosphorIcon, phosphor_family};
+use crate::theme::ThemeExt;
 use egui::epaint::{Mesh, Vertex};
 use egui::text::LayoutJob;
 use egui::{Color32, Pos2, Rect, TextFormat, Vec2};
@@ -10,21 +11,49 @@ use super::projection::{project_3d, project_points};
 // Rarity
 // ============================================================================
 
-pub const RARITIES: &[(&str, Color32)] = &[
-    ("Common", Color32::from_rgb(120, 120, 140)),
-    ("Uncommon", Color32::from_rgb(158, 206, 106)),
-    ("Rare", Color32::from_rgb(122, 162, 247)),
-    ("Epic", Color32::from_rgb(187, 154, 247)),
-    ("Legendary", Color32::from_rgb(224, 175, 104)),
-];
+/// The rarity tiers, in order.
+///
+/// # The hues follow a convention, not the theme's ordinal ramp
+///
+/// Grey → green → blue → purple → gold is a thirty-year-old games convention
+/// that collectors read without a legend, and it is not monotone in lightness,
+/// so [`crate::encoding::Sequential`] is the wrong tool: generating a proper
+/// ordinal ramp here would be *more* correct as an encoding and *less*
+/// legible to the only audience that matters.
+///
+/// What the theme does own is which green, which blue, which gold — so the
+/// tiers are mapped onto accent tokens rather than restated as literals, and a
+/// card in the marketplace palette gets that palette's purple.
+pub const RARITY_NAMES: [&str; 5] = ["Common", "Uncommon", "Rare", "Epic", "Legendary"];
 
-pub fn rarity_color(rarity: usize) -> Color32 {
-    RARITIES.get(rarity).map_or(RARITIES[0].1, |r| r.1)
+/// The tier colours for a palette, in [`RARITY_NAMES`] order.
+///
+/// Takes tokens rather than a `Ui` so a caller without one — a `Default`
+/// fixture, a headless test — can still get them off a named theme instead of
+/// writing five more literals.
+pub fn rarity_colors_of(c: &crate::theme::ColorTokens) -> [Color32; 5] {
+    [
+        c.text_muted,
+        c.accent_green,
+        c.accent_blue,
+        c.accent_magenta,
+        c.accent_orange,
+    ]
 }
 
-pub fn rarity_glow(rarity: usize) -> Option<Color32> {
+/// The tier colours for the active theme, in [`RARITY_NAMES`] order.
+pub fn rarity_colors(ui: &egui::Ui) -> [Color32; 5] {
+    rarity_colors_of(&ui.tokens().color)
+}
+
+pub fn rarity_color(ui: &egui::Ui, rarity: usize) -> Color32 {
+    let all = rarity_colors(ui);
+    all.get(rarity).copied().unwrap_or(all[0])
+}
+
+pub fn rarity_glow(ui: &egui::Ui, rarity: usize) -> Option<Color32> {
     if rarity >= 2 {
-        let c = rarity_color(rarity);
+        let c = rarity_color(ui, rarity);
         Some(Color32::from_rgba_premultiplied(
             c.r() / 3,
             c.g() / 3,
@@ -118,7 +147,10 @@ fn draw_projected_galley(
     let uv_norm = Vec2::new(1.0 / font_tex_size[0] as f32, 1.0 / font_tex_size[1] as f32);
 
     if shadow {
-        let shadow_color = Color32::from_rgba_premultiplied(0, 0, 0, 180);
+        // Black, not a theme colour: a drop shadow is the absence of light, so
+        // it darkens whatever is beneath it rather than tinting toward a
+        // palette. `from_black_alpha` says that outright.
+        let shadow_color = Color32::from_black_alpha(180);
         for &(dx, dy) in &[(1.0f32, 1.0f32), (-1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)] {
             let mut shadow_mesh = Mesh::with_texture(egui::TextureId::default());
             for placed_row in &galley.rows {
@@ -469,10 +501,10 @@ pub fn draw_tile_overlay(
     angle_y: f32,
     perspective: f32,
 ) {
-    crate::install_phosphor_font(ui.ctx());
-    let text_color = Color32::from_rgb(220, 220, 235);
-    let (_rarity_name, rarity_col) = RARITIES.get(rarity).copied().unwrap_or(RARITIES[0]);
-    let pill_bg = Color32::from_rgba_premultiplied(20, 20, 35, 200);
+    crate::icons::ensure_fonts(ui);
+    let text_color = ui.tokens().color.text_primary;
+    let rarity_col = rarity_color(ui, rarity);
+    let pill_bg = crate::theme::with_alpha(ui.tokens().color.bg_primary, 200);
     let center = bbox.center();
     let half = bbox.width() / 2.0;
 

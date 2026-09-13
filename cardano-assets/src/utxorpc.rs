@@ -164,11 +164,11 @@ fn extract_from_cip25_metadata(
     );
 
     // Try the JSON conversion approach using cardano-assets deserializer
-    if let Ok(json_value) = metadatum_to_json_value(metadatum) {
-        if let Some(metadata) = extract_metadata_via_json(&json_value, policy_id, asset_name_hex) {
-            debug!("Successfully extracted metadata via JSON conversion");
-            return metadata;
-        }
+    if let Ok(json_value) = metadatum_to_json_value(metadatum)
+        && let Some(metadata) = extract_metadata_via_json(&json_value, policy_id, asset_name_hex)
+    {
+        debug!("Successfully extracted metadata via JSON conversion");
+        return metadata;
     }
 
     debug!("JSON conversion failed, returning empty metadata");
@@ -200,13 +200,13 @@ fn metadatum_to_json_value(metadatum: &u5c::Metadatum) -> Result<Value, serde_js
                 let mut json_map = serde_json::Map::new();
 
                 for pair in &map.pairs {
-                    if let (Some(key_metadatum), Some(value_metadatum)) = (&pair.key, &pair.value) {
-                        if let (Some(key_str), Ok(value_json)) = (
+                    if let (Some(key_metadatum), Some(value_metadatum)) = (&pair.key, &pair.value)
+                        && let (Some(key_str), Ok(value_json)) = (
                             metadatum_to_string(key_metadatum),
                             metadatum_to_json_value(value_metadatum),
-                        ) {
-                            json_map.insert(key_str, value_json);
-                        }
+                        )
+                    {
+                        json_map.insert(key_str, value_json);
                     }
                 }
 
@@ -534,8 +534,7 @@ mod integration_tests {
 
                         // The key test: asset name should be from CIP-25 metadata, not encoded name
                         assert_eq!(
-                            asset.name,
-                            "Uglyon Wibbleplunk",
+                            asset.name, "Uglyon Wibbleplunk",
                             "Asset name should be from CIP-25 'name' field, not decoded asset name 'UG1897'"
                         );
 

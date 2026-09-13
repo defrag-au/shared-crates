@@ -12,7 +12,7 @@
 //!    out for itself. No source obligation, and it must not render like a
 //!    human's guess.
 
-use crate::TEXT_MUTED;
+use crate::muted;
 use egui_widgets::{AnnotationDraft, PartyAnnotator, PartyBasis};
 
 pub struct PartyAnnotatorState {
@@ -74,7 +74,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PartyAnnotatorState) {
              no source is marked in place rather than blocked.",
         )
         .small()
-        .color(TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(8.0);
 
@@ -89,7 +89,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PartyAnnotatorState) {
                 ui.label(
                     egui::RichText::new("1 · a fresh wallet")
                         .small()
-                        .color(TEXT_MUTED),
+                        .color(muted(ui)),
                 );
                 // FULL addresses: `IdPill` middle-elides for display and puts
                 // the whole thing on the clipboard, so a pre-truncated fixture
@@ -110,7 +110,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PartyAnnotatorState) {
                 ui.label(
                     egui::RichText::new("2 · a claim with no source")
                         .small()
-                        .color(TEXT_MUTED),
+                        .color(muted(ui)),
                 );
                 let r = PartyAnnotator::new(
                     "guess",
@@ -129,7 +129,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PartyAnnotatorState) {
                 ui.label(
                     egui::RichText::new("3 · derived by the walk")
                         .small()
-                        .color(TEXT_MUTED),
+                        .color(muted(ui)),
                 );
                 let r = PartyAnnotator::new(
                     "derived",
@@ -148,5 +148,5 @@ pub fn show(ui: &mut egui::Ui, state: &mut PartyAnnotatorState) {
         });
 
     ui.add_space(8.0);
-    ui.label(egui::RichText::new(&state.last).small().color(TEXT_MUTED));
+    ui.label(egui::RichText::new(&state.last).small().color(muted(ui)));
 }

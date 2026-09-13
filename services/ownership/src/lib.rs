@@ -7,8 +7,8 @@ mod types;
 pub use types::*;
 
 use reqwest::Client;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 /// Error type for ownership client operations.
 #[derive(Debug)]

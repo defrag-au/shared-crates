@@ -1,4 +1,4 @@
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// Mutable state for the flip counter demo.
 pub struct FlipCounterState {
@@ -15,13 +15,17 @@ pub struct FlipCounterState {
 
 impl Default for FlipCounterState {
     fn default() -> Self {
+        // `text_color` takes an `Ink`, so a `Default` impl with no `Ui` can
+        // still name a token — which is the whole reason the setters stopped
+        // taking a bare `Color32`. Before, this had to bake a literal.
+        use egui_widgets::theme::Token;
         let mut counter = egui_widgets::FlipCounter::new(6)
-            .text_color(egui_widgets::theme::TEXT_PRIMARY)
+            .text_color(Token::TextPrimary)
             .card_height(60.0);
         counter.set_value("12345");
 
         let mut time_counter = egui_widgets::FlipCounter::new(8)
-            .text_color(egui_widgets::theme::ACCENT_CYAN)
+            .text_color(Token::AccentCyan)
             .card_height(50.0);
         time_counter.set_value("00:00:00");
 
@@ -41,10 +45,14 @@ impl Default for FlipCounterState {
 
 pub fn show(ui: &mut egui::Ui, state: &mut FlipCounterState) {
     // --- Points counter ---
-    ui.label(egui::RichText::new("Points Counter").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Points Counter")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new("Split-flap style counter with flip animation on digit change")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(8.0);
@@ -91,12 +99,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlipCounterState) {
     // --- Timer ---
     ui.label(
         egui::RichText::new("Countdown Timer")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Clock-style display with HH:MM:SS format")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -139,7 +147,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlipCounterState) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("- Digits flip with top-half-down then bottom-half-in animation");
     ui.label("- Cards show split line across the middle");
     ui.label("- Top half slightly lighter than bottom half");

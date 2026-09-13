@@ -3,12 +3,15 @@
 use egui_widgets::pool_liquidity_indicator::{self, PoolInfo, PoolLiquidityConfig};
 use egui_widgets::split_allocation_bar::dex_color;
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub fn show(ui: &mut egui::Ui) {
+    // The DEX series ramp comes from the active theme now, so the fixtures have
+    // to resolve it rather than name a constant.
+    let t = egui_widgets::theme::ThemeExt::tokens(ui);
     ui.label(
         egui::RichText::new("PoolLiquidityIndicator Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -16,7 +19,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Per-pool depth and health context cards. Shows relative depth bars, \
              TVL, spot price, price impact (color-coded), and allocation fraction.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -26,16 +29,14 @@ pub fn show(ui: &mut egui::Ui) {
     ui.allocate_ui(egui::vec2(400.0, ui.available_height()), |ui| {
         // Healthy split — low impact on both
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Healthy Split \u{2014} Low Impact")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -44,7 +45,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let pools = vec![
                     PoolInfo {
                         dex_label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         ada_reserves: 2_500_000_000_000,
                         token_reserves: 22_000_000_000,
                         fee_bps: 30,
@@ -54,7 +55,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     PoolInfo {
                         dex_label: "CSWAP".into(),
-                        color: dex_color(1),
+                        color: dex_color(1, &t),
                         ada_reserves: 800_000_000_000,
                         token_reserves: 7_100_000_000,
                         fee_bps: 30,
@@ -70,16 +71,14 @@ pub fn show(ui: &mut egui::Ui) {
 
         // High impact scenario
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("High Impact Scenario")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -88,7 +87,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let pools = vec![
                     PoolInfo {
                         dex_label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         ada_reserves: 500_000_000_000,
                         token_reserves: 4_400_000_000,
                         fee_bps: 30,
@@ -98,7 +97,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     PoolInfo {
                         dex_label: "CSWAP".into(),
-                        color: dex_color(1),
+                        color: dex_color(1, &t),
                         ada_reserves: 150_000_000_000,
                         token_reserves: 1_300_000_000,
                         fee_bps: 50,
@@ -114,16 +113,14 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Three pools
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Three-Pool Comparison")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -132,7 +129,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let pools = vec![
                     PoolInfo {
                         dex_label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         ada_reserves: 3_000_000_000_000,
                         token_reserves: 26_000_000_000,
                         fee_bps: 30,
@@ -142,7 +139,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     PoolInfo {
                         dex_label: "Minswap".into(),
-                        color: dex_color(1),
+                        color: dex_color(1, &t),
                         ada_reserves: 1_200_000_000_000,
                         token_reserves: 10_500_000_000,
                         fee_bps: 30,
@@ -152,7 +149,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     PoolInfo {
                         dex_label: "CSWAP".into(),
-                        color: dex_color(2),
+                        color: dex_color(2, &t),
                         ada_reserves: 400_000_000_000,
                         token_reserves: 3_500_000_000,
                         fee_bps: 50,

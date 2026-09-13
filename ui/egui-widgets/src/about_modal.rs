@@ -44,8 +44,8 @@
 
 use egui::{RichText, Ui};
 
-use crate::icons::{PhosphorIcon, install_phosphor_font};
-use crate::theme;
+use crate::icons::PhosphorIcon;
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 /// One thing a reader should expect: an icon, a headline, and a line saying
 /// what it means for them.
@@ -112,7 +112,7 @@ impl<'a> AboutModal<'a> {
         if !*open {
             return;
         }
-        install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
 
         let mut dismissed = false;
         let response = egui::Modal::new(egui::Id::new("about_modal")).show(ui.ctx(), |ui| {
@@ -124,21 +124,29 @@ impl<'a> AboutModal<'a> {
             ui.set_max_width(500.0_f32.min(room));
 
             ui.horizontal(|ui| {
-                ui.label(RichText::new(self.title).size(16.0).strong());
+                ui.label(
+                    RichText::new(self.title)
+                        .size(ui.text_size(TextSize::Xl))
+                        .strong(),
+                );
                 if let Some(status) = self.status {
                     status_chip(ui, status);
                 }
             });
             if let Some(intro) = self.intro {
-                ui.label(RichText::new(intro).small().color(theme::TEXT_MUTED));
+                ui.label(
+                    RichText::new(intro)
+                        .small()
+                        .color(ui.tokens().color.text_muted),
+                );
             }
 
             for point in &self.points {
-                ui.add_space(10.0);
+                ui.gap(Space::Lg);
                 point_row(ui, point);
             }
 
-            ui.add_space(12.0);
+            ui.gap(Space::Xl);
             ui.separator();
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("Close").clicked() {
@@ -163,12 +171,17 @@ impl<'a> AboutModal<'a> {
 /// by the host from the same two theme colours.
 fn status_chip(ui: &mut Ui, status: &str) {
     egui::Frame::default()
-        .fill(theme::WARNING.gamma_multiply(0.18))
-        .stroke(egui::Stroke::new(1.0_f32, theme::WARNING))
-        .inner_margin(egui::Margin::symmetric(5, 1))
-        .corner_radius(4.0)
+        .fill(ui.tokens().color.warning.gamma_multiply(0.18))
+        .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.warning))
+        .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Xs))
+        .corner_radius(ui.tokens().corner(Radius::Base))
         .show(ui, |ui| {
-            ui.label(RichText::new(status).color(theme::WARNING).small().strong());
+            ui.label(
+                RichText::new(status)
+                    .color(ui.tokens().color.warning)
+                    .small()
+                    .strong(),
+            );
         });
 }
 
@@ -184,7 +197,7 @@ fn point_row(ui: &mut Ui, point: &AboutPoint<'_>) {
             egui::Align2::CENTER_TOP,
             point.icon.codepoint(),
             egui::FontId::new(15.0, crate::icons::phosphor_family()),
-            theme::WARNING,
+            ui.tokens().color.warning,
         );
         // The text column takes what is left, so the detail wraps against the
         // modal's edge rather than pushing the modal wider.
@@ -193,7 +206,7 @@ fn point_row(ui: &mut Ui, point: &AboutPoint<'_>) {
             ui.label(
                 RichText::new(point.detail)
                     .small()
-                    .color(theme::TEXT_SECONDARY),
+                    .color(ui.tokens().color.text_secondary),
             );
         });
     });

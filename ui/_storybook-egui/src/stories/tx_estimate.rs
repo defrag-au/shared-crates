@@ -1,9 +1,9 @@
 //! Storybook demo for the TxEstimate widget.
 
-use egui_widgets::tx_estimate::{self, TxEstimateConfig, TxEstimateData};
 use egui_widgets::UtxoCost;
+use egui_widgets::tx_estimate::{self, TxEstimateConfig, TxEstimateData};
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 pub struct TxEstimateStoryState {
     pub ada_sending: u64,
@@ -30,7 +30,7 @@ impl Default for TxEstimateStoryState {
 pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
     ui.label(
         egui::RichText::new("TxEstimate Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -38,7 +38,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
             "Per-wallet transaction estimate shown during negotiation. Displays platform fee, \
              network fee, min UTxO, and net ADA impact for the local user only.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -47,7 +47,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new("Presets:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         if ui.selectable_label(false, "Sell NFT for 5 ADA").clicked() {
@@ -86,14 +86,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new("ADA sending:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         ui.add(egui::DragValue::new(&mut state.ada_sending).range(0..=100));
         ui.add_space(12.0);
         ui.label(
             egui::RichText::new("ADA receiving:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         ui.add(egui::DragValue::new(&mut state.ada_receiving).range(0..=100));
@@ -101,21 +101,21 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
     ui.horizontal(|ui| {
         ui.label(
             egui::RichText::new("NFTs offered:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         ui.add(egui::DragValue::new(&mut state.nft_count).range(0..=10));
         ui.add_space(12.0);
         ui.label(
             egui::RichText::new("NFTs receiving:")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         ui.add(egui::DragValue::new(&mut state.inbound_nft_count).range(0..=10));
         ui.add_space(12.0);
         ui.label(
             egui::RichText::new("Platform fee (ADA):")
-                .color(egui_widgets::theme::TEXT_SECONDARY)
+                .color(crate::secondary(ui))
                 .size(10.0),
         );
         ui.add(egui::DragValue::new(&mut state.platform_fee_ada).range(0..=10));
@@ -129,7 +129,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
     // Compute estimated costs
     let platform_fee_lovelace = state.platform_fee_ada * 1_000_000;
     let network_fee: u64 = 180_000; // ~0.18 ADA typical
-                                    // Rough min UTxO: ~1.3 ADA per NFT output (realistic for 1-3 assets under one policy)
+    // Rough min UTxO: ~1.3 ADA per NFT output (realistic for 1-3 assets under one policy)
     let min_utxo = if state.nft_count > 0 {
         1_300_000 + (state.nft_count.saturating_sub(1) as u64) * 100_000
     } else {
@@ -188,12 +188,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
     // Widget
     ui.allocate_ui(egui::vec2(280.0, ui.available_height()), |ui| {
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 tx_estimate::show(ui, &data, &config);
             });
@@ -207,7 +205,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
             egui::RichText::new(format!(
                 "platform_fee: {effective_platform} lovelace\nnetwork_fee: {network_fee} lovelace\nmin_utxo: {min_utxo} lovelace\nnet_ada: {net_ada} lovelace"
             ))
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .size(10.0)
             .family(egui::FontFamily::Monospace),
         );

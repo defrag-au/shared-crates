@@ -15,7 +15,7 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::rc::Rc;
 
-use maud::{html, Markup, PreEscaped};
+use maud::{Markup, PreEscaped, html};
 use ui_core::auth::AuthState;
 use ui_core::error::WidgetError;
 use ui_core::runtime::{get_query_param, init_widget_with_level};
@@ -29,10 +29,10 @@ const TOKEN_STORAGE_KEY: &str = "auth_token";
 /// Get the auth token, checking URL params first then sessionStorage
 fn get_token() -> Option<String> {
     // First check URL query params (fresh link from Discord)
-    if let Some(token) = get_query_param("token") {
-        if !token.is_empty() {
-            return Some(token);
-        }
+    if let Some(token) = get_query_param("token")
+        && !token.is_empty()
+    {
+        return Some(token);
     }
 
     // Fall back to sessionStorage (SPA navigation/refresh)

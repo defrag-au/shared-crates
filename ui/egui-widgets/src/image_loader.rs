@@ -41,11 +41,33 @@ impl AssetImageSize {
 /// Build a full IIIF asset image URL.
 ///
 /// ```text
-/// https://iiif.hodlcroft.com/iiif/3/{policy_id}:{asset_name_hex}/full/{size},/0/default.jpg
+/// https://iiif.hodlcroft.com/iiif/3/{policy_id}:{asset_name_hex}/full/{size},/0/default.auto
 /// ```
+///
+/// `.auto` lets the service pick the container from what it knows the art to
+/// be — pixel art comes back lossless rather than as a blurred JPEG. See
+/// [`image_core::Format`].
 pub fn iiif_asset_url(policy_id: &str, asset_name_hex: &str, size: AssetImageSize) -> String {
     image_core::iiif_asset_url(policy_id, asset_name_hex, size.into())
 }
+
+/// As [`iiif_asset_url`], against a specific IIIF deployment — the preprod
+/// host for an app running against a testnet. See [`iiif_base_for_network`].
+pub fn iiif_asset_url_on(
+    base: &str,
+    policy_id: &str,
+    asset_name_hex: &str,
+    size: AssetImageSize,
+) -> String {
+    image_core::iiif_url_on(base, policy_id, asset_name_hex, size.into())
+}
+
+/// The IIIF deployment for a chain network string (`cardano:mainnet`,
+/// `cardano:preprod`). A preprod policy asked of the mainnet host resolves
+/// to nothing, so every network-aware app picks its base with this.
+pub use image_core::base_for_network as iiif_base_for_network;
+/// The named IIIF deployments.
+pub use image_core::hosts as iiif_hosts;
 
 /// Build a IIIF thumbnail URL for an asset image.
 ///
@@ -54,16 +76,24 @@ pub fn iiif_asset_url(policy_id: &str, asset_name_hex: &str, size: AssetImageSiz
 ///
 /// **Not routed through `image_core::IiifUrl`**, unlike everything else here:
 /// `base_url` is already a *per-asset* base (host + `{policy}:{name_hex}`),
-/// whereas the builder composes that identifier itself from a host root. If a
-/// caller has the policy and hex separately — and it should — use
-/// `image_core::IiifUrl::new(policy, hex).square_fit(size)` instead, which is
-/// byte-identical output. This function has no callers in the estate and is a
-/// deletion candidate.
+/// whereas the builder composes that identifier itself from a host root.
+///
+/// Because it hand-rolls the tail, it is also the last place in the estate
+/// that could pin a format behind the builder's back — so it now emits
+/// whatever [`image_core::Format::default`] is, and is on its way out.
+#[deprecated(
+    since = "0.1.0",
+    note = "hand-rolls the IIIF tail. Use `image_core::IiifUrl::new(policy, hex).square_fit(size)`, \
+            which takes the policy and hex separately and produces the same shape."
+)]
 pub fn iiif_thumbnail_url(base_url: &str, size: u32) -> String {
-    // IIIF pattern: {base}/full/!{w},{h}/0/default.jpg
+    // IIIF pattern: {base}/full/!{w},{h}/0/default.{fmt}
     // Strip any trailing slash from base
     let base = base_url.trim_end_matches('/');
-    format!("{base}/full/!{size},{size}/0/default.jpg")
+    format!(
+        "{base}/full/!{size},{size}/0/default.{}",
+        image_core::Format::default().extension()
+    )
 }
 
 /// A pre-computed spinner shape that can be stamped at multiple positions cheaply.

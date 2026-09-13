@@ -1,7 +1,8 @@
 //! `TagList` story — a wrapping row of removable chips with a clear button.
 
 use egui_widgets::tag_list::TagList;
-use egui_widgets::theme;
+
+use crate::{accent, muted};
 
 pub struct TagListState {
     pub tags: Vec<String>,
@@ -23,18 +24,14 @@ impl Default for TagListState {
 }
 
 pub fn show(ui: &mut egui::Ui, state: &mut TagListState) {
-    ui.label(
-        egui::RichText::new("Tag List")
-            .color(theme::ACCENT)
-            .strong(),
-    );
+    ui.label(egui::RichText::new("Tag List").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "A wrapping row of removable chips with an optional clear-all button — \
              for active filters / selected facets. Resize the window narrow to see \
              it reflow onto multiple lines.",
         )
-        .color(theme::TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -55,7 +52,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TagListState) {
     ui.add_space(8.0);
     ui.label(
         egui::RichText::new(format!("{} tag(s)", state.tags.len()))
-            .color(theme::TEXT_SECONDARY)
+            .color(crate::secondary(ui))
             .small(),
     );
 }

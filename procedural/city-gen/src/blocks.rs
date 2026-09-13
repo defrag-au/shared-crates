@@ -1,5 +1,5 @@
-use crate::graph::RoadGraph;
 use crate::Vec2;
+use crate::graph::RoadGraph;
 
 /// A city block — an enclosed polygon formed by road edges.
 #[derive(Debug, Clone)]

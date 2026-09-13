@@ -49,7 +49,9 @@
 //! Skeleton::block(egui::vec2(64.0, 64.0), SkeletonReason::Loading).show(ui);
 //! ```
 
-use egui::{Color32, CornerRadius, Rect, Sense, Ui, Vec2};
+use egui::{Color32, Rect, Sense, Ui, Vec2};
+
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 /// Why the content is not here. See the module docs — this is not decoration,
 /// it decides whether the placeholder moves.
@@ -151,8 +153,11 @@ impl Skeleton {
         match self.shape {
             Shape::Block { size } => {
                 let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
-                ui.painter()
-                    .rect_filled(rect, CornerRadius::same(6), tint(base, 0.10 * breath));
+                ui.painter().rect_filled(
+                    rect,
+                    ui.tokens().corner(Radius::Md),
+                    tint(base, 0.10 * breath),
+                );
             }
             Shape::Rows { count, bars } => {
                 for i in 0..count {
@@ -170,8 +175,11 @@ impl Skeleton {
                         Vec2::new(ui.available_width(), self.row_height),
                         Sense::hover(),
                     );
-                    ui.painter()
-                        .rect_filled(rect, CornerRadius::same(6), tint(base, 0.06 * fade));
+                    ui.painter().rect_filled(
+                        rect,
+                        ui.tokens().corner(Radius::Md),
+                        tint(base, 0.06 * fade),
+                    );
 
                     let inner = rect.shrink2(Vec2::new(14.0, 12.0));
                     let bar_height = 10.0;
@@ -187,11 +195,11 @@ impl Skeleton {
                         );
                         ui.painter().rect_filled(
                             bar,
-                            CornerRadius::same(3),
+                            ui.tokens().corner(Radius::Sm),
                             tint(base, 0.12 * fade),
                         );
                     }
-                    ui.add_space(6.0);
+                    ui.gap(Space::Base);
                 }
             }
         }

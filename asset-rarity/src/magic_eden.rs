@@ -42,7 +42,7 @@ impl Scorer for MagicEdenScorer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{build_collection, Attribute};
+    use crate::{Attribute, build_collection};
 
     #[test]
     fn test_uniform_collection_equal_scores() {

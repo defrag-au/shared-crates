@@ -4,7 +4,7 @@
 
 use egui_widgets::tier_ladder::{Standing, TierLadder, TierRoute, TierRung};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// Anonymous: on the floor, every rung above needs a wallet first.
 fn anonymous_rungs() -> Vec<TierRung<'static>> {
@@ -45,14 +45,18 @@ fn holder_rungs() -> Vec<TierRung<'static>> {
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Tier Ladder").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Tier Ladder")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "The whole access ladder as a modal — what each rung gives, every way to \
              reach it, and where the reader stands. Opened by clicking the tier chip; \
              it is the answer to \"why can I only see 30 days?\".",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);

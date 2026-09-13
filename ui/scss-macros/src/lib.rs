@@ -41,7 +41,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use std::path::PathBuf;
-use syn::{parse_macro_input, LitStr};
+use syn::{LitStr, parse_macro_input};
 
 /// Compile an SCSS file to CSS at compile time.
 ///

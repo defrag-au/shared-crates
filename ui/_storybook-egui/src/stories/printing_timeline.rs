@@ -3,8 +3,9 @@
 use egui_widgets::printing_timeline::{
     PrintingNode, PrintingTimelineConfig, PrintingTimelineState,
 };
+use egui_widgets::slider_group::SliderGroup;
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub struct PrintingTimelineDemo {
     pub state: PrintingTimelineState,
@@ -132,22 +133,24 @@ impl Default for PrintingTimelineDemo {
 pub fn show(ui: &mut egui::Ui, demo: &mut PrintingTimelineDemo) {
     ui.label(
         egui::RichText::new("Printing Timeline")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong()
             .size(16.0),
     );
     ui.label(
         egui::RichText::new("Lightning Bolt — reprint history across 30+ years of MtG")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(8.0);
 
     // Controls
-    ui.horizontal(|ui| {
-        ui.checkbox(&mut demo.show_thumbnails, "Show thumbnails");
-        ui.add(egui::Slider::new(&mut demo.node_width, 32.0..=120.0).text("Node width"));
-        ui.add(egui::Slider::new(&mut demo.height, 60.0..=240.0).text("Height"));
+    ui.checkbox(&mut demo.show_thumbnails, "Show thumbnails");
+    crate::controls(ui, |ui| {
+        SliderGroup::new()
+            .slider("Node width", &mut demo.node_width, 32.0..=120.0)
+            .slider("Height", &mut demo.height, 60.0..=240.0)
+            .show(ui);
     });
     ui.add_space(8.0);
 
@@ -172,18 +175,18 @@ pub fn show(ui: &mut egui::Ui, demo: &mut PrintingTimelineDemo) {
             ui.label(format!("Rarity: {}", node.rarity));
             ui.label(format!("Collector #: {}", node.collector_number));
             if node.is_original {
-                ui.label(egui::RichText::new("Original printing").color(ACCENT));
+                ui.label(egui::RichText::new("Original printing").color(accent(ui)));
             }
         });
     } else {
-        ui.label(egui::RichText::new("Click a node to see details").color(TEXT_MUTED));
+        ui.label(egui::RichText::new("Click a node to see details").color(muted(ui)));
     }
 
     // Show rarity evolution narrative
     ui.add_space(8.0);
     ui.label(
         egui::RichText::new("Rarity Evolution")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -193,7 +196,7 @@ pub fn show(ui: &mut egui::Ui, demo: &mut PrintingTimelineDemo) {
              in the Mystical Archive — reflecting its growing recognition as \
              one of the most iconic cards in the game.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 }

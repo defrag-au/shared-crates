@@ -11,7 +11,7 @@ use egui::{Color32, CornerRadius, Vec2};
 use crate::card_browser;
 use crate::icons::PhosphorIcon;
 use crate::image_loader::{AssetImageSize, iiif_asset_url};
-use crate::theme;
+use crate::theme::{self, Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -66,6 +66,11 @@ pub struct WalletAssetPickerConfig {
     pub max_width: f32,
     /// Maximum modal height.
     pub max_height: f32,
+    /// The IIIF deployment thumbnails come from (everything up to and
+    /// including `/iiif/3`). `None` is the default mainnet host; an app on a
+    /// testnet passes [`crate::iiif_base_for_network`]'s answer, because the
+    /// mainnet host knows nothing about a preprod policy.
+    pub image_base: Option<String>,
 }
 
 impl Default for WalletAssetPickerConfig {
@@ -75,6 +80,7 @@ impl Default for WalletAssetPickerConfig {
             card_size: 80.0,
             max_width: 480.0,
             max_height: 600.0,
+            image_base: None,
         }
     }
 }
@@ -143,7 +149,7 @@ pub fn show(
         return WalletAssetPickerResponse { action };
     }
 
-    crate::install_phosphor_font(ctx);
+    crate::icons::ensure_fonts_in_pass(ctx);
 
     let mut still_open = true;
 
@@ -156,10 +162,10 @@ pub fn show(
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
         .frame(
             egui::Frame::window(&ctx.global_style())
-                .fill(theme::BG_PRIMARY)
-                .stroke(egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT))
-                .corner_radius(CornerRadius::same(8))
-                .inner_margin(16.0),
+                .fill(ctx.tokens().color.bg_primary)
+                .stroke(egui::Stroke::new(1.0_f32, ctx.tokens().color.bg_highlight))
+                .corner_radius(ctx.tokens().corner(Radius::Lg))
+                .inner_margin(ctx.tokens().margin(Space::Xl2)),
         )
         .show(ctx, |ui| {
             ui.set_max_width(config.max_width);
@@ -185,7 +191,7 @@ pub fn show_inline(
     groups: &[PickerPolicyGroup],
     config: &WalletAssetPickerConfig,
 ) -> WalletAssetPickerResponse {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
     let action = draw_picker_content(ui, state, groups, config);
     WalletAssetPickerResponse { action }
 }
@@ -203,16 +209,16 @@ fn draw_picker_content(
 
     // ── Search bar ──
     ui.horizontal(|ui| {
-        PhosphorIcon::MagnifyingGlass.show(ui, 14.0, theme::TEXT_MUTED);
+        PhosphorIcon::MagnifyingGlass.show(ui, 14.0, ui.tokens().color.text_muted);
         ui.add(
             egui::TextEdit::singleline(&mut state.search)
                 .desired_width(ui.available_width())
                 .hint_text("Search...")
-                .font(egui::FontId::monospace(11.0)),
+                .font(egui::FontId::monospace(ui.text_size(TextSize::Base))),
         );
     });
 
-    ui.add_space(8.0);
+    ui.gap(Space::Md);
 
     // Filter out token groups — only show NFT collections
     let verified_groups: Vec<&PickerPolicyGroup> = groups
@@ -248,23 +254,23 @@ fn draw_picker_content(
 
             // ── Unverified collections (behind checkbox) ──
             if !unverified_groups.is_empty() {
-                ui.add_space(8.0);
+                ui.gap(Space::Md);
                 ui.checkbox(
                     &mut state.show_unverified,
                     egui::RichText::new("Show unverified collections")
-                        .color(theme::TEXT_MUTED)
-                        .size(10.0),
+                        .color(ui.tokens().color.text_muted)
+                        .size(ui.text_size(TextSize::Sm)),
                 );
 
                 if state.show_unverified {
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     ui.label(
                         egui::RichText::new("Unverified Collections")
-                            .color(theme::TEXT_MUTED)
-                            .size(10.0)
+                            .color(ui.tokens().color.text_muted)
+                            .size(ui.text_size(TextSize::Sm))
                             .strong(),
                     );
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                     draw_collection_section(
                         ui,
                         &unverified_groups,
@@ -329,15 +335,15 @@ fn draw_collection_section(
         };
 
         let header_color = if offered_count > 0 {
-            theme::ACCENT_CYAN
+            ui.tokens().color.accent_cyan
         } else {
-            theme::TEXT_PRIMARY
+            ui.tokens().color.text_primary
         };
 
         let mut header = egui::CollapsingHeader::new(
             egui::RichText::new(header_text)
                 .color(header_color)
-                .size(11.0)
+                .size(ui.text_size(TextSize::Base))
                 .strong(),
         )
         .id_salt(&group.policy_id)
@@ -348,14 +354,7 @@ fn draw_collection_section(
         }
 
         header.show(ui, |ui| {
-            draw_card_grid(
-                ui,
-                &filtered,
-                &group.policy_id,
-                config.card_size,
-                state,
-                action,
-            );
+            draw_card_grid(ui, &filtered, &group.policy_id, config, state, action);
         });
     }
 }
@@ -393,9 +392,9 @@ fn phosphor_caret_icon(ui: &mut egui::Ui, openness: f32, response: &egui::Respon
         PhosphorIcon::CaretRight
     };
     let color = if response.hovered() {
-        theme::TEXT_PRIMARY
+        ui.tokens().color.text_primary
     } else {
-        theme::TEXT_SECONDARY
+        ui.tokens().color.text_secondary
     };
     let center = response.rect.center();
     icon.paint(
@@ -415,10 +414,11 @@ fn draw_card_grid(
     ui: &mut egui::Ui,
     assets: &[&PickerAsset],
     policy_id: &str,
-    card_size: f32,
+    config: &WalletAssetPickerConfig,
     state: &WalletAssetPickerState,
     action: &mut Option<WalletAssetPickerAction>,
 ) {
+    let card_size = config.card_size;
     let available_width = ui.available_width();
     let spacing = 6.0;
     let cols = ((available_width + spacing) / (card_size + spacing))
@@ -429,7 +429,7 @@ fn draw_card_grid(
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = spacing;
             for asset in row_assets {
-                draw_picker_card(ui, asset, policy_id, card_size, state, action);
+                draw_picker_card(ui, asset, policy_id, config, state, action);
             }
         });
         ui.add_space(spacing);
@@ -440,26 +440,34 @@ fn draw_picker_card(
     ui: &mut egui::Ui,
     asset: &PickerAsset,
     policy_id: &str,
-    card_size: f32,
+    config: &WalletAssetPickerConfig,
     state: &WalletAssetPickerState,
     action: &mut Option<WalletAssetPickerAction>,
 ) {
+    let card_size = config.card_size;
     let size = Vec2::splat(card_size);
     let already_offered = state.is_already_offered(policy_id, &asset.asset_name_hex);
     let (card_rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
 
     let hovered = response.hovered();
     let painter = ui.painter_at(card_rect);
-    let rounding = CornerRadius::same(4);
+    let rounding = ui.tokens().corner(Radius::Base);
 
     // Background
-    painter.rect_filled(card_rect, rounding, theme::BG_SECONDARY);
+    painter.rect_filled(card_rect, rounding, ui.tokens().color.bg_secondary);
 
-    // IIIF thumbnail
-    let image_url = iiif_asset_url(policy_id, &asset.asset_name_hex, AssetImageSize::Thumbnail);
+    // IIIF thumbnail, from the deployment the host named.
+    let image_url = match &config.image_base {
+        Some(base) => crate::image_loader::iiif_asset_url_on(
+            base,
+            policy_id,
+            &asset.asset_name_hex,
+            AssetImageSize::Thumbnail,
+        ),
+        None => iiif_asset_url(policy_id, &asset.asset_name_hex, AssetImageSize::Thumbnail),
+    };
     let browser_config = crate::CardBrowserConfig {
         rounding: 4.0,
-        bg_card_hover: Color32::from_rgb(40, 40, 55),
         ..Default::default()
     };
     let loading = card_browser::draw_thumbnail(ui, card_rect, Some(&image_url), &browser_config);
@@ -500,40 +508,40 @@ fn draw_picker_card(
         name_rect.left_center(),
         egui::Align2::LEFT_CENTER,
         &asset.display_name,
-        egui::FontId::monospace(8.0),
+        egui::FontId::monospace(ui.text_size(TextSize::Xs)),
         if already_offered {
-            theme::TEXT_MUTED
+            ui.tokens().color.text_muted
         } else {
-            theme::TEXT_PRIMARY
+            ui.tokens().color.text_primary
         },
     );
 
     // "In offer" checkmark badge (top-left) for already-offered assets
     if already_offered {
         let badge_center = egui::pos2(card_rect.min.x + 10.0, card_rect.min.y + 10.0);
-        painter.circle_filled(badge_center, 8.0, theme::TEXT_MUTED);
+        painter.circle_filled(badge_center, 8.0, ui.tokens().color.text_muted);
         PhosphorIcon::Check.paint(
             &painter,
             badge_center,
             egui::Align2::CENTER_CENTER,
             10.0,
-            theme::BG_PRIMARY,
+            ui.tokens().color.bg_primary,
         );
     }
 
     // Border — already offered (muted), rarity, or default
     let (border_color, border_width) = if already_offered {
-        (theme::TEXT_MUTED, 1.0_f32)
+        (ui.tokens().color.text_muted, 1.0_f32)
     } else if let Some(rank) = asset.rarity_rank {
         let total = asset.total_ranked.unwrap_or(10000);
-        let color = theme::rarity_rank_color(rank, total);
+        let color = theme::rarity_rank_color(rank, total, &ui.tokens().series);
         let width = if hovered { 2.0_f32 } else { 1.5_f32 };
         (color, width)
     } else {
         let color = if hovered {
-            theme::TEXT_MUTED
+            ui.tokens().color.text_muted
         } else {
-            theme::BG_HIGHLIGHT
+            ui.tokens().color.bg_highlight
         };
         (color, 1.0_f32)
     };
@@ -550,39 +558,47 @@ fn draw_picker_card(
 
         ui.label(
             egui::RichText::new(&asset.display_name)
-                .color(theme::TEXT_PRIMARY)
-                .size(11.0)
+                .color(ui.tokens().color.text_primary)
+                .size(ui.text_size(TextSize::Base))
                 .strong(),
         );
         if let Some(rank) = asset.rarity_rank {
             let total = asset.total_ranked.unwrap_or(0);
-            let rank_color = theme::rarity_rank_color(rank, total);
+            let rank_color = theme::rarity_rank_color(rank, total, &ui.tokens().series);
             let rank_text = if total > 0 {
                 format!("Rank #{rank} / {total}")
             } else {
                 format!("Rank #{rank}")
             };
-            ui.label(egui::RichText::new(rank_text).color(rank_color).size(10.0));
+            ui.label(
+                egui::RichText::new(rank_text)
+                    .color(rank_color)
+                    .size(ui.text_size(TextSize::Sm)),
+            );
         }
         if !asset.traits.is_empty() {
-            ui.add_space(4.0);
+            ui.gap(Space::Sm);
             egui::Grid::new("trait_tooltip")
                 .num_columns(2)
                 .spacing([8.0, 2.0])
                 .show(ui, |ui| {
                     for trait_str in &asset.traits {
                         if let Some((key, value)) = trait_str.split_once(':') {
-                            ui.label(egui::RichText::new(key).color(theme::TEXT_MUTED).size(10.0));
+                            ui.label(
+                                egui::RichText::new(key)
+                                    .color(ui.tokens().color.text_muted)
+                                    .size(ui.text_size(TextSize::Sm)),
+                            );
                             ui.label(
                                 egui::RichText::new(value)
-                                    .color(theme::TEXT_SECONDARY)
-                                    .size(10.0),
+                                    .color(ui.tokens().color.text_secondary)
+                                    .size(ui.text_size(TextSize::Sm)),
                             );
                         } else {
                             ui.label(
                                 egui::RichText::new(trait_str)
-                                    .color(theme::TEXT_SECONDARY)
-                                    .size(10.0),
+                                    .color(ui.tokens().color.text_secondary)
+                                    .size(ui.text_size(TextSize::Sm)),
                             );
                             ui.label("");
                         }
@@ -591,11 +607,11 @@ fn draw_picker_card(
                 });
         }
         if already_offered {
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
             ui.label(
                 egui::RichText::new("Already in offer")
-                    .color(theme::TEXT_MUTED)
-                    .size(9.0),
+                    .color(ui.tokens().color.text_muted)
+                    .size(ui.text_size(TextSize::Xs)),
             );
         }
     });

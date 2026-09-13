@@ -4,13 +4,17 @@
 
 use egui_widgets::access_gate::{AccessGate, GateProvider, GateStatus};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// A real feature — see the note in the `gated` story.
 const DEMO_ACCESS: authorizations::Feature = authorizations::Feature::AppAccess;
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Access Gate").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Access Gate")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "The front door for a gated tool: a sign-in prompt for anonymous \
@@ -18,7 +22,7 @@ pub fn show(ui: &mut egui::Ui) {
              but unqualified users. Returns an action the app maps to \
              navigation / logout.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);

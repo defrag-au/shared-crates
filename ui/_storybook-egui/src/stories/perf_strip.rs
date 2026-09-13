@@ -63,7 +63,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerfStripStory) {
              Hover ANY reading for the numbers behind it and what it means; the \
              text is not selectable, so a stray drag cannot highlight it.",
         )
-        .color(egui_widgets::theme::TEXT_MUTED),
+        .color(crate::muted(ui)),
     );
     ui.add_space(10.0);
 
@@ -108,7 +108,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerfStripStory) {
              and leaves fps alone.",
         )
         .size(11.0)
-        .color(egui_widgets::theme::TEXT_MUTED),
+        .color(crate::muted(ui)),
     );
 
     ui.add_space(8.0);
@@ -131,7 +131,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerfStripStory) {
              otherwise miss every burst that fits between two samples.",
         )
         .size(11.0)
-        .color(egui_widgets::theme::TEXT_MUTED),
+        .color(crate::muted(ui)),
     );
 
     // The load itself, at the END of the story so it lands inside the frame the
@@ -149,11 +149,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut PerfStripStory) {
 
 /// A small muted caption above an example.
 fn caption(ui: &mut egui::Ui, text: &str) {
-    ui.label(
-        egui::RichText::new(text)
-            .size(11.0)
-            .color(egui_widgets::theme::TEXT_MUTED),
-    );
+    ui.label(egui::RichText::new(text).size(11.0).color(crate::muted(ui)));
     ui.add_space(3.0);
 }
 
@@ -170,7 +166,7 @@ fn caption(ui: &mut egui::Ui, text: &str) {
 /// margin the content was never using. Seeing them apart makes each look fine;
 /// seeing them together is what tells you which one a given surface can afford.
 fn in_situ(ui: &mut egui::Ui, state: &mut PerfStripStory) {
-    use egui_widgets::theme;
+    use crate::muted;
 
     caption(
         ui,
@@ -178,8 +174,8 @@ fn in_situ(ui: &mut egui::Ui, state: &mut PerfStripStory) {
     );
 
     egui::Frame::new()
-        .fill(theme::BG_SECONDARY)
-        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
+        .fill(crate::tok(ui, egui_widgets::theme::Token::BgSecondary))
+        .stroke(egui::Stroke::new(1.0_f32, crate::tok(ui, egui_widgets::theme::Token::Border)))
         .corner_radius(6)
         .inner_margin(12.0)
         .show(ui, |ui| {
@@ -196,7 +192,7 @@ fn in_situ(ui: &mut egui::Ui, state: &mut PerfStripStory) {
                         egui::RichText::new(
                             "stake1u8n…7q4z · 412 movements · 38 counterparties · last seen 4 min ago",
                         )
-                        .color(theme::TEXT_SECONDARY),
+                        .color(crate::secondary(ui)),
                     );
                     ui.add_space(6.0);
                     for (label, value) in [
@@ -205,7 +201,7 @@ fn in_situ(ui: &mut egui::Ui, state: &mut PerfStripStory) {
                         ("Net", "+6,495 ₳"),
                     ] {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(label).color(theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(label).color(muted(ui)));
                             ui.label(value);
                         });
                     }

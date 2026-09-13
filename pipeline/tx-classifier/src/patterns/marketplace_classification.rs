@@ -171,7 +171,10 @@ pub fn extract_offer_policy_and_asset(
 
                             // First, try CBOR decoding if we have bytes
                             if let Some(bytes) = datum_info.bytes() {
-                                debug!("JPG.store: Attempting CBOR decoding from output bytes (length: {})", bytes.len());
+                                debug!(
+                                    "JPG.store: Attempting CBOR decoding from output bytes (length: {})",
+                                    bytes.len()
+                                );
                                 debug!(
                                     "JPG.store: Output CBOR bytes prefix: {}",
                                     &bytes[..100.min(bytes.len())]
@@ -189,7 +192,10 @@ pub fn extract_offer_policy_and_asset(
                                 };
 
                                 let policy_assets = tx_datum.extract_policy_assets();
-                                debug!("JPG.store: Output CBOR policy-asset extraction returned {} pairs", policy_assets.len());
+                                debug!(
+                                    "JPG.store: Output CBOR policy-asset extraction returned {} pairs",
+                                    policy_assets.len()
+                                );
                                 if !policy_assets.is_empty() {
                                     debug!(
                                         "JPG.store: Found {} policy-asset pairs via output CBOR: {:?}",

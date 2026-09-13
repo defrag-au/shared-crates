@@ -1,6 +1,5 @@
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::offer_tile::{OfferTile, OfferTileState};
-use egui_widgets::theme;
 
 /// Same placeholder hero we use in the GroupedSection story —
 /// avoids hauling in another asset just for the tile preview.
@@ -8,14 +7,14 @@ const PLACEHOLDER_IMAGE: egui::ImageSource<'_> =
     egui::include_image!("../../assets/placeholders/section_hero_64.png");
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Offer Tile").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Offer Tile").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Picker tile with a state machine (Active / InCart / Spent), an image \
              or text-placeholder content area, and a top-right corner badge for \
              quantity / multi-asset hints. Sized fixed so wrapping rows align.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -23,7 +22,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("Image content — three states")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -52,7 +51,7 @@ pub fn show(ui: &mut egui::Ui) {
     if was_clicked {
         ui.label(
             egui::RichText::new("→ click registered (consumer dispatches cart-add)")
-                .color(theme::ACCENT_GREEN)
+                .color(crate::tok(ui, egui_widgets::theme::Token::AccentGreen))
                 .size(10.0),
         );
     }
@@ -61,7 +60,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("Image with corner badge (multi-asset hint)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -80,7 +79,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("Placeholder content (collection offer stack)")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -106,14 +105,14 @@ pub fn show(ui: &mut egui::Ui) {
     // ---------------------------------------------------------------
     ui.label(
         egui::RichText::new("Mixed row — image and placeholder side by side")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new(
             "Tiles share an outer size so rows align cleanly even when content varies.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(4.0);
@@ -133,7 +132,11 @@ pub fn show(ui: &mut egui::Ui) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("\u{2022} Active tile renders full-colour with hover cursor + click events");
     ui.label("\u{2022} InCart / Spent tiles dim the frame and tint the image; clicks are inert");
     ui.label("\u{2022} Tooltip is consumer-supplied; usually disambiguates dimmed states");

@@ -9,17 +9,21 @@
 
 use egui_widgets::{BannerTone, ServiceBanner};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Service Banner").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Service Banner")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "A persistent strip saying the backend is not whole, in the operator's own \
              words. Takes layout space rather than covering content — it is a condition, \
              not an event, so a toast is the wrong instrument.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -32,7 +36,7 @@ pub fn show(ui: &mut egui::Ui) {
 
     ui.label(
         egui::RichText::new("Under maintenance")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ServiceBanner::new("wallet-sieve is down for planned work — back in about 20 minutes")
@@ -42,7 +46,7 @@ pub fn show(ui: &mut egui::Ui) {
 
     ui.label(
         egui::RichText::new("Back online — shown briefly after a notice lifts")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ServiceBanner::new("wallet-sieve is back — history is loading again")
@@ -53,7 +57,7 @@ pub fn show(ui: &mut egui::Ui) {
 
     ui.label(
         egui::RichText::new("Informational")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ServiceBanner::new(
@@ -65,7 +69,7 @@ pub fn show(ui: &mut egui::Ui) {
 
     ui.label(
         egui::RichText::new("A notice nobody counted the characters of")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ServiceBanner::new(

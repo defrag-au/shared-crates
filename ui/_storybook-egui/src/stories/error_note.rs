@@ -3,17 +3,17 @@
 
 use egui_widgets::ErrorNote;
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Error Note").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Error Note").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Engine/submit errors arrive as Rust-Debug blobs around triple-escaped \
              JSON. ErrorNote de-escapes them, surfaces the deepest natural-language \
              reason + any HTTP status, and tucks the full text behind \"show raw\".",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);

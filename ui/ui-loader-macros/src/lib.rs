@@ -68,7 +68,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
-use syn::{parse_macro_input, Expr, Ident, Token};
+use syn::{Expr, Ident, Token, parse_macro_input};
 
 mod leptos;
 mod seed;

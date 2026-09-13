@@ -49,7 +49,7 @@
 use egui::collapsing_header::CollapsingState;
 use egui::{Id, Rect, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::{Ink, Token};
 
 /// Width of the rule tying the body to the row above it.
 const RULE_W: f32 = 2.0;
@@ -60,13 +60,23 @@ const INDENT: f32 = 10.0;
 /// Space above the body, so the rule does not start hard against the row.
 const LEAD: f32 = 4.0;
 
+/// The tie-rule's default tint, and the two states a caller can ask for.
+///
+/// The rule has three states — theme accent, an explicit colour, or no rule at
+/// all — which is why it was an enum (`RuleTint`) before [`Ink`] existed: a bare
+/// `Option<Color32>` could only express two of them, and it expressed the wrong
+/// two, baking the default in. `Option<Ink>` now covers all three, so this is
+/// spelled the same way as every other "themed unless overridden" colour:
+/// `None` means no rule, `Some(ink)` names what paints it.
+pub const DEFAULT_RULE: Option<Ink> = Some(Ink::Token(Token::Accent));
+
 /// A detail region attached to the row above it.
 pub struct Disclosure {
     id: Id,
     open: bool,
     anchor: bool,
     indent: f32,
-    rule: Option<egui::Color32>,
+    rule: Option<Ink>,
 }
 
 impl Disclosure {
@@ -79,7 +89,7 @@ impl Disclosure {
             open,
             anchor: true,
             indent: INDENT,
-            rule: Some(theme::ACCENT),
+            rule: DEFAULT_RULE,
         }
     }
 
@@ -96,9 +106,10 @@ impl Disclosure {
         self
     }
 
-    /// Tint the tie-rule, or `None` to draw none.
-    pub fn rule(mut self, rule: Option<egui::Color32>) -> Self {
-        self.rule = rule;
+    /// Tint the tie-rule, or pass `None` to draw no rule. Defaults to
+    /// [`DEFAULT_RULE`].
+    pub fn rule(mut self, rule: Option<impl Into<Ink>>) -> Self {
+        self.rule = rule.map(Into::into);
         self
     }
 
@@ -150,7 +161,7 @@ impl Disclosure {
         // THE RULE, drawn after the body so it spans exactly what was shown —
         // `show_body_unindented` clips to the eased height, and the response
         // rect is that clipped height rather than the natural one.
-        if let Some(colour) = self.rule {
+        if let Some(colour) = self.rule.map(|ink| ink.of(ui)) {
             let span = inner.response.rect;
             ui.painter().rect_filled(
                 Rect::from_min_size(

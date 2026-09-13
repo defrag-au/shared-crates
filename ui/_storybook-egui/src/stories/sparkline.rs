@@ -1,4 +1,4 @@
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// Mutable state for the sparkline demo.
 pub struct SparklineState {
@@ -26,12 +26,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut SparklineState) {
     // --- Basic sparkline ---
     ui.label(
         egui::RichText::new("Basic Sparkline")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
         egui::RichText::new("Hover to inspect individual data points")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(8.0);
@@ -47,7 +47,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SparklineState) {
     // --- With fill gradient ---
     ui.label(
         egui::RichText::new("With Fill Gradient")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.add_space(4.0);
@@ -56,7 +56,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SparklineState) {
         .label("Token Earnings")
         .value_text("300.0/hr")
         .height(60.0)
-        .line_color(egui_widgets::theme::SUCCESS)
+        .line_color(crate::tok(ui, egui_widgets::theme::Token::Success))
         .fill(egui::Color32::from_rgba_premultiplied(158, 206, 106, 30))
         .show_mean_line()
         .show(ui);
@@ -64,10 +64,14 @@ pub fn show(ui: &mut egui::Ui, state: &mut SparklineState) {
     ui.add_space(16.0);
 
     // --- Live animated sparkline ---
-    ui.label(egui::RichText::new("Live Animation").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Live Animation")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new("Simulates real-time accrual data")
-            .color(TEXT_MUTED)
+            .color(muted(ui))
             .small(),
     );
     ui.add_space(4.0);
@@ -110,7 +114,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SparklineState) {
     ui.add_space(4.0);
     egui_widgets::Sparkline::new(&state.data)
         .height(40.0)
-        .line_color(egui_widgets::theme::ACCENT_CYAN)
+        .line_color(crate::tok(ui, egui_widgets::theme::Token::AccentCyan))
         .fill(egui::Color32::from_rgba_premultiplied(125, 207, 255, 20))
         .line_width(2.0)
         .show(ui);
@@ -118,12 +122,12 @@ pub fn show(ui: &mut egui::Ui, state: &mut SparklineState) {
     ui.add_space(16.0);
 
     // --- Flat line + minimal data ---
-    ui.label(egui::RichText::new("Edge Cases").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Edge Cases").color(accent(ui)).strong());
     ui.add_space(4.0);
 
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
-            ui.label(egui::RichText::new("Flat line:").color(TEXT_MUTED).small());
+            ui.label(egui::RichText::new("Flat line:").color(muted(ui)).small());
             egui_widgets::Sparkline::new(&[10.0, 10.0, 10.0, 10.0, 10.0])
                 .height(30.0)
                 .width(120.0)
@@ -132,7 +136,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SparklineState) {
         ui.vertical(|ui| {
             ui.label(
                 egui::RichText::new("Single point:")
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .small(),
             );
             egui_widgets::Sparkline::new(&[42.0])
@@ -141,7 +145,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut SparklineState) {
                 .show(ui);
         });
         ui.vertical(|ui| {
-            ui.label(egui::RichText::new("Empty:").color(TEXT_MUTED).small());
+            ui.label(egui::RichText::new("Empty:").color(muted(ui)).small());
             egui_widgets::Sparkline::new(&[])
                 .height(30.0)
                 .width(120.0)
@@ -153,7 +157,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut SparklineState) {
     ui.separator();
     ui.add_space(8.0);
 
-    ui.label(egui::RichText::new("Test cases:").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Test cases:")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label("\u{2022} Hover \u{2192} crosshair + value tooltip at nearest point");
     ui.label("\u{2022} Mean line shown as dashed horizontal reference");
     ui.label("\u{2022} Fill gradient fades from line color to transparent at bottom");

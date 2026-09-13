@@ -18,7 +18,7 @@
 
 use egui_widgets::disclosure::Disclosure;
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// Which row is open — held by the CALLER, which is the whole point: accordion
 /// semantics ("only one at a time") fall out of an `Option` rather than a mode
@@ -48,7 +48,7 @@ const ROWS: [(&str, &str); 4] = [
 ];
 
 pub fn show(ui: &mut egui::Ui, state: &mut State) {
-    ui.label(egui::RichText::new("Disclosure").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Disclosure").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Detail that opens beneath the row it explains — eased open, tied \
@@ -56,7 +56,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut State) {
              under the pointer. For SHORT detail; long detail belongs in \
              detail_split, beside the content.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -67,8 +67,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut State) {
         // table row — and the disclosure is what follows it.
         let row = ui.add(
             egui::Button::new(egui::RichText::new(*name).color(match open {
-                true => ACCENT,
-                false => egui_widgets::theme::TEXT_PRIMARY,
+                true => accent(ui),
+                false => egui_widgets::theme::ThemeExt::tokens(ui).color.text_primary,
             }))
             .min_size(egui::vec2(ui.available_width(), 28.0)),
         );
@@ -84,11 +84,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut State) {
         // KEYED ON THE ROW'S IDENTITY, not its index — see `Disclosure::new`.
         // Here they coincide; in a paging feed they very much do not.
         let drew = Disclosure::new(*name, open).show(ui, |ui| {
-            ui.label(egui::RichText::new("from").color(TEXT_MUTED).small());
+            ui.label(egui::RichText::new("from").color(muted(ui)).small());
             ui.label(
                 egui::RichText::new(*addr)
                     .monospace()
-                    .color(egui_widgets::theme::TEXT_SECONDARY)
+                    .color(crate::secondary(ui))
                     .size(10.0),
             );
             ui.add_space(4.0);

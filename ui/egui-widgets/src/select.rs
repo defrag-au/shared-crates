@@ -36,9 +36,9 @@
 //! box shape is a different control with different affordances — react-select
 //! ships both for the same reason.
 
-use egui::{Align, Color32, Layout, Margin, Sense, Ui, vec2};
+use egui::{Align, Color32, Layout, Sense, Ui, vec2};
 
-use crate::icons::install_phosphor_font;
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 use crate::{PhosphorIcon, theme};
 
 /// One row in the menu.
@@ -47,6 +47,12 @@ pub struct SelectOption {
     pub id: String,
     pub label: String,
     /// Leading dot — a Discord role colour, a status, a series tint.
+    ///
+    /// Stays `Option<Color32>` rather than becoming an [`crate::theme::Ink`]:
+    /// this is **content**, not chrome. The colour belongs to the row's
+    /// underlying thing (the role's own brand hex, decoded upstream), so there is
+    /// no theme token it could defer to and nothing for a theme switch to say
+    /// about it. `None` means the row has no swatch.
     pub swatch: Option<Color32>,
     /// Second line, muted. Kept short; this is a menu, not a table.
     pub subtitle: Option<String>,
@@ -248,7 +254,7 @@ impl<'a> Select<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> SelectResponse {
-        install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
         let mut out = SelectResponse::default();
         // The control's parts are affordances, not copyable text — selectable
         // labels put an I-beam over the click target and fight it.
@@ -291,15 +297,15 @@ impl<'a> Select<'a> {
         let mut edit_response = None;
 
         let frame = egui::Frame::new()
-            .fill(theme::BG_SECONDARY)
-            .corner_radius(6.0)
+            .fill(ui.tokens().color.bg_secondary)
+            .corner_radius(ui.tokens().corner(Radius::Md))
             // The border IS the state indicator, as a focus ring is on the web.
             .stroke(theme::hairline(if open {
-                theme::ACCENT
+                ui.tokens().color.accent
             } else {
-                theme::BORDER
+                ui.tokens().color.border
             }))
-            .inner_margin(Margin::symmetric(8, 4))
+            .inner_margin(ui.tokens().margin_xy(Space::Md, Space::Sm))
             .show(ui, |ui| {
                 ui.set_width(self.width);
                 ui.horizontal(|ui| {
@@ -326,26 +332,30 @@ impl<'a> Select<'a> {
                                             .map(|v| v.label.clone())
                                             .unwrap_or_else(|| self.placeholder.to_string()),
                                     )
-                                    .text_color(theme::TEXT_PRIMARY);
+                                    .text_color(ui.tokens().color.text_primary);
                                 edit_response = Some(ui.add(edit));
                             } else {
                                 match &self.value {
                                     Some(value) => {
                                         if let Some(color) = value.swatch {
                                             ui.label(
-                                                egui::RichText::new("●").color(color).size(11.0),
+                                                egui::RichText::new("●")
+                                                    .color(color)
+                                                    .size(ui.text_size(TextSize::Base)),
                                             );
                                         }
                                         if value.warning.is_some() {
                                             ui.label(
-                                                PhosphorIcon::Warning
-                                                    .rich_text(12.0, theme::ACCENT_YELLOW),
+                                                PhosphorIcon::Warning.rich_text(
+                                                    12.0,
+                                                    ui.tokens().color.accent_yellow,
+                                                ),
                                             );
                                         }
                                         let text = egui::RichText::new(&value.label).color(
                                             match value.warning {
-                                                Some(_) => theme::ACCENT_YELLOW,
-                                                None => theme::TEXT_PRIMARY,
+                                                Some(_) => ui.tokens().color.accent_yellow,
+                                                None => ui.tokens().color.text_primary,
                                             },
                                         );
                                         // `truncate`, not wrap: a long value
@@ -361,7 +371,10 @@ impl<'a> Select<'a> {
                                     // reliable signal that a field is empty
                                     // rather than holding a short value.
                                     None => {
-                                        ui.colored_label(theme::TEXT_MUTED, self.placeholder);
+                                        ui.colored_label(
+                                            ui.tokens().color.text_muted,
+                                            self.placeholder,
+                                        );
                                     }
                                 }
                             }
@@ -370,14 +383,16 @@ impl<'a> Select<'a> {
 
                     // Indicators, packed from the right.
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(PhosphorIcon::CaretDown.rich_text(12.0, theme::TEXT_MUTED));
+                        ui.label(
+                            PhosphorIcon::CaretDown.rich_text(12.0, ui.tokens().color.text_muted),
+                        );
                         // The hairline that makes the chevron read as part of
                         // the control rather than a button parked next to it.
                         let (sep, _) = ui
                             .allocate_exact_size(vec2(9.0, CONTROL_HEIGHT - 14.0), Sense::hover());
                         ui.painter().line_segment(
                             [sep.center_top(), sep.center_bottom()],
-                            theme::hairline(theme::BORDER),
+                            theme::hairline(ui.tokens().color.border),
                         );
                         if self.clearable && self.value.is_some() {
                             // Hover, not click — the control's `interact`
@@ -386,7 +401,7 @@ impl<'a> Select<'a> {
                             // the click. Same routing as MultiSelect's chips.
                             let clear = ui
                                 .add(egui::Label::new(
-                                    PhosphorIcon::X.rich_text(11.0, theme::TEXT_MUTED),
+                                    PhosphorIcon::X.rich_text(11.0, ui.tokens().color.text_muted),
                                 ))
                                 .on_hover_text("clear");
                             hovered_clear = clear.hovered();
@@ -462,16 +477,16 @@ impl<'a> Select<'a> {
                 .show(ui.ctx(), |ui| {
                     ui.style_mut().interaction.selectable_labels = false;
                     egui::Frame::new()
-                        .fill(theme::BG_SECONDARY)
-                        .corner_radius(6.0)
-                        .stroke(theme::hairline(theme::BORDER))
-                        .inner_margin(Margin::same(4))
+                        .fill(ui.tokens().color.bg_secondary)
+                        .corner_radius(ui.tokens().corner(Radius::Md))
+                        .stroke(theme::hairline(ui.tokens().color.border))
+                        .inner_margin(ui.tokens().margin(Space::Sm))
                         .show(ui, |ui| {
                             ui.set_width(control_rect.width());
                             if filtered.is_empty() {
-                                ui.add_space(4.0);
-                                ui.colored_label(theme::TEXT_MUTED, self.empty_text);
-                                ui.add_space(4.0);
+                                ui.gap(Space::Sm);
+                                ui.colored_label(ui.tokens().color.text_muted, self.empty_text);
+                                ui.gap(Space::Sm);
                                 return None;
                             }
                             let mut picked = None;
@@ -599,7 +614,7 @@ impl<'a> MultiSelect<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> MultiSelectResponse {
-        install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
         let mut out = MultiSelectResponse::default();
         ui.style_mut().interaction.selectable_labels = false;
 
@@ -645,20 +660,20 @@ impl<'a> MultiSelect<'a> {
         let mut hovered_remove: Option<usize> = None;
 
         let frame = egui::Frame::new()
-            .fill(theme::BG_SECONDARY)
-            .corner_radius(6.0)
+            .fill(ui.tokens().color.bg_secondary)
+            .corner_radius(ui.tokens().corner(Radius::Md))
             .stroke(theme::hairline(if open {
-                theme::ACCENT
+                ui.tokens().color.accent
             } else {
-                theme::BORDER
+                ui.tokens().color.border
             }))
-            .inner_margin(Margin::symmetric(6, 4))
+            .inner_margin(ui.tokens().margin_xy(Space::Base, Space::Sm))
             .show(ui, |ui| {
                 ui.set_width(self.width);
                 // `horizontal_wrapped`, not `horizontal`: a control holding
                 // eight chips has to grow downwards rather than off the edge.
                 ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = vec2(4.0, 4.0);
+                    ui.spacing_mut().item_spacing = egui::Vec2::splat(ui.space(Space::Sm));
                     ui.set_min_height(CONTROL_HEIGHT - 8.0);
 
                     for (index, id) in self.selected.iter().enumerate() {
@@ -683,10 +698,10 @@ impl<'a> MultiSelect<'a> {
                             } else {
                                 ""
                             })
-                            .text_color(theme::TEXT_PRIMARY);
+                            .text_color(ui.tokens().color.text_primary);
                         edit_response = Some(ui.add(edit));
                     } else if self.selected.is_empty() {
-                        ui.colored_label(theme::TEXT_MUTED, self.placeholder);
+                        ui.colored_label(ui.tokens().color.text_muted, self.placeholder);
                     }
                 });
             });
@@ -765,16 +780,16 @@ impl<'a> MultiSelect<'a> {
                 .show(ui.ctx(), |ui| {
                     ui.style_mut().interaction.selectable_labels = false;
                     egui::Frame::new()
-                        .fill(theme::BG_SECONDARY)
-                        .corner_radius(6.0)
-                        .stroke(theme::hairline(theme::BORDER))
-                        .inner_margin(Margin::same(4))
+                        .fill(ui.tokens().color.bg_secondary)
+                        .corner_radius(ui.tokens().corner(Radius::Md))
+                        .stroke(theme::hairline(ui.tokens().color.border))
+                        .inner_margin(ui.tokens().margin(Space::Sm))
                         .show(ui, |ui| {
                             ui.set_width(control_rect.width());
                             if available.is_empty() && create.is_none() {
-                                ui.add_space(4.0);
-                                ui.colored_label(theme::TEXT_MUTED, self.empty_text);
-                                ui.add_space(4.0);
+                                ui.gap(Space::Sm);
+                                ui.colored_label(ui.tokens().color.text_muted, self.empty_text);
+                                ui.gap(Space::Sm);
                                 return None;
                             }
                             let mut picked = None;
@@ -830,7 +845,7 @@ impl<'a> MultiSelect<'a> {
                         egui::Label::new(
                             egui::RichText::new("clear all")
                                 .small()
-                                .color(theme::TEXT_MUTED),
+                                .color(ui.tokens().color.text_muted),
                         )
                         .sense(Sense::click()),
                     )
@@ -859,11 +874,11 @@ impl<'a> MultiSelect<'a> {
 /// `known` is false for a selected id with no matching option, which renders
 /// warning-tinted rather than vanishing.
 fn chip(ui: &mut Ui, label: &str, swatch: Option<Color32>, known: bool) -> bool {
-    let font = egui::FontId::proportional(12.0);
+    let font = egui::FontId::proportional(ui.text_size(TextSize::Md));
     let fg = if known {
-        theme::TEXT_PRIMARY
+        ui.tokens().color.text_primary
     } else {
-        theme::ACCENT_YELLOW
+        ui.tokens().color.accent_yellow
     };
     // Chips are elided too, at a generous cap: one pathological tag should
     // not make a chip wider than the control it sits in.
@@ -873,7 +888,8 @@ fn chip(ui: &mut Ui, label: &str, swatch: Option<Color32>, known: bool) -> bool 
     // `hover`, not `click` — see the doc comment: the control takes the click.
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
 
-    ui.painter().rect_filled(rect, 3.0, theme::BG_HIGHLIGHT);
+    ui.painter()
+        .rect_filled(rect, 3.0, ui.tokens().color.bg_highlight);
     // A hairline so a chip reads as an object against the control's own fill;
     // without it the two greys blur into one another and the chips look like
     // text that happens to be shaded.
@@ -881,9 +897,9 @@ fn chip(ui: &mut Ui, label: &str, swatch: Option<Color32>, known: bool) -> bool 
         rect,
         3.0,
         theme::hairline(if known {
-            theme::BORDER
+            ui.tokens().color.border
         } else {
-            theme::ACCENT_YELLOW
+            ui.tokens().color.accent_yellow
         }),
         egui::StrokeKind::Inside,
     );
@@ -912,9 +928,9 @@ fn chip(ui: &mut Ui, label: &str, swatch: Option<Color32>, known: bool) -> bool 
         PhosphorIcon::X.as_str(),
         egui::FontId::new(10.0, crate::icons::phosphor_family()),
         if x_hovered {
-            theme::ERROR
+            ui.tokens().color.error
         } else {
-            theme::TEXT_MUTED
+            ui.tokens().color.text_muted
         },
     );
     if x_hovered {
@@ -970,7 +986,8 @@ fn menu_row(ui: &mut Ui, option: &SelectOption, highlighted: bool, selected: boo
 
     let hovered = response.hovered();
     if hovered || highlighted {
-        ui.painter().rect_filled(rect, 4.0, theme::BG_HIGHLIGHT);
+        ui.painter()
+            .rect_filled(rect, 4.0, ui.tokens().color.bg_highlight);
     }
     if hovered {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -984,7 +1001,7 @@ fn menu_row(ui: &mut Ui, option: &SelectOption, highlighted: bool, selected: boo
             egui::Align2::LEFT_CENTER,
             PhosphorIcon::Check.as_str(),
             egui::FontId::new(12.0, crate::icons::phosphor_family()),
-            theme::ACCENT,
+            ui.tokens().color.accent,
         );
     }
     let mut cursor = rect.min.x + 26.0;
@@ -1004,24 +1021,27 @@ fn menu_row(ui: &mut Ui, option: &SelectOption, highlighted: bool, selected: boo
     let label = elided_line(
         ui,
         &option.label,
-        egui::FontId::proportional(13.0),
-        theme::TEXT_PRIMARY,
+        egui::FontId::proportional(ui.text_size(TextSize::Lg)),
+        ui.tokens().color.text_primary,
         text_width,
     );
-    ui.painter()
-        .galley(egui::pos2(cursor, text_top), label, theme::TEXT_PRIMARY);
+    ui.painter().galley(
+        egui::pos2(cursor, text_top),
+        label,
+        ui.tokens().color.text_primary,
+    );
     if let Some(subtitle) = &option.subtitle {
         let subtitle = elided_line(
             ui,
             subtitle,
-            egui::FontId::proportional(11.0),
-            theme::TEXT_MUTED,
+            egui::FontId::proportional(ui.text_size(TextSize::Base)),
+            ui.tokens().color.text_muted,
             text_width,
         );
         ui.painter().galley(
             egui::pos2(cursor, rect.min.y + 22.0),
             subtitle,
-            theme::TEXT_MUTED,
+            ui.tokens().color.text_muted,
         );
     }
 

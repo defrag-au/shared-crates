@@ -7,7 +7,7 @@
 //! not-income, and a reconciliation that can be checked against the wallet's
 //! real balance.
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 use egui_widgets::{FlowLedger, FlowRow, PartyBasis};
 
 const CH_OFFRAMP: egui::Color32 = egui::Color32::from_rgb(0x5b, 0x8f, 0xd6);
@@ -19,14 +19,18 @@ fn ada(v: i128) -> String {
 }
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Flow Ledger").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Flow Ledger")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "A wallet's movements in time order — net amounts only, with a running balance and \
              a channel colour per row. The rows below are real: the Mekka reward wallet, \
              May–June 2026.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -122,7 +126,7 @@ pub fn show(ui: &mut egui::Ui) {
              remaining inflow is the custodial-withdrawal channel (orange). That change is the \
              finding — and it is invisible in a total.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.label(
@@ -131,7 +135,7 @@ pub fn show(ui: &mut egui::Ui) {
              a fortnight earlier, returned less two fees. Gross inflow still reports it; \
              genuine inflow does not.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 
@@ -142,13 +146,13 @@ pub fn show(ui: &mut egui::Ui) {
                 "clicked row {i} — tx {}",
                 rows[i].tx_id.unwrap_or("(none)")
             ))
-            .color(ACCENT)
+            .color(accent(ui))
             .small(),
         );
     } else {
         ui.label(
             egui::RichText::new("Click a row — the host opens the transaction.")
-                .color(TEXT_MUTED)
+                .color(muted(ui))
                 .small(),
         );
     }

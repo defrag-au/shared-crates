@@ -86,17 +86,14 @@
 //! if let Some(party) = resp.walk { follow_the_money(party); }
 //! ```
 
-use egui::{
-    Align, Color32, CornerRadius, FontId, Frame, Layout, Margin, Response, RichText, Sense, Ui,
-    Vec2,
-};
+use egui::{Align, Color32, FontId, Frame, Layout, Margin, Response, RichText, Sense, Ui, Vec2};
 
 use crate::chip::{Chip, ChipVariant};
 use crate::icons::PhosphorIcon;
 use crate::image_stack::{ImageStack, StackImage};
 use crate::party_badge::PartyBasis;
 use crate::relative_time::RelativeTime;
-use crate::theme;
+use crate::theme::{self, Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Density
@@ -254,12 +251,14 @@ pub enum Tone {
 }
 
 impl Tone {
-    fn color(self) -> Color32 {
+    /// Takes the theme rather than reading one: a `Tone` is a plain value with no
+    /// `Ui` of its own.
+    fn color(self, t: &theme::Theme) -> Color32 {
         match self {
-            Tone::Positive => theme::SUCCESS,
-            Tone::Negative => theme::ERROR,
-            Tone::Neutral => theme::TEXT_PRIMARY,
-            Tone::Caution => theme::ACCENT_ORANGE,
+            Tone::Positive => t.color.success,
+            Tone::Negative => t.color.error,
+            Tone::Neutral => t.color.text_primary,
+            Tone::Caution => t.color.accent_orange,
         }
     }
 }
@@ -630,14 +629,14 @@ impl<'a> TxCard<'a> {
         let mut filtered = None;
 
         let stroke = match self.selected {
-            true => theme::stroke(1.0, theme::ACCENT),
-            false => theme::hairline(theme::BORDER),
+            true => theme::stroke(1.0, ui.tokens().color.accent),
+            false => theme::hairline(ui.tokens().color.border),
         };
 
         let inner = Frame::new()
-            .fill(theme::BG_SECONDARY)
+            .fill(ui.tokens().color.bg_secondary)
             .stroke(stroke)
-            .corner_radius(CornerRadius::same(8))
+            .corner_radius(ui.tokens().corner(Radius::Lg))
             .inner_margin(Margin::same(d.padding()))
             .show(ui, |ui| {
                 // FULL WIDTH, ALWAYS. A `Frame` shrinks to its content, so a
@@ -713,7 +712,7 @@ impl<'a> TxCard<'a> {
                                 ui.label(
                                     RichText::new(self.data.kicker)
                                         .size(d.kicker_size())
-                                        .color(theme::TEXT_MUTED),
+                                        .color(ui.tokens().color.text_muted),
                                 );
                                 headline(ui, &self.data.headline, d);
                                 let r = text_column(
@@ -773,7 +772,7 @@ fn text_column(
         ui.label(
             RichText::new(subject)
                 .size(d.subject_size())
-                .color(theme::TEXT_PRIMARY)
+                .color(ui.tokens().color.text_primary)
                 .strong(),
         );
     }
@@ -794,12 +793,12 @@ fn text_column(
         TxEdit::Tight => {}
         TxEdit::Full => {
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 5.0;
+                ui.set_item_gap_x(Space::Base);
                 relative_time(ui, data.when, now, d.body_size());
                 ui.label(
                     RichText::new(format!("· {}", iso_utc(data.when)))
                         .size(d.body_size())
-                        .color(theme::TEXT_MUTED),
+                        .color(ui.tokens().color.text_muted),
                 );
             });
         }
@@ -812,7 +811,7 @@ fn text_column(
             ui.label(
                 RichText::new(caution)
                     .size(d.body_size())
-                    .color(theme::ACCENT_ORANGE),
+                    .color(ui.tokens().color.accent_orange),
             );
             None
         }
@@ -825,7 +824,7 @@ fn text_column(
             ui.label(
                 RichText::new(footnote)
                     .size(d.body_size())
-                    .color(theme::TEXT_MUTED),
+                    .color(ui.tokens().color.text_muted),
             );
         }
         (TxEdit::Tight, _) | (TxEdit::Full, None) => {}
@@ -835,19 +834,19 @@ fn text_column(
     // row — putting them first is what made the old layout a tag soup with the
     // verdict hidden inside it.
     if !data.tags.is_empty() || caution_in_chip_row.is_some() {
-        ui.add_space(3.0);
+        ui.gap(Space::Sm);
         ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+            ui.set_item_gap_x(Space::Sm);
             // The caution LEADS the row when it is here: it changes the
             // reading, and the chips only refine it.
             if let Some(caution) = caution_in_chip_row {
                 ui.label(
                     RichText::new(caution)
                         .size(d.body_size())
-                        .color(theme::ACCENT_ORANGE),
+                        .color(ui.tokens().color.accent_orange),
                 );
                 if !data.tags.is_empty() {
-                    ui.add_space(4.0);
+                    ui.gap(Space::Sm);
                 }
             }
             for (label, variant) in &data.tags {
@@ -880,7 +879,7 @@ fn party_clause(
     let size = d.body_size();
 
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing.x = 5.0;
+        ui.set_item_gap_x(Space::Base);
         match view {
             TxViewpoint::Wallet { who, verb, other } => {
                 let (w, dp) = party(ui, who, size, walkable, walking);
@@ -889,7 +888,7 @@ fn party_clause(
                 ui.label(
                     RichText::new(verb.phrase())
                         .size(size)
-                        .color(theme::TEXT_MUTED),
+                        .color(ui.tokens().color.text_muted),
                 );
                 let (w, dp) = party(ui, other, size, walkable, walking);
                 walk = walk.take().or(w);
@@ -913,7 +912,7 @@ fn party_clause(
                     RichText::new(text)
                         .size(size)
                         .italics()
-                        .color(theme::TEXT_MUTED),
+                        .color(ui.tokens().color.text_muted),
                 )
                 .on_hover_text(
                     "A batched fill or a bulk transfer: more than one party on a side, so \
@@ -927,7 +926,7 @@ fn party_clause(
                 deepen |= dp;
                 // WORDS OR AN ICON, never a raw `→`: the arrow codepoint is not
                 // in the default face and renders as tofu.
-                ui.label(PhosphorIcon::ArrowRight.rich_text(size, theme::TEXT_MUTED));
+                ui.label(PhosphorIcon::ArrowRight.rich_text(size, ui.tokens().color.text_muted));
                 let (w, dp) = party(ui, to, size, walkable, walking);
                 walk = walk.take().or(w);
                 deepen |= dp;
@@ -940,7 +939,11 @@ fn party_clause(
         }
         // `$boef bought from $elchapojr · 1h ago` — the tight edit's time.
         if let Some((when, now)) = inline_time {
-            ui.label(RichText::new("·").size(size).color(theme::TEXT_MUTED));
+            ui.label(
+                RichText::new("·")
+                    .size(size)
+                    .color(ui.tokens().color.text_muted),
+            );
             relative_time(ui, when, now, size);
         }
     });
@@ -950,7 +953,9 @@ fn party_clause(
 
 /// The relative age — `1h ago` — with a pinned "now" for stories.
 fn relative_time(ui: &mut Ui, when: i64, now: Option<i64>, size: f32) {
-    let mut rel = RelativeTime::new(when).size(size).color(theme::TEXT_MUTED);
+    let mut rel = RelativeTime::new(when)
+        .size(size)
+        .color(ui.tokens().color.text_muted);
     if let Some(now) = now {
         rel = rel.now(now);
     }
@@ -976,7 +981,7 @@ fn party(
             // and says nothing. The basis is kept as INFORMATION, on the hover,
             // where it costs nothing and is there when somebody asks.
             let resp = ui
-                .link(RichText::new(*label).size(size).color(theme::ACCENT))
+                .link(RichText::new(*label).size(size).color(ui.tokens().color.accent))
                 .on_hover_text(match basis {
                     PartyBasis::Observed => "Resolved from the chain.".to_string(),
                     PartyBasis::Derived => {
@@ -1013,7 +1018,7 @@ fn party(
                         RichText::new("source below floor")
                             .size(size)
                             .italics()
-                            .color(theme::TEXT_MUTED.gamma_multiply(a / 200.0)),
+                            .color(ui.tokens().color.text_muted.gamma_multiply(a / 200.0)),
                     );
                     (None, false)
                 }
@@ -1022,7 +1027,7 @@ fn party(
                         RichText::new("source below floor — reach further back")
                             .size(size)
                             .italics()
-                            .color(theme::ACCENT),
+                            .color(ui.tokens().color.accent),
                     );
                     (None, r.clicked())
                 }
@@ -1041,7 +1046,7 @@ fn party(
                 RichText::new(text)
                     .size(size)
                     .italics()
-                    .color(theme::TEXT_MUTED),
+                    .color(ui.tokens().color.text_muted),
             )
             .on_hover_text(
                 "A batched fill has several parties on a side. Walking deeper does not \
@@ -1099,10 +1104,10 @@ fn headline_width(ui: &Ui, h: &TxHeadline<'_>, d: TxDensity) -> f32 {
 
 fn headline(ui: &mut Ui, h: &TxHeadline<'_>, d: TxDensity) {
     let size = d.headline_size();
-    let colour = h.tone.color();
+    let colour = h.tone.color(&ui.tokens());
 
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
+        ui.set_item_gap_x(Space::Base);
         ui.label(RichText::new(h.value).size(size).color(colour).strong());
         if let Some(q) = h.qualifier {
             // Sized against the BODY, not against the headline: a qualifier
@@ -1111,7 +1116,7 @@ fn headline(ui: &mut Ui, h: &TxHeadline<'_>, d: TxDensity) {
             ui.label(
                 RichText::new(q)
                     .size(d.body_size())
-                    .color(theme::TEXT_MUTED),
+                    .color(ui.tokens().color.text_muted),
             );
         }
     });
@@ -1158,12 +1163,15 @@ fn paint_prints(ui: &mut Ui, prints: &[TxPrint<'_>], d: TxDensity) {
 fn paint_mark(ui: &mut Ui, image_url: Option<&str>, label: &str, d: TxDensity) {
     let size = d.art_size();
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
-    ui.painter()
-        .rect_filled(rect, CornerRadius::same(6), theme::BG_HIGHLIGHT);
+    ui.painter().rect_filled(
+        rect,
+        ui.tokens().corner(Radius::Md),
+        ui.tokens().color.bg_highlight,
+    );
     match image_url {
         Some(url) => {
             egui::Image::new(url)
-                .corner_radius(CornerRadius::same(6))
+                .corner_radius(ui.tokens().corner(Radius::Md))
                 .paint_at(ui, rect);
         }
         None => {
@@ -1173,7 +1181,7 @@ fn paint_mark(ui: &mut Ui, image_url: Option<&str>, label: &str, d: TxDensity) {
                     egui::Align2::CENTER_CENTER,
                     ch.to_uppercase().to_string(),
                     FontId::proportional(size * 0.45),
-                    theme::TEXT_MUTED,
+                    ui.tokens().color.text_muted,
                 );
             }
         }

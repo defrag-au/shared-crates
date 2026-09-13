@@ -16,11 +16,11 @@
 //! The vertical layout is mobile-friendly — your offer sits near the bottom
 //! of the screen, close to your thumbs.
 
-use egui::{Color32, CornerRadius, RichText, Vec2};
+use egui::{Color32, RichText, Vec2};
 
 use crate::icons::PhosphorIcon;
 use crate::offer_slot::{self, OfferSlotConfig, OfferSlotData};
-use crate::theme;
+use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 
 // ============================================================================
 // Types
@@ -132,7 +132,7 @@ pub fn show(
     lock_state: &LockState,
     config: &TradeTableConfig,
 ) -> TradeTableResponse {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
 
     let mut action = None;
     let you_locked = lock_state.you_locked;
@@ -144,19 +144,24 @@ pub fn show(
     };
 
     // ── Their offer (top) ──────────────────────────────────────────────
-    draw_offer_heading(ui, &config.their_heading, theme::ACCENT_CYAN, they_locked);
+    draw_offer_heading(
+        ui,
+        &config.their_heading,
+        ui.tokens().color.accent_cyan,
+        they_locked,
+    );
 
     if *peer_state == PeerState::WaitingForPeer {
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
         ui.horizontal(|ui| {
             ui.spinner();
             ui.label(
                 RichText::new("Waiting for peer...")
-                    .color(theme::TEXT_MUTED)
-                    .size(10.0),
+                    .color(ui.tokens().color.text_muted)
+                    .size(ui.text_size(TextSize::Sm)),
             );
         });
-        ui.add_space(12.0);
+        ui.gap(Space::Xl);
     } else {
         draw_card_row(
             ui,
@@ -177,12 +182,17 @@ pub fn show(
     }
 
     // ── Divider ────────────────────────────────────────────────────────
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
     draw_divider(ui, lock_state);
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 
     // ── Your offer (bottom) ────────────────────────────────────────────
-    draw_offer_heading(ui, &config.your_heading, theme::ACCENT_GREEN, you_locked);
+    draw_offer_heading(
+        ui,
+        &config.your_heading,
+        ui.tokens().color.accent_green,
+        you_locked,
+    );
 
     draw_card_row(
         ui,
@@ -210,7 +220,7 @@ pub fn show(
     );
 
     // ── Lock/Unlock button ─────────────────────────────────────────────
-    ui.add_space(8.0);
+    ui.gap(Space::Md);
     draw_lock_button(ui, lock_state, &mut action);
 
     TradeTableResponse { action }
@@ -222,12 +232,17 @@ pub fn show(
 
 fn draw_offer_heading(ui: &mut egui::Ui, heading: &str, color: Color32, locked: bool) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new(heading).color(color).size(11.0).strong());
+        ui.label(
+            RichText::new(heading)
+                .color(color)
+                .size(ui.text_size(TextSize::Base))
+                .strong(),
+        );
         if locked {
-            ui.label(PhosphorIcon::Lock.rich_text(11.0, theme::ACCENT_YELLOW));
+            ui.label(PhosphorIcon::Lock.rich_text(11.0, ui.tokens().color.accent_yellow));
         }
     });
-    ui.add_space(4.0);
+    ui.gap(Space::Sm);
 }
 
 fn draw_divider(ui: &mut egui::Ui, lock_state: &LockState) {
@@ -239,9 +254,9 @@ fn draw_divider(ui: &mut egui::Ui, lock_state: &LockState) {
 
     // Line color reflects state
     let line_color = if lock_state.both_locked() {
-        theme::ACCENT_GREEN
+        ui.tokens().color.accent_green
     } else {
-        theme::BG_HIGHLIGHT
+        ui.tokens().color.bg_highlight
     };
 
     painter.line_segment(
@@ -254,13 +269,13 @@ fn draw_divider(ui: &mut egui::Ui, lock_state: &LockState) {
 
     // Center icon: handshake when both locked, arrows otherwise
     let (icon, icon_color) = if lock_state.both_locked() {
-        (PhosphorIcon::Handshake, theme::ACCENT_GREEN)
+        (PhosphorIcon::Handshake, ui.tokens().color.accent_green)
     } else {
-        (PhosphorIcon::ArrowsDownUp, theme::TEXT_MUTED)
+        (PhosphorIcon::ArrowsDownUp, ui.tokens().color.text_muted)
     };
 
     // Background circle so icon doesn't sit on the line
-    painter.circle_filled(divider_rect.center(), 12.0, theme::BG_PRIMARY);
+    painter.circle_filled(divider_rect.center(), 12.0, ui.tokens().color.bg_primary);
     icon.paint(
         painter,
         divider_rect.center(),
@@ -278,17 +293,21 @@ fn draw_lock_button(
     if lock_state.both_locked() {
         // Both locked — show status, offer unlock
         ui.horizontal(|ui| {
-            ui.label(PhosphorIcon::CheckCircle.rich_text(14.0, theme::ACCENT_GREEN));
+            ui.label(PhosphorIcon::CheckCircle.rich_text(14.0, ui.tokens().color.accent_green));
             ui.label(
                 RichText::new("Both sides locked — ready to sign")
-                    .color(theme::ACCENT_GREEN)
-                    .size(10.0),
+                    .color(ui.tokens().color.accent_green)
+                    .size(ui.text_size(TextSize::Sm)),
             );
             if ui
                 .add(
-                    egui::Button::new(RichText::new("Unlock").color(theme::TEXT_MUTED).size(10.0))
-                        .fill(theme::BG_SECONDARY)
-                        .corner_radius(CornerRadius::same(4)),
+                    egui::Button::new(
+                        RichText::new("Unlock")
+                            .color(ui.tokens().color.text_muted)
+                            .size(ui.text_size(TextSize::Sm)),
+                    )
+                    .fill(ui.tokens().color.bg_secondary)
+                    .corner_radius(ui.tokens().corner(Radius::Base)),
                 )
                 .clicked()
             {
@@ -298,17 +317,21 @@ fn draw_lock_button(
     } else if lock_state.you_locked {
         // You locked, waiting for them
         ui.horizontal(|ui| {
-            ui.label(PhosphorIcon::Lock.rich_text(14.0, theme::ACCENT_YELLOW));
+            ui.label(PhosphorIcon::Lock.rich_text(14.0, ui.tokens().color.accent_yellow));
             ui.label(
                 RichText::new("Your offer is locked — waiting for peer")
-                    .color(theme::ACCENT_YELLOW)
-                    .size(10.0),
+                    .color(ui.tokens().color.accent_yellow)
+                    .size(ui.text_size(TextSize::Sm)),
             );
             if ui
                 .add(
-                    egui::Button::new(RichText::new("Unlock").color(theme::TEXT_MUTED).size(10.0))
-                        .fill(theme::BG_SECONDARY)
-                        .corner_radius(CornerRadius::same(4)),
+                    egui::Button::new(
+                        RichText::new("Unlock")
+                            .color(ui.tokens().color.text_muted)
+                            .size(ui.text_size(TextSize::Sm)),
+                    )
+                    .fill(ui.tokens().color.bg_secondary)
+                    .corner_radius(ui.tokens().corner(Radius::Base)),
                 )
                 .clicked()
             {
@@ -318,19 +341,19 @@ fn draw_lock_button(
     } else {
         // Not locked — show prominent lock button
         let (label, btn_color) = if lock_state.they_locked {
-            ("Lock Offer to Proceed", theme::ACCENT_GREEN)
+            ("Lock Offer to Proceed", ui.tokens().color.accent_green)
         } else {
-            ("Lock Offer", theme::ACCENT_CYAN)
+            ("Lock Offer", ui.tokens().color.accent_cyan)
         };
 
         let btn = egui::Button::new(
             RichText::new(label)
-                .color(theme::BG_PRIMARY)
-                .size(12.0)
+                .color(ui.tokens().color.bg_primary)
+                .size(ui.text_size(TextSize::Md))
                 .strong(),
         )
         .fill(btn_color)
-        .corner_radius(CornerRadius::same(6))
+        .corner_radius(ui.tokens().corner(Radius::Md))
         .min_size(egui::Vec2::new(180.0, 36.0));
 
         if ui.add(btn).clicked() {
@@ -414,7 +437,7 @@ fn draw_card_row(
                 }
             }
         });
-        ui.add_space(4.0);
+        ui.gap(Space::Sm);
         card_idx = row_end;
     }
 
@@ -422,8 +445,8 @@ fn draw_card_row(
     if !is_local && assets.is_empty() && lovelace == 0 {
         ui.label(
             RichText::new("No assets offered yet")
-                .color(theme::TEXT_MUTED)
-                .size(10.0),
+                .color(ui.tokens().color.text_muted)
+                .size(ui.text_size(TextSize::Sm)),
         );
     }
 }

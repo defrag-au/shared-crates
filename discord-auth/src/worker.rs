@@ -19,7 +19,7 @@
 //!    (`#session=<jwt>`) — fragments aren't sent to servers, so the token
 //!    doesn't leak into logs.
 
-use authorizations::{mint_token, SessionClaims};
+use authorizations::{SessionClaims, mint_token};
 use std::collections::HashMap;
 use worker_stack::worker::*;
 

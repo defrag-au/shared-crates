@@ -2,7 +2,7 @@
 name = "wfc"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Wave Function Collapse solver for procedural generation"
 
 [dependencies]

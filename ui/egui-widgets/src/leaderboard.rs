@@ -19,7 +19,9 @@
 //! renders as a tofu box. The podium is conveyed with colour instead (see
 //! `tests/no_broken_glyphs.rs`, which enforces this).
 
-use egui::{Align, Color32, CornerRadius, Layout, Rect, RichText, Sense, Stroke, Ui, Vec2};
+use egui::{Align, Color32, Layout, Rect, RichText, Sense, Stroke, Ui, Vec2};
+
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 /// A supporting stat shown after the headline value (e.g. `12` / `assets`).
 #[derive(Clone, Debug, Default)]
@@ -88,15 +90,17 @@ pub struct LeaderboardConfig {
     pub prize_size: f32,
     /// Thickness of the share bar strip.
     pub bar_height: f32,
-    pub bar_color: Color32,
-    pub bar_color_viewer: Color32,
+    pub bar_color: Ink,
+    pub bar_color_viewer: Ink,
     /// Track behind the bar, so a short bar still reads as "out of a whole".
-    pub bar_track_color: Color32,
-    pub text_primary: Color32,
-    pub text_muted: Color32,
-    pub value_color: Color32,
-    /// Podium colours for ranks 1, 2 and 3.
-    pub podium_colors: [Color32; 3],
+    pub bar_track_color: Ink,
+    pub text_primary: Ink,
+    pub text_muted: Ink,
+    pub value_color: Ink,
+    /// Podium colours for ranks 1, 2 and 3. Gold / silver / bronze is a
+    /// convention readers already know, so the *order* is fixed; which gold is
+    /// the theme's.
+    pub podium_colors: [Ink; 3],
     /// Message when there are no rows.
     pub empty_text: String,
 }
@@ -109,19 +113,19 @@ impl Default for LeaderboardConfig {
             rank_width: 26.0,
             prize_size: 24.0,
             bar_height: 2.0,
-            bar_color: Color32::from_rgb(122, 162, 247),
-            bar_color_viewer: Color32::from_rgb(158, 206, 106),
-            // NB unmultiplied: `from_rgba_premultiplied` expects RGB already
-            // scaled by alpha, so passing full-brightness channels with a low
-            // alpha renders near-opaque instead of as a tint.
-            bar_track_color: Color32::from_rgba_unmultiplied(122, 162, 247, 26),
-            text_primary: Color32::from_rgb(192, 202, 245),
-            text_muted: Color32::from_rgb(86, 95, 137),
-            value_color: Color32::from_rgb(125, 207, 255),
+            bar_color: Ink::Token(Token::Accent),
+            bar_color_viewer: Ink::Token(Token::Success),
+            // NB `Ink::Wash`, not `from_rgba_premultiplied`: the latter expects
+            // RGB already scaled by alpha, so passing full-brightness channels
+            // with a low alpha renders near-opaque instead of as a tint.
+            bar_track_color: Ink::Wash(Token::Accent, 26),
+            text_primary: Ink::Token(Token::TextPrimary),
+            text_muted: Ink::Token(Token::TextMuted),
+            value_color: Ink::Token(Token::AccentCyan),
             podium_colors: [
-                Color32::from_rgb(224, 175, 104), // gold
-                Color32::from_rgb(169, 177, 214), // silver
-                Color32::from_rgb(191, 130, 90),  // bronze
+                Ink::Token(Token::AccentYellow),
+                Ink::Token(Token::TextSecondary),
+                Ink::Token(Token::AccentOrange),
             ],
             empty_text: "No entries".to_string(),
         }
@@ -135,11 +139,41 @@ pub enum LeaderboardAction {
     RowClicked(usize),
 }
 
+/// The config's colours, resolved against a theme.
+///
+/// Resolved once per frame rather than at each call site: the config's fields
+/// are [`Ink`]s, and resolving them eight times in a row loop is both noise and
+/// an invitation to resolve one against a different theme.
+struct Palette {
+    bar: Color32,
+    bar_viewer: Color32,
+    bar_track: Color32,
+    text_primary: Color32,
+    text_muted: Color32,
+    value: Color32,
+    podium: [Color32; 3],
+}
+
+impl LeaderboardConfig {
+    fn palette(&self, ui: &Ui) -> Palette {
+        let t = ui.tokens();
+        Palette {
+            bar: self.bar_color.resolve(&t),
+            bar_viewer: self.bar_color_viewer.resolve(&t),
+            bar_track: self.bar_track_color.resolve(&t),
+            text_primary: self.text_primary.resolve(&t),
+            text_muted: self.text_muted.resolve(&t),
+            value: self.value_color.resolve(&t),
+            podium: self.podium_colors.map(|ink| ink.resolve(&t)),
+        }
+    }
+}
+
 /// Rank colour: podium tint for the top three, muted otherwise.
-fn rank_color(rank: usize, config: &LeaderboardConfig) -> Color32 {
-    match (config.podium_tint, rank) {
-        (true, 1..=3) => config.podium_colors[rank - 1],
-        _ => config.text_muted,
+fn rank_color(rank: usize, podium_tint: bool, p: &Palette) -> Color32 {
+    match (podium_tint, rank) {
+        (true, 1..=3) => p.podium[rank - 1],
+        _ => p.text_muted,
     }
 }
 
@@ -153,20 +187,21 @@ pub fn show(
     rows: &[LeaderboardRow],
     config: &LeaderboardConfig,
 ) -> Option<LeaderboardAction> {
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
+    let p = config.palette(ui);
 
     if rows.is_empty() {
         ui.label(
             RichText::new(&config.empty_text)
-                .color(config.text_muted)
-                .size(10.0),
+                .color(p.text_muted)
+                .size(ui.text_size(TextSize::Sm)),
         );
         return None;
     }
 
-    let value_font = egui::FontId::monospace(12.0);
-    let stat_font = egui::FontId::proportional(10.0);
-    let name_font = egui::FontId::proportional(12.0);
+    let value_font = egui::FontId::monospace(ui.text_size(TextSize::Md));
+    let stat_font = egui::FontId::proportional(ui.text_size(TextSize::Sm));
+    let name_font = egui::FontId::proportional(ui.text_size(TextSize::Md));
 
     // Measure every column across every row FIRST. Right-aligning each row
     // independently makes the decimal points wander, which is what makes a
@@ -212,14 +247,17 @@ pub fn show(
         if response.hovered() {
             // A whisper of white: the row should lift off the background, not
             // become a white block that inverts every colour on it.
-            ui.painter()
-                .rect_filled(rect, CornerRadius::same(3), Color32::from_white_alpha(6));
+            ui.painter().rect_filled(
+                rect,
+                ui.tokens().corner(Radius::Sm),
+                Color32::from_white_alpha(6),
+            );
         }
         if row.is_viewer {
             ui.painter().rect_stroke(
                 rect,
-                CornerRadius::same(3),
-                Stroke::new(1.0_f32, config.bar_color_viewer),
+                ui.tokens().corner(Radius::Sm),
+                Stroke::new(1.0_f32, p.bar_viewer),
                 egui::StrokeKind::Inside,
             );
         }
@@ -234,7 +272,7 @@ pub fn show(
             } else {
                 11.0
             }),
-            rank_color(row.rank, config),
+            rank_color(row.rank, config.podium_tint, &p),
         );
 
         // Prize thumbnail.
@@ -271,7 +309,7 @@ pub fn show(
             egui::Align2::LEFT_CENTER,
             &row.name,
             name_font.clone(),
-            config.text_primary,
+            p.text_primary,
         );
 
         // Stats right-to-left in fixed columns, then the value column.
@@ -283,7 +321,7 @@ pub fn show(
                     egui::Align2::RIGHT_CENTER,
                     stat.text(),
                     stat_font.clone(),
-                    config.text_muted,
+                    p.text_muted,
                 );
             }
             x -= width + COL_GAP;
@@ -293,7 +331,7 @@ pub fn show(
             egui::Align2::RIGHT_CENTER,
             &row.value,
             value_font.clone(),
-            config.value_color,
+            p.value,
         );
 
         // Share bar: a thin strip along the bottom, over a faint full-width
@@ -304,7 +342,7 @@ pub fn show(
             Vec2::new(text_rect.width() - 12.0, config.bar_height),
         );
         ui.painter()
-            .rect_filled(track, CornerRadius::same(1), config.bar_track_color);
+            .rect_filled(track, ui.tokens().corner(Radius::Xs), p.bar_track);
         let share = row.share.clamp(0.0, 1.0);
         if share > 0.0 {
             let fill = Rect::from_min_size(
@@ -313,12 +351,8 @@ pub fn show(
             );
             ui.painter().rect_filled(
                 fill,
-                CornerRadius::same(1),
-                if row.is_viewer {
-                    config.bar_color_viewer
-                } else {
-                    config.bar_color
-                },
+                ui.tokens().corner(Radius::Xs),
+                if row.is_viewer { p.bar_viewer } else { p.bar },
             );
         }
 
@@ -359,16 +393,21 @@ pub fn shares(values: &[u64]) -> Vec<f32> {
 /// Header row matching the widget's column layout — optional, but keeps a
 /// standalone leaderboard legible about what the number means.
 pub fn header(ui: &mut Ui, name_label: &str, value_label: &str, config: &LeaderboardConfig) {
+    let p = config.palette(ui);
     ui.horizontal(|ui| {
         ui.spacing_mut().interact_size.y = 0.0;
         ui.add_space(config.rank_width);
-        ui.label(RichText::new(name_label).color(config.text_muted).size(9.0));
+        ui.label(
+            RichText::new(name_label)
+                .color(p.text_muted)
+                .size(ui.text_size(TextSize::Xs)),
+        );
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.add_space(6.0);
+            ui.gap(Space::Base);
             ui.label(
                 RichText::new(value_label)
-                    .color(config.text_muted)
-                    .size(9.0),
+                    .color(p.text_muted)
+                    .size(ui.text_size(TextSize::Xs)),
             );
         });
     });
@@ -386,17 +425,21 @@ mod tests {
         assert!(shares(&[]).is_empty());
     }
 
+    /// The rule is unchanged — top three take the podium, everything else is
+    /// muted. What changed is where the colours come from: the config's fields
+    /// are `Option`s now, so the assertions read them off the resolved
+    /// [`Palette`] instead of off the config. Same claim, same floors, one
+    /// `Ui` to resolve against.
     #[test]
     fn podium_tint_applies_to_the_top_three_only() {
-        let config = LeaderboardConfig::default();
-        assert_eq!(rank_color(1, &config), config.podium_colors[0]);
-        assert_eq!(rank_color(3, &config), config.podium_colors[2]);
-        assert_eq!(rank_color(4, &config), config.text_muted);
-        // Disabled: every rank reads as an ordinary row.
-        let plain = LeaderboardConfig {
-            podium_tint: false,
-            ..Default::default()
-        };
-        assert_eq!(rank_color(1, &plain), plain.text_muted);
+        egui::__run_test_ui(|ui| {
+            let config = LeaderboardConfig::default();
+            let p = config.palette(ui);
+            assert_eq!(rank_color(1, config.podium_tint, &p), p.podium[0]);
+            assert_eq!(rank_color(3, config.podium_tint, &p), p.podium[2]);
+            assert_eq!(rank_color(4, config.podium_tint, &p), p.text_muted);
+            // Disabled: every rank reads as an ordinary row.
+            assert_eq!(rank_color(1, false, &p), p.text_muted);
+        });
     }
 }

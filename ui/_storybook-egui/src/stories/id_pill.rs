@@ -1,10 +1,10 @@
 //! `IdPill` storybook story.
 
-use crate::{ACCENT, TEXT_MUTED};
-use egui_widgets::{id_pill_stacked_width_for, IdPill, IdPillLayout};
+use crate::{accent, muted};
+use egui_widgets::{IdPill, IdPillLayout, id_pill_stacked_width_for};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("IdPill").color(ACCENT).strong());
+    ui.label(egui::RichText::new("IdPill").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Truncated identifier + copy button. The recurring \
@@ -12,7 +12,7 @@ pub fn show(ui: &mut egui::Ui) {
              wallet addresses, deposit addresses, tx hashes. Hover the value \
              to see the full string in a tooltip.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -20,7 +20,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── Stacked (default) ──────────────────────────────────────────────
     ui.label(
         egui::RichText::new("Stacked — default")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -31,7 +31,7 @@ pub fn show(ui: &mut egui::Ui) {
              Best for standalone display stacks (the typical policy / wallet / \
              stake / tx group on a dashboard).",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -60,7 +60,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── Stacked, constrained ───────────────────────────────────────────
     ui.label(
         egui::RichText::new("Stacked — constrained width")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -68,7 +68,7 @@ pub fn show(ui: &mut egui::Ui) {
             "Wrap the pill in a narrow container and it auto-elides without any \
              extra config. The width budget is what the parent hands the frame.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -79,7 +79,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(16.0);
 
     // ── Inline ─────────────────────────────────────────────────────────
-    ui.label(egui::RichText::new("Inline").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Inline").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Single-row compact shape: `label  value [Copy]`, no frame. \
@@ -88,7 +88,7 @@ pub fn show(ui: &mut egui::Ui) {
              header). `label_min_width` reserves a column so a vertical stack of \
              Inline pills aligns its values.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -118,7 +118,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── No label / short value ─────────────────────────────────────────
     ui.label(
         egui::RichText::new("No label, short value, no copy")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -127,7 +127,7 @@ pub fn show(ui: &mut egui::Ui) {
              verbatim (no truncation needed). `copyable(false)` suppresses the copy \
              button for read-only contexts.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -140,7 +140,7 @@ pub fn show(ui: &mut egui::Ui) {
     // ── Pre-truncated value (host-provided) ────────────────────────────
     ui.label(
         egui::RichText::new("Host-provided truncation")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -149,7 +149,7 @@ pub fn show(ui: &mut egui::Ui) {
              a row VM) pass it via `with_short`. The full value still goes to \
              the clipboard on copy.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);

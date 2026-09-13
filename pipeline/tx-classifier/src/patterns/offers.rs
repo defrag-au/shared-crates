@@ -9,10 +9,10 @@
 use pipeline_types::OperationPayload;
 
 use super::{PatternContext, PatternDetectionResult};
-use crate::registry::{
-    lookup_address, AddressCategory, Marketplace, MarketplacePurpose, ScriptCategory,
-};
 use crate::TxType;
+use crate::registry::{
+    AddressCategory, Marketplace, MarketplacePurpose, ScriptCategory, lookup_address,
+};
 use crate::*;
 
 /// Key: (policy_id, encoded_asset_name, marketplace, offer_amount_lovelace)
@@ -40,26 +40,25 @@ fn detect_create_offer_with_enrichment(context: &PatternContext) -> Vec<(TxType,
             && matches!(op.payload, OperationPayload::Lovelace { .. })
         {
             // Check if this is going to a known offer address
-            if let Some(output) = &op.output {
-                if let Some(AddressCategory::Script(ScriptCategory::Marketplace {
+            if let Some(output) = &op.output
+                && let Some(AddressCategory::Script(ScriptCategory::Marketplace {
                     purpose: MarketplacePurpose::Offer,
                     ..
                 })) = lookup_address(&output.address)
-                {
-                    let offer_amount = op.amount();
-                    let (policy_id, encoded_asset_name) =
-                        extract_asset_info_from_context(context, &output.address);
-                    let bidder = op.seller(); // The one locking ADA is the bidder
+            {
+                let offer_amount = op.amount();
+                let (policy_id, encoded_asset_name) =
+                    extract_asset_info_from_context(context, &output.address);
+                let bidder = op.seller(); // The one locking ADA is the bidder
 
-                    let key = (
-                        policy_id.clone(),
-                        encoded_asset_name.clone(),
-                        output.address.clone(),
-                        offer_amount,
-                    );
-                    let entry = offer_groups.entry(key).or_insert((0, bidder));
-                    entry.0 += 1; // Increment offer count
-                }
+                let key = (
+                    policy_id.clone(),
+                    encoded_asset_name.clone(),
+                    output.address.clone(),
+                    offer_amount,
+                );
+                let entry = offer_groups.entry(key).or_insert((0, bidder));
+                entry.0 += 1; // Increment offer count
             }
         }
     }
@@ -95,42 +94,36 @@ fn extract_asset_info_from_context(
     // For offer creation, check output datums first (new offers being created)
     #[allow(deprecated)]
     for output in &context.raw_tx_data.outputs {
-        if output.address == offer_address {
-            if let Some(datum) = &output.datum {
-                if let Some((policy_id, asset_name)) =
-                    super::sales::try_schema_driven_asset_extraction(datum, &output.address)
-                {
-                    return (policy_id, asset_name);
-                }
-            }
+        if output.address == offer_address
+            && let Some(datum) = &output.datum
+            && let Some((policy_id, asset_name)) =
+                super::sales::try_schema_driven_asset_extraction(datum, &output.address)
+        {
+            return (policy_id, asset_name);
         }
     }
 
     // Fallback: check input datums (for updates/cancellations)
     #[allow(deprecated)]
     for input in &context.raw_tx_data.inputs {
-        if input.address == offer_address {
-            if let Some(datum) = &input.datum {
-                if let Some((policy_id, asset_name)) =
-                    super::sales::try_schema_driven_asset_extraction(datum, &input.address)
-                {
-                    return (policy_id, asset_name);
-                }
-            }
+        if input.address == offer_address
+            && let Some(datum) = &input.datum
+            && let Some((policy_id, asset_name)) =
+                super::sales::try_schema_driven_asset_extraction(datum, &input.address)
+        {
+            return (policy_id, asset_name);
         }
     }
 
     // Final fallback: look for policy IDs in any script address datum
     #[allow(deprecated)]
     for input in &context.raw_tx_data.inputs {
-        if lookup_address(&input.address).is_some() {
-            if let Some(datum) = &input.datum {
-                if let Some((policy_id, asset_name)) =
-                    super::sales::try_schema_driven_asset_extraction(datum, &input.address)
-                {
-                    return (policy_id, asset_name);
-                }
-            }
+        if lookup_address(&input.address).is_some()
+            && let Some(datum) = &input.datum
+            && let Some((policy_id, asset_name)) =
+                super::sales::try_schema_driven_asset_extraction(datum, &input.address)
+        {
+            return (policy_id, asset_name);
         }
     }
 
@@ -150,14 +143,14 @@ fn extract_policy_and_asset_from_context(
     // For offer cancellation, check input datums (existing offers being cancelled)
     #[allow(deprecated)]
     for input in &context.raw_tx_data.inputs {
-        if input.address == offer_address {
-            if let Some(datum) = &input.datum {
-                // Try schema-driven extraction
-                if let Some((policy_id, asset_name)) =
-                    super::sales::try_schema_driven_asset_extraction(datum, &input.address)
-                {
-                    return (policy_id, asset_name);
-                }
+        if input.address == offer_address
+            && let Some(datum) = &input.datum
+        {
+            // Try schema-driven extraction
+            if let Some((policy_id, asset_name)) =
+                super::sales::try_schema_driven_asset_extraction(datum, &input.address)
+            {
+                return (policy_id, asset_name);
             }
         }
     }
@@ -172,50 +165,44 @@ fn extract_policy_from_context(context: &PatternContext, offer_address: &str) ->
     // For offer creation, check output datums first (new offers being created)
     #[allow(deprecated)]
     for output in &context.raw_tx_data.outputs {
-        if output.address == offer_address {
-            if let Some(datum) = &output.datum {
-                if let Some((policy_id, _)) =
-                    super::sales::try_schema_driven_asset_extraction(datum, &output.address)
-                {
-                    return policy_id;
-                }
-            }
+        if output.address == offer_address
+            && let Some(datum) = &output.datum
+            && let Some((policy_id, _)) =
+                super::sales::try_schema_driven_asset_extraction(datum, &output.address)
+        {
+            return policy_id;
         }
     }
 
     // Fallback: look at input datums (for updates/cancellations)
     #[allow(deprecated)]
     for input in &context.raw_tx_data.inputs {
-        if input.address == offer_address {
-            if let Some(datum) = &input.datum {
-                if let Some((policy_id, _)) =
-                    super::sales::try_schema_driven_asset_extraction(datum, &input.address)
-                {
-                    return policy_id;
-                }
-            }
+        if input.address == offer_address
+            && let Some(datum) = &input.datum
+            && let Some((policy_id, _)) =
+                super::sales::try_schema_driven_asset_extraction(datum, &input.address)
+        {
+            return policy_id;
         }
     }
 
     // Final fallback: look for policy IDs in any script address datum
     #[allow(deprecated)]
     for input in &context.raw_tx_data.inputs {
-        if lookup_address(&input.address).is_some() {
-            if let Some(datum) = &input.datum {
-                if let Some((policy_id, _)) =
-                    super::sales::try_schema_driven_asset_extraction(datum, &input.address)
-                {
-                    return policy_id;
-                }
-            }
+        if lookup_address(&input.address).is_some()
+            && let Some(datum) = &input.datum
+            && let Some((policy_id, _)) =
+                super::sales::try_schema_driven_asset_extraction(datum, &input.address)
+        {
+            return policy_id;
         }
     }
 
     // Additional fallback: check transaction metadata for policy IDs
-    if let Some(metadata) = &context.raw_tx_data.metadata {
-        if let Some(policy_id) = extract_policy_id_from_metadata(metadata) {
-            return policy_id;
-        }
+    if let Some(metadata) = &context.raw_tx_data.metadata
+        && let Some(policy_id) = extract_policy_id_from_metadata(metadata)
+    {
+        return policy_id;
     }
 
     // Last resort fallback: look for policy IDs in asset operations themselves
@@ -246,7 +233,9 @@ fn detect_offer_update(context: &PatternContext) -> Vec<(TxType, f64)> {
     // Look for offer address interactions where ADA amounts change
     for marketplace in [Marketplace::JpgStore] {
         let offer_address = match marketplace {
-            Marketplace::JpgStore => "addr1xxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tfvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eks2utwdd",
+            Marketplace::JpgStore => {
+                "addr1xxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tfvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eks2utwdd"
+            }
             _ => continue,
         };
 
@@ -264,26 +253,25 @@ fn detect_offer_update(context: &PatternContext) -> Vec<(TxType, f64)> {
                 // Only consider Transfer operations for offer updates
                 // Unlock operations are likely cancellations or funding withdrawal
                 if op.op_type == crate::AssetOpType::Transfer {
-                    if let Some(input) = &op.input {
-                        if input.address == offer_address {
-                            // Get the actual input amount from raw transaction data
-                            if let Some(raw_input) =
-                                context.raw_tx_data.inputs.get(input.idx as usize)
-                            {
-                                offer_inputs.push(raw_input.amount_lovelace);
-                            }
+                    if let Some(input) = &op.input
+                        && input.address == offer_address
+                    {
+                        // Get the actual input amount from raw transaction data
+                        if let Some(raw_input) = context.raw_tx_data.inputs.get(input.idx as usize)
+                        {
+                            offer_inputs.push(raw_input.amount_lovelace);
                         }
                     }
-                    if let Some(output) = &op.output {
-                        if output.address == offer_address {
-                            offer_outputs.push(op.amount());
-                            if bidder.is_empty() {
-                                // The bidder should be the fee-paying user, not the script address
-                                bidder = crate::patterns::utils::identify_fee_paying_address(
-                                    context.raw_tx_data,
-                                )
-                                .unwrap_or_else(|| op.seller());
-                            }
+                    if let Some(output) = &op.output
+                        && output.address == offer_address
+                    {
+                        offer_outputs.push(op.amount());
+                        if bidder.is_empty() {
+                            // The bidder should be the fee-paying user, not the script address
+                            bidder = crate::patterns::utils::identify_fee_paying_address(
+                                context.raw_tx_data,
+                            )
+                            .unwrap_or_else(|| op.seller());
                         }
                     }
                 }
@@ -337,44 +325,40 @@ fn detect_offer_cancel(context: &PatternContext) -> Vec<(TxType, f64)> {
     {
         if op.op_type == AssetOpType::Unlock
             && matches!(op.payload, OperationPayload::Lovelace { .. })
+            && let Some(input) = &op.input
+            && let Some(AddressCategory::Script(ScriptCategory::Marketplace {
+                purpose: MarketplacePurpose::Offer,
+                ..
+            })) = lookup_address(&input.address)
         {
-            if let Some(input) = &op.input {
-                if let Some(AddressCategory::Script(ScriptCategory::Marketplace {
-                    purpose: MarketplacePurpose::Offer,
-                    ..
-                })) = lookup_address(&input.address)
-                {
-                    // Check if there are any meaningful asset transfers in this transaction
-                    let has_asset_transfers = context.asset_operations.iter().any(|asset_op| {
-                        matches!(
-                            asset_op.classification,
-                            crate::OperationClassification::Genuine
-                        ) && asset_op.is_native_token()
-                            && asset_op.op_type == AssetOpType::Transfer
-                    });
+            // Check if there are any meaningful asset transfers in this transaction
+            let has_asset_transfers = context.asset_operations.iter().any(|asset_op| {
+                matches!(
+                    asset_op.classification,
+                    crate::OperationClassification::Genuine
+                ) && asset_op.is_native_token()
+                    && asset_op.op_type == AssetOpType::Transfer
+            });
 
-                    if !has_asset_transfers {
-                        // Extract both policy ID and asset name from the cancellation context
-                        let (policy_id, encoded_asset_name) =
-                            extract_policy_and_asset_from_context(context, &input.address);
+            if !has_asset_transfers {
+                // Extract both policy ID and asset name from the cancellation context
+                let (policy_id, encoded_asset_name) =
+                    extract_policy_and_asset_from_context(context, &input.address);
 
-                        // Count the number of offers in the datum to determine offer_count
-                        let offer_count =
-                            count_offers_in_datum(context, &input.address, &policy_id);
+                // Count the number of offers in the datum to determine offer_count
+                let offer_count = count_offers_in_datum(context, &input.address, &policy_id);
 
-                        results.push((
-                            TxType::OfferCancel {
-                                policy_id,
-                                encoded_asset_name,
-                                offer_count,
-                                total_cancelled_lovelace: op.amount(),
-                                bidder: op.buyer(), // The one receiving the ADA back
-                                marketplace: input.address.clone(),
-                            },
-                            0.90,
-                        ));
-                    }
-                }
+                results.push((
+                    TxType::OfferCancel {
+                        policy_id,
+                        encoded_asset_name,
+                        offer_count,
+                        total_cancelled_lovelace: op.amount(),
+                        bidder: op.buyer(), // The one receiving the ADA back
+                        marketplace: input.address.clone(),
+                    },
+                    0.90,
+                ));
             }
         }
     }
@@ -395,11 +379,11 @@ fn count_offers_in_datum(context: &PatternContext, offer_address: &str, policy_i
     // Count across ALL inputs with the offer address (there can be multiple offer UTXOs)
     #[allow(deprecated)]
     for input in &context.raw_tx_data.inputs {
-        if input.address == offer_address {
-            if let Some(transactions::TxDatum::Json { json, .. }) = &input.datum {
-                let count = count_policy_id_as_map_keys(json, policy_id, 0);
-                total_count += count;
-            }
+        if input.address == offer_address
+            && let Some(transactions::TxDatum::Json { json, .. }) = &input.datum
+        {
+            let count = count_policy_id_as_map_keys(json, policy_id, 0);
+            total_count += count;
         }
     }
 
@@ -421,12 +405,11 @@ fn count_policy_id_as_map_keys(value: &serde_json::Value, policy_id: &str, depth
                 // Process map entries, looking for our specific policy ID as keys
                 for entry in map_entries {
                     if let serde_json::Value::Object(entry_obj) = entry {
-                        if let Some(k_obj) = entry_obj.get("k") {
-                            if let Some(serde_json::Value::String(bytes_str)) = k_obj.get("bytes") {
-                                if bytes_str == policy_id {
-                                    count += 1;
-                                }
-                            }
+                        if let Some(k_obj) = entry_obj.get("k")
+                            && let Some(serde_json::Value::String(bytes_str)) = k_obj.get("bytes")
+                            && bytes_str == policy_id
+                        {
+                            count += 1;
                         }
                         // Also recursively check the value part
                         if let Some(v_obj) = entry_obj.get("v") {
@@ -532,15 +515,23 @@ pub fn detect_offer_accepts(context: &PatternContext) -> Vec<(TxType, f64)> {
                                         datum,
                                         &input.address,
                                     );
-                                debug!("Offer acceptance pricing: UTXO amount={} lovelace, schema pricing={:?}",
-                                       raw_input.amount_lovelace, datum_pricing);
+                                debug!(
+                                    "Offer acceptance pricing: UTXO amount={} lovelace, schema pricing={:?}",
+                                    raw_input.amount_lovelace, datum_pricing
+                                );
                                 if let Some(pricing) = datum_pricing {
                                     let datum_price = pricing.total_price_lovelace;
                                     if datum_price > raw_input.amount_lovelace {
-                                        debug!("Using datum price {} lovelace over UTXO amount {} lovelace", datum_price, raw_input.amount_lovelace);
+                                        debug!(
+                                            "Using datum price {} lovelace over UTXO amount {} lovelace",
+                                            datum_price, raw_input.amount_lovelace
+                                        );
                                         datum_price // Use extracted price if it's higher (includes all payouts)
                                     } else {
-                                        debug!("Using UTXO amount {} lovelace over datum price {} lovelace", raw_input.amount_lovelace, datum_price);
+                                        debug!(
+                                            "Using UTXO amount {} lovelace over datum price {} lovelace",
+                                            raw_input.amount_lovelace, datum_price
+                                        );
                                         raw_input.amount_lovelace // Fallback to UTXO amount
                                     }
                                 } else {

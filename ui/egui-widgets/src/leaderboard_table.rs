@@ -32,10 +32,10 @@
 //!     .show(ui);
 //! ```
 
-use egui::{Color32, RichText, Ui};
+use egui::{RichText, Ui};
 use egui_extras::{Column, TableBuilder};
 
-use crate::theme;
+use crate::theme::{Ink, Space, SpaceExt, ThemeExt, Token};
 use crate::{Chip, ChipVariant, PhosphorIcon};
 
 /// One ranked row. All display strings are caller-formatted.
@@ -70,7 +70,7 @@ pub struct LeaderboardTable<'a> {
     show_percent: bool,
     row_height: f32,
     header_height: f32,
-    accent_color: Color32,
+    accent_color: Ink,
     id_salt: &'a str,
 }
 
@@ -85,7 +85,7 @@ impl<'a> LeaderboardTable<'a> {
             show_percent: true,
             row_height: 26.0,
             header_height: 22.0,
-            accent_color: theme::ACCENT_CYAN,
+            accent_color: Ink::Token(Token::AccentCyan),
             id_salt: "leaderboard_table",
         }
     }
@@ -116,8 +116,8 @@ impl<'a> LeaderboardTable<'a> {
     }
 
     /// Color used for accent-flagged labels (default cyan).
-    pub fn accent_color(mut self, color: Color32) -> Self {
-        self.accent_color = color;
+    pub fn accent_color(mut self, color: impl Into<Ink>) -> Self {
+        self.accent_color = color.into();
         self
     }
 
@@ -148,25 +148,25 @@ impl<'a> LeaderboardTable<'a> {
             .auto_shrink([false, false])
             .header(self.header_height, |mut header| {
                 header.col(|ui| {
-                    ui.label(muted_header("#"));
+                    ui.label(muted_header_t(ui, "#"));
                 });
                 header.col(|ui| {
-                    ui.label(muted_header(self.label_header));
+                    ui.label(muted_header_t(ui, self.label_header));
                 });
                 if self.show_badge {
                     header.col(|ui| {
-                        ui.label(muted_header("Tag"));
+                        ui.label(muted_header_t(ui, "Tag"));
                     });
                 }
                 header.col(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(muted_header(self.value_header));
+                        ui.label(muted_header_t(ui, self.value_header));
                     });
                 });
                 if self.show_percent {
                     header.col(|ui| {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(muted_header("%"));
+                            ui.label(muted_header_t(ui, "%"));
                         });
                     });
                 }
@@ -178,17 +178,18 @@ impl<'a> LeaderboardTable<'a> {
                         ui.label(
                             RichText::new(format!("{}", r.rank))
                                 .monospace()
-                                .color(theme::TEXT_MUTED),
+                                .color(ui.tokens().color.text_muted),
                         );
                     });
                     row.col(|ui| {
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 4.0;
+                            ui.set_item_gap_x(Space::Sm);
                             // Copy affordance left of the identity — copies the
                             // full address for use in other tooling.
                             if let Some(addr) = &r.copy_value {
                                 let btn = egui::Button::new(
-                                    PhosphorIcon::Copy.rich_text(12.0, theme::TEXT_MUTED),
+                                    PhosphorIcon::Copy
+                                        .rich_text(12.0, ui.tokens().color.text_muted),
                                 )
                                 .frame(false);
                                 if ui.add(btn).on_hover_text("Copy address").clicked() {
@@ -196,9 +197,9 @@ impl<'a> LeaderboardTable<'a> {
                                 }
                             }
                             let color = if r.accent {
-                                self.accent_color
+                                self.accent_color.of(ui)
                             } else {
-                                theme::TEXT_PRIMARY
+                                ui.tokens().color.text_primary
                             };
                             ui.label(RichText::new(&r.label).monospace().color(color));
                         });
@@ -215,7 +216,7 @@ impl<'a> LeaderboardTable<'a> {
                             let resp = ui.label(
                                 RichText::new(&r.value)
                                     .monospace()
-                                    .color(theme::TEXT_PRIMARY),
+                                    .color(ui.tokens().color.text_primary),
                             );
                             if let Some(detail) = &r.value_detail {
                                 resp.on_hover_text(detail);
@@ -230,7 +231,7 @@ impl<'a> LeaderboardTable<'a> {
                                     ui.label(
                                         RichText::new(format!("{:.2}%", r.percent))
                                             .monospace()
-                                            .color(theme::TEXT_SECONDARY),
+                                            .color(ui.tokens().color.text_secondary),
                                     );
                                 },
                             );
@@ -241,6 +242,11 @@ impl<'a> LeaderboardTable<'a> {
     }
 }
 
-fn muted_header(text: &str) -> RichText {
-    RichText::new(text).small().color(theme::TEXT_MUTED)
+fn muted_header(text: &str, t: &crate::theme::Theme) -> RichText {
+    RichText::new(text).small().color(t.color.text_muted)
+}
+
+/// `muted_header` for a call site that has a `Ui` rather than a resolved theme.
+fn muted_header_t(ui: &Ui, text: &str) -> RichText {
+    muted_header(text, &ui.tokens())
 }

@@ -11,8 +11,9 @@
 //! render the same on every frame and the stale-trace threshold can actually
 //! be crossed on demand.
 
-use egui_widgets::conversation_history::{conversation_history, HistoryState, STALE_WAIT_SECS};
-use egui_widgets::theme;
+use egui_widgets::conversation_history::{HistoryState, STALE_WAIT_SECS, conversation_history};
+
+use crate::{accent, muted};
 use gateway_wiring::{ActionTrace, RecentActivity, TraceKind, TraceStep};
 
 /// Pinned "now". Fixtures are offsets from this, so the feed reads the same
@@ -185,7 +186,7 @@ fn fixtures() -> Vec<RecentActivity> {
 pub fn show(ui: &mut egui::Ui, state: &mut ConversationHistoryStory) {
     ui.label(
         egui::RichText::new("Conversation History")
-            .color(theme::ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -195,7 +196,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ConversationHistoryStory) {
              reply was wrong.",
         )
         .small()
-        .color(theme::TEXT_MUTED),
+        .color(muted(ui)),
     );
     ui.add_space(8.0);
 
@@ -225,7 +226,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ConversationHistoryStory) {
         ));
     });
     if !state.last.is_empty() {
-        ui.colored_label(theme::TEXT_MUTED, &state.last);
+        ui.colored_label(muted(ui), &state.last);
     }
     ui.add_space(8.0);
     ui.separator();

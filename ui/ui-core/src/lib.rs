@@ -29,4 +29,4 @@ pub use auth::{AuthContext, AuthState};
 pub use error::WidgetError;
 pub use fetch_state::FetchState;
 pub use runtime::{init_widget, init_widget_with_level};
-pub use token::{decode_token_claims, WidgetClaims};
+pub use token::{WidgetClaims, decode_token_claims};

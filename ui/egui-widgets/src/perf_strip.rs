@@ -80,7 +80,7 @@ use egui::{Color32, Response, RichText, Ui, Vec2};
 use perf_probe::{FrameStats, GaugeSnapshot};
 
 use crate::sparkline::{SparkHoverStyle, Sparkline};
-use crate::theme;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 
 /// How often the strip re-reads the probes and re-formats its labels.
 ///
@@ -382,7 +382,7 @@ impl<'a> PerfStrip<'a> {
             return ui.label(
                 RichText::new("no frames recorded — is `FrameScope::begin()` at the top of `ui`?")
                     .size(TEXT_SIZE)
-                    .color(theme::TEXT_MUTED),
+                    .color(ui.tokens().color.text_muted),
             );
         }
 
@@ -426,10 +426,10 @@ fn readings(ui: &mut Ui, state: &PerfStripState, show_sparkline: bool, o: Orient
     // content height on a phone. Opt out on the REGION — by the time each label
     // is added the row height is already decided.
     ui.spacing_mut().interact_size = Vec2::ZERO;
-    ui.spacing_mut().item_spacing.x = 6.0;
+    ui.set_item_gap_x(Space::Base);
     // A column of 11pt text at the default 6pt line gap reads as a list of
     // unrelated facts; closed up, it reads as one instrument.
-    ui.spacing_mut().item_spacing.y = 1.0;
+    ui.set_item_gap_y(Space::Xs);
     // NOT SELECTABLE. These are readings, not content: they change four times a
     // second, so a drag across them highlights a value that no longer exists by
     // the time the pointer lands, and a stray click-drag over a HUD pinned in a
@@ -443,7 +443,7 @@ fn readings(ui: &mut Ui, state: &PerfStripState, show_sparkline: bool, o: Orient
             .width(SPARK.x)
             .height(SPARK.y)
             .line_width(1.0)
-            .line_color(budget_color(state.stats))
+            .line_color(budget_color(state.stats, &ui.tokens()))
             .bg_color(Color32::TRANSPARENT)
             .show_endpoint(false)
             // Its own tooltip, below, rather than the sparkline's built-in
@@ -457,20 +457,25 @@ fn readings(ui: &mut Ui, state: &PerfStripState, show_sparkline: bool, o: Orient
     atom(
         ui,
         &state.build_text,
-        budget_color(state.stats),
+        budget_color(state.stats, &ui.tokens()),
         &state.build_tip,
     );
     separator(ui, o);
     // Never coloured by a threshold: a low cadence is what an idle reactive UI
     // is SUPPOSED to look like.
-    atom(ui, &state.fps_text, theme::TEXT_SECONDARY, &state.fps_tip);
+    atom(
+        ui,
+        &state.fps_text,
+        ui.tokens().color.text_secondary,
+        &state.fps_tip,
+    );
     separator(ui, o);
     atom(
         ui,
         &state.memory_text,
         match state.memory_bytes {
-            Some(_) => theme::TEXT_SECONDARY,
-            None => theme::TEXT_MUTED,
+            Some(_) => ui.tokens().color.text_secondary,
+            None => ui.tokens().color.text_muted,
         },
         &state.memory_tip,
     );
@@ -478,9 +483,9 @@ fn readings(ui: &mut Ui, state: &PerfStripState, show_sparkline: bool, o: Orient
     for (i, ((name, value), g)) in state.gauge_text.iter().zip(&state.gauges).enumerate() {
         separator(ui, o);
         let count_color = if g.current > 0 {
-            theme::ACCENT_CYAN
+            ui.tokens().color.accent_cyan
         } else {
-            theme::TEXT_MUTED
+            ui.tokens().color.text_muted
         };
         // A gauge whose tooltip is missing is a bug in `reformat`, not a reason
         // to skip the reading — draw it with no hover rather than silently
@@ -493,8 +498,8 @@ fn readings(ui: &mut Ui, state: &PerfStripState, show_sparkline: bool, o: Orient
         // label that never does. They share one tooltip: they are one reading.
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
             ui.spacing_mut().interact_size = Vec2::ZERO;
-            ui.spacing_mut().item_spacing.x = 5.0;
-            atom(ui, name, theme::TEXT_MUTED, tip);
+            ui.set_item_gap_x(Space::Base);
+            atom(ui, name, ui.tokens().color.text_muted, tip);
             atom(ui, value, count_color, tip);
         });
     }
@@ -534,7 +539,7 @@ fn dot(ui: &mut Ui) {
     ui.label(
         RichText::new("·")
             .size(TEXT_SIZE)
-            .color(theme::BORDER)
+            .color(ui.tokens().color.border)
             .monospace(),
     );
 }
@@ -544,11 +549,11 @@ fn dot(ui: &mut Ui) {
 /// The thresholds are on the **p95**, not the median: a view that is fine nine
 /// frames in ten and misses the tenth reads as jank, and a median-coloured
 /// value would call it green throughout.
-fn budget_color(stats: FrameStats) -> Color32 {
+fn budget_color(stats: FrameStats, t: &crate::theme::Theme) -> Color32 {
     match stats.budget_frac() {
-        f if f < 0.5 => theme::SUCCESS,
-        f if f < 1.0 => theme::WARNING,
-        _ => theme::ERROR,
+        f if f < 0.5 => t.color.success,
+        f if f < 1.0 => t.color.warning,
+        _ => t.color.error,
     }
 }
 
@@ -596,9 +601,12 @@ mod tests {
             build_p95_ms: 25.0,
             ..Default::default()
         };
-        assert_eq!(budget_color(cheap), theme::SUCCESS);
-        assert_eq!(budget_color(tight), theme::WARNING);
-        assert_eq!(budget_color(over), theme::ERROR);
+        // Same values the deprecated consts held — see `theme`'s
+        // `the_default_theme_matches_the_palette_this_crate_shipped`.
+        let t = crate::theme::Theme::tokyo_night();
+        assert_eq!(budget_color(cheap, &t), t.color.success);
+        assert_eq!(budget_color(tight, &t), t.color.warning);
+        assert_eq!(budget_color(over, &t), t.color.error);
     }
 
     /// A slow cadence must not be able to colour anything — it is not a fault,
@@ -613,9 +621,10 @@ mod tests {
             fps: 4.0,
             ..Default::default()
         };
+        let t = crate::theme::Theme::tokyo_night();
         assert_eq!(
-            budget_color(idle),
-            theme::SUCCESS,
+            budget_color(idle, &t),
+            t.color.success,
             "4 fps on 1 ms frames is a healthy idle app"
         );
     }

@@ -34,7 +34,7 @@
 
 use egui::{Color32, RichText, Ui};
 
-use crate::theme;
+use crate::theme::{Ink, Radius, Space, SpaceExt, ThemeExt, Token};
 use crate::{Chip, ChipVariant, PhosphorIcon};
 
 /// One selectable row in the dropdown. All display strings are caller-formatted.
@@ -102,7 +102,7 @@ pub struct TypeaheadSearch<'a> {
     empty_text: &'a str,
     max_visible_rows: usize,
     autofocus: bool,
-    accent: Color32,
+    accent: Ink,
 }
 
 impl<'a> TypeaheadSearch<'a> {
@@ -123,7 +123,7 @@ impl<'a> TypeaheadSearch<'a> {
             empty_text: "No matches",
             max_visible_rows: 8,
             autofocus: false,
-            accent: theme::ACCENT_CYAN,
+            accent: Ink::Token(Token::AccentCyan),
         }
     }
 
@@ -152,8 +152,8 @@ impl<'a> TypeaheadSearch<'a> {
     }
 
     /// Accent color for the highlighted row and focus ring (default cyan).
-    pub fn accent(mut self, color: Color32) -> Self {
-        self.accent = color;
+    pub fn accent(mut self, color: impl Into<Ink>) -> Self {
+        self.accent = color.into();
         self
     }
 
@@ -183,13 +183,16 @@ impl<'a> TypeaheadSearch<'a> {
         // ── Input row: magnifier + single-line edit ──────────────────────
         let edit_id = ui.make_persistent_id((self.id_salt, "edit"));
         let te_response = egui::Frame::new()
-            .fill(theme::BG_SECONDARY)
-            .corner_radius(8.0)
-            .inner_margin(egui::Margin::symmetric(10, 8))
+            .fill(ui.tokens().color.bg_secondary)
+            .corner_radius(ui.tokens().corner(Radius::Lg))
+            .inner_margin(ui.tokens().margin_xy(Space::Lg, Space::Md))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(PhosphorIcon::MagnifyingGlass.rich_text(16.0, theme::TEXT_SECONDARY));
-                    ui.add_space(4.0);
+                    ui.label(
+                        PhosphorIcon::MagnifyingGlass
+                            .rich_text(16.0, ui.tokens().color.text_secondary),
+                    );
+                    ui.gap(Space::Sm);
                     // Frameless edit — the surrounding rounded frame is the
                     // visible affordance. (This egui fork's `frame()` takes a
                     // `Frame`, not a bool; an empty frame draws nothing.)
@@ -198,7 +201,7 @@ impl<'a> TypeaheadSearch<'a> {
                         .frame(egui::Frame::default())
                         .desired_width(f32::INFINITY)
                         .hint_text(self.placeholder)
-                        .text_color(theme::TEXT_PRIMARY);
+                        .text_color(ui.tokens().color.text_primary);
                     ui.add(edit)
                 })
                 .inner
@@ -211,27 +214,37 @@ impl<'a> TypeaheadSearch<'a> {
             *self.highlight = 0;
         }
 
-        // Focus once on first appearance, if requested.
+        // Focus on every APPEARANCE, if requested.
+        //
+        // This was a `focused_once` bool that was set and never cleared, so the
+        // field focused the first time it was ever drawn in the session and
+        // never again — a command palette autofocused on its first open and
+        // then made you click into it for the rest of the session.
+        //
+        // Remembering the pass it was last drawn in answers the real question
+        // instead. Drawn last pass means it is still open and the caret belongs
+        // wherever the reader put it; a gap means it went away and came back,
+        // which is an appearance. No coordination with whatever owns the
+        // open/closed flag, so nothing has to remember to reset anything.
         if self.autofocus {
-            let focused_once = ui.make_persistent_id((self.id_salt, "focused_once"));
-            let already = ui
-                .data_mut(|d| d.get_temp::<bool>(focused_once))
-                .unwrap_or(false);
-            if !already {
+            let seen = ui.make_persistent_id((self.id_salt, "last_drawn_pass"));
+            let now = ui.ctx().cumulative_pass_nr();
+            let last = ui.data(|d| d.get_temp::<u64>(seen));
+            if reappeared(last, now) {
                 ui.memory_mut(|m| m.request_focus(edit_id));
-                ui.data_mut(|d| d.insert_temp(focused_once, true));
             }
+            ui.data_mut(|d| d.insert_temp(seen, now));
         }
 
         let len = self.options.len();
         if len == 0 {
             // Non-empty query with no results → a quiet empty state.
             if !self.query.trim().is_empty() {
-                ui.add_space(8.0);
+                ui.gap(Space::Md);
                 ui.label(
                     RichText::new(self.empty_text)
                         .small()
-                        .color(theme::TEXT_MUTED),
+                        .color(ui.tokens().color.text_muted),
                 );
             }
             return out;
@@ -276,17 +289,17 @@ impl<'a> TypeaheadSearch<'a> {
         // `self.highlight` (the one mutated on hover) — `self.row(&mut self)`
         // would otherwise clash with iterating `self.options`.
         let options = self.options;
-        let accent = self.accent;
+        let accent = self.accent.of(ui);
         let id_salt = self.id_salt;
         let max_visible = self.max_visible_rows;
         let highlight = self.highlight;
 
-        ui.add_space(6.0);
+        ui.gap(Space::Base);
         egui::Frame::new()
-            .fill(theme::BG_PRIMARY)
-            .corner_radius(8.0)
-            .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
-            .inner_margin(4.0)
+            .fill(ui.tokens().color.bg_primary)
+            .corner_radius(ui.tokens().corner(Radius::Lg))
+            .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
+            .inner_margin(ui.tokens().margin(Space::Sm))
             .show(ui, |ui| {
                 let max_h = row_height * max_visible as f32;
                 egui::ScrollArea::vertical()
@@ -300,7 +313,7 @@ impl<'a> TypeaheadSearch<'a> {
                         // (no half-clipped last row), and there are no dead
                         // strips between rows where a click hits nothing.
                         // Rows carry their own inner padding.
-                        ui.spacing_mut().item_spacing.y = 0.0;
+                        ui.set_item_gap_y(Space::None);
                         for (i, opt) in options.iter().enumerate() {
                             let resp = row(ui, i == *highlight, opt, row_height, accent);
                             // Hovering moves the highlight so mouse + keyboard
@@ -338,7 +351,8 @@ fn row(
         ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::CLICK);
 
     if highlighted || response.hovered() {
-        ui.painter().rect_filled(rect, 6.0, theme::BG_HIGHLIGHT);
+        ui.painter()
+            .rect_filled(rect, 6.0, ui.tokens().color.bg_highlight);
     }
     if response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -350,26 +364,30 @@ fn row(
             .max_rect(rect.shrink2(egui::vec2(8.0, 4.0)))
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
-    content.spacing_mut().item_spacing.x = 8.0;
+    content.set_item_gap_x(Space::Md);
 
     if let Some(url) = &opt.icon_url {
         content.add(
             egui::Image::new(url)
                 .fit_to_exact_size(egui::vec2(24.0, 24.0))
-                .corner_radius(4.0),
+                .corner_radius(ui.tokens().corner(Radius::Base)),
         );
     }
 
     content.vertical(|ui| {
-        ui.spacing_mut().item_spacing.y = 1.0;
+        ui.set_item_gap_y(Space::Xs);
         let title_color = if highlighted {
             accent
         } else {
-            theme::TEXT_PRIMARY
+            ui.tokens().color.text_primary
         };
         ui.label(RichText::new(&opt.title).color(title_color).strong());
         if let Some(sub) = &opt.subtitle {
-            ui.label(RichText::new(sub).small().color(theme::TEXT_MUTED));
+            ui.label(
+                RichText::new(sub)
+                    .small()
+                    .color(ui.tokens().color.text_muted),
+            );
         }
     });
 
@@ -432,10 +450,41 @@ pub fn filter_options<'a>(
     scored.into_iter().take(limit).map(|(_, _, o)| o).collect()
 }
 
+/// Whether this is a fresh appearance rather than a continuation.
+///
+/// `last_drawn` is the pass the widget was last drawn in. Adjacent passes mean
+/// it never went away; a gap — or nothing at all — means it has just appeared.
+fn reappeared(last_drawn: Option<u64>, now: u64) -> bool {
+    match last_drawn {
+        Some(last) => now.saturating_sub(last) > 1,
+        None => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use egui::pos2;
+
+    #[test]
+    fn autofocus_fires_on_every_appearance_not_just_the_first() {
+        // The bug: a `focused_once` bool, set and never cleared. A command
+        // palette autofocused on its first open of the session and then made
+        // you click into the field every time after.
+        assert!(reappeared(None, 0), "never drawn — an appearance");
+        assert!(reappeared(None, 900), "and still one much later");
+        assert!(reappeared(Some(3), 40), "closed and reopened");
+        assert!(reappeared(Some(0), 2), "even a single missed pass counts");
+    }
+
+    #[test]
+    fn autofocus_leaves_the_caret_alone_while_it_stays_open() {
+        // The other half, and the reason this is not just "focus every pass":
+        // stealing focus on a pass where the reader is already typing would put
+        // the caret back to where egui wants it rather than where they left it.
+        assert!(!reappeared(Some(7), 7), "drawn twice in one pass");
+        assert!(!reappeared(Some(7), 8), "and on consecutive passes");
+    }
 
     fn opt(title: &str) -> TypeaheadOption {
         TypeaheadOption::new(title.to_lowercase(), title)

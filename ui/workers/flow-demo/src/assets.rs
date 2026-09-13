@@ -5,8 +5,8 @@
 
 use crate::types::{Card, CardId};
 pub use cardano_assets::AssetId;
-use rand::seq::SliceRandom;
 use rand::SeedableRng;
+use rand::seq::SliceRandom;
 use serde::Deserialize;
 use worker::*;
 

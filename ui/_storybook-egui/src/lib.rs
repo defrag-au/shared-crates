@@ -1,3 +1,14 @@
+// `#[macro_use]` rather than a `use`: `macro_rules!` macros are textually
+// scoped, so the module has to be declared before the `stories!` invocation in
+// `mod app` below.
+//
+// NOT cfg'd to wasm, deliberately. The app itself is wasm-only, which means a
+// native `cargo test` cannot reach the real registry at all — so the macro's own
+// tests are the only ones that run on the host. Gating the macro too would leave
+// it with no coverage anywhere.
+#[macro_use]
+mod registry;
+
 #[cfg(target_arch = "wasm32")]
 mod stories;
 
@@ -10,323 +21,219 @@ mod app {
     use wasm_bindgen::prelude::*;
 
     use super::stories;
+    use egui_widgets::drawer::{Drawer, DrawerSide};
+    use egui_widgets::viewport::{Breakpoint, PanelMode};
 
     // ========================================================================
     // Story Registry
     // ========================================================================
 
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    pub enum Story {
-        Formatting,
-        Distribution,
-        Marquee,
-        Buttons,
-        ProgressBar,
-        BulletBar,
-        Sparkline,
-        MetricCard,
-        PerfStrip,
-        TokenHistory,
-        TokenKinetic,
-        TokenParticles,
-        StatStrip,
-        SevenSegment,
-        FlipCounter,
-        AsyncData,
-        MeshPlayground,
-        PerspectiveText,
-        TcgCard,
-        PrintingTimeline,
-        AssetCard,
-        RadarChart,
-        RangeBar,
-        PipRow,
-        PriceTimeline,
-        Leaderboard,
-        ListingGrid,
-        FocusList,
-        CardBrowser,
-        IconGallery,
-        WalletButton,
-        TraitFilter,
-        WalletEditor,
-        SwapModal,
-        TraitDelta,
-        CoverageDeltaBar,
-        AssetStrip,
-        TradeTable,
-        SigningStatus,
-        FeeReport,
-        TxEstimate,
-        TradeFlow,
-        WalletAssetPicker,
-        UtxoMap,
-        ManagedWalletUtxos,
-        DistributionWaterfall,
-        // DEX split swap
-        SlippageSelector,
-        AmountInput,
-        SplitAllocationBar,
-        RouteSummary,
-        PoolLiquidity,
-        PriceImpactCurve,
-        VariantSplit,
-        CollectionComposition,
-        // Loan dashboard
-        ExposureBar,
-        DataTable,
-        // Ranked-list dashboards
-        LeaderboardTable,
-        // Mint dashboard
-        SupplyBar,
-        OrderList,
-        // Utility
-        FileUpload,
-        // Media
-        ImageTextEditor,
-        // TX Cart
-        TxCart,
-        // Grouping
-        GroupedSection,
-        OfferTile,
-        CornerAction,
-        // Wallet
-        WalletIdentityHeader,
-        PersonaStrip,
-        FungiblesRow,
-        // Auth / admin
-        MnemonicDisplay,
-        WalletList,
-        CollectionList,
-        // Mint configuration
-        ThemeStates,
-        BackgroundToasts,
-        Skeleton,
-        Chip,
-        PartyBadge,
-        FlowLedger,
-        ActivityFeed,
-        TxCard,
-        ImageStack,
-        ChannelBands,
-        CustodyWalk,
-        ClaimCard,
-        CapitalFlow,
-        CapBand,
-        TimeSpine,
-        TimeSpineDensity,
-        CoverageLanes,
-        FlowMatrix,
-        FlowRing,
-        FlowStave,
-        PartyAnnotator,
-        TagList,
-        TokenMultiselect,
-        TypeaheadSearch,
-        RelationshipEditor,
-        CommandPalette,
-        EventWiring,
-        WiringEditor,
-        ConversationHistory,
-        AgentConfig,
-        Select,
-        UiMachine,
-        NamedGroupList,
-        RarityTargetEditor,
-        PaletteEditor,
-        SlotTable,
-        PropertyList,
-        IdPill,
-        PhaseCard,
-        ButtonGroup,
-        PaneNav,
-        Toast,
-        Timestamp,
-        ErrorNote,
-        Gated,
-        AccessGate,
-        UserBadge,
-        TierLadder,
-        AboutModal,
-        ServiceBanner,
-        QuantityStepper,
-        MintCheckout,
-        Viewport,
-        Drawer,
-        Disclosure,
+    // The `enum`, the sidebar ordering, the group headings and the render
+    // dispatch, from one declaration per story. See `crate::registry` for what
+    // was broken before and why this shape.
+    //
+    // `label()` and `description()` stay hand-written below: they are exhaustive
+    // matches, so the compiler already catches an omission, and moving 129 prose
+    // strings would risk pairing one with the wrong story for no safety gain.
+    stories! {
+        enum Story for StorybookApp;
+
+        group "Primitives" {
+            Formatting => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::formatting::show(ui);
+            Distribution => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::distribution::show(ui, &mut a.distribution_chart);
+            Marquee => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::marquee::show(ui, &mut a.marquee, &mut a.marquee_messages);
+            Buttons => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::buttons::show(ui);
+            ThemeStates => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::theme_states::show(ui);
+            BackgroundToasts => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::background::show(ui);
+            Skeleton => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::skeleton::show(ui);
+            SliderGroup => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::slider_group::show(ui, &mut a.slider_group_state);
+            Chip => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::chip::show(ui);
+            PartyBadge => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::party_badge::show(ui);
+            FlowLedger => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_ledger::show(ui);
+            ActivityFeed => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::activity_feed::show(ui);
+            TxCard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_card::show(ui, &mut a.tx_card_state);
+            ImageStack => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::image_stack::show(ui, &mut a.image_stack_state);
+            ChannelBands => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::channel_bands::show(ui);
+            CustodyWalk => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::custody_walk::show(ui);
+            ClaimCard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::claim_card::show(ui, &mut a.claim_card_state);
+            CapitalFlow => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::capital_flow::show(ui, &mut a.capital_flow_state);
+            CapBand => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::cap_band::show(ui, &mut a.cap_band_state);
+            TimeSpine => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::time_spine::show(ui, &mut a.time_spine_state);
+            TimeSpineDensity => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::time_spine_density::show(ui, &mut a.time_spine_density_state);
+            CoverageLanes => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::coverage_lanes::show(ui, &mut a.coverage_lanes_state);
+            FlowMatrix => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_matrix::show(ui, &mut a.flow_matrix_state);
+            FlowRing => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_ring::show(ui, &mut a.flow_ring_state);
+            FlowStave => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flow_stave::show(ui, &mut a.flow_stave_state);
+            PartyAnnotator => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::party_annotator::show(ui, &mut a.party_annotator_state);
+            TagList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tag_list::show(ui, &mut a.tag_list_state);
+            TokenMultiselect => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_multiselect::show(ui, &mut a.token_multiselect_state);
+            TypeaheadSearch => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::typeahead_search::show(ui);
+            RelationshipEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::relationship_editor::show(ui, &mut a.relationship_editor_state);
+            CommandPalette => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::command_palette::show(ui, &mut a.command_palette_state);
+            EventWiring => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::event_wiring::show(ui, &mut a.event_wiring_state);
+            WiringEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wiring_editor::show(ui, &mut a.wiring_editor_state);
+            ConversationHistory => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::conversation_history::show(ui, &mut a.conversation_history_state);
+            AgentConfig => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::agent_config::show(ui, &mut a.agent_config_state);
+            Select => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::select::show(ui, &mut a.select_state);
+            UiMachine => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::machine::show(ui, &mut a.machine_state);
+            NamedGroupList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::named_group_list::show(ui, &mut a.named_group_list_state);
+            RarityTargetEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::rarity_target_editor::show(ui, &mut a.rarity_target_editor_state);
+            EffectEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::effect_editor::show(ui, &mut a.effect_editor_state);
+            Knob => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::knob::show(ui, &mut a.knob_state);
+            SlotTable => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::slot_table::show(ui, &mut a.slot_table_state);
+            IdPill => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::id_pill::show(ui);
+            PropertyList => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::property_list::show(ui);
+            ButtonGroup => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::button_group::show(ui, &mut a.button_group_state);
+            PaneNav => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::pane_nav::show(ui, &mut a.pane_nav_state);
+            OptionGroup => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::option_group::show(ui, &mut a.option_group_state);
+            Toast => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::toast::show(ui, &mut a.toast_state);
+            Timestamp => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::timestamp::show(ui);
+            ErrorNote => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::error_note::show(ui);
+            Gated => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::gated::show(ui);
+            AccessGate => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::access_gate::show(ui);
+            Viewport => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::viewport::show(ui);
+            Drawer => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::drawer::show(ui);
+            Disclosure => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::disclosure::show(ui, &mut a.disclosure_state);
+            UserBadge => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::user_badge::show(ui);
+            TierLadder => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::tier_ladder::show(ui);
+            AboutModal => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::about_modal::show(ui);
+            ServiceBanner => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::service_banner::show(ui);
+        }
+
+        group "Data Visualization" {
+            ProgressBar => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::progress_bar::show(ui, &mut a.progress_bar_state);
+            BulletBar => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::bullet_bar::show(ui, &mut a.bullet_bar_state);
+            Sparkline => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::sparkline::show(ui, &mut a.sparkline_state);
+            MetricCard => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::metric_card::show(ui);
+            PerfStrip => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::perf_strip::show(ui, &mut a.perf_strip_state);
+            TokenHistory => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_history::show(ui);
+            TokenKinetic => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_kinetic::show(ui);
+            TokenParticles => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_particles::show(ui);
+            StatStrip => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::stat_strip::show(ui);
+            SevenSegment => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::seven_segment::show(ui, &mut a.seven_segment_state);
+            FlipCounter => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flip_counter::show(ui, &mut a.flip_counter_state);
+            AsyncData => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::async_data::show(ui, &mut a.async_data_state);
+            MeshPlayground => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::mesh_playground::show(ui, &mut a.mesh_playground_state);
+            PerspectiveText => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::perspective_text::show(ui, &mut a.perspective_text_state);
+            TcgCard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tcg_card::show(ui, &mut a.tcg_card_state);
+            PrintingTimeline => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::printing_timeline::show(ui, &mut a.printing_timeline_state);
+            AssetCard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::asset_card::show(ui, &mut a.asset_card_state);
+            RadarChart => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::radar_chart::show(ui, &mut a.radar_chart_state);
+            RangeBar => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::range_bar::show(ui, &mut a.range_bar_state);
+            PipRow => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::pip_row::show(ui, &mut a.pip_row_state);
+            PriceTimeline => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::price_timeline::show(ui, &mut a.price_timeline_state);
+            Leaderboard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::leaderboard::show(ui, &mut a.leaderboard_state);
+            FocusList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::focus_list::show(ui, &mut a.focus_list_state);
+            CardBrowser => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::card_browser::show(ui, &mut a.card_browser_state);
+            IconGallery => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::icon_gallery::show(ui, &mut a.icon_gallery_state);
+            TraitFilter => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::trait_filter::show(ui, &mut a.trait_filter_state);
+        }
+
+        // Was TWO groups both named "Wallet", separated in the old ordering by the
+        // Trade Desk run — so the sidebar rendered the heading twice. Merged, with
+        // each former block's order preserved.
+        group "Wallet" {
+            WalletButton => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet::show(ui, &mut a.wallet_btn, &mut a.wallet_connector);
+            WalletEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_editor::show(ui, &mut a.wallet_editor_state);
+            TxFlight => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_flight::show(ui, &mut a.tx_flight_state);
+            StakeSession => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::stake_session::show(ui, &mut a.stake_session_state);
+            ListingComposer => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::listing_composer::show(ui, &mut a.listing_composer_state);
+            UtxoShelf => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::utxo_shelf::show(ui, &mut a.utxo_shelf_state, &mut a.wallet_btn, &mut a.wallet_connector);
+            UtxoMap => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::utxo_map::show(ui, &mut a.utxo_map_state);
+            ManagedWalletUtxos => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::managed_wallet_utxos::show(ui, &mut a.managed_wallet_utxos_state);
+            DistributionWaterfall => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::distribution_waterfall::show(ui, &mut a.distribution_waterfall_state);
+            WalletIdentityHeader => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_identity_header::show(ui, &mut a.wallet_identity_header_state);
+            PersonaStrip => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::persona_strip::show(ui);
+            FungiblesRow => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::fungibles_row::show(ui);
+        }
+
+        group "Swap" {
+            // Wants a `Context` as well as the `Ui`; cloned first because
+            // `ui.ctx()` would hold a borrow across the call.
+            SwapModal => |a: &mut StorybookApp, ui: &mut egui::Ui| {
+                let ctx = ui.ctx().clone();
+                stories::swap::show(&ctx, ui, &mut a.swap_modal, &mut a.swap_progress)
+            };
+        }
+
+        group "Trade Desk" {
+            TraitDelta => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::trait_delta::show(ui);
+            CoverageDeltaBar => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::coverage_delta_bar::show(ui);
+            AssetStrip => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::asset_strip::show(ui, &mut a.asset_strip_state);
+            TradeTable => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::trade_table::show(ui, &mut a.trade_table_state);
+            SigningStatus => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::signing_status::show(ui, &mut a.signing_status_state);
+            FeeReport => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::fee_report::show(ui, &mut a.fee_report_state);
+            TxEstimate => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_estimate::show(ui, &mut a.tx_estimate_state);
+            TradeFlow => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::trade_flow::show(ui, &mut a.trade_flow_state);
+            WalletAssetPicker => |a: &mut StorybookApp, ui: &mut egui::Ui| {
+                let ctx = ui.ctx().clone();
+                stories::wallet_asset_picker::show(&ctx, ui, &mut a.wallet_asset_picker_state)
+            };
+        }
+
+        group "DEX Split Swap" {
+            SlippageSelector => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::slippage_selector::show(ui, &mut a.slippage_selector_state);
+            AmountInput => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::amount_input::show(ui, &mut a.amount_input_state);
+            SplitAllocationBar => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::split_allocation_bar::show(ui);
+            RouteSummary => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::route_summary::show(ui);
+            PoolLiquidity => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::pool_liquidity::show(ui);
+            PriceImpactCurve => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::price_impact_curve::show(ui);
+        }
+
+        group "Collection CSP" {
+            VariantSplit => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::variant_split::show(ui);
+            CollectionComposition => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::collection_composition::show(ui);
+        }
+
+        group "Loan Dashboard" {
+            ExposureBar => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::exposure_bar::show(ui);
+            DataTable => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::data_table::show(ui, &mut a.data_table_state);
+        }
+
+        group "Ranked Lists" {
+            LeaderboardTable => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::leaderboard_table::show(ui);
+        }
+
+        group "Mint Dashboard" {
+            SupplyBar => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::supply_bar::show(ui);
+            OrderList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::order_list::show(ui, &mut a.order_list_state);
+        }
+
+        group "Utility" {
+            FileUpload => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::file_upload::show(ui, &mut a.file_upload_state);
+        }
+
+        group "Media" {
+            ImageTextEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::image_text_editor::show(ui, &mut a.image_text_editor_state);
+        }
+
+        // `ListingGrid` reported "TX Cart" while sitting in the Data-Visualization
+        // run of the old ordering, so it appeared under the wrong heading.
+        group "TX Cart" {
+            ListingGrid => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::listing_grid::show(ui, &mut a.listing_grid_state);
+            TxCart => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_cart::show(ui, &mut a.tx_cart_state);
+        }
+
+        group "Layout" {
+            GroupedSection => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::grouped_section::show(ui);
+            OfferTile => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::offer_tile::show(ui);
+            CornerAction => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::corner_action::show(ui);
+        }
+
+        group "Auth / Admin" {
+            MnemonicDisplay => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::mnemonic_display::show(ui, &mut a.mnemonic_display_state);
+            WalletList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_list::show(ui, &mut a.wallet_list_state);
+            CollectionList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::collection_list::show(ui, &mut a.collection_list_state);
+        }
+
+        group "Mint Configuration" {
+            PhaseCard => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::phase_card::show(ui);
+            QuantityStepper => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::quantity_stepper::show(ui, &mut a.quantity_stepper_state);
+            MintCheckout => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::mint_checkout::show(ui, &mut a.mint_checkout_state);
+        }
     }
 
     impl Story {
-        fn all() -> &'static [Self] {
-            &[
-                // Primitives — foundational composables. Add new
-                // foundation widgets (Chip / IdPill / PropertyList shape)
-                // to this group, not at the end of the list.
-                Self::Formatting,
-                Self::Distribution,
-                Self::Marquee,
-                Self::Buttons,
-                Self::ThemeStates,
-                Self::BackgroundToasts,
-                Self::Skeleton,
-                Self::Chip,
-                Self::PartyBadge,
-                Self::FlowLedger,
-                Self::ActivityFeed,
-                Self::TxCard,
-                Self::ImageStack,
-                Self::ChannelBands,
-                Self::CustodyWalk,
-                Self::ClaimCard,
-                Self::CapitalFlow,
-                Self::CapBand,
-                Self::TimeSpine,
-                Self::TimeSpineDensity,
-                Self::CoverageLanes,
-                Self::FlowMatrix,
-                Self::FlowRing,
-                Self::FlowStave,
-                Self::PartyAnnotator,
-                Self::TagList,
-                Self::TokenMultiselect,
-                Self::TypeaheadSearch,
-                Self::RelationshipEditor,
-                Self::CommandPalette,
-                Self::EventWiring,
-                Self::WiringEditor,
-                Self::ConversationHistory,
-                Self::AgentConfig,
-                Self::Select,
-                Self::UiMachine,
-                Self::NamedGroupList,
-                Self::RarityTargetEditor,
-                Self::PaletteEditor,
-                Self::SlotTable,
-                Self::IdPill,
-                Self::PropertyList,
-                Self::ButtonGroup,
-                Self::PaneNav,
-                Self::Toast,
-                Self::Timestamp,
-                Self::ErrorNote,
-                Self::Gated,
-                Self::AccessGate,
-                Self::Viewport,
-                Self::Drawer,
-                Self::Disclosure,
-                Self::UserBadge,
-                Self::TierLadder,
-                Self::AboutModal,
-                Self::ServiceBanner,
-                Self::ProgressBar,
-                Self::BulletBar,
-                Self::Sparkline,
-                Self::MetricCard,
-                Self::PerfStrip,
-                Self::TokenHistory,
-                Self::TokenKinetic,
-                Self::TokenParticles,
-                Self::StatStrip,
-                Self::SevenSegment,
-                Self::FlipCounter,
-                Self::AsyncData,
-                Self::MeshPlayground,
-                Self::PerspectiveText,
-                Self::TcgCard,
-                Self::PrintingTimeline,
-                Self::AssetCard,
-                Self::RadarChart,
-                Self::RangeBar,
-                Self::PipRow,
-                Self::PriceTimeline,
-                Self::Leaderboard,
-                Self::ListingGrid,
-                Self::FocusList,
-                Self::CardBrowser,
-                Self::IconGallery,
-                Self::WalletButton,
-                Self::WalletEditor,
-                Self::TraitFilter,
-                Self::SwapModal,
-                Self::TraitDelta,
-                Self::CoverageDeltaBar,
-                Self::AssetStrip,
-                Self::TradeTable,
-                Self::SigningStatus,
-                Self::FeeReport,
-                Self::TxEstimate,
-                Self::TradeFlow,
-                Self::WalletAssetPicker,
-                Self::UtxoMap,
-                Self::ManagedWalletUtxos,
-                Self::DistributionWaterfall,
-                // DEX split swap
-                Self::SlippageSelector,
-                Self::AmountInput,
-                Self::SplitAllocationBar,
-                Self::RouteSummary,
-                Self::PoolLiquidity,
-                Self::PriceImpactCurve,
-                Self::VariantSplit,
-                Self::CollectionComposition,
-                // Loan dashboard
-                Self::ExposureBar,
-                Self::DataTable,
-                // Ranked-list dashboards
-                Self::LeaderboardTable,
-                // Mint dashboard
-                Self::SupplyBar,
-                Self::OrderList,
-                // Utility
-                Self::FileUpload,
-                // Media
-                Self::ImageTextEditor,
-                // TX Cart
-                Self::TxCart,
-                // Grouping
-                Self::GroupedSection,
-                Self::OfferTile,
-                Self::CornerAction,
-                // Wallet
-                Self::WalletIdentityHeader,
-                Self::PersonaStrip,
-                Self::FungiblesRow,
-                Self::MnemonicDisplay,
-                Self::WalletList,
-                Self::CollectionList,
-                // Mint configuration
-                Self::PhaseCard,
-                Self::QuantityStepper,
-                Self::MintCheckout,
-            ]
-        }
-
-        /// URL-safe identifier for deep-linking a story: `#/party-badge`.
-        ///
-        /// Derived from the label rather than hand-maintained, so a new story
-        /// is addressable the moment it has a name — one registration site
-        /// fewer to forget.
-        fn slug(&self) -> String {
-            self.label()
-                .to_lowercase()
-                .chars()
-                .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-                .collect::<String>()
-                .split('-')
-                .filter(|p| !p.is_empty())
-                .collect::<Vec<_>>()
-                .join("-")
-        }
-
-        /// Resolve a slug back to a story, ignoring any leading `#` / `#/`.
-        fn from_slug(raw: &str) -> Option<Self> {
-            let want = raw.trim_start_matches('#').trim_start_matches('/');
-            if want.is_empty() {
-                return None;
-            }
-            Self::all().iter().find(|s| s.slug() == want).copied()
-        }
-
         fn label(&self) -> &'static str {
             match self {
                 Self::Formatting => "Formatting",
@@ -368,11 +275,15 @@ mod app {
                 Self::AssetStrip => "Asset Strip",
                 Self::TradeTable => "Trade Table",
                 Self::SigningStatus => "Signing Status",
+                Self::TxFlight => "Tx Flight",
+                Self::StakeSession => "Stake Session",
+                Self::ListingComposer => "Listing Composer",
                 Self::FeeReport => "Fee Report",
                 Self::TxEstimate => "TX Estimate",
                 Self::TradeFlow => "Trade Flow",
                 Self::WalletAssetPicker => "Wallet Asset Picker",
-                Self::UtxoMap => "UTxO Shelf",
+                Self::UtxoShelf => "UTxO Shelf",
+                Self::UtxoMap => "UTxO Map",
                 Self::ManagedWalletUtxos => "Managed Wallet UTxOs",
                 Self::DistributionWaterfall => "Distribution Waterfall",
                 Self::SlippageSelector => "Slippage Selector",
@@ -403,6 +314,7 @@ mod app {
                 Self::ThemeStates => "Theme States",
                 Self::BackgroundToasts => "Background Toasts",
                 Self::Skeleton => "Skeleton",
+                Self::SliderGroup => "Slider Group",
                 Self::Chip => "Chip",
                 Self::PartyBadge => "Party Badge",
                 Self::FlowLedger => "Flow Ledger",
@@ -434,7 +346,8 @@ mod app {
                 Self::UiMachine => "Machine",
                 Self::NamedGroupList => "Named Group List",
                 Self::RarityTargetEditor => "Rarity Target Editor",
-                Self::PaletteEditor => "Palette Editor",
+                Self::EffectEditor => "Effect Editor",
+                Self::Knob => "Knob (prototype)",
                 Self::SlotTable => "Slot Table",
                 Self::PropertyList => "Property List",
                 Self::IdPill => "ID Pill",
@@ -452,148 +365,49 @@ mod app {
                 Self::PhaseCard => "Phase Card",
                 Self::ButtonGroup => "Button Group",
                 Self::PaneNav => "Pane Nav",
+                Self::OptionGroup => "Option Group",
                 Self::Toast => "Toast",
                 Self::QuantityStepper => "Quantity Stepper",
                 Self::MintCheckout => "Mint Checkout",
             }
         }
 
-        fn category(&self) -> &'static str {
-            match self {
-                Self::Formatting
-                | Self::Distribution
-                | Self::Marquee
-                | Self::Buttons
-                | Self::ThemeStates
-                | Self::BackgroundToasts
-                | Self::Skeleton
-                | Self::Chip
-                | Self::PartyBadge
-                | Self::FlowLedger
-                | Self::ActivityFeed
-                | Self::TxCard
-                | Self::ImageStack
-                | Self::ChannelBands
-                | Self::CustodyWalk
-                | Self::ClaimCard
-                | Self::CapitalFlow
-                | Self::CapBand
-                | Self::TimeSpine
-                | Self::TimeSpineDensity
-                | Self::CoverageLanes
-                | Self::FlowMatrix
-                | Self::FlowRing
-                | Self::FlowStave
-                | Self::PartyAnnotator
-                | Self::TagList
-                | Self::TokenMultiselect
-                | Self::TypeaheadSearch
-                | Self::RelationshipEditor
-                | Self::CommandPalette
-                | Self::EventWiring
-                | Self::WiringEditor
-                | Self::ConversationHistory
-                | Self::AgentConfig
-                | Self::Select
-                | Self::UiMachine
-                | Self::NamedGroupList
-                | Self::RarityTargetEditor
-                | Self::PaletteEditor
-                | Self::SlotTable
-                | Self::Timestamp
-                | Self::ErrorNote
-                | Self::Gated
-                | Self::AccessGate
-                | Self::Viewport
-                | Self::Drawer
-                | Self::Disclosure
-                | Self::UserBadge
-                | Self::TierLadder
-                | Self::AboutModal
-                | Self::ServiceBanner
-                | Self::IdPill
-                | Self::PropertyList
-                | Self::ButtonGroup
-                | Self::PaneNav
-                | Self::Toast => "Primitives",
-                Self::ProgressBar
-                | Self::BulletBar
-                | Self::Sparkline
-                | Self::MetricCard
-                | Self::PerfStrip
-                | Self::TokenHistory
-                | Self::TokenKinetic
-                | Self::TokenParticles
-                | Self::StatStrip
-                | Self::SevenSegment
-                | Self::FlipCounter
-                | Self::AsyncData
-                | Self::MeshPlayground
-                | Self::PerspectiveText
-                | Self::TcgCard
-                | Self::PrintingTimeline
-                | Self::AssetCard
-                | Self::RadarChart
-                | Self::RangeBar
-                | Self::PipRow
-                | Self::PriceTimeline
-                | Self::Leaderboard
-                | Self::FocusList
-                | Self::CardBrowser
-                | Self::IconGallery
-                | Self::TraitFilter => "Data Visualization",
-                Self::WalletButton | Self::WalletEditor => "Wallet",
-                Self::SwapModal => "Swap",
-                Self::TraitDelta
-                | Self::CoverageDeltaBar
-                | Self::AssetStrip
-                | Self::TradeTable
-                | Self::SigningStatus
-                | Self::FeeReport
-                | Self::TxEstimate
-                | Self::TradeFlow
-                | Self::WalletAssetPicker => "Trade Desk",
-                Self::UtxoMap
-                | Self::ManagedWalletUtxos
-                | Self::DistributionWaterfall
-                | Self::WalletIdentityHeader
-                | Self::PersonaStrip
-                | Self::FungiblesRow => "Wallet",
-                Self::SlippageSelector
-                | Self::AmountInput
-                | Self::SplitAllocationBar
-                | Self::RouteSummary
-                | Self::PoolLiquidity
-                | Self::PriceImpactCurve => "DEX Split Swap",
-                Self::VariantSplit | Self::CollectionComposition => "Collection CSP",
-                Self::ExposureBar | Self::DataTable => "Loan Dashboard",
-                Self::LeaderboardTable => "Ranked Lists",
-                Self::SupplyBar | Self::OrderList => "Mint Dashboard",
-                Self::FileUpload => "Utility",
-                Self::ImageTextEditor => "Media",
-                Self::TxCart | Self::ListingGrid => "TX Cart",
-                Self::GroupedSection | Self::OfferTile | Self::CornerAction => "Layout",
-                Self::MnemonicDisplay | Self::WalletList | Self::CollectionList => "Auth / Admin",
-                Self::PhaseCard | Self::QuantityStepper | Self::MintCheckout => {
-                    "Mint Configuration"
-                }
-            }
-        }
-
         fn description(&self) -> &'static str {
             match self {
-                Self::Formatting => "Shared formatters: ADA, lovelace, percent, number, duration, hex truncation",
-                Self::Timestamp => "Consistent ISO-8601 timestamp atom — fixed monospace size, optional badge, full + relative on hover",
-                Self::ErrorNote => "Distils Debug-wrapped / escaped-JSON error blobs to the human reason + HTTP status, with a show-raw toggle",
-                Self::Gated => "Entitlement-gated rendering — locked card/chip affordances driven by the shared authorizations Feature registry",
-                Self::AccessGate => "App-level access screen: sign-in prompt + requirements (join links) for gated tools",
-                Self::Viewport => "Compact / Medium / Wide — the breakpoint every responsive layout decision reads from",
-                Self::Drawer => "Edge-anchored slide-over with a scrim — the narrow-layout stand-in for a side panel",
-                Self::Disclosure => "Detail that opens under the row it explains — eased, tied by a rule, anchored so the list does not shove",
+                Self::Formatting => {
+                    "Shared formatters: ADA, lovelace, percent, number, duration, hex truncation"
+                }
+                Self::Timestamp => {
+                    "Consistent ISO-8601 timestamp atom — fixed monospace size, optional badge, full + relative on hover"
+                }
+                Self::ErrorNote => {
+                    "Distils Debug-wrapped / escaped-JSON error blobs to the human reason + HTTP status, with a show-raw toggle"
+                }
+                Self::Gated => {
+                    "Entitlement-gated rendering — locked card/chip affordances driven by the shared authorizations Feature registry"
+                }
+                Self::AccessGate => {
+                    "App-level access screen: sign-in prompt + requirements (join links) for gated tools"
+                }
+                Self::Viewport => {
+                    "Compact / Medium / Wide — the breakpoint every responsive layout decision reads from"
+                }
+                Self::Drawer => {
+                    "Edge-anchored slide-over with a scrim — the narrow-layout stand-in for a side panel"
+                }
+                Self::Disclosure => {
+                    "Detail that opens under the row it explains — eased, tied by a rule, anchored so the list does not shove"
+                }
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
-                Self::TierLadder => "The access ladder as a modal — what each rung gives, every route to it, and where you stand",
-                Self::AboutModal => "What a product is, what state it is in, and what to expect — the BETA badge's modal",
-                Self::ServiceBanner => "A persistent strip saying the backend is not whole — takes space rather than covering content",
+                Self::TierLadder => {
+                    "The access ladder as a modal — what each rung gives, every route to it, and where you stand"
+                }
+                Self::AboutModal => {
+                    "What a product is, what state it is in, and what to expect — the BETA badge's modal"
+                }
+                Self::ServiceBanner => {
+                    "A persistent strip saying the backend is not whole — takes space rather than covering content"
+                }
                 Self::Distribution => "Concentric orbital rings supply distribution chart",
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
@@ -688,9 +502,16 @@ mod app {
                 Self::SigningStatus => {
                     "Concurrent signing checklist with Sign/Cancel actions and progress states"
                 }
-                Self::FeeReport => {
-                    "Per-side fee breakdown with Black Flag holder waiver display"
+                Self::TxFlight => {
+                    "One server-built, wallet-signed transaction as a build / sign / submit checklist"
                 }
+                Self::ListingComposer => {
+                    "Price a batch of listings by what the buyer pays — fee and seller payout per row, from the contract's own arithmetic"
+                }
+                Self::StakeSession => {
+                    "Connect a wallet, sign in to a worker by stake key, stay signed in — the whole strip"
+                }
+                Self::FeeReport => "Per-side fee breakdown with Black Flag holder waiver display",
                 Self::TxEstimate => {
                     "Per-wallet transaction estimate with platform fee, network fee, min UTxO, and net ADA"
                 }
@@ -703,8 +524,11 @@ mod app {
                 Self::AssetStrip => {
                     "Horizontally stacked asset thumbnails with progressive overlap and click-to-remove"
                 }
-                Self::UtxoMap => {
+                Self::UtxoShelf => {
                     "UTxO health shelving unit: classify UTxOs into Collateral, Liquid, Clean, Cluttered, Bloated, Dust tiers"
+                }
+                Self::UtxoMap => {
+                    "Voronoi terrain map of a wallet: one cell per (utxo, policy), land is locked ADA and water is free ADA — territories are the policies"
                 }
                 Self::ManagedWalletUtxos => {
                     "Role-aware UTxO breakdown for a custodial wallet: spendable ADA vs flagged asset-bearing (minted-to-self / stray) UTxOs"
@@ -796,6 +620,9 @@ mod app {
                 }
                 Self::Skeleton => {
                     "Placeholders for content that is not on screen, and a statement of WHY — Loading pulses because 'wait' is the right instruction, Withheld is static and recedes because waiting produces nothing. The reason is positional so a call site cannot draw one without saying which. Rows or a block; carries no data, so the same shapes appear whether three items are behind the gate or three thousand"
+                }
+                Self::SliderGroup => {
+                    "A bank of labelled faders on one spine — a mixing desk rotated a quarter turn. Replaces stacked `Slider::text()`, whose labels do not line up, whose boxed DragValue outweighs the control it belongs to, and whose rail stays 100px however wide the pane is. Shown beside the version it replaces"
                 }
                 Self::Chip => {
                     "Small filled-tag label with semantic variants (Success / Warning / Danger / Tag / Info / Muted) + optional × remove affordance"
@@ -890,8 +717,11 @@ mod app {
                 Self::RarityTargetEditor => {
                     "Labelled 0–100% target sliders with a running-total-vs-budget cue — per-trait None% and per-value rarity targets"
                 }
-                Self::PaletteEditor => {
-                    "Colorization palettes — base color + weighted variant colors (the [processing.techniques.colorization] config)"
+                Self::EffectEditor => {
+                    "A named recolouring over a set of slots + its weighted tones — the [[effect]] config, where a variant may be a material"
+                }
+                Self::Knob => {
+                    "PROTOTYPE — a rotary control in four faces, benched against the DragValue and the fader it would replace"
                 }
                 Self::SlotTable => {
                     "Slot list with enable / required toggles + z-order — disabled_traits, defaults.required, z_index_overrides"
@@ -911,6 +741,9 @@ mod app {
                 Self::PaneNav => {
                     "Shell nav with persistent selection — locked entries show their reason rather than vanishing, hides itself at one destination, wraps inside a constrained column"
                 }
+                Self::OptionGroup => {
+                    "Related choices as ONE control — a single border with hairline separators, in stacked or inline flow, full or icon-only. Picker or selector."
+                }
                 Self::Toast => {
                     "Transient overlay messages with frame-countdown auto-dismiss — Success/Error/Warning/Info, host-owned ToastQueue, bottom-right stack"
                 }
@@ -928,14 +761,409 @@ mod app {
     // Theme
     // ========================================================================
 
-    // Storybook chrome colours (sidebar only). Stories themselves render
-    // under the REAL shipped theme — see `configure_style` below.
-    const BG_SIDEBAR: egui::Color32 = egui::Color32::from_rgb(20, 20, 40);
-    pub const BG_MAIN: egui::Color32 = egui_widgets::theme::BG_PRIMARY;
-    pub const TEXT_MUTED: egui::Color32 = egui_widgets::theme::TEXT_MUTED;
-    const TEXT_PRIMARY: egui::Color32 = egui_widgets::theme::TEXT_PRIMARY;
-    pub const ACCENT: egui::Color32 = egui::Color32::from_rgb(68, 255, 68);
-    const BG_SELECTED: egui::Color32 = egui::Color32::from_rgb(40, 40, 60);
+    // ── Chrome ───────────────────────────────────────────────────────────────
+    //
+    // The storybook's OWN surface: sidebar, story title, the control bar. These
+    // are **literals on purpose** — the chrome must NOT follow the theme being
+    // reviewed.
+    //
+    // Three of them used to alias `theme::BG_PRIMARY` / `TEXT_MUTED` /
+    // `TEXT_PRIMARY`, which meant switching theme re-skinned the tool along with
+    // the widgets and you could no longer tell which you were looking at. Same
+    // family of mistake as the `override_text_color` bug this module already
+    // carries a warning about: the storybook must not become a surface no user
+    // sees, and it must not disguise itself as one either.
+    //
+    // The story pane is the device; the chrome is the bezel.
+    const CHROME_BG_SIDEBAR: egui::Color32 = egui::Color32::from_rgb(20, 20, 40);
+    const CHROME_BG_MAIN: egui::Color32 = egui::Color32::from_rgb(26, 27, 38);
+    const CHROME_TEXT_MUTED: egui::Color32 = egui::Color32::from_rgb(139, 149, 196);
+    const CHROME_TEXT_PRIMARY: egui::Color32 = egui::Color32::from_rgb(192, 202, 245);
+    const CHROME_ACCENT: egui::Color32 = egui::Color32::from_rgb(68, 255, 68);
+    const CHROME_BG_SELECTED: egui::Color32 = egui::Color32::from_rgb(40, 40, 60);
+
+    const TEXT_PRIMARY: egui::Color32 = CHROME_TEXT_PRIMARY;
+
+    // ── Story scaffolding ────────────────────────────────────────────────────
+    //
+    // The prose a story writes AROUND the widget it demonstrates: section
+    // headings, captions, the "what to check" lists. Inside the bezel, so these
+    // follow the theme under review — unlike the `CHROME_*` constants above,
+    // which must not.
+    //
+    // These are functions taking `ui`, not constants, and that is the whole
+    // point. They were `const ACCENT/TEXT_MUTED/BG_MAIN`, and `ACCENT` was
+    // `#44ff44` — a green that exists in no theme, so every story heading in the
+    // storybook was showing the reader a colour no app can render, while sitting
+    // directly above a widget that had just been migrated to tokens. The
+    // switcher changed the widget and not one word of the text describing it.
+    //
+    // A constant cannot read a theme. That is not an inconvenience to work
+    // around with a cached palette or a per-frame global — it is the type system
+    // stating the actual constraint, which is that a colour is a function of the
+    // active theme and therefore needs something to ask.
+
+    /// The story's own accent — headings, the selected item in a preset row.
+    pub fn accent(ui: &egui::Ui) -> egui::Color32 {
+        egui_widgets::theme::ThemeExt::tokens(ui).color.accent
+    }
+
+    /// Captions, hints, the unselected half of a toggle row.
+    pub fn muted(ui: &egui::Ui) -> egui::Color32 {
+        egui_widgets::theme::ThemeExt::tokens(ui).color.text_muted
+    }
+
+    /// Body text a story writes in its own voice.
+    pub fn ink(ui: &egui::Ui) -> egui::Color32 {
+        egui_widgets::theme::ThemeExt::tokens(ui).color.text_primary
+    }
+
+    /// The ground a story paints its own panels on.
+    pub fn bg(ui: &egui::Ui) -> egui::Color32 {
+        egui_widgets::theme::ThemeExt::tokens(ui).color.bg_primary
+    }
+
+    /// A tier between [`ink`] and [`muted`] — secondary labels, units, the
+    /// quieter half of a two-part value.
+    pub fn secondary(ui: &egui::Ui) -> egui::Color32 {
+        egui_widgets::theme::ThemeExt::tokens(ui)
+            .color
+            .text_secondary
+    }
+
+    /// A raised panel or a selected row, against [`bg`].
+    pub fn highlight(ui: &egui::Ui) -> egui::Color32 {
+        egui_widgets::theme::ThemeExt::tokens(ui).color.bg_highlight
+    }
+
+    /// Any other token, by name.
+    ///
+    /// The six shorthands above are the story *scaffolding* vocabulary — the
+    /// colours a story uses to write about a widget. This is for the rest: the
+    /// demo data a story invents, where the colour is standing in for a status
+    /// or a series rather than for prose. `tok(ui, Token::Success)` says which,
+    /// and unlike the `theme::SUCCESS` constant it replaced, it follows the
+    /// theme under review.
+    ///
+    /// Deliberately not six more shorthands. A story reaching past the
+    /// scaffolding should have to name the token it wants, because that is the
+    /// moment to ask whether the story is demonstrating the widget or just
+    /// decorating itself.
+    pub fn tok(ui: &egui::Ui, token: egui_widgets::theme::Token) -> egui::Color32 {
+        token.get(&egui_widgets::theme::ThemeExt::tokens(ui).color)
+    }
+
+    /// A section heading inside a story.
+    ///
+    /// Exists because `ui.label(RichText::new(t).color(ACCENT).strong())` was
+    /// written out ~400 times. Saying `heading(ui, t)` instead is shorter, and
+    /// more importantly it gives the storybook ONE place to decide what a
+    /// heading looks like — which is what made it possible to notice that every
+    /// one of them was the wrong colour.
+    pub fn heading(ui: &mut egui::Ui, text: impl Into<String>) {
+        let c = accent(ui);
+        ui.label(egui::RichText::new(text.into()).color(c).strong());
+    }
+
+    /// A small muted caption under a heading or beside a control.
+    pub fn caption(ui: &mut egui::Ui, text: impl Into<String>) {
+        let c = muted(ui);
+        ui.label(egui::RichText::new(text.into()).color(c).small());
+    }
+
+    /// How long a story's control column gets before it stops growing.
+    ///
+    /// A fader with a 1200px throw is not more useful than one with 460 — past
+    /// a point the extra travel buys no precision and costs the reader a long
+    /// mouse journey. So the storybook takes a view on its OWN control column,
+    /// which is a different thing from a widget taking a view on its callers:
+    /// this is one app's layout decision, stated once.
+    const CONTROLS_W: f32 = 460.0;
+
+    /// Run `add` inside a story's control column.
+    ///
+    /// `fit_width` clamps to the CONTAINER, so a narrow pane or a side-by-side
+    /// theme comparison still gets a working bank rather than one that overflows.
+    pub fn controls<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+        use egui_widgets::viewport::LayoutExt as _;
+        ui.scope(|ui| {
+            ui.set_max_width(ui.fit_width(CONTROLS_W));
+            add(ui)
+        })
+        .inner
+    }
+
+    // ========================================================================
+    // Review controls
+    // ========================================================================
+
+    /// What the reader has asked to review the story *under*: a theme, optionally
+    /// a second theme beside it, a density, a motion mode and a forced breakpoint.
+    ///
+    /// # Why this lives in the URL
+    ///
+    /// Every one of these is a query parameter, and the pickers write back to the
+    /// address bar. That is not a convenience — `tools/cdp-shot.mjs` takes a URL
+    /// and a viewport, so putting the whole review state in the URL makes the
+    /// screenshot matrix addressable **with no changes to the harness at all**.
+    /// Pickers are for humans; parameters are for the matrix; the pickers keep
+    /// them in step so a reader can paste what they are looking at to someone
+    /// else.
+    /// `Clone` but not `Copy`: [`egui_widgets::theme::Theme`] is deliberately not
+    /// `Copy`, because the later axes (series palettes) will not be.
+    #[derive(Clone)]
+    struct ReviewControls {
+        theme: egui_widgets::theme::Theme,
+        /// `Some` renders the story twice, side by side — see [`Self::draw_story`].
+        compare: Option<egui_widgets::theme::Theme>,
+        density: egui_widgets::theme::Density,
+        motion: egui_widgets::theme::MotionMode,
+        /// `None` measures the real viewport, as an app would.
+        breakpoint: Option<egui_widgets::viewport::Breakpoint>,
+    }
+
+    impl Default for ReviewControls {
+        fn default() -> Self {
+            let base = egui_widgets::theme::Theme::tokyo_night();
+            Self {
+                compare: None,
+                density: base.density,
+                motion: base.motion.mode,
+                breakpoint: None,
+                theme: base,
+            }
+        }
+    }
+
+    impl ReviewControls {
+        /// Read the controls out of `?theme=…&vs=…&density=…&motion=…&bp=…`.
+        fn from_query(query: &str) -> Self {
+            let mut out = Self::default();
+            let param = |key: &str| -> Option<String> {
+                query
+                    .trim_start_matches('?')
+                    .split('&')
+                    .filter_map(|kv| kv.split_once('='))
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| v.replace('+', " ").replace("%20", " "))
+            };
+
+            if let Some(name) = param("theme") {
+                if let Some(t) = egui_widgets::theme::Theme::by_name(&name) {
+                    out.density = t.density;
+                    out.motion = t.motion.mode;
+                    out.theme = t;
+                }
+            }
+            if let Some(name) = param("vs") {
+                out.compare = egui_widgets::theme::Theme::by_name(&name);
+            }
+            if let Some(name) = param("density") {
+                if let Some(d) = egui_widgets::theme::Density::ALL
+                    .iter()
+                    .find(|d| d.label().eq_ignore_ascii_case(&name))
+                {
+                    out.density = *d;
+                }
+            }
+            if let Some(name) = param("motion") {
+                out.motion = match name.to_ascii_lowercase().as_str() {
+                    "none" => egui_widgets::theme::MotionMode::None,
+                    "reduced" => egui_widgets::theme::MotionMode::Reduced,
+                    _ => egui_widgets::theme::MotionMode::Full,
+                };
+            }
+            if let Some(name) = param("bp") {
+                out.breakpoint = egui_widgets::viewport::Breakpoint::by_name(&name);
+            }
+            out
+        }
+
+        /// The theme as selected, with the density and motion overrides folded in.
+        fn resolved(&self) -> egui_widgets::theme::Theme {
+            self.theme
+                .clone()
+                .with_density(self.density)
+                .with_motion(self.motion)
+        }
+
+        /// Install the selection for this frame.
+        fn apply(&self, ctx: &egui::Context) {
+            egui_widgets::theme::install_theme(ctx, self.resolved());
+            egui_widgets::viewport::override_breakpoint(ctx, self.breakpoint);
+        }
+
+        /// Render the story under the selected theme — twice, side by side, when a
+        /// comparison theme is set.
+        ///
+        /// The A/B half is the reason `theme::scoped` exists: a palette regression
+        /// is obvious beside its control and nearly invisible when you have to flip
+        /// between two screenshots to find it.
+        fn draw_story(&self, story: Story, app: &mut StorybookApp, ui: &mut egui::Ui) {
+            let Some(other) = self.compare.clone() else {
+                story.draw(app, ui);
+                return;
+            };
+
+            let half = (ui.available_width() - 24.0) * 0.5;
+            let mine = self.resolved();
+            ui.horizontal_top(|ui| {
+                for (theme, side) in [(mine, "A"), (other, "B")] {
+                    ui.allocate_ui(egui::vec2(half, ui.available_height()), |ui| {
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("{side} · {}", theme.name))
+                                    .color(CHROME_TEXT_MUTED)
+                                    .small()
+                                    .strong(),
+                            );
+                            // The per-side theme has to reach BOTH `ui.tokens()`
+                            // and egui's own `Style`, which is what `scoped` does.
+                            egui_widgets::theme::scoped(ui, &theme, |ui| {
+                                story.draw(app, ui);
+                            });
+                        });
+                    });
+                    ui.separator();
+                }
+            });
+        }
+
+        /// The picker row. Writes every change back to the URL so the matrix and
+        /// the reader address the same thing.
+        fn controls(&mut self, ui: &mut egui::Ui) {
+            let before = self.clone();
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new("review")
+                        .color(CHROME_TEXT_MUTED)
+                        .small()
+                        .strong(),
+                );
+
+                for preset in egui_widgets::theme::Theme::PRESETS {
+                    let t = preset();
+                    let on = self.theme.name == t.name;
+                    if chrome_toggle(ui, t.name, on).clicked() {
+                        self.density = t.density;
+                        self.motion = t.motion.mode;
+                        self.theme = t;
+                    }
+                }
+
+                ui.separator();
+                ui.label(egui::RichText::new("vs").color(CHROME_TEXT_MUTED).small());
+                if chrome_toggle(ui, "off", self.compare.is_none()).clicked() {
+                    self.compare = None;
+                }
+                for preset in egui_widgets::theme::Theme::PRESETS {
+                    let t = preset();
+                    let on = self.compare.as_ref().is_some_and(|c| c.name == t.name);
+                    if chrome_toggle(ui, t.name, on).clicked() {
+                        self.compare = Some(t);
+                    }
+                }
+            });
+
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new("density")
+                        .color(CHROME_TEXT_MUTED)
+                        .small()
+                        .strong(),
+                );
+                for d in egui_widgets::theme::Density::ALL {
+                    if chrome_toggle(ui, d.label(), self.density == *d).clicked() {
+                        self.density = *d;
+                    }
+                }
+
+                ui.separator();
+                ui.label(
+                    egui::RichText::new("motion")
+                        .color(CHROME_TEXT_MUTED)
+                        .small()
+                        .strong(),
+                );
+                for m in egui_widgets::theme::MotionMode::ALL {
+                    let name = match m {
+                        egui_widgets::theme::MotionMode::Full => "full",
+                        egui_widgets::theme::MotionMode::Reduced => "reduced",
+                        egui_widgets::theme::MotionMode::None => "none",
+                    };
+                    if chrome_toggle(ui, name, self.motion == *m).clicked() {
+                        self.motion = *m;
+                    }
+                }
+
+                ui.separator();
+                ui.label(
+                    egui::RichText::new("breakpoint")
+                        .color(CHROME_TEXT_MUTED)
+                        .small()
+                        .strong(),
+                );
+                if chrome_toggle(ui, "measured", self.breakpoint.is_none()).clicked() {
+                    self.breakpoint = None;
+                }
+                for bp in egui_widgets::viewport::Breakpoint::ALL {
+                    let on = self.breakpoint == Some(bp);
+                    if chrome_toggle(ui, bp.label(), on).clicked() {
+                        self.breakpoint = Some(bp);
+                    }
+                }
+            });
+
+            if !self.same_as(&before) {
+                set_location_query(&self.to_query());
+            }
+        }
+
+        fn same_as(&self, other: &Self) -> bool {
+            self.theme.name == other.theme.name
+                && self.compare.as_ref().map(|c| c.name) == other.compare.as_ref().map(|c| c.name)
+                && self.density == other.density
+                && self.motion == other.motion
+                && self.breakpoint == other.breakpoint
+        }
+
+        /// The inverse of [`Self::from_query`] — what the address bar should say.
+        fn to_query(&self) -> String {
+            let mut parts = vec![format!("theme={}", self.theme.name.replace(' ', "+"))];
+            if let Some(c) = self.compare.as_ref() {
+                parts.push(format!("vs={}", c.name.replace(' ', "+")));
+            }
+            parts.push(format!("density={}", self.density.label()));
+            parts.push(format!(
+                "motion={}",
+                match self.motion {
+                    egui_widgets::theme::MotionMode::Full => "full",
+                    egui_widgets::theme::MotionMode::Reduced => "reduced",
+                    egui_widgets::theme::MotionMode::None => "none",
+                }
+            ));
+            if let Some(bp) = self.breakpoint {
+                parts.push(format!("bp={}", bp.label()));
+            }
+            parts.join("&")
+        }
+    }
+
+    /// A chrome-coloured toggle. Not `egui_widgets`' own button: the control bar
+    /// must stay legible whatever the theme under review does.
+    fn chrome_toggle(ui: &mut egui::Ui, label: &str, on: bool) -> egui::Response {
+        let text = egui::RichText::new(label).size(10.0).color(if on {
+            CHROME_ACCENT
+        } else {
+            CHROME_TEXT_MUTED
+        });
+        let fill = if on {
+            CHROME_BG_SELECTED
+        } else {
+            egui::Color32::TRANSPARENT
+        };
+        ui.add(egui::Button::new(text).fill(fill).small())
+    }
 
     fn configure_style(ctx: &egui::Context) {
         // Use the shipped theme, not a private one. The old private style set
@@ -981,6 +1209,45 @@ mod app {
     #[cfg(not(target_arch = "wasm32"))]
     fn set_location_hash(_slug: &str) {}
 
+    /// The review state as it arrived — `?theme=…&vs=…&density=…&motion=…&bp=…`.
+    #[cfg(target_arch = "wasm32")]
+    fn review_from_location() -> ReviewControls {
+        let query = web_sys::window()
+            .and_then(|w| w.location().search().ok())
+            .unwrap_or_default();
+        ReviewControls::from_query(&query)
+    }
+
+    /// Native builds have no address bar; `STORYBOOK_REVIEW` stands in, so the
+    /// same selection works from a shell — `STORYBOOK_REVIEW='theme=ember&vs=iris'`.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn review_from_location() -> ReviewControls {
+        ReviewControls::from_query(&std::env::var("STORYBOOK_REVIEW").unwrap_or_default())
+    }
+
+    /// Write the review selection back to the address bar, preserving `#/story`
+    /// and `nav=0`.
+    ///
+    /// `replace_state` rather than assigning `location.search`, which would
+    /// reload the page and throw away the wasm app mid-frame.
+    #[cfg(target_arch = "wasm32")]
+    fn set_location_query(query: &str) {
+        let Some(w) = web_sys::window() else { return };
+        let keep_nav = w
+            .location()
+            .search()
+            .ok()
+            .is_some_and(|s| s.contains("nav=0"));
+        let hash = w.location().hash().unwrap_or_default();
+        let url = format!("?{query}{}{hash}", if keep_nav { "&nav=0" } else { "" });
+        if let Ok(history) = w.history() {
+            let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&url));
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn set_location_query(_query: &str) {}
+
     /// `?nav=0` drops the story list so the story gets the WHOLE viewport.
     ///
     /// This exists for narrow-width review. The sidebar is a fixed 180px, so a
@@ -1006,16 +1273,40 @@ mod app {
     // App
     // ========================================================================
 
-    struct StorybookApp {
+    /// `pub` only to match the visibility of the macro-generated
+    /// [`Story::draw`], which takes `&mut StorybookApp`. A `pub fn` whose
+    /// parameter type is private is a `private_interfaces` warning, and the
+    /// honest resolution is that the app type IS part of that signature.
+    /// Nothing outside the crate constructs one — `mod app` is `cfg`-gated to
+    /// wasm and re-exported wholesale.
+    /// Prefix marking a palette entry the SHELL owns, so a story command and a
+    /// navigation entry can share one flat list without a collision. A widget
+    /// id could in principle start with this; the prefix is ugly enough that
+    /// none will.
+    const GOTO: &str = "storybook:goto:";
+
+    pub struct StorybookApp {
         current_story: Story,
         /// `?nav=0` — see [`nav_hidden`].
         nav_hidden: bool,
+        /// Whether the Compact-layout nav drawer is open. Only consulted when
+        /// the chrome is narrow enough to have one.
+        nav_open: bool,
+        /// Theme / density / motion / breakpoint under review — see
+        /// [`ReviewControls`].
+        review: ReviewControls,
+        /// ⌘K over every story plus whatever the story on screen offers. The
+        /// storybook is the first real consumer of `egui_widgets::commands`,
+        /// which is the point: a mechanism for widgets to advertise themselves
+        /// is only worth having if the app that shows every widget uses it.
+        palette: egui_widgets::command_palette::PaletteState,
         // Per-story state
         distribution_chart: egui_widgets::DistributionChart,
         marquee: egui_widgets::Marquee,
         marquee_messages: Vec<egui_widgets::MarqueeItem>,
         progress_bar_state: stories::progress_bar::ProgressBarState,
         disclosure_state: stories::disclosure::State,
+        slider_group_state: stories::slider_group::SliderGroupStoryState,
         bullet_bar_state: stories::bullet_bar::BulletBarState,
         tag_list_state: stories::tag_list::TagListState,
         token_multiselect_state: stories::token_multiselect::TokenMultiselectState,
@@ -1029,7 +1320,8 @@ mod app {
         machine_state: stories::machine::MachineState,
         named_group_list_state: stories::named_group_list::NamedGroupListState,
         rarity_target_editor_state: stories::rarity_target_editor::RarityTargetEditorState,
-        palette_editor_state: stories::palette_editor::PaletteEditorState,
+        effect_editor_state: stories::effect_editor::EffectEditorState,
+        knob_state: stories::knob::KnobState,
         slot_table_state: stories::slot_table::SlotTableState,
         sparkline_state: stories::sparkline::SparklineState,
         perf_strip_state: stories::perf_strip::PerfStripStory,
@@ -1062,8 +1354,12 @@ mod app {
         tx_estimate_state: stories::tx_estimate::TxEstimateStoryState,
         trade_flow_state: stories::trade_flow::TradeFlowStoryState,
         signing_status_state: stories::signing_status::SigningStatusStoryState,
+        tx_flight_state: stories::tx_flight::TxFlightStoryState,
+        stake_session_state: stories::stake_session::StakeSessionStoryState,
+        listing_composer_state: stories::listing_composer::ListingComposerStoryState,
         trade_table_state: stories::trade_table::TradeTableStoryState,
         wallet_asset_picker_state: stories::wallet_asset_picker::WalletAssetPickerStoryState,
+        utxo_shelf_state: stories::utxo_shelf::UtxoShelfStoryState,
         utxo_map_state: stories::utxo_map::UtxoMapStoryState,
         managed_wallet_utxos_state: stories::managed_wallet_utxos::ManagedWalletUtxosStoryState,
         distribution_waterfall_state:
@@ -1093,6 +1389,7 @@ mod app {
         // Primitives
         button_group_state: stories::button_group::ButtonGroupState,
         pane_nav_state: stories::pane_nav::PaneNavState,
+        option_group_state: stories::option_group::OptionGroupStoryState,
         toast_state: stories::toast::ToastState,
         claim_card_state: stories::claim_card::ClaimCardState,
         capital_flow_state: stories::capital_flow::CapitalFlowState,
@@ -1111,7 +1408,11 @@ mod app {
     impl StorybookApp {
         fn new(cc: &eframe::CreationContext<'_>) -> Self {
             configure_style(&cc.egui_ctx);
-            egui_widgets::install_defaults(&cc.egui_ctx);
+            // `install_assets` and NOT `install`: the storybook is the case that
+            // escape hatch exists for. `ReviewControls::apply` installs a theme
+            // every pass from what the reader picked, so binding one here would
+            // be overwritten before the first widget drew.
+            egui_widgets::install_assets(&cc.egui_ctx);
             // Inter as the primary proportional face (from the font bucket), in front of
             // the bundled default + DejaVu fallback. Async fetch; swaps in once it lands.
             egui_widgets::fonts::load_remote_font(
@@ -1132,14 +1433,18 @@ mod app {
                 // Read ONCE at startup: with the nav gone there is no way to
                 // change stories, so this is a per-load mode, not a toggle.
                 nav_hidden: nav_hidden(),
+                nav_open: false,
+                review: review_from_location(),
+                palette: Default::default(),
                 distribution_chart: egui_widgets::DistributionChart::new(),
                 marquee: egui_widgets::Marquee::default(),
                 marquee_messages: vec![egui_widgets::MarqueeItem {
                     text: "Welcome to the egui Widgets Storybook".into(),
-                    color: ACCENT,
+                    color: CHROME_ACCENT,
                 }],
                 progress_bar_state: stories::progress_bar::ProgressBarState::default(),
                 disclosure_state: stories::disclosure::State::default(),
+                slider_group_state: stories::slider_group::SliderGroupStoryState::default(),
                 bullet_bar_state: stories::bullet_bar::BulletBarState::default(),
                 tag_list_state: stories::tag_list::TagListState::default(),
                 token_multiselect_state: stories::token_multiselect::TokenMultiselectState::default(
@@ -1157,7 +1462,8 @@ mod app {
                 named_group_list_state: stories::named_group_list::NamedGroupListState::default(),
                 rarity_target_editor_state:
                     stories::rarity_target_editor::RarityTargetEditorState::default(),
-                palette_editor_state: stories::palette_editor::PaletteEditorState::default(),
+                effect_editor_state: stories::effect_editor::EffectEditorState::default(),
+                knob_state: stories::knob::KnobState::default(),
                 slot_table_state: stories::slot_table::SlotTableState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 perf_strip_state: stories::perf_strip::PerfStripStory::default(),
@@ -1208,9 +1514,14 @@ mod app {
                 tx_estimate_state: stories::tx_estimate::TxEstimateStoryState::default(),
                 trade_flow_state: stories::trade_flow::TradeFlowStoryState::default(),
                 signing_status_state: stories::signing_status::SigningStatusStoryState::default(),
+                tx_flight_state: stories::tx_flight::TxFlightStoryState::default(),
+                stake_session_state: stories::stake_session::StakeSessionStoryState::default(),
+                listing_composer_state:
+                    stories::listing_composer::ListingComposerStoryState::default(),
                 trade_table_state: stories::trade_table::TradeTableStoryState::default(),
                 wallet_asset_picker_state:
                     stories::wallet_asset_picker::WalletAssetPickerStoryState::default(),
+                utxo_shelf_state: stories::utxo_shelf::UtxoShelfStoryState::default(),
                 utxo_map_state: stories::utxo_map::UtxoMapStoryState::default(),
                 managed_wallet_utxos_state:
                     stories::managed_wallet_utxos::ManagedWalletUtxosStoryState::default(),
@@ -1235,6 +1546,7 @@ mod app {
                 collection_list_state: stories::collection_list::CollectionListState::default(),
                 button_group_state: stories::button_group::ButtonGroupState::default(),
                 pane_nav_state: stories::pane_nav::PaneNavState::default(),
+                option_group_state: stories::option_group::OptionGroupStoryState::default(),
                 toast_state: stories::toast::ToastState::default(),
                 claim_card_state: stories::claim_card::ClaimCardState::default(),
                 capital_flow_state: stories::capital_flow::CapitalFlowState::default(),
@@ -1252,6 +1564,49 @@ mod app {
             }
         }
 
+        /// ⌘K: every story, plus whatever the story on screen is offering.
+        ///
+        /// The two sources are merged rather than one replacing the other,
+        /// which is the arrangement a real app wants too: navigation belongs to
+        /// the shell and can never be offered by a widget, while "Add wallet"
+        /// belongs to the roster and the shell should not have to know it
+        /// exists. Neither list is complete on its own.
+        fn draw_palette(&mut self, ui: &mut egui::Ui) {
+            use egui_widgets::typeahead_search::TypeaheadOption;
+
+            let mut options: Vec<TypeaheadOption> = Story::all()
+                .iter()
+                .filter(|s| **s != self.current_story)
+                .map(|s| {
+                    TypeaheadOption::new(format!("{GOTO}{}", s.label()), s.label())
+                        .subtitle(s.category())
+                })
+                .collect();
+            // What the story currently on screen can do. Nothing here knows
+            // what that is — the widgets said so themselves.
+            options.extend(egui_widgets::commands::offered_options(ui.ctx()));
+
+            match egui_widgets::command_palette::CommandPalette::new("storybook", &options)
+                .placeholder("Go to a story, or run something on this one…")
+                .show(ui, &mut self.palette)
+            {
+                egui_widgets::command_palette::PaletteAction::Invoke(id) => {
+                    match id.strip_prefix(GOTO) {
+                        Some(label) => {
+                            if let Some(s) = Story::all().iter().find(|s| s.label() == label) {
+                                self.current_story = *s;
+                            }
+                        }
+                        // Not ours. Hand it back to the registry and whichever
+                        // widget offered it will claim it — the shell never needs
+                        // to learn what the command does.
+                        None => egui_widgets::commands::invoke(ui.ctx(), id),
+                    }
+                }
+                egui_widgets::command_palette::PaletteAction::None => {}
+            }
+        }
+
         fn draw_sidebar(&mut self, ui: &mut egui::Ui) {
             let mut current_category = "";
             for story in Story::all() {
@@ -1260,19 +1615,21 @@ mod app {
                     ui.add_space(8.0);
                     ui.label(
                         egui::RichText::new(current_category)
-                            .color(TEXT_MUTED)
+                            .color(CHROME_TEXT_MUTED)
                             .small()
                             .strong(),
                     );
                 }
                 let is_selected = self.current_story == *story;
                 let text = if is_selected {
-                    egui::RichText::new(story.label()).color(ACCENT).strong()
+                    egui::RichText::new(story.label())
+                        .color(CHROME_ACCENT)
+                        .strong()
                 } else {
                     egui::RichText::new(story.label()).color(TEXT_PRIMARY)
                 };
                 let fill = if is_selected {
-                    BG_SELECTED
+                    CHROME_BG_SELECTED
                 } else {
                     egui::Color32::TRANSPARENT
                 };
@@ -1302,14 +1659,31 @@ mod app {
             // frame and read as far cheaper than the app really is.
             let _frame_scope = egui_widgets::perf_strip::FrameScope::begin();
             let ctx = ui.ctx().clone();
-            if !self.nav_hidden {
+
+            // THE CHROME'S OWN BREAKPOINT, measured — never `Breakpoint::from_ctx`,
+            // which honours the review controls' override. Those exist so a
+            // reader at a desk can ask "what does this story do at Compact";
+            // if the chrome read them too, choosing Compact would fold the nav
+            // away on a 27" monitor and there would be no way back to the
+            // control that did it.
+            let story_before = self.current_story;
+            // `content_rect`, not `screen_rect`: the latter includes the notch
+            // and the home indicator, which is exactly the difference that
+            // matters on the device this is for.
+            let chrome_bp = Breakpoint::from_width(ctx.content_rect().width());
+            let narrow = chrome_bp.panel_mode() == PanelMode::Drawer;
+            // The storybook has been shipping a layout engine it did not use on
+            // itself: 180pt of permanent sidebar is 46% of a phone.
+            egui_widgets::viewport::apply_touch_sizing(&ctx, chrome_bp);
+
+            if !self.nav_hidden && !narrow {
                 egui::Panel::left("stories")
                     .default_size(180.0)
                     .resizable(false)
-                    .frame(egui::Frame::side_top_panel(&ctx.global_style()).fill(BG_SIDEBAR))
+                    .frame(egui::Frame::side_top_panel(&ctx.global_style()).fill(CHROME_BG_SIDEBAR))
                     .show_inside(ui, |ui| {
                         ui.add_space(8.0);
-                        ui.heading(egui::RichText::new("egui Widgets").color(ACCENT));
+                        ui.heading(egui::RichText::new("egui Widgets").color(CHROME_ACCENT));
                         ui.separator();
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             self.draw_sidebar(ui);
@@ -1317,317 +1691,94 @@ mod app {
                     });
             }
 
-            egui::CentralPanel::default()
-                .frame(egui::Frame::central_panel(&ctx.global_style()).fill(BG_MAIN))
-                .show_inside(ui, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        ui.heading(self.current_story.label());
-                        ui.label(
-                            egui::RichText::new(self.current_story.description()).color(TEXT_MUTED),
-                        );
-                        ui.separator();
-                        ui.add_space(8.0);
+            // The review controls are applied BEFORE the story pane draws, so the
+            // story renders under the theme the reader selected this frame rather
+            // than lagging one behind.
+            self.review.apply(&ctx);
 
-                        match self.current_story {
-                            Story::Formatting => stories::formatting::show(ui),
-                            Story::Timestamp => stories::timestamp::show(ui),
-                            Story::ErrorNote => stories::error_note::show(ui),
-                            Story::Gated => stories::gated::show(ui),
-                            Story::AccessGate => stories::access_gate::show(ui),
-                            Story::Viewport => stories::viewport::show(ui),
-                            Story::Drawer => stories::drawer::show(ui),
-                            Story::Disclosure => {
-                                stories::disclosure::show(ui, &mut self.disclosure_state)
+            egui::CentralPanel::default()
+                .frame(egui::Frame::central_panel(&ctx.global_style()).fill(CHROME_BG_MAIN))
+                .show_inside(ui, |ui| {
+                    // Chrome, deliberately NOT under the theme being reviewed —
+                    // see `CHROME_*`.
+                    ui.horizontal(|ui| {
+                        if !self.nav_hidden && narrow {
+                            // The nav has to be reachable, and a hamburger is
+                            // the one affordance every phone reader already
+                            // knows. `Drawer` is the crate's own answer for a
+                            // side panel at Compact, so the storybook uses it
+                            // rather than growing a second one.
+                            let open = ui
+                                .button(egui::RichText::new("☰").color(CHROME_ACCENT))
+                                .on_hover_text("Stories")
+                                .clicked();
+                            if open {
+                                self.nav_open = true;
                             }
-                            Story::UserBadge => stories::user_badge::show(ui),
-                            Story::TierLadder => stories::tier_ladder::show(ui),
-                            Story::AboutModal => stories::about_modal::show(ui),
-                            Story::ServiceBanner => stories::service_banner::show(ui),
-                            Story::Distribution => {
-                                stories::distribution::show(ui, &mut self.distribution_chart)
-                            }
-                            Story::Marquee => stories::marquee::show(
-                                ui,
-                                &mut self.marquee,
-                                &mut self.marquee_messages,
-                            ),
-                            Story::Buttons => stories::buttons::show(ui),
-                            Story::ProgressBar => {
-                                stories::progress_bar::show(ui, &mut self.progress_bar_state)
-                            }
-                            Story::BulletBar => {
-                                stories::bullet_bar::show(ui, &mut self.bullet_bar_state)
-                            }
-                            Story::Sparkline => {
-                                stories::sparkline::show(ui, &mut self.sparkline_state)
-                            }
-                            Story::MetricCard => stories::metric_card::show(ui),
-                            Story::PerfStrip => {
-                                stories::perf_strip::show(ui, &mut self.perf_strip_state)
-                            }
-                            Story::TokenHistory => stories::token_history::show(ui),
-                            Story::TokenKinetic => stories::token_kinetic::show(ui),
-                            Story::TokenParticles => stories::token_particles::show(ui),
-                            Story::StatStrip => stories::stat_strip::show(ui),
-                            Story::SevenSegment => {
-                                stories::seven_segment::show(ui, &mut self.seven_segment_state)
-                            }
-                            Story::FlipCounter => {
-                                stories::flip_counter::show(ui, &mut self.flip_counter_state)
-                            }
-                            Story::AsyncData => {
-                                stories::async_data::show(ui, &mut self.async_data_state)
-                            }
-                            Story::MeshPlayground => {
-                                stories::mesh_playground::show(ui, &mut self.mesh_playground_state)
-                            }
-                            Story::PerspectiveText => stories::perspective_text::show(
-                                ui,
-                                &mut self.perspective_text_state,
-                            ),
-                            Story::TcgCard => stories::tcg_card::show(ui, &mut self.tcg_card_state),
-                            Story::PrintingTimeline => stories::printing_timeline::show(
-                                ui,
-                                &mut self.printing_timeline_state,
-                            ),
-                            Story::AssetCard => {
-                                stories::asset_card::show(ui, &mut self.asset_card_state)
-                            }
-                            Story::RadarChart => {
-                                stories::radar_chart::show(ui, &mut self.radar_chart_state)
-                            }
-                            Story::RangeBar => {
-                                stories::range_bar::show(ui, &mut self.range_bar_state)
-                            }
-                            Story::PipRow => stories::pip_row::show(ui, &mut self.pip_row_state),
-                            Story::PriceTimeline => {
-                                stories::price_timeline::show(ui, &mut self.price_timeline_state)
-                            }
-                            Story::Leaderboard => {
-                                stories::leaderboard::show(ui, &mut self.leaderboard_state)
-                            }
-                            Story::ListingGrid => {
-                                stories::listing_grid::show(ui, &mut self.listing_grid_state)
-                            }
-                            Story::FocusList => {
-                                stories::focus_list::show(ui, &mut self.focus_list_state)
-                            }
-                            Story::CardBrowser => {
-                                stories::card_browser::show(ui, &mut self.card_browser_state)
-                            }
-                            Story::IconGallery => {
-                                stories::icon_gallery::show(ui, &mut self.icon_gallery_state)
-                            }
-                            Story::TraitFilter => {
-                                stories::trait_filter::show(ui, &mut self.trait_filter_state)
-                            }
-                            Story::WalletEditor => {
-                                stories::wallet_editor::show(ui, &mut self.wallet_editor_state)
-                            }
-                            Story::WalletButton => stories::wallet::show(
-                                ui,
-                                &mut self.wallet_btn,
-                                &mut self.wallet_connector,
-                            ),
-                            Story::SwapModal => stories::swap::show(
-                                &ctx,
-                                ui,
-                                &mut self.swap_modal,
-                                &mut self.swap_progress,
-                            ),
-                            Story::TraitDelta => stories::trait_delta::show(ui),
-                            Story::CoverageDeltaBar => stories::coverage_delta_bar::show(ui),
-                            Story::TradeTable => {
-                                stories::trade_table::show(ui, &mut self.trade_table_state)
-                            }
-                            Story::SigningStatus => {
-                                stories::signing_status::show(ui, &mut self.signing_status_state)
-                            }
-                            Story::FeeReport => {
-                                stories::fee_report::show(ui, &mut self.fee_report_state)
-                            }
-                            Story::TxEstimate => {
-                                stories::tx_estimate::show(ui, &mut self.tx_estimate_state)
-                            }
-                            Story::TradeFlow => {
-                                stories::trade_flow::show(ui, &mut self.trade_flow_state)
-                            }
-                            Story::WalletAssetPicker => stories::wallet_asset_picker::show(
-                                &ctx,
-                                ui,
-                                &mut self.wallet_asset_picker_state,
-                            ),
-                            Story::AssetStrip => {
-                                stories::asset_strip::show(ui, &mut self.asset_strip_state)
-                            }
-                            Story::UtxoMap => stories::utxo_map::show(
-                                ui,
-                                &mut self.utxo_map_state,
-                                &mut self.wallet_btn,
-                                &mut self.wallet_connector,
-                            ),
-                            Story::ManagedWalletUtxos => stories::managed_wallet_utxos::show(
-                                ui,
-                                &mut self.managed_wallet_utxos_state,
-                            ),
-                            Story::DistributionWaterfall => stories::distribution_waterfall::show(
-                                ui,
-                                &mut self.distribution_waterfall_state,
-                            ),
-                            // DEX split swap
-                            Story::SlippageSelector => stories::slippage_selector::show(
-                                ui,
-                                &mut self.slippage_selector_state,
-                            ),
-                            Story::AmountInput => {
-                                stories::amount_input::show(ui, &mut self.amount_input_state)
-                            }
-                            Story::SplitAllocationBar => stories::split_allocation_bar::show(ui),
-                            Story::RouteSummary => stories::route_summary::show(ui),
-                            Story::PoolLiquidity => stories::pool_liquidity::show(ui),
-                            Story::PriceImpactCurve => stories::price_impact_curve::show(ui),
-                            Story::VariantSplit => stories::variant_split::show(ui),
-                            Story::CollectionComposition => {
-                                stories::collection_composition::show(ui)
-                            }
-                            // Loan dashboard
-                            Story::ExposureBar => stories::exposure_bar::show(ui),
-                            Story::SupplyBar => stories::supply_bar::show(ui),
-                            Story::OrderList => {
-                                stories::order_list::show(ui, &mut self.order_list_state)
-                            }
-                            Story::DataTable => {
-                                stories::data_table::show(ui, &mut self.data_table_state)
-                            }
-                            Story::LeaderboardTable => stories::leaderboard_table::show(ui),
-                            Story::FileUpload => {
-                                stories::file_upload::show(ui, &mut self.file_upload_state)
-                            }
-                            Story::ImageTextEditor => stories::image_text_editor::show(
-                                ui,
-                                &mut self.image_text_editor_state,
-                            ),
-                            Story::GroupedSection => stories::grouped_section::show(ui),
-                            Story::OfferTile => stories::offer_tile::show(ui),
-                            Story::CornerAction => stories::corner_action::show(ui),
-                            Story::TxCart => stories::tx_cart::show(ui, &mut self.tx_cart_state),
-                            Story::WalletIdentityHeader => stories::wallet_identity_header::show(
-                                ui,
-                                &mut self.wallet_identity_header_state,
-                            ),
-                            Story::PersonaStrip => stories::persona_strip::show(ui),
-                            Story::FungiblesRow => stories::fungibles_row::show(ui),
-                            Story::MnemonicDisplay => stories::mnemonic_display::show(
-                                ui,
-                                &mut self.mnemonic_display_state,
-                            ),
-                            Story::WalletList => {
-                                stories::wallet_list::show(ui, &mut self.wallet_list_state)
-                            }
-                            Story::CollectionList => {
-                                stories::collection_list::show(ui, &mut self.collection_list_state)
-                            }
-                            Story::ThemeStates => stories::theme_states::show(ui),
-                            Story::BackgroundToasts => stories::background::show(ui),
-                            Story::Skeleton => stories::skeleton::show(ui),
-                            Story::Chip => stories::chip::show(ui),
-                            Story::PartyBadge => stories::party_badge::show(ui),
-                            Story::FlowLedger => stories::flow_ledger::show(ui),
-                            Story::ActivityFeed => stories::activity_feed::show(ui),
-                            Story::TxCard => stories::tx_card::show(ui, &mut self.tx_card_state),
-                            Story::ImageStack => {
-                                stories::image_stack::show(ui, &mut self.image_stack_state)
-                            }
-                            Story::ChannelBands => stories::channel_bands::show(ui),
-                            Story::CustodyWalk => stories::custody_walk::show(ui),
-                            Story::CapitalFlow => {
-                                stories::capital_flow::show(ui, &mut self.capital_flow_state)
-                            }
-                            Story::CapBand => stories::cap_band::show(ui, &mut self.cap_band_state),
-                            Story::TimeSpine => {
-                                stories::time_spine::show(ui, &mut self.time_spine_state)
-                            }
-                            Story::TimeSpineDensity => stories::time_spine_density::show(
-                                ui,
-                                &mut self.time_spine_density_state,
-                            ),
-                            Story::CoverageLanes => {
-                                stories::coverage_lanes::show(ui, &mut self.coverage_lanes_state)
-                            }
-                            Story::FlowMatrix => {
-                                stories::flow_matrix::show(ui, &mut self.flow_matrix_state)
-                            }
-                            Story::FlowRing => {
-                                stories::flow_ring::show(ui, &mut self.flow_ring_state)
-                            }
-                            Story::FlowStave => {
-                                stories::flow_stave::show(ui, &mut self.flow_stave_state)
-                            }
-                            Story::PartyAnnotator => {
-                                stories::party_annotator::show(ui, &mut self.party_annotator_state)
-                            }
-                            Story::ClaimCard => {
-                                stories::claim_card::show(ui, &mut self.claim_card_state)
-                            }
-                            Story::TagList => stories::tag_list::show(ui, &mut self.tag_list_state),
-                            Story::TokenMultiselect => stories::token_multiselect::show(
-                                ui,
-                                &mut self.token_multiselect_state,
-                            ),
-                            Story::TypeaheadSearch => stories::typeahead_search::show(ui),
-                            Story::RelationshipEditor => stories::relationship_editor::show(
-                                ui,
-                                &mut self.relationship_editor_state,
-                            ),
-                            Story::CommandPalette => {
-                                stories::command_palette::show(ui, &mut self.command_palette_state)
-                            }
-                            Story::EventWiring => {
-                                stories::event_wiring::show(ui, &mut self.event_wiring_state)
-                            }
-                            Story::WiringEditor => {
-                                stories::wiring_editor::show(ui, &mut self.wiring_editor_state)
-                            }
-                            Story::ConversationHistory => stories::conversation_history::show(
-                                ui,
-                                &mut self.conversation_history_state,
-                            ),
-                            Story::AgentConfig => {
-                                stories::agent_config::show(ui, &mut self.agent_config_state)
-                            }
-                            Story::Select => stories::select::show(ui, &mut self.select_state),
-                            Story::UiMachine => stories::machine::show(ui, &mut self.machine_state),
-                            Story::NamedGroupList => stories::named_group_list::show(
-                                ui,
-                                &mut self.named_group_list_state,
-                            ),
-                            Story::RarityTargetEditor => stories::rarity_target_editor::show(
-                                ui,
-                                &mut self.rarity_target_editor_state,
-                            ),
-                            Story::PaletteEditor => {
-                                stories::palette_editor::show(ui, &mut self.palette_editor_state)
-                            }
-                            Story::SlotTable => {
-                                stories::slot_table::show(ui, &mut self.slot_table_state)
-                            }
-                            Story::PropertyList => stories::property_list::show(ui),
-                            Story::IdPill => stories::id_pill::show(ui),
-                            Story::PhaseCard => stories::phase_card::show(ui),
-                            Story::QuantityStepper => stories::quantity_stepper::show(
-                                ui,
-                                &mut self.quantity_stepper_state,
-                            ),
-                            Story::MintCheckout => {
-                                stories::mint_checkout::show(ui, &mut self.mint_checkout_state)
-                            }
-                            Story::ButtonGroup => {
-                                stories::button_group::show(ui, &mut self.button_group_state)
-                            }
-                            Story::PaneNav => stories::pane_nav::show(ui, &mut self.pane_nav_state),
-                            Story::Toast => stories::toast::show(ui, &mut self.toast_state),
                         }
+                        ui.heading(
+                            egui::RichText::new(self.current_story.label())
+                                .color(CHROME_TEXT_PRIMARY),
+                        );
                     });
+                    // At Compact the description is several lines of chrome
+                    // above the thing being reviewed, on the screen with the
+                    // least room for it.
+                    if !narrow {
+                        ui.label(
+                            egui::RichText::new(self.current_story.description())
+                                .color(CHROME_TEXT_MUTED),
+                        );
+                    }
+                    if !self.nav_hidden {
+                        self.review.controls(ui);
+                    }
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    // Drag-to-scroll stays ON. A phone has no other way to move
+                    // a long story, and the gesture conflict it creates with the
+                    // controls inside is now handled where it belongs — see
+                    // `egui_widgets::touch`, which makes a control transparent
+                    // until it is grabbed and then takes the drag explicitly.
+                    // Clearing `drag` here would fix the controls by breaking
+                    // the page.
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        let story = self.current_story;
+                        let review = self.review.clone();
+                        review.draw_story(story, self, ui);
+                    });
+
+                    // AFTER the story, so the offers it made this pass are
+                    // already in the registry. It would work drawn before —
+                    // `commands` keeps an offer live for one pass precisely
+                    // because a palette usually sits above what it lists — but
+                    // there is no reason to spend that grace when the order is
+                    // ours to choose.
+                    self.draw_palette(ui);
+
+                    if narrow {
+                        let mut open = self.nav_open;
+                        Drawer::new("storybook-nav")
+                            .side(DrawerSide::Left)
+                            .width(260.0)
+                            .show(ui, &mut open, |ui| {
+                                ui.heading(
+                                    egui::RichText::new("egui Widgets").color(CHROME_ACCENT),
+                                );
+                                ui.separator();
+                                egui::ScrollArea::vertical().show(ui, |ui| {
+                                    self.draw_sidebar(ui);
+                                });
+                            });
+                        // Picking a story should close the drawer; `draw_sidebar`
+                        // does not know it is in one, so the change is detected
+                        // here instead of teaching it.
+                        if self.nav_open && self.current_story != story_before {
+                            open = false;
+                        }
+                        self.nav_open = open;
+                    }
                 });
         }
     }

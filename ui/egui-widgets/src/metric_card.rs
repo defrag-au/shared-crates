@@ -8,7 +8,7 @@
 
 use egui::{Color32, FontId, RichText, Ui, Vec2};
 
-use crate::theme;
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 /// Font sizes the card paints with. Named because [`MetricCard::natural_size`]
 /// has to measure with exactly the same ones — a measurement that drifts from
@@ -44,15 +44,15 @@ pub struct MetricCard<'a> {
     /// Optional sparkline data points.
     sparkline_data: Option<&'a [f64]>,
     /// Accent color for the value text.
-    value_color: Color32,
+    value_color: Ink,
     /// Card width (None = available width).
     width: Option<f32>,
     /// Forced card height, so a row can share one baseline.
     height: Option<f32>,
     /// Card background color.
-    bg_color: Color32,
+    bg_color: Ink,
     /// Border color.
-    border_color: Color32,
+    border_color: Ink,
 }
 
 impl<'a> MetricCard<'a> {
@@ -64,11 +64,11 @@ impl<'a> MetricCard<'a> {
             subtitle: None,
             trend: None,
             sparkline_data: None,
-            value_color: theme::TEXT_PRIMARY,
+            value_color: Ink::Token(Token::TextPrimary),
             width: None,
             height: None,
-            bg_color: theme::BG_HIGHLIGHT,
-            border_color: theme::BORDER,
+            bg_color: Ink::Token(Token::BgHighlight),
+            border_color: Ink::Token(Token::Border),
         }
     }
 
@@ -91,8 +91,8 @@ impl<'a> MetricCard<'a> {
     }
 
     /// Set the value text color.
-    pub fn value_color(mut self, color: Color32) -> Self {
-        self.value_color = color;
+    pub fn value_color(mut self, color: impl Into<Ink>) -> Self {
+        self.value_color = color.into();
         self
     }
 
@@ -163,18 +163,25 @@ impl<'a> MetricCard<'a> {
     }
 
     /// Set the background color.
-    pub fn bg_color(mut self, color: Color32) -> Self {
-        self.bg_color = color;
+    pub fn bg_color(mut self, color: impl Into<Ink>) -> Self {
+        self.bg_color = color.into();
         self
     }
 
     /// Render the metric card.
     pub fn show(self, ui: &mut Ui) {
+        // Resolved once, ahead of the closure: a `new` names its tokens, it
+        // cannot hold values.
+        let t = ui.tokens();
+        let value_color = self.value_color.resolve(&t);
+        let bg_color = self.bg_color.resolve(&t);
+        let border_color = self.border_color.resolve(&t);
+
         let frame = egui::Frame::NONE
-            .fill(self.bg_color)
-            .corner_radius(6.0)
-            .inner_margin(12.0)
-            .stroke(egui::Stroke::new(1.0_f32, self.border_color));
+            .fill(bg_color)
+            .corner_radius(ui.tokens().corner(Radius::Md))
+            .inner_margin(ui.tokens().margin(Space::Xl))
+            .stroke(egui::Stroke::new(1.0_f32, border_color));
 
         let add_contents = |ui: &mut Ui| {
             // Force vertical layout — cards may be placed inside ui.horizontal()
@@ -182,34 +189,38 @@ impl<'a> MetricCard<'a> {
                 // Label — top of card, distinct from value
                 ui.label(
                     RichText::new(self.label)
-                        .color(theme::TEXT_SECONDARY)
-                        .size(12.0),
+                        .color(ui.tokens().color.text_secondary)
+                        .size(ui.text_size(TextSize::Md)),
                 );
 
-                ui.add_space(4.0);
+                ui.gap(Space::Sm);
 
                 // Value row — value + optional subtitle on same line
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(self.value)
-                            .color(self.value_color)
-                            .size(24.0)
+                            .color(value_color)
+                            .size(ui.text_size(TextSize::Xl3))
                             .strong(),
                     );
                     if let Some(subtitle) = &self.subtitle {
-                        ui.label(RichText::new(subtitle).color(theme::TEXT_MUTED).size(13.0));
+                        ui.label(
+                            RichText::new(subtitle)
+                                .color(ui.tokens().color.text_muted)
+                                .size(ui.text_size(TextSize::Lg)),
+                        );
                     }
                 });
 
                 // Trend indicator on its own line
                 if let Some((direction, delta)) = &self.trend {
-                    ui.add_space(2.0);
+                    ui.gap(Space::Xs);
                     ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.set_item_gap_x(Space::Sm);
                         let color = match direction {
-                            Trend::Up => theme::SUCCESS,
-                            Trend::Down => theme::ERROR,
-                            Trend::Flat => theme::TEXT_MUTED,
+                            Trend::Up => ui.tokens().color.success,
+                            Trend::Down => ui.tokens().color.error,
+                            Trend::Flat => ui.tokens().color.text_muted,
                         };
 
                         // Paint a small triangle arrow instead of unicode
@@ -254,7 +265,11 @@ impl<'a> MetricCard<'a> {
                             }
                         }
 
-                        ui.label(RichText::new(delta).color(color).size(11.0));
+                        ui.label(
+                            RichText::new(delta)
+                                .color(color)
+                                .size(ui.text_size(TextSize::Base)),
+                        );
                     });
                 }
 
@@ -262,19 +277,19 @@ impl<'a> MetricCard<'a> {
                 if let Some(data) = self.sparkline_data
                     && data.len() >= 2
                 {
-                    ui.add_space(8.0);
+                    ui.gap(Space::Md);
                     crate::Sparkline::new(data)
                         .height(32.0)
                         .line_width(1.5)
-                        .line_color(self.value_color)
+                        .line_color(value_color)
                         .fill(Color32::from_rgba_premultiplied(
-                            self.value_color.r(),
-                            self.value_color.g(),
-                            self.value_color.b(),
+                            value_color.r(),
+                            value_color.g(),
+                            value_color.b(),
                             25,
                         ))
                         .show_endpoint(false)
-                        .bg_color(self.bg_color)
+                        .bg_color(bg_color)
                         .show(ui);
                 }
             });

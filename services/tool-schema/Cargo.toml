@@ -2,7 +2,7 @@
 name = "tool-schema"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Tool arguments as a type: the derived JSON Schema, and the parse target, from one definition"
 
 [dependencies]

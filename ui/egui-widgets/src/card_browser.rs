@@ -8,8 +8,8 @@
 //! (e.g. `AssetCard` with 3D tilt) through the [`CardRenderContext::response`] field.
 
 use crate::image_loader::CachedSpinner;
-use crate::theme;
-use egui::{Color32, Pos2, Rect, Sense, Stroke, Vec2};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
+use egui::{Pos2, Rect, Sense, Stroke, Vec2};
 
 // ============================================================================
 // Config & State
@@ -31,8 +31,10 @@ pub struct CardBrowserConfig {
     pub text_lines: u8,
     /// Width of the detail panel when a card is selected.
     pub detail_width: f32,
-    /// Spacing between cards.
-    pub spacing: f32,
+    /// Gutter between cards. `None` takes the theme's [`Space::Md`], which is
+    /// what the literal `8.0` here used to mean — same reasoning as the [`Ink`]
+    /// fields below.
+    pub spacing: Option<Space>,
     /// Card corner radius.
     pub rounding: f32,
     /// Scroll area ID salt (must be unique if multiple browsers on one page).
@@ -44,19 +46,19 @@ pub struct CardBrowserConfig {
     /// items are on screen.
     pub grow_to_content: bool,
     /// Card background color (normal).
-    pub bg_card: Color32,
+    pub bg_card: Ink,
     /// Card background color (hovered).
-    pub bg_card_hover: Color32,
+    pub bg_card_hover: Ink,
     /// Card background color (selected).
-    pub bg_card_selected: Color32,
+    pub bg_card_selected: Ink,
     /// Card border color (normal).
-    pub border_color: Color32,
+    pub border_color: Ink,
     /// Card border color (selected).
-    pub border_selected: Color32,
+    pub border_selected: Ink,
     /// Muted text / placeholder color.
-    pub text_muted: Color32,
+    pub text_muted: Ink,
     /// Detail panel background color.
-    pub bg_detail: Color32,
+    pub bg_detail: Ink,
     /// Detail panel inner margin.
     pub detail_margin: f32,
 }
@@ -86,17 +88,23 @@ impl Default for CardBrowserConfig {
             thumb_aspect_ratio: 1.0,
             text_lines: 3,
             detail_width: 420.0,
-            spacing: 8.0,
+            spacing: None,
             rounding: 6.0,
             scroll_id: "card_browser",
             grow_to_content: false,
-            bg_card: theme::BG_PRIMARY,
-            bg_card_hover: theme::BG_HIGHLIGHT,
-            bg_card_selected: Color32::from_rgb(40, 45, 55),
-            border_color: Color32::from_rgba_premultiplied(86, 95, 137, 40),
-            border_selected: theme::ACCENT_CYAN,
-            text_muted: theme::TEXT_MUTED,
-            bg_detail: Color32::from_rgb(30, 32, 42),
+            bg_card: Ink::Token(Token::BgPrimary),
+            bg_card_hover: Ink::Token(Token::BgHighlight),
+            bg_card_selected: Ink::Token(Token::BgHighlight),
+            // Was `from_rgba_premultiplied(86, 95, 137, 40)` — the constructor
+            // that expects already-scaled channels, so it blended additively and
+            // painted a hairline brighter than any border in the palette. The
+            // token whose whole job is a card edge says this directly.
+            border_color: Ink::Token(Token::Border),
+            border_selected: Ink::Token(Token::AccentCyan),
+            text_muted: Ink::Token(Token::TextMuted),
+            // One step up the background ramp from the cards, so the panel reads
+            // as a surface in front of the grid rather than a hole in it.
+            bg_detail: Ink::Token(Token::BgSecondary),
             detail_margin: 14.0,
         }
     }
@@ -169,7 +177,22 @@ pub fn show<T>(
     mut render_detail: impl FnMut(&mut egui::Ui, usize, &mut T),
 ) -> CardBrowserResponse {
     // Ensure Phosphor icon font is available (used for close button etc.)
-    crate::install_phosphor_font(ui.ctx());
+    crate::icons::ensure_fonts(ui);
+
+    // Resolved once, ahead of the closures that read them: a `Default` config
+    // names its tokens, so the values arrive here.
+    let t = ui.tokens();
+    let bg_card = config.bg_card.resolve(&t);
+    let bg_card_hover = config.bg_card_hover.resolve(&t);
+    let bg_card_selected = config.bg_card_selected.resolve(&t);
+    let border_color = config.border_color.resolve(&t);
+    let border_selected = config.border_selected.resolve(&t);
+    let text_muted = config.text_muted.resolve(&t);
+    let bg_detail = config.bg_detail.resolve(&t);
+    // Same reason: the gutter is part of the theme's rhythm unless a surface
+    // overrides it, and it feeds the column arithmetic below as well as the
+    // layout, so it has to be resolved to one value here.
+    let gutter = t.space(config.spacing.unwrap_or(Space::Md));
 
     let has_selection = state.selected.is_some_and(|idx| idx < items.len());
     let detail_width = if has_selection {
@@ -201,11 +224,11 @@ pub fn show<T>(
             // clicked card stays at the same screen-Y position.
             let mut scroll = egui::ScrollArea::vertical().id_salt(config.scroll_id);
             if let Some((anchor_idx, anchor_screen_y)) = state.scroll_anchor.take() {
-                let cols = ((grid_width + config.spacing) / (config.card_width + config.spacing))
+                let cols = ((grid_width + gutter) / (config.card_width + gutter))
                     .floor()
                     .max(1.0) as usize;
                 let row = anchor_idx / cols;
-                let card_y_in_content = row as f32 * (config.card_height() + config.spacing);
+                let card_y_in_content = row as f32 * (config.card_height() + gutter);
                 let scroll_area_top = ui.cursor().min.y;
                 let screen_y_relative = anchor_screen_y - scroll_area_top;
                 let new_offset = (card_y_in_content - screen_y_relative).max(0.0);
@@ -214,8 +237,8 @@ pub fn show<T>(
 
             let mut grid = |ui: &mut egui::Ui| {
                 ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::splat(config.spacing);
-                    let spinner = CachedSpinner::new(ui, 12.0, config.text_muted);
+                    ui.spacing_mut().item_spacing = Vec2::splat(gutter);
+                    let spinner = CachedSpinner::new(ui, 12.0, text_muted);
                     let _ = spinner; // available for draw_thumbnail callers
 
                     for (idx, item) in items.iter_mut().enumerate() {
@@ -231,11 +254,11 @@ pub fn show<T>(
 
                         // Card background
                         let bg = if is_selected {
-                            config.bg_card_selected
+                            bg_card_selected
                         } else if is_hovered {
-                            config.bg_card_hover
+                            bg_card_hover
                         } else {
-                            config.bg_card
+                            bg_card
                         };
                         ui.painter().rect_filled(rect, config.rounding, bg);
 
@@ -244,14 +267,14 @@ pub fn show<T>(
                             ui.painter().rect_stroke(
                                 rect,
                                 config.rounding,
-                                Stroke::new(3.0_f32, config.border_selected),
+                                Stroke::new(3.0_f32, border_selected),
                                 egui::StrokeKind::Inside,
                             );
                         } else {
                             ui.painter().rect_stroke(
                                 rect,
                                 config.rounding,
-                                Stroke::new(1.0_f32, config.border_color),
+                                Stroke::new(1.0_f32, border_color),
                                 egui::StrokeKind::Inside,
                             );
                         }
@@ -306,7 +329,7 @@ pub fn show<T>(
                 let content_height = scroll_output.content_size.y;
                 let viewport_height = scroll_output.inner_rect.height();
                 let offset = scroll_output.state.offset.y;
-                let threshold = (config.card_height() + config.spacing) * 2.0;
+                let threshold = (config.card_height() + gutter) * 2.0;
                 if content_height > viewport_height
                     && offset + viewport_height >= content_height - threshold
                 {
@@ -319,12 +342,12 @@ pub fn show<T>(
         if let Some(sel_idx) = state.selected
             && sel_idx < items.len()
         {
-            ui.add_space(12.0);
+            ui.gap(Space::Xl);
             ui.vertical(|ui| {
                 ui.set_max_width(config.detail_width);
                 ui.set_min_width(config.detail_width);
                 let frame_resp = egui::Frame::new()
-                    .fill(config.bg_detail)
+                    .fill(bg_detail)
                     .corner_radius(config.rounding)
                     .inner_margin(config.detail_margin)
                     .show(ui, |ui| {
@@ -342,7 +365,7 @@ pub fn show<T>(
                     if ui
                         .add(
                             egui::Button::new(
-                                crate::PhosphorIcon::X.rich_text(14.0, config.border_selected),
+                                crate::PhosphorIcon::X.rich_text(14.0, border_selected),
                             )
                             .frame(false),
                         )
@@ -374,24 +397,25 @@ pub fn draw_thumbnail(
     image_url: Option<&str>,
     config: &CardBrowserConfig,
 ) -> bool {
+    let t = ui.tokens();
+    let bg_card_hover = config.bg_card_hover.resolve(&t);
+    let text_muted = config.text_muted.resolve(&t);
     let Some(url) = image_url else {
         // No URL — placeholder
-        ui.painter()
-            .rect_filled(thumb_rect, 4.0, config.bg_card_hover);
+        ui.painter().rect_filled(thumb_rect, 4.0, bg_card_hover);
         ui.painter().text(
             thumb_rect.center(),
             egui::Align2::CENTER_CENTER,
             "?",
-            egui::FontId::proportional(20.0),
-            config.text_muted,
+            egui::FontId::proportional(ui.text_size(TextSize::Xl2)),
+            text_muted,
         );
         return false;
     };
 
     let visible = ui.clip_rect().intersects(thumb_rect);
     if !visible {
-        ui.painter()
-            .rect_filled(thumb_rect, 4.0, config.bg_card_hover);
+        ui.painter().rect_filled(thumb_rect, 4.0, bg_card_hover);
         return false;
     }
 
@@ -415,13 +439,12 @@ pub fn draw_thumbnail(
         egui::Image::new(url)
             .fit_to_exact_size(thumb_rect.size())
             .show_loading_spinner(false)
-            .corner_radius(4)
+            .corner_radius(ui.tokens().corner(Radius::Base))
             .paint_at(ui, thumb_rect);
         false
     } else {
-        ui.painter()
-            .rect_filled(thumb_rect, 4.0, config.bg_card_hover);
-        let spinner = CachedSpinner::new(ui, 12.0, config.text_muted);
+        ui.painter().rect_filled(thumb_rect, 4.0, bg_card_hover);
+        let spinner = CachedSpinner::new(ui, 12.0, text_muted);
         spinner.paint(ui, thumb_rect);
         true
     }

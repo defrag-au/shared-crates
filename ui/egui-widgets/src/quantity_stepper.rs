@@ -10,10 +10,10 @@
 //! if resp.changed { qty = resp.value; }
 //! ```
 
-use egui::{Color32, RichText, Ui, Vec2};
+use egui::{RichText, Ui, Vec2};
 
 use crate::icons::PhosphorIcon;
-use crate::theme;
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 /// A `−  [n]  +` quantity control.
 pub struct QuantityStepper {
@@ -22,7 +22,7 @@ pub struct QuantityStepper {
     max: u32,
     button_size: f32,
     readout_width: f32,
-    accent: Color32,
+    accent: Ink,
 }
 
 /// What the caller does with the stepper's outcome.
@@ -43,7 +43,7 @@ impl QuantityStepper {
             max: u32::MAX,
             button_size: 40.0,
             readout_width: 56.0,
-            accent: theme::ACCENT_GREEN,
+            accent: Ink::Token(Token::AccentGreen),
         }
     }
 
@@ -66,28 +66,30 @@ impl QuantityStepper {
         self
     }
 
-    /// Readout number colour (default `ACCENT_GREEN`).
-    pub fn accent(mut self, accent: Color32) -> Self {
-        self.accent = accent;
+    /// Readout number colour (default `Token::AccentGreen`).
+    pub fn accent(mut self, accent: impl Into<Ink>) -> Self {
+        self.accent = accent.into();
         self
     }
 
     pub fn show(self, ui: &mut Ui) -> QuantityStepperResponse {
-        crate::install_phosphor_font(ui.ctx());
+        crate::icons::ensure_fonts(ui);
 
         let mut value = self.value.clamp(self.min, self.max);
         let start = value;
         let btn = Vec2::splat(self.button_size);
 
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.set_item_gap_x(Space::Base);
 
             // − (disabled at min)
             let dec = ui.add_enabled(
                 value > self.min,
-                egui::Button::new(PhosphorIcon::Minus.rich_text(16.0, theme::TEXT_PRIMARY))
-                    .min_size(btn)
-                    .corner_radius(6.0),
+                egui::Button::new(
+                    PhosphorIcon::Minus.rich_text(16.0, ui.tokens().color.text_primary),
+                )
+                .min_size(btn)
+                .corner_radius(ui.tokens().corner(Radius::Md)),
             );
             if dec.clicked() {
                 value = value.saturating_sub(1).max(self.min);
@@ -98,9 +100,9 @@ impl QuantityStepper {
 
             // [n] readout — fixed box, centred, same height as the buttons.
             egui::Frame::new()
-                .fill(theme::BG_PRIMARY)
-                .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
-                .corner_radius(6.0)
+                .fill(ui.tokens().color.bg_primary)
+                .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
+                .corner_radius(ui.tokens().corner(Radius::Md))
                 .show(ui, |ui| {
                     ui.allocate_ui_with_layout(
                         Vec2::new(self.readout_width, self.button_size),
@@ -108,9 +110,9 @@ impl QuantityStepper {
                         |ui| {
                             ui.label(
                                 RichText::new(value.to_string())
-                                    .size(20.0)
+                                    .size(ui.text_size(TextSize::Xl2))
                                     .strong()
-                                    .color(self.accent),
+                                    .color(self.accent.of(ui)),
                             );
                         },
                     );
@@ -119,9 +121,11 @@ impl QuantityStepper {
             // + (disabled at max)
             let inc = ui.add_enabled(
                 value < self.max,
-                egui::Button::new(PhosphorIcon::Plus.rich_text(16.0, theme::TEXT_PRIMARY))
-                    .min_size(btn)
-                    .corner_radius(6.0),
+                egui::Button::new(
+                    PhosphorIcon::Plus.rich_text(16.0, ui.tokens().color.text_primary),
+                )
+                .min_size(btn)
+                .corner_radius(ui.tokens().corner(Radius::Md)),
             );
             if inc.clicked() {
                 value = (value + 1).min(self.max);

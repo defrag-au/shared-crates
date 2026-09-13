@@ -1,11 +1,11 @@
 //! Storybook demo for the PriceImpactCurve widget.
 
 use egui_widgets::price_impact_curve::{
-    self, constant_product_impact_fn, ImpactCurvePool, PriceImpactCurveConfig,
+    self, ImpactCurvePool, PriceImpactCurveConfig, constant_product_impact_fn,
 };
 use egui_widgets::split_allocation_bar::dex_color;
 
-use crate::{ACCENT, BG_MAIN, TEXT_MUTED};
+use crate::{accent, bg, muted};
 
 /// Build the price impact function by injecting the real AMM math from cardano-tx.
 fn make_impact_fn() -> Box<price_impact_curve::PriceImpactFn> {
@@ -13,11 +13,14 @@ fn make_impact_fn() -> Box<price_impact_curve::PriceImpactFn> {
 }
 
 pub fn show(ui: &mut egui::Ui) {
+    // The DEX series ramp comes from the active theme now, so the fixtures have
+    // to resolve it rather than name a constant.
+    let t = egui_widgets::theme::ThemeExt::tokens(ui);
     let impact_fn = make_impact_fn();
 
     ui.label(
         egui::RichText::new("PriceImpactCurve Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -26,7 +29,7 @@ pub fn show(ui: &mut egui::Ui) {
              by splitting, you stay in the cheap region of each pool's curve. \
              Hover for exact impact values at any ADA amount.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -35,16 +38,14 @@ pub fn show(ui: &mut egui::Ui) {
         // Scenario 1: Aliens at 1000 ADA — clear split benefit
         // Reserves sized so 1000 ADA creates ~1-3% impact (visible curves)
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Aliens \u{2014} 1000 ADA (78/22 split)")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -53,7 +54,7 @@ pub fn show(ui: &mut egui::Ui) {
                         "Splash has 3x the depth of CSWAP. The optimizer sends 78% to Splash \
                          where the curve is flatter, keeping both pools in their low-impact zones.",
                     )
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .size(10.0),
                 );
                 ui.add_space(6.0);
@@ -61,7 +62,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let pools = vec![
                     ImpactCurvePool {
                         label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         ada_reserves: 90_000_000_000, // 90K ADA
                         token_reserves: 800_000_000,
                         fee_bps: 78,
@@ -69,7 +70,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     ImpactCurvePool {
                         label: "CSWAP".into(),
-                        color: dex_color(1),
+                        color: dex_color(1, &t),
                         ada_reserves: 30_000_000_000, // 30K ADA
                         token_reserves: 270_000_000,
                         fee_bps: 85,
@@ -88,16 +89,14 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Scenario 2: Small amount — no split benefit
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Small Swap \u{2014} 50 ADA (no split)")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -106,7 +105,7 @@ pub fn show(ui: &mut egui::Ui) {
                         "At small amounts, both curves are nearly flat. Price impact is \
                          negligible, so the optimizer routes 100% to the lower-fee pool.",
                     )
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .size(10.0),
                 );
                 ui.add_space(6.0);
@@ -114,7 +113,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let pools = vec![
                     ImpactCurvePool {
                         label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         ada_reserves: 90_000_000_000,
                         token_reserves: 800_000_000,
                         fee_bps: 78,
@@ -122,7 +121,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     ImpactCurvePool {
                         label: "CSWAP".into(),
-                        color: dex_color(1),
+                        color: dex_color(1, &t),
                         ada_reserves: 30_000_000_000,
                         token_reserves: 270_000_000,
                         fee_bps: 85,
@@ -141,16 +140,14 @@ pub fn show(ui: &mut egui::Ui) {
 
         // Scenario 3: Large swap, three-way split
         egui::Frame::new()
-            .fill(BG_MAIN)
+            .fill(bg(ui))
             .corner_radius(6.0)
             .inner_margin(12.0)
-            .stroke(egui_widgets::theme::hairline(
-                egui_widgets::theme::BG_HIGHLIGHT,
-            ))
+            .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
             .show(ui, |ui| {
                 ui.label(
                     egui::RichText::new("Large Swap \u{2014} 5000 ADA three-way split")
-                        .color(egui_widgets::theme::TEXT_SECONDARY)
+                        .color(crate::secondary(ui))
                         .size(11.0)
                         .strong(),
                 );
@@ -159,7 +156,7 @@ pub fn show(ui: &mut egui::Ui) {
                         "With three pools, the optimizer distributes load across all of them. \
                          The steeper CSWAP curve gets the smallest allocation.",
                     )
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .size(10.0),
                 );
                 ui.add_space(6.0);
@@ -167,7 +164,7 @@ pub fn show(ui: &mut egui::Ui) {
                 let pools = vec![
                     ImpactCurvePool {
                         label: "Splash".into(),
-                        color: dex_color(0),
+                        color: dex_color(0, &t),
                         ada_reserves: 120_000_000_000, // 120K ADA
                         token_reserves: 1_050_000_000,
                         fee_bps: 78,
@@ -175,7 +172,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     ImpactCurvePool {
                         label: "Minswap".into(),
-                        color: dex_color(1),
+                        color: dex_color(1, &t),
                         ada_reserves: 60_000_000_000, // 60K ADA
                         token_reserves: 525_000_000,
                         fee_bps: 30,
@@ -183,7 +180,7 @@ pub fn show(ui: &mut egui::Ui) {
                     },
                     ImpactCurvePool {
                         label: "CSWAP".into(),
-                        color: dex_color(2),
+                        color: dex_color(2, &t),
                         ada_reserves: 25_000_000_000, // 25K ADA
                         token_reserves: 220_000_000,
                         fee_bps: 85,

@@ -2,8 +2,8 @@
 
 use super::{PatternContext, PatternDetectionResult};
 use crate::registry::{
-    lookup_address, no_fee_calculation, AddressCategory, FeeCalculationFn, MarketplacePurpose,
-    ScriptCategory,
+    AddressCategory, FeeCalculationFn, MarketplacePurpose, ScriptCategory, lookup_address,
+    no_fee_calculation,
 };
 use crate::*;
 use pipeline_types::{AssetId, OperationPayload, PricedAsset};
@@ -134,22 +134,21 @@ fn detect_listing_create(context: &PatternContext) -> Vec<(TxType, f64)> {
                 }
 
                 // Use schema-driven pricing extraction for marketplace datums
-                if let Some(datum) = op.output_datum.as_ref() {
-                    if let Some(marketplace_pricing) =
+                if let Some(datum) = op.output_datum.as_ref()
+                    && let Some(marketplace_pricing) =
                         super::sales::try_schema_driven_pricing_extraction(
                             datum,
                             &marketplace_address,
                         )
-                    {
-                        // Use the complete pricing from schema-driven extraction
-                        price_lovelace = Some(marketplace_pricing.total_price_lovelace);
-                        debug!(
-                            "Using schema-driven pricing: base={}, fee={}, total={}",
-                            marketplace_pricing.base_price_lovelace,
-                            marketplace_pricing.marketplace_fee_lovelace,
-                            marketplace_pricing.total_price_lovelace
-                        );
-                    }
+                {
+                    // Use the complete pricing from schema-driven extraction
+                    price_lovelace = Some(marketplace_pricing.total_price_lovelace);
+                    debug!(
+                        "Using schema-driven pricing: base={}, fee={}, total={}",
+                        marketplace_pricing.base_price_lovelace,
+                        marketplace_pricing.marketplace_fee_lovelace,
+                        marketplace_pricing.total_price_lovelace
+                    );
                 }
 
                 priced_assets.push(PricedAsset {
@@ -210,22 +209,20 @@ fn detect_listing_update(context: &PatternContext) -> Vec<(TxType, f64)> {
         .iter()
         .filter(|op| matches!(op.classification, crate::OperationClassification::Genuine))
     {
-        if let Some(input_utxo) = &op.input {
-            if let Some(AddressCategory::Script(ScriptCategory::Marketplace {
+        if let Some(input_utxo) = &op.input
+            && let Some(AddressCategory::Script(ScriptCategory::Marketplace {
                 purpose: MarketplacePurpose::Sale,
                 ..
             })) = lookup_address(&input_utxo.address)
-            {
-                if op.is_native_token() && op.amount() == 1 {
-                    if let Some(asset) = op.payload.get_asset() {
-                        let asset_key = asset.dot_delimited();
-                        input_assets.insert(
-                            asset_key,
-                            (input_utxo.address.clone(), op.input_datum.clone()),
-                        );
-                    }
-                }
-            }
+            && op.is_native_token()
+            && op.amount() == 1
+            && let Some(asset) = op.payload.get_asset()
+        {
+            let asset_key = asset.dot_delimited();
+            input_assets.insert(
+                asset_key,
+                (input_utxo.address.clone(), op.input_datum.clone()),
+            );
         }
     }
 
@@ -235,22 +232,20 @@ fn detect_listing_update(context: &PatternContext) -> Vec<(TxType, f64)> {
         .iter()
         .filter(|op| matches!(op.classification, crate::OperationClassification::Genuine))
     {
-        if let Some(output_utxo) = &op.output {
-            if let Some(AddressCategory::Script(ScriptCategory::Marketplace {
+        if let Some(output_utxo) = &op.output
+            && let Some(AddressCategory::Script(ScriptCategory::Marketplace {
                 purpose: MarketplacePurpose::Sale,
                 ..
             })) = lookup_address(&output_utxo.address)
-            {
-                if op.is_native_token() && op.amount() == 1 {
-                    if let Some(asset) = op.payload.get_asset() {
-                        let asset_key = asset.dot_delimited();
-                        output_assets.insert(
-                            asset_key,
-                            (output_utxo.address.clone(), op.output_datum.clone()),
-                        );
-                    }
-                }
-            }
+            && op.is_native_token()
+            && op.amount() == 1
+            && let Some(asset) = op.payload.get_asset()
+        {
+            let asset_key = asset.dot_delimited();
+            output_assets.insert(
+                asset_key,
+                (output_utxo.address.clone(), op.output_datum.clone()),
+            );
         }
     }
 
@@ -409,7 +404,9 @@ fn detect_unlisting(context: &PatternContext) -> Vec<(TxType, f64)> {
 
     // If no traditional marketplace unlocks found, check for Wayup pattern
     if marketplace_unlocks.is_empty() {
-        debug!("No unlock operations from known marketplace sale addresses found, checking for Wayup pattern");
+        debug!(
+            "No unlock operations from known marketplace sale addresses found, checking for Wayup pattern"
+        );
 
         // Check if this transaction has Wayup reference inputs and Wayup datums
         if let Some(wayup_marketplace_address) = detect_wayup_unlisting(context, &unlock_operations)
@@ -568,14 +565,12 @@ fn extract_asset_price_from_utxo(
 ) -> Option<u64> {
     // Look for the asset in output UTXOs and extract price from datum
     for output in &context.raw_tx_data.outputs {
-        if output.assets.contains_key(asset_id) {
-            if let Some(datum) = &output.datum {
-                if let Some(marketplace_pricing) =
-                    super::sales::try_schema_driven_pricing_extraction(datum, marketplace_address)
-                {
-                    return Some(marketplace_pricing.total_price_lovelace);
-                }
-            }
+        if output.assets.contains_key(asset_id)
+            && let Some(datum) = &output.datum
+            && let Some(marketplace_pricing) =
+                super::sales::try_schema_driven_pricing_extraction(datum, marketplace_address)
+        {
+            return Some(marketplace_pricing.total_price_lovelace);
         }
     }
     None

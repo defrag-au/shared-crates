@@ -50,7 +50,7 @@
 //! ([`assert_flat`]) rather than a vocabulary too weak to express the bounds
 //! we actually need — which is precisely what cost us the `count` bug.
 
-use schemars::{generate::SchemaSettings, SchemaGenerator};
+use schemars::{SchemaGenerator, generate::SchemaSettings};
 use serde_json::Value;
 
 // Re-exported so a tool author derives against the same version this crate

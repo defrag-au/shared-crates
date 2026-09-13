@@ -5,9 +5,9 @@
 //! keyboard-nav (up/down/enter) + click selection. (In production the
 //! holder-map landing instead feeds server-ranked results straight in.)
 
-use egui_widgets::{filter_options, ChipVariant, TypeaheadOption, TypeaheadSearch};
+use egui_widgets::{ChipVariant, TypeaheadOption, TypeaheadSearch, filter_options};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 /// Story state persisted across frames via egui temp memory.
 #[derive(Clone, Default)]
@@ -20,7 +20,7 @@ struct StoryState {
 pub fn show(ui: &mut egui::Ui) {
     ui.label(
         egui::RichText::new("TypeaheadSearch Widget")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -29,7 +29,7 @@ pub fn show(ui: &mut egui::Ui) {
              the query + highlight; options are ranked server-side or via \
              `filter_options`. Up/Down to move, Enter or click to choose.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .size(11.0),
     );
     ui.add_space(12.0);
@@ -48,12 +48,10 @@ pub fn show(ui: &mut egui::Ui) {
         .collect();
 
     egui::Frame::new()
-        .fill(crate::BG_MAIN)
+        .fill(crate::bg(ui))
         .corner_radius(8.0)
         .inner_margin(12.0)
-        .stroke(egui_widgets::theme::hairline(
-            egui_widgets::theme::BG_HIGHLIGHT,
-        ))
+        .stroke(egui_widgets::theme::hairline(crate::highlight(ui)))
         .show(ui, |ui| {
             ui.set_max_width(ui.available_width().min(460.0));
             let resp =
@@ -70,7 +68,7 @@ pub fn show(ui: &mut egui::Ui) {
                 ui.add_space(10.0);
                 ui.label(
                     egui::RichText::new(format!("Selected: {chosen}"))
-                        .color(ACCENT)
+                        .color(accent(ui))
                         .size(12.0),
                 );
             }
@@ -79,8 +77,16 @@ pub fn show(ui: &mut egui::Ui) {
     ui.data_mut(|d| d.insert_temp(state_id, st));
 }
 
+/// One fixture option: `(id, label, subtitle, optional (chip_text, variant))`.
+type OptionSeed = (
+    &'static str,
+    &'static str,
+    &'static str,
+    Option<(&'static str, ChipVariant)>,
+);
+
 fn sample_options() -> Vec<TypeaheadOption> {
-    let seed: &[(&str, &str, &str, Option<(&str, ChipVariant)>)] = &[
+    let seed: &[OptionSeed] = &[
         (
             "snek",
             "Snek",

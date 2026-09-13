@@ -3,6 +3,19 @@
 //! Each effect implements `CardEffect`, computing per-vertex overlay colours
 //! from normalised UV coordinates and mouse position.  Effects are stateless
 //! per-frame and purely mathematical — no textures or fragment shaders.
+//!
+//! # These colours are DELIBERATELY not themed
+//!
+//! Every `Color32` literal in this module is a **physical simulation**, not a
+//! palette: [`hue_to_rgb`] walks the full sRGB hue wheel because that is what
+//! light does on a foil card, and the premultiplied values elsewhere are
+//! per-vertex alpha computed from geometry. They are the one row of
+//! [`crate::encoding`]'s table that a theme must leave alone — a themed rainbow
+//! is not a rainbow, and a foil restricted to a product's four accents stops
+//! reading as foil.
+//!
+//! So: not an unfinished migration. If a future sweep counts literals here as
+//! outstanding work, this is the answer.
 
 use egui::Color32;
 use std::f32::consts::TAU;

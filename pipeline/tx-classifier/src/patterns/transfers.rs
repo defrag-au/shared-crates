@@ -135,15 +135,15 @@ fn detect_simple_transfer(context: &PatternContext) -> Vec<(TxType, f64)> {
                 && op.op_type == AssetOpType::Transfer
             {
                 // Exclude same-address "transfers" (these are listing updates, not true transfers)
-                if let (Some(input), Some(output)) = (&op.input, &op.output) {
-                    if input.address == output.address {
-                        debug!(
-                            "Excluding same-address transfer for asset {:?} at address {}",
-                            op.payload.get_asset().map(|a| a.dot_delimited()),
-                            input.address
-                        );
-                        return false; // Not a real transfer
-                    }
+                if let (Some(input), Some(output)) = (&op.input, &op.output)
+                    && input.address == output.address
+                {
+                    debug!(
+                        "Excluding same-address transfer for asset {:?} at address {}",
+                        op.payload.get_asset().map(|a| a.dot_delimited()),
+                        input.address
+                    );
+                    return false; // Not a real transfer
                 }
                 true
             } else {
@@ -269,7 +269,7 @@ fn detect_smart_contract(context: &PatternContext) -> Vec<(TxType, f64)> {
 
 /// Detect asset staking/unstaking transactions
 fn detect_asset_staking(context: &PatternContext) -> Vec<(TxType, f64)> {
-    use crate::registry::{lookup_address, AddressCategory, ScriptCategory};
+    use crate::registry::{AddressCategory, ScriptCategory, lookup_address};
 
     // Look for interactions with known staking addresses
     let staking_ops: Vec<_> = context
@@ -382,7 +382,7 @@ fn detect_asset_staking(context: &PatternContext) -> Vec<(TxType, f64)> {
 
 /// Detect asset vesting (lock/unlock) transactions
 fn detect_vesting(context: &PatternContext) -> Vec<(TxType, f64)> {
-    use crate::registry::{lookup_address, AddressCategory, ScriptCategory};
+    use crate::registry::{AddressCategory, ScriptCategory, lookup_address};
 
     // Look for interactions with known vesting addresses
     let vesting_ops: Vec<_> = context

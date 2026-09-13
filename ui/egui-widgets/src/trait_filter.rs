@@ -6,7 +6,7 @@
 //! ("background: red") and its value alone ("red"), so typing either
 //! a category prefix or a value prefix finds matching entries.
 
-use crate::theme;
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 use egui::{Color32, Rect, RichText, Vec2};
 use std::collections::HashSet;
 
@@ -22,8 +22,9 @@ pub struct FilterEntry {
     pub category: String,
     /// Value name, e.g. "Red".
     pub value: String,
-    /// Optional tag chip color (e.g. green = owned, muted = missing).
-    pub color: Option<Color32>,
+    /// Optional tag chip color (e.g. `Token::Success` = owned, absent =
+    /// missing). `None` falls back to a muted wash.
+    pub color: Option<Ink>,
 }
 
 /// Configuration for the filter widget.
@@ -206,7 +207,7 @@ pub fn show(
     // ── Tag chips + text input row ──────────────────────────────────
     let row_resp = ui
         .horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
+            ui.spacing_mut().item_spacing = Vec2::splat(ui.space(Space::Sm));
 
             // Paint selected tags
             let mut remove_idx: Option<usize> = None;
@@ -231,7 +232,7 @@ pub fn show(
                 egui::TextEdit::singleline(&mut state.input)
                     .hint_text(config.placeholder)
                     .desired_width(remaining_width)
-                    .font(egui::FontId::proportional(11.0))
+                    .font(egui::FontId::proportional(ui.text_size(TextSize::Base)))
                     .margin(Vec2::new(4.0, 2.0))
                     .id(input_id),
             )
@@ -294,10 +295,10 @@ pub fn show(
             .fixed_pos(egui::pos2(input_rect.min.x, input_rect.max.y + 2.0))
             .show(ui.ctx(), |ui| {
                 egui::Frame::new()
-                    .fill(theme::BG_SECONDARY)
-                    .corner_radius(4.0)
-                    .stroke(egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT))
-                    .inner_margin(6.0)
+                    .fill(ui.tokens().color.bg_secondary)
+                    .corner_radius(ui.tokens().corner(Radius::Base))
+                    .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.bg_highlight))
+                    .inner_margin(ui.tokens().margin(Space::Base))
                     .show(ui, |ui| {
                         ui.set_max_width(input_rect.width().max(200.0));
                         paint_suggestions(
@@ -327,15 +328,15 @@ pub fn show(
             .fixed_pos(egui::pos2(input_rect.min.x, input_rect.max.y + 2.0))
             .show(ui.ctx(), |ui| {
                 egui::Frame::new()
-                    .fill(theme::BG_SECONDARY)
-                    .corner_radius(4.0)
-                    .stroke(egui::Stroke::new(1.0_f32, theme::BG_HIGHLIGHT))
-                    .inner_margin(6.0)
+                    .fill(ui.tokens().color.bg_secondary)
+                    .corner_radius(ui.tokens().corner(Radius::Base))
+                    .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.bg_highlight))
+                    .inner_margin(ui.tokens().margin(Space::Base))
                     .show(ui, |ui| {
                         ui.label(
                             RichText::new("No matching traits")
-                                .color(theme::TEXT_MUTED)
-                                .size(10.0),
+                                .color(ui.tokens().color.text_muted)
+                                .size(ui.text_size(TextSize::Sm)),
                         );
                     });
             });
@@ -350,18 +351,20 @@ pub fn show(
 
 /// Paint a single tag chip. Returns `true` if the remove button was clicked.
 fn paint_tag(ui: &mut egui::Ui, entry: &FilterEntry, rounding: f32) -> bool {
+    let c = ui.tokens().color;
     let chip_color = entry
         .color
-        .unwrap_or(Color32::from_rgba_premultiplied(86, 95, 137, 160));
-    let text_color = if is_light(chip_color) {
-        Color32::from_rgb(26, 27, 38)
-    } else {
-        Color32::from_rgb(220, 220, 230)
-    };
+        .unwrap_or(Ink::Wash(Token::TextMuted, 160))
+        .of(ui);
+    // Was a hand-rolled `is_light()` branch picking between two literals.
+    // `ColorTokens::on` does the same thing by measured contrast against the
+    // theme's own ramp, so a caller-supplied chip colour stays legible whatever
+    // palette is active.
+    let text_color = c.on(chip_color);
 
     let label_text = &entry.label;
-    let font = egui::FontId::proportional(10.0);
-    let close_font = egui::FontId::proportional(9.0);
+    let font = egui::FontId::proportional(ui.text_size(TextSize::Sm));
+    let close_font = egui::FontId::proportional(ui.text_size(TextSize::Xs));
 
     let galley = ui
         .painter()
@@ -388,7 +391,7 @@ fn paint_tag(ui: &mut egui::Ui, entry: &FilterEntry, rounding: f32) -> bool {
             Vec2::new(close_width, chip_height),
         );
         let close_color = if resp.hovered() {
-            Color32::from_rgb(247, 118, 142)
+            c.error
         } else {
             text_color.gamma_multiply(0.6)
         };
@@ -428,8 +431,8 @@ fn paint_suggestions(
         for (category, items) in &groups {
             ui.label(
                 RichText::new(*category)
-                    .color(theme::TEXT_MUTED)
-                    .size(9.0)
+                    .color(ui.tokens().color.text_muted)
+                    .size(ui.text_size(TextSize::Xs))
                     .strong(),
             );
 
@@ -438,16 +441,16 @@ fn paint_suggestions(
                 let is_cursor = cursor == Some(suggestion_pos);
 
                 let resp = ui.horizontal(|ui| {
-                    ui.add_space(8.0);
+                    ui.gap(Space::Md);
                     let bg = if is_cursor {
-                        theme::BG_HIGHLIGHT
+                        ui.tokens().color.bg_highlight
                     } else {
                         Color32::TRANSPARENT
                     };
                     let text_color = if is_cursor {
-                        theme::ACCENT_CYAN
+                        ui.tokens().color.accent_cyan
                     } else {
-                        theme::TEXT_PRIMARY
+                        ui.tokens().color.text_primary
                     };
 
                     let resp =
@@ -455,7 +458,7 @@ fn paint_suggestions(
                     if is_cursor {
                         ui.painter().rect_filled(resp.rect, 2.0, bg);
                     }
-                    if let Some(color) = entry.color {
+                    if let Some(color) = entry.color.map(|ink| ink.of(ui)) {
                         let dot_center = egui::pos2(resp.rect.min.x + 12.0, resp.rect.center().y);
                         ui.painter().circle_filled(dot_center, 3.0, color);
                     }
@@ -468,7 +471,7 @@ fn paint_suggestions(
                         egui::pos2(text_x, resp.rect.center().y),
                         egui::Align2::LEFT_CENTER,
                         &entry.value,
-                        egui::FontId::proportional(11.0),
+                        egui::FontId::proportional(ui.text_size(TextSize::Base)),
                         text_color,
                     );
 
@@ -482,19 +485,19 @@ fn paint_suggestions(
                 }
             }
 
-            ui.add_space(2.0);
+            ui.gap(Space::Xs);
         }
     } else {
         for (suggestion_pos, &entry_idx) in suggestions.iter().enumerate() {
             let entry = &entries[entry_idx];
             let is_cursor = cursor == Some(suggestion_pos);
             let text_color = if is_cursor {
-                theme::ACCENT_CYAN
+                ui.tokens().color.accent_cyan
             } else {
-                theme::TEXT_PRIMARY
+                ui.tokens().color.text_primary
             };
             let bg = if is_cursor {
-                theme::BG_HIGHLIGHT
+                ui.tokens().color.bg_highlight
             } else {
                 Color32::TRANSPARENT
             };
@@ -508,7 +511,7 @@ fn paint_suggestions(
                     egui::pos2(resp.rect.min.x + 4.0, resp.rect.center().y),
                     egui::Align2::LEFT_CENTER,
                     &entry.label,
-                    egui::FontId::proportional(11.0),
+                    egui::FontId::proportional(ui.text_size(TextSize::Base)),
                     text_color,
                 );
                 resp
@@ -523,8 +526,7 @@ fn paint_suggestions(
     clicked
 }
 
-/// Rough check: is this color "light" enough to need dark text?
-fn is_light(c: Color32) -> bool {
-    let luma = c.r() as f32 * 0.299 + c.g() as f32 * 0.587 + c.b() as f32 * 0.114;
-    luma > 160.0
-}
+// `is_light()` lived here — a NTSC-weighted luma against a 160 threshold, used
+// to pick between two hardcoded text colours. Replaced by `ColorTokens::on`,
+// which measures WCAG contrast against the theme's own ramp rather than
+// guessing at a threshold, and returns a colour the theme actually contains.

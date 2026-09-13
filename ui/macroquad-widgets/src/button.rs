@@ -7,7 +7,7 @@
 
 use macroquad::prelude::*;
 
-use crate::painter::{draw_rounded_rect, shade, with_alpha, Painter};
+use crate::painter::{Painter, draw_rounded_rect, shade, with_alpha};
 
 /// Visual weight.
 #[derive(Clone, Copy)]

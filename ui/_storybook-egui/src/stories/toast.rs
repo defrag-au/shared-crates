@@ -1,7 +1,7 @@
 //! `Toast` / `ToastQueue` storybook story.
 
-use crate::{ACCENT, TEXT_MUTED};
-use egui_widgets::{show_toasts, IdPill, PhosphorIcon, Toast, ToastKind, ToastQueue};
+use crate::{accent, muted};
+use egui_widgets::{IdPill, PhosphorIcon, Toast, ToastKind, ToastQueue, show_toasts};
 
 /// Per-story state — owns the queue so toasts persist across paint
 /// frames and self-dismiss on the countdown.
@@ -39,7 +39,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
         );
         state.queue.progress("resolve", "naming senders…", None);
     }
-    ui.label(egui::RichText::new("Toast").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Toast").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Transient overlay messages with frame-countdown auto-dismiss. \
@@ -48,20 +48,20 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
              bottom-right stack. Lifetime is frame-based (no `js_sys` \
              dependency) so it works the same in native and wasm.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
 
     // ── Kinds ──────────────────────────────────────────────────────────
-    ui.label(egui::RichText::new("Kinds").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Kinds").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "Four severities drive the palette and (where available) the \
              default Phosphor glyph: Success/CheckCircle (green), \
              Error/X (red), Warning/Warning (amber), Info (blue, no icon).",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);
@@ -86,7 +86,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
             "Progress — background work. Keyed, so repeated pushes replace rather than stack; \
              never auto-dismisses; resolves in place.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);
@@ -120,7 +120,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
     // ── Copy-to-clipboard pattern ──────────────────────────────────────
     ui.label(
         egui::RichText::new("IdPill — clipboard acknowledgement")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -129,7 +129,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
              returns `response.copied`; the host pushes an info toast. \
              No coupling between primitive and controller.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);
@@ -144,7 +144,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
     // ── Builders ───────────────────────────────────────────────────────
     ui.label(
         egui::RichText::new("Custom icon + lifetime")
-            .color(ACCENT)
+            .color(accent(ui))
             .strong(),
     );
     ui.label(
@@ -154,7 +154,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
              extend the auto-dismiss duration for messages that need to \
              linger.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);
@@ -179,14 +179,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut ToastState) {
     ui.add_space(16.0);
 
     // ── Queue state ────────────────────────────────────────────────────
-    ui.label(egui::RichText::new("Queue state").color(ACCENT).strong());
+    ui.label(
+        egui::RichText::new("Queue state")
+            .color(accent(ui))
+            .strong(),
+    );
     ui.label(
         egui::RichText::new(
             "Live count + a clear-all (e.g. on a route change). Default \
              cap is 5 simultaneously-visible toasts; older entries drop \
              off the front of the queue as new ones land.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(6.0);

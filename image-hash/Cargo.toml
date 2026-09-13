@@ -1,7 +1,7 @@
 [package]
 name = "image-hash"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 description = "Perceptual hashing (dHash) + banded indexing for visual asset search"
 license = "MIT"
 

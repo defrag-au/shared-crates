@@ -1,4 +1,4 @@
-use phf::{phf_map, Map};
+use phf::{Map, phf_map};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -11,6 +11,19 @@ pub enum MarketplaceType {
     /// JPG.store V4 — new contract with simplified datum (asset ID + seller credentials only, no price)
     JpgStoreV4,
     Wayup,
+    /// abandonware.art — a fork of the jpg V2/V3 ask validator
+    /// (`~/code/github/contracts-v3`, branch `damon-abandonware`) with the fee
+    /// address, fee rate and fee-waiver path changed and nothing else. Same
+    /// datum shape, same redeemer, same payout layout as [`Self::JpgStoreV3`];
+    /// only the constants baked into the script differ, which is why it is a
+    /// distinct script hash and a distinct generation.
+    ///
+    /// Deployed per network: the script hash is the same on preprod and
+    /// mainnet (it hardcodes key hashes, not addresses), but the reference
+    /// UTxO and the fee wallet's bech32 form are not — hence
+    /// [`Self::script_reference`] and [`Self::marketplace_fee`] take a
+    /// [`RegistryNetwork`].
+    Abandonware,
     Unknown,
 }
 
@@ -31,18 +44,98 @@ pub struct ScriptReference {
 // filed V1's script under V2 and left both generations unbuildable. Callers
 // resolve them from the referenced UTxO; see `cardano_tx::builder::buy`.
 
-/// Buy redeemer CBOR for a marketplace contract.
-/// A contract-enforced marketplace fee output.
+/// The exact integer expression a validator uses to compute its fee from the
+/// datum's payout sum.
 ///
-/// The rate is of the **gross** (payouts + fee), not of the payouts, so the fee
-/// is `payouts * num / (den - num)` — 2% of gross on a 470.4 ADA payout set is
-/// 9.6 ADA, giving a 480 ADA gross. Measured on `556db775…`.
+/// An enum rather than a `(num, den)` pair on purpose: every contract checks
+/// `quantity >= fee` against ITS OWN truncation order, and two expressions that
+/// are algebraically equal can differ by a lovelace after integer division. A
+/// generic rate that "improves" the arithmetic lands one lovelace low and the
+/// spend fails with nothing to say why. Each variant is that contract's source
+/// line, reproduced verbatim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeeFormula {
+    /// jpg V2/V3 `validators/ask.ak`: `payouts_sum * 50 / 49 / 50`. The
+    /// contract's own comment calls it an approximation of 2% of gross "to a
+    /// very high degree". Measured on `556db775…`: 470.4 ADA of payouts pays
+    /// 9.6 ADA, a 480 ADA gross.
+    JpgV2,
+    /// abandonware.art `validators/ask.ak`: `payouts_sum * pct / (100 - pct)`
+    /// — `pct` percent of the GROSS (payouts + fee), one truncation.
+    GrossPercent { pct: u64 },
+}
+
+impl FeeFormula {
+    pub const ALL: [FeeFormula; 2] = [FeeFormula::JpgV2, FeeFormula::GrossPercent { pct: 5 }];
+
+    /// Evaluate the contract's expression on a payout sum.
+    pub fn due_on_payouts(self, payouts_lovelace: u64) -> u64 {
+        let sum = u128::from(payouts_lovelace);
+        let fee = match self {
+            // Written as the validator writes it, division by division.
+            FeeFormula::JpgV2 => sum * 50 / 49 / 50,
+            FeeFormula::GrossPercent { pct } => {
+                let pct = u128::from(pct);
+                sum * pct / (100 - pct).max(1)
+            }
+        };
+        fee as u64
+    }
+
+    /// Work back from what the BUYER pays to what the seller's datum should
+    /// promise.
+    ///
+    /// A marketplace quotes the price a buyer pays; the datum carries the
+    /// seller's payout, and the validator demands `max(due(payout), floor)`
+    /// on top. This finds the LARGEST payout whose total does not exceed
+    /// `buyer_pays` and pins the fee at the remainder, so the buyer pays the
+    /// quoted figure exactly and the fee is never below what the contract or
+    /// the ledger demands. `floor` is the fee output's minimum (the ledger's
+    /// min-UTxO for it, or the contract's own minimum, whichever is higher).
+    ///
+    /// `None` when `buyer_pays` leaves no room for a positive payout.
+    pub fn split_buyer_price(self, buyer_pays: u64, floor: u64) -> Option<PriceSplit> {
+        let total_for = |payout: u64| payout.saturating_add(self.due_on_payouts(payout).max(floor));
+        if total_for(1) > buyer_pays {
+            return None;
+        }
+        // `total_for` is monotone in the payout, so the boundary is a binary
+        // search rather than a lovelace-by-lovelace walk.
+        let (mut lo, mut hi) = (1u64, buyer_pays);
+        while lo < hi {
+            let mid = lo + (hi - lo).div_ceil(2);
+            if total_for(mid) <= buyer_pays {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        Some(PriceSplit {
+            buyer_pays,
+            payout: lo,
+            fee: buyer_pays - lo,
+        })
+    }
+}
+
+/// A quoted price taken apart: what the buyer pays, what the seller's datum
+/// promises, and the fee output between them. `buyer_pays == payout + fee`
+/// always, and `fee` is at least what the validator will check for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PriceSplit {
+    pub buyer_pays: u64,
+    pub payout: u64,
+    pub fee: u64,
+}
+
+/// A contract-enforced marketplace fee output.
 #[derive(Debug, Clone, Copy)]
 pub struct MarketplaceFee {
-    /// Bech32 address the fee must be paid to.
+    /// Bech32 address the fee must be paid to — network-specific, which is why
+    /// [`MarketplaceType::marketplace_fee`] takes a [`RegistryNetwork`].
     pub address: &'static str,
-    pub rate_num: u64,
-    pub rate_den: u64,
+    /// The validator's own fee expression.
+    pub formula: FeeFormula,
     /// Contract-enforced floor, independent of the ledger's min-UTxO. jpg
     /// charges 2% **or 1 ADA, whichever is greater** — on a cheap listing the
     /// percentage is far below it, and paying only the percentage (or only the
@@ -54,31 +147,12 @@ pub struct MarketplaceFee {
 impl MarketplaceFee {
     /// The fee due on a set of datum payouts, before any min-UTxO floor.
     ///
-    /// The arithmetic is taken verbatim from jpg's ask validator, **including
-    /// its integer truncation**:
-    ///
-    /// ```text
-    /// let marketplace_fee = payouts_sum * 50 / 49 / 50
-    /// ```
-    ///
-    /// The contract's own comment calls this an approximation of the fee "to a
-    /// very high degree". Reproducing the algebra instead (`sum / 49`, or 2% of
-    /// gross) can land a lovelace below what it computes, and the check is
-    /// `quantity >= marketplace_fee` — so rounding the wrong way fails the
-    /// spend for the sake of one lovelace. Match the contract, don't improve on
-    /// it.
-    ///
-    /// Callers must still raise the result to the output's min-UTxO: sampled
-    /// buys pay `1,155,080` (`268 × 4310`) whenever the computed fee is below
-    /// that floor.
+    /// Delegates to the contract's exact expression — see [`FeeFormula`] for
+    /// why this is never a generic rate. Callers must still raise the result
+    /// to the output's min-UTxO: sampled jpg buys pay `1,155,080`
+    /// (`268 × 4310`) whenever the computed fee is below that floor.
     pub fn due_on_payouts(&self, payouts_lovelace: u64) -> u64 {
-        let num = u128::from(self.rate_num);
-        let den = u128::from(self.rate_den);
-        let sum = u128::from(payouts_lovelace);
-        // `sum * den/(den-num) / den` — the gross, then the fee share, each
-        // truncating exactly where the validator's does.
-        let inflated = sum * den / (den - num).max(1);
-        (inflated / den) as u64
+        self.formula.due_on_payouts(payouts_lovelace)
     }
 }
 
@@ -198,26 +272,70 @@ impl MarketplaceType {
     /// script (`9068a7a3…`) filed under `JpgStoreV2`, which left V1 with no
     /// reference at all and pointed V2 at the wrong validator, so *neither*
     /// version could be bought.
-    pub fn script_reference(&self) -> Option<ScriptReference> {
+    ///
+    /// Per network: a reference UTxO is a transaction output, and the same
+    /// script deployed on preprod and mainnet sits in two different ones. A
+    /// version with no deployment on `network` answers `None` rather than
+    /// pointing a preprod buy at a mainnet UTxO.
+    pub fn script_reference(&self, network: RegistryNetwork) -> Option<ScriptReference> {
+        let deployment = self.deployment(network)?;
+        let reference = deployment.reference_utxo?;
+        Some(ScriptReference {
+            tx_hash: reference.tx_hash,
+            output_index: reference.output_index,
+            script_hash: deployment.script_hash,
+        })
+    }
+
+    /// The deployment of this version's validator on `network`, if any — the
+    /// single record its addresses, fee and reference script are read from.
+    pub fn deployment(&self, network: RegistryNetwork) -> Option<&'static MarketplaceDeployment> {
+        MARKETPLACE_DEPLOYMENTS.iter().find(|d| {
+            d.network == network
+                && (d.kind == *self || d.sale_addresses.iter().any(|s| s.kind == *self))
+        })
+    }
+
+    /// Which marketplace operates this contract version.
+    pub const fn marketplace(self) -> Marketplace {
         match self {
-            // jpg.store V1 — one validator serves both the sale and offer
-            // addresses, which differ only in their staking part.
-            MarketplaceType::JpgStoreV1 => Some(ScriptReference {
-                tx_hash: "9a32459bd4ef6bbafdeb8cf3b909d0e3e2ec806e4cc6268529280b0fc1d06f5b",
-                output_index: 0,
-                script_hash: "9068a7a3f008803edac87af1619860f2cdcde40c26987325ace138ad",
-            }),
-            // V2 and V3 are the SAME validator; the V2 address carries a script
-            // staking part and V3 carries none. The reference UTxO itself sits
-            // at the V3 address. Discovered from the reference input of a live
-            // V2 spend (tx 65167d34…, 2026-09-07).
-            MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3 => Some(ScriptReference {
-                tx_hash: "1693c508b6132e89b932754d657d28b24068ff5ff1715fec36c010d4d6470b3d",
-                output_index: 0,
-                script_hash: "c727443d77df6cff95dca383994f4c3024d03ff56b02ecc22b0f3f65",
-            }),
-            // V4/Wayup script references can be added as discovered.
-            _ => None,
+            MarketplaceType::JpgStoreV1
+            | MarketplaceType::JpgStoreV2
+            | MarketplaceType::JpgStoreV3
+            | MarketplaceType::JpgStoreV4 => Marketplace::JpgStore,
+            MarketplaceType::Wayup => Marketplace::Wayup,
+            MarketplaceType::Abandonware => Marketplace::Abandonware,
+            MarketplaceType::Unknown => Marketplace::Unknown,
+        }
+    }
+
+    /// The classifier's fee estimate for a sale at this version's addresses.
+    pub const fn fee_calculation(self) -> FeeCalculationFn {
+        match self {
+            MarketplaceType::JpgStoreV1
+            | MarketplaceType::JpgStoreV2
+            | MarketplaceType::JpgStoreV3
+            | MarketplaceType::JpgStoreV4 => jpg_store_fee_calculation,
+            MarketplaceType::Wayup => wayup_fee_calculation,
+            MarketplaceType::Abandonware => abandonware_fee_calculation,
+            MarketplaceType::Unknown => no_fee_calculation,
+        }
+    }
+
+    /// The validator's own fee expression, for versions whose contract
+    /// enforces a separate fee output. A property of the VALIDATOR, not of a
+    /// deployment: it is compiled into the script.
+    pub const fn fee_formula(self) -> Option<FeeFormula> {
+        match self {
+            MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3 => Some(FeeFormula::JpgV2),
+            // `marketplace_pct = 5` in the fork's `lib/jpg/constants.ak`.
+            MarketplaceType::Abandonware => Some(FeeFormula::GrossPercent { pct: 5 }),
+            // jpg V1 carries its fee INSIDE the datum payouts; Wayup and V4
+            // are not built against.
+            MarketplaceType::JpgStoreV1
+            | MarketplaceType::JpgStoreV4
+            | MarketplaceType::Wayup
+            | MarketplaceType::Unknown => None,
         }
     }
 
@@ -229,22 +347,12 @@ impl MarketplaceType {
     /// extra. jpg V2 moved the fee out of the datum and made it a
     /// contract-enforced output instead, which is why a V2 buy that pays only
     /// the datum payouts is rejected.
-    pub fn marketplace_fee(&self) -> Option<MarketplaceFee> {
-        match self {
-            MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3 => Some(MarketplaceFee {
-                // jpg.store's fee address. Its payment credential is
-                // `84cc25ea…`, which is what every real V2 buy pays.
-                address: "addr1xxzvcf02fs5e282qk3pmjkau2emtcsj5wrukxak3np90n2evjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eksg6pw3p",
-                // `payouts_sum * 50 / 49 / 50` in the contract — i.e. num=1,
-                // den=50, giving `sum * 50/49 / 50`.
-                rate_num: 1,
-                rate_den: 50,
-                // The contract imposes no minimum of its own; the only floor is
-                // the ledger's min-UTxO, applied by the builder.
-                minimum_lovelace: 0,
-            }),
-            _ => None,
-        }
+    ///
+    /// Per network because the fee ADDRESS is: the validator hardcodes the
+    /// fee wallet's credentials, and the same credentials spell differently
+    /// on preprod (`addr_test1…`) and mainnet (`addr1…`).
+    pub fn marketplace_fee(&self, network: RegistryNetwork) -> Option<MarketplaceFee> {
+        self.deployment(network)?.fee
     }
 
     /// Whether a buy must disclose the buyer's key hash in `required_signers`.
@@ -284,7 +392,12 @@ impl MarketplaceType {
     pub fn buy_supported(&self) -> bool {
         matches!(
             self,
-            MarketplaceType::JpgStoreV1 | MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3
+            MarketplaceType::JpgStoreV1
+                | MarketplaceType::JpgStoreV2
+                | MarketplaceType::JpgStoreV3
+                // Same validator logic as V2/V3 — see the variant's docs. The
+                // constants differ, and the registry supplies those.
+                | MarketplaceType::Abandonware
         )
     }
 
@@ -295,13 +408,272 @@ impl MarketplaceType {
     pub fn buy_redeemer(&self) -> Option<BuyRedeemer> {
         match self {
             MarketplaceType::JpgStoreV1 => Some(BUY_REDEEMER_CONSTR_1),
-            MarketplaceType::JpgStoreV2 | MarketplaceType::JpgStoreV3 => {
-                Some(BUY_REDEEMER_CONSTR_0)
-            }
+            // Abandonware is the V2/V3 validator with different constants;
+            // `Buy { payout_outputs_offset }` is unchanged.
+            MarketplaceType::JpgStoreV2
+            | MarketplaceType::JpgStoreV3
+            | MarketplaceType::Abandonware => Some(BUY_REDEEMER_CONSTR_0),
             // V4 and Wayup redeemers can be added as discovered
             _ => None,
         }
     }
+
+    /// The redeemer that cancels (or updates) a listing — the seller's
+    /// branch, which demands the owner's signature and nothing else.
+    ///
+    /// The mirror image of [`Self::buy_redeemer`], and reversed between jpg
+    /// generations for the same reason: V1 delists on constructor 0, V2/V3
+    /// (`WithdrawOrUpdate`) on constructor 1. Neither carries a field.
+    pub fn delist_redeemer(&self) -> Option<BuyRedeemer> {
+        match self {
+            MarketplaceType::JpgStoreV1 => Some(BuyRedeemer {
+                constructor: 0,
+                carries_payout_index: false,
+            }),
+            MarketplaceType::JpgStoreV2
+            | MarketplaceType::JpgStoreV3
+            | MarketplaceType::Abandonware => Some(BuyRedeemer {
+                constructor: 1,
+                carries_payout_index: false,
+            }),
+            _ => None,
+        }
+    }
+}
+
+// ── Marketplace deployments ──────────────────────────────────────────────────
+//
+// ONE record per validator per network. The address table, the fee table and
+// the reference-script table used to each spell the same bech32 strings, and
+// the mislabelled V1 reference script lived in the gap between them. A
+// deployment states its script hash, its listing addresses, its fee wallet and
+// its reference UTxO once; `lookup_address*`, `script_reference` and
+// `marketplace_fee` are views of this slice, and
+// `deployment_addresses_are_the_script` checks that every listing address's
+// payment credential IS the stated script hash.
+//
+// Only validators we BUILD AGAINST live here. Wayup stays in the plain
+// address table: it is classified, never driven, and its "sale" rows mix a
+// script escrow with a key-held settlement wallet.
+
+/// Where a validator's CIP-33 reference script is parked.
+#[derive(Debug, Clone, Copy)]
+pub struct ReferenceUtxo {
+    pub tx_hash: &'static str,
+    pub output_index: u32,
+}
+
+/// A listing address of a deployment, tagged with the version consumers know
+/// it by. jpg's V2 and V3 addresses are one validator in two bech32 forms, so
+/// a deployment may carry more than one.
+#[derive(Debug)]
+pub struct SaleAddress {
+    pub address: &'static str,
+    pub kind: MarketplaceType,
+    /// Pre-built so `lookup_address*` can hand out `&'static AddressCategory`
+    /// exactly as the phf table does. Derived from `kind`, never stated.
+    category: AddressCategory,
+}
+
+/// Build a [`SaleAddress`]; its category follows from the version.
+pub const fn sale_address(address: &'static str, kind: MarketplaceType) -> SaleAddress {
+    SaleAddress {
+        address,
+        kind,
+        category: AC::Script(SC::Marketplace {
+            marketplace: kind.marketplace(),
+            purpose: Purpose::Sale,
+            kind,
+            fee_calculation: kind.fee_calculation(),
+        }),
+    }
+}
+
+/// One validator on one network.
+#[derive(Debug)]
+pub struct MarketplaceDeployment {
+    /// The canonical version. Aliases (jpg V2 for the V3 script) are carried
+    /// on the sale addresses.
+    pub kind: MarketplaceType,
+    pub network: RegistryNetwork,
+    /// Hash of the deployed validator; every sale address's payment
+    /// credential must equal it.
+    pub script_hash: &'static str,
+    pub sale_addresses: &'static [SaleAddress],
+    /// The contract-enforced fee output, for validators that have one.
+    pub fee: Option<MarketplaceFee>,
+    /// `None` until the reference script has been parked on chain.
+    pub reference_utxo: Option<ReferenceUtxo>,
+    fee_category: Option<AddressCategory>,
+}
+
+/// Build a [`MarketplaceDeployment`]. The fee's formula comes from the
+/// version ([`MarketplaceType::fee_formula`]) — it is compiled into the
+/// validator, so only the fee WALLET is a deployment fact. Naming a fee wallet
+/// for a version whose validator enforces no fee is a compile-time error.
+pub const fn deployment(
+    kind: MarketplaceType,
+    network: RegistryNetwork,
+    script_hash: &'static str,
+    sale_addresses: &'static [SaleAddress],
+    fee_wallet: Option<&'static str>,
+    reference_utxo: Option<ReferenceUtxo>,
+) -> MarketplaceDeployment {
+    let fee = match (fee_wallet, kind.fee_formula()) {
+        (Some(address), Some(formula)) => Some(MarketplaceFee {
+            address,
+            formula,
+            // Neither validator imposes a minimum of its own; the only floor
+            // is the ledger's min-UTxO, applied by the builder.
+            minimum_lovelace: 0,
+        }),
+        (None, _) => None,
+        (Some(_), None) => {
+            panic!("a fee wallet was given for a version whose validator enforces no fee")
+        }
+    };
+    let fee_category = if fee.is_some() {
+        Some(AC::Script(SC::Marketplace {
+            marketplace: kind.marketplace(),
+            purpose: Purpose::Fee,
+            kind,
+            fee_calculation: no_fee_calculation,
+        }))
+    } else {
+        None
+    };
+    MarketplaceDeployment {
+        kind,
+        network,
+        script_hash,
+        sale_addresses,
+        fee,
+        reference_utxo,
+        fee_category,
+    }
+}
+
+pub static MARKETPLACE_DEPLOYMENTS: &[MarketplaceDeployment] = &[
+    // jpg.store V1 — one validator serves both the sale and offer addresses,
+    // which differ only in their staking part. Its fee is INSIDE the datum
+    // payouts, so there is no fee wallet here.
+    deployment(
+        MarketplaceType::JpgStoreV1,
+        RegistryNetwork::Mainnet,
+        "9068a7a3f008803edac87af1619860f2cdcde40c26987325ace138ad",
+        &[sale_address(
+            "addr1zxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tvpw288a4x0xf8pxgcntelxmyclq83s0ykeehchz2wtspks905plm",
+            MarketplaceType::JpgStoreV1,
+        )],
+        None,
+        Some(ReferenceUtxo {
+            tx_hash: "9a32459bd4ef6bbafdeb8cf3b909d0e3e2ec806e4cc6268529280b0fc1d06f5b",
+            output_index: 0,
+        }),
+    ),
+    // jpg.store V2/V3 — ONE validator, `c727443d…`, in both of its bech32
+    // forms: `addr1x` with a script staking part and `addr1w` with none. Same
+    // script means the same datum, which is why both are tagged `JpgStoreV2`
+    // rather than a version each; the fee row keeps its historical V3 tag.
+    //
+    // The `addr1w` form replaces a "V3 sale" row that was never an address —
+    // this script's address with the type character changed `x` → `w`, an
+    // invalid checksum no decoder could produce, so sales at the real escrow
+    // resolved to `None` for as long as it stood. The escrow is real and
+    // active (pipeline/tx-classifier/resources/test has sales through it).
+    //
+    // The fee wallet's payment credential is `84cc25ea…`, what every real V2
+    // buy pays. The reference UTxO was found from the reference input of a
+    // live V2 spend (tx 65167d34…, 2026-09-07).
+    deployment(
+        MarketplaceType::JpgStoreV3,
+        RegistryNetwork::Mainnet,
+        "c727443d77df6cff95dca383994f4c3024d03ff56b02ecc22b0f3f65",
+        &[
+            sale_address(
+                "addr1x8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7efvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8ekstg4qrx",
+                MarketplaceType::JpgStoreV2,
+            ),
+            sale_address(
+                "addr1w8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7eg0fcr8k",
+                MarketplaceType::JpgStoreV2,
+            ),
+        ],
+        Some(
+            "addr1xxzvcf02fs5e282qk3pmjkau2emtcsj5wrukxak3np90n2evjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eksg6pw3p",
+        ),
+        Some(ReferenceUtxo {
+            tx_hash: "1693c508b6132e89b932754d657d28b24068ff5ff1715fec36c010d4d6470b3d",
+            output_index: 0,
+        }),
+    ),
+    // abandonware.art on preprod — the jpg V2/V3 validator with the fee
+    // wallet, fee rate and fee-waiver path changed, built with aiken
+    // v1.0.13-alpha from `~/code/github/contracts-v3` (`damon-abandonware`).
+    //
+    // The script hardcodes the fee wallet's KEY HASHES (payment `021fe757…`,
+    // stake `99e034a3…`), so the sale address and the fee wallet stand or
+    // fall together: change the wallet, rebuild the script, and this whole
+    // record changes. The sale address is the script hash as an enterprise
+    // address; the reference UTxO will be parked there too, where a datumless
+    // UTxO at a Plutus V2 script can never be spent.
+    //
+    // No mainnet record yet: the collective's mainnet wallet is undecided (a
+    // multisig is the plan), and a different wallet means a different build.
+    //
+    // Reference script parked 2026-09-10 from the admin Operations page
+    // (wallet-signed, Koios-submitted). Verified via Koios `/utxo_info`: at
+    // the sale address, plutusV2, 1534 B, hash `fcf74fd0…`, NO datum — so it
+    // can never be spent and the reference is permanent. 7.63 ₳ locked.
+    deployment(
+        MarketplaceType::Abandonware,
+        RegistryNetwork::Testnet,
+        "fcf74fd0fdb3e8d842986f1a8129ef532effee12ff018325351d6d94",
+        &[sale_address(
+            "addr_test1wr70wn7slke73kzznph34qffaafjallwztlsrqe9x5wkm9qlsaqu9",
+            MarketplaceType::Abandonware,
+        )],
+        Some(
+            "addr_test1qqpple6hhjkkfz2fltkl5wf3txrn5e62qyw0j8jxrg8ur8veuq628l4gr3d5esl8z4d48dekypu39gh6d4xly63t7rtqq29vk7",
+        ),
+        Some(ReferenceUtxo {
+            tx_hash: "adefdb0dfb649243e079d36f7816a82ce558be74e9d8c28adbb4402559df9f88",
+            output_index: 0,
+        }),
+    ),
+];
+
+/// A deployment's own addresses, looked up the way the phf table is.
+fn lookup_deployment_address(
+    address: &str,
+    network: RegistryNetwork,
+) -> Option<&'static AddressCategory> {
+    MARKETPLACE_DEPLOYMENTS
+        .iter()
+        .filter(|d| d.network == network)
+        .find_map(|d| {
+            if let Some(sale) = d.sale_addresses.iter().find(|s| s.address == address) {
+                return Some(&sale.category);
+            }
+            match (&d.fee, &d.fee_category) {
+                (Some(fee), Some(category)) if fee.address == address => Some(category),
+                _ => None,
+            }
+        })
+}
+
+/// Every address a deployment on `network` owns: sale addresses, then the
+/// fee wallet.
+fn deployment_addresses(network: RegistryNetwork) -> impl Iterator<Item = &'static str> {
+    MARKETPLACE_DEPLOYMENTS
+        .iter()
+        .filter(move |d| d.network == network)
+        .flat_map(|d| {
+            d.sale_addresses
+                .iter()
+                .map(|s| s.address)
+                .chain(d.fee.iter().map(|f| f.address))
+        })
 }
 
 /// Fee calculation function type for marketplace transactions
@@ -321,6 +693,19 @@ pub fn jpg_store_fee_calculation(base_price_lovelace: u64, _marketplace_address:
     let calculated_fee =
         (base_price_lovelace as f64 / (1f64 - JPG_STORE_FEE_RATE)) as u64 - base_price_lovelace;
     calculated_fee.max(MIN_FEE_LOVELACE)
+}
+
+/// abandonware.art fee — 5% of gross, i.e. `base * 5 / 95` on the seller's
+/// base price, with the ledger's min-UTxO floor for a datum-bearing fee
+/// output (the same `268 × 4310` every jpg V2 buy pays on a cheap listing).
+/// The contract itself imposes no minimum; the floor is what an actual buy
+/// ends up paying, which is what a classifier should attribute.
+pub fn abandonware_fee_calculation(base_price_lovelace: u64, _marketplace_address: &str) -> u64 {
+    const FEE_OUTPUT_MIN_UTXO_LOVELACE: u64 = 1_155_080;
+    let fee = MarketplaceType::Abandonware
+        .fee_formula()
+        .map_or(0, |formula| formula.due_on_payouts(base_price_lovelace));
+    fee.max(FEE_OUTPUT_MIN_UTXO_LOVELACE)
 }
 
 /// Wayup fee calculation - 2% of base price with 1 ADA minimum and 10 ADA maximum
@@ -346,31 +731,15 @@ use ScriptCategory as SC;
 /// Registry of known regular addresses (wallets, exchanges, etc.) and their purposes
 /// This registry should be manually curated for accuracy
 pub static ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {
+    // jpg.store SALE and FEE addresses live in `MARKETPLACE_DEPLOYMENTS`, keyed
+    // by the validator they belong to. Only the offer escrow stays here: it
+    // is a different validator, spent by the collection-offer builder.
     "addr1xxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tfvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eks2utwdd" => AC::Script(SC::Marketplace { marketplace: MP::JpgStore, purpose: Purpose::Offer, kind: MarketplaceType::JpgStoreV1, fee_calculation: jpg_store_fee_calculation }),
-    "addr1x8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7efvjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8ekstg4qrx" => AC::Script(SC::Marketplace { marketplace: MP::JpgStore, purpose: Purpose::Sale, kind: MarketplaceType::JpgStoreV2, fee_calculation: jpg_store_fee_calculation }),
-    "addr1zxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tvpw288a4x0xf8pxgcntelxmyclq83s0ykeehchz2wtspks905plm" => AC::Script(SC::Marketplace { marketplace: MP::JpgStore, purpose: Purpose::Sale, kind: MarketplaceType::JpgStoreV1, fee_calculation: jpg_store_fee_calculation }),
-    "addr1xxzvcf02fs5e282qk3pmjkau2emtcsj5wrukxak3np90n2evjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eksg6pw3p" => AC::Script(SC::Marketplace { marketplace: MP::JpgStore, purpose: Purpose::Fee, kind: MarketplaceType::JpgStoreV3, fee_calculation: no_fee_calculation }),
-    // The UNDELEGATED form of the V2 sale escrow: same payment script
-    // c727443d77df6cff95dca383994f4c3024d03ff56b02ecc22b0f3f65 as the entry
-    // above, with no staking credential. Same script means the same validator
-    // and so the same datum, which is why it is `JpgStoreV2` and not a version
-    // of its own — the two addresses differ in delegation, nothing else.
-    //
-    // It replaces a "V3 sale" row that was never an address: that string was
-    // this script's address with the type character changed `x` → `w`, leaving
-    // the bech32 checksum invalid, so no decoder could produce it and this
-    // exact-match table could never hit it. The escrow itself is real and
-    // active — it appears as an output address in recorded sale transactions
-    // under pipeline/tx-classifier/resources/test — so for as long as the
-    // corrupt row stood in for it, those sales resolved to `None` and went
-    // unclassified.
-    "addr1w8rjw3pawl0kelu4mj3c8x20fsczf5pl744s9mxz9v8n7eg0fcr8k" => AC::Script(SC::Marketplace { marketplace: MP::JpgStore, purpose: Purpose::Sale, kind: MarketplaceType::JpgStoreV2, fee_calculation: jpg_store_fee_calculation }),
-    // A "V4 sale" row was removed from here for the same reason — it also
-    // failed the bech32 checksum — but unlike the V3 string its payload is
-    // corrupt beyond the checksum digits, so the intended address cannot be
-    // recovered from it and has to come from the source. Until then JPG.store
-    // V4 has a `MarketplaceType`, a datum parser and a fee rule, but no
-    // address to trigger them.
+    // A "V4 sale" row was removed from here because it failed the bech32
+    // checksum with a payload corrupt beyond the checksum digits, so the
+    // intended address cannot be recovered from it and has to come from the
+    // source. Until then JPG.store V4 has a `MarketplaceType`, a datum parser
+    // and a fee rule, but no address to trigger them.
     //
     // `every_registered_address_is_a_real_address` stops any of this recurring.
     "addr1zxnk7racqx3f7kg7npc4weggmpdskheu8pm57egr9av0mtvasazx8r5xwqtnfjsfrnat3h6yrycd2hfm9qpg7d0hf50s7x4y79" => AC::Script(SC::Marketplace { marketplace: MP::Wayup, purpose: Purpose::Sale, kind: MarketplaceType::Wayup, fee_calculation: wayup_fee_calculation }),
@@ -550,7 +919,9 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
                 kind: MarketplaceType::JpgStoreV1,
                 fee_calculation: jpg_store_fee_calculation,
             }),
-            derived_from: CredentialSource::Address("addr1zxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tvpw288a4x0xf8pxgcntelxmyclq83s0ykeehchz2wtspks905plm"),
+            derived_from: CredentialSource::Address(
+                "addr1zxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tvpw288a4x0xf8pxgcntelxmyclq83s0ykeehchz2wtspks905plm",
+            ),
         },
     ),
     // jpg.store V2/V3 sale escrow — delegated and undelegated forms, one
@@ -594,7 +965,9 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
                 kind: MarketplaceType::Wayup,
                 fee_calculation: wayup_fee_calculation,
             }),
-            derived_from: CredentialSource::Address("addr1zxnk7racqx3f7kg7npc4weggmpdskheu8pm57egr9av0mtvasazx8r5xwqtnfjsfrnat3h6yrycd2hfm9qpg7d0hf50s7x4y79"),
+            derived_from: CredentialSource::Address(
+                "addr1zxnk7racqx3f7kg7npc4weggmpdskheu8pm57egr9av0mtvasazx8r5xwqtnfjsfrnat3h6yrycd2hfm9qpg7d0hf50s7x4y79",
+            ),
         },
     ),
     // Wayup offer contract. ATTESTED, not derived: no Wayup offer address is
@@ -616,7 +989,6 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             ),
         },
     ),
-
     // ── DEX and launchpad contracts, added 2026-09-08 ────────────────────
     //
     // WHY THESE BELONG HERE AND NOT ONLY IN ADDRESS_PREFIX_REGISTRY. A DEX
@@ -635,7 +1007,9 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
         "cb684a69e78907a9796b21fc150a758af5f2805e5ed5d5a8ce9f76f1",
         CredentialEntry {
             category: AC::Script(SC::Exchange { label: "Splash" }),
-            derived_from: CredentialSource::Address("addr1x89ksjnfu7ys02tedvslc9g2wk90tu5qte0dt4dge60hdudj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsg0g63z"),
+            derived_from: CredentialSource::Address(
+                "addr1x89ksjnfu7ys02tedvslc9g2wk90tu5qte0dt4dge60hdudj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsg0g63z",
+            ),
         },
     ),
     // Splash's SECOND pool contract. Found holding $Dong 2026-08-30 and
@@ -646,28 +1020,36 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
         "9dee0659686c3ab807895c929e3284c11222affd710b09be690f924d",
         CredentialEntry {
             category: AC::Script(SC::Exchange { label: "Splash" }),
-            derived_from: CredentialSource::Address("addr1xxw7upjedpkr4wq839wf983jsnq3yg40l4cskzd7dy8eyndj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsgddq74"),
+            derived_from: CredentialSource::Address(
+                "addr1xxw7upjedpkr4wq839wf983jsnq3yg40l4cskzd7dy8eyndj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsgddq74",
+            ),
         },
     ),
     (
         "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
         CredentialEntry {
             category: AC::Script(SC::Exchange { label: "Minswap" }),
-            derived_from: CredentialSource::Address("addr1z84q0denmyep98ph3tmzwsmw0j7zau9ljmsqx6a4rvaau66j2c79gy9l76sdg0xwhd7r0c0kna0tycz4y5s6mlenh8pq777e2a"),
+            derived_from: CredentialSource::Address(
+                "addr1z84q0denmyep98ph3tmzwsmw0j7zau9ljmsqx6a4rvaau66j2c79gy9l76sdg0xwhd7r0c0kna0tycz4y5s6mlenh8pq777e2a",
+            ),
         },
     ),
     (
         "ed97e0a1394724bb7cb94f20acf627abc253694c92b88bf8fb4b7f6f",
         CredentialEntry {
             category: AC::Script(SC::Exchange { label: "CSWAP" }),
-            derived_from: CredentialSource::Address("addr1z8ke0c9p89rjfwmuh98jpt8ky74uy5mffjft3zlcld9h7ml3lmln3mwk0y3zsh3gs3dzqlwa9rjzrxawkwm4udw9axhs6fuu6e"),
+            derived_from: CredentialSource::Address(
+                "addr1z8ke0c9p89rjfwmuh98jpt8ky74uy5mffjft3zlcld9h7ml3lmln3mwk0y3zsh3gs3dzqlwa9rjzrxawkwm4udw9axhs6fuu6e",
+            ),
         },
     ),
     (
         "da5b47aed3955c9132ee087796fa3b58a1ba6173fa31a7bc29e56d4e",
         CredentialEntry {
             category: AC::Script(SC::Exchange { label: "CSWAP" }),
-            derived_from: CredentialSource::Address("addr1z8d9k3aw6w24eyfjacy809h68dv2rwnpw0arrfau98jk6nhv88awp8sgxk65d6kry0mar3rd0dlkfljz7dv64eu39vfs38yd9p"),
+            derived_from: CredentialSource::Address(
+                "addr1z8d9k3aw6w24eyfjacy809h68dv2rwnpw0arrfau98jk6nhv88awp8sgxk65d6kry0mar3rd0dlkfljz7dv64eu39vfs38yd9p",
+            ),
         },
     ),
     // snek.fun's bonding curve. NOT `Exchange` — see `ScriptCategory::Launchpad`
@@ -677,10 +1059,11 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
         "905ab869961b094f1b8197278cfe15b45cbe49fa8f32c6b014f85a2d",
         CredentialEntry {
             category: AC::Script(SC::Launchpad { label: "snek.fun" }),
-            derived_from: CredentialSource::Address("addr1xxg94wrfjcdsjncmsxtj0r87zk69e0jfl28n934sznu95tdj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrs2993lw"),
+            derived_from: CredentialSource::Address(
+                "addr1xxg94wrfjcdsjncmsxtj0r87zk69e0jfl28n934sznu95tdj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrs2993lw",
+            ),
         },
     ),
-
     // ── Burn sinks ───────────────────────────────────────────────────────
     //
     // Moved here 2026-09-08 from `mitos tools/token-ledger/tokens.toml`, where
@@ -708,6 +1091,37 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             ),
         },
     ),
+    // The PREPROD burn sink — ours, and unspendable by construction rather
+    // than by inference.
+    //
+    // $burnsnek is mainnet-only, so testing a burn flow needs a sink on
+    // preprod. Rather than hunt for one, we publish one: a NATIVE script
+    // whose timelocks contradict each other. Note the contrast with the
+    // entry above — that one is "strong inference, not yet proof" pending a
+    // UPLC decompile; this one is nine bytes anybody can read.
+    (
+        "76e1a34faa7042df0fc54a45c53939c3a88ea00348b9327fa8520522",
+        CredentialEntry {
+            category: AC::Script(SC::Burn {
+                evidence: "PREPROD ONLY. Native script, 9 bytes, published by us: \
+                           `820182820402820501` = all [ invalid_before 2, invalid_hereafter 1 ]. \
+                           Per the ledger CDDL, tag 4 is `invalid_before` (valid FROM that slot) \
+                           and tag 5 is `invalid_hereafter` (valid UNTIL that slot), so this \
+                           demands a transaction whose validity interval both starts at or after \
+                           slot 2 AND ends at or before slot 1. No interval satisfies both, at any \
+                           point in the chain's life, so nothing sent here is ever spendable. \
+                           Unlike the mainnet sink above this is PROOF rather than inference: the \
+                           whole script is quoted here, and `preprod_burn_sink_is_unsatisfiable` \
+                           re-derives the credential and the address from those bytes, so a typo \
+                           in either fails the build rather than silently naming a spendable \
+                           address. Address: \
+                           addr_test1wpmwrg604fcy9hc0c49yt3fe88p63r4qqdytjvnl4pfq2gse5r9f5",
+            }),
+            derived_from: CredentialSource::Address(
+                "addr_test1wpmwrg604fcy9hc0c49yt3fe88p63r4qqdytjvnl4pfq2gse5r9f5",
+            ),
+        },
+    ),
 ];
 
 /// What contract owns this payment credential, if any.
@@ -729,6 +1143,9 @@ pub fn lookup_payment_credential(credential_hex: &str) -> Option<&'static Creden
 /// Addresses here use `addr_test1` prefix and are separate from mainnet.
 /// Note: App-specific testnet addresses (Asset Hire, Levvy V2, etc.) live in
 /// the `address-config` crate within cnft.dev-workers.
+///
+/// Marketplace deployments on preprod (abandonware.art) are NOT here — they
+/// live in `MARKETPLACE_DEPLOYMENTS` and are reached by the same lookups.
 pub static TESTNET_ADDRESS_REGISTRY: Map<&'static str, AddressCategory> = phf_map! {};
 
 /// Testnet address prefix registry (variable staking credentials).
@@ -742,6 +1159,21 @@ pub enum RegistryNetwork {
     #[default]
     Mainnet,
     Testnet,
+}
+
+impl RegistryNetwork {
+    pub const ALL: [RegistryNetwork; 2] = [RegistryNetwork::Mainnet, RegistryNetwork::Testnet];
+
+    /// From a Cardano network id as carried in a transaction body and in
+    /// Shelley address headers: `1` is mainnet, `0` is every testnet
+    /// (preprod, preview). There is no third value.
+    pub fn from_network_id(network_id: u8) -> Self {
+        if network_id == 1 {
+            RegistryNetwork::Mainnet
+        } else {
+            RegistryNetwork::Testnet
+        }
+    }
 }
 
 // ── Stake-credential registry ────────────────────────────────────────────────
@@ -932,6 +1364,11 @@ pub fn lookup_address_for_network(
     if let Some(cat) = registry.get(address) {
         return Some(cat);
     }
+    // Then the validators we build against, whose addresses are stated once
+    // on their deployment record.
+    if let Some(cat) = lookup_deployment_address(address, network) {
+        return Some(cat);
+    }
 
     // Prefix-based fallback for per-seller script addresses
     for (prefix, category) in prefixes {
@@ -970,6 +1407,9 @@ pub fn lookup_address_match(
         RegistryNetwork::Testnet => (&TESTNET_ADDRESS_REGISTRY, TESTNET_ADDRESS_PREFIX_REGISTRY),
     };
     if let Some(cat) = registry.get(address) {
+        return Some((cat, MatchKind::Exact));
+    }
+    if let Some(cat) = lookup_deployment_address(address, network) {
         return Some((cat, MatchKind::Exact));
     }
     prefixes
@@ -1032,6 +1472,8 @@ pub enum Marketplace {
     Unknown,
     JpgStore,
     Wayup,
+    /// abandonware.art — see [`MarketplaceType::Abandonware`].
+    Abandonware,
 }
 
 impl fmt::Display for Marketplace {
@@ -1040,6 +1482,7 @@ impl fmt::Display for Marketplace {
             Marketplace::Unknown => write!(f, "Unknown"),
             Marketplace::JpgStore => write!(f, "JPG.store"),
             Marketplace::Wayup => write!(f, "Wayup"),
+            Marketplace::Abandonware => write!(f, "abandonware.art"),
         }
     }
 }
@@ -1448,10 +1891,72 @@ impl Default for SmartContractRegistry {
 /// into concrete address lists at bake time.
 pub fn all_known_addresses() -> Vec<&'static str> {
     let mut addrs: Vec<&'static str> = ADDRESS_REGISTRY.keys().copied().collect();
+    addrs.extend(deployment_addresses(RegistryNetwork::Mainnet));
     for (prefix, _) in ADDRESS_PREFIX_REGISTRY {
         addrs.push(prefix);
     }
     addrs
+}
+
+#[cfg(test)]
+mod split_tests {
+    use super::*;
+
+    const FLOOR: u64 = 1_155_080;
+    const FIVE: FeeFormula = FeeFormula::GrossPercent { pct: 5 };
+
+    fn holds(formula: FeeFormula, buyer_pays: u64) -> PriceSplit {
+        let split = formula
+            .split_buyer_price(buyer_pays, FLOOR)
+            .expect("a split");
+        assert_eq!(split.buyer_pays, split.payout + split.fee, "sums exactly");
+        assert!(
+            split.fee >= formula.due_on_payouts(split.payout),
+            "fee covers the contract"
+        );
+        assert!(split.fee >= FLOOR, "fee covers the floor");
+        // Largest such payout: one more lovelace would break a bound.
+        let next = split.payout + 1;
+        assert!(next + formula.due_on_payouts(next).max(FLOOR) > buyer_pays);
+        split
+    }
+
+    #[test]
+    fn a_seller_who_wants_fifty_quotes_the_gross_and_gets_fifty() {
+        // 50 ₳ payout ⇒ 50 × 5 / 95 = 2.631578 ₳ fee ⇒ 52.631578 ₳ gross.
+        let split = holds(FIVE, 52_631_578);
+        assert_eq!(split.payout, 50_000_000);
+        assert_eq!(split.fee, 2_631_578);
+    }
+
+    #[test]
+    fn a_cheap_listing_pays_the_floor_out_of_the_quote() {
+        let split = holds(FIVE, 10_000_000);
+        assert_eq!(split.fee, FLOOR);
+        assert_eq!(split.payout, 10_000_000 - FLOOR);
+    }
+
+    #[test]
+    fn the_percentage_takes_over_above_the_floor_reach() {
+        let split = holds(FIVE, 100_000_000);
+        assert!(split.fee > FLOOR);
+        assert_eq!(split.fee, FIVE.due_on_payouts(split.payout));
+    }
+
+    #[test]
+    fn a_quote_at_or_below_the_floor_has_no_split() {
+        assert_eq!(FIVE.split_buyer_price(FLOOR, FLOOR), None);
+        assert_eq!(
+            FIVE.split_buyer_price(FLOOR + 1, FLOOR).map(|s| s.payout),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn jpg_v2_splits_hold_the_same_invariants() {
+        holds(FeeFormula::JpgV2, 480_000_000);
+        holds(FeeFormula::JpgV2, 5_000_000);
+    }
 }
 
 #[cfg(test)]
@@ -1563,10 +2068,10 @@ mod tests {
         assert!(lookup_payment_credential("").is_none());
         // The Wayup FEE credential — a real Wayup contract, and deliberately
         // not in the table: a fee address takes the money and keeps it.
-        assert!(lookup_payment_credential(
-            "5f08a64f580e581735070e1b1d2ce29ae6942ab45ccff5a1747d2283"
-        )
-        .is_none());
+        assert!(
+            lookup_payment_credential("5f08a64f580e581735070e1b1d2ce29ae6942ab45ccff5a1747d2283")
+                .is_none()
+        );
     }
 
     /// The V2 escrow is registered twice: once delegated to JPG.store's own
@@ -1716,7 +2221,9 @@ mod tests {
              script, it has become a contract and the version tables need revisiting"
         );
         assert!(
-            MarketplaceType::Wayup.script_reference().is_none(),
+            MarketplaceType::Wayup
+                .script_reference(RegistryNetwork::Mainnet)
+                .is_none(),
             "a Wayup reference script has been registered — check it against the sale \
              validator, not the settlement wallet"
         );
@@ -1774,55 +2281,243 @@ mod tests {
     }
 
     /// A reference input can only satisfy a spend if it carries the *same*
-    /// script the UTxO's address is locked by. So for every registered
-    /// marketplace address, the `script_reference()` of its `kind` must hash to
-    /// that address's own payment credential.
+    /// script the UTxO's address is locked by. So every sale address on a
+    /// deployment must have the deployment's script hash as its payment
+    /// credential, and they must all round-trip through bech32 (a corrupt
+    /// string still *decodes* — see the jpg "V4" address that never matched).
     ///
-    /// This is the invariant that was silently violated: the table shipped the
-    /// V1 validator (`9068a7a3…`) under `JpgStoreV2`, so V1 listings resolved
-    /// to no reference at all and V2 listings resolved to a validator that
-    /// isn't theirs. Both versions were unbuyable and nothing said so.
+    /// This is the invariant that was silently violated when the tables were
+    /// separate: the reference table shipped the V1 validator (`9068a7a3…`)
+    /// under `JpgStoreV2`, so V1 listings resolved to no reference at all and
+    /// V2 listings to a validator that isn't theirs. Both were unbuyable and
+    /// nothing said so.
     #[test]
-    fn script_reference_matches_address() {
-        use pallas_addresses::Address;
+    fn deployment_addresses_are_the_script() {
+        use pallas_addresses::{Address, ShelleyPaymentPart};
 
         let mut checked = 0;
-        for (address, category) in ADDRESS_REGISTRY.entries() {
-            let AddressCategory::Script(ScriptCategory::Marketplace { kind, purpose, .. }) =
-                category
-            else {
-                continue;
-            };
-            // Only SALE addresses are spent by a buy. A fee address is a payout
-            // destination that happens to be tagged with a version, and an
-            // offer address is spent by the collection-offer builder against a
-            // different validator — neither is this reference's business.
-            if !matches!(purpose, Purpose::Sale) {
-                continue;
-            }
-            let Some(script_ref) = kind.script_reference() else {
-                continue;
-            };
-            let payment_cred = match Address::from_bech32(address) {
-                Ok(Address::Shelley(sh)) => sh.payment().to_hex(),
-                // A few registry rows are non-Shelley or have a corrupt
-                // payload; those are the address table's problem, not this
-                // invariant's.
-                _ => continue,
-            };
-            assert_eq!(
-                payment_cred, script_ref.script_hash,
-                "{kind:?} reference script {} does not match the payment credential of {address} \
-                 — a buy against this address would reference the wrong validator",
-                script_ref.script_hash
+        for deployment in MARKETPLACE_DEPLOYMENTS {
+            assert!(
+                !deployment.sale_addresses.is_empty(),
+                "{:?} on {:?} lists no sale address",
+                deployment.kind,
+                deployment.network
             );
-            checked += 1;
+            for sale in deployment.sale_addresses {
+                let Ok(Address::Shelley(sh)) = Address::from_bech32(sale.address) else {
+                    panic!("{} must decode as a Shelley address", sale.address);
+                };
+                assert_eq!(sh.to_bech32().unwrap(), sale.address, "must round-trip");
+                assert!(
+                    matches!(sh.payment(), ShelleyPaymentPart::Script(_)),
+                    "{} is a listing escrow, so its payment part must be a script",
+                    sale.address
+                );
+                assert_eq!(
+                    sh.payment().to_hex(),
+                    deployment.script_hash,
+                    "{:?} sale address {} is not locked by the deployment's script — a buy \
+                     against it would reference the wrong validator",
+                    sale.kind,
+                    sale.address
+                );
+                checked += 1;
+            }
+            if let Some(fee) = &deployment.fee {
+                let Ok(Address::Shelley(sh)) = Address::from_bech32(fee.address) else {
+                    panic!(
+                        "fee wallet {} must decode as a Shelley address",
+                        fee.address
+                    );
+                };
+                assert_eq!(sh.to_bech32().unwrap(), fee.address, "must round-trip");
+            }
         }
         assert!(
             checked >= 3,
-            "expected to check several marketplace addresses, only checked {checked} — \
-             has the registry or the reference table been gutted?"
+            "expected several sale addresses, checked {checked} — has the table been gutted?"
         );
+    }
+
+    /// Every deployment address resolves through the ordinary lookups with
+    /// the right version and purpose, on its own network and not the other.
+    #[test]
+    fn deployment_addresses_resolve_through_lookup() {
+        for deployment in MARKETPLACE_DEPLOYMENTS {
+            let other = match deployment.network {
+                RegistryNetwork::Mainnet => RegistryNetwork::Testnet,
+                RegistryNetwork::Testnet => RegistryNetwork::Mainnet,
+            };
+            for sale in deployment.sale_addresses {
+                match lookup_address_for_network(sale.address, deployment.network) {
+                    Some(AddressCategory::Script(ScriptCategory::Marketplace {
+                        kind,
+                        purpose: Purpose::Sale,
+                        marketplace,
+                        ..
+                    })) => {
+                        assert_eq!(*kind, sale.kind);
+                        assert_eq!(*marketplace, deployment.kind.marketplace());
+                    }
+                    other => panic!("{} resolved to {other:?}", sale.address),
+                }
+                assert!(
+                    lookup_address_for_network(sale.address, other).is_none(),
+                    "{} must not resolve on {other:?}",
+                    sale.address
+                );
+                let (_, how) = lookup_address_match(sale.address, deployment.network).unwrap();
+                assert_eq!(how, MatchKind::Exact);
+            }
+            if let Some(fee) = &deployment.fee {
+                assert!(
+                    matches!(
+                        lookup_address_for_network(fee.address, deployment.network),
+                        Some(AddressCategory::Script(ScriptCategory::Marketplace {
+                            purpose: Purpose::Fee,
+                            ..
+                        }))
+                    ),
+                    "fee wallet {} must resolve as a fee address",
+                    fee.address
+                );
+            }
+            // The version-keyed accessors read the same record.
+            assert_eq!(
+                deployment
+                    .kind
+                    .marketplace_fee(deployment.network)
+                    .map(|f| f.address),
+                deployment.fee.map(|f| f.address)
+            );
+            assert_eq!(
+                deployment
+                    .kind
+                    .script_reference(deployment.network)
+                    .map(|r| r.tx_hash),
+                deployment.reference_utxo.map(|r| r.tx_hash)
+            );
+        }
+    }
+
+    /// The abandonware preprod record must agree with the contract: its fee
+    /// wallet's key hashes are what `lib/jpg/constants.ak` bakes in, so the
+    /// sale address (the script hash) and the fee wallet stand or fall
+    /// together. Change one, rebuild the script, and this record changes.
+    #[test]
+    fn abandonware_preprod_deployment_matches_the_contract() {
+        use pallas_addresses::{Address, ShelleyDelegationPart};
+
+        let deployment = MarketplaceType::Abandonware
+            .deployment(RegistryNetwork::Testnet)
+            .expect("abandonware is deployed on preprod");
+        let fee = deployment.fee.expect("the validator enforces a fee output");
+
+        let Ok(Address::Shelley(wallet)) = Address::from_bech32(fee.address) else {
+            panic!("fee wallet must decode as Shelley");
+        };
+        assert_eq!(
+            wallet.payment().to_hex(),
+            "021fe757bcad648949faedfa393159873a674a011cf91e461a0fc19d",
+            "fee wallet payment key must be `marketplace_payment_kh` in constants.ak"
+        );
+        match wallet.delegation() {
+            ShelleyDelegationPart::Key(h) => assert_eq!(
+                h.to_string(),
+                "99e034a3fea81c5b4cc3e7155b53b736207912a2fa6d4df26a2bf0d6",
+                "fee wallet stake key must be `marketplace_stake_kh` in constants.ak"
+            ),
+            other => panic!("fee wallet must carry a stake KEY, got {other:?}"),
+        }
+        assert_eq!(fee.formula, FeeFormula::GrossPercent { pct: 5 });
+
+        assert!(
+            MarketplaceType::Abandonware
+                .deployment(RegistryNetwork::Mainnet)
+                .is_none(),
+            "no mainnet deployment is decided yet — adding one is a deliberate act"
+        );
+    }
+
+    /// The abandonware fee must reproduce the fork's contract line exactly:
+    /// `payouts_sum * marketplace_pct / (100 - marketplace_pct)`, with
+    /// `marketplace_pct = 5`. Same discipline as jpg's: the check is `>=`, so
+    /// a "cleaner" expression that truncates differently fails the spend.
+    #[test]
+    fn abandonware_fee_matches_the_contract_arithmetic() {
+        let fee = MarketplaceType::Abandonware
+            .marketplace_fee(RegistryNetwork::Testnet)
+            .unwrap();
+        assert_eq!(
+            fee.formula,
+            FeeFormula::GrossPercent { pct: 5 },
+            "the rate is the contract's `marketplace_pct`"
+        );
+        assert_eq!(
+            Some(fee.formula),
+            MarketplaceType::Abandonware.fee_formula(),
+            "the deployment's fee is built from the version's formula, not restated"
+        );
+        for payouts in [
+            1u64,
+            19,
+            20,
+            4_000_000,
+            23_000_000,
+            98_000_000,
+            1_000_000_000,
+        ] {
+            let expected = payouts * 5 / 95;
+            assert_eq!(
+                fee.due_on_payouts(payouts),
+                expected,
+                "fee on {payouts} must equal `sum * 5 / 95`"
+            );
+        }
+        // 5% of GROSS: 95 ADA of payouts + 5 ADA fee = 100 ADA gross.
+        assert_eq!(fee.due_on_payouts(95_000_000), 5_000_000);
+        // The e2e bulk fixture: 98 ADA of payouts needs 5.157894 ADA.
+        assert_eq!(fee.due_on_payouts(98_000_000), 5_157_894);
+    }
+
+    /// jpg's formula must be untouched by the enum refactor — same vectors as
+    /// the buy builder's own test.
+    #[test]
+    fn jpg_fee_formula_is_unchanged() {
+        let fee = MarketplaceType::JpgStoreV2
+            .marketplace_fee(RegistryNetwork::Mainnet)
+            .unwrap();
+        assert_eq!(fee.formula, FeeFormula::JpgV2);
+        assert_eq!(fee.due_on_payouts(470_400_000), 9_600_000);
+        for payouts in [1u64, 4_000_000, 23_000_000, 470_400_000, 1_000_000_000] {
+            assert_eq!(fee.due_on_payouts(payouts), payouts * 50 / 49 / 50);
+        }
+        assert!(
+            MarketplaceType::JpgStoreV2
+                .marketplace_fee(RegistryNetwork::Testnet)
+                .is_none(),
+            "jpg never deployed to preprod; a testnet buy must not pay its mainnet fee address"
+        );
+    }
+
+    /// Every fee formula is evaluable and monotonic — a regression net for
+    /// adding a variant with a division by zero or an inverted rate.
+    #[test]
+    fn fee_formulas_are_sane() {
+        for formula in FeeFormula::ALL {
+            assert_eq!(
+                formula.due_on_payouts(0),
+                0,
+                "{formula:?}: zero in, zero out"
+            );
+            let small = formula.due_on_payouts(10_000_000);
+            let large = formula.due_on_payouts(1_000_000_000);
+            assert!(small < large, "{formula:?}: fee must grow with the payouts");
+            assert!(
+                large < 1_000_000_000,
+                "{formula:?}: a fee larger than the payouts is not a fee"
+            );
+        }
     }
 
     /// A DEX ORDER contract glues the CUSTOMER's stake onto one payment
@@ -2012,7 +2707,10 @@ mod tests {
         use pallas_addresses::Address;
         for address in ADDRESS_REGISTRY
             .keys()
-            .chain(TESTNET_ADDRESS_REGISTRY.keys())
+            .copied()
+            .chain(TESTNET_ADDRESS_REGISTRY.keys().copied())
+            .chain(deployment_addresses(RegistryNetwork::Mainnet))
+            .chain(deployment_addresses(RegistryNetwork::Testnet))
         {
             assert!(
                 Address::from_bech32(address).is_ok(),
@@ -2033,7 +2731,17 @@ mod tests {
     #[test]
     fn a_registered_venue_address_delegates_to_a_registered_credential() {
         let mut checked = 0;
-        for (address, category) in ADDRESS_REGISTRY.entries() {
+        // jpg's sale and fee addresses live on its deployment records now;
+        // they resolve through the same lookup and carry the same claim.
+        let deployed = deployment_addresses(RegistryNetwork::Mainnet).filter_map(|address| {
+            lookup_address_for_network(address, RegistryNetwork::Mainnet)
+                .map(|category| (address, category))
+        });
+        for (address, category) in ADDRESS_REGISTRY
+            .entries()
+            .map(|(address, category)| (*address, category))
+            .chain(deployed)
+        {
             if !matches!(
                 category,
                 AddressCategory::Script(ScriptCategory::Marketplace {
@@ -2083,8 +2791,7 @@ mod tests {
     /// not hypothetical: 168 Mekka counterparties were labelled "Splash".
     #[test]
     fn a_prefix_hit_declares_it_only_identified_the_script() {
-        let customer_order =
-            "addr1z9ryamhgnuz6lau86sqytte2gz5rlktv2yce05e0h3207qdhc9k425ezp5cw8a3ssg7swp6fjdmnp3y8vcuka3fjr7mgqw6ke7p";
+        let customer_order = "addr1z9ryamhgnuz6lau86sqytte2gz5rlktv2yce05e0h3207qdhc9k425ezp5cw8a3ssg7swp6fjdmnp3y8vcuka3fjr7mgqw6ke7p";
         let (cat, kind) = lookup_address_match(customer_order, RegistryNetwork::Mainnet).unwrap();
         assert!(matches!(
             cat,
@@ -2112,5 +2819,78 @@ mod tests {
         // not a payment address at all
         assert!(!payment_credential_is_script("stake1uxmaqke42j9q6v83lv"));
         assert!(!payment_credential_is_script(""));
+    }
+
+    /// The preprod burn sink is derived here, not pasted.
+    ///
+    /// A burn sink is the one address in this file where being wrong is
+    /// unrecoverable: tokens sent to a SPENDABLE address are not burned,
+    /// they are someone's. So the script bytes are the source of truth and
+    /// both the credential and the address are recomputed from them — a
+    /// typo in either constant fails this test rather than quietly naming
+    /// an address somebody can sweep.
+    #[test]
+    fn preprod_burn_sink_is_unsatisfiable_and_its_address_follows_from_the_script() {
+        use pallas_addresses::{
+            Address, Network, ShelleyAddress, ShelleyDelegationPart, ShelleyPaymentPart,
+        };
+
+        // all [ invalid_before 2, invalid_hereafter 1 ]
+        //   82 01            array(2): script_all
+        //     82             array(2) of sub-scripts
+        //       82 04 02       [4, 2]  invalid_before    — valid FROM slot 2
+        //       82 05 01       [5, 1]  invalid_hereafter — valid UNTIL slot 1
+        //
+        // Spending needs a validity interval that starts at or after 2 and
+        // ends at or before 1. There is no such interval.
+        const SCRIPT_CBOR: [u8; 9] = [0x82, 0x01, 0x82, 0x82, 0x04, 0x02, 0x82, 0x05, 0x01];
+
+        // Script hash = blake2b-224 over (language tag || script bytes),
+        // where the tag for a NATIVE script is 0x00.
+        let mut preimage = vec![0x00u8];
+        preimage.extend_from_slice(&SCRIPT_CBOR);
+        let hash = pallas_crypto::hash::Hasher::<224>::hash(&preimage);
+        let credential = hex::encode(hash);
+
+        assert_eq!(
+            credential, "76e1a34faa7042df0fc54a45c53939c3a88ea00348b9327fa8520522",
+            "the registry credential no longer matches the script it claims to be"
+        );
+
+        // …and the registry really does know it as a burn sink.
+        let entry = lookup_payment_credential(&credential)
+            .expect("the preprod sink must be in the credential registry");
+        assert!(
+            matches!(entry.category, AC::Script(SC::Burn { .. })),
+            "the preprod sink must be categorised as a Burn, not merely as a script"
+        );
+
+        // Enterprise script address on a TESTNET: no stake part, so nothing
+        // about it can be delegated or re-keyed either.
+        let address = ShelleyAddress::new(
+            Network::Testnet,
+            ShelleyPaymentPart::Script(hash),
+            ShelleyDelegationPart::Null,
+        );
+        let bech32 = address.to_bech32().expect("bech32");
+        assert_eq!(
+            bech32, "addr_test1wpmwrg604fcy9hc0c49yt3fe88p63r4qqdytjvnl4pfq2gse5r9f5",
+            "the registry address no longer matches the script it claims to be"
+        );
+
+        // And the address parses back to the same credential — the guard the
+        // dev-dependency comment at the top of this crate exists for.
+        let parsed = Address::from_bech32(&bech32).expect("parses");
+        let Address::Shelley(shelley) = parsed else {
+            panic!("a burn sink must be a Shelley address");
+        };
+        assert!(
+            matches!(shelley.payment(), ShelleyPaymentPart::Script(_)),
+            "a burn sink must have a SCRIPT payment credential — a key credential is spendable"
+        );
+        assert!(
+            matches!(shelley.delegation(), ShelleyDelegationPart::Null),
+            "a burn sink must carry no stake part"
+        );
     }
 }

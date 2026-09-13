@@ -396,7 +396,7 @@ pub enum TokenError {
 /// Verify an HS256 session token and return its claims. `secret` is the
 /// raw shared key (same one the mint side uses).
 pub fn verify_token(token: &str, secret: &[u8]) -> Result<SessionClaims, TokenError> {
-    use jwt_compact::{alg::Hs256, alg::Hs256Key, prelude::*, AlgorithmExt};
+    use jwt_compact::{AlgorithmExt, alg::Hs256, alg::Hs256Key, prelude::*};
 
     let key = Hs256Key::new(secret);
     let token: Token<SessionClaims> = Hs256
@@ -431,7 +431,7 @@ pub fn mint_token(
     secret: &[u8],
     ttl: chrono::Duration,
 ) -> Result<String, TokenError> {
-    use jwt_compact::{alg::Hs256, alg::Hs256Key, prelude::*, AlgorithmExt};
+    use jwt_compact::{AlgorithmExt, alg::Hs256, alg::Hs256Key, prelude::*};
 
     if !claims.has_identity() {
         return Err(TokenError::NoIdentity);
@@ -499,18 +499,24 @@ mod tests {
 
     #[test]
     fn grants_exact_and_wildcard() {
-        assert!(claims("tools.visual-search")
-            .require(Feature::VisualSearch)
-            .is_ok());
-        assert!(claims("tools.visual-search")
-            .require(Feature::MarketScenarios)
-            .is_err());
+        assert!(
+            claims("tools.visual-search")
+                .require(Feature::VisualSearch)
+                .is_ok()
+        );
+        assert!(
+            claims("tools.visual-search")
+                .require(Feature::MarketScenarios)
+                .is_err()
+        );
         assert!(claims("*").require(Feature::MarketScenarios).is_ok());
         assert!(claims("").require(Feature::VisualSearch).is_err());
         // Prefixes must not match — scope tokens are exact.
-        assert!(claims("tools.visual-searchx")
-            .require(Feature::VisualSearch)
-            .is_err());
+        assert!(
+            claims("tools.visual-searchx")
+                .require(Feature::VisualSearch)
+                .is_err()
+        );
     }
 
     #[test]
@@ -569,7 +575,7 @@ mod tests {
         // Mint it anyway, the way a future/foreign issuer might, and confirm
         // the verifier refuses it rather than trusting the mint site.
         let forged = {
-            use jwt_compact::{alg::Hs256, alg::Hs256Key, prelude::*, AlgorithmExt};
+            use jwt_compact::{AlgorithmExt, alg::Hs256, alg::Hs256Key, prelude::*};
             let key = Hs256Key::new(secret);
             let claims = Claims::new(anonymous)
                 .set_duration_and_issuance(&TimeOptions::default(), chrono::Duration::hours(1));

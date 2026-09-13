@@ -14,10 +14,10 @@
 
 use egui_widgets::{Breakpoint, Drawer, DrawerSide};
 
-use crate::{ACCENT, TEXT_MUTED};
+use crate::{accent, muted};
 
 pub fn show(ui: &mut egui::Ui) {
-    ui.label(egui::RichText::new("Drawer").color(ACCENT).strong());
+    ui.label(egui::RichText::new("Drawer").color(accent(ui)).strong());
     ui.label(
         egui::RichText::new(
             "An edge-anchored slide-over with a scrim, for the narrow layout of \
@@ -25,7 +25,7 @@ pub fn show(ui: &mut egui::Ui) {
              Escape dismisses; width clamps to the viewport so it can never be \
              the thing that overflows.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(12.0);
@@ -37,7 +37,7 @@ pub fn show(ui: &mut egui::Ui) {
             ui.ctx().content_rect().width(),
             bp.label()
         ))
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
     ui.add_space(8.0);
@@ -71,7 +71,7 @@ pub fn show(ui: &mut egui::Ui) {
             ui.add_space(8.0);
             ui.label(
                 egui::RichText::new("Tap the dimmed page, or press Escape, to close.")
-                    .color(TEXT_MUTED)
+                    .color(muted(ui))
                     .small(),
             );
         });
@@ -97,7 +97,7 @@ pub fn show(ui: &mut egui::Ui) {
              not decide that itself, so a drawer that is ALWAYS a drawer stays \
              possible.",
         )
-        .color(TEXT_MUTED)
+        .color(muted(ui))
         .small(),
     );
 }

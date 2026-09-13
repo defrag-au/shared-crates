@@ -1,0 +1,7 @@
+{
+  "balance": 1000,
+  "reconciled_at": 12345,
+  "reconciled_seq": 7,
+  "receipts_hash": "abababababababababababababababababababababababababababababababab",
+  "scope": null
+}

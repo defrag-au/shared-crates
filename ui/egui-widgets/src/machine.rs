@@ -81,6 +81,7 @@
 //! ```
 
 use crate::motion::{self, Easing};
+use crate::theme::{Speed, ThemeExt};
 use egui::{Context, Id};
 
 /// A state's position in the hierarchy, coarsest segment first.
@@ -171,7 +172,12 @@ pub trait HState {
     fn path(&self) -> StatePath;
 }
 
-/// Seconds for a transition at the root. Deeper changes scale down from here.
+/// Seconds for a transition at the root, when no theme is available to ask.
+///
+/// [`Machine::progress`] takes the base from the active theme instead — the
+/// duration of a scene change is a motion-axis decision, not a state-machine
+/// one. This remains for [`Machine::transition_secs`] callers that have no
+/// `Context` (and for the depth-falloff tests, which are about the *ratio*).
 const BASE_TRANSITION_SECS: f32 = 0.28;
 
 /// How much shorter each level of depth makes a transition.
@@ -331,9 +337,22 @@ impl<S: HState> Machine<S> {
     /// How long the current transition should take, given how far the UI
     /// moved. Root changes get the full duration; each level deeper is a
     /// smaller edit and earns a proportionally shorter one.
+    ///
+    /// Uses [`BASE_TRANSITION_SECS`]. Prefer [`Self::transition_secs_from`]
+    /// where a `Context` is in hand, so the base follows the theme's motion
+    /// axis rather than a constant this module happens to hold.
     pub fn transition_secs(&self) -> f32 {
+        self.transition_secs_from(BASE_TRANSITION_SECS)
+    }
+
+    /// [`Self::transition_secs`] with the root duration supplied by the caller
+    /// — typically `ui.duration(Speed::Normal)`.
+    ///
+    /// The split is the point: *how long a scene change takes* belongs to the
+    /// theme, *how much a deeper edit shortens it* belongs to the machine.
+    pub fn transition_secs_from(&self, base: f32) -> f32 {
         let depth = self.change_depth().unwrap_or(0);
-        BASE_TRANSITION_SECS * DEPTH_FALLOFF.powi(depth as i32)
+        base * DEPTH_FALLOFF.powi(depth as i32)
     }
 
     /// Eased 0→1 progress through the current transition — the value render
@@ -348,8 +367,8 @@ impl<S: HState> Machine<S> {
             ctx,
             id,
             self.generation as f32,
-            self.transition_secs(),
-            Easing::InOutCubic,
+            self.transition_secs_from(ctx.duration(Speed::Normal)),
+            ctx.easing(Easing::InOutCubic),
         );
         if self.generation == 0 {
             return 1.0;

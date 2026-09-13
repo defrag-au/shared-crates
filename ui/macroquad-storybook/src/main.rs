@@ -11,12 +11,12 @@
 
 use macroquad::prelude::*;
 use macroquad_widgets::{
-    mint_checkout, order_fulfilment, quantity_stepper, squad_picker, theme, wallet_connect,
-    wallet_list, Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility,
-    FulfilmentAction, FulfilmentStatus, FulfilmentTx, Gestures, MintCheckoutVm, OrderFulfilmentVm,
-    OrderStatus, Painter, QuantityStepperVm, SquadCandidate, SquadCommit, SquadPickerAction,
-    SquadPickerVm, StepperAction, SwipeDir, Theme, WalletAction, WalletConnectVm, WalletItem,
-    WalletListAction, WalletListState, WalletListVm, WalletRow, WalletState,
+    Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility, FulfilmentAction,
+    FulfilmentStatus, FulfilmentTx, Gestures, MintCheckoutVm, OrderFulfilmentVm, OrderStatus,
+    Painter, QuantityStepperVm, SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerVm,
+    StepperAction, SwipeDir, Theme, WalletAction, WalletConnectVm, WalletItem, WalletListAction,
+    WalletListState, WalletListVm, WalletRow, WalletState, mint_checkout, order_fulfilment,
+    quantity_stepper, squad_picker, theme, wallet_connect, wallet_list,
 };
 
 const SIDEBAR_W: f32 = 210.0;
@@ -347,7 +347,7 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
             "wallet list",
             "one linked",
             WalletListVm::new(WalletListState::Ready(vec![
-                WalletRow::new(STAKE_ADDR).with_handle("damo")
+                WalletRow::new(STAKE_ADDR).with_handle("damo"),
             ])),
         ),
         // Mid-unlink: that row's controls are disabled so a second click can't
@@ -742,18 +742,18 @@ impl Storybook {
 
         // Drag horizontally with the mouse to page, the same gesture a finger
         // makes on a phone.
-        if let Some(dir) = self.pending_swipe.take() {
-            if let Some(page) = vm.swipe(dir, w) {
-                self.last_action = Some(format!("swipe → page {}", page + 1));
-                return;
-            }
+        if let Some(dir) = self.pending_swipe.take()
+            && let Some(page) = vm.swipe(dir, w)
+        {
+            self.last_action = Some(format!("swipe → page {}", page + 1));
+            return;
         }
 
         let r = squad_picker(p, vm, x, y, w);
         if let Some(action) = r.action {
             let echo = match action {
                 SquadPickerAction::Toggle(id) => {
-                    let label = match vm.chosen.iter().position(|c| c == &id) {
+                    match vm.chosen.iter().position(|c| c == &id) {
                         Some(at) => {
                             vm.chosen.remove(at);
                             format!("removed {id}")
@@ -766,8 +766,7 @@ impl Storybook {
                         // is unreachable by tap — kept because the host, not
                         // the widget, owns the rule.
                         None => format!("ignored {id} (squad full)"),
-                    };
-                    label
+                    }
                 }
                 SquadPickerAction::Page(page) => {
                     vm.page = page;
@@ -806,10 +805,10 @@ impl Storybook {
             max: 10,
         };
         let resp = quantity_stepper(p, &svm, x, y, 36.0, true);
-        if let Some(StepperAction::Changed(n)) = resp.action {
-            if let Body::Stepper(q) = &mut self.stories[sel].body {
-                *q = n;
-            }
+        if let Some(StepperAction::Changed(n)) = resp.action
+            && let Body::Stepper(q) = &mut self.stories[sel].body
+        {
+            *q = n;
         }
         p.text_top(
             &format!("min 1 · max 10 · qty = {qty}"),
@@ -972,10 +971,8 @@ impl Storybook {
         if reset {
             self.reset_sim(sel);
         }
-        if toggle {
-            if let Body::Fulfilment(f) = &mut self.stories[sel].body {
-                f.paused = !f.paused;
-            }
+        if toggle && let Body::Fulfilment(f) = &mut self.stories[sel].body {
+            f.paused = !f.paused;
         }
         by + 60.0
     }
