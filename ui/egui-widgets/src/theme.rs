@@ -19,16 +19,22 @@
 //! Swapping one value re-skins everything. `macroquad-widgets` has carried its
 //! palette on `Painter` this way for a while; this is the egui side catching up.
 //!
-//! ## The module consts are deprecated, deliberately loudly
+//! ## There are no module colour consts any more
 //!
-//! Every `pub const` below still exists and still holds its original value, so
-//! nothing breaks. All are `#[deprecated]` so that `cargo` enumerates the call
-//! sites for us — there are several hundred across this crate and its consumers,
-//! and a grep would only find the ones we already guessed at. Expect a large
-//! warning count until the migration finishes; that count IS the burn-down.
+//! This module used to export `BG_PRIMARY`, `TEXT_MUTED`, `ACCENT` and fifteen
+//! others. They were `#[deprecated]` through the migration so `cargo` could
+//! enumerate the call sites for us — roughly 2,100 across this crate and its
+//! consumers, where a grep would only have found the ones we already guessed at.
+//! That count was the burn-down, and it is now zero, so the consts are gone.
 //!
-//! Migrate **by axis, not by widget**: a widget drawing half-themed reads as
-//! broken, an axis half-themed reads as a bug you can find.
+//! A `pub const Color32` is the one shape a theme can never reach: it is
+//! resolved before a theme is chosen. If you want Tokyo Night's exact value,
+//! ask for the theme — `Theme::tokyo_night().color.text_muted` — rather than
+//! re-adding a constant.
+//!
+//! The lesson, for the axes still to come: migrate **by axis, not by widget**.
+//! A widget drawing half-themed reads as broken; an axis half-themed reads as a
+//! bug you can find.
 //!
 //! ## Axes not yet here
 //!
@@ -56,9 +62,10 @@ use std::sync::Arc;
 
 /// The literal Tokyo Night values.
 ///
-/// Private and **not** deprecated, so the token constructors below can read them
-/// without tripping the deprecations on the public consts. Without this split,
-/// `ColorTokens::tokyo_night` would warn about the very API it replaces.
+/// **Stays private.** It exists so `ColorTokens::tokyo_night` has somewhere to
+/// read its numbers from, not as an escape hatch — a `pub const Color32` is
+/// resolved before any theme is chosen, which is exactly why the public consts
+/// that used to shadow these were removed. Reach a value through a `Theme`.
 mod raw {
     use egui::Color32;
 
@@ -67,7 +74,11 @@ mod raw {
     pub const BG_HIGHLIGHT: Color32 = Color32::from_rgb(41, 46, 66);
 
     pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(192, 202, 245);
+    /// Tokyo Night `fg_dark` — ~6.9:1 on the secondary background.
     pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(169, 177, 214);
+    /// De-emphasis tier, but still AA at small sizes — ~5.0:1 on the secondary
+    /// background. (The previous `#565F89` sat at 2.2-2.8:1 and carried real
+    /// copy.)
     pub const TEXT_MUTED: Color32 = Color32::from_rgb(139, 149, 196);
 
     pub const ACCENT_BLUE: Color32 = Color32::from_rgb(122, 162, 247);
@@ -78,6 +89,9 @@ mod raw {
     pub const ACCENT_RED: Color32 = Color32::from_rgb(247, 118, 142);
     pub const ACCENT_MAGENTA: Color32 = Color32::from_rgb(187, 154, 247);
 
+    /// Default border stroke colour. Deliberately its own value: when this
+    /// aliased the highlight background it sat at 1.24:1 against the primary
+    /// background and panel edges were effectively invisible.
     pub const BORDER: Color32 = Color32::from_rgb(65, 72, 104);
 
     // `GOLD` lived here, "for the top rarity band. Not part of the accent ramp."
@@ -86,60 +100,6 @@ mod raw {
     // what made the band monotonic. A colour that belongs to exactly one ramp
     // belongs in that ramp.
 }
-
-// ============================================================================
-// Deprecated module consts — the migration worklist
-// ============================================================================
-
-#[deprecated(note = "use `ui.tokens().color.bg_primary`")]
-pub const BG_PRIMARY: Color32 = raw::BG_PRIMARY;
-#[deprecated(note = "use `ui.tokens().color.bg_secondary`")]
-pub const BG_SECONDARY: Color32 = raw::BG_SECONDARY;
-#[deprecated(note = "use `ui.tokens().color.bg_highlight`")]
-pub const BG_HIGHLIGHT: Color32 = raw::BG_HIGHLIGHT;
-
-#[deprecated(note = "use `ui.tokens().color.text_primary`")]
-pub const TEXT_PRIMARY: Color32 = raw::TEXT_PRIMARY;
-/// Tokyo Night `fg_dark` — ~6.9:1 on the secondary background.
-#[deprecated(note = "use `ui.tokens().color.text_secondary`")]
-pub const TEXT_SECONDARY: Color32 = raw::TEXT_SECONDARY;
-/// De-emphasis tier, but still AA at small sizes — ~5.0:1 on the secondary
-/// background. (The previous `#565F89` sat at 2.2-2.8:1 and carried real copy.)
-#[deprecated(note = "use `ui.tokens().color.text_muted`")]
-pub const TEXT_MUTED: Color32 = raw::TEXT_MUTED;
-
-#[deprecated(note = "use `ui.tokens().color.accent_blue`")]
-pub const ACCENT_BLUE: Color32 = raw::ACCENT_BLUE;
-#[deprecated(note = "use `ui.tokens().color.accent_cyan`")]
-pub const ACCENT_CYAN: Color32 = raw::ACCENT_CYAN;
-#[deprecated(note = "use `ui.tokens().color.accent_green`")]
-pub const ACCENT_GREEN: Color32 = raw::ACCENT_GREEN;
-#[deprecated(note = "use `ui.tokens().color.accent_yellow`")]
-pub const ACCENT_YELLOW: Color32 = raw::ACCENT_YELLOW;
-#[deprecated(note = "use `ui.tokens().color.accent_orange`")]
-pub const ACCENT_ORANGE: Color32 = raw::ACCENT_ORANGE;
-#[deprecated(note = "use `ui.tokens().color.accent_red`")]
-pub const ACCENT_RED: Color32 = raw::ACCENT_RED;
-#[deprecated(note = "use `ui.tokens().color.accent_magenta`")]
-pub const ACCENT_MAGENTA: Color32 = raw::ACCENT_MAGENTA;
-
-/// Primary call-to-action accent.
-#[deprecated(note = "use `ui.tokens().color.accent`")]
-pub const ACCENT: Color32 = raw::ACCENT_BLUE;
-/// Positive / success status.
-#[deprecated(note = "use `ui.tokens().color.success`")]
-pub const SUCCESS: Color32 = raw::ACCENT_GREEN;
-/// Warning / caution status.
-#[deprecated(note = "use `ui.tokens().color.warning`")]
-pub const WARNING: Color32 = raw::ACCENT_YELLOW;
-/// Error / danger status.
-#[deprecated(note = "use `ui.tokens().color.error`")]
-pub const ERROR: Color32 = raw::ACCENT_RED;
-/// Default border stroke colour. Deliberately its own value: when this aliased
-/// the highlight background it sat at 1.24:1 against the primary background and
-/// panel edges were effectively invisible.
-#[deprecated(note = "use `ui.tokens().color.border`")]
-pub const BORDER: Color32 = raw::BORDER;
 
 // ============================================================================
 // Colour tokens
