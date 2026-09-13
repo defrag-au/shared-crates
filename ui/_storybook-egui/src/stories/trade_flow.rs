@@ -1,7 +1,7 @@
 //! Storybook demo for the TradeFlow widget.
 
-use egui_widgets::trade_flow::{self, TradeFlowConfig, TradeFlowData};
 use egui_widgets::FlowAsset;
+use egui_widgets::trade_flow::{self, TradeFlowConfig, TradeFlowData};
 
 use crate::{accent, bg, muted};
 

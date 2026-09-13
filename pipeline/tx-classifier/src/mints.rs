@@ -113,9 +113,7 @@ pub(crate) fn detect_utxo_mint_type(
                         valid_cip68_pairs += 1;
                         debug!(
                             "Detected CIP-68 pair via UTXO analysis: reference={}, user={}, base_name={}",
-                            ref_asset.1,
-                            _user_asset.1,
-                            base_name
+                            ref_asset.1, _user_asset.1, base_name
                         );
                     }
                 }

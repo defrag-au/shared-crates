@@ -271,41 +271,41 @@ impl MarketplaceDatumParser {
         let plutus_data: PlutusData = pallas_codec::minicbor::decode(cbor_bytes)
             .map_err(|e| DatumParsingError::CborDecode(format!("Failed to decode CBOR: {e}")))?;
 
-        if let PlutusData::Constr(outer) = &plutus_data {
-            if outer.fields.len() >= 2 {
-                // Field 0: asset identifier Constructor(0) [ policy_id, asset_name ]
-                if let PlutusData::Constr(asset_constr) = &outer.fields[0] {
-                    if asset_constr.fields.len() >= 2 {
-                        let policy_id = match &asset_constr.fields[0] {
-                            PlutusData::BoundedBytes(b) => hex::encode(b.as_slice()),
-                            _ => {
-                                return Err(DatumParsingError::SchemaValidation(
-                                    "V4: expected bytes for policy_id".to_string(),
-                                ))
-                            }
-                        };
-                        let asset_name = match &asset_constr.fields[1] {
-                            PlutusData::BoundedBytes(b) => hex::encode(b.as_slice()),
-                            _ => {
-                                return Err(DatumParsingError::SchemaValidation(
-                                    "V4: expected bytes for asset_name".to_string(),
-                                ))
-                            }
-                        };
-
-                        debug!("JPG.store V4: parsed asset {policy_id}.{asset_name}");
-
-                        // V4 has no price in the datum — return Ask with zero-price target
-                        // so the sales classifier knows to use ADA flow analysis
-                        let asset = AssetId::new(policy_id, asset_name).map_err(|e| {
-                            DatumParsingError::SchemaValidation(format!("Invalid asset: {e}"))
-                        })?;
-                        return Ok(MarketplaceOperation::Ask {
-                            asset: Some(asset),
-                            targets: vec![],
-                        });
+        if let PlutusData::Constr(outer) = &plutus_data
+            && outer.fields.len() >= 2
+        {
+            // Field 0: asset identifier Constructor(0) [ policy_id, asset_name ]
+            if let PlutusData::Constr(asset_constr) = &outer.fields[0]
+                && asset_constr.fields.len() >= 2
+            {
+                let policy_id = match &asset_constr.fields[0] {
+                    PlutusData::BoundedBytes(b) => hex::encode(b.as_slice()),
+                    _ => {
+                        return Err(DatumParsingError::SchemaValidation(
+                            "V4: expected bytes for policy_id".to_string(),
+                        ));
                     }
-                }
+                };
+                let asset_name = match &asset_constr.fields[1] {
+                    PlutusData::BoundedBytes(b) => hex::encode(b.as_slice()),
+                    _ => {
+                        return Err(DatumParsingError::SchemaValidation(
+                            "V4: expected bytes for asset_name".to_string(),
+                        ));
+                    }
+                };
+
+                debug!("JPG.store V4: parsed asset {policy_id}.{asset_name}");
+
+                // V4 has no price in the datum — return Ask with zero-price target
+                // so the sales classifier knows to use ADA flow analysis
+                let asset = AssetId::new(policy_id, asset_name).map_err(|e| {
+                    DatumParsingError::SchemaValidation(format!("Invalid asset: {e}"))
+                })?;
+                return Ok(MarketplaceOperation::Ask {
+                    asset: Some(asset),
+                    targets: vec![],
+                });
             }
         }
 
@@ -486,36 +486,25 @@ pub mod utils {
                         if let Some(serde_json::Value::Array(map_entries)) = amount_field.get("map")
                         {
                             for entry in map_entries {
-                                if let serde_json::Value::Object(entry_obj) = entry {
-                                    if let Some(v_obj) = entry_obj.get("v") {
-                                        if let Some(serde_json::Value::Array(value_fields)) =
-                                            v_obj.get("fields")
+                                if let serde_json::Value::Object(entry_obj) = entry
+                                    && let Some(v_obj) = entry_obj.get("v")
+                                    && let Some(serde_json::Value::Array(value_fields)) =
+                                        v_obj.get("fields")
+                                    && value_fields.len() >= 2
+                                    && let Some(final_map) = value_fields.get(1)
+                                    && let Some(serde_json::Value::Array(final_entries)) =
+                                        final_map.get("map")
+                                {
+                                    for final_entry in final_entries {
+                                        if let Some(final_v) = final_entry.get("v")
+                                            && let Some(amount_val) = final_v.get("int")
+                                            && let Some(amount) = amount_val.as_u64()
                                         {
-                                            if value_fields.len() >= 2 {
-                                                if let Some(final_map) = value_fields.get(1) {
-                                                    if let Some(serde_json::Value::Array(
-                                                        final_entries,
-                                                    )) = final_map.get("map")
-                                                    {
-                                                        for final_entry in final_entries {
-                                                            if let Some(final_v) =
-                                                                final_entry.get("v")
-                                                            {
-                                                                if let Some(amount_val) =
-                                                                    final_v.get("int")
-                                                                {
-                                                                    if let Some(amount) =
-                                                                        amount_val.as_u64()
-                                                                    {
-                                                                        debug!("Successfully extracted payout amount: {} lovelace", amount);
-                                                                        return Some(amount);
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
+                                            debug!(
+                                                "Successfully extracted payout amount: {} lovelace",
+                                                amount
+                                            );
+                                            return Some(amount);
                                         }
                                     }
                                 }
@@ -523,11 +512,11 @@ pub mod utils {
                         }
 
                         // Try direct int access first (fallback for simpler structures)
-                        if let Some(amount) = amount_field.get("int") {
-                            if let Some(amount_val) = amount.as_u64() {
-                                debug!("Found direct int amount: {} lovelace", amount_val);
-                                return Some(amount_val);
-                            }
+                        if let Some(amount) = amount_field.get("int")
+                            && let Some(amount_val) = amount.as_u64()
+                        {
+                            debug!("Found direct int amount: {} lovelace", amount_val);
+                            return Some(amount_val);
                         }
                         // Try as direct integer
                         if let Some(amount_val) = amount_field.as_u64() {
@@ -567,17 +556,19 @@ pub mod utils {
             serde_json::Value::Object(map) => {
                 // Look for "int" fields that could contain prices
                 if let Some(int_val) = map.get("int") {
-                    if let Some(price) = int_val.as_str().and_then(|s| s.parse::<u64>().ok()) {
-                        if price >= min_price && price <= max_price {
-                            debug!("Found potential price candidate: {} lovelace", price);
-                            return Some(price);
-                        }
+                    if let Some(price) = int_val.as_str().and_then(|s| s.parse::<u64>().ok())
+                        && price >= min_price
+                        && price <= max_price
+                    {
+                        debug!("Found potential price candidate: {} lovelace", price);
+                        return Some(price);
                     }
-                    if let Some(price) = int_val.as_u64() {
-                        if price >= min_price && price <= max_price {
-                            debug!("Found potential price candidate: {} lovelace", price);
-                            return Some(price);
-                        }
+                    if let Some(price) = int_val.as_u64()
+                        && price >= min_price
+                        && price <= max_price
+                    {
+                        debug!("Found potential price candidate: {} lovelace", price);
+                        return Some(price);
                     }
                 }
 
@@ -600,11 +591,12 @@ pub mod utils {
                 }
             }
             serde_json::Value::Number(num) => {
-                if let Some(price) = num.as_u64() {
-                    if price >= min_price && price <= max_price {
-                        debug!("Found potential price candidate: {} lovelace", price);
-                        return Some(price);
-                    }
+                if let Some(price) = num.as_u64()
+                    && price >= min_price
+                    && price <= max_price
+                {
+                    debug!("Found potential price candidate: {} lovelace", price);
+                    return Some(price);
                 }
             }
             _ => {}

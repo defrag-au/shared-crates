@@ -719,13 +719,17 @@ mod policy_asset_tests {
     /// Both halves become URL path segments, so non-hex must not parse.
     #[test]
     fn non_hex_identifiers_are_rejected() {
-        assert!(format!("asset://{POLICY}:../../etc/x/400")
-            .parse::<AssetUri>()
-            .is_err());
+        assert!(
+            format!("asset://{POLICY}:../../etc/x/400")
+                .parse::<AssetUri>()
+                .is_err()
+        );
         assert!("asset://short:abcd/400".parse::<AssetUri>().is_err());
-        assert!(format!("asset://{POLICY}:zzzz/400")
-            .parse::<AssetUri>()
-            .is_err());
+        assert!(
+            format!("asset://{POLICY}:zzzz/400")
+                .parse::<AssetUri>()
+                .is_err()
+        );
     }
 
     #[test]
@@ -774,9 +778,11 @@ mod r2_tests {
     /// confusion worth catching at parse rather than as a failed lookup.
     #[test]
     fn a_bucket_name_is_not_a_binding_name() {
-        assert!(format!("r2://augminted-dev/{KEY}")
-            .parse::<R2Uri>()
-            .is_err());
+        assert!(
+            format!("r2://augminted-dev/{KEY}")
+                .parse::<R2Uri>()
+                .is_err()
+        );
     }
 
     #[test]
@@ -836,9 +842,11 @@ mod token_tests {
             .unwrap();
         assert_eq!(uri.asset_name_hex, ALIENS_NAME);
         // `/400` appended is read as part of the name, which is not hex.
-        assert!(format!("token://{ALIENS_POLICY}/{ALIENS_NAME}/400")
-            .parse::<TokenUri>()
-            .is_err());
+        assert!(
+            format!("token://{ALIENS_POLICY}/{ALIENS_NAME}/400")
+                .parse::<TokenUri>()
+                .is_err()
+        );
     }
 
     #[test]

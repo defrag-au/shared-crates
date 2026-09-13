@@ -38,13 +38,12 @@ pub fn parse_mint_operations(mint_data: &[serde_json::Value]) -> Vec<MintOperati
             // Extract unit and amount fields from the mint object
             if let (Some(unit_value), Some(amount_value)) =
                 (mint_obj.get("unit"), mint_obj.get("amount"))
+                && let (Some(unit), Some(amount)) = (unit_value.as_str(), amount_value.as_i64())
             {
-                if let (Some(unit), Some(amount)) = (unit_value.as_str(), amount_value.as_i64()) {
-                    operations.push(MintOperation {
-                        unit: unit.to_string(),
-                        amount,
-                    });
-                }
+                operations.push(MintOperation {
+                    unit: unit.to_string(),
+                    amount,
+                });
             }
         }
     }
@@ -297,24 +296,24 @@ async fn enrich_missing_datum_content(maestro: &MaestroApi, raw_tx: &mut RawTxDa
 
     for utxo_list in [&raw_tx.inputs, &raw_tx.reference_inputs] {
         for input in utxo_list {
-            if let Some(datum) = &input.datum {
-                if datum_needs_resolution(datum) {
-                    let hash = datum.hash().to_string();
-                    if !unresolved_hashes.contains(&hash) {
-                        unresolved_hashes.push(hash);
-                    }
+            if let Some(datum) = &input.datum
+                && datum_needs_resolution(datum)
+            {
+                let hash = datum.hash().to_string();
+                if !unresolved_hashes.contains(&hash) {
+                    unresolved_hashes.push(hash);
                 }
             }
         }
     }
 
     for output in &raw_tx.outputs {
-        if let Some(datum) = &output.datum {
-            if datum_needs_resolution(datum) {
-                let hash = datum.hash().to_string();
-                if !unresolved_hashes.contains(&hash) {
-                    unresolved_hashes.push(hash);
-                }
+        if let Some(datum) = &output.datum
+            && datum_needs_resolution(datum)
+        {
+            let hash = datum.hash().to_string();
+            if !unresolved_hashes.contains(&hash) {
+                unresolved_hashes.push(hash);
             }
         }
     }
@@ -410,10 +409,10 @@ fn extract_datums_from_metadata(raw_tx: &RawTxData) -> std::collections::HashMap
     let mut combined_hex = String::new();
     for key in &datum_keys {
         let key_str = key.to_string();
-        if let Some(value) = metadata_obj.get(&key_str) {
-            if let Some(s) = value.as_str() {
-                combined_hex.push_str(s);
-            }
+        if let Some(value) = metadata_obj.get(&key_str)
+            && let Some(s) = value.as_str()
+        {
+            combined_hex.push_str(s);
         }
     }
 
@@ -457,15 +456,15 @@ fn apply_resolved_datums(
     resolved: &std::collections::HashMap<String, String>,
 ) {
     let apply = |datum: &mut Option<TxDatum>| {
-        if let Some(d) = datum {
-            if datum_needs_resolution(d) {
-                let hash = d.hash().to_string();
-                if let Some(bytes) = resolved.get(&hash) {
-                    *d = TxDatum::Bytes {
-                        hash,
-                        bytes: bytes.clone(),
-                    };
-                }
+        if let Some(d) = datum
+            && datum_needs_resolution(d)
+        {
+            let hash = d.hash().to_string();
+            if let Some(bytes) = resolved.get(&hash) {
+                *d = TxDatum::Bytes {
+                    hash,
+                    bytes: bytes.clone(),
+                };
             }
         }
     };

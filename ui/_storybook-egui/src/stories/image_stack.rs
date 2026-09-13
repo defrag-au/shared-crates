@@ -30,7 +30,7 @@
 //!   — may be most of why the rendered version looked stronger.
 
 use crate::{accent, muted};
-use egui_widgets::image_loader::{iiif_asset_url, AssetImageSize};
+use egui_widgets::image_loader::{AssetImageSize, iiif_asset_url};
 use egui_widgets::image_stack::{ImageStack, ImageStackStyle, StackImage};
 use egui_widgets::slider_group::{Fader, SliderGroup};
 

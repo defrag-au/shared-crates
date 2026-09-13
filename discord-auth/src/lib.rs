@@ -212,12 +212,11 @@ impl GuildRoleConfig {
                 // this feature, deduped in first-seen order.
                 let mut requirements: Vec<String> = Vec::new();
                 for g in &s.grants {
-                    if g.features.iter().any(|f| f == feature_id) {
-                        if let Some(req) = &g.requirement {
-                            if !requirements.contains(req) {
-                                requirements.push(req.clone());
-                            }
-                        }
+                    if g.features.iter().any(|f| f == feature_id)
+                        && let Some(req) = &g.requirement
+                        && !requirements.contains(req)
+                    {
+                        requirements.push(req.clone());
                     }
                 }
                 AccessProvider {

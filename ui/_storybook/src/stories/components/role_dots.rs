@@ -1,9 +1,9 @@
 //! Role Dots component story
 
-use crate::stories::helpers::{resolve_iiif_image, AttributeCard};
+use crate::stories::helpers::{AttributeCard, resolve_iiif_image};
 use cardano_assets::AssetId;
 use leptos::prelude::*;
-use ui_components::{children_fn, AssetCard, CardSize, RoleDot, RoleDots};
+use ui_components::{AssetCard, CardSize, RoleDot, RoleDots, children_fn};
 
 // Black Flag Pirates policy ID
 const BFP_POLICY: &str = "b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6";
@@ -24,9 +24,11 @@ pub fn RoleDotsStory() -> impl IntoView {
     let pirate_3_url = resolve_iiif_image(&pirate_asset("506972617465333333"), 48);
 
     // Example roles for demos
-    let single_role = vec![RoleDot::new("doctor")
-        .with_color("#4ade80")
-        .with_label("Doctor")];
+    let single_role = vec![
+        RoleDot::new("doctor")
+            .with_color("#4ade80")
+            .with_label("Doctor"),
+    ];
 
     let two_roles = vec![
         RoleDot::new("doctor")

@@ -1,6 +1,6 @@
-use l_system::{interpret, LSystem, Symbol, TurtleConfig};
-use rand::rngs::SmallRng;
+use l_system::{LSystem, Symbol, TurtleConfig, interpret};
 use rand::SeedableRng;
+use rand::rngs::SmallRng;
 
 /// Koch curve: F → F+F-F-F+F
 #[test]

@@ -1,6 +1,6 @@
 //! Storybook demo for the PipRow widget from egui-widgets.
 
-use egui_widgets::pip_row::{heat_color, HoverInfo, Pip, PipRowConfig, PipRowData, PipRowMode};
+use egui_widgets::pip_row::{HoverInfo, Pip, PipRowConfig, PipRowData, PipRowMode, heat_color};
 use egui_widgets::slider_group::SliderGroup;
 use egui_widgets::theme::{Ink, Token};
 

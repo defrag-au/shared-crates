@@ -1,6 +1,6 @@
 //! Extension trait for RawTxData with classifier-specific methods
 
-use crate::{is_script_address, AssetOperation};
+use crate::{AssetOperation, is_script_address};
 use pipeline_types::parse_asset_id;
 use transactions::{RawTxData, TxInput, TxOutput};
 

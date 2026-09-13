@@ -400,10 +400,11 @@ fn find_dex_label(
     for addr in script_addrs {
         let in_inputs = raw.inputs.iter().any(|i| i.address == *addr);
         let in_outputs = raw.outputs.iter().any(|o| o.address == *addr);
-        if in_inputs && in_outputs {
-            if let Some(name) = get_dex_platform_name(registry, addr) {
-                return name;
-            }
+        if in_inputs
+            && in_outputs
+            && let Some(name) = get_dex_platform_name(registry, addr)
+        {
+            return name;
         }
     }
 

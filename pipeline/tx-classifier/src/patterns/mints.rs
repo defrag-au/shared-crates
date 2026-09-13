@@ -1,7 +1,7 @@
 //! Mint transaction pattern detection
 
 use super::{PatternContext, PatternDetectionResult};
-use crate::registry::{lookup_address, AddressCategory, ScriptCategory};
+use crate::registry::{AddressCategory, ScriptCategory, lookup_address};
 use crate::*;
 use std::collections::{HashMap, HashSet};
 use tracing::debug;
@@ -163,10 +163,15 @@ fn detect_utxo_mint(context: &PatternContext) -> Vec<(TxType, f64)> {
                 *ada_paid // Fallback to minter payment if calculation fails
             };
 
-            debug!("UTXO mint cost calculation: total_inputs={}μ₳ (₳{:.2}), change_returned={}μ₳ (₳{:.2}), mint_cost={}μ₳ (₳{:.2})",
-                total_input_lovelace, total_input_lovelace as f64 / 1_000_000.0,
-                change_returned, change_returned as f64 / 1_000_000.0,
-                actual_mint_cost, actual_mint_cost as f64 / 1_000_000.0);
+            debug!(
+                "UTXO mint cost calculation: total_inputs={}μ₳ (₳{:.2}), change_returned={}μ₳ (₳{:.2}), mint_cost={}μ₳ (₳{:.2})",
+                total_input_lovelace,
+                total_input_lovelace as f64 / 1_000_000.0,
+                change_returned,
+                change_returned as f64 / 1_000_000.0,
+                actual_mint_cost,
+                actual_mint_cost as f64 / 1_000_000.0
+            );
 
             // Separate assets based on detected mint type
             let (primary_assets, reference_assets) =

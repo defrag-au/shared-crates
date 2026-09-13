@@ -2,8 +2,8 @@
 //! thumbnail.
 
 use egui::{Rect, Vec2};
-use egui_widgets::corner_action::{Corner, CornerAction};
 use egui_widgets::PhosphorIcon;
+use egui_widgets::corner_action::{Corner, CornerAction};
 
 use crate::{accent, muted};
 

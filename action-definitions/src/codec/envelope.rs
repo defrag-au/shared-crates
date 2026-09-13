@@ -17,8 +17,8 @@
 use pallas_codec::utils::MaybeIndefArray;
 use pallas_primitives::{Constr, PlutusData};
 
-use super::scalar::{as_constr, PlutusCodec};
 use super::DecodeError;
+use super::scalar::{PlutusCodec, as_constr};
 
 /// `Constr 0` — the only constructor index any envelope here uses.
 const CONSTR_ZERO: u64 = 121;

@@ -1,5 +1,5 @@
 use http_client::{HttpClient, HttpMethod};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::PinataError;
 

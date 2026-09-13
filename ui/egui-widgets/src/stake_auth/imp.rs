@@ -106,6 +106,25 @@ impl StakeAuthStrategy {
         &self.binding
     }
 
+    // There is deliberately NO `just_signed_in` / `take_signed_in` here.
+    //
+    // An edge-triggered "a sign-in just happened" flag was tried and removed.
+    // Three things were wrong with it, and the third is fatal:
+    //
+    // 1. A `bool` where the question is "which session am I looking at".
+    // 2. Take-on-read semantics — a getter that mutates, so two callers
+    //    silently contend and one loses.
+    // 3. **It did not cover its own use case.** `restore()` sets the phase
+    //    directly rather than going through the sign-in path, so a session
+    //    restored from storage never raised the flag — and every consumer
+    //    needed a second, separate check for exactly that case anyway.
+    //
+    // The level-triggered shape is strictly better and belongs in the app:
+    // keep the session you last did the post-sign-in reads for, and compare.
+    // One code path then covers a fresh sign-in, a restored session, a retry
+    // after failure, AND a switch to a different wallet — which the edge flag
+    // could not express at all.
+
     /// The CIP-30 handle **for signing** — `None` unless the binding is
     /// [`WalletBinding::Bound`].
     ///

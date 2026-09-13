@@ -18,7 +18,7 @@
 //! }
 //! ```
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// A namespaced key-value store backed by `localStorage`.
 ///

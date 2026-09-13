@@ -166,8 +166,8 @@ pub fn estimate_min_lovelace(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utxo::AssetQuantity;
     use crate::AssetId;
+    use crate::utxo::AssetQuantity;
 
     fn asset(policy: char, name: &str) -> AssetQuantity {
         AssetQuantity {

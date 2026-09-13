@@ -246,7 +246,10 @@ impl std::fmt::Display for TxTag {
             } => {
                 let bundle_ada = *total_lovelace as f64 / 1_000_000.0;
                 let per_asset_ada = *per_asset_lovelace as f64 / 1_000_000.0;
-                write!(f, "Bundle ({asset_count} assets, ₳{bundle_ada:.2} total, ₳{per_asset_ada:.2} each)")
+                write!(
+                    f,
+                    "Bundle ({asset_count} assets, ₳{bundle_ada:.2} total, ₳{per_asset_ada:.2} each)"
+                )
             }
             Self::BundleDiscount {
                 discount_percent,
@@ -593,10 +596,10 @@ impl TxClassification {
         let mut sellers = Vec::new();
 
         for payments in distributions.values() {
-            if let Some((seller_address, _)) = payments.iter().max_by_key(|(_, amount)| *amount) {
-                if !sellers.contains(seller_address) {
-                    sellers.push(seller_address.clone());
-                }
+            if let Some((seller_address, _)) = payments.iter().max_by_key(|(_, amount)| *amount)
+                && !sellers.contains(seller_address)
+            {
+                sellers.push(seller_address.clone());
             }
         }
 
@@ -1100,7 +1103,10 @@ impl std::fmt::Display for TxType {
                 match total_lovelace {
                     Some(total) => {
                         let ada_amount = *total as f64 / 1_000_000.0;
-                        write!(f, "{primary_operation} bundle: {asset_count} {asset_unit} for ₳{ada_amount:.2}")
+                        write!(
+                            f,
+                            "{primary_operation} bundle: {asset_count} {asset_unit} for ₳{ada_amount:.2}"
+                        )
                     }
                     None => write!(f, "{primary_operation} bundle: {asset_count} {asset_unit}"),
                 }
@@ -1195,9 +1201,15 @@ impl std::fmt::Display for TxType {
 
                     if all_same_price && prices.len() > 1 {
                         let ada_per = prices[0] as f64 / 1_000_000.0;
-                        write!(f, "{total_listing_count} {asset_unit} listed by {seller} at ₳{ada_per:.1} each (₳{ada_total:.1} total)")
+                        write!(
+                            f,
+                            "{total_listing_count} {asset_unit} listed by {seller} at ₳{ada_per:.1} each (₳{ada_total:.1} total)"
+                        )
                     } else {
-                        write!(f, "{total_listing_count} {asset_unit} listed by {seller} for ₳{ada_total:.1} total")
+                        write!(
+                            f,
+                            "{total_listing_count} {asset_unit} listed by {seller} for ₳{ada_total:.1} total"
+                        )
                     }
                 }
             }
@@ -1241,9 +1253,15 @@ impl std::fmt::Display for TxType {
                         let new_ada_per = new_prices[0] as f64 / 1_000_000.0;
                         let old_ada_per =
                             (new_prices[0] as i64 - price_deltas[0]) as f64 / 1_000_000.0;
-                        write!(f, "{total_listing_count} {asset_unit} repriced by {seller} from ₳{old_ada_per:.1} to ₳{new_ada_per:.1} each (₳{new_ada:.1})")
+                        write!(
+                            f,
+                            "{total_listing_count} {asset_unit} repriced by {seller} from ₳{old_ada_per:.1} to ₳{new_ada_per:.1} each (₳{new_ada:.1})"
+                        )
                     } else {
-                        write!(f, "{total_listing_count} {asset_unit} repriced by {seller} from ₳{old_ada:.1} to ₳{new_ada:.1}")
+                        write!(
+                            f,
+                            "{total_listing_count} {asset_unit} repriced by {seller} from ₳{old_ada:.1} to ₳{new_ada:.1}"
+                        )
                     }
                 } else if !new_prices.is_empty() {
                     // We only have new prices - could be new prices or old prices without delta
@@ -1256,10 +1274,16 @@ impl std::fmt::Display for TxType {
 
                     if has_any_deltas {
                         // Normal case: we have new pricing
-                        write!(f, "{total_listing_count} {asset_unit} updated by {seller} to ₳{new_ada:.1} total")
+                        write!(
+                            f,
+                            "{total_listing_count} {asset_unit} updated by {seller} to ₳{new_ada:.1} total"
+                        )
                     } else {
                         // Partial case: we likely have old pricing but new pricing failed to extract
-                        write!(f, "{total_listing_count} {asset_unit} repriced by {seller} from ₳{new_ada:.1} (new price unknown)")
+                        write!(
+                            f,
+                            "{total_listing_count} {asset_unit} repriced by {seller} from ₳{new_ada:.1} (new price unknown)"
+                        )
                     }
                 } else {
                     // No pricing info available
@@ -1403,7 +1427,10 @@ impl std::fmt::Display for TxType {
                     format!("{amount_b} {}", asset_b.asset_name())
                 };
 
-                write!(f, "Liquidity removed from {dex_platform}: {a_display} + {b_display} by {provider}")
+                write!(
+                    f,
+                    "Liquidity removed from {dex_platform}: {a_display} + {b_display} by {provider}"
+                )
             }
             Self::Unknown => write!(f, "Unknown transaction type"),
         }

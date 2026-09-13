@@ -48,7 +48,7 @@
 
 use std::collections::HashMap;
 
-pub use handle_resolver::{HandleResolver, Status, MAX_BATCH};
+pub use handle_resolver::{HandleResolver, MAX_BATCH, Status};
 pub use local_cache::{MemoryStore, Store};
 
 use local_cache::{Cache, CacheConfig};

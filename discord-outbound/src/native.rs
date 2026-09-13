@@ -3,7 +3,7 @@ use crate::DiscordError;
 // The pre-`MessageBody` surface. Behind the `twilight` feature because it is
 // the only thing here that names a twilight type — see the crate docs.
 #[cfg(feature = "twilight")]
-use crate::{AttachmentInput, DiscordClient, DiscordMessage, DiscordRateLimitResponse, BASE_URL};
+use crate::{AttachmentInput, BASE_URL, DiscordClient, DiscordMessage, DiscordRateLimitResponse};
 #[cfg(feature = "twilight")]
 use core::future::Future;
 #[cfg(feature = "twilight")]
@@ -122,13 +122,13 @@ impl DiscordClient for NativeDiscordClient {
             let url = format!("{BASE_URL}/channels/{}/messages", channel_id);
 
             // Check if we have attachments to send
-            if let Some(attachments) = &message.attachments {
-                if !attachments.is_empty() {
-                    debug!("📎 Sending {} attachments via multipart", attachments.len());
-                    return self
-                        .send_multipart_message(&url, message, attachments)
-                        .await;
-                }
+            if let Some(attachments) = &message.attachments
+                && !attachments.is_empty()
+            {
+                debug!("📎 Sending {} attachments via multipart", attachments.len());
+                return self
+                    .send_multipart_message(&url, message, attachments)
+                    .await;
             }
 
             // No attachments - send as JSON

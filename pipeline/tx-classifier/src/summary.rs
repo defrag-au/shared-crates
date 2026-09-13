@@ -103,45 +103,45 @@ fn generate_insight_summary(tx_types: &[TxType], tags: &[TxTag]) -> String {
     }
 
     // Generate insights for offer updates
-    if !offer_updates.is_empty() {
-        if let Some(insight) = generate_offer_update_insight(&offer_updates) {
-            insights.push(insight);
-        }
+    if !offer_updates.is_empty()
+        && let Some(insight) = generate_offer_update_insight(&offer_updates)
+    {
+        insights.push(insight);
     }
 
     // Generate insights for offer cancellations
-    if !offer_cancels.is_empty() {
-        if let Some(insight) = generate_offer_cancel_insight(&offer_cancels) {
-            insights.push(insight);
-        }
+    if !offer_cancels.is_empty()
+        && let Some(insight) = generate_offer_cancel_insight(&offer_cancels)
+    {
+        insights.push(insight);
     }
 
     // Generate insights for offer accepts
-    if !offer_accepts.is_empty() {
-        if let Some(insight) = generate_offer_accept_insight(&offer_accepts) {
-            insights.push(insight);
-        }
+    if !offer_accepts.is_empty()
+        && let Some(insight) = generate_offer_accept_insight(&offer_accepts)
+    {
+        insights.push(insight);
     }
 
     // Generate insights for sales
-    if !sales.is_empty() {
-        if let Some(insight) = generate_sale_insight(&sales) {
-            insights.push(insight);
-        }
+    if !sales.is_empty()
+        && let Some(insight) = generate_sale_insight(&sales)
+    {
+        insights.push(insight);
     }
 
     // Generate insights for mints
-    if !mints.is_empty() {
-        if let Some(insight) = generate_mint_insight(&mints) {
-            insights.push(insight);
-        }
+    if !mints.is_empty()
+        && let Some(insight) = generate_mint_insight(&mints)
+    {
+        insights.push(insight);
     }
 
     // Generate insights for offer creation
-    if !create_offers.is_empty() {
-        if let Some(insight) = generate_create_offer_insight(&create_offers) {
-            insights.push(insight);
-        }
+    if !create_offers.is_empty()
+        && let Some(insight) = generate_create_offer_insight(&create_offers)
+    {
+        insights.push(insight);
     }
 
     // Handle other primary transaction types with basic insights

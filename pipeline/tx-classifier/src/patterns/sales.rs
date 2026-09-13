@@ -2,8 +2,8 @@
 
 use super::{PatternContext, PatternDetectionResult};
 use crate::registry::{
-    lookup_address, no_fee_calculation, AddressCategory, FeeCalculationFn, MarketplacePurpose,
-    ScriptCategory,
+    AddressCategory, FeeCalculationFn, MarketplacePurpose, ScriptCategory, lookup_address,
+    no_fee_calculation,
 };
 use crate::*;
 use pipeline_types::{OperationPayload, PricedAsset};
@@ -55,13 +55,12 @@ fn detect_marketplace_sales(context: &PatternContext<'_>) -> Vec<(TxType, f64)> 
             }),
             ..
         } = op
+            && let Some(MarketplacePurpose::Sale) = MarketplacePurpose::from_address(seller)
         {
-            if let Some(MarketplacePurpose::Sale) = MarketplacePurpose::from_address(seller) {
-                utxo_groups
-                    .entry((seller.clone(), *idx))
-                    .or_default()
-                    .push(op);
-            }
+            utxo_groups
+                .entry((seller.clone(), *idx))
+                .or_default()
+                .push(op);
         }
     }
 
@@ -272,58 +271,56 @@ fn extract_individual_asset_prices(
     let mut asset_prices = HashMap::new();
 
     // Try to extract individual prices from datum using schema-driven approach first
-    if let Some(first_op) = ops.first() {
-        if let Some(datum) = &first_op.input_datum {
-            // Primary: Use schema-driven pricing extraction
-            if let Some(marketplace_pricing) =
-                try_schema_driven_pricing_extraction(datum, marketplace_address)
-            {
-                let total_price = marketplace_pricing.total_price_lovelace;
-                debug!(
-                    "Using schema-driven price extraction: {} lovelace total for {} assets",
-                    total_price,
-                    ops.len()
-                );
+    if let Some(first_op) = ops.first()
+        && let Some(datum) = &first_op.input_datum
+    {
+        // Primary: Use schema-driven pricing extraction
+        if let Some(marketplace_pricing) =
+            try_schema_driven_pricing_extraction(datum, marketplace_address)
+        {
+            let total_price = marketplace_pricing.total_price_lovelace;
+            debug!(
+                "Using schema-driven price extraction: {} lovelace total for {} assets",
+                total_price,
+                ops.len()
+            );
 
-                // Determine pricing distribution based on marketplace and asset count
-                if ops.len() > 1 {
-                    // Check if all assets come from the same input UTXO (bundle purchase)
-                    let first_input = ops[0].input.as_ref().map(|utxo| (&utxo.address, utxo.idx));
-                    let is_bundle = ops.iter().all(|op| {
-                        op.input.as_ref().map(|utxo| (&utxo.address, utxo.idx)) == first_input
-                    });
+            // Determine pricing distribution based on marketplace and asset count
+            if ops.len() > 1 {
+                // Check if all assets come from the same input UTXO (bundle purchase)
+                let first_input = ops[0].input.as_ref().map(|utxo| (&utxo.address, utxo.idx));
+                let is_bundle = ops.iter().all(|op| {
+                    op.input.as_ref().map(|utxo| (&utxo.address, utxo.idx)) == first_input
+                });
 
-                    if is_bundle {
-                        // Bundle purchase: divide total price among valid assets
-                        let valid_asset_count = ops
-                            .iter()
-                            .filter(|op| op.payload.get_asset().is_some())
-                            .count() as u64;
-                        let price_per_asset = total_price
-                            .checked_div(valid_asset_count)
-                            .unwrap_or(total_price);
-                        debug!("Bundle purchase detected: {} valid assets (of {} ops) sharing total price {} = {} each",
-                               valid_asset_count, ops.len(), total_price, price_per_asset);
-                        for op in ops {
-                            if let Some(asset) = op.payload.get_asset() {
-                                asset_prices.insert(asset.concatenated(), price_per_asset);
-                            }
-                        }
-                    } else {
-                        // Marketplace sweep: each asset gets full price from its own datum
-                        debug!(
-                            "Marketplace sweep detected: {} assets each getting full price {}",
-                            ops.len(),
-                            total_price
-                        );
-                        for op in ops {
-                            if let Some(asset) = op.payload.get_asset() {
-                                asset_prices.insert(asset.concatenated(), total_price);
-                            }
+                if is_bundle {
+                    // Bundle purchase: divide total price among valid assets
+                    let valid_asset_count = ops
+                        .iter()
+                        .filter(|op| op.payload.get_asset().is_some())
+                        .count() as u64;
+                    let price_per_asset = total_price
+                        .checked_div(valid_asset_count)
+                        .unwrap_or(total_price);
+                    debug!(
+                        "Bundle purchase detected: {} valid assets (of {} ops) sharing total price {} = {} each",
+                        valid_asset_count,
+                        ops.len(),
+                        total_price,
+                        price_per_asset
+                    );
+                    for op in ops {
+                        if let Some(asset) = op.payload.get_asset() {
+                            asset_prices.insert(asset.concatenated(), price_per_asset);
                         }
                     }
                 } else {
-                    // Single asset: gets full price
+                    // Marketplace sweep: each asset gets full price from its own datum
+                    debug!(
+                        "Marketplace sweep detected: {} assets each getting full price {}",
+                        ops.len(),
+                        total_price
+                    );
                     for op in ops {
                         if let Some(asset) = op.payload.get_asset() {
                             asset_prices.insert(asset.concatenated(), total_price);
@@ -331,40 +328,47 @@ fn extract_individual_asset_prices(
                     }
                 }
             } else {
-                // Fallback to legacy extraction methods only when schema-driven fails
-                debug!(
-                    "Schema-driven parsing failed, using legacy extraction for {}",
-                    marketplace_address
-                );
-                let datum_values = datum.extract_all_monetary_values();
-                let datum_total: u64 = datum_values.iter().sum();
-
-                // Calculate marketplace fee based on the datum total
-                let marketplace_fee = fee_calculation(datum_total, marketplace_address);
-
-                // For bundles with multiple assets, try to extract individual prices
-                if ops.len() == 1 {
-                    // Single asset - use datum total + marketplace fee
-                    if let Some(asset) = ops[0].payload.get_asset() {
-                        let asset_price = datum_total + marketplace_fee;
-                        asset_prices.insert(asset.concatenated(), asset_price);
+                // Single asset: gets full price
+                for op in ops {
+                    if let Some(asset) = op.payload.get_asset() {
+                        asset_prices.insert(asset.concatenated(), total_price);
                     }
-                } else if datum_values.len() == ops.len() {
-                    // If we have individual values matching asset count, use them
-                    for (i, op) in ops.iter().enumerate() {
-                        if let Some(asset) = op.payload.get_asset() {
-                            let individual_price =
-                                datum_values[i] + (marketplace_fee / ops.len() as u64);
-                            asset_prices.insert(asset.concatenated(), individual_price);
-                        }
+                }
+            }
+        } else {
+            // Fallback to legacy extraction methods only when schema-driven fails
+            debug!(
+                "Schema-driven parsing failed, using legacy extraction for {}",
+                marketplace_address
+            );
+            let datum_values = datum.extract_all_monetary_values();
+            let datum_total: u64 = datum_values.iter().sum();
+
+            // Calculate marketplace fee based on the datum total
+            let marketplace_fee = fee_calculation(datum_total, marketplace_address);
+
+            // For bundles with multiple assets, try to extract individual prices
+            if ops.len() == 1 {
+                // Single asset - use datum total + marketplace fee
+                if let Some(asset) = ops[0].payload.get_asset() {
+                    let asset_price = datum_total + marketplace_fee;
+                    asset_prices.insert(asset.concatenated(), asset_price);
+                }
+            } else if datum_values.len() == ops.len() {
+                // If we have individual values matching asset count, use them
+                for (i, op) in ops.iter().enumerate() {
+                    if let Some(asset) = op.payload.get_asset() {
+                        let individual_price =
+                            datum_values[i] + (marketplace_fee / ops.len() as u64);
+                        asset_prices.insert(asset.concatenated(), individual_price);
                     }
-                } else {
-                    // Fallback: split datum total equally among assets
-                    let price_per_asset = (datum_total + marketplace_fee) / ops.len() as u64;
-                    for op in ops {
-                        if let Some(asset) = op.payload.get_asset() {
-                            asset_prices.insert(asset.concatenated(), price_per_asset);
-                        }
+                }
+            } else {
+                // Fallback: split datum total equally among assets
+                let price_per_asset = (datum_total + marketplace_fee) / ops.len() as u64;
+                for op in ops {
+                    if let Some(asset) = op.payload.get_asset() {
+                        asset_prices.insert(asset.concatenated(), price_per_asset);
                     }
                 }
             }
@@ -402,26 +406,24 @@ fn extract_seller_from_datum_payments(
             input_datum: Some(datum),
             ..
         } = op
+            && input_utxo.address == marketplace_address
         {
-            if input_utxo.address == marketplace_address {
-                // Try schema-driven payment extraction first
-                if let Some(payments) =
-                    try_schema_driven_payment_extraction(datum, marketplace_address)
+            // Try schema-driven payment extraction first
+            if let Some(payments) = try_schema_driven_payment_extraction(datum, marketplace_address)
+            {
+                // Find the largest payment to a valid Cardano address (likely the seller)
+                if let Some((seller_address, amount)) = payments
+                    .iter()
+                    .filter(|(addr, _)| addr.starts_with("addr"))
+                    .max_by_key(|(_, amount)| *amount)
                 {
-                    // Find the largest payment to a valid Cardano address (likely the seller)
-                    if let Some((seller_address, amount)) = payments
-                        .iter()
-                        .filter(|(addr, _)| addr.starts_with("addr"))
-                        .max_by_key(|(_, amount)| *amount)
-                    {
-                        debug!(
-                            "Schema-driven payment distribution: {} payments, largest ₳{:.2} to {}",
-                            payments.len(),
-                            *amount as f64 / 1_000_000.0,
-                            seller_address
-                        );
-                        return Some(seller_address.clone());
-                    }
+                    debug!(
+                        "Schema-driven payment distribution: {} payments, largest ₳{:.2} to {}",
+                        payments.len(),
+                        *amount as f64 / 1_000_000.0,
+                        seller_address
+                    );
+                    return Some(seller_address.clone());
                 }
             }
         }
@@ -439,13 +441,12 @@ fn find_seller_from_payment_flows(
 
     // Look for ADA flows that match expected payment amounts
     for op in context.asset_operations {
-        if let OperationPayload::Lovelace { amount } = &op.payload {
-            if (*amount as i64 - expected_payment as i64).abs() < tolerance as i64 {
-                if let Some(output) = &op.output {
-                    // Found a payment that matches our expectation
-                    return Some(output.address.clone());
-                }
-            }
+        if let OperationPayload::Lovelace { amount } = &op.payload
+            && (*amount as i64 - expected_payment as i64).abs() < tolerance as i64
+            && let Some(output) = &op.output
+        {
+            // Found a payment that matches our expectation
+            return Some(output.address.clone());
         }
     }
 
@@ -705,14 +706,14 @@ pub fn try_schema_driven_pricing_extraction(
 /// Determine marketplace type from address using cached lookup
 fn determine_marketplace_type(marketplace_address: &str) -> MarketplaceType {
     // Check cache first
-    if let Ok(cache) = MARKETPLACE_TYPE_CACHE.lock() {
-        if let Some(&cached_type) = cache.get(marketplace_address) {
-            debug!(
-                "Using cached marketplace type {:?} for address {}",
-                cached_type, marketplace_address
-            );
-            return cached_type;
-        }
+    if let Ok(cache) = MARKETPLACE_TYPE_CACHE.lock()
+        && let Some(&cached_type) = cache.get(marketplace_address)
+    {
+        debug!(
+            "Using cached marketplace type {:?} for address {}",
+            cached_type, marketplace_address
+        );
+        return cached_type;
     }
 
     // Not in cache, compute and store

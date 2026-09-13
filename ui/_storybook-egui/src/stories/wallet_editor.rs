@@ -102,7 +102,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut WalletEditorStoryState) {
         }
     }
 
-    crate::caption(ui, "The sidebar it lives in is narrow. Drag this to see what the name column does when it runs out of room.");
+    crate::caption(
+        ui,
+        "The sidebar it lives in is narrow. Drag this to see what the name column does when it runs out of room.",
+    );
     controls(ui, |ui| {
         egui_widgets::slider_group::SliderGroup::new()
             .fader(

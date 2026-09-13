@@ -1,7 +1,7 @@
 //! Shared utilities for pattern detection
 
 use crate::registry::{
-    lookup_address, AddressCategory, Marketplace, MarketplacePurpose, ScriptCategory,
+    AddressCategory, Marketplace, MarketplacePurpose, ScriptCategory, lookup_address,
 };
 use crate::*;
 use pipeline_types::OperationPayload;
@@ -29,26 +29,26 @@ pub fn detect_marketplace_from_addresses(
 
     for op in asset_operations {
         // Check input address
-        if let Some(input) = &op.input {
-            if let Some((marketplace, purpose_opt)) = get_marketplace_info(&input.address) {
-                let purposes = marketplace_info.entry(marketplace).or_default();
-                if let Some(purpose) = purpose_opt {
-                    if !purposes.contains(&purpose) {
-                        purposes.push(purpose);
-                    }
-                }
+        if let Some(input) = &op.input
+            && let Some((marketplace, purpose_opt)) = get_marketplace_info(&input.address)
+        {
+            let purposes = marketplace_info.entry(marketplace).or_default();
+            if let Some(purpose) = purpose_opt
+                && !purposes.contains(&purpose)
+            {
+                purposes.push(purpose);
             }
         }
 
         // Check output address
-        if let Some(output) = &op.output {
-            if let Some((marketplace, purpose_opt)) = get_marketplace_info(&output.address) {
-                let purposes = marketplace_info.entry(marketplace).or_default();
-                if let Some(purpose) = purpose_opt {
-                    if !purposes.contains(&purpose) {
-                        purposes.push(purpose);
-                    }
-                }
+        if let Some(output) = &op.output
+            && let Some((marketplace, purpose_opt)) = get_marketplace_info(&output.address)
+        {
+            let purposes = marketplace_info.entry(marketplace).or_default();
+            if let Some(purpose) = purpose_opt
+                && !purposes.contains(&purpose)
+            {
+                purposes.push(purpose);
             }
         }
     }
@@ -119,24 +119,22 @@ pub fn extract_policy_from_context(context: &super::PatternContext, offer_addres
     // Find the input with the offer address and extract policy ID from its datum
     #[allow(deprecated)]
     for input in &context.raw_tx_data.inputs {
-        if input.address == offer_address {
-            if let Some(datum) = &input.datum {
-                if let Some(policy_id) = extract_policy_id_from_datum(datum) {
-                    return policy_id;
-                }
-            }
+        if input.address == offer_address
+            && let Some(datum) = &input.datum
+            && let Some(policy_id) = extract_policy_id_from_datum(datum)
+        {
+            return policy_id;
         }
     }
 
     // Fallback: look for policy IDs in any script address datum
     #[allow(deprecated)]
     for input in &context.raw_tx_data.inputs {
-        if lookup_address(&input.address).is_some() {
-            if let Some(datum) = &input.datum {
-                if let Some(policy_id) = extract_policy_id_from_datum(datum) {
-                    return policy_id;
-                }
-            }
+        if lookup_address(&input.address).is_some()
+            && let Some(datum) = &input.datum
+            && let Some(policy_id) = extract_policy_id_from_datum(datum)
+        {
+            return policy_id;
         }
     }
 
@@ -164,12 +162,12 @@ fn find_policy_id_recursive(value: &serde_json::Value, depth: u8) -> Option<Stri
     match value {
         serde_json::Value::Object(map) => {
             // Look for "bytes" fields that could be policy IDs
-            if let Some(serde_json::Value::String(bytes_str)) = map.get("bytes") {
-                if bytes_str.len() == 56 {
-                    // Policy IDs are 56 characters long
-                    if bytes_str.chars().all(|c| c.is_ascii_hexdigit()) {
-                        return Some(bytes_str.clone());
-                    }
+            if let Some(serde_json::Value::String(bytes_str)) = map.get("bytes")
+                && bytes_str.len() == 56
+            {
+                // Policy IDs are 56 characters long
+                if bytes_str.chars().all(|c| c.is_ascii_hexdigit()) {
+                    return Some(bytes_str.clone());
                 }
             }
 

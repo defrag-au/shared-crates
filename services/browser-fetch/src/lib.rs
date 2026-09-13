@@ -28,8 +28,8 @@
 //! in-flight count with no work at the call site — see the gauge's own docs for
 //! where the brackets sit and why they are not around `send`.
 
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 /// HTTP requests this frontend has outstanding.
 ///
@@ -379,16 +379,20 @@ mod tests {
     /// to apologise for, so it is worth asking about directly.
     #[test]
     fn not_found_is_distinguishable_without_string_matching() {
-        assert!(Error::Status {
-            status: 404,
-            body: String::new()
-        }
-        .is_not_found());
-        assert!(!Error::Status {
-            status: 500,
-            body: String::new()
-        }
-        .is_not_found());
+        assert!(
+            Error::Status {
+                status: 404,
+                body: String::new()
+            }
+            .is_not_found()
+        );
+        assert!(
+            !Error::Status {
+                status: 500,
+                body: String::new()
+            }
+            .is_not_found()
+        );
         assert!(!Error::Network("offline".into()).is_not_found());
     }
 
@@ -396,16 +400,20 @@ mod tests {
     #[test]
     fn only_network_and_server_failures_are_retryable() {
         assert!(Error::Network("offline".into()).is_retryable());
-        assert!(Error::Status {
-            status: 503,
-            body: String::new()
-        }
-        .is_retryable());
-        assert!(!Error::Status {
-            status: 400,
-            body: String::new()
-        }
-        .is_retryable());
+        assert!(
+            Error::Status {
+                status: 503,
+                body: String::new()
+            }
+            .is_retryable()
+        );
+        assert!(
+            !Error::Status {
+                status: 400,
+                body: String::new()
+            }
+            .is_retryable()
+        );
         assert!(
             !Error::Decode("missing field".into()).is_retryable(),
             "wire drift will not fix itself on a retry"

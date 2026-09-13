@@ -352,10 +352,10 @@ impl OpenAI {
             .await
         {
             Ok(response) => {
-                if let Some(remaining) = response.rate_limit_remaining_requests() {
-                    if remaining < 10 {
-                        info!("Low OpenAI rate limit: {remaining} requests remaining");
-                    }
+                if let Some(remaining) = response.rate_limit_remaining_requests()
+                    && remaining < 10
+                {
+                    info!("Low OpenAI rate limit: {remaining} requests remaining");
                 }
                 Ok(response.data)
             }

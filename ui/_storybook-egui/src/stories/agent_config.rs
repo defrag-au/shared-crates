@@ -11,7 +11,7 @@
 //! key, because the widget has no way to render one.
 
 use egui_widgets::agent_config::{
-    agent_config_section, AgentConfigResponse, CredentialDraft, ProviderDraft,
+    AgentConfigResponse, CredentialDraft, ProviderDraft, agent_config_section,
 };
 
 use crate::{accent, muted};

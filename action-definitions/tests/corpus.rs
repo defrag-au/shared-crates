@@ -18,7 +18,7 @@
 
 use std::path::{Path, PathBuf};
 
-use action_definitions::codec::{constr_zero, int_data, Bytes, Cip68Envelope, PlutusCodec};
+use action_definitions::codec::{Bytes, Cip68Envelope, PlutusCodec, constr_zero, int_data};
 use action_definitions::types::definition::Accepts;
 use action_definitions::types::fuel::{CostEntry, Credential, Currency};
 use action_definitions::types::grant::{
@@ -26,8 +26,7 @@ use action_definitions::types::grant::{
 };
 use action_definitions::{
     Address, AssetId, ChainAddress, ClaimId, ClaimTag, Definition, Filter, FuelBody, Limits,
-    MapWriter,
-    PaymentKeyHash, PolicyId, ProtocolConfigBody, RouteRef, ScriptHash, Trigger, TxHash,
+    MapWriter, PaymentKeyHash, PolicyId, ProtocolConfigBody, RouteRef, ScriptHash, Trigger, TxHash,
     UnknownFields, Window,
 };
 use pallas_primitives::{Fragment, PlutusData};

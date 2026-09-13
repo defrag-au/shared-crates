@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use ui_components::{AssetCache, ConnectionState, ConnectionStatus, PreloadAsset};
 use ui_flow_protocol::{ClientMessage, OpId, PresenceInfo, ServerMessage};
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 use web_sys::{MessageEvent, WebSocket};
 
 // =============================================================================
@@ -419,12 +419,12 @@ pub fn MemoryApp() -> impl IntoView {
     // Send action helper
     let ws_send = ws.clone();
     let send_action = SendWrapper::new(Rc::new(move |action: MemoryAction| {
-        if let Some(socket) = ws_send.borrow().as_ref() {
-            if socket.ready_state() == WebSocket::OPEN {
-                let msg: ClientMsg = ClientMessage::action(OpId::new(), action);
-                if let Ok(bytes) = ui_flow_protocol::encode(&msg) {
-                    let _ = socket.send_with_u8_array(&bytes);
-                }
+        if let Some(socket) = ws_send.borrow().as_ref()
+            && socket.ready_state() == WebSocket::OPEN
+        {
+            let msg: ClientMsg = ClientMessage::action(OpId::new(), action);
+            if let Ok(bytes) = ui_flow_protocol::encode(&msg) {
+                let _ = socket.send_with_u8_array(&bytes);
             }
         }
     }));

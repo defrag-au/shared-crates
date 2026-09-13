@@ -2,12 +2,12 @@
 
 use egui::{Color32, Pos2, Rect, Vec2};
 use egui_widgets::asset_card::{
-    base_outline, draw_colored_fan, draw_colored_ring, draw_effect_fan, draw_effect_quad,
-    draw_quad, draw_spark_streak, draw_textured_fan, draw_textured_fan_rect_uv, draw_textured_quad,
+    AuroraCurtain, BrushedMetal, CardEffect, CardMask, DiffractionGrating, EFFECT_NAMES, Glitter,
+    PrismaticDispersion, RARITY_NAMES, StreakHolo, ThinFilmIridescence, TiltState, base_outline,
+    draw_colored_fan, draw_colored_ring, draw_effect_fan, draw_effect_quad, draw_quad,
+    draw_spark_streak, draw_textured_fan, draw_textured_fan_rect_uv, draw_textured_quad,
     draw_tile_overlay, expand_outline, project_3d, project_points, rarity_color, rarity_colors,
-    rarity_glow, rounded_rect_vertices, update_tilt, with_badge, AuroraCurtain, BrushedMetal,
-    CardEffect, CardMask, DiffractionGrating, Glitter, PrismaticDispersion, StreakHolo,
-    ThinFilmIridescence, TiltState, EFFECT_NAMES, RARITY_NAMES,
+    rarity_glow, rounded_rect_vertices, update_tilt, with_badge,
 };
 
 use egui_widgets::slider_group::SliderGroup;

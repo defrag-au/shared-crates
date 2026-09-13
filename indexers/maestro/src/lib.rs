@@ -27,8 +27,8 @@
 
 use async_stream::stream;
 use cardano_assets::{
-    asset_from_metadata_value, Asset, AssetMetadata, AssetMetadata68, AssetWithId, ExtractedCid,
-    MetadataKind, NftPurpose,
+    Asset, AssetMetadata, AssetMetadata68, AssetWithId, ExtractedCid, MetadataKind, NftPurpose,
+    asset_from_metadata_value,
 };
 use chrono::Utc;
 use futures_core::stream::Stream;
@@ -144,19 +144,18 @@ impl TryFrom<AssetStandards> for Asset {
         // collection-ownership / mitos path (which also runs v2). Prefer
         // CIP-68 (the ref-token datum metadata, nested under `metadata`)
         // over CIP-25 mint metadata.
-        if let Some(cip68_raw) = &value.cip68_raw {
-            if let Some(meta) = cip68_raw.get("metadata") {
-                if let Ok(asset) = asset_from_metadata_value(meta.clone()) {
-                    tracing::debug!("Using cip68 metadata (v2): name='{}'", asset.name);
-                    return Ok(asset);
-                }
-            }
+        if let Some(cip68_raw) = &value.cip68_raw
+            && let Some(meta) = cip68_raw.get("metadata")
+            && let Ok(asset) = asset_from_metadata_value(meta.clone())
+        {
+            tracing::debug!("Using cip68 metadata (v2): name='{}'", asset.name);
+            return Ok(asset);
         }
-        if let Some(cip25_raw) = value.cip25_raw {
-            if let Ok(asset) = asset_from_metadata_value(cip25_raw) {
-                tracing::debug!("Using cip25 metadata (v2): name='{}'", asset.name);
-                return Ok(asset);
-            }
+        if let Some(cip25_raw) = value.cip25_raw
+            && let Ok(asset) = asset_from_metadata_value(cip25_raw)
+        {
+            tracing::debug!("Using cip25 metadata (v2): name='{}'", asset.name);
+            return Ok(asset);
         }
         tracing::debug!("No (parseable) metadata found");
         Err(MaestroError::NoMetadata)
@@ -388,13 +387,13 @@ impl PolicyAssetsResponse {
 
         // 2. Check CIP-25 metadata signals
         for asset in &self.data {
-            if let Some(ref meta) = asset.asset_standards.cip25_metadata {
-                if meta.has_fungible_signals() {
-                    return PolicyClassification {
-                        token_type: TokenType::Ft,
-                        reason: "CIP-25 metadata contains fungible/ticker/decimals".into(),
-                    };
-                }
+            if let Some(ref meta) = asset.asset_standards.cip25_metadata
+                && meta.has_fungible_signals()
+            {
+                return PolicyClassification {
+                    token_type: TokenType::Ft,
+                    reason: "CIP-25 metadata contains fungible/ticker/decimals".into(),
+                };
             }
         }
 
@@ -1064,7 +1063,7 @@ impl MaestroApi {
             _ => {
                 return Err(worker::Error::RustError(format!(
                     "Unsupported network for Maestro: {network}"
-                )))
+                )));
             }
         };
 

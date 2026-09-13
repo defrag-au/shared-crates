@@ -14,11 +14,9 @@ mod error;
 mod map;
 mod scalar;
 
-pub use envelope::{
-    constr, constr_zero, read_constr, read_constr_zero, Cip68Envelope, Envelope,
-};
+pub use envelope::{Cip68Envelope, Envelope, constr, constr_zero, read_constr, read_constr_zero};
 pub use error::{DecodeError, DecodeErrorKind, UnknownReport};
 pub use map::{MapReader, MapWriter, UnknownFields};
 pub use scalar::{
-    as_array, as_bytes, as_constr, as_i128, as_map, int_data, shape_of, Bytes, PlutusCodec,
+    Bytes, PlutusCodec, as_array, as_bytes, as_constr, as_i128, as_map, int_data, shape_of,
 };

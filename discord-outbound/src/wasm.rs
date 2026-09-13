@@ -6,7 +6,7 @@ use worker_stack::wasm_bindgen::JsValue;
 // The pre-`MessageBody` surface. Behind the `twilight` feature because it is
 // the only thing here that names a twilight type — see the crate docs.
 #[cfg(feature = "twilight")]
-use crate::{AttachmentInput, DiscordClient, DiscordMessage, DiscordRateLimitResponse, BASE_URL};
+use crate::{AttachmentInput, BASE_URL, DiscordClient, DiscordMessage, DiscordRateLimitResponse};
 #[cfg(feature = "twilight")]
 use core::future::Future;
 #[cfg(feature = "twilight")]
@@ -112,16 +112,16 @@ impl DiscordClient for WasmDiscordClient {
             let url = format!("{BASE_URL}/channels/{channel_id}/messages",);
 
             // Check if we have attachments to send
-            if let Some(attachments) = &message.attachments {
-                if !attachments.is_empty() {
-                    info!(
-                        "📎 Detected {} attachments, switching to multipart mode",
-                        attachments.len()
-                    );
-                    return self
-                        .send_multipart_message(&url, message, attachments)
-                        .await;
-                }
+            if let Some(attachments) = &message.attachments
+                && !attachments.is_empty()
+            {
+                info!(
+                    "📎 Detected {} attachments, switching to multipart mode",
+                    attachments.len()
+                );
+                return self
+                    .send_multipart_message(&url, message, attachments)
+                    .await;
             }
             let request = Request::post(&url)
                 .header("Authorization", &format!("Bot {}", self.bot_token))

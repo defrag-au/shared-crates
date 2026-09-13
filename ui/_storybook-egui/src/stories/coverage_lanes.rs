@@ -16,7 +16,7 @@
 
 use crate::muted;
 use egui_widgets::{
-    coverage_tint, Coverage, CoverageLane, CoverageLanes, Run, Selection, SpineState, TimeSpine,
+    Coverage, CoverageLane, CoverageLanes, Run, Selection, SpineState, TimeSpine, coverage_tint,
 };
 
 const HOUR: i64 = 3_600;

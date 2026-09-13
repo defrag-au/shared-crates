@@ -374,18 +374,40 @@ mod app {
 
         fn description(&self) -> &'static str {
             match self {
-                Self::Formatting => "Shared formatters: ADA, lovelace, percent, number, duration, hex truncation",
-                Self::Timestamp => "Consistent ISO-8601 timestamp atom — fixed monospace size, optional badge, full + relative on hover",
-                Self::ErrorNote => "Distils Debug-wrapped / escaped-JSON error blobs to the human reason + HTTP status, with a show-raw toggle",
-                Self::Gated => "Entitlement-gated rendering — locked card/chip affordances driven by the shared authorizations Feature registry",
-                Self::AccessGate => "App-level access screen: sign-in prompt + requirements (join links) for gated tools",
-                Self::Viewport => "Compact / Medium / Wide — the breakpoint every responsive layout decision reads from",
-                Self::Drawer => "Edge-anchored slide-over with a scrim — the narrow-layout stand-in for a side panel",
-                Self::Disclosure => "Detail that opens under the row it explains — eased, tied by a rule, anchored so the list does not shove",
+                Self::Formatting => {
+                    "Shared formatters: ADA, lovelace, percent, number, duration, hex truncation"
+                }
+                Self::Timestamp => {
+                    "Consistent ISO-8601 timestamp atom — fixed monospace size, optional badge, full + relative on hover"
+                }
+                Self::ErrorNote => {
+                    "Distils Debug-wrapped / escaped-JSON error blobs to the human reason + HTTP status, with a show-raw toggle"
+                }
+                Self::Gated => {
+                    "Entitlement-gated rendering — locked card/chip affordances driven by the shared authorizations Feature registry"
+                }
+                Self::AccessGate => {
+                    "App-level access screen: sign-in prompt + requirements (join links) for gated tools"
+                }
+                Self::Viewport => {
+                    "Compact / Medium / Wide — the breakpoint every responsive layout decision reads from"
+                }
+                Self::Drawer => {
+                    "Edge-anchored slide-over with a scrim — the narrow-layout stand-in for a side panel"
+                }
+                Self::Disclosure => {
+                    "Detail that opens under the row it explains — eased, tied by a rule, anchored so the list does not shove"
+                }
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
-                Self::TierLadder => "The access ladder as a modal — what each rung gives, every route to it, and where you stand",
-                Self::AboutModal => "What a product is, what state it is in, and what to expect — the BETA badge's modal",
-                Self::ServiceBanner => "A persistent strip saying the backend is not whole — takes space rather than covering content",
+                Self::TierLadder => {
+                    "The access ladder as a modal — what each rung gives, every route to it, and where you stand"
+                }
+                Self::AboutModal => {
+                    "What a product is, what state it is in, and what to expect — the BETA badge's modal"
+                }
+                Self::ServiceBanner => {
+                    "A persistent strip saying the backend is not whole — takes space rather than covering content"
+                }
                 Self::Distribution => "Concentric orbital rings supply distribution chart",
                 Self::Marquee => "Scrolling ticker with delta-time animation and static centering",
                 Self::Buttons => "UiButtonExt trait \u{2014} pointer cursor on hover for buttons",
@@ -489,9 +511,7 @@ mod app {
                 Self::StakeSession => {
                     "Connect a wallet, sign in to a worker by stake key, stay signed in — the whole strip"
                 }
-                Self::FeeReport => {
-                    "Per-side fee breakdown with Black Flag holder waiver display"
-                }
+                Self::FeeReport => "Per-side fee breakdown with Black Flag holder waiver display",
                 Self::TxEstimate => {
                     "Per-wallet transaction estimate with platform fee, network fee, min UTxO, and net ADA"
                 }

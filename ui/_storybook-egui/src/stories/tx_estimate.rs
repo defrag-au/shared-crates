@@ -1,7 +1,7 @@
 //! Storybook demo for the TxEstimate widget.
 
-use egui_widgets::tx_estimate::{self, TxEstimateConfig, TxEstimateData};
 use egui_widgets::UtxoCost;
+use egui_widgets::tx_estimate::{self, TxEstimateConfig, TxEstimateData};
 
 use crate::{accent, bg, muted};
 
@@ -129,7 +129,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut TxEstimateStoryState) {
     // Compute estimated costs
     let platform_fee_lovelace = state.platform_fee_ada * 1_000_000;
     let network_fee: u64 = 180_000; // ~0.18 ADA typical
-                                    // Rough min UTxO: ~1.3 ADA per NFT output (realistic for 1-3 assets under one policy)
+    // Rough min UTxO: ~1.3 ADA per NFT output (realistic for 1-3 assets under one policy)
     let min_utxo = if state.nft_count > 0 {
         1_300_000 + (state.nft_count.saturating_sub(1) as u64) * 100_000
     } else {

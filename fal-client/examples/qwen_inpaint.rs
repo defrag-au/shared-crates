@@ -8,7 +8,7 @@
 //! ```
 //! Writes the result to `fal-out.png`.
 
-use fal_client::{png_data_uri, FalClient, InpaintRequest};
+use fal_client::{FalClient, InpaintRequest, png_data_uri};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

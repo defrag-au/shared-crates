@@ -35,8 +35,8 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{
-    parse_macro_input, spanned::Spanned, Data, DeriveInput, Expr, Field, Fields, Ident, Lit, Type,
-    Variant,
+    Data, DeriveInput, Expr, Field, Fields, Ident, Lit, Type, Variant, parse_macro_input,
+    spanned::Spanned,
 };
 
 #[proc_macro_derive(PlutusCodec, attributes(plutus))]
@@ -59,7 +59,7 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
             return Err(syn::Error::new(
                 input.span(),
                 "PlutusCodec cannot be derived for a union",
-            ))
+            ));
         }
     };
 
@@ -91,7 +91,11 @@ enum FieldKind {
     /// Absent when equal to `Default::default()`.
     DefaultImpl,
     /// Absent when equal to the given expression.
-    DefaultExpr(Expr),
+    ///
+    /// Boxed: a bare `syn::Expr` is ~240 bytes and the other three variants
+    /// carry nothing, so the whole enum — and `FieldAttr`, which embeds it —
+    /// paid that for every field. `clippy::large_enum_variant` on both.
+    DefaultExpr(Box<Expr>),
 }
 
 struct CodecField<'a> {
@@ -113,13 +117,13 @@ fn parse_fields<'a>(fields: &'a Fields, in_variant: bool) -> syn::Result<FieldSe
             return Ok(FieldSet {
                 coded: Vec::new(),
                 unknown: None,
-            })
+            });
         }
         Fields::Unnamed(unnamed) => {
             return Err(syn::Error::new(
                 unnamed.span(),
                 "PlutusCodec needs named fields — a tuple struct has no field ids to assign",
-            ))
+            ));
         }
     };
 
@@ -238,7 +242,7 @@ fn parse_field_attr(field: &Field) -> syn::Result<FieldAttr> {
     };
 
     let kind = match default {
-        Some(Some(expr)) => FieldKind::DefaultExpr(expr),
+        Some(Some(expr)) => FieldKind::DefaultExpr(Box::new(expr)),
         Some(None) => FieldKind::DefaultImpl,
         None if is_option(&field.ty) => FieldKind::Optional,
         None => FieldKind::Required,

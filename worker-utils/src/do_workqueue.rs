@@ -7,7 +7,7 @@
 //! The queue is stored as a `Vec<WorkItem<T>>` under a single KV key,
 //! so it works on all DOs regardless of SQLite availability.
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::marker::PhantomData;
 use worker_stack::worker::{Result, Storage};
 

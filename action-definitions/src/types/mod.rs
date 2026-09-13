@@ -9,15 +9,14 @@ pub mod trigger;
 
 pub use claim::ClaimTag;
 pub use definition::{
-    Accepts, ActorPredicate, Definition, Filter, Limits, TraitPredicate, Window,
-    DEFAULT_CONFIRM_DEPTH, MIN_CONFIRM_DEPTH,
+    Accepts, ActorPredicate, DEFAULT_CONFIRM_DEPTH, Definition, Filter, Limits, MIN_CONFIRM_DEPTH,
+    TraitPredicate, Window,
 };
 pub use fuel::{CostEntry, Currency, FuelBody, ProtocolConfigBody, Scope};
 pub use grant::{
     Deliverer, Effect, EffectKind, EntitlementGrant, Grant, Mode, ModeKind, PolicyFilter, Stacking,
 };
 pub use scalars::{
-    Address, AssetId, ChainAddress, ClaimId, PaymentKeyHash, PolicyId, RouteRef, ScriptHash,
-    TxHash,
+    Address, AssetId, ChainAddress, ClaimId, PaymentKeyHash, PolicyId, RouteRef, ScriptHash, TxHash,
 };
 pub use trigger::{Trigger, TriggerKind, Venue};

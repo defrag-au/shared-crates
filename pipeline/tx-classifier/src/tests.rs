@@ -81,7 +81,7 @@ mod unit_tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use crate::{create_filtered_context, CreateOffer, OfferAccept, OfferCancel, OfferUpdate};
+    use crate::{CreateOffer, OfferAccept, OfferCancel, OfferUpdate, create_filtered_context};
 
     // /// Setup helper for integration tests
     // ///
@@ -155,10 +155,13 @@ mod integration_tests {
 
         // Should now detect as offer acceptances, not sales
         // Pattern: 2 script inputs with identical ₳30 amounts = 2 identical offers being accepted
-        assert_eq!(offer_accept_report, vec![
-            "The Ancestor #1127 offer accepted for ₳30.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
-            "The Ancestor #1552 offer accepted for ₳30.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
-        ]);
+        assert_eq!(
+            offer_accept_report,
+            vec![
+                "The Ancestor #1127 offer accepted for ₳30.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+                "The Ancestor #1552 offer accepted for ₳30.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
+            ]
+        );
 
         // Verify we have exactly 2 offer accepts, not sales
         assert_eq!(classification.get_by::<OfferAccept>().len(), 2);
@@ -181,7 +184,12 @@ mod integration_tests {
             .collect();
 
         // println!("{classification:?}");
-        assert_eq!(mint_report, vec!["1 asset minted (CIP-25) for ₳52.24 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"]);
+        assert_eq!(
+            mint_report,
+            vec![
+                "1 asset minted (CIP-25) for ₳52.24 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
+            ]
+        );
     }
 
     // CBOR transaction parsing tests removed - transaction classification from CBOR not supported
@@ -204,7 +212,12 @@ mod integration_tests {
 
         println!("{operations:?}");
         // println!("{classification:?}");
-        assert_eq!(mint_report, vec!["1 asset minted (CIP-68) for ₳421.64 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"]);
+        assert_eq!(
+            mint_report,
+            vec![
+                "1 asset minted (CIP-68) for ₳421.64 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
+            ]
+        );
     }
 
     #[test]
@@ -221,7 +234,12 @@ mod integration_tests {
             .map(|f| f.to_string())
             .collect();
 
-        assert_eq!(mint_report, vec!["1 asset minted (CIP-68) for ₳34.00 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"]);
+        assert_eq!(
+            mint_report,
+            vec![
+                "1 asset minted (CIP-68) for ₳34.00 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
+            ]
+        );
     }
 
     #[test]
@@ -239,7 +257,12 @@ mod integration_tests {
             .collect();
 
         println!("distributions: {:?}", classification.distributions);
-        assert_eq!(mint_report, vec!["5 assets minted (CIP-68) for ₳195.00 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"]);
+        assert_eq!(
+            mint_report,
+            vec![
+                "5 assets minted (CIP-68) for ₳195.00 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
+            ]
+        );
     }
 
     #[test]
@@ -257,11 +280,14 @@ mod integration_tests {
             .collect();
 
         // This transaction should detect 3 individual sales at ₳21.08 each
-        assert_eq!(sales_report, vec![
-            "000de1404e696b65766572736530373833 sold for ₳24.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
-            "000de1404e696b65766572736532363531 sold for ₳24.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
-            "000de1404e696b65766572736533383137 sold for ₳24.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
-        ]);
+        assert_eq!(
+            sales_report,
+            vec![
+                "000de1404e696b65766572736530373833 sold for ₳24.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+                "000de1404e696b65766572736532363531 sold for ₳24.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+                "000de1404e696b65766572736533383137 sold for ₳24.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
+            ]
+        );
 
         // Also verify no false positive offer accepts
         let offer_accepts = classification.get_by::<OfferAccept>();
@@ -286,9 +312,12 @@ mod integration_tests {
             .collect();
 
         // This transaction should detect 3 individual sales at ₳21.08 each
-        assert_eq!(sales_report, vec![
-            "Pirate1035 sold for ₳85.00 to addr1q9xw2fj2x9tuvpf26yflx6sczxmdcazsej5wcll7u0css8q5nq6h4vqfvzfracm5fn3pssk596qt0046ua5jeveq3wjs0y2wgs"
-        ]);
+        assert_eq!(
+            sales_report,
+            vec![
+                "Pirate1035 sold for ₳85.00 to addr1q9xw2fj2x9tuvpf26yflx6sczxmdcazsej5wcll7u0css8q5nq6h4vqfvzfracm5fn3pssk596qt0046ua5jeveq3wjs0y2wgs"
+            ]
+        );
 
         // Also verify no false positive offer accepts
         let offer_accepts = classification.get_by::<OfferAccept>();
@@ -313,18 +342,21 @@ mod integration_tests {
             .collect();
 
         // This transaction should detect 3 individual sales at ₳21.08 each
-        assert_eq!(sales_report, vec![
-            "000de1404e696b65766572736530323635 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
-            "000de1404e696b65766572736531393535 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
-            "000de1404e696b65766572736532313632 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
-            "000de1404e696b65766572736532323930 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
-            "000de1404e696b65766572736532333639 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
-            "000de1404e696b65766572736533313732 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
-            "000de1404e696b65766572736533323931 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
-            "000de1404e696b65766572736533393138 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
-            "000de1404e696b65766572736534343638 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
-            "000de1404e696b65766572736534383737 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
-        ]);
+        assert_eq!(
+            sales_report,
+            vec![
+                "000de1404e696b65766572736530323635 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+                "000de1404e696b65766572736531393535 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+                "000de1404e696b65766572736532313632 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+                "000de1404e696b65766572736532323930 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+                "000de1404e696b65766572736532333639 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+                "000de1404e696b65766572736533313732 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+                "000de1404e696b65766572736533323931 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+                "000de1404e696b65766572736533393138 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+                "000de1404e696b65766572736534343638 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+                "000de1404e696b65766572736534383737 sold for ₳28.00 to addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
+            ]
+        );
 
         // Also verify no false positive offer accepts
         let offer_accepts = classification.get_by::<OfferAccept>();
@@ -351,7 +383,12 @@ mod integration_tests {
             .collect();
 
         // Should detect as create offer transaction: 10 offers of 25 ADA each with policy ID extracted from output datum CBOR
-        assert_eq!(create_offer_report, vec!["10 offers created (₳25 each) on policy 3966cf1c948109e34f2c5a9f9670445ccc85008e5b8a6e67f913b491 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"]);
+        assert_eq!(
+            create_offer_report,
+            vec![
+                "10 offers created (₳25 each) on policy 3966cf1c948109e34f2c5a9f9670445ccc85008e5b8a6e67f913b491 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
+            ]
+        );
     }
 
     #[test]
@@ -369,7 +406,12 @@ mod integration_tests {
             .collect();
 
         // Should detect as create offer transaction: 5 offers of 10 ADA each with policy ID extracted from metadata
-        assert_eq!(create_offer_report, vec!["5 offers created (₳10 each) on policy b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6 by addr1q9wk92clfl0fnxa3mnpgtj9zyjjj3fw9wh4u6px9rg0v9pmlch372pk6ggqr8myglhpnqeuhkadyzgg3m8ga59n244msek8w6s"]);
+        assert_eq!(
+            create_offer_report,
+            vec![
+                "5 offers created (₳10 each) on policy b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6 by addr1q9wk92clfl0fnxa3mnpgtj9zyjjj3fw9wh4u6px9rg0v9pmlch372pk6ggqr8myglhpnqeuhkadyzgg3m8ga59n244msek8w6s"
+            ]
+        );
     }
 
     #[test]
@@ -387,9 +429,12 @@ mod integration_tests {
             .collect();
 
         // Should detect as offer update transaction: 90A to 150A with policy ID and asset name extracted from input datum CBOR
-        assert_eq!(offer_update_report, vec![
-            "Offer updated from ₳90 to ₳150 (+₳60) on policy c72d0438330ed1346f4437fcc1c263ea38e933c1124c8d0f2abc6312 for asset 4b57494334303134 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
-        ]);
+        assert_eq!(
+            offer_update_report,
+            vec![
+                "Offer updated from ₳90 to ₳150 (+₳60) on policy c72d0438330ed1346f4437fcc1c263ea38e933c1124c8d0f2abc6312 for asset 4b57494334303134 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
+            ]
+        );
     }
 
     #[test]
@@ -407,10 +452,13 @@ mod integration_tests {
             .collect();
 
         // Should detect both collection offer updates: 20A to 30A each with same policy ID
-        assert_eq!(offer_update_report, vec![
-            "Offer updated from ₳20 to ₳30 (+₳10) on policy 3966cf1c948109e34f2c5a9f9670445ccc85008e5b8a6e67f913b491 by addr1q9wk92clfl0fnxa3mnpgtj9zyjjj3fw9wh4u6px9rg0v9pmlch372pk6ggqr8myglhpnqeuhkadyzgg3m8ga59n244msek8w6s",
-            "Offer updated from ₳20 to ₳30 (+₳10) on policy 3966cf1c948109e34f2c5a9f9670445ccc85008e5b8a6e67f913b491 by addr1q9wk92clfl0fnxa3mnpgtj9zyjjj3fw9wh4u6px9rg0v9pmlch372pk6ggqr8myglhpnqeuhkadyzgg3m8ga59n244msek8w6s"
-        ]);
+        assert_eq!(
+            offer_update_report,
+            vec![
+                "Offer updated from ₳20 to ₳30 (+₳10) on policy 3966cf1c948109e34f2c5a9f9670445ccc85008e5b8a6e67f913b491 by addr1q9wk92clfl0fnxa3mnpgtj9zyjjj3fw9wh4u6px9rg0v9pmlch372pk6ggqr8myglhpnqeuhkadyzgg3m8ga59n244msek8w6s",
+                "Offer updated from ₳20 to ₳30 (+₳10) on policy 3966cf1c948109e34f2c5a9f9670445ccc85008e5b8a6e67f913b491 by addr1q9wk92clfl0fnxa3mnpgtj9zyjjj3fw9wh4u6px9rg0v9pmlch372pk6ggqr8myglhpnqeuhkadyzgg3m8ga59n244msek8w6s"
+            ]
+        );
     }
 
     #[test]
@@ -428,9 +476,12 @@ mod integration_tests {
             .collect();
 
         // Should detect both collection offer cancellations on the same policy ID
-        assert_eq!(offer_cancel_report, vec![
-            "2 offers cancelled on policy 3966cf1c948109e34f2c5a9f9670445ccc85008e5b8a6e67f913b491 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
-        ]);
+        assert_eq!(
+            offer_cancel_report,
+            vec![
+                "2 offers cancelled on policy 3966cf1c948109e34f2c5a9f9670445ccc85008e5b8a6e67f913b491 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
+            ]
+        );
     }
 
     #[test]
@@ -448,9 +499,12 @@ mod integration_tests {
             .collect();
 
         // Should detect asset-specific offer cancellation
-        assert_eq!(offer_cancel_report, vec![
-            "1 offer cancelled on policy de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32 for asset 000de1404e696b65766572736531343835 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
-        ]);
+        assert_eq!(
+            offer_cancel_report,
+            vec![
+                "1 offer cancelled on policy de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32 for asset 000de1404e696b65766572736531343835 by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2",
+            ]
+        );
     }
 
     #[test]
@@ -473,9 +527,12 @@ mod integration_tests {
         println!("{classification:?}");
 
         // Should detect as asset transfer transaction: 1 asset transfer between addresses
-        assert_eq!(asset_transfer_report, vec![
-            "1 asset transfer from addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2 to addr1qykaj5e72gdmux27gxcpenesdwd9yvrshd9jjqjpka52qkrm7kgdacsun7c0q8cm2j9vahtg8ac9a57f4kt4y5eua72qsg78qh"
-        ]);
+        assert_eq!(
+            asset_transfer_report,
+            vec![
+                "1 asset transfer from addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2 to addr1qykaj5e72gdmux27gxcpenesdwd9yvrshd9jjqjpka52qkrm7kgdacsun7c0q8cm2j9vahtg8ac9a57f4kt4y5eua72qsg78qh"
+            ]
+        );
     }
 
     #[test]
@@ -498,9 +555,12 @@ mod integration_tests {
         println!("{classification:?}");
 
         // Should detect as asset transfer transaction: 1 asset transfer between addresses
-        assert_eq!(asset_transfer_report, vec![
-            "5 assets staked by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2 in The Vault"
-        ]);
+        assert_eq!(
+            asset_transfer_report,
+            vec![
+                "5 assets staked by addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2 in The Vault"
+            ]
+        );
 
         // Now let's test the socializer integration
         // This will help us debug what's happening in the full pipeline
@@ -530,7 +590,12 @@ mod integration_tests {
         println!("{classification:?}");
 
         // Should detect as create listing transaction: 5 assets being listed on marketplace with pricing
-        assert_eq!(asset_listing_report, vec!["5 assets listed by addr1q92m3duwaj9j4u2fqm4h96cnyza0m25zlsc5z5cyhglmqyf540a9yy4052ltn0xe4f9alcs8xnqzchm4ysw5yu3lkvuqtzmvp4 at ₳46.0 each (₳230.0 total)"]);
+        assert_eq!(
+            asset_listing_report,
+            vec![
+                "5 assets listed by addr1q92m3duwaj9j4u2fqm4h96cnyza0m25zlsc5z5cyhglmqyf540a9yy4052ltn0xe4f9alcs8xnqzchm4ysw5yu3lkvuqtzmvp4 at ₳46.0 each (₳230.0 total)"
+            ]
+        );
     }
 
     #[test]
@@ -553,7 +618,12 @@ mod integration_tests {
         println!("{classification:?}");
 
         // Should detect as create listing transaction: 5 assets being listed on marketplace with pricing
-        assert_eq!(asset_listing_report, vec!["1 asset listed by addr1qxlyz4epru9yy7rrpd7y9tvwcwumc5e2xm2yylglrqulyukfpr33gjxvvgkrtgvjmtcmywwrmcaystr42cxtmypgjkzq4venyg for ₳270.0 total"]);
+        assert_eq!(
+            asset_listing_report,
+            vec![
+                "1 asset listed by addr1qxlyz4epru9yy7rrpd7y9tvwcwumc5e2xm2yylglrqulyukfpr33gjxvvgkrtgvjmtcmywwrmcaystr42cxtmypgjkzq4venyg for ₳270.0 total"
+            ]
+        );
     }
 
     #[test]
@@ -579,7 +649,12 @@ mod integration_tests {
         // Currently extracting ₳8784.3 due to datum parsing issue - datum content is null, only hash available
         // Transaction hash: 65732ffd14b633374b81b477af3e85886ef77c445c9f734dcc82ea1d656adc4b
         // Expected: ₳1796.0, Actual: ₳8784.3
-        assert_eq!(asset_listing_report, vec!["1 asset listed by addr1qx7lmqm6gu5y8pumqqc6yelws8kf743urypwxf98v6xq996upnkpdykp4hjsxsdxns8nnv6aukynl3hfgx7ywxg5lcesk4fawg for ₳1796.0 total"]);
+        assert_eq!(
+            asset_listing_report,
+            vec![
+                "1 asset listed by addr1qx7lmqm6gu5y8pumqqc6yelws8kf743urypwxf98v6xq996upnkpdykp4hjsxsdxns8nnv6aukynl3hfgx7ywxg5lcesk4fawg for ₳1796.0 total"
+            ]
+        );
     }
 
     #[test]
@@ -599,7 +674,12 @@ mod integration_tests {
             .collect();
 
         // Should detect as create listing transaction: 15 assets being listed with different prices
-        assert_eq!(asset_listing_report, vec!["15 assets listed by addr1qxvtxteraurl5n3d9eae5yyzgpx7zutzqsmx9tyhsv76wsvasazx8r5xwqtnfjsfrnat3h6yrycd2hfm9qpg7d0hf50s599tqx for ₳676.1 total"]);
+        assert_eq!(
+            asset_listing_report,
+            vec![
+                "15 assets listed by addr1qxvtxteraurl5n3d9eae5yyzgpx7zutzqsmx9tyhsv76wsvasazx8r5xwqtnfjsfrnat3h6yrycd2hfm9qpg7d0hf50s599tqx for ₳676.1 total"
+            ]
+        );
 
         // Validate individual Listing transactions with specific prices
         // First, let's see what transaction types we have
@@ -774,8 +854,11 @@ mod integration_tests {
                 "Individual total should match expected total from screenshot"
             );
         } else {
-            println!("🔧 Extracted {} assets out of {} expected - individual listing detection needs improvement",
-                asset_prices.len(), expected_prices.len());
+            println!(
+                "🔧 Extracted {} assets out of {} expected - individual listing detection needs improvement",
+                asset_prices.len(),
+                expected_prices.len()
+            );
         }
     }
 
@@ -794,7 +877,12 @@ mod integration_tests {
             .collect();
 
         // Should detect as listing update transaction with old pricing but incomplete new pricing data
-        assert_eq!(asset_listing_report, vec!["1 asset repriced by addr1q9g8fdyja6sd4mnjjzdln76scthatdema2hew4942z2qagrqatta3etfyh0w5540v3x8daxjt9732vm8mwvkad93hmkq5nupcl from ₳40.0 (new price unknown)"]);
+        assert_eq!(
+            asset_listing_report,
+            vec![
+                "1 asset repriced by addr1q9g8fdyja6sd4mnjjzdln76scthatdema2hew4942z2qagrqatta3etfyh0w5540v3x8daxjt9732vm8mwvkad93hmkq5nupcl from ₳40.0 (new price unknown)"
+            ]
+        );
     }
 
     #[test]
@@ -813,18 +901,21 @@ mod integration_tests {
 
         // Following the established pattern: check actual display output for listing updates
         // This transaction represents 10 listing updates with rich pricing information extracted
-        assert_eq!(asset_listing_report, vec![
-            "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳42.0 to ₳30.0",
-            "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳48.0 to ₳35.0",
-            "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳49.0 to ₳32.0",
-            "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳75.0 to ₳50.0",
-            "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳95.0 (new price unknown)",
-            "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳59.0 to ₳33.0",
-            "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳125.0 to ₳69.0",
-            "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳65.0 to ₳35.0",
-            "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳45.0 to ₳30.0",
-            "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳67.0 to ₳34.0"
-        ]);
+        assert_eq!(
+            asset_listing_report,
+            vec![
+                "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳42.0 to ₳30.0",
+                "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳48.0 to ₳35.0",
+                "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳49.0 to ₳32.0",
+                "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳75.0 to ₳50.0",
+                "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳95.0 (new price unknown)",
+                "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳59.0 to ₳33.0",
+                "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳125.0 to ₳69.0",
+                "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳65.0 to ₳35.0",
+                "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳45.0 to ₳30.0",
+                "1 asset repriced by addr1q8ag80es7pdssjz8fcfppurjpzp9gdlvxjuqad26lgnnxfgvum6hhvswpw889a938m47nks3e4r69eekvs8thg7wzytq0ft3sn from ₳67.0 to ₳34.0"
+            ]
+        );
     }
 
     #[test]
@@ -847,9 +938,12 @@ mod integration_tests {
             })
             .collect();
 
-        assert_eq!(asset_unlisting_report, vec![
-            "KWIC7586 unlisted by addr1qytd0t6fqfd54rpkcrkgxxjcwhmz46km9rg0tex320j4hejmaa9vlhhnwr92wtkekzwa7vvm43zsrmv6ur9v35mpng2sfpp3gp"
-        ]);
+        assert_eq!(
+            asset_unlisting_report,
+            vec![
+                "KWIC7586 unlisted by addr1qytd0t6fqfd54rpkcrkgxxjcwhmz46km9rg0tex320j4hejmaa9vlhhnwr92wtkekzwa7vvm43zsrmv6ur9v35mpng2sfpp3gp"
+            ]
+        );
     }
 
     #[test]
@@ -893,7 +987,10 @@ mod integration_tests {
         assert_eq!(assets.len(), 25, "Expected 25 assets in unlisting details");
 
         // Validate the seller address (from transaction outputs)
-        assert_eq!(*seller, "addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2");
+        assert_eq!(
+            *seller,
+            "addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"
+        );
 
         // Validate the marketplace is Wayup (per-seller variant shares the same script prefix)
         assert!(
@@ -927,7 +1024,7 @@ mod integration_tests {
 
     #[test]
     fn test_blockfrost_sample() {
-        use crate::indexers::{convert_blockfrost_webhook_to_raw_tx_data, BlockfrostWebhook};
+        use crate::indexers::{BlockfrostWebhook, convert_blockfrost_webhook_to_raw_tx_data};
 
         test_utils::init_test_tracing();
 
@@ -1158,9 +1255,11 @@ mod compound_transaction_tests {
 
         // The description should contain concise insight about the offer updates
         assert!(summary.description.contains("offers increased"));
-        assert!(summary
-            .description
-            .contains("3966cf1c948109e34f2c5a9f9670445ccc85008e5b8a6e67f913b491"));
+        assert!(
+            summary
+                .description
+                .contains("3966cf1c948109e34f2c5a9f9670445ccc85008e5b8a6e67f913b491")
+        );
         assert!(summary.description.contains("addr1q9wk92clfl0fnxa3mnpgtj9zyjjj3fw9wh4u6px9rg0v9pmlch372pk6ggqr8myglhpnqeuhkadyzgg3m8ga59n244msek8w6s"));
         assert!(summary.description.contains("₳10.0"));
 
@@ -1185,16 +1284,18 @@ mod compound_transaction_tests {
 
         // The description should contain concise insight about the asset-specific offer cancellation
         assert!(summary.description.contains("Asset offer cancelled"));
-        assert!(summary
-            .description
-            .contains("de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32"));
+        assert!(
+            summary
+                .description
+                .contains("de79250af8caffc7a64645d86939159f665d4107c3f198562007bf32")
+        );
         assert!(summary.description.contains("addr1q9c7f4we6cja8qvlc63ycep97xdxcv563upew7yvjpp5e0l4fr9rh39dpgmzl234njvxfpnah654jxuwzlgnqejnnkwqm0v2v2"));
     }
 
     #[test]
     fn test_dex_saturnswap_train_buy() {
-        use crate::tests::{classify_tx, load_tx};
         use crate::DexSwap;
+        use crate::tests::{classify_tx, load_tx};
         use test_utils::test_case;
         test_utils::init_test_tracing();
 
@@ -1208,15 +1309,18 @@ mod compound_transaction_tests {
             .collect();
 
         // Should detect SaturnSwap buy: 350 ADA → 6,078,500 Train tokens
-        assert_eq!(dex_swap_report, vec![
-            "DEX swap on SaturnSwap: ₳350.00 → 6078500 Train by addr1qyp7jdpmylh6fl3d088w3ehgndlxmf0pnp6nmg3ukzrlhjzrxypsxexh4896pdjv3lvqh3vkvxm3t7hak6hqd6nyy6nqzhcqgx"
-        ]);
+        assert_eq!(
+            dex_swap_report,
+            vec![
+                "DEX swap on SaturnSwap: ₳350.00 → 6078500 Train by addr1qyp7jdpmylh6fl3d088w3ehgndlxmf0pnp6nmg3ukzrlhjzrxypsxexh4896pdjv3lvqh3vkvxm3t7hak6hqd6nyy6nqzhcqgx"
+            ]
+        );
     }
 
     #[test]
     fn test_dex_saturnswap_train_sell() {
-        use crate::tests::{classify_tx, load_tx};
         use crate::DexSwap;
+        use crate::tests::{classify_tx, load_tx};
         use test_utils::test_case;
         test_utils::init_test_tracing();
 
@@ -1230,15 +1334,18 @@ mod compound_transaction_tests {
             .collect();
 
         // Should detect SaturnSwap sell: 1,095,041 Train tokens → ₳35.59
-        assert_eq!(dex_swap_report, vec![
-            "DEX swap on SaturnSwap: 1095041 Train → ₳35.59 by addr1q8ju5lez7j3qxp5at67xr36a8ehtwd5yrd76j2rt7ynjex4tfxj6fm2n3xa6d7k88cs5fmeeqmyx0c6ewvgnxarldscqm68sqk"
-        ]);
+        assert_eq!(
+            dex_swap_report,
+            vec![
+                "DEX swap on SaturnSwap: 1095041 Train → ₳35.59 by addr1q8ju5lez7j3qxp5at67xr36a8ehtwd5yrd76j2rt7ynjex4tfxj6fm2n3xa6d7k88cs5fmeeqmyx0c6ewvgnxarldscqm68sqk"
+            ]
+        );
     }
 
     #[test]
     fn test_dex_saturnswap_sell_saturn() {
-        use crate::tests::{classify_tx, load_tx};
         use crate::DexSwap;
+        use crate::tests::{classify_tx, load_tx};
         use test_utils::test_case;
         test_utils::init_test_tracing();
 
@@ -1253,8 +1360,11 @@ mod compound_transaction_tests {
 
         // Should detect SaturnSwap sell: 1,326.501078 SATURN → 30.8 ADA
         // This matches the actual transaction data (1326501078 = 1,326.501078 SATURN with 6 decimals)
-        assert_eq!(dex_swap_report, vec![
-            "DEX swap on SaturnSwap: 1326501078 0014df1053617475726e → ₳30.80 by addr1qxhhm0pn09vtf65wg97mthhlrhecngvdfvme8vnfmpdu9duy4tm8mpeafnrtr65pjzrchymx77d5apuka3z9y607tfkswqr22c"
-        ]);
+        assert_eq!(
+            dex_swap_report,
+            vec![
+                "DEX swap on SaturnSwap: 1326501078 0014df1053617475726e → ₳30.80 by addr1qxhhm0pn09vtf65wg97mthhlrhecngvdfvme8vnfmpdu9duy4tm8mpeafnrtr65pjzrchymx77d5apuka3z9y607tfkswqr22c"
+            ]
+        );
     }
 }

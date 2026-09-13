@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod integration_tests {
-    use crate::{parse_block_cbor_hex_to_utxorpc, OuraBlock};
+    use crate::{OuraBlock, parse_block_cbor_hex_to_utxorpc};
 
     use test_utils::{init_test_tracing, test_case};
     use utxorpc_spec::utxorpc::v1alpha::cardano as u5c;

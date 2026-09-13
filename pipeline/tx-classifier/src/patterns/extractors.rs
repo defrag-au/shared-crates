@@ -1,7 +1,7 @@
 //! Value and price extraction utilities
 
 use super::PatternContext;
-use crate::registry::{lookup_address, AddressCategory, ScriptCategory};
+use crate::registry::{AddressCategory, ScriptCategory, lookup_address};
 use crate::{AssetOperation, Marketplace, TxInput};
 use pipeline_types::AssetId;
 use serde_json::Value;
@@ -32,15 +32,15 @@ pub fn extract_individual_asset_prices(
     for (_asset_key, ops) in asset_groups {
         // For now, return the first operation's pricing
         // This can be enhanced to handle complex multi-asset pricing
-        if let Some(first_op) = ops.first() {
-            if let Some(asset) = first_op.payload.get_asset() {
-                let seller_amount = extract_asset_price_from_utxo_or_metadata(
-                    raw_tx_data,
-                    &asset.policy_id,
-                    marketplace_address,
-                );
-                individual_prices.push((seller_amount, seller_amount));
-            }
+        if let Some(first_op) = ops.first()
+            && let Some(asset) = first_op.payload.get_asset()
+        {
+            let seller_amount = extract_asset_price_from_utxo_or_metadata(
+                raw_tx_data,
+                &asset.policy_id,
+                marketplace_address,
+            );
+            individual_prices.push((seller_amount, seller_amount));
         }
     }
 
@@ -64,14 +64,11 @@ pub fn extract_asset_price_from_utxo_or_metadata(
             .assets
             .iter()
             .any(|(pid, _)| pid.starts_with(policy_id))
+            && let Some(datum) = &output.datum
+            && let Some(marketplace_pricing) =
+                super::sales::try_schema_driven_pricing_extraction(datum, marketplace_address)
         {
-            if let Some(datum) = &output.datum {
-                if let Some(marketplace_pricing) =
-                    super::sales::try_schema_driven_pricing_extraction(datum, marketplace_address)
-                {
-                    return Some(marketplace_pricing.total_price_lovelace);
-                }
-            }
+            return Some(marketplace_pricing.total_price_lovelace);
         }
     }
 
@@ -89,12 +86,12 @@ pub fn extract_price_from_json_value(json: &Value) -> Option<u64> {
         match value {
             Value::Object(map) => {
                 // Look for "int" fields that could be prices
-                if let Some(Value::Number(n)) = map.get("int") {
-                    if let Some(amount) = n.as_u64() {
-                        // Reasonable price range: 0.1-10000 ADA
-                        if (100_000..=10_000_000_000).contains(&amount) {
-                            return Some(amount);
-                        }
+                if let Some(Value::Number(n)) = map.get("int")
+                    && let Some(amount) = n.as_u64()
+                {
+                    // Reasonable price range: 0.1-10000 ADA
+                    if (100_000..=10_000_000_000).contains(&amount) {
+                        return Some(amount);
                     }
                 }
 
@@ -268,24 +265,24 @@ fn extract_jpg_store_metadata_price(
 
     // Try to decode each metadata key 50-56 as CBOR
     for key in &["50", "51", "52", "53", "54", "55", "56"] {
-        if let Some(cbor_hex) = metadata_obj.get(*key).and_then(|v| v.as_str()) {
-            if let Some(price) = decode_cbor_metadata_key(key, cbor_hex) {
-                debug!(
-                    "Successfully decoded price from metadata key {}: {} lovelace",
-                    key, price
-                );
+        if let Some(cbor_hex) = metadata_obj.get(*key).and_then(|v| v.as_str())
+            && let Some(price) = decode_cbor_metadata_key(key, cbor_hex)
+        {
+            debug!(
+                "Successfully decoded price from metadata key {}: {} lovelace",
+                key, price
+            );
 
-                // Calculate marketplace-specific fee
-                let marketplace_fee = calculate_marketplace_fee(marketplace_address, price);
-                let total_price = price + marketplace_fee;
+            // Calculate marketplace-specific fee
+            let marketplace_fee = calculate_marketplace_fee(marketplace_address, price);
+            let total_price = price + marketplace_fee;
 
-                debug!(
-                    "JPG.store CBOR pricing: asset_price={}, marketplace_fee={}, total={}",
-                    price, marketplace_fee, total_price
-                );
+            debug!(
+                "JPG.store CBOR pricing: asset_price={}, marketplace_fee={}, total={}",
+                price, marketplace_fee, total_price
+            );
 
-                return Some(total_price);
-            }
+            return Some(total_price);
         }
     }
 
@@ -614,16 +611,15 @@ pub fn extract_offer_value_from_datum_or_flows(context: &PatternContext, asset: 
     // Step 2: No known marketplace found, try generic datum parsing
     #[allow(deprecated)]
     for input in &context.raw_tx_data.inputs {
-        if let Some(datum) = &input.datum {
-            if let Some(offer_amount) = extract_offer_amount_from_datum(datum) {
-                if offer_amount > 1_000_000 {
-                    debug!(
-                        "Extracted offer amount from generic datum parsing: {} lovelace",
-                        offer_amount
-                    );
-                    return offer_amount;
-                }
-            }
+        if let Some(datum) = &input.datum
+            && let Some(offer_amount) = extract_offer_amount_from_datum(datum)
+            && offer_amount > 1_000_000
+        {
+            debug!(
+                "Extracted offer amount from generic datum parsing: {} lovelace",
+                offer_amount
+            );
+            return offer_amount;
         }
     }
 
@@ -749,14 +745,13 @@ fn extract_jpg_store_offer_amount_from_utxo(
             purpose: MarketplacePurpose::Offer,
             ..
         })) = lookup_address(&input.address)
+            && input.amount_lovelace > 1_000_000
         {
-            if input.amount_lovelace > 1_000_000 {
-                debug!(
-                    "Using fallback JPG.store offer UTXO: {} lovelace at {}",
-                    input.amount_lovelace, input.address
-                );
-                return Some(input.amount_lovelace);
-            }
+            debug!(
+                "Using fallback JPG.store offer UTXO: {} lovelace at {}",
+                input.amount_lovelace, input.address
+            );
+            return Some(input.amount_lovelace);
         }
     }
 
@@ -767,10 +762,10 @@ fn extract_jpg_store_offer_amount_from_utxo(
 /// This uses datum analysis and transaction context to correlate offers with assets
 fn is_offer_utxo_for_asset(input: &TxInput, asset: &AssetId) -> bool {
     // Method 1: Check if the datum contains references to this asset's policy ID
-    if let Some(datum) = &input.datum {
-        if datum_references_asset(datum, asset) {
-            return true;
-        }
+    if let Some(datum) = &input.datum
+        && datum_references_asset(datum, asset)
+    {
+        return true;
     }
 
     // Method 2: For now, if we can't correlate specifically, assume it's related
@@ -824,37 +819,36 @@ fn contains_policy_id_recursive(value: &Value, policy_id: &str, depth: u8) -> bo
 fn extract_jpg_store_offer_amount(json_value: &Value) -> Option<u64> {
     // JPG.store v2 structure: Swap { sOwner: PubKeyHash, sSwapPayouts: [Payout] }
     // Looking for constructor 0 with fields: [owner_hash, payout_list]
-    if let Value::Object(root) = json_value {
-        if let (Some(Value::Number(constructor)), Some(Value::Array(fields))) =
+    if let Value::Object(root) = json_value
+        && let (Some(Value::Number(constructor)), Some(Value::Array(fields))) =
             (root.get("constructor"), root.get("fields"))
+        && constructor.as_u64() == Some(0)
+        && fields.len() >= 2
+    {
+        // Field 1 should be the payout list
+        if let Some(Value::Object(payout_list_obj)) = fields.get(1)
+            && let Some(Value::Array(payout_list)) = payout_list_obj.get("list")
         {
-            if constructor.as_u64() == Some(0) && fields.len() >= 2 {
-                // Field 1 should be the payout list
-                if let Some(Value::Object(payout_list_obj)) = fields.get(1) {
-                    if let Some(Value::Array(payout_list)) = payout_list_obj.get("list") {
-                        debug!(
-                            "Found JPG.store payout list with {} entries",
-                            payout_list.len()
-                        );
+            debug!(
+                "Found JPG.store payout list with {} entries",
+                payout_list.len()
+            );
 
-                        // Each payout entry contains address and expected value
-                        // Look for the largest reasonable offer amount in the list
-                        let mut best_amount = None;
-                        for payout in payout_list {
-                            if let Some(amount) = extract_jpg_store_payout_amount(payout) {
-                                // Prefer larger amounts as they're more likely to be the actual offer
-                                if best_amount.is_none() || amount > best_amount.unwrap_or(0) {
-                                    best_amount = Some(amount);
-                                }
-                            }
-                        }
-
-                        if let Some(amount) = best_amount {
-                            debug!("Extracted JPG.store offer amount: {} lovelace", amount);
-                            return Some(amount);
-                        }
+            // Each payout entry contains address and expected value
+            // Look for the largest reasonable offer amount in the list
+            let mut best_amount = None;
+            for payout in payout_list {
+                if let Some(amount) = extract_jpg_store_payout_amount(payout) {
+                    // Prefer larger amounts as they're more likely to be the actual offer
+                    if best_amount.is_none() || amount > best_amount.unwrap_or(0) {
+                        best_amount = Some(amount);
                     }
                 }
+            }
+
+            if let Some(amount) = best_amount {
+                debug!("Extracted JPG.store offer amount: {} lovelace", amount);
+                return Some(amount);
             }
         }
     }
@@ -865,16 +859,15 @@ fn extract_jpg_store_offer_amount(json_value: &Value) -> Option<u64> {
 /// Extract amount from a single JPG.store payout entry
 fn extract_jpg_store_payout_amount(payout: &Value) -> Option<u64> {
     // Payout structure: constructor 0 with fields [address, expected_value]
-    if let Value::Object(payout_obj) = payout {
-        if let (Some(Value::Number(constructor)), Some(Value::Array(fields))) =
+    if let Value::Object(payout_obj) = payout
+        && let (Some(Value::Number(constructor)), Some(Value::Array(fields))) =
             (payout_obj.get("constructor"), payout_obj.get("fields"))
-        {
-            if constructor.as_u64() == Some(0) && fields.len() >= 2 {
-                // Field 1 contains the expected value (payment map)
-                if let Some(expected_value) = fields.get(1) {
-                    return extract_expected_value_amount(expected_value);
-                }
-            }
+        && constructor.as_u64() == Some(0)
+        && fields.len() >= 2
+    {
+        // Field 1 contains the expected value (payment map)
+        if let Some(expected_value) = fields.get(1) {
+            return extract_expected_value_amount(expected_value);
         }
     }
     None
@@ -883,21 +876,19 @@ fn extract_jpg_store_payout_amount(payout: &Value) -> Option<u64> {
 /// Extract amount from JPG.store ExpectedValue structure (map of currency -> amount)
 fn extract_expected_value_amount(expected_value: &Value) -> Option<u64> {
     // ExpectedValue is a map where ADA is represented by empty key ""
-    if let Value::Object(map_obj) = expected_value {
-        if let Some(Value::Array(map_entries)) = map_obj.get("map") {
-            for entry in map_entries {
-                if let Value::Object(entry_obj) = entry {
-                    // Look for entries with empty key (ADA) and extract the value
-                    if let (Some(Value::Object(key_obj)), Some(value)) =
-                        (entry_obj.get("k"), entry_obj.get("v"))
-                    {
-                        if let Some(Value::String(key_bytes)) = key_obj.get("bytes") {
-                            if key_bytes.is_empty() {
-                                // This is ADA (empty key), extract the amount
-                                return extract_ada_amount_from_value(value);
-                            }
-                        }
-                    }
+    if let Value::Object(map_obj) = expected_value
+        && let Some(Value::Array(map_entries)) = map_obj.get("map")
+    {
+        for entry in map_entries {
+            if let Value::Object(entry_obj) = entry {
+                // Look for entries with empty key (ADA) and extract the value
+                if let (Some(Value::Object(key_obj)), Some(value)) =
+                    (entry_obj.get("k"), entry_obj.get("v"))
+                    && let Some(Value::String(key_bytes)) = key_obj.get("bytes")
+                    && key_bytes.is_empty()
+                {
+                    // This is ADA (empty key), extract the amount
+                    return extract_ada_amount_from_value(value);
                 }
             }
         }
@@ -908,16 +899,15 @@ fn extract_expected_value_amount(expected_value: &Value) -> Option<u64> {
 /// Extract ADA amount from JPG.store value structure
 fn extract_ada_amount_from_value(value: &Value) -> Option<u64> {
     // Value structure: constructor 0 with fields [type_indicator, amount_map]
-    if let Value::Object(value_obj) = value {
-        if let (Some(Value::Number(constructor)), Some(Value::Array(fields))) =
+    if let Value::Object(value_obj) = value
+        && let (Some(Value::Number(constructor)), Some(Value::Array(fields))) =
             (value_obj.get("constructor"), value_obj.get("fields"))
-        {
-            if constructor.as_u64() == Some(0) && fields.len() >= 2 {
-                // Field 1 contains the amount map
-                if let Some(amount_map) = fields.get(1) {
-                    return extract_amount_from_map(amount_map);
-                }
-            }
+        && constructor.as_u64() == Some(0)
+        && fields.len() >= 2
+    {
+        // Field 1 contains the amount map
+        if let Some(amount_map) = fields.get(1) {
+            return extract_amount_from_map(amount_map);
         }
     }
     None
@@ -925,26 +915,23 @@ fn extract_ada_amount_from_value(value: &Value) -> Option<u64> {
 
 /// Extract amount from the inner amount map structure
 fn extract_amount_from_map(amount_map: &Value) -> Option<u64> {
-    if let Value::Object(map_obj) = amount_map {
-        if let Some(Value::Array(map_entries)) = map_obj.get("map") {
-            for entry in map_entries {
-                if let Value::Object(entry_obj) = entry {
-                    if let (Some(Value::Object(key_obj)), Some(Value::Object(value_obj))) =
-                        (entry_obj.get("k"), entry_obj.get("v"))
-                    {
-                        // Look for empty key (ADA) and integer value
-                        if let Some(Value::String(key_bytes)) = key_obj.get("bytes") {
-                            if key_bytes.is_empty() {
-                                if let Some(Value::Number(amount)) = value_obj.get("int") {
-                                    if let Some(amount_u64) = amount.as_u64() {
-                                        // Validate reasonable offer amount range
-                                        if (1_000_000..=1_000_000_000).contains(&amount_u64) {
-                                            return Some(amount_u64);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+    if let Value::Object(map_obj) = amount_map
+        && let Some(Value::Array(map_entries)) = map_obj.get("map")
+    {
+        for entry in map_entries {
+            if let Value::Object(entry_obj) = entry
+                && let (Some(Value::Object(key_obj)), Some(Value::Object(value_obj))) =
+                    (entry_obj.get("k"), entry_obj.get("v"))
+            {
+                // Look for empty key (ADA) and integer value
+                if let Some(Value::String(key_bytes)) = key_obj.get("bytes")
+                    && key_bytes.is_empty()
+                    && let Some(Value::Number(amount)) = value_obj.get("int")
+                    && let Some(amount_u64) = amount.as_u64()
+                {
+                    // Validate reasonable offer amount range
+                    if (1_000_000..=1_000_000_000).contains(&amount_u64) {
+                        return Some(amount_u64);
                     }
                 }
             }
@@ -962,12 +949,12 @@ fn find_offer_amount_recursive(value: &Value, depth: u8) -> Option<u64> {
     match value {
         Value::Object(map) => {
             // Look for "int" fields that could be offer amounts
-            if let Some(Value::Number(n)) = map.get("int") {
-                if let Some(amount) = n.as_u64() {
-                    // Reasonable offer amount range: 1-1000 ADA
-                    if (1_000_000..=1_000_000_000).contains(&amount) {
-                        return Some(amount);
-                    }
+            if let Some(Value::Number(n)) = map.get("int")
+                && let Some(amount) = n.as_u64()
+            {
+                // Reasonable offer amount range: 1-1000 ADA
+                if (1_000_000..=1_000_000_000).contains(&amount) {
+                    return Some(amount);
                 }
             }
 

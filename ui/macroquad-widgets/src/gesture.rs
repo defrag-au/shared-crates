@@ -106,10 +106,10 @@ impl Gestures {
                     });
                 }
                 TouchPhase::Moved | TouchPhase::Stationary => {
-                    if let Some(a) = &mut self.active {
-                        if a.id == t.id {
-                            a.travel = a.travel.max(a.start.distance(t.position));
-                        }
+                    if let Some(a) = &mut self.active
+                        && a.id == t.id
+                    {
+                        a.travel = a.travel.max(a.start.distance(t.position));
                     }
                 }
                 TouchPhase::Ended => {
@@ -138,16 +138,14 @@ impl Gestures {
                 start: mouse_at,
                 travel: 0.0,
             });
-        } else if let Some(a) = &mut self.active {
-            if a.id == MOUSE_ID {
-                a.travel = a.travel.max(a.start.distance(mouse_at));
-            }
+        } else if let Some(a) = &mut self.active
+            && a.id == MOUSE_ID
+        {
+            a.travel = a.travel.max(a.start.distance(mouse_at));
         }
-        if mouse_released {
-            if let Some(a) = self.active.filter(|a| a.id == MOUSE_ID) {
-                self.active = None;
-                out = resolve(a.start, mouse_at, a.travel);
-            }
+        if mouse_released && let Some(a) = self.active.filter(|a| a.id == MOUSE_ID) {
+            self.active = None;
+            out = resolve(a.start, mouse_at, a.travel);
         }
 
         out

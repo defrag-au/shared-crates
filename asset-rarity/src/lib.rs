@@ -23,7 +23,7 @@ mod information_content;
 mod magic_eden;
 mod ranker;
 
-pub use collection::{build_collection, Collection};
+pub use collection::{Collection, build_collection};
 pub use information_content::ICScorer;
 pub use magic_eden::MagicEdenScorer;
 

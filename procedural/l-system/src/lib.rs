@@ -33,4 +33,4 @@ mod grammar;
 mod turtle;
 
 pub use grammar::{LSystem, Symbol};
-pub use turtle::{interpret, Segment, TurtleConfig};
+pub use turtle::{Segment, TurtleConfig, interpret};

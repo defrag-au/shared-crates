@@ -6,8 +6,8 @@ pub mod api;
 mod stories;
 
 use leptos::prelude::*;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
 // ============================================================================
 // Story Enum

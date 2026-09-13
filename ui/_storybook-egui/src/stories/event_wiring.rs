@@ -4,8 +4,8 @@ use egui_widgets::command_palette::{CommandPalette, PaletteAction, PaletteState}
 use egui_widgets::event_wiring::{ActionCardVm, EventNodeVm, EventWiring};
 
 use crate::{accent, muted};
-use egui_widgets::typeahead_search::TypeaheadOption;
 use egui_widgets::PhosphorIcon;
+use egui_widgets::typeahead_search::TypeaheadOption;
 
 #[derive(Clone)]
 pub enum StoryAction {

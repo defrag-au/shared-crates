@@ -9,7 +9,7 @@
 use crate::muted;
 use cardano_assets::resolver::{NullResolver, PolicyResolver};
 use egui_widgets::egui_inbox::{UiInbox, UiInboxSender};
-use egui_widgets::{classify_utxos, ShelfConfig, ShelfData, ShelfState, WalletAction};
+use egui_widgets::{ShelfConfig, ShelfData, ShelfState, WalletAction, classify_utxos};
 use std::collections::HashMap;
 
 /// Messages from async wallet operations.

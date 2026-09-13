@@ -47,7 +47,7 @@ pub fn parse_block_cbor_hex_to_utxorpc(cbor_hex: &str) -> Result<u5c::Block> {
 
 /// Parse block CBOR from base64-encoded data and convert to UTxORPC format
 pub fn parse_block_cbor_base64_to_utxorpc(cbor_base64: &str) -> Result<u5c::Block> {
-    use base64::{engine::general_purpose, Engine as _};
+    use base64::{Engine as _, engine::general_purpose};
     let cbor_bytes = general_purpose::STANDARD
         .decode(cbor_base64)
         .map_err(|e| DecoderError::CborDecode(format!("Base64 decode error: {e}")))?;

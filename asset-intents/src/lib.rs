@@ -39,7 +39,7 @@ mod transfer;
 
 pub use drop::Drop;
 pub use tip::TipIntent;
-pub use token_amount::{format_number, TokenAmount};
+pub use token_amount::{TokenAmount, format_number};
 pub use transfer::TransferIntent;
 
 // Re-export AssetId for convenience

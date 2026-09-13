@@ -320,10 +320,10 @@ fn candidate_traits(rest: &HashMap<String, serde_json::Value>) -> Traits {
     }
 
     for slot in SLOT_KEYS {
-        if let Some((_, value)) = rest.iter().find(|(k, _)| k.to_lowercase() == *slot) {
-            if let Some(shape) = classify_slot(value) {
-                return extract_slot(shape, value);
-            }
+        if let Some((_, value)) = rest.iter().find(|(k, _)| k.to_lowercase() == *slot)
+            && let Some(shape) = classify_slot(value)
+        {
+            return extract_slot(shape, value);
         }
     }
     flat_all(rest)

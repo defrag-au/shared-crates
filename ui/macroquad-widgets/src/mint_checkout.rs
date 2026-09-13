@@ -7,7 +7,7 @@ use macroquad::prelude::*;
 
 use crate::button::Button;
 use crate::painter::Painter;
-use crate::quantity_stepper::{quantity_stepper, QuantityStepperVm, StepperAction};
+use crate::quantity_stepper::{QuantityStepperVm, StepperAction, quantity_stepper};
 use crate::theme;
 
 pub enum Eligibility {

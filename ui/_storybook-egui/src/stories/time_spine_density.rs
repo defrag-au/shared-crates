@@ -29,7 +29,7 @@
 
 use crate::muted;
 use crate::stories::capital_flow::month;
-use egui_widgets::{format_date, view_centred_on, DensityBin, MarkKind, SpineState, TimeSpine};
+use egui_widgets::{DensityBin, MarkKind, SpineState, TimeSpine, format_date, view_centred_on};
 
 const DAY: i64 = 86_400;
 const DAYS: i64 = 3 * 365 + 1;

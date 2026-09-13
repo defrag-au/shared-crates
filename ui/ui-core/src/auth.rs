@@ -3,7 +3,7 @@
 //! Provides authentication state management with explicit error variants.
 //! When authenticated, an `AuthContext` holds the token and decoded claims.
 
-use crate::token::{decode_token_claims, WidgetClaims};
+use crate::token::{WidgetClaims, decode_token_claims};
 
 /// Authentication state
 #[derive(Debug, Clone)]

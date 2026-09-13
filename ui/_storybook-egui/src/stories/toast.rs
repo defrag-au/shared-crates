@@ -1,7 +1,7 @@
 //! `Toast` / `ToastQueue` storybook story.
 
 use crate::{accent, muted};
-use egui_widgets::{show_toasts, IdPill, PhosphorIcon, Toast, ToastKind, ToastQueue};
+use egui_widgets::{IdPill, PhosphorIcon, Toast, ToastKind, ToastQueue, show_toasts};
 
 /// Per-story state — owns the queue so toasts persist across paint
 /// frames and self-dismiss on the countdown.

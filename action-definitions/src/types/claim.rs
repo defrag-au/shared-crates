@@ -27,7 +27,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::codec::{constr_zero, read_constr_zero, DecodeError, PlutusCodec};
+use crate::codec::{DecodeError, PlutusCodec, constr_zero, read_constr_zero};
 use crate::types::scalars::{ChainAddress, ClaimId, TxHash};
 use pallas_primitives::PlutusData;
 

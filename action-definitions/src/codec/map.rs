@@ -18,8 +18,8 @@ use std::collections::BTreeMap;
 
 use pallas_primitives::PlutusData;
 
-use super::scalar::{as_i128, as_map, map_data, PlutusCodec};
 use super::DecodeError;
+use super::scalar::{PlutusCodec, as_i128, as_map, map_data};
 
 /// Field ids a decode did not recognise, with their values.
 ///

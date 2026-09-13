@@ -17,7 +17,7 @@
 //! rises to 7.18% and then partly claims down to 5.98% — and **stays there,
 //! past maturity**. A gate opened and most of it did not walk through.
 
-use egui::{pos2, Color32, Pos2, Rect, Vec2};
+use egui::{Color32, Pos2, Rect, Vec2, pos2};
 
 use crate::stories::aliens_fixture::{COHORTS, SERIES};
 use crate::{accent, muted};

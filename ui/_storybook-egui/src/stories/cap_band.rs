@@ -22,7 +22,7 @@
 //! a normal and throws long diagonal rays across the panel — it shipped that
 //! way once and was only caught by looking at it.
 
-use egui_widgets::{cap_band::honesty_ratio, CapBand, CapSample, SpineState, TimeSpine};
+use egui_widgets::{CapBand, CapSample, SpineState, TimeSpine, cap_band::honesty_ratio};
 
 const DAY: i64 = 86_400;
 const T0: i64 = 1_771_128_940; // the real mint time, so the ruler reads sensibly

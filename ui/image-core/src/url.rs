@@ -317,14 +317,18 @@ mod tests {
         assert_eq!(Format::default(), Format::Auto);
         assert!(iiif_asset_url(POLICY, ASSET, ImageSize::Thumb).ends_with("/default.auto"));
 
-        assert!(IiifUrl::new(POLICY, ASSET)
-            .format(Format::Jpg)
-            .build()
-            .ends_with("/default.jpg"));
-        assert!(IiifUrl::new(POLICY, ASSET)
-            .format(Format::Png)
-            .build()
-            .ends_with("/default.png"));
+        assert!(
+            IiifUrl::new(POLICY, ASSET)
+                .format(Format::Jpg)
+                .build()
+                .ends_with("/default.jpg")
+        );
+        assert!(
+            IiifUrl::new(POLICY, ASSET)
+                .format(Format::Png)
+                .build()
+                .ends_with("/default.png")
+        );
     }
 
     #[test]

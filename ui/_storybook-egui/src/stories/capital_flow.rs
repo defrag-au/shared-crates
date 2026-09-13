@@ -12,8 +12,8 @@
 
 use crate::{accent, muted};
 use egui_widgets::{
-    capital_bands, capital_legend, cumulative_at, Acquisition, Arrival, AssetMove, CapitalFlow,
-    FlowEvent, HolderFormation, MintArrivals,
+    Acquisition, Arrival, AssetMove, CapitalFlow, FlowEvent, HolderFormation, MintArrivals,
+    capital_bands, capital_legend, cumulative_at,
 };
 
 pub(crate) const RAISED: i128 = 445_417_000_000;

@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::types::grant::{Deliverer, Effect, EffectKind, Mode, ModeKind};
 use crate::types::scalars::Address;
 use crate::types::trigger::{Trigger, TriggerKind};
-use crate::types::{Definition, ProtocolConfigBody, MIN_CONFIRM_DEPTH};
+use crate::types::{Definition, MIN_CONFIRM_DEPTH, ProtocolConfigBody};
 
 /// What `validate` needs from outside the datum.
 pub struct ValidateCtx<'a> {
@@ -280,13 +280,13 @@ fn check_trigger(def: &Definition, ctx: &ValidateCtx<'_>, reasons: &mut Vec<Reas
 
 fn check_window(def: &Definition, reasons: &mut Vec<Reason>) {
     let window = &def.window;
-    if let (Some(opens), Some(closes)) = (window.opens_slot, window.closes_slot) {
-        if opens >= closes {
-            reasons.push(Reason::WindowInverted {
-                opens_slot: opens,
-                closes_slot: closes,
-            });
-        }
+    if let (Some(opens), Some(closes)) = (window.opens_slot, window.closes_slot)
+        && opens >= closes
+    {
+        reasons.push(Reason::WindowInverted {
+            opens_slot: opens,
+            closes_slot: closes,
+        });
     }
     if window.confirm_depth < MIN_CONFIRM_DEPTH {
         reasons.push(Reason::ConfirmDepthTooLow {
@@ -368,16 +368,15 @@ fn check_grants(def: &Definition, ctx: &ValidateCtx<'_>, reasons: &mut Vec<Reaso
         }
 
         // The cost-table floor. Only checkable with a config in hand.
-        if let (Some(config), Some(fuel_cost)) = (ctx.config, grant.fuel_cost) {
-            if let Some(minimum) = config.cost_of(grant.effect.kind()) {
-                if fuel_cost < minimum {
-                    reasons.push(Reason::GrantUnderpaid {
-                        grant: ordinal,
-                        fuel_cost,
-                        minimum,
-                    });
-                }
-            }
+        if let (Some(config), Some(fuel_cost)) = (ctx.config, grant.fuel_cost)
+            && let Some(minimum) = config.cost_of(grant.effect.kind())
+            && fuel_cost < minimum
+        {
+            reasons.push(Reason::GrantUnderpaid {
+                grant: ordinal,
+                fuel_cost,
+                minimum,
+            });
         }
     }
 }

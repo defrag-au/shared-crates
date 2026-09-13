@@ -90,19 +90,18 @@ impl From<String> for WidgetError {
         }
 
         // Check for HTTP status codes
-        if s.starts_with("HTTP ") {
-            if let Some(status_str) = s.split(':').next().and_then(|p| p.split(' ').nth(1)) {
-                if let Ok(status) = status_str.parse::<u16>() {
-                    let message = s
-                        .split(':')
-                        .skip(1)
-                        .collect::<Vec<_>>()
-                        .join(":")
-                        .trim()
-                        .to_string();
-                    return WidgetError::Http { status, message };
-                }
-            }
+        if s.starts_with("HTTP ")
+            && let Some(status_str) = s.split(':').next().and_then(|p| p.split(' ').nth(1))
+            && let Ok(status) = status_str.parse::<u16>()
+        {
+            let message = s
+                .split(':')
+                .skip(1)
+                .collect::<Vec<_>>()
+                .join(":")
+                .trim()
+                .to_string();
+            return WidgetError::Http { status, message };
         }
 
         // Check for specific error types

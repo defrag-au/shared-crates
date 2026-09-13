@@ -11,7 +11,7 @@
 //! render the same on every frame and the stale-trace threshold can actually
 //! be crossed on demand.
 
-use egui_widgets::conversation_history::{conversation_history, HistoryState, STALE_WAIT_SECS};
+use egui_widgets::conversation_history::{HistoryState, STALE_WAIT_SECS, conversation_history};
 
 use crate::{accent, muted};
 use gateway_wiring::{ActionTrace, RecentActivity, TraceKind, TraceStep};

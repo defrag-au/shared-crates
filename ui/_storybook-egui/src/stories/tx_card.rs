@@ -53,7 +53,7 @@
 
 use crate::{accent, muted};
 use egui_widgets::chip::ChipVariant;
-use egui_widgets::image_loader::{iiif_asset_url, AssetImageSize};
+use egui_widgets::image_loader::{AssetImageSize, iiif_asset_url};
 use egui_widgets::party_badge::PartyBasis;
 use egui_widgets::{
     Tone, TxArt, TxCard, TxCardData, TxDensity, TxHeadline, TxParty, TxPrint, TxVerb, TxViewpoint,

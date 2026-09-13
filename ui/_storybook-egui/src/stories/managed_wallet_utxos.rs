@@ -5,8 +5,8 @@
 //! itself: three ADA-only UTxOs (the spendable pool) plus one asset-bearing
 //! UTxO that gets flagged loudly.
 
-use cardano_assets::utxo::{AssetQuantity, UtxoApi};
 use cardano_assets::AssetId;
+use cardano_assets::utxo::{AssetQuantity, UtxoApi};
 use egui_widgets::ManagedWalletUtxos;
 
 use crate::{accent, bg, muted};

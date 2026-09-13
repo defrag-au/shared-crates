@@ -17,10 +17,10 @@
 //! the framework was never the problem. If no, that is evidence for D3.
 
 use crate::muted;
-use crate::stories::capital_flow::{ada, arrivals, events, month, moves, RAISED};
+use crate::stories::capital_flow::{RAISED, ada, arrivals, events, month, moves};
 use egui_widgets::{
-    capital_bands, format_date, AliasIndex, CapitalFlow, HolderField, MarkKind, PartyFinder,
-    PartyFinderState, Selection, SpineState, TimeSpine, WalletIdentity,
+    AliasIndex, CapitalFlow, HolderField, MarkKind, PartyFinder, PartyFinderState, Selection,
+    SpineState, TimeSpine, WalletIdentity, capital_bands, format_date,
 };
 
 #[derive(Default)]

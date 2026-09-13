@@ -1,6 +1,6 @@
 //! Asset Grid component story
 
-use crate::api::pfp_city::{fetch_collection_assets, CollectionAsset, KNOWN_COLLECTIONS};
+use crate::api::pfp_city::{CollectionAsset, KNOWN_COLLECTIONS, fetch_collection_assets};
 use crate::stories::helpers::AttributeCard;
 use leptos::prelude::*;
 use ui_components::{AssetCard, AssetGrid, CardSize, ImageCard, StatPill};

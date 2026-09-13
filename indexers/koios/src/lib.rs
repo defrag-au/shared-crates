@@ -1467,8 +1467,14 @@ mod tests {
                 );
                 assert_eq!(jpg_movement.asset_name, "4a5047");
                 assert_eq!(jpg_movement.quantity, 1000000000.0);
-                assert_eq!(jpg_movement.from_address, "addr1q88nlawx6kkrpxkzuvreak9tq6y3chdfu29uhqv0yhe436xx0t0gdpe5aullxhvze42uhkf90zpm907jydk8g6x4z9sqzt0w5s");
-                assert_eq!(jpg_movement.to_address, "addr1zyupekdkyr8f6lrnm4zulcs8juwv080hjfgsqvgkp98kkdkrxp0e2m4utglc7hmzkuta3e2td72cdjq9m9xlfn6rz8vq86l65l");
+                assert_eq!(
+                    jpg_movement.from_address,
+                    "addr1q88nlawx6kkrpxkzuvreak9tq6y3chdfu29uhqv0yhe436xx0t0gdpe5aullxhvze42uhkf90zpm907jydk8g6x4z9sqzt0w5s"
+                );
+                assert_eq!(
+                    jpg_movement.to_address,
+                    "addr1zyupekdkyr8f6lrnm4zulcs8juwv080hjfgsqvgkp98kkdkrxp0e2m4utglc7hmzkuta3e2td72cdjq9m9xlfn6rz8vq86l65l"
+                );
             }
             Err(err) => {
                 println!("encountered decoding error: {err:?}");

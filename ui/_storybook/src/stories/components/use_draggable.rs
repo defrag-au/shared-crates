@@ -2,7 +2,7 @@
 
 use crate::stories::helpers::AttributeCard;
 use leptos::prelude::*;
-use ui_components::{use_draggable, DraggableStack, Reorder, StackDirection};
+use ui_components::{DraggableStack, Reorder, StackDirection, use_draggable};
 
 #[component]
 pub fn UseDraggableStory() -> impl IntoView {

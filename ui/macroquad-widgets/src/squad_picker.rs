@@ -23,7 +23,7 @@ use macroquad::prelude::*;
 
 use crate::button::{Button, ButtonVariant};
 use crate::gesture::SwipeDir;
-use crate::painter::{draw_rounded_rect, Painter};
+use crate::painter::{Painter, draw_rounded_rect};
 use crate::theme::with_alpha;
 
 /// One asset that could be deployed.
@@ -172,10 +172,10 @@ impl SquadPickerVm {
     pub fn roles(&self) -> Vec<&str> {
         let mut seen: Vec<&str> = Vec::new();
         for id in &self.chosen {
-            if let Some(role) = self.candidate(id).and_then(|c| c.role.as_deref()) {
-                if !seen.contains(&role) {
-                    seen.push(role);
-                }
+            if let Some(role) = self.candidate(id).and_then(|c| c.role.as_deref())
+                && !seen.contains(&role)
+            {
+                seen.push(role);
             }
         }
         seen
@@ -644,10 +644,11 @@ fn fit_name(p: &Painter, s: &str, max_w: f32, size: f32) -> String {
     if p.measure(s, size).width <= max_w {
         return s.to_string();
     }
-    if let Some((_, tail)) = s.rsplit_once(char::is_whitespace) {
-        if is_serial(tail) && p.measure(tail, size).width <= max_w {
-            return tail.to_string();
-        }
+    if let Some((_, tail)) = s.rsplit_once(char::is_whitespace)
+        && is_serial(tail)
+        && p.measure(tail, size).width <= max_w
+    {
+        return tail.to_string();
     }
     clip(p, s, max_w, size)
 }

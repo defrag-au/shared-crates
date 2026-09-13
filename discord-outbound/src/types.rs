@@ -1,7 +1,7 @@
 use core::future::Future;
 use serde::{Deserialize, Serialize};
-use twilight_model::channel::message::embed::Embed as TwEmbed;
 use twilight_model::channel::Message;
+use twilight_model::channel::message::embed::Embed as TwEmbed;
 
 /// Outbound message payload with optional attachments.
 #[derive(Debug, Clone, Serialize, Deserialize)]

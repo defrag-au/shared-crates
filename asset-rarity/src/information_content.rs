@@ -73,7 +73,7 @@ impl Scorer for ICScorer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{build_collection, Attribute};
+    use crate::{Attribute, build_collection};
 
     #[test]
     fn test_uniform_collection_scores_one() {

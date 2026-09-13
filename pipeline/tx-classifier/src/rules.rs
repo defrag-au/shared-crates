@@ -1,6 +1,6 @@
 use crate::{
-    patterns::PatternContext, AdaFlows, AssetId, AssetOpType, AssetOperation, Confidence, MintType,
-    RawTxData, RawTxDataExt, TxClassification, TxContext, TxTag, TxType,
+    AdaFlows, AssetId, AssetOpType, AssetOperation, Confidence, MintType, RawTxData, RawTxDataExt,
+    TxClassification, TxContext, TxTag, TxType, patterns::PatternContext,
 };
 use address_registry::AddressLookup;
 use cardano_assets::NftPurpose;
@@ -165,7 +165,8 @@ impl EnrichmentProcessor {
         }
 
         // Determine operation type based on what was found
-        let operation = match (has_buy, has_withdraw_or_update) {
+
+        match (has_buy, has_withdraw_or_update) {
             (true, true) => {
                 debug!("Enrichment: Detected compound JPG.store operation");
                 JpgStoreOperation::Compound
@@ -182,9 +183,7 @@ impl EnrichmentProcessor {
                 debug!("Enrichment: No JPG.store operations detected");
                 JpgStoreOperation::None
             }
-        };
-
-        operation
+        }
     }
 }
 
@@ -543,7 +542,9 @@ impl RuleEngine {
                     .as_ref()
                     .map(|name| format!(":{name}"))
                     .unwrap_or_default();
-                format!("OfferUpdate:{policy_id}{asset_part}:{original_amount}:{updated_amount}:{bidder}:{marketplace}:{offer_index}")
+                format!(
+                    "OfferUpdate:{policy_id}{asset_part}:{original_amount}:{updated_amount}:{bidder}:{marketplace}:{offer_index}"
+                )
             }
             TxType::OfferCancel {
                 policy_id,
@@ -1009,16 +1010,14 @@ impl ClassificationRule for MintRule {
         // If tx_data.mint is not empty, this is a genuine mint transaction regardless of ADA amounts
         if tx_data.mint.is_empty() {
             let potential_sale_inputs = tx_data.get_potential_sale_price_inputs();
-            if !potential_sale_inputs.is_empty() {
-                if let Some(input) = potential_sale_inputs
+            if !potential_sale_inputs.is_empty()
+                && let Some(input) = potential_sale_inputs
                     .iter()
                     .max_by_key(|input| input.amount_lovelace)
-                {
-                    if input.amount_lovelace >= 10_000_000 {
-                        // >= 10 ADA with no mint field suggests sale, not mint
-                        return None; // Don't classify as mint - let sale detection handle it
-                    }
-                }
+                && input.amount_lovelace >= 10_000_000
+            {
+                // >= 10 ADA with no mint field suggests sale, not mint
+                return None; // Don't classify as mint - let sale detection handle it
             }
         }
 
@@ -1136,10 +1135,13 @@ impl ClassificationRule for MintRule {
 
         debug!(
             "Mint cost calculation: total_inputs={}μ₳ (₳{:.2}), actual_change={}μ₳ (₳{:.2}), minter='{}', ada_to_minter={}μ₳ (₳{:.2})",
-            total_ada_inputs, total_ada_inputs as f64 / 1_000_000.0,
-            total_change_returned, total_change_returned as f64 / 1_000_000.0,
+            total_ada_inputs,
+            total_ada_inputs as f64 / 1_000_000.0,
+            total_change_returned,
+            total_change_returned as f64 / 1_000_000.0,
             minter_address,
-            ada_received_by_minter, ada_received_by_minter as f64 / 1_000_000.0
+            ada_received_by_minter,
+            ada_received_by_minter as f64 / 1_000_000.0
         );
 
         let total_mint_cost = if total_ada_inputs > total_change_returned {
@@ -1275,24 +1277,23 @@ impl ClassificationRule for CreateOfferRule {
 
         // Try to extract policy ID from datum - this is JPG.store specific
         let mut extracted_policy = None;
-        if let Some(output) = offer_outputs.first() {
-            if let Some(datum_info) = &output.datum {
-                if let Some(datum) = datum_info.json() {
-                    // Look for 56-character hex strings in the datum that could be policy IDs
-                    if let Some(datum_str) = datum.to_string().as_str().get(..) {
-                        // Extract policy IDs from the datum hex (56-character hex strings)
-                        let found_known_policy = false;
+        if let Some(output) = offer_outputs.first()
+            && let Some(datum_info) = &output.datum
+            && let Some(datum) = datum_info.json()
+        {
+            // Look for 56-character hex strings in the datum that could be policy IDs
+            if let Some(datum_str) = datum.to_string().as_str().get(..) {
+                // Extract policy IDs from the datum hex (56-character hex strings)
+                let found_known_policy = false;
 
-                        if !found_known_policy {
-                            // Try to find any 56-character hex string (policy ID length)
-                            if let Some(policy_id) = find_policy_id_in_string(datum_str) {
-                                extracted_policy = Some(policy_id.to_string());
-                            }
-                        }
+                if !found_known_policy {
+                    // Try to find any 56-character hex string (policy ID length)
+                    if let Some(policy_id) = find_policy_id_in_string(datum_str) {
+                        extracted_policy = Some(policy_id.to_string());
                     }
-                } // Close the if let Some(datum) = &datum_info.json
+                }
             }
-        }
+        } // Close the if let Some(datum) = &datum_info.json
 
         // Find the bidder (input address that provided the ADA)
         let bidder = tx_data

@@ -5,7 +5,7 @@
 //! keyboard-nav (up/down/enter) + click selection. (In production the
 //! holder-map landing instead feeds server-ranked results straight in.)
 
-use egui_widgets::{filter_options, ChipVariant, TypeaheadOption, TypeaheadSearch};
+use egui_widgets::{ChipVariant, TypeaheadOption, TypeaheadSearch, filter_options};
 
 use crate::{accent, muted};
 

@@ -103,4 +103,4 @@ pub use wallet_core::{
 };
 
 // Re-export balance types from wallet-pallas
-pub use wallet_pallas::{decode_balance, NativeToken, PolicyGroup, WalletBalance};
+pub use wallet_pallas::{NativeToken, PolicyGroup, WalletBalance, decode_balance};

@@ -97,7 +97,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if response.results.is_empty() {
-                println!("  (No assets found with both traits - this is common for specific combinations)");
+                println!(
+                    "  (No assets found with both traits - this is common for specific combinations)"
+                );
             }
         }
         Err(e) => println!("❌ Error: {}", e),

@@ -20,5 +20,5 @@ pub use registry::*;
 // names to collide with the marketplace tables above, and a deployment record
 // should be reached for deliberately.
 pub use action_protocol::{
-    lookup_action_protocol, ActionProtocolDeployment, ACTION_PROTOCOL_DEPLOYMENTS,
+    ACTION_PROTOCOL_DEPLOYMENTS, ActionProtocolDeployment, lookup_action_protocol,
 };

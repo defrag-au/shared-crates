@@ -10,7 +10,7 @@
 use macroquad::prelude::*;
 
 use crate::button::{Button, ButtonVariant};
-use crate::painter::{draw_rounded_rect, with_alpha, Painter};
+use crate::painter::{Painter, draw_rounded_rect, with_alpha};
 
 /// One detected wallet (`window.cardano.<key>`).
 pub struct WalletItem {

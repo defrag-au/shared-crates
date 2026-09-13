@@ -30,7 +30,7 @@
 //! supplies [`HttpTransport::execute`] and a clock, and nothing else. That is
 //! what stops the native and wasm paths drifting, which they had.
 
-use discord_message::{wire, MessageBody, MessageTarget};
+use discord_message::{MessageBody, MessageTarget, wire};
 
 use crate::ratelimit::{self, RateLimitTracker};
 use crate::{DiscordError, SentMessage, Target};
@@ -208,7 +208,7 @@ pub trait DiscordOutbound {
                     return Err(DiscordError::RateLimited {
                         retry_after: wait as f64 / 1000.0,
                         global: false,
-                    })
+                    });
                 }
             }
         }

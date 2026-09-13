@@ -29,7 +29,7 @@
 //! A uniform random scatter (the first attempt) encodes amount only as density,
 //! which the eye is bad at, and it looked like static rather than substance.
 
-use egui::{pos2, vec2, Color32, Pos2, Rect, Vec2};
+use egui::{Color32, Pos2, Rect, Vec2, pos2, vec2};
 
 use crate::stories::aliens_fixture::{COHORTS, POOL_META, POOL_SERIES, SERIES};
 use crate::{accent, muted};

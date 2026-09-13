@@ -27,8 +27,8 @@
 use crate::{accent, muted};
 use egui_widgets::wiring_editor::{self, WiringEditorState};
 use gateway_wiring::{
-    action_choices, AgentEntitlement, AgentTier, EventBinding, EventSource, GuildRole, RenderStyle,
-    WiredAction,
+    AgentEntitlement, AgentTier, EventBinding, EventSource, GuildRole, RenderStyle, WiredAction,
+    action_choices,
 };
 
 /// Which hosting context to render the editor in.

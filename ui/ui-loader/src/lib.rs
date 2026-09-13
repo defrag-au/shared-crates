@@ -35,7 +35,7 @@
 
 mod identity;
 
-pub use identity::{Identity, IDENTITY_STORAGE_KEY};
+pub use identity::{IDENTITY_STORAGE_KEY, Identity};
 
 // ============================================================================
 // Web feature - LoadingOrchestrator and related types

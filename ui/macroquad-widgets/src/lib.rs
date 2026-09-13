@@ -21,29 +21,29 @@ mod squad_picker;
 mod wallet_connect;
 mod wallet_list;
 
-pub use assets::{draw_loading, Asset, Loader, Progress};
+pub use assets::{Asset, Loader, Progress, draw_loading};
 pub use button::{Button, ButtonVariant};
 pub use fonts::{FontFiles, Fonts, Slot};
 pub use gesture::{Gesture, Gestures, SwipeDir};
 pub use mint_checkout::{
-    mint_checkout, CheckoutAction, CheckoutResponse, CheckoutState, Eligibility, MintCheckoutVm,
+    CheckoutAction, CheckoutResponse, CheckoutState, Eligibility, MintCheckoutVm, mint_checkout,
 };
 pub use order_fulfilment::{
-    order_fulfilment, FulfilmentAction, FulfilmentResponse, FulfilmentStatus, FulfilmentTx,
-    OrderFulfilmentVm, OrderStatus,
+    FulfilmentAction, FulfilmentResponse, FulfilmentStatus, FulfilmentTx, OrderFulfilmentVm,
+    OrderStatus, order_fulfilment,
 };
 #[allow(deprecated)]
 pub use painter::frame_tap;
-pub use painter::{draw_rounded_rect, Hit, Painter};
-pub use quantity_stepper::{quantity_stepper, QuantityStepperVm, StepperAction, StepperResponse};
+pub use painter::{Hit, Painter, draw_rounded_rect};
+pub use quantity_stepper::{QuantityStepperVm, StepperAction, StepperResponse, quantity_stepper};
 pub use squad_picker::{
-    squad_picker, SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerResponse,
-    SquadPickerVm,
+    SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerResponse, SquadPickerVm,
+    squad_picker,
 };
 pub use theme::Theme;
 pub use wallet_connect::{
-    wallet_connect, WalletAction, WalletConnectVm, WalletItem, WalletResponse, WalletState,
+    WalletAction, WalletConnectVm, WalletItem, WalletResponse, WalletState, wallet_connect,
 };
 pub use wallet_list::{
-    wallet_list, WalletListAction, WalletListResponse, WalletListState, WalletListVm, WalletRow,
+    WalletListAction, WalletListResponse, WalletListState, WalletListVm, WalletRow, wallet_list,
 };

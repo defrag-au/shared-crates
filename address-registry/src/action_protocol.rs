@@ -106,7 +106,65 @@ pub struct ActionProtocolDeployment {
 /// hangs off a seed UTxO chosen at deploy time, so these hashes cannot be
 /// written in advance. Run `tools/action-protocol-deploy`, park the scripts
 /// with script-depot, and paste the record it prints.
-pub static ACTION_PROTOCOL_DEPLOYMENTS: &[ActionProtocolDeployment] = &[];
+pub static ACTION_PROTOCOL_DEPLOYMENTS: &[ActionProtocolDeployment] = &[
+    // Preprod, applied 2026-09-13 from the seed below by
+    // `tools/action-protocol-deploy`. Every hash except `registry`'s is
+    // DERIVED from that seed, so this record and that UTxO are one fact:
+    // re-run against a different seed and all six change.
+    //
+    // `reference` is `None` on every script — nothing is parked yet. The
+    // config is minted BEFORE the scripts are deployed, because the mint
+    // needs no reference script (the one-shot policy rides inline) and
+    // parking first would put the seed in reach of the deployment's own coin
+    // selection.
+    ActionProtocolDeployment {
+        network: RegistryNetwork::Testnet,
+        // No parameters, so this hash is fixed by the contracts alone and is
+        // the same on every network. A useful cross-check: if it ever differs
+        // from a fresh `aiken build`, the contracts changed.
+        registry: ProtocolScript {
+            hash: "78bbd2b4a99afc6500df8c9f38300001835bf2bc7211ecb1dffecfea",
+            reference: None,
+        },
+        config_token_policy: ProtocolScript {
+            hash: "69d92aa98650b90e38efec8e765ff97da805744ba50fc77159139ba6",
+            reference: None,
+        },
+        // `config`, hex. The name is part of what every validator is
+        // compiled with, so it is not free to change.
+        config_token_name: "636f6e666967",
+        protocol_config: ProtocolScript {
+            hash: "6554a62acfed422f457a76082dc925ea6db14e4755125ee0544a9968",
+            reference: None,
+        },
+        fuel: ProtocolScript {
+            hash: "fbd337c669878736373f4a9563659820a3248a1e045c6ab875afb106",
+            reference: None,
+        },
+        fuel_pair_policy: ProtocolScript {
+            hash: "e2d151f2421feca65f3b913aa7a4c18f086d8747168b96ef3951b4d3",
+            reference: None,
+        },
+        escrow: ProtocolScript {
+            hash: "37c22ecd2ecec492fdcb2db1de5b566b51450da248b5818fc9dc6428",
+            reference: None,
+        },
+        claim_marker_policy: ProtocolScript {
+            hash: "515f938fe3a792a3243c8213ea24b9d2b61ce33db480757d9fbd02f2",
+            reference: None,
+        },
+        // Parked at the depot, out of reach of the wallet's coin selection.
+        // Recorded because it is the only input to the chain above that is
+        // not derived from another hash — without it none of this can be
+        // reproduced.
+        seed: ReferenceScript {
+            tx_hash: "366518e2b4cc0ed1802e29f7cb0291310fd07ac50ac5d73e870327f51cd82566",
+            output_index: 0,
+        },
+        release_reserve_per_claim: 2_500_000,
+        settlement_grace_ms: 86_400_000,
+    },
+];
 
 /// The protocol on a network, or `None` where it has not been deployed.
 pub fn lookup_action_protocol(

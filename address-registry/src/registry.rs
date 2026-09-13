@@ -1,4 +1,4 @@
-use phf::{phf_map, Map};
+use phf::{Map, phf_map};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -599,7 +599,9 @@ pub static MARKETPLACE_DEPLOYMENTS: &[MarketplaceDeployment] = &[
                 MarketplaceType::JpgStoreV2,
             ),
         ],
-        Some("addr1xxzvcf02fs5e282qk3pmjkau2emtcsj5wrukxak3np90n2evjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eksg6pw3p"),
+        Some(
+            "addr1xxzvcf02fs5e282qk3pmjkau2emtcsj5wrukxak3np90n2evjel5h55fgjcxgchp830r7h2l5msrlpt8262r3nvr8eksg6pw3p",
+        ),
         Some(ReferenceUtxo {
             tx_hash: "1693c508b6132e89b932754d657d28b24068ff5ff1715fec36c010d4d6470b3d",
             output_index: 0,
@@ -631,7 +633,9 @@ pub static MARKETPLACE_DEPLOYMENTS: &[MarketplaceDeployment] = &[
             "addr_test1wr70wn7slke73kzznph34qffaafjallwztlsrqe9x5wkm9qlsaqu9",
             MarketplaceType::Abandonware,
         )],
-        Some("addr_test1qqpple6hhjkkfz2fltkl5wf3txrn5e62qyw0j8jxrg8ur8veuq628l4gr3d5esl8z4d48dekypu39gh6d4xly63t7rtqq29vk7"),
+        Some(
+            "addr_test1qqpple6hhjkkfz2fltkl5wf3txrn5e62qyw0j8jxrg8ur8veuq628l4gr3d5esl8z4d48dekypu39gh6d4xly63t7rtqq29vk7",
+        ),
         Some(ReferenceUtxo {
             tx_hash: "adefdb0dfb649243e079d36f7816a82ce558be74e9d8c28adbb4402559df9f88",
             output_index: 0,
@@ -915,7 +919,9 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
                 kind: MarketplaceType::JpgStoreV1,
                 fee_calculation: jpg_store_fee_calculation,
             }),
-            derived_from: CredentialSource::Address("addr1zxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tvpw288a4x0xf8pxgcntelxmyclq83s0ykeehchz2wtspks905plm"),
+            derived_from: CredentialSource::Address(
+                "addr1zxgx3far7qygq0k6epa0zcvcvrevmn0ypsnfsue94nsn3tvpw288a4x0xf8pxgcntelxmyclq83s0ykeehchz2wtspks905plm",
+            ),
         },
     ),
     // jpg.store V2/V3 sale escrow — delegated and undelegated forms, one
@@ -959,7 +965,9 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
                 kind: MarketplaceType::Wayup,
                 fee_calculation: wayup_fee_calculation,
             }),
-            derived_from: CredentialSource::Address("addr1zxnk7racqx3f7kg7npc4weggmpdskheu8pm57egr9av0mtvasazx8r5xwqtnfjsfrnat3h6yrycd2hfm9qpg7d0hf50s7x4y79"),
+            derived_from: CredentialSource::Address(
+                "addr1zxnk7racqx3f7kg7npc4weggmpdskheu8pm57egr9av0mtvasazx8r5xwqtnfjsfrnat3h6yrycd2hfm9qpg7d0hf50s7x4y79",
+            ),
         },
     ),
     // Wayup offer contract. ATTESTED, not derived: no Wayup offer address is
@@ -981,7 +989,6 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
             ),
         },
     ),
-
     // ── DEX and launchpad contracts, added 2026-09-08 ────────────────────
     //
     // WHY THESE BELONG HERE AND NOT ONLY IN ADDRESS_PREFIX_REGISTRY. A DEX
@@ -1000,7 +1007,9 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
         "cb684a69e78907a9796b21fc150a758af5f2805e5ed5d5a8ce9f76f1",
         CredentialEntry {
             category: AC::Script(SC::Exchange { label: "Splash" }),
-            derived_from: CredentialSource::Address("addr1x89ksjnfu7ys02tedvslc9g2wk90tu5qte0dt4dge60hdudj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsg0g63z"),
+            derived_from: CredentialSource::Address(
+                "addr1x89ksjnfu7ys02tedvslc9g2wk90tu5qte0dt4dge60hdudj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsg0g63z",
+            ),
         },
     ),
     // Splash's SECOND pool contract. Found holding $Dong 2026-08-30 and
@@ -1011,28 +1020,36 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
         "9dee0659686c3ab807895c929e3284c11222affd710b09be690f924d",
         CredentialEntry {
             category: AC::Script(SC::Exchange { label: "Splash" }),
-            derived_from: CredentialSource::Address("addr1xxw7upjedpkr4wq839wf983jsnq3yg40l4cskzd7dy8eyndj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsgddq74"),
+            derived_from: CredentialSource::Address(
+                "addr1xxw7upjedpkr4wq839wf983jsnq3yg40l4cskzd7dy8eyndj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrsgddq74",
+            ),
         },
     ),
     (
         "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
         CredentialEntry {
             category: AC::Script(SC::Exchange { label: "Minswap" }),
-            derived_from: CredentialSource::Address("addr1z84q0denmyep98ph3tmzwsmw0j7zau9ljmsqx6a4rvaau66j2c79gy9l76sdg0xwhd7r0c0kna0tycz4y5s6mlenh8pq777e2a"),
+            derived_from: CredentialSource::Address(
+                "addr1z84q0denmyep98ph3tmzwsmw0j7zau9ljmsqx6a4rvaau66j2c79gy9l76sdg0xwhd7r0c0kna0tycz4y5s6mlenh8pq777e2a",
+            ),
         },
     ),
     (
         "ed97e0a1394724bb7cb94f20acf627abc253694c92b88bf8fb4b7f6f",
         CredentialEntry {
             category: AC::Script(SC::Exchange { label: "CSWAP" }),
-            derived_from: CredentialSource::Address("addr1z8ke0c9p89rjfwmuh98jpt8ky74uy5mffjft3zlcld9h7ml3lmln3mwk0y3zsh3gs3dzqlwa9rjzrxawkwm4udw9axhs6fuu6e"),
+            derived_from: CredentialSource::Address(
+                "addr1z8ke0c9p89rjfwmuh98jpt8ky74uy5mffjft3zlcld9h7ml3lmln3mwk0y3zsh3gs3dzqlwa9rjzrxawkwm4udw9axhs6fuu6e",
+            ),
         },
     ),
     (
         "da5b47aed3955c9132ee087796fa3b58a1ba6173fa31a7bc29e56d4e",
         CredentialEntry {
             category: AC::Script(SC::Exchange { label: "CSWAP" }),
-            derived_from: CredentialSource::Address("addr1z8d9k3aw6w24eyfjacy809h68dv2rwnpw0arrfau98jk6nhv88awp8sgxk65d6kry0mar3rd0dlkfljz7dv64eu39vfs38yd9p"),
+            derived_from: CredentialSource::Address(
+                "addr1z8d9k3aw6w24eyfjacy809h68dv2rwnpw0arrfau98jk6nhv88awp8sgxk65d6kry0mar3rd0dlkfljz7dv64eu39vfs38yd9p",
+            ),
         },
     ),
     // snek.fun's bonding curve. NOT `Exchange` — see `ScriptCategory::Launchpad`
@@ -1042,10 +1059,11 @@ static PAYMENT_CREDENTIAL_REGISTRY: &[(&str, CredentialEntry)] = &[
         "905ab869961b094f1b8197278cfe15b45cbe49fa8f32c6b014f85a2d",
         CredentialEntry {
             category: AC::Script(SC::Launchpad { label: "snek.fun" }),
-            derived_from: CredentialSource::Address("addr1xxg94wrfjcdsjncmsxtj0r87zk69e0jfl28n934sznu95tdj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrs2993lw"),
+            derived_from: CredentialSource::Address(
+                "addr1xxg94wrfjcdsjncmsxtj0r87zk69e0jfl28n934sznu95tdj764lvrxdayh2ux30fl0ktuh27csgmpevdu89jlxppvrs2993lw",
+            ),
         },
     ),
-
     // ── Burn sinks ───────────────────────────────────────────────────────
     //
     // Moved here 2026-09-08 from `mitos tools/token-ledger/tokens.toml`, where
@@ -2050,10 +2068,10 @@ mod tests {
         assert!(lookup_payment_credential("").is_none());
         // The Wayup FEE credential — a real Wayup contract, and deliberately
         // not in the table: a fee address takes the money and keeps it.
-        assert!(lookup_payment_credential(
-            "5f08a64f580e581735070e1b1d2ce29ae6942ab45ccff5a1747d2283"
-        )
-        .is_none());
+        assert!(
+            lookup_payment_credential("5f08a64f580e581735070e1b1d2ce29ae6942ab45ccff5a1747d2283")
+                .is_none()
+        );
     }
 
     /// The V2 escrow is registered twice: once delegated to JPG.store's own
@@ -2773,8 +2791,7 @@ mod tests {
     /// not hypothetical: 168 Mekka counterparties were labelled "Splash".
     #[test]
     fn a_prefix_hit_declares_it_only_identified_the_script() {
-        let customer_order =
-            "addr1z9ryamhgnuz6lau86sqytte2gz5rlktv2yce05e0h3207qdhc9k425ezp5cw8a3ssg7swp6fjdmnp3y8vcuka3fjr7mgqw6ke7p";
+        let customer_order = "addr1z9ryamhgnuz6lau86sqytte2gz5rlktv2yce05e0h3207qdhc9k425ezp5cw8a3ssg7swp6fjdmnp3y8vcuka3fjr7mgqw6ke7p";
         let (cat, kind) = lookup_address_match(customer_order, RegistryNetwork::Mainnet).unwrap();
         assert!(matches!(
             cat,

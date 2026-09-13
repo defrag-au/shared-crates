@@ -5,8 +5,8 @@
 //! several borders implying several unrelated objects — is only obvious next to
 //! the version that has them.
 
-use egui_widgets::option_group::{GroupDensity, GroupFlow, OptionGroup, OptionGroupItem};
 use egui_widgets::PhosphorIcon;
+use egui_widgets::option_group::{GroupDensity, GroupFlow, OptionGroup, OptionGroupItem};
 
 pub struct OptionGroupStoryState {
     pub flow_inline: bool,

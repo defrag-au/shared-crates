@@ -50,7 +50,7 @@
 
 use std::collections::HashMap;
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 #[cfg(feature = "browser")]
 pub mod browser;

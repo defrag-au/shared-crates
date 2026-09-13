@@ -320,10 +320,12 @@ mod tests {
     #[test]
     fn a_v2_body_is_decided_by_its_layout() {
         assert!(!MessageBody::text("hi").is_v2());
-        assert!(MessageBody::layout(vec![PluginBlock::Text {
-            content: "hi".into()
-        }])
-        .is_v2());
+        assert!(
+            MessageBody::layout(vec![PluginBlock::Text {
+                content: "hi".into()
+            }])
+            .is_v2()
+        );
     }
 
     /// A body carrying only a file is not empty — that is a real message, and
@@ -422,17 +424,21 @@ mod tests {
         assert!(interaction().is_complete());
         assert!(channel().is_complete());
 
-        assert!(!MessageTarget::Interaction {
-            application_id: "app".into(),
-            interaction_token: String::new(),
-            message_id: "msg".into(),
-        }
-        .is_complete());
-        assert!(!MessageTarget::Channel {
-            channel_id: "chan".into(),
-            message_id: String::new(),
-        }
-        .is_complete());
+        assert!(
+            !MessageTarget::Interaction {
+                application_id: "app".into(),
+                interaction_token: String::new(),
+                message_id: "msg".into(),
+            }
+            .is_complete()
+        );
+        assert!(
+            !MessageTarget::Channel {
+                channel_id: "chan".into(),
+                message_id: String::new(),
+            }
+            .is_complete()
+        );
     }
 
     #[test]

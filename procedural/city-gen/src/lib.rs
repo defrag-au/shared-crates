@@ -17,8 +17,8 @@ pub mod streamline;
 pub mod tensor;
 mod vec2;
 
-pub use blocks::{detect_blocks, subdivide_block, Block, Lot};
+pub use blocks::{Block, Lot, detect_blocks, subdivide_block};
 pub use graph::{RoadEdge, RoadGraph, RoadNode};
-pub use streamline::{trace_streamlines, Streamline, StreamlineConfig};
+pub use streamline::{Streamline, StreamlineConfig, trace_streamlines};
 pub use tensor::{BasisField, FieldType, TensorField};
 pub use vec2::Vec2;

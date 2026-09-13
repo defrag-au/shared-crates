@@ -23,7 +23,7 @@
 //! and reaches Discord's proxy as `<mapped root>/…`, like `gl.js`. An absolute
 //! host would be blocked by the Activity CSP.
 
-use macroquad::experimental::coroutines::{start_coroutine, Coroutine};
+use macroquad::experimental::coroutines::{Coroutine, start_coroutine};
 use macroquad::prelude::*;
 
 /// Which face a file is being loaded for.

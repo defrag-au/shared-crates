@@ -1,13 +1,13 @@
 //! Asset Detail Card component story
 
 use crate::api::pfp_city::{
-    fetch_asset_details, fetch_collection_assets, AssetDetails, CollectionAsset, KNOWN_COLLECTIONS,
+    AssetDetails, CollectionAsset, KNOWN_COLLECTIONS, fetch_asset_details, fetch_collection_assets,
 };
 use crate::stories::helpers::AttributeCard;
 use leptos::prelude::*;
 use std::collections::HashMap;
 use ui_components::{
-    generate_iiif_url, AssetCard, AssetDetailCard, AssetGrid, CardSize, IiifSize, Modal,
+    AssetCard, AssetDetailCard, AssetGrid, CardSize, IiifSize, Modal, generate_iiif_url,
 };
 
 #[component]
@@ -411,19 +411,19 @@ fn GridExample() -> impl IntoView {
 
             for (policy_id, _name) in KNOWN_COLLECTIONS.iter() {
                 // Get first asset from collection
-                if let Ok((collection_assets, _)) = fetch_collection_assets(policy_id, 1, 0).await {
-                    if let Some(asset) = collection_assets.first() {
-                        // Fetch full details with traits
-                        if let Ok(details) =
-                            fetch_asset_details(policy_id, &asset.id.asset_name_hex).await
-                        {
-                            fetched.push((
-                                asset.id.concatenated(),
-                                details.name,
-                                details.rarity_rank,
-                                details.traits,
-                            ));
-                        }
+                if let Ok((collection_assets, _)) = fetch_collection_assets(policy_id, 1, 0).await
+                    && let Some(asset) = collection_assets.first()
+                {
+                    // Fetch full details with traits
+                    if let Ok(details) =
+                        fetch_asset_details(policy_id, &asset.id.asset_name_hex).await
+                    {
+                        fetched.push((
+                            asset.id.concatenated(),
+                            details.name,
+                            details.rarity_rank,
+                            details.traits,
+                        ));
                     }
                 }
             }

@@ -2,8 +2,8 @@
 
 use egui::{Color32, Pos2, Rect, Vec2};
 use egui_widgets::asset_card::{
-    rarity_colors_of, AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES,
-    RARITY_NAMES,
+    AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES, RARITY_NAMES,
+    rarity_colors_of,
 };
 use egui_widgets::card_browser::{self, CardBrowserConfig, CardBrowserState};
 use egui_widgets::slider_group::SliderGroup;

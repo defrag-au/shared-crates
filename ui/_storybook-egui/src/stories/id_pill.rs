@@ -1,7 +1,7 @@
 //! `IdPill` storybook story.
 
 use crate::{accent, muted};
-use egui_widgets::{id_pill_stacked_width_for, IdPill, IdPillLayout};
+use egui_widgets::{IdPill, IdPillLayout, id_pill_stacked_width_for};
 
 pub fn show(ui: &mut egui::Ui) {
     ui.label(egui::RichText::new("IdPill").color(accent(ui)).strong());

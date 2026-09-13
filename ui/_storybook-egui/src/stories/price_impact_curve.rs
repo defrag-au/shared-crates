@@ -1,7 +1,7 @@
 //! Storybook demo for the PriceImpactCurve widget.
 
 use egui_widgets::price_impact_curve::{
-    self, constant_product_impact_fn, ImpactCurvePool, PriceImpactCurveConfig,
+    self, ImpactCurvePool, PriceImpactCurveConfig, constant_product_impact_fn,
 };
 use egui_widgets::split_allocation_bar::dex_color;
 

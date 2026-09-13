@@ -19,7 +19,7 @@
 //! featureless on this token**. It is drawn anyway, precisely so that can be
 //! seen rather than argued about.
 
-use egui::{pos2, Color32, Pos2, Rect, Vec2};
+use egui::{Color32, Pos2, Rect, Vec2, pos2};
 
 use crate::stories::wrt_fixture::{COHORTS, SERIES};
 use crate::{accent, muted};
@@ -74,13 +74,7 @@ fn line(ui: &mut egui::Ui, rect: Rect, vals: &[f64], colour: Color32, log: bool)
         .copied()
         .filter(|v| *v > 0.0)
         .fold(f64::MAX, f64::min);
-    let pos = |v: f64| -> f64 {
-        if log {
-            v.max(floor).ln()
-        } else {
-            v
-        }
-    };
+    let pos = |v: f64| -> f64 { if log { v.max(floor).ln() } else { v } };
     let (mut lo, mut hi) = (f64::MAX, f64::MIN);
     for v in vals {
         lo = lo.min(pos(*v));

@@ -43,9 +43,9 @@ pub use codec::{
     Bytes, Cip68Envelope, DecodeError, DecodeErrorKind, Envelope, MapReader, MapWriter,
     PlutusCodec, UnknownFields, UnknownReport,
 };
-pub use recognise::{recognise, EscrowView, Recognition, RejectReason, TankView, UnfundedReason};
+pub use recognise::{EscrowView, Recognition, RejectReason, TankView, UnfundedReason, recognise};
 pub use types::*;
-pub use validate::{validate, Reason, ReasonKind, Unsupported, ValidateCtx};
+pub use validate::{Reason, ReasonKind, Unsupported, ValidateCtx, validate};
 
 /// `#[derive(PlutusCodec)]` — see the derive crate's docs for the attribute
 /// vocabulary.

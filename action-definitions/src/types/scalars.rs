@@ -11,7 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::codec::{as_bytes, Bytes, DecodeError, PlutusCodec};
+use crate::codec::{Bytes, DecodeError, PlutusCodec, as_bytes};
 use pallas_primitives::PlutusData;
 
 /// Declare a fixed-width byte newtype with both codecs.
@@ -211,7 +211,7 @@ impl ChainAddress {
                 return Err(DecodeError::WrongShape {
                     expected: "a base or enterprise address",
                     found: "address",
-                })
+                });
             }
         };
         let expected = if has_stake { 57 } else { 29 };
@@ -260,10 +260,9 @@ impl PlutusCodec for ChainAddress {
         let stake = match &self.stake {
             // Some(StakingHash(credential)) — two wrappers, both the
             // ledger's, neither ours to simplify away.
-            Some(credential) => crate::codec::constr(
-                0,
-                vec![crate::codec::constr(0, vec![credential.to_data()])],
-            ),
+            Some(credential) => {
+                crate::codec::constr(0, vec![crate::codec::constr(0, vec![credential.to_data()])])
+            }
             None => crate::codec::constr(1, vec![]),
         };
         crate::codec::constr(0, vec![self.payment.to_data(), stake])

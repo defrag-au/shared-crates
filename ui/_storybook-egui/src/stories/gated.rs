@@ -1,7 +1,7 @@
 //! Story: entitlement-gated rendering (`gated` / `locked_card` /
 //! `locked_chip`) — the frontend half of the `authorizations` framework.
 
-use egui_widgets::gated::{gated, GateState, LockedStyle};
+use egui_widgets::gated::{GateState, LockedStyle, gated};
 
 use crate::{accent, muted};
 

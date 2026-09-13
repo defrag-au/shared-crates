@@ -1,6 +1,6 @@
 //! Asset Picker component story
 
-use crate::api::pfp_city::{fetch_collection_assets, KNOWN_COLLECTIONS};
+use crate::api::pfp_city::{KNOWN_COLLECTIONS, fetch_collection_assets};
 use crate::stories::helpers::AttributeCard;
 use leptos::prelude::*;
 use ui_components::{AssetCard, AssetPicker, Badge, BadgeSize, CardSize, PickerAsset};
