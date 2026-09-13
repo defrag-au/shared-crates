@@ -227,14 +227,35 @@ impl ScriptRole {
 mod tests {
     use super::*;
 
-    /// Until a deployment lands this is empty, and every caller must handle
-    /// that. Asserted so the day it stops being empty is a day somebody
-    /// looked at this test and changed it deliberately.
+    /// Preprod is deployed; mainnet is not.
+    ///
+    /// This test used to assert the table was EMPTY, which is why it is being
+    /// read now — the day it stopped being empty had to be a day somebody
+    /// looked at it and changed it on purpose. Mainnet stays absent until it
+    /// has its own seed and its own chain; sharing preprod's would be sharing
+    /// a spent UTxO, which mints nothing.
     #[test]
-    fn no_network_is_deployed_yet() {
-        assert!(ACTION_PROTOCOL_DEPLOYMENTS.is_empty());
-        for network in RegistryNetwork::ALL {
-            assert!(lookup_action_protocol(network).is_none());
+    fn preprod_is_deployed_and_mainnet_is_not() {
+        assert!(lookup_action_protocol(RegistryNetwork::Testnet).is_some());
+        assert!(lookup_action_protocol(RegistryNetwork::Mainnet).is_none());
+    }
+
+    /// `registry` takes no parameters, so its hash comes from the contracts
+    /// alone — the same on every network, and unchanged by the seed.
+    ///
+    /// Pinned because it is the cheapest possible check that a pasted record
+    /// came from the build it claims to: if this differs from a fresh
+    /// `aiken build`, the contracts moved and every other hash here is stale.
+    #[test]
+    fn the_parameterless_root_is_the_hash_the_contracts_compile_to() {
+        for deployment in ACTION_PROTOCOL_DEPLOYMENTS {
+            assert_eq!(
+                deployment.registry.hash,
+                "78bbd2b4a99afc6500df8c9f38300001835bf2bc7211ecb1dffecfea",
+                "{:?}: registry takes no parameters, so its hash cannot differ \
+                 between networks — one of these records is from another build",
+                deployment.network
+            );
         }
     }
 
