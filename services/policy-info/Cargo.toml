@@ -2,7 +2,7 @@
 name = "policy-info-client"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Typed HTTP client for the policy-info service"
 
 [dependencies]

@@ -1,7 +1,7 @@
 [package]
 name = "shared-ui-storybook"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 publish = false
 
 # DEV ONLY - Storybook for testing shared-ui components

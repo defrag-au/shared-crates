@@ -2,7 +2,7 @@
 name = "chain-ledger"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Chain-agnostic wallet-flow ledger: per-tx net attribution, provenance walks, round-trip detection"
 
 # Deliberately dependency-light and I/O-free so the same model serves an egui

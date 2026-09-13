@@ -1,7 +1,7 @@
 [package]
 name = "discord-auth"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 description = "Reusable Discord-OAuth role gating: config-driven guild-role → entitlement resolution, a worker callback mixin, and a frontend session helper"
 license = "MIT"
 

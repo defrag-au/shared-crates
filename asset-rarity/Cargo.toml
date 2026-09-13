@@ -2,7 +2,7 @@
 name = "asset-rarity"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Pluggable NFT rarity scoring (Magic Eden statistical, OpenRarity IC)"
 
 [dependencies]

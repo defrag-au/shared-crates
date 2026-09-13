@@ -31,6 +31,7 @@ pub mod conversation_history;
 pub mod corner_action;
 pub mod detail_split;
 pub mod disclosure;
+pub mod discord_session;
 pub mod distribution_waterfall;
 pub mod donut_chart;
 pub mod drawer;

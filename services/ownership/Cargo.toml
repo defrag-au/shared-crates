@@ -2,7 +2,7 @@
 name = "ownership-client"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Typed HTTP client for the collection-ownership service"
 
 [dependencies]

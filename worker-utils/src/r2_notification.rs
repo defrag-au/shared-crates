@@ -26,6 +26,10 @@ mod tests {
     use std::fs::File;
     use std::io::Read;
 
+    /// Local copy of `test_utils::test_case!` — see that macro for why the
+    /// contents are leaked rather than borrowed (edition 2024 drops a tail
+    /// expression's temporary at the end of its block, so the old
+    /// `&buff.to_string()` could not outlive the macro).
     macro_rules! test_case {
         ($fname:expr) => {{
             let filename = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/test/", $fname);
@@ -33,8 +37,7 @@ mod tests {
             let mut buff = String::new();
             file.read_to_string(&mut buff).unwrap();
 
-            println!("buff: {}", &buff.to_string());
-            &buff.to_string()
+            &*Box::leak(buff.into_boxed_str())
         }};
     }
 

@@ -2,7 +2,7 @@
 name = "wallet-link"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Wire types for the Discord↔Cardano wallet link owned by auth-service"
 
 [dependencies]

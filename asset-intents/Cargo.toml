@@ -2,7 +2,7 @@
 name = "asset-intents"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Intent types for asset operations: tips, transfers, minting"
 
 [features]

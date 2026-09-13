@@ -2,7 +2,7 @@
 name = "tool-agent"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Provider-neutral tool-calling loop: offer tools, run what the model asks for, feed results back"
 
 [features]

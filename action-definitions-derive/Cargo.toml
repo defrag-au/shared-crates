@@ -2,7 +2,7 @@
 name = "action-definitions-derive"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "#[derive(PlutusCodec)] — integer-keyed PlutusData maps with unknown-field preservation"
 
 # A proc-macro crate compiles for the HOST, never for the target, so it costs

@@ -1,7 +1,7 @@
 [package]
 name = "storybook-egui"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 publish = false
 # DEV ONLY — egui widgets storybook
 # Run with: cd ui/_storybook-egui && trunk serve

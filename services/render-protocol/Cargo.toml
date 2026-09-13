@@ -2,7 +2,7 @@
 name = "render-protocol"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Wire protocol for asking a graphics service to render markup to an image"
 
 [dependencies]

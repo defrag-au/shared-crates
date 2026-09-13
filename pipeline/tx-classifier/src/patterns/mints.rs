@@ -393,7 +393,10 @@ fn calculate_direct_mint_cost(
 
         let payer_address = input_totals
             .iter()
-            .max_by_key(|(_, &amount)| amount)
+            // `|(_, amount)| *amount`, not `|(_, &amount)|` — edition 2024
+            // tightened match ergonomics: a reference pattern is not allowed
+            // inside a pattern that is already implicitly borrowing.
+            .max_by_key(|(_, amount)| *amount)
             .map(|(address, _)| address.clone())?;
 
         let net_cost = crate::get_net_cost(raw_tx_data, &payer_address);

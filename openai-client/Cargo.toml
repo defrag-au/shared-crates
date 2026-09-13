@@ -2,7 +2,7 @@
 name = "openai-client"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Portable OpenAI-compatible API client (native + WASM)"
 
 [dependencies]

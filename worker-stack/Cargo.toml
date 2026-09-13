@@ -1,7 +1,7 @@
 [package]
 name = "worker_stack"
 version = "0.2.0"
-edition = "2021"
+edition.workspace = true
 authors = ["Damon Oehlman <damon.oehlman@gmail.com>"]
 description = "Facade crate for Cloudflare Workers ecosystem with pinned versions"
 

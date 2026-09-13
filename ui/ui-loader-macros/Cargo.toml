@@ -1,7 +1,7 @@
 [package]
 name = "ui-loader-macros"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 description = "Proc-macros for framework-specific entry points with ui-loader orchestration"
 
 [lib]

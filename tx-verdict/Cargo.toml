@@ -13,7 +13,7 @@
 [package]
 name = "tx-verdict"
 version.workspace = true
-edition = "2021"
+edition.workspace = true
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }

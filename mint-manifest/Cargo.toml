@@ -1,7 +1,7 @@
 [package]
 name = "mint-manifest"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 description = "Mint-ready interchange manifest: the contract between collection generators (compositor) and the minting import pipeline"
 
 [dependencies]

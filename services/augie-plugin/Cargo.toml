@@ -2,7 +2,7 @@
 name = "augie-plugin"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Wire protocol for services that advertise Discord commands to the Augie bot host"
 
 [dependencies]

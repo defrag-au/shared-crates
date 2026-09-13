@@ -2,7 +2,7 @@
 name = "action-definitions"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "On-chain action definitions: the PlutusData codec, the vocabulary, validate() and recognise()"
 
 # PURE — no I/O, no wasm-bindgen, no worker deps, nothing async. The same

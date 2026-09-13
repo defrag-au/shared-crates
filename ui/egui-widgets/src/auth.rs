@@ -193,6 +193,22 @@ impl Session {
         }
     }
 
+    /// Discord CDN avatar URL, when the identity has a custom avatar.
+    ///
+    /// `None` is an ordinary answer, not a failure — most sessions have no
+    /// custom avatar and [`crate::user_badge`] falls back to an icon. Mirrors
+    /// `discord_auth::web::Identity::avatar_url`, including the animated-avatar
+    /// rule: a hash starting `a_` is a GIF and asking for `.png` returns a
+    /// broken image rather than a still frame.
+    pub fn avatar_url(&self) -> Option<String> {
+        let hash = self.claims.avatar.as_deref()?;
+        let user_id = self.claims.sub.as_deref()?;
+        let ext = if hash.starts_with("a_") { "gif" } else { "png" };
+        Some(format!(
+            "https://cdn.discordapp.com/avatars/{user_id}/{hash}.{ext}?size=64"
+        ))
+    }
+
     /// Display label for [`crate::user_badge`] — the Discord name when known,
     /// else a shortened stake address, else a neutral word.
     ///
@@ -410,6 +426,37 @@ mod tests {
             Session::anonymous_ent(SessionClaims::for_wallet("stake1abcdefghij", "").with_name(""));
         assert_ne!(blank.label(), "");
         assert!(blank.label().starts_with("stake1"));
+    }
+
+    /// `SessionClaims::avatar` is a plain field with no builder.
+    fn with_avatar(mut claims: SessionClaims, hash: &str) -> Session {
+        claims.avatar = Some(hash.to_string());
+        Session::anonymous_ent(claims)
+    }
+
+    #[test]
+    fn an_animated_avatar_asks_for_a_gif_not_a_png() {
+        // `a_`-prefixed hashes are animated; requesting `.png` yields a broken
+        // image, not a still.
+        let animated = with_avatar(SessionClaims::for_discord("42", ""), "a_deadbeef");
+        assert!(
+            animated
+                .avatar_url()
+                .unwrap()
+                .ends_with("a_deadbeef.gif?size=64")
+        );
+
+        let still = with_avatar(SessionClaims::for_discord("42", ""), "deadbeef");
+        assert!(still.avatar_url().unwrap().ends_with("deadbeef.png?size=64"));
+    }
+
+    #[test]
+    fn no_avatar_or_no_user_id_means_no_url_rather_than_a_broken_one() {
+        assert_eq!(Session::anonymous().avatar_url(), None);
+        // An avatar hash with no `sub` cannot address the CDN — a wallet
+        // session, for instance.
+        let no_sub = with_avatar(SessionClaims::for_wallet("stake1abc", ""), "x");
+        assert_eq!(no_sub.avatar_url(), None);
     }
 
     #[test]

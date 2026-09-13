@@ -1,7 +1,7 @@
 [package]
 name = "wallet-leptos"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 description = "Leptos bindings for wallet-core - reactive Cardano wallet state management"
 
 [dependencies]

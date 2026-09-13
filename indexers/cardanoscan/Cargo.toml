@@ -2,7 +2,7 @@
 name = "cardanoscan"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "Cardanoscan API client for Cardano blockchain data"
 
 [dependencies]

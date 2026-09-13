@@ -70,8 +70,11 @@ fn test_stochastic_rules() {
     let mut results = std::collections::HashSet::new();
     for seed in 0..20 {
         let mut rng = SmallRng::seed_from_u64(seed);
-        let gen = sys.iterate_stochastic(3, &mut rng);
-        let s: String = gen.iter().map(|s| s.ch).collect();
+        // Named `generation`, not `gen`: `gen` is a reserved keyword from
+        // edition 2024 (for generator blocks). `r#gen` would compile; a real
+        // word reads better.
+        let generation = sys.iterate_stochastic(3, &mut rng);
+        let s: String = generation.iter().map(|s| s.ch).collect();
         results.insert(s);
     }
     assert!(results.len() > 1, "Stochastic rules should produce variety");

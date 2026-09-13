@@ -2,7 +2,7 @@
 name = "fal-client"
 version.workspace = true
 authors.workspace = true
-edition = "2021"
+edition.workspace = true
 description = "fal.ai image/video generation client (Qwen inpaint, Flux Fill, H3 Max video) using http-client for platform-agnostic HTTP"
 
 [dependencies]
