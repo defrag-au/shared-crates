@@ -278,6 +278,35 @@ fn cases() -> Vec<Case> {
             max_debit_per_day: 1_000,
             ada_per_credit: 500_000,
             posting_cost: 0,
+            // Left at their defaults ON PURPOSE. `authorized_updaters` and
+            // `updater_threshold` were added to the struct after this
+            // fixture was frozen, and because both default they are not
+            // written — so THE BYTES ON DISK DO NOT MOVE. That is the whole
+            // forward-compatibility claim, demonstrated on a real fixture
+            // rather than asserted: adding fields to a struct does not
+            // change what an existing datum encodes to.
+            authorized_updaters: Vec::new(),
+            updater_threshold: 0,
+            unknown: unknown(),
+        },
+    ));
+
+    // The same config WITH an updater set — a new shape, so a new name
+    // rather than an edit to the one above.
+    cases.push(typed(
+        "protocol_config_with_updaters",
+        &ProtocolConfigBody {
+            currencies: Vec::new(),
+            authorized_spenders: vec![PaymentKeyHash([0xaa; 28])],
+            cost_table: vec![CostEntry::new(EffectKind::Notify, 1).unwrap()],
+            cost_table_version: 1,
+            max_debit_per_day: 1_000,
+            ada_per_credit: 500_000,
+            posting_cost: 0,
+            // 1-of-2: the Ledger plus a backup, so a dead device is an
+            // inconvenience rather than a permanently frozen config.
+            authorized_updaters: vec![PaymentKeyHash([0xc0; 28]), PaymentKeyHash([0xc1; 28])],
+            updater_threshold: 1,
             unknown: unknown(),
         },
     ));
@@ -347,6 +376,7 @@ fn corpus_is_present_and_unchanged() {
     let updating = std::env::var("UPDATE_CORPUS").is_ok();
 
     let mut created = Vec::new();
+    let mut refreshed: Vec<&str> = Vec::new();
     for case in cases() {
         let cbor_path = dir.join(format!("{}.cbor", case.name));
         let bytes = case.data.encode_fragment().expect("encode");
@@ -385,11 +415,35 @@ fn corpus_is_present_and_unchanged() {
                     serde_json::from_str(&on_disk).expect("sidecar is valid json");
                 let expected: serde_json::Value =
                     serde_json::from_str(&json).expect("generated json");
-                assert_eq!(
-                    on_disk, expected,
-                    "json sidecar for `{}` changed meaning",
-                    case.name
-                );
+
+                // The `.cbor` is the FROZEN ARTIFACT; the `.json` is a
+                // readable projection of it through the CURRENT type, and
+                // the two are not frozen alike.
+                //
+                // When the type gains a defaulted field, the bytes do not
+                // move (the encoder omits defaults) but serde does write
+                // the field, so the sidecar legitimately gains a line. That
+                // is the projection getting MORE accurate, not the fixture
+                // changing — and the byte check above has already proven
+                // the guarantee is intact by the time we get here.
+                //
+                // So the sidecar is refreshable under UPDATE_CORPUS while
+                // the bytes never are. The git diff is what makes it
+                // reviewable.
+                if on_disk != expected {
+                    assert!(
+                        updating,
+                        "json sidecar for `{}` no longer matches the type.\n\
+                         The CBOR is UNCHANGED — this is the readable \
+                         projection drifting, which happens when the type \
+                         gains a defaulted field. Re-run with UPDATE_CORPUS=1 \
+                         and review the diff; it should show additions at \
+                         default values and nothing else.",
+                        case.name
+                    );
+                    std::fs::write(&json_path, format!("{json}\n")).expect("rewrite json");
+                    refreshed.push(case.name);
+                }
             } else {
                 assert!(updating, "json sidecar for `{}` is missing", case.name);
                 std::fs::write(&json_path, format!("{json}\n")).expect("write json");
@@ -402,6 +456,13 @@ fn corpus_is_present_and_unchanged() {
             "created {} fixture(s): {}",
             created.len(),
             created.join(", ")
+        );
+    }
+    if !refreshed.is_empty() {
+        println!(
+            "refreshed {} json sidecar(s) — BYTES UNCHANGED: {}",
+            refreshed.len(),
+            refreshed.join(", ")
         );
     }
 }

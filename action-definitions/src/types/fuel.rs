@@ -110,6 +110,28 @@ pub struct ProtocolConfigBody {
     #[plutus(id = 6, default)]
     #[serde(default)]
     pub posting_cost: u64,
+    /// Who may change this config. **The cold admin, and the reason this
+    /// config is self-amending.**
+    ///
+    /// In the datum rather than a validator parameter: a parameter change
+    /// recompiles the script, which moves its address, which moves the one
+    /// UTxO every other validator references. The hot `authorized_spenders`
+    /// above already avoided that trap; this is the same rule applied to
+    /// the key that governs them.
+    #[plutus(id = 7, default)]
+    #[serde(default)]
+    pub authorized_updaters: Vec<PaymentKeyHash>,
+    /// How many of [`Self::authorized_updaters`] must sign.
+    ///
+    /// A list-and-threshold even for a single signer, because the shape
+    /// buys two things that have nothing to do with multisig: **rotation
+    /// is reversible** (add the new device, prove it signs, then drop the
+    /// old — rather than one swap that bricks the config if the hash is
+    /// wrong), and **1-of-2 survives a dead device**. Raising it to 2-of-3
+    /// later is a datum update, not a redeploy.
+    #[plutus(id = 8, default)]
+    #[serde(default)]
+    pub updater_threshold: u32,
     #[plutus(unknown)]
     #[serde(skip)]
     pub unknown: UnknownFields,
@@ -143,6 +165,32 @@ impl ProtocolConfigBody {
 
     pub fn is_authorized_spender(&self, key: &PaymentKeyHash) -> bool {
         self.authorized_spenders.contains(key)
+    }
+
+    /// Do these signatories carry enough authority to update the config?
+    ///
+    /// Mirrors what `protocol_config.ak` enforces, so the operator surface
+    /// can say "this transaction will not be accepted" before asking anyone
+    /// to plug in a hardware wallet.
+    ///
+    /// **A threshold of zero authorises nobody.** The alternative reading —
+    /// "zero signatures required" — would make an unset threshold mean
+    /// anyone may rewrite the currencies and spender list, which is the
+    /// worst possible default for a field that defaults.
+    pub fn updater_quorum_met(&self, signatories: &[PaymentKeyHash]) -> bool {
+        if self.updater_threshold == 0 {
+            return false;
+        }
+        // DISTINCT signers, not list entries. Counting entries would let one
+        // key listed twice satisfy a 2-of-N threshold on its own — a
+        // duplicate, whether a copy-paste slip or deliberate, would silently
+        // halve the bar it looks like it raises.
+        let signed: std::collections::BTreeSet<_> = self
+            .authorized_updaters
+            .iter()
+            .filter(|updater| signatories.contains(updater))
+            .collect();
+        signed.len() as u32 >= self.updater_threshold
     }
 }
 
@@ -271,6 +319,8 @@ mod tests {
             max_debit_per_day: 1_000,
             ada_per_credit: 500_000,
             posting_cost: 0,
+            authorized_updaters: vec![PaymentKeyHash([7u8; 28])],
+            updater_threshold: 1,
             unknown: UnknownFields::default(),
         };
 
@@ -287,6 +337,83 @@ mod tests {
         assert_eq!(config.cost_of(EffectKind::Manual), None);
         assert!(config.is_authorized_spender(&PaymentKeyHash([6u8; 28])));
         assert!(!config.is_authorized_spender(&PaymentKeyHash([7u8; 28])));
+    }
+
+    #[test]
+    fn a_single_signer_threshold_behaves_as_one_of_one() {
+        let me = PaymentKeyHash([0xaa; 28]);
+        let config = ProtocolConfigBody {
+            authorized_updaters: vec![me],
+            updater_threshold: 1,
+            ..ProtocolConfigBody::default()
+        };
+        assert!(config.updater_quorum_met(&[me]));
+        assert!(!config.updater_quorum_met(&[]));
+        assert!(!config.updater_quorum_met(&[PaymentKeyHash([0xbb; 28])]));
+        // Signing alongside others is still signing.
+        assert!(config.updater_quorum_met(&[PaymentKeyHash([0xbb; 28]), me]));
+    }
+
+    /// The shape that makes a lost hardware wallet survivable: either key
+    /// acts alone.
+    #[test]
+    fn one_of_two_lets_a_backup_key_act_without_the_primary() {
+        let ledger = PaymentKeyHash([0xaa; 28]);
+        let backup = PaymentKeyHash([0xbb; 28]);
+        let config = ProtocolConfigBody {
+            authorized_updaters: vec![ledger, backup],
+            updater_threshold: 1,
+            ..ProtocolConfigBody::default()
+        };
+        assert!(config.updater_quorum_met(&[ledger]));
+        assert!(config.updater_quorum_met(&[backup]));
+    }
+
+    /// …and raising the bar later is a datum change, not a redeploy.
+    #[test]
+    fn two_of_three_needs_two_and_the_code_is_unchanged() {
+        let keys: Vec<PaymentKeyHash> = (0..3).map(|i| PaymentKeyHash([i; 28])).collect();
+        let config = ProtocolConfigBody {
+            authorized_updaters: keys.clone(),
+            updater_threshold: 2,
+            ..ProtocolConfigBody::default()
+        };
+        assert!(!config.updater_quorum_met(&[keys[0]]), "one is not enough");
+        assert!(config.updater_quorum_met(&[keys[0], keys[2]]));
+    }
+
+    /// A threshold of zero must authorise NOBODY.
+    ///
+    /// It is a defaulted field, so the value that appears when somebody
+    /// forgets is the one that must be safe. Read the other way — "zero
+    /// signatures required" — an unset threshold would let anyone rewrite
+    /// the currency list and the spender set.
+    #[test]
+    fn a_zero_threshold_locks_rather_than_opens() {
+        let me = PaymentKeyHash([0xaa; 28]);
+        let config = ProtocolConfigBody {
+            authorized_updaters: vec![me],
+            updater_threshold: 0,
+            ..ProtocolConfigBody::default()
+        };
+        assert!(!config.updater_quorum_met(&[me]));
+        assert!(!config.updater_quorum_met(&[]));
+        assert!(!ProtocolConfigBody::default().updater_quorum_met(&[]));
+    }
+
+    /// Duplicates in the list cannot manufacture a quorum.
+    #[test]
+    fn one_key_listed_twice_still_counts_once_toward_a_threshold_of_two() {
+        let me = PaymentKeyHash([0xaa; 28]);
+        let config = ProtocolConfigBody {
+            authorized_updaters: vec![me, me],
+            updater_threshold: 2,
+            ..ProtocolConfigBody::default()
+        };
+        assert!(
+            !config.updater_quorum_met(&[me]),
+            "a duplicated member must not let one signature satisfy 2-of-N"
+        );
     }
 
     #[test]

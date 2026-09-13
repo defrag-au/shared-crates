@@ -1,0 +1,21 @@
+{
+  "currencies": [],
+  "authorized_spenders": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "cost_table": [
+    {
+      "effect_kind": 3,
+      "credits": 1
+    }
+  ],
+  "cost_table_version": 1,
+  "max_debit_per_day": 1000,
+  "ada_per_credit": 500000,
+  "posting_cost": 0,
+  "authorized_updaters": [
+    "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+    "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
+  ],
+  "updater_threshold": 1
+}
