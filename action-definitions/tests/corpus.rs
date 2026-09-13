@@ -25,7 +25,8 @@ use action_definitions::types::grant::{
     Deliverer, Effect, EffectKind, EntitlementGrant, Grant, Mode, PolicyFilter, Stacking,
 };
 use action_definitions::{
-    Address, AssetId, ClaimId, ClaimTag, Definition, Filter, FuelBody, Limits, MapWriter,
+    Address, AssetId, ChainAddress, ClaimId, ClaimTag, Definition, Filter, FuelBody, Limits,
+    MapWriter,
     PaymentKeyHash, PolicyId, ProtocolConfigBody, RouteRef, ScriptHash, Trigger, TxHash,
     UnknownFields, Window,
 };
@@ -350,7 +351,12 @@ fn cases() -> Vec<Case> {
         &ClaimTag {
             definition_tx: TxHash([1u8; 32]),
             claim_id: ClaimId([2u8; 16]),
-            recipient: Address::from(vec![0x61u8; 29]),
+            recipient: ChainAddress::from_bytes(&{
+                let mut raw = vec![0x61u8];
+                raw.extend_from_slice(&[9u8; 28]);
+                raw
+            })
+            .unwrap(),
             claim_slot: 123_456_789,
         },
     ));
@@ -403,6 +409,17 @@ fn cases() -> Vec<Case> {
 // ── the four test families ─────────────────────────────────────────────────
 
 /// Fixtures are written once and then frozen. This never overwrites.
+///
+/// **Re-freezing is a deliberate act, never an `UPDATE_CORPUS=1`.** Two
+/// fixtures have been re-frozen: `claim_tag` and
+/// `protocol_config_with_payment_paths`, on 2026-09-13, when a credential
+/// stopped being encoded as this format's integer-keyed map and started
+/// being encoded as the LEDGER's `Constr 0|1 [hash]` — because `escrow.ak`
+/// compares a claim's recipient against a transaction output's address, and
+/// the two were not the same shape. Nothing was deployed at the time. The
+/// way to do it is to delete the `.cbor` and let this test rewrite it,
+/// which makes the change visible as a deletion in review rather than as a
+/// silently different byte string.
 #[test]
 fn corpus_is_present_and_unchanged() {
     let dir = corpus_dir();

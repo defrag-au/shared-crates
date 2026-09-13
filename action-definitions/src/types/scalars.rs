@@ -157,6 +157,140 @@ impl PlutusCodec for Address {
     }
 }
 
+/// An address in the shape **a validator can compare**: Plutus's own
+/// `Address`, which is what `output.address` is inside a script.
+///
+/// [`Address`] above is raw ledger bytes, which is right for a trigger's
+/// sink (the validator never compares it — it is matched off chain) and
+/// wrong for a claim's `recipient`, which `escrow.ak` compares against a
+/// transaction output on the settlement path. Raw bytes and a Plutus
+/// `Address` are **not** the same encoding, and the only ways to bridge
+/// them in a validator are to hand-parse the header byte or to store the
+/// structured form. This is the structured form.
+///
+/// ```text
+/// Constr 0 [
+///   Constr 0|1 [payment hash],                     -- key | script
+///   Constr 0 [Constr 0 [Constr 0|1 [stake hash]]]  -- Some(StakingHash(c))
+///   | Constr 1 []                                  -- None
+/// ]
+/// ```
+///
+/// **The network is not part of this.** The Plutus form does not carry one,
+/// so neither does this type: a field that cannot survive `to_data` would
+/// make two equal addresses compare unequal after a round trip. It is
+/// context — every address in one deployment is on one network — and
+/// [`Self::to_bytes`] takes it as an argument.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChainAddress {
+    pub payment: crate::types::fuel::Credential,
+    #[serde(default)]
+    pub stake: Option<crate::types::fuel::Credential>,
+}
+
+impl ChainAddress {
+    /// Split a raw address into its credentials, discarding the network.
+    ///
+    /// Rejects anything that is not a base or enterprise address — pointer
+    /// addresses and reward accounts are not places a prize is paid, and
+    /// accepting one here would mean encoding something `to_bytes` could
+    /// not rebuild.
+    pub fn from_bytes(raw: &[u8]) -> Result<Self, DecodeError> {
+        let header = *raw.first().ok_or(DecodeError::BadLength {
+            target: "ChainAddress",
+            expected: 29,
+            actual: 0,
+        })?;
+        let kind = header >> 4;
+        let payment_is_script = kind & 0b0001 != 0;
+        let (has_stake, stake_is_script) = match kind {
+            0b0000 | 0b0001 => (true, false),
+            0b0010 | 0b0011 => (true, true),
+            0b0110 | 0b0111 => (false, false),
+            _ => {
+                return Err(DecodeError::WrongShape {
+                    expected: "a base or enterprise address",
+                    found: "address",
+                })
+            }
+        };
+        let expected = if has_stake { 57 } else { 29 };
+        if raw.len() != expected {
+            return Err(DecodeError::BadLength {
+                target: "ChainAddress",
+                expected,
+                actual: raw.len(),
+            });
+        }
+        let credential = |bytes: &[u8], is_script: bool| {
+            let hash = Bytes::from(bytes.to_vec());
+            if is_script {
+                crate::types::fuel::Credential::Script { hash }
+            } else {
+                crate::types::fuel::Credential::Key { hash }
+            }
+        };
+        Ok(Self {
+            payment: credential(&raw[1..29], payment_is_script),
+            stake: has_stake.then(|| credential(&raw[29..57], stake_is_script)),
+        })
+    }
+
+    /// Rebuild the raw ledger address on a given network.
+    pub fn to_bytes(&self, network: u8) -> Vec<u8> {
+        let kind = match (self.payment.is_script(), &self.stake) {
+            (false, Some(s)) if !s.is_script() => 0b0000,
+            (true, Some(s)) if !s.is_script() => 0b0001,
+            (false, Some(_)) => 0b0010,
+            (true, Some(_)) => 0b0011,
+            (false, None) => 0b0110,
+            (true, None) => 0b0111,
+        };
+        let mut bytes = vec![(kind << 4) | (network & 0x0f)];
+        bytes.extend_from_slice(self.payment.hash().as_slice());
+        if let Some(stake) = &self.stake {
+            bytes.extend_from_slice(stake.hash().as_slice());
+        }
+        bytes
+    }
+}
+
+impl PlutusCodec for ChainAddress {
+    fn to_data(&self) -> PlutusData {
+        let stake = match &self.stake {
+            // Some(StakingHash(credential)) — two wrappers, both the
+            // ledger's, neither ours to simplify away.
+            Some(credential) => crate::codec::constr(
+                0,
+                vec![crate::codec::constr(0, vec![credential.to_data()])],
+            ),
+            None => crate::codec::constr(1, vec![]),
+        };
+        crate::codec::constr(0, vec![self.payment.to_data(), stake])
+    }
+
+    fn from_data(data: &PlutusData) -> Result<Self, DecodeError> {
+        let fields = crate::codec::read_constr_zero(data, 2)?;
+        let payment = crate::types::fuel::Credential::from_data(&fields[0])?;
+        let (index, outer) = crate::codec::read_constr(&fields[1])?;
+        let stake = match index {
+            1 => None,
+            0 => {
+                let inner = crate::codec::read_constr_zero(
+                    outer.first().ok_or(DecodeError::ShortEnvelope {
+                        expected: 1,
+                        actual: 0,
+                    })?,
+                    1,
+                )?;
+                Some(crate::types::fuel::Credential::from_data(&inner[0])?)
+            }
+            found => return Err(DecodeError::WrongConstructor { expected: 0, found }),
+        };
+        Ok(Self { payment, stake })
+    }
+}
+
 /// `policy_id ‖ asset_name` as one bytestring — the concatenated form every
 /// Cardano API uses, so nothing has to re-join it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

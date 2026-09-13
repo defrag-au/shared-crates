@@ -14,7 +14,12 @@
 //! - `recipient` — **a validator cannot resolve another transaction's
 //!   inputs**, so it cannot know who burned. The builder writes the
 //!   connected wallet's address here and the escrow validator pays there
-//!   (protocol §6.2).
+//!   (protocol §6.2). It is a [`ChainAddress`] — Plutus's own address
+//!   shape — and not raw ledger bytes, because `escrow.ak` compares it
+//!   against a transaction output's `address` on every settlement, and the
+//!   two encodings are not the same thing. Raw bytes would leave a
+//!   validator hand-parsing a header byte to find out whether a credential
+//!   is a script.
 //! - `claim_slot` — **a validator cannot see a reference input's creation
 //!   slot** either, so window checks at settlement read this (protocol
 //!   §6.1). The service uses the real slot it observed; this is the
@@ -23,7 +28,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::codec::{constr_zero, read_constr_zero, DecodeError, PlutusCodec};
-use crate::types::scalars::{Address, ClaimId, TxHash};
+use crate::types::scalars::{ChainAddress, ClaimId, TxHash};
 use pallas_primitives::PlutusData;
 
 /// `Constr 0 [definition_tx, claim_id, recipient, claim_slot]`
@@ -31,7 +36,7 @@ use pallas_primitives::PlutusData;
 pub struct ClaimTag {
     pub definition_tx: TxHash,
     pub claim_id: ClaimId,
-    pub recipient: Address,
+    pub recipient: ChainAddress,
     pub claim_slot: u64,
 }
 
@@ -56,7 +61,7 @@ impl PlutusCodec for ClaimTag {
         Ok(Self {
             definition_tx: TxHash::from_data(&fields[0])?,
             claim_id: ClaimId::from_data(&fields[1])?,
-            recipient: Address::from_data(&fields[2])?,
+            recipient: ChainAddress::from_data(&fields[2])?,
             claim_slot: u64::from_data(&fields[3])?,
         })
     }
@@ -71,9 +76,57 @@ mod tests {
         ClaimTag {
             definition_tx: TxHash([1u8; 32]),
             claim_id: ClaimId([2u8; 16]),
-            recipient: Address::from(vec![0x61u8; 29]),
+            recipient: ChainAddress::from_bytes(&enterprise(0x61)).unwrap(),
             claim_slot: 987_654,
         }
+    }
+
+    /// A mainnet enterprise address: header, then 28 bytes of key hash.
+    fn enterprise(header: u8) -> Vec<u8> {
+        let mut raw = vec![header];
+        raw.extend_from_slice(&[9u8; 28]);
+        raw
+    }
+
+    /// The recipient must survive the round trip **as an address**, not just
+    /// as bytes — `escrow.ak` compares the decoded form against a
+    /// transaction output.
+    #[test]
+    fn a_recipient_round_trips_through_the_plutus_address_shape() {
+        let base = {
+            let mut raw = vec![0x01u8]; // script payment + key stake, mainnet
+            raw.extend_from_slice(&[1u8; 28]);
+            raw.extend_from_slice(&[2u8; 28]);
+            raw
+        };
+        for raw in [enterprise(0x61), enterprise(0x71), base] {
+            let address = ChainAddress::from_bytes(&raw).unwrap();
+            assert_eq!(address.to_bytes(raw[0] & 0x0f), raw, "rebuilt differs");
+            assert_eq!(
+                ChainAddress::from_data(&address.to_data()).unwrap(),
+                address
+            );
+        }
+    }
+
+    /// A pointer address or a reward account is not a place a prize is
+    /// paid, and accepting one would encode something `to_bytes` could not
+    /// rebuild.
+    #[test]
+    fn an_address_kind_we_cannot_rebuild_is_refused() {
+        let mut pointer = vec![0x41u8];
+        pointer.extend_from_slice(&[1u8; 28]);
+        assert!(ChainAddress::from_bytes(&pointer).is_err());
+        assert!(ChainAddress::from_bytes(&[]).is_err());
+    }
+
+    /// A base address truncated to enterprise length must not decode as an
+    /// enterprise address — the length is checked against the kind.
+    #[test]
+    fn a_truncated_base_address_is_refused() {
+        let mut truncated = vec![0x01u8];
+        truncated.extend_from_slice(&[1u8; 28]);
+        assert!(ChainAddress::from_bytes(&truncated).is_err());
     }
 
     #[test]

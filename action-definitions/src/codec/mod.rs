@@ -14,7 +14,9 @@ mod error;
 mod map;
 mod scalar;
 
-pub use envelope::{constr_zero, read_constr_zero, Cip68Envelope, Envelope};
+pub use envelope::{
+    constr, constr_zero, read_constr, read_constr_zero, Cip68Envelope, Envelope,
+};
 pub use error::{DecodeError, DecodeErrorKind, UnknownReport};
 pub use map::{MapReader, MapWriter, UnknownFields};
 pub use scalar::{

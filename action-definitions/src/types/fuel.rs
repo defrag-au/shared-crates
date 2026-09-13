@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::codec::{Bytes, UnknownFields};
+use crate::codec::{Bytes, DecodeError, PlutusCodec, UnknownFields};
 use crate::types::grant::EffectKind;
 use crate::types::scalars::{PaymentKeyHash, PolicyId};
 use action_definitions_derive::PlutusCodec;
@@ -171,38 +171,75 @@ pub struct ProtocolConfigBody {
 
 /// A payment credential: a key hash or a script hash.
 ///
-/// Mirrors aiken's `cardano/address.Credential` in meaning, not in encoding
-/// — this is our integer-keyed map shape, because nothing decodes an
-/// on-chain `Credential` from here; the validator rebuilds the comparison.
-#[derive(Debug, Clone, Default, PartialEq, Eq, PlutusCodec, Serialize, Deserialize)]
-pub struct Credential {
-    /// 28 bytes.
-    #[plutus(id = 0, default)]
-    #[serde(default)]
-    pub hash: Bytes,
-    /// `false` = verification key, `true` = script.
-    #[plutus(id = 1, default)]
-    #[serde(default)]
-    pub is_script: bool,
-    #[plutus(unknown)]
-    #[serde(skip)]
-    pub unknown: UnknownFields,
+/// **Encoded as the LEDGER encodes one** — `Constr 0 [hash]` for a
+/// verification key, `Constr 1 [hash]` for a script — not in this format's
+/// usual integer-keyed map. It is the one exception, and it earns it: a
+/// validator compares this against `output.address.payment_credential`,
+/// which is a Plutus `Credential`, so writing our own shape would mean
+/// every validator hand-rolling the comparison from parts. In the ledger's
+/// shape it is `expect c: Credential = raw` and then `==`.
+///
+/// **The kind is part of the identity.** A script at hash H and a key at
+/// hash H are different credentials; conflating them would let a script
+/// collect fees destined for a key — which is also why the two live in
+/// different constructors rather than in a flag beside the hash.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Credential {
+    Key { hash: Bytes },
+    Script { hash: Bytes },
+}
+
+impl Default for Credential {
+    fn default() -> Self {
+        Self::Key {
+            hash: Bytes::default(),
+        }
+    }
 }
 
 impl Credential {
     pub fn key(hash: [u8; 28]) -> Self {
-        Self {
+        Self::Key {
             hash: Bytes::from(hash.to_vec()),
-            is_script: false,
-            unknown: UnknownFields::default(),
         }
     }
 
     pub fn script(hash: [u8; 28]) -> Self {
-        Self {
+        Self::Script {
             hash: Bytes::from(hash.to_vec()),
-            is_script: true,
-            unknown: UnknownFields::default(),
+        }
+    }
+
+    pub fn hash(&self) -> &Bytes {
+        match self {
+            Self::Key { hash } | Self::Script { hash } => hash,
+        }
+    }
+
+    pub fn is_script(&self) -> bool {
+        matches!(self, Self::Script { .. })
+    }
+}
+
+impl PlutusCodec for Credential {
+    fn to_data(&self) -> pallas_primitives::PlutusData {
+        match self {
+            Self::Key { hash } => crate::codec::constr(0, vec![hash.to_data()]),
+            Self::Script { hash } => crate::codec::constr(1, vec![hash.to_data()]),
+        }
+    }
+
+    fn from_data(data: &pallas_primitives::PlutusData) -> Result<Self, DecodeError> {
+        let (index, fields) = crate::codec::read_constr(data)?;
+        let hash = Bytes::from_data(fields.first().ok_or(DecodeError::ShortEnvelope {
+            expected: 1,
+            actual: 0,
+        })?)?;
+        match index {
+            0 => Ok(Self::Key { hash }),
+            1 => Ok(Self::Script { hash }),
+            found => Err(DecodeError::WrongConstructor { expected: 0, found }),
         }
     }
 }
@@ -238,9 +275,7 @@ impl ProtocolConfigBody {
     }
 
     pub fn is_sink(&self, credential: &Credential) -> bool {
-        self.sinks
-            .iter()
-            .any(|sink| sink.hash == credential.hash && sink.is_script == credential.is_script)
+        self.sinks.contains(credential)
     }
 
     /// Lovelace that must reach [`Self::fee_credential`] to buy `credits`.
@@ -329,7 +364,7 @@ impl CostEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codec::{Cip68Envelope, MapWriter, PlutusCodec as _};
+    use crate::codec::{Cip68Envelope, MapWriter};
     use pallas_primitives::{Fragment, PlutusData};
 
     fn tank() -> FuelBody {

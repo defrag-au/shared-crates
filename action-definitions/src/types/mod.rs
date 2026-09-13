@@ -17,6 +17,7 @@ pub use grant::{
     Deliverer, Effect, EffectKind, EntitlementGrant, Grant, Mode, ModeKind, PolicyFilter, Stacking,
 };
 pub use scalars::{
-    Address, AssetId, ClaimId, PaymentKeyHash, PolicyId, RouteRef, ScriptHash, TxHash,
+    Address, AssetId, ChainAddress, ClaimId, PaymentKeyHash, PolicyId, RouteRef, ScriptHash,
+    TxHash,
 };
 pub use trigger::{Trigger, TriggerKind, Venue};

@@ -24,13 +24,13 @@
   ],
   "updater_threshold": 1,
   "fee_credential": {
-    "hash": "fefefefefefefefefefefefefefefefefefefefefefefefefefefefe",
-    "is_script": false
+    "kind": "key",
+    "hash": "fefefefefefefefefefefefefefefefefefefefefefefefefefefefe"
   },
   "sinks": [
     {
-      "hash": "51515151515151515151515151515151515151515151515151515151",
-      "is_script": true
+      "kind": "script",
+      "hash": "51515151515151515151515151515151515151515151515151515151"
     }
   ]
 }

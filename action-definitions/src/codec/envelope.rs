@@ -24,11 +24,28 @@ use super::DecodeError;
 const CONSTR_ZERO: u64 = 121;
 
 pub fn constr_zero(fields: Vec<PlutusData>) -> PlutusData {
+    constr(0, fields)
+}
+
+/// A `Constr` at an arbitrary small constructor index.
+///
+/// Needed because a few structures in this format are **the ledger's own**,
+/// not ours — an address credential is `Constr 0/1 [hash]` because that is
+/// what a Plutus `Address` is, and a validator casts one straight out of a
+/// transaction output. Our own enums use the integer-keyed map with the tag
+/// at key 0; these do not get a choice.
+pub fn constr(index: u64, fields: Vec<PlutusData>) -> PlutusData {
     PlutusData::Constr(Constr {
-        tag: CONSTR_ZERO,
+        tag: CONSTR_ZERO + index,
         any_constructor: None,
         fields: MaybeIndefArray::Def(fields),
     })
+}
+
+/// Read a `Constr` at any index, returning `(index, fields)`.
+pub fn read_constr(data: &PlutusData) -> Result<(u64, &[PlutusData]), DecodeError> {
+    let constr = as_constr(data)?;
+    Ok((constr_index(constr)?, constr.fields.as_ref()))
 }
 
 /// Read a `Constr 0` and check it carries at least `min_fields`.
