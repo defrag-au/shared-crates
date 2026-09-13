@@ -105,6 +105,8 @@ pub mod skeleton;
 pub mod slider_group;
 pub mod slot_table;
 pub mod sparkline;
+#[cfg(feature = "cardano")]
+pub mod stake_auth;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod stake_session;
 pub mod stat_strip;

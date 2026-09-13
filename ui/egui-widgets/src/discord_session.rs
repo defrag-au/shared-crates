@@ -227,7 +227,12 @@ mod tests {
 
     #[test]
     fn a_named_discord_user_maps_to_full_claims() {
-        let claims = claims_from_parts("app.access admin.access", Some("42"), Some("Damon"), Some("abc"));
+        let claims = claims_from_parts(
+            "app.access admin.access",
+            Some("42"),
+            Some("Damon"),
+            Some("abc"),
+        );
         assert_eq!(claims.sub.as_deref(), Some("42"));
         assert_eq!(claims.name.as_deref(), Some("Damon"));
         assert_eq!(claims.avatar.as_deref(), Some("abc"));

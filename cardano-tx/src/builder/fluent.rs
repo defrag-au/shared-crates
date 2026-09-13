@@ -50,6 +50,14 @@ pub struct TxBuilder {
     collateral: Option<CollateralConfig>,
     /// Track highest Plutus version used (for cost model selection)
     max_script_kind: Option<ScriptKind>,
+    /// Native scripts witnessing inputs at native-script addresses.
+    ///
+    /// Nothing like a Plutus script: no redeemer, no execution units, no
+    /// collateral, and it is not "run" — the ledger simply checks the required
+    /// signatures are present. The motivating case is a UTxO parked at a
+    /// "these keys may spend" address so a wallet's coin selection cannot
+    /// reach it.
+    native_scripts: Vec<Vec<u8>>,
     /// Track UTxO refs already added as inputs (tx_hash, output_index) to avoid double-spend.
     used_input_refs: HashSet<(String, u32)>,
     /// Sum of lovelace from explicitly added inputs (for coin selection).
@@ -70,9 +78,27 @@ impl TxBuilder {
             auxiliary_data: None,
             collateral: None,
             max_script_kind: None,
+            native_scripts: Vec::new(),
             used_input_refs: HashSet::new(),
             input_lovelace: 0,
         }
+    }
+
+    /// Witness an input held at a native-script address.
+    ///
+    /// Add the UTxO with [`Self::input`] as usual — a native-script input is
+    /// an ordinary input as far as balancing goes — then hand the script's
+    /// bytes here so they land in the witness set. Also declare whichever
+    /// signers the script requires with [`Self::with_signer`], or the ledger
+    /// has no signature to check it against.
+    ///
+    /// Deliberately NOT `spend_script_utxo`: that path builds a redeemer and
+    /// execution units, and a native script has neither.
+    pub fn native_script(mut self, script_bytes: Vec<u8>) -> Self {
+        if !self.native_scripts.contains(&script_bytes) {
+            self.native_scripts.push(script_bytes);
+        }
+        self
     }
 
     // --- Inputs ---
@@ -436,6 +462,7 @@ impl TxBuilder {
             auxiliary_data: self.auxiliary_data,
             collateral_input,
             max_script_kind: self.max_script_kind,
+            native_scripts: self.native_scripts,
             network_id: self.deps.network_id,
             change_address: self.deps.from_address,
             params: self.deps.params,
@@ -488,6 +515,7 @@ struct PreparedTx {
     auxiliary_data: Option<Vec<u8>>,
     collateral_input: Option<Input>,
     max_script_kind: Option<ScriptKind>,
+    native_scripts: Vec<Vec<u8>>,
     network_id: u8,
     change_address: Address,
     params: crate::params::TxBuildParams,
@@ -544,6 +572,7 @@ impl PreparedTx {
                     &self.auxiliary_data,
                     &self.collateral_input,
                     self.max_script_kind,
+                    &self.native_scripts,
                     self.network_id,
                     effective_fee,
                     &self.params.cost_models,
@@ -576,12 +605,20 @@ fn assemble_tx(
     auxiliary_data: &Option<Vec<u8>>,
     collateral_input: &Option<Input>,
     max_script_kind: Option<ScriptKind>,
+    native_scripts: &[Vec<u8>],
     network_id: u8,
     fee: u64,
     cost_models: &super::cost_models::PlutusCostModels,
 ) -> Result<StagingTransaction, TxBuildError> {
     let mut tx = StagingTransaction::new();
     let mut wanted_refs: Vec<Input> = Vec::new();
+
+    // Native-script witnesses. No redeemer and no execution units — the
+    // ledger checks the required signatures rather than running anything, so
+    // these do not touch the cost models or collateral.
+    for script in native_scripts {
+        tx = tx.script(ScriptKind::Native, script.clone());
+    }
 
     // 1. Inputs + script context
     for (input, script_ctx) in inputs {
@@ -813,6 +850,66 @@ mod tests {
         assert!(unsigned.fee < 1_000_000);
     }
 
+    /// A native script rides in the witness set, and nothing else changes.
+    ///
+    /// It is not a Plutus script: no redeemer, no execution units, and — the
+    /// part that matters — **it must not make the transaction look like it
+    /// needs collateral**. Demanding a collateral UTxO for a transaction that
+    /// runs no Plutus would refuse builds that are perfectly valid.
+    #[test]
+    fn a_native_script_witnesses_without_demanding_collateral() {
+        let deps = test_deps();
+        let to_addr = deps.from_address.clone();
+        let input_utxo = deps.utxos[0].clone();
+        // `ScriptAny [ScriptPubkey h]` — "this key may spend", the shape a
+        // depot address uses.
+        let script_bytes = vec![0x82, 0x01, 0x81, 0x82, 0x00, 0x41, 0xab];
+
+        let builder = TxBuilder::new(deps)
+            .input(&input_utxo)
+            .unwrap()
+            .native_script(script_bytes.clone())
+            .pay_to(&to_addr, 2_000_000);
+
+        assert!(
+            !builder.has_scripts(),
+            "a native script is not a Plutus script and needs no collateral"
+        );
+
+        let unsigned = builder.build().expect("build");
+        let scripts = unsigned.staging.scripts.as_ref().expect("witness set");
+        assert!(
+            scripts.values().any(|s| s.bytes.as_ref() == script_bytes),
+            "the native script did not reach the witness set"
+        );
+    }
+
+    /// The same script handed over twice is one witness, not two. Duplicates
+    /// inflate the transaction and, past the size cap, break it.
+    #[test]
+    fn a_native_script_is_not_witnessed_twice() {
+        let deps = test_deps();
+        let input_utxo = deps.utxos[0].clone();
+        let script_bytes = vec![0x82, 0x01, 0x81, 0x82, 0x00, 0x41, 0xab];
+
+        let unsigned = TxBuilder::new(deps)
+            .input(&input_utxo)
+            .unwrap()
+            .native_script(script_bytes.clone())
+            .native_script(script_bytes.clone())
+            .build()
+            .expect("build");
+
+        let scripts = unsigned.staging.scripts.as_ref().expect("witness set");
+        assert_eq!(
+            scripts
+                .values()
+                .filter(|s| s.bytes.as_ref() == script_bytes)
+                .count(),
+            1
+        );
+    }
+
     /// Σ inputs must equal Σ outputs + staged fee — the balance invariant.
     fn assert_balanced(unsigned: &UnsignedTx, input_lovelace: u64) {
         let out: u64 = unsigned
@@ -1002,6 +1099,7 @@ mod tests {
             &None,
             &None,
             Some(ScriptKind::PlutusV2),
+            &[],
             1,
             200_000,
             &crate::builder::cost_models::PlutusCostModels::EMPTY,
@@ -1038,6 +1136,7 @@ mod tests {
             &None,
             &None,
             None,
+            &[],
             1,
             200_000,
             &crate::builder::cost_models::PlutusCostModels::EMPTY,

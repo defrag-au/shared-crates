@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-146 widgets.
+147 widgets.
 
 | module | what it is |
 |---|---|
@@ -121,6 +121,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `slot_table` | slot_table — the trait/slot list with enable / required toggles and an optional z-order field |
 | `sparkline` | Sparkline widget — compact inline line chart for trend visualization |
 | `split_allocation_bar` | Split allocation bar — segmented horizontal bar showing ADA allocation across multiple DEXes |
+| `stake_auth` | [`AuthStrategy`] for the stake-key wallet session — the one where the wallet *is* the identity |
 | `stake_session` | `StakeSessionPanel` — connect a wallet, sign in to a worker by stake key, and stay signed in; the whole strip, with the session it holds |
 | `stat_strip` | StatStrip — windowed summary "stat cards", laid out as uniform tiles that fill their container and wrap into even rows |
 | `supply_bar` | Two-band mint supply bar — `minted` (on chain) + `ordered` (the backlog of ordered-but-not-yet-minted units), over the unsold track |

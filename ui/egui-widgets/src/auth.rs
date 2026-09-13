@@ -447,7 +447,12 @@ mod tests {
         );
 
         let still = with_avatar(SessionClaims::for_discord("42", ""), "deadbeef");
-        assert!(still.avatar_url().unwrap().ends_with("deadbeef.png?size=64"));
+        assert!(
+            still
+                .avatar_url()
+                .unwrap()
+                .ends_with("deadbeef.png?size=64")
+        );
     }
 
     #[test]
