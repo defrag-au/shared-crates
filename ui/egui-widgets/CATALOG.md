@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-143 widgets.
+145 widgets.
 
 | module | what it is |
 |---|---|
@@ -18,6 +18,8 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `animated_counter` | AnimatedCounter — smoothly interpolates a numeric value between snapshots |
 | `arrival_field` | ArrivalField — every asset a dot, every holder a pile, and now they MOVE |
 | `asset_strip` | Asset strip — a horizontal row of square asset thumbnails that overlap progressively as more items are added |
+| `auth` | How an app decides who you are — the strategy the shell drives |
+| `auth_worker` | [`AuthStrategy`] for the `auth.cnft.dev` OAuth worker — an opaque token, validated against a service |
 | `background` | `BackgroundToasts` — declare what work is running; the toasts follow |
 | `bullet_bar` | Bullet bar — a value fill against a track with an **optional target marker** |
 | `button_group` | `ButtonGroup` — a row of related action buttons with shared layout |

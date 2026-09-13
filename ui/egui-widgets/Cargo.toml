@@ -77,6 +77,10 @@ web-sys = { workspace = true, features = [
     "FileList", "File", "FileReader",
     # `stake_session` persists a worker session in localStorage.
     "Storage",
+    # `auth_worker` drops the `?token=` from the URL after an OAuth callback,
+    # via `history.replaceState` — assigning `location.search` instead would
+    # reload the page and kill the wasm app mid-frame.
+    "History",
 ] }
 js-sys = { workspace = true }
 wallet-core = { workspace = true, optional = true }

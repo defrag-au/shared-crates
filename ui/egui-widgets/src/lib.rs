@@ -10,6 +10,8 @@ pub mod agent_config;
 pub mod animated_counter;
 pub mod arrival_field;
 pub mod asset_card;
+pub mod auth;
+pub mod auth_worker;
 pub mod background;
 pub mod bullet_bar;
 pub mod button_group;
@@ -231,9 +233,12 @@ pub use custody_walk::{
     CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode, WalkNodeKind, WalkSummary,
     summarize as summarize_walk,
 };
-pub use defaults::{install, install_assets};
-#[expect(deprecated, reason = "the re-export is deprecated in step with the item")]
+#[expect(
+    deprecated,
+    reason = "the re-export is deprecated in step with the item"
+)]
 pub use defaults::install_defaults;
+pub use defaults::{install, install_assets};
 pub use distribution_waterfall::{DistributionWaterfall, WaterfallMode, WaterfallParty};
 pub use donut_chart::{
     DistBand, DistributionChart, format_value as format_chart_value, legend_row,
