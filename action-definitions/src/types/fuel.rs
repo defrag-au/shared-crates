@@ -21,11 +21,18 @@ pub struct FuelBody {
     #[plutus(id = 0, default)]
     #[serde(default)]
     pub balance: u64,
-    /// Slot of the last `Reconcile`, which is what the daily cap is
-    /// measured against.
+    /// When the last `Reconcile` happened — **POSIX milliseconds, not a
+    /// slot** — which is what the daily cap is measured against.
+    ///
+    /// It has to be milliseconds because `fuel.ak` is what writes it, and a
+    /// Plutus validator cannot see slots at all: its only clock is
+    /// `Transaction.validity_range`, which the ledger hands over as POSIX
+    /// time in milliseconds. A field named `_slot` holding milliseconds is
+    /// the kind of thing that reads fine for a year and then produces a
+    /// 1970-vs-now comparison, so it is named for what it holds.
     #[plutus(id = 1, default)]
     #[serde(default)]
-    pub reconciled_slot: u64,
+    pub reconciled_at: u64,
     /// Monotonic; `Reconcile` requires `seq == old + 1`, so a replayed or
     /// reordered reconciliation cannot land.
     #[plutus(id = 2, default)]
@@ -132,9 +139,72 @@ pub struct ProtocolConfigBody {
     #[plutus(id = 8, default)]
     #[serde(default)]
     pub updater_threshold: u32,
+    /// Where an ADA top-up must pay, as a **payment credential** — the
+    /// stake part is deliberately not constrained, so the fees can be
+    /// delegated without the address the validator checks changing.
+    ///
+    /// `None` means **the ADA top-up path is closed**, not "pay anywhere".
+    /// A defaulted field's absent value has to be the one that grants
+    /// nothing; the alternative reading would let a fresh config mint
+    /// credits for a payment to nobody.
+    ///
+    /// In the config rather than a `fuel.ak` parameter because a parameter
+    /// change moves every tank's address. It is not a parameter of the
+    /// fuel-pair policy either, for a worse version of the same reason: it
+    /// would change the fuel policy id, hence every tank's asset id, hence
+    /// `escrow.ak`'s parameter.
+    #[plutus(id = 9)]
+    #[serde(default)]
+    pub fee_credential: Option<Credential>,
+    /// Payment credentials that count as burn sinks for the burn → fuel
+    /// path. An empty list closes that path.
+    ///
+    /// The validator has to authenticate the sink, or a "burn" to an
+    /// address the burner controls buys credits while keeping the tokens.
+    #[plutus(id = 10, default)]
+    #[serde(default)]
+    pub sinks: Vec<Credential>,
     #[plutus(unknown)]
     #[serde(skip)]
     pub unknown: UnknownFields,
+}
+
+/// A payment credential: a key hash or a script hash.
+///
+/// Mirrors aiken's `cardano/address.Credential` in meaning, not in encoding
+/// — this is our integer-keyed map shape, because nothing decodes an
+/// on-chain `Credential` from here; the validator rebuilds the comparison.
+#[derive(Debug, Clone, Default, PartialEq, Eq, PlutusCodec, Serialize, Deserialize)]
+pub struct Credential {
+    /// 28 bytes.
+    #[plutus(id = 0, default)]
+    #[serde(default)]
+    pub hash: Bytes,
+    /// `false` = verification key, `true` = script.
+    #[plutus(id = 1, default)]
+    #[serde(default)]
+    pub is_script: bool,
+    #[plutus(unknown)]
+    #[serde(skip)]
+    pub unknown: UnknownFields,
+}
+
+impl Credential {
+    pub fn key(hash: [u8; 28]) -> Self {
+        Self {
+            hash: Bytes::from(hash.to_vec()),
+            is_script: false,
+            unknown: UnknownFields::default(),
+        }
+    }
+
+    pub fn script(hash: [u8; 28]) -> Self {
+        Self {
+            hash: Bytes::from(hash.to_vec()),
+            is_script: true,
+            unknown: UnknownFields::default(),
+        }
+    }
 }
 
 impl ProtocolConfigBody {
@@ -165,6 +235,25 @@ impl ProtocolConfigBody {
 
     pub fn is_authorized_spender(&self, key: &PaymentKeyHash) -> bool {
         self.authorized_spenders.contains(key)
+    }
+
+    pub fn is_sink(&self, credential: &Credential) -> bool {
+        self.sinks
+            .iter()
+            .any(|sink| sink.hash == credential.hash && sink.is_script == credential.is_script)
+    }
+
+    /// Lovelace that must reach [`Self::fee_credential`] to buy `credits`.
+    ///
+    /// `None` closes the ADA path — when no fee credential is set, or when
+    /// the rate is zero. **A zero rate would sell credits for nothing**,
+    /// and it is the value a config carries before anyone sets one, so it
+    /// cannot be allowed to mean "free".
+    pub fn ada_topup_price(&self, credits: u64) -> Option<u64> {
+        if self.ada_per_credit == 0 || self.fee_credential.is_none() {
+            return None;
+        }
+        credits.checked_mul(self.ada_per_credit)
     }
 
     /// Do these signatories carry enough authority to update the config?
@@ -246,7 +335,7 @@ mod tests {
     fn tank() -> FuelBody {
         FuelBody {
             balance: 1_000,
-            reconciled_slot: 12_345,
+            reconciled_at: 12_345,
             reconciled_seq: 7,
             receipts_hash: Bytes::from(vec![0xab; 32]),
             scope: None,
@@ -321,6 +410,8 @@ mod tests {
             posting_cost: 0,
             authorized_updaters: vec![PaymentKeyHash([7u8; 28])],
             updater_threshold: 1,
+            fee_credential: Some(Credential::key([8u8; 28])),
+            sinks: vec![Credential::script([9u8; 28])],
             unknown: UnknownFields::default(),
         };
 
@@ -414,6 +505,54 @@ mod tests {
             !config.updater_quorum_met(&[me]),
             "a duplicated member must not let one signature satisfy 2-of-N"
         );
+    }
+
+    /// Both new paths must be **closed** in a default config, for the same
+    /// reason `updater_threshold: 0` locks: these are defaulted fields, so
+    /// the value present when somebody forgets is the one that has to be
+    /// safe. An unset fee credential meaning "pay anywhere" would let a
+    /// fresh config mint credits for a payment to the buyer themselves.
+    #[test]
+    fn a_default_config_sells_no_credits_and_knows_no_sinks() {
+        let config = ProtocolConfigBody::default();
+        assert_eq!(config.ada_topup_price(1), None);
+        assert!(!config.is_sink(&Credential::key([0u8; 28])));
+    }
+
+    #[test]
+    fn a_zero_rate_closes_the_ada_path_rather_than_making_credits_free() {
+        let config = ProtocolConfigBody {
+            fee_credential: Some(Credential::key([1u8; 28])),
+            ada_per_credit: 0,
+            ..ProtocolConfigBody::default()
+        };
+        assert_eq!(config.ada_topup_price(100), None);
+    }
+
+    #[test]
+    fn the_ada_price_is_credits_times_the_rate() {
+        let config = ProtocolConfigBody {
+            fee_credential: Some(Credential::key([1u8; 28])),
+            ada_per_credit: 500_000,
+            ..ProtocolConfigBody::default()
+        };
+        assert_eq!(config.ada_topup_price(4), Some(2_000_000));
+        // An overflowing ask is refused, not wrapped into a small price.
+        assert_eq!(config.ada_topup_price(u64::MAX), None);
+    }
+
+    /// A key hash and a script hash of the same bytes are different
+    /// credentials. Conflating them would let a script at hash H collect
+    /// fees destined for the key at hash H.
+    #[test]
+    fn a_sink_matches_on_both_the_hash_and_the_kind() {
+        let config = ProtocolConfigBody {
+            sinks: vec![Credential::script([9u8; 28])],
+            ..ProtocolConfigBody::default()
+        };
+        assert!(config.is_sink(&Credential::script([9u8; 28])));
+        assert!(!config.is_sink(&Credential::key([9u8; 28])));
+        assert!(!config.is_sink(&Credential::script([8u8; 28])));
     }
 
     #[test]

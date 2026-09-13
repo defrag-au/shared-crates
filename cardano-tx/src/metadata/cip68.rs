@@ -283,7 +283,7 @@ mod tests {
 
         let tank = FuelBody {
             balance: 1_000,
-            reconciled_slot: 12_345,
+            reconciled_at: 12_345,
             reconciled_seq: 7,
             receipts_hash: Bytes::from(vec![0xab; 32]),
             scope: None,

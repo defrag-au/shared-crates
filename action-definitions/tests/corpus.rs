@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 
 use action_definitions::codec::{constr_zero, int_data, Bytes, Cip68Envelope, PlutusCodec};
 use action_definitions::types::definition::Accepts;
-use action_definitions::types::fuel::{CostEntry, Currency};
+use action_definitions::types::fuel::{CostEntry, Credential, Currency};
 use action_definitions::types::grant::{
     Deliverer, Effect, EffectKind, EntitlementGrant, Grant, Mode, PolicyFilter, Stacking,
 };
@@ -236,7 +236,7 @@ fn cases() -> Vec<Case> {
     // The tank, in a real CIP-68 datum.
     let fuel_body = FuelBody {
         balance: 1_000,
-        reconciled_slot: 12_345,
+        reconciled_at: 12_345,
         reconciled_seq: 7,
         receipts_hash: Bytes::from(vec![0xab; 32]),
         scope: None,
@@ -279,14 +279,18 @@ fn cases() -> Vec<Case> {
             ada_per_credit: 500_000,
             posting_cost: 0,
             // Left at their defaults ON PURPOSE. `authorized_updaters` and
-            // `updater_threshold` were added to the struct after this
-            // fixture was frozen, and because both default they are not
+            // `updater_threshold` (ids 7-8), then `fee_credential` and
+            // `sinks` (ids 9-10), were each added to the struct after this
+            // fixture was frozen, and because all four default they are not
             // written — so THE BYTES ON DISK DO NOT MOVE. That is the whole
             // forward-compatibility claim, demonstrated on a real fixture
             // rather than asserted: adding fields to a struct does not
-            // change what an existing datum encodes to.
+            // change what an existing datum encodes to. Two separate rounds
+            // of additions have now passed this test.
             authorized_updaters: Vec::new(),
             updater_threshold: 0,
+            fee_credential: None,
+            sinks: Vec::new(),
             unknown: unknown(),
         },
     ));
@@ -307,6 +311,36 @@ fn cases() -> Vec<Case> {
             // inconvenience rather than a permanently frozen config.
             authorized_updaters: vec![PaymentKeyHash([0xc0; 28]), PaymentKeyHash([0xc1; 28])],
             updater_threshold: 1,
+            // Same reasoning as above: ids 9-10 arrived later and default,
+            // so this fixture's bytes did not move either.
+            fee_credential: None,
+            sinks: Vec::new(),
+            unknown: unknown(),
+        },
+    ));
+
+    // A config with BOTH top-up paths open — the shape `fuel.ak` reads when
+    // it authenticates a payment. Separate fixture because it is a separate
+    // shape, never an edit to a frozen one.
+    cases.push(typed(
+        "protocol_config_with_payment_paths",
+        &ProtocolConfigBody {
+            currencies: vec![Currency {
+                policy: PolicyId([2u8; 28]),
+                name: Some(Bytes::from(b"PERP".to_vec())),
+                credits_per_unit: 3,
+                unknown: unknown(),
+            }],
+            authorized_spenders: vec![PaymentKeyHash([0xaa; 28])],
+            cost_table: vec![CostEntry::new(EffectKind::Fuel, 0).unwrap()],
+            cost_table_version: 1,
+            max_debit_per_day: 1_000,
+            ada_per_credit: 500_000,
+            posting_cost: 0,
+            authorized_updaters: vec![PaymentKeyHash([0xc0; 28])],
+            updater_threshold: 1,
+            fee_credential: Some(Credential::key([0xfe; 28])),
+            sinks: vec![Credential::script([0x51; 28])],
             unknown: unknown(),
         },
     ));

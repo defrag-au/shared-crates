@@ -11,26 +11,6 @@
   ],
   "cost_table": [
     {
-      "effect_kind": 0,
-      "credits": 1
-    },
-    {
-      "effect_kind": 1,
-      "credits": 5
-    },
-    {
-      "effect_kind": 2,
-      "credits": 1
-    },
-    {
-      "effect_kind": 3,
-      "credits": 1
-    },
-    {
-      "effect_kind": 4,
-      "credits": 1
-    },
-    {
       "effect_kind": 5,
       "credits": 0
     }
@@ -39,8 +19,18 @@
   "max_debit_per_day": 1000,
   "ada_per_credit": 500000,
   "posting_cost": 0,
-  "authorized_updaters": [],
-  "updater_threshold": 0,
-  "fee_credential": null,
-  "sinks": []
+  "authorized_updaters": [
+    "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+  ],
+  "updater_threshold": 1,
+  "fee_credential": {
+    "hash": "fefefefefefefefefefefefefefefefefefefefefefefefefefefefe",
+    "is_script": false
+  },
+  "sinks": [
+    {
+      "hash": "51515151515151515151515151515151515151515151515151515151",
+      "is_script": true
+    }
+  ]
 }
