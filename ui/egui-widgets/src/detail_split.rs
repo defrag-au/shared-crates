@@ -3,15 +3,15 @@
 //! A main view with a detail pane down the right is one of the most ordinary
 //! layouts there is, and in egui it has a trap in it that costs an afternoon.
 //!
-//! ## The trap: `SidePanel::show_inside` does nothing useful in a top-down `Ui`
+//! ## The trap: a right-hand `Panel` does nothing useful in a top-down `Ui`
 //!
-//! The obvious construction is a `SidePanel::right(..).show_inside(ui, ..)`
-//! followed by a `CentralPanel::default().show_inside(ui, ..)`. It compiles, it
+//! The obvious construction is a `Panel::right(..).show(ui, ..)`
+//! followed by a `CentralPanel::default().show(ui, ..)`. It compiles, it
 //! looks right, and the panel renders — **floating over the content**, hiding
 //! whatever sits against the content's right edge. In a transaction feed that
 //! is the amount column, which is the one thing a reader came for.
 //!
-//! It is not a bug in `SidePanel`. Reserving space works like this
+//! It is not a bug in `Panel`. Reserving space works like this
 //! (`containers/panel.rs`, `show_inside_dyn`):
 //!
 //! ```text
