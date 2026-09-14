@@ -2204,6 +2204,7 @@ fn _size_hint() -> Vec2 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
 
     /// Ported from re_time_ruler `test_time_ranges_ui`: segment ends round-trip.
     #[test]
@@ -2459,10 +2460,10 @@ mod tests {
             s.toggle_play();
             step(0.0);
             s.tick(&ctx);
-            let _ = ctx.end_pass();
+            let _ = ctx.end_test_pass();
             step(1.0);
             s.tick(&ctx);
-            let _ = ctx.end_pass();
+            let _ = ctx.end_test_pass();
             s.playhead
         };
         // 1000 s of domain per 10 wall-s = 100/s, doubled = 200.
@@ -2767,14 +2768,14 @@ mod tests {
         s.toggle_play();
         step(0.0);
         s.tick(&ctx);
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
         step(1.0);
         s.tick(&ctx);
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
         assert!((s.playhead - 100).abs() <= 1, "got {}", s.playhead);
         step(30.0);
         s.tick(&ctx);
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
         assert_eq!(s.playhead, 1000);
         assert!(!s.playing, "stops at the end");
     }

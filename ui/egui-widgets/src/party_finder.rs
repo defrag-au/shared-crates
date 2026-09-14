@@ -414,6 +414,7 @@ fn elide(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
 
     fn index() -> AliasIndex {
         AliasIndex::new(vec![
@@ -435,11 +436,9 @@ mod tests {
 
     use egui::{Event, PointerButton, Pos2, RawInput, Rect, pos2, vec2};
 
-    /// egui 0.34 deprecates top-level `Panel::show(ctx, …)` in favour of
-    /// `show_inside(ui)`, but exposes no root `Ui` to show them inside — its own
-    /// crate docs still call `.show(ctx, …)`, and it silences the lint
-    /// internally the same way. Revisit when upstream lands the replacement.
-    #[expect(deprecated)]
+    /// `Context::run_ui` is the root `Ui` egui 0.34 did not expose — it drives
+    /// one pass and hands the closure a background `Ui` the panels show inside,
+    /// replacing the `begin_pass` / `show(ctx, …)` / `end_pass` trio.
     fn run_finder(
         ctx: &egui::Context,
         ix: &AliasIndex,
@@ -456,15 +455,15 @@ mod tests {
             events,
             ..Default::default()
         };
-        ctx.begin_pass(raw);
         // The app hosts the finder in a TOP PANEL, above the faces. A panel
         // clips its contents, so the dropdown has to be reachable from there —
         // testing it in a bare CentralPanel would not prove that.
-        egui::Panel::top("bar").show(ctx, |ui| {
-            out = PartyFinder::new("f", ix, state, sel).show(ui);
+        let _ = ctx.test_pass(raw, |ui| {
+            egui::Panel::top("bar").show(ui, |ui| {
+                out = PartyFinder::new("f", ix, state, sel).show(ui);
+            });
+            egui::CentralPanel::default().show(ui, |_ui| {});
         });
-        egui::CentralPanel::default().show(ctx, |_ui| {});
-        let _ = ctx.end_pass();
         out
     }
 
@@ -613,7 +612,6 @@ mod tests {
         text
     }
 
-    #[expect(deprecated)]
     fn run_masked(
         ctx: &egui::Context,
         ix: &AliasIndex,
@@ -630,15 +628,15 @@ mod tests {
             events,
             ..Default::default()
         };
-        ctx.begin_pass(raw);
         let mask = |k: &str| format!("wallet {}", &k[6..8]);
-        egui::Panel::top("bar").show(ctx, |ui| {
-            out = PartyFinder::new("f", ix, state, sel)
-                .key_label(&mask)
-                .show(ui);
+        let full = ctx.test_pass(raw, |ui| {
+            egui::Panel::top("bar").show(ui, |ui| {
+                out = PartyFinder::new("f", ix, state, sel)
+                    .key_label(&mask)
+                    .show(ui);
+            });
+            egui::CentralPanel::default().show(ui, |_ui| {});
         });
-        egui::CentralPanel::default().show(ctx, |_ui| {});
-        let full = ctx.end_pass();
         (out, painted(&full))
     }
 
@@ -690,17 +688,17 @@ mod tests {
         };
         let mut sel = Selection::default();
         let mut text = String::new();
-        #[expect(deprecated)]
         for _ in 0..2 {
             let raw = RawInput {
                 screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(700.0, 600.0))),
                 ..Default::default()
             };
-            ctx.begin_pass(raw);
-            egui::Panel::top("bar").show(&ctx, |ui| {
-                PartyFinder::new("f", &ix, &mut state, &mut sel).show(ui);
+            let full = ctx.test_pass(raw, |ui| {
+                egui::Panel::top("bar").show(ui, |ui| {
+                    PartyFinder::new("f", &ix, &mut state, &mut sel).show(ui);
+                });
             });
-            text = painted(&ctx.end_pass());
+            text = painted(&full);
         }
         assert!(text.contains("stake1uxf2xj…456789"), "{text:?}");
     }

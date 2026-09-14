@@ -683,6 +683,7 @@ fn paint_hold(ui: &Ui, rail: egui::Rect, progress: f32, theme: &Theme) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
     use egui::{Id, Pos2, Rect, vec2};
 
     fn run(build: impl FnOnce(&mut Ui) -> SliderGroupResponse) -> SliderGroupResponse {
@@ -709,7 +710,7 @@ mod tests {
             out = Some(r.inner);
             used = r.response.rect;
         });
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
         (out.unwrap(), used)
     }
 
@@ -807,7 +808,7 @@ mod tests {
                 g.left() + T_LABEL_W + T_RAIL_W * 0.2,
                 g.top() + g.height() * 0.5,
             );
-            let _ = ctx.end_pass();
+            let _ = ctx.end_test_pass();
         };
 
         // Four passes, and the shape is forced by egui rather than chosen: it

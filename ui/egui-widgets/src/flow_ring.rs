@@ -1074,6 +1074,7 @@ fn elide(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
     use egui::{Id, Pos2 as P, Rect as R, vec2};
 
     /// Seats on a crowded outer ring overlap their own hit radius. The old test
@@ -1156,7 +1157,7 @@ mod tests {
                     .show(ui),
             );
         });
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
         out.unwrap()
     }
 

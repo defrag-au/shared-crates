@@ -511,6 +511,7 @@ pub fn phosphor_label(ui: &Ui, icon: PhosphorIcon, label: &str) -> egui::WidgetT
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
     use egui::{Id, Pos2, Rect};
 
     /// Draw an icon on a context that has never had fonts installed, `passes`
@@ -530,7 +531,7 @@ mod tests {
                 PhosphorIcon::X.show(ui, 12.0, Color32::WHITE);
                 observed.push(ready);
             });
-            let _ = ctx.end_pass();
+            let _ = ctx.end_test_pass();
         }
         observed
     }

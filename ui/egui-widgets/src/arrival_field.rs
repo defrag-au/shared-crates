@@ -605,6 +605,7 @@ fn elide(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
 
     #[test]
     fn jitter_is_deterministic_and_bounded() {
@@ -694,7 +695,7 @@ mod tests {
                 ui.set_min_size(vec2(600.0, 400.0));
                 out = Some(ArrivalField::new(&arrivals, spine, sel).show(ui));
             });
-            let _ = ctx.end_pass();
+            let _ = ctx.end_test_pass();
             out.unwrap()
         };
 

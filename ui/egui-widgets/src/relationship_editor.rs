@@ -286,6 +286,7 @@ fn remove_cell(ui: &mut Ui, spine: &Spine, rest: egui::Color32, active: egui::Co
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
     use egui::{Id, Pos2, Rect};
 
     /// Every piece of text the widget painted, as `(text, x, y)`.
@@ -322,7 +323,7 @@ mod tests {
             egui::Area::new(Id::new("re")).show(&ctx, |ui| {
                 *resp = RelationshipEditor::new("t", edges, &options).show(ui);
             });
-            ctx.end_pass()
+            ctx.end_test_pass()
         };
         crate::install_phosphor_font(&ctx);
         let mut out = frame(Vec::new(), &mut resp);

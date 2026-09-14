@@ -45,7 +45,7 @@ impl<'a> TokenMultiselect<'a> {
     /// `id_salt` is `impl Hash` — pass the loop index when this appears in a
     /// list, or two instances share one open menu.
     pub fn new(
-        id_salt: impl std::hash::Hash,
+        id_salt: impl std::hash::Hash + std::fmt::Debug,
         selected: &'a [String],
         options: &'a [String],
     ) -> Self {

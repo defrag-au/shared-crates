@@ -1651,7 +1651,7 @@ mod app {
 
     impl eframe::App for StorybookApp {
         // eframe 0.34 made `ui` the required App method (was `update` in 0.33);
-        // panels nest via `show_inside(ui, …)` instead of `show(ctx, …)`.
+        // panels nest via `show(ui, …)` instead of the old `show(ctx, …)`.
         fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
             // The perf_strip story shows the storybook's OWN cost, so the frame
             // clock has to be wired up here rather than inside the story — a
@@ -1681,7 +1681,7 @@ mod app {
                     .default_size(180.0)
                     .resizable(false)
                     .frame(egui::Frame::side_top_panel(&ctx.global_style()).fill(CHROME_BG_SIDEBAR))
-                    .show_inside(ui, |ui| {
+                    .show(ui, |ui| {
                         ui.add_space(8.0);
                         ui.heading(egui::RichText::new("egui Widgets").color(CHROME_ACCENT));
                         ui.separator();
@@ -1698,7 +1698,7 @@ mod app {
 
             egui::CentralPanel::default()
                 .frame(egui::Frame::central_panel(&ctx.global_style()).fill(CHROME_BG_MAIN))
-                .show_inside(ui, |ui| {
+                .show(ui, |ui| {
                     // Chrome, deliberately NOT under the theme being reviewed —
                     // see `CHROME_*`.
                     ui.horizontal(|ui| {

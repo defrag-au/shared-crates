@@ -192,15 +192,18 @@ pub struct Select<'a> {
 }
 
 impl<'a> Select<'a> {
-    /// `id_salt` is `impl Hash`, egui's own convention — so a row in a list
-    /// passes `("tier", index)` rather than a constant.
+    /// `id_salt` is `impl Hash + Debug`, egui's own convention — so a row in a
+    /// list passes `("tier", index)` rather than a constant.
     ///
     /// It matters more here than for most widgets: this one owns a persistent
     /// open/query/highlight state AND a floating `Area`. Two selects sharing a
     /// salt collide on both, and egui paints its "first/second use of widget
     /// ID" banner across the layout. Taking `impl Hash` instead of `&str`
     /// makes the unique-per-instance case free rather than a `format!`.
-    pub fn new(id_salt: impl std::hash::Hash, options: &'a [SelectOption]) -> Self {
+    pub fn new(
+        id_salt: impl std::hash::Hash + std::fmt::Debug,
+        options: &'a [SelectOption],
+    ) -> Self {
         Self {
             id_salt: egui::Id::new(id_salt),
             options,
@@ -563,7 +566,7 @@ pub struct MultiSelect<'a> {
 
 impl<'a> MultiSelect<'a> {
     pub fn new(
-        id_salt: impl std::hash::Hash,
+        id_salt: impl std::hash::Hash + std::fmt::Debug,
         selected: &'a [String],
         options: &'a [SelectOption],
     ) -> Self {

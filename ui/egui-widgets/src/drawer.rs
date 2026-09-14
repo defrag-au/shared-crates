@@ -85,7 +85,7 @@ impl Drawer {
     /// A drawer keyed by `id_salt`. Give each drawer in an app its own salt —
     /// two drawers sharing one id share their scroll position and their
     /// dismissal.
-    pub fn new(id_salt: impl std::hash::Hash) -> Self {
+    pub fn new(id_salt: impl std::hash::Hash + std::fmt::Debug) -> Self {
         Self {
             id: Id::new("egui_widgets_drawer").with(id_salt),
             side: DrawerSide::Left,
@@ -205,6 +205,7 @@ impl Drawer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
 
     fn ctx_at(w: f32, h: f32) -> (egui::Context, egui::RawInput) {
         let ctx = egui::Context::default();
@@ -222,7 +223,7 @@ mod tests {
         let (ctx, input) = ctx_at(390.0, 844.0);
         let mut open = true;
         let mut measured = 0.0_f32;
-        let _ = ctx.run_ui(input, |ui| {
+        let _ = ctx.test_pass(input, |ui| {
             Drawer::new("t").width(320.0).show(ui, &mut open, |ui| {
                 measured = ui.available_width();
             });
@@ -248,7 +249,7 @@ mod tests {
         let (ctx, input) = ctx_at(390.0, 844.0);
         let mut open = true;
         let id = Id::new("egui_widgets_drawer").with("t");
-        let _ = ctx.run_ui(input, |ui| {
+        let _ = ctx.test_pass(input, |ui| {
             Drawer::new("t").show(ui, &mut open, |ui| {
                 // Deliberately far less content than the viewport is tall.
                 ui.label("one");
@@ -272,7 +273,7 @@ mod tests {
         let (ctx, input) = ctx_at(1440.0, 900.0);
         let mut open = true;
         let mut measured = 0.0_f32;
-        let _ = ctx.run_ui(input, |ui| {
+        let _ = ctx.test_pass(input, |ui| {
             Drawer::new("t").width(320.0).show(ui, &mut open, |ui| {
                 measured = ui.available_width();
             });
@@ -288,7 +289,7 @@ mod tests {
         let (ctx, input) = ctx_at(390.0, 844.0);
         let mut open = false;
         let mut ran = false;
-        let _ = ctx.run_ui(input, |ui| {
+        let _ = ctx.test_pass(input, |ui| {
             let out = Drawer::new("t").show(ui, &mut open, |_| {
                 ran = true;
             });
@@ -310,7 +311,7 @@ mod tests {
             modifiers: Default::default(),
         });
         let mut open = true;
-        let _ = ctx.run_ui(input, |ui| {
+        let _ = ctx.test_pass(input, |ui| {
             Drawer::new("t").show(ui, &mut open, |ui| {
                 ui.label("x");
             });

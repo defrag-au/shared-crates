@@ -505,6 +505,7 @@ fn elide(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
     use egui::{Id, Pos2, Rect, vec2};
 
     fn run(
@@ -547,7 +548,7 @@ mod tests {
                     .show(ui),
             );
         });
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
         out.unwrap()
     }
 

@@ -409,6 +409,7 @@ fn text_width(ui: &Ui, text: &str) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
 
     fn radius() -> CornerRadius {
         CornerRadius {
@@ -519,7 +520,7 @@ mod tests {
                     }
                 }
             });
-            let full = ctx.end_pass();
+            let full = ctx.end_test_pass();
             out.clear();
             fn walk(shape: &egui::Shape, out: &mut Vec<String>) {
                 match shape {

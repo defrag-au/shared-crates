@@ -573,6 +573,7 @@ fn truncate(s: &str, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
     use crate::time_spine::TimeView;
     use egui::{Id, Pos2, Rangef, vec2};
 
@@ -599,7 +600,7 @@ mod tests {
             ui.set_min_size(vec2(900.0, 400.0));
             out = Some(CoverageLanes::new(lanes, &scale, spine, sel).show(ui));
         });
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
         out.unwrap()
     }
 

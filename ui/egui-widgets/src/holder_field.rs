@@ -1144,6 +1144,7 @@ fn elide(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
 
     /// A label wider than its pane must not take the process down.
     ///
@@ -1467,7 +1468,7 @@ mod tests {
                 ui.set_min_size(vec2(600.0, 400.0));
                 out = Some(HolderField::new(&moves, spine, sel).show(ui));
             });
-            let _ = ctx.end_pass();
+            let _ = ctx.end_test_pass();
             out.unwrap()
         };
 
@@ -1523,7 +1524,7 @@ mod tests {
                 ui.set_min_size(vec2(600.0, 400.0));
                 out = Some(HolderField::new(&moves, spine, sel).show(ui));
             });
-            let _ = ctx.end_pass();
+            let _ = ctx.end_test_pass();
             out.unwrap()
         };
 
