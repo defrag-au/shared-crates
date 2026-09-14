@@ -826,6 +826,7 @@ fn title_case(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
     use egui::{Id, Pos2, Rect};
 
     fn slots() -> Vec<String> {
@@ -847,7 +848,7 @@ mod tests {
             egui::Area::new(Id::new("ee")).show(&ctx, |ui| {
                 EffectEditor::new(effects, &options).show(ui);
             });
-            ctx.end_pass()
+            ctx.end_test_pass()
         };
         // First pass binds the fonts — see `icons::ensure_fonts`.
         let _ = frame(effects);

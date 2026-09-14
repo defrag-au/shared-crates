@@ -490,6 +490,7 @@ fn route_card(ui: &mut Ui, route: &TierRoute<'_>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
 
     #[test]
     fn a_route_has_no_progress_until_asked() {
@@ -523,8 +524,8 @@ mod tests {
         let ctx = egui::Context::default();
         let mut open = false;
         let mut action = TierLadderAction::SignIn;
-        let _ = ctx.run_ui(Default::default(), |ui| {
-            egui::CentralPanel::default().show_inside(ui, |ui| {
+        let _ = ctx.test_pass(Default::default(), |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
                 action = TierLadder::new(&[]).show(ui, &mut open);
             });
         });

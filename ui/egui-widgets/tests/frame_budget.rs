@@ -4,6 +4,7 @@
 //! is 10,001 assets / 25,728 acquisition events / ~7,900 holders, and the
 //! per-frame work is what decides whether the window is usable. 60fps = 16.6ms
 //! for EVERYTHING, so a single widget's data pass needs to be well under that.
+use egui_widgets::test_pass::TestPass as _;
 use egui_widgets::{
     Acquisition, Arrival, distribution_at, distribution_series, peak_pile, piles_at,
 };
@@ -90,7 +91,7 @@ fn pass_sized(
             .height(h)
             .show(ui);
     });
-    let _ = ctx.end_pass();
+    let _ = ctx.end_test_pass();
 }
 
 #[test]
@@ -136,7 +137,7 @@ fn holder_field_frame_budget() {
             ui.set_min_size(vec2(1400.0, 400.0));
             HolderField::new(&moves, spine, sel).height(340.0).show(ui);
         });
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
     };
 
     // egui's own first frame (font atlas, tessellator warm-up) is not ours —

@@ -39,6 +39,7 @@ const NOT_WIDGETS: &[&str] = &[
     "motion",
     "screenshot",
     "selection",
+    "test_pass",
     "theme",
     "utils",
 ];

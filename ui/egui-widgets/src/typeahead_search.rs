@@ -464,6 +464,7 @@ fn reappeared(last_drawn: Option<u64>, now: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
     use egui::pos2;
 
     #[test]
@@ -518,10 +519,8 @@ mod tests {
 
         /// One frame with the given events; returns what the widget reported.
         ///
-        /// `#[expect(deprecated)]`: egui 0.34 deprecates top-level
-        /// `CentralPanel::show(ctx, …)` without exposing a root `Ui` to use
-        /// `show_inside` against — see the note in `party_finder`'s harness.
-        #[expect(deprecated)]
+        /// `Context::run_ui` supplies the root `Ui` the panel shows inside —
+        /// see the note in `party_finder`'s harness.
         fn frame(&mut self, options: &[TypeaheadOption], events: Vec<Event>) -> TypeaheadResponse {
             let mut out = TypeaheadResponse::default();
             let raw = RawInput {
@@ -529,16 +528,17 @@ mod tests {
                 events,
                 ..Default::default()
             };
-            self.ctx.begin_pass(raw);
-            egui::CentralPanel::default().show(&self.ctx, |ui| {
-                // The app puts the finder inside a horizontal row (next to the
-                // pinned chip), so the harness does too.
-                ui.horizontal(|ui| {
-                    out = TypeaheadSearch::new("h", &mut self.query, options, &mut self.highlight)
-                        .show(ui);
+            let query = &mut self.query;
+            let highlight = &mut self.highlight;
+            let _ = self.ctx.test_pass(raw, |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    // The app puts the finder inside a horizontal row (next to
+                    // the pinned chip), so the harness does too.
+                    ui.horizontal(|ui| {
+                        out = TypeaheadSearch::new("h", query, options, highlight).show(ui);
+                    });
                 });
             });
-            let _ = self.ctx.end_pass();
             out
         }
 

@@ -403,6 +403,7 @@ impl LayoutExt for Ui {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
 
     #[test]
     fn phone_widths_are_compact() {
@@ -577,7 +578,7 @@ mod tests {
             )),
             ..Default::default()
         };
-        let _ = ctx.run_ui(input, |ui| {
+        let _ = ctx.test_pass(input, |ui| {
             let avail = ui.available_width();
             // Wider than the phone → clamped to the phone.
             assert!(fit(ui, 520.0) <= avail);
@@ -604,7 +605,7 @@ mod tests {
             )),
             ..Default::default()
         };
-        let _ = ctx.run_ui(input, |ui| {
+        let _ = ctx.test_pass(input, |ui| {
             // The window is 2000 wide, so a viewport reading would return 900.
             assert_eq!(fit(ui, 900.0), 900.0, "sanity: unconstrained");
             ui.scope(|ui| {

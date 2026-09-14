@@ -41,6 +41,7 @@
 //! CornerAction::new(PhosphorIcon::X).shift(14.0).show(ui, rect, "remove");
 //! ```
 
+use std::fmt::Debug;
 use std::hash::Hash;
 
 use egui::{Align2, Pos2, Rect, Response, Sense, Ui, Vec2};
@@ -154,7 +155,7 @@ impl CornerAction {
 
     /// Paint the chip over `host` and return its response. `id_salt` must be
     /// unique per host (an asset id), or every card shares one button.
-    pub fn show(self, ui: &mut Ui, host: Rect, id_salt: impl Hash) -> Response {
+    pub fn show(self, ui: &mut Ui, host: Rect, id_salt: impl Hash + Debug) -> Response {
         let rect = self.rect(host);
         let id = ui.id().with(("corner-action", id_salt));
         let response = ui.interact(rect, id, Sense::click());

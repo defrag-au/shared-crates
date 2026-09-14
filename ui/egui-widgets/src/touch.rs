@@ -205,6 +205,7 @@ pub fn is_touch(ui: &Ui) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
 
     #[test]
     fn the_hold_is_a_gate_not_a_menu() {
@@ -243,7 +244,7 @@ mod tests {
             Some(scroller),
             "and the previous holder is told, so it stops scrolling"
         );
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
     }
 
     #[test]

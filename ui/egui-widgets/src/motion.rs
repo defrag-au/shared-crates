@@ -220,6 +220,7 @@ pub fn forget(ctx: &Context, id: Id) {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
 
     #[test]
     fn easing_curves_are_anchored_and_monotone() {
@@ -271,18 +272,18 @@ pub(crate) mod tests {
         // t=0: first sight → snaps to target.
         step(&ctx, 0.0);
         assert_eq!(tween(&ctx, id, 10.0, 1.0, Easing::Linear), 10.0);
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
 
         // t=0.5: retarget to 20 → begins moving from 10.
         step(&ctx, 0.5);
         assert_eq!(tween(&ctx, id, 20.0, 1.0, Easing::Linear), 10.0);
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
 
         // t=1.0: halfway (linear).
         step(&ctx, 1.0);
         let mid = tween(&ctx, id, 20.0, 1.0, Easing::Linear);
         assert!((mid - 15.0).abs() < 1e-4, "got {mid}");
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
 
         // t=1.5: arrived and settled — the recorded state reports done, which
         // is exactly the condition under which no repaint is requested.
@@ -290,7 +291,7 @@ pub(crate) mod tests {
         assert_eq!(tween(&ctx, id, 20.0, 1.0, Easing::Linear), 20.0);
         let settled = ctx.data(|d| d.get_temp::<TweenState>(id).map(|s| s.done_at(1.5)));
         assert_eq!(settled, Some(true), "settled tween must report done");
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
     }
 
     #[test]
@@ -299,13 +300,13 @@ pub(crate) mod tests {
         let id = Id::new("dot");
         step(&ctx, 0.0);
         tween(&ctx, id, 0.0, 1.0, Easing::Linear);
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
         step(&ctx, 0.0);
         tween(&ctx, id, 100.0, 1.0, Easing::Linear); // start flight 0→100
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
         step(&ctx, 0.5);
         let before = tween(&ctx, id, 100.0, 1.0, Easing::Linear); // 50
-        let _ = ctx.end_pass();
+        let _ = ctx.end_test_pass();
         step(&ctx, 0.5);
         // Re-aim to 0 at the same instant: must start from ~50, not jump.
         let after = tween(&ctx, id, 0.0, 1.0, Easing::Linear);

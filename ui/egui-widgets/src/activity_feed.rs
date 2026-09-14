@@ -814,6 +814,7 @@ fn elide(s: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
 
     /// Records every URI egui asks for, so a test can assert about *fetches*
     /// rather than about pixels.
@@ -875,10 +876,10 @@ mod tests {
         };
         let fmt = |a: i128| format!("{a}");
         // `run_ui` hands back a `&mut Ui` rather than a `&Context`, so the
-        // panel is shown INSIDE it — `Context::run` and `Panel::show` are the
-        // deprecated pair of that older shape and only make sense together.
-        let _ = ctx.run_ui(input, |ui| {
-            egui::CentralPanel::default().show_inside(ui, |ui| {
+        // panel is shown inside it. Since 0.35 that IS `Panel::show` — the
+        // `show_inside` spelling was folded back into it.
+        let _ = ctx.test_pass(input, |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ActivityFeed::new(&entries, &fmt).show(ui);
                 });

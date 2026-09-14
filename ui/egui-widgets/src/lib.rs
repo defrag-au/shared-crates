@@ -113,6 +113,7 @@ pub mod stat_strip;
 pub mod supply_bar;
 pub mod swap_modal;
 pub mod tag_list;
+pub mod test_pass;
 pub mod theme;
 pub mod tier_ladder;
 pub mod time_spine;

@@ -32,14 +32,17 @@ widgets come in pairs on purpose.
 These are catalogued modules, so the "read the catalogue" rule already covers them —
 but they are the ones that look correct, compile, and are wrong at runtime:
 
-- **A detail pane beside content: use `detail_split`, NOT `SidePanel::show_inside`.**
-  `SidePanel` reserves its strip by shrinking the parent's `cursor.max.x`, and a
+- **A detail pane beside content: use `detail_split`, NOT a right-hand `Panel`.**
+  A right `Panel` reserves its strip by shrinking the parent's `cursor.max.x`, and a
   **top-down** `Ui` never reads `cursor.max.x` (`Layout::available_from_cursor_max_rect`
   takes only `min.y` in its `TopDown` arm). The reservation is dropped, the following
   `CentralPanel` takes full width, and the pane floats over the content's right edge —
-  hiding exactly the column a reader came for. Panels work at the **eframe root**, where
-  the `Context` arbitrates; they do not work inside a `Ui` you are laying out yourself,
-  which is every `App::ui` here.
+  hiding exactly the column a reader came for.
+  (Names updated for egui 0.36: `SidePanel`/`TopBottomPanel` were aliases of `Panel` and
+  are gone, and `show_inside` is now `show`. The **behaviour** above is unchanged —
+  `available_from_cursor_max_rect` is byte-identical in 0.34.3 and 0.36.2, so the bump
+  neither caused nor fixed this. Panels still want a `Ui` that is arbitrating a whole
+  region, not one you are laying out yourself mid-column.)
 - **`Color32` stores PREMULTIPLIED channels** — each must be `<= alpha`.
   `from_rgba_premultiplied` with larger channels blends additively and renders far
   lighter than intended. `tests/contrast.rs` asserts this for the theme; the `theme_states`

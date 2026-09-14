@@ -83,7 +83,7 @@ impl Disclosure {
     /// `id` must be stable for the ROW, not its index — a feed re-pages, and
     /// an index-keyed animation then plays on whichever row inherited the
     /// slot, so opening row 3 animates a different transaction each time.
-    pub fn new(id: impl std::hash::Hash, open: bool) -> Self {
+    pub fn new(id: impl std::hash::Hash + std::fmt::Debug, open: bool) -> Self {
         Self {
             id: Id::new(id),
             open,
@@ -186,6 +186,7 @@ impl Disclosure {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
 
     /// A CLOSED disclosure takes no space and runs no body.
     ///
@@ -197,8 +198,8 @@ mod tests {
         let ctx = egui::Context::default();
         let mut ran = false;
         let mut drew = true;
-        let _ = ctx.run_ui(Default::default(), |ui| {
-            egui::CentralPanel::default().show_inside(ui, |ui| {
+        let _ = ctx.test_pass(Default::default(), |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
                 let before = ui.cursor().min.y;
                 drew = Disclosure::new("row", false).show(ui, |ui| {
                     ran = true;
@@ -217,8 +218,8 @@ mod tests {
         let ctx = egui::Context::default();
         let mut ran = false;
         let mut drew = false;
-        let _ = ctx.run_ui(Default::default(), |ui| {
-            egui::CentralPanel::default().show_inside(ui, |ui| {
+        let _ = ctx.test_pass(Default::default(), |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
                 drew = Disclosure::new("row", true).show(ui, |ui| {
                     ran = true;
                     ui.label("detail");
@@ -236,8 +237,8 @@ mod tests {
     fn a_deep_linked_row_opens_without_animating() {
         let ctx = egui::Context::default();
         let mut openness = 0.0;
-        let _ = ctx.run_ui(Default::default(), |ui| {
-            egui::CentralPanel::default().show_inside(ui, |ui| {
+        let _ = ctx.test_pass(Default::default(), |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
                 Disclosure::new("row", true).show(ui, |ui| {
                     ui.label("detail");
                 });

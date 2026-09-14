@@ -393,6 +393,7 @@ fn add_row(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_pass::TestPass as _;
     use egui::{Id, Pos2, Rect};
 
     /// Every text shape the editor painted, as `(text, x)`.
@@ -406,7 +407,7 @@ mod tests {
             egui::Area::new(Id::new("pe")).show(&ctx, |ui| {
                 PaletteEditor::new(palettes).show(ui);
             });
-            ctx.end_pass()
+            ctx.end_test_pass()
         };
         // First pass binds the fonts — see `icons::ensure_fonts`.
         let _ = frame(palettes);
