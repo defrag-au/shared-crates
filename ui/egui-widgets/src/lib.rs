@@ -158,6 +158,12 @@ pub mod route_summary;
 pub mod slippage_selector;
 pub mod split_allocation_bar;
 
+// Composed routes — SEQUENTIAL multi-venue routing, as distinct from the
+// split (parallel) routing above. No slippage control belongs on these
+// surfaces: a route names the exact UTxOs it spends.
+pub mod pool_inspector;
+pub mod route_quote;
+
 // Loan dashboard widgets
 pub mod custody_walk;
 pub mod data_table;

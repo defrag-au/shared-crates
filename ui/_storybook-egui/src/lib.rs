@@ -180,6 +180,11 @@ mod app {
             PriceImpactCurve => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::price_impact_curve::show(ui);
         }
 
+        group "Composed Routes" {
+            RouteQuote => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::route_quote::show(ui);
+            PoolInspector => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::pool_inspector::show(ui);
+        }
+
         group "Collection CSP" {
             VariantSplit => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::variant_split::show(ui);
             CollectionComposition => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::collection_composition::show(ui);
@@ -292,6 +297,8 @@ mod app {
                 Self::RouteSummary => "Route Summary",
                 Self::PoolLiquidity => "Pool Liquidity",
                 Self::PriceImpactCurve => "Price Impact Curve",
+                Self::RouteQuote => "Route Quote",
+                Self::PoolInspector => "Pool Inspector",
                 Self::VariantSplit => "Variant Split",
                 Self::CollectionComposition => "Collection Composition",
                 Self::ExposureBar => "Exposure Bar",
@@ -553,6 +560,12 @@ mod app {
                 }
                 Self::PriceImpactCurve => {
                     "AMM price impact curves per pool — visualizes why split routing minimizes slippage"
+                }
+                Self::RouteQuote => {
+                    "Sequential multi-venue route: per-leg fees in mixed assets, where the transaction boundaries fall, and what a partial failure leaves you holding"
+                }
+                Self::PoolInspector => {
+                    "A pool's real state — the curve reserve against the accrued fees sitting beside it, and whether the datum's invariant holds"
                 }
                 Self::VariantSplit => {
                     "Derived variant distribution for a variant_flow source — share weighted by downstream asset capacity, with the uniform baseline for contrast"

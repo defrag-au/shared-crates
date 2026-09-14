@@ -94,6 +94,10 @@ pub mod route_summary;
 pub mod slippage_selector;
 pub mod split_allocation_bar;
 
+// Composed routes — sequential multi-venue routing
+pub mod pool_inspector;
+pub mod route_quote;
+
 // Loan dashboard widgets
 pub mod custody_walk;
 pub mod data_table;

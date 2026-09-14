@@ -44,7 +44,7 @@ use egui::{Color32, RichText, Ui};
 
 use crate::chip::{Chip, ChipVariant};
 use crate::id_pill::{IdPill, IdPillLayout};
-use crate::theme::{ColorTokens, Radius, ThemeExt};
+use crate::theme::{ColorTokens, Radius, TextSize, ThemeExt};
 
 /// Why a compiled script can or cannot be deployed.
 ///
@@ -189,7 +189,7 @@ impl<'a> ScriptCatalogue<'a> {
             ui.label(
                 RichText::new("No validators in this artifact.")
                     .color(colors.text_muted)
-                    .size(11.0),
+                    .size(ui.text_size(TextSize::Base)),
             );
             return action;
         }
@@ -232,7 +232,7 @@ impl<'a> ScriptCatalogue<'a> {
                                         } else {
                                             colors.text_muted
                                         })
-                                        .size(12.0)
+                                        .size(ui.text_size(TextSize::Md))
                                         .monospace(),
                                 );
                                 Chip::new(row.status.label())
@@ -251,7 +251,7 @@ impl<'a> ScriptCatalogue<'a> {
                                     ui.label(
                                         RichText::new(format!("{} bytes", row.script_bytes))
                                             .color(colors.text_muted)
-                                            .size(10.0),
+                                            .size(ui.text_size(TextSize::Sm)),
                                     );
                                 }
                             });
@@ -263,7 +263,7 @@ impl<'a> ScriptCatalogue<'a> {
                                         row.shares_script_with.join(", ")
                                     ))
                                     .color(colors.text_muted)
-                                    .size(10.0),
+                                    .size(ui.text_size(TextSize::Sm)),
                                 );
                             }
 
@@ -271,7 +271,7 @@ impl<'a> ScriptCatalogue<'a> {
                                 ui.label(
                                     RichText::new(why)
                                         .color(explanation_colour(&row.status, &colors))
-                                        .size(10.0),
+                                        .size(ui.text_size(TextSize::Sm)),
                                 );
                             }
                         });

@@ -295,7 +295,7 @@ impl AuthStrategy for AuthWorkerStrategy {
     }
 
     fn gate_ui(&mut self, ui: &mut egui::Ui) {
-        use crate::theme::{Space, SpaceExt, ThemeExt};
+        use crate::theme::{Space, SpaceExt, TextSize, ThemeExt};
         use egui::{Align, Layout, RichText};
 
         let color = ui.tokens().color;
@@ -312,7 +312,7 @@ impl AuthStrategy for AuthWorkerStrategy {
                 ui.label(
                     RichText::new(&self.subtitle)
                         .color(color.text_primary)
-                        .size(16.0),
+                        .size(ui.text_size(TextSize::Xl)),
                 );
             }
             ui.add_space(ui.space(Space::Xl3));
@@ -325,7 +325,7 @@ impl AuthStrategy for AuthWorkerStrategy {
             let button = egui::Button::new(
                 RichText::new("Login with Discord")
                     .color(color.text_primary)
-                    .size(16.0),
+                    .size(ui.text_size(TextSize::Xl)),
             )
             .fill(color.accent);
 
