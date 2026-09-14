@@ -39,7 +39,7 @@ use crate::builder::TxDeps;
 use crate::builder::UnsignedTx;
 use crate::builder::fluent::TxBuilder;
 use crate::builder::marketplace::ParsedListing;
-use crate::builder::script::{CollateralConfig, ScriptInput, ScriptSource};
+use crate::builder::script::{CollateralConfig, RedeemerSource, ScriptInput, ScriptSource};
 use crate::error::TxBuildError;
 use crate::helpers::decode::decode_tx_hash;
 use crate::helpers::output::create_ada_output;
@@ -384,7 +384,7 @@ pub fn add_buys(
                 },
                 // Supply the preimage only for hash datums — see the module doc.
                 datum_cbor: (!listing.datum_is_inline).then(|| listing.datum_cbor.clone()),
-                redeemer_cbor,
+                redeemer: RedeemerSource::Fixed(redeemer_cbor),
                 ex_units: ExUnits {
                     mem: BUY_EX_UNITS_MEM,
                     steps: BUY_EX_UNITS_STEPS,

@@ -20,10 +20,11 @@ use cardano_assets::utxo::UtxoTag;
 use pallas_addresses::Address;
 use pallas_crypto::hash::Hash;
 use pallas_txbuilder::{ExUnits, Input, Output, ScriptKind, StagingTransaction};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use super::script::{CollateralConfig, MintEntry, ScriptInput, ScriptSource, ValidityInterval};
 use super::{TxDeps, UnsignedTx};
+use crate::blueprint::PlutusLanguage;
 use crate::error::TxBuildError;
 use crate::helpers::decode::decode_tx_hash;
 use crate::helpers::output::{add_assets_to_output, create_ada_output};
@@ -48,8 +49,12 @@ pub struct TxBuilder {
     validity: ValidityInterval,
     auxiliary_data: Option<Vec<u8>>,
     collateral: Option<CollateralConfig>,
-    /// Track highest Plutus version used (for cost model selection)
-    max_script_kind: Option<ScriptKind>,
+    /// Every Plutus language this transaction spends or mints under.
+    ///
+    /// A SET, not a maximum: the script-integrity hash covers a language view
+    /// per language present, so a transaction spending a V2 script and a V3
+    /// script needs BOTH views. See `assemble_tx` step 9.
+    script_languages: BTreeSet<PlutusLanguage>,
     /// Native scripts witnessing inputs at native-script addresses.
     ///
     /// Nothing like a Plutus script: no redeemer, no execution units, no
@@ -77,7 +82,7 @@ impl TxBuilder {
             validity: ValidityInterval::default(),
             auxiliary_data: None,
             collateral: None,
-            max_script_kind: None,
+            script_languages: BTreeSet::new(),
             native_scripts: Vec::new(),
             used_input_refs: HashSet::new(),
             input_lovelace: 0,
@@ -190,7 +195,13 @@ impl TxBuilder {
 
     /// True once any Plutus script input or mint has been staged.
     pub fn has_scripts(&self) -> bool {
-        self.max_script_kind.is_some()
+        !self.script_languages.is_empty()
+    }
+
+    /// The Plutus languages staged so far. A route that composes legs across
+    /// venues reads this to assert it really did register more than one view.
+    pub fn script_languages(&self) -> &BTreeSet<PlutusLanguage> {
+        &self.script_languages
     }
 
     // --- Minting ---
@@ -380,7 +391,7 @@ impl TxBuilder {
     /// Resolve collateral + coin selection, returning a `PreparedTx` ready
     /// for fee convergence. Shared by `build()` and `build_evaluated()`.
     fn prepare(self) -> Result<PreparedTx, TxBuildError> {
-        let has_scripts = self.max_script_kind.is_some();
+        let has_scripts = !self.script_languages.is_empty();
 
         // Resolve collateral
         let collateral_input = if has_scripts {
@@ -461,7 +472,7 @@ impl TxBuilder {
             validity: self.validity,
             auxiliary_data: self.auxiliary_data,
             collateral_input,
-            max_script_kind: self.max_script_kind,
+            script_languages: self.script_languages,
             native_scripts: self.native_scripts,
             network_id: self.deps.network_id,
             change_address: self.deps.from_address,
@@ -474,8 +485,8 @@ impl TxBuilder {
 
     // --- Private helpers ---
 
-    /// Track the highest Plutus version any script in this TX uses, which
-    /// selects the cost model that goes into the language views.
+    /// Record the Plutus language a script in this TX uses. Every distinct
+    /// language gets its own cost model in the language views.
     ///
     /// Both sources state their language; neither is inferred. A reference
     /// script used to default to V3 here on the grounds that reference scripts
@@ -486,15 +497,20 @@ impl TxBuilder {
     /// not check this field, so such a TX evaluates perfectly and then fails
     /// at submit. Every jpg.store buy went out that way — both jpg validators
     /// are plutusV2, and every buy spends them by reference.
+    ///
+    /// This used to keep only the HIGHEST version, which is the same bug in a
+    /// different costume: a composed route spends a PlutusV2 pool (Splash) and
+    /// a PlutusV3 pool (LumpPad) in one transaction, and registering only the
+    /// V3 view omits the V2 one from the hash. Same silent pass at evaluation,
+    /// same rejection at submit.
     fn track_script_kind(&mut self, source: &ScriptSource) {
-        let new_kind = match source {
+        let kind = match source {
             ScriptSource::Inline { language, .. } => *language,
             ScriptSource::Reference { language, .. } => *language,
         };
-        self.max_script_kind = Some(match self.max_script_kind {
-            None => new_kind,
-            Some(existing) => higher_plutus_version(existing, new_kind),
-        });
+        if let Some(language) = PlutusLanguage::from_script_kind(kind) {
+            self.script_languages.insert(language);
+        }
     }
 }
 
@@ -514,7 +530,7 @@ struct PreparedTx {
     validity: ValidityInterval,
     auxiliary_data: Option<Vec<u8>>,
     collateral_input: Option<Input>,
-    max_script_kind: Option<ScriptKind>,
+    script_languages: BTreeSet<PlutusLanguage>,
     native_scripts: Vec<Vec<u8>>,
     network_id: u8,
     change_address: Address,
@@ -571,7 +587,7 @@ impl PreparedTx {
                     &self.validity,
                     &self.auxiliary_data,
                     &self.collateral_input,
-                    self.max_script_kind,
+                    &self.script_languages,
                     &self.native_scripts,
                     self.network_id,
                     effective_fee,
@@ -604,7 +620,7 @@ fn assemble_tx(
     validity: &ValidityInterval,
     auxiliary_data: &Option<Vec<u8>>,
     collateral_input: &Option<Input>,
-    max_script_kind: Option<ScriptKind>,
+    script_languages: &BTreeSet<PlutusLanguage>,
     native_scripts: &[Vec<u8>],
     network_id: u8,
     fee: u64,
@@ -620,15 +636,29 @@ fn assemble_tx(
         tx = tx.script(ScriptKind::Native, script.clone());
     }
 
+    // Every input ref, for the ledger-sorted positions a self-indexing
+    // redeemer needs. Computed HERE, after coin selection, because that is the
+    // first point the input set is final.
+    let all_refs: Vec<(Vec<u8>, u64)> = inputs
+        .iter()
+        .map(|(input, _)| (input.tx_hash.0.to_vec(), input.txo_index))
+        .collect();
+
     // 1. Inputs + script context
     for (input, script_ctx) in inputs {
         tx = tx.input(input.clone());
 
         if let Some(ctx) = script_ctx {
             // Redeemer
+            let key = (input.tx_hash.0.to_vec(), input.txo_index);
+            let self_index = spend_redeemer_index(&all_refs, &key).ok_or_else(|| {
+                TxBuildError::BuildFailed(
+                    "script input is not in its own transaction's input set".to_string(),
+                )
+            })?;
             tx = tx.add_spend_redeemer(
                 input.clone(),
-                ctx.redeemer_cbor.clone(),
+                ctx.redeemer.resolve(self_index)?,
                 Some(ExUnits {
                     mem: ctx.ex_units.mem,
                     steps: ctx.ex_units.steps,
@@ -729,19 +759,28 @@ fn assemble_tx(
         tx = tx.collateral_input(col.clone());
     }
 
-    // 9. Language view (cost model)
+    // 9. Language views (cost models) — ONE PER LANGUAGE PRESENT.
     //
     // Sourced from the live protocol parameters, falling back to the bundled
     // constants only when the caller had none. A stale or wrong-length cost
     // model produces a wrong script-integrity hash and the node rejects every
     // script spend with `PPViewHashesDontMatch` — the failure that took the
     // collection-offer cancel path down when these were hardcoded here.
-    if let Some(kind) = max_script_kind {
-        let cost_model = match kind {
-            ScriptKind::PlutusV2 => cost_models.v2(),
-            _ => cost_models.v3(),
-        };
-        tx = tx.add_language(kind, cost_model);
+    //
+    // An OMITTED language is the same failure: a transaction spending a V2
+    // pool and a V3 pool hashes both views, so registering only one is a hash
+    // the node disagrees with. `add_language` writes into a `BTreeMap` keyed
+    // by version, so repeated calls compose and the emitted order is the
+    // ledger's regardless of the order we insert.
+    for language in script_languages {
+        let cost_model = cost_models.for_language(*language).ok_or_else(|| {
+            TxBuildError::BuildFailed(format!(
+                "no {} cost model in the protocol parameters; refusing to guess one \
+                 (a wrong language view evaluates fine and is rejected at submit)",
+                language.label()
+            ))
+        })?;
+        tx = tx.add_language(language.script_kind(), cost_model);
     }
 
     // 10. Fee + network
@@ -786,23 +825,10 @@ fn spend_redeemer_index(all_refs: &[(Vec<u8>, u64)], script_ref: &(Vec<u8>, u64)
         .map(|p| p as u64)
 }
 
-/// Return the "higher" Plutus version (V3 > V2 > V1).
-/// When a TX uses both V2 and V3 scripts, we need the V3 cost model.
-fn higher_plutus_version(a: ScriptKind, b: ScriptKind) -> ScriptKind {
-    fn rank(k: ScriptKind) -> u8 {
-        match k {
-            ScriptKind::PlutusV1 => 1,
-            ScriptKind::PlutusV2 => 2,
-            ScriptKind::PlutusV3 => 3,
-            _ => 0,
-        }
-    }
-    if rank(a) >= rank(b) { a } else { b }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::builder::script::RedeemerSource;
     use crate::params::TxBuildParams;
 
     fn test_deps() -> TxDeps {
@@ -1075,7 +1101,7 @@ mod tests {
                 language: ScriptKind::PlutusV2,
             },
             datum_cbor: None,
-            redeemer_cbor: vec![0xd8, 0x79, 0x80],
+            redeemer: RedeemerSource::Fixed(vec![0xd8, 0x79, 0x80]),
             ex_units: ExUnits {
                 mem: 1_000,
                 steps: 1_000,
@@ -1098,7 +1124,7 @@ mod tests {
             &ValidityInterval::default(),
             &None,
             &None,
-            Some(ScriptKind::PlutusV2),
+            &BTreeSet::from([PlutusLanguage::V2]),
             &[],
             1,
             200_000,
@@ -1135,7 +1161,7 @@ mod tests {
             &ValidityInterval::default(),
             &None,
             &None,
-            None,
+            &BTreeSet::new(),
             &[],
             1,
             200_000,
@@ -1175,19 +1201,226 @@ mod tests {
         tx.reference_inputs().len()
     }
 
+    /// Language views are a SET, one per language the transaction actually
+    /// uses — not the highest version seen.
+    ///
+    /// The pilot route spends a PlutusV2 pool (Splash) and a PlutusV3 pool
+    /// (LumpPad) in one transaction. Under the old `max_script_kind` the V2
+    /// view was dropped, the script-integrity hash came out wrong, and the
+    /// node rejected at submit while `evaluateTransaction` passed — the exact
+    /// failure class that took every jpg.store buy down.
     #[test]
-    fn test_higher_plutus_version() {
-        assert!(matches!(
-            higher_plutus_version(ScriptKind::PlutusV2, ScriptKind::PlutusV3),
-            ScriptKind::PlutusV3
-        ));
-        assert!(matches!(
-            higher_plutus_version(ScriptKind::PlutusV3, ScriptKind::PlutusV2),
-            ScriptKind::PlutusV3
-        ));
-        assert!(matches!(
-            higher_plutus_version(ScriptKind::PlutusV2, ScriptKind::PlutusV2),
-            ScriptKind::PlutusV2
-        ));
+    fn every_plutus_language_present_gets_its_own_view() {
+        let deps = test_deps();
+        let v2_utxo = UtxoApi {
+            tx_hash: "b".repeat(64),
+            output_index: 0,
+            lovelace: 3_000_000,
+            assets: vec![],
+            tags: vec![],
+        };
+        let v3_utxo = UtxoApi {
+            tx_hash: "c".repeat(64),
+            output_index: 0,
+            lovelace: 3_000_000,
+            assets: vec![],
+            tags: vec![],
+        };
+        let script_input = |language| ScriptInput {
+            script: ScriptSource::Reference {
+                utxo: Input::new(Hash::from([0xab; 32]), 0),
+                language,
+            },
+            datum_cbor: None,
+            redeemer: RedeemerSource::Fixed(vec![0xd8, 0x79, 0x80]),
+            ex_units: ExUnits {
+                mem: 1_000,
+                steps: 1_000,
+            },
+        };
+
+        let builder = TxBuilder::new(deps)
+            .spend_script_utxo(&v2_utxo, script_input(ScriptKind::PlutusV2))
+            .unwrap()
+            .spend_script_utxo(&v3_utxo, script_input(ScriptKind::PlutusV3))
+            .unwrap();
+
+        assert_eq!(
+            builder.script_languages(),
+            &BTreeSet::from([PlutusLanguage::V2, PlutusLanguage::V3])
+        );
+
+        let unsigned = builder.build().expect("build");
+        let views = unsigned.staging.language_views.expect("language views");
+        assert_eq!(
+            views.0.len(),
+            2,
+            "a V2 + V3 transaction hashes TWO language views; got {:?}",
+            views.0.keys().collect::<Vec<_>>()
+        );
+        // pallas encodes the version as 1 for V2 and 2 for V3.
+        assert!(views.0.contains_key(&1), "PlutusV2 view missing");
+        assert!(views.0.contains_key(&2), "PlutusV3 view missing");
+    }
+
+    /// The single-language case is unchanged — one script, one view.
+    #[test]
+    fn a_single_language_still_registers_one_view() {
+        let deps = test_deps();
+        let script_utxo = UtxoApi {
+            tx_hash: "b".repeat(64),
+            output_index: 0,
+            lovelace: 3_000_000,
+            assets: vec![],
+            tags: vec![],
+        };
+
+        let unsigned = TxBuilder::new(deps)
+            .spend_script_utxo(
+                &script_utxo,
+                ScriptInput {
+                    script: ScriptSource::Reference {
+                        utxo: Input::new(Hash::from([0xab; 32]), 0),
+                        language: ScriptKind::PlutusV3,
+                    },
+                    datum_cbor: None,
+                    redeemer: RedeemerSource::Fixed(vec![0xd8, 0x79, 0x80]),
+                    ex_units: ExUnits {
+                        mem: 1_000,
+                        steps: 1_000,
+                    },
+                },
+            )
+            .unwrap()
+            .build()
+            .expect("build");
+
+        let views = unsigned.staging.language_views.expect("language views");
+        assert_eq!(views.0.len(), 1);
+        assert!(views.0.contains_key(&2), "PlutusV3 view missing");
+    }
+
+    /// A transaction with no Plutus script registers no language view at all —
+    /// an empty views map is not the same as an absent one for the hash.
+    #[test]
+    fn no_plutus_script_registers_no_view() {
+        let deps = test_deps();
+        let to_addr = deps.from_address.clone();
+        let input = deps.utxos[0].clone();
+
+        let unsigned = TxBuilder::new(deps)
+            .input(&input)
+            .unwrap()
+            .pay_to(&to_addr, 2_000_000)
+            .build()
+            .expect("build");
+
+        assert!(unsigned.staging.language_views.is_none());
+    }
+
+    /// A self-indexing redeemer takes the position the LEDGER will give the
+    /// input, resolved after coin selection — not the order it was staged in.
+    ///
+    /// Splash's royalty pool takes `Constr 0 [Swap, selfIx]` and checks that
+    /// `selfIx` really points at itself. Coin selection runs AFTER the caller
+    /// stages the pool input and can add a funding UTxO that sorts ahead of
+    /// it, so anything computed at staging time is a guess.
+    #[test]
+    fn a_self_indexed_redeemer_uses_the_ledgers_position() {
+        use crate::builder::script::{constr, encode_plutus_data, int};
+        use pallas_traverse::MultiEraTx;
+
+        let mut deps = test_deps();
+        // A funding UTxO whose hash (0x00…) sorts BEFORE the pool input
+        // (0xee…), so the pool lands at index 1 and a staging-time guess of 0
+        // would be wrong.
+        deps.utxos[0].tx_hash = "0".repeat(64);
+        let funding = deps.utxos[0].clone();
+        let pool = UtxoApi {
+            tx_hash: "e".repeat(64),
+            output_index: 0,
+            lovelace: 3_000_000,
+            assets: vec![],
+            tags: vec![],
+        };
+
+        let unsigned = TxBuilder::new(deps)
+            .spend_script_utxo(
+                &pool,
+                ScriptInput {
+                    script: ScriptSource::Reference {
+                        utxo: Input::new(Hash::from([0xab; 32]), 0),
+                        language: ScriptKind::PlutusV2,
+                    },
+                    datum_cbor: None,
+                    redeemer: RedeemerSource::SelfIndexed {
+                        constructor: 0,
+                        action: constr(2, vec![]),
+                    },
+                    ex_units: ExUnits {
+                        mem: 1_000,
+                        steps: 1_000,
+                    },
+                },
+            )
+            .unwrap()
+            .input(&funding)
+            .unwrap()
+            .build()
+            .expect("build");
+
+        use pallas_txbuilder::BuildConway;
+        let built = unsigned.staging.build_conway_raw().expect("serialises");
+        let tx = MultiEraTx::decode(&built.tx_bytes.0).expect("decodes");
+        let inputs: Vec<String> = tx
+            .inputs()
+            .iter()
+            .map(|i| format!("{}#{}", i.hash(), i.index()))
+            .collect();
+        let pool_position = inputs
+            .iter()
+            .position(|r| r.starts_with(&"e".repeat(64)))
+            .expect("pool input present");
+        assert_eq!(pool_position, 1, "the pool must sort second here");
+
+        let expected =
+            encode_plutus_data(&constr(0, vec![constr(2, vec![]), int(1)])).expect("encodes");
+        let staged: Vec<Vec<u8>> = tx
+            .redeemers()
+            .iter()
+            .map(|r| encode_plutus_data(r.data()).expect("re-encodes"))
+            .collect();
+        assert!(
+            staged.contains(&expected),
+            "redeemer must name the ledger's index 1; staged {:?}",
+            staged.iter().map(hex::encode).collect::<Vec<_>>()
+        );
+    }
+
+    /// We have no bundled PlutusV1 cost model and will not invent one: a
+    /// guessed language view is a wrong script-integrity hash that evaluates
+    /// fine and is rejected at submit. Fail at build instead.
+    #[test]
+    fn a_v1_spend_without_live_params_is_refused_not_guessed() {
+        let inputs = vec![(Input::new(Hash::from([0x01; 32]), 0), None)];
+        let result = assemble_tx(
+            &inputs,
+            &[],
+            &[],
+            &[],
+            &[],
+            &ValidityInterval::default(),
+            &None,
+            &None,
+            &BTreeSet::from([PlutusLanguage::V1]),
+            &[],
+            1,
+            200_000,
+            &crate::builder::cost_models::PlutusCostModels::EMPTY,
+        );
+        assert!(
+            matches!(result, Err(TxBuildError::BuildFailed(ref m)) if m.contains("Plutus V1")),
+            "expected a refusal naming Plutus V1, got {result:?}"
+        );
     }
 }

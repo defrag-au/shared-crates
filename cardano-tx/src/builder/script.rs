@@ -42,13 +42,51 @@ pub enum ScriptSource {
 // Script input context
 // ============================================================================
 
+/// How a spend redeemer's CBOR is produced.
+///
+/// Most validators take a redeemer that is complete the moment the caller
+/// stages the input. A few require the input to name its OWN position in the
+/// transaction's input list — and that position is the LEDGER's sorted one,
+/// which is not known until coin selection has finished choosing funding
+/// inputs. Encoding it at staging time is a guess that silently breaks the
+/// moment a funding UTxO sorts ahead of the script input.
+#[derive(Debug, Clone)]
+pub enum RedeemerSource {
+    /// Complete at staging time.
+    Fixed(Vec<u8>),
+    /// `Constr <constructor> [action, <self index>]` — the shape Splash's
+    /// royalty pool requires (`Constr 0 [Swap, selfIx]`). The index is filled
+    /// in at assembly, from the same ledger-sorted ordering the ex-unit
+    /// patching uses.
+    SelfIndexed {
+        constructor: u32,
+        action: PlutusData,
+    },
+}
+
+impl RedeemerSource {
+    /// Resolve to CBOR, given this input's ledger-sorted position.
+    pub fn resolve(&self, self_index: u64) -> Result<Vec<u8>, TxBuildError> {
+        match self {
+            RedeemerSource::Fixed(cbor) => Ok(cbor.clone()),
+            RedeemerSource::SelfIndexed {
+                constructor,
+                action,
+            } => encode_plutus_data(&constr(
+                *constructor,
+                vec![action.clone(), int(self_index as i64)],
+            )),
+        }
+    }
+}
+
 /// Everything needed to spend a Plutus script UTxO.
 #[derive(Debug, Clone)]
 pub struct ScriptInput {
     pub script: ScriptSource,
     /// Datum witness (if not inline on the UTxO)
     pub datum_cbor: Option<Vec<u8>>,
-    pub redeemer_cbor: Vec<u8>,
+    pub redeemer: RedeemerSource,
     pub ex_units: pallas_txbuilder::ExUnits,
 }
 
@@ -106,6 +144,29 @@ pub fn constr(index: u32, fields: Vec<PlutusData>) -> PlutusData {
         tag,
         any_constructor,
         fields: MaybeIndefArray::Def(fields),
+    })
+}
+
+/// Build a `Constr` PlutusData whose field list uses an INDEFINITE-length
+/// CBOR array (`9f … ff`) rather than a definite one.
+///
+/// Not cosmetic. A validator that rebuilds a datum and compares it sees the
+/// decoded `Data` either way, but our round-trip tests compare BYTES against
+/// what the chain holds, and both LumpPad's and Splash's builders emit
+/// indefinite arrays. Re-encoding their datums definite-length would produce
+/// a different byte string for the same value — which is indistinguishable
+/// from a codec bug in a diff, and would be a real difference to anything
+/// that hashes the datum.
+pub fn constr_indef(index: u32, fields: Vec<PlutusData>) -> PlutusData {
+    let (tag, any_constructor) = if index <= 6 {
+        (121 + index as u64, None)
+    } else {
+        (102, Some(index as u64))
+    };
+    PlutusData::Constr(Constr {
+        tag,
+        any_constructor,
+        fields: MaybeIndefArray::Indef(fields),
     })
 }
 

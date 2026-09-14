@@ -10,6 +10,7 @@ pub mod intents;
 pub mod metadata;
 pub mod params;
 pub mod plan;
+pub mod route;
 pub mod select;
 pub mod selection;
 pub mod sign;
