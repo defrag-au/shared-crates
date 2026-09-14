@@ -374,21 +374,25 @@ fn the_composed_transaction_has_the_shape_both_validators_require() {
     // Outputs: Splash pool, LumpPad pool, the user's SWOLE, then ADA change.
     let outputs = tx.outputs();
     assert!(outputs.len() >= 3);
+    // PLACEMENT order, not leg order: LumpPad locates its continuing output
+    // at a fixed index and Splash finds its own by NFT, so the LumpPad pool
+    // takes index 0 even though it is the SECOND leg. §8.1's sketch drew this
+    // the other way round and the LumpPad validator rejected it on mainnet.
     assert_eq!(
         outputs[0].address().unwrap().to_bech32().unwrap(),
-        address_registry::dex::SPLASH_ROYALTY_POOL.pool_address,
-        "leg order: the Splash pool is first"
+        address_registry::dex::LUMPPAD.pool_address,
+        "the index-sensitive pool takes first place"
     );
     assert_eq!(
         outputs[1].address().unwrap().to_bech32().unwrap(),
-        address_registry::dex::LUMPPAD.pool_address,
-        "leg order: the LumpPad pool is second"
+        address_registry::dex::SPLASH_ROYALTY_POOL.pool_address,
+        "the NFT-located pool follows"
     );
 
-    // The Splash pool's continuing output gained exactly the 10 ADA paid in.
-    assert_eq!(outputs[0].value().coin(), 29_549_431_005 + 10_000_000);
     // The LumpPad pool keeps its 3 ADA forever.
-    assert_eq!(outputs[1].value().coin(), 3_000_000);
+    assert_eq!(outputs[0].value().coin(), 3_000_000);
+    // The Splash pool's continuing output gained exactly the 10 ADA paid in.
+    assert_eq!(outputs[1].value().coin(), 29_549_431_005 + 10_000_000);
 
     // The user's SWOLE is named by an explicit output; `TxBuilder`'s change is
     // ADA-only and would drop it.
@@ -411,12 +415,144 @@ fn the_composed_transaction_has_the_shape_both_validators_require() {
 
     // The pools keep every asset they held — Splash checks the token count,
     // and the LP supply must not move.
-    let splash_assets: usize = outputs[0]
-        .value().assets()
+    let splash_assets: usize = outputs[1]
+        .value()
+        .assets()
         .iter()
         .map(|p| p.assets().len())
         .sum();
     assert_eq!(splash_assets, 3, "NFT, LP token and LUMP all ride through");
+}
+
+/// The pilot cannot be atomic, and the route says so itself — from what the
+/// LEGS declare, not from anyone naming LumpPad.
+#[test]
+fn the_pilot_splits_because_lumppad_refuses_company() {
+    use super::{RoutePlan, Segment};
+
+    let route = pilot();
+    assert_eq!(route.plan(), RoutePlan::Chained { segments: 2 });
+    assert_eq!(
+        route.segments(),
+        vec![Segment { start: 0, end: 1 }, Segment { start: 1, end: 2 }],
+        "the Splash leg, then the LumpPad leg alone"
+    );
+
+    // The reverse route splits the same way — the solo leg is first.
+    let reverse = Route::new(vec![
+        Leg::LumpPadSell(LumpPadSellLeg),
+        Leg::SplashSwap(SplashSwapLeg::new(SplashDirection::YToX)),
+    ]);
+    assert_eq!(reverse.plan(), RoutePlan::Chained { segments: 2 });
+
+    // A route of legs that all compose stays atomic — the split is a
+    // consequence of what the venues say, not a policy about route length.
+    let two_splash = Route::new(vec![
+        Leg::SplashSwap(SplashSwapLeg::new(SplashDirection::XToY)),
+        Leg::SplashSwap(SplashSwapLeg::new(SplashDirection::YToX)),
+    ]);
+    assert_eq!(two_splash.plan(), RoutePlan::Atomic);
+    assert_eq!(two_splash.segments(), vec![Segment { start: 0, end: 2 }]);
+
+    // A single solo leg needs no chain: one segment is still atomic.
+    let alone = Route::new(vec![Leg::LumpPadBuy(LumpPadBuyLeg)]);
+    assert_eq!(alone.plan(), RoutePlan::Atomic);
+}
+
+/// Splitting a route does not change a single number. Each leg was quoted
+/// against its own pool state, and a transaction boundary touches none of it.
+#[test]
+fn a_segment_quotes_exactly_as_the_whole_route_did() {
+    let route = pilot();
+    let states = [splash_state(), lumppad_state()];
+    let whole = route.quote(&states, 10_000_000).unwrap();
+    let segments = route.segments();
+
+    let first = whole.segment(&segments[0]);
+    assert_eq!(first.asset_in, RouteAsset::Ada);
+    assert_eq!(first.amount_in, 10_000_000);
+    assert_eq!(first.amount_out, 65_862, "the LUMP handed to the next tx");
+    assert_eq!(first.legs.len(), 1);
+
+    let second = whole.segment(&segments[1]);
+    assert_eq!(
+        second.amount_in, 65_861,
+        "gross less the unplaceable 1 LUMP"
+    );
+    assert_eq!(second.amount_out, whole.amount_out);
+    assert_eq!(second.amount_out, 3_120_727);
+
+    // The hand-off is exactly what the first segment produces.
+    assert_eq!(first.amount_out, whole.legs[1].amount_in);
+    // And every fee line survives the split, in order.
+    let split: Vec<&str> = first
+        .fee_lines
+        .iter()
+        .chain(second.fee_lines.iter())
+        .map(|f| f.label)
+        .collect();
+    let whole_labels: Vec<&str> = whole.fee_lines.iter().map(|f| f.label).collect();
+    assert_eq!(split, whole_labels);
+}
+
+/// The Splash redeemer is `Constr 0 [2, selfIx]` with the action as a PLAIN
+/// INTEGER, and `selfIx` the pool input's LEDGER-SORTED position.
+///
+/// Golden: eight consecutive LUMP/ADA swaps on chain all carry exactly this,
+/// with `selfIx` observed as both 0 and 1 — so it is genuinely the sorted
+/// position and not a constant. `LUMPPAD_INTEGRATION.md` §7.5 recorded the
+/// action as `Constr 2 []`; the validator applies `unIData` to that field and
+/// rejects a constructor outright ("Expected the I constructor but got a
+/// different one"), which is what our first mainnet evaluation did.
+#[test]
+fn the_splash_redeemer_matches_the_chains() {
+    use crate::builder::script::{constr, encode_plutus_data, int};
+    use pallas_traverse::MultiEraTx;
+    use pallas_txbuilder::BuildConway;
+
+    let route = Route::new(vec![Leg::SplashSwap(SplashSwapLeg::new(
+        SplashDirection::XToY,
+    ))]);
+    let states = [splash_state()];
+    let quote = route.quote(&states, 10_000_000).unwrap();
+
+    let unsigned = route
+        .apply(user_deps(30_000_000), &states, &quote)
+        .unwrap()
+        .build()
+        .expect("builds");
+    let built = unsigned.staging.build_conway_raw().expect("serialises");
+    let tx = MultiEraTx::decode(&built.tx_bytes.0).expect("decodes");
+
+    // Where the ledger actually puts the pool input.
+    let pool = &states[0].contract_utxo;
+    let position = tx
+        .inputs()
+        .iter()
+        .map(|i| format!("{}#{}", i.hash(), i.index()))
+        .position(|r| r == format!("{}#{}", pool.tx_hash, pool.output_index))
+        .expect("the pool input is in the transaction");
+
+    let staged: Vec<Vec<u8>> = tx
+        .redeemers()
+        .iter()
+        .map(|r| encode_plutus_data(r.data()).expect("re-encodes"))
+        .collect();
+
+    let expected = encode_plutus_data(&constr(0, vec![int(2), int(position as i64)])).unwrap();
+    assert!(
+        staged.contains(&expected),
+        "expected Constr 0 [2, {position}]; staged {:?}",
+        staged.iter().map(hex::encode).collect::<Vec<_>>()
+    );
+
+    // And it is NOT the shape the doc recorded.
+    let wrong =
+        encode_plutus_data(&constr(0, vec![constr(2, vec![]), int(position as i64)])).unwrap();
+    assert!(
+        !staged.contains(&wrong),
+        "the action must be an integer, not a constructor — `unIData` rejects a Constr"
+    );
 }
 
 /// A route that ends in ADA needs no explicit user output — the builder's own
@@ -430,10 +566,175 @@ fn an_ada_ending_route_needs_no_asset_output() {
     let states = [lumppad_state(), splash_state()];
     let quote = route.quote(&states, 50_000_000).unwrap();
     let deps = user_deps(30_000_000);
+    // A funding UTxO holding EXACTLY the tokens being sold leaves nothing over.
+    let exact = vec![UtxoApi {
+        tx_hash: "3".repeat(64),
+        output_index: 0,
+        lovelace: 2_000_000,
+        assets: vec![asset(SWOLE_POLICY, SWOLE_NAME, 50_000_000)],
+        tags: vec![],
+    }];
     assert!(
         quote
-            .user_output(&deps.from_address, &deps.params)
+            .user_output(&deps.from_address, &deps.params, &exact)
             .is_none(),
         "nothing but ADA comes back, so there is no asset output to name"
     );
+}
+
+/// A UTxO is spent WHOLE, so a sell funded by a UTxO holding more than the
+/// trade returns the difference — and everything else that UTxO carried.
+///
+/// Getting this wrong fails no test that only looks at the route's own
+/// numbers. It fails at the NODE, with `ValueNotConservedUTxO`, after the user
+/// has already signed.
+#[test]
+fn a_partially_spent_funding_utxo_returns_its_remainder() {
+    let route = Route::new(vec![Leg::LumpPadSell(LumpPadSellLeg)]);
+    let states = [lumppad_state()];
+    let quote = route.quote(&states, 50_000_000).unwrap();
+    let deps = user_deps(30_000_000);
+
+    let funding = vec![UtxoApi {
+        tx_hash: "3".repeat(64),
+        output_index: 0,
+        lovelace: 2_000_000,
+        assets: vec![
+            asset(SWOLE_POLICY, SWOLE_NAME, 120_000_000),
+            // An unrelated token riding along in the same UTxO.
+            asset(LUMP_POLICY, LUMP_NAME, 4_242),
+        ],
+        tags: vec![],
+    }];
+    let output = quote
+        .user_output(&deps.from_address, &deps.params, &funding)
+        .expect("tokens come back");
+
+    let quantity = |policy: &str, name: &str| {
+        output
+            .assets
+            .iter()
+            .find(|(p, n, _)| p == policy && n == name)
+            .map(|(_, _, q)| *q)
+            .unwrap_or(0)
+    };
+    assert_eq!(
+        quantity(SWOLE_POLICY, SWOLE_NAME),
+        70_000_000,
+        "120M held less the 50M sold"
+    );
+    // The LUMP the sell produced, PLUS the 4,242 that rode in on the funding
+    // UTxO and was never part of the trade.
+    assert_eq!(
+        quantity(LUMP_POLICY, LUMP_NAME),
+        quote.amount_out + 4_242,
+        "the proceeds plus the unrelated token the UTxO carried"
+    );
+}
+
+/// A token-in route with no UTxO holding that token is refused at build,
+/// naming the shortfall — not built into a transaction that cannot balance.
+#[test]
+fn a_token_route_without_the_token_is_refused() {
+    let route = Route::new(vec![Leg::LumpPadSell(LumpPadSellLeg)]);
+    let states = [lumppad_state()];
+    let quote = route.quote(&states, 50_000_000).unwrap();
+
+    // `user_deps` holds only ADA.
+    let Err(error) = route.apply(user_deps(30_000_000), &states, &quote) else {
+        panic!("cannot sell what the wallet does not hold");
+    };
+    let message = error.to_string();
+    assert!(
+        message.contains("50000000"),
+        "the error must name the shortfall; got {message}"
+    );
+}
+
+/// EVERY asset balances: Σ inputs = Σ outputs + fee, for lovelace and for
+/// each native asset.
+///
+/// This is the invariant the node enforces and the evaluator does NOT. A
+/// transaction that creates tokens from nowhere evaluates perfectly and is
+/// rejected at submit — which is exactly what the first mainnet rehearsal of
+/// a LumpPad buy did, before the route staged the user's input asset.
+#[test]
+fn the_composed_transaction_conserves_every_asset() {
+    use pallas_traverse::MultiEraTx;
+    use pallas_txbuilder::BuildConway;
+    use std::collections::BTreeMap;
+
+    // A sell, because that is the direction with a token INPUT — the case
+    // that was wrong.
+    let route = Route::new(vec![
+        Leg::LumpPadSell(LumpPadSellLeg),
+        Leg::SplashSwap(SplashSwapLeg::new(SplashDirection::YToX)),
+    ]);
+    let states = [lumppad_state(), splash_state()];
+    let quote = route.quote(&states, 50_000_000).unwrap();
+
+    let mut deps = user_deps(30_000_000);
+    deps.utxos.push(UtxoApi {
+        tx_hash: "3".repeat(64),
+        output_index: 0,
+        lovelace: 2_000_000,
+        assets: vec![asset(SWOLE_POLICY, SWOLE_NAME, 120_000_000)],
+        tags: vec![],
+    });
+
+    // Everything this transaction can possibly spend, by reference.
+    let mut resolvable: BTreeMap<String, UtxoApi> = BTreeMap::new();
+    for utxo in &deps.utxos {
+        resolvable.insert(
+            format!("{}#{}", utxo.tx_hash, utxo.output_index),
+            utxo.clone(),
+        );
+    }
+    for state in &states {
+        let u = &state.contract_utxo;
+        resolvable.insert(format!("{}#{}", u.tx_hash, u.output_index), u.clone());
+    }
+
+    let unsigned = route
+        .apply(deps, &states, &quote)
+        .unwrap()
+        .build()
+        .expect("builds");
+    let fee = unsigned.staging.fee.expect("fee staged");
+    let built = unsigned.staging.build_conway_raw().expect("serialises");
+    let tx = MultiEraTx::decode(&built.tx_bytes.0).expect("decodes");
+
+    let mut balance: BTreeMap<String, i128> = BTreeMap::new();
+    for input in tx.inputs() {
+        let key = format!("{}#{}", input.hash(), input.index());
+        let utxo = resolvable
+            .get(&key)
+            .unwrap_or_else(|| panic!("input {key} is not one this test staged"));
+        *balance.entry("lovelace".to_string()).or_default() += i128::from(utxo.lovelace);
+        for a in &utxo.assets {
+            *balance.entry(a.asset_id.concatenated()).or_default() += i128::from(a.quantity);
+        }
+    }
+    for output in tx.outputs() {
+        *balance.entry("lovelace".to_string()).or_default() -= i128::from(output.value().coin());
+        for policy in output.value().assets() {
+            for a in policy.assets() {
+                *balance
+                    .entry(format!(
+                        "{}{}",
+                        hex::encode(a.policy()),
+                        hex::encode(a.name())
+                    ))
+                    .or_default() -= i128::from(a.output_coin().unwrap_or(0));
+            }
+        }
+    }
+    *balance.entry("lovelace".to_string()).or_default() -= i128::from(fee);
+
+    for (asset_id, delta) in &balance {
+        assert_eq!(
+            *delta, 0,
+            "{asset_id} does not balance: inputs − outputs − fee = {delta}"
+        );
+    }
 }

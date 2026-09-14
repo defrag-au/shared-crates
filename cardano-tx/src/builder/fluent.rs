@@ -287,6 +287,23 @@ impl TxBuilder {
     where
         E: crate::evaluate::TxEvaluator + ?Sized,
     {
+        self.build_evaluated_pending(evaluator, &[]).await
+    }
+
+    /// As [`Self::build_evaluated`], for a transaction in a CHAINED plan.
+    ///
+    /// `pending` are UTxOs an earlier, unsubmitted transaction will create.
+    /// Without them the evaluator cannot resolve this transaction's inputs and
+    /// reports a malformed transaction rather than a script result — so the
+    /// chain would be unevaluatable and every budget a guess.
+    pub async fn build_evaluated_pending<E>(
+        self,
+        evaluator: &E,
+        pending: &[crate::evaluate::PendingUtxo],
+    ) -> Result<UnsignedTx, TxBuildError>
+    where
+        E: crate::evaluate::TxEvaluator + ?Sized,
+    {
         let mut prepared = self.prepare()?;
 
         // Round 1: build with estimated ExUnits
@@ -302,9 +319,12 @@ impl TxBuilder {
 
         // Evaluate script execution costs via the injected provider (Maestro,
         // Koios/Ogmios, …) to get the real per-redeemer ExUnits.
-        let eval_results = evaluator.evaluate(&tx_cbor_hex).await.map_err(|e| {
-            TxBuildError::BuildFailed(format!("{} evaluate failed: {e}", evaluator.name()))
-        })?;
+        let eval_results = evaluator
+            .evaluate_pending(&tx_cbor_hex, pending)
+            .await
+            .map_err(|e| {
+                TxBuildError::BuildFailed(format!("{} evaluate failed: {e}", evaluator.name()))
+            })?;
 
         // Patch spend redeemer ExUnits (redeemer_tag = "spend").
         //

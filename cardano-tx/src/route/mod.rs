@@ -23,6 +23,8 @@ pub mod lumppad;
 mod pilot;
 pub mod splash_pool;
 
+use cardano_assets::UtxoApi;
+use cardano_assets::utxo::UtxoTag;
 use pallas_addresses::Address;
 use pallas_txbuilder::ExUnits;
 use std::collections::BTreeMap;
@@ -32,7 +34,10 @@ use crate::builder::fluent::TxBuilder;
 use crate::error::TxBuildError;
 use crate::evaluate::TxEvaluator;
 
-pub use leg::{FeeLine, LegQuote, LegState, OutputSpec, RouteAsset, RouteError, RouteLeg};
+pub use leg::{
+    FeeLine, LegQuote, LegState, OutputPlacement, OutputSpec, RouteAsset, RouteError, RouteLeg,
+    SharesTransaction,
+};
 pub use lumppad::{LumpPadBuyLeg, LumpPadSellLeg};
 pub use splash_pool::{SplashDirection, SplashSwapLeg};
 
@@ -79,13 +84,19 @@ impl RouteLeg for Leg {
     fn quote(&self, state: &LegState, amount_in: u64) -> Result<LegQuote, RouteError> {
         self.as_route_leg().quote(state, amount_in)
     }
-    fn apply(
+    fn output_placement(&self) -> OutputPlacement {
+        self.as_route_leg().output_placement()
+    }
+    fn shares_transaction(&self) -> SharesTransaction {
+        self.as_route_leg().shares_transaction()
+    }
+    fn stage_input(
         &self,
         builder: TxBuilder,
         state: &LegState,
         quote: &LegQuote,
     ) -> Result<TxBuilder, TxBuildError> {
-        self.as_route_leg().apply(builder, state, quote)
+        self.as_route_leg().stage_input(builder, state, quote)
     }
 }
 
@@ -125,15 +136,50 @@ impl RouteQuote {
             .unwrap_or(0)
     }
 
-    /// Everything the route hands back to the user: the final output, plus any
-    /// leg remainders, gathered into ONE output sized at its own min-UTxO.
+    /// The sub-quote covering one segment, as if that span were a route of
+    /// its own.
     ///
-    /// `None` when the route produces only ADA, which the builder's change
+    /// The NUMBERS do not change when a route is split — each leg was quoted
+    /// against its own pool state and nothing about a transaction boundary
+    /// touches that. Only the boundary moves, which is what makes a chained
+    /// plan quote identically to the atomic one it replaces.
+    pub fn segment(&self, segment: &Segment) -> RouteQuote {
+        let legs: Vec<LegQuote> = self.legs[segment.start..segment.end].to_vec();
+        let first = legs.first().expect("a segment has at least one leg");
+        let last = legs.last().expect("a segment has at least one leg");
+        RouteQuote {
+            asset_in: first.asset_in.clone(),
+            amount_in: first.consumed_in(),
+            asset_out: last.asset_out.clone(),
+            amount_out: last.amount_out,
+            fee_lines: legs.iter().flat_map(|l| l.fees.clone()).collect(),
+            ex_units_total: legs
+                .iter()
+                .fold(ExUnits { mem: 0, steps: 0 }, |acc, l| ExUnits {
+                    mem: acc.mem + l.seed_ex_units.mem,
+                    steps: acc.steps + l.seed_ex_units.steps,
+                }),
+            legs,
+        }
+    }
+
+    /// Everything the route hands back to the user, gathered into ONE output
+    /// sized at its own min-UTxO: what the route produced, any leg remainders,
+    /// and whatever the `funding` inputs carried beyond what the route spent.
+    ///
+    /// `funding` is the UTxOs staged to supply the route's INPUT asset — empty
+    /// for an ADA-in route, where the builder's own coin selection covers it.
+    /// Their leftovers have to be named here or the transaction does not
+    /// conserve value: a UTxO is spent WHOLE, so a wallet UTxO holding 187,816
+    /// LUMP put into a 30,000-LUMP trade must return 157,816 somewhere.
+    ///
+    /// `None` when nothing but ADA comes back, which the builder's change
     /// output already carries.
     pub fn user_output(
         &self,
         owner: &Address,
         params: &crate::params::TxBuildParams,
+        funding: &[UtxoApi],
     ) -> Option<OutputSpec> {
         let mut tokens: BTreeMap<cardano_assets::AssetId, u64> = BTreeMap::new();
         let mut lovelace_out = 0u64;
@@ -148,9 +194,28 @@ impl RouteQuote {
             }
         };
 
+        // Everything the funding inputs brought in — a UTxO is spent whole,
+        // including assets the route has no interest in.
+        for utxo in funding {
+            for asset in &utxo.assets {
+                credit(&RouteAsset::Token(asset.asset_id.clone()), asset.quantity);
+            }
+        }
         credit(&self.asset_out, self.amount_out);
         for leg in &self.legs {
             credit(&leg.asset_in, leg.remainder_in);
+        }
+
+        // …less what the first leg actually takes off the user. Remainders are
+        // credited above, so debit the amount OFFERED, not the amount
+        // consumed, or the unplaceable part is counted twice.
+        if let (RouteAsset::Token(id), Some(first)) = (&self.asset_in, self.legs.first())
+            && let Some(held) = tokens.get_mut(id)
+        {
+            *held = held.saturating_sub(first.amount_in);
+            if *held == 0 {
+                tokens.remove(id);
+            }
         }
 
         if tokens.is_empty() {
@@ -175,6 +240,46 @@ impl RouteQuote {
     }
 }
 
+/// How many transactions a route needs, and why.
+///
+/// Not a preference — a consequence of what the venues will accept. A route
+/// whose legs all compose settles atomically; one containing a leg that
+/// refuses company cannot, at any price.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RoutePlan {
+    /// Every leg in one transaction. Settles or fails as a unit; there is no
+    /// state in which the user holds an intermediate asset.
+    Atomic,
+    /// Several transactions, each spending the previous one's hand-off
+    /// output. Built together and signed together, but submitted in order.
+    ///
+    /// The trade-off is explicit: the user CAN end up holding an intermediate
+    /// asset if a later transaction does not land. What they cannot get is a
+    /// worse price than quoted — every leg still names the exact UTxO it
+    /// spends, so a moved pool fails at phase 1 for free rather than filling
+    /// badly.
+    Chained { segments: usize },
+}
+
+/// One transaction's worth of a route: a span of legs that can share.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Segment {
+    /// Index of the first leg, into [`Route::legs`].
+    pub start: usize,
+    /// One past the last leg.
+    pub end: usize,
+}
+
+impl Segment {
+    pub fn len(&self) -> usize {
+        self.end - self.start
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.start >= self.end
+    }
+}
+
 /// An ordered list of legs, each spending one named contract UTxO.
 #[derive(Debug, Clone)]
 pub struct Route {
@@ -184,6 +289,53 @@ pub struct Route {
 impl Route {
     pub fn new(legs: Vec<Leg>) -> Self {
         Self { legs }
+    }
+
+    /// Split the route into the transactions its venues will actually accept.
+    ///
+    /// A leg that declares [`SharesTransaction::No`] gets a transaction to
+    /// itself; runs of legs that compose are grouped. Pure, and decided by
+    /// what the legs say rather than by who they are — a venue that later
+    /// proves it tolerates company only has to change its own declaration.
+    pub fn segments(&self) -> Vec<Segment> {
+        let mut segments: Vec<Segment> = Vec::new();
+        for (index, leg) in self.legs.iter().enumerate() {
+            let solo = leg.shares_transaction() == SharesTransaction::No;
+            match segments.last_mut() {
+                // Extend the open segment, unless either it or this leg
+                // insists on being alone.
+                Some(open)
+                    if !solo
+                        && self.legs[open.start..open.end]
+                            .iter()
+                            .all(|l| l.shares_transaction() == SharesTransaction::Yes) =>
+                {
+                    open.end = index + 1;
+                }
+                _ => segments.push(Segment {
+                    start: index,
+                    end: index + 1,
+                }),
+            }
+        }
+        segments
+    }
+
+    /// What this route's legs force: one transaction, or several.
+    pub fn plan(&self) -> RoutePlan {
+        let segments = self.segments();
+        if segments.len() <= 1 {
+            RoutePlan::Atomic
+        } else {
+            RoutePlan::Chained {
+                segments: segments.len(),
+            }
+        }
+    }
+
+    /// The sub-route covering one segment.
+    pub fn sub_route(&self, segment: &Segment) -> Route {
+        Route::new(self.legs[segment.start..segment.end].to_vec())
     }
 
     /// Pure. Validates that the legs chain (`leg[i].asset_out ==
@@ -265,17 +417,332 @@ impl Route {
     ) -> Result<TxBuilder, TxBuildError> {
         let owner = deps.from_address.clone();
         let params = deps.params.clone();
+
+        // The route's INPUT asset has to arrive as an input. `TxBuilder`'s own
+        // coin selection deliberately takes only asset-free UTxOs — it is
+        // selecting for FEES — so a token-in route gets nothing from it, and
+        // the transaction would balance in lovelace while creating tokens from
+        // nowhere. That evaluates perfectly (the evaluator runs scripts; it
+        // does not check value conservation) and is rejected at submit with
+        // `ValueNotConservedUTxO`.
+        let funding = select_input_utxos(&deps.utxos, quote)
+            .map_err(|e| TxBuildError::BuildFailed(e.to_string()))?;
+
         let mut builder = TxBuilder::new(deps);
+        for utxo in &funding {
+            builder = builder.input(utxo)?;
+        }
         for ((leg, state), leg_quote) in self.legs.iter().zip(states).zip(&quote.legs) {
-            builder = leg.apply(builder, state, leg_quote)?;
+            builder = leg.stage_input(builder, state, leg_quote)?;
         }
 
-        if let Some(output) = quote.user_output(&owner, &params) {
+        // Continuing outputs, ORDERED BY PLACEMENT and not by leg order.
+        //
+        // A validator that locates its output at a fixed index has to get
+        // that index; one that finds its own output by an NFT does not care.
+        // In the pilot that means LumpPad's pool output goes first and
+        // Splash's follows, which is the reverse of the leg order — and the
+        // reverse of what §8.1's sketch drew.
+        let mut placed: Vec<(OutputPlacement, &OutputSpec)> = self
+            .legs
+            .iter()
+            .zip(&quote.legs)
+            .map(|(leg, leg_quote)| (leg.output_placement(), &leg_quote.continuing_output))
+            .collect();
+        if placed
+            .iter()
+            .filter(|(p, _)| *p == OutputPlacement::First)
+            .count()
+            > 1
+        {
+            return Err(TxBuildError::BuildFailed(
+                "two legs both require the first output; they cannot share a \
+                 transaction and the route must be split"
+                    .to_string(),
+            ));
+        }
+        // `First` sorts before `Anywhere`, and the sort is STABLE, so legs
+        // that do not care keep their relative order.
+        placed.sort_by_key(|(placement, _)| *placement);
+        for (_, output) in placed {
+            builder = builder.output(output.to_output()?);
+        }
+
+        if let Some(output) = quote.user_output(&owner, &params, &funding) {
             builder = builder.output(output.to_output()?);
         }
 
         Ok(builder.with_collateral(crate::builder::script::CollateralConfig::Auto))
     }
+}
+
+/// Wallet UTxOs to stage so the route's input asset is actually present.
+///
+/// Empty for an ADA-in route: lovelace is what the builder's coin selection
+/// is for. For a token-in route (a LumpPad sell, or a buy paid in LUMP) this
+/// picks the fewest UTxOs that cover the amount — biggest holding first —
+/// because every one of them is spent WHOLE and everything else they carry
+/// has to come back in the user's output. Fewer inputs, smaller output.
+fn select_input_utxos(
+    available: &[UtxoApi],
+    quote: &RouteQuote,
+) -> Result<Vec<UtxoApi>, RouteError> {
+    let RouteAsset::Token(wanted) = &quote.asset_in else {
+        return Ok(Vec::new());
+    };
+    let needed = quote.legs.first().map(|l| l.amount_in).unwrap_or(0);
+    if needed == 0 {
+        return Ok(Vec::new());
+    }
+
+    let held = |utxo: &UtxoApi| -> u64 {
+        utxo.assets
+            .iter()
+            .find(|a| a.asset_id == *wanted)
+            .map(|a| a.quantity)
+            .unwrap_or(0)
+    };
+
+    let mut candidates: Vec<&UtxoApi> = available
+        .iter()
+        .filter(|u| {
+            held(u) > 0
+                // A datum-bearing, script-bearing or script-address UTxO is
+                // not ours to spend with a key.
+                && !u.tags.contains(&UtxoTag::HasDatum)
+                && !u.tags.contains(&UtxoTag::HasScriptRef)
+                && !u.tags.contains(&UtxoTag::ScriptAddress)
+        })
+        .collect();
+    candidates.sort_by_key(|u| std::cmp::Reverse(held(u)));
+
+    let mut chosen = Vec::new();
+    let mut collected = 0u64;
+    for utxo in candidates {
+        if collected >= needed {
+            break;
+        }
+        collected += held(utxo);
+        chosen.push(utxo.clone());
+    }
+
+    if collected < needed {
+        return Err(RouteError::InsufficientInputAsset {
+            asset: quote.asset_in.clone(),
+            needed,
+            available: collected,
+        });
+    }
+    Ok(chosen)
+}
+
+/// A route built into the transactions it actually needs.
+pub struct BuiltRoute {
+    pub plan: RoutePlan,
+    /// In submission order. For a chained plan, transaction `i + 1` spends an
+    /// output of transaction `i`, so the order is not a preference.
+    pub transactions: Vec<crate::builder::UnsignedTx>,
+    /// The whole route's quote — unchanged by any split.
+    pub quote: RouteQuote,
+    /// The hand-off each transaction leaves for the next, in the same order.
+    /// The LAST entry is what the user is left holding if the next
+    /// transaction never lands; empty for an atomic plan.
+    pub handoffs: Vec<crate::evaluate::PendingUtxo>,
+}
+
+impl BuiltRoute {
+    /// What the user holds if transaction `index` lands and the next does
+    /// not. `None` when nothing is stranded — the atomic case, or the last
+    /// transaction.
+    pub fn stranded_after(&self, index: usize) -> Option<&crate::evaluate::PendingUtxo> {
+        self.handoffs.get(index)
+    }
+}
+
+/// Build a route as its venues will accept it — one transaction, or a chain.
+///
+/// Each transaction is evaluated against the real validators before the next
+/// is built, and a chained one is evaluated with its parent's outputs supplied
+/// as [`PendingUtxo`](crate::evaluate::PendingUtxo) so the evaluator can
+/// resolve inputs that are not on chain yet.
+///
+/// The hand-off is an ORDINARY output at the user's own address. That is what
+/// makes a partial failure safe: if the second transaction never lands, the
+/// user simply holds the intermediate asset in their own wallet, spendable by
+/// their own key, with no contract involved.
+pub async fn build_route_plan<E>(
+    route: &Route,
+    deps: TxDeps,
+    states: &[LegState],
+    amount_in: u64,
+    evaluator: &E,
+) -> Result<BuiltRoute, RouteError>
+where
+    E: TxEvaluator + ?Sized,
+{
+    let quote = route.quote(states, amount_in)?;
+    let segments = route.segments();
+    let plan = route.plan();
+
+    let owner = deps.from_address.clone();
+    let owner_bech32 = owner
+        .to_bech32()
+        .map_err(|e| RouteError::Registry(format!("owner address: {e}")))?;
+
+    let mut wallet = deps.utxos.clone();
+    let mut transactions = Vec::with_capacity(segments.len());
+    let mut handoffs: Vec<crate::evaluate::PendingUtxo> = Vec::new();
+    // Every hand-off built so far, so a later transaction can be evaluated
+    // against all of them — a three-segment route's third transaction may
+    // still be spending the first's change.
+    let mut pending: Vec<crate::evaluate::PendingUtxo> = Vec::new();
+
+    for (index, segment) in segments.iter().enumerate() {
+        let sub_route = route.sub_route(segment);
+        let sub_quote = quote.segment(segment);
+        let sub_states = &states[segment.start..segment.end];
+        let is_last = index + 1 == segments.len();
+
+        let mut sub_deps = deps.clone();
+        sub_deps.utxos = wallet.clone();
+        // Only this segment's validators are referenced by this transaction,
+        // so only their bytes are charged for.
+        sub_deps.params.ref_script_size = sub_states
+            .iter()
+            .map(|s| u64::from(s.ref_script_size))
+            .sum();
+
+        let builder = sub_route.apply(sub_deps, sub_states, &sub_quote)?;
+        let unsigned = builder.build_evaluated_pending(evaluator, &pending).await?;
+
+        // Read the hand-off back OFF the built body rather than predicting it:
+        // the builder chooses the output's min-UTxO and coin selection decides
+        // what else rides along, so anything computed in advance is a guess
+        // that the next transaction would then fail to spend.
+        if !is_last {
+            let handoff = find_handoff(&unsigned, &owner, &owner_bech32, &sub_quote)?;
+            // The next segment funds from it, and it is the only wallet UTxO
+            // that is guaranteed to hold the intermediate asset.
+            wallet = vec![pending_to_utxo(&handoff)];
+            // …plus whatever confirmed ADA the wallet still has, for fees and
+            // collateral, minus what this transaction already spent.
+            let spent = spent_refs(&unsigned);
+            wallet.extend(
+                deps.utxos
+                    .iter()
+                    .filter(|u| !spent.contains(&(u.tx_hash.clone(), u.output_index)))
+                    .cloned(),
+            );
+            pending.push(handoff.clone());
+            handoffs.push(handoff);
+        }
+
+        transactions.push(unsigned);
+    }
+
+    Ok(BuiltRoute {
+        plan,
+        transactions,
+        quote,
+        handoffs,
+    })
+}
+
+/// The output a transaction leaves for the next one: at the user's own
+/// address, carrying the segment's output asset.
+fn find_handoff(
+    unsigned: &crate::builder::UnsignedTx,
+    owner: &Address,
+    owner_bech32: &str,
+    sub_quote: &RouteQuote,
+) -> Result<crate::evaluate::PendingUtxo, RouteError> {
+    use pallas_txbuilder::BuildConway;
+
+    // The hash is over the BODY, and signing only adds witnesses — so this is
+    // the reference the next transaction will spend, known before anyone signs
+    // anything. That is what makes chained building possible at all.
+    let built = unsigned
+        .staging
+        .clone()
+        .build_conway_raw()
+        .map_err(|e| RouteError::Build(format!("serialise a chained transaction: {e}")))?;
+    let tx_hash = hex::encode(built.tx_hash.0);
+
+    let wanted = match &sub_quote.asset_out {
+        RouteAsset::Ada => None,
+        RouteAsset::Token(id) => Some((id.policy_id.clone(), id.asset_name_hex.clone())),
+    };
+    let owner_bytes = owner.to_vec();
+
+    for (index, output) in unsigned.staging.outputs.iter().flatten().enumerate() {
+        if output.address.to_vec() != owner_bytes {
+            continue;
+        }
+        let assets: Vec<(String, String, u64)> = output
+            .assets
+            .iter()
+            .flat_map(|bundle| bundle.iter())
+            .flat_map(|(policy, names)| {
+                names.iter().map(move |(name, quantity)| {
+                    (hex::encode(policy.0), hex::encode(&name.0), *quantity)
+                })
+            })
+            .collect();
+
+        let carries = match &wanted {
+            Some((policy, name)) => assets
+                .iter()
+                .any(|(p, n, q)| p == policy && n == name && *q >= sub_quote.amount_out),
+            // An ADA hand-off is the change output — whichever of the user's
+            // outputs carries no assets.
+            None => assets.is_empty(),
+        };
+        if carries {
+            return Ok(crate::evaluate::PendingUtxo {
+                tx_hash,
+                index: index as u32,
+                address: owner_bech32.to_string(),
+                lovelace: output.lovelace,
+                assets,
+            });
+        }
+    }
+
+    Err(RouteError::Build(format!(
+        "the transaction for this segment produced no output at the user's address \
+         carrying {} {} — the next transaction would have nothing to spend",
+        sub_quote.amount_out, sub_quote.asset_out
+    )))
+}
+
+fn pending_to_utxo(pending: &crate::evaluate::PendingUtxo) -> UtxoApi {
+    UtxoApi {
+        tx_hash: pending.tx_hash.clone(),
+        output_index: pending.index,
+        lovelace: pending.lovelace,
+        assets: pending
+            .assets
+            .iter()
+            .map(
+                |(policy, name, quantity)| cardano_assets::utxo::AssetQuantity {
+                    asset_id: cardano_assets::AssetId::new_unchecked(policy.clone(), name.clone()),
+                    quantity: *quantity,
+                },
+            )
+            .collect(),
+        tags: Vec::new(),
+    }
+}
+
+/// Which wallet UTxOs a built transaction consumed.
+fn spent_refs(unsigned: &crate::builder::UnsignedTx) -> std::collections::HashSet<(String, u32)> {
+    unsigned
+        .staging
+        .inputs
+        .iter()
+        .flatten()
+        .map(|i| (hex::encode(i.tx_hash.0), i.txo_index as u32))
+        .collect()
 }
 
 /// Quote, build and EVALUATE a route in one call — the entry point a worker

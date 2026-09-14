@@ -131,6 +131,45 @@ impl LegQuote {
     }
 }
 
+/// Where a leg's continuing output has to sit among the transaction's
+/// outputs.
+///
+/// A whole-transaction concern, so the ROUTE places the outputs and the legs
+/// only declare their constraint. Two legs that both demand first place
+/// cannot compose, and saying so with a type means the route can detect that
+/// instead of building something one of them will reject.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum OutputPlacement {
+    /// The validator locates its continuing output at a FIXED index, so this
+    /// leg's output must come first. LumpPad's pool output is index 0 in
+    /// every transaction ever observed (LP §6.1, §8.1 item 3).
+    First,
+    /// The validator finds its own output by a token it carries, so the index
+    /// is free. Splash's royalty pool locates itself by its NFT (LP §7.5).
+    Anywhere,
+}
+
+/// Whether a leg's validator tolerates another Plutus script in the same
+/// transaction.
+///
+/// A property of the VENUE, stated by the leg, so the route splits itself
+/// rather than anyone special-casing a validator by name. The split is not an
+/// optimisation: a leg that says `No` will refuse to run beside company, so
+/// composing it atomically produces a transaction that cannot settle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SharesTransaction {
+    /// Composes freely.
+    Yes,
+    /// Must be the only Plutus script in its transaction.
+    ///
+    /// LumpPad's pool validator is this, proven on mainnet: it passes alone
+    /// (buy, and claim with three outputs, one of them paying a script
+    /// address) and fails in both composed directions at its own redeemer
+    /// while the other validator is never reached. The standard
+    /// double-satisfaction guard — see `LUMPPAD_INTEGRATION.md` §8.1 item 1.
+    No,
+}
+
 /// One hop of a route.
 pub trait RouteLeg {
     fn asset_in(&self, state: &LegState) -> Result<RouteAsset, RouteError>;
@@ -140,12 +179,24 @@ pub trait RouteLeg {
     /// input).
     fn quote(&self, state: &LegState, amount_in: u64) -> Result<LegQuote, RouteError>;
 
-    /// Stage this leg on the builder: script input, continuing output, and the
-    /// reference input its script lives in.
+    /// Where this leg's continuing output has to sit.
+    fn output_placement(&self) -> OutputPlacement;
+
+    /// Whether this leg's validator tolerates company.
+    fn shares_transaction(&self) -> SharesTransaction;
+
+    /// Stage this leg's SCRIPT INPUT on the builder — the spend, its redeemer
+    /// and the reference input its script lives in.
+    ///
+    /// Deliberately NOT the continuing output: output ORDER is a property of
+    /// the whole transaction, not of any one leg, and two legs staging their
+    /// own outputs can only ever produce leg order. The route reads
+    /// [`LegQuote::continuing_output`] and places them by
+    /// [`Self::output_placement`].
     ///
     /// MUST NOT add user change or collateral — the route does that once, for
     /// the whole transaction.
-    fn apply(
+    fn stage_input(
         &self,
         builder: TxBuilder,
         state: &LegState,
@@ -186,6 +237,15 @@ pub enum RouteError {
     InsufficientPoolReserve { needed: u64, available: u64 },
     #[error("nothing to claim: both fee buckets are empty")]
     NothingToClaim,
+    #[error(
+        "the wallet holds {available} {asset} but the route needs {needed} — \
+         and a route's input asset has to come from an INPUT, not from thin air"
+    )]
+    InsufficientInputAsset {
+        asset: RouteAsset,
+        needed: u64,
+        available: u64,
+    },
     #[error("arithmetic overflow while quoting")]
     Overflow,
     #[error("{0}")]

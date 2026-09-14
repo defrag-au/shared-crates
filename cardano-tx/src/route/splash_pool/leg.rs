@@ -12,14 +12,21 @@ use super::datum::RoyaltyPoolDatum;
 use super::pool_address;
 use super::quote::{PoolReserves, SplashDirection, price_impact_bps, quote_swap};
 use crate::builder::fluent::TxBuilder;
-use crate::builder::script::{RedeemerSource, ScriptInput, constr};
+use crate::builder::script::{RedeemerSource, ScriptInput, int};
 use crate::error::TxBuildError;
 use crate::route::leg::{
-    FeeLine, LegQuote, LegState, OutputSpec, RouteAsset, RouteError, RouteLeg,
+    FeeLine, LegQuote, LegState, OutputPlacement, OutputSpec, RouteAsset, RouteError, RouteLeg,
+    SharesTransaction,
 };
 
-/// `Swap = Constr 2 []` — the action inside the pool redeemer.
-const ACTION_SWAP: u32 = 2;
+/// `Swap` — the action inside the pool redeemer, as a PLAIN INTEGER.
+///
+/// `LUMPPAD_INTEGRATION.md` §7.5 recorded this as `Constr 2 []`, and it is
+/// not. The validator applies `unIData` to this field: handing it a
+/// constructor fails with "Expected the I constructor but got a different
+/// one", which is what our first mainnet evaluation of a Splash swap did.
+/// Eight consecutive swaps on the LUMP/ADA pool all carry `Constr 0 [2, ix]`.
+const ACTION_SWAP: i64 = 2;
 /// The pool redeemer is `Constr 0 [action, selfIx]`.
 const REDEEMER_CONSTRUCTOR: u32 = 0;
 
@@ -176,13 +183,26 @@ impl RouteLeg for SplashSwapLeg {
         })
     }
 
-    fn apply(
+    /// The royalty pool finds its continuing output BY NFT, so its index is
+    /// free — which is what lets a LumpPad leg take first place beside it.
+    fn output_placement(&self) -> OutputPlacement {
+        OutputPlacement::Anywhere
+    }
+
+    /// Splash's royalty pool composes: it ran happily beside the LumpPad
+    /// spend in both composed attempts — its redeemer was never even reached,
+    /// because LumpPad failed first.
+    fn shares_transaction(&self) -> SharesTransaction {
+        SharesTransaction::Yes
+    }
+
+    fn stage_input(
         &self,
         builder: TxBuilder,
         state: &LegState,
         quote: &LegQuote,
     ) -> Result<TxBuilder, TxBuildError> {
-        let builder = builder.spend_script_utxo(
+        builder.spend_script_utxo(
             &state.contract_utxo,
             ScriptInput {
                 script: state.script.clone(),
@@ -192,12 +212,11 @@ impl RouteLeg for SplashSwapLeg {
                 // NOT the order legs were staged in.
                 redeemer: RedeemerSource::SelfIndexed {
                     constructor: REDEEMER_CONSTRUCTOR,
-                    action: constr(ACTION_SWAP, vec![]),
+                    action: int(ACTION_SWAP),
                 },
                 ex_units: quote.seed_ex_units.clone(),
             },
-        )?;
-        Ok(builder.output(quote.continuing_output.to_output()?))
+        )
     }
 }
 

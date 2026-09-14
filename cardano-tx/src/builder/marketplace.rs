@@ -72,6 +72,28 @@ pub struct ScriptRefInfo {
     pub size: u64,
 }
 
+impl ScriptRefInfo {
+    /// Build from a chain query's reported script type and size — Koios's
+    /// `reference_script.type` / `.size`, or any indexer's equivalent.
+    ///
+    /// `None` for a native script (`timelock`) or an unrecognised language:
+    /// neither belongs in a language view, and a caller that substituted one
+    /// would be writing a script-integrity hash the node disagrees with.
+    ///
+    /// Exists so the type name is parsed in ONE place. It had already been
+    /// hand-matched in two workers, which is two chances to teach one of them
+    /// about a new language and not the other.
+    pub fn from_type_name(script_type: &str, size: u64) -> Option<Self> {
+        let language = match script_type {
+            "plutusV1" => pallas_txbuilder::ScriptKind::PlutusV1,
+            "plutusV2" => pallas_txbuilder::ScriptKind::PlutusV2,
+            "plutusV3" => pallas_txbuilder::ScriptKind::PlutusV3,
+            _ => return None,
+        };
+        Some(Self { language, size })
+    }
+}
+
 /// Parse a JPG.store listing datum (raw CBOR bytes) into payout obligations.
 ///
 /// Supports V1/V2/V3 datum format:

@@ -29,6 +29,7 @@ use crate::params::TxBuildParams;
 /// - Workers: convert from `SendParams` (AddressUtxo → UtxoApi, ProtocolParameters → TxBuildParams)
 /// - Browser: from CIP-30 wallet UTxOs + fetched protocol params
 /// - CLI: from any indexer API
+#[derive(Clone)]
 pub struct TxDeps {
     pub utxos: Vec<UtxoApi>,
     pub params: TxBuildParams,

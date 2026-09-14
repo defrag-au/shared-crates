@@ -162,6 +162,16 @@ pub struct DatumInfoRequest {
     pub datum_hashes: Vec<String>,
 }
 
+#[derive(Serialize, Debug, Clone)]
+pub struct AssetUtxosRequest {
+    /// `[[policy_id, asset_name_hex], …]` — Koios takes the pair as a
+    /// two-element array, not a concatenated id.
+    #[serde(rename = "_asset_list")]
+    pub asset_list: Vec<[String; 2]>,
+    #[serde(rename = "_extended")]
+    pub extended: bool,
+}
+
 #[derive(Debug, Serialize)]
 pub struct TxCborRequest {
     #[serde(rename = "_tx_hashes")]
@@ -932,6 +942,34 @@ impl KoiosApi {
             &url,
             &UtxoRefsRequest {
                 utxo_refs: utxo_refs.to_vec(),
+                extended: true,
+            },
+        )
+        .await
+    }
+
+    /// Every unspent UTxO currently holding one of `assets`
+    /// (`POST /asset_utxos`, `_extended=true`).
+    ///
+    /// The lookup a state-NFT-identified contract needs: an AMM pool, a
+    /// launchpad pool or any other singleton whose UTxO moves on every
+    /// interaction is found by the token that follows it, never by a UTxO
+    /// reference somebody cached. Assets are `(policy_id, asset_name_hex)`.
+    pub async fn get_asset_utxos(
+        &self,
+        assets: &[(String, String)],
+    ) -> Result<Vec<KoiosUtxo>, KoiosError> {
+        if assets.is_empty() {
+            return Ok(Vec::new());
+        }
+        let url = format!("{}/asset_utxos", self.base_url);
+        self.post_paginated(
+            &url,
+            &AssetUtxosRequest {
+                asset_list: assets
+                    .iter()
+                    .map(|(policy, name)| [policy.clone(), name.clone()])
+                    .collect(),
                 extended: true,
             },
         )

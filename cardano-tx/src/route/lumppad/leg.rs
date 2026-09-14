@@ -15,7 +15,8 @@ use crate::builder::fluent::TxBuilder;
 use crate::builder::script::{RedeemerSource, constr, encode_plutus_data, int};
 use crate::error::TxBuildError;
 use crate::route::leg::{
-    FeeLine, LegQuote, LegState, OutputSpec, RouteAsset, RouteError, RouteLeg,
+    FeeLine, LegQuote, LegState, OutputPlacement, OutputSpec, RouteAsset, RouteError, RouteLeg,
+    SharesTransaction,
 };
 
 /// Redeemer constructor indices. The validator's UPLC dispatch compares
@@ -141,7 +142,16 @@ impl RouteLeg for LumpPadBuyLeg {
         })
     }
 
-    fn apply(
+    fn output_placement(&self) -> OutputPlacement {
+        OutputPlacement::First
+    }
+
+    /// Proven on mainnet — see [`SharesTransaction::No`].
+    fn shares_transaction(&self) -> SharesTransaction {
+        SharesTransaction::No
+    }
+
+    fn stage_input(
         &self,
         builder: TxBuilder,
         state: &LegState,
@@ -190,7 +200,16 @@ impl RouteLeg for LumpPadSellLeg {
         })
     }
 
-    fn apply(
+    fn output_placement(&self) -> OutputPlacement {
+        OutputPlacement::First
+    }
+
+    /// Proven on mainnet — see [`SharesTransaction::No`].
+    fn shares_transaction(&self) -> SharesTransaction {
+        SharesTransaction::No
+    }
+
+    fn stage_input(
         &self,
         builder: TxBuilder,
         state: &LegState,
@@ -200,7 +219,8 @@ impl RouteLeg for LumpPadSellLeg {
     }
 }
 
-/// Stage the script spend and the pool's continuing output.
+/// Stage the script spend. The pool's continuing output is placed by the
+/// route — see [`OutputPlacement`].
 ///
 /// `min_out` is the EXACT quote. LumpPad's own UI sets 99 % of it; a slippage
 /// tolerance buys nothing here because naming the pool UTxO already pins the
@@ -219,7 +239,7 @@ fn stage(
         })?)],
     ))?;
 
-    let builder = builder.spend_script_utxo(
+    builder.spend_script_utxo(
         &state.contract_utxo,
         crate::builder::script::ScriptInput {
             script: state.script.clone(),
@@ -228,9 +248,7 @@ fn stage(
             redeemer: RedeemerSource::Fixed(redeemer),
             ex_units: quote.seed_ex_units.clone(),
         },
-    )?;
-
-    Ok(builder.output(quote.continuing_output.to_output()?))
+    )
 }
 
 /// Where a Claim's creator share goes.

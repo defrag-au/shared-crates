@@ -62,6 +62,26 @@ impl EvalError {
     }
 }
 
+/// A UTxO the ledger does not know about yet.
+///
+/// The output of an earlier transaction in a CHAINED plan — built and about to
+/// be signed, but not submitted, so no indexer can resolve it. An evaluator
+/// needs it to run phase-2 on the transaction that spends it.
+///
+/// Provider-neutral on purpose: Ogmios takes this as JSON `additionalUtxo`,
+/// Maestro wants a CBOR-encoded output, and neither shape belongs in a
+/// builder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingUtxo {
+    pub tx_hash: String,
+    pub index: u32,
+    /// Bech32.
+    pub address: String,
+    pub lovelace: u64,
+    /// `(policy_hex, asset_name_hex, quantity)`.
+    pub assets: Vec<(String, String, u64)>,
+}
+
 /// A script execution-cost evaluator — one route from unsigned-tx CBOR to real
 /// per-redeemer ExUnits. Implementors own their transport and MUST classify
 /// "I couldn't reach the evaluator" as [`EvalError::Unavailable`] and "the tx
@@ -75,8 +95,40 @@ pub trait TxEvaluator {
     /// Evaluate the scripts in `tx_cbor_hex` (an unsigned tx built with estimated
     /// ExUnits) and return the real budget for every redeemer.
     async fn evaluate(&self, tx_cbor_hex: &str) -> Result<Vec<RedeemerEvaluation>, EvalError>;
+
+    /// Evaluate a transaction that spends UTxOs which do not exist on chain
+    /// yet — the outputs of an earlier, unsubmitted transaction in the same
+    /// chained plan.
+    ///
+    /// The default REFUSES rather than quietly dropping `pending`. An
+    /// evaluator that ignored it would report an unresolved input and blame
+    /// the transaction, when the real answer is "this provider cannot
+    /// evaluate a chain".
+    async fn evaluate_pending(
+        &self,
+        tx_cbor_hex: &str,
+        pending: &[PendingUtxo],
+    ) -> Result<Vec<RedeemerEvaluation>, EvalError> {
+        if pending.is_empty() {
+            return self.evaluate(tx_cbor_hex).await;
+        }
+        Err(EvalError::Failed(format!(
+            "{} cannot evaluate a chained transaction: it has no way to be told \
+             about the {} UTxO(s) an earlier, unsubmitted transaction will create",
+            self.name(),
+            pending.len()
+        )))
+    }
 }
 
+/// Maestro's evaluator. Kept working for the unchained path; deliberately NOT
+/// taught to evaluate a chain.
+///
+/// Maestro's `AdditionalUtxo` takes a CBOR-encoded output rather than Ogmios's
+/// JSON, so supporting it means a second encoding — and the Maestro API is
+/// retired on 2026-09-18, with every write path already on Koios. The
+/// inherited default refuses with a message that says so, which is a better
+/// outcome than a mapping nobody will maintain.
 #[async_trait(?Send)]
 impl TxEvaluator for maestro::MaestroApi {
     fn name(&self) -> &str {
