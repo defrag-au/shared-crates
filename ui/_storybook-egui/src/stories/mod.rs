@@ -97,6 +97,7 @@ pub mod split_allocation_bar;
 // Composed routes — sequential multi-venue routing
 pub mod pool_inspector;
 pub mod route_quote;
+pub mod tx_watch;
 
 // Loan dashboard widgets
 pub mod custody_walk;

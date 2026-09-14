@@ -1912,6 +1912,34 @@ pub fn hairline(color: Color32) -> Stroke {
     Stroke::new(1.0_f32, color)
 }
 
+/// The height one line of proportional text at `size` occupies.
+///
+/// What a non-text item in a text row must be allocated, so the two centre
+/// against each other. A `horizontal` aligns on the cross axis against each
+/// item's OWN allocation, so a dot allocated `size × size` beside a label
+/// allocated a full line height rides up against the ascenders — and nothing
+/// warns, it just looks wrong.
+///
+/// Measured from a real galley rather than guessed at a ratio: the answer
+/// depends on the loaded font's metrics. egui caches galleys, so this costs a
+/// hash lookup.
+///
+/// Widgets used to get this alignment for free from `interact_size.y` padding
+/// every item to a touch target. A dense read-only region opts out of that
+/// (see the `dense` helpers in `pool_inspector` / `tx_watch`), which takes the
+/// coincidence with it — hence this.
+pub fn line_height(ui: &egui::Ui, size: f32) -> f32 {
+    ui.painter()
+        .layout_no_wrap(
+            // Ascender and descender, so the measurement is a full line.
+            "Ag".to_string(),
+            egui::FontId::proportional(size),
+            Color32::PLACEHOLDER,
+        )
+        .size()
+        .y
+}
+
 /// A stroke of an explicit weight, for the cases that are deliberately not a
 /// hairline (a card's rarity edge, a chart's series line). Same inference
 /// problem, same one-place fix.

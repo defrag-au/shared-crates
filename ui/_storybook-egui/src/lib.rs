@@ -183,6 +183,7 @@ mod app {
         group "Composed Routes" {
             RouteQuote => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::route_quote::show(ui);
             PoolInspector => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::pool_inspector::show(ui);
+            TxWatch => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_watch::show(ui);
         }
 
         group "Collection CSP" {
@@ -299,6 +300,7 @@ mod app {
                 Self::PriceImpactCurve => "Price Impact Curve",
                 Self::RouteQuote => "Route Quote",
                 Self::PoolInspector => "Pool Inspector",
+                Self::TxWatch => "Tx Watch",
                 Self::VariantSplit => "Variant Split",
                 Self::CollectionComposition => "Collection Composition",
                 Self::ExposureBar => "Exposure Bar",
@@ -566,6 +568,9 @@ mod app {
                 }
                 Self::PoolInspector => {
                     "A pool's real state — the curve reserve against the accrued fees sitting beside it, and whether the datum's invariant holds"
+                }
+                Self::TxWatch => {
+                    "Several transactions on their way to chain: sign, submit, confirm, per transaction, with the active stage breathing so a wait for a block does not read as a hung screen"
                 }
                 Self::VariantSplit => {
                     "Derived variant distribution for a variant_flow source — share weighted by downstream asset capacity, with the uniform baseline for contrast"

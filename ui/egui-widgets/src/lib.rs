@@ -163,6 +163,7 @@ pub mod split_allocation_bar;
 // surfaces: a route names the exact UTxOs it spends.
 pub mod pool_inspector;
 pub mod route_quote;
+pub mod tx_watch;
 
 // Loan dashboard widgets
 pub mod custody_walk;

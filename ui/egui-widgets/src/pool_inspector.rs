@@ -205,7 +205,7 @@ pub fn show(ui: &mut Ui, pool: &PoolView, config: &PoolInspectorConfig) {
         .fill(ui.tokens().color.bg_secondary)
         .corner_radius(ui.tokens().corner(Radius::Md))
         .inner_margin(ui.tokens().margin(Space::Xl))
-        .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
+        .stroke(ui.tokens().geometry.border(ui.tokens().color.border))
         .show(ui, |ui| {
             dense(ui);
             let sizes = Sizes::resolve(ui, config);
@@ -424,6 +424,10 @@ struct Band {
     colour: Color32,
 }
 
+/// A legend swatch's radius, as a fraction of its label's point size, so the
+/// legend scales with the type ramp.
+const SWATCH_RADIUS: f32 = 0.25;
+
 /// A stacked proportional bar with a legend beneath.
 ///
 /// Magnitude as bar width rather than a number the reader has to compare by
@@ -431,7 +435,10 @@ struct Band {
 /// that IS the finding.
 fn composition_bar(ui: &mut Ui, bands: &[Band], sizes: &Sizes) {
     let total: u64 = bands.iter().map(|b| b.value).sum();
-    let height = 10.0_f32;
+    // The bar's weight tracks the TYPE RAMP, not a pixel count: it sits in a
+    // column of figures, and at a larger theme a fixed 10px bar would read as
+    // a hairline beside them.
+    let height = sizes.detail;
     let width = ui.available_width();
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
 
@@ -455,6 +462,10 @@ fn composition_bar(ui: &mut Ui, bands: &[Band], sizes: &Sizes) {
     }
 
     ui.gap(Space::Xs);
+    // Every item in the legend is allocated at the LABEL's line height, so the
+    // swatch centres against its text instead of riding up against the
+    // ascenders — see the note in `tx_watch::stage_marks`.
+    let row = crate::theme::line_height(ui, sizes.detail);
     ui.horizontal_wrapped(|ui| {
         for band in bands {
             let share = if total > 0 {
@@ -462,9 +473,11 @@ fn composition_bar(ui: &mut Ui, bands: &[Band], sizes: &Sizes) {
             } else {
                 0.0
             };
-            let (dot, _) = ui.allocate_exact_size(egui::vec2(6.0, 6.0), egui::Sense::hover());
+            let (dot, _) =
+                ui.allocate_exact_size(egui::vec2(sizes.detail, row), egui::Sense::hover());
             if ui.is_rect_visible(dot) {
-                ui.painter().circle_filled(dot.center(), 3.0, band.colour);
+                ui.painter()
+                    .circle_filled(dot.center(), sizes.detail * SWATCH_RADIUS, band.colour);
             }
             ui.label(
                 RichText::new(format!("{} {:.2}%", band.label, share))

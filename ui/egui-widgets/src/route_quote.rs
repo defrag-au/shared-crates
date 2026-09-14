@@ -233,7 +233,7 @@ pub fn show(ui: &mut Ui, state: &RouteQuoteState, config: &RouteQuoteConfig) {
         .fill(ui.tokens().color.bg_secondary)
         .corner_radius(ui.tokens().corner(Radius::Md))
         .inner_margin(ui.tokens().margin(Space::Xl))
-        .stroke(egui::Stroke::new(1.0_f32, ui.tokens().color.border))
+        .stroke(ui.tokens().geometry.border(ui.tokens().color.border))
         .show(ui, |ui| {
             // Read-only rows: opt out of the touch-target floor, which
             // otherwise sets the height of every `horizontal` row and turns a
@@ -521,7 +521,7 @@ fn separator(ui: &mut Ui) {
     let y = rect.min.y;
     ui.painter().line_segment(
         [egui::pos2(rect.min.x, y), egui::pos2(rect.max.x, y)],
-        egui::Stroke::new(1.0_f32, ui.tokens().color.border),
+        ui.tokens().geometry.border(ui.tokens().color.border),
     );
     ui.gap(Space::Base);
 }
