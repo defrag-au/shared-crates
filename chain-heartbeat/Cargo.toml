@@ -1,0 +1,31 @@
+[package]
+name = "chain-heartbeat"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Cardano block-production heartbeat: follow the tip from an always-on host and report honest tempo stats"
+
+[features]
+default = ["follow"]
+# The chain follower (Ouroboros over a caller-supplied stream). Hosts that
+# follow the chain keep this on. Consumers that only render snapshots (egui,
+# macroquad, a Nostr client) turn it off and get the pure types and stats.
+follow = ["dep:ouroboros-mux", "dep:futures-io", "dep:futures-util"]
+
+# Everything here is pure Rust with no wasm-bindgen, so the crate is safe for
+# miniquad targets as well as wasm-bindgen frontends and Workers.
+[dependencies]
+blake2 = "0.10"
+hex = { workspace = true }
+minicbor = { version = "0.26", features = ["std"] }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+wasm_safe_serde = { workspace = true }
+
+ouroboros-mux = { path = "../ouroboros-mux", optional = true }
+futures-io = { version = "0.3", optional = true }
+futures-util = { workspace = true, optional = true }
+
+[dev-dependencies]
+futures = { workspace = true }
+serde_json = { workspace = true }

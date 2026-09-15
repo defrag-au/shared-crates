@@ -810,6 +810,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "chain-heartbeat"
+version = "0.1.0"
+dependencies = [
+ "blake2",
+ "futures",
+ "futures-io",
+ "futures-util",
+ "hex",
+ "minicbor",
+ "ouroboros-mux",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "wasm_safe_serde",
+]
+
+[[package]]
 name = "chain-ledger"
 version = "0.1.0"
 dependencies = [
@@ -4246,6 +4263,16 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "utxorpc-spec",
+]
+
+[[package]]
+name = "ouroboros-mux"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "futures-io",
+ "minicbor",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

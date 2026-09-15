@@ -1,0 +1,17 @@
+[package]
+name = "ouroboros-mux"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Runtime-agnostic Ouroboros node-to-node client: multiplexer, handshake, chain-sync, block-fetch and keep-alive"
+
+# No async runtime, no socket API, no wasm-bindgen. The caller brings a
+# `futures-io` stream, so the same crate runs in a Cloudflare Durable Object, a
+# tokio binary and a unit test.
+[dependencies]
+futures-io = "0.3"
+minicbor = { version = "0.26", features = ["std"] }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+futures = { workspace = true }
