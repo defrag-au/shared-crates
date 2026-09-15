@@ -80,7 +80,9 @@ impl<C> Encode<C> for Tip {
 impl<'b, C> Decode<'b, C> for Tip {
     fn decode(d: &mut Decoder<'b>, ctx: &mut C) -> Result<Self, minicbor::decode::Error> {
         if d.array()? != Some(2) {
-            return Err(minicbor::decode::Error::message("tip is not a 2-element array"));
+            return Err(minicbor::decode::Error::message(
+                "tip is not a 2-element array",
+            ));
         }
         let point = Point::decode(d, ctx)?;
         let block_number = d.u64()?;
@@ -115,7 +117,13 @@ mod tests {
     #[test]
     fn a_short_hash_is_rejected() {
         let mut bytes = Vec::new();
-        Encoder::new(&mut bytes).array(2).unwrap().u64(1).unwrap().bytes(&[1, 2, 3]).unwrap();
+        Encoder::new(&mut bytes)
+            .array(2)
+            .unwrap()
+            .u64(1)
+            .unwrap()
+            .bytes(&[1, 2, 3])
+            .unwrap();
         assert!(minicbor::decode::<Point>(&bytes).is_err());
     }
 }

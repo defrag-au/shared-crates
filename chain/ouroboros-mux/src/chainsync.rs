@@ -94,7 +94,8 @@ pub async fn find_intersect<S: AsyncRead + AsyncWrite + Unpin>(
 pub async fn request_next<S: AsyncRead + AsyncWrite + Unpin>(
     mux: &mut Mux<S>,
 ) -> Result<Next, ChainSyncError> {
-    mux.send(protocol::CHAIN_SYNC, &encode_request_next()).await?;
+    mux.send(protocol::CHAIN_SYNC, &encode_request_next())
+        .await?;
     let reply = mux.recv(protocol::CHAIN_SYNC).await?;
     decode_next(&reply)
 }

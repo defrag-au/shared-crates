@@ -104,9 +104,12 @@ where
     OnEvent: FnMut(ChainEvent),
 {
     let mut mux = Mux::new(stream);
-    let accepted =
-        handshake::handshake(&mut mux, config.network.magic(), DiffusionMode::InitiatorOnly)
-            .await?;
+    let accepted = handshake::handshake(
+        &mut mux,
+        config.network.magic(),
+        DiffusionMode::InitiatorOnly,
+    )
+    .await?;
     on_event(ChainEvent::Connected {
         version: accepted.version,
     });
@@ -153,9 +156,7 @@ where
                 let header = BlockHeader::decode(content.variant, &content.cbor)?;
                 let tx_count = match config.body {
                     BodyDetail::HeaderOnly => None,
-                    BodyDetail::CountTransactions => {
-                        Some(fetch_tx_count(&mut mux, &header).await?)
-                    }
+                    BodyDetail::CountTransactions => Some(fetch_tx_count(&mut mux, &header).await?),
                 };
                 let sync = if header.height < tip.block_number {
                     SyncState::CatchingUp
@@ -239,7 +240,9 @@ async fn recv_or_tick<S: AsyncRead + Unpin, T: Future<Output = ()>>(
     let recv = pin!(mux.recv_any(&[protocol::CHAIN_SYNC, protocol::KEEP_ALIVE]));
     let tick = pin!(tick);
     match select(recv, tick).await {
-        Either::Left((received, _)) => received.map(|(protocol, bytes)| Wake::Message(protocol, bytes)),
+        Either::Left((received, _)) => {
+            received.map(|(protocol, bytes)| Wake::Message(protocol, bytes))
+        }
         Either::Right(((), _)) => Ok(Wake::Tick),
     }
 }
@@ -364,7 +367,11 @@ mod tests {
         stream.extend(segment(
             protocol::CHAIN_SYNC,
             &cbor(|e| {
-                e.array(2).and_then(|e| e.u8(6)).and_then(|e| e.encode(&tip)).map(|_| ()).unwrap()
+                e.array(2)
+                    .and_then(|e| e.u8(6))
+                    .and_then(|e| e.encode(&tip))
+                    .map(|_| ())
+                    .unwrap()
             }),
         ));
         stream.extend(segment(
@@ -433,7 +440,12 @@ mod tests {
         assert_eq!(events[0], ChainEvent::Connected { version: 14 });
         assert!(matches!(
             events[1],
-            ChainEvent::RollBackward { to: Some(ChainPoint { slot: 186_000_000, .. }) }
+            ChainEvent::RollBackward {
+                to: Some(ChainPoint {
+                    slot: 186_000_000,
+                    ..
+                })
+            }
         ));
         match &events[2] {
             ChainEvent::RollForward { beat, sync } => {

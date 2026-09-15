@@ -83,6 +83,7 @@ pub mod trait_filter;
 pub mod typeahead_search;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
+pub mod wallet_cta;
 pub mod wallet_editor;
 pub mod wiring_editor;
 pub mod wrt_fixture;

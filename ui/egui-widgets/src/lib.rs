@@ -137,6 +137,9 @@ pub mod viewport;
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet_button;
+// Gated with `wallet_button`, whose picker it opens.
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub mod wallet_cta;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub use stake_session::{
     SignedChallenge, StakeSessionAction, StakeSessionPanel, StakeSessionPhase, StoredStakeSession,

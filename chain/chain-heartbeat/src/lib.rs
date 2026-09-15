@@ -38,9 +38,12 @@ mod block;
 mod header;
 mod heartbeat;
 mod network;
+mod poll;
 
 #[cfg(feature = "follow")]
 pub mod follow;
+
+pub use poll::{BlockPoller, PollDecision, PollReason, PollTiming};
 
 pub use beat::{BeatError, BlockBeat, ChainEvent, ChainPoint, SyncState};
 pub use block::{BlockError, BlockParts, split_block};

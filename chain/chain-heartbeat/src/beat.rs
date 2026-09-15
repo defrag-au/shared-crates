@@ -45,11 +45,18 @@ pub enum SyncState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChainEvent {
     /// The handshake completed.
-    Connected { version: u64 },
-    RollForward { beat: BlockBeat, sync: SyncState },
+    Connected {
+        version: u64,
+    },
+    RollForward {
+        beat: BlockBeat,
+        sync: SyncState,
+    },
     /// The chain now ends at `to` (`None` is the origin). Everything after it
     /// is no longer on the chain. Also sent once right after an intersect.
-    RollBackward { to: Option<ChainPoint> },
+    RollBackward {
+        to: Option<ChainPoint>,
+    },
     /// The peer answered a keep-alive: the connection is alive even though no
     /// block has arrived.
     KeepAliveAcknowledged,

@@ -111,6 +111,7 @@ mod app {
             Disclosure => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::disclosure::show(ui, &mut a.disclosure_state);
             UserBadge => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::user_badge::show(ui);
             AccountBar => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::account_bar::show(ui);
+            WalletCta => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_cta::show(ui);
             TierLadder => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::tier_ladder::show(ui);
             AboutModal => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::about_modal::show(ui);
             ServiceBanner => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::service_banner::show(ui);
@@ -386,6 +387,7 @@ mod app {
                 Self::Disclosure => "Disclosure",
                 Self::UserBadge => "User Badge",
                 Self::AccountBar => "Account Bar",
+                Self::WalletCta => "Wallet CTA",
                 Self::TierLadder => "Tier Ladder",
                 Self::AboutModal => "About Modal",
                 Self::ServiceBanner => "Service Banner",
@@ -426,6 +428,9 @@ mod app {
                     "Detail that opens under the row it explains — eased, tied by a rule, anchored so the list does not shove"
                 }
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
+                Self::WalletCta => {
+                    "An action that needs a wallet: the primary button when connected, and in its place a prompt that opens the wallet picker in a modal when not"
+                }
                 Self::AccountBar => {
                     "An app header's trailing cluster: count-badged action triggers plus the connected account"
                 }

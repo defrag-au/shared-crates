@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-152 widgets.
+153 widgets.
 
 | module | what it is |
 |---|---|
@@ -156,6 +156,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `wallet` | Framework-agnostic wallet connector for egui frontends |
 | `wallet_asset_picker` | Wallet asset picker — modal widget for browsing and selecting NFTs from a wallet, grouped by policy in an accordion layout |
 | `wallet_button` | Reusable wallet connection button widget for egui frontends |
+| `wallet_cta` | `WalletCta` — an action that needs a wallet: the button when one is connected, and a way to connect one right there when it is not |
 | `wallet_editor` | `WalletEditor` — the reader's own roster of wallets: add one by handle or address, watch it resolve, drop it again |
 | `wallet_identity_header` | Wallet identity header — the big "this is who we're showing" strip at the top of a wallet-profile view |
 | `wallet_list` | Wallet roster — the per-client list rendered on the admin portal dashboard |

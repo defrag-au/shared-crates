@@ -184,7 +184,10 @@ impl<S: AsyncWrite + Unpin> Mux<S> {
     }
 }
 
-async fn write_all<S: AsyncWrite + Unpin>(stream: &mut S, mut bytes: &[u8]) -> Result<(), MuxError> {
+async fn write_all<S: AsyncWrite + Unpin>(
+    stream: &mut S,
+    mut bytes: &[u8],
+) -> Result<(), MuxError> {
     while !bytes.is_empty() {
         let written = poll_fn(|cx| Pin::new(&mut *stream).poll_write(cx, bytes)).await?;
         if written == 0 {
@@ -300,7 +303,9 @@ mod tests {
     /// A CBOR byte string: header byte + payload, long enough to span segments.
     fn cbor_bytes(len: usize) -> Vec<u8> {
         let mut out = Vec::new();
-        minicbor::Encoder::new(&mut out).bytes(&vec![7u8; len]).unwrap();
+        minicbor::Encoder::new(&mut out)
+            .bytes(&vec![7u8; len])
+            .unwrap();
         out
     }
 

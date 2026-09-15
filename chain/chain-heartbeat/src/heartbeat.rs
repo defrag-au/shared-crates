@@ -49,7 +49,9 @@ pub struct Checkpoint {
 /// What [`Heartbeat::restore`] did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Restore {
-    Restored { beats: usize },
+    Restored {
+        beats: usize,
+    },
     /// The checkpoint was for another network and was ignored.
     WrongNetwork,
 }
@@ -206,6 +208,28 @@ impl Heartbeat {
             .collect()
     }
 
+    /// [`Self::resume_points`], but only while the tip is younger than
+    /// `max_age_secs`. Resuming from an old tip replays every block since,
+    /// which costs more than the gap is worth; starting from the peer's tip
+    /// instead leaves a gap in heights, and the window honestly restarts.
+    pub fn fresh_resume_points(
+        &self,
+        now_ms: u64,
+        max_age_secs: u64,
+        count: usize,
+    ) -> Vec<ChainPoint> {
+        let fresh = self
+            .beats
+            .back()
+            .and_then(|tip| tip.block_time_unix)
+            .is_some_and(|t| (now_ms / 1000).saturating_sub(t) <= max_age_secs);
+        if fresh {
+            self.resume_points(count)
+        } else {
+            Vec::new()
+        }
+    }
+
     pub fn checkpoint(&self) -> Checkpoint {
         Checkpoint {
             network: self.network,
@@ -244,7 +268,9 @@ impl Heartbeat {
         HeartbeatSnapshot {
             network: self.network,
             feed,
-            epoch: tip.as_ref().and_then(|t| self.network.epoch_position(t.slot)),
+            epoch: tip
+                .as_ref()
+                .and_then(|t| self.network.epoch_position(t.slot)),
             tip,
             secs_since_block,
             block_due_probability,
@@ -346,8 +372,7 @@ impl Heartbeat {
         };
         let blocks = run.len() as u32;
         let span_secs = tip.slot.saturating_sub(first.slot);
-        let mean_interval_secs =
-            (blocks >= 2).then(|| span_secs as f32 / (blocks - 1) as f32);
+        let mean_interval_secs = (blocks >= 2).then(|| span_secs as f32 / (blocks - 1) as f32);
         let blocks_last_hour = (span_secs >= HOUR_SECS).then(|| {
             let from = tip.slot - HOUR_SECS;
             run.iter().filter(|b| b.slot > from).count() as u32
@@ -363,7 +388,10 @@ impl Heartbeat {
         };
         let max_body = self.network.max_block_body_bytes() as f32;
         let mean_fullness = Some(
-            run.iter().map(|b| b.body_size as f32 / max_body).sum::<f32>() / blocks as f32,
+            run.iter()
+                .map(|b| b.body_size as f32 / max_body)
+                .sum::<f32>()
+                / blocks as f32,
         );
         WindowStats {
             blocks,
@@ -416,7 +444,11 @@ mod tests {
         hb.connected(start);
         for i in 0..4 {
             let slot = BASE_SLOT + i * 20;
-            hb.roll_forward(beat(100 + i, slot, Some(6)), SyncState::AtTip, ms_at_slot(slot));
+            hb.roll_forward(
+                beat(100 + i, slot, Some(6)),
+                SyncState::AtTip,
+                ms_at_slot(slot),
+            );
         }
         let now = ms_at_slot(BASE_SLOT + 60) + 10_000;
         let snap = hb.snapshot(now);
@@ -429,7 +461,10 @@ mod tests {
         // 18 transactions arrived over 60 seconds.
         assert_eq!(snap.window.txs_per_minute, Some(18.0));
         assert_eq!(snap.window.mean_fullness, Some(0.5));
-        assert_eq!(snap.window.blocks_last_hour, None, "run is shorter than an hour");
+        assert_eq!(
+            snap.window.blocks_last_hour, None,
+            "run is shorter than an hour"
+        );
         let p = snap.block_due_probability.unwrap();
         assert!((0.40..0.41).contains(&p), "{p}");
         assert_eq!(snap.epoch.unwrap().epoch, 628);
@@ -445,7 +480,10 @@ mod tests {
         let window = hb.snapshot(0).window;
         assert_eq!(window.blocks, 2);
         assert_eq!(window.span_secs, 20);
-        assert_eq!(window.txs_per_minute, None, "headers-only beats carry no count");
+        assert_eq!(
+            window.txs_per_minute, None,
+            "headers-only beats carry no count"
+        );
     }
 
     #[test]
@@ -547,6 +585,18 @@ mod tests {
 
         let mut other = Heartbeat::new(Network::Preprod);
         assert_eq!(other.restore(hb.checkpoint()), Restore::WrongNetwork);
+    }
+
+    #[test]
+    fn stale_tips_start_from_the_peer_tip_instead_of_replaying() {
+        let mut hb = Heartbeat::new(Network::Mainnet);
+        hb.roll_forward(beat(1, BASE_SLOT, None), SyncState::AtTip, 0);
+        let tip_ms = ms_at_slot(BASE_SLOT);
+        assert_eq!(hb.fresh_resume_points(tip_ms + 600_000, 1_800, 4).len(), 1);
+        assert!(
+            hb.fresh_resume_points(tip_ms + 1_801_000, 1_800, 4)
+                .is_empty()
+        );
     }
 
     #[test]

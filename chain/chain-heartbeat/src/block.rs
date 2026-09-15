@@ -115,6 +115,9 @@ mod tests {
 
     #[test]
     fn byron_blocks_are_refused() {
-        assert!(matches!(split_block(&[0x82, 0x01, 0x80]), Err(BlockError::Byron)));
+        assert!(matches!(
+            split_block(&[0x82, 0x01, 0x80]),
+            Err(BlockError::Byron)
+        ));
     }
 }
