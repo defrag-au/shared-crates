@@ -41,6 +41,7 @@ members = [
     "ui/ui-core",
     "ui/ui-flow",
     "ui/ui-flow-protocol",
+    "ui/ui-flow-server",
     "ui/ui-loader",
     "ui/ui-loader-macros",
     "ui/ui-toast",

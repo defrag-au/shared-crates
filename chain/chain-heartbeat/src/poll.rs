@@ -25,6 +25,7 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use crate::beat::{ChainEvent, SyncState};
+use crate::frame::HeartbeatFrame;
 
 /// How long to wait before polling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -151,9 +152,42 @@ impl<K: Ord> BlockPoller<K> {
             ChainEvent::Connected { .. } | ChainEvent::KeepAliveAcknowledged => None,
         };
 
-        let Some(reason) = reason else {
-            return;
-        };
+        if let Some(reason) = reason {
+            self.schedule(reason, now_ms, entropy);
+        }
+    }
+
+    /// Feed every frame from a heartbeat host through here, for subscribers
+    /// that receive the chain relayed rather than following it.
+    pub fn observe_frame(&mut self, frame: &HeartbeatFrame, now_ms: u64, entropy: u64) {
+        match frame {
+            HeartbeatFrame::Events { events } => {
+                for event in events {
+                    self.observe(event, now_ms, entropy);
+                }
+            }
+            HeartbeatFrame::Resync { checkpoint, .. } => {
+                let Some(tip) = checkpoint.beats.last().map(|beat| beat.slot) else {
+                    return;
+                };
+                // A resync after a gap (our socket dropped and came back) may
+                // carry blocks we never saw. The first one is just where we
+                // start from.
+                let reason = match self.tip_slot {
+                    Some(known) if tip > known => Some(PollReason::NewBlock),
+                    Some(known) if tip < known => Some(PollReason::Rollback),
+                    _ => None,
+                };
+                self.tip_slot = Some(tip);
+                if let Some(reason) = reason {
+                    self.schedule(reason, now_ms, entropy);
+                }
+            }
+            HeartbeatFrame::UpstreamLost => {}
+        }
+    }
+
+    fn schedule(&mut self, reason: PollReason, now_ms: u64, entropy: u64) {
         // Nothing to learn, or a poll is already on its way: keep the earlier
         // time rather than pushing everyone later on every block.
         if self.awaiting.is_empty() || self.due.is_some() {
@@ -346,5 +380,62 @@ mod tests {
         poller.resolve(&"tx-b");
         assert_eq!(poller.poll(10_000), PollDecision::Idle);
         assert_eq!(poller.awaiting_count(), 0);
+    }
+
+    fn resync_at(slot: u64) -> HeartbeatFrame {
+        let crate::beat::ChainEvent::RollForward { beat, .. } = block(slot, SyncState::AtTip)
+        else {
+            unreachable!()
+        };
+        HeartbeatFrame::Resync {
+            checkpoint: crate::heartbeat::Checkpoint {
+                network: crate::network::Network::Mainnet,
+                beats: vec![beat],
+            },
+            feed: crate::heartbeat::FeedHealth::NotStarted,
+        }
+    }
+
+    #[test]
+    fn a_first_resync_is_a_starting_point_not_a_change() {
+        let mut poller = BlockPoller::new(TIMING);
+        poller.await_work("tx-a", 0);
+        poller.observe_frame(&resync_at(100), 0, 0);
+        assert_eq!(poller.poll(10), PollDecision::Wait { in_ms: 59_990 });
+    }
+
+    #[test]
+    fn a_resync_after_a_gap_polls_for_what_was_missed() {
+        let mut poller = BlockPoller::new(TIMING);
+        poller.await_work("tx-a", 0);
+        poller.observe_frame(&resync_at(100), 0, 0);
+        poller.observe_frame(&resync_at(160), 1_000, 0);
+        assert_eq!(
+            poller.poll(3_000),
+            PollDecision::Poll {
+                reason: PollReason::NewBlock
+            }
+        );
+        poller.observe_frame(&resync_at(120), 4_000, 0);
+        assert_eq!(
+            poller.poll(6_000),
+            PollDecision::Poll {
+                reason: PollReason::Rollback
+            }
+        );
+    }
+
+    #[test]
+    fn relayed_events_schedule_like_followed_ones() {
+        let mut poller = BlockPoller::new(TIMING);
+        poller.await_work("tx-a", 0);
+        let frame = HeartbeatFrame::Events {
+            events: vec![
+                block(100, SyncState::CatchingUp),
+                block(101, SyncState::AtTip),
+            ],
+        };
+        poller.observe_frame(&frame, 0, 0);
+        assert!(matches!(poller.poll(2_000), PollDecision::Poll { .. }));
     }
 }

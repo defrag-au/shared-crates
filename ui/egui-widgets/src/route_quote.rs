@@ -95,6 +95,81 @@ impl Amount {
         Self::new(rounded, max_decimals, self.ticker.clone()).figure()
     }
 
+    /// The amount at a glance, with its ticker: `~2.25M HOSK-X`, `20 ADA`.
+    ///
+    /// Three significant figures with a K/M/B suffix from ten thousand up;
+    /// below that the grouped figure, at no more than two decimal places,
+    /// since it is already short. A `~` goes in front whenever that rounding
+    /// dropped something, and ONLY then — `20 ADA` is exactly twenty and says
+    /// so.
+    ///
+    /// For a label that names a trade, with the exact figure one click away.
+    /// Like [`Self::figure_capped`], never for the figure a user signs
+    /// against; the tilde is there so this one cannot be mistaken for it.
+    pub fn compact(&self) -> String {
+        let (figure, exact) = self.compact_figure();
+        let tilde = if exact { "" } else { "~" };
+        format!("{tilde}{figure} {}", self.ticker)
+    }
+
+    /// `(figure, exact)` for [`Self::compact`]. Integer arithmetic throughout,
+    /// so "exact" is a fact about the quantity rather than a float comparison.
+    fn compact_figure(&self) -> (String, bool) {
+        let unit = 10u128.pow(u32::from(self.decimals));
+        let quantity = u128::from(self.quantity);
+        let whole = quantity / unit;
+
+        if whole < 10_000 {
+            let places = self.decimals.min(2);
+            let base = 10u128.pow(u32::from(self.decimals - places));
+            let shown = Self::round_div(quantity, base);
+            let figure = Self::new(shown as u64, places, "").figure();
+            return (Self::trim_fraction(figure), shown * base == quantity);
+        }
+
+        const SUFFIXES: [(&str, u128); 3] = [("K", 1_000), ("M", 1_000_000), ("B", 1_000_000_000)];
+        let mut tier = SUFFIXES
+            .iter()
+            .rposition(|(_, scale)| whole >= *scale)
+            .unwrap_or(0);
+        loop {
+            let (suffix, scale) = SUFFIXES[tier];
+            // Three significant figures: 2.25M, 22.5M, 225M.
+            let digits = (whole / scale).to_string().len() as u32;
+            let places = 3u32.saturating_sub(digits);
+            let base = scale * unit / 10u128.pow(places);
+            let shown = Self::round_div(quantity, base);
+            // Rounding can carry into a fourth digit — 999.6M is "1,000M" —
+            // which belongs to the next suffix up, when there is one.
+            if shown >= 1_000 * 10u128.pow(places) && tier + 1 < SUFFIXES.len() {
+                tier += 1;
+                continue;
+            }
+            let figure = Self::new(shown as u64, places as u8, "").figure();
+            return (
+                format!("{}{suffix}", Self::trim_fraction(figure)),
+                shown * base == quantity,
+            );
+        }
+    }
+
+    /// `n / d`, rounded half-up.
+    fn round_div(n: u128, d: u128) -> u128 {
+        (n + d / 2) / d
+    }
+
+    /// `20.00` → `20`, `2.50` → `2.5`: places that say nothing are noise in a
+    /// figure read at a glance.
+    fn trim_fraction(figure: String) -> String {
+        if !figure.contains('.') {
+            return figure;
+        }
+        figure
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string()
+    }
+
     /// Number and ticker.
     pub fn display(&self) -> String {
         format!("{} {}", self.figure(), self.ticker)
@@ -575,6 +650,37 @@ fn group(amount: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A compact amount is three significant figures with a suffix, and carries
+    /// a `~` exactly when that rounding lost something.
+    #[test]
+    fn a_compact_amount_is_readable_and_honest_about_rounding() {
+        // The cart row that prompted it: a 20 ADA buy of HOSK-X.
+        assert_eq!(
+            Amount::new(2_251_234, 0, "HOSK-X").compact(),
+            "~2.25M HOSK-X"
+        );
+        assert_eq!(Amount::new(22_512_345, 0, "T").compact(), "~22.5M T");
+        assert_eq!(Amount::new(225_123_456, 0, "T").compact(), "~225M T");
+        assert_eq!(Amount::new(144_635, 0, "LUMP").compact(), "~145K LUMP");
+
+        // Exact figures say so: no tilde, no padding zeros.
+        assert_eq!(Amount::new(2_000_000, 0, "T").compact(), "2M T");
+        assert_eq!(Amount::new(2_500_000, 0, "T").compact(), "2.5M T");
+        assert_eq!(Amount::ada(20_000_000).compact(), "20 ADA");
+
+        // Below ten thousand the grouped figure is already short.
+        assert_eq!(Amount::new(9_999, 0, "T").compact(), "9,999 T");
+        assert_eq!(Amount::ada(24_300_000).compact(), "24.3 ADA");
+        assert_eq!(Amount::ada(24_305_000).compact(), "~24.31 ADA");
+
+        // A carry into a fourth digit moves up a suffix rather than printing
+        // "1,000M".
+        assert_eq!(Amount::new(999_999_999, 0, "T").compact(), "~1B T");
+
+        // Decimals are the asset's own: 2,251,234.5 of a 6-decimal token.
+        assert_eq!(Amount::new(2_251_234_500_000, 6, "T").compact(), "~2.25M T");
+    }
 
     /// Capping is for figures read at a glance, and must round, not truncate.
     #[test]

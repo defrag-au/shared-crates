@@ -168,6 +168,31 @@ impl Heartbeat {
         }
     }
 
+    /// Take on another heartbeat's view of its feed, measured back from
+    /// `now_ms`. How a subscriber adopts its host's feed on resync.
+    pub(crate) fn adopt_feed(&mut self, feed: FeedHealth, now_ms: u64) {
+        let ago = |secs: u64| now_ms.saturating_sub(secs * 1000);
+        self.feed = match feed {
+            FeedHealth::NotStarted => Feed::NotStarted,
+            FeedHealth::Following {
+                connected_secs,
+                sync,
+            } => Feed::Connected {
+                since_ms: ago(connected_secs),
+                last_activity_ms: now_ms,
+                sync,
+            },
+            FeedHealth::Silent { silent_secs } => Feed::Connected {
+                since_ms: ago(silent_secs),
+                last_activity_ms: ago(silent_secs),
+                sync: SyncState::AtTip,
+            },
+            FeedHealth::Disconnected { disconnected_secs } => Feed::Disconnected {
+                since_ms: ago(disconnected_secs),
+            },
+        };
+    }
+
     pub fn roll_forward(&mut self, beat: BlockBeat, sync: SyncState, now_ms: u64) {
         self.touch(now_ms);
         if let Feed::Connected { sync: current, .. } = &mut self.feed {

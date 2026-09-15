@@ -33,17 +33,37 @@
 //! - **Rates come from a contiguous run.** A gap in heights (a reconnect that
 //!   could not resume) cuts the window rather than being averaged over.
 
+//!
+//! # Relaying to subscribers
+//!
+//! - [`FrameBatcher`] (host) turns events into few [`HeartbeatFrame`]s, and
+//!   [`Heartbeat::apply_frame`] (subscriber) folds them back into the same
+//!   chain view with the subscriber's own clock.
+//! - [`SubscriberRegistry`] (host) and [`SubscriptionLease`] (subscriber)
+//!   manage who gets frames: leased, renewed only while someone listens.
+//! - [`BlockPoller`] (browser) turns frames into backend polls, only while
+//!   something is awaited and spread out so tabs don't synchronise.
+
 mod beat;
 mod block;
+mod frame;
 mod header;
 mod heartbeat;
 mod network;
 mod poll;
+mod relay;
 
 #[cfg(feature = "follow")]
 pub mod follow;
 
+pub use frame::{FrameApplied, FrameBatcher, HeartbeatFrame, MAX_BATCH, PULSE_AFTER_SECS};
 pub use poll::{BlockPoller, PollDecision, PollReason, PollTiming};
+pub use relay::{
+    AfterDelivery, CHAIN_DOMAIN, DROP_AFTER_FAILURES, DeliveryOutcome, LeaseAction, MAX_LEASE_SECS,
+    MAX_SUBSCRIBERS, MIN_LEASE_SECS, Rejection, Removal, SubscribeRequest, SubscribeResponse,
+    Subscriber, SubscriberId, SubscriberRegistry, SubscriptionLease, TokenCheck,
+    UnsubscribeRequest, check_bearer,
+};
 
 pub use beat::{BeatError, BlockBeat, ChainEvent, ChainPoint, SyncState};
 pub use block::{BlockError, BlockParts, split_block};

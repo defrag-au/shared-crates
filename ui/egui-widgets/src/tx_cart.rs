@@ -319,11 +319,11 @@ pub fn show_items(
     let mut remove_id = None;
 
     for (group_label, items) in &groups {
-        let group_total: f64 = items
-            .iter()
-            .map(|i| i.ada_per_item * i.quantity as f64)
-            .sum();
-
+        // No per-section ADA total beside the heading. Set in the debit red
+        // next to a verb, "Buy · 20 ADA" read as a charge on the section
+        // itself, and it repeated the footer's Total for the common one-section
+        // cart — while for a section of cancellations it painted ADA coming
+        // BACK as money going out.
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(group_label)
@@ -346,11 +346,6 @@ pub fn show_items(
                 {
                     action = Some(TxCartAction::Clear);
                 }
-                ui.label(
-                    RichText::new(format!("{:.0} ADA", group_total))
-                        .color(ui.tokens().color.accent_red)
-                        .size(ui.text_size(TextSize::Base)),
-                );
             });
         });
 
@@ -360,124 +355,118 @@ pub fn show_items(
 
         // Item cards
         for item in items {
-            let card_rect = ui
-                .horizontal(|ui| {
-                    // Collection image placeholder (only show if we have a URL)
-                    if let Some(ref url) = item.image_url {
-                        let image = egui::Image::new(url.as_str())
-                            .fit_to_exact_size(egui::vec2(44.0, 44.0))
-                            .corner_radius(ui.tokens().corner(Radius::Base));
-                        ui.add(image);
-                        ui.gap(Space::Base);
+            ui.horizontal(|ui| {
+                // Collection image placeholder (only show if we have a URL)
+                if let Some(ref url) = item.image_url {
+                    let image = egui::Image::new(url.as_str())
+                        .fit_to_exact_size(egui::vec2(44.0, 44.0))
+                        .corner_radius(ui.tokens().corner(Radius::Base));
+                    ui.add(image);
+                    ui.gap(Space::Base);
+                }
+
+                // Info column
+                ui.vertical(|ui| {
+                    ui.label(
+                        RichText::new(&item.label)
+                            .color(ui.tokens().color.text_primary)
+                            .size(ui.text_size(TextSize::Md))
+                            .strong(),
+                    );
+                    // Truncated policy ID
+                    let pid = &item.policy_id;
+                    if !pid.is_empty() {
+                        let truncated = if pid.len() > 16 {
+                            format!("{}...{}", &pid[..8], &pid[pid.len() - 4..])
+                        } else {
+                            pid.clone()
+                        };
+                        ui.label(
+                            RichText::new(truncated)
+                                .color(ui.tokens().color.text_muted)
+                                .size(ui.text_size(TextSize::Xs))
+                                .monospace(),
+                        );
                     }
 
-                    // Info column
-                    ui.vertical(|ui| {
-                        ui.label(
-                            RichText::new(&item.label)
-                                .color(ui.tokens().color.text_primary)
-                                .size(ui.text_size(TextSize::Md))
-                                .strong(),
-                        );
-                        // Truncated policy ID
-                        let pid = &item.policy_id;
-                        if !pid.is_empty() {
-                            let truncated = if pid.len() > 16 {
-                                format!("{}...{}", &pid[..8], &pid[pid.len() - 4..])
+                    // Status (if not pending)
+                    match &item.status {
+                        TxCartItemStatus::Pending => {}
+                        TxCartItemStatus::Submitted { tx_hash } => {
+                            let short = if tx_hash.len() > 16 {
+                                format!("{}...{}", &tx_hash[..8], &tx_hash[tx_hash.len() - 4..])
                             } else {
-                                pid.clone()
+                                tx_hash.clone()
                             };
-                            ui.label(
-                                RichText::new(truncated)
-                                    .color(ui.tokens().color.text_muted)
-                                    .size(ui.text_size(TextSize::Xs))
-                                    .monospace(),
-                            );
-                        }
-
-                        // Status (if not pending)
-                        match &item.status {
-                            TxCartItemStatus::Pending => {}
-                            TxCartItemStatus::Submitted { tx_hash } => {
-                                let short = if tx_hash.len() > 16 {
-                                    format!("{}...{}", &tx_hash[..8], &tx_hash[tx_hash.len() - 4..])
-                                } else {
-                                    tx_hash.clone()
-                                };
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        PhosphorIcon::CheckCircle
-                                            .rich_text(10.0, ui.tokens().color.accent_green),
-                                    );
-                                    ui.label(
-                                        RichText::new(short)
-                                            .color(ui.tokens().color.accent_green)
-                                            .size(ui.text_size(TextSize::Xs))
-                                            .monospace(),
-                                    );
-                                });
-                            }
-                            other => {
+                            ui.horizontal(|ui| {
                                 ui.label(
-                                    RichText::new(other.label())
-                                        .color(other.color(&ui.tokens()))
-                                        .size(ui.text_size(TextSize::Xs)),
+                                    PhosphorIcon::CheckCircle
+                                        .rich_text(10.0, ui.tokens().color.accent_green),
                                 );
-                            }
+                                ui.label(
+                                    RichText::new(short)
+                                        .color(ui.tokens().color.accent_green)
+                                        .size(ui.text_size(TextSize::Xs))
+                                        .monospace(),
+                                );
+                            });
                         }
-                    });
-
-                    // Right side: quantity x price + remove
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        // Remove button. Gated on the phase's own answer, and
-                        // on the ROW not already being committed — a row that
-                        // is building or submitted cannot be taken back.
-                        if matches!(
-                            item.status,
-                            TxCartItemStatus::Pending | TxCartItemStatus::Error { .. }
-                        ) && state.phase.row_editing() == RowEditing::Allowed
-                        {
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        PhosphorIcon::Trash
-                                            .rich_text(14.0, ui.tokens().color.text_muted),
-                                    )
-                                    .frame(false),
-                                )
-                                .clicked()
-                            {
-                                remove_id = Some(item.id.clone());
-                            }
-                            ui.gap(Space::Sm);
-                        }
-
-                        // Price
-                        let total = item.ada_per_item * item.quantity as f64;
-                        ui.label(
-                            RichText::new(ada_figure(total))
-                                .color(ui.tokens().color.text_primary)
-                                .size(ui.text_size(TextSize::Base)),
-                        );
-                        if item.quantity > 1 {
+                        other => {
                             ui.label(
-                                RichText::new(format!("{}x", item.quantity))
-                                    .color(ui.tokens().color.text_muted)
-                                    .size(ui.text_size(TextSize::Sm)),
+                                RichText::new(other.label())
+                                    .color(other.color(&ui.tokens()))
+                                    .size(ui.text_size(TextSize::Xs)),
                             );
                         }
-                    });
-                })
-                .response
-                .rect;
+                    }
+                });
 
-            // Card border
-            ui.painter().rect_stroke(
-                card_rect.expand(2.0),
-                ui.tokens().corner(Radius::Md),
-                egui::Stroke::new(0.5_f32, ui.tokens().color.border),
-                egui::StrokeKind::Outside,
-            );
+                // Right side: quantity x price + remove
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Remove button. Gated on the phase's own answer, and
+                    // on the ROW not already being committed — a row that
+                    // is building or submitted cannot be taken back.
+                    if matches!(
+                        item.status,
+                        TxCartItemStatus::Pending | TxCartItemStatus::Error { .. }
+                    ) && state.phase.row_editing() == RowEditing::Allowed
+                    {
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    PhosphorIcon::Trash
+                                        .rich_text(14.0, ui.tokens().color.text_muted),
+                                )
+                                .frame(false),
+                            )
+                            .clicked()
+                        {
+                            remove_id = Some(item.id.clone());
+                        }
+                        ui.gap(Space::Sm);
+                    }
+
+                    // Price
+                    let total = item.ada_per_item * item.quantity as f64;
+                    ui.label(
+                        RichText::new(ada_figure(total))
+                            .color(ui.tokens().color.text_primary)
+                            .size(ui.text_size(TextSize::Base)),
+                    );
+                    if item.quantity > 1 {
+                        ui.label(
+                            RichText::new(format!("{}x", item.quantity))
+                                .color(ui.tokens().color.text_muted)
+                                .size(ui.text_size(TextSize::Sm)),
+                        );
+                    }
+                });
+            });
+            // No border per row. It was a hairline painted 2px outside the
+            // content, so every row sat in a box barely larger than its own
+            // text — cramped, and a frame the rows never needed: the section
+            // heading and its rule already group them, and the gap below
+            // separates one from the next.
 
             // Error detail (truncated to first line)
             if let TxCartItemStatus::Error { message } = &item.status {
@@ -494,7 +483,9 @@ pub fn show_items(
                 );
             }
 
-            ui.gap(Space::Sm);
+            // `Md`, not `Sm`: without a border, two-line rows four points apart
+            // run together into one block.
+            ui.gap(Space::Md);
         }
 
         ui.gap(Space::Md);

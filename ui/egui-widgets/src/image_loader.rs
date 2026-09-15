@@ -1,5 +1,9 @@
 use egui::{Color32, Pos2, Rect, Shape, Stroke};
 
+#[cfg(target_arch = "wasm32")]
+pub mod fetch;
+pub mod schedule;
+
 // ============================================================================
 // IIIF image helpers
 // ============================================================================

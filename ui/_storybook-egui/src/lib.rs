@@ -68,6 +68,7 @@ mod app {
             ActivityFeed => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::activity_feed::show(ui);
             TxCard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_card::show(ui, &mut a.tx_card_state);
             ImageStack => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::image_stack::show(ui, &mut a.image_stack_state);
+            ImageLoads => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::image_loads::show(ui, &mut a.image_loads_state);
             ChannelBands => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::channel_bands::show(ui);
             CustodyWalk => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::custody_walk::show(ui);
             ClaimCard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::claim_card::show(ui, &mut a.claim_card_state);
@@ -348,6 +349,7 @@ mod app {
                 Self::ActivityFeed => "Activity Feed",
                 Self::TxCard => "Tx Card",
                 Self::ImageStack => "Image Stack",
+                Self::ImageLoads => "Image Loads",
                 Self::ChannelBands => "Channel Bands",
                 Self::CustodyWalk => "Custody Walk",
                 Self::ClaimCard => "Claim Card",
@@ -682,6 +684,9 @@ mod app {
                 }
                 Self::ActivityFeed => {
                     "The account view of the same history: day-grouped cards, each naming its venue, its counterparty and THE ASSETS THAT MOVED — because \"+2 items\" hides whether a wallet got two junk airdrops or two of the collection it trades"
+                }
+                Self::ImageLoads => {
+                    "The image fetch scheduler, watched. Switch shelves: pending loads for art nobody can see are cancelled and their downloads aborted, instead of spending the budget"
                 }
                 Self::ImageStack => {
                     "The tuning bench for the fanned pile of mounted prints that makes a lot of many READ as a lot of many. Every proportion is a slider — mount, spacing, lift, tilt spread, shadow offset/spread/alpha — and the count runs to the hard cap of five, because the difference between 'prints dropped on a desk' and 'some overlapping squares' is a few percent in two of them, and no amount of reading the code tells you which way to go. The art is a rotated mesh, not an egui::Image: Image::corner_radius silently cancels Image::rotate, which shipped once as upright pictures inside tilted mounts. The shadow is faked: epaint blurs rectangles but not rotated polygons, so fourteen concentric quads on an eased alpha ramp stand in for a blur. Includes a backdrop toggle — the server-rendered card sits on #0b0b10 where paper white pops far harder than it does on the app's own BG_SECONDARY, which may be most of why the rendered version looked stronger"
@@ -1442,6 +1447,7 @@ mod app {
         cap_band_state: stories::cap_band::CapBandState,
         tx_card_state: stories::tx_card::TxCardState,
         image_stack_state: stories::image_stack::ImageStackState,
+        image_loads_state: stories::image_loads::ImageLoadsState,
         time_spine_state: stories::time_spine::TimeSpineState,
         time_spine_density_state: stories::time_spine_density::TimeSpineDensityState,
         coverage_lanes_state: stories::coverage_lanes::CoverageLanesState,
@@ -1599,6 +1605,7 @@ mod app {
                 cap_band_state: stories::cap_band::CapBandState::default(),
                 tx_card_state: stories::tx_card::TxCardState::default(),
                 image_stack_state: stories::image_stack::ImageStackState::default(),
+                image_loads_state: stories::image_loads::ImageLoadsState::default(),
                 time_spine_state: stories::time_spine::TimeSpineState::default(),
                 time_spine_density_state:
                     stories::time_spine_density::TimeSpineDensityState::default(),

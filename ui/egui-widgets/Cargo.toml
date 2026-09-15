@@ -72,6 +72,9 @@ web-sys = { workspace = true, features = [
     # and cargo unioned it in — `cargo clippy -p egui-widgets --target wasm32`
     # on its own failed.
     "Location",
+    # `image_loader::browser::BrowserHttpLoader` fetches with an abort signal,
+    # so a thumbnail nobody can see any more stops downloading.
+    "AbortController", "AbortSignal",
     "Blob", "BlobPropertyBag",
     "HtmlImageElement",
     "ImageBitmap",

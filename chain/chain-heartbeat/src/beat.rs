@@ -27,9 +27,12 @@ pub struct BlockBeat {
 }
 
 /// A point to resume following from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChainPoint {
+    #[serde(with = "wasm_safe_serde::u64_required")]
     pub slot: u64,
+    /// Block hash, hex on the wire.
+    #[serde(with = "hex::serde")]
     pub hash: [u8; 32],
 }
 
@@ -41,11 +44,14 @@ pub enum SyncState {
     CatchingUp,
 }
 
-/// Everything a follower reports.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Everything a follower reports. Serialisable so hosts can relay it inside a
+/// [`crate::HeartbeatFrame`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ChainEvent {
     /// The handshake completed.
     Connected {
+        #[serde(with = "wasm_safe_serde::u64_required")]
         version: u64,
     },
     RollForward {
@@ -55,6 +61,7 @@ pub enum ChainEvent {
     /// The chain now ends at `to` (`None` is the origin). Everything after it
     /// is no longer on the chain. Also sent once right after an intersect.
     RollBackward {
+        #[serde(default)]
         to: Option<ChainPoint>,
     },
     /// The peer answered a keep-alive: the connection is alive even though no
