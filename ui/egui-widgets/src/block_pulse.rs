@@ -43,12 +43,12 @@ const MARK_RADIUS: f32 = 0.36;
 /// The dot's radius as a fraction of the ring's.
 const DOT_FRACTION: f32 = 0.45;
 
-/// How much a pulse shows.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 /// How long a feed must be disconnected before it reads as offline. Reconnects
 /// measured on the gateway take two to three seconds.
 pub const OFFLINE_AFTER_SECS: u64 = 5;
 
+/// How much a pulse shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PulseDetail {
     /// The mark and the time since the last block. For a crowded strip.
     Compact,
