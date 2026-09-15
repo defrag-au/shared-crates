@@ -58,10 +58,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut AsyncDataState) {
     }
 
     // Update flip counter when new data arrives
-    if got_update {
-        if let Some(ref snap) = state.latest {
-            state.counter.set_value(&format!("{}", snap.accrued_total));
-        }
+    if got_update && let Some(ref snap) = state.latest {
+        state.counter.set_value(&format!("{}", snap.accrued_total));
     }
 
     // --- Controls ---

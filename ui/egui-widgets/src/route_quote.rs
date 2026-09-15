@@ -74,6 +74,27 @@ impl Amount {
         )
     }
 
+    /// The number alone, grouped, at no more than `max_decimals` places.
+    ///
+    /// For a figure read for its magnitude rather than its exactness — a pool
+    /// balance of ₳28,108.24 says everything ₳28,108.241247 does, with six
+    /// fewer digits to scan past. Rounds rather than truncates, so the last
+    /// place shown is the nearest one.
+    ///
+    /// Never use this for an amount a user is agreeing to pay or receive.
+    /// Those are exact by construction and must print in full.
+    pub fn figure_capped(&self, max_decimals: u8) -> String {
+        if max_decimals >= self.decimals {
+            return self.figure();
+        }
+        let dropped = 10u64.pow(u32::from(self.decimals - max_decimals));
+        let kept = self.quantity / dropped;
+        // Half-up on the last place kept. `dropped` is a power of ten above
+        // one here, so it is even and the comparison is exact.
+        let rounded = kept + u64::from((self.quantity % dropped) * 2 >= dropped);
+        Self::new(rounded, max_decimals, self.ticker.clone()).figure()
+    }
+
     /// Number and ticker.
     pub fn display(&self) -> String {
         format!("{} {}", self.figure(), self.ticker)
@@ -141,8 +162,14 @@ pub struct RouteQuoteData {
     /// What the user receives.
     pub receive: Amount,
     pub price_impact_bps: u32,
-    /// Summed across every transaction in the plan.
-    pub network_fee_lovelace: u64,
+    /// Summed across every transaction in the plan, when it is known.
+    ///
+    /// `None` until the route is BUILT. A quote prices the trade against pool
+    /// state; the fee depends on the body — which inputs coin selection took,
+    /// how many script bytes are referenced, what ex-units the validators
+    /// booked. Rendering an unknown fee as zero tells the user a route is
+    /// free.
+    pub network_fee_lovelace: Option<u64>,
     pub plan: QuotePlan,
 }
 
@@ -370,7 +397,10 @@ fn ready(
         } else {
             "Network fee"
         },
-        &Amount::ada(data.network_fee_lovelace).display(),
+        &match data.network_fee_lovelace {
+            Some(fee) => Amount::ada(fee).display(),
+            None => "shown at review".to_string(),
+        },
         sizes,
     );
 
@@ -546,6 +576,25 @@ fn group(amount: u64) -> String {
 mod tests {
     use super::*;
 
+    /// Capping is for figures read at a glance, and must round, not truncate.
+    #[test]
+    fn a_capped_figure_rounds_to_the_place_it_keeps() {
+        let ada = Amount::ada(28_108_241_247);
+        assert_eq!(ada.figure(), "28,108.241247");
+        assert_eq!(ada.figure_capped(2), "28,108.24");
+        // .245 rounds up, not away.
+        assert_eq!(Amount::ada(1_245_000).figure_capped(2), "1.25");
+        assert_eq!(Amount::ada(1_244_999).figure_capped(2), "1.24");
+
+        // A cap above the asset's own scale changes nothing, and a
+        // zero-decimal asset is never touched.
+        assert_eq!(ada.figure_capped(9), "28,108.241247");
+        assert_eq!(
+            Amount::new(196_800_921, 0, "LUMP").figure_capped(2),
+            "196,800,921"
+        );
+    }
+
     #[test]
     fn amounts_respect_their_own_decimals() {
         // A route mixes assets that disagree about decimals; the same
@@ -580,7 +629,7 @@ mod tests {
             pay: Amount::ada(10_000_000),
             receive: Amount::new(3_120_727, 0, "SWOLE"),
             price_impact_bps: 103,
-            network_fee_lovelace: 599_265,
+            network_fee_lovelace: Some(599_265),
             plan: QuotePlan::Atomic,
         };
         assert_eq!(data.path(), "ADA -> LUMP -> SWOLE");

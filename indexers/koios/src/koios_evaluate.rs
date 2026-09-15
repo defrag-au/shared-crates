@@ -71,6 +71,9 @@ struct OgmiosTxId {
     id: String,
 }
 
+// Only the `evaluator` feature knows what a `PendingUtxo` is; the ungated
+// evaluate path sends an empty `additionalUtxo` and needs none of this.
+#[cfg(feature = "evaluator")]
 impl OgmiosUtxo {
     fn from_pending(pending: &cardano_tx::evaluate::PendingUtxo) -> Self {
         let mut value = serde_json::Map::new();
@@ -142,16 +145,29 @@ impl KoiosApi {
         &self,
         tx_cbor_hex: &str,
     ) -> Result<Vec<KoiosRedeemerBudget>, KoiosError> {
-        self.evaluate_transaction_with(tx_cbor_hex, &[]).await
+        self.evaluate_with_additional(tx_cbor_hex, Vec::new()).await
     }
 
     /// As [`Self::evaluate_transaction`], but resolving inputs against
     /// `pending` as well as the ledger — the UTxOs an earlier, unsubmitted
     /// transaction in a chained plan will create.
+    #[cfg(feature = "evaluator")]
     pub async fn evaluate_transaction_with(
         &self,
         tx_cbor_hex: &str,
         pending: &[cardano_tx::evaluate::PendingUtxo],
+    ) -> Result<Vec<KoiosRedeemerBudget>, KoiosError> {
+        self.evaluate_with_additional(
+            tx_cbor_hex,
+            pending.iter().map(OgmiosUtxo::from_pending).collect(),
+        )
+        .await
+    }
+
+    async fn evaluate_with_additional(
+        &self,
+        tx_cbor_hex: &str,
+        additional_utxo: Vec<OgmiosUtxo>,
     ) -> Result<Vec<KoiosRedeemerBudget>, KoiosError> {
         let url = format!("{}/ogmios", self.base_url);
         let request = OgmiosRequest {
@@ -159,7 +175,7 @@ impl KoiosApi {
             method: "evaluateTransaction",
             params: OgmiosEvalParams {
                 transaction: OgmiosTx { cbor: tx_cbor_hex },
-                additional_utxo: pending.iter().map(OgmiosUtxo::from_pending).collect(),
+                additional_utxo,
             },
         };
 

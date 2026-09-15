@@ -90,6 +90,15 @@ impl LumpPadPoolView {
 #[derive(Clone, Debug)]
 pub struct RoyaltySide {
     pub ticker: String,
+    /// How many of this asset's units make one of what `ticker` names — 6 for
+    /// ADA, 0 for LUMP and for every LumpPad token.
+    ///
+    /// Not optional, and not defaulted to zero. Every quantity on chain is an
+    /// integer of the smallest unit, so a side that does not carry its own
+    /// scale renders 29,549,431,005 lovelace as "29,549,431,005 ADA" — a pool
+    /// a thousand times the size of Cardano's supply, stated with total
+    /// confidence.
+    pub decimals: u8,
     /// What the UTxO holds.
     pub balance: u64,
     /// Accrued treasury, owed out of `balance`.
@@ -104,6 +113,13 @@ impl RoyaltySide {
         self.balance
             .saturating_sub(self.treasury)
             .saturating_sub(self.royalty)
+    }
+
+    /// `quantity` at this side's scale, grouped, without the ticker — the
+    /// rows name the asset in their label already.
+    fn figure(&self, quantity: u64, max_decimals: u8) -> String {
+        crate::route_quote::Amount::new(quantity, self.decimals, self.ticker.clone())
+            .figure_capped(max_decimals)
     }
 }
 
@@ -128,6 +144,14 @@ impl SplashPoolView {
         self.fee_num
             .saturating_sub(self.treasury_fee)
             .saturating_sub(self.royalty_fee)
+    }
+
+    /// One of the datum's fee numerators as a percentage of an input.
+    pub fn fee_pct(&self, numerator: u64) -> f64 {
+        if self.fee_den == 0 {
+            return 0.0;
+        }
+        numerator as f64 * 100.0 / self.fee_den as f64
     }
 
     /// The liquidity providers' share of an input, in basis points.
@@ -165,6 +189,13 @@ pub struct PoolInspectorConfig {
     pub title: TextSize,
     /// Draw the composition bar. Off gives figures only.
     pub show_composition: bool,
+    /// Most decimal places any figure here shows.
+    ///
+    /// This is an at-a-glance view of a pool's shape, not a receipt: two
+    /// places carry the magnitude and the rest is noise to scan past. A
+    /// zero-decimal asset is unaffected — the cap only ever removes places
+    /// the asset actually has.
+    pub max_decimals: u8,
 }
 
 impl Default for PoolInspectorConfig {
@@ -174,6 +205,7 @@ impl Default for PoolInspectorConfig {
             detail: TextSize::Base,
             title: TextSize::Lg,
             show_composition: true,
+            max_decimals: 2,
         }
     }
 }
@@ -210,8 +242,8 @@ pub fn show(ui: &mut Ui, pool: &PoolView, config: &PoolInspectorConfig) {
             dense(ui);
             let sizes = Sizes::resolve(ui, config);
             match pool {
-                PoolView::LumpPad(view) => lumppad(ui, view, &sizes, config.show_composition),
-                PoolView::SplashRoyalty(view) => splash(ui, view, &sizes, config.show_composition),
+                PoolView::LumpPad(view) => lumppad(ui, view, &sizes, config),
+                PoolView::SplashRoyalty(view) => splash(ui, view, &sizes, config),
             }
         });
 }
@@ -228,7 +260,8 @@ fn dense(ui: &mut Ui) {
     ui.spacing_mut().item_spacing.y = ui.tokens().space(Space::Sm);
 }
 
-fn lumppad(ui: &mut Ui, view: &LumpPadPoolView, sizes: &Sizes, show_composition: bool) {
+fn lumppad(ui: &mut Ui, view: &LumpPadPoolView, sizes: &Sizes, config: &PoolInspectorConfig) {
+    let show_composition = config.show_composition;
     title(
         ui,
         &format!("LumpPad · {}", view.ticker),
@@ -328,7 +361,9 @@ fn lumppad(ui: &mut Ui, view: &LumpPadPoolView, sizes: &Sizes, show_composition:
     );
 }
 
-fn splash(ui: &mut Ui, view: &SplashPoolView, sizes: &Sizes, show_composition: bool) {
+fn splash(ui: &mut Ui, view: &SplashPoolView, sizes: &Sizes, config: &PoolInspectorConfig) {
+    let show_composition = config.show_composition;
+    let dp = config.max_decimals;
     title(
         ui,
         &format!("Splash royalty · {}/{}", view.x.ticker, view.y.ticker),
@@ -375,13 +410,13 @@ fn splash(ui: &mut Ui, view: &SplashPoolView, sizes: &Sizes, show_composition: b
         row(
             ui,
             &format!("{} balance", side.ticker),
-            &group(side.balance),
+            &side.figure(side.balance, dp),
             sizes,
         );
         row(
             ui,
             &format!("{} effective", side.ticker),
-            &group(side.effective()),
+            &side.figure(side.effective(), dp),
             sizes,
         );
         note(
@@ -389,8 +424,8 @@ fn splash(ui: &mut Ui, view: &SplashPoolView, sizes: &Sizes, show_composition: b
             &format!(
                 // ASCII hyphen, not U+2212: no minus glyph in the app's fonts.
                 "-{} treasury, -{} royalty",
-                group(side.treasury),
-                group(side.royalty)
+                side.figure(side.treasury, dp),
+                side.figure(side.royalty, dp)
             ),
             sizes,
         );
@@ -402,13 +437,17 @@ fn splash(ui: &mut Ui, view: &SplashPoolView, sizes: &Sizes, show_composition: b
         &format!("{} / {}", group(view.swap_fee_num()), group(view.fee_den)),
         sizes,
     );
+    // All three as percentages of the SAME denominator. Printing the LP share
+    // as a percentage beside two bare numerators invites reading 50 as 50 of
+    // something; it is 50/100,000, three orders of magnitude smaller than the
+    // 0.90% it sits next to.
     note(
         ui,
         &format!(
-            "LP {:.2}%, treasury {}, royalty {}",
+            "LP {:.2}%, treasury {:.3}%, royalty {:.3}%",
             view.lp_fee_bps() / 100.0,
-            view.treasury_fee,
-            view.royalty_fee
+            view.fee_pct(view.treasury_fee),
+            view.fee_pct(view.royalty_fee)
         ),
         sizes,
     );
@@ -616,6 +655,7 @@ mod tests {
     fn effective_reserves_exclude_accrued_treasury_and_royalty() {
         let side = RoyaltySide {
             ticker: "ADA".into(),
+            decimals: 6,
             balance: 29_549_431_005,
             treasury: 148_513_382,
             royalty: 39_027_415,
@@ -624,24 +664,77 @@ mod tests {
         assert!(side.effective() < side.balance, "the gap is the point");
     }
 
+    /// Lovelace is not ADA.
+    ///
+    /// The live LUMP/ADA pool holds ₳29,549.43. Rendered without its scale it
+    /// reads 29,549,431,005 ADA — more than Cardano's entire supply, and the
+    /// kind of wrong that looks authoritative because it is grouped neatly.
+    #[test]
+    fn a_side_renders_at_its_own_scale() {
+        let ada = RoyaltySide {
+            ticker: "ADA".into(),
+            decimals: 6,
+            balance: 29_549_431_005,
+            treasury: 93_770_398,
+            royalty: 93_770_399,
+        };
+        // Uncapped, the full scale.
+        assert_eq!(ada.figure(ada.balance, 6), "29,549.431005");
+        assert_eq!(ada.figure(ada.treasury, 6), "93.770398");
+        // As the panel actually draws it — two places carry the magnitude.
+        assert_eq!(ada.figure(ada.balance, 2), "29,549.43");
+        assert_eq!(ada.figure(ada.treasury, 2), "93.77");
+
+        // LUMP has 0 decimals in the token registry, so its raw count IS the
+        // figure — the same code path must not scale it.
+        let lump = RoyaltySide {
+            ticker: "LUMP".into(),
+            decimals: 0,
+            balance: 196_800_921,
+            treasury: 698_241,
+            royalty: 698_242,
+        };
+        // The cap only ever removes places the asset HAS, so a zero-decimal
+        // asset reads identically at any cap.
+        assert_eq!(lump.figure(lump.balance, 2), "196,800,921");
+        assert_eq!(lump.figure(lump.balance, 6), "196,800,921");
+    }
+
+    /// Every fee in the note is a share of the SAME denominator.
+    #[test]
+    fn fee_shares_are_all_percentages() {
+        let pool = SplashPoolView {
+            utxo_ref: "d92955b6…#1".into(),
+            x: side("ADA", 6),
+            y: side("LUMP", 0),
+            fee_num: 99_100,
+            treasury_fee: 50,
+            royalty_fee: 50,
+            fee_den: 100_000,
+        };
+        assert_eq!(pool.lp_fee_bps() / 100.0, 0.9);
+        assert_eq!(pool.fee_pct(pool.treasury_fee), 0.05);
+        assert_eq!(pool.fee_pct(pool.royalty_fee), 0.05);
+    }
+
+    fn side(ticker: &str, decimals: u8) -> RoyaltySide {
+        RoyaltySide {
+            ticker: ticker.into(),
+            decimals,
+            balance: 1,
+            treasury: 0,
+            royalty: 0,
+        }
+    }
+
     /// The LUMP/ADA pool's own fee schedule: 0.9% LP, 0.05% each to treasury
     /// and royalty, leaving 99,000/100,000 on the curve.
     #[test]
     fn the_curve_factor_is_fee_num_less_both_counters() {
         let pool = SplashPoolView {
             utxo_ref: "d92955b6…#1".into(),
-            x: RoyaltySide {
-                ticker: "ADA".into(),
-                balance: 1,
-                treasury: 0,
-                royalty: 0,
-            },
-            y: RoyaltySide {
-                ticker: "LUMP".into(),
-                balance: 1,
-                treasury: 0,
-                royalty: 0,
-            },
+            x: side("ADA", 6),
+            y: side("LUMP", 0),
             fee_num: 99_100,
             treasury_fee: 50,
             royalty_fee: 50,

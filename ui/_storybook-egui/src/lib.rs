@@ -9,6 +9,20 @@
 #[macro_use]
 mod registry;
 
+// Wasm-only because the palette helpers the stories call (`accent`, `muted`,
+// `secondary`, …) live in `mod app` below, which genuinely needs the browser.
+//
+// That makes the stories invisible to a native `cargo check`/`clippy`, and
+// they ARE the only compile-time check that a widget's public shape still
+// matches what its demo builds — adding a field to a widget config breaks
+// every story and the native build goes on passing. The check that catches it
+// is the same lint run against the target they actually compile for:
+//
+//     cargo clippy -p storybook-egui --target wasm32-unknown-unknown \
+//         --all-features -- -D warnings
+//
+// Run it after touching any widget's public types. It found 22 real lint
+// errors the first time it was pointed here.
 #[cfg(target_arch = "wasm32")]
 mod stories;
 
@@ -46,6 +60,7 @@ mod app {
             ThemeStates => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::theme_states::show(ui);
             BackgroundToasts => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::background::show(ui);
             Skeleton => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::skeleton::show(ui);
+            LabelledProgress => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::labelled_progress::show(ui);
             SliderGroup => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::slider_group::show(ui, &mut a.slider_group_state);
             Chip => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::chip::show(ui);
             PartyBadge => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::party_badge::show(ui);
@@ -95,6 +110,7 @@ mod app {
             Drawer => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::drawer::show(ui);
             Disclosure => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::disclosure::show(ui, &mut a.disclosure_state);
             UserBadge => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::user_badge::show(ui);
+            AccountBar => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::account_bar::show(ui);
             TierLadder => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::tier_ladder::show(ui);
             AboutModal => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::about_modal::show(ui);
             ServiceBanner => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::service_banner::show(ui);
@@ -323,6 +339,7 @@ mod app {
                 Self::ThemeStates => "Theme States",
                 Self::BackgroundToasts => "Background Toasts",
                 Self::Skeleton => "Skeleton",
+                Self::LabelledProgress => "Labelled Progress",
                 Self::SliderGroup => "Slider Group",
                 Self::Chip => "Chip",
                 Self::PartyBadge => "Party Badge",
@@ -368,6 +385,7 @@ mod app {
                 Self::Drawer => "Drawer",
                 Self::Disclosure => "Disclosure",
                 Self::UserBadge => "User Badge",
+                Self::AccountBar => "Account Bar",
                 Self::TierLadder => "Tier Ladder",
                 Self::AboutModal => "About Modal",
                 Self::ServiceBanner => "Service Banner",
@@ -408,6 +426,9 @@ mod app {
                     "Detail that opens under the row it explains — eased, tied by a rule, anchored so the list does not shove"
                 }
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
+                Self::AccountBar => {
+                    "An app header's trailing cluster: count-badged action triggers plus the connected account"
+                }
                 Self::TierLadder => {
                     "The access ladder as a modal — what each rung gives, every route to it, and where you stand"
                 }
@@ -635,6 +656,9 @@ mod app {
                 }
                 Self::ThemeStates => {
                     "TEMPLATE for contrast bugs — interaction states (selected / hovered / active / disabled) drawn on every surface, plus the translucent selection wash. Resting-state stories cannot show these; mirrored numerically by tests/contrast.rs"
+                }
+                Self::LabelledProgress => {
+                    "A busy mark the size of the words beside it. Shown against egui's own Spinner, which is wrong in both directions by its own arithmetic: unsized it takes interact_size.y (floored at the 44pt tap target), sized it draws radius = height/2 - 2. The mark here fills its box exactly, and the box is the label's line height"
                 }
                 Self::Skeleton => {
                     "Placeholders for content that is not on screen, and a statement of WHY — Loading pulses because 'wait' is the right instruction, Withheld is static and recedes because waiting produces nothing. The reason is positional so a call site cannot draw one without saying which. Rows or a block; carries no data, so the same shapes appear whether three items are behind the gate or three thousand"
@@ -966,23 +990,22 @@ mod app {
                     .map(|(_, v)| v.replace('+', " ").replace("%20", " "))
             };
 
-            if let Some(name) = param("theme") {
-                if let Some(t) = egui_widgets::theme::Theme::by_name(&name) {
-                    out.density = t.density;
-                    out.motion = t.motion.mode;
-                    out.theme = t;
-                }
+            if let Some(name) = param("theme")
+                && let Some(t) = egui_widgets::theme::Theme::by_name(&name)
+            {
+                out.density = t.density;
+                out.motion = t.motion.mode;
+                out.theme = t;
             }
             if let Some(name) = param("vs") {
                 out.compare = egui_widgets::theme::Theme::by_name(&name);
             }
-            if let Some(name) = param("density") {
-                if let Some(d) = egui_widgets::theme::Density::ALL
+            if let Some(name) = param("density")
+                && let Some(d) = egui_widgets::theme::Density::ALL
                     .iter()
                     .find(|d| d.label().eq_ignore_ascii_case(&name))
-                {
-                    out.density = *d;
-                }
+            {
+                out.density = *d;
             }
             if let Some(name) = param("motion") {
                 out.motion = match name.to_ascii_lowercase().as_str() {
@@ -1590,25 +1613,39 @@ mod app {
         /// belongs to the roster and the shell should not have to know it
         /// exists. Neither list is complete on its own.
         fn draw_palette(&mut self, ui: &mut egui::Ui) {
+            use egui_widgets::command_palette::{PaletteRow, rank_rows};
             use egui_widgets::typeahead_search::TypeaheadOption;
 
-            let mut options: Vec<TypeaheadOption> = Story::all()
+            let mut rows: Vec<PaletteRow> = Story::all()
                 .iter()
                 .filter(|s| **s != self.current_story)
                 .map(|s| {
-                    TypeaheadOption::new(format!("{GOTO}{}", s.label()), s.label())
-                        .subtitle(s.category())
+                    PaletteRow::leaf(
+                        TypeaheadOption::new(format!("{GOTO}{}", s.label()), s.label())
+                            .subtitle(s.category()),
+                    )
                 })
                 .collect();
             // What the story currently on screen can do. Nothing here knows
             // what that is — the widgets said so themselves.
-            options.extend(egui_widgets::commands::offered_options(ui.ctx()));
+            rows.extend(egui_widgets::commands::offered_rows(ui.ctx()));
 
-            match egui_widgets::command_palette::CommandPalette::new("storybook", &options)
+            // The shell resolves no contexts of its own. A story's command
+            // that takes an argument can still be descended into from here,
+            // and then there is nothing to list — so list nothing, rather than
+            // the root rows under a breadcrumb that names a different level.
+            // A story that offers one drives it from its own palette, where
+            // its candidates live.
+            let shown = match self.palette.depth() {
+                0 => rank_rows(&rows, self.palette.query(), 12),
+                _ => Vec::new(),
+            };
+
+            match egui_widgets::command_palette::CommandPalette::new("storybook", &shown)
                 .placeholder("Go to a story, or run something on this one…")
                 .show(ui, &mut self.palette)
             {
-                egui_widgets::command_palette::PaletteAction::Invoke(id) => {
+                egui_widgets::command_palette::PaletteAction::Invoke { id, .. } => {
                     match id.strip_prefix(GOTO) {
                         Some(label) => {
                             if let Some(s) = Story::all().iter().find(|s| s.label() == label) {

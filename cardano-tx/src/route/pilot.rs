@@ -34,7 +34,7 @@ use pallas_txbuilder::{Input, ScriptKind};
 
 use super::lumppad::{LumpPadBuyLeg, LumpPadSellLeg};
 use super::splash_pool::{SplashDirection, SplashSwapLeg};
-use super::{Leg, Route, RouteAsset, RouteError};
+use super::{DustSweep, InputPolicy, InputSource, Leg, Route, RouteAsset, RouteError};
 use crate::blueprint::PlutusLanguage;
 use crate::builder::TxDeps;
 use crate::builder::script::ScriptSource;
@@ -344,7 +344,9 @@ fn the_composed_transaction_has_the_shape_both_validators_require() {
     // output's min-UTxO and the fee.
     let deps = user_deps(30_000_000);
     let owner = deps.from_address.clone();
-    let builder = route.apply(deps, &states, &quote).unwrap();
+    let builder = route
+        .apply(deps, &states, &quote, &InputPolicy::wallet())
+        .unwrap();
 
     // §4.1: BOTH languages, not the highest.
     assert_eq!(
@@ -517,7 +519,12 @@ fn the_splash_redeemer_matches_the_chains() {
     let quote = route.quote(&states, 10_000_000).unwrap();
 
     let unsigned = route
-        .apply(user_deps(30_000_000), &states, &quote)
+        .apply(
+            user_deps(30_000_000),
+            &states,
+            &quote,
+            &InputPolicy::wallet(),
+        )
         .unwrap()
         .build()
         .expect("builds");
@@ -641,13 +648,167 @@ fn a_token_route_without_the_token_is_refused() {
     let quote = route.quote(&states, 50_000_000).unwrap();
 
     // `user_deps` holds only ADA.
-    let Err(error) = route.apply(user_deps(30_000_000), &states, &quote) else {
+    let Err(error) = route.apply(
+        user_deps(30_000_000),
+        &states,
+        &quote,
+        &InputPolicy::wallet(),
+    ) else {
         panic!("cannot sell what the wallet does not hold");
     };
     let message = error.to_string();
     assert!(
         message.contains("50000000"),
         "the error must name the shortfall; got {message}"
+    );
+}
+
+/// A wallet carrying scraps of the input asset, plus one real holding.
+///
+/// Three 2-SWOLE UTxOs is what a wallet looks like after three sells: the
+/// gross solver cannot place the last unit or two, and each remainder comes
+/// back as its own UTxO locking min-ADA.
+fn wallet_with_dust() -> TxDeps {
+    let mut deps = user_deps(30_000_000);
+    deps.utxos.push(UtxoApi {
+        tx_hash: "3".repeat(64),
+        output_index: 0,
+        lovelace: 2_000_000,
+        assets: vec![asset(SWOLE_POLICY, SWOLE_NAME, 120_000_000)],
+        tags: vec![],
+    });
+    for n in 0..3u32 {
+        deps.utxos.push(UtxoApi {
+            tx_hash: "4".repeat(64),
+            output_index: n,
+            lovelace: 1_163_700,
+            assets: vec![asset(SWOLE_POLICY, SWOLE_NAME, 2)],
+            tags: vec![],
+        });
+    }
+    deps
+}
+
+fn sell_route() -> (Route, [LegState; 1]) {
+    (
+        Route::new(vec![Leg::LumpPadSell(LumpPadSellLeg)]),
+        [lumppad_state()],
+    )
+}
+
+/// The sweep folds the wallet's scraps in and changes NO quoted number.
+///
+/// That is the whole contract. The swept units are not traded — they ride
+/// back out in the user's own output — so the route settles at exactly the
+/// figures the user was shown. What they get for it is the min-ADA those
+/// scrap UTxOs were locking.
+#[test]
+fn a_dust_sweep_consumes_the_scraps_without_moving_the_quote() {
+    let (route, states) = sell_route();
+    let quote = route.quote(&states, 50_000_000).unwrap();
+
+    let plain = route
+        .apply(wallet_with_dust(), &states, &quote, &InputPolicy::wallet())
+        .unwrap();
+    let swept = route
+        .apply(
+            wallet_with_dust(),
+            &states,
+            &quote,
+            &InputPolicy {
+                source: InputSource::Wallet,
+                sweep: DustSweep::Below {
+                    max_quantity: 50,
+                    max_utxos: 10,
+                },
+            },
+        )
+        .unwrap();
+
+    // The scraps are spent: three more inputs than the plain build.
+    let plain_inputs = plain.staged_input_count();
+    let swept_inputs = swept.staged_input_count();
+    assert_eq!(
+        swept_inputs,
+        plain_inputs + 3,
+        "the sweep must consume all three scrap UTxOs"
+    );
+
+    // And the trade is untouched — same legs, same amounts, same output.
+    let requoted = route.quote(&states, 50_000_000).unwrap();
+    assert_eq!(requoted.amount_in, quote.amount_in);
+    assert_eq!(requoted.amount_out, quote.amount_out);
+}
+
+/// `max_utxos` is a hard cap: a transaction has a size limit, and a wallet
+/// with hundreds of scraps must not build something unsubmittable.
+#[test]
+fn a_dust_sweep_stops_at_its_utxo_cap() {
+    let (route, states) = sell_route();
+    let quote = route.quote(&states, 50_000_000).unwrap();
+
+    let plain = route
+        .apply(wallet_with_dust(), &states, &quote, &InputPolicy::wallet())
+        .unwrap()
+        .staged_input_count();
+    let capped = route
+        .apply(
+            wallet_with_dust(),
+            &states,
+            &quote,
+            &InputPolicy {
+                source: InputSource::Wallet,
+                sweep: DustSweep::Below {
+                    max_quantity: 50,
+                    max_utxos: 2,
+                },
+            },
+        )
+        .unwrap()
+        .staged_input_count();
+    assert_eq!(capped, plain + 2, "two scraps, not three");
+}
+
+/// A holding at or above the threshold is NOT dust and is left alone — it is
+/// the user's position, not a scrap.
+#[test]
+fn a_dust_sweep_leaves_real_holdings_alone() {
+    let (route, states) = sell_route();
+    let quote = route.quote(&states, 50_000_000).unwrap();
+
+    let mut deps = wallet_with_dust();
+    deps.utxos.push(UtxoApi {
+        tx_hash: "5".repeat(64),
+        output_index: 0,
+        lovelace: 2_000_000,
+        // Above the threshold by one, so it must survive.
+        assets: vec![asset(SWOLE_POLICY, SWOLE_NAME, 50)],
+        tags: vec![],
+    });
+
+    let swept = route
+        .apply(
+            deps,
+            &states,
+            &quote,
+            &InputPolicy {
+                source: InputSource::Wallet,
+                sweep: DustSweep::Below {
+                    max_quantity: 50,
+                    max_utxos: 10,
+                },
+            },
+        )
+        .unwrap()
+        .staged_input_count();
+    let plain = route
+        .apply(wallet_with_dust(), &states, &quote, &InputPolicy::wallet())
+        .unwrap()
+        .staged_input_count();
+    assert_eq!(
+        swept,
+        plain + 3,
+        "the 50-unit holding is a position, not dust"
     );
 }
 
@@ -696,7 +857,7 @@ fn the_composed_transaction_conserves_every_asset() {
     }
 
     let unsigned = route
-        .apply(deps, &states, &quote)
+        .apply(deps, &states, &quote, &InputPolicy::wallet())
         .unwrap()
         .build()
         .expect("builds");

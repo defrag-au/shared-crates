@@ -84,12 +84,17 @@ fn lump_ada() -> SplashPoolView {
         utxo_ref: "d92955b626329b41222677f6d78e8feed16b6705c6885de00030b340b406efe7#1".into(),
         x: RoyaltySide {
             ticker: "ADA".into(),
+            // Lovelace on chain; six decimals to read as ADA.
+            decimals: 6,
             balance: 29_549_431_005,
             treasury: 148_513_382,
             royalty: 39_027_415,
         },
         y: RoyaltySide {
             ticker: "LUMP".into(),
+            // LUMP is registered with 0 decimals — its raw count IS the
+            // figure, and scaling it would be the same bug in reverse.
+            decimals: 0,
             balance: 196_800_921,
             treasury: 1_094_651,
             royalty: 301_832,

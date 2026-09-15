@@ -83,6 +83,25 @@ pub fn show(ui: &mut egui::Ui) {
             route_quote::show(ui, &RouteQuoteState::Quoting, &config)
         });
     });
+
+    ui.add_space(12.0);
+
+    ui.horizontal_top(|ui| {
+        panel(
+            ui,
+            "Fee not yet known",
+            "A quote prices the trade; the fee depends on the built body. Until \
+             then the row says so rather than reading 0.000000 ADA, which would \
+             tell the user the route is free.",
+            |ui| {
+                route_quote::show(
+                    ui,
+                    &RouteQuoteState::Ready(Box::new(unpriced_fee())),
+                    &config,
+                )
+            },
+        );
+    });
 }
 
 /// The pilot, at the live mainnet numbers of 2026-09-14: 10 ADA through the
@@ -123,7 +142,7 @@ fn pilot() -> RouteQuoteData {
         pay: Amount::ada(10_000_000),
         receive: Amount::new(3_120_727, 0, "SWOLE"),
         price_impact_bps: 103,
-        network_fee_lovelace: 599_265,
+        network_fee_lovelace: Some(599_265),
         plan: QuotePlan::Chained {
             handoffs: vec![Handoff {
                 after_transaction: 0,
@@ -141,8 +160,16 @@ fn atomic() -> RouteQuoteData {
     for leg in &mut data.legs {
         leg.transaction = 0;
     }
-    data.network_fee_lovelace = 349_000;
+    data.network_fee_lovelace = Some(349_000);
     data.plan = QuotePlan::Atomic;
+    data
+}
+
+/// A fresh quote, before anything is built: the fee is not knowable yet and
+/// must not read as zero.
+fn unpriced_fee() -> RouteQuoteData {
+    let mut data = pilot();
+    data.network_fee_lovelace = None;
     data
 }
 

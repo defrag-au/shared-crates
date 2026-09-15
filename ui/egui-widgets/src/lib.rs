@@ -3,6 +3,10 @@ pub use egui_inbox;
 
 pub mod about_modal;
 pub mod access_gate;
+// Gated with `wallet` and `wallet_button`, which it composes — the account
+// half of this bar IS a wallet connection.
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub mod account_bar;
 pub mod activity_feed;
 pub mod activity_lanes;
 #[cfg(feature = "gateway")]
@@ -61,6 +65,7 @@ pub mod image_loader;
 pub mod image_stack;
 pub mod interaction_tip;
 pub mod knob;
+pub mod labelled_progress;
 pub mod leaderboard;
 #[cfg(feature = "cardano")]
 pub mod listing_composer;
@@ -238,7 +243,9 @@ pub use collection_list::{
     CollectionControl, CollectionControls, CollectionList, CollectionListAction,
     CollectionListLayout, CollectionListResponse, CollectionRow, CollectionStatus,
 };
-pub use command_palette::{CommandPalette, PaletteAction, PaletteState};
+pub use command_palette::{
+    CommandPalette, ContextId, PaletteAction, PaletteRow, PaletteState, RowKind, rank_rows,
+};
 pub use corner_action::{Corner, CornerAction};
 pub use custody_walk::{
     CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode, WalkNodeKind, WalkSummary,

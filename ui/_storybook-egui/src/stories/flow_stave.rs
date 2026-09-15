@@ -232,10 +232,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut FlowStaveState) {
         let back = ui
             .add_enabled(!state.history.is_empty(), egui::Button::new("← back"))
             .on_hover_text("return to the previous subject");
-        if back.clicked() {
-            if let Some(prev) = state.history.pop() {
-                state.focal = prev;
-            }
+        if back.clicked()
+            && let Some(prev) = state.history.pop()
+        {
+            state.focal = prev;
         }
         ui.label(
             egui::RichText::new(format!("subject: {}", state.focal))

@@ -193,10 +193,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut CoverageLanesState) {
     };
 
     // Nested rather than a let-chain: this crate is edition 2021.
-    if let Some(key) = &out.toggled {
-        if let Some(i) = state.machines.iter().position(|(n, _)| n == key) {
-            state.active[i] = !state.active[i];
-        }
+    if let Some(key) = &out.toggled
+        && let Some(i) = state.machines.iter().position(|(n, _)| n == key)
+    {
+        state.active[i] = !state.active[i];
     }
 
     ui.add_space(8.0);

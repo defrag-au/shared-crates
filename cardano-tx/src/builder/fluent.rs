@@ -204,6 +204,12 @@ impl TxBuilder {
         &self.script_languages
     }
 
+    /// How many inputs have been staged EXPLICITLY, before coin selection
+    /// adds whatever else the fee needs.
+    pub fn staged_input_count(&self) -> usize {
+        self.inputs.len()
+    }
+
     // --- Minting ---
 
     /// Add a minting operation.

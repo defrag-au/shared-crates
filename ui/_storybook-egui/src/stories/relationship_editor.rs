@@ -56,15 +56,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut RelationshipEditorState) {
     let resp = RelationshipEditor::new("story_variant_flow", &state.edges, &state.options)
         .add_label("Add edge")
         .show(ui);
-    if let Some(edge) = resp.added {
-        if !state.edges.contains(&edge) {
-            state.edges.push(edge);
-        }
+    if let Some(edge) = resp.added
+        && !state.edges.contains(&edge)
+    {
+        state.edges.push(edge);
     }
-    if let Some(i) = resp.removed {
-        if i < state.edges.len() {
-            state.edges.remove(i);
-        }
+    if let Some(i) = resp.removed
+        && i < state.edges.len()
+    {
+        state.edges.remove(i);
     }
 
     ui.add_space(8.0);

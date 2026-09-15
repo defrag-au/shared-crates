@@ -114,11 +114,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
             let config = AssetStripConfig::default();
             let resp = asset_strip::show(ui, &state.items, &config);
 
-            if let Some(idx) = resp.clicked {
-                if idx < state.items.len() {
-                    state.last_action = format!("Removed: {}", state.items[idx].display_name);
-                    state.items.remove(idx);
-                }
+            if let Some(idx) = resp.clicked
+                && idx < state.items.len()
+            {
+                state.last_action = format!("Removed: {}", state.items[idx].display_name);
+                state.items.remove(idx);
             }
         });
 
@@ -146,12 +146,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut AssetStripStoryState) {
             };
             let resp = asset_strip::show(ui, &state.items, &config);
 
-            if let Some(idx) = resp.clicked {
-                if idx < state.items.len() {
-                    state.last_action =
-                        format!("Removed (small): {}", state.items[idx].display_name);
-                    state.items.remove(idx);
-                }
+            if let Some(idx) = resp.clicked
+                && idx < state.items.len()
+            {
+                state.last_action = format!("Removed (small): {}", state.items[idx].display_name);
+                state.items.remove(idx);
             }
         });
 

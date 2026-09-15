@@ -249,208 +249,200 @@ pub fn show(
         }
 
         // Detail panel — shown when a block is selected
-        if let Some(ref selected_ref) = state.shelf_state.selected_utxo.clone() {
-            if let Some(utxo) = data.utxos.iter().find(|u| u.utxo_ref == *selected_ref) {
-                // TODO: replace with a real resolver once the resolver service is wired up
-                let resolver: &dyn PolicyResolver = &NullResolver;
+        if let Some(ref selected_ref) = state.shelf_state.selected_utxo.clone()
+            && let Some(utxo) = data.utxos.iter().find(|u| u.utxo_ref == *selected_ref)
+        {
+            // TODO: replace with a real resolver once the resolver service is wired up
+            let resolver: &dyn PolicyResolver = &NullResolver;
 
-                ui.add_space(8.0);
-                egui::Frame::new()
-                    .fill(crate::tok(ui, egui_widgets::theme::Token::BgSecondary))
-                    .inner_margin(egui::Margin::same(12))
-                    .corner_radius(6.0)
-                    .show(ui, |ui| {
-                        // UTxO ref (full) + close button
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(&utxo.utxo_ref)
-                                    .monospace()
-                                    .size(10.0)
-                                    .color(crate::secondary(ui)),
-                            );
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui.small_button("\u{2715}").clicked() {
-                                        state.shelf_state.selected_utxo = None;
-                                    }
-                                },
-                            );
-                        });
-
-                        // ADA amount
-                        let ada = utxo.lovelace as f64 / 1_000_000.0;
+            ui.add_space(8.0);
+            egui::Frame::new()
+                .fill(crate::tok(ui, egui_widgets::theme::Token::BgSecondary))
+                .inner_margin(egui::Margin::same(12))
+                .corner_radius(6.0)
+                .show(ui, |ui| {
+                    // UTxO ref (full) + close button
+                    ui.horizontal(|ui| {
                         ui.label(
-                            egui::RichText::new(format!("{ada:.6} ADA"))
-                                .size(16.0)
+                            egui::RichText::new(&utxo.utxo_ref)
+                                .monospace()
+                                .size(10.0)
+                                .color(crate::secondary(ui)),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("\u{2715}").clicked() {
+                                state.shelf_state.selected_utxo = None;
+                            }
+                        });
+                    });
+
+                    // ADA amount
+                    let ada = utxo.lovelace as f64 / 1_000_000.0;
+                    ui.label(
+                        egui::RichText::new(format!("{ada:.6} ADA"))
+                            .size(16.0)
+                            .strong()
+                            .color(utxo.tier.color(&egui_widgets::theme::ThemeExt::tokens(ui))),
+                    );
+
+                    // Tier badge + description
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(utxo.tier.label())
+                                .size(11.0)
                                 .strong()
                                 .color(utxo.tier.color(&egui_widgets::theme::ThemeExt::tokens(ui))),
                         );
-
-                        // Tier badge + description
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(utxo.tier.label())
-                                    .size(11.0)
-                                    .strong()
-                                    .color(
-                                        utxo.tier.color(&egui_widgets::theme::ThemeExt::tokens(ui)),
-                                    ),
-                            );
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "\u{2014} {}",
-                                    utxo.tier.description()
-                                ))
+                        ui.label(
+                            egui::RichText::new(format!("\u{2014} {}", utxo.tier.description()))
                                 .size(10.0)
                                 .color(muted(ui)),
-                            );
-                        });
+                        );
+                    });
 
-                        // UTxO tag indicators
-                        if !utxo.tags.is_empty() {
-                            ui.add_space(4.0);
-                            ui.horizontal(|ui| {
-                                for tag in &utxo.tags {
-                                    let label = match tag {
-                                        cardano_assets::utxo::UtxoTag::HasDatum => "Datum",
-                                        cardano_assets::utxo::UtxoTag::HasScriptRef => "Script Ref",
-                                        cardano_assets::utxo::UtxoTag::ScriptAddress => {
-                                            "Script Address"
-                                        }
-                                    };
-                                    ui.label(
-                                        egui::RichText::new(label)
-                                            .size(10.0)
-                                            .color(crate::tok(ui, egui_widgets::theme::Token::AccentOrange)),
-                                    );
-                                }
-                            });
+                    // UTxO tag indicators
+                    if !utxo.tags.is_empty() {
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            for tag in &utxo.tags {
+                                let label = match tag {
+                                    cardano_assets::utxo::UtxoTag::HasDatum => "Datum",
+                                    cardano_assets::utxo::UtxoTag::HasScriptRef => "Script Ref",
+                                    cardano_assets::utxo::UtxoTag::ScriptAddress => {
+                                        "Script Address"
+                                    }
+                                };
+                                ui.label(egui::RichText::new(label).size(10.0).color(crate::tok(
+                                    ui,
+                                    egui_widgets::theme::Token::AccentOrange,
+                                )));
+                            }
+                        });
+                    }
+
+                    // Per-policy asset breakdown
+                    if !utxo.assets.is_empty() {
+                        ui.add_space(6.0);
+
+                        // Group assets by policy
+                        let mut by_policy: HashMap<
+                            &str,
+                            Vec<&cardano_assets::utxo::AssetQuantity>,
+                        > = HashMap::new();
+                        for aq in &utxo.assets {
+                            by_policy
+                                .entry(aq.asset_id.policy_id.as_str())
+                                .or_default()
+                                .push(aq);
                         }
 
-                        // Per-policy asset breakdown
-                        if !utxo.assets.is_empty() {
-                            ui.add_space(6.0);
+                        // Sort policies to match the shelf order
+                        let mut policy_ids: Vec<&str> = by_policy.keys().copied().collect();
+                        policy_ids.sort();
 
-                            // Group assets by policy
-                            let mut by_policy: HashMap<
-                                &str,
-                                Vec<&cardano_assets::utxo::AssetQuantity>,
-                            > = HashMap::new();
-                            for aq in &utxo.assets {
-                                by_policy
-                                    .entry(aq.asset_id.policy_id.as_str())
-                                    .or_default()
-                                    .push(aq);
-                            }
+                        let total_assets: usize = utxo.assets.len();
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} policies, {total_assets} assets",
+                                policy_ids.len()
+                            ))
+                            .size(10.0)
+                            .color(muted(ui)),
+                        );
 
-                            // Sort policies to match the shelf order
-                            let mut policy_ids: Vec<&str> = by_policy.keys().copied().collect();
-                            policy_ids.sort();
+                        for pid in &policy_ids {
+                            let assets = &by_policy[pid];
+                            let color = egui_widgets::utxo_map::policy_color(ui, pid);
 
-                            let total_assets: usize = utxo.assets.len();
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "{} policies, {total_assets} assets",
-                                    policy_ids.len()
-                                ))
-                                .size(10.0)
-                                .color(muted(ui)),
-                            );
+                            ui.add_space(4.0);
 
-                            for pid in &policy_ids {
-                                let assets = &by_policy[pid];
-                                let color = egui_widgets::utxo_map::policy_color(ui, pid);
+                            // Policy header: swatch + resolved name or full policy ID + token type
+                            ui.horizontal(|ui| {
+                                let (r, _) = ui.allocate_exact_size(
+                                    egui::vec2(8.0, 8.0),
+                                    egui::Sense::hover(),
+                                );
+                                ui.painter().rect_filled(r, 2.0, color);
 
-                                ui.add_space(4.0);
-
-                                // Policy header: swatch + resolved name or full policy ID + token type
-                                ui.horizontal(|ui| {
-                                    let (r, _) = ui.allocate_exact_size(
-                                        egui::vec2(8.0, 8.0),
-                                        egui::Sense::hover(),
+                                if let Some(resolved) = resolver.resolve(pid) {
+                                    // Resolved: show name + token type badge
+                                    ui.label(
+                                        egui::RichText::new(&resolved.name)
+                                            .size(10.0)
+                                            .strong()
+                                            .color(crate::secondary(ui)),
                                     );
-                                    ui.painter().rect_filled(r, 2.0, color);
-
-                                    if let Some(resolved) = resolver.resolve(pid) {
-                                        // Resolved: show name + token type badge
-                                        ui.label(
-                                            egui::RichText::new(&resolved.name)
-                                                .size(10.0)
-                                                .strong()
-                                                .color(crate::secondary(ui)),
-                                        );
-                                        ui.label(
-                                            egui::RichText::new(resolved.token_type.label())
-                                                .size(9.0)
-                                                .color(muted(ui)),
-                                        );
-                                        if resolved.is_verified() {
-                                            ui.label(
-                                                egui::RichText::new("\u{2713}")
-                                                    .size(9.0)
-                                                    .color(crate::tok(ui, egui_widgets::theme::Token::AccentGreen)),
-                                            );
-                                        }
-                                        if resolved.has_warnings() {
-                                            for tag in &resolved.tags {
-                                                if tag.is_warning() {
-                                                    ui.label(
-                                                        egui::RichText::new(tag.label())
-                                                            .size(9.0)
-                                                            .strong()
-                                                            .color(crate::tok(ui, egui_widgets::theme::Token::AccentRed)),
-                                                    );
-                                                }
+                                    ui.label(
+                                        egui::RichText::new(resolved.token_type.label())
+                                            .size(9.0)
+                                            .color(muted(ui)),
+                                    );
+                                    if resolved.is_verified() {
+                                        ui.label(egui::RichText::new("\u{2713}").size(9.0).color(
+                                            crate::tok(ui, egui_widgets::theme::Token::AccentGreen),
+                                        ));
+                                    }
+                                    if resolved.has_warnings() {
+                                        for tag in &resolved.tags {
+                                            if tag.is_warning() {
+                                                ui.label(
+                                                    egui::RichText::new(tag.label())
+                                                        .size(9.0)
+                                                        .strong()
+                                                        .color(crate::tok(
+                                                            ui,
+                                                            egui_widgets::theme::Token::AccentRed,
+                                                        )),
+                                                );
                                             }
                                         }
-                                    } else {
-                                        // Unresolved: show full policy ID
-                                        ui.label(
-                                            egui::RichText::new(*pid)
-                                                .monospace()
-                                                .size(9.0)
-                                                .color(crate::secondary(ui)),
-                                        );
                                     }
-
+                                } else {
+                                    // Unresolved: show full policy ID
                                     ui.label(
-                                        egui::RichText::new(format!("({} assets)", assets.len()))
+                                        egui::RichText::new(*pid)
+                                            .monospace()
+                                            .size(9.0)
+                                            .color(crate::secondary(ui)),
+                                    );
+                                }
+
+                                ui.label(
+                                    egui::RichText::new(format!("({} assets)", assets.len()))
+                                        .size(9.0)
+                                        .color(muted(ui)),
+                                );
+                            });
+
+                            // Individual assets
+                            for aq in assets {
+                                let name = aq.asset_id.asset_name();
+                                let qty = aq.quantity;
+                                ui.horizontal(|ui| {
+                                    ui.add_space(16.0); // indent
+                                    let qty_label = if qty == 1 {
+                                        String::new()
+                                    } else {
+                                        format!(" x{qty}")
+                                    };
+                                    ui.label(
+                                        egui::RichText::new(format!("{name}{qty_label}"))
+                                            .monospace()
                                             .size(9.0)
                                             .color(muted(ui)),
                                     );
                                 });
-
-                                // Individual assets
-                                for aq in assets {
-                                    let name = aq.asset_id.asset_name();
-                                    let qty = aq.quantity;
-                                    ui.horizontal(|ui| {
-                                        ui.add_space(16.0); // indent
-                                        let qty_label = if qty == 1 {
-                                            String::new()
-                                        } else {
-                                            format!(" x{qty}")
-                                        };
-                                        ui.label(
-                                            egui::RichText::new(format!("{name}{qty_label}"))
-                                                .monospace()
-                                                .size(9.0)
-                                                .color(muted(ui)),
-                                        );
-                                    });
-                                }
                             }
-                        } else {
-                            ui.add_space(4.0);
-                            ui.label(
-                                egui::RichText::new("Pure ADA \u{2014} no native assets")
-                                    .size(10.0)
-                                    .color(muted(ui)),
-                            );
                         }
-                    });
-            }
+                    } else {
+                        ui.add_space(4.0);
+                        ui.label(
+                            egui::RichText::new("Pure ADA \u{2014} no native assets")
+                                .size(10.0)
+                                .color(muted(ui)),
+                        );
+                    }
+                });
         }
     } else {
         ui.add_space(40.0);

@@ -413,13 +413,29 @@ pub fn filter_options<'a>(
     query: &str,
     limit: usize,
 ) -> Vec<&'a TypeaheadOption> {
+    rank_indices(options.iter(), query, limit)
+        .into_iter()
+        .map(|i| &options[i])
+        .collect()
+}
+
+/// [`filter_options`]' ranking, as POSITIONS in the options it was given.
+///
+/// For a caller whose options live inside another type — a
+/// [`PaletteRow`](crate::command_palette::PaletteRow) — so it can rank them
+/// without cloning the whole set into a parallel `Vec` first, and without
+/// recovering positions from the addresses of returned references.
+pub(crate) fn rank_indices<'a>(
+    options: impl Iterator<Item = &'a TypeaheadOption>,
+    query: &str,
+    limit: usize,
+) -> Vec<usize> {
     let q = query.trim().to_lowercase();
     if q.is_empty() {
         return Vec::new();
     }
 
-    let mut scored: Vec<(u8, usize, &TypeaheadOption)> = options
-        .iter()
+    let mut scored: Vec<(u8, usize)> = options
         .enumerate()
         .filter_map(|(i, opt)| {
             let title = opt.title.to_lowercase();
@@ -441,13 +457,13 @@ pub fn filter_options<'a>(
             } else {
                 return None;
             };
-            Some((score, i, opt))
+            Some((score, i))
         })
         .collect();
 
     // Sort by tier, then original index (stable) for a predictable order.
     scored.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-    scored.into_iter().take(limit).map(|(_, _, o)| o).collect()
+    scored.into_iter().take(limit).map(|(_, i)| i).collect()
 }
 
 /// Whether this is a fresh appearance rather than a continuation.

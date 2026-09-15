@@ -97,17 +97,17 @@ pub fn show(ui: &mut egui::Ui, state: &mut EventWiringState) {
         state.last = format!("pattern added: {pattern}");
         state.patterns.push(pattern);
     }
-    if let Some(index) = resp.pattern_removed {
-        if index < state.patterns.len() {
-            state.last = format!("pattern removed: {}", state.patterns[index]);
-            state.patterns.remove(index);
-        }
+    if let Some(index) = resp.pattern_removed
+        && index < state.patterns.len()
+    {
+        state.last = format!("pattern removed: {}", state.patterns[index]);
+        state.patterns.remove(index);
     }
-    if let Some(index) = resp.action_removed {
-        if index < state.actions.len() {
-            state.last = format!("action {index} removed");
-            state.actions.remove(index);
-        }
+    if let Some(index) = resp.action_removed
+        && index < state.actions.len()
+    {
+        state.last = format!("action {index} removed");
+        state.actions.remove(index);
     }
     if let Some(index) = resp.action_clicked {
         state.last = format!("action {index} clicked (would open its config)");
@@ -129,17 +129,24 @@ pub fn show(ui: &mut egui::Ui, state: &mut EventWiringState) {
 
     // The add-action palette — the composition the gateway admin uses.
     let add_commands = vec![
-        TypeaheadOption::new("render", "Add action: Random owned asset")
-            .subtitle("render + inline reply"),
-        TypeaheadOption::new("react", "Add action: React to message")
-            .subtitle("instant emoji acknowledgment"),
+        egui_widgets::command_palette::PaletteRow::leaf(
+            TypeaheadOption::new("render", "Add action: Random owned asset")
+                .subtitle("render + inline reply"),
+        ),
+        egui_widgets::command_palette::PaletteRow::leaf(
+            TypeaheadOption::new("react", "Add action: React to message")
+                .subtitle("instant emoji acknowledgment"),
+        ),
     ];
-    match CommandPalette::new("story_wiring_palette", &add_commands)
+    // The palette no longer filters what it is handed, so the typed filter
+    // happens here — two rows, so the shared default ranking is plenty.
+    let shown = egui_widgets::command_palette::rank_rows(&add_commands, state.palette.query(), 12);
+    match CommandPalette::new("story_wiring_palette", &shown)
         .placeholder("Add an action…")
         .keybinding(false)
         .show(ui, &mut state.palette)
     {
-        PaletteAction::Invoke(id) => {
+        PaletteAction::Invoke { id, .. } => {
             match id.as_str() {
                 "render" => state.actions.push(StoryAction::Render {
                     policy: "guild default".into(),

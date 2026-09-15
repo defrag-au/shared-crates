@@ -5,12 +5,13 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-150 widgets.
+152 widgets.
 
 | module | what it is |
 |---|---|
 | `about_modal` | `AboutModal` — what a product is, what state it is in, and what a reader should expect from it while it is in that state |
 | `access_gate` | `AccessGate` — the app-level access screen: a "sign in" prompt for anonymous visitors and a "requirements" screen (what to join to gain access) for signed-in-but-unqualified users |
+| `account_bar` | `AccountBar` — the trailing cluster of an app header: the actions a connected user reaches for, and the account itself |
 | `activity_feed` | `ActivityFeed` — a wallet's transactions as day-grouped cards: what it was, who it was with, what moved, and what it cost |
 | `activity_lanes` | `ActivityLanes` — one thin lane per party, showing WHEN it acted, under the shared spine |
 | `agent_config` | `agent_config` — who answers, on whose key, for whom, and how much (feature `gateway`) |
@@ -32,7 +33,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `claim_card` | `ClaimCard` — an assertion, what would refute it, and whether anyone has tried |
 | `collection_composition` | Collection composition — a promotable "how this collection is generated" infographic |
 | `collection_list` | Collection roster — the per-client collections list rendered on the admin portal dashboard |
-| `command_palette` | `CommandPalette` — a modal, keyboard-first action launcher over a caller-supplied command set |
+| `command_palette` | `CommandPalette` — a keyboard-first launcher over a stack of contexts the caller resolves each frame |
 | `commands` | `commands` — widgets declare what they can do; the palette lists it |
 | `conversation_history` | `conversation_history` — what people said to the bot, what it worked out, and what it said back (feature `gateway`) |
 | `corner_action` | `CornerAction` — a small icon button pinned to one corner of a thumbnail or card, for a one-tap action on the thing it sits on (refresh, remove, pin) |
@@ -71,6 +72,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `image_text_editor` | Image text overlay editor — place, style, and drag text on top of an image |
 | `interaction_tip` | `InteractionTip` — a hint about a gesture, shown where the gesture is not |
 | `knob` | `Knob` — a rotary control, as a prototype to riff on |
+| `labelled_progress` | `LabelledProgress` — a busy mark the size of the words beside it |
 | `leaderboard` | `Leaderboard` — ranked standings: podium-tinted ranks, an optional prize thumbnail, one headline metric, supporting stats, and a share bar |
 | `leaderboard_table` | `LeaderboardTable` — a dense, virtual-scrolled ranked table |
 | `listing_composer` | ListingComposer — price a batch of assets for sale by what the BUYER pays |

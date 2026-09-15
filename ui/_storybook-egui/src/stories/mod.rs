@@ -1,5 +1,6 @@
 pub mod about_modal;
 pub mod access_gate;
+pub mod account_bar;
 pub mod activity_feed;
 pub mod agent_config;
 pub mod aliens_fixture;
@@ -140,6 +141,7 @@ pub mod channel_bands;
 pub mod chip;
 pub mod claim_card;
 pub mod id_pill;
+pub mod labelled_progress;
 pub mod property_list;
 pub mod theme_states;
 pub mod toast;

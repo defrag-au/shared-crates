@@ -56,15 +56,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut TokenMultiselectState) {
         .empty_text("Every slot is already required")
         .clearable(true)
         .show(ui);
-    if let Some(opt) = resp.added {
-        if !state.selected.contains(&opt) {
-            state.selected.push(opt);
-        }
+    if let Some(opt) = resp.added
+        && !state.selected.contains(&opt)
+    {
+        state.selected.push(opt);
     }
-    if let Some(i) = resp.removed {
-        if i < state.selected.len() {
-            state.selected.remove(i);
-        }
+    if let Some(i) = resp.removed
+        && i < state.selected.len()
+    {
+        state.selected.remove(i);
     }
     if resp.cleared {
         state.selected.clear();

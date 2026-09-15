@@ -31,6 +31,7 @@ use std::collections::BTreeMap;
 
 use crate::builder::TxDeps;
 use crate::builder::fluent::TxBuilder;
+use crate::builder::script::CollateralConfig;
 use crate::error::TxBuildError;
 use crate::evaluate::TxEvaluator;
 
@@ -414,6 +415,7 @@ impl Route {
         deps: TxDeps,
         states: &[LegState],
         quote: &RouteQuote,
+        policy: &InputPolicy,
     ) -> Result<TxBuilder, TxBuildError> {
         let owner = deps.from_address.clone();
         let params = deps.params.clone();
@@ -425,7 +427,7 @@ impl Route {
         // nowhere. That evaluates perfectly (the evaluator runs scripts; it
         // does not check value conservation) and is rejected at submit with
         // `ValueNotConservedUTxO`.
-        let funding = select_input_utxos(&deps.utxos, quote)
+        let funding = select_input_utxos(&deps.utxos, quote, policy)
             .map_err(|e| TxBuildError::BuildFailed(e.to_string()))?;
 
         let mut builder = TxBuilder::new(deps);
@@ -476,16 +478,107 @@ impl Route {
     }
 }
 
+/// Where a segment's input asset is to come from.
+///
+/// A chained route's later transaction MUST spend the hand-off its parent
+/// created. Left to choose freely, selection takes the BIGGEST holding of the
+/// asset — so a user who already held some of the intermediate token would
+/// fund the second leg from that instead, stranding the tokens the first leg
+/// just bought. The two transactions would then be independent while the plan
+/// still told the user to submit them in order, and a second leg that landed
+/// without its parent would have spent holdings the user meant to keep.
+pub enum InputSource {
+    /// Any wallet UTxO holding the asset, biggest holding first.
+    Wallet,
+    /// This UTxO first, then the wallet if it does not cover the amount.
+    Handoff(UtxoApi),
+}
+
+/// Whether to fold the wallet's scraps of a segment's INPUT asset into the
+/// transaction alongside what the route actually needs.
+///
+/// Routing leaves scraps. LumpPad's gross solver cannot always place the last
+/// 1–2 LUMP, and each unplaceable remainder comes back as its own UTxO — one
+/// that then has to hold ~1.16 ADA of min-UTxO for the privilege of carrying
+/// two LUMP. Trade often enough and the wallet fills with them.
+///
+/// A sweep RECYCLES rather than consumes. The swept quantity is not traded:
+/// `RouteQuote::user_output` credits back everything a spent-whole input
+/// carried, so it lands in the user's output beside the route's proceeds and
+/// the quote is bit-for-bit what it was. That matters — a route that traded
+/// more than it quoted because of what happened to be in the wallet would
+/// have slippage, which this whole design exists to avoid.
+///
+/// What the user actually gets back is the min-ADA those UTxOs were locking,
+/// which is nearly all of their value. The dust itself merges into one
+/// holding; it does not disappear, and the route's own remainder still
+/// creates a fresh scrap. The wallet ends tidier, not empty.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DustSweep {
+    /// Spend only what the route needs.
+    Off,
+    /// Also spend up to `max_utxos` wallet UTxOs holding fewer than
+    /// `max_quantity` of the segment's input asset.
+    ///
+    /// `max_quantity` is in the asset's own smallest unit, so it is the
+    /// caller's to choose — 50 is dust in LUMP and a fortune in an NFT, and
+    /// nothing here knows which it is holding. `max_utxos` is not optional:
+    /// every swept input adds bytes and a witness to a transaction with a
+    /// hard size cap, and a wallet with hundreds of scraps would otherwise
+    /// build something that cannot be submitted.
+    Below { max_quantity: u64, max_utxos: usize },
+}
+
+/// How a segment's inputs are chosen.
+pub struct InputPolicy {
+    pub source: InputSource,
+    pub sweep: DustSweep,
+}
+
+impl InputPolicy {
+    /// Take what the route needs from the wallet, and nothing else.
+    pub fn wallet() -> Self {
+        Self {
+            source: InputSource::Wallet,
+            sweep: DustSweep::Off,
+        }
+    }
+}
+
+/// Everything about HOW a route is built that is not the route itself.
+pub struct RouteBuildOptions {
+    /// Applies to EVERY transaction in the plan, and one UTxO serving them
+    /// all is correct: collateral is forfeit only on a phase-2 failure, and a
+    /// chained transaction whose parent failed never exists to fail. A caller
+    /// that reserved a specific UTxO (and excluded it from `deps.utxos`)
+    /// should pass [`CollateralConfig::Manual`] so coin selection cannot also
+    /// spend it.
+    pub collateral: CollateralConfig,
+    /// Whether to fold the wallet's scraps of each segment's input asset in.
+    pub dust_sweep: DustSweep,
+}
+
+impl Default for RouteBuildOptions {
+    fn default() -> Self {
+        Self {
+            collateral: CollateralConfig::Auto,
+            dust_sweep: DustSweep::Off,
+        }
+    }
+}
+
 /// Wallet UTxOs to stage so the route's input asset is actually present.
 ///
 /// Empty for an ADA-in route: lovelace is what the builder's coin selection
 /// is for. For a token-in route (a LumpPad sell, or a buy paid in LUMP) this
-/// picks the fewest UTxOs that cover the amount — biggest holding first —
-/// because every one of them is spent WHOLE and everything else they carry
-/// has to come back in the user's output. Fewer inputs, smaller output.
-fn select_input_utxos(
-    available: &[UtxoApi],
+/// picks the fewest UTxOs that cover the amount — biggest holding first,
+/// after any [`InputSource::Handoff`] — because every one of them is spent
+/// WHOLE and everything else they carry has to come back in the user's
+/// output. Fewer inputs, smaller output.
+fn select_input_utxos<'a>(
+    available: &'a [UtxoApi],
     quote: &RouteQuote,
+    policy: &'a InputPolicy,
 ) -> Result<Vec<UtxoApi>, RouteError> {
     let RouteAsset::Token(wanted) = &quote.asset_in else {
         return Ok(Vec::new());
@@ -515,15 +608,43 @@ fn select_input_utxos(
         })
         .collect();
     candidates.sort_by_key(|u| std::cmp::Reverse(held(u)));
+    // The hand-off goes first whatever it holds — see [`InputSource`].
+    if let InputSource::Handoff(handoff) = &policy.source {
+        let same =
+            |u: &&UtxoApi| u.tx_hash == handoff.tx_hash && u.output_index == handoff.output_index;
+        candidates.retain(|u| !same(u));
+        candidates.insert(0, handoff);
+    }
 
     let mut chosen = Vec::new();
     let mut collected = 0u64;
-    for utxo in candidates {
+    let mut taken = 0usize;
+    for utxo in &candidates {
         if collected >= needed {
             break;
         }
         collected += held(utxo);
-        chosen.push(utxo.clone());
+        chosen.push((*utxo).clone());
+        taken += 1;
+    }
+
+    // The scraps, AFTER the loop above has taken what the route needs —
+    // sorted biggest-first, so everything the sweep could want is in the
+    // tail it stopped at. See [`DustSweep`]: this adds value to the user's
+    // own output and changes no quoted number.
+    if let DustSweep::Below {
+        max_quantity,
+        max_utxos,
+    } = policy.sweep
+    {
+        for utxo in candidates.iter().skip(taken) {
+            if chosen.len() - taken >= max_utxos {
+                break;
+            }
+            if held(utxo) < max_quantity {
+                chosen.push((*utxo).clone());
+            }
+        }
     }
 
     if collected < needed {
@@ -570,11 +691,14 @@ impl BuiltRoute {
 /// makes a partial failure safe: if the second transaction never lands, the
 /// user simply holds the intermediate asset in their own wallet, spendable by
 /// their own key, with no contract involved.
+///
+/// See [`RouteBuildOptions`] for collateral and dust handling.
 pub async fn build_route_plan<E>(
     route: &Route,
     deps: TxDeps,
     states: &[LegState],
     amount_in: u64,
+    options: &RouteBuildOptions,
     evaluator: &E,
 ) -> Result<BuiltRoute, RouteError>
 where
@@ -590,6 +714,12 @@ where
         .map_err(|e| RouteError::Registry(format!("owner address: {e}")))?;
 
     let mut wallet = deps.utxos.clone();
+    // The first segment funds from the wallet; every later one MUST spend the
+    // hand-off its parent created, or the route is not a route.
+    let mut policy = InputPolicy {
+        source: InputSource::Wallet,
+        sweep: options.dust_sweep,
+    };
     let mut transactions = Vec::with_capacity(segments.len());
     let mut handoffs: Vec<crate::evaluate::PendingUtxo> = Vec::new();
     // Every hand-off built so far, so a later transaction can be evaluated
@@ -612,7 +742,9 @@ where
             .map(|s| u64::from(s.ref_script_size))
             .sum();
 
-        let builder = sub_route.apply(sub_deps, sub_states, &sub_quote)?;
+        let builder = sub_route
+            .apply(sub_deps, sub_states, &sub_quote, &policy)?
+            .with_collateral(options.collateral.clone());
         let unsigned = builder.build_evaluated_pending(evaluator, &pending).await?;
 
         // Read the hand-off back OFF the built body rather than predicting it:
@@ -623,7 +755,9 @@ where
             let handoff = find_handoff(&unsigned, &owner, &owner_bech32, &sub_quote)?;
             // The next segment funds from it, and it is the only wallet UTxO
             // that is guaranteed to hold the intermediate asset.
-            wallet = vec![pending_to_utxo(&handoff)];
+            let handoff_utxo = pending_to_utxo(&handoff);
+            policy.source = InputSource::Handoff(handoff_utxo.clone());
+            wallet = vec![handoff_utxo];
             // …plus whatever confirmed ADA the wallet still has, for fees and
             // collateral, minus what this transaction already spent.
             let spent = spent_refs(&unsigned);
@@ -760,8 +894,18 @@ pub async fn build_route_evaluated<E>(
 where
     E: TxEvaluator + ?Sized,
 {
+    // ONE transaction, so only a route whose legs all compose. Building a
+    // chained route here would stage two script inputs into one body, which
+    // LumpPad rejects at phase 2 — an error that reads like a redeemer bug
+    // and cost a day of chasing one. Say so instead.
+    if let RoutePlan::Chained { segments } = route.plan() {
+        return Err(RouteError::Build(format!(
+            "this route needs {segments} transactions — a leg refuses to share one; \
+             use `build_route_plan`, which splits it and chains the hand-offs"
+        )));
+    }
     let mut quote = route.quote(states, amount_in)?;
-    let builder = route.apply(deps, states, &quote)?;
+    let builder = route.apply(deps, states, &quote, &InputPolicy::wallet())?;
     let unsigned = builder.build_evaluated(evaluator).await?;
     quote.ex_units_total = evaluated_ex_units(&unsigned);
     Ok((unsigned, quote))
