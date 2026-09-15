@@ -20,6 +20,10 @@ gateway = ["dep:gateway-wiring"]
 # domain-free input. Feature-gated for the same reason as `gateway`: the
 # catalogue stays domain-free for consumers that never see a verdict.
 verdict = ["dep:tx-verdict"]
+# `BlockPulse`, `BlockTrain`, `ChainTempo` — live Cardano chain tempo read off a
+# `chain_heartbeat::Heartbeat`. Gated for the same reason as `gateway`: most
+# consumers never follow a chain, and the catalogue stays chain-free for them.
+chain = ["dep:chain-heartbeat"]
 
 # egui_inbox is only used by the wasm `file_upload` widget + a re-export, so it
 # moved to the wasm-only deps below (native consumers don't pull it).
@@ -43,6 +47,9 @@ address-registry = { path = "../../address-registry", optional = true }
 gateway-wiring = { path = "../../services/gateway-wiring", optional = true }
 # The transaction verdict shape — see `verdict_card`.
 tx-verdict = { workspace = true, optional = true }
+# The chain heartbeat these widgets render — see `block_pulse`. Follower off:
+# a renderer only folds frames, it never opens a socket.
+chain-heartbeat = { path = "../../chain/chain-heartbeat", default-features = false, optional = true }
 serde = { workspace = true, features = ["derive"] }
 # `stake_session` persists a session as JSON in localStorage.
 serde_json = { workspace = true }
@@ -72,7 +79,7 @@ web-sys = { workspace = true, features = [
     # and cargo unioned it in — `cargo clippy -p egui-widgets --target wasm32`
     # on its own failed.
     "Location",
-    # `image_loader::browser::BrowserHttpLoader` fetches with an abort signal,
+    # `image_loader::fetch::BrowserHttpLoader` fetches with an abort signal,
     # so a thumbnail nobody can see any more stops downloading.
     "AbortController", "AbortSignal",
     "Blob", "BlobPropertyBag",

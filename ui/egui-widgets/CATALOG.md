@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-153 widgets.
+156 widgets.
 
 | module | what it is |
 |---|---|
@@ -22,12 +22,15 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `auth` | How an app decides who you are — the strategy the shell drives |
 | `auth_worker` | [`AuthStrategy`] for the `auth.cnft.dev` OAuth worker — an opaque token, validated against a service |
 | `background` | `BackgroundToasts` — declare what work is running; the toasts follow |
+| `block_pulse` | `BlockPulse` — the chain's heartbeat on one line: a dot that pops on each new block, a ring filling towards "a block has probably landed", and the time since the last one |
+| `block_train` | `BlockTrain` — recent blocks spaced by real time, with the wait since the last one growing at the right edge |
 | `bullet_bar` | Bullet bar — a value fill against a track with an **optional target marker** |
 | `button_group` | `ButtonGroup` — a row of related action buttons with shared layout |
 | `buttons` | Button helpers that add consistent UX behavior (pointer cursor, etc.) |
 | `cap_band` | `CapBand` — a notional valuation against what it would actually fetch |
 | `capital_flow` | `CapitalFlow` — a project raised some money; watch where it went |
 | `card_browser` | Composable master-detail card browser widget |
+| `chain_tempo` | `ChainTempo` — the chain's pace as stat tiles plus the epoch clock: blocks in the last hour, the gap between blocks, transactions per minute and how full blocks run |
 | `channel_bands` | `ChannelBands` — where a wallet's money came from, period by period |
 | `chip` | `Chip` — small filled-tag label with optional remove (`×`) affordance |
 | `claim_card` | `ClaimCard` — an assertion, what would refute it, and whether anyone has tried |

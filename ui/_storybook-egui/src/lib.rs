@@ -124,6 +124,9 @@ mod app {
             Sparkline => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::sparkline::show(ui, &mut a.sparkline_state);
             MetricCard => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::metric_card::show(ui);
             PerfStrip => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::perf_strip::show(ui, &mut a.perf_strip_state);
+            BlockPulse => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::block_pulse::show(ui, &mut a.block_pulse_state);
+            BlockTrain => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::block_train::show(ui, &mut a.block_train_state);
+            ChainTempo => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::chain_tempo::show(ui, &mut a.chain_tempo_state);
             TokenHistory => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_history::show(ui);
             TokenKinetic => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_kinetic::show(ui);
             TokenParticles => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_particles::show(ui);
@@ -269,6 +272,9 @@ mod app {
                 Self::Sparkline => "Sparkline",
                 Self::MetricCard => "Metric Card",
                 Self::PerfStrip => "Perf Strip",
+                Self::BlockPulse => "Block Pulse",
+                Self::BlockTrain => "Block Train",
+                Self::ChainTempo => "Chain Tempo",
                 Self::TokenHistory => "Token History",
                 Self::TokenKinetic => "Token Kinetic",
                 Self::TokenParticles => "Token Particles",
@@ -461,6 +467,15 @@ mod app {
                 }
                 Self::PerfStrip => {
                     "Live HUD, vertical or horizontal — frame build cost, fps, memory, work in flight"
+                }
+                Self::BlockPulse => {
+                    "The chain's heartbeat on one line — pops on each block, a ring of likelihood (never a countdown), honest about a quiet feed"
+                }
+                Self::BlockTrain => {
+                    "Recent blocks spaced by real time, the wait growing at the right edge, your transaction riding to its block"
+                }
+                Self::ChainTempo => {
+                    "Blocks per hour, gap, tx rate and fullness against what to expect — plus the epoch, the one clock that is a schedule"
                 }
                 Self::TokenParticles => {
                     "Supply as a conserved particle field, playing through warped time"
@@ -1376,6 +1391,9 @@ mod app {
         slot_table_state: stories::slot_table::SlotTableState,
         sparkline_state: stories::sparkline::SparklineState,
         perf_strip_state: stories::perf_strip::PerfStripStory,
+        block_pulse_state: stories::block_pulse::BlockPulseStory,
+        block_train_state: stories::block_train::BlockTrainStory,
+        chain_tempo_state: stories::chain_tempo::ChainTempoStory,
         seven_segment_state: stories::seven_segment::SevenSegmentState,
         flip_counter_state: stories::flip_counter::FlipCounterState,
         async_data_state: stories::async_data::AsyncDataState,
@@ -1519,6 +1537,9 @@ mod app {
                 slot_table_state: stories::slot_table::SlotTableState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 perf_strip_state: stories::perf_strip::PerfStripStory::default(),
+                block_pulse_state: stories::block_pulse::BlockPulseStory::default(),
+                block_train_state: stories::block_train::BlockTrainStory::default(),
+                chain_tempo_state: stories::chain_tempo::ChainTempoStory::default(),
                 seven_segment_state: stories::seven_segment::SevenSegmentState::default(),
                 flip_counter_state: stories::flip_counter::FlipCounterState::default(),
                 async_data_state: stories::async_data::AsyncDataState::default(),

@@ -142,6 +142,13 @@ impl Heartbeat {
         self.beats.back()
     }
 
+    /// The blocks held, oldest first. Read-only: a renderer that wants history
+    /// (a block train, a sparkline) reads it here rather than keeping a copy
+    /// that could drift from what the snapshot describes.
+    pub fn beats(&self) -> impl DoubleEndedIterator<Item = &BlockBeat> + ExactSizeIterator {
+        self.beats.iter()
+    }
+
     pub fn apply(&mut self, event: &ChainEvent, now_ms: u64) {
         match event {
             ChainEvent::Connected { .. } => self.connected(now_ms),
