@@ -44,6 +44,79 @@ pub enum SyncState {
     CatchingUp,
 }
 
+/// Bytes of each transaction hash a [`BlockTxs`] keeps. Eight is plenty to
+/// recognise the handful of transactions one page is waiting on (a false match
+/// is a 2^-64 chance per comparison), at a quarter of the size of a whole hash.
+pub const TX_PREFIX_BYTES: usize = 8;
+
+/// Where a transaction stands in a block that includes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TxInBlock {
+    Valid,
+    /// In the block, but a script rejected it (phase-2): its collateral was
+    /// taken, and nothing else it did happened.
+    FailedValidation,
+}
+
+/// The transactions of one block, as a subscriber needs them to spot its own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockTxs {
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub height: u64,
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub slot: u64,
+    /// The first [`TX_PREFIX_BYTES`] of every transaction hash, in block order,
+    /// concatenated. Hex on the wire.
+    #[serde(with = "hex::serde")]
+    pub prefixes: Vec<u8>,
+    /// Indices of the transactions that failed phase-2 validation.
+    #[serde(default)]
+    pub invalid: Vec<u32>,
+}
+
+impl BlockTxs {
+    pub fn new(height: u64, slot: u64, hashes: &[[u8; 32]], invalid: Vec<u32>) -> Self {
+        Self {
+            height,
+            slot,
+            prefixes: hashes
+                .iter()
+                .flat_map(|hash| hash[..TX_PREFIX_BYTES].iter().copied())
+                .collect(),
+            invalid,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.prefixes.len() / TX_PREFIX_BYTES
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.prefixes.is_empty()
+    }
+
+    /// Whether the transaction with this hash (or at least its first
+    /// [`TX_PREFIX_BYTES`]) is in the block, and how it fared.
+    pub fn find(&self, tx_hash: &[u8]) -> Option<TxInBlock> {
+        let prefix = tx_hash.get(..TX_PREFIX_BYTES)?;
+        let (prefixes, _) = self.prefixes.as_chunks::<TX_PREFIX_BYTES>();
+        let index = prefixes.iter().position(|p| p.as_slice() == prefix)?;
+        let index = u32::try_from(index).ok()?;
+        Some(if self.invalid.contains(&index) {
+            TxInBlock::FailedValidation
+        } else {
+            TxInBlock::Valid
+        })
+    }
+
+    /// [`Self::find`] for a hex hash, as a wallet or cart holds one.
+    pub fn find_hex(&self, tx_hash: &str) -> Option<TxInBlock> {
+        let mut prefix = [0u8; TX_PREFIX_BYTES];
+        hex::decode_to_slice(tx_hash.get(..TX_PREFIX_BYTES * 2)?, &mut prefix).ok()?;
+        self.find(&prefix)
+    }
+}
+
 /// Everything a follower reports. Serialisable so hosts can relay it inside a
 /// [`crate::HeartbeatFrame`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,6 +140,11 @@ pub enum ChainEvent {
     /// The peer answered a keep-alive: the connection is alive even though no
     /// block has arrived.
     KeepAliveAcknowledged,
+    /// The transactions of the block about to be reported, sent just before its
+    /// [`ChainEvent::RollForward`]. Only from a follower that fetches bodies.
+    BlockTransactions {
+        txs: BlockTxs,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -114,6 +192,26 @@ mod tests {
     use super::*;
 
     const BLOCK: &[u8] = include_bytes!("../tests/fixtures/186000000.block.cbor");
+
+    #[test]
+    fn block_txs_find_a_hash_by_its_prefix_and_say_whether_it_failed() {
+        let valid = [0x11; 32];
+        let failed = [0x22; 32];
+        let txs = BlockTxs::new(10, 20, &[valid, failed], vec![1]);
+        assert_eq!(txs.len(), 2);
+        assert_eq!(txs.find(&valid), Some(TxInBlock::Valid));
+        assert_eq!(
+            txs.find_hex(&hex::encode(failed)),
+            Some(TxInBlock::FailedValidation)
+        );
+        assert_eq!(txs.find(&[0x33; 32]), None);
+        assert_eq!(txs.find_hex("not hex"), None);
+
+        let event = ChainEvent::BlockTransactions { txs };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("11111111111111112222222222222222"), "{json}");
+        assert_eq!(serde_json::from_str::<ChainEvent>(&json).unwrap(), event);
+    }
 
     #[test]
     fn a_whole_block_becomes_a_beat() {

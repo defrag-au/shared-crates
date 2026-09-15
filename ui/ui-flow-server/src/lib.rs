@@ -295,6 +295,74 @@ mod tests {
         }
     }
 
+    /// Chain frames travel as ui-flow notifications. Their `u64`s go through
+    /// `wasm_safe_serde` (which deserialises via a JSON value) and their enums
+    /// are internally tagged (which serde buffers), and neither is guaranteed to
+    /// work over MessagePack just because it works over JSON.
+    #[test]
+    fn a_heartbeat_frame_survives_messagepack() {
+        use chain_heartbeat::{
+            BlockBeat, CHAIN_DOMAIN, ChainEvent, ChainPoint, Heartbeat, HeartbeatFrame, Network,
+            SyncState,
+        };
+
+        let beat = BlockBeat {
+            height: 13_358_656,
+            slot: 186_000_000,
+            hash: "ab".repeat(32),
+            issuer_pool: "cd".repeat(28),
+            body_size: 41_234,
+            tx_count: Some(17),
+            block_time_unix: Some(1_777_566_291),
+        };
+        let mut heartbeat = Heartbeat::new(Network::Mainnet);
+        heartbeat.connected(1_777_566_291_000);
+        heartbeat.roll_forward(beat.clone(), SyncState::AtTip, 1_777_566_291_000);
+
+        let frames = [
+            heartbeat.resync_frame(1_777_566_300_000),
+            HeartbeatFrame::Events {
+                events: vec![
+                    ChainEvent::Connected { version: 14 },
+                    ChainEvent::RollForward {
+                        beat,
+                        sync: SyncState::CatchingUp,
+                    },
+                    ChainEvent::RollBackward {
+                        to: Some(ChainPoint {
+                            slot: 186_000_000,
+                            hash: [7; 32],
+                        }),
+                    },
+                    ChainEvent::RollBackward { to: None },
+                    ChainEvent::KeepAliveAcknowledged,
+                    ChainEvent::BlockTransactions {
+                        txs: chain_heartbeat::BlockTxs::new(
+                            13_358_657,
+                            186_000_020,
+                            &[[0xab; 32], [0xcd; 32]],
+                            vec![1],
+                        ),
+                    },
+                ],
+            },
+            HeartbeatFrame::UpstreamLost,
+        ];
+
+        for frame in frames {
+            let bytes = encode_notify(CHAIN_DOMAIN, &frame).unwrap();
+            let decoded: ServerMessage<(), (), HeartbeatFrame> =
+                ui_flow_protocol::decode(&bytes).unwrap();
+            match decoded {
+                ServerMessage::Notify { domain, event, .. } => {
+                    assert_eq!(domain, CHAIN_DOMAIN);
+                    assert_eq!(event, frame);
+                }
+                other => panic!("expected a notify, got {other:?}"),
+            }
+        }
+    }
+
     #[test]
     fn subscriptions_survive_an_attachment_round_trip() {
         #[derive(Serialize, Deserialize)]

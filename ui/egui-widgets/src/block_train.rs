@@ -11,17 +11,25 @@
 //! - **Emphasis, not categories.** The newest block wears the accent and the
 //!   rest recede, because the story is "that one just landed".
 //! - **The gap is the wait.** The band from the newest block to "now" is the
-//!   chain being waited on, and the pulse mark from [`crate::block_pulse`] sits
-//!   at its end. When the feed is quiet or offline the band says so in its tint.
+//!   chain being waited on, and the ticking wait under its end marks "now".
+//!   When the feed is quiet or offline the band says so in its tint.
+//! - **The pulse is a status light.** The mark from [`crate::block_pulse`] sits
+//!   in the top-left corner beside "full" rather than in a strip of its own, so
+//!   the whole width goes to the blocks.
 //!
 //! ## Riders
 //!
-//! A [`TrainRider`] is a transaction the reader is waiting on. While
-//! [`RiderState::Waiting`] it rides the gap as an outline breathing like
-//! `TxWatch`'s active stage. Once [`RiderState::InBlock`] its block turns the
-//! success colour and a bracket runs from it to the tip: every block to its
-//! right is one more confirmation, so depth is something the reader can count.
-//! [`RiderState::Beaten`] marks the block where a competing transaction won.
+//! A [`TrainRider`] is a transaction the reader is waiting on. Each gets a
+//! status row above the plot, left-aligned, with a leader from the end of its
+//! words to its block, redrawn every frame so it tracks the block as it drifts.
+//! The rows are the status on touch, where there is no hover.
+//!
+//! While [`RiderState::Waiting`] it rides the gap as an outline breathing like
+//! `TxWatch`'s active stage. Once [`RiderState::InBlock`] its block stands in a
+//! full-height column of the success colour with a cap on its bar, and a ring
+//! spreads from the cap the moment it lands. [`RiderState::Beaten`] marks the
+//! block where a competing transaction won. Hovering a rider's block, or its
+//! row, leads the tooltip with the rider.
 //!
 //! ## Rollbacks
 //!
@@ -32,9 +40,19 @@
 //! ## Motion and cost
 //!
 //! Arrivals at the tip grow from the baseline on [`Speed::Normal`]; replayed
-//! blocks snap. The train asks for one repaint a second for its clock, runs the
-//! frame clock only while a rider is waiting or a ghost is falling, and under
-//! `MotionMode::None` snaps everything.
+//! blocks snap. While live, the wait under the mark ticks in tenths, so the train
+//! repaints ten times a second; it runs the frame clock only while a rider is
+//! waiting or a ghost is falling, and under `MotionMode::None` snaps everything
+//! and ticks in whole seconds.
+//!
+//! ## Labels
+//!
+//! The left names the newest block and when it began, rather than how far back
+//! the span reaches: "20m ago" under a live chart reads as the opposite of live.
+//! The right is the wait since that block, counting UP. Never a countdown to the
+//! next one: arrivals are memoryless, so the expected wait is ~20 s at every
+//! instant, and a countdown would reach zero and then be wrong a third of the
+//! time.
 
 use std::time::Duration;
 
@@ -46,8 +64,11 @@ use egui::{
 
 use crate::block_pulse::{PulseState, beat_lines, draw_mark, pop_progress};
 use crate::motion::{Easing, forget, tween, tween_from};
-use crate::theme::{Speed, TextSize, ThemeExt, line_height, with_alpha};
-use crate::utils::format_duration;
+use crate::theme::{Space, SpaceExt, Speed, TextSize, ThemeExt, line_height, with_alpha};
+use crate::utils::{format_duration, format_number};
+
+/// Repaint cadence while the wait is ticking in tenths.
+const TENTH: Duration = Duration::from_millis(100);
 
 /// The average gap between blocks, used ONLY to size bars. Never a claim about
 /// when the next block will come.
@@ -58,6 +79,14 @@ const MAX_BAR_WIDTH: f32 = 24.0;
 
 /// An empty block is still a block.
 const MIN_BAR_HEIGHT: f32 = 2.0;
+
+/// Rider status rows above the plot. More riders than this show only the
+/// newest; each still marks its own block.
+const MAX_RIDER_ROWS: usize = 3;
+
+/// The mark on top of a rider's bar, where its leader lands.
+const CAP_RADIUS: f32 = 2.5;
+const CAP_GAP: f32 = 4.0;
 
 /// Depth at which a rider's block is called settled, unless the host says
 /// otherwise. Matches the reorg buffer the minting engine confirms behind.
@@ -90,6 +119,12 @@ pub enum RiderState {
     /// A competing transaction took what this one needed, in the block at
     /// `height`.
     Beaten { height: u64 },
+    /// In a block, but which one is not known yet. Keeps its status row, with
+    /// no leader, rather than dropping off the train until the block is named.
+    Landed,
+    /// In the block at `height`, but a script rejected it: its collateral was
+    /// taken, and nothing else it did happened.
+    Failed { height: u64 },
 }
 
 /// How deep a rider's block sits under the tip.
@@ -136,6 +171,17 @@ struct TrainMemory {
     bars: Vec<SeenBar>,
     ghosts: Vec<Ghost>,
     clock: ClockRate,
+    /// Heights riders were in last frame. `None` before the first frame, so a
+    /// rider already landed when the train first draws does not pop.
+    seen_riders: Option<Vec<u64>>,
+    rider_pops: Vec<RiderPop>,
+}
+
+/// A rider that just landed, spreading its ring.
+#[derive(Clone)]
+struct RiderPop {
+    height: u64,
+    since: f64,
 }
 
 /// How many seconds of host clock pass per second of frame time, smoothed.
@@ -251,19 +297,34 @@ impl<'a> BlockTrain<'a> {
         let tick = ui.text_size(TextSize::Xs);
         let label = ui.text_size(TextSize::Sm);
         let tick_band = line_height(ui, tick);
+        // Air between the baseline and the labels under it, so the figures do
+        // not sit on the rule.
+        let tick_gap = ui.space(Space::Sm);
         let rider_band = line_height(ui, label);
-        let mark_band = rider_band * 1.6;
+        // The pulse sits in the top-left corner, sized to the "full" label's line.
+        let mark_radius = tick_band * 0.4;
+        // A status row above the plot per rider, newest last, only while
+        // something rides. An empty strip there reads as padding, which is most
+        // of the time.
+        let shown = &self.riders[self.riders.len().saturating_sub(MAX_RIDER_ROWS)..];
+        let label_band = if shown.is_empty() {
+            0.0
+        } else {
+            // A little air under the rows, so the last one does not sit on
+            // "full" and the leaders have a visible run before the plot.
+            shown.len() as f32 * rider_band + ui.space(Space::Sm)
+        };
 
         let (rect, response) = ui.allocate_exact_size(
             vec2(
                 ui.available_width(),
-                rider_band + self.plot_height + tick_band,
+                label_band + self.plot_height + tick_gap + tick_band,
             ),
             Sense::hover(),
         );
         let plot = Rect::from_min_max(
-            pos2(rect.left(), rect.top() + rider_band),
-            pos2(rect.right() - mark_band, rect.bottom() - tick_band),
+            pos2(rect.left(), rect.top() + label_band),
+            pos2(rect.right(), rect.bottom() - tick_band - tick_gap),
         );
 
         let mut hovered_height = None;
@@ -328,8 +389,32 @@ impl<'a> BlockTrain<'a> {
             });
         }
 
-        // Bars.
+        // A rider's block stands in a column the full height of the plot, so it
+        // can be found at a glance at any zoom, however thin or short its bar.
         let corner = (bar_w / 2.0).min(2.0).round() as u8;
+        let col_w = (bar_w * 3.0).max(8.0);
+        for rider in self.riders {
+            let (RiderState::InBlock { height }
+            | RiderState::Beaten { height }
+            | RiderState::Failed { height }) = rider.state
+            else {
+                continue;
+            };
+            let Some(p) = placed.iter().find(|p| p.beat.height == height) else {
+                continue;
+            };
+            fill_unrounded(
+                &painter,
+                Rect::from_min_max(
+                    pos2(p.x - col_w / 2.0, plot.top()),
+                    pos2(p.x + col_w / 2.0, plot.bottom()),
+                ),
+                CornerRadius::ZERO,
+                with_alpha(rider_mark(rider.state, &c), 34),
+            );
+        }
+
+        // Bars.
         for p in &placed {
             let colour = rider_colour(self.riders, p.beat.height, &c).unwrap_or(
                 if Some(p.beat.hash.as_str()) == tip_hash {
@@ -371,99 +456,142 @@ impl<'a> BlockTrain<'a> {
         }
         painter.line_segment([plot.right_top(), plot.right_bottom()], rule);
         let pop = pop_progress(&ctx, id.with("pop"), snapshot.tip.as_ref(), state);
+        // A status light beside "full". Its own painter, clipped a little wider
+        // than the train, so the arrival halo is not cut off at the edge.
+        let mark_painter = ui
+            .painter()
+            .with_clip_rect(rect.expand(mark_radius * 3.0).intersect(ui.clip_rect()));
         draw_mark(
-            &painter,
+            &mark_painter,
             &theme,
-            pos2(plot.right() + mark_band / 2.0, plot.center().y),
-            mark_band * 0.28,
+            pos2(
+                plot.left() + 2.0 + mark_radius,
+                plot.top() + 1.0 + tick_band / 2.0,
+            ),
+            mark_radius,
             state,
             pop,
         );
 
-        // Riders.
-        let tip_x = placed.last().map(|p| p.x);
+        // Riders. Every rider's block wears a cap where its leader lands; a
+        // waiting rider rides the wait as a breathing outline.
         let breath = breathing(ui);
-        let rider_font = FontId::proportional(label);
+        let waiting_x = plot.right() - bar_w / 2.0 - 2.0;
+        let waiting_top = plot.bottom() - plot.height() * 0.5;
+        if self.riders.iter().any(|r| r.state == RiderState::Waiting) {
+            painter.rect_stroke(
+                Rect::from_min_max(
+                    pos2(waiting_x - bar_w / 2.0, waiting_top),
+                    pos2(waiting_x + bar_w / 2.0, plot.bottom()),
+                ),
+                CornerRadius::same(corner),
+                Stroke::new(1.5, with_alpha(c.accent, (breath * 255.0) as u8)),
+                StrokeKind::Inside,
+            );
+        }
         for rider in self.riders {
-            match rider.state {
-                RiderState::Waiting => {
-                    let x = plot.right() - bar_w / 2.0 - 2.0;
-                    let outline = Rect::from_min_max(
-                        pos2(x - bar_w / 2.0, plot.bottom() - plot.height() * 0.5),
-                        pos2(x + bar_w / 2.0, plot.bottom()),
-                    );
-                    painter.rect_stroke(
-                        outline,
-                        CornerRadius::same(corner),
-                        Stroke::new(1.5, with_alpha(c.accent, (breath * 255.0) as u8)),
-                        StrokeKind::Inside,
-                    );
-                    rider_label(
-                        &painter,
-                        pos2(plot.right(), rect.top()),
-                        Align2::RIGHT_TOP,
-                        format!("{} · waiting", rider.label),
-                        &rider_font,
-                        c.text_primary,
-                        c.accent,
-                    );
-                }
-                RiderState::InBlock { height } | RiderState::Beaten { height } => {
-                    let beaten = matches!(rider.state, RiderState::Beaten { .. });
-                    let mark = if beaten { c.warning } else { c.success };
-                    let text = if beaten {
-                        format!("{} · beaten to it", rider.label)
-                    } else {
-                        match tip_height
-                            .and_then(|tip| rider_depth(tip, height, self.settled_depth))
-                        {
-                            Some(RiderDepth::Settled { .. }) => {
-                                format!("{} · settled", rider.label)
-                            }
-                            Some(RiderDepth::Confirming { depth: 1 }) => {
-                                format!("{} · in the latest block", rider.label)
-                            }
-                            Some(RiderDepth::Confirming { depth }) => {
-                                format!("{} · {depth} deep", rider.label)
-                            }
-                            None => format!("{} · in a block", rider.label),
-                        }
-                    };
-                    match placed.iter().find(|p| p.beat.height == height) {
-                        Some(p) => {
-                            if !beaten && let Some(tip_x) = tip_x {
-                                let y = plot.top() - 3.0;
-                                painter.line_segment(
-                                    [pos2(p.x, y), pos2(tip_x, y)],
-                                    Stroke::new(1.0, with_alpha(c.success, 170)),
-                                );
-                            }
-                            let anchor = if p.x > plot.center().x {
-                                Align2::RIGHT_TOP
-                            } else {
-                                Align2::LEFT_TOP
-                            };
-                            rider_label(
-                                &painter,
-                                pos2(p.x, rect.top()),
-                                anchor,
-                                text,
-                                &rider_font,
-                                c.text_primary,
-                                mark,
-                            );
-                        }
-                        None => rider_label(
-                            &painter,
-                            pos2(plot.left(), rect.top()),
-                            Align2::LEFT_TOP,
-                            text,
-                            &rider_font,
-                            c.text_secondary,
-                            mark,
-                        ),
-                    }
-                }
+            let (RiderState::InBlock { height }
+            | RiderState::Beaten { height }
+            | RiderState::Failed { height }) = rider.state
+            else {
+                continue;
+            };
+            if let Some(p) = placed.iter().find(|p| p.beat.height == height) {
+                mark_painter.circle_filled(cap_center(p), CAP_RADIUS, rider_mark(rider.state, &c));
+            }
+        }
+
+        // The moment a rider lands, a ring spreads from its cap, once. Blocks
+        // arrive every ~20 s; the one carrying the reader's own transaction
+        // should not look like the rest.
+        let land_t = ui.input(|i| i.time);
+        let land_fade = ui.duration(Speed::Slow) * 3.0;
+        let landed_now: Vec<u64> = self
+            .riders
+            .iter()
+            .filter_map(|r| match r.state {
+                RiderState::InBlock { height } => Some(height),
+                RiderState::Waiting
+                | RiderState::Beaten { .. }
+                | RiderState::Landed
+                | RiderState::Failed { .. } => None,
+            })
+            .collect();
+        let mut pops = memory.rider_pops.clone();
+        // Not on first sight: a page opened on an already-landed transaction
+        // did not just watch it land.
+        if let Some(seen) = &memory.seen_riders
+            && land_fade > 0.0
+        {
+            for height in landed_now.iter().filter(|h| !seen.contains(h)) {
+                pops.push(RiderPop {
+                    height: *height,
+                    since: land_t,
+                });
+            }
+        }
+        pops.retain(|pop| ((land_t - pop.since) as f32) < land_fade);
+        for pop in &pops {
+            let Some(p) = placed.iter().find(|p| p.beat.height == pop.height) else {
+                continue;
+            };
+            let progress = ((land_t - pop.since) as f32 / land_fade).clamp(0.0, 1.0);
+            let spread = 1.0 - (1.0 - progress).powi(3);
+            mark_painter.circle_stroke(
+                cap_center(p),
+                CAP_RADIUS + spread * 14.0,
+                Stroke::new(1.5, with_alpha(c.success, ((1.0 - progress) * 230.0) as u8)),
+            );
+        }
+
+        // A status row per rider, left-aligned above the plot, with a leader
+        // from the end of its words to the block it rides. Redrawn every frame
+        // from where the block is now, so the leader tracks it as the train
+        // drifts. On touch, where there is no hover, these rows are the status.
+        let rider_font = FontId::proportional(label);
+        for (row, rider) in shown.iter().enumerate() {
+            let mark = rider_mark(rider.state, &c);
+            let row_top = rect.top() + row as f32 * rider_band;
+            let target = match rider.state {
+                RiderState::Waiting => Some(pos2(waiting_x, waiting_top - 2.0)),
+                // Its block is not known yet: the row, and nothing to point at.
+                RiderState::Landed => None,
+                RiderState::InBlock { height }
+                | RiderState::Beaten { height }
+                | RiderState::Failed { height } => placed
+                    .iter()
+                    .find(|p| p.beat.height == height)
+                    .map(cap_center),
+            };
+            let ink = if target.is_some() {
+                c.text_primary
+            } else {
+                c.text_secondary
+            };
+            let end_x = rider_label(
+                &painter,
+                pos2(plot.left(), row_top),
+                Align2::LEFT_TOP,
+                rider_status(rider, tip_height, self.settled_depth),
+                &rider_font,
+                ink,
+                mark,
+            );
+            if let Some(target) = target {
+                let alpha = match rider.state {
+                    RiderState::Waiting => (breath * 255.0) as u8,
+                    RiderState::InBlock { .. }
+                    | RiderState::Beaten { .. }
+                    | RiderState::Landed
+                    | RiderState::Failed { .. } => 200,
+                };
+                leader(
+                    &mark_painter,
+                    pos2(end_x + 6.0, row_top + rider_band / 2.0),
+                    row_top + rider_band,
+                    target,
+                    Stroke::new(1.0, with_alpha(mark, alpha)),
+                );
             }
         }
 
@@ -513,55 +641,123 @@ impl<'a> BlockTrain<'a> {
             );
         }
 
-        // Labels: how far back the span reaches, and the clock under the mark.
+        // Labels: the newest block on the left, the wait since it on the right.
         let tick_font = FontId::proportional(tick);
         painter.text(
-            plot.left_top() + vec2(2.0, 1.0),
+            // Right of the status light.
+            plot.left_top() + vec2(2.0 + mark_radius * 2.0 + 4.0, 1.0),
             Align2::LEFT_TOP,
             "full",
             tick_font.clone(),
             c.text_muted,
         );
+        // Before any block, a caption, so an empty box still says what it is.
+        let (tip_text, tip_colour) = match snapshot.tip.as_ref() {
+            Some(tip) => {
+                let height = format_number(tip.height as i64);
+                let text = match tip.block_time_unix {
+                    Some(secs) => format!("Block {height} · {}", block_clock(secs)),
+                    None => format!("Block {height}"),
+                };
+                (text, c.text_secondary)
+            }
+            None => ("Cardano blocks".to_string(), c.text_muted),
+        };
         painter.text(
             pos2(plot.left(), rect.bottom()),
             Align2::LEFT_BOTTOM,
-            format!("{} ago", format_duration(span_secs as u64)),
+            tip_text,
             tick_font.clone(),
-            c.text_muted,
+            tip_colour,
         );
-        let clock_label = state.status().unwrap_or_else(|| {
-            snapshot
-                .secs_since_block
-                .map(format_duration)
-                .unwrap_or_default()
-        });
+        let precision = if ui.duration(Speed::Normal) > 0.0 {
+            WaitPrecision::Tenths
+        } else {
+            WaitPrecision::Seconds
+        };
+        let wait = snapshot
+            .tip
+            .as_ref()
+            .and_then(|tip| tip.block_time_unix)
+            .map(|secs| format_wait(self.now_ms.saturating_sub(secs * 1000), precision));
+        // A feed that is not simply live says so instead. The ticking figure is
+        // monospace so its digits do not shuffle the label ten times a second.
+        // Aligned to the train's right edge, where "now" is, not under the mark.
+        let (clock_label, clock_font, clock_colour) = match (state.status(), wait) {
+            // An empty train says it in the middle, in words. The one-word
+            // status in the corner as well only doubled the puzzle.
+            (Some(_), _) if placed.is_empty() => (String::new(), tick_font, c.text_secondary),
+            (Some(_), _) => (corner_status(state), tick_font, c.text_secondary),
+            (None, Some(wait)) => (wait, FontId::monospace(tick), c.text_primary),
+            (None, None) => (String::new(), tick_font, c.text_secondary),
+        };
         painter.text(
-            pos2(rect.right(), rect.bottom()),
+            pos2(plot.right(), rect.bottom()),
             Align2::RIGHT_BOTTOM,
             clock_label,
-            tick_font,
-            c.text_secondary,
+            clock_font,
+            clock_colour,
         );
 
         if placed.is_empty() {
             painter.text(
                 plot.center(),
                 Align2::CENTER_CENTER,
-                state
-                    .status()
-                    .unwrap_or_else(|| "waiting for the next block".to_string()),
+                empty_message(state),
                 FontId::proportional(label),
                 c.text_muted,
             );
+        } else if !matches!(state, PulseState::Live { .. }) {
+            // Blocks are still on screen from before the feed went away. Say
+            // what happened inside the wait band, where the missing blocks
+            // would be, when it is wide enough to hold the sentence; a clipped
+            // one would be worse than the corner word alone.
+            let gap = Rect::from_min_max(pos2(gap_from, plot.top()), plot.right_bottom());
+            let galley = painter.layout_no_wrap(
+                empty_message(state).to_string(),
+                FontId::proportional(label),
+                c.text_muted,
+            );
+            if gap.width() >= galley.size().x + 16.0 {
+                painter.galley(gap.center() - galley.size() / 2.0, galley, c.text_muted);
+            }
         }
 
-        // Hover: the nearest block within reach, or the gap itself.
+        // Hover: a status row, the nearest block within reach, or the gap. A
+        // rider's block answers first and from further away, and its tooltip
+        // leads with the rider, because that is what the reader came to check.
         if let Some(pointer) = response.hover_pos() {
-            let reach = bar_w.max(12.0);
-            let nearest = placed
-                .iter()
-                .filter(|p| (p.x - pointer.x).abs() <= reach)
-                .min_by(|a, b| (a.x - pointer.x).abs().total_cmp(&(b.x - pointer.x).abs()));
+            let is_rider = |p: &Placed<'_>| rider_colour(self.riders, p.beat.height, &c).is_some();
+            let hovered_row = if pointer.y < plot.top() && rider_band > 0.0 {
+                shown.get(((pointer.y - rect.top()).max(0.0) / rider_band) as usize)
+            } else {
+                None
+            };
+            let nearest = match hovered_row {
+                Some(rider) => match rider.state {
+                    RiderState::InBlock { height }
+                    | RiderState::Beaten { height }
+                    | RiderState::Failed { height } => {
+                        placed.iter().find(|p| p.beat.height == height)
+                    }
+                    RiderState::Waiting | RiderState::Landed => None,
+                },
+                None => {
+                    let reach = bar_w.max(12.0);
+                    let rider_reach = reach.max(col_w / 2.0) + 4.0;
+                    placed
+                        .iter()
+                        .filter(|p| {
+                            let within = if is_rider(p) { rider_reach } else { reach };
+                            (p.x - pointer.x).abs() <= within
+                        })
+                        .min_by(|a, b| {
+                            is_rider(b)
+                                .cmp(&is_rider(a))
+                                .then((a.x - pointer.x).abs().total_cmp(&(b.x - pointer.x).abs()))
+                        })
+                }
+            };
             if let Some(p) = nearest {
                 hovered_height = Some(p.beat.height);
                 painter.line_segment(
@@ -570,28 +766,56 @@ impl<'a> BlockTrain<'a> {
                 );
                 let beat = p.beat.clone();
                 let age = (now_secs as u64).saturating_sub(beat.block_time_unix.unwrap_or(0));
-                let notes: Vec<String> = self
+                let here: Vec<(Color32, String)> = self
                     .riders
                     .iter()
-                    .filter_map(|r| match r.state {
-                        RiderState::InBlock { height } if height == beat.height => {
-                            Some(format!("{} is in this block", r.label))
-                        }
-                        RiderState::Beaten { height } if height == beat.height => {
-                            Some(format!("{} lost the race in this block", r.label))
-                        }
-                        _ => None,
+                    .filter(|r| {
+                        matches!(
+                            r.state,
+                            RiderState::InBlock { height }
+                                | RiderState::Beaten { height }
+                                | RiderState::Failed { height }
+                                if height == beat.height
+                        )
+                    })
+                    .map(|r| {
+                        (
+                            rider_mark(r.state, &c),
+                            rider_status(r, tip_height, self.settled_depth),
+                        )
                     })
                     .collect();
                 let _ = response.clone().on_hover_ui_at_pointer(|ui| {
-                    beat_lines(ui, &beat, Some(age), max_body);
-                    for note in &notes {
-                        ui.label(
-                            egui::RichText::new(note)
-                                .size(ui.text_size(TextSize::Sm))
-                                .color(ui.tokens().color.text_primary),
-                        );
+                    for (mark, text) in &here {
+                        rider_note(ui, *mark, text);
                     }
+                    if !here.is_empty() {
+                        ui.separator();
+                    }
+                    beat_lines(ui, &beat, Some(age), max_body);
+                });
+            } else if let Some(rider) = hovered_row {
+                let mark = rider_mark(rider.state, &c);
+                let text = rider_status(rider, tip_height, self.settled_depth);
+                let detail = match rider.state {
+                    RiderState::Waiting => {
+                        "Accepted by a node, not in a block yet. It lands with a block, and \
+                         blocks come about every 20 seconds, at random."
+                    }
+                    RiderState::Landed => {
+                        "Confirmed in a block. Finding out which one, to put it on the train."
+                    }
+                    RiderState::InBlock { .. }
+                    | RiderState::Beaten { .. }
+                    | RiderState::Failed { .. } => "Its block has moved off the train.",
+                };
+                let _ = response.clone().on_hover_ui_at_pointer(|ui| {
+                    rider_note(ui, mark, &text);
+                    ui.label(
+                        egui::RichText::new(detail)
+                            .size(ui.text_size(TextSize::Sm))
+                            .color(ui.tokens().color.text_secondary),
+                    );
                 });
             } else if pointer.x >= gap_from {
                 let _ = response.clone().on_hover_ui_at_pointer(|ui| {
@@ -620,6 +844,8 @@ impl<'a> BlockTrain<'a> {
                         })
                         .collect(),
                     ghosts: ghosts.clone(),
+                    seen_riders: Some(landed_now.clone()),
+                    rider_pops: pops.clone(),
                 },
             )
         });
@@ -630,15 +856,17 @@ impl<'a> BlockTrain<'a> {
         // wide train, more only when the host clock runs faster. With motion off
         // the drift is still data, so it updates once a second.
         if snapshot.tip.is_some() {
-            let interval = if ui.duration(Speed::Normal) > 0.0 {
-                repaint_interval(drift_px_per_sec(plot.width(), span_secs, clock.rate))
-            } else {
-                Duration::from_secs(1)
+            let drift = repaint_interval(drift_px_per_sec(plot.width(), span_secs, clock.rate));
+            let interval = match (precision, state) {
+                // The wait is ticking in tenths; each one has to be drawn.
+                (WaitPrecision::Tenths, PulseState::Live { .. }) => drift.min(TENTH),
+                (WaitPrecision::Tenths, _) => drift,
+                (WaitPrecision::Seconds, _) => Duration::from_secs(1),
             };
             ctx.request_repaint_after(interval);
         }
         let waiting = self.riders.iter().any(|r| r.state == RiderState::Waiting);
-        if (waiting && ui.duration(Speed::Slow) > 0.0) || !ghosts.is_empty() {
+        if (waiting && ui.duration(Speed::Slow) > 0.0) || !ghosts.is_empty() || !pops.is_empty() {
             ctx.request_repaint();
         }
 
@@ -646,6 +874,78 @@ impl<'a> BlockTrain<'a> {
             response,
             hovered_height,
         }
+    }
+}
+
+/// What an empty train says, in words a reader who has never seen one can
+/// follow. A bare "offline" in an empty box reads as a broken widget, not as a
+/// feed that dropped.
+fn empty_message(state: PulseState) -> &'static str {
+    match state {
+        PulseState::Offline { .. } => "Block feed offline · reconnecting",
+        PulseState::NotStarted => "Connecting to the block feed…",
+        PulseState::Quiet { .. } => "Block feed quiet · waiting to hear from it",
+        PulseState::CatchingUp => "Catching up on recent blocks…",
+        PulseState::AwaitingFirstBlock | PulseState::Live { .. } => "Waiting for the next block…",
+    }
+}
+
+/// The corner word when the feed is not simply live. Names the FEED, because
+/// "offline" under a row of blocks reads as the chain being offline.
+fn corner_status(state: PulseState) -> String {
+    match state {
+        PulseState::Offline { .. } => "feed offline".to_string(),
+        PulseState::Quiet { silent_secs } => format!("feed quiet {}", format_duration(silent_secs)),
+        PulseState::NotStarted => "connecting".to_string(),
+        PulseState::CatchingUp => "catching up".to_string(),
+        PulseState::AwaitingFirstBlock | PulseState::Live { .. } => String::new(),
+    }
+}
+
+/// How finely the wait since the last block is shown.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WaitPrecision {
+    /// Tenths, ticking: the chain visibly being waited on.
+    Tenths,
+    /// Whole seconds, under reduced motion, where a ticking decimal is motion.
+    Seconds,
+}
+
+/// The wait since a block began: `26.4s`, then `1:02.4` past a minute.
+fn format_wait(elapsed_ms: u64, precision: WaitPrecision) -> String {
+    let secs = elapsed_ms / 1000;
+    let tenths = (elapsed_ms % 1000) / 100;
+    let minutes = secs / 60;
+    let rem = secs % 60;
+    match (precision, minutes) {
+        (WaitPrecision::Tenths, 0) => format!("{secs}.{tenths}s"),
+        (WaitPrecision::Seconds, 0) => format!("{secs}s"),
+        (WaitPrecision::Tenths, _) => format!("{minutes}:{rem:02}.{tenths}"),
+        (WaitPrecision::Seconds, _) => format!("{minutes}:{rem:02}"),
+    }
+}
+
+/// `HH:MM:SS` of a unix time, shifted `offset_secs` east of UTC.
+fn time_of_day(unix_secs: u64, offset_secs: i64) -> String {
+    let tod = (unix_secs as i64 + offset_secs).rem_euclid(86_400);
+    let (h, m, s) = (tod / 3600, tod % 3600 / 60, tod % 60);
+    format!("{h:02}:{m:02}:{s:02}")
+}
+
+/// When a block began, on the reader's clock. The browser knows the reader's
+/// zone; natively there is no dependency-free way to ask, so it says UTC rather
+/// than pass UTC off as local.
+fn block_clock(unix_secs: u64) -> String {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let date = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(unix_secs as f64 * 1000.0));
+        // Minutes WEST of UTC, so negated.
+        let offset_secs = -(date.get_timezone_offset() as i64) * 60;
+        time_of_day(unix_secs, offset_secs)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        format!("{} UTC", time_of_day(unix_secs, 0))
     }
 }
 
@@ -705,6 +1005,7 @@ fn rider_colour(
     riders.iter().find_map(|r| match r.state {
         RiderState::InBlock { height: h } if h == height => Some(c.success),
         RiderState::Beaten { height: h } if h == height => Some(c.warning),
+        RiderState::Failed { height: h } if h == height => Some(c.error),
         _ => None,
     })
 }
@@ -721,8 +1022,77 @@ fn breathing(ui: &Ui) -> f32 {
     0.35 + 0.65 * wave
 }
 
+/// The colour a rider's state wears.
+fn rider_mark(state: RiderState, c: &crate::theme::ColorTokens) -> Color32 {
+    match state {
+        RiderState::Waiting => c.accent,
+        RiderState::InBlock { .. } | RiderState::Landed => c.success,
+        RiderState::Beaten { .. } => c.warning,
+        RiderState::Failed { .. } => c.error,
+    }
+}
+
+/// A rider's status, in words: the row above the plot and the tooltip's lead.
+fn rider_status(rider: &TrainRider, tip_height: Option<u64>, settled_depth: u64) -> String {
+    let label = &rider.label;
+    match rider.state {
+        RiderState::Waiting => format!("{label} · waiting for a block"),
+        RiderState::Beaten { .. } => format!("{label} · beaten to it"),
+        RiderState::Landed => format!("{label} · in a block"),
+        RiderState::Failed { .. } => format!("{label} · failed in its block, collateral taken"),
+        RiderState::InBlock { height } => {
+            match tip_height.and_then(|tip| rider_depth(tip, height, settled_depth)) {
+                Some(RiderDepth::Settled { depth }) => {
+                    format!("{label} · settled, {depth} blocks deep")
+                }
+                Some(RiderDepth::Confirming { depth: 1 }) => {
+                    format!("{label} · in the latest block")
+                }
+                Some(RiderDepth::Confirming { depth }) => {
+                    format!("{label} · in a block, {depth} deep")
+                }
+                None => format!("{label} · in a block"),
+            }
+        }
+    }
+}
+
+/// Where a rider's leader lands: just above its bar.
+fn cap_center(p: &Placed<'_>) -> Pos2 {
+    pos2(p.x, p.rect.top() - CAP_GAP)
+}
+
+/// An elbow from the end of a status row to the point it names: along the row,
+/// then down. When the point sits under the words themselves it drops straight
+/// from beneath the row instead, rather than striking through them.
+fn leader(painter: &egui::Painter, start: Pos2, row_bottom: f32, target: Pos2, stroke: Stroke) {
+    if target.x >= start.x {
+        let elbow = pos2(target.x, start.y);
+        painter.line_segment([start, elbow], stroke);
+        painter.line_segment([elbow, target], stroke);
+    } else {
+        painter.line_segment([pos2(target.x, row_bottom), target], stroke);
+    }
+}
+
+/// A rider's line in a tooltip: its dot, then its status in strong text.
+fn rider_note(ui: &mut Ui, mark: Color32, text: &str) {
+    ui.horizontal(|ui| {
+        let size = ui.text_size(TextSize::Sm);
+        let (dot, _) = ui.allocate_exact_size(vec2(size * 0.7, size), Sense::hover());
+        ui.painter().circle_filled(dot.center(), size * 0.3, mark);
+        ui.label(
+            egui::RichText::new(text)
+                .size(size)
+                .strong()
+                .color(ui.tokens().color.text_primary),
+        );
+    });
+}
+
 /// A rider's label: a dot in the rider's colour, then the words in a text
-/// colour, so identity never rides on coloured text.
+/// colour, so identity never rides on coloured text. Returns where the words
+/// end, for the leader.
 fn rider_label(
     painter: &egui::Painter,
     at: Pos2,
@@ -731,7 +1101,7 @@ fn rider_label(
     font: &FontId,
     ink: Color32,
     mark: Color32,
-) {
+) -> f32 {
     let galley = painter.layout_no_wrap(text, font.clone(), ink);
     let dot = font.size * 0.3;
     let gap = font.size * 0.4;
@@ -744,6 +1114,7 @@ fn rider_label(
     let center_y = at.y + galley.size().y / 2.0;
     painter.circle_filled(pos2(left + dot, center_y), dot, mark);
     painter.galley(pos2(left + dot * 2.0 + gap, at.y), galley, ink);
+    left + width
 }
 
 #[cfg(test)]
@@ -800,6 +1171,25 @@ mod tests {
         // Two frames at the same instant do not divide by zero.
         clock.observe(3.9, 2_000.0);
         assert!(clock.rate.is_finite());
+    }
+
+    #[test]
+    fn the_wait_ticks_in_tenths_and_rolls_into_minutes() {
+        assert_eq!(format_wait(0, WaitPrecision::Tenths), "0.0s");
+        assert_eq!(format_wait(26_437, WaitPrecision::Tenths), "26.4s");
+        assert_eq!(format_wait(62_450, WaitPrecision::Tenths), "1:02.4");
+        // Reduced motion: no ticking decimal.
+        assert_eq!(format_wait(26_937, WaitPrecision::Seconds), "26s");
+        assert_eq!(format_wait(62_450, WaitPrecision::Seconds), "1:02");
+    }
+
+    #[test]
+    fn time_of_day_applies_the_offset_across_midnight() {
+        // 2026-04-30 16:24:51 UTC.
+        let t = 1_777_566_291;
+        assert_eq!(time_of_day(t, 0), "16:24:51");
+        assert_eq!(time_of_day(t, 10 * 3600), "02:24:51");
+        assert_eq!(time_of_day(t, -17 * 3600), "23:24:51");
     }
 
     #[test]

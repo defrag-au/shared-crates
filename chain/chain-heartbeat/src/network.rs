@@ -66,23 +66,48 @@ impl Network {
         }
     }
 
-    /// A public relay run by the network's stewards. Mainnet's is the one mitos
-    /// and Oura on cardano-infra already follow.
-    pub const fn default_relay(self) -> Relay {
+    /// Public relays run by the network's stewards, to be tried in turn: a
+    /// follower moves on to the next each time a connection ends.
+    ///
+    /// More than one on mainnet because one relay is one point of failure. The
+    /// Cardano Foundation backbone (first: the one mitos and Oura on
+    /// cardano-infra follow) is a SINGLE host, and it closes followers'
+    /// connections every few minutes. IOG's backbone name spreads over a pool.
+    /// Preprod's and preview's names already do, so one entry each is enough.
+    /// Every entry was checked reachable on 3001 on 2026-09-16; EMURGO's
+    /// `backbone.mainnet.emurgornd.com` no longer resolves and is left out.
+    pub const fn relays(self) -> &'static [Relay] {
         match self {
-            Network::Mainnet => Relay {
-                host: "backbone.mainnet.cardanofoundation.org",
+            Network::Mainnet => &[
+                Relay {
+                    host: "backbone.mainnet.cardanofoundation.org",
+                    port: 3001,
+                },
+                Relay {
+                    host: "backbone.cardano.iog.io",
+                    port: 3001,
+                },
+            ],
+            Network::Preprod => &[Relay {
+                host: "preprod-node.play.dev.cardano.org",
                 port: 3001,
-            },
-            Network::Preprod => Relay {
-                host: "preprod-node.world.dev.cardano.org",
+            }],
+            Network::Preview => &[Relay {
+                host: "preview-node.play.dev.cardano.org",
                 port: 3001,
-            },
-            Network::Preview => Relay {
-                host: "preview-node.world.dev.cardano.org",
-                port: 3001,
-            },
+            }],
         }
+    }
+
+    /// The first of [`Self::relays`].
+    pub const fn default_relay(self) -> Relay {
+        self.relays()[0]
+    }
+
+    /// The relay for the `attempt`th connection, wrapping round [`Self::relays`].
+    pub fn relay(self, attempt: usize) -> Relay {
+        let relays = self.relays();
+        relays[attempt % relays.len()]
     }
 
     /// `maxBlockBodySize` in bytes. A protocol parameter, so governance can
@@ -211,6 +236,19 @@ mod tests {
         assert_eq!("Mainnet".parse::<Network>().unwrap(), Network::Mainnet);
         assert_eq!(" preprod ".parse::<Network>().unwrap(), Network::Preprod);
         assert!("sanchonet".parse::<Network>().is_err());
+    }
+
+    #[test]
+    fn every_network_has_relays_and_rotation_wraps() {
+        for network in Network::ALL {
+            let relays = network.relays();
+            assert!(!relays.is_empty(), "{network:?}");
+            assert_eq!(network.default_relay(), relays[0]);
+            assert_eq!(network.relay(relays.len()), relays[0]);
+            assert_eq!(network.relay(relays.len() + 1), network.relay(1));
+        }
+        // Mainnet's first relay is a single host; there must be somewhere to go.
+        assert!(Network::Mainnet.relays().len() > 1);
     }
 
     #[test]

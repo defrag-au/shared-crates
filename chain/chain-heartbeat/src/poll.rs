@@ -149,7 +149,11 @@ impl<K: Ord> BlockPoller<K> {
                     None
                 }
             }
-            ChainEvent::Connected { .. } | ChainEvent::KeepAliveAcknowledged => None,
+            // A block's transactions ride in with the block itself, which is
+            // what schedules the poll.
+            ChainEvent::Connected { .. }
+            | ChainEvent::KeepAliveAcknowledged
+            | ChainEvent::BlockTransactions { .. } => None,
         };
 
         if let Some(reason) = reason {
@@ -393,6 +397,7 @@ mod tests {
                 beats: vec![beat],
             },
             feed: crate::heartbeat::FeedHealth::NotStarted,
+            recent_txs: Vec::new(),
         }
     }
 

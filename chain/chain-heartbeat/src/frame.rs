@@ -18,7 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::beat::{ChainEvent, SyncState};
+use crate::beat::{BlockTxs, ChainEvent, SyncState};
 use crate::heartbeat::{Checkpoint, FeedHealth, Heartbeat, Restore};
 
 /// Send a keep-alive pulse once nothing has been sent for this long.
@@ -35,6 +35,10 @@ pub enum HeartbeatFrame {
     Resync {
         checkpoint: Checkpoint,
         feed: FeedHealth,
+        /// The newest blocks' transactions, so a subscriber that was away can
+        /// still spot one of its own that landed meanwhile.
+        #[serde(default)]
+        recent_txs: Vec<BlockTxs>,
     },
     /// Chain events, in order.
     Events { events: Vec<ChainEvent> },
@@ -80,12 +84,15 @@ impl FrameBatcher {
                 }
                 true
             }
+            // A block's transactions are sent just before the block, so holding
+            // them puts both in the same frame when the block flushes.
             ChainEvent::RollForward {
                 sync: SyncState::CatchingUp,
                 ..
             }
             | ChainEvent::RollBackward { .. }
-            | ChainEvent::Connected { .. } => false,
+            | ChainEvent::Connected { .. }
+            | ChainEvent::BlockTransactions { .. } => false,
         };
         self.pending.push(event);
         if send_now || self.pending.len() >= MAX_BATCH {
@@ -123,11 +130,16 @@ impl Heartbeat {
     /// too, or the snapshot will describe a feed nobody is receiving.
     pub fn apply_frame(&mut self, frame: &HeartbeatFrame, now_ms: u64) -> FrameApplied {
         match frame {
-            HeartbeatFrame::Resync { checkpoint, feed } => {
+            HeartbeatFrame::Resync {
+                checkpoint,
+                feed,
+                recent_txs,
+            } => {
                 if let Restore::WrongNetwork = self.restore(checkpoint.clone()) {
                     return FrameApplied::WrongNetwork;
                 }
                 self.adopt_feed(*feed, now_ms);
+                self.replace_recent_txs(recent_txs.clone());
             }
             HeartbeatFrame::Events { events } => {
                 for event in events {
@@ -144,6 +156,7 @@ impl Heartbeat {
         HeartbeatFrame::Resync {
             checkpoint: self.checkpoint(),
             feed: self.snapshot(now_ms).feed,
+            recent_txs: self.recent_txs().cloned().collect(),
         }
     }
 }
@@ -155,6 +168,45 @@ mod tests {
     use crate::network::Network;
 
     const BASE_SLOT: u64 = 186_000_000;
+
+    #[test]
+    fn recent_transactions_ride_a_resync_and_leave_with_a_rollback() {
+        let mut host = Heartbeat::new(Network::Mainnet);
+        host.connected(ms_at(BASE_SLOT));
+        for i in 0..10u64 {
+            let slot = BASE_SLOT + i * 20;
+            host.apply(
+                &ChainEvent::BlockTransactions {
+                    txs: BlockTxs::new(i, slot, &[[i as u8; 32]], Vec::new()),
+                },
+                ms_at(slot),
+            );
+            host.apply(&block(i, slot, SyncState::AtTip), ms_at(slot));
+        }
+        // Only the newest few blocks' transactions are kept.
+        assert_eq!(host.recent_txs().len(), crate::heartbeat::RECENT_TX_BLOCKS);
+
+        host.apply(
+            &ChainEvent::RollBackward {
+                to: Some(ChainPoint {
+                    slot: BASE_SLOT + 8 * 20,
+                    hash: [0; 32],
+                }),
+            },
+            ms_at(BASE_SLOT + 200),
+        );
+        assert_eq!(host.recent_txs().last().map(|txs| txs.height), Some(8));
+
+        let mut subscriber = Heartbeat::new(Network::Mainnet);
+        subscriber.apply_frame(
+            &host.resync_frame(ms_at(BASE_SLOT + 200)),
+            ms_at(BASE_SLOT + 200),
+        );
+        assert_eq!(
+            subscriber.recent_txs().collect::<Vec<_>>(),
+            host.recent_txs().collect::<Vec<_>>()
+        );
+    }
 
     fn ms_at(slot: u64) -> u64 {
         Network::Mainnet.slot_to_unix_secs(slot).unwrap() * 1000
@@ -287,6 +339,7 @@ mod tests {
         let frame = HeartbeatFrame::Resync {
             checkpoint: Heartbeat::new(Network::Mainnet).checkpoint(),
             feed: FeedHealth::Silent { silent_secs: 120 },
+            recent_txs: Vec::new(),
         };
         subscriber.apply_frame(&frame, 1_000_000);
         assert_eq!(
@@ -297,6 +350,7 @@ mod tests {
         let preprod = HeartbeatFrame::Resync {
             checkpoint: Heartbeat::new(Network::Preprod).checkpoint(),
             feed: FeedHealth::NotStarted,
+            recent_txs: Vec::new(),
         };
         assert_eq!(
             subscriber.apply_frame(&preprod, 0),

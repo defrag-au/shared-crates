@@ -29,6 +29,11 @@ enum Feed {
     },
 }
 
+/// Blocks whose transactions a heartbeat remembers, so a subscriber that
+/// reconnects still catches a landing it missed. Kept out of the checkpoint,
+/// which a host persists and must stay small.
+pub const RECENT_TX_BLOCKS: usize = 8;
+
 /// Rolling state for one network.
 #[derive(Debug, Clone)]
 pub struct Heartbeat {
@@ -36,6 +41,8 @@ pub struct Heartbeat {
     capacity: usize,
     beats: VecDeque<BlockBeat>,
     feed: Feed,
+    /// The newest [`RECENT_TX_BLOCKS`] blocks' transactions, oldest first.
+    recent_txs: VecDeque<crate::beat::BlockTxs>,
 }
 
 /// The persistable part of a [`Heartbeat`]. Connection state is deliberately
@@ -131,6 +138,7 @@ impl Heartbeat {
             capacity,
             beats: VecDeque::with_capacity(capacity),
             feed: Feed::NotStarted,
+            recent_txs: VecDeque::new(),
         }
     }
 
@@ -140,6 +148,30 @@ impl Heartbeat {
 
     pub fn tip(&self) -> Option<&BlockBeat> {
         self.beats.back()
+    }
+
+    /// The newest blocks' transactions, oldest first.
+    pub fn recent_txs(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = &crate::beat::BlockTxs> + ExactSizeIterator {
+        self.recent_txs.iter()
+    }
+
+    /// Take on a host's recent transactions, on resync.
+    pub(crate) fn replace_recent_txs(&mut self, txs: Vec<crate::beat::BlockTxs>) {
+        self.recent_txs = txs.into();
+        while self.recent_txs.len() > RECENT_TX_BLOCKS {
+            self.recent_txs.pop_front();
+        }
+    }
+
+    fn remember_txs(&mut self, txs: crate::beat::BlockTxs) {
+        // A block at or below a remembered height replaces what it supersedes.
+        self.recent_txs.retain(|known| known.height < txs.height);
+        self.recent_txs.push_back(txs);
+        while self.recent_txs.len() > RECENT_TX_BLOCKS {
+            self.recent_txs.pop_front();
+        }
     }
 
     /// The blocks held, oldest first. Read-only: a renderer that wants history
@@ -157,6 +189,10 @@ impl Heartbeat {
             }
             ChainEvent::RollBackward { to } => self.roll_back(to.as_ref(), now_ms),
             ChainEvent::KeepAliveAcknowledged => self.touch(now_ms),
+            ChainEvent::BlockTransactions { txs } => {
+                self.touch(now_ms);
+                self.remember_txs(txs.clone());
+            }
         }
     }
 
@@ -220,11 +256,16 @@ impl Heartbeat {
     pub fn roll_back(&mut self, to: Option<&ChainPoint>, now_ms: u64) {
         self.touch(now_ms);
         match to {
-            None => self.beats.clear(),
+            None => {
+                self.beats.clear();
+                self.recent_txs.clear();
+            }
             Some(point) => {
                 while self.beats.back().is_some_and(|b| b.slot > point.slot) {
                     self.beats.pop_back();
                 }
+                // Transactions in orphaned blocks are no longer on the chain.
+                self.recent_txs.retain(|txs| txs.slot <= point.slot);
             }
         }
     }

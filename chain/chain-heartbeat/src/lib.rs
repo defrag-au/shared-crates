@@ -65,9 +65,11 @@ pub use relay::{
     UnsubscribeRequest, check_bearer,
 };
 
-pub use beat::{BeatError, BlockBeat, ChainEvent, ChainPoint, SyncState};
-pub use block::{BlockError, BlockParts, split_block};
-pub use header::{BlockHeader, HeaderError};
+pub use beat::{
+    BeatError, BlockBeat, BlockTxs, ChainEvent, ChainPoint, SyncState, TX_PREFIX_BYTES, TxInBlock,
+};
+pub use block::{BlockError, BlockParts, BlockTransactions, block_transactions, split_block};
+pub use header::{BlockHeader, HeaderError, HeaderVrf, VrfCert};
 pub use heartbeat::{
     Checkpoint, DEFAULT_CAPACITY, FeedHealth, Heartbeat, HeartbeatSnapshot, Restore,
     SILENT_AFTER_SECS, WindowStats,

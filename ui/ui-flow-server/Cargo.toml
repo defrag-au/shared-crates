@@ -15,3 +15,9 @@ worker = ["dep:worker_stack"]
 serde = { workspace = true, features = ["derive"] }
 ui-flow-protocol = { path = "../ui-flow-protocol" }
 worker_stack = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The first payload this carries. Its wasm-safe integers and internally tagged
+# enums have to survive MessagePack, which the JSON tests in its own crate
+# cannot show.
+chain-heartbeat = { path = "../../chain/chain-heartbeat", default-features = false }

@@ -171,6 +171,9 @@ impl Default for AccountBarConfig {
 pub struct AccountBar {
     pub config: AccountBarConfig,
     button: WalletButton,
+    /// How tall the pills came out last frame. Claimed up front, so the bar's
+    /// centre is the pills' centre (see [`Self::show`]).
+    bar_height: f32,
 }
 
 impl AccountBar {
@@ -178,10 +181,22 @@ impl AccountBar {
         Self::default()
     }
 
+    /// How tall the bar drew last frame; `0.0` before its first.
+    ///
+    /// Claim it at the start of the header row — `ui.set_min_height(bar.height())`
+    /// inside the `horizontal` — so what comes before the bar centres on the
+    /// same line. `horizontal` centres each widget in the row as it stands when
+    /// that widget is placed, and the bar, placed last, is the tallest thing in
+    /// it: without this a title beside it sits high.
+    pub fn height(&self) -> f32 {
+        self.bar_height
+    }
+
     pub fn with_config(config: AccountBarConfig) -> Self {
         Self {
             config,
             button: WalletButton::default(),
+            bar_height: 0.0,
         }
     }
 
@@ -217,11 +232,24 @@ impl AccountBar {
         // `ui.horizontal` is the only thing that shrinks to its content, and
         // it takes its direction from the parent. So the parent stays
         // right-to-left and each pill lays its own contents out to match.
-        let bar = Vec2::new(ui.available_width(), ui.spacing().interact_size.y);
-        ui.allocate_ui_with_layout(bar, Layout::right_to_left(Align::Center), |ui| {
+        //
+        // The bar is as tall as the pills came out last frame, not
+        // `interact_size.y`. A pill is a `Frame`, and a `Frame` draws from the
+        // TOP of the space it is given whatever the layout's alignment says, so
+        // a pill taller than that space hung below its centre — and below
+        // everything a caller centred beside the bar. Given exactly its own
+        // height, top and centre are the same place.
+        let height = self.bar_height.max(ui.spacing().interact_size.y);
+        let bar = Vec2::new(ui.available_width(), height);
+        let drawn = ui.allocate_ui_with_layout(bar, Layout::right_to_left(Align::Center), |ui| {
             ui.set_item_gap_x(Space::Sm);
             action = self.cluster(ui, connector, triggers);
         });
+        let measured = drawn.response.rect.height();
+        if (measured - self.bar_height).abs() > 0.5 {
+            self.bar_height = measured;
+            ui.ctx().request_repaint();
+        }
 
         action
     }

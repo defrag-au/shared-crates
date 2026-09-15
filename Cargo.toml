@@ -40,6 +40,7 @@ members = [
     "ui/scss-macros",
     "ui/ui-core",
     "ui/ui-flow",
+    "ui/chain-live",
     "ui/ui-flow-protocol",
     "ui/ui-flow-server",
     "ui/ui-loader",

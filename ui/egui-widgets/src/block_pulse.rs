@@ -45,6 +45,10 @@ const DOT_FRACTION: f32 = 0.45;
 
 /// How much a pulse shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// How long a feed must be disconnected before it reads as offline. Reconnects
+/// measured on the gateway take two to three seconds.
+pub const OFFLINE_AFTER_SECS: u64 = 5;
+
 pub enum PulseDetail {
     /// The mark and the time since the last block. For a crowded strip.
     Compact,
@@ -79,6 +83,21 @@ impl PulseState {
     pub fn of(snapshot: &HeartbeatSnapshot) -> Self {
         match snapshot.feed {
             FeedHealth::NotStarted => Self::NotStarted,
+            // A drop this short is a reconnect in progress: a browser socket
+            // the edge recycled, or the gateway's relay hanging up (every few
+            // minutes, back in about two seconds). Calling that "offline"
+            // flashed a warning over a feed that never really went away, so it
+            // keeps the live reading until the drop outlasts the grace.
+            FeedHealth::Disconnected { disconnected_secs }
+                if disconnected_secs < OFFLINE_AFTER_SECS =>
+            {
+                match snapshot.secs_since_block {
+                    Some(secs) => Self::Live {
+                        due: chain_heartbeat::block_probability_within(secs) as f32,
+                    },
+                    None => Self::AwaitingFirstBlock,
+                }
+            }
             FeedHealth::Disconnected { disconnected_secs } => Self::Offline { disconnected_secs },
             FeedHealth::Silent { silent_secs } => Self::Quiet { silent_secs },
             FeedHealth::Following {
@@ -482,6 +501,32 @@ mod tests {
             PulseState::of(&hb.snapshot(t0 + 160_000)),
             PulseState::Offline {
                 disconnected_secs: 60
+            }
+        );
+    }
+
+    #[test]
+    fn a_brief_drop_stays_live_and_a_long_one_is_offline() {
+        let mut hb = Heartbeat::new(Network::Mainnet);
+        let t0 = ms_at(SLOT);
+        hb.apply(&ChainEvent::Connected { version: 14 }, t0);
+        hb.apply(
+            &ChainEvent::RollForward {
+                beat: beat(1, SLOT),
+                sync: SyncState::AtTip,
+            },
+            t0,
+        );
+        hb.disconnected(t0 + 10_000);
+
+        assert!(matches!(
+            PulseState::of(&hb.snapshot(t0 + 13_000)),
+            PulseState::Live { .. }
+        ));
+        assert_eq!(
+            PulseState::of(&hb.snapshot(t0 + 16_000)),
+            PulseState::Offline {
+                disconnected_secs: 6
             }
         );
     }

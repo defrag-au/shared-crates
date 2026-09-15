@@ -35,8 +35,9 @@ pub enum BodyDetail {
     /// Headers only: height, slot, producer and body size. One round trip per
     /// block.
     HeaderOnly,
-    /// Also fetch the body to count transactions. A second round trip and up to
-    /// ~90 KiB per block.
+    /// Also fetch the body: count the transactions, and hash each one for
+    /// [`ChainEvent::BlockTransactions`]. A second round trip and up to ~90 KiB
+    /// per block.
     CountTransactions,
 }
 
@@ -156,7 +157,14 @@ where
                 let header = BlockHeader::decode(content.variant, &content.cbor)?;
                 let tx_count = match config.body {
                     BodyDetail::HeaderOnly => None,
-                    BodyDetail::CountTransactions => Some(fetch_tx_count(&mut mux, &header).await?),
+                    BodyDetail::CountTransactions => {
+                        let (count, txs) = fetch_transactions(&mut mux, &header).await?;
+                        // Just before the block, so a host sends both in one
+                        // frame and a subscriber can spot its own transaction
+                        // the moment the block arrives.
+                        on_event(ChainEvent::BlockTransactions { txs });
+                        Some(count)
+                    }
                 };
                 let sync = if header.height < tip.block_number {
                     SyncState::CatchingUp
@@ -206,10 +214,12 @@ async fn intersect<S: AsyncRead + AsyncWrite + Unpin>(
     }
 }
 
-async fn fetch_tx_count<S: AsyncRead + AsyncWrite + Unpin>(
+/// Fetch a block's body: how many transactions it holds, and each one's hash
+/// prefix and validity, for [`ChainEvent::BlockTransactions`].
+async fn fetch_transactions<S: AsyncRead + AsyncWrite + Unpin>(
     mux: &mut Mux<S>,
     header: &BlockHeader,
-) -> Result<u32, FollowError> {
+) -> Result<(u32, crate::beat::BlockTxs), FollowError> {
     let point = Point::Specific {
         slot: header.slot,
         hash: header.hash,
@@ -223,7 +233,14 @@ async fn fetch_tx_count<S: AsyncRead + AsyncWrite + Unpin>(
             fetched: hex::encode(fetched.hash),
         });
     }
-    Ok(parts.tx_count)
+    let transactions = crate::block::block_transactions(&block)?;
+    let txs = crate::beat::BlockTxs::new(
+        header.height,
+        header.slot,
+        &transactions.hashes(),
+        transactions.invalid,
+    );
+    Ok((parts.tx_count, txs))
 }
 
 enum Wake {

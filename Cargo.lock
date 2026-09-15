@@ -853,6 +853,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "chain-live"
+version = "0.1.0"
+dependencies = [
+ "chain-heartbeat",
+ "egui",
+ "egui-widgets",
+ "futures",
+ "hex",
+ "js-sys",
+ "log",
+ "ui-flow",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7009,6 +7024,7 @@ dependencies = [
 name = "ui-flow-server"
 version = "0.1.0"
 dependencies = [
+ "chain-heartbeat",
  "serde",
  "ui-flow-protocol",
  "worker_stack",
