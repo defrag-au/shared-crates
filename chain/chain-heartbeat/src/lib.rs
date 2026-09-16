@@ -79,7 +79,7 @@ pub use network::{
     ACTIVE_SLOT_COEFFICIENT, EpochPosition, Network, Relay, UnknownNetwork,
     block_probability_within,
 };
-pub use vrf::VrfValue;
+pub use vrf::{VrfValue, lottery_value_from_output};
 
 pub(crate) fn blake2b<const N: usize>(data: &[u8]) -> [u8; N] {
     use blake2::digest::{Update, VariableOutput};

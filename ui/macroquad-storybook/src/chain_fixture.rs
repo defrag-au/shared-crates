@@ -324,6 +324,7 @@ fn blocks(seed: u64, after_slot: u64, first_height: u64, until_slot: u64) -> Vec
             body_size: body,
             tx_count: Some(txs),
             block_time_unix: Network::Mainnet.slot_to_unix_secs(slot),
+            vrf_output: None,
         });
         height += 1;
     }

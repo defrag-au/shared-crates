@@ -314,6 +314,7 @@ mod tests {
             body_size: 41_234,
             tx_count: Some(17),
             block_time_unix: Some(1_777_566_291),
+            vrf_output: None,
         };
         let mut heartbeat = Heartbeat::new(Network::Mainnet);
         heartbeat.connected(1_777_566_291_000);

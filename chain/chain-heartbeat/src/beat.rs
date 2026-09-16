@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::block::{BlockError, split_block};
 use crate::header::{BlockHeader, HeaderError};
 use crate::network::Network;
+use crate::vrf::{VrfValue, lottery_value_from_output};
 
 /// One block, as the heartbeat reports it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,6 +25,18 @@ pub struct BlockBeat {
     /// When the slot began. `None` only for a Byron-era slot.
     #[serde(default, with = "wasm_safe_serde::u64_option")]
     pub block_time_unix: Option<u64>,
+    /// The producer's RAW VRF output, hex. `None` from a host that does not
+    /// carry it — an older host, or a beat built without a header.
+    ///
+    /// Raw, not the chain's range-extended leader value: a consumer running
+    /// its own lottery hashes this with its own domain tag, and the leader
+    /// value is both the wrong input for that and stake-bounded. See
+    /// [`crate::HeaderVrf::lottery_value`].
+    ///
+    /// 64 bytes, so 128 hex characters — the largest field in a beat. A
+    /// `Resync` carrying a full window is about 32 KB heavier for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vrf_output: Option<String>,
 }
 
 /// A point to resume following from.
@@ -165,6 +178,7 @@ impl BlockBeat {
             body_size: header.body_size,
             tx_count,
             block_time_unix: network.slot_to_unix_secs(header.slot),
+            vrf_output: Some(hex::encode(header.vrf.leader().output)),
         }
     }
 
@@ -174,6 +188,16 @@ impl BlockBeat {
         let parts = split_block(block)?;
         let header = BlockHeader::decode(parts.header_variant, parts.header_cbor)?;
         Ok(Self::new(network, &header, Some(parts.tx_count)))
+    }
+
+    /// This block's draw for `domain`, when the host carried the VRF output.
+    ///
+    /// The same number [`crate::HeaderVrf::lottery_value`] computes from the
+    /// header, by the same function — a beat-side and a header-side draw
+    /// cannot drift apart.
+    pub fn lottery_value(&self, domain: &[u8]) -> Option<VrfValue> {
+        let output = hex::decode(self.vrf_output.as_ref()?).ok()?;
+        Some(lottery_value_from_output(domain, &output))
     }
 
     /// The point this block sits at, if its stored hash is well-formed.
@@ -190,6 +214,38 @@ impl BlockBeat {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The wire carries the RAW output so a consumer can take its own draw —
+    /// and that draw must be the one the header itself would have given.
+    #[test]
+    fn a_beat_carries_the_vrf_output_and_draws_the_same_lottery_as_its_header() {
+        let parts = split_block(BLOCK).unwrap();
+        let header = BlockHeader::decode(parts.header_variant, parts.header_cbor).unwrap();
+        let beat = BlockBeat::from_block(Network::Mainnet, BLOCK).unwrap();
+
+        assert_eq!(
+            beat.vrf_output.as_deref(),
+            Some(hex::encode(header.vrf.leader().output).as_str())
+        );
+        assert_eq!(
+            beat.lottery_value(b"slotlings-v1"),
+            Some(header.vrf.lottery_value(b"slotlings-v1"))
+        );
+    }
+
+    /// A beat from a host that never carried the field still decodes: the wire
+    /// is additive, so an older host and a newer subscriber interoperate.
+    #[test]
+    fn a_beat_without_a_vrf_output_still_decodes_and_declines_to_draw() {
+        let beat = BlockBeat::from_block(Network::Mainnet, BLOCK).unwrap();
+        let mut json = serde_json::to_value(&beat).unwrap();
+        json.as_object_mut().unwrap().remove("vrf_output");
+
+        let old: BlockBeat = serde_json::from_value(json).unwrap();
+        assert_eq!(old.vrf_output, None);
+        assert_eq!(old.lottery_value(b"slotlings-v1"), None);
+        assert_eq!(old.height, beat.height);
+    }
 
     const BLOCK: &[u8] = include_bytes!("../tests/fixtures/186000000.block.cbor");
 

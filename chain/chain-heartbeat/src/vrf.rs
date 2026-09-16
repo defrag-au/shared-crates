@@ -106,6 +106,17 @@ impl VrfValue {
     }
 }
 
+/// A lottery draw over a raw VRF output: `blake2b-256(domain || output)`.
+///
+/// The one place the construction lives, so a draw taken from a header and a
+/// draw taken from a relayed [`crate::BlockBeat`] are the same number.
+pub fn lottery_value_from_output(domain: &[u8], output: &[u8]) -> VrfValue {
+    let mut tagged = Vec::with_capacity(domain.len() + output.len());
+    tagged.extend_from_slice(domain);
+    tagged.extend_from_slice(output);
+    VrfValue::Hashed(blake2b::<32>(&tagged))
+}
+
 impl HeaderVrf {
     /// The value the chain itself compared against this producer's leadership
     /// threshold: `blake2b-256("L" || output)` from Babbage on, and the raw
@@ -138,10 +149,7 @@ impl HeaderVrf {
     /// The result is era-independent: it is built from the leader
     /// certificate's output, which both header shapes carry.
     pub fn lottery_value(&self, domain: &[u8]) -> VrfValue {
-        let mut tagged = Vec::with_capacity(domain.len() + 64);
-        tagged.extend_from_slice(domain);
-        tagged.extend_from_slice(&self.leader().output);
-        VrfValue::Hashed(blake2b::<32>(&tagged))
+        lottery_value_from_output(domain, &self.leader().output)
     }
 }
 

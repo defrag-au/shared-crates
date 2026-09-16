@@ -7399,7 +7399,6 @@ dependencies = [
  "pallas-primitives",
  "serde",
  "thiserror 1.0.69",
- "wallet-core",
  "wasm-bindgen",
 ]
 

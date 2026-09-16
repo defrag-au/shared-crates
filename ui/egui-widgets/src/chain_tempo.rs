@@ -200,6 +200,7 @@ mod tests {
             body_size: 9_011,
             tx_count: Some(txs),
             block_time_unix: Network::Mainnet.slot_to_unix_secs(slot),
+            vrf_output: None,
         }
     }
 

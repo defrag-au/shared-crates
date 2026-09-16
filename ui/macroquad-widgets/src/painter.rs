@@ -75,8 +75,24 @@ impl<'a> Painter<'a> {
         );
     }
 
+    /// Measure in the PROPORTIONAL face — what [`Painter::text`] draws.
+    ///
+    /// Named explicitly because the asymmetry bites: anything drawn with
+    /// [`Painter::mono`] must be measured with [`Painter::measure_mono`], and
+    /// getting it wrong fails SILENTLY. Monospace is wider per character, so
+    /// measuring it here under-reports, and two independently placed strings
+    /// quietly overlap instead of erroring.
     pub fn measure(&self, s: &str, size: f32) -> TextDimensions {
         measure_text(s, self.font, size as u16, 1.0)
+    }
+
+    /// Measure in the MONOSPACE face — what [`Painter::mono`] draws.
+    ///
+    /// Without this a widget can only measure half the text it can draw, which
+    /// makes right-aligning or fitting a hash, a price or any fixed-width
+    /// figure a guess. See [`Painter::measure`] for why the guess is silent.
+    pub fn measure_mono(&self, s: &str, size: f32) -> TextDimensions {
+        measure_text(s, self.mono, size as u16, 1.0)
     }
 
     /// Baseline `y` that vertically centres text (at `size`) within a band of

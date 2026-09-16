@@ -404,6 +404,7 @@ mod tests {
             body_size: 45_056,
             tx_count: Some(12),
             block_time_unix: Network::Mainnet.slot_to_unix_secs(slot),
+            vrf_output: None,
         }
     }
 

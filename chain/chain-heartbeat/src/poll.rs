@@ -255,6 +255,7 @@ mod tests {
                 body_size: 0,
                 tx_count: None,
                 block_time_unix: None,
+                vrf_output: None,
             },
             sync,
         }
