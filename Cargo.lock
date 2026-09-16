@@ -3369,6 +3369,7 @@ dependencies = [
 name = "macroquad-storybook"
 version = "0.1.0"
 dependencies = [
+ "chain-heartbeat",
  "macroquad",
  "macroquad-widgets",
 ]
@@ -3395,6 +3396,7 @@ dependencies = [
 name = "macroquad-widgets"
 version = "0.1.0"
 dependencies = [
+ "chain-heartbeat",
  "macroquad",
 ]
 

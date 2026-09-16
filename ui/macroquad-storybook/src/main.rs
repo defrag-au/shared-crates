@@ -9,14 +9,18 @@
 //!
 //! Scroll is intentionally deferred until the story list overflows.
 
+mod chain_fixture;
+
+use chain_fixture::{ChainSim, Scenario};
 use macroquad::prelude::*;
 use macroquad_widgets::{
-    Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility, FulfilmentAction,
-    FulfilmentStatus, FulfilmentTx, Gestures, MintCheckoutVm, OrderFulfilmentVm, OrderStatus,
-    Painter, QuantityStepperVm, SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerVm,
-    StepperAction, SwipeDir, Theme, WalletAction, WalletConnectVm, WalletItem, WalletListAction,
-    WalletListState, WalletListVm, WalletRow, WalletState, mint_checkout, order_fulfilment,
-    quantity_stepper, squad_picker, theme, wallet_connect, wallet_list,
+    BlockPulseVm, BlockTrainVm, Button, ButtonVariant, CheckoutAction, CheckoutState, Eligibility,
+    FulfilmentAction, FulfilmentStatus, FulfilmentTx, Gestures, MintCheckoutVm, OrderFulfilmentVm,
+    OrderStatus, Painter, PulseDetail, PulseTicker, QuantityStepperVm, RiderState, SquadCandidate,
+    SquadCommit, SquadPickerAction, SquadPickerVm, StepperAction, SwipeDir, Theme, TrainRider,
+    TrainState, WalletAction, WalletConnectVm, WalletItem, WalletListAction, WalletListState,
+    WalletListVm, WalletRow, WalletState, block_pulse, block_train, mint_checkout,
+    order_fulfilment, quantity_stepper, squad_picker, theme, wallet_connect, wallet_list,
 };
 
 const SIDEBAR_W: f32 = 210.0;
@@ -67,8 +71,38 @@ struct Fulfilment {
     paused: bool,
 }
 
+/// A chain story: a seeded feed, the widgets' host-owned state, and whatever is
+/// riding. The sim runs a REAL `Heartbeat`, so the widgets are reviewed folding
+/// the data they fold in production rather than a hand-built snapshot.
+struct ChainStory {
+    sim: ChainSim,
+    train: TrainState,
+    /// One ticker per pulse on screen: each remembers the tip it last drew, so
+    /// two sharing one would rob each other of their pops.
+    pulse: PulseTicker,
+    pulse_full: PulseTicker,
+    riders: Vec<TrainRider>,
+    /// Tip height when a rider was put on, so it lands in the NEXT block rather
+    /// than instantly. The landing ring is the moment worth reviewing.
+    waiting_from: Option<u64>,
+    span_secs: f32,
+    view: ChainView,
+}
+
+/// Which chain widget a story is showing. One story per widget, per the
+/// crate's charter — and an enum rather than a `show_pulse: bool`, so the
+/// choice has a name at every call site.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ChainView {
+    Train,
+    Pulse,
+}
+
 enum Body {
     Buttons,
+    // Boxed: `ChainStory` holds a whole `Heartbeat` (a 256-slot ring plus the
+    // scripted feed) inline, which every other variant would otherwise pay for.
+    Chain(Box<ChainStory>),
     Stepper(u32),
     Wallet(WalletConnectVm),
     WalletList(WalletListVm),
@@ -82,6 +116,7 @@ enum Body {
 #[derive(Clone, Copy)]
 enum Kind {
     Buttons,
+    Chain,
     Stepper,
     Wallet,
     WalletList,
@@ -124,6 +159,29 @@ impl Story {
         }
     }
 
+    fn chain(
+        category: &'static str,
+        name: &'static str,
+        view: ChainView,
+        scenario: Scenario,
+        span_secs: f32,
+    ) -> Self {
+        Self {
+            category,
+            name,
+            body: Body::Chain(Box::new(ChainStory {
+                sim: ChainSim::new(scenario),
+                train: TrainState::new(),
+                pulse: PulseTicker::new(),
+                pulse_full: PulseTicker::new(),
+                riders: Vec::new(),
+                waiting_from: None,
+                span_secs,
+                view,
+            })),
+        }
+    }
+
     fn stepper(category: &'static str, name: &'static str, qty: u32) -> Self {
         Self {
             category,
@@ -159,6 +217,7 @@ impl Story {
     fn kind(&self) -> Kind {
         match self.body {
             Body::Buttons => Kind::Buttons,
+            Body::Chain(_) => Kind::Chain,
             Body::Stepper(_) => Kind::Stepper,
             Body::Wallet(_) => Kind::Wallet,
             Body::WalletList(_) => Kind::WalletList,
@@ -477,6 +536,64 @@ fn stories(sample_icon: Option<Texture2D>) -> Vec<Story> {
             SquadPickerVm::new(squad_roster(5), 4).chosen(vec!["tool0000".into()]),
         ),
         Story::squad_picker("squad", "empty roster", SquadPickerVm::new(Vec::new(), 4)),
+        // Chain tempo. Past story 9, so reach these with
+        // `--story chain` / `--story rollback` rather than a number key.
+        Story::chain(
+            "chain",
+            "train · 20 min",
+            ChainView::Train,
+            Scenario::Live,
+            20.0 * 60.0,
+        ),
+        Story::chain(
+            "chain",
+            "train · 5 min",
+            ChainView::Train,
+            Scenario::Live,
+            5.0 * 60.0,
+        ),
+        Story::chain(
+            "chain",
+            "rollback",
+            ChainView::Train,
+            Scenario::Rollback,
+            5.0 * 60.0,
+        ),
+        Story::chain(
+            "chain",
+            "reconnect",
+            ChainView::Train,
+            Scenario::Reconnect,
+            20.0 * 60.0,
+        ),
+        Story::chain(
+            "chain",
+            "quiet feed",
+            ChainView::Train,
+            Scenario::QuietFeed,
+            20.0 * 60.0,
+        ),
+        Story::chain(
+            "chain",
+            "offline",
+            ChainView::Train,
+            Scenario::Offline,
+            20.0 * 60.0,
+        ),
+        Story::chain(
+            "chain",
+            "pulse",
+            ChainView::Pulse,
+            Scenario::Live,
+            20.0 * 60.0,
+        ),
+        Story::chain(
+            "chain",
+            "pulse · quiet",
+            ChainView::Pulse,
+            Scenario::QuietFeed,
+            20.0 * 60.0,
+        ),
         Story::squad_picker(
             "squad",
             "locked (run under way)",
@@ -722,6 +839,7 @@ impl Storybook {
                 }
                 self.echo(p, x0);
             }
+            Kind::Chain => self.draw_chain(p, sel, x0, y),
             Kind::Stepper => self.draw_stepper(p, sel, x0, y),
             Kind::Wallet => self.draw_wallet(p, sel, x0, y, col_w),
             Kind::WalletList => self.draw_wallet_list(p, sel, x0, y, col_w),
@@ -786,6 +904,147 @@ impl Storybook {
             self.last_action = Some(echo);
         }
         self.echo(p, x);
+    }
+
+    /// The chain stories run wide: the train's whole point is irregular spacing
+    /// over real time, and a 460 px column cannot show it. So this one ignores
+    /// `col_w` and takes the window.
+    fn draw_chain(&mut self, p: &Painter, sel: usize, x: f32, y: f32) {
+        let Body::Chain(story) = &mut self.stories[sel].body else {
+            return;
+        };
+        story.sim.advance();
+        let now_ms = story.sim.now_ms();
+        let tip = story.sim.heartbeat.tip().map(|b| b.height);
+
+        // A rider put on earlier lands in the next block the feed reports —
+        // which is what makes the landing ring reviewable on demand instead of
+        // only when mainnet happens to produce one.
+        if let (Some(from), Some(tip)) = (story.waiting_from, tip)
+            && tip > from
+        {
+            story.riders = vec![TrainRider::new(
+                "your buy",
+                RiderState::InBlock { height: tip },
+            )];
+            story.waiting_from = None;
+        }
+
+        let w = screen_width() - x - 28.0;
+        // One widget per story. The train already carries the pulse's mark as a
+        // status light beside "full", so drawing a header pulse above it put two
+        // marks 20 px apart at the same x — which reads as a rendering fault
+        // rather than as two widgets.
+        let bottom = match story.view {
+            ChainView::Train => {
+                let vm = BlockTrainVm::new(&story.sim.heartbeat, now_ms)
+                    .riders(&story.riders)
+                    .span_secs(story.span_secs)
+                    .plot_height(76.0);
+                block_train(p, &vm, &mut story.train, x, y + 8.0, w).bottom
+            }
+            ChainView::Pulse => {
+                let compact =
+                    BlockPulseVm::new(&story.sim.heartbeat, now_ms).detail(PulseDetail::Compact);
+                block_pulse(p, &compact, &mut story.pulse, x, y + 14.0);
+                p.text(
+                    "compact — for a crowded status strip",
+                    x,
+                    p.top_baseline(y + 30.0, 12.0),
+                    12.0,
+                    p.theme.muted,
+                );
+                let full =
+                    BlockPulseVm::new(&story.sim.heartbeat, now_ms).detail(PulseDetail::Full);
+                block_pulse(p, &full, &mut story.pulse_full, x, y + 76.0);
+                p.text(
+                    "full — also the height, and a word about the feed",
+                    x,
+                    p.top_baseline(y + 92.0, 12.0),
+                    12.0,
+                    p.theme.muted,
+                );
+                y + 112.0
+            }
+        };
+        let mut by = bottom + 18.0;
+
+        // Scenario. A rollback or a reconnect is otherwise unreachable without
+        // waiting for one to happen on mainnet.
+        let mut chosen = None;
+        let mut bx = x;
+        for s in Scenario::ALL {
+            let label = s.label();
+            let bw = p.measure(label, 14.0).width + 24.0;
+            let variant = if story.sim.scenario == s {
+                ButtonVariant::Filled
+            } else {
+                ButtonVariant::Tonal
+            };
+            if Button::new(label)
+                .variant(variant)
+                .font_size(14.0)
+                .show(p, Rect::new(bx, by, bw, 28.0))
+            {
+                chosen = Some(s);
+            }
+            bx += bw + 8.0;
+        }
+        by += 36.0;
+
+        // Speed, and the rider trigger.
+        let mut speed = None;
+        let mut bx = x;
+        for mult in [1.0_f32, 5.0, 30.0] {
+            let label = format!("{mult:.0}x");
+            let variant = if (story.sim.speed - mult).abs() < 0.01 {
+                ButtonVariant::Filled
+            } else {
+                ButtonVariant::Tonal
+            };
+            if Button::new(&label)
+                .variant(variant)
+                .font_size(14.0)
+                .show(p, Rect::new(bx, by, 56.0, 28.0))
+            {
+                speed = Some(mult);
+            }
+            bx += 64.0;
+        }
+        let ride = Button::new("+rider")
+            .variant(ButtonVariant::Tonal)
+            .font_size(14.0)
+            .show(p, Rect::new(bx + 16.0, by, 84.0, 28.0));
+        let clear = Button::new("clear")
+            .variant(ButtonVariant::Ghost)
+            .font_size(14.0)
+            .show(p, Rect::new(bx + 108.0, by, 76.0, 28.0));
+        by += 34.0;
+        p.text(
+            "speed drives the SIM clock, not the widget — the train derives its own motion",
+            x,
+            p.top_baseline(by, 12.0),
+            12.0,
+            p.theme.muted,
+        );
+
+        if let Some(s) = chosen {
+            story.sim.set_scenario(s);
+            story.riders.clear();
+            story.waiting_from = None;
+            story.train = TrainState::new();
+        }
+        if let Some(mult) = speed {
+            story.sim.speed = mult;
+        }
+        if ride {
+            story.riders = vec![TrainRider::new("your buy", RiderState::Waiting)];
+            story.waiting_from = tip;
+        }
+        if clear {
+            story.riders.clear();
+            story.waiting_from = None;
+        }
     }
 
     fn echo(&self, p: &Painter, x: f32) {

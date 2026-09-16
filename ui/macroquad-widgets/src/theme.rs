@@ -20,6 +20,14 @@ pub const MUTED: Color = Color::new(0.470, 0.510, 0.667, 1.0);
 pub const DANGER: Color = Color::new(0.969, 0.463, 0.557, 1.0);
 /// Warning / caution (amber) — ineligible notices etc.
 pub const WARN: Color = Color::new(0.878, 0.686, 0.408, 1.0);
+/// Success / settled (teal) — a thing that landed and is now true.
+///
+/// Deliberately NOT [`ACCENT`]. Accent is swapped per preset (lime, ember,
+/// iris, aqua, rose), and surfaces that already spend accent on something else
+/// — `block_train` gives it to the newest block — would otherwise render "your
+/// transaction landed" in the same ink as "this block is newest", and in a
+/// different hue on every skin. Success is fixed across presets on purpose.
+pub const SUCCESS: Color = Color::new(0.451, 0.855, 0.792, 1.0);
 /// Inactive track (progress background, disabled button).
 pub const TRACK: Color = Color::new(0.160, 0.180, 0.260, 1.0);
 
@@ -58,6 +66,8 @@ pub struct Theme {
     pub muted: Color,
     pub danger: Color,
     pub warn: Color,
+    /// Fixed across presets — see [`SUCCESS`].
+    pub success: Color,
     pub track: Color,
 }
 
@@ -73,6 +83,7 @@ impl Theme {
             muted: MUTED,
             danger: DANGER,
             warn: WARN,
+            success: SUCCESS,
             track: TRACK,
         }
     }

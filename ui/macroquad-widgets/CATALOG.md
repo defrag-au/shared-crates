@@ -8,11 +8,13 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p macroquad-widgets --test catalog`
 Note: these are MACROQUAD widgets. They cannot use wasm-bindgen, so they do not
 interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime pairs.
 
-9 widgets.
+11 widgets.
 
 | module | what it is |
 |---|---|
 | `assets` | Loading external resources with progress, the way a game boots |
+| `block_pulse` | `BlockPulse` — the chain's heartbeat on one line: a dot that pops on each new block, a ring filling towards "a block has probably landed", and the time since the last one |
+| `block_train` | `BlockTrain` — recent blocks spaced by real time, with the wait since the last one growing at the right edge |
 | `button` | `Button` atom — a rounded, accent button with idle / hover / pressed / disabled states and three weights (filled / tonal / ghost) |
 | `fonts` | Host-owned font loading, for the faces [`crate::Painter`] borrows |
 | `mint_checkout` | `MintCheckout` organism — the mint initiator: phase + eligibility, a [`quantity_stepper`], the live total, and the Mint CTA |

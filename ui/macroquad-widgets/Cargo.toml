@@ -10,5 +10,17 @@ publish = false
 # backend types. Mirrors the egui-widgets split (VM in, actions out) so the
 # same projection pattern works on both renderers. Compiles native + wasm32.
 
+[features]
+# `BlockPulse` / `BlockTrain` — live Cardano chain tempo folded from a
+# `chain_heartbeat::Heartbeat`. OFF by default: most buyer-facing surfaces never
+# follow a chain, and the catalogue stays chain-free for them. Mirrors
+# egui-widgets' `chain` feature, so the two renderers gate the same way.
+chain = ["dep:chain-heartbeat"]
+
 [dependencies]
 macroquad = "0.4"
+# The chain heartbeat these widgets render — see `block_pulse`. Follower OFF,
+# for two reasons: a renderer only ever folds frames it is handed, and the
+# `follow` feature pulls `ouroboros-mux`, which cannot build for the miniquad
+# target at all.
+chain-heartbeat = { path = "../../chain/chain-heartbeat", default-features = false, optional = true }

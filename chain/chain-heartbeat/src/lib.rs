@@ -52,6 +52,7 @@ mod heartbeat;
 mod network;
 mod poll;
 mod relay;
+mod vrf;
 
 #[cfg(feature = "follow")]
 pub mod follow;
@@ -78,6 +79,7 @@ pub use network::{
     ACTIVE_SLOT_COEFFICIENT, EpochPosition, Network, Relay, UnknownNetwork,
     block_probability_within,
 };
+pub use vrf::VrfValue;
 
 pub(crate) fn blake2b<const N: usize>(data: &[u8]) -> [u8; N] {
     use blake2::digest::{Update, VariableOutput};
