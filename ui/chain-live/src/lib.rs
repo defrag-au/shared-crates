@@ -54,7 +54,11 @@ mod feed;
 mod live;
 mod tracker;
 
-pub use chain_heartbeat::{Network, PollTiming};
+// The tracker moved to `chain-heartbeat` (renderer-free, so macroquad can host
+// it too). Re-exported under the names consumers already use — `TrackEvent` is
+// this crate's `ChainLiveEvent` — so nothing downstream changes.
+pub use chain_heartbeat::{
+    Network, PollTiming, TrackEvent as ChainLiveEvent, TrackedTx, TxLanding, TxProgress,
+};
 pub use feed::{FeedEndpoint, FeedLink};
 pub use live::{CONFIRMATION_TIMING, ChainLive, ChainLiveConfig, Confirmation, TxStatusSource};
-pub use tracker::{ChainLiveEvent, TrackedTx, TxLanding, TxProgress};

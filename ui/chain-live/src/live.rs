@@ -240,7 +240,7 @@ impl ChainLive {
         if self.link() != FeedLink::Live {
             return None;
         }
-        let riders = self.tracker.riders();
+        let riders = crate::tracker::riders(self.tracker.txs());
         Some(
             BlockTrain::new(self.heartbeat(), now_ms())
                 .riders(&riders)

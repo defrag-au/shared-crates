@@ -32,6 +32,12 @@ authorizations = { workspace = true }
 # IIIF URL + warm-size policy, shared with the macroquad side. Pure crate, no
 # runtime — see its docs for why the sizes must live in exactly one place.
 image-core = { path = "../image-core" }
+# The design vocabulary, renderer-free: `Srgb`, the colour science, and the
+# `ColorTokens` / `Token` / `Ink` / `SeriesPalette` model this crate used to own
+# outright. Shared with `macroquad-widgets` so the two palettes cannot drift
+# apart again — they had already diverged on three colours and on `success`.
+# NOT feature-gated: colour is not an optional axis.
+ui-theme = { workspace = true, features = ["egui"] }
 egui = { workspace = true }
 egui_extras = { workspace = true }
 # Frame-cost and in-flight-work counters — see `perf_strip`. Pure std, so this

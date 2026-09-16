@@ -334,8 +334,17 @@ fn blocks(seed: u64, after_slot: u64, first_height: u64, until_slot: u64) -> Vec
         if slot > until_slot {
             break;
         }
-        let txs = (rng.next() % 38) as u32;
-        let body = (txs * 1_900 + (rng.next() % 4_000) as u32).min(90_112);
+        // Calibrated against a LIVE mainnet reading (2026-09-16,
+        // blocks-mainnet.hodlcroft.com/heartbeat): `mean_fullness` 0.0505 over
+        // a 256-block window, ~3.4 txs per block, and a tip block of 3 901 B
+        // carrying 8 txs (~490 B each).
+        //
+        // The old `rng % 38` txs at 1 900 B was about TWENTY TIMES too fat — up
+        // to ~76 KB against an 88 KB cap. It made the storybook flatter the
+        // widget, so mainnet's honest picture looked like a broken chart by
+        // comparison. A fixture that lies about the data tests nothing.
+        let txs = (rng.next() % 8) as u32;
+        let body = (txs * 900 + (rng.next() % 2_500) as u32).min(90_112);
         let mixed = height.wrapping_mul(0x2545_f491_4f6c_dd1d) ^ seed;
         let hash = format!(
             "{mixed:016x}{:016x}{:016x}{:016x}",

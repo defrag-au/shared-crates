@@ -43,6 +43,16 @@
 //!   manage who gets frames: leased, renewed only while someone listens.
 //! - [`BlockPoller`] (browser) turns frames into backend polls, only while
 //!   something is awaited and spread out so tabs don't synchronise.
+//!
+//! # Your own transactions riding the chain
+//!
+//! [`Tracker`] folds a frontend's submitted transactions against the blocks the
+//! feed delivers: [`BlockTxs`] names the transactions of each block, so a
+//! transaction is placed on its bar the moment the block arrives, with no
+//! polling at all ([`Asking::BlocksOnly`]). [`BlockPoller`] is the fallback for
+//! hosts whose feed follows headers only and therefore never names them.
+//! Renderer-free — each front end projects [`TxProgress`] onto whatever it
+//! draws.
 
 mod beat;
 mod block;
@@ -52,6 +62,7 @@ mod heartbeat;
 mod network;
 mod poll;
 mod relay;
+mod track;
 mod vrf;
 
 #[cfg(feature = "follow")]
@@ -59,6 +70,7 @@ pub mod follow;
 
 pub use frame::{FrameApplied, FrameBatcher, HeartbeatFrame, MAX_BATCH, PULSE_AFTER_SECS};
 pub use poll::{BlockPoller, PollDecision, PollReason, PollTiming};
+pub use track::{Asking, PollStep, TrackEvent, TrackedTx, Tracker, TxLanding, TxProgress};
 pub use relay::{
     AfterDelivery, CHAIN_DOMAIN, DROP_AFTER_FAILURES, DeliveryOutcome, LeaseAction, MAX_LEASE_SECS,
     MAX_SUBSCRIBERS, MIN_LEASE_SECS, Rejection, Removal, SubscribeRequest, SubscribeResponse,

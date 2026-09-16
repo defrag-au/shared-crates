@@ -818,6 +818,7 @@ dependencies = [
  "futures-io",
  "futures-util",
  "hex",
+ "log",
  "minicbor",
  "ouroboros-mux",
  "serde",
@@ -7057,6 +7058,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "ui-theme"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "macroquad",
 ]
 
 [[package]]

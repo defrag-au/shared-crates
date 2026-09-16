@@ -9,7 +9,10 @@
 //!   irregular, and the irregularity is the truth about Cardano's tempo. An
 //!   evenly spaced row would hide exactly the thing a reader is watching.
 //! - **Height is fullness** against `maxBlockBodySize`, so the scale is bounded
-//!   and needs no axis: the top rule is a full block.
+//!   and needs no axis: the top rule is a full block, and a third faint rule
+//!   marks what blocks in the window on screen actually average. Mainnet runs
+//!   around 5% of the cap, so without that datum the bars hug the baseline and
+//!   a quiet chain reads as a broken chart.
 //! - **Emphasis, not categories.** The newest block wears the accent and the
 //!   rest recede, because the story is "that one just landed".
 //! - **The gap is the wait.** The band from the newest block to "now" is the
@@ -42,7 +45,7 @@
 
 use std::collections::HashMap;
 
-use chain_heartbeat::{BlockBeat, Heartbeat};
+use chain_heartbeat::{BlockBeat, Heartbeat, TrackedTx, TxProgress};
 use macroquad::prelude::*;
 
 use crate::block_pulse::{PulseState, PulseTicker, draw_mark, format_duration, format_number};
@@ -95,6 +98,36 @@ impl TrainRider {
             state,
         }
     }
+}
+
+/// Tracked transactions as this train draws them.
+///
+/// The twin of `chain_live::tracker::riders`. The TRACKING itself —  what is
+/// waiting, what a block means, what a rollback undoes — lives once, in
+/// [`chain_heartbeat::Tracker`]; only this projection is per-renderer, because
+/// only the rider type differs. If the two projections ever disagree, one of
+/// them is wrong: they render the same [`TxProgress`].
+pub fn riders(txs: &[TrackedTx]) -> Vec<TrainRider> {
+    txs.iter()
+        .filter_map(|tracked| {
+            let state = match tracked.progress {
+                TxProgress::Waiting => RiderState::Waiting,
+                TxProgress::Landed {
+                    block_height: Some(height),
+                } => RiderState::InBlock { height },
+                // Still a status row while its block is found: dropping it
+                // there is what made the status vanish between "waiting" and
+                // "in a block".
+                TxProgress::Landed { block_height: None } => RiderState::Landed,
+                TxProgress::FailedInBlock { block_height } => RiderState::Failed {
+                    height: block_height,
+                },
+                // Given up on: no status worth a row, and no block to sit on.
+                TxProgress::Dropped => return None,
+            };
+            Some(TrainRider::new(tracked.label.clone(), state))
+        })
+        .collect()
 }
 
 /// Where a rider has got to.
@@ -311,6 +344,25 @@ pub fn block_train(
         1.0,
         theme::with_alpha(t.track, 0.45),
     );
+    // A third rule at what a block round here ACTUALLY carries, so the bars
+    // have something to read against. Without it the honest absolute scale has
+    // no datum between "empty" and "88 KB", and real blocks sit so low that the
+    // chart reads as broken rather than as quiet.
+    //
+    // The mean over the window on screen, not a constant: the figure is a fact
+    // about the chain right now and moves with it. Fainter than the baseline
+    // and the full-block rule on purpose — it is a typical value, not a bound.
+    if let Some(mean) = snapshot.window.mean_fullness {
+        let y = plot.bottom() - mean.clamp(0.0, 1.0) * plot.h;
+        draw_line(
+            plot.left(),
+            y,
+            plot.right(),
+            y,
+            1.0,
+            theme::with_alpha(t.muted, 0.30),
+        );
+    }
 
     let max_body = vm.heartbeat.network().max_block_body_bytes();
     let bar_w = bar_width(plot.w, span_secs);

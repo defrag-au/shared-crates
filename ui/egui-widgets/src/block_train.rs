@@ -6,8 +6,11 @@
 //!   irregular, and the irregularity is the truth about Cardano's tempo. An
 //!   evenly spaced row would hide exactly the thing a reader is watching.
 //! - **Height is fullness** against `maxBlockBodySize`, so the scale is bounded
-//!   and needs no axis: the top rule is a full block. Transaction counts are in
-//!   the tooltip rather than a second colour channel.
+//!   and needs no axis: the top rule is a full block, and a third faint rule
+//!   marks what blocks in the window on screen actually average. Mainnet runs
+//!   around 5% of the cap, so without that datum the bars hug the baseline and
+//!   a quiet chain reads as a broken chart. Transaction counts are in the
+//!   tooltip rather than a second colour channel.
 //! - **Emphasis, not categories.** The newest block wears the accent and the
 //!   rest recede, because the story is "that one just landed".
 //! - **The gap is the wait.** The band from the newest block to "now" is the
@@ -336,13 +339,27 @@ impl<'a> BlockTrain<'a> {
         }
         let painter = ui.painter_at(rect);
 
-        // Scale: the baseline, and the top rule that means "a full block".
+        // Scale: the baseline, the top rule that means "a full block", and a
+        // third at what a block round here ACTUALLY carries, so the bars have
+        // something to read against. Without it the honest absolute scale has
+        // no datum between "empty" and "88 KB", and real blocks sit so low that
+        // the chart reads as broken rather than as quiet.
         let rule = Stroke::new(1.0, c.border);
         painter.line_segment([plot.left_bottom(), plot.right_bottom()], rule);
         painter.line_segment(
             [plot.left_top(), plot.right_top()],
             Stroke::new(1.0, with_alpha(c.border, 110)),
         );
+        // The mean over the window on screen, not a constant: it is a fact
+        // about the chain right now and moves with it. Fainter than the other
+        // two on purpose — a typical value, not a bound.
+        if let Some(mean) = snapshot.window.mean_fullness {
+            let y = plot.bottom() - mean.clamp(0.0, 1.0) * plot.height();
+            painter.line_segment(
+                [egui::pos2(plot.left(), y), egui::pos2(plot.right(), y)],
+                Stroke::new(1.0, with_alpha(c.text_muted, 70)),
+            );
+        }
 
         let memory: TrainMemory = ctx.data(|d| d.get_temp(id)).unwrap_or_default();
         let mut clock = memory.clock;

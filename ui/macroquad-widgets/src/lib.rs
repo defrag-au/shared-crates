@@ -34,7 +34,7 @@ pub use block_pulse::{
 #[cfg(feature = "chain")]
 pub use block_train::{
     BlockTrainVm, DEFAULT_SETTLED_DEPTH, RiderDepth, RiderState, TrainResponse, TrainRider,
-    TrainState, block_train, rider_depth,
+    TrainState, block_train, rider_depth, riders,
 };
 pub use button::{Button, ButtonVariant};
 pub use fonts::{FontFiles, Fonts, Slot};
