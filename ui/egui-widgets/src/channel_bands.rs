@@ -65,11 +65,17 @@ use crate::theme::{SeriesPalette, Space, SpaceExt, TextSize, ThemeExt};
 /// `tests/series_palette.rs` holds *every* preset's ramp to the separation
 /// floors this comment describes — so a theme supplying its own ramp cannot
 /// quietly ship a pair a protanope can't separate.
-pub const CHANNEL_PALETTE: [Color32; 5] = SeriesPalette::tokyo_night().categorical;
+/// ⚠️ A `LazyLock`, not a `const`, since the palette moved to `ui-theme`:
+/// building a colour now goes through the `Paint` bridge, and a trait call
+/// cannot run in a const. Indexing and comparison read the same at every call
+/// site; only a `const` *context* would notice.
+pub static CHANNEL_PALETTE: std::sync::LazyLock<[Color32; 5]> =
+    std::sync::LazyLock::new(|| SeriesPalette::tokyo_night().categorical);
 
 /// Neutral for the folded "Other" band — deliberately outside the categorical
 /// order so it never reads as one more channel.
-pub const OTHER_COLOR: Color32 = SeriesPalette::tokyo_night().other;
+pub static OTHER_COLOR: std::sync::LazyLock<Color32> =
+    std::sync::LazyLock::new(|| SeriesPalette::tokyo_night().other);
 
 /// The label a folded band carries.
 pub const OTHER_LABEL: &str = "Other";

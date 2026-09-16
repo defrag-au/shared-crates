@@ -22,6 +22,24 @@ pub trait Palette<P> {
     fn series(&self) -> &SeriesPalette<P>;
 }
 
+/// A theme behind a pointer is still that theme.
+///
+/// Not a convenience: `egui`'s `ui.tokens()` hands back an `Arc<Theme>` (the
+/// context stores it, and nothing can escape the closure that reads it), so
+/// every `ink.resolve(&t)` call site passes `&Arc<Theme>`. Without this the
+/// model would be unusable from the one accessor widgets actually have, and the
+/// alternative — dereferencing at ~78 call sites — would be churn standing in
+/// for a missing impl.
+impl<P, T: Palette<P>> Palette<P> for std::sync::Arc<T> {
+    fn color(&self) -> &ColorTokens<P> {
+        (**self).color()
+    }
+
+    fn series(&self) -> &SeriesPalette<P> {
+        (**self).series()
+    }
+}
+
 /// How a widget decides a colour: **from the theme, or overridden**.
 ///
 /// Each arm is a resolution *strategy*, evaluated against the active theme:

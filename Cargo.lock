@@ -1527,6 +1527,7 @@ dependencies = [
  "serde_json",
  "statig",
  "tx-verdict",
+ "ui-theme",
  "voronoice",
  "wallet-core",
  "wallet-pallas",

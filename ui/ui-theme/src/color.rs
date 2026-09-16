@@ -435,6 +435,24 @@ mod tests {
         assert!(apart > collapsed, "normal {apart}, protan {collapsed}");
     }
 
+    /// Round-tripping must not drift, or a ramp regenerated each frame would
+    /// shimmer. Ported from `egui-widgets`' encoding tests when the Oklab
+    /// helpers moved here.
+    #[test]
+    fn oklab_round_trips_within_a_bit() {
+        for c in [
+            Srgb::hex(0x39_87_e5),
+            Srgb::rgb(255, 215, 0),
+            Srgb::rgb(12, 13, 16),
+            WHITE,
+        ] {
+            let back: Srgb = from_oklab(oklab(c));
+            for (a, b) in [(c.r, back.r), (c.g, back.g), (c.b, back.b)] {
+                assert!(a.abs_diff(b) <= 1, "{c:?} -> {back:?}");
+            }
+        }
+    }
+
     #[test]
     fn srgb_round_trips_through_linear() {
         for v in [0u8, 1, 27, 128, 200, 255] {
