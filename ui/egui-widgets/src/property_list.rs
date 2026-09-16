@@ -22,7 +22,7 @@
 
 use egui::{Grid, RichText, Ui};
 
-use crate::theme::{Ink, Token};
+use crate::theme::{Ink, InkExt, Token};
 
 /// Builder.
 pub struct PropertyList<'a> {

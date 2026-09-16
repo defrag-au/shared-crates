@@ -22,7 +22,7 @@
 use egui::{CornerRadius, FontId, RichText, Sense, Ui, Vec2};
 
 use crate::PhosphorIcon;
-use crate::theme::{Ink, Space, SpaceExt, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, Space, SpaceExt, ThemeExt, Token};
 
 /// Styling knobs.
 pub struct FungiblesRowConfig {

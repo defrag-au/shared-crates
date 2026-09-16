@@ -26,7 +26,7 @@
 
 use std::borrow::Cow;
 
-use crate::theme::{Ink, Radius, Space, TextSize, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, Radius, Space, TextSize, ThemeExt, Token};
 
 use egui::{Align, Color32, Layout, RichText, Ui};
 

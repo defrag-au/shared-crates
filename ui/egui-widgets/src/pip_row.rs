@@ -10,7 +10,7 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 
-use crate::theme::{Ink, TextSize, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, TextSize, ThemeExt, Token};
 
 // ============================================================================
 // Public types

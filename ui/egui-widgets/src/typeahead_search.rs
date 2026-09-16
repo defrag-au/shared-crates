@@ -34,7 +34,7 @@
 
 use egui::{Color32, RichText, Ui};
 
-use crate::theme::{Ink, Radius, Space, SpaceExt, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, Radius, Space, SpaceExt, ThemeExt, Token};
 use crate::{Chip, ChipVariant, PhosphorIcon};
 
 /// One selectable row in the dropdown. All display strings are caller-formatted.

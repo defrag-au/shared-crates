@@ -164,7 +164,7 @@ pub fn fold_to_other<'a>(series: &[ChannelSeries<'a>], keep: usize) -> Vec<Chann
     }
     out.push(ChannelSeries {
         name: OTHER_LABEL,
-        color: OTHER_COLOR,
+        color: *OTHER_COLOR,
         values: other,
     });
     out
@@ -506,8 +506,8 @@ mod tests {
         let names = ["a", "b", "c", "d", "e", "f", "g"];
         let colors = assign_colors(&names);
         assert_eq!(colors["e"], CHANNEL_PALETTE[4]);
-        assert_eq!(colors["f"], OTHER_COLOR);
-        assert_eq!(colors["g"], OTHER_COLOR);
+        assert_eq!(colors["f"], *OTHER_COLOR);
+        assert_eq!(colors["g"], *OTHER_COLOR);
     }
 
     #[test]
@@ -547,7 +547,7 @@ mod tests {
             for b in CHANNEL_PALETTE.iter().skip(i + 1) {
                 assert_ne!(a, b);
             }
-            assert_ne!(*a, OTHER_COLOR);
+            assert_ne!(*a, *OTHER_COLOR);
         }
     }
 }

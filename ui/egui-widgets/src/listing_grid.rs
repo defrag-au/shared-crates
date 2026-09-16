@@ -10,7 +10,7 @@
 use crate::corner_action::{Corner, CornerAction};
 use crate::icons::PhosphorIcon;
 use crate::image_loader::CachedSpinner;
-use crate::theme::{Ink, Space, SpaceExt, TextSize, ThemeExt, Token, with_alpha};
+use crate::theme::{Ink, InkExt, Space, SpaceExt, TextSize, ThemeExt, Token, with_alpha};
 use egui::{Color32, RichText, Sense, Vec2};
 
 /// Whether a listing can actually be bought.

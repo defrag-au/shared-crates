@@ -56,7 +56,7 @@ use egui::{Align2, Color32, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, p
 
 use crate::motion::{Easing, tween, tween_bool, tween_from};
 use crate::selection::Selection;
-use crate::theme::{Ink, Radius, Series, Speed, TextSize, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, Radius, Series, Speed, TextSize, ThemeExt, Token};
 use crate::time_spine::SpineState;
 
 /// Whether the holder has the asset IN HAND after a move, or somebody else is

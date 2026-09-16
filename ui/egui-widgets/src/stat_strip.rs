@@ -37,7 +37,7 @@
 
 use egui::{Color32, FontId, Margin, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 use crate::{SparkHoverStyle, Sparkline, Trend};
 
 /// The sizes and spacings a card paints with.

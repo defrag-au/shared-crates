@@ -26,7 +26,7 @@
 
 use egui::{CornerRadius, Rect, RichText, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Ink, Space, SpaceExt, TextSize, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 pub struct BulletBar {
     value: f32,

@@ -131,7 +131,7 @@ pub type Ink = ui_theme::Ink<Color32>;
 /// channel to be **already** multiplied by alpha, so passing a palette colour
 /// straight in produces an invalid colour that blends additively and comes out
 /// far lighter than intended. That shipped once in this crate's selection wash.
-pub use ui_theme::with_alpha;
+pub use ui_theme::{contrast_ratio, with_alpha};
 
 // The WCAG arithmetic moved to `ui-theme` and is re-exported below, so the ten
 // `with_alpha` call sites in this crate and every `contrast_ratio` consumer
@@ -1048,7 +1048,13 @@ impl Theme {
     }
 
     /// The palette and metrics this crate has always shipped.
-    pub const fn tokyo_night() -> Self {
+    ///
+    /// ⚠️ Not `const fn`: the colour axes come from `ui-theme` through the
+    /// `Paint` bridge, and a trait call cannot run in a const. `PRESETS` holds
+    /// function pointers, so nothing downstream needed constness — but three
+    /// public consts DID extract fields from it (`CHANNEL_PALETTE`,
+    /// `OTHER_COLOR`, `UNOBSERVED`) and are now `LazyLock`.
+    pub fn tokyo_night() -> Self {
         Self {
             name: "tokyo night",
             color: ColorTokens::tokyo_night(),
@@ -1062,7 +1068,7 @@ impl Theme {
     }
 
     /// Tokyo Night with monospace prose — the dashboard feel.
-    pub const fn tokyo_night_mono() -> Self {
+    pub fn tokyo_night_mono() -> Self {
         Self {
             name: "tokyo night mono",
             text: TypeScale::monospace(),
@@ -1082,7 +1088,7 @@ impl Theme {
     /// Rounder and roomier than the house theme too (radius 8/12/16 against
     /// 3/4/8, spacing on a 4px ramp against 2px): the look is as much shape and
     /// rhythm as it is colour.
-    pub const fn opensea() -> Self {
+    pub fn opensea() -> Self {
         Self {
             name: "opensea",
             color: ColorTokens {
@@ -1136,7 +1142,7 @@ impl Theme {
     /// nothing about geometry, density or motion, which is most of what a theme
     /// is. Same palette as the default on purpose: everything that differs here
     /// differs in shape and rhythm.
-    pub const fn industrial() -> Self {
+    pub fn industrial() -> Self {
         Self {
             name: "industrial",
             geometry: Geometry::square(),

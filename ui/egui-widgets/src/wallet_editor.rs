@@ -48,7 +48,7 @@ use egui::{Align, Layout, RichText, Sense, Ui, vec2};
 
 use crate::commands::Command;
 use crate::icons::PhosphorIcon;
-use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 use crate::viewport::Breakpoint;
 
 // ============================================================================

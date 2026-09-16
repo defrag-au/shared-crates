@@ -278,6 +278,20 @@ impl Token {
         }
     }
 
+    /// This token at reduced `alpha` — sugar for [`Ink::Wash`].
+    ///
+    /// [`Ink::Wash`]: crate::ink::Ink::Wash
+    pub const fn wash<P>(self, alpha: u8) -> crate::ink::Ink<P> {
+        crate::ink::Ink::Wash(self, alpha)
+    }
+
+    /// A legible foreground over this token's surface — sugar for [`Ink::On`].
+    ///
+    /// [`Ink::On`]: crate::ink::Ink::On
+    pub const fn on<P>(self) -> crate::ink::Ink<P> {
+        crate::ink::Ink::On(self)
+    }
+
     /// The field name, as written in [`ColorTokens`] — for inspectors and
     /// assertion messages.
     pub const fn name(self) -> &'static str {

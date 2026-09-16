@@ -49,7 +49,7 @@
 use egui::collapsing_header::CollapsingState;
 use egui::{Id, Rect, Ui, Vec2};
 
-use crate::theme::{Ink, Token};
+use crate::theme::{Ink, InkExt, Token};
 
 /// Width of the rule tying the body to the row above it.
 const RULE_W: f32 = 2.0;

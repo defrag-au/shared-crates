@@ -13,7 +13,7 @@
 use egui::{RichText, Ui, Vec2};
 
 use crate::icons::PhosphorIcon;
-use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 /// A `−  [n]  +` quantity control.
 pub struct QuantityStepper {

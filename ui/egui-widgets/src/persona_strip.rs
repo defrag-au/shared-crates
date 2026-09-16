@@ -19,7 +19,7 @@
 
 use egui::{CornerRadius, FontId, RichText, Sense, Ui, Vec2};
 
-use crate::theme::{Ink, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, ThemeExt, Token};
 
 /// Styling knobs.
 pub struct PersonaStripConfig {

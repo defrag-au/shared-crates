@@ -59,7 +59,7 @@ use std::ops::RangeInclusive;
 
 use egui::{Color32, Pos2, Sense, Stroke, Ui, Vec2, pos2, vec2};
 
-use crate::theme::{Density, Ink, Space, SpaceExt, TextSize, ThemeExt, Token};
+use crate::theme::{Density, Ink, InkExt, Space, SpaceExt, TextSize, ThemeExt, Token};
 
 /// Knob diameter at [`Density::Comfortable`], in px.
 const BASE_DIAMETER: f32 = 44.0;

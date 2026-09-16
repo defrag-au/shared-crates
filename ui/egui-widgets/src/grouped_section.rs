@@ -33,7 +33,7 @@
 use egui::{RichText, Ui};
 
 use crate::PhosphorIcon;
-use crate::theme::{Ink, Space, SpaceExt, Token};
+use crate::theme::{Ink, InkExt, Space, SpaceExt, Token};
 
 /// Click events the section can produce. Today only `BulkAction`
 /// (the right-aligned header button); future variants could add

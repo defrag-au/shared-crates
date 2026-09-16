@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use egui::{Color32, Pos2, Response, Sense, Shape, Stroke, Ui, Vec2};
 use voronoice::{BoundingBox, Point, VoronoiBuilder};
 
-use crate::theme::{Ink, TextSize, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, TextSize, ThemeExt, Token};
 
 // ============================================================================
 // Public types
