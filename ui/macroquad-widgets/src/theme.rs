@@ -1,35 +1,43 @@
 //! Shared palette — the Tokyo-Night-ish dark theme the txmints macroquad
-//! surfaces use (one vivid accent). Mirrors `egui-widgets`'s palette intent so
-//! the two renderers feel like one product.
+//! surfaces use (one vivid accent).
+//!
+//! ## The values live in `ui-theme`
+//!
+//! They used to be ten `Color` literals here and eighteen more in
+//! `egui-widgets`, and MEASURED 2026-09-16 the two had already drifted: six
+//! colours byte-identical, three diverged (`bg`, `panel`, `muted`), and
+//! `success` resolving to a different hue on each side. Nobody decided that; it
+//! is what one palette maintained twice does.
+//!
+//! So the numbers now come from `ui_theme::tokens::raw`, through the `Paint`
+//! bridge. **`Theme` keeps its own flat ten fields on purpose** — `p.theme.muted`
+//! reads at ~191 call sites across four crates, and renaming them to
+//! `ColorTokens`' spelling would be a rewrite that buys nothing this step. What
+//! changed is where the values come from, and that
+//! `tests/contrast.rs` now holds every preset to a floor.
+//!
+//! ## Where this deliberately differs from egui
+//!
+//! - **`success` is teal, not the green ramp.** See [`Theme::success`].
+//! - **`bg` / `panel` are darker.** macroquad clears the canvas to its own
+//!   background, and the pump's shell HTML matches it; `ui-theme` carries both
+//!   as named values (`BG_NEAR_BLACK`, `PANEL_NEAR_BLACK`) so neither side is
+//!   guessing.
+//!
+//! Both are recorded decisions with a constant naming them, which is the
+//! difference between a divergence and a drift.
 
 use macroquad::prelude::Color;
+use ui_theme::{Paint, tokens::raw};
 
-/// Page background.
-pub const BG: Color = Color::new(0.039, 0.039, 0.102, 1.0);
-/// Raised panel / card fill.
-pub const PANEL: Color = Color::new(0.078, 0.086, 0.149, 1.0);
-/// Primary accent (lime green) — progress, CTAs, the live heartbeat.
-pub const ACCENT: Color = Color::new(0.620, 0.808, 0.416, 1.0);
-/// Link / tappable tx colour (blue).
-pub const LINK: Color = Color::new(0.478, 0.635, 0.968, 1.0);
-/// Primary text.
-pub const FG: Color = Color::new(0.752, 0.792, 0.960, 1.0);
-/// Secondary / muted text.
-pub const MUTED: Color = Color::new(0.470, 0.510, 0.667, 1.0);
-/// Error / danger.
-pub const DANGER: Color = Color::new(0.969, 0.463, 0.557, 1.0);
-/// Warning / caution (amber) — ineligible notices etc.
-pub const WARN: Color = Color::new(0.878, 0.686, 0.408, 1.0);
-/// Success / settled (teal) — a thing that landed and is now true.
+/// One shared value as this renderer's colour.
 ///
-/// Deliberately NOT [`ACCENT`]. Accent is swapped per preset (lime, ember,
-/// iris, aqua, rose), and surfaces that already spend accent on something else
-/// — `block_train` gives it to the newest block — would otherwise render "your
-/// transaction landed" in the same ink as "this block is newest", and in a
-/// different hue on every skin. Success is fixed across presets on purpose.
-pub const SUCCESS: Color = Color::new(0.451, 0.855, 0.792, 1.0);
-/// Inactive track (progress background, disabled button).
-pub const TRACK: Color = Color::new(0.160, 0.180, 0.260, 1.0);
+/// Not `const`: crossing the `Paint` bridge is a trait call. Nothing outside
+/// this module read the old constants — the crate root re-exports only
+/// [`Theme`] — so they are simply gone rather than kept as `LazyLock`.
+fn c(value: ui_theme::Srgb) -> Color {
+    Color::from_srgb(value)
+}
 
 /// Return `color` with its alpha replaced — for the pulsing heartbeat dot.
 pub fn with_alpha(color: Color, a: f32) -> Color {
@@ -53,8 +61,12 @@ pub fn shade(color: Color, f: f32) -> Color {
 
 /// A full palette. Carried on [`crate::Painter`] so widgets read `p.theme.*`
 /// and the whole UI can be re-skinned by swapping one value — no per-widget
-/// colour constants. The module-level consts above are the `tokyo_night`
-/// defaults; presets vary the accent (and link) over the same neutral dark base.
+/// colour constants.
+///
+/// The values come from `ui_theme::tokens::raw` (see the module header for why
+/// they are no longer literals here). Presets vary the **accent alone** over the
+/// same neutral dark base, which `tests/contrast.rs` asserts — along with a
+/// floor for every tier on every surface.
 #[derive(Clone, Copy)]
 pub struct Theme {
     pub name: &'static str,
@@ -66,7 +78,16 @@ pub struct Theme {
     pub muted: Color,
     pub danger: Color,
     pub warn: Color,
-    /// Fixed across presets — see [`SUCCESS`].
+    /// Success / settled (teal) — a thing that landed and is now true.
+    ///
+    /// **Deliberately NOT the accent, and deliberately not egui's green.**
+    /// Accent is swapped per preset (lime, ember, iris, aqua, rose), and
+    /// surfaces that already spend accent on something else — `block_train`
+    /// gives it to the newest block — would otherwise render "your transaction
+    /// landed" in the same ink as "this block is newest", and in a different
+    /// hue on every skin. Fixed across presets on purpose, and carried in the
+    /// shared crate as `raw::SETTLED_TEAL` so the divergence from egui's
+    /// `success` is a recorded decision rather than drift.
     pub success: Color,
     pub track: Color,
 }
@@ -75,16 +96,22 @@ impl Theme {
     pub fn tokyo_night() -> Self {
         Self {
             name: "tokyo night",
-            bg: BG,
-            panel: PANEL,
-            accent: ACCENT,
-            link: LINK,
-            fg: FG,
-            muted: MUTED,
-            danger: DANGER,
-            warn: WARN,
-            success: SUCCESS,
-            track: TRACK,
+            // Darker than egui's `bg_primary`: this is the colour the canvas
+            // clears to, and the pump's shell HTML matches it.
+            bg: c(raw::BG_NEAR_BLACK),
+            panel: c(raw::PANEL_NEAR_BLACK),
+            // The lime the presets swap. Shared with egui's `accent_green`.
+            accent: c(raw::ACCENT_GREEN),
+            link: c(raw::ACCENT_BLUE),
+            fg: c(raw::TEXT_PRIMARY),
+            // ⚠️ egui's contrast-tuned tier, NOT macroquad's old (120,130,170).
+            // The old value was never held to a floor; `tests/contrast.rs` holds
+            // this one against every preset background.
+            muted: c(raw::TEXT_MUTED),
+            danger: c(raw::ACCENT_RED),
+            warn: c(raw::ACCENT_YELLOW),
+            success: c(raw::SETTLED_TEAL),
+            track: c(raw::BG_HIGHLIGHT),
         }
     }
 

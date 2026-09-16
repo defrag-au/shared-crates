@@ -19,6 +19,15 @@ chain = ["dep:chain-heartbeat"]
 
 [dependencies]
 macroquad = "0.4"
+# The shared design vocabulary. This crate takes only the PALETTE and the colour
+# science from it today — `Theme` keeps its own flat ten fields, so the ~191
+# `p.theme.muted` call sites across four crates are untouched. What changes is
+# that the values have one definition instead of two that had already drifted on
+# three colours, and that the five presets can be held to a contrast floor.
+#
+# `features = ["macroquad"]` supplies `Paint for macroquad::color::Color`; that
+# impl lives in ui-theme because the orphan rule forbids it here.
+ui-theme = { workspace = true, features = ["macroquad"] }
 # The chain heartbeat these widgets render — see `block_pulse`. Follower OFF,
 # for two reasons: a renderer only ever folds frames it is handed, and the
 # `follow` feature pulls `ouroboros-mux`, which cannot build for the miniquad

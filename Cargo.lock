@@ -3400,6 +3400,7 @@ version = "0.1.0"
 dependencies = [
  "chain-heartbeat",
  "macroquad",
+ "ui-theme",
 ]
 
 [[package]]
