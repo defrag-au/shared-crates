@@ -21,6 +21,7 @@ mod gesture;
 mod mint_checkout;
 mod order_fulfilment;
 mod quantity_stepper;
+mod slider;
 mod squad_picker;
 mod wallet_connect;
 mod wallet_list;
@@ -50,6 +51,7 @@ pub use order_fulfilment::{
 pub use painter::frame_tap;
 pub use painter::{Hit, Painter, draw_rounded_rect};
 pub use quantity_stepper::{QuantityStepperVm, StepperAction, StepperResponse, quantity_stepper};
+pub use slider::{AmountSliderVm, SliderStop, amount_slider};
 pub use squad_picker::{
     SquadCandidate, SquadCommit, SquadPickerAction, SquadPickerResponse, SquadPickerVm,
     squad_picker,

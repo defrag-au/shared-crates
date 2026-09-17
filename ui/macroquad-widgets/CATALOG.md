@@ -8,7 +8,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p macroquad-widgets --test catalog`
 Note: these are MACROQUAD widgets. They cannot use wasm-bindgen, so they do not
 interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime pairs.
 
-11 widgets.
+12 widgets.
 
 | module | what it is |
 |---|---|
@@ -20,6 +20,7 @@ interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime p
 | `mint_checkout` | `MintCheckout` organism — the mint initiator: phase + eligibility, a [`quantity_stepper`], the live total, and the Mint CTA |
 | `order_fulfilment` | `OrderFulfilment` — the buyer-facing "what's happening to my order" widget |
 | `quantity_stepper` | `QuantityStepper` molecule — `[−] [ n ] [+]`, clamped to `[min, max]` |
+| `slider` | `AmountSlider` — pick an amount from a short ladder of snapping stops, for surfaces with no text input |
 | `squad_picker` | Squad picker — choose N assets from a roster to deploy on a mission |
 | `wallet_connect` | `WalletConnect` organism — the buyer-facing wallet selector + connected state, the front door of the mint flow |
 | `wallet_list` | `WalletList` organism — a user's linked wallets, in their own order |
