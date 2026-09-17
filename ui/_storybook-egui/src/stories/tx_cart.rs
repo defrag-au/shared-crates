@@ -1,7 +1,7 @@
 //! Storybook demo for the TxCart widget.
 
 use egui_widgets::tx_cart::{
-    self, TxCartConfig, TxCartItem, TxCartItemStatus, TxCartPhase, TxCartPlannedTx,
+    self, TxCartConfig, TxCartItem, TxCartItemStatus, TxCartPhase, TxCartPlannedTx, TxCartPrice,
     TxCartReviewRow, TxCartState,
 };
 
@@ -22,7 +22,7 @@ impl Default for TxCartStoryState {
                 provider: "jpg.store".into(),
                 action_label: "Cancel coll. offers".into(),
                 quantity: 1,
-                ada_per_item: 5.0,
+                price: TxCartPrice::Total(5.0),
                 image_url: None,
                 status: TxCartItemStatus::Pending,
             },
@@ -33,7 +33,7 @@ impl Default for TxCartStoryState {
                 provider: "jpg.store".into(),
                 action_label: "Cancel coll. offers".into(),
                 quantity: 1,
-                ada_per_item: 5.0,
+                price: TxCartPrice::Total(5.0),
                 image_url: None,
                 status: TxCartItemStatus::Pending,
             },
@@ -44,7 +44,7 @@ impl Default for TxCartStoryState {
                 provider: "jpg.store".into(),
                 action_label: "Create coll. offers".into(),
                 quantity: 3,
-                ada_per_item: 50.0,
+                price: TxCartPrice::Total(150.0),
                 image_url: None,
                 status: TxCartItemStatus::Pending,
             },

@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-156 widgets.
+157 widgets.
 
 | module | what it is |
 |---|---|
@@ -17,6 +17,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `agent_config` | `agent_config` — who answers, on whose key, for whom, and how much (feature `gateway`) |
 | `amount_input` | ADA amount input widget with preset buttons and validation |
 | `animated_counter` | AnimatedCounter — smoothly interpolates a numeric value between snapshots |
+| `app_header` | `AppHeader` — the bar across the top of a wallet-connected app: its name, one line on what it is for, anything the app wants beside them, and the account |
 | `arrival_field` | ArrivalField — every asset a dot, every holder a pile, and now they MOVE |
 | `asset_strip` | Asset strip — a horizontal row of square asset thumbnails that overlap progressively as more items are added |
 | `auth` | How an app decides who you are — the strategy the shell drives |

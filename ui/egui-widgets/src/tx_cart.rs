@@ -37,12 +37,34 @@ pub struct TxCartItem {
     pub action_label: String,
     /// Number of offers in this item
     pub quantity: u32,
-    /// ADA amount per offer
-    pub ada_per_item: f64,
+    /// What the whole row costs.
+    pub price: TxCartPrice,
     /// Optional hero image URL for the collection
     pub image_url: Option<String>,
     pub status: TxCartItemStatus,
 }
+
+/// What a row costs, as far as anyone knows yet.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TxCartPrice {
+    /// In ADA, for the whole row (not per unit).
+    Total(f64),
+    /// Priced by a build that has not happened — a row whose only cost is the
+    /// fees of transactions not yet built. Drawn as "TBA": as a zero it read
+    /// "0.00 ADA", a figure, and a false one.
+    Tba,
+}
+
+impl TxCartPrice {
+    pub fn figure(&self) -> String {
+        match self {
+            TxCartPrice::Total(ada) => ada_figure(*ada),
+            TxCartPrice::Tba => TBA.to_string(),
+        }
+    }
+}
+
+const TBA: &str = "TBA";
 
 /// Status of a cart item.
 #[derive(Clone, Debug, PartialEq)]
@@ -447,9 +469,8 @@ pub fn show_items(
                     }
 
                     // Price
-                    let total = item.ada_per_item * item.quantity as f64;
                     ui.label(
-                        RichText::new(ada_figure(total))
+                        RichText::new(item.price.figure())
                             .color(ui.tokens().color.text_primary)
                             .size(ui.text_size(TextSize::Base)),
                     );
@@ -610,6 +631,27 @@ fn ada_figure(value: f64) -> String {
     }
 }
 
+/// A sum of row prices: the known part, plus a note when some of it is not
+/// priced yet. Counting an unpriced row as zero would understate the total
+/// exactly as the row itself used to.
+fn total_figure(prices: impl Iterator<Item = TxCartPrice>) -> String {
+    let (mut known, mut any_known, mut unpriced) = (0.0, false, false);
+    for price in prices {
+        match price {
+            TxCartPrice::Total(ada) => {
+                known += ada;
+                any_known = true;
+            }
+            TxCartPrice::Tba => unpriced = true,
+        }
+    }
+    match (any_known, unpriced) {
+        (_, false) => ada_figure(known),
+        (false, true) => TBA.to_string(),
+        (true, true) => format!("{} + {TBA}", ada_figure(known)),
+    }
+}
+
 pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction> {
     let mut action = None;
 
@@ -624,19 +666,20 @@ pub fn show_footer(ui: &mut Ui, state: &mut TxCartState) -> Option<TxCartAction>
     match &state.phase {
         TxCartPhase::Editing => {
             if state.pending_count() > 0 {
-                let total_ada: f64 = state
-                    .items
-                    .iter()
-                    .filter(|i| matches!(i.status, TxCartItemStatus::Pending))
-                    .map(|i| i.ada_per_item * i.quantity as f64)
-                    .sum();
+                let total = total_figure(
+                    state
+                        .items
+                        .iter()
+                        .filter(|i| matches!(i.status, TxCartItemStatus::Pending))
+                        .map(|i| i.price),
+                );
 
                 ui.separator();
                 ui.gap(Space::Sm);
 
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(format!("Total: {}", ada_figure(total_ada)))
+                        RichText::new(format!("Total: {total}"))
                             .color(ui.tokens().color.text_secondary)
                             .size(ui.text_size(TextSize::Base)),
                     );
@@ -939,6 +982,22 @@ mod tests {
         assert_eq!(ada_figure(0.004), "0.004000 ADA");
         // Zero is the one case allowed to say zero.
         assert_eq!(ada_figure(0.0), "0.00 ADA");
+    }
+
+    /// A row priced by its build reads TBA, never "0.00 ADA", and a total that
+    /// includes one says so.
+    #[test]
+    fn an_unpriced_row_reads_tba() {
+        assert_eq!(TxCartPrice::Tba.figure(), "TBA");
+        assert_eq!(total_figure([TxCartPrice::Tba].into_iter()), "TBA");
+        assert_eq!(
+            total_figure([TxCartPrice::Total(10.0), TxCartPrice::Tba].into_iter()),
+            "10.00 ADA + TBA"
+        );
+        assert_eq!(
+            total_figure([TxCartPrice::Total(10.0)].into_iter()),
+            "10.00 ADA"
+        );
     }
 
     /// Large carts keep the whole-number column they were designed around.

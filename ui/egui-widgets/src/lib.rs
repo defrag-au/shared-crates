@@ -12,6 +12,9 @@ pub mod activity_lanes;
 #[cfg(feature = "gateway")]
 pub mod agent_config;
 pub mod animated_counter;
+// Composes `account_bar`, so it carries the same gate.
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub mod app_header;
 pub mod arrival_field;
 pub mod asset_card;
 pub mod auth;
