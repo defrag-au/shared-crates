@@ -2498,6 +2498,7 @@ dependencies = [
 name = "http-client"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "gloo-net",
  "reqwest",
  "serde",

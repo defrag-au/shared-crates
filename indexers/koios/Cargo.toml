@@ -27,6 +27,12 @@ nom = "7"
 cardano-tx = { workspace = true, optional = true }
 async-trait = { version = "0.1", optional = true }
 
+# The retry pause. Every native consumer already runs a tokio runtime with
+# timers enabled (`#[tokio::main]` or `Builder::enable_all`); wasm uses
+# `worker::Delay` instead.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = ["time"] }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "time"] }
 test_utils = { workspace = true }

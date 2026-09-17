@@ -16,8 +16,8 @@ use koios_transaction::KoiosTransaction;
 pub use koios_utxos::{KoiosAccountAsset, KoiosInlineDatum, KoiosUtxo, KoiosUtxoAsset, UtxoAmount};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::{error::Error, fmt};
-use tracing::{error, info};
+use std::{error::Error, fmt, time::Duration};
+use tracing::{error, info, warn};
 use worker_stack::worker::{self, Env, RouteContext};
 
 const BASE_URL: &str = "https://api.koios.rest/api/v1";
@@ -33,9 +33,140 @@ pub fn koios_base_url(network: &str) -> String {
     }
 }
 
+/// The `KOIOS_API_KEY` bearer token, if one is configured.
+///
+/// Memoised in the isolate (see [`API_KEY_MEMO`]): a tx build constructs a
+/// client several times, and each construction was a Secrets Store round trip.
+async fn api_key(env: &Env) -> Option<String> {
+    let now = worker::Date::now().as_millis();
+    let memoised = API_KEY_MEMO.with(|memo| {
+        memo.borrow()
+            .as_ref()
+            .filter(|(_, read_at)| now.saturating_sub(*read_at) < API_KEY_MEMO_TTL_MS)
+            .map(|(key, _)| key.clone())
+    });
+    if memoised.is_some() {
+        return memoised;
+    }
+
+    match worker_utils::secrets::get_secret(env, "KOIOS_API_KEY").await {
+        Ok(key) if !key.is_empty() => {
+            API_KEY_MEMO.with(|memo| *memo.borrow_mut() = Some((key.clone(), now)));
+            Some(key)
+        }
+        _ => None,
+    }
+}
+
 /// Koios caps a single response page at 1000 rows; paginated reads walk
 /// `offset` in these increments until a short page signals the end.
 const KOIOS_PAGE_LIMIT: u32 = 1000;
+
+/// Longest one Koios request may take, response body included, before it fails.
+///
+/// A round trip measures ~1s, and a full 1000-row page or a script evaluation
+/// lands in low single-digit seconds — so this only fires on a hung upstream,
+/// which otherwise held a tx build open with no end.
+const KOIOS_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Attempts per Koios request: the first, plus retries of a transient refusal.
+const KOIOS_ATTEMPTS: u32 = 3;
+
+/// The longest `Retry-After` honoured. Asked to wait longer, give up at once:
+/// a build someone is watching should fail fast rather than stall.
+const KOIOS_MAX_RETRY_WAIT: Duration = Duration::from_secs(5);
+
+/// What a failed Koios request calls for.
+enum Recovery {
+    /// A transient refusal — rate limit or gateway — so try again after this long.
+    RetryAfter(Duration),
+    /// Retrying cannot help, or the attempts are spent.
+    GiveUp,
+}
+
+impl Recovery {
+    /// Decide for the failure of attempt number `attempt` (counting from 1).
+    ///
+    /// Only 429 and gateway statuses are retried. A timeout is NOT: its
+    /// [`KOIOS_REQUEST_TIMEOUT`] is already spent, and a second one would
+    /// double the wait for an upstream that is not answering. A 500 is not
+    /// either — Koios returns it for queries that fail the same way every time.
+    fn for_failure(error: &HttpError, attempt: u32) -> Self {
+        if attempt >= KOIOS_ATTEMPTS {
+            return Self::GiveUp;
+        }
+        if !matches!(failure_status(error), Some(429 | 502 | 503 | 504)) {
+            return Self::GiveUp;
+        }
+        match error.retry_after_seconds().map(Duration::from_secs) {
+            Some(wait) if wait > KOIOS_MAX_RETRY_WAIT => Self::GiveUp,
+            Some(wait) => Self::RetryAfter(wait),
+            None => Self::RetryAfter(Duration::from_millis(500 * u64::from(attempt))),
+        }
+    }
+}
+
+/// The HTTP status a failed request carried, in whichever shape the transport
+/// reported it: the detailed POST keeps it, wasm's plain GET folds it into a
+/// message, and native's plain GET leaves it on the reqwest error.
+fn failure_status(error: &HttpError) -> Option<u16> {
+    match error {
+        HttpError::HttpStatus { status_code, .. } => Some(*status_code),
+        HttpError::Custom(msg) => msg
+            .strip_prefix("HTTP request failed with status: ")
+            .and_then(|status| status.parse().ok()),
+        #[cfg(not(target_arch = "wasm32"))]
+        HttpError::Reqwest(e) => e.status().map(|status| status.as_u16()),
+        _ => None,
+    }
+}
+
+/// Map a transport failure onto [`KoiosError`], keeping a non-2xx status (and
+/// its body, where the transport kept one) as [`KoiosError::KoiosResponse`].
+fn koios_error(error: HttpError) -> KoiosError {
+    match error {
+        HttpError::HttpStatus {
+            status_code, body, ..
+        } => {
+            error!("Koios API error: {status_code} {body}");
+            KoiosError::KoiosResponse {
+                status: status_code,
+                body,
+            }
+        }
+        HttpError::Custom(msg) if msg.starts_with("HTTP request failed with status:") => {
+            let status_str = msg.replace("HTTP request failed with status: ", "");
+            let status = status_str.parse::<u16>().unwrap_or(500);
+            error!("Koios API error: {status} {msg}");
+            KoiosError::KoiosResponse { status, body: msg }
+        }
+        other => KoiosError::Http(other),
+    }
+}
+
+/// Wait out a retry delay on whichever runtime this build targets.
+async fn pause(wait: Duration) {
+    #[cfg(target_arch = "wasm32")]
+    worker::Delay::from(wait).await;
+    #[cfg(not(target_arch = "wasm32"))]
+    tokio::time::sleep(wait).await;
+}
+
+/// How long this isolate reuses a `KOIOS_API_KEY` it has read.
+///
+/// Long enough that a request constructing several clients reads the Secrets
+/// Store once; short enough that a rotated key is picked up without a deploy.
+const API_KEY_MEMO_TTL_MS: u64 = 5 * 60 * 1000;
+
+thread_local! {
+    /// The last `KOIOS_API_KEY` this isolate read, and when.
+    ///
+    /// Only a non-empty key is ever stored. A failed or empty lookup is retried
+    /// on the next construction, so one transient Secrets Store error cannot
+    /// pin a whole isolate to the keyless free tier.
+    static API_KEY_MEMO: std::cell::RefCell<Option<(String, u64)>> =
+        const { std::cell::RefCell::new(None) };
+}
 
 #[derive(Debug)]
 pub enum KoiosError {
@@ -735,7 +866,7 @@ impl KupoApi {
 impl Default for KoiosApi {
     fn default() -> Self {
         Self {
-            client: HttpClient::new(),
+            client: HttpClient::new().with_timeout(KOIOS_REQUEST_TIMEOUT),
             base_url: BASE_URL.to_string(),
         }
     }
@@ -757,7 +888,7 @@ impl KoiosApi {
             _ => HttpClient::new(),
         };
         Self {
-            client,
+            client: client.with_timeout(KOIOS_REQUEST_TIMEOUT),
             base_url: base_url.into(),
         }
     }
@@ -783,12 +914,12 @@ impl KoiosApi {
     /// differs (mainnet → `api.koios.rest`, preprod/testnet →
     /// `preprod.koios.rest`, preview → `preview.koios.rest`).
     pub async fn for_env_with_network(env: &Env, network: &str) -> worker::Result<Self> {
-        let client = match worker_utils::secrets::get_secret(env, "KOIOS_API_KEY").await {
-            Ok(key) if !key.is_empty() => HttpClient::with_bearer_token(key),
-            _ => HttpClient::new(),
+        let client = match api_key(env).await {
+            Some(key) => HttpClient::with_bearer_token(key),
+            None => HttpClient::new(),
         };
         Ok(Self {
-            client,
+            client: client.with_timeout(KOIOS_REQUEST_TIMEOUT),
             base_url: koios_base_url(network),
         })
     }
@@ -1138,16 +1269,22 @@ impl KoiosApi {
 
         info!("requesting data from: {}", final_url);
 
-        match self.client.get::<R>(&final_url).await {
-            Ok(result) => Ok(result),
-            Err(HttpError::Custom(msg)) if msg.starts_with("HTTP request failed with status:") => {
-                // Extract status code from error message
-                let status_str = msg.replace("HTTP request failed with status: ", "");
-                let status = status_str.parse::<u16>().unwrap_or(500);
-                error!("Koios API error: {} {}", status, msg);
-                Err(KoiosError::KoiosResponse { status, body: msg })
+        let mut attempt = 1;
+        loop {
+            match self.client.get::<R>(&final_url).await {
+                Ok(result) => return Ok(result),
+                Err(e) => match Recovery::for_failure(&e, attempt) {
+                    Recovery::RetryAfter(wait) => {
+                        warn!(
+                            "Koios refused attempt {attempt} of {final_url} ({e}); retrying in {}ms",
+                            wait.as_millis()
+                        );
+                        pause(wait).await;
+                        attempt += 1;
+                    }
+                    Recovery::GiveUp => return Err(koios_error(e)),
+                },
             }
-            Err(e) => Err(KoiosError::Http(e)),
         }
     }
 
@@ -1179,30 +1316,28 @@ impl KoiosApi {
         // The detailed request keeps the response body on a non-2xx status.
         // Koios's Ogmios passthrough answers a failed evaluation with a 400
         // whose body names the reason (a script that refused, a body the
-        // ledger could not decode); a bare status code throws that away.
-        match self
-            .client
-            .post_with_details::<T, R>(&final_url, body)
-            .await
-        {
-            Ok(details) => Ok(details.data),
-            Err(HttpError::HttpStatus {
-                status_code, body, ..
-            }) => {
-                error!("Koios API error: {status_code} {body}");
-                Err(KoiosError::KoiosResponse {
-                    status: status_code,
-                    body,
-                })
+        // ledger could not decode); a bare status code throws that away. It
+        // also keeps the headers, so a 429's `Retry-After` is honoured.
+        let mut attempt = 1;
+        loop {
+            match self
+                .client
+                .post_with_details::<T, R>(&final_url, body)
+                .await
+            {
+                Ok(details) => return Ok(details.data),
+                Err(e) => match Recovery::for_failure(&e, attempt) {
+                    Recovery::RetryAfter(wait) => {
+                        warn!(
+                            "Koios refused attempt {attempt} of {final_url} ({e}); retrying in {}ms",
+                            wait.as_millis()
+                        );
+                        pause(wait).await;
+                        attempt += 1;
+                    }
+                    Recovery::GiveUp => return Err(koios_error(e)),
+                },
             }
-            Err(HttpError::Custom(msg)) if msg.starts_with("HTTP request failed with status:") => {
-                // Extract status code from error message
-                let status_str = msg.replace("HTTP request failed with status: ", "");
-                let status = status_str.parse::<u16>().unwrap_or(500);
-                error!("Koios API error: {} {}", status, msg);
-                Err(KoiosError::KoiosResponse { status, body: msg })
-            }
-            Err(e) => Err(KoiosError::Http(e)),
         }
     }
 
@@ -1263,6 +1398,92 @@ mod tests {
     async fn rate_limit_delay() {
         // Koios free tier has rate limits, wait 1 second between requests
         sleep(Duration::from_millis(1000)).await;
+    }
+
+    fn refused(status_code: u16, retry_after: Option<&str>) -> HttpError {
+        HttpError::HttpStatus {
+            status_code,
+            headers: retry_after
+                .map(|secs| [("retry-after".to_string(), secs.to_string())].into())
+                .unwrap_or_default(),
+            body: String::new(),
+        }
+    }
+
+    /// A rate limit is waited out for exactly as long as Koios asks.
+    #[test]
+    fn test_recovery_honours_retry_after() {
+        assert!(matches!(
+            Recovery::for_failure(&refused(429, Some("2")), 1),
+            Recovery::RetryAfter(wait) if wait == Duration::from_secs(2)
+        ));
+    }
+
+    /// Asked to wait longer than a watched build should stall, fail now.
+    #[test]
+    fn test_recovery_gives_up_on_a_long_retry_after() {
+        assert!(matches!(
+            Recovery::for_failure(&refused(429, Some("60")), 1),
+            Recovery::GiveUp
+        ));
+    }
+
+    /// With no `Retry-After`, a gateway failure backs off further each attempt.
+    #[test]
+    fn test_recovery_backs_off_without_retry_after() {
+        assert!(matches!(
+            Recovery::for_failure(&refused(503, None), 1),
+            Recovery::RetryAfter(wait) if wait == Duration::from_millis(500)
+        ));
+        assert!(matches!(
+            Recovery::for_failure(&refused(503, None), 2),
+            Recovery::RetryAfter(wait) if wait == Duration::from_millis(1000)
+        ));
+    }
+
+    /// The last attempt is final, whatever the failure.
+    #[test]
+    fn test_recovery_stops_after_the_last_attempt() {
+        assert!(matches!(
+            Recovery::for_failure(&refused(429, Some("1")), KOIOS_ATTEMPTS),
+            Recovery::GiveUp
+        ));
+    }
+
+    /// A refused evaluation (400) and a deterministic query failure (500) come
+    /// back the same way every time, so they surface at once with their body.
+    #[test]
+    fn test_recovery_does_not_retry_a_deterministic_failure() {
+        assert!(matches!(
+            Recovery::for_failure(&refused(400, None), 1),
+            Recovery::GiveUp
+        ));
+        assert!(matches!(
+            Recovery::for_failure(&refused(500, None), 1),
+            Recovery::GiveUp
+        ));
+    }
+
+    /// A timeout has already spent its whole budget; a second would double it.
+    #[test]
+    fn test_recovery_does_not_retry_a_timeout() {
+        let timed_out = HttpError::Timeout {
+            after: KOIOS_REQUEST_TIMEOUT,
+        };
+        assert!(matches!(
+            Recovery::for_failure(&timed_out, 1),
+            Recovery::GiveUp
+        ));
+    }
+
+    /// wasm's plain GET reports the status only inside its message.
+    #[test]
+    fn test_recovery_reads_a_status_folded_into_a_message() {
+        let gateway = HttpError::Custom("HTTP request failed with status: 502".to_string());
+        assert!(matches!(
+            Recovery::for_failure(&gateway, 1),
+            Recovery::RetryAfter(_)
+        ));
     }
 
     /// `/datum_info` rows key the hash as `datum_hash`. Captured from a
