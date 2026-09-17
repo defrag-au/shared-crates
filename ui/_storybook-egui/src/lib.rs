@@ -143,6 +143,7 @@ mod app {
             RangeBar => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::range_bar::show(ui, &mut a.range_bar_state);
             PipRow => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::pip_row::show(ui, &mut a.pip_row_state);
             PriceTimeline => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::price_timeline::show(ui, &mut a.price_timeline_state);
+            PricingLadder => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::pricing_ladder::show(ui);
             Leaderboard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::leaderboard::show(ui, &mut a.leaderboard_state);
             FocusList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::focus_list::show(ui, &mut a.focus_list_state);
             CardBrowser => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::card_browser::show(ui, &mut a.card_browser_state);
@@ -291,6 +292,7 @@ mod app {
                 Self::RangeBar => "Range Bar",
                 Self::PipRow => "Pip Row",
                 Self::PriceTimeline => "Price Timeline",
+                Self::PricingLadder => "Pricing Ladder",
                 Self::Leaderboard => "Leaderboard",
                 Self::ListingGrid => "Listing Grid",
                 Self::FocusList => "Focus List",
@@ -518,6 +520,9 @@ mod app {
                 }
                 Self::PriceTimeline => {
                     "Time-axis price scatter with reference lines/bands, log y, and hover inspection"
+                }
+                Self::PricingLadder => {
+                    "Structural rungs, with sales drawn against them rather than fitted to them. A sales chart can only draw the rungs that traded — which is backwards, because the untraded ones are the expensive ones a reader most needs priced. So the ladder is the spine and sales are evidence beside it, carrying the count they rest on: four sales and fifty-five are not the same claim, and a bare median hides that. Note Captain, whose one 1,960 ADA fill sits well above its ladder price on four sales — left to a demand model that single outlier leaked onto a Carpenter and priced a 90 ADA asset at 1,960. Rungs that have never traded draw no bar at all, not an empty one: nothing was observed, which is not the same as nothing was paid"
                 }
                 Self::Leaderboard => {
                     "Ranked standings with medals, a share bar, and supporting stats"

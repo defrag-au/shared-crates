@@ -55,6 +55,7 @@ pub mod perf_strip;
 pub mod perspective_text;
 pub mod pip_row;
 pub mod price_timeline;
+pub mod pricing_ladder;
 pub mod printing_timeline;
 pub mod progress_bar;
 pub mod radar_chart;

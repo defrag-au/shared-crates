@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-157 widgets.
+158 widgets.
 
 | module | what it is |
 |---|---|
@@ -106,6 +106,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `pool_liquidity_indicator` | Pool liquidity indicator — per-pool depth and health context cards |
 | `price_impact_curve` | Price impact curve chart — visualizes why split routing helps |
 | `price_timeline` | Price timeline widget — a time-axis scatter of realized prices (sales, offer fills) with optional reference lines (current floor / listing price) and a reference band (e.g |
+| `pricing_ladder` | `PricingLadder` — a structural price ladder: what each rung is worth, what actually sold there, and how much evidence stands behind that |
 | `printing_timeline` | Printing timeline widget — shows a card's printings across sets over time |
 | `progress_bar` | Themed progress bar widget with optional label, percentage, and countdown |
 | `property_list` | `PropertyList` — compact label/value grid for read-only key data |
