@@ -70,13 +70,13 @@ pub mod follow;
 
 pub use frame::{FrameApplied, FrameBatcher, HeartbeatFrame, MAX_BATCH, PULSE_AFTER_SECS};
 pub use poll::{BlockPoller, PollDecision, PollReason, PollTiming};
-pub use track::{Asking, PollStep, TrackEvent, TrackedTx, Tracker, TxLanding, TxProgress};
 pub use relay::{
     AfterDelivery, CHAIN_DOMAIN, DROP_AFTER_FAILURES, DeliveryOutcome, LeaseAction, MAX_LEASE_SECS,
     MAX_SUBSCRIBERS, MIN_LEASE_SECS, Rejection, Removal, SubscribeRequest, SubscribeResponse,
     Subscriber, SubscriberId, SubscriberRegistry, SubscriptionLease, TokenCheck,
     UnsubscribeRequest, check_bearer,
 };
+pub use track::{Asking, PollStep, TrackEvent, TrackedTx, Tracker, TxLanding, TxProgress};
 
 pub use beat::{
     BeatError, BlockBeat, BlockTxs, ChainEvent, ChainPoint, SyncState, TX_PREFIX_BYTES, TxInBlock,
