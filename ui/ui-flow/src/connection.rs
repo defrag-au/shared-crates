@@ -23,6 +23,9 @@ type DeltasCallback<Delta> = Option<Rc<dyn Fn(Vec<Delta>, u64)>>;
 type NotifyCallback<Event> = Option<Rc<dyn Fn(String, Event, Option<OpId>)>>;
 type ProgressCallback = Option<Rc<dyn Fn(OpId, Option<u8>, Option<String>)>>;
 type ActionErrorCallback = Option<Rc<dyn Fn(OpId, Option<String>, String)>>;
+/// `(op_id, result)` — the result is whatever the action chose to return,
+/// still encoded. See [`FlowConnectionBuilder::on_action_complete`].
+type ActionCompleteCallback = Option<Rc<dyn Fn(OpId, Option<Vec<u8>>)>>;
 
 /// Configuration for reconnection behavior
 #[derive(Debug, Clone)]
@@ -79,7 +82,7 @@ pub struct FlowConnectionBuilder<State, Delta, Event, Action> {
     on_notify: NotifyCallback<Event>,
     on_status: Option<Rc<dyn Fn(ConnectionStatus)>>,
     on_progress: ProgressCallback,
-    on_action_complete: Option<Rc<dyn Fn(OpId)>>,
+    on_action_complete: ActionCompleteCallback,
     on_action_error: ActionErrorCallback,
     on_error: Option<Rc<dyn Fn(String, bool)>>,
     _action: std::marker::PhantomData<Action>,
@@ -196,10 +199,21 @@ where
         self
     }
 
-    /// Callback when an action completes successfully
+    /// Callback when an action completes successfully, with the action's
+    /// result if it returned one.
+    ///
+    /// The payload is `Option<Vec<u8>>` rather than a typed value because
+    /// `ServerMessage::ActionOk` is generic over every action a host defines —
+    /// the encoding is the caller's to choose, and postcard is the house
+    /// format for anything a frontend decodes.
+    ///
+    /// This used to be `Fn(OpId)` and dropped `result` on the floor, which
+    /// made a request/reply action impossible to answer with data: the only
+    /// way to return anything was to smuggle it through an unrelated `Notify`.
+    /// The protocol always carried it; the client was the lossy part.
     pub fn on_action_complete<F>(mut self, f: F) -> Self
     where
-        F: Fn(OpId) + 'static,
+        F: Fn(OpId, Option<Vec<u8>>) + 'static,
     {
         self.on_action_complete = Some(Rc::new(f));
         self
@@ -303,7 +317,7 @@ where
         on_notify: NotifyCallback<Event>,
         on_status: Option<Rc<dyn Fn(ConnectionStatus)>>,
         on_progress: ProgressCallback,
-        on_action_complete: Option<Rc<dyn Fn(OpId)>>,
+        on_action_complete: ActionCompleteCallback,
         on_action_error: ActionErrorCallback,
         on_error: Option<Rc<dyn Fn(String, bool)>>,
     ) -> Result<Self, FlowError>
@@ -610,7 +624,7 @@ fn handle_server_message<State, Delta, Event, Action>(
     on_presence: &Option<Rc<dyn Fn(Vec<PresenceInfo>)>>,
     on_notify: &NotifyCallback<Event>,
     on_progress: &ProgressCallback,
-    on_action_complete: &Option<Rc<dyn Fn(OpId)>>,
+    on_action_complete: &ActionCompleteCallback,
     on_action_error: &ActionErrorCallback,
     on_error: &Option<Rc<dyn Fn(String, bool)>>,
 ) {
@@ -675,9 +689,9 @@ fn handle_server_message<State, Delta, Event, Action>(
                 cb(op_id, percent, message);
             }
         }
-        ServerMessage::ActionOk { op_id, .. } => {
+        ServerMessage::ActionOk { op_id, result } => {
             if let Some(cb) = on_action_complete {
-                cb(op_id);
+                cb(op_id, result);
             }
         }
         ServerMessage::ActionErr {

@@ -24,7 +24,7 @@
 //! let conn = NotifyConnection::<WidgetEvent, MyAction>::builder()
 //!     .url("wss://example.com/ws")
 //!     .on_notify(|domain, event, _| { /* handle */ })
-//!     .on_action_complete(|op_id| { /* action succeeded */ })
+//!     .on_action_complete(|op_id, result| { /* action succeeded; `result` is its reply, still encoded */ })
 //!     .connect()?;
 //!
 //! // Send an action
@@ -62,7 +62,7 @@ pub struct NotifyConnectionBuilder<Event, Action = NoAction> {
     on_status: Option<Rc<dyn Fn(ConnectionStatus)>>,
     on_connected: Option<Rc<dyn Fn(String)>>,
     on_notify: Option<Rc<dyn Fn(String, Event, Option<OpId>)>>,
-    on_action_complete: Option<Rc<dyn Fn(OpId)>>,
+    on_action_complete: Option<Rc<dyn Fn(OpId, Option<Vec<u8>>)>>,
     on_action_error: Option<Rc<dyn Fn(OpId, Option<String>, String)>>,
     on_error: Option<Rc<dyn Fn(String, bool)>>,
     _action: std::marker::PhantomData<Action>,
@@ -132,10 +132,12 @@ where
         self
     }
 
-    /// Callback when an action completes successfully
+    /// Callback when an action completes successfully, with the action's
+    /// result if it returned one. See
+    /// [`FlowConnectionBuilder::on_action_complete`](crate::FlowConnectionBuilder::on_action_complete).
     pub fn on_action_complete<F>(mut self, f: F) -> Self
     where
-        F: Fn(OpId) + 'static,
+        F: Fn(OpId, Option<Vec<u8>>) + 'static,
     {
         self.on_action_complete = Some(Rc::new(f));
         self
@@ -187,7 +189,7 @@ where
         }
 
         if let Some(cb) = self.on_action_complete {
-            builder = builder.on_action_complete(move |op_id| cb(op_id));
+            builder = builder.on_action_complete(move |op_id, result| cb(op_id, result));
         }
 
         if let Some(cb) = self.on_action_error {
