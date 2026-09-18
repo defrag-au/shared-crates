@@ -212,9 +212,18 @@ mod params_impl {
     use cardano_tx::params::TxBuildParams;
 
     /// Parse an Ogmios exact-ratio string (`"577/10000"`) into `(num, den)`.
+    ///
+    /// Ogmios states prices as exact rationals rather than floats on purpose: a
+    /// fee derived from a rounded price is a fee the node disagrees with. Keep
+    /// the pair and let the caller do the arithmetic.
     fn parse_ratio(raw: &str) -> Option<(u64, u64)> {
         let (num, den) = raw.split_once('/')?;
-        Some((num.trim().parse().ok()?, den.trim().parse().ok()?))
+        let num = num.trim().parse().ok()?;
+        let den: u64 = den.trim().parse().ok()?;
+        // A zero denominator is not a price, and it would divide by zero at the
+        // point of use rather than here, where it is still obvious what went
+        // wrong.
+        (den != 0).then_some((num, den))
     }
 
     /// Build tx-builder parameters straight from a Koios/Ogmios protocol
