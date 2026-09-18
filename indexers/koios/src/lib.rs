@@ -255,6 +255,16 @@ pub struct TxStatus {
     pub num_confirmations: Option<u64>,
 }
 
+/// The two fields that identify a UTxO, and nothing else — the non-extended
+/// `/address_utxos` row as [`KoiosApi::get_address_utxo_refs`] reads it.
+/// Deliberately narrow: deserialising the full row would pull in the asset
+/// list this exists to avoid.
+#[derive(Deserialize, Debug, Clone)]
+pub struct KoiosUtxoRef {
+    pub tx_hash: String,
+    pub tx_index: u32,
+}
+
 #[derive(Serialize, Debug, Clone)]
 pub struct AddressUtxosRequest {
     #[serde(rename = "_addresses")]
@@ -1058,6 +1068,38 @@ impl KoiosApi {
     /// [`Self::get_address_utxos_batch`]).
     pub async fn get_address_utxos(&self, address: &str) -> Result<Vec<KoiosUtxo>, KoiosError> {
         self.get_address_utxos_batch(&[address.to_string()]).await
+    }
+
+    /// Just the `(tx_hash, tx_index)` of an address's UTxOs
+    /// (`POST /address_utxos`, `_extended=false`).
+    ///
+    /// For callers that only need to know WHICH UTxOs exist — a liveness or
+    /// spent-check — rather than what is in them.
+    ///
+    /// `_extended=true` makes Koios inline every output's full asset list,
+    /// and on a UTxO-rich wallet that dominates the whole request. Measured
+    /// 2026-09-18 against a 944-UTxO wallet: **~10.5s and 1.3 MB extended,
+    /// ~2.3s non-extended**, for a caller that then discarded everything
+    /// except these two fields. That one call was most of the wall-clock in
+    /// building a marketplace cancel.
+    ///
+    /// Prefer this over [`Self::get_address_utxos`] unless you actually read
+    /// the value or asset list.
+    pub async fn get_address_utxo_refs(
+        &self,
+        address: &str,
+    ) -> Result<Vec<(String, u32)>, KoiosError> {
+        let url = format!("{}/address_utxos", self.base_url);
+        let rows: Vec<KoiosUtxoRef> = self
+            .post_paginated(
+                &url,
+                &AddressUtxosRequest {
+                    addresses: vec![address.to_string()],
+                    extended: false,
+                },
+            )
+            .await?;
+        Ok(rows.into_iter().map(|r| (r.tx_hash, r.tx_index)).collect())
     }
 
     /// Resolve a set of UTxO references (`"tx_hash#index"`) to their full
