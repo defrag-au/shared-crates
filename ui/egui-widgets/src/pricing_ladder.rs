@@ -76,8 +76,8 @@
 //!     realized: Some(23.0),
 //!     support: 55,
 //!     fills: vec![
-//!         Fill { at: 1_788_873_467, price: 24.0 },
-//!         Fill { at: 1_785_009_849, price: 19.0 },
+//!         Fill { at: 1_788_873_467, price: 24.0, label: "Pirate #396".into() },
+//!         Fill { at: 1_785_009_849, price: 19.0, label: "Pirate #333".into() },
 //!     ],
 //! }];
 //! pricing_ladder::show(
@@ -96,15 +96,20 @@
 use egui::{RichText, Stroke, Ui};
 
 use crate::bullet_bar::BulletBar;
+use crate::disclosure::Disclosure;
 use crate::theme::{Space, SpaceExt, TextSize, ThemeExt, Token};
 
-/// One observed fill: when it happened and what it cleared at.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// One observed fill: what sold, when, and what it cleared at.
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Fill {
     /// Unix seconds.
     pub at: i64,
     /// Display units (ADA), matching [`LadderRung::target`].
     pub price: f64,
+    /// What sold, as the reader should see it — the caller resolves names from
+    /// hex; the widget never guesses. Blank is fine and simply shows the price
+    /// and date, which is what an unnamed asset honestly amounts to.
+    pub label: String,
 }
 
 /// How a rung's fills are drawn.
@@ -198,6 +203,27 @@ pub struct PricingLadderConfig {
     pub now: i64,
     /// Whether the lane carries price as well as time.
     pub lane: LaneStyle,
+    /// Which rung's detail is open, if any. **Host-owned** — the widget reports
+    /// the click and never decides; see [`LadderResponse::clicked`].
+    pub expanded: Option<String>,
+    /// The sentinel rung's resolved price, in display units. Shown in the
+    /// detail so the rung's price can be checked as arithmetic rather than
+    /// taken on trust.
+    pub anchor: Option<f64>,
+    /// Where the anchor came from, in the caller's words — `"listing floor"`,
+    /// `"realized median"`. A ladder anchored on a thin book and one anchored
+    /// on realized sales are different claims, and the reader should be able
+    /// to see which they are looking at.
+    pub anchor_source: Option<String>,
+}
+
+/// What the ladder reports back.
+pub struct LadderResponse {
+    pub response: egui::Response,
+    /// The rung whose row was clicked this frame. The host toggles its own
+    /// [`expanded`](PricingLadderConfig::expanded) — accordion, replace, or
+    /// multi-open is the host's policy, not the widget's.
+    pub clicked: Option<String>,
 }
 
 impl Default for PricingLadderConfig {
@@ -210,17 +236,125 @@ impl Default for PricingLadderConfig {
             id_salt: "pricing_ladder".to_string(),
             now: 0,
             lane: LaneStyle::default(),
+            expanded: None,
+            anchor: None,
+            anchor_source: None,
         }
     }
 }
 
-/// Width of the evidence measure. Fixed rather than `available_width` so the
-/// bars line up into a column instead of each taking whatever its row had left.
-const BAR_WIDTH: f32 = 110.0;
+/// The table's geometry, resolved from the theme and the actual content.
+///
+/// **Nothing here is a pixel literal.** Text columns are measured from the
+/// widest string that will go in them, at the font they will be drawn in, so
+/// they follow the type ramp instead of clipping under it. Graphic columns are
+/// multiples of the space ramp, which already has density applied. The
+/// cautionary tale is [`rarity_target_editor`](crate::rarity_target_editor),
+/// whose own docs record that a hardcoded `label_width: 140.0` meant "the
+/// labels did not line up, the width clipped under a larger type ramp, and the
+/// cue could not follow a theme" — three faults from one constant.
+struct Metrics {
+    name: f32,
+    supply: f32,
+    ratio: f32,
+    target: f32,
+    realized: f32,
+    n: f32,
+    bar: f32,
+    lane: f32,
+    lane_h: f32,
+}
 
-/// Width of the pulse lane. Wider than the measure — it carries years, and the
-/// question it answers is where the marks *clump*, which needs room.
-const LANE_WIDTH: f32 = 150.0;
+/// Width of a string at a ramp step, in the face it will actually be drawn in.
+fn text_w(ui: &Ui, text: &str, size: TextSize) -> f32 {
+    let font = egui::FontId::proportional(ui.text_size(size));
+    ui.painter()
+        .layout_no_wrap(text.to_string(), font, egui::Color32::PLACEHOLDER)
+        .size()
+        .x
+}
+
+/// Widest rendering of any row's value for one column, including its header.
+fn col_w(ui: &Ui, header: &str, cells: impl Iterator<Item = String>, size: TextSize) -> f32 {
+    let pad = ui.space(Space::Md);
+    cells
+        .map(|c| text_w(ui, &c, size))
+        .chain(std::iter::once(text_w(ui, header, TextSize::Xs)))
+        .fold(0.0_f32, f32::max)
+        + pad
+}
+
+impl Metrics {
+    fn resolve(ui: &Ui, rungs: &[LadderRung], config: &PricingLadderConfig) -> Self {
+        let unit = &config.unit;
+        // A lane carries years across, so it wants width the space ramp cannot
+        // reach in one step; the multiplier is the design decision, the step is
+        // the theme's. Height has to separate ~5.5 octaves, which is a function
+        // of the type ramp rather than of spacing.
+        let lane = ui.space(Space::Xl3) * 5.0;
+        let lane_h = ui.text_size(TextSize::Base) * 2.0;
+        Self {
+            name: col_w(
+                ui,
+                &config.category,
+                rungs.iter().map(|r| format!("{} \u{00b7} anchor", r.value)),
+                TextSize::Sm,
+            ),
+            supply: col_w(
+                ui,
+                "supply",
+                rungs.iter().map(|r| r.supply.to_string()),
+                TextSize::Xs,
+            ),
+            ratio: col_w(
+                ui,
+                "ratio",
+                rungs.iter().map(|r| format!("\u{00d7}{:.2}", r.ratio)),
+                TextSize::Xs,
+            ),
+            target: col_w(
+                ui,
+                "ladder price",
+                rungs.iter().map(|r| match r.target {
+                    Some(t) => price(t, unit),
+                    None => "\u{2014}".into(),
+                }),
+                TextSize::Sm,
+            ),
+            realized: col_w(
+                ui,
+                "realized",
+                rungs
+                    .iter()
+                    .map(|r| match r.realized {
+                        Some(v) => price(v, unit),
+                        None => "no sales".into(),
+                    })
+                    .chain(std::iter::once("no sales".to_string())),
+                TextSize::Xs,
+            ),
+            n: col_w(
+                ui,
+                "n",
+                rungs
+                    .iter()
+                    .map(|r| r.fills.len().max(r.support).to_string()),
+                TextSize::Xs,
+            ),
+            bar: ui.space(Space::Xl3) * 3.5,
+            lane,
+            lane_h,
+        }
+    }
+}
+
+/// A fixed-width cell, so every row's columns land on the same spine.
+fn cell(ui: &mut Ui, width: f32, text: RichText) {
+    ui.scope(|ui| {
+        ui.set_width(width);
+        ui.label(text);
+    });
+}
 
 /// The dearest fill at an instant. Several assets on one rung routinely settle
 /// in one transaction and so share a timestamp exactly; the highest is the
@@ -233,11 +367,6 @@ fn price_at(fills: &[Fill], at: i64) -> f64 {
         .map(|f| f.price)
         .fold(f64::MIN, f64::max)
 }
-
-/// Vertical span of a price-scatter lane. Taller than a tick lane because it
-/// now carries a second dimension; below about this the octaves collapse and
-/// the datum stops separating from the marks.
-const SCATTER_HEIGHT: f32 = 22.0;
 
 /// The y-domain, in octaves around the ladder price. Shared across every rung
 /// so rows compare, and clamped rather than fitted: Black Flag has fills at
@@ -264,13 +393,13 @@ fn draw_lane(
     from: i64,
     now: i64,
     style: LaneStyle,
+    m: &Metrics,
 ) -> egui::Response {
     let tokens = ui.tokens();
     // Price needs a datum to be a multiple of; without one, fall back to time.
     let scatter = matches!(style, LaneStyle::PriceScatter) && target.is_some_and(|t| t > 0.0);
-    let height = if scatter { SCATTER_HEIGHT } else { 11.0 };
-    let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(LANE_WIDTH, height), egui::Sense::hover());
+    let height = if scatter { m.lane_h } else { m.lane_h * 0.5 };
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(m.lane, height), egui::Sense::hover());
     let painter = ui.painter_at(rect);
 
     // Where the ladder price sits. In scatter mode this is the datum every
@@ -317,6 +446,10 @@ fn draw_lane(
         _ if scatter => tokens.series.outbound(),
         _ => tokens.series.other,
     };
+    // Mark sizes ride the lane, so a denser or larger theme scales them with
+    // everything else rather than leaving specks in a taller row.
+    let mark_r = rect.height() * 0.08;
+    let tick_h = rect.height() * 0.28;
     let newest = fills.iter().map(|f| f.at).max();
 
     for f in fills {
@@ -327,12 +460,15 @@ fn draw_lane(
         if scatter {
             painter.circle_filled(
                 egui::pos2(x, y_of(f.price)),
-                1.7,
+                mark_r,
                 side(f.price).gamma_multiply(0.8),
             );
         } else {
             painter.line_segment(
-                [egui::pos2(x, datum_y - 3.0), egui::pos2(x, datum_y + 3.0)],
+                [
+                    egui::pos2(x, datum_y - tick_h),
+                    egui::pos2(x, datum_y + tick_h),
+                ],
                 Stroke::new(1.5, side(f.price).gamma_multiply(0.45)),
             );
         }
@@ -343,7 +479,7 @@ fn draw_lane(
         let x = x_of(at).clamp(rect.left(), rect.right());
         if scatter {
             let price = price_at(fills, at);
-            painter.circle_filled(egui::pos2(x, y_of(price)), 3.2, side(price));
+            painter.circle_filled(egui::pos2(x, y_of(price)), mark_r * 1.9, side(price));
         } else {
             painter.line_segment(
                 [
@@ -369,12 +505,17 @@ fn month_label(unix: i64) -> String {
 fn price(v: f64, unit: &str) -> String {
     if v >= 1000.0 {
         format!("{:.1}k {unit}", v / 1000.0)
+    } else if v < 10.0 {
+        // Small figures need the decimal: rounding 2.5 to "2" in a column of
+        // whole numbers hides that it is a suspiciously exact 2.5, which on
+        // this data is the tell for a mis-decoded fill rather than a cheap one.
+        format!("{v:.1} {unit}")
     } else {
         format!("{v:.0} {unit}")
     }
 }
 
-pub fn show(ui: &mut Ui, rungs: &[LadderRung], config: &PricingLadderConfig) -> egui::Response {
+pub fn show(ui: &mut Ui, rungs: &[LadderRung], config: &PricingLadderConfig) -> LadderResponse {
     let tokens = ui.tokens();
     let muted = tokens.color.text_muted;
     let secondary = tokens.color.text_secondary;
@@ -406,190 +547,344 @@ pub fn show(ui: &mut Ui, rungs: &[LadderRung], config: &PricingLadderConfig) -> 
         })
         .unwrap_or_default();
 
-    ui.scope(|ui| {
-        egui::Grid::new(&config.id_salt)
-            .num_columns(
-                6 + usize::from(lane_domain.is_some()) + usize::from(config.lane.shows_measure()),
-            )
-            .spacing([10.0, 3.0])
-            .striped(true)
-            .show(ui, |ui| {
-                for header in [
-                    config.category.as_str(),
-                    "supply",
-                    "ratio",
-                    "ladder price",
-                    "realized",
-                ] {
-                    ui.label(
-                        RichText::new(header)
-                            .color(muted)
-                            .size(ui.text_size(TextSize::Xs)),
-                    );
-                }
-                if config.lane.shows_measure() {
-                    ui.label(
-                        RichText::new("vs ladder")
-                            .color(muted)
-                            .size(ui.text_size(TextSize::Xs)),
-                    );
-                }
-                if lane_domain.is_some() {
-                    ui.label(
-                        RichText::new(&pulse_header)
-                            .color(muted)
-                            .size(ui.text_size(TextSize::Xs)),
-                    );
-                }
-                ui.label(
-                    RichText::new("n")
+    let m = Metrics::resolve(ui, rungs, config);
+    let mut clicked = None;
+
+    let response = ui
+        .vertical(|ui| {
+            ui.set_item_gap_x(Space::Lg);
+            let hdr = |ui: &mut Ui, w: f32, t: &str| {
+                cell(
+                    ui,
+                    w,
+                    RichText::new(t)
                         .color(muted)
                         .size(ui.text_size(TextSize::Xs)),
                 );
-                ui.end_row();
+            };
+            ui.horizontal(|ui| {
+                hdr(ui, m.name, &config.category);
+                hdr(ui, m.supply, "supply");
+                hdr(ui, m.ratio, "ratio");
+                hdr(ui, m.target, "ladder price");
+                hdr(ui, m.realized, "realized");
+                if config.lane.shows_measure() {
+                    hdr(ui, m.bar, "vs ladder");
+                }
+                if lane_domain.is_some() {
+                    hdr(ui, m.lane, &pulse_header);
+                }
+                hdr(ui, m.n, "n");
+            });
 
-                for rung in rungs {
-                    let is_highlight = config.highlight.as_deref() == Some(rung.value.as_str());
-                    let is_sentinel = config.sentinel.as_deref() == Some(rung.value.as_str());
+            for (i, rung) in rungs.iter().enumerate() {
+                let is_highlight = config.highlight.as_deref() == Some(rung.value.as_str());
+                let is_sentinel = config.sentinel.as_deref() == Some(rung.value.as_str());
+                let is_open = config.expanded.as_deref() == Some(rung.value.as_str());
 
-                    let name = if is_sentinel {
-                        format!("{} \u{00b7} anchor", rung.value)
-                    } else {
-                        rung.value.clone()
-                    };
-                    let mut label = RichText::new(name)
-                        .color(if is_highlight { accent } else { primary })
-                        .size(ui.text_size(TextSize::Sm));
-                    if is_highlight {
-                        label = label.strong();
-                    }
-                    ui.label(label);
+                // Reserve the row's background before its content so the
+                // stripe paints behind rather than over. The rect is only
+                // known once the row is laid out, so the shape is claimed
+                // now and set afterwards.
+                let bg = ui.painter().add(egui::Shape::Noop);
 
-                    ui.label(
-                        RichText::new(rung.supply.to_string())
+                let row = ui
+                    .horizontal(|ui| {
+                        let name = if is_sentinel {
+                            format!("{} \u{00b7} anchor", rung.value)
+                        } else {
+                            rung.value.clone()
+                        };
+                        let mut label = RichText::new(name)
+                            .color(if is_highlight { accent } else { primary })
+                            .size(ui.text_size(TextSize::Sm));
+                        if is_highlight || is_open {
+                            label = label.strong();
+                        }
+                        cell(ui, m.name, label);
+
+                        cell(
+                            ui,
+                            m.supply,
+                            RichText::new(rung.supply.to_string())
+                                .color(muted)
+                                .size(ui.text_size(TextSize::Xs)),
+                        );
+                        cell(
+                            ui,
+                            m.ratio,
+                            RichText::new(format!("\u{00d7}{:.2}", rung.ratio))
+                                .color(secondary)
+                                .size(ui.text_size(TextSize::Xs)),
+                        );
+                        cell(
+                            ui,
+                            m.target,
+                            RichText::new(match rung.target {
+                                Some(t) => price(t, &config.unit),
+                                None => "\u{2014}".to_string(),
+                            })
+                            .color(if is_highlight { accent } else { secondary })
+                            .size(ui.text_size(TextSize::Sm)),
+                        );
+
+                        // The realized figure as a number, in its own column. It is
+                        // NOT the bar's `detail` — that stacks the text above the
+                        // bar, which turns every row of a 13-rung table into two
+                        // lines and knocks the numbers out of a scannable column.
+                        cell(
+                            ui,
+                            m.realized,
+                            RichText::new(
+                                match (rung.realized, rung.support, rung.fills.is_empty()) {
+                                    (Some(r), _, _) => price(r, &config.unit),
+                                    // Nothing traded here at all — say so, but only
+                                    // when the lane agrees. A model that gates its
+                                    // median on a minimum group size reports support 0
+                                    // for a rung that DID trade, just not enough times
+                                    // to be trusted; "no sales" beside two marks on the
+                                    // lane is a visible contradiction.
+                                    (None, 0, true) => "no sales".to_string(),
+                                    (None, _, _) => "\u{2014}".to_string(),
+                                },
+                            )
+                            .color(if rung.realized.is_some() {
+                                secondary
+                            } else {
+                                muted
+                            })
+                            .size(ui.text_size(TextSize::Xs)),
+                        );
+
+                        // The measure. Nothing sold here => no bar at all; see the
+                        // module docs on why an empty bar would be a claim.
+                        if config.lane.shows_measure() {
+                            ui.scope(|ui| {
+                                ui.set_width(m.bar);
+                                match rung.realized {
+                                    Some(realized) => {
+                                        // Scale to whichever of the pair is larger so a
+                                        // rung trading well above its ladder price still
+                                        // shows the marker rather than pinning it right.
+                                        let hi =
+                                            realized.max(rung.target.unwrap_or(realized)) * 1.15;
+                                        let bar = BulletBar::with_target(
+                                            realized as f32,
+                                            rung.target.map(|t| t as f32),
+                                        )
+                                        .max(hi.max(f64::EPSILON) as f32)
+                                        .height(9.0);
+                                        // "At the ladder price" within 10% — the band
+                                        // where the structure is being confirmed rather
+                                        // than contradicted.
+                                        match rung.target {
+                                            Some(t) => bar
+                                                .good_within(Token::Success, (t * 0.1) as f32)
+                                                .show(ui),
+                                            None => bar.show(ui),
+                                        }
+                                    }
+                                    None => ui.label(""),
+                                }
+                            });
+                        }
+
+                        if let Some((from, now)) = lane_domain {
+                            let resp =
+                                draw_lane(ui, &rung.fills, rung.target, from, now, config.lane, &m);
+                            if let Some(last) = rung.fills.iter().map(|f| f.at).max() {
+                                let days = (now - last).max(0) / 86_400;
+                                let mut tip = format!(
+                                    "{} fill(s) \u{00b7} last traded {}",
+                                    rung.fills.len(),
+                                    if days == 0 {
+                                        "today".to_string()
+                                    } else {
+                                        format!("{days} days ago")
+                                    }
+                                );
+                                // Say so when the model is standing on less than
+                                // what actually traded — otherwise the gap between
+                                // this count and the model's is invisible.
+                                if rung.support != rung.fills.len() {
+                                    tip.push_str(&format!(
+                                        "\n{} of them back the median",
+                                        rung.support
+                                    ));
+                                }
+                                resp.on_hover_text(tip);
+                            }
+                        }
+
+                        // The OBSERVED count, not the model's support. A rung that
+                        // traded twice says two, however little a minimum-group-size
+                        // gate trusts it — reporting zero there reads as "never
+                        // traded" and is the confusion this column exists to avoid.
+                        let observed = if rung.fills.is_empty() {
+                            rung.support
+                        } else {
+                            rung.fills.len()
+                        };
+                        cell(
+                            ui,
+                            m.n,
+                            RichText::new(if observed == 0 {
+                                "\u{2014}".to_string()
+                            } else {
+                                observed.to_string()
+                            })
                             .color(muted)
                             .size(ui.text_size(TextSize::Xs)),
-                    );
-                    ui.label(
-                        RichText::new(format!("\u{00d7}{:.2}", rung.ratio))
-                            .color(secondary)
-                            .size(ui.text_size(TextSize::Xs)),
-                    );
-                    ui.label(
-                        RichText::new(match rung.target {
-                            Some(t) => price(t, &config.unit),
-                            None => "\u{2014}".to_string(),
-                        })
-                        .color(if is_highlight { accent } else { secondary })
-                        .size(ui.text_size(TextSize::Sm)),
-                    );
+                        );
+                    })
+                    .response;
 
-                    // The realized figure as a number, in its own column. It is
-                    // NOT the bar's `detail` — that stacks the text above the
-                    // bar, which turns every row of a 13-rung table into two
-                    // lines and knocks the numbers out of a scannable column.
-                    ui.label(
-                        RichText::new(match (rung.realized, rung.support, rung.fills.is_empty()) {
-                            (Some(r), _, _) => price(r, &config.unit),
-                            // Nothing traded here at all — say so, but only
-                            // when the lane agrees. A model that gates its
-                            // median on a minimum group size reports support 0
-                            // for a rung that DID trade, just not enough times
-                            // to be trusted; "no sales" beside two marks on the
-                            // lane is a visible contradiction.
-                            (None, 0, true) => "no sales".to_string(),
-                            (None, _, _) => "\u{2014}".to_string(),
-                        })
-                        .color(if rung.realized.is_some() {
-                            secondary
-                        } else {
-                            muted
-                        })
-                        .size(ui.text_size(TextSize::Xs)),
-                    );
-
-                    // The measure. Nothing sold here => no bar at all; see the
-                    // module docs on why an empty bar would be a claim.
-                    if config.lane.shows_measure() {
-                        ui.scope(|ui| {
-                            ui.set_width(BAR_WIDTH);
-                            match rung.realized {
-                                Some(realized) => {
-                                    // Scale to whichever of the pair is larger so a
-                                    // rung trading well above its ladder price still
-                                    // shows the marker rather than pinning it right.
-                                    let hi = realized.max(rung.target.unwrap_or(realized)) * 1.15;
-                                    let bar = BulletBar::with_target(
-                                        realized as f32,
-                                        rung.target.map(|t| t as f32),
-                                    )
-                                    .max(hi.max(f64::EPSILON) as f32)
-                                    .height(9.0);
-                                    // "At the ladder price" within 10% — the band
-                                    // where the structure is being confirmed rather
-                                    // than contradicted.
-                                    match rung.target {
-                                        Some(t) => bar
-                                            .good_within(Token::Success, (t * 0.1) as f32)
-                                            .show(ui),
-                                        None => bar.show(ui),
-                                    }
-                                }
-                                None => ui.label(""),
-                            }
-                        });
-                    }
-
-                    if let Some((from, now)) = lane_domain {
-                        let resp = draw_lane(ui, &rung.fills, rung.target, from, now, config.lane);
-                        if let Some(last) = rung.fills.iter().map(|f| f.at).max() {
-                            let days = (now - last).max(0) / 86_400;
-                            let mut tip = format!(
-                                "{} fill(s) \u{00b7} last traded {}",
-                                rung.fills.len(),
-                                if days == 0 {
-                                    "today".to_string()
-                                } else {
-                                    format!("{days} days ago")
-                                }
-                            );
-                            // Say so when the model is standing on less than
-                            // what actually traded — otherwise the gap between
-                            // this count and the model's is invisible.
-                            if rung.support != rung.fills.len() {
-                                tip.push_str(&format!(
-                                    "\n{} of them back the median",
-                                    rung.support
-                                ));
-                            }
-                            resp.on_hover_text(tip);
-                        }
-                    }
-
-                    // The OBSERVED count, not the model's support. A rung that
-                    // traded twice says two, however little a minimum-group-size
-                    // gate trusts it — reporting zero there reads as "never
-                    // traded" and is the confusion this column exists to avoid.
-                    let observed = if rung.fills.is_empty() {
-                        rung.support
-                    } else {
-                        rung.fills.len()
-                    };
-                    ui.label(
-                        RichText::new(if observed == 0 {
-                            "\u{2014}".to_string()
-                        } else {
-                            observed.to_string()
-                        })
-                        .color(muted)
-                        .size(ui.text_size(TextSize::Xs)),
-                    );
-                    ui.end_row();
+                // Stripe + hover, painted behind the row now that its rect
+                // is known. Hover is what says the row is clickable; with a
+                // detail region hanging off it, that has to be discoverable
+                // without a chevron in every row.
+                let hit = ui.interact(
+                    row.rect,
+                    ui.id().with((&config.id_salt, &rung.value)),
+                    egui::Sense::click(),
+                );
+                let fill = if hit.hovered() || is_open {
+                    tokens.color.bg_highlight
+                } else if i % 2 == 1 {
+                    tokens.color.bg_secondary.gamma_multiply(0.5)
+                } else {
+                    egui::Color32::TRANSPARENT
+                };
+                ui.painter().set(
+                    bg,
+                    egui::epaint::RectShape::filled(
+                        row.rect.expand2(egui::vec2(ui.space(Space::Sm), 1.0)),
+                        egui::CornerRadius::same(2),
+                        fill,
+                    ),
+                );
+                if hit.clicked() {
+                    clicked = Some(rung.value.clone());
                 }
-            });
-        ui.gap(Space::Xs);
-    })
-    .response
+
+                // The detail, beneath the row it explains. Called every
+                // frame rather than only when open so closing eases out too.
+                Disclosure::new((&config.id_salt, &rung.value), is_open).show(ui, |ui| {
+                    draw_detail(ui, rung, config, &m);
+                });
+            }
+            ui.gap(Space::Xs);
+        })
+        .response;
+
+    LadderResponse { response, clicked }
+}
+
+/// What a rung's detail says: how its price was derived, then what actually
+/// traded on it.
+///
+/// The arithmetic comes first and in full — `supply(sentinel) / supply(rung)`,
+/// then `anchor × ratio` — because a structural price that cannot be checked
+/// is just an assertion with a number in it. The whole reason a
+/// misconfiguration can sit unnoticed is that nobody can see the working.
+fn draw_detail(ui: &mut Ui, rung: &LadderRung, config: &PricingLadderConfig, m: &Metrics) {
+    let tokens = ui.tokens();
+    let muted = tokens.color.text_muted;
+    let secondary = tokens.color.text_secondary;
+    let small = ui.text_size(TextSize::Xs);
+
+    let sentinel = config.sentinel.as_deref().unwrap_or("anchor");
+    ui.label(
+        RichText::new("how this rung is priced")
+            .color(muted)
+            .size(small),
+    );
+    let sentinel_supply = (rung.ratio * rung.supply as f64).round() as u64;
+    ui.label(
+        RichText::new(format!(
+            "supply({sentinel}) {sentinel_supply}  \u{00f7}  supply({}) {}  =  \u{00d7}{:.2}",
+            rung.value, rung.supply, rung.ratio
+        ))
+        .color(secondary)
+        .size(small),
+    );
+    if let (Some(anchor), Some(target)) = (config.anchor, rung.target) {
+        let src = config
+            .anchor_source
+            .as_deref()
+            .map(|s| format!("  ({s})"))
+            .unwrap_or_default();
+        ui.label(
+            RichText::new(format!(
+                "anchor {}{src}  \u{00d7}  {:.2}  =  {}",
+                price(anchor, &config.unit),
+                rung.ratio,
+                price(target, &config.unit)
+            ))
+            .color(secondary)
+            .size(small),
+        );
+    }
+
+    if rung.fills.is_empty() {
+        ui.gap(Space::Sm);
+        ui.label(
+            RichText::new("nothing has traded on this rung")
+                .color(muted)
+                .size(small),
+        );
+        return;
+    }
+
+    ui.gap(Space::Md);
+    ui.label(
+        RichText::new(format!("what traded \u{00b7} {} fill(s)", rung.fills.len()))
+            .color(muted)
+            .size(small),
+    );
+
+    // Newest first: the question that brought the reader here is what it is
+    // worth now, and the recent fills are the ones that answer it.
+    let mut fills: Vec<&Fill> = rung.fills.iter().collect();
+    fills.sort_by_key(|f| std::cmp::Reverse(f.at));
+    for f in fills {
+        ui.horizontal(|ui| {
+            ui.set_item_gap_x(Space::Md);
+            cell(
+                ui,
+                m.name,
+                RichText::new(if f.label.is_empty() {
+                    "\u{2014}"
+                } else {
+                    &f.label
+                })
+                .color(secondary)
+                .size(small),
+            );
+            cell(
+                ui,
+                m.target,
+                RichText::new(price(f.price, &config.unit))
+                    .color(secondary)
+                    .size(small),
+            );
+            // Against its own rung, so a reader never has to divide by hand.
+            cell(
+                ui,
+                m.ratio,
+                RichText::new(match rung.target {
+                    // A ratio that rounds to zero at two places is not zero,
+                    // and printing ×0.00 beside a real price claims it was.
+                    Some(t) if t > 0.0 && f.price / t < 0.01 => "<\u{00d7}0.01".to_string(),
+                    Some(t) if t > 0.0 => format!("\u{00d7}{:.2}", f.price / t),
+                    _ => String::new(),
+                })
+                .color(muted)
+                .size(small),
+            );
+            ui.label(RichText::new(month_label(f.at)).color(muted).size(small));
+        });
+    }
 }
 
 #[cfg(test)]
@@ -601,6 +896,9 @@ mod tests {
         assert_eq!(price(49.0, "ADA"), "49 ADA");
         assert_eq!(price(105.9, "ADA"), "106 ADA");
         assert_eq!(price(3176.8, "ADA"), "3.2k ADA");
+        // The 2.5 ADA mis-decodes must stay legible as 2.5, not round to "2" —
+        // the exactness is the tell.
+        assert_eq!(price(2.5, "ADA"), "2.5 ADA");
     }
 
     /// The three ways a rung can lack a median, and the one that is genuinely
@@ -615,7 +913,14 @@ mod tests {
             target: Some(1.0),
             realized: None,
             support,
-            fills: ats.iter().map(|&at| Fill { at, price: 1.0 }).collect(),
+            fills: ats
+                .iter()
+                .map(|&at| Fill {
+                    at,
+                    price: 1.0,
+                    label: String::new(),
+                })
+                .collect(),
         };
         // The predicate the realized column renders "no sales" for.
         let unsold = |r: &LadderRung| r.realized.is_none() && r.support == 0 && r.fills.is_empty();

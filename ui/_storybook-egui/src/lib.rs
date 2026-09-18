@@ -143,7 +143,7 @@ mod app {
             RangeBar => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::range_bar::show(ui, &mut a.range_bar_state);
             PipRow => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::pip_row::show(ui, &mut a.pip_row_state);
             PriceTimeline => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::price_timeline::show(ui, &mut a.price_timeline_state);
-            PricingLadder => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::pricing_ladder::show(ui);
+            PricingLadder => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::pricing_ladder::show(ui, &mut a.pricing_ladder_state);
             Leaderboard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::leaderboard::show(ui, &mut a.leaderboard_state);
             FocusList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::focus_list::show(ui, &mut a.focus_list_state);
             CardBrowser => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::card_browser::show(ui, &mut a.card_browser_state);
@@ -1411,6 +1411,7 @@ mod app {
         range_bar_state: stories::range_bar::RangeBarState,
         pip_row_state: stories::pip_row::PipRowState,
         price_timeline_state: stories::price_timeline::PriceTimelineState,
+        pricing_ladder_state: stories::pricing_ladder::PricingLadderState,
         leaderboard_state: stories::leaderboard::LeaderboardState,
         listing_grid_state: stories::listing_grid::ListingGridState,
         focus_list_state: stories::focus_list::FocusListState,
@@ -1558,6 +1559,7 @@ mod app {
                 range_bar_state: stories::range_bar::RangeBarState::default(),
                 pip_row_state: stories::pip_row::PipRowState::default(),
                 price_timeline_state: stories::price_timeline::PriceTimelineState::default(),
+                pricing_ladder_state: stories::pricing_ladder::PricingLadderState::default(),
                 leaderboard_state: stories::leaderboard::LeaderboardState::default(),
                 listing_grid_state: stories::listing_grid::ListingGridState::default(),
                 focus_list_state: stories::focus_list::FocusListState::default(),
