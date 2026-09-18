@@ -47,6 +47,7 @@ use std::collections::HashMap;
 
 use chain_heartbeat::{BlockBeat, Heartbeat, TrackedTx, TxProgress};
 use macroquad::prelude::*;
+use ui_theme::TextSize;
 
 use crate::block_pulse::{PulseState, PulseTicker, draw_mark, format_duration, format_number};
 use crate::painter::Painter;
@@ -301,8 +302,8 @@ pub fn block_train(
     let dt = get_frame_time();
     let span_secs = vm.span_secs.max(60.0);
 
-    let tick = 12.0_f32;
-    let label = 14.0_f32;
+    let tick = p.size(TextSize::Sm);
+    let label = p.size(TextSize::Md);
     let tick_band = tick * 1.35;
     let tick_gap = 6.0;
     let rider_band = label * 1.35;
@@ -334,7 +335,7 @@ pub fn block_train(
         plot.right(),
         plot.bottom(),
         1.0,
-        t.track,
+        t.color.bg_highlight,
     );
     draw_line(
         plot.left(),
@@ -342,7 +343,7 @@ pub fn block_train(
         plot.right(),
         plot.top(),
         1.0,
-        theme::with_alpha(t.track, 0.45),
+        theme::with_alpha(t.color.bg_highlight, 0.45),
     );
     // A third rule at what a block round here ACTUALLY carries, so the bars
     // have something to read against. Without it the honest absolute scale has
@@ -360,7 +361,7 @@ pub fn block_train(
             plot.right(),
             y,
             1.0,
-            theme::with_alpha(t.muted, 0.30),
+            theme::with_alpha(t.color.text_muted, 0.30),
         );
     }
 
@@ -421,9 +422,9 @@ pub fn block_train(
     for pl in &placed {
         let colour = rider_colour(vm.riders, pl.beat.height, t).unwrap_or({
             if Some(pl.beat.hash.as_str()) == tip_hash {
-                t.accent
+                t.color.accent
             } else {
-                theme::with_alpha(t.muted, 0.6)
+                theme::with_alpha(t.color.text_muted, 0.6)
             }
         });
         draw_rectangle(pl.rect.x, pl.rect.y, pl.rect.w, pl.rect.h, colour);
@@ -436,9 +437,11 @@ pub fn block_train(
         .unwrap_or(plot.left());
     if gap_from < plot.right() {
         let tint = match feed {
-            PulseState::Quiet { .. } => theme::with_alpha(t.warn, 0.10),
-            PulseState::Offline { .. } | PulseState::NotStarted => theme::with_alpha(t.muted, 0.07),
-            _ => theme::with_alpha(t.panel, 0.55),
+            PulseState::Quiet { .. } => theme::with_alpha(t.color.warning, 0.10),
+            PulseState::Offline { .. } | PulseState::NotStarted => {
+                theme::with_alpha(t.color.text_muted, 0.07)
+            }
+            _ => theme::with_alpha(t.color.bg_secondary, 0.55),
         };
         draw_rectangle(gap_from, plot.top(), plot.right() - gap_from, plot.h, tint);
     }
@@ -448,7 +451,7 @@ pub fn block_train(
         plot.right(),
         plot.bottom(),
         1.0,
-        t.track,
+        t.color.bg_highlight,
     );
 
     // A status light beside "full", so the full width goes to the blocks.
@@ -475,7 +478,7 @@ pub fn block_train(
             bar_w,
             plot.bottom() - waiting_top,
             1.5,
-            theme::with_alpha(t.accent, breath),
+            theme::with_alpha(t.color.accent, breath),
         );
     }
 
@@ -526,7 +529,7 @@ pub fn block_train(
             c.y,
             CAP_RADIUS + spread * 14.0,
             1.5,
-            theme::with_alpha(t.success, 1.0 - progress),
+            theme::with_alpha(t.color.success, 1.0 - progress),
         );
     }
 
@@ -545,7 +548,11 @@ pub fn block_train(
                 .and_then(|h| placed.iter().find(|pl| pl.beat.height == h))
                 .map(cap_center),
         };
-        let ink = if target.is_some() { t.fg } else { t.muted };
+        let ink = if target.is_some() {
+            t.color.text_primary
+        } else {
+            t.color.text_muted
+        };
         let text = rider_status(rider, tip_height, vm.settled_depth);
         let end_x = rider_label(p, plot.left(), row_top, &text, label, ink, mark);
         if let Some(target) = target {
@@ -596,7 +603,7 @@ pub fn block_train(
                 top,
                 bar_w,
                 h,
-                theme::with_alpha(t.danger, (1.0 - progress) * 0.8),
+                theme::with_alpha(t.color.error, (1.0 - progress) * 0.8),
             );
         }
     }
@@ -607,7 +614,7 @@ pub fn block_train(
         plot.left() + 2.0 + mark_radius * 2.0 + 4.0,
         p.top_baseline(plot.top() + 1.0, tick),
         tick,
-        theme::with_alpha(t.muted, 0.8),
+        theme::with_alpha(t.color.text_muted, 0.8),
     );
     // Before any block, a caption, so an empty box still says what it is.
     let (tip_text, tip_colour) = match snapshot.tip.as_ref() {
@@ -617,11 +624,11 @@ pub fn block_train(
                 Some(secs) => format!("Block {height} · {}", block_clock(secs)),
                 None => format!("Block {height}"),
             };
-            (text, t.muted)
+            (text, t.color.text_muted)
         }
         None => (
             "Cardano blocks".to_string(),
-            theme::with_alpha(t.muted, 0.8),
+            theme::with_alpha(t.color.text_muted, 0.8),
         ),
     };
     let tick_baseline = p.top_baseline(plot.bottom() + tick_gap, tick);
@@ -648,12 +655,18 @@ pub fn block_train(
                 plot.right() - dim.width,
                 tick_baseline,
                 tick,
-                t.muted,
+                t.color.text_muted,
             );
         }
         (None, Some(text)) => {
             let dim = p.measure(&text, tick);
-            p.mono(&text, plot.right() - dim.width, tick_baseline, tick, t.fg);
+            p.mono(
+                &text,
+                plot.right() - dim.width,
+                tick_baseline,
+                tick,
+                t.color.text_primary,
+            );
         }
         (None, None) => {}
     }
@@ -668,7 +681,7 @@ pub fn block_train(
             plot.left() + (plot.w - dim.width) / 2.0,
             p.centre_baseline(plot.top(), plot.h, label),
             label,
-            theme::with_alpha(t.muted, 0.8),
+            theme::with_alpha(t.color.text_muted, 0.8),
         );
     } else if !feed.is_live() {
         // Blocks are still on screen from before the feed went away. Say what
@@ -684,7 +697,7 @@ pub fn block_train(
                 gap_from + (gap_w - dim.width) / 2.0,
                 p.centre_baseline(plot.top(), plot.h, label),
                 label,
-                theme::with_alpha(t.muted, 0.8),
+                theme::with_alpha(t.color.text_muted, 0.8),
             );
         }
     }
@@ -809,18 +822,18 @@ fn empty_message(state: PulseState) -> &'static str {
 /// The colour a rider's state wears.
 fn rider_mark(state: RiderState, t: &Theme) -> Color {
     match state {
-        RiderState::Waiting => t.accent,
-        RiderState::InBlock { .. } | RiderState::Landed => t.success,
-        RiderState::Beaten { .. } => t.warn,
-        RiderState::Failed { .. } => t.danger,
+        RiderState::Waiting => t.color.accent,
+        RiderState::InBlock { .. } | RiderState::Landed => t.color.success,
+        RiderState::Beaten { .. } => t.color.warning,
+        RiderState::Failed { .. } => t.color.error,
     }
 }
 
 fn rider_colour(riders: &[TrainRider], height: u64, t: &Theme) -> Option<Color> {
     riders.iter().find_map(|r| match r.state {
-        RiderState::InBlock { height: h } if h == height => Some(t.success),
-        RiderState::Beaten { height: h } if h == height => Some(t.warn),
-        RiderState::Failed { height: h } if h == height => Some(t.danger),
+        RiderState::InBlock { height: h } if h == height => Some(t.color.success),
+        RiderState::Beaten { height: h } if h == height => Some(t.color.warning),
+        RiderState::Failed { height: h } if h == height => Some(t.color.error),
         _ => None,
     })
 }

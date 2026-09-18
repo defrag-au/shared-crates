@@ -26,6 +26,7 @@
 //! [`crate::Gesture::drag`] in alongside.
 
 use macroquad::prelude::*;
+use ui_theme::TextSize;
 
 use crate::{Painter, draw_rounded_rect, painter::with_alpha};
 
@@ -34,7 +35,9 @@ use crate::{Painter, draw_rounded_rect, painter::with_alpha};
 const EDGE: f32 = 16.0;
 /// Clear space required between two labels before both may be drawn.
 const LABEL_GAP: f32 = 8.0;
-const LABEL_SIZE: f32 = 11.0;
+/// Stop labels sit on the smallest step: there are up to a dozen of them along
+/// one control, so they must stay out of the way of the amount itself.
+const LABEL_STEP: TextSize = TextSize::Xs;
 const TRACK_H: f32 = 5.0;
 const HANDLE_R: f32 = 9.0;
 
@@ -118,7 +121,7 @@ pub fn amount_slider(
         return None;
     }
     let index = vm.index.min(count - 1);
-    let t = &p.theme;
+    let c = &p.theme.color;
 
     // A press or drag ANYWHERE on the control moves the handle — you never have
     // to catch the handle itself, which is what makes it workable with a thumb.
@@ -142,7 +145,14 @@ pub fn amount_slider(
     let (a, b) = (rect.x + EDGE, rect.x + rect.w - EDGE);
     let handle_x = stop_x(rect, count, index);
 
-    draw_rounded_rect(a, track_y, b - a, TRACK_H, TRACK_H * 0.5, dim(t.track));
+    draw_rounded_rect(
+        a,
+        track_y,
+        b - a,
+        TRACK_H,
+        TRACK_H * 0.5,
+        dim(c.bg_highlight),
+    );
     if handle_x > a {
         draw_rounded_rect(
             a,
@@ -150,7 +160,7 @@ pub fn amount_slider(
             handle_x - a,
             TRACK_H,
             TRACK_H * 0.5,
-            dim(t.accent),
+            dim(c.accent),
         );
     }
 
@@ -161,25 +171,26 @@ pub fn amount_slider(
             x,
             track_y + TRACK_H * 0.5,
             2.0,
-            dim(if passed { t.accent } else { t.muted }),
+            dim(if passed { c.accent } else { c.text_muted }),
         );
     }
 
-    draw_circle(handle_x, track_y + TRACK_H * 0.5, HANDLE_R, dim(t.accent));
+    draw_circle(handle_x, track_y + TRACK_H * 0.5, HANDLE_R, dim(c.accent));
     draw_circle(
         handle_x,
         track_y + TRACK_H * 0.5,
         HANDLE_R * 0.45,
-        dim(t.bg),
+        dim(c.bg_primary),
     );
 
     // Labels, left to right, skipping any that would collide with one already
     // placed. Overlapping labels are worse than absent ones — the selected stop
     // is reserved FIRST so it can never be the one dropped.
     let label_top = track_y + TRACK_H + HANDLE_R + 2.0;
+    let label_size = p.size(LABEL_STEP);
     let mut spans: Vec<(f32, f32)> = Vec::with_capacity(count);
     let span_of = |i: usize| {
-        let w = p.measure(&vm.stops[i].label, LABEL_SIZE).width;
+        let w = p.measure(&vm.stops[i].label, label_size).width;
         let cx = stop_x(rect, count, i);
         (cx - w * 0.5, cx + w * 0.5)
     };
@@ -200,12 +211,16 @@ pub fn amount_slider(
     }
     for i in draw_order {
         let (l, _) = span_of(i);
-        let colour = if i == index { t.fg } else { t.muted };
+        let colour = if i == index {
+            c.text_primary
+        } else {
+            c.text_muted
+        };
         p.text(
             &vm.stops[i].label,
             l,
-            p.top_baseline(label_top, LABEL_SIZE),
-            LABEL_SIZE,
+            p.top_baseline(label_top, label_size),
+            label_size,
             dim(colour),
         );
     }

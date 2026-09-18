@@ -4,6 +4,7 @@
 //! hit-test). Deliberately tiny — a widget toolkit, not a UI framework.
 
 use macroquad::prelude::*;
+use ui_theme::{TextRole, TextSize};
 
 use crate::theme::{self, Theme};
 
@@ -39,6 +40,24 @@ impl<'a> Painter<'a> {
             theme,
             tap,
         }
+    }
+
+    /// Point size for a step of the type ramp — **the one way a widget gets a
+    /// size**.
+    ///
+    /// `p.text(label, x, y, p.size(TextSize::Base), col)` is the blessed shape;
+    /// `tests/text_sizes.rs` rejects a bare literal in that position. The ramp
+    /// is the theme's, so a host that opens it out
+    /// ([`Theme::with_text_scale`](crate::Theme::with_text_scale)) moves every
+    /// widget at once — which a literal can never do.
+    pub fn size(&self, step: TextSize) -> f32 {
+        self.theme.text_size(step)
+    }
+
+    /// Point size for a text ROLE. Prefer this when the call site knows what
+    /// its text *is* — that is information a step cannot carry.
+    pub fn role(&self, role: TextRole) -> f32 {
+        self.theme.role_size(role)
     }
 
     pub fn text(&self, s: &str, x: f32, y: f32, size: f32, color: Color) {
@@ -141,7 +160,14 @@ impl<'a> Painter<'a> {
     /// over the muted track (rounded).
     pub fn progress(&self, rect: Rect, frac: f32, fill: Color) {
         let r = rect.h * 0.5;
-        draw_rounded_rect(rect.x, rect.y, rect.w, rect.h, r, self.theme.track);
+        draw_rounded_rect(
+            rect.x,
+            rect.y,
+            rect.w,
+            rect.h,
+            r,
+            self.theme.color.bg_highlight,
+        );
         let w = rect.w * frac.clamp(0.0, 1.0);
         if w > r {
             draw_rounded_rect(rect.x, rect.y, w, rect.h, r, fill);

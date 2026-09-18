@@ -25,7 +25,7 @@
 //! three crates, in two precisions, and two copies had drifted apart.
 
 use macroquad_widgets::Theme;
-use ui_theme::{Paint, Srgb, contrast_ratio};
+use ui_theme::{Paint, Srgb, Token, contrast_ratio};
 
 /// WCAG AA for text below 18pt.
 const AA_SMALL: f32 = 4.5;
@@ -37,20 +37,24 @@ fn presets() -> Vec<Theme> {
     Theme::PRESETS.iter().map(|p| p()).collect()
 }
 
-/// Every surface a colour can land on in this crate. `Painter` clears to `bg`
-/// and draws cards in `panel`; `track` is the inactive fill behind progress.
+/// Every surface a colour can land on in this crate. `Painter` clears to
+/// `bg_primary` and draws cards in `bg_secondary`; `bg_highlight` is the
+/// inactive fill behind progress.
 fn surfaces(t: &Theme) -> [(&'static str, Srgb); 3] {
     [
-        ("bg", t.bg.srgb()),
-        ("panel", t.panel.srgb()),
-        ("track", t.track.srgb()),
+        ("bg_primary", t.color.bg_primary.srgb()),
+        ("bg_secondary", t.color.bg_secondary.srgb()),
+        ("bg_highlight", t.color.bg_highlight.srgb()),
     ]
 }
 
 #[test]
 fn the_text_ramp_clears_aa_on_every_surface() {
     for t in presets() {
-        for (label, tier) in [("fg", t.fg), ("muted", t.muted)] {
+        for (label, tier) in [
+            ("text_primary", t.color.text_primary),
+            ("text_muted", t.color.text_muted),
+        ] {
             for (surface_name, surface) in surfaces(&t) {
                 let ratio = contrast_ratio(tier.srgb(), surface);
                 assert!(
@@ -70,11 +74,11 @@ fn the_text_ramp_clears_aa_on_every_surface() {
 fn every_status_colour_reads_on_every_surface() {
     for t in presets() {
         for (label, colour) in [
-            ("accent", t.accent),
-            ("link", t.link),
-            ("danger", t.danger),
-            ("warn", t.warn),
-            ("success", t.success),
+            ("accent", t.color.accent),
+            ("accent_blue", t.color.accent_blue),
+            ("error", t.color.error),
+            ("warning", t.color.warning),
+            ("success", t.color.success),
         ] {
             for (surface_name, surface) in surfaces(&t) {
                 let ratio = contrast_ratio(colour.srgb(), surface);
@@ -88,15 +92,16 @@ fn every_status_colour_reads_on_every_surface() {
     }
 }
 
-/// `track` is a fill, not text — but it has to separate from the page or a
-/// progress bar has no visible extent.
+/// `bg_highlight` is a fill, not text — but it has to separate from the page or
+/// a progress bar has no visible extent.
 #[test]
 fn the_track_separates_from_the_background() {
     for t in presets() {
-        let ratio = contrast_ratio(t.track.srgb(), t.bg.srgb());
+        let ratio = contrast_ratio(t.color.bg_highlight.srgb(), t.color.bg_primary.srgb());
         assert!(
             ratio >= 1.15,
-            "{}: track on bg is {ratio:.2} — the bar would be invisible",
+            "{}: bg_highlight on bg_primary is {ratio:.2} — the bar would be \
+             invisible",
             t.name
         );
     }
@@ -111,7 +116,7 @@ fn the_track_separates_from_the_background() {
 #[test]
 fn success_never_collides_with_the_accent_it_must_be_distinguishable_from() {
     for t in presets() {
-        let d = ui_theme::delta_e(t.success.srgb(), t.accent.srgb());
+        let d = ui_theme::delta_e(t.color.success.srgb(), t.color.accent.srgb());
         assert!(
             d >= 15.0,
             "{}: success vs accent is only ΔE {d:.1} — 'landed' would read as \
@@ -127,15 +132,19 @@ fn success_never_collides_with_the_accent_it_must_be_distinguishable_from() {
 fn presets_vary_the_accent_and_nothing_else() {
     let base = Theme::tokyo_night();
     for t in presets() {
-        assert_eq!(t.bg.srgb(), base.bg.srgb(), "{} moved bg", t.name);
-        assert_eq!(t.panel.srgb(), base.panel.srgb(), "{} moved panel", t.name);
-        assert_eq!(t.fg.srgb(), base.fg.srgb(), "{} moved fg", t.name);
-        assert_eq!(t.muted.srgb(), base.muted.srgb(), "{} moved muted", t.name);
-        assert_eq!(
-            t.success.srgb(),
-            base.success.srgb(),
-            "{} moved success — it is fixed across presets on purpose",
-            t.name
-        );
+        // Every token but `accent` must match the base. Driven off `Token::ALL`
+        // rather than a hand-written list, so a token added to `ColorTokens` is
+        // covered the day it exists — the same reasoning `PRESETS` uses above.
+        for token in Token::ALL {
+            if token == Token::Accent {
+                continue;
+            }
+            assert_eq!(
+                token.get(&t.color).srgb(),
+                token.get(&base.color).srgb(),
+                "{} moved {token:?} — presets vary the accent and nothing else",
+                t.name
+            );
+        }
     }
 }

@@ -150,280 +150,25 @@ pub use ui_theme::{contrast_ratio, with_alpha};
 // Typography
 // ============================================================================
 
-/// What a piece of text *is*, rather than how big it is.
+// 🔑 The ramp itself lives in `ui-theme`, for the same reason the palette does:
+// `macroquad-widgets` had no ramp at all, so every size on that side was a
+// literal no theme switch could reach. Copying this here would have recreated
+// the drift the colour model was just rescued from. Re-exported rather than
+// re-declared, so the ~48 files naming `TextSize::` / `TextRole::` are
+// untouched, and `Theme::font` below is the one genuinely egui-bound part.
+pub use ui_theme::{Family, TextRole, TextScale, TextSize, TypeScale};
+
+/// The `FontId` for a role — family included, so a call site never picks one.
 ///
-/// Pairs with [`TextSize`], which says how big. The suite used to carry ~294
-/// inline `.size(11.0)` / `FontId::proportional(9.0)` literals and no way to
-/// make the whole thing one step larger; both now resolve through
-/// [`TextScale`], so a theme moves headings and tick labels together.
-///
-/// Prefer a role when the call site knows what its text *is* — that is the
-/// information a step cannot carry, and it is what lets `monospace` re-rung the
-/// roles without touching the ramp.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum TextRole {
-    /// 8-9px. Axis ticks, dense table annotations. Use sparingly.
-    Micro,
-    /// 10-11px. Secondary labels, captions.
-    Small,
-    /// The default reading size.
-    Body,
-    /// A field or column label. Same size as body, distinct so a theme can
-    /// letterspace or capitalise it without touching body copy.
-    Label,
-    /// Section and page headings.
-    Heading,
-    /// Money, counts, hashes. **Separate on purpose** — this estate renders a
-    /// great deal of tabular value and wants monospace independent of body text.
-    Numeric,
-}
-
-impl TextRole {
-    pub const ALL: &'static [TextRole] = &[
-        TextRole::Micro,
-        TextRole::Small,
-        TextRole::Body,
-        TextRole::Label,
-        TextRole::Heading,
-        TextRole::Numeric,
-    ];
-}
-
-/// A step on the type ramp.
-///
-/// # Steps AND roles, and why both
-///
-/// [`TextRole`] says what a piece of text *is*; `TextSize` says how big it is.
-/// The suite needs both because it already had 294 `.size(11.0)`-style literals
-/// that carry **no** semantics — and inventing one for each of them would be
-/// 294 judgement calls, which is how a migration mispairs things at scale. The
-/// same argument [`Radius`] makes.
-///
-/// So: a new call site that knows what its text is should take the role and let
-/// the theme size it. A migrated site takes the nearest step. Roles resolve
-/// *through* this ramp ([`TypeScale::size`]), so there is one set of numbers
-/// rather than two that drift.
-///
-/// # Why these eight
-///
-/// They are what the estate uses. The 294 literals land on:
-///
-/// ```text
-/// 11.0 × 89   10.0 × 77   9.0 × 43   12.0 × 41   13.0 × 11   14.0 × 11
-///  8.0 × 6    18.0 × 5   15.0 × 4   16.0 × 4    8.5 × 4    20.0 × 3 …
-/// ```
-///
-/// 270 of them sit exactly on `{9, 10, 11, 12, 14, 16, 20, 24}`, and nothing
-/// moves by more than 2px. Note the body of the ramp is 1px apart: dense
-/// dashboard chrome genuinely distinguishes 10 from 11, and a coarser ramp
-/// would flatten a distinction the suite is already making 166 times.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TextSize {
-    /// 9px. Axis ticks, dense annotations.
-    Xs,
-    /// 10px.
-    Sm,
-    /// 11px. The commonest size in the suite.
-    Base,
-    /// 12px.
-    Md,
-    /// 14px. Comfortable reading.
-    Lg,
-    /// 16px.
-    Xl,
-    /// 20px. Section headings.
-    Xl2,
-    /// 24px. Page titles.
-    Xl3,
-}
-
-impl TextSize {
-    pub const ALL: &'static [TextSize] = &[
-        TextSize::Xs,
-        TextSize::Sm,
-        TextSize::Base,
-        TextSize::Md,
-        TextSize::Lg,
-        TextSize::Xl,
-        TextSize::Xl2,
-        TextSize::Xl3,
-    ];
-
-    /// The nearest step to a raw point size. **Ties round up**, matching
-    /// [`Radius::nearest`] and [`Space::nearest`] — text that comes out a point
-    /// large is legible, text that snaps down may not be.
-    pub fn nearest(px: f32, scale: &TextScale) -> Self {
-        let mut best = TextSize::Xs;
-        let mut best_gap = f32::MAX;
-        for step in Self::ALL {
-            let gap = (scale.get(*step) - px).abs();
-            if gap <= best_gap {
-                best_gap = gap;
-                best = *step;
-            }
-        }
-        best
-    }
-}
-
-/// What each [`TextSize`] step is worth — Tailwind's `theme.fontSize`.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct TextScale {
-    pub xs: f32,
-    pub sm: f32,
-    pub base: f32,
-    pub md: f32,
-    pub lg: f32,
-    pub xl: f32,
-    pub xl2: f32,
-    pub xl3: f32,
-}
-
-impl TextScale {
-    /// The sizes the suite already used, in their observed proportions.
-    pub const fn tokyo_night() -> Self {
-        Self {
-            xs: 9.0,
-            sm: 10.0,
-            base: 11.0,
-            md: 12.0,
-            lg: 14.0,
-            xl: 16.0,
-            xl2: 20.0,
-            xl3: 24.0,
-        }
-    }
-
-    /// Everything a size up, with the ramp opening out at the top rather than
-    /// scaling uniformly — which is what [`TypeScale::scale`] already does, and
-    /// is a different thing. Uniform scaling keeps a dense 9px tick 9/11ths of
-    /// the body size forever; this closes that gap, so the smallest text gains
-    /// proportionally more.
-    pub const fn large() -> Self {
-        Self {
-            xs: 11.0,
-            sm: 12.0,
-            base: 13.0,
-            md: 14.0,
-            lg: 16.0,
-            xl: 18.0,
-            xl2: 22.0,
-            xl3: 26.0,
-        }
-    }
-
-    pub fn get(&self, s: TextSize) -> f32 {
-        match s {
-            TextSize::Xs => self.xs,
-            TextSize::Sm => self.sm,
-            TextSize::Base => self.base,
-            TextSize::Md => self.md,
-            TextSize::Lg => self.lg,
-            TextSize::Xl => self.xl,
-            TextSize::Xl2 => self.xl2,
-            TextSize::Xl3 => self.xl3,
-        }
-    }
-}
-
-/// Which family a role renders in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Family {
-    Proportional,
-    Monospace,
-}
-
-/// The typography axis: the [`TextScale`] ramp, which role sits on which step,
-/// a global multiplier, and a family per role.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct TypeScale {
-    /// The ramp. Roles resolve through it, so a theme that opens the ramp out
-    /// moves headings and tick labels together instead of one at a time.
-    pub steps: TextScale,
-    /// Which step each role takes. Separate from the ramp because *what a
-    /// heading is worth* and *which rung a heading stands on* are different
-    /// decisions — `monospace` re-rungs the roles without touching the ramp.
-    pub micro: TextSize,
-    pub small: TextSize,
-    pub body: TextSize,
-    pub label: TextSize,
-    pub heading: TextSize,
-    pub numeric: TextSize,
-    /// Multiplies every size. The accessibility and density knob.
-    pub scale: f32,
-    /// Family for prose roles (micro/small/body/label/heading).
-    pub prose: Family,
-}
-
-impl TypeScale {
-    /// Proportional prose — the `FontStrategy::proportional` sizes.
-    pub const fn proportional() -> Self {
-        Self {
-            steps: TextScale::tokyo_night(),
-            micro: TextSize::Xs,    // 9
-            small: TextSize::Md,    // 12
-            body: TextSize::Lg,     // 14
-            label: TextSize::Lg,    // 14
-            heading: TextSize::Xl2, // 20
-            numeric: TextSize::Md,  // 12
-            scale: 1.0,
-            prose: Family::Proportional,
-        }
-    }
-
-    /// Monospace throughout — the dashboard feel, matching
-    /// `FontStrategy::monospace`.
-    ///
-    /// Monospace runs wide at the same point size, so the prose roles drop a
-    /// rung rather than the ramp shrinking: the ramp is the product's, the
-    /// rungs are this variant's.
-    pub const fn monospace() -> Self {
-        Self {
-            micro: TextSize::Xs,   // 9
-            small: TextSize::Base, // 11
-            body: TextSize::Md,    // 12
-            label: TextSize::Md,   // 12
-            heading: TextSize::Xl, // 16
-            numeric: TextSize::Md, // 12
-            prose: Family::Monospace,
-            ..Self::proportional()
-        }
-    }
-
-    /// The step a role stands on.
-    pub fn step(&self, role: TextRole) -> TextSize {
-        match role {
-            TextRole::Micro => self.micro,
-            TextRole::Small => self.small,
-            TextRole::Body => self.body,
-            TextRole::Label => self.label,
-            TextRole::Heading => self.heading,
-            TextRole::Numeric => self.numeric,
-        }
-    }
-
-    /// Point size for a ramp step, with [`Self::scale`] applied.
-    pub fn at(&self, size: TextSize) -> f32 {
-        self.steps.get(size) * self.scale
-    }
-
-    /// Point size for a role, with [`Self::scale`] applied.
-    pub fn size(&self, role: TextRole) -> f32 {
-        self.at(self.step(role))
-    }
-
-    /// The `FontId` for a role — family included, so a call site never picks one.
-    pub fn font(&self, role: TextRole) -> FontId {
-        let size = self.size(role);
-        let family = match role {
-            // Numeric is always monospace: tabular figures are the point.
-            TextRole::Numeric => Family::Monospace,
-            _ => self.prose,
-        };
-        match family {
-            Family::Proportional => FontId::proportional(size),
-            Family::Monospace => FontId::monospace(size),
-        }
+/// The egui-bound half of what used to be `TypeScale::font`. `TypeScale` itself
+/// is renderer-free now and answers [`TypeScale::size`] and
+/// [`TypeScale::family`]; turning that pair into a `FontId` is the only part
+/// that could not move.
+pub fn font_id(scale: &TypeScale, role: TextRole) -> FontId {
+    let size = scale.size(role);
+    match scale.family(role) {
+        Family::Proportional => FontId::proportional(size),
+        Family::Monospace => FontId::monospace(size),
     }
 }
 
@@ -1192,7 +937,7 @@ impl Theme {
 
     /// Shorthand for the font of a text role.
     pub fn font(&self, role: TextRole) -> FontId {
-        self.text.font(role)
+        font_id(&self.text, role)
     }
 
     /// Point size for a step of the type ramp.

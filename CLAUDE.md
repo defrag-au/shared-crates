@@ -31,26 +31,54 @@ widgets come in pairs on purpose.
 
 `theme.rs` exists because the suite once carried ~294 inline `.size(11.0)`
 literals and no way to change the type ramp, the density or the scale without
-editing every one. Two tests hold that line, in the same spirit as
-`cargo fmt --check`:
+editing every one. **The vocabulary itself lives in `ui/ui-theme`** — colour
+tokens, `Ink`, the colour science, and the type ramp (`TextSize`, `TextScale`,
+`TextRole`, `TypeScale`). Each renderer aliases it and implements `Palette`, so
+an `Ink` written on either side resolves on both. Nothing in that crate names a
+renderer; a front end supplies a `Paint` impl and gets the whole model.
 
-- **`tests/theme_tokens.rs`** — no widget may write a point size down.
-  `.size(…)` takes a resolved step: `ui.text_size(TextSize::Base)`. A config
-  struct holds `TextSize`, not `f32`, resolved in `show()` where a `Ui` finally
-  exists — `route_quote` and `pool_inspector` are the shape to copy. A
+**Never copy a palette or a ramp into a renderer crate.** That is exactly how
+the colour model came to be maintained twice, and it was measured: six colours
+byte-identical, three diverged, `success` a different hue per side, and
+relative luminance implemented four times in two precisions.
+
+Four tests hold that line, in the same spirit as `cargo fmt --check`:
+
+- **`egui-widgets/tests/theme_tokens.rs`** — no widget may write a point size
+  down. `.size(…)` takes a resolved step: `ui.text_size(TextSize::Base)`. A
+  config struct holds `TextSize`, not `f32`, resolved in `show()` where a `Ui`
+  finally exists — `route_quote` and `pool_inspector` are the shape to copy. A
   genuinely non-textual size (a pixel dimension like `ImageStack::size(96.0)`)
   opts out with a trailing `// theme-exempt: <reason>`.
   The second half of the migration — config fields still holding `f32` — is a
   **ratchet**: the count may only go down. Convert one, lower the baseline.
-- **`tests/contrast.rs`** — every chip variant stays readable in every theme.
+- **`macroquad-widgets/tests/text_sizes.rs`** — the same rule, for a renderer
+  whose size argument is positional: `p.text(s, x, y, p.size(TextSize::Sm), c)`.
+  `Painter::size` / `Painter::role` are the only ways a widget gets a number.
+  `Button::font_size` takes raw pixels and means "this glyph is sized from its
+  own geometry" — ordinary labels want `Button::text_size`.
+- **`macroquad-widgets/tests/contrast.rs`** — every preset stays readable on
+  every surface, and presets vary the accent and nothing else (driven off
+  `Token::ALL`, so a new token is covered the day it exists).
+- **`cardano-tx/tests/miniquad_linkable.rs`** — the default-feature-free build
+  reaches no wasm-bindgen, so a macroquad host can still link it. Note the
+  `--target wasm32-unknown-unknown`: a native `cargo tree` is blind to this.
 
-Clippy cannot do the first one: `disallowed_methods` matches a method PATH, not
+Clippy cannot do the first two: `disallowed_methods` matches a method PATH, not
 its arguments, so it cannot tell `.size(11.0)` from
 `.size(ui.text_size(…))` — and banning `RichText::size` outright would ban the
 blessed form too. A source scan is exact and runs in `cargo test`.
 
 The same reasoning applies to `Space`, `Radius` and `Breakpoint`: the point of
 a named step is that one place decides what it means.
+
+### Changing a ramp is a restyle, not a refactor
+
+`TextScale::canvas` is the macroquad ramp and it was **derived from the
+sources**, not chosen: the 73 sizes that crate used land on exactly eight
+values, so those are the eight. Picking a nicer-looking ramp during the
+migration would have restyled every macroquad surface under cover of a rename.
+If a ramp should move, move it as its own change, with the reason written down.
 
 ## egui traps that cost an afternoon
 

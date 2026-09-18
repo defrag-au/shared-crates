@@ -10,9 +10,10 @@
 //! [`OrderFulfilmentVm`], and the widget returns a [`FulfilmentAction`] on tap.
 
 use macroquad::prelude::*;
+use ui_theme::{TextSize, Token};
 
 use crate::painter::Painter;
-use crate::theme::{self, Theme};
+use crate::theme;
 
 /// Order lifecycle status. Mirrors `shared_types::mint::MintOrderStatus`, kept
 /// local so the widget crate carries no backend dependency.
@@ -56,11 +57,17 @@ impl OrderStatus {
         }
     }
 
-    fn color(self, t: &Theme) -> Color {
+    /// Which token this status is painted in.
+    ///
+    /// A [`Token`] rather than a resolved `Color`: what a status *means* is a
+    /// palette decision, and naming the token lets the caller resolve it
+    /// against whichever theme is active — or wash it, without knowing which
+    /// colour it started from.
+    fn token(self) -> Token {
         match self {
-            OrderStatus::Confirmed | OrderStatus::Delivered => t.accent,
-            OrderStatus::Unfulfilled | OrderStatus::Failed => t.danger,
-            _ => t.fg,
+            OrderStatus::Confirmed | OrderStatus::Delivered => Token::Accent,
+            OrderStatus::Unfulfilled | OrderStatus::Failed => Token::Error,
+            _ => Token::TextPrimary,
         }
     }
 
@@ -99,11 +106,12 @@ impl FulfilmentStatus {
         }
     }
 
-    fn color(self, t: &Theme) -> Color {
+    /// Which token this status is painted in — see [`OrderStatus::token`].
+    fn token(self) -> Token {
         match self {
-            FulfilmentStatus::Submitted => t.link,
-            FulfilmentStatus::Confirmed => t.accent,
-            FulfilmentStatus::Failed => t.danger,
+            FulfilmentStatus::Submitted => Token::AccentBlue,
+            FulfilmentStatus::Confirmed => Token::Accent,
+            FulfilmentStatus::Failed => Token::Error,
         }
     }
 }
@@ -155,26 +163,34 @@ pub fn order_fulfilment(
     mut y: f32,
     w: f32,
 ) -> FulfilmentResponse {
-    let t = &p.theme;
+    let c = &p.theme.color;
     let mut action = None;
+    let body = p.size(TextSize::Md);
 
     // ── Heartbeat: a pulsing dot for active orders, solid for terminal ──
+    let status_ink = vm.status.token().get(c);
     if vm.status.is_active() {
         let pulse = (get_time() * 2.0).sin() as f32 * 0.5 + 0.5;
         draw_circle(
             x + 6.0,
             y - 6.0,
             5.0,
-            theme::with_alpha(t.accent, 0.3 + 0.7 * pulse),
+            theme::with_alpha(c.accent, 0.3 + 0.7 * pulse),
         );
     } else {
-        draw_circle(x + 6.0, y - 6.0, 5.0, vm.status.color(t));
+        draw_circle(x + 6.0, y - 6.0, 5.0, status_ink);
     }
-    p.text(vm.status.label(), x + 22.0, y, 22.0, vm.status.color(t));
+    p.text(
+        vm.status.label(),
+        x + 22.0,
+        y,
+        p.size(TextSize::Xl3),
+        status_ink,
+    );
     if let Some(s) = vm.updated_secs_ago {
         let line = format!("updated {}", ago(s));
-        let dim = p.measure(&line, 14.0);
-        p.text(&line, x + w - dim.width, y - 2.0, 14.0, t.muted);
+        let dim = p.measure(&line, body);
+        p.text(&line, x + w - dim.width, y - 2.0, body, c.text_muted);
     }
     y += 24.0;
 
@@ -188,19 +204,19 @@ pub fn order_fulfilment(
         &format!("minted {} / {}", vm.minted, vm.quantity),
         x,
         y,
-        16.0,
-        t.fg,
+        p.size(TextSize::Xl),
+        c.text_primary,
     );
     y += 8.0;
-    p.progress(Rect::new(x, y, w, 8.0), frac, t.accent);
+    p.progress(Rect::new(x, y, w, 8.0), frac, c.accent);
     y += 22.0;
 
     // ── Payment line — DISTINCT from fulfilment (the bug fix). Label
     //    proportional, hash monospace. ──
     let paid = "paid · ";
-    p.text(paid, x, y, 14.0, t.muted);
-    let pw = p.measure(paid, 14.0).width;
-    p.mono(&short(&vm.payment_tx), x + pw, y, 14.0, t.muted);
+    p.text(paid, x, y, body, c.text_muted);
+    let pw = p.measure(paid, body).width;
+    p.mono(&short(&vm.payment_tx), x + pw, y, body, c.text_muted);
     y += 24.0;
 
     // ── Fulfilment list (the N side) ──
@@ -209,8 +225,8 @@ pub fn order_fulfilment(
         &format!("fulfilment · {n} tx{}", if n == 1 { "" } else { "s" }),
         x,
         y,
-        15.0,
-        t.fg,
+        p.size(TextSize::Lg),
+        c.text_primary,
     );
     y += 22.0;
 
@@ -220,29 +236,37 @@ pub fn order_fulfilment(
             OrderStatus::Failed => "failed — refund queued",
             _ => "waiting for first mint...",
         };
-        p.text(msg, x + 8.0, y, 14.0, t.muted);
+        p.text(msg, x + 8.0, y, body, c.text_muted);
         y += 22.0;
     } else {
+        let word_size = p.size(TextSize::Base);
         for f in &vm.fulfilments {
             let row = Rect::new(x, y - 14.0, w, 26.0);
-            draw_circle(x + 6.0, y - 5.0, 4.0, f.status.color(t));
+            let ink = f.status.token().get(c);
+            draw_circle(x + 6.0, y - 5.0, 4.0, ink);
             // Count + hash are fixed-width data → monospace.
             p.mono(
                 &format!("{}x  {}", f.minted, short(&f.tx_hash)),
                 x + 18.0,
                 y,
-                14.0,
-                t.link,
+                body,
+                c.accent_blue,
             );
             let word = f.status.word();
-            let dim = p.measure(word, 13.0);
-            p.text(word, x + w - dim.width, y - 1.0, 13.0, f.status.color(t));
+            let dim = p.measure(word, word_size);
+            p.text(word, x + w - dim.width, y - 1.0, word_size, ink);
             if p.tapped(row) {
                 action = Some(FulfilmentAction::OpenTx(f.tx_hash.clone()));
             }
             y += 26.0;
         }
-        p.text("tap a tx to view on-chain", x + 8.0, y, 12.0, t.muted);
+        p.text(
+            "tap a tx to view on-chain",
+            x + 8.0,
+            y,
+            p.size(TextSize::Sm),
+            c.text_muted,
+        );
         y += 18.0;
     }
 

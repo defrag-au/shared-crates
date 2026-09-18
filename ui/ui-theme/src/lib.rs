@@ -37,6 +37,11 @@
 //!   break.
 //! - **[`ink`]** — [`Ink`], the override model, and the [`Palette`] trait a
 //!   renderer's theme implements so `ink.resolve(&theme)` works unchanged.
+//! - **[`type_scale`]** — the typography axis: [`TextRole`] (what text *is*),
+//!   [`TextSize`] (how big), the [`TextScale`] ramp they resolve through, and
+//!   [`TypeScale`]. Renderer-free by the same split as colour: it answers "what
+//!   point size, in which family", and each front end builds its own font
+//!   handle from that.
 //! - **`egui` / `macroquad` features** — [`Paint`] and `From` impls for
 //!   `egui::Color32` and `macroquad::color::Color`. They live here because the
 //!   orphan rule forbids them anywhere else: to a widget crate, both the trait
@@ -72,6 +77,7 @@ pub mod color;
 pub mod encoding;
 pub mod ink;
 pub mod tokens;
+pub mod type_scale;
 
 pub use color::{
     Dichromacy, Paint, Srgb, contrast_ratio, delta_e, from_oklab, lab, legible_on, mix, oklab,
@@ -80,3 +86,4 @@ pub use color::{
 pub use encoding::{Diverging, IdentityEnvelope, Sequential, Series, SeriesPalette};
 pub use ink::{Ink, Palette};
 pub use tokens::{ColorTokens, Token};
+pub use type_scale::{Family, TextRole, TextScale, TextSize, TypeScale};

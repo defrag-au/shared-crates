@@ -20,6 +20,7 @@
 //! which is what lets the same picker back a solo squad and a shared one.
 
 use macroquad::prelude::*;
+use ui_theme::TextSize;
 
 use crate::button::{Button, ButtonVariant};
 use crate::gesture::SwipeDir;
@@ -271,19 +272,28 @@ pub fn squad_picker(
     // Everything is inert while a commit is in flight, and after it lands.
     let live = vm.editable && vm.commit == SquadCommit::Idle;
 
+    // The five sizes this widget uses, resolved once. Named for what they are
+    // FOR rather than for their rung, so a ramp change moves them together and
+    // a reader can tell at the call site which tier they are looking at.
+    let heading = p.size(TextSize::Xl);
+    let name = p.size(TextSize::Md);
+    let caption = p.size(TextSize::Base);
+    let meta = p.size(TextSize::Sm);
+    let mark = p.size(TextSize::Xs);
+
     // ── slots ───────────────────────────────────────────────────────────
-    p.text_top("Squad", x, y, 16.0, t.fg);
+    p.text_top("Squad", x, y, heading, t.color.text_primary);
     let count = format!("{} / {}", vm.chosen.len(), vm.max_slots);
-    let cw = p.measure(&count, 16.0).width;
+    let cw = p.measure(&count, heading).width;
     p.mono(
         &count,
         x + w - cw,
-        p.top_baseline(y, 16.0),
-        16.0,
+        p.top_baseline(y, heading),
+        heading,
         if vm.chosen.len() == vm.max_slots {
-            t.accent
+            t.color.accent
         } else {
-            t.muted
+            t.color.text_muted
         },
     );
     y += 24.0;
@@ -295,12 +305,12 @@ pub fn squad_picker(
             Some(c) => {
                 let hit = p.interact(r, live);
                 let fill = if hit.hover {
-                    with_alpha(t.danger, 0.14)
+                    with_alpha(t.color.error, 0.14)
                 } else {
-                    with_alpha(t.accent, 0.12)
+                    with_alpha(t.color.accent, 0.12)
                 };
                 draw_rounded_rect(r.x, r.y, r.w, r.h, 8.0, fill);
-                draw_rounded_rect(r.x, r.y, r.w, 2.0, 1.0, t.accent);
+                draw_rounded_rect(r.x, r.y, r.w, 2.0, 1.0, t.color.accent);
 
                 // Art carries the slot: a filled squad should be recognisable
                 // at a glance as *these four*, which faces do and names don't.
@@ -317,19 +327,23 @@ pub fn squad_picker(
                 // squad, which is the axis a mission actually tests. On hover
                 // it becomes the affordance instead, only while a tap would
                 // do something.
-                let caption = if hit.hover {
+                let role = if hit.hover {
                     "tap to remove"
                 } else {
                     c.role.as_deref().unwrap_or("no role")
                 };
-                let cap = clip(p, caption, r.w - 12.0, 13.0);
-                let cw = p.measure(&cap, 13.0).width;
+                let cap = clip(p, role, r.w - 12.0, caption);
+                let cw = p.measure(&cap, caption).width;
                 p.text_top(
                     &cap,
                     r.x + (r.w - cw) / 2.0,
                     r.y + r.h - SLOT_CAPTION_H + 4.0,
-                    13.0,
-                    if hit.hover { t.danger } else { t.accent },
+                    caption,
+                    if hit.hover {
+                        t.color.error
+                    } else {
+                        t.color.accent
+                    },
                 );
 
                 // Slot number and power stay as small corner marks — present
@@ -337,17 +351,17 @@ pub fn squad_picker(
                 p.mono(
                     &format!("{}", slot + 1),
                     r.x + 7.0,
-                    p.top_baseline(r.y + 6.0, 11.0),
-                    11.0,
-                    with_alpha(t.accent, 0.8),
+                    p.top_baseline(r.y + 6.0, mark),
+                    mark,
+                    with_alpha(t.color.accent, 0.8),
                 );
-                let pw = p.measure(&format!("{}", c.power), 11.0).width;
+                let pw = p.measure(&format!("{}", c.power), mark).width;
                 p.mono(
                     &format!("{}", c.power),
                     r.x + r.w - 7.0 - pw,
-                    p.top_baseline(r.y + 6.0, 11.0),
-                    11.0,
-                    with_alpha(t.muted, 0.9),
+                    p.top_baseline(r.y + 6.0, mark),
+                    mark,
+                    with_alpha(t.color.text_muted, 0.9),
                 );
 
                 if hit.clicked {
@@ -355,22 +369,29 @@ pub fn squad_picker(
                 }
             }
             None => {
-                draw_rounded_rect(r.x, r.y, r.w, r.h, 8.0, with_alpha(t.panel, 0.6));
+                draw_rounded_rect(
+                    r.x,
+                    r.y,
+                    r.w,
+                    r.h,
+                    8.0,
+                    with_alpha(t.color.bg_secondary, 0.6),
+                );
                 p.mono(
                     &format!("{}", slot + 1),
                     r.x + 7.0,
-                    p.top_baseline(r.y + 6.0, 11.0),
-                    11.0,
-                    with_alpha(t.muted, 0.5),
+                    p.top_baseline(r.y + 6.0, mark),
+                    mark,
+                    with_alpha(t.color.text_muted, 0.5),
                 );
                 let label = "empty";
-                let lw = p.measure(label, 14.0).width;
+                let lw = p.measure(label, name).width;
                 p.text(
                     label,
                     r.x + (r.w - lw) / 2.0,
-                    p.centre_baseline(r.y, r.h - SLOT_CAPTION_H, 14.0),
-                    14.0,
-                    with_alpha(t.muted, 0.7),
+                    p.centre_baseline(r.y, r.h - SLOT_CAPTION_H, name),
+                    name,
+                    with_alpha(t.color.text_muted, 0.7),
                 );
             }
         }
@@ -384,7 +405,7 @@ pub fn squad_picker(
     } else {
         format!("power {} · {}", vm.power(), roles.join(", "))
     };
-    p.text_top(&summary, x, y, 13.0, t.muted);
+    p.text_top(&summary, x, y, caption, t.color.text_muted);
     y += 26.0;
 
     // ── roster ──────────────────────────────────────────────────────────
@@ -392,8 +413,8 @@ pub fn squad_picker(
         &format!("Roster · {}", vm.candidates.len()),
         x,
         y,
-        16.0,
-        t.fg,
+        heading,
+        t.color.text_primary,
     );
 
     let pages = vm.pages(w);
@@ -410,7 +431,7 @@ pub fn squad_picker(
         // failed glyph would degrade to an empty *button* rather than to air.
         let bw = 34.0;
         let label = format!("{} / {}", vm.page + 1, pages);
-        let lw = p.measure(&label, 14.0).width;
+        let lw = p.measure(&label, name).width;
         let next_x = x + w - bw;
         let label_x = next_x - GAP - lw;
         let prev_x = label_x - GAP - bw;
@@ -422,7 +443,13 @@ pub fn squad_picker(
         {
             action = Some(SquadPickerAction::Page(vm.page.saturating_sub(1)));
         }
-        p.mono(&label, label_x, p.top_baseline(y, 14.0), 14.0, t.muted);
+        p.mono(
+            &label,
+            label_x,
+            p.top_baseline(y, name),
+            name,
+            t.color.text_muted,
+        );
         if Button::new(">")
             .variant(ButtonVariant::Tonal)
             .enabled(live && vm.page + 1 < pages)
@@ -438,8 +465,8 @@ pub fn squad_picker(
             "Nothing eligible — link a wallet holding this collection.",
             x,
             y,
-            14.0,
-            t.muted,
+            name,
+            t.color.text_muted,
         );
         y += 30.0;
     } else {
@@ -469,19 +496,23 @@ pub fn squad_picker(
             let hit = p.interact(r, enabled);
 
             let fill = if picked {
-                with_alpha(t.accent, 0.16)
+                with_alpha(t.color.accent, 0.16)
             } else if hit.hover {
-                with_alpha(t.fg, 0.08)
+                with_alpha(t.color.text_primary, 0.08)
             } else {
-                with_alpha(t.panel, 0.6)
+                with_alpha(t.color.bg_secondary, 0.6)
             };
             draw_rounded_rect(r.x, r.y, r.w, r.h, 8.0, fill);
             if picked {
-                draw_rounded_rect(r.x, r.y, 3.0, r.h, 1.5, t.accent);
+                draw_rounded_rect(r.x, r.y, 3.0, r.h, 1.5, t.color.accent);
             }
 
             let dim = blocked || (full && !picked);
-            let ink = if dim { with_alpha(t.fg, 0.45) } else { t.fg };
+            let ink = if dim {
+                with_alpha(t.color.text_primary, 0.45)
+            } else {
+                t.color.text_primary
+            };
 
             // Thumbnail left, text right — the art is what a player scans for,
             // and a left rail of images reads far faster than a list of names.
@@ -490,23 +521,23 @@ pub fn squad_picker(
             let tx = r.x + pad + THUMB + 10.0;
             let text_w = r.w - (tx - r.x) - 10.0;
 
-            let pw = p.measure(&format!("{}", c.power), 12.0).width;
+            let pw = p.measure(&format!("{}", c.power), meta).width;
             p.text_top(
-                &fit_name(p, &c.name, text_w - pw - 6.0, 14.0),
+                &fit_name(p, &c.name, text_w - pw - 6.0, name),
                 tx,
                 r.y + 12.0,
-                14.0,
+                name,
                 ink,
             );
             p.mono(
                 &format!("{}", c.power),
                 r.x + r.w - 10.0 - pw,
-                p.top_baseline(r.y + 12.0, 12.0),
-                12.0,
+                p.top_baseline(r.y + 12.0, meta),
+                meta,
                 if picked {
-                    t.accent
+                    t.color.accent
                 } else {
-                    with_alpha(t.muted, 0.9)
+                    with_alpha(t.color.text_muted, 0.9)
                 },
             );
 
@@ -516,14 +547,14 @@ pub fn squad_picker(
                 (None, false) => c.role.clone().unwrap_or_else(|| "no role".to_string()),
             };
             p.text_top(
-                &clip(p, &sub, text_w, 12.0),
+                &clip(p, &sub, text_w, meta),
                 tx,
                 r.y + 34.0,
-                12.0,
+                meta,
                 match (&c.unavailable, picked) {
-                    (Some(_), _) => t.warn,
-                    (None, true) => t.accent,
-                    (None, false) => with_alpha(t.muted, if dim { 0.6 } else { 1.0 }),
+                    (Some(_), _) => t.color.warning,
+                    (None, true) => t.color.accent,
+                    (None, false) => with_alpha(t.color.text_muted, if dim { 0.6 } else { 1.0 }),
                 },
             );
 
@@ -541,22 +572,27 @@ pub fn squad_picker(
 
     // ── commit ──────────────────────────────────────────────────────────
     let (status, colour) = match &vm.commit {
-        _ if !vm.editable => ("Squad is locked for this run.".to_string(), t.muted),
-        SquadCommit::Idle if vm.chosen.is_empty() => ("Pick at least one.".to_string(), t.muted),
-        SquadCommit::Idle => (String::new(), t.muted),
-        SquadCommit::Sending => ("Deploying…".to_string(), t.muted),
-        SquadCommit::Done(msg) => (msg.clone(), t.accent),
-        SquadCommit::Failed(why) => (format!("Failed: {why}"), t.danger),
+        _ if !vm.editable => (
+            "Squad is locked for this run.".to_string(),
+            t.color.text_muted,
+        ),
+        SquadCommit::Idle if vm.chosen.is_empty() => {
+            ("Pick at least one.".to_string(), t.color.text_muted)
+        }
+        SquadCommit::Idle => (String::new(), t.color.text_muted),
+        SquadCommit::Sending => ("Deploying…".to_string(), t.color.text_muted),
+        SquadCommit::Done(msg) => (msg.clone(), t.color.accent),
+        SquadCommit::Failed(why) => (format!("Failed: {why}"), t.color.error),
     };
 
     let btn_w = 150.0;
     let btn = Rect::new(x + w - btn_w, y, btn_w, 40.0);
     if !status.is_empty() {
         p.text_top(
-            &clip(p, &status, w - btn_w - GAP * 2.0, 13.0),
+            &clip(p, &status, w - btn_w - GAP * 2.0, caption),
             x,
             y + 13.0,
-            13.0,
+            caption,
             colour,
         );
     }
@@ -602,7 +638,7 @@ fn draw_art(p: &Painter, r: Rect, c: &SquadCandidate, dim: bool) {
             );
         }
         None => {
-            draw_rounded_rect(r.x, r.y, r.w, r.h, 6.0, with_alpha(t.accent, 0.10));
+            draw_rounded_rect(r.x, r.y, r.w, r.h, 6.0, with_alpha(t.color.accent, 0.10));
             let label = serial_of(&c.name);
             let size = (r.w * 0.30).clamp(11.0, 17.0);
             let lw = p.measure(label, size).width;
@@ -611,7 +647,7 @@ fn draw_art(p: &Painter, r: Rect, c: &SquadCandidate, dim: bool) {
                 r.x + (r.w - lw) / 2.0,
                 p.centre_baseline(r.y, r.h, size),
                 size,
-                with_alpha(t.muted, if dim { 0.5 } else { 0.9 }),
+                with_alpha(t.color.text_muted, if dim { 0.5 } else { 0.9 }),
             );
         }
     }

@@ -18,6 +18,7 @@
 //!   so marking one would imply a hierarchy that doesn't exist.
 
 use macroquad::prelude::*;
+use ui_theme::TextSize;
 
 use crate::button::{Button, ButtonVariant};
 use crate::painter::{Painter, draw_rounded_rect, with_alpha};
@@ -106,7 +107,7 @@ pub fn wallet_list(
     mut y: f32,
     w: f32,
 ) -> WalletListResponse {
-    let t = p.theme;
+    let c = p.theme.color;
     let mut action = None;
 
     match &vm.state {
@@ -116,21 +117,33 @@ pub fn wallet_list(
                 x + 6.0,
                 y + 9.0,
                 5.0,
-                with_alpha(t.accent, 0.3 + 0.7 * pulse),
+                with_alpha(c.accent, 0.3 + 0.7 * pulse),
             );
-            p.text_top("loading wallets...", x + 22.0, y, 16.0, t.muted);
+            p.text_top(
+                "loading wallets...",
+                x + 22.0,
+                y,
+                p.size(TextSize::Xl),
+                c.text_muted,
+            );
             y += 30.0;
         }
 
         WalletListState::Empty => {
-            p.text_top("No wallets linked yet", x, y, 16.0, t.fg);
+            p.text_top(
+                "No wallets linked yet",
+                x,
+                y,
+                p.size(TextSize::Xl),
+                c.text_primary,
+            );
             y += 24.0;
             p.text_top(
                 "Link one to prove ownership of your assets.",
                 x,
                 y,
-                13.0,
-                t.muted,
+                p.size(TextSize::Base),
+                c.text_muted,
             );
             y += 28.0;
             if Button::new("Link a wallet")
@@ -143,7 +156,7 @@ pub fn wallet_list(
         }
 
         WalletListState::Ready(rows) => {
-            p.text_top("Linked wallets", x, y, 16.0, t.fg);
+            p.text_top("Linked wallets", x, y, p.size(TextSize::Xl), c.text_primary);
             y += 28.0;
 
             let last = rows.len().saturating_sub(1);
@@ -156,27 +169,35 @@ pub fn wallet_list(
                     rect.w,
                     rect.h,
                     10.0,
-                    with_alpha(t.accent, if enabled { 0.12 } else { 0.06 }),
+                    with_alpha(c.accent, if enabled { 0.12 } else { 0.06 }),
                 );
 
                 // Ordinal, so the user's arrangement is legible rather than
                 // implied purely by vertical position.
+                let ordinal_size = p.size(TextSize::Base);
                 p.mono(
                     &format!("{}", i + 1),
                     x + 12.0,
-                    p.centre_baseline(y, ROW_H, 13.0),
-                    13.0,
-                    t.muted,
+                    p.centre_baseline(y, ROW_H, ordinal_size),
+                    ordinal_size,
+                    c.text_muted,
                 );
 
-                let label_colour = if enabled { t.accent } else { t.muted };
-                p.text_top(&row.display(), x + 38.0, y + 10.0, 16.0, label_colour);
+                let label_colour = if enabled { c.accent } else { c.text_muted };
+                p.text_top(
+                    &row.display(),
+                    x + 38.0,
+                    y + 10.0,
+                    p.size(TextSize::Xl),
+                    label_colour,
+                );
+                let addr_size = p.size(TextSize::Sm);
                 p.mono(
                     &short(&row.stake_address),
                     x + 38.0,
-                    p.top_baseline(y + 32.0, 12.0),
-                    12.0,
-                    t.muted,
+                    p.top_baseline(y + 32.0, addr_size),
+                    addr_size,
+                    c.text_muted,
                 );
 
                 // Reorder controls. The ends are disabled rather than hidden so
@@ -184,7 +205,7 @@ pub fn wallet_list(
                 let ctl_x = x + w - 150.0;
                 if Button::new("↑")
                     .variant(ButtonVariant::Ghost)
-                    .font_size(14.0)
+                    .text_size(TextSize::Md)
                     .enabled(enabled && i > 0)
                     .show(p, Rect::new(ctl_x, y + 12.0, 32.0, 32.0))
                 {
@@ -192,7 +213,7 @@ pub fn wallet_list(
                 }
                 if Button::new("↓")
                     .variant(ButtonVariant::Ghost)
-                    .font_size(14.0)
+                    .text_size(TextSize::Md)
                     .enabled(enabled && i < last)
                     .show(p, Rect::new(ctl_x + 36.0, y + 12.0, 32.0, 32.0))
                 {
@@ -200,7 +221,7 @@ pub fn wallet_list(
                 }
                 if Button::new("unlink")
                     .variant(ButtonVariant::Ghost)
-                    .font_size(13.0)
+                    .text_size(TextSize::Base)
                     .enabled(enabled)
                     .show(p, Rect::new(ctl_x + 74.0, y + 12.0, 68.0, 32.0))
                 {
@@ -221,7 +242,7 @@ pub fn wallet_list(
         }
 
         WalletListState::Error(msg) => {
-            p.text_top(msg, x, y, 14.0, t.danger);
+            p.text_top(msg, x, y, p.size(TextSize::Md), c.error);
             y += 26.0;
             if Button::new("Retry")
                 .variant(ButtonVariant::Tonal)

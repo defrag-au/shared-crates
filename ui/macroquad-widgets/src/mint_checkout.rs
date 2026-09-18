@@ -4,6 +4,7 @@
 //! heartbeat). Mirrors the egui `MintCheckout` (VM in → actions out).
 
 use macroquad::prelude::*;
+use ui_theme::TextSize;
 
 use crate::button::Button;
 use crate::painter::Painter;
@@ -49,14 +50,20 @@ pub fn mint_checkout(
     let mut action = None;
 
     if let Some(phase) = &vm.phase_label {
-        p.text_top(&phase.to_uppercase(), x, y, 12.0, p.theme.link);
+        p.text_top(
+            &phase.to_uppercase(),
+            x,
+            y,
+            p.size(TextSize::Sm),
+            p.theme.color.accent_blue,
+        );
         y += 20.0;
     }
 
     let max = match &vm.eligibility {
         Eligibility::Eligible { max_per_wallet } => (*max_per_wallet).max(1),
         Eligibility::Ineligible { reason } => {
-            p.text_top(reason, x, y, 14.0, p.theme.warn);
+            p.text_top(reason, x, y, p.size(TextSize::Md), p.theme.color.warning);
             y += 24.0;
             return CheckoutResponse { bottom: y, action };
         }
@@ -64,7 +71,13 @@ pub fn mint_checkout(
 
     let busy = matches!(vm.state, CheckoutState::Working(_));
 
-    p.text_top("quantity", x, y, 13.0, p.theme.muted);
+    p.text_top(
+        "quantity",
+        x,
+        y,
+        p.size(TextSize::Base),
+        p.theme.color.text_muted,
+    );
     y += 24.0;
     let svm = QuantityStepperVm {
         qty: vm.qty,
@@ -87,8 +100,8 @@ pub fn mint_checkout(
         ),
         x,
         y,
-        14.0,
-        p.theme.fg,
+        p.size(TextSize::Md),
+        p.theme.color.text_primary,
     );
     y += 28.0;
 
@@ -99,14 +112,20 @@ pub fn mint_checkout(
                 x + 6.0,
                 y + 9.0,
                 5.0,
-                theme::with_alpha(p.theme.link, 0.3 + 0.7 * pulse),
+                theme::with_alpha(p.theme.color.accent_blue, 0.3 + 0.7 * pulse),
             );
-            p.text_top(msg, x + 22.0, y, 15.0, p.theme.link);
+            p.text_top(
+                msg,
+                x + 22.0,
+                y,
+                p.size(TextSize::Lg),
+                p.theme.color.accent_blue,
+            );
             y += 30.0;
         }
         CheckoutState::Idle => {
             if Button::new(&format!("Mint {} for {}", vm.qty, format_ada(total)))
-                .font_size(17.0)
+                .text_size(TextSize::Xl2)
                 .show(p, Rect::new(x, y, w, 48.0))
             {
                 action = Some(CheckoutAction::Mint);

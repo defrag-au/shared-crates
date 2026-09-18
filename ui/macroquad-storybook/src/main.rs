@@ -22,6 +22,7 @@ use macroquad_widgets::{
     WalletListVm, WalletRow, WalletState, block_pulse, block_train, mint_checkout,
     order_fulfilment, quantity_stepper, squad_picker, theme, wallet_connect, wallet_list,
 };
+use ui_theme::{TextSize, Token};
 
 const SIDEBAR_W: f32 = 210.0;
 const SIM_INTERVAL: f64 = 1.2;
@@ -640,7 +641,7 @@ fn button_gallery(p: &Painter, x: f32, mut y: f32, _w: f32) -> Option<String> {
         ("tonal", ButtonVariant::Tonal),
         ("ghost", ButtonVariant::Ghost),
     ] {
-        p.text(name, x, y, 13.0, p.theme.muted);
+        p.text(name, x, y, 13.0, p.theme.color.text_muted);
         y += 10.0;
         if Button::new("Mint")
             .variant(variant)
@@ -655,13 +656,15 @@ fn button_gallery(p: &Painter, x: f32, mut y: f32, _w: f32) -> Option<String> {
         y += bh + 14.0;
     }
 
-    p.text("accents", x, y, 13.0, p.theme.muted);
+    p.text("accents", x, y, 13.0, p.theme.color.text_muted);
     y += 10.0;
     let mut bx = x;
+    // Tokens, not resolved colours: `Button::accent` takes `impl Into<Ink>`, so
+    // the story names the palette entry and the theme decides what it is worth.
     for (name, accent) in [
-        ("accent", p.theme.accent),
-        ("link", p.theme.link),
-        ("danger", p.theme.danger),
+        ("accent", Token::Accent),
+        ("accent_blue", Token::AccentBlue),
+        ("error", Token::Error),
     ] {
         if Button::new("tap")
             .accent(accent)
@@ -677,7 +680,7 @@ fn button_gallery(p: &Painter, x: f32, mut y: f32, _w: f32) -> Option<String> {
         x,
         y,
         12.0,
-        p.theme.muted,
+        p.theme.color.text_muted,
     );
     clicked
 }
@@ -742,20 +745,26 @@ impl Storybook {
     }
 
     fn draw_sidebar(&mut self, p: &Painter) {
-        draw_rectangle(0.0, 0.0, SIDEBAR_W, screen_height(), p.theme.panel);
+        draw_rectangle(
+            0.0,
+            0.0,
+            SIDEBAR_W,
+            screen_height(),
+            p.theme.color.bg_secondary,
+        );
         draw_line(
             SIDEBAR_W,
             0.0,
             SIDEBAR_W,
             screen_height(),
             1.0,
-            p.theme.track,
+            p.theme.color.bg_highlight,
         );
         let (mx, my) = mouse_position();
         let mouse = vec2(mx, my);
 
         let mut y = 40.0;
-        p.text("STORYBOOK", 16.0, y, 16.0, p.theme.accent);
+        p.text("STORYBOOK", 16.0, y, 16.0, p.theme.color.accent);
         y += 30.0;
 
         let mut last_cat = "";
@@ -764,7 +773,7 @@ impl Storybook {
             if s.category != last_cat {
                 last_cat = s.category;
                 y += 6.0;
-                p.text(s.category, 16.0, y, 11.0, p.theme.muted);
+                p.text(s.category, 16.0, y, 11.0, p.theme.color.text_muted);
                 y += 18.0;
             }
             let row = Rect::new(6.0, y - 13.0, SIDEBAR_W - 12.0, 24.0);
@@ -775,16 +784,16 @@ impl Storybook {
                     row.y,
                     row.w,
                     row.h,
-                    theme::with_alpha(p.theme.accent, 0.16),
+                    theme::with_alpha(p.theme.color.accent, 0.16),
                 );
-                draw_rectangle(row.x, row.y, 3.0, row.h, p.theme.accent);
+                draw_rectangle(row.x, row.y, 3.0, row.h, p.theme.color.accent);
             } else if row.contains(mouse) {
                 draw_rectangle(
                     row.x,
                     row.y,
                     row.w,
                     row.h,
-                    theme::with_alpha(p.theme.fg, 0.05),
+                    theme::with_alpha(p.theme.color.text_primary, 0.05),
                 );
             }
             let label = format!("{}. {}", i + 1, s.name);
@@ -794,7 +803,11 @@ impl Storybook {
                 18.0,
                 baseline,
                 13.0,
-                if selected { p.theme.accent } else { p.theme.fg },
+                if selected {
+                    p.theme.color.accent
+                } else {
+                    p.theme.color.text_primary
+                },
             );
             if p.tapped(row) {
                 clicked = Some(i);
@@ -820,7 +833,7 @@ impl Storybook {
             x0,
             y,
             19.0,
-            p.theme.fg,
+            p.theme.color.text_primary,
         );
         y += 20.0;
         p.text(
@@ -828,7 +841,7 @@ impl Storybook {
             x0,
             y,
             12.0,
-            p.theme.muted,
+            p.theme.color.text_muted,
         );
         y += 30.0;
 
@@ -952,7 +965,7 @@ impl Storybook {
                     x,
                     p.top_baseline(y + 30.0, 12.0),
                     12.0,
-                    p.theme.muted,
+                    p.theme.color.text_muted,
                 );
                 let full =
                     BlockPulseVm::new(&story.sim.heartbeat, now_ms).detail(PulseDetail::Full);
@@ -962,7 +975,7 @@ impl Storybook {
                     x,
                     p.top_baseline(y + 92.0, 12.0),
                     12.0,
-                    p.theme.muted,
+                    p.theme.color.text_muted,
                 );
                 y + 112.0
             }
@@ -983,7 +996,7 @@ impl Storybook {
             };
             if Button::new(label)
                 .variant(variant)
-                .font_size(14.0)
+                .text_size(TextSize::Md)
                 .show(p, Rect::new(bx, by, bw, 28.0))
             {
                 chosen = Some(s);
@@ -1004,7 +1017,7 @@ impl Storybook {
             };
             if Button::new(&label)
                 .variant(variant)
-                .font_size(14.0)
+                .text_size(TextSize::Md)
                 .show(p, Rect::new(bx, by, 56.0, 28.0))
             {
                 speed = Some(mult);
@@ -1013,11 +1026,11 @@ impl Storybook {
         }
         let ride = Button::new("+rider")
             .variant(ButtonVariant::Tonal)
-            .font_size(14.0)
+            .text_size(TextSize::Md)
             .show(p, Rect::new(bx + 16.0, by, 84.0, 28.0));
         let clear = Button::new("clear")
             .variant(ButtonVariant::Ghost)
-            .font_size(14.0)
+            .text_size(TextSize::Md)
             .show(p, Rect::new(bx + 108.0, by, 76.0, 28.0));
         by += 34.0;
         p.text(
@@ -1025,7 +1038,7 @@ impl Storybook {
             x,
             p.top_baseline(by, 12.0),
             12.0,
-            p.theme.muted,
+            p.theme.color.text_muted,
         );
 
         if let Some(s) = chosen {
@@ -1049,7 +1062,7 @@ impl Storybook {
 
     fn echo(&self, p: &Painter, x: f32) {
         if let Some(a) = &self.last_action {
-            p.text(a, x, screen_height() - 32.0, 13.0, p.theme.accent);
+            p.text(a, x, screen_height() - 32.0, 13.0, p.theme.color.accent);
         }
     }
 
@@ -1074,7 +1087,7 @@ impl Storybook {
             x,
             y + 52.0,
             13.0,
-            p.theme.muted,
+            p.theme.color.text_muted,
         );
     }
 
@@ -1144,7 +1157,7 @@ impl Storybook {
             self.last_action = Some(format!("action: OpenTx({h})"));
         }
         if let Some(a) = &self.last_action {
-            p.mono(a, x0, bottom + 18.0, 13.0, p.theme.accent);
+            p.mono(a, x0, bottom + 18.0, 13.0, p.theme.color.accent);
         }
     }
 
@@ -1157,7 +1170,7 @@ impl Storybook {
             ("confirm", Knob::Confirm),
             ("reset", Knob::Reset),
         ];
-        p.text("knobs", x, y, 13.0, p.theme.muted);
+        p.text("knobs", x, y, 13.0, p.theme.color.text_muted);
         let (bw, bh, gap) = (92.0, 30.0, 8.0);
         let mut bx = x;
         let mut by = y + 8.0;
@@ -1169,7 +1182,7 @@ impl Storybook {
             }
             if Button::new(label)
                 .variant(ButtonVariant::Tonal)
-                .font_size(15.0)
+                .text_size(TextSize::Lg)
                 .show(p, Rect::new(bx, by, bw, bh))
             {
                 acts.push(knob);
@@ -1210,22 +1223,22 @@ impl Storybook {
 
     fn draw_sim_controls(&mut self, p: &Painter, sel: usize, x: f32, y: f32) -> f32 {
         let paused = matches!(&self.stories[sel].body, Body::Fulfilment(f) if f.paused);
-        p.text("simulate", x, y, 13.0, p.theme.muted);
+        p.text("simulate", x, y, 13.0, p.theme.color.text_muted);
         let by = y + 8.0;
         let reset = Button::new("reset")
             .variant(ButtonVariant::Tonal)
-            .font_size(15.0)
+            .text_size(TextSize::Lg)
             .show(p, Rect::new(x, by, 88.0, 30.0));
         let toggle = Button::new(if paused { "play" } else { "pause" })
             .variant(ButtonVariant::Tonal)
-            .font_size(15.0)
+            .text_size(TextSize::Lg)
             .show(p, Rect::new(x + 96.0, by, 88.0, 30.0));
         p.text(
             "ticks minted up, lands txs, then confirms",
             x,
             by + 46.0,
             12.0,
-            p.theme.muted,
+            p.theme.color.text_muted,
         );
         if reset {
             self.reset_sim(sel);
@@ -1375,7 +1388,7 @@ async fn main() {
             t
         });
 
-        clear_background(theme.bg);
+        clear_background(theme.color.bg_primary);
         book.frame(&p);
 
         if let (Some(path), Some(target)) = (shot, target) {

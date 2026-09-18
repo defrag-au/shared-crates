@@ -8,6 +8,7 @@
 //! (e.g. SVG icons we can't rasterise yet fall back cleanly).
 
 use macroquad::prelude::*;
+use ui_theme::TextSize;
 
 use crate::button::{Button, ButtonVariant};
 use crate::painter::{Painter, draw_rounded_rect, with_alpha};
@@ -66,19 +67,25 @@ pub fn wallet_connect(
     mut y: f32,
     w: f32,
 ) -> WalletResponse {
-    let t = p.theme;
+    let c = p.theme.color;
     let mut action = None;
     match &vm.state {
         WalletState::Disconnected(items) => {
-            p.text_top("Connect a wallet", x, y, 16.0, t.fg);
+            p.text_top(
+                "Connect a wallet",
+                x,
+                y,
+                p.size(TextSize::Xl),
+                c.text_primary,
+            );
             y += 28.0;
             if items.is_empty() {
                 p.text_top(
                     "No Cardano wallet detected — open in your wallet's dApp browser.",
                     x,
                     y,
-                    13.0,
-                    t.muted,
+                    p.size(TextSize::Base),
+                    c.text_muted,
                 );
                 y += 22.0;
             } else {
@@ -86,16 +93,17 @@ pub fn wallet_connect(
                     let row = Rect::new(x, y, w, 48.0);
                     let hit = p.interact(row, true);
                     let fill = if hit.pressed {
-                        with_alpha(t.accent, 0.30)
+                        with_alpha(c.accent, 0.30)
                     } else if hit.hover {
-                        with_alpha(t.accent, 0.20)
+                        with_alpha(c.accent, 0.20)
                     } else {
-                        with_alpha(t.accent, 0.12)
+                        with_alpha(c.accent, 0.12)
                     };
                     draw_rounded_rect(row.x, row.y, row.w, row.h, 10.0, fill);
                     draw_avatar(p, x + 8.0, y + 8.0, 32.0, it);
-                    let baseline = p.centre_baseline(y, 48.0, 16.0);
-                    p.text(&it.name, x + 52.0, baseline, 16.0, t.accent);
+                    let name_size = p.size(TextSize::Xl);
+                    let baseline = p.centre_baseline(y, 48.0, name_size);
+                    p.text(&it.name, x + 52.0, baseline, name_size, c.accent);
                     if hit.clicked {
                         action = Some(WalletAction::Connect(it.key.clone()));
                     }
@@ -109,33 +117,40 @@ pub fn wallet_connect(
                 x + 6.0,
                 y + 9.0,
                 5.0,
-                with_alpha(t.accent, 0.3 + 0.7 * pulse),
+                with_alpha(c.accent, 0.3 + 0.7 * pulse),
             );
-            p.text_top("connecting...", x + 22.0, y, 16.0, t.fg);
+            p.text_top(
+                "connecting...",
+                x + 22.0,
+                y,
+                p.size(TextSize::Xl),
+                c.text_primary,
+            );
             y += 30.0;
         }
         WalletState::Connected { name, address } => {
-            draw_circle(x + 6.0, y + 9.0, 5.0, t.accent);
-            p.text_top(name, x + 22.0, y, 16.0, t.fg);
+            draw_circle(x + 6.0, y + 9.0, 5.0, c.accent);
+            p.text_top(name, x + 22.0, y, p.size(TextSize::Xl), c.text_primary);
             if Button::new("disconnect")
                 .variant(ButtonVariant::Ghost)
-                .font_size(14.0)
+                .text_size(TextSize::Md)
                 .show(p, Rect::new(x + w - 118.0, y - 4.0, 118.0, 30.0))
             {
                 action = Some(WalletAction::Disconnect);
             }
             y += 26.0;
+            let addr_size = p.size(TextSize::Base);
             p.mono(
                 &short(address),
                 x + 22.0,
-                p.top_baseline(y, 13.0),
-                13.0,
-                t.muted,
+                p.top_baseline(y, addr_size),
+                addr_size,
+                c.text_muted,
             );
             y += 22.0;
         }
         WalletState::Error(msg) => {
-            p.text_top(msg, x, y, 14.0, t.danger);
+            p.text_top(msg, x, y, p.size(TextSize::Md), c.error);
             y += 26.0;
             if Button::new("Retry")
                 .variant(ButtonVariant::Tonal)
@@ -164,7 +179,7 @@ fn draw_avatar(p: &Painter, x: f32, y: f32, size: f32, item: &WalletItem) {
         );
     } else {
         let r = size * 0.5;
-        draw_circle(x + r, y + r, r, with_alpha(p.theme.accent, 0.18));
+        draw_circle(x + r, y + r, r, with_alpha(p.theme.color.accent, 0.18));
         let ch = item
             .name
             .chars()
@@ -172,14 +187,17 @@ fn draw_avatar(p: &Painter, x: f32, y: f32, size: f32, item: &WalletItem) {
             .unwrap_or('?')
             .to_ascii_uppercase()
             .to_string();
-        let dim = p.measure(&ch, size * 0.5);
-        let baseline = p.centre_baseline(y, size, size * 0.5);
+        // theme-exempt: a monogram fills the disc it sits in, so it is sized
+        // from the avatar's diameter rather than from the type ramp.
+        let glyph = size * 0.5;
+        let dim = p.measure(&ch, glyph);
+        let baseline = p.centre_baseline(y, size, glyph);
         p.text(
             &ch,
             x + r - dim.width * 0.5,
             baseline,
-            size * 0.5,
-            p.theme.accent,
+            glyph,
+            p.theme.color.accent,
         );
     }
 }

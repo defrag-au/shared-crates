@@ -30,6 +30,7 @@
 
 use chain_heartbeat::{BlockBeat, FeedHealth, Heartbeat, HeartbeatSnapshot, SyncState};
 use macroquad::prelude::*;
+use ui_theme::TextSize;
 
 use crate::painter::Painter;
 use crate::theme::{self, Theme};
@@ -221,13 +222,13 @@ pub fn draw_mark(t: &Theme, center: Vec2, radius: f32, state: PulseState, pop: f
         center.y,
         radius,
         weight,
-        theme::with_alpha(t.track, 0.8),
+        theme::with_alpha(t.color.bg_highlight, 0.8),
     );
     let dot = radius * DOT_FRACTION;
 
     match state {
         PulseState::Live { due } => {
-            arc(center, radius, due, weight, t.accent);
+            arc(center, radius, due, weight, t.color.accent);
             if pop > 0.0 {
                 let halo = radius * (1.0 + 0.9 * (1.0 - pop));
                 draw_circle_lines(
@@ -235,19 +236,19 @@ pub fn draw_mark(t: &Theme, center: Vec2, radius: f32, state: PulseState, pop: f
                     center.y,
                     halo,
                     weight,
-                    theme::with_alpha(t.accent, pop * 0.7),
+                    theme::with_alpha(t.color.accent, pop * 0.7),
                 );
             }
-            draw_circle(center.x, center.y, dot * (1.0 + 0.45 * pop), t.accent);
+            draw_circle(center.x, center.y, dot * (1.0 + 0.45 * pop), t.color.accent);
         }
         PulseState::AwaitingFirstBlock | PulseState::CatchingUp => {
-            draw_circle(center.x, center.y, dot, t.muted);
+            draw_circle(center.x, center.y, dot, t.color.text_muted);
         }
         PulseState::Quiet { .. } => {
-            draw_circle_lines(center.x, center.y, dot, weight, t.warn);
+            draw_circle_lines(center.x, center.y, dot, weight, t.color.warning);
         }
         PulseState::Offline { .. } | PulseState::NotStarted => {
-            draw_circle_lines(center.x, center.y, dot, weight, t.muted);
+            draw_circle_lines(center.x, center.y, dot, weight, t.color.text_muted);
         }
     }
 }
@@ -280,8 +281,10 @@ pub struct BlockPulseVm<'a> {
     /// Unix milliseconds, from the host's clock.
     pub now_ms: u64,
     pub detail: PulseDetail,
-    /// Type size for the line. The mark scales with it.
-    pub size: f32,
+    /// Type step for the line. The mark scales with it, so this sizes the whole
+    /// widget — a `TextSize` rather than an `f32` so a host that opens the ramp
+    /// out moves the pulse with everything else.
+    pub size: TextSize,
 }
 
 impl<'a> BlockPulseVm<'a> {
@@ -290,7 +293,7 @@ impl<'a> BlockPulseVm<'a> {
             heartbeat,
             now_ms,
             detail: PulseDetail::default(),
-            size: 15.0,
+            size: TextSize::Lg,
         }
     }
 
@@ -299,7 +302,7 @@ impl<'a> BlockPulseVm<'a> {
         self
     }
 
-    pub fn size(mut self, size: f32) -> Self {
+    pub fn size(mut self, size: TextSize) -> Self {
         self.size = size;
         self
     }
@@ -319,23 +322,24 @@ pub fn block_pulse(
     let state = PulseState::of(&snapshot);
     let pop = ticker.progress(snapshot.tip.as_ref(), state, get_time());
 
-    let radius = vm.size * 0.36;
+    let size = p.size(vm.size);
+    let radius = size * 0.36;
     draw_mark(t, vec2(x + radius, y), radius, state, pop);
-    let mut cursor = x + radius * 2.0 + vm.size * 0.45;
+    let mut cursor = x + radius * 2.0 + size * 0.45;
     // Baseline for text centred on `y`, independent of the string's glyphs.
-    let baseline = p.centre_baseline(y - vm.size, vm.size * 2.0, vm.size);
+    let baseline = p.centre_baseline(y - size, size * 2.0, size);
 
     if vm.detail == PulseDetail::Full
         && let Some(tip) = &snapshot.tip
     {
         let text = format!("#{}", format_number(tip.height));
-        p.text(&text, cursor, baseline, vm.size, t.fg);
-        cursor += p.measure(&text, vm.size).width + vm.size * 0.45;
+        p.text(&text, cursor, baseline, size, t.color.text_primary);
+        cursor += p.measure(&text, size).width + size * 0.45;
     }
     if let Some(secs) = snapshot.secs_since_block {
         let text = format_duration(secs);
-        p.text(&text, cursor, baseline, vm.size, t.muted);
-        cursor += p.measure(&text, vm.size).width + vm.size * 0.45;
+        p.text(&text, cursor, baseline, size, t.color.text_muted);
+        cursor += p.measure(&text, size).width + size * 0.45;
     }
     if vm.detail == PulseDetail::Full
         && let Some(status) = state.status()
@@ -344,10 +348,10 @@ pub fn block_pulse(
             &status,
             cursor,
             baseline,
-            vm.size,
-            theme::with_alpha(t.muted, 0.8),
+            size,
+            theme::with_alpha(t.color.text_muted, 0.8),
         );
-        cursor += p.measure(&status, vm.size).width;
+        cursor += p.measure(&status, size).width;
     }
     cursor
 }
