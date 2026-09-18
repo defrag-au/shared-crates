@@ -769,10 +769,7 @@ mod tests {
     /// 3 against mainnet's 16.5M — the flat division it replaces said 11.
     #[test]
     fn sweep_cap_matches_measured_costs() {
-        assert_eq!(
-            max_buys_for_budget(BuyCostCurve::JpgV1, &mainnet_caps()),
-            3
-        );
+        assert_eq!(max_buys_for_budget(BuyCostCurve::JpgV1, &mainnet_caps()), 3);
 
         // The safety property: the estimate must never UNDERestimate what the
         // chain charged, or the builder hands the node a transaction it will
@@ -786,15 +783,28 @@ mod tests {
             (4, 18_100_000),
         ] {
             assert!(
-                max_buys_for_budget(BuyCostCurve::JpgV1, &caps(measured_mem, u64::MAX, UNCAPPED_SIZE)) <= n,
+                max_buys_for_budget(
+                    BuyCostCurve::JpgV1,
+                    &caps(measured_mem, u64::MAX, UNCAPPED_SIZE)
+                ) <= n,
                 "a budget of exactly the measured cost for {n} must never admit more than {n}"
             );
         }
         // 4 listings measured 18.10M, so mainnet's 16.5M must NOT admit them —
         // this is the case that reached the node as ExUnitsTooBigUTxO.
-        assert!(max_buys_for_budget(BuyCostCurve::JpgV1, &caps(16_500_000, u64::MAX, UNCAPPED_SIZE)) < 4);
+        assert!(
+            max_buys_for_budget(
+                BuyCostCurve::JpgV1,
+                &caps(16_500_000, u64::MAX, UNCAPPED_SIZE)
+            ) < 4
+        );
         // …and a budget with genuine room does admit them.
-        assert!(max_buys_for_budget(BuyCostCurve::JpgV1, &caps(25_000_000, u64::MAX, UNCAPPED_SIZE)) >= 4);
+        assert!(
+            max_buys_for_budget(
+                BuyCostCurve::JpgV1,
+                &caps(25_000_000, u64::MAX, UNCAPPED_SIZE)
+            ) >= 4
+        );
     }
 
     /// The V2/V3 estimate must likewise never UNDERestimate the chain.
@@ -812,7 +822,10 @@ mod tests {
             (50, 15_808_735),
         ] {
             assert!(
-                max_buys_for_budget(BuyCostCurve::JpgV2V3, &caps(measured_mem, u64::MAX, UNCAPPED_SIZE)) <= n,
+                max_buys_for_budget(
+                    BuyCostCurve::JpgV2V3,
+                    &caps(measured_mem, u64::MAX, UNCAPPED_SIZE)
+                ) <= n,
                 "a budget of exactly the measured cost for {n} must never admit more than {n}"
             );
         }
@@ -843,7 +856,10 @@ mod tests {
     /// perfectly and cannot be submitted.
     #[test]
     fn v2_sweep_cap_is_bound_by_size_not_execution_units() {
-        let execution_only = max_buys_for_budget(BuyCostCurve::JpgV2V3, &caps(16_500_000, 10_000_000_000, UNCAPPED_SIZE));
+        let execution_only = max_buys_for_budget(
+            BuyCostCurve::JpgV2V3,
+            &caps(16_500_000, 10_000_000_000, UNCAPPED_SIZE),
+        );
         let with_size = max_buys_for_budget(BuyCostCurve::JpgV2V3, &mainnet_caps());
         assert!(
             with_size < execution_only,
