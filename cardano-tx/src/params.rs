@@ -22,11 +22,32 @@ use crate::builder::cost_models::PlutusCostModels;
 /// means to exercise the reference-script fee.
 pub const CONWAY_MIN_FEE_REF_SCRIPT_COST_PER_BYTE: u64 = 15;
 
+/// Conway's `maxTxSize` in bytes, as it currently stands on mainnet and
+/// preprod, and the value [`TxBuildParams::default()`] applies.
+///
+/// A pin, like [`CONWAY_MIN_FEE_REF_SCRIPT_COST_PER_BYTE`] — if governance
+/// raises the limit, this is the line to change.
+///
+/// **This default is deliberately bounded.** The size limit is the one a
+/// builder is most likely to breach without noticing, because nothing
+/// downstream reports it: `evaluateTransaction` runs the scripts and never
+/// looks at size, so an oversized transaction is reported as evaluating
+/// perfectly and is then rejected by the node with `MaxTxSizeUTxO`. Defaulting
+/// to zero would make the unguarded case the easy one to reach by accident.
+/// A caller that genuinely wants no ceiling must set `max_tx_size: 0` and say
+/// so.
+pub const CONWAY_MAX_TX_SIZE: u32 = 16_384;
+
 /// Minimum protocol parameters needed for transaction building.
 ///
 /// These values come from the Cardano node's protocol parameters and are
 /// used for fee calculation, min UTxO computation, and size validation.
-#[derive(Debug, Clone, Default)]
+///
+/// `Default` is hand-written rather than derived so that `max_tx_size` can
+/// carry [`CONWAY_MAX_TX_SIZE`] instead of zero — see that constant for why
+/// the size ceiling in particular must not default to unbounded. Every other
+/// field still defaults to its zero value.
+#[derive(Debug, Clone)]
 pub struct TxBuildParams {
     /// Per-byte fee multiplier (Cardano parameter `a`)
     pub min_fee_coefficient: u64,
@@ -76,6 +97,26 @@ pub struct TxBuildParams {
     /// bundled [`crate::builder::cost_models`] constants when a language is
     /// absent.
     pub cost_models: PlutusCostModels,
+}
+
+impl Default for TxBuildParams {
+    fn default() -> Self {
+        Self {
+            // The one field that does NOT default to zero. An unbounded size
+            // ceiling is silently wrong — see `CONWAY_MAX_TX_SIZE`.
+            max_tx_size: CONWAY_MAX_TX_SIZE,
+            min_fee_coefficient: 0,
+            min_fee_constant: 0,
+            coins_per_utxo_byte: 0,
+            max_tx_ex_units: (0, 0),
+            max_value_size: 0,
+            price_mem: None,
+            price_step: None,
+            min_fee_ref_script_cost_per_byte: 0,
+            ref_script_size: 0,
+            cost_models: PlutusCostModels::default(),
+        }
+    }
 }
 
 /// Charged size (bytes) of a worst-case PURE-ADA output under the Babbage

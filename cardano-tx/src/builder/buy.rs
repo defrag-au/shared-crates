@@ -57,43 +57,139 @@ use crate::params::TxBuildParams;
 pub const BUY_EX_UNITS_MEM: u64 = 1_400_000;
 pub const BUY_EX_UNITS_STEPS: u64 = 500_000_000;
 
-/// Largest sweep whose evaluated cost fits a transaction's execution budget.
+/// Which measured cost curve a listing's contract generation follows.
 ///
-/// **Do NOT derive this by dividing the cap by [`BUY_EX_UNITS_MEM`].** That
-/// assumes each listing costs the same, and a jpg buy does not: the cost is
-/// SUPER-LINEAR because every validator scans the transaction's output list
-/// looking for its own payouts, and that list grows with the sweep. The flat
-/// division said 11 listings fit; four do not.
-///
-/// Measured against the live mainnet validator (memory, jpg V1):
-///
-/// | listings | total  | largest single spend |
-/// |----------|--------|----------------------|
-/// | 1        |  2.85M |  2.85M |
-/// | 2        |  7.18M |  6.14M |
-/// | 3        | 12.25M |  9.43M |
-/// | 4        | 18.10M | 12.72M |
-///
-/// Second differences are near-constant (0.74M, 0.78M), i.e. quadratic, so the
-/// fit below is `0.38n² + 3.19n − 0.72` in millions — which reproduces all four
-/// measurements to within 0.02M. Against the 16.5M mainnet cap it yields 3.
-///
-/// Steps are not the binding constraint (a 4-listing sweep uses 38% of the step
-/// budget while exceeding memory), but both are checked so a future parameter
-/// change cannot silently invert that.
-pub fn max_buys_for_budget(mem_cap: u64, steps_cap: u64) -> usize {
-    // Same shape for steps, fitted the same way: 0.10n² + 0.86n − 0.13 in
-    // BILLIONS, from 0.583 / 1.477 / 2.562 / 3.844.
-    fn mem_for(n: u64) -> u64 {
-        380_000 * n * n + 3_190_000 * n - 720_000
-    }
-    fn steps_for(n: u64) -> u64 {
-        100_000_000 * n * n + 860_000_000 * n - 130_000_000
+/// The generation matters far more than the venue does, because the two jpg
+/// generations locate their payouts by DIFFERENT mechanisms and that, not the
+/// validator's logic, is what sets the shape of the curve. Modelling it as an
+/// enum keeps a caller from silently applying one generation's measurements to
+/// another — which is exactly the bug this type was introduced to end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuyCostCurve {
+    /// jpg **V1** — bare redeemer (`Constr 1 []`), so the validator SCANS the
+    /// transaction's output list looking for its own payouts. The list grows
+    /// with the sweep, making the cost quadratic.
+    JpgV1,
+    /// jpg **V2/V3** — the redeemer carries the index of the listing's first
+    /// payout output and the validator reads forward from it, so locating a
+    /// payout is O(1) and the per-spend cost barely moves with the sweep.
+    JpgV2V3,
+}
+
+impl BuyCostCurve {
+    /// The curve for a book's `contract_version` string (`"V1"`, `"V2"`, …).
+    ///
+    /// Unknown values fall back to [`Self::JpgV1`] — the expensive curve — so a
+    /// generation nobody has measured yet batches conservatively rather than
+    /// optimistically.
+    pub fn from_contract_version(version: &str) -> Self {
+        match version {
+            "V2" | "V3" => Self::JpgV2V3,
+            _ => Self::JpgV1,
+        }
     }
 
+    /// Memory units a sweep of `n` listings is expected to declare.
+    fn mem_for(self, n: u64) -> u64 {
+        match self {
+            // `0.38n² + 3.19n − 0.72` in millions. Measured on the live mainnet
+            // validator: 2.85M / 7.18M / 12.25M / 18.10M for 1 / 2 / 3 / 4,
+            // reproduced to within 0.02M. Second differences are near-constant
+            // (0.74M, 0.78M) — genuinely quadratic.
+            Self::JpgV1 => 380_000 * n * n + 3_190_000 * n - 720_000,
+            // Measured the same way, on mainnet jpg V2 listings, 2026-09-18:
+            //
+            // | listings | declared mem | % of 16.5M |
+            // |----------|--------------|------------|
+            // |  2       |  0.49M       |   3% |
+            // | 10       |  2.62M       |  16% |
+            // | 25       |  7.04M       |  43% |
+            // | 40       | 12.11M       |  73% |
+            // | 50       | 15.81M       |  96% |
+            //
+            // The least-squares fit is `0.0014n² + 0.246n + 0.026`; the
+            // coefficients below are rounded UP from it so the estimate sits
+            // 2–3% ABOVE every measurement. Over-estimating costs one fewer
+            // listing per transaction; under-estimating costs the whole
+            // transaction.
+            //
+            // Note the n² term: 1,500 against V1's 380,000 — 253× smaller.
+            // That difference IS the payout index in the redeemer, and it is
+            // why applying V1's curve here capped V2 sweeps at 3 when 50 fit.
+            Self::JpgV2V3 => 1_500 * n * n + 250_000 * n + 50_000,
+        }
+    }
+
+    /// Execution steps a sweep of `n` listings is expected to declare.
+    fn steps_for(self, n: u64) -> u64 {
+        match self {
+            // `0.10n² + 0.86n − 0.13` in BILLIONS, from 0.583 / 1.477 / 2.562
+            // / 3.844.
+            Self::JpgV1 => 100_000_000 * n * n + 860_000_000 * n - 130_000_000,
+            // From 0.90B / 2.40B / 4.07B / 5.29B at 10 / 25 / 40 / 50, again
+            // rounded up.
+            Self::JpgV2V3 => 420_000 * n * n + 87_000_000 * n + 10_000_000,
+        }
+    }
+}
+
+/// Bytes a single listing adds to a buy transaction.
+///
+/// One script input, the listing's marketplace-fee output, and its payout
+/// outputs — payouts are NOT merged across listings on V2/V3, because each
+/// redeemer names the index its own payouts start at.
+///
+/// Measured across a 10→50 listing sweep on mainnet (signed sizes: 4,587 at 10
+/// rising to 21,238 at 50) the average is ~416 B/listing. The figure below is
+/// rounded up, because the real number depends on how fragmented the BUYER's
+/// wallet is — coin selection adds inputs as the payout total grows, and the
+/// sampled wallet (944 UTxOs) was already fragmented enough to push the
+/// marginal cost past 550 B/listing at the top of the range.
+const BUY_BYTES_PER_LISTING: u64 = 450;
+
+/// Fixed transaction overhead independent of the sweep size.
+const BUY_BYTES_BASE: u64 = 600;
+
+/// Largest sweep that fits BOTH a transaction's execution budget and its size
+/// limit, for a given contract generation.
+///
+/// **Do NOT derive this by dividing a cap by [`BUY_EX_UNITS_MEM`].** That
+/// assumes each listing costs the same, which is false for V1, and it ignores
+/// transaction size entirely — which is the limit that actually binds on
+/// V2/V3.
+///
+/// Both limits are checked because WHICH ONE BINDS DEPENDS ON THE GENERATION:
+///
+/// - **V1** is stopped by execution units at 3 listings, long before size
+///   matters.
+/// - **V2/V3** is stopped by SIZE. Its execution cost admits ~50 listings
+///   (15.81M of 16.5M at n=50), but 50 listings serialise to 21,132 bytes
+///   against a 16,384-byte limit. Sizing a V2 sweep on execution units alone
+///   produces transactions that evaluate perfectly and cannot be submitted —
+///   verified on mainnet, where n=40 built at 16,734 B before
+///   [`crate::error::TxBuildError::TxSizeExceeded`] existed to catch it.
+///
+/// Every cap is read LITERALLY: a cap of 0 admits nothing and floors the
+/// answer at 1, rather than being treated as "unconstrained". Unset protocol
+/// parameters must produce the smallest batch, never the largest — the same
+/// reasoning that keeps [`crate::params::TxBuildParams::default`] bounded. A
+/// test that wants to isolate one axis passes `u64::MAX` on the others, which
+/// says so explicitly.
+pub fn max_buys_for_budget(curve: BuyCostCurve, params: &TxBuildParams) -> usize {
+    let (mem_cap, steps_cap) = params.max_tx_ex_units;
+    let size_cap = u64::from(params.max_tx_size);
+
+    let fits = |n: u64| {
+        curve.mem_for(n) <= mem_cap
+            && curve.steps_for(n) <= steps_cap
+            && BUY_BYTES_BASE + BUY_BYTES_PER_LISTING * n <= size_cap
+    };
+
     let mut best = 1;
-    for n in 1..=16 {
-        if mem_for(n) <= mem_cap && steps_for(n) <= steps_cap {
+    // 64 is an absolute ceiling, not a limit anyone is expected to reach: at
+    // 450 B/listing the size limit alone stops a sweep well before it.
+    for n in 1..=64 {
+        if fits(n) {
             best = n as usize;
         } else {
             break;
@@ -648,17 +744,41 @@ mod tests {
         }
     }
 
-    /// The fit must reproduce what the chain actually charged, and must give 3
-    /// against mainnet's 16.5M — the flat division it replaces said 11.
+    /// A size cap large enough to never bind, for tests isolating the
+    /// execution curve. Spelled out rather than passing `0`, which means the
+    /// opposite — nothing fits.
+    const UNCAPPED_SIZE: u32 = u32::MAX;
+
+    /// Params with the given caps. Pass `u64::MAX` / [`UNCAPPED_SIZE`] on the
+    /// axes a test wants out of the way, so isolating one limit is explicit
+    /// rather than a side effect of a zero.
+    fn caps(mem: u64, steps: u64, size: u32) -> TxBuildParams {
+        TxBuildParams {
+            max_tx_ex_units: (mem, steps),
+            max_tx_size: size,
+            ..Default::default()
+        }
+    }
+
+    /// Mainnet Conway.
+    fn mainnet_caps() -> TxBuildParams {
+        caps(16_500_000, 10_000_000_000, 16_384)
+    }
+
+    /// The V1 fit must reproduce what the chain actually charged, and must give
+    /// 3 against mainnet's 16.5M — the flat division it replaces said 11.
     #[test]
     fn sweep_cap_matches_measured_costs() {
-        // Mainnet Conway.
-        assert_eq!(max_buys_for_budget(16_500_000, 10_000_000_000), 3);
+        assert_eq!(
+            max_buys_for_budget(BuyCostCurve::JpgV1, &mainnet_caps()),
+            3
+        );
 
         // The safety property: the estimate must never UNDERestimate what the
         // chain charged, or the builder hands the node a transaction it will
         // reject. Overestimating merely batches one fewer listing, so a budget
         // of exactly the measured cost may admit n or n-1 — never more.
+        // Size is left unconstrained so this isolates the execution curve.
         for (n, measured_mem) in [
             (1usize, 2_850_000u64),
             (2, 7_180_000),
@@ -666,23 +786,110 @@ mod tests {
             (4, 18_100_000),
         ] {
             assert!(
-                max_buys_for_budget(measured_mem, u64::MAX) <= n,
+                max_buys_for_budget(BuyCostCurve::JpgV1, &caps(measured_mem, u64::MAX, UNCAPPED_SIZE)) <= n,
                 "a budget of exactly the measured cost for {n} must never admit more than {n}"
             );
         }
         // 4 listings measured 18.10M, so mainnet's 16.5M must NOT admit them —
         // this is the case that reached the node as ExUnitsTooBigUTxO.
-        assert!(max_buys_for_budget(16_500_000, u64::MAX) < 4);
+        assert!(max_buys_for_budget(BuyCostCurve::JpgV1, &caps(16_500_000, u64::MAX, UNCAPPED_SIZE)) < 4);
         // …and a budget with genuine room does admit them.
-        assert!(max_buys_for_budget(25_000_000, u64::MAX) >= 4);
+        assert!(max_buys_for_budget(BuyCostCurve::JpgV1, &caps(25_000_000, u64::MAX, UNCAPPED_SIZE)) >= 4);
+    }
+
+    /// The V2/V3 estimate must likewise never UNDERestimate the chain.
+    ///
+    /// Measured on mainnet 2026-09-18 against real jpg V2 listings. These are
+    /// the figures the curve was fitted to; the fit is rounded up, so a budget
+    /// of exactly the measured cost must never admit MORE than that many.
+    #[test]
+    fn v2_sweep_cap_never_underestimates_measured_costs() {
+        for (n, measured_mem) in [
+            (2usize, 492_418u64),
+            (10, 2_621_891),
+            (25, 7_041_405),
+            (40, 12_107_132),
+            (50, 15_808_735),
+        ] {
+            assert!(
+                max_buys_for_budget(BuyCostCurve::JpgV2V3, &caps(measured_mem, u64::MAX, UNCAPPED_SIZE)) <= n,
+                "a budget of exactly the measured cost for {n} must never admit more than {n}"
+            );
+        }
+    }
+
+    /// V1 and V2/V3 must NOT share a cap.
+    ///
+    /// This is the bug the curves were split to fix: V1's quadratic was applied
+    /// to V2 as well, capping V2 sweeps at 3 when the chain comfortably ran 38.
+    /// If these two ever agree again, someone has collapsed the curves.
+    #[test]
+    fn the_two_generations_do_not_share_a_cap() {
+        let params = mainnet_caps();
+        let v1 = max_buys_for_budget(BuyCostCurve::JpgV1, &params);
+        let v2 = max_buys_for_budget(BuyCostCurve::JpgV2V3, &params);
+        assert_eq!(v1, 3, "V1 is execution-bound at 3");
+        assert!(
+            v2 >= 25,
+            "V2/V3 locates payouts by index and must batch far more than V1, got {v2}"
+        );
+    }
+
+    /// On V2/V3 it is SIZE that binds, not execution units.
+    ///
+    /// Measured: 50 listings cost 15.81M of the 16.5M execution budget (96%)
+    /// but serialise to 21,132 bytes against a 16,384-byte limit. A cap derived
+    /// from execution units alone therefore produces transactions that evaluate
+    /// perfectly and cannot be submitted.
+    #[test]
+    fn v2_sweep_cap_is_bound_by_size_not_execution_units() {
+        let execution_only = max_buys_for_budget(BuyCostCurve::JpgV2V3, &caps(16_500_000, 10_000_000_000, UNCAPPED_SIZE));
+        let with_size = max_buys_for_budget(BuyCostCurve::JpgV2V3, &mainnet_caps());
+        assert!(
+            with_size < execution_only,
+            "size must bind first: execution alone admits {execution_only}, \
+             with the size limit {with_size}"
+        );
+        // And the cap it lands on must actually fit: n=40 was measured at
+        // 16,734 signed bytes, over the limit.
+        assert!(
+            with_size < 40,
+            "40 listings measured 16,734 B against a 16,384 B limit, got {with_size}"
+        );
+    }
+
+    /// An unknown contract version must batch like the EXPENSIVE generation.
+    ///
+    /// Guessing the cheap curve for a generation nobody has measured is how a
+    /// sweep gets sized for a validator it is not spending.
+    #[test]
+    fn an_unknown_contract_version_uses_the_conservative_curve() {
+        assert_eq!(
+            BuyCostCurve::from_contract_version("V9"),
+            BuyCostCurve::JpgV1
+        );
+        assert_eq!(
+            BuyCostCurve::from_contract_version("V1"),
+            BuyCostCurve::JpgV1
+        );
+        assert_eq!(
+            BuyCostCurve::from_contract_version("V2"),
+            BuyCostCurve::JpgV2V3
+        );
+        assert_eq!(
+            BuyCostCurve::from_contract_version("V3"),
+            BuyCostCurve::JpgV2V3
+        );
     }
 
     /// Never zero: a caller uses this as a batch size, and 0 would drop the
     /// cart on the floor rather than build one listing at a time.
     #[test]
     fn sweep_cap_is_never_zero() {
-        assert_eq!(max_buys_for_budget(0, 0), 1);
-        assert_eq!(max_buys_for_budget(1, 1), 1);
+        for curve in [BuyCostCurve::JpgV1, BuyCostCurve::JpgV2V3] {
+            assert_eq!(max_buys_for_budget(curve, &caps(0, 0, 0)), 1);
+            assert_eq!(max_buys_for_budget(curve, &caps(1, 1, 1)), 1);
+        }
     }
 
     /// Conway charges for every reference script a TX reads, and a sweep over

@@ -1463,14 +1463,18 @@ mod tests {
     /// A wallet holding more assets than fit in one output must sweep into
     /// SEVERAL asset outputs. Packing them into one is `OutputTooBigUTxO` — a
     /// permanent rejection that strands the wallet.
-    #[test]
-    fn sweep_splits_oversized_asset_holdings_across_outputs() {
-        // 240 NFTs with 32-byte names across 4 policies: well past 5000 bytes.
+    /// A wallet holding `per_policy` single-NFT UTxOs across 4 policies, each
+    /// with a 32-byte asset name, plus one pure-ADA UTxO to fund the fee.
+    ///
+    /// One UTxO per NFT, so the input count scales with the asset count — which
+    /// is what makes a large holding breach `maxTxSize` as well as
+    /// `maxValueSize`.
+    fn nft_world(per_policy: u32) -> Vec<UtxoApi> {
         let mut world = vec![ada("aa", 0, 400_000_000)];
         for p in 0..4u32 {
             let policy = format!("{:02x}", 0xa0 + p).repeat(28);
-            for i in 0..60u32 {
-                let mut u = ada("bb", p * 60 + i + 1, 2_000_000);
+            for i in 0..per_policy {
+                let mut u = ada("bb", p * per_policy + i + 1, 2_000_000);
                 u.assets.push(AssetQuantity {
                     asset_id: AssetId::new_unchecked(policy.clone(), format!("{i:064x}")),
                     quantity: 1,
@@ -1478,6 +1482,17 @@ mod tests {
                 world.push(u);
             }
         }
+        world
+    }
+
+    #[test]
+    fn sweep_splits_oversized_asset_holdings_across_outputs() {
+        // 140 NFTs with 32-byte names across 4 policies: well past the 5000-byte
+        // value limit, so the split under test is still exercised, while the
+        // whole transaction stays inside `maxTxSize`. A larger holding cannot be
+        // swept in ONE transaction at all — see
+        // `a_sweep_too_large_for_one_transaction_is_refused`.
+        let world = nft_world(35);
 
         let unsigned = TxPlan::new(addr(), 0, params())
             .must_spend(world.iter())
@@ -1497,7 +1512,8 @@ mod tests {
 
         assert!(
             asset_outputs.len() > 1,
-            "240 assets must span several outputs, got {}",
+            "{} assets must span several outputs, got {}",
+            world.len() - 1,
             asset_outputs.len()
         );
 
@@ -1511,7 +1527,52 @@ mod tests {
                     .unwrap_or(0)
             })
             .sum();
-        assert_eq!(total_assets, 240, "every asset must reach an output");
+        // Derived from the fixture rather than restated, so shrinking the
+        // holding can never quietly shrink what the test checks.
+        assert_eq!(
+            total_assets,
+            world.len() - 1,
+            "every asset must reach an output"
+        );
+    }
+
+    /// A holding too large to sweep in one transaction must be REFUSED, not
+    /// built.
+    ///
+    /// The sweep splits assets across outputs to respect `maxValueSize`, but
+    /// one UTxO per NFT means the INPUT count grows too, and nothing splits a
+    /// sweep across transactions — `TxPlan::build` returns exactly one. So a
+    /// large enough wallet produces a transaction over `maxTxSize`.
+    ///
+    /// Before the size guard this built happily and was rejected by the node
+    /// with `MaxTxSizeUTxO`: a wallet that could not be emptied, reported as a
+    /// successful build. Failing at build time is the honest answer until
+    /// `TxPlan` can emit several transactions.
+    ///
+    /// KNOWN GAP: 240 NFTs is not an unreasonable wallet. Sweeping one is
+    /// currently impossible, not merely awkward — `must_spend` is documented as
+    /// inputs that are ALWAYS spent, so the planner cannot fix this by dropping
+    /// some. It needs a multi-transaction sweep.
+    #[test]
+    fn a_sweep_too_large_for_one_transaction_is_refused() {
+        let world = nft_world(60);
+
+        let result = TxPlan::new(addr(), 0, params())
+            .must_spend(world.iter())
+            .sweep_to(addr())
+            .rehome_assets()
+            .build();
+
+        match result {
+            Err(TxBuildError::TxSizeExceeded { size, cap }) => {
+                assert!(size > cap, "size {size} should exceed cap {cap}");
+            }
+            Ok(_) => panic!(
+                "a {}-asset sweep does not fit one transaction and must not build",
+                world.len() - 1
+            ),
+            Err(other) => panic!("expected TxSizeExceeded, got {other:?}"),
+        }
     }
 
     #[test]
