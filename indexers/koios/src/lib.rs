@@ -239,6 +239,68 @@ pub struct AssetInfoRequest {
     pub assets: Vec<(String, String)>,
 }
 
+/// One asset's mint/burn history (`POST /asset_history`).
+#[derive(Serialize, Debug, Clone)]
+pub struct AssetHistoryRequest {
+    #[serde(rename = "_asset_policy")]
+    pub policy: String,
+    #[serde(rename = "_asset_name")]
+    pub asset_name_hex: String,
+}
+
+/// Transaction metadata only (`POST /tx_metadata`).
+///
+/// Narrower than `/tx_info`, which gates metadata behind a flag
+/// [`get_tx_details`](KoiosApi::get_tx_details) does not set and returns
+/// inputs, scripts and assets besides.
+#[derive(Serialize, Debug, Clone)]
+pub struct TxMetadataRequest {
+    #[serde(rename = "_tx_hashes")]
+    pub hashes: Vec<String>,
+}
+
+/// A row from `POST /asset_history`.
+#[derive(Deserialize, Debug, Clone)]
+pub struct KoiosAssetHistory {
+    #[serde(default)]
+    pub policy_id: Option<String>,
+    #[serde(default)]
+    pub asset_name: Option<String>,
+    #[serde(default)]
+    pub minting_txs: Vec<KoiosMintEvent>,
+}
+
+/// One mint or burn of an asset.
+#[derive(Deserialize, Debug, Clone)]
+pub struct KoiosMintEvent {
+    pub tx_hash: String,
+    #[serde(default)]
+    pub block_time: Option<u64>,
+    /// Signed, and **serialised as a STRING** by Koios: `"1"` for a mint,
+    /// `"-1"` for a burn. Parse rather than assume a JSON number.
+    #[serde(default)]
+    pub quantity: Option<String>,
+}
+
+impl KoiosMintEvent {
+    /// `true` when this event added supply rather than removing it.
+    pub fn is_mint(&self) -> bool {
+        self.quantity
+            .as_deref()
+            .and_then(|q| q.parse::<i64>().ok())
+            .is_some_and(|q| q > 0)
+    }
+}
+
+/// A row from `POST /tx_metadata`.
+#[derive(Deserialize, Debug, Clone)]
+pub struct KoiosTxMetadata {
+    pub tx_hash: String,
+    /// Keyed by metadata label as a string — `"721"`, `"777"`, …
+    #[serde(default)]
+    pub metadata: Option<serde_json::Value>,
+}
+
 /// Batch confirmation check (`POST /tx_status`) — one request for many tx
 /// hashes, far lighter than `/tx_info`.
 #[derive(Serialize, Debug, Clone)]
@@ -1027,6 +1089,51 @@ impl KoiosApi {
             &url,
             &AssetInfoRequest {
                 assets: assets.to_vec(),
+            },
+        )
+        .await
+    }
+
+    /// One asset's full mint/burn history (`POST /asset_history`), newest
+    /// first.
+    ///
+    /// Needed whenever "which declaration is current" matters, because
+    /// [`get_asset_info`](Self::get_asset_info) collapses an asset's history to
+    /// a single `minting_tx_hash` and its `creation_time` can come from a
+    /// *different* mint than that hash — so it is not a sound basis for
+    /// "the latest mint" even when it happens to give it.
+    pub async fn get_asset_history(
+        &self,
+        policy_id: &str,
+        asset_name_hex: &str,
+    ) -> Result<Option<KoiosAssetHistory>, KoiosError> {
+        let url = format!("{}/asset_history", self.base_url);
+        let mut rows: Vec<KoiosAssetHistory> = self
+            .post_json(
+                &url,
+                &AssetHistoryRequest {
+                    policy: policy_id.to_string(),
+                    asset_name_hex: asset_name_hex.to_string(),
+                },
+            )
+            .await?;
+        Ok(rows.pop())
+    }
+
+    /// Metadata for transactions, by label (`POST /tx_metadata`).
+    ///
+    /// Separate from [`get_tx_details`](Self::get_tx_details), which asks
+    /// `/tx_info` for inputs, scripts and assets but never sets `_metadata` —
+    /// so its `metadata` field comes back empty.
+    pub async fn get_tx_metadata(
+        &self,
+        hashes: &[String],
+    ) -> Result<Vec<KoiosTxMetadata>, KoiosError> {
+        let url = format!("{}/tx_metadata", self.base_url);
+        self.post_json(
+            &url,
+            &TxMetadataRequest {
+                hashes: hashes.to_vec(),
             },
         )
         .await

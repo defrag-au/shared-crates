@@ -167,6 +167,35 @@ impl TxEvaluator for maestro::MaestroApi {
 /// The intended shape is local-first: an in-process evaluator is exact and
 /// costs milliseconds, so it should answer whenever it can, with a remote
 /// provider behind it for the transactions it cannot account for.
+/// An evaluator that always declines, for a host that has no remote provider
+/// at all — a browser, typically.
+///
+/// It reports [`EvalError::Unavailable`], not `Failed`: nothing is wrong with
+/// the transaction, there is simply nobody here to evaluate it. That
+/// distinction is load-bearing — `Failed` stops a [`FirstAvailable`] chain,
+/// which would turn "this host has no remote" into "this transaction is
+/// invalid".
+///
+/// Use this rather than `FirstAvailable::new(vec![])`, which panics by design.
+/// Callers reach for the empty list because it reads as "no evaluators", but
+/// the two mean opposite things: an empty chain can never answer anything,
+/// whereas this answers "not me" and lets the caller fall back to its
+/// conservative placeholder ex-units.
+pub struct NoEvaluator;
+
+#[async_trait(?Send)]
+impl TxEvaluator for NoEvaluator {
+    fn name(&self) -> &str {
+        "none"
+    }
+
+    async fn evaluate(&self, _tx_cbor_hex: &str) -> Result<Vec<RedeemerEvaluation>, EvalError> {
+        Err(EvalError::Unavailable(
+            "this host has no remote evaluator".into(),
+        ))
+    }
+}
+
 pub struct FirstAvailable<'a> {
     evaluators: Vec<&'a dyn TxEvaluator>,
 }
@@ -223,5 +252,33 @@ impl TxEvaluator for FirstAvailable<'_> {
             }
         }
         Err(last.unwrap_or_else(|| EvalError::Unavailable("no evaluator answered".into())))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `Unavailable`, never `Failed`. A `Failed` would STOP a `FirstAvailable`
+    /// chain and report a perfectly good transaction as unevaluatable, when
+    /// all that happened is this host has no remote provider.
+    #[tokio::test]
+    async fn no_evaluator_declines_as_unavailable() {
+        let err = NoEvaluator.evaluate("00").await.unwrap_err();
+        assert!(
+            err.is_unavailable(),
+            "a host with no remote must not condemn the transaction: {err}"
+        );
+    }
+
+    /// The reason `NoEvaluator` exists rather than an empty vec: it can sit in
+    /// a chain and be fallen through, where `FirstAvailable::new(vec![])`
+    /// panics at construction.
+    #[tokio::test]
+    async fn first_available_falls_through_a_declining_evaluator() {
+        let none = NoEvaluator;
+        let chain = FirstAvailable::new(vec![&none as &dyn TxEvaluator]);
+        let err = chain.evaluate("00").await.unwrap_err();
+        assert!(err.is_unavailable());
     }
 }
