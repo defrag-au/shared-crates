@@ -1,6 +1,9 @@
 //! Storybook demo for the AccountBar widget.
 
-use egui_widgets::account_bar::{AccountBar, AccountBarConfig, BarDensity, Trigger};
+use egui_widgets::account_bar::{
+    AccountBar, AccountBarConfig, AccountIdentity, BarDensity, Trigger, WalletRole,
+};
+use egui_widgets::auth::Session;
 use egui_widgets::icons::PhosphorIcon;
 use egui_widgets::wallet::{
     ConnectionState, Network, WalletBalance, WalletConnector, WalletProvider,
@@ -38,8 +41,18 @@ pub fn show(ui: &mut egui::Ui) {
             density: BarDensity::Compact,
             ..Default::default()
         }),
+        AccountBar::new(),
+        AccountBar::new(),
     ];
-    let [with_handle, no_handle, empty, disconnected, compact] = &mut bars;
+    let [
+        with_handle,
+        no_handle,
+        empty,
+        disconnected,
+        compact,
+        session_only,
+        session_paying,
+    ] = &mut bars;
 
     // One variant per LINE, each the full width of the page.
     //
@@ -111,6 +124,45 @@ pub fn show(ui: &mut egui::Ui) {
         },
     );
 
+    panel(
+        ui,
+        "Signed in with a session, no wallet",
+        "The identity is a Discord session, not a wallet — so the popup says \
+         \"Signed in\", not \"Connected wallet\". The subtitle is read literally, \
+         which is exactly why this path exists: holding a wallet is not signing \
+         in with one. An app that never spends shows no Connect affordance.",
+        |ui| {
+            session_only.show_as(
+                ui,
+                AccountIdentity::Session {
+                    session: &session(),
+                    role: WalletRole::Absent,
+                },
+                &WalletConnector::default(),
+                &[],
+            );
+        },
+    );
+    panel(
+        ui,
+        "Signed in, and a wallet that pays",
+        "Two pills, because they answer two questions: who you are, and what \
+         pays. The identity stays rightmost whether or not a wallet is attached, \
+         so the account does not move under the reader when they connect one. \
+         Detaching the wallet does NOT sign them out.",
+        |ui| {
+            session_paying.show_as(
+                ui,
+                AccountIdentity::Session {
+                    session: &session(),
+                    role: WalletRole::Paying,
+                },
+                &connected(Some("$boef")),
+                &[cart(3)],
+            );
+        },
+    );
+
     ui.add_space(12.0);
     ui.label(
         egui::RichText::new(
@@ -127,6 +179,16 @@ pub fn show(ui: &mut egui::Ui) {
 
 fn cart(count: usize) -> Trigger<'static> {
     Trigger::new("cart", "Route", PhosphorIcon::Package).count(count)
+}
+
+/// A Discord session as it looks once restored — the strategy-A shape.
+///
+/// No `stake`: a Discord session never proved one, and the badge must not
+/// imply otherwise by showing an empty identifier row.
+fn session() -> Session {
+    let mut session = Session::anonymous();
+    session.claims.name = Some("boef".to_string());
+    session
 }
 
 /// A connector as it looks after a real connect, without touching a browser.

@@ -56,6 +56,7 @@
 
 use egui::{Align, Color32, Layout, RichText, Sense, Ui, Vec2};
 
+use crate::auth::Session;
 use crate::icons::PhosphorIcon;
 use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
 use crate::user_badge::{UserBadge, UserBadgeAction};
@@ -75,9 +76,55 @@ pub enum AccountBarAction {
     /// A wallet was chosen from the picker. The caller connects it.
     Connect(WalletProvider),
     /// Leave — from the picker's own button, or the account popup.
+    ///
+    /// This drops the WALLET. Under [`AccountIdentity::Session`] the session
+    /// survives it: a user detaching a wallet has not signed out.
     Disconnect,
+    /// End the session, from the identity badge's popup.
+    ///
+    /// Distinct from [`Self::Disconnect`] because under
+    /// [`AccountIdentity::Session`] the two are different acts on different
+    /// things, and a caller that conflated them would sign a user out of the
+    /// app when they meant to swap wallets.
+    SignOut,
     /// A trigger was clicked, carrying the id it was given.
     Trigger(String),
+}
+
+/// What the wallet is FOR in a header whose identity is a session.
+///
+/// A named decision rather than a bool, because the two cases are not "with
+/// and without a feature" — they are different statements about the app. An
+/// app that never spends must not show a Connect affordance at all; an app
+/// that does must show one even while signed in, because being signed in says
+/// nothing about whether a wallet is attached.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum WalletRole {
+    /// No wallet in the header. The app does not spend.
+    Absent,
+    /// The wallet pays. Drawn beside the identity, with its own connect
+    /// affordance — *who you are* and *what pays* are different facts and a
+    /// reader must be able to see both at once.
+    Paying,
+}
+
+/// Who the header says you are, and what established that.
+///
+/// The distinction is not cosmetic. [`AccountBarConfig::subtitle`] is the
+/// provenance line in the account popup and is documented as read literally —
+/// so an app that signs you in with Discord and merely *holds* a wallet cannot
+/// use the wallet-identity path without the popup stating something untrue.
+/// Holding a wallet is not signing in with one.
+pub enum AccountIdentity<'a> {
+    /// The connected wallet IS the identity — the app is entered by connecting
+    /// one, and there is nothing else to be signed in as.
+    Wallet,
+    /// An authenticated session identifies the user; `role` says what the
+    /// wallet, if any, is doing here.
+    Session {
+        session: &'a Session,
+        role: WalletRole,
+    },
 }
 
 /// How much room the bar has to work with.
@@ -207,9 +254,24 @@ impl AccountBar {
     /// hand-rolled this never got, because a `Button` and a bordered `Frame`
     /// have different intrinsic heights and no amount of `add_space` fixes
     /// that.
+    /// Draw the cluster with the wallet as the identity.
+    ///
+    /// Shorthand for [`Self::show_as`] with [`AccountIdentity::Wallet`]; it
+    /// delegates rather than duplicating, so the two cannot drift.
     pub fn show(
         &mut self,
         ui: &mut Ui,
+        connector: &WalletConnector,
+        triggers: &[Trigger<'_>],
+    ) -> AccountBarAction {
+        self.show_as(ui, AccountIdentity::Wallet, connector, triggers)
+    }
+
+    /// Draw the cluster, saying explicitly what identifies the user.
+    pub fn show_as(
+        &mut self,
+        ui: &mut Ui,
+        identity: AccountIdentity<'_>,
         connector: &WalletConnector,
         triggers: &[Trigger<'_>],
     ) -> AccountBarAction {
@@ -243,7 +305,7 @@ impl AccountBar {
         let bar = Vec2::new(ui.available_width(), height);
         let drawn = ui.allocate_ui_with_layout(bar, Layout::right_to_left(Align::Center), |ui| {
             ui.set_item_gap_x(Space::Sm);
-            action = self.cluster(ui, connector, triggers);
+            action = self.cluster(ui, identity, connector, triggers);
         });
         let measured = drawn.response.rect.height();
         if (measured - self.bar_height).abs() > 0.5 {
@@ -258,6 +320,7 @@ impl AccountBar {
     fn cluster(
         &mut self,
         ui: &mut Ui,
+        identity: AccountIdentity<'_>,
         connector: &WalletConnector,
         triggers: &[Trigger<'_>],
     ) -> AccountBarAction {
@@ -267,12 +330,40 @@ impl AccountBar {
         // puts it rightmost — where a reader looks for who they are signed in
         // as — and the triggers reversed after it, so they end up in the order
         // the caller wrote them.
-        if connector.is_connected() {
-            if self.account(ui, connector) == UserBadgeAction::SignOut {
-                action = AccountBarAction::Disconnect;
+        match identity {
+            AccountIdentity::Wallet => {
+                if connector.is_connected() {
+                    if self.account(ui, connector) == UserBadgeAction::SignOut {
+                        action = AccountBarAction::Disconnect;
+                    }
+                } else {
+                    action = self.connect(ui, connector);
+                }
             }
-        } else {
-            action = self.connect(ui, connector);
+            AccountIdentity::Session { session, role } => {
+                // Identity first, so it stays rightmost whether or not a
+                // wallet is attached — the account does not move under the
+                // reader when they connect one.
+                if self.session_account(ui, session) == UserBadgeAction::SignOut {
+                    action = AccountBarAction::SignOut;
+                }
+                // Then the wallet, to its left: a second pill, because it
+                // answers a different question. `Disconnect` here drops the
+                // WALLET and leaves the session alone, which is why sign-out
+                // has its own action.
+                if role == WalletRole::Paying {
+                    if connector.is_connected() {
+                        if self.account(ui, connector) == UserBadgeAction::SignOut {
+                            action = AccountBarAction::Disconnect;
+                        }
+                    } else {
+                        let connect = self.connect(ui, connector);
+                        if connect != AccountBarAction::None {
+                            action = connect;
+                        }
+                    }
+                }
+            }
         }
 
         for trigger in triggers.iter().rev() {
@@ -292,6 +383,32 @@ impl AccountBar {
     /// spans the entire header with a stacked list of wallets, which is how
     /// the routes app ended up with a picker wider than its own page. In a
     /// bounded popup that same width call is exactly right.
+    /// The identity badge for a session-authenticated app.
+    ///
+    /// The subtitle comes from the session rather than
+    /// [`AccountBarConfig::subtitle`], whose default says "Connected wallet" —
+    /// true on the wallet path and a lie on this one. The popup's provenance
+    /// line is read literally, so it is derived from what actually proved the
+    /// identity.
+    fn session_account(&self, ui: &mut Ui, session: &Session) -> UserBadgeAction {
+        let name = session.label();
+        let avatar = session.avatar_url();
+
+        let mut badge = UserBadge::new(&name)
+            .icon(PhosphorIcon::User)
+            .subtitle("Signed in")
+            .avatar_url(avatar.as_deref())
+            .id_salt("account_bar_session");
+
+        // The stake address appears only when the session actually proved one
+        // (strategy C). A Discord session has no stake to show, and an empty
+        // identifier row would imply otherwise.
+        if let Some(stake) = session.claims.stake.as_deref().filter(|s| !s.is_empty()) {
+            badge = badge.identifier("stake", stake);
+        }
+        badge.show(ui)
+    }
+
     fn connect(&mut self, ui: &mut Ui, connector: &WalletConnector) -> AccountBarAction {
         let tokens = ui.tokens();
         let failed = matches!(connector.connection_state, ConnectionState::Error(_));
