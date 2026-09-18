@@ -153,7 +153,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CoverageLanesState) {
         );
         legend_swatch(ui, producing, "hashing");
         legend_swatch(ui, idle, "dark (observed)");
-        legend_swatch(ui, egui_widgets::UNOBSERVED, "unobserved");
+        legend_swatch(ui, *egui_widgets::UNOBSERVED, "unobserved");
     });
     ui.add_space(6.0);
 

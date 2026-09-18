@@ -25,14 +25,16 @@ fn black_flag() -> Vec<LadderRung> {
         ("Legendary", 6, 64.83, 3176.8, None, 0),
     ];
     rows.into_iter()
-        .map(|(value, supply, ratio, target, realized, support)| LadderRung {
-            value: value.to_string(),
-            supply,
-            ratio,
-            target: Some(target),
-            realized,
-            support,
-        })
+        .map(
+            |(value, supply, ratio, target, realized, support)| LadderRung {
+                value: value.to_string(),
+                supply,
+                ratio,
+                target: Some(target),
+                realized,
+                support,
+            },
+        )
         .collect()
 }
 

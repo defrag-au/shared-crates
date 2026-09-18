@@ -33,8 +33,28 @@
 //! [`support`](LadderRung::support) but not [`realized`](LadderRung::realized)
 //! — which is the shape of a lean public API — would otherwise render every
 //! rung as "no sales" while the count column beside it says fifty-five. So
-//! `realized: None` only reads as "no sales" when `support` is zero too;
-//! otherwise the measure is simply blank and the count speaks for itself.
+//! `realized: None` only reads as "no sales" when `support` is zero too.
+//!
+//! And not even then, if the lane disagrees. A demand model that gates its
+//! median on a minimum group size reports **support 0 for a rung that did
+//! trade** — it just did not trade enough times to be trusted. Measured on
+//! Black Flag: Navigator and First Mate each have two real fills and a reported
+//! support of zero. So "no sales" additionally requires
+//! [`fills`](LadderRung::fills) to be empty; otherwise the marks on the lane
+//! would sit beside a claim that nothing sold.
+//!
+//! ## The pulse lane
+//!
+//! Each rung's fills as marks on one shared time axis. The aggregate columns
+//! say what a rung clears at; this says *when*, and the difference matters
+//! because a weighted median hides its own staleness — Quartermaster's figure
+//! rests on four fills, the newest of which is a year old, and no amount of
+//! looking at the number reveals that. On the lane it is the empty right-hand
+//! half.
+//!
+//! The axis therefore ends at [`now`](PricingLadderConfig::now), never at the
+//! newest fill. Scaling to the data would slide every dead rung's last trade up
+//! to the right edge and make it look current.
 //!
 //! ## The bars are per-row, and deliberately not comparable to each other
 //!
@@ -68,7 +88,7 @@
 //! # }
 //! ```
 
-use egui::{RichText, Ui};
+use egui::{RichText, Stroke, Ui};
 
 use crate::bullet_bar::BulletBar;
 use crate::theme::{Space, SpaceExt, TextSize, ThemeExt, Token};
@@ -94,6 +114,13 @@ pub struct LadderRung {
     pub realized: Option<f64>,
     /// How many sales stand behind `realized`.
     pub support: usize,
+    /// Unix seconds of every observed fill on this rung, any order.
+    ///
+    /// Raw observations, not a statistic — so unlike [`realized`](Self::realized)
+    /// a caller may derive these locally without inheriting a weighting
+    /// question. Empty simply draws an empty lane, which is the honest reading
+    /// of a rung nothing has traded on.
+    pub fills: Vec<i64>,
 }
 
 /// Framing the rows cannot carry themselves.
@@ -109,6 +136,15 @@ pub struct PricingLadderConfig {
     pub highlight: Option<String>,
     /// Disambiguates the grid when several ladders share a surface.
     pub id_salt: String,
+    /// Now, in unix seconds. **The pulse lane's right edge, always.**
+    ///
+    /// Anchoring it to the newest fill instead would rescale every dead rung
+    /// until its last trade touched the right edge — a rung that last sold a
+    /// year ago would read as current. The whole value of the lane is the
+    /// empty space on the right.
+    ///
+    /// Zero disables the lane entirely (the column is not drawn).
+    pub now: i64,
 }
 
 impl Default for PricingLadderConfig {
@@ -119,6 +155,7 @@ impl Default for PricingLadderConfig {
             unit: "ADA".to_string(),
             highlight: None,
             id_salt: "pricing_ladder".to_string(),
+            now: 0,
         }
     }
 }
@@ -126,6 +163,75 @@ impl Default for PricingLadderConfig {
 /// Width of the evidence measure. Fixed rather than `available_width` so the
 /// bars line up into a column instead of each taking whatever its row had left.
 const BAR_WIDTH: f32 = 110.0;
+
+/// Width of the pulse lane. Wider than the measure — it carries years, and the
+/// question it answers is where the marks *clump*, which needs room.
+const LANE_WIDTH: f32 = 150.0;
+
+/// Draw one rung's fills as marks on a lane whose x-domain is `(from, now)`,
+/// shared by every row so the columns are comparable.
+///
+/// Marks are translucent and accumulate where they overlap, so a rung with a
+/// hundred fills reads as density rather than as a solid bar — the same
+/// treatment `pip_row` calls a density heatmap. The most recent fill is drawn
+/// solid and full-height: "when did this last trade" is the question a stale
+/// rung has to answer, and it should not be left to the eye to find the
+/// right-most smudge.
+fn draw_lane(ui: &mut Ui, fills: &[i64], from: i64, now: i64) -> egui::Response {
+    let tokens = ui.tokens();
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(LANE_WIDTH, 11.0), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+
+    // The lane's own rule. Drawn even when empty: an absent lane reads as
+    // missing data, where an empty one reads as "nothing traded here", and
+    // those are different claims.
+    let mid = rect.center().y;
+    painter.line_segment(
+        [
+            egui::pos2(rect.left(), mid),
+            egui::pos2(rect.right(), mid),
+        ],
+        Stroke::new(0.5, tokens.color.border),
+    );
+
+    let span = (now - from).max(1) as f32;
+    let x_of = |t: i64| rect.left() + (t - from) as f32 / span * rect.width();
+    let mark = tokens.series.other;
+    let newest = fills.iter().copied().max();
+
+    for &t in fills {
+        if Some(t) == newest {
+            continue;
+        }
+        let x = x_of(t).clamp(rect.left(), rect.right());
+        painter.line_segment(
+            [
+                egui::pos2(x, mid - 3.0),
+                egui::pos2(x, mid + 3.0),
+            ],
+            Stroke::new(1.5, mark.gamma_multiply(0.45)),
+        );
+    }
+    if let Some(t) = newest {
+        let x = x_of(t).clamp(rect.left(), rect.right());
+        painter.line_segment(
+            [
+                egui::pos2(x, rect.top() + 1.0),
+                egui::pos2(x, rect.bottom() - 1.0),
+            ],
+            Stroke::new(1.5, mark),
+        );
+    }
+    response
+}
+
+/// `YYYY-MM` for the lane's left edge, via the civil-date conversion the time
+/// widgets already share, so the ladder and the spine name a date the same way.
+fn month_label(unix: i64) -> String {
+    let (y, m, _) = crate::time_spine::civil_from_unix(unix);
+    format!("{y}-{m:02}")
+}
 
 /// Price formatting: thousands get a `k` so a 3,176 ADA rung does not widen the
 /// column past everything else in it.
@@ -144,9 +250,21 @@ pub fn show(ui: &mut Ui, rungs: &[LadderRung], config: &PricingLadderConfig) -> 
     let primary = tokens.color.text_primary;
     let accent = tokens.color.accent_yellow;
 
+    // One domain for every lane, so the columns mean the same thing. The left
+    // edge is the oldest fill anywhere on the ladder; the right edge is always
+    // `now`.
+    let oldest = rungs.iter().flat_map(|r| r.fills.iter()).copied().min();
+    let lane_domain = match (oldest, config.now) {
+        (Some(from), now) if now > from => Some((from, now)),
+        _ => None,
+    };
+    let pulse_header = lane_domain
+        .map(|(from, _)| format!("pulse  {} \u{2192} now", month_label(from)))
+        .unwrap_or_default();
+
     ui.scope(|ui| {
         egui::Grid::new(&config.id_salt)
-            .num_columns(6)
+            .num_columns(if lane_domain.is_some() { 8 } else { 7 })
             .spacing([10.0, 3.0])
             .striped(true)
             .show(ui, |ui| {
@@ -155,8 +273,8 @@ pub fn show(ui: &mut Ui, rungs: &[LadderRung], config: &PricingLadderConfig) -> 
                     "supply",
                     "ratio",
                     "ladder price",
-                    "realized vs ladder",
-                    "n",
+                    "realized",
+                    "vs ladder",
                 ] {
                     ui.label(
                         RichText::new(header)
@@ -164,6 +282,18 @@ pub fn show(ui: &mut Ui, rungs: &[LadderRung], config: &PricingLadderConfig) -> 
                             .size(ui.text_size(TextSize::Xs)),
                     );
                 }
+                if lane_domain.is_some() {
+                    ui.label(
+                        RichText::new(&pulse_header)
+                            .color(muted)
+                            .size(ui.text_size(TextSize::Xs)),
+                    );
+                }
+                ui.label(
+                    RichText::new("n")
+                        .color(muted)
+                        .size(ui.text_size(TextSize::Xs)),
+                );
                 ui.end_row();
 
                 for rung in rungs {
@@ -202,6 +332,30 @@ pub fn show(ui: &mut Ui, rungs: &[LadderRung], config: &PricingLadderConfig) -> 
                         .size(ui.text_size(TextSize::Sm)),
                     );
 
+                    // The realized figure as a number, in its own column. It is
+                    // NOT the bar's `detail` — that stacks the text above the
+                    // bar, which turns every row of a 13-rung table into two
+                    // lines and knocks the numbers out of a scannable column.
+                    ui.label(
+                        RichText::new(match (rung.realized, rung.support, rung.fills.is_empty()) {
+                            (Some(r), _, _) => price(r, &config.unit),
+                            // Nothing traded here at all — say so, but only
+                            // when the lane agrees. A model that gates its
+                            // median on a minimum group size reports support 0
+                            // for a rung that DID trade, just not enough times
+                            // to be trusted; "no sales" beside two marks on the
+                            // lane is a visible contradiction.
+                            (None, 0, true) => "no sales".to_string(),
+                            (None, _, _) => "\u{2014}".to_string(),
+                        })
+                        .color(if rung.realized.is_some() {
+                            secondary
+                        } else {
+                            muted
+                        })
+                        .size(ui.text_size(TextSize::Xs)),
+                    );
+
                     // The measure. Nothing sold here => no bar at all; see the
                     // module docs on why an empty bar would be a claim.
                     ui.scope(|ui| {
@@ -217,34 +371,36 @@ pub fn show(ui: &mut Ui, rungs: &[LadderRung], config: &PricingLadderConfig) -> 
                                     rung.target.map(|t| t as f32),
                                 )
                                 .max(hi.max(f64::EPSILON) as f32)
-                                .height(10.0)
-                                .detail(price(realized, &config.unit));
+                                .height(9.0);
                                 // "At the ladder price" within 10% — the band
                                 // where the structure is being confirmed rather
                                 // than contradicted.
                                 match rung.target {
-                                    Some(t) => bar
-                                        .good_within(Token::Success, (t * 0.1) as f32)
-                                        .show(ui),
+                                    Some(t) => {
+                                        bar.good_within(Token::Success, (t * 0.1) as f32).show(ui)
+                                    }
                                     None => bar.show(ui),
                                 }
                             }
-                            // Nothing traded here at all — say so. But if sales
-                            // exist and only the median is missing, saying "no
-                            // sales" beside a count of 55 would be a flat lie;
-                            // leave the measure blank and let `n` speak.
-                            None if rung.support == 0 => ui.label(
-                                RichText::new("no sales")
-                                    .color(muted)
-                                    .size(ui.text_size(TextSize::Xs)),
-                            ),
-                            None => ui.label(
-                                RichText::new("\u{2014}")
-                                    .color(muted)
-                                    .size(ui.text_size(TextSize::Xs)),
-                            ),
+                            None => ui.label(""),
                         }
                     });
+
+                    if let Some((from, now)) = lane_domain {
+                        let resp = draw_lane(ui, &rung.fills, from, now);
+                        if let Some(last) = rung.fills.iter().copied().max() {
+                            let days = (now - last).max(0) / 86_400;
+                            resp.on_hover_text(format!(
+                                "{} fill(s) \u{00b7} last traded {}",
+                                rung.fills.len(),
+                                if days == 0 {
+                                    "today".to_string()
+                                } else {
+                                    format!("{days} days ago")
+                                }
+                            ));
+                        }
+                    }
 
                     ui.label(
                         RichText::new(if rung.support == 0 {
