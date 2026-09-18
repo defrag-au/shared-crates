@@ -22,6 +22,28 @@ pub enum UtxoTag {
     ScriptAddress,
 }
 
+/// How an output carries its datum.
+///
+/// [`UtxoTag::HasDatum`] says a datum is present; this says which SHAPE,
+/// and the difference is load-bearing for anything that SPENDS the
+/// output: a hash datum's preimage must be witnessed by the spending
+/// transaction, and witnessing one for an inline datum is rejected by
+/// the ledger as `NotAllowedSupplementalDatums`. A consumer holding the
+/// datum bytes still cannot build a spend without knowing which it was.
+///
+/// A property of the OUTPUT, never of a contract or its version —
+/// jpg.store's V2 collection offers are hash-datum and its V3 inline
+/// today, but that is a convention, and that marketplace has already
+/// reversed one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub enum DatumKind {
+    /// Bytes live on the output itself; a spend witnesses nothing.
+    Inline,
+    /// The output commits to a hash; a spend must witness the preimage.
+    Hash,
+}
+
 /// API-friendly UTxO representation with assets as a vec
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
