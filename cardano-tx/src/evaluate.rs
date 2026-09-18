@@ -129,6 +129,7 @@ pub trait TxEvaluator {
 /// retired on 2026-09-18, with every write path already on Koios. The
 /// inherited default refuses with a message that says so, which is a better
 /// outcome than a mapping nobody will maintain.
+#[cfg(feature = "maestro")]
 #[async_trait(?Send)]
 impl TxEvaluator for maestro::MaestroApi {
     fn name(&self) -> &str {
@@ -152,5 +153,75 @@ impl TxEvaluator for maestro::MaestroApi {
                 },
             })
             .collect())
+    }
+}
+
+/// Try each evaluator in order, taking the first real answer.
+///
+/// The ordering the [`EvalError`] split was written for: a provider that is
+/// merely *unreachable* says nothing about the transaction, so the next one
+/// gets a turn; a provider that says the transaction *cannot evaluate* has
+/// answered, and asking again elsewhere would only produce the same refusal
+/// more slowly.
+///
+/// The intended shape is local-first: an in-process evaluator is exact and
+/// costs milliseconds, so it should answer whenever it can, with a remote
+/// provider behind it for the transactions it cannot account for.
+pub struct FirstAvailable<'a> {
+    evaluators: Vec<&'a dyn TxEvaluator>,
+}
+
+impl<'a> FirstAvailable<'a> {
+    /// Panics on an empty list: an evaluator that can never answer is a
+    /// wiring mistake, and failing at construction beats failing on the first
+    /// transaction a user tries to build.
+    pub fn new(evaluators: Vec<&'a dyn TxEvaluator>) -> Self {
+        assert!(
+            !evaluators.is_empty(),
+            "FirstAvailable needs at least one evaluator"
+        );
+        Self { evaluators }
+    }
+}
+
+#[async_trait(?Send)]
+impl TxEvaluator for FirstAvailable<'_> {
+    fn name(&self) -> &str {
+        "first-available"
+    }
+
+    async fn evaluate(&self, tx_cbor_hex: &str) -> Result<Vec<RedeemerEvaluation>, EvalError> {
+        let mut last = None;
+        for e in &self.evaluators {
+            match e.evaluate(tx_cbor_hex).await {
+                Ok(v) => return Ok(v),
+                Err(err) if err.is_unavailable() => {
+                    tracing::info!(evaluator = e.name(), %err, "evaluator unavailable; trying the next");
+                    last = Some(err);
+                }
+                // A verdict, not an outage. Stop.
+                Err(err) => return Err(err),
+            }
+        }
+        Err(last.unwrap_or_else(|| EvalError::Unavailable("no evaluator answered".into())))
+    }
+
+    async fn evaluate_pending(
+        &self,
+        tx_cbor_hex: &str,
+        pending: &[PendingUtxo],
+    ) -> Result<Vec<RedeemerEvaluation>, EvalError> {
+        let mut last = None;
+        for e in &self.evaluators {
+            match e.evaluate_pending(tx_cbor_hex, pending).await {
+                Ok(v) => return Ok(v),
+                Err(err) if err.is_unavailable() => {
+                    tracing::info!(evaluator = e.name(), %err, "evaluator unavailable; trying the next");
+                    last = Some(err);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+        Err(last.unwrap_or_else(|| EvalError::Unavailable("no evaluator answered".into())))
     }
 }

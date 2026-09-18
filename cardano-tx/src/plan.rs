@@ -922,11 +922,7 @@ fn split_for_outputs(params: &TxBuildParams, assets: &[AssetAmount]) -> Vec<Vec<
 /// Takes the quantities, not just the ids: they are encoded inline in the output
 /// and a fungible balance can be several bytes wider than an NFT's `01`.
 fn min_ada_for_assets(params: &TxBuildParams, assets: &[AssetAmount]) -> u64 {
-    crate::calculate_min_ada_with_params(
-        &crate::builder::send::to_maestro_params(params),
-        assets,
-        &crate::OutputParams::default(),
-    )
+    crate::calculate_min_ada_with_params(params, assets, &crate::OutputParams::default())
 }
 
 /// Build one native-asset output at `lovelace`.

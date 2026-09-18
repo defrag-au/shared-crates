@@ -75,7 +75,7 @@ pub const PLUTUS_V3_COST_MODEL: [i64; 350] = [
 /// than a hardcoded snapshot. A `None` variant means "not supplied"; the
 /// resolvers ([`Self::v2`] / [`Self::v3`]) then fall back to the bundled
 /// constants above so a missing field degrades rather than panics.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlutusCostModels {
     pub plutus_v1: Option<Vec<i64>>,
     pub plutus_v2: Option<Vec<i64>>,

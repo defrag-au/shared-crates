@@ -47,7 +47,11 @@ pub const CONWAY_MAX_TX_SIZE: u32 = 16_384;
 /// carry [`CONWAY_MAX_TX_SIZE`] instead of zero — see that constant for why
 /// the size ceiling in particular must not default to unbounded. Every other
 /// field still defaults to its zero value.
-#[derive(Debug, Clone)]
+/// Serialisable so a host that does NOT read protocol parameters itself can be
+/// handed them. That is the browser case: it builds transactions but has no
+/// indexer, so a worker sends it exactly this — already normalised, rather
+/// than an indexer's raw row that each consumer would re-derive differently.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TxBuildParams {
     /// Per-byte fee multiplier (Cardano parameter `a`)
     pub min_fee_coefficient: u64,
@@ -149,6 +153,7 @@ impl TxBuildParams {
     }
 }
 
+#[cfg(feature = "maestro")]
 impl From<&maestro::ProtocolParameters> for TxBuildParams {
     fn from(pp: &maestro::ProtocolParameters) -> Self {
         let (price_mem, price_step) = pp
@@ -185,6 +190,7 @@ impl From<&maestro::ProtocolParameters> for TxBuildParams {
     }
 }
 
+#[cfg(feature = "maestro")]
 impl From<&maestro::ProtocolParameters> for PlutusCostModels {
     fn from(pp: &maestro::ProtocolParameters) -> Self {
         pp.plutus_cost_models
@@ -198,7 +204,9 @@ impl From<&maestro::ProtocolParameters> for PlutusCostModels {
     }
 }
 
-#[cfg(test)]
+// Only the Maestro adapter is exercised here, so the whole module goes with
+// the feature — gating the single test would leave `use super::*` unused.
+#[cfg(all(test, feature = "maestro"))]
 mod tests {
     use super::*;
 

@@ -1,4 +1,4 @@
-use maestro::ProtocolParameters;
+use crate::params::TxBuildParams;
 use pallas_txbuilder::StagingTransaction;
 
 /// Estimate the size of a CBOR-encoded number (lovelace amounts, fees, etc.)
@@ -238,7 +238,7 @@ fn execution_fee_from_redeemers(
 /// so the CBOR encoding matches the final transaction.
 pub fn calculate_tx_fee(
     tx: &StagingTransaction,
-    protocol_params: &ProtocolParameters,
+    protocol_params: &TxBuildParams,
     _num_witnesses: u32,
 ) -> u64 {
     use pallas_txbuilder::BuildConway;
@@ -250,7 +250,7 @@ pub fn calculate_tx_fee(
             // Fallback to estimation if build fails
             let estimated_size = estimate_tx_size(tx, _num_witnesses);
             return (estimated_size * protocol_params.min_fee_coefficient)
-                + protocol_params.min_fee_constant.ada.lovelace;
+                + protocol_params.min_fee_constant;
         }
     };
 
@@ -262,13 +262,13 @@ pub fn calculate_tx_fee(
         Err(_) => {
             let estimated_size = estimate_tx_size(tx, _num_witnesses);
             return (estimated_size * protocol_params.min_fee_coefficient)
-                + protocol_params.min_fee_constant.ada.lovelace;
+                + protocol_params.min_fee_constant;
         }
     };
 
     // Exact fee from exact signed tx size
     let tx_size = signed.tx_bytes.0.len() as u64;
-    tx_size * protocol_params.min_fee_coefficient + protocol_params.min_fee_constant.ada.lovelace
+    tx_size * protocol_params.min_fee_coefficient + protocol_params.min_fee_constant
 }
 
 #[cfg(test)]
