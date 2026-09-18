@@ -935,6 +935,16 @@ impl CancelContract {
             preliminary_ex_steps: 950_000_000,
         }
     }
+
+    /// The UTxO carrying this contract's script, as `(tx_hash_hex, index)`.
+    ///
+    /// Exposed so a caller can resolve it: phase-2 evaluation has to be handed
+    /// the reference input in full, because that output is where the validator
+    /// code actually comes from — a transaction using a reference script
+    /// carries no copy of it in the witness set.
+    pub fn script_ref(&self) -> (&'static str, u64) {
+        (self.script_ref_tx, self.script_ref_index)
+    }
 }
 
 /// Preliminary ex-units placeholder for the redeemer in pass 1 of the
