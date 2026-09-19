@@ -143,6 +143,7 @@ pub mod user_badge;
 pub mod utils;
 pub mod variant_split;
 pub mod viewport;
+pub mod vitals;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]

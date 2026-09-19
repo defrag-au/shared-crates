@@ -263,6 +263,15 @@ impl ImageLoads {
         self.shared.schedule.lock().unwrap().counts()
     }
 
+    /// Compressed bytes currently held.
+    ///
+    /// The same figure the `BytesLoader` reports to egui, reachable from the
+    /// handle so a caller measuring where its memory went does not have to go
+    /// through the loader registry to ask.
+    pub fn byte_size(&self) -> usize {
+        self.shared.schedule.lock().unwrap().byte_size()
+    }
+
     pub fn policy(&self) -> LoadPolicy {
         self.shared.schedule.lock().unwrap().policy()
     }

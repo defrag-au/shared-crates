@@ -239,6 +239,26 @@ impl ListingGrid {
 
                 let (rect, resp) = ui.allocate_exact_size(card_size, Sense::click());
 
+                // CULL BEFORE BUILDING ANYTHING, not just before the image.
+                //
+                // egui is immediate mode and has no damage tracking: every
+                // frame re-runs this loop in full and re-tessellates the
+                // result. Shapes outside the clip rect are discarded — but
+                // only AFTER being constructed, so a card scrolled far out of
+                // view still cost a background rect, a banner, two text
+                // galleys and a badge pass. With a few hundred listings that
+                // is the whole frame budget, paid ten times a second because
+                // something elsewhere is animating.
+                //
+                // The space is already reserved by `allocate_exact_size`
+                // above, so skipping the rest leaves layout and scroll extent
+                // exactly as they were. Nothing below can matter either: an
+                // off-screen card cannot be hovered or clicked, because the
+                // pointer is on screen.
+                if !ui.clip_rect().intersects(rect) {
+                    continue;
+                }
+
                 // `contains_pointer()`, NOT `hovered()`. This card hosts a
                 // hover-revealed `CornerAction`, which is a later widget
                 // occupying part of this same rect — and `hovered()` respects
@@ -265,11 +285,10 @@ impl ListingGrid {
                 };
                 ui.painter().rect_filled(rect, cfg.rounding, bg);
 
-                // Thumbnail fills entire card
-                let visible = ui.clip_rect().intersects(rect);
-
+                // Thumbnail fills entire card. Visibility is settled above —
+                // reaching here means the card is on screen.
                 if let Some(ref url) = listing.image_url {
-                    if visible {
+                    {
                         // THREE outcomes, not two. `try_load_texture` reports
                         // a failure and a load in flight identically as "not
                         // ready" — `Err(..)` for a 404, a CORS refusal or a

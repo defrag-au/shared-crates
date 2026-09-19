@@ -191,8 +191,17 @@ impl CachedSpinner {
 /// `image_loader::schedule` against `image_loader::fetch`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum DecodeSize {
-    /// 128px. Grids, lists, pickers.
+    /// 128px. Grids and lists on a non-HiDPI display.
     Tile,
+    /// 256px. The SAME grids at 2× device pixel ratio, which is most screens
+    /// this runs on.
+    ///
+    /// Added from measurement, not taste. Without it an 84px card needing 168
+    /// physical pixels fell through to [`Self::Card`], and the vitals line
+    /// showed a texture average of ~660 KB where 64 KB was expected — every
+    /// thumbnail paying 400px for 168px of screen, a 5.7× area overshoot.
+    /// A ladder with a gap where the common case sits is not a ladder.
+    Retina,
     /// 400px. Cards, browsers.
     Card,
     /// 1686px. Detail views.
@@ -217,16 +226,26 @@ impl DecodeSize {
         };
         match longest {
             0..=128 => Self::Tile,
-            129..=400 => Self::Card,
+            129..=256 => Self::Retina,
+            257..=400 => Self::Card,
             401..=1686 => Self::Full,
             _ => Self::Native,
         }
     }
 
     /// Pixels to decode to, or `None` to leave the source alone.
+    ///
+    /// These need NOT match the IIIF service's derivative widths, and
+    /// [`Self::Retina`] deliberately does not. The two ladders answer
+    /// different questions: the service's rungs decide which object is warm in
+    /// R2, which is bandwidth and latency; these decide how big a texture
+    /// ends up, which is memory. A 400px download decoded to 256px costs the
+    /// bandwidth of the former and the memory of the latter, and memory is the
+    /// one measured in gigabytes.
     pub fn px(self) -> Option<u32> {
         match self {
             Self::Tile => Some(128),
+            Self::Retina => Some(256),
             Self::Card => Some(400),
             Self::Full => Some(1686),
             Self::Native => None,
@@ -638,17 +657,41 @@ mod decode_size_tests {
                 maintain_aspect_ratio: true,
             })
         };
-        // A grid card, at 1x and at 2x device pixel ratio.
+        // A grid card, at 1x and at 2x device pixel ratio. The 2x case is the
+        // common one and the whole reason `Retina` exists: it used to land on
+        // `Card` and cost 640 KB a thumbnail to show 168 pixels.
         assert_eq!(size(84), DecodeSize::Tile);
-        assert_eq!(size(168), DecodeSize::Card);
+        assert_eq!(size(168), DecodeSize::Retina);
         // Exactly on a rung stays on it rather than stepping up.
         assert_eq!(size(128), DecodeSize::Tile);
+        assert_eq!(size(256), DecodeSize::Retina);
         assert_eq!(size(400), DecodeSize::Card);
         assert_eq!(size(1686), DecodeSize::Full);
         // One pixel over has to step up, or the image is upscaled.
-        assert_eq!(size(129), DecodeSize::Card);
+        assert_eq!(size(129), DecodeSize::Retina);
+        assert_eq!(size(257), DecodeSize::Card);
         assert_eq!(size(401), DecodeSize::Full);
         assert_eq!(size(1687), DecodeSize::Native);
+    }
+
+    /// The measured regression, stated as arithmetic: what a 2× grid card
+    /// costs per texture. Any future rung change that pushes an ordinary
+    /// thumbnail back onto a 400px decode fails here rather than showing up
+    /// months later as a gigabyte of texture.
+    #[test]
+    fn a_retina_grid_card_costs_a_quarter_of_a_megabyte_not_two_thirds() {
+        let card_at_2x = DecodeSize::for_hint(SizeHint::Size {
+            width: 168,
+            height: 168,
+            maintain_aspect_ratio: true,
+        });
+        let px = card_at_2x.px().expect("a grid card is resized") as u64;
+        let bytes = px * px * 4;
+        assert_eq!(bytes, 256 * 1024, "256px RGBA");
+        assert!(
+            bytes < 400 * 400 * 4,
+            "must stay below what the 400px rung would have cost"
+        );
     }
 
     /// The longest edge decides, so a wide banner is not quietly squashed
@@ -665,6 +708,10 @@ mod decode_size_tests {
         );
         assert_eq!(DecodeSize::for_hint(SizeHint::Width(300)), DecodeSize::Card);
         assert_eq!(DecodeSize::for_hint(SizeHint::Height(64)), DecodeSize::Tile);
+        assert_eq!(
+            DecodeSize::for_hint(SizeHint::Width(200)),
+            DecodeSize::Retina
+        );
     }
 
     /// `Scale` is relative to a source size nothing knows until the decode
@@ -683,14 +730,26 @@ mod decode_size_tests {
         assert_eq!(DecodeSize::Native.px(), None, "native resizes nothing");
     }
 
-    /// The rungs are the IIIF service's derivative widths
-    /// (`workers/iiif/src/image_size.rs`). A rung that is NOT one of those
-    /// still renders, but misses the warm R2 object and pays a cold
-    /// render on every first request — which fails silently as latency.
+    /// Most rungs match the IIIF service's derivative widths
+    /// (`workers/iiif/src/image_size.rs`), because a URL asking for a width
+    /// the service does not keep warm still renders — it just misses the R2
+    /// object and pays a cold render on every first request, which fails
+    /// silently as latency.
+    ///
+    /// `Retina` is the deliberate exception, and it costs nothing: these
+    /// widths govern the DECODE, not the URL. A 400px derivative fetched warm
+    /// and decoded down to 256px pays the service's cache hit and a quarter of
+    /// the texture. Conflating the two ladders is what produced the 5.7×
+    /// overshoot in the first place.
     #[test]
-    fn the_rungs_match_the_services_warm_derivatives() {
+    fn the_rungs_match_the_services_warm_derivatives_except_where_deliberate() {
         assert_eq!(DecodeSize::Tile.px(), Some(128));
         assert_eq!(DecodeSize::Card.px(), Some(400));
         assert_eq!(DecodeSize::Full.px(), Some(1686));
+        assert_eq!(
+            DecodeSize::Retina.px(),
+            Some(256),
+            "decode-only rung; the service warms 128/400/1686 and that is fine"
+        );
     }
 }

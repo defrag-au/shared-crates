@@ -1,5 +1,6 @@
 pub mod koios_account_utxos;
 pub mod koios_assets;
+pub mod koios_cip68;
 pub mod koios_evaluate;
 pub mod koios_params;
 mod koios_serde;
@@ -7,6 +8,9 @@ pub mod koios_transaction;
 pub mod koios_utils;
 pub mod koios_utxos;
 
+use cardano_assets::{
+    Asset, AssetMetadata, AssetMetadata68, ExtractedCid, MetadataKind, asset_from_metadata_value,
+};
 use http_client::{HttpClient, HttpError};
 use koios_account_utxos::TxRecord;
 pub use koios_evaluate::KoiosRedeemerBudget;
@@ -469,6 +473,86 @@ impl KoiosAssetInfo {
             .and_then(|b| String::from_utf8(b).ok())?;
         by_policy.get(&utf8)
     }
+
+    /// This asset's CIP-68 metadata map, decoded out of the Plutus detailed
+    /// JSON Koios serves in `cip68_metadata`.
+    ///
+    /// Plain JSON, not the typed form: trait extraction reads the original
+    /// document so a shape [`AssetMetadata`] cannot match still yields
+    /// traits.
+    #[must_use]
+    pub fn cip68_record(&self) -> Option<serde_json::Value> {
+        koios_cip68::cip68_metadata_value(self.cip68_metadata.as_ref()?)
+    }
+
+    /// This asset's CIP-68 metadata as typed [`AssetMetadata68`], carrying the
+    /// purpose implied by the CIP-67 label Koios keyed the datum under.
+    #[must_use]
+    pub fn cip68_metadata68(&self) -> Option<AssetMetadata68> {
+        koios_cip68::decode_cip68_metadata(self.cip68_metadata.as_ref()?)
+    }
+
+    /// Which metadata standard this asset actually carries.
+    ///
+    /// CIP-25 wins when both are present: an asset minted with a `721`
+    /// payload is a CIP-25 asset that also happens to have a datum (ADA
+    /// Handle does exactly this), and the stored kind has to keep saying so.
+    #[must_use]
+    pub fn metadata_kind(&self) -> MetadataKind {
+        if self.cip25_record().is_some() {
+            return MetadataKind::Cip25;
+        }
+        match self.cip68_metadata68() {
+            Some(cip68) => MetadataKind::Cip68(cip68.purpose),
+            None => MetadataKind::Unknown,
+        }
+    }
+
+    /// Flatten this asset's metadata to the shared [`Asset`] — name, image,
+    /// media type and traits.
+    ///
+    /// CIP-68 is preferred over CIP-25 because the datum is the live
+    /// declaration: a dynamic NFT's current image is there, while the `721`
+    /// payload is frozen at mint. Both go through the v2
+    /// [`asset_from_metadata_value`] extractor over the raw document, so
+    /// results match every other path that reads metadata.
+    #[must_use]
+    pub fn to_asset(&self) -> Option<Asset> {
+        if let Some(cip68) = self.cip68_record()
+            && let Ok(asset) = asset_from_metadata_value(cip68)
+        {
+            return Some(asset);
+        }
+        if let Some(cip25) = self.cip25_record()
+            && let Ok(asset) = asset_from_metadata_value(cip25.clone())
+        {
+            return Some(asset);
+        }
+        None
+    }
+
+    /// Every IPFS CID (headline image plus each `files[]` entry) this asset's
+    /// metadata references. Flattening to [`Asset`] keeps only the headline
+    /// image, so callers that need the full media set read it here.
+    #[must_use]
+    pub fn extract_cids(&self) -> Vec<ExtractedCid> {
+        if let Some(cip68) = self.cip68_metadata68() {
+            return cip68.extract_cids();
+        }
+        if let Some(cip25) = self
+            .cip25_record()
+            .and_then(|v| serde_json::from_value::<AssetMetadata>(v.clone()).ok())
+        {
+            return cip25.extract_cids();
+        }
+        Vec::new()
+    }
+
+    /// Unix seconds this asset was first minted, for a stored mint timestamp.
+    #[must_use]
+    pub fn mint_timestamp(&self) -> u64 {
+        self.creation_time
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -490,6 +574,39 @@ pub struct KoiosPolicyAssetInfo {
     pub asset_name: Option<String>,
     /// Koios serialises large supplies as strings; wasm-safe-serde
     /// accepts both string and integer forms.
+    #[serde(default, with = "wasm_safe_serde::u64_option")]
+    pub total_supply: Option<u64>,
+}
+
+/// Row from `GET /policy_asset_addresses` — one (asset, holder) pair for a
+/// policy.
+///
+/// Koios inlines `stake_address`, so a holder roll-up needs no second
+/// address→stake resolution pass. It is absent for an enterprise address
+/// (no staking part) and for script addresses that carry none.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct KoiosPolicyAssetAddress {
+    /// Hex-encoded asset name; null/absent for the empty name.
+    pub asset_name: Option<String>,
+    pub payment_address: String,
+    pub stake_address: Option<String>,
+    /// Koios serialises quantities as strings.
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub quantity: u64,
+}
+
+/// Row from `GET /policy_asset_list` — the cheapest per-policy asset
+/// listing there is: name and supply, no metadata.
+///
+/// Use this to walk *which* assets a policy holds; follow with
+/// [`KoiosApi::get_policy_assets`] for the ones whose metadata you need.
+/// [`KoiosApi::get_policy_asset_info`] returns the same window with every
+/// row's full `minting_tx_metadata` attached, which on a 10k-asset
+/// collection is megabytes a name-only caller throws away.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct KoiosPolicyAssetName {
+    /// Hex-encoded asset name; null/absent for the empty name.
+    pub asset_name: Option<String>,
     #[serde(default, with = "wasm_safe_serde::u64_option")]
     pub total_supply: Option<u64>,
 }
@@ -1358,6 +1475,74 @@ impl KoiosApi {
             self.base_url
         );
         self.get_json(&url).await
+    }
+
+    /// One page of a policy's asset names (`GET /policy_asset_list`).
+    ///
+    /// Name and supply only — see [`KoiosPolicyAssetName`] for why this is
+    /// the right call to walk a large policy with.
+    pub async fn get_policy_asset_names(
+        &self,
+        policy_id: &str,
+        limits: KoiosLimits,
+    ) -> Result<Vec<KoiosPolicyAssetName>, KoiosError> {
+        let url = format!(
+            "{}/policy_asset_list?_asset_policy={policy_id}",
+            self.base_url
+        );
+        self.get_json_with_options(&url, Some(&QueryOptions::from(limits)))
+            .await
+    }
+
+    /// Every (asset, holder) pair under a policy
+    /// (`GET /policy_asset_addresses`), paging until exhausted.
+    ///
+    /// Each row carries the holder's `stake_address` inline, so a holder
+    /// roll-up is one call — not a listing followed by an address→stake
+    /// resolution pass.
+    ///
+    /// ⚠️ This is unbounded in the size of the policy: a 10k-asset
+    /// collection held across 4k wallets is 10k rows, ten pages. Callers on
+    /// a request budget should page it themselves via
+    /// [`Self::get_policy_asset_addresses_page`].
+    pub async fn get_policy_asset_addresses(
+        &self,
+        policy_id: &str,
+    ) -> Result<Vec<KoiosPolicyAssetAddress>, KoiosError> {
+        let mut all = Vec::new();
+        let mut offset = 0u32;
+
+        loop {
+            let page = self
+                .get_policy_asset_addresses_page(
+                    policy_id,
+                    KoiosLimits::new(KOIOS_PAGE_LIMIT, Some(offset)),
+                )
+                .await?;
+            let page_len = page.len() as u32;
+            all.extend(page);
+
+            if page_len < KOIOS_PAGE_LIMIT {
+                break;
+            }
+            offset += KOIOS_PAGE_LIMIT;
+        }
+
+        Ok(all)
+    }
+
+    /// One page of [`Self::get_policy_asset_addresses`].
+    pub async fn get_policy_asset_addresses_page(
+        &self,
+        policy_id: &str,
+        limits: KoiosLimits,
+    ) -> Result<Vec<KoiosPolicyAssetAddress>, KoiosError> {
+        let url = format!(
+            "{}/policy_asset_addresses?_asset_policy={policy_id}",
+            self.base_url
+        );
+        self.get_json_with_options(&url, Some(&QueryOptions::from(limits)))
+            .await
     }
 
     pub async fn get_policy_asset_mints(
