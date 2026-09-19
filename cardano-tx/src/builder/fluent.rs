@@ -409,7 +409,7 @@ impl TxBuilder {
         // build succeeds, the caller sees "evaluated OK", and the node rejects
         // with `ExUnitsTooBigUTxO` — with no indication that the batch was
         // simply too large.
-        let (mem_cap, steps_cap) = prepared.params.max_tx_ex_units;
+        let cap = &prepared.params.max_tx_ex_units;
         let mem: u64 = prepared
             .inputs
             .iter()
@@ -422,12 +422,12 @@ impl TxBuilder {
             .filter_map(|(_, s)| s.as_ref().map(|c| c.ex_units.steps))
             .chain(prepared.mints.iter().map(|m| m.ex_units.steps))
             .sum();
-        if mem > mem_cap || steps > steps_cap {
+        if mem > cap.mem || steps > cap.steps {
             return Err(TxBuildError::ExUnitsExceeded {
                 mem,
-                mem_cap,
+                mem_cap: cap.mem,
                 steps,
-                steps_cap,
+                steps_cap: cap.steps,
             });
         }
 

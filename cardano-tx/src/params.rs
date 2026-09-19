@@ -5,6 +5,7 @@
 //! Blockfrost, Koios, etc.) into this common representation.
 
 use crate::builder::cost_models::PlutusCostModels;
+use pallas_txbuilder::ExUnits;
 
 /// Conway's `minFeeRefScriptCoinsPerByte`, in lovelace, as it currently stands
 /// on mainnet and preprod.
@@ -75,7 +76,13 @@ pub struct TxBuildParams {
     /// list for its own payouts, and the list grows with the sweep — measured
     /// at 2.85M / 7.18M / 12.25M / 18.10M memory for 1 / 2 / 3 / 4 listings.
     /// Four does not fit; three sits at 74%.
-    pub max_tx_ex_units: (u64, u64),
+    /// NAMED, not a `(u64, u64)`. The two figures differ by two orders of
+    /// magnitude, so a transposed pair does not look wrong to a reader or to
+    /// the compiler — and this crate hands the pair to consumers that order it
+    /// the OTHER way round (`tx-eval` takes `(steps, mem)`). One such
+    /// transposition silently rejected every packing in a cart search and
+    /// reported a perfectly buildable cart as impossible.
+    pub max_tx_ex_units: ExUnits,
     /// Maximum serialised size of the *value* portion of a single UTxO output
     /// (Cardano Conway parameter `maxValueSize`). Outputs whose value exceeds
     /// this limit are rejected by the ledger (`OutputTooBigUTxO`).
@@ -112,7 +119,7 @@ impl Default for TxBuildParams {
             min_fee_coefficient: 0,
             min_fee_constant: 0,
             coins_per_utxo_byte: 0,
-            max_tx_ex_units: (0, 0),
+            max_tx_ex_units: ExUnits { mem: 0, steps: 0 },
             max_value_size: 0,
             price_mem: None,
             price_step: None,
@@ -177,8 +184,14 @@ impl From<&maestro::ProtocolParameters> for TxBuildParams {
             max_tx_ex_units: pp
                 .max_execution_units_per_transaction
                 .as_ref()
-                .map(|eu| (eu.memory, eu.cpu))
-                .unwrap_or((16_500_000, 10_000_000_000)),
+                .map(|eu| ExUnits {
+                    mem: eu.memory,
+                    steps: eu.cpu,
+                })
+                .unwrap_or(ExUnits {
+                    mem: 16_500_000,
+                    steps: 10_000_000_000,
+                }),
             price_mem,
             price_step,
             min_fee_ref_script_cost_per_byte: CONWAY_MIN_FEE_REF_SCRIPT_COST_PER_BYTE,

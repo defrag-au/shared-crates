@@ -176,12 +176,12 @@ const BUY_BYTES_BASE: u64 = 600;
 /// test that wants to isolate one axis passes `u64::MAX` on the others, which
 /// says so explicitly.
 pub fn max_buys_for_budget(curve: BuyCostCurve, params: &TxBuildParams) -> usize {
-    let (mem_cap, steps_cap) = params.max_tx_ex_units;
+    let cap = &params.max_tx_ex_units;
     let size_cap = u64::from(params.max_tx_size);
 
     let fits = |n: u64| {
-        curve.mem_for(n) <= mem_cap
-            && curve.steps_for(n) <= steps_cap
+        curve.mem_for(n) <= cap.mem
+            && curve.steps_for(n) <= cap.steps
             && BUY_BYTES_BASE + BUY_BYTES_PER_LISTING * n <= size_cap
     };
 
@@ -754,7 +754,7 @@ mod tests {
     /// rather than a side effect of a zero.
     fn caps(mem: u64, steps: u64, size: u32) -> TxBuildParams {
         TxBuildParams {
-            max_tx_ex_units: (mem, steps),
+            max_tx_ex_units: ExUnits { mem, steps },
             max_tx_size: size,
             ..Default::default()
         }
