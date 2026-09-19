@@ -91,6 +91,12 @@ web-sys = { workspace = true, features = [
     "Blob", "BlobPropertyBag",
     "HtmlImageElement",
     "ImageBitmap",
+    # `createImageBitmap(blob, { resizeWidth, resizeHeight })` — the decoder
+    # resizes WHILE decoding rather than after, so a grid card never
+    # materialises the full artwork at all. Without these the hint is
+    # unusable and every image decodes at its source resolution, which is how
+    # a page of 84px thumbnails came to hold gigabytes of texture.
+    "ImageBitmapOptions", "ResizeQuality",
     "OffscreenCanvas", "OffscreenCanvasRenderingContext2d",
     "ImageData",
     "WorkerGlobalScope",

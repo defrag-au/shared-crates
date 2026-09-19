@@ -15,13 +15,21 @@
 //! Scrolling the grid shows the same thing at a smaller scale: rows scrolled
 //! past before they load are cancelled too. **Forget all** empties the caches
 //! so you can watch it again.
+//!
+//! **Retain** is the other half, and the one that bounds memory rather than
+//! bandwidth: completed art is kept until the cap, then the coldest is
+//! released — bytes, decoded image and texture together. Wind it below what
+//! fits on screen and the grid eats itself, refetching art as it repaints;
+//! that thrashing is exactly what a cap set too low buys, and why the default
+//! is several screens' worth. At `everything` it grows without limit, which is
+//! what egui's own loaders do and what ran a tab to gigabytes.
 
 use std::time::Duration;
 
 use egui::{RichText, Sense, Vec2};
 use egui_widgets::card_browser::{self, CardBrowserConfig};
 use egui_widgets::image_loader::CachedSpinner;
-use egui_widgets::image_loader::schedule::{Demand, LoadCounts, LoadPolicy};
+use egui_widgets::image_loader::schedule::{Demand, LoadCounts, LoadPolicy, Retain};
 use egui_widgets::theme::ThemeExt as _;
 use image_core::ImageSize;
 
@@ -63,6 +71,10 @@ pub struct ImageLoadsState {
     demand: DemandChoice,
     budget: usize,
     grace_secs: f32,
+    /// Completed images kept. Wind it below the number on screen and the grid
+    /// visibly eats itself — released art refetches the moment it is painted
+    /// again, which is what the cap is trading against.
+    retain: usize,
 }
 
 impl Default for ImageLoadsState {
@@ -78,6 +90,10 @@ impl Default for ImageLoadsState {
             demand: DemandChoice::Visible,
             budget: policy.budget,
             grace_secs,
+            retain: match policy.retain {
+                Retain::Coldest { images } => images,
+                Retain::Everything => 0,
+            },
         }
     }
 }
@@ -91,6 +107,12 @@ impl ImageLoadsState {
                     grace: Duration::from_secs_f32(self.grace_secs),
                 },
                 DemandChoice::Sticky => Demand::Sticky,
+            },
+            // Zero reads as "keep everything" on the slider — the far end of
+            // the same axis rather than a separate switch to forget about.
+            retain: match self.retain {
+                0 => Retain::Everything,
+                images => Retain::Coldest { images },
             },
         }
     }
@@ -142,6 +164,17 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageLoadsState) {
             egui::Slider::new(&mut state.grace_secs, 0.0..=5.0).text("grace s"),
         );
         ui.add(egui::Slider::new(&mut state.budget, 1..=32).text("budget"));
+        ui.add(
+            egui::Slider::new(&mut state.retain, 0..=64)
+                .text("retain")
+                .custom_formatter(|n, _| {
+                    if n < 1.0 {
+                        "everything".to_owned()
+                    } else {
+                        format!("{n:.0}")
+                    }
+                }),
+        );
         if ui.button("Forget all").clicked() {
             ui.ctx().forget_all_images();
         }

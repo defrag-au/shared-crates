@@ -18,8 +18,28 @@
 //!   cancelled after a grace period: dropped if queued, aborted if in flight.
 //!   Asked for again, it starts again from scratch.
 //!
-//! Completed results are cached until forgotten, as every egui loader does.
-//! Cancellation only ever touches loads that are still pending.
+//! - **Retention.** Completed images are held so a scroll back does not
+//!   refetch, but not forever. Past [`Retain`] the coldest are released —
+//!   see [`Schedule::release_cold`], and `fetch.rs` for both the part that
+//!   makes releasing worth anything and the reason it runs as a begin-pass
+//!   plugin rather than from the loader's own `end_pass`.
+//!
+//! Cancellation only ever touches loads that are still pending; retention only
+//! ever touches loads that have completed.
+//!
+//! # Why retention is not just "drop the bytes"
+//!
+//! Three caches key on one URI: the fetched bytes here, egui's decoded
+//! `ColorImage`, and the texture on the GPU. This one is the SMALLEST of them
+//! — a decoded RGBA texture runs an order of magnitude or more above the
+//! compressed bytes it came from — so dropping bytes alone would free almost
+//! nothing. What makes it matter is that the adapter turns a release into
+//! `ctx.forget_image(uri)`, which drops all three together.
+//!
+//! This used to retain every completed image for the life of the page,
+//! because that is what egui's own loaders do. On a long browsing session
+//! through thumbnail grids that is unbounded, and it was measured in
+//! gigabytes.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -50,13 +70,46 @@ pub enum Demand {
     Visible { grace: Duration },
 }
 
-/// How a loader spends its fetches.
+/// What happens to a COMPLETED image nobody is looking at any more.
+///
+/// Deliberately not folded into [`Demand`], even though both are "nobody can
+/// see this". The grace that is right for a pending fetch is wrong here by
+/// orders of magnitude: abandoning a fetch costs a restart of something that
+/// had not finished anyway, whereas releasing a completed image costs a
+/// refetch AND a re-decode of something already paid for. A one-second
+/// visibility grace applied to completions would make an ordinary scroll
+/// thrash.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Retain {
+    /// Keep every completed image until something forgets it explicitly.
+    ///
+    /// How egui's own loaders behave, and unbounded: a session that browses
+    /// enough thumbnails will exhaust the tab. Reasonable only when the set of
+    /// images is small and known.
+    Everything,
+    /// Keep decoded texture memory under `bytes`, releasing least-recently-
+    /// asked first.
+    ///
+    /// BYTES, not a count of images, and the difference is the whole point. A
+    /// count is a proxy for memory only if images are all the same size, and
+    /// art is not: a grid of 256px thumbnails and a wall of 2048px pieces are
+    /// four hundred times apart per image. A cap of 256 images sounds
+    /// conservative and is 2 GB of the latter — which is how a tab that had
+    /// "bounded" retention still sat at gigabytes.
+    ///
+    /// The figure has to come from outside — see [`Schedule::release_cold`] —
+    /// because this half deliberately cannot see a texture.
+    UnderBytes { bytes: usize },
+}
+
+/// How a loader spends its fetches, and what it keeps afterwards.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LoadPolicy {
     /// Fetches in flight at once. Anything beyond waits in the queue, where
     /// its order can still be decided and it can be dropped for free.
     pub budget: usize,
     pub demand: Demand,
+    pub retain: Retain,
 }
 
 impl Default for LoadPolicy {
@@ -64,11 +117,20 @@ impl Default for LoadPolicy {
     /// never slows a page down, but low enough that the queue stays on this
     /// side of the network, where it can be reordered and dropped. One second
     /// of grace.
+    ///
+    /// 256 MB of decoded texture: several screens of any plausible grid, so
+    /// scrolling back over what was just looked at does not refetch, while a
+    /// session that works through a whole collection settles instead of
+    /// growing. Scales itself — a wall of large art retains fewer pieces than
+    /// a grid of thumbnails, which is the behaviour a count could never give.
     fn default() -> Self {
         Self {
             budget: 16,
             demand: Demand::Visible {
                 grace: Duration::from_secs(1),
+            },
+            retain: Retain::UnderBytes {
+                bytes: 256 * 1024 * 1024,
             },
         }
     }
@@ -133,12 +195,24 @@ struct Pending {
     asked: Asked,
 }
 
+/// A finished load, and when it was last wanted.
+///
+/// `asked` is what makes retention possible: it is refreshed every time
+/// [`Schedule::want`] serves this entry, so the oldest timestamp is the image
+/// nobody has looked at for longest. Without it a completion carries no
+/// evidence of whether anyone still cares about it.
+#[derive(Debug, Clone)]
+struct Done {
+    result: Result<Fetched, String>,
+    asked: Asked,
+}
+
 /// The loader's bookkeeping. See the module docs.
 #[derive(Debug)]
 pub struct Schedule {
     policy: LoadPolicy,
     pending: HashMap<String, Pending>,
-    done: HashMap<String, Result<Fetched, String>>,
+    done: HashMap<String, Done>,
     /// The pass currently being drawn; advanced by [`Schedule::end_pass`].
     pass: u64,
     /// Source of both queue order and tickets.
@@ -174,15 +248,20 @@ impl Schedule {
     /// Ask for `uri` at time `now`. Queues it if it is new; either way it
     /// counts as wanted this pass.
     pub fn want(&mut self, uri: &str, now: f64) -> Want {
-        match self.done.get(uri) {
-            Some(Ok(fetched)) => return Want::Ready(fetched.clone()),
-            Some(Err(err)) => return Want::Failed(err.clone()),
-            None => {}
-        }
         let asked = Asked {
             at: now,
             pass: self.pass,
         };
+        // Serving a completion is also the only signal that anyone still wants
+        // it, so record it here. This is the LRU touch that `release_cold`
+        // reads; without it every completion looks equally cold.
+        if let Some(done) = self.done.get_mut(uri) {
+            done.asked = asked;
+            return match &done.result {
+                Ok(fetched) => Want::Ready(fetched.clone()),
+                Err(err) => Want::Failed(err.clone()),
+            };
+        }
         match self.pending.get_mut(uri) {
             Some(pending) => pending.asked = asked,
             None => {
@@ -241,9 +320,16 @@ impl Schedule {
     pub fn finish(&mut self, uri: &str, ticket: Ticket, result: Result<Fetched, String>) -> Finish {
         match self.pending.get(uri).map(|p| p.stage) {
             Some(Stage::InFlight { ticket: live }) if live == ticket => {
-                self.pending.remove(uri);
+                // Inherits the pending load's `asked`, so an image completing
+                // long after anyone stopped looking at it is cold the moment
+                // it lands rather than counting as freshly wanted.
+                let asked = self
+                    .pending
+                    .remove(uri)
+                    .map(|p| p.asked)
+                    .unwrap_or(Asked { at: 0.0, pass: 0 });
                 self.in_flight -= 1;
-                self.done.insert(uri.to_owned(), result);
+                self.done.insert(uri.to_owned(), Done { result, asked });
                 Finish::Stored
             }
             Some(Stage::InFlight { .. } | Stage::Queued { .. }) | None => Finish::Stale,
@@ -262,6 +348,63 @@ impl Schedule {
                 self.cancel_where_asked(|_, asked| asked.at < cutoff)
             }
         }
+    }
+
+    /// Drop the completed images held beyond [`Retain`], coldest first.
+    ///
+    /// Returns what was dropped so the caller can forget it through the
+    /// CONTEXT as well. That second step is the one that frees real memory —
+    /// on its own this only releases compressed bytes, while the decoded image
+    /// and its texture, which are much larger, stay in egui's caches.
+    ///
+    /// Failures are never released. A cached error is what stops a broken URL
+    /// being refetched every time it scrolls into view, and it costs a string
+    /// rather than a texture, so it is not what anyone came here to reclaim.
+    /// `texture_bytes` is what the host measures as currently decoded — for
+    /// egui, `Context::tex_manager().read().bytes_used()`. It is an AGGREGATE,
+    /// so this works in averages: how many to drop is `over budget ÷ mean
+    /// size`. Approximate on any one pass and self-correcting across them,
+    /// since the next pass measures again.
+    ///
+    /// That aggregate also counts textures this loader never fetched — the
+    /// font atlas, icons — which act as a floor it cannot evict below. Holding
+    /// no images is the stopping condition, so a budget set under that floor
+    /// releases everything once and then does nothing, rather than spinning.
+    pub fn release_cold(&mut self, texture_bytes: usize) -> Vec<String> {
+        let Retain::UnderBytes { bytes } = self.policy.retain else {
+            return Vec::new();
+        };
+        let Some(over) = texture_bytes.checked_sub(bytes).filter(|n| *n > 0) else {
+            return Vec::new();
+        };
+        let mut held: Vec<(f64, &str)> = self
+            .done
+            .iter()
+            .filter(|(_, done)| done.result.is_ok())
+            .map(|(uri, done)| (done.asked.at, uri.as_str()))
+            .collect();
+        if held.is_empty() {
+            return Vec::new();
+        }
+        // Round UP, so being over budget always releases at least one image.
+        // Rounding down stalls exactly when the overage is smaller than one
+        // average image, which is the steady state — it would sit permanently
+        // just over the cap and never act.
+        let mean = (texture_bytes / held.len()).max(1);
+        let excess = over.div_ceil(mean).min(held.len());
+        // `total_cmp` rather than `partial_cmp().unwrap()` — the clock is an
+        // `f64` from the host and a sort that panics on an unexpected NaN
+        // would take the whole frame with it.
+        held.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+        let cold: Vec<String> = held
+            .into_iter()
+            .take(excess)
+            .map(|(_, uri)| uri.to_owned())
+            .collect();
+        for uri in &cold {
+            self.done.remove(uri);
+        }
+        cold
     }
 
     /// Abandon every pending load. Returns the tickets to abort.
@@ -289,7 +432,7 @@ impl Schedule {
     }
 
     pub fn counts(&self) -> LoadCounts {
-        let failed = self.done.values().filter(|r| r.is_err()).count();
+        let failed = self.done.values().filter(|d| d.result.is_err()).count();
         LoadCounts {
             queued: self.pending.len() - self.in_flight,
             in_flight: self.in_flight,
@@ -306,7 +449,7 @@ impl Schedule {
     pub fn byte_size(&self) -> usize {
         self.done
             .values()
-            .map(|r| match r {
+            .map(|done| match &done.result {
                 Ok(fetched) => fetched.bytes.len(),
                 Err(err) => err.len(),
             })
@@ -345,11 +488,45 @@ mod tests {
     const GRACE: Duration = Duration::from_secs(1);
 
     fn policy(budget: usize, demand: Demand) -> LoadPolicy {
-        LoadPolicy { budget, demand }
+        LoadPolicy {
+            budget,
+            demand,
+            // Retention off unless a test is about retention, so the existing
+            // cancellation tests keep measuring only what they were written to
+            // measure.
+            retain: Retain::Everything,
+        }
     }
 
     fn visible(budget: usize) -> Schedule {
         Schedule::new(policy(budget, Demand::Visible { grace: GRACE }))
+    }
+
+    /// One notional decoded image, for the arithmetic below. Held constant so
+    /// a test can say "three images' worth" and mean it.
+    const TEXTURE: usize = 4 * 1024 * 1024;
+
+    /// A schedule holding texture memory under `images` notional images'
+    /// worth, with a fetch budget big enough that nothing queues.
+    fn retaining(images: usize) -> Schedule {
+        Schedule::new(LoadPolicy {
+            budget: 64,
+            demand: Demand::Visible { grace: GRACE },
+            retain: Retain::UnderBytes {
+                bytes: images * TEXTURE,
+            },
+        })
+    }
+
+    /// Fetch `uri` to completion, last wanted at `at`.
+    fn loaded(s: &mut Schedule, uri: &str, at: f64) {
+        s.want(uri, at);
+        let start = s
+            .starts()
+            .into_iter()
+            .find(|st| st.uri == uri)
+            .expect("the budget has room");
+        assert_eq!(s.finish(uri, start.ticket, body(uri)), Finish::Stored);
     }
 
     fn body(text: &str) -> Result<Fetched, String> {
@@ -507,6 +684,186 @@ mod tests {
         assert_eq!(s.forget("a"), None, "nothing was in flight");
         assert!(matches!(s.want("a", 0.0), Want::Pending));
         assert_eq!(s.starts().len(), 1);
+    }
+
+    #[test]
+    fn nothing_is_released_while_under_the_retention_cap() {
+        let mut s = retaining(4);
+        for uri in ["a", "b", "c"] {
+            loaded(&mut s, uri, 0.0);
+        }
+        assert!(s.release_cold(3 * TEXTURE).is_empty());
+        assert_eq!(s.counts().ready, 3);
+    }
+
+    #[test]
+    fn over_the_cap_the_least_recently_asked_for_is_released_first() {
+        let mut s = retaining(2);
+        loaded(&mut s, "coldest", 0.0);
+        loaded(&mut s, "middle", 1.0);
+        loaded(&mut s, "newest", 2.0);
+
+        assert_eq!(s.release_cold(3 * TEXTURE), ["coldest"]);
+        // Released means GONE, not merely reported: the next ask has to fetch
+        // it again rather than being served a cached copy.
+        assert!(matches!(s.want("coldest", 3.0), Want::Pending));
+        assert!(matches!(s.want("middle", 3.0), Want::Ready(_)));
+        assert!(matches!(s.want("newest", 3.0), Want::Ready(_)));
+    }
+
+    /// The point of tracking `asked` on completions. An image fetched long ago
+    /// but still on screen is the LAST thing that should be released, and
+    /// without the touch in `want` it would look like the first.
+    #[test]
+    fn being_asked_for_again_rescues_the_oldest_fetch() {
+        let mut s = retaining(2);
+        loaded(&mut s, "old-but-on-screen", 0.0);
+        loaded(&mut s, "b", 1.0);
+        loaded(&mut s, "c", 2.0);
+
+        // Still painted, so still asked for.
+        assert!(matches!(s.want("old-but-on-screen", 3.0), Want::Ready(_)));
+
+        assert_eq!(s.release_cold(3 * TEXTURE), ["b"]);
+        assert!(matches!(s.want("old-but-on-screen", 4.0), Want::Ready(_)));
+    }
+
+    #[test]
+    fn a_failure_is_never_released_and_does_not_use_up_the_cap() {
+        let mut s = retaining(1);
+        s.want("broken", 0.0);
+        let start = s.starts().remove(0);
+        s.finish("broken", start.ticket, Err("404".into()));
+        loaded(&mut s, "good", 1.0);
+
+        assert!(
+            s.release_cold(TEXTURE).is_empty(),
+            "one success against a cap of one image's worth"
+        );
+        // The cached error is what stops a broken URL being refetched every
+        // time it scrolls past.
+        assert!(matches!(s.want("broken", 2.0), Want::Failed(e) if e == "404"));
+    }
+
+    #[test]
+    fn retain_everything_releases_nothing_however_many_land() {
+        let mut s = Schedule::new(LoadPolicy {
+            budget: 64,
+            demand: Demand::Visible { grace: GRACE },
+            retain: Retain::Everything,
+        });
+        for n in 0..50 {
+            loaded(&mut s, &format!("img-{n}"), n as f64);
+        }
+        assert!(s.release_cold(50 * TEXTURE).is_empty());
+        assert_eq!(s.counts().ready, 50);
+    }
+
+    #[test]
+    fn releasing_frees_the_bytes_it_was_holding() {
+        let mut s = retaining(1);
+        loaded(&mut s, "coldest", 0.0);
+        loaded(&mut s, "newest", 1.0);
+        let full = s.byte_size();
+
+        assert_eq!(s.release_cold(2 * TEXTURE).len(), 1);
+        assert!(
+            s.byte_size() < full,
+            "releasing has to actually drop the bytes, not just the bookkeeping"
+        );
+    }
+
+    /// Why the cap is bytes and not a count. The same three images against the
+    /// same budget release nothing when they are thumbnails and most of
+    /// themselves when they are large art — which a count of images cannot
+    /// express, and is how "bounded" retention still sat at gigabytes.
+    #[test]
+    fn the_same_images_release_differently_by_how_large_they_actually_are() {
+        let budget = 8 * 1024 * 1024;
+        let policy = |bytes| LoadPolicy {
+            budget: 64,
+            demand: Demand::Visible { grace: GRACE },
+            retain: Retain::UnderBytes { bytes },
+        };
+
+        let mut thumbnails = Schedule::new(policy(budget));
+        let mut art = Schedule::new(policy(budget));
+        for (n, uri) in ["a", "b", "c"].iter().enumerate() {
+            loaded(&mut thumbnails, uri, n as f64);
+            loaded(&mut art, uri, n as f64);
+        }
+
+        // 3 × 256² RGBA — well inside the budget.
+        assert!(thumbnails.release_cold(3 * 256 * 256 * 4).is_empty());
+        // 3 × 2048² RGBA — 48 MB against an 8 MB budget.
+        assert_eq!(art.release_cold(3 * 2048 * 2048 * 4).len(), 3);
+    }
+
+    /// Being over by less than one average image still has to act. Rounding
+    /// down would park the cache permanently just above its cap, which is the
+    /// steady state rather than an edge case.
+    #[test]
+    fn an_overage_smaller_than_one_image_still_releases_one() {
+        let mut s = retaining(2);
+        loaded(&mut s, "coldest", 0.0);
+        loaded(&mut s, "newest", 1.0);
+
+        assert_eq!(s.release_cold(2 * TEXTURE + 1), ["coldest"]);
+    }
+
+    /// The font atlas and icons are in the host's figure and cannot be evicted
+    /// by this loader. A budget below that floor must release what it has and
+    /// then stop, not spin reporting work it cannot do.
+    #[test]
+    fn a_budget_under_the_unevictable_floor_stops_instead_of_spinning() {
+        let mut s = retaining(0);
+        loaded(&mut s, "a", 0.0);
+
+        assert_eq!(s.release_cold(50 * TEXTURE), ["a"]);
+        // Nothing left that this loader owns, however far over the figure is.
+        assert!(s.release_cold(50 * TEXTURE).is_empty());
+    }
+
+    /// Releasing is a feedback loop — measure, evict, measure again — and it
+    /// carries no latch against acting on a stale reading, because there is no
+    /// staleness to guard: `TextureManager::free` removes the entry from the
+    /// map `allocated()` iterates SYNCHRONOUSLY, so the host's next figure
+    /// already reflects what we dropped. (The GPU-side free lands a frame
+    /// later via the texture delta; that is not what is measured here.)
+    ///
+    /// A latch was tried and removed. Damping this loop on the aggregate is
+    /// actively wrong: the total also rises when NEW images decode, so a
+    /// "wait until the figure falls" guard switches retention off during a
+    /// scroll — precisely when it is needed.
+    ///
+    /// So the contract is simply: each call answers the figure it was given.
+    #[test]
+    fn each_call_answers_the_figure_it_was_given() {
+        let mut s = retaining(1);
+        for (n, uri) in ["coldest", "middle", "newest"].iter().enumerate() {
+            loaded(&mut s, uri, n as f64);
+        }
+
+        // Three images' worth against a one-image budget: two must go.
+        assert_eq!(s.release_cold(3 * TEXTURE), ["coldest", "middle"]);
+        // The figure has moved, and one image is within budget.
+        assert!(s.release_cold(TEXTURE).is_empty());
+        assert_eq!(s.counts().ready, 1);
+    }
+
+    /// A rising total mid-scroll keeps being acted on rather than stalling —
+    /// new art arriving is exactly when releasing matters.
+    #[test]
+    fn a_total_that_climbs_while_releasing_still_gets_acted_on() {
+        let mut s = retaining(2);
+        for (n, uri) in ["a", "b", "c", "d"].iter().enumerate() {
+            loaded(&mut s, uri, n as f64);
+        }
+
+        assert_eq!(s.release_cold(4 * TEXTURE), ["a", "b"]);
+        // Two released, but two more decoded while that happened, so the
+        // figure is no lower. It must still release.
+        assert!(!s.release_cold(4 * TEXTURE).is_empty());
     }
 
     #[test]

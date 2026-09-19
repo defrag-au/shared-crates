@@ -270,34 +270,63 @@ impl ListingGrid {
 
                 if let Some(ref url) = listing.image_url {
                     if visible {
-                        let is_loaded = ui
-                            .ctx()
-                            .try_load_texture(
-                                url,
-                                egui::TextureOptions::default(),
-                                egui::load::SizeHint::default(),
-                            )
-                            .is_ok_and(|poll| {
-                                matches!(poll, egui::load::TexturePoll::Ready { .. })
-                            });
-
-                        if is_loaded {
-                            let mut child_ui =
-                                ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(
-                                    egui::Layout::centered_and_justified(egui::Direction::TopDown),
-                                ));
-                            let mut image = egui::Image::new(url.as_str())
-                                .fit_to_exact_size(card_size)
-                                .show_loading_spinner(false)
-                                .corner_radius(cfg.rounding as u8);
-                            if is_dimmed {
-                                image =
-                                    image.tint(Color32::from_rgba_unmultiplied(255, 255, 255, 100));
+                        // THREE outcomes, not two. `try_load_texture` reports
+                        // a failure and a load in flight identically as "not
+                        // ready" — `Err(..)` for a 404, a CORS refusal or a
+                        // decode failure, `Ok(Pending)` while bytes are on
+                        // their way — but only the second will ever change.
+                        //
+                        // Treating them alike was costing a frame EVERY frame:
+                        // the spinner branch asks for the next repaint, so one
+                        // dead thumbnail anywhere in the grid pinned the whole
+                        // app at full rate indefinitely. The loader caches
+                        // failures on purpose, so nothing retried and nothing
+                        // ever settled.
+                        // ASK FOR THE SIZE WE DRAW. `SizeHint::default()` is
+                        // `Scale(1.0)` — the source's own resolution — so a
+                        // card this size was holding full artwork: a 2048px
+                        // piece is 16 MB of texture to fill 84×84. The hint is
+                        // in PHYSICAL pixels, so it carries the device's pixel
+                        // ratio; a HiDPI screen gets the next rung up and
+                        // stays crisp.
+                        let want_px =
+                            (card_size.max_elem() * ui.ctx().pixels_per_point()).ceil() as u32;
+                        match ui.ctx().try_load_texture(
+                            url,
+                            egui::TextureOptions::default(),
+                            egui::load::SizeHint::Size {
+                                width: want_px,
+                                height: want_px,
+                                maintain_aspect_ratio: true,
+                            },
+                        ) {
+                            Ok(egui::load::TexturePoll::Ready { .. }) => {
+                                let mut child_ui =
+                                    ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(
+                                        egui::Layout::centered_and_justified(
+                                            egui::Direction::TopDown,
+                                        ),
+                                    ));
+                                let mut image = egui::Image::new(url.as_str())
+                                    .fit_to_exact_size(card_size)
+                                    .show_loading_spinner(false)
+                                    .corner_radius(cfg.rounding as u8);
+                                if is_dimmed {
+                                    image = image
+                                        .tint(Color32::from_rgba_unmultiplied(255, 255, 255, 100));
+                                }
+                                child_ui.add(image);
                             }
-                            child_ui.add(image);
-                        } else {
-                            spinner.paint(ui, rect);
-                            any_pending = true;
+                            // Coming. Keep the frames running until it lands.
+                            Ok(egui::load::TexturePoll::Pending { .. }) => {
+                                spinner.paint(ui, rect);
+                                any_pending = true;
+                            }
+                            // Never coming. The same mark a listing with no
+                            // image at all gets, and NO repaint.
+                            Err(_) => {
+                                CachedSpinner::paint_unavailable(ui, rect, text_muted);
+                            }
                         }
                     }
                 } else {

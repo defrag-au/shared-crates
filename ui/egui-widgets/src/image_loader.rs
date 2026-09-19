@@ -130,6 +130,25 @@ impl CachedSpinner {
         }
     }
 
+    /// Draw the "this will never arrive" mark instead of the spinner.
+    ///
+    /// A load that FAILED and one still in flight look identical through
+    /// `try_load_texture` — `Err(..)` and `Ok(Pending)` are both "not ready" —
+    /// and treating them the same is how a single dead thumbnail pins the
+    /// whole app at 60fps: a spinner asks for the next frame, forever, for
+    /// bytes that are never coming. The loader caches failures deliberately,
+    /// so nothing ever retries and nothing ever settles.
+    pub fn paint_unavailable(ui: &egui::Ui, rect: Rect, colour: egui::Color32) {
+        use crate::theme::{TextSize, ThemeExt as _};
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "?",
+            egui::FontId::proportional(ui.text_size(TextSize::Xl2)),
+            colour,
+        );
+    }
+
     /// Paint the pre-computed spinner centered in `rect`.
     pub fn paint(&self, ui: &egui::Ui, rect: Rect) {
         let center = rect.center().to_vec2();
@@ -144,15 +163,87 @@ impl CachedSpinner {
     }
 }
 
+/// What a decode was asked to produce, snapped to a ladder.
+///
+/// # Why a decoded image is keyed by size at all
+///
+/// A texture costs width × height × 4 bytes and nothing else — the format it
+/// arrived in is irrelevant once decoded. So a 2048px artwork drawn into an
+/// 84px grid card costs 16 MB to show 28 KB of pixels, and a page of them is
+/// gigabytes. That was never a caching problem; the images were being decoded
+/// at a size nobody asked for.
+///
+/// # Why a ladder rather than the exact size
+///
+/// Rounding UP to a rung is what lets an 84px card and a 100px card share one
+/// decode. Keying on exact requested sizes would fragment the cache and decode
+/// the same art repeatedly at near-identical sizes — and every one of those
+/// costs a full-size transient in wasm linear memory, which never shrinks.
+///
+/// The rungs mirror the IIIF service's own derivative widths
+/// (`workers/iiif/src/image_size.rs`), so a request usually lands on something
+/// already warm in R2 rather than triggering a cold render.
+///
+/// Lives OUTSIDE the `browser` module below, which is `wasm32`-only, because
+/// it is pure arithmetic and the arithmetic is what goes wrong. Gated with the
+/// decoder it would compile only for a target the test runner never builds —
+/// green on every native run while saying nothing. Same split as
+/// `image_loader::schedule` against `image_loader::fetch`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum DecodeSize {
+    /// 128px. Grids, lists, pickers.
+    Tile,
+    /// 400px. Cards, browsers.
+    Card,
+    /// 1686px. Detail views.
+    Full,
+    /// Whatever the source is. For art that must not be resampled at all.
+    Native,
+}
+
+impl DecodeSize {
+    /// The smallest rung that covers `hint`, in physical pixels.
+    ///
+    /// `Scale` cannot be answered without knowing the source dimensions, which
+    /// nothing has until the image is decoded — so it means [`Self::Native`],
+    /// matching egui's own reading of it as "do not resize".
+    pub fn for_hint(hint: egui::load::SizeHint) -> Self {
+        use egui::load::SizeHint;
+        let longest = match hint {
+            SizeHint::Scale(_) => return Self::Native,
+            SizeHint::Width(w) => w,
+            SizeHint::Height(h) => h,
+            SizeHint::Size { width, height, .. } => width.max(height),
+        };
+        match longest {
+            0..=128 => Self::Tile,
+            129..=400 => Self::Card,
+            401..=1686 => Self::Full,
+            _ => Self::Native,
+        }
+    }
+
+    /// Pixels to decode to, or `None` to leave the source alone.
+    pub fn px(self) -> Option<u32> {
+        match self {
+            Self::Tile => Some(128),
+            Self::Card => Some(400),
+            Self::Full => Some(1686),
+            Self::Native => None,
+        }
+    }
+}
+
 /// Browser-native image loader for WASM targets.
 ///
-/// Replaces egui_extras' `ImageCrateLoader` which decodes images synchronously
-/// on the main thread using the `image` crate (zune-jpeg). That approach blocks
-/// the UI, especially for JPEG thumbnails.
+/// Replaces egui_extras' `ImageCrateLoader`, which decodes images
+/// synchronously on the main thread using the `image` crate (zune-jpeg). That
+/// approach blocks the UI, especially for JPEG thumbnails.
 ///
-/// This loader uses the browser's `createImageBitmap()` API which decodes images
-/// off the main thread using native platform codecs, then reads pixels back via
-/// `OffscreenCanvas` + `getImageData()`.
+/// This loader uses the browser's `createImageBitmap()` API, which decodes off
+/// the main thread using native platform codecs — and, given a [`DecodeSize`],
+/// resizes WHILE decoding so the full-resolution bitmap is never materialised
+/// at all. Pixels are then read back via `OffscreenCanvas` + `getImageData()`.
 #[cfg(target_arch = "wasm32")]
 pub mod browser {
     use egui::ColorImage;
@@ -164,8 +255,22 @@ pub mod browser {
 
     type Entry = Poll<Result<Arc<ColorImage>, String>>;
 
+    use super::DecodeSize;
+
+    /// One decoded image: a URI AND the size it was decoded at.
+    ///
+    /// Both, because the same art is legitimately held at more than one size —
+    /// a grid card and the detail view behind it. Keying on the URI alone
+    /// means whichever loaded first wins, so either the grid gets a 1686px
+    /// texture or the detail view gets a 128px one blown up.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    struct Decoded {
+        uri: String,
+        size: DecodeSize,
+    }
+
     pub struct BrowserImageLoader {
-        cache: Arc<Mutex<std::collections::HashMap<String, Entry>>>,
+        cache: Arc<Mutex<std::collections::HashMap<Decoded, Entry>>>,
     }
 
     impl Default for BrowserImageLoader {
@@ -185,9 +290,19 @@ pub mod browser {
             Self::ID
         }
 
-        fn load(&self, ctx: &egui::Context, uri: &str, _size_hint: SizeHint) -> ImageLoadResult {
+        fn load(&self, ctx: &egui::Context, uri: &str, size_hint: SizeHint) -> ImageLoadResult {
+            // The hint is the whole reason this loader is cheap. Ignoring it —
+            // which this did — decodes every image at its native resolution
+            // regardless of how small it is drawn, so a grid of 84px cards
+            // held full-size artwork and the tab ran to gigabytes.
+            let want = DecodeSize::for_hint(size_hint);
+            let key = Decoded {
+                uri: uri.to_owned(),
+                size: want,
+            };
+
             // Check cache first
-            if let Some(entry) = self.cache.lock().unwrap().get(uri).cloned() {
+            if let Some(entry) = self.cache.lock().unwrap().get(&key).cloned() {
                 return match entry {
                     Poll::Ready(Ok(image)) => Ok(ImagePoll::Ready { image }),
                     Poll::Ready(Err(ref err)) => Err(LoadError::Loading(err.clone())),
@@ -201,14 +316,14 @@ pub mod browser {
                 self.cache
                     .lock()
                     .unwrap()
-                    .insert(uri.to_owned(), Poll::Pending);
+                    .insert(key.clone(), Poll::Pending);
 
                 let cache = self.cache.clone();
                 let uri_owned = uri.to_owned();
                 let ctx = ctx.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {
-                    let result = browser_decode_data_url(&uri_owned).await;
+                    let result = browser_decode_data_url(&uri_owned, want).await;
                     if let Err(ref err) = result {
                         log::warn!(
                             "[image_loader] data URL decode failed for {}: {err}",
@@ -219,7 +334,7 @@ pub mod browser {
                         Ok(image) => Poll::Ready(Ok(Arc::new(image))),
                         Err(err) => Poll::Ready(Err(err)),
                     };
-                    cache.lock().unwrap().insert(uri_owned, entry);
+                    cache.lock().unwrap().insert(key, entry);
                     ctx.request_repaint();
                 });
 
@@ -233,7 +348,7 @@ pub mod browser {
                     self.cache
                         .lock()
                         .unwrap()
-                        .insert(uri.to_owned(), Poll::Pending);
+                        .insert(key.clone(), Poll::Pending);
 
                     let cache = self.cache.clone();
                     let uri_owned = uri.to_owned();
@@ -241,7 +356,7 @@ pub mod browser {
 
                     // Spawn async browser decode — runs off main thread
                     wasm_bindgen_futures::spawn_local(async move {
-                        let result = browser_decode_image(&bytes).await;
+                        let result = browser_decode_image(&bytes, want).await;
                         if let Err(ref err) = result {
                             log::warn!(
                                 "[image_loader] decode failed for {}: {err}",
@@ -252,7 +367,7 @@ pub mod browser {
                             Ok(image) => Poll::Ready(Ok(Arc::new(image))),
                             Err(err) => Poll::Ready(Err(err)),
                         };
-                        cache.lock().unwrap().insert(uri_owned, entry);
+                        cache.lock().unwrap().insert(key, entry);
                         ctx.request_repaint();
                     });
 
@@ -263,8 +378,13 @@ pub mod browser {
             }
         }
 
+        /// Every size of `uri`, not just one.
+        ///
+        /// The caller named an image, not a decode. A `forget` that dropped
+        /// only the rung it happened to think of would leave the others live
+        /// and a "forgotten" image still on screen.
         fn forget(&self, uri: &str) {
-            self.cache.lock().unwrap().remove(uri);
+            self.cache.lock().unwrap().retain(|key, _| key.uri != uri);
         }
 
         fn forget_all(&self) {
@@ -292,7 +412,14 @@ pub mod browser {
     ///
     /// This handles SVGs correctly (unlike `createImageBitmap` which rejects them
     /// in many browsers). Works for all image formats the browser supports.
-    async fn browser_decode_data_url(data_url: &str) -> Result<ColorImage, String> {
+    /// Data URLs go through `HtmlImageElement` rather than `createImageBitmap`
+    /// — no blob to hand over — so `want` only bounds the canvas they are
+    /// drawn into. These are icons and inline SVGs, small by nature, which is
+    /// why the cheaper path is left alone.
+    async fn browser_decode_data_url(
+        data_url: &str,
+        want: DecodeSize,
+    ) -> Result<ColorImage, String> {
         use wasm_bindgen::closure::Closure;
 
         // Create an HtmlImageElement and set src to the data URL
@@ -329,12 +456,26 @@ pub mod browser {
             .await
             .map_err(|e| format!("Image load rejected: {e:?}"))?;
 
-        let width = img.natural_width();
-        let height = img.natural_height();
+        let natural_width = img.natural_width();
+        let natural_height = img.natural_height();
 
-        if width == 0 || height == 0 {
+        if natural_width == 0 || natural_height == 0 {
             return Err("Image has zero dimensions".into());
         }
+
+        // Clamp to the rung, keeping the aspect ratio. Only ever DOWN: asking
+        // the canvas to upscale would cost memory to invent detail that is not
+        // in the source.
+        let (width, height) = match want.px() {
+            Some(px) if natural_width.max(natural_height) > px => {
+                let scale = px as f64 / natural_width.max(natural_height) as f64;
+                (
+                    ((natural_width as f64 * scale).round() as u32).max(1),
+                    ((natural_height as f64 * scale).round() as u32).max(1),
+                )
+            }
+            _ => (natural_width, natural_height),
+        };
 
         // Render to OffscreenCanvas to extract RGBA pixels
         let canvas = web_sys::OffscreenCanvas::new(width, height)
@@ -350,7 +491,13 @@ pub mod browser {
             .map_err(|_| "Context is not OffscreenCanvasRenderingContext2d".to_string())?;
 
         ctx_2d
-            .draw_image_with_html_image_element(&img, 0.0, 0.0)
+            .draw_image_with_html_image_element_and_dw_and_dh(
+                &img,
+                0.0,
+                0.0,
+                width as f64,
+                height as f64,
+            )
             .map_err(|e| format!("drawImage failed: {e:?}"))?;
 
         let image_data = ctx_2d
@@ -369,7 +516,7 @@ pub mod browser {
     ///
     /// This runs the actual decode off the main thread (browser handles scheduling),
     /// then reads the pixels back via `OffscreenCanvas` + `getImageData()`.
-    async fn browser_decode_image(bytes: &[u8]) -> Result<ColorImage, String> {
+    async fn browser_decode_image(bytes: &[u8], want: DecodeSize) -> Result<ColorImage, String> {
         // Create a Blob from the raw bytes
         let uint8_array = js_sys::Uint8Array::from(bytes);
         let blob_parts = js_sys::Array::new();
@@ -382,18 +529,47 @@ pub mod browser {
         let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&blob_parts, &blob_opts)
             .map_err(|e| format!("Failed to create Blob: {e:?}"))?;
 
-        // createImageBitmap(blob) — browser decodes off main thread
+        // createImageBitmap(blob) — browser decodes off main thread, and
+        // RESIZES WHILE DECODING when asked to. That is the difference
+        // between a 128px texture and a 2048px one for the same grid card,
+        // and the browser never materialises the full bitmap at all: the
+        // saving is on every stage below, not just the texture that survives.
         let global = js_sys::global();
-        let promise = if let Some(window) = global.dyn_ref::<web_sys::Window>() {
-            window
-                .create_image_bitmap_with_blob(&blob)
-                .map_err(|e| format!("createImageBitmap failed: {e:?}"))?
-        } else if let Some(worker) = global.dyn_ref::<web_sys::WorkerGlobalScope>() {
-            worker
-                .create_image_bitmap_with_blob(&blob)
-                .map_err(|e| format!("createImageBitmap failed: {e:?}"))?
-        } else {
-            return Err("No global scope available for createImageBitmap".into());
+        let promise = match want.px() {
+            Some(px) => {
+                let options = web_sys::ImageBitmapOptions::new();
+                options.set_resize_width(px);
+                options.set_resize_height(px);
+                // Aspect ratio is kept by the caller drawing it to fit; what
+                // matters here is the CEILING on decoded pixels. `Pixelated`
+                // would wreck photographic art, and the pixel-art path does
+                // its own scaling upstream in the IIIF service.
+                options.set_resize_quality(web_sys::ResizeQuality::High);
+                if let Some(window) = global.dyn_ref::<web_sys::Window>() {
+                    window
+                        .create_image_bitmap_with_blob_and_image_bitmap_options(&blob, &options)
+                        .map_err(|e| format!("createImageBitmap failed: {e:?}"))?
+                } else if let Some(worker) = global.dyn_ref::<web_sys::WorkerGlobalScope>() {
+                    worker
+                        .create_image_bitmap_with_blob_and_image_bitmap_options(&blob, &options)
+                        .map_err(|e| format!("createImageBitmap failed: {e:?}"))?
+                } else {
+                    return Err("No global scope available for createImageBitmap".into());
+                }
+            }
+            None => {
+                if let Some(window) = global.dyn_ref::<web_sys::Window>() {
+                    window
+                        .create_image_bitmap_with_blob(&blob)
+                        .map_err(|e| format!("createImageBitmap failed: {e:?}"))?
+                } else if let Some(worker) = global.dyn_ref::<web_sys::WorkerGlobalScope>() {
+                    worker
+                        .create_image_bitmap_with_blob(&blob)
+                        .map_err(|e| format!("createImageBitmap failed: {e:?}"))?
+                } else {
+                    return Err("No global scope available for createImageBitmap".into());
+                }
+            }
         };
 
         let bitmap_js = JsFuture::from(promise)
@@ -440,5 +616,81 @@ pub mod browser {
             [width as usize, height as usize],
             &rgba,
         ))
+    }
+}
+
+/// The rung arithmetic, which is pure and therefore testable off wasm.
+///
+/// Worth testing because every mistake here is expensive and silent: round
+/// DOWN and art is blurry, round UP a rung and a grid quietly costs ten times
+/// the memory, and neither surfaces as a failure anywhere.
+#[cfg(test)]
+mod decode_size_tests {
+    use super::DecodeSize;
+    use egui::load::SizeHint;
+
+    #[test]
+    fn a_hint_takes_the_smallest_rung_that_covers_it() {
+        let size = |px| {
+            DecodeSize::for_hint(SizeHint::Size {
+                width: px,
+                height: px,
+                maintain_aspect_ratio: true,
+            })
+        };
+        // A grid card, at 1x and at 2x device pixel ratio.
+        assert_eq!(size(84), DecodeSize::Tile);
+        assert_eq!(size(168), DecodeSize::Card);
+        // Exactly on a rung stays on it rather than stepping up.
+        assert_eq!(size(128), DecodeSize::Tile);
+        assert_eq!(size(400), DecodeSize::Card);
+        assert_eq!(size(1686), DecodeSize::Full);
+        // One pixel over has to step up, or the image is upscaled.
+        assert_eq!(size(129), DecodeSize::Card);
+        assert_eq!(size(401), DecodeSize::Full);
+        assert_eq!(size(1687), DecodeSize::Native);
+    }
+
+    /// The longest edge decides, so a wide banner is not quietly squashed
+    /// into a rung chosen by its height.
+    #[test]
+    fn the_longest_edge_chooses_the_rung() {
+        assert_eq!(
+            DecodeSize::for_hint(SizeHint::Size {
+                width: 900,
+                height: 100,
+                maintain_aspect_ratio: true,
+            }),
+            DecodeSize::Full
+        );
+        assert_eq!(DecodeSize::for_hint(SizeHint::Width(300)), DecodeSize::Card);
+        assert_eq!(DecodeSize::for_hint(SizeHint::Height(64)), DecodeSize::Tile);
+    }
+
+    /// `Scale` is relative to a source size nothing knows until the decode
+    /// has happened, so it can only mean "do not resize" — the same
+    /// reading egui gives it.
+    #[test]
+    fn a_scale_hint_decodes_natively() {
+        assert_eq!(
+            DecodeSize::for_hint(SizeHint::Scale(1.0.into())),
+            DecodeSize::Native
+        );
+        assert_eq!(
+            DecodeSize::for_hint(SizeHint::Scale(0.25.into())),
+            DecodeSize::Native
+        );
+        assert_eq!(DecodeSize::Native.px(), None, "native resizes nothing");
+    }
+
+    /// The rungs are the IIIF service's derivative widths
+    /// (`workers/iiif/src/image_size.rs`). A rung that is NOT one of those
+    /// still renders, but misses the warm R2 object and pays a cold
+    /// render on every first request — which fails silently as latency.
+    #[test]
+    fn the_rungs_match_the_services_warm_derivatives() {
+        assert_eq!(DecodeSize::Tile.px(), Some(128));
+        assert_eq!(DecodeSize::Card.px(), Some(400));
+        assert_eq!(DecodeSize::Full.px(), Some(1686));
     }
 }

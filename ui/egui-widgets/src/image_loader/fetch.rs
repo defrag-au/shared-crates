@@ -163,6 +163,27 @@ impl BrowserHttpLoader {
         }));
         let loads = ImageLoads { shared };
         ctx.data_mut(|d| d.insert_temp(egui::Id::new(Self::ID), loads.clone()));
+
+        // Retention runs as a BEGIN-PASS PLUGIN rather than from the loader's
+        // own `end_pass`, and the difference is not stylistic. Releasing an
+        // image means `Context::forget_image`, and `end_pass` on a loader is
+        // called from inside `Context::write` — the whole context locked —
+        // so forgetting from there deadlocks. On wasm that is not a hang but
+        // an outright panic, because `parking_lot` has no thread to park:
+        //
+        //     parking_lot_core/src/thread_parker/wasm.rs:26
+        //     Parking not supported on this platform
+        //
+        // A plugin callback is handed a `Ui`, so by then the pass has begun
+        // and nothing is held. This is egui's own extension point for
+        // per-pass work, which makes retention automatic: a consumer installs
+        // the loader and gets a bounded cache, with nothing to remember.
+        let retention = loads.clone();
+        ctx.on_begin_pass(
+            "egui-widgets image retention",
+            Arc::new(move |_ui: &mut egui::Ui| retention.release_cold()),
+        );
+
         loads
     }
 }
@@ -202,9 +223,18 @@ impl egui::load::BytesLoader for BrowserHttpLoader {
         abort(tickets);
     }
 
-    /// Where [`crate::image_loader::schedule::Demand::Visible`] happens: every
-    /// image painted this pass has just been asked for, so whatever has gone
-    /// unasked past the grace is off screen.
+    /// Where [`crate::image_loader::schedule::Demand::Visible`] and
+    /// [`crate::image_loader::schedule::Retain`] happen: every image painted
+    /// this pass has just been asked for, so whatever has gone unasked past
+    /// the grace is off screen, and whatever is coldest once we are over the
+    /// retention cap is what nobody has looked at for longest.
+    /// Cancellation only. Retention is [`ImageLoads::release_cold`], and
+    /// cannot happen here: releasing an image means `Context::forget_image`,
+    /// which takes the same `loaders.bytes` lock egui is holding while it
+    /// walks the loaders calling this. Re-entering it deadlocks, and on wasm a
+    /// deadlock is not a hang but a panic — `parking_lot` has no thread to
+    /// park. No loader callback can mutate the loader set; that is a rule of
+    /// the trait, not an accident of ours.
     fn end_pass(&self, _pass_index: u64) {
         let tickets = self.shared.schedule.lock().unwrap().end_pass(now());
         abort(tickets);
@@ -240,6 +270,51 @@ impl ImageLoads {
     pub fn set_policy(&self, policy: LoadPolicy) {
         self.shared.schedule.lock().unwrap().set_policy(policy);
         self.shared.pump();
+    }
+
+    /// Release completed images held beyond the policy's
+    /// [`crate::image_loader::schedule::Retain`], coldest first.
+    ///
+    /// [`BrowserHttpLoader::install`] already runs this at the start of every
+    /// pass, so a consumer does not have to. Public for the case the schedule
+    /// cannot see: releasing on navigation, rather than a few passes later
+    /// once the cap notices.
+    ///
+    /// Safe only where the context is not already locked — from `update`, a
+    /// plugin callback, or an event handler. NOT from inside a loader
+    /// callback; see the note in `install`.
+    ///
+    /// Cheap to call every pass: under the cap it takes the schedule's lock,
+    /// finds nothing to do, and returns.
+    pub fn release_cold(&self) {
+        // Each lock taken and released in its own statement, in order. This
+        // callback runs with the pass begun and nothing held, and it stays
+        // that way only if it never holds two at once — `forget_image` below
+        // reaches for both the loader set and the schedule again.
+        // Summed per texture: `bytes_used` is `TextureMeta`'s (width × height
+        // × bytes-per-pixel), and the manager has no total of its own. Scoped
+        // so the read guard is gone before anything else is taken.
+        let texture_bytes: usize = {
+            let textures = self.shared.ctx.tex_manager();
+            let textures = textures.read();
+            textures
+                .allocated()
+                .map(|(_, meta)| meta.bytes_used())
+                .sum()
+        };
+        let release = self
+            .shared
+            .schedule
+            .lock()
+            .unwrap()
+            .release_cold(texture_bytes);
+        // Through the CONTEXT, not just our own map: this cascades to every
+        // loader keyed on the URI, so the decoded image and its texture go
+        // with the bytes. Ours is the smallest of the three — see the
+        // `schedule` module docs.
+        for uri in release {
+            self.shared.ctx.forget_image(&uri);
+        }
     }
 
     /// Abandon every pending load. Anything still on screen is asked for again
