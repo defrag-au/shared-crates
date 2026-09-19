@@ -17,6 +17,8 @@
 //! current-as-of-Conway *fallback* for callers with no protocol-params source;
 //! refresh them from a node / Maestro `protocol-parameters` when they drift.
 
+use crate::blueprint::PlutusLanguage;
+
 /// PlutusV2 cost model — 332 values (mainnet, Conway; live-sourced fallback).
 pub const PLUTUS_V2_COST_MODEL: [i64; 332] = [
     100788, 420, 1, 1, 1000, 173, 0, 1, 1000, 59957, 4, 1, 11183, 32, 201305, 8356, 4, 16000, 100,
@@ -73,7 +75,7 @@ pub const PLUTUS_V3_COST_MODEL: [i64; 350] = [
 /// than a hardcoded snapshot. A `None` variant means "not supplied"; the
 /// resolvers ([`Self::v2`] / [`Self::v3`]) then fall back to the bundled
 /// constants above so a missing field degrades rather than panics.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlutusCostModels {
     pub plutus_v1: Option<Vec<i64>>,
     pub plutus_v2: Option<Vec<i64>>,
@@ -101,5 +103,24 @@ impl PlutusCostModels {
         self.plutus_v3
             .clone()
             .unwrap_or_else(|| PLUTUS_V3_COST_MODEL.to_vec())
+    }
+
+    /// The live PlutusV1 cost model. There is deliberately **no** bundled
+    /// fallback: we have never built a V1 spend, so a constant here would be a
+    /// guess, and a guessed cost model is a wrong script-integrity hash that
+    /// evaluates fine and is rejected at submit. Callers must fail rather than
+    /// substitute one.
+    pub fn v1(&self) -> Option<Vec<i64>> {
+        self.plutus_v1.clone()
+    }
+
+    /// The cost model for one language, or `None` when it is a V1 spend and
+    /// the protocol parameters carried no V1 model.
+    pub fn for_language(&self, language: PlutusLanguage) -> Option<Vec<i64>> {
+        match language {
+            PlutusLanguage::V1 => self.v1(),
+            PlutusLanguage::V2 => Some(self.v2()),
+            PlutusLanguage::V3 => Some(self.v3()),
+        }
     }
 }

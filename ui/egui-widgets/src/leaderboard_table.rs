@@ -35,7 +35,7 @@
 use egui::{RichText, Ui};
 use egui_extras::{Column, TableBuilder};
 
-use crate::theme::{Ink, Space, SpaceExt, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, Space, SpaceExt, ThemeExt, Token};
 use crate::{Chip, ChipVariant, PhosphorIcon};
 
 /// One ranked row. All display strings are caller-formatted.

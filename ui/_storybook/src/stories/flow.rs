@@ -241,7 +241,10 @@ connection.on_progress(|progress| {
 });
 
 // On completion
-connection.on_action_complete(|op_id| {
+// `result` is whatever the action returned, still encoded — `None` for an
+// action that only acknowledges. Decode it with the same format the host
+// replied in (postcard, for anything a frontend reads).
+connection.on_action_complete(|op_id, _result| {
     if let Some(data) = tracker.complete(op_id) {
         confirm_purchase(data.item_id);
     }

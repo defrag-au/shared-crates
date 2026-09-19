@@ -8,7 +8,7 @@
 
 use egui::{Response, RichText, Ui, Widget};
 
-use crate::theme::{Ink, Token};
+use crate::theme::{Ink, InkExt, Token};
 
 const MINUTE: i64 = 60;
 const HOUR: i64 = 3_600;

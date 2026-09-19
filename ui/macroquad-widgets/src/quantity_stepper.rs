@@ -5,6 +5,7 @@
 //! hover/press feel; the value sits in a rounded track between them.
 
 use macroquad::prelude::*;
+use ui_theme::TextSize;
 
 use crate::button::{Button, ButtonVariant};
 use crate::painter::{Painter, draw_rounded_rect};
@@ -41,32 +42,37 @@ pub fn quantity_stepper(
     let radius = (h * 0.22).min(10.0);
     let mut action = None;
 
+    // theme-exempt: the glyph is sized from the row height, so the control
+    // scales as one piece whatever `h` the host passes.
+    let glyph = h * 0.55;
+
     if Button::new("-")
         .variant(ButtonVariant::Tonal)
-        .font_size(h * 0.55)
+        .font_size(glyph)
         .enabled(enabled && vm.qty > vm.min)
         .show(p, Rect::new(x, y, bw, h))
     {
         action = Some(StepperAction::Changed(vm.qty.saturating_sub(1).max(vm.min)));
     }
 
+    let value_size = p.size(TextSize::Xl);
     let vx = x + bw + gap;
-    draw_rounded_rect(vx, y, val_w, h, radius, p.theme.track);
+    draw_rounded_rect(vx, y, val_w, h, radius, p.theme.color.bg_highlight);
     let s = vm.qty.to_string();
-    let dim = p.measure(&s, 16.0);
-    let baseline = p.centre_baseline(y, h, 16.0);
+    let dim = p.measure(&s, value_size);
+    let baseline = p.centre_baseline(y, h, value_size);
     p.text(
         &s,
         vx + (val_w - dim.width) * 0.5,
         baseline,
-        16.0,
-        p.theme.fg,
+        value_size,
+        p.theme.color.text_primary,
     );
 
     let px = vx + val_w + gap;
     if Button::new("+")
         .variant(ButtonVariant::Tonal)
-        .font_size(h * 0.55)
+        .font_size(glyph)
         .enabled(enabled && vm.qty < vm.max)
         .show(p, Rect::new(px, y, bw, h))
     {

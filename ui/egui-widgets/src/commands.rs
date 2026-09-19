@@ -22,7 +22,7 @@
 //! }
 //! ```
 //!
-//! and the app hands the palette [`offered`] instead of a literal list.
+//! and the app hands the palette [`offered_rows`] instead of a literal list.
 //!
 //! ## Declare, then ask — because this is immediate mode
 //!
@@ -37,6 +37,30 @@
 //! That also means the `+` button and the palette entry are not two paths to one
 //! behaviour — they are one path. The button calls [`invoke`]; so does the app
 //! when the palette returns an id. Neither knows about the other.
+//!
+//! ## Commands that take an argument
+//!
+//! "Filter by trait" cannot fire on its own — it needs a trait. Declaring the
+//! argument makes its palette row a [branch](crate::command_palette::RowKind):
+//! choosing it descends into a context keyed by the command's id, the APP
+//! supplies the candidates for that path (only the app knows the catalogue, the
+//! vocabulary, the pane), and the chosen value comes back through
+//! [`invoke_with`] to the widget that offered it — in the same call:
+//!
+//! ```ignore
+//! if let Some(value) = Command::new("collection.filter", "Filter by trait")
+//!     .group("Collection")
+//!     .argument("trait value")
+//!     .offer_with_argument(ui)
+//! {
+//!     state.apply_trait(value);
+//! }
+//! ```
+//!
+//! ⚠️ [`Command::argument`] returns an [`ArgumentCommand`], which has no
+//! `offer`. On a command that needs a value, a `bool`-returning `offer` would
+//! compile, report `true`, and throw the value away — a bug with no symptom at
+//! the call site. Call `.argument()` last, after the other builders.
 //!
 //! ## On screen or not in the list
 //!
@@ -59,6 +83,7 @@
 
 use egui::{Context, Ui};
 
+use crate::command_palette::{PaletteRow, RowKind};
 use crate::icons::PhosphorIcon;
 use crate::typeahead_search::TypeaheadOption;
 
@@ -86,6 +111,10 @@ pub struct Command {
     /// vanishes when unavailable makes the reader wonder what they misremembered
     /// — the same reason [`crate::option_group`] keeps disabled choices.
     pub enabled: bool,
+    /// The value this command needs before it can fire, described. Private so
+    /// the only way to set it is [`Command::argument`], which takes `offer`
+    /// away — see [`ArgumentCommand`].
+    argument: Option<String>,
 }
 
 impl Command {
@@ -97,6 +126,7 @@ impl Command {
             group: None,
             icon: None,
             enabled: true,
+            argument: None,
         }
     }
 
@@ -120,6 +150,18 @@ impl Command {
         self
     }
 
+    /// This command needs a value — `describes` says what kind ("trait value").
+    /// Its palette row becomes a branch. Call last; see the module header.
+    pub fn argument(mut self, describes: impl Into<String>) -> ArgumentCommand {
+        self.argument = Some(describes.into());
+        ArgumentCommand(self)
+    }
+
+    /// The value this command asks for, if it asks for one.
+    pub fn takes_argument(&self) -> Option<&str> {
+        self.argument.as_deref()
+    }
+
     /// Declare this command and report whether it fired this pass.
     ///
     /// Call every pass the offering widget draws — it is how the command stays
@@ -136,22 +178,57 @@ impl Command {
     }
 }
 
+/// A [`Command`] that needs a value before it can fire.
+///
+/// A distinct type so `offer` is not available on it: the only way to declare
+/// one is the call that hands the value back.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ArgumentCommand(Command);
+
+impl ArgumentCommand {
+    /// Declare this command and return the value it was invoked with this pass.
+    ///
+    /// `None` both when nothing invoked it and when something invoked it
+    /// WITHOUT a value (a bare [`invoke`] from a toolbar button) — a command that
+    /// needs a value cannot act on one it was not given, so that invocation
+    /// expires unclaimed.
+    pub fn offer_with_argument(self, ui: &Ui) -> Option<String> {
+        let ctx = ui.ctx();
+        let now = pass(ctx);
+        let id = self.0.id.clone();
+        ctx.data_mut(|d| {
+            let reg: &mut Registry = d.get_temp_mut_or_default(registry_id());
+            reg.record(self.0, now);
+            reg.claim_argument(&id, now)
+        })
+    }
+}
+
 /// Fire a command by id — from a button, a shortcut, or the palette.
 ///
 /// Naming one that nothing offers is harmless: it expires unclaimed.
 pub fn invoke(ctx: &Context, id: impl Into<String>) {
-    let id = id.into();
-    let now = pass(ctx);
+    set_pending(ctx, id.into(), None);
+}
+
+/// Fire a command that takes an argument, with its value — what the app calls
+/// when the palette returns a leaf chosen inside that command's context.
+pub fn invoke_with(ctx: &Context, id: impl Into<String>, argument: impl Into<String>) {
+    set_pending(ctx, id.into(), Some(argument.into()));
+}
+
+fn set_pending(ctx: &Context, id: String, argument: Option<String>) {
+    let at = pass(ctx);
     ctx.data_mut(|d| {
         let reg: &mut Registry = d.get_temp_mut_or_default(registry_id());
-        reg.pending = Some((id, now));
+        reg.pending = Some(Pending { id, argument, at });
     });
     // The claiming widget may already have drawn this pass, so the pass that
     // acts on this still has to happen.
     ctx.request_repaint();
 }
 
-/// Everything on screen can do, right now — for feeding the palette.
+/// Everything on screen can do, right now.
 ///
 /// Sorted by group then title, so a list assembled from widgets scattered
 /// across the tree does not come out in draw order.
@@ -170,24 +247,27 @@ pub fn offered(ctx: &Context) -> Vec<Command> {
     })
 }
 
-/// [`offered`], as rows the palette can render.
-pub fn offered_options(ctx: &Context) -> Vec<TypeaheadOption> {
-    offered(ctx)
-        .into_iter()
-        .map(|c| {
-            let mut o = TypeaheadOption::new(c.id, c.title);
-            // The group rides in the subtitle rather than being dropped: the
-            // palette is a flat list, and "Wallets · stake address or $handle"
-            // is what tells two similarly-named commands apart.
-            o.subtitle = match (c.group, c.hint) {
-                (Some(g), Some(h)) => Some(format!("{g} · {h}")),
-                (Some(g), None) => Some(g),
-                (None, Some(h)) => Some(h),
-                (None, None) => None,
-            };
-            o
-        })
-        .collect()
+/// [`offered`], as palette rows: a command that takes an argument is a branch.
+pub fn offered_rows(ctx: &Context) -> Vec<PaletteRow> {
+    offered(ctx).into_iter().map(row_for).collect()
+}
+
+fn row_for(c: Command) -> PaletteRow {
+    let kind = match c.argument {
+        Some(_) => RowKind::Branch,
+        None => RowKind::Leaf,
+    };
+    let mut option = TypeaheadOption::new(c.id, c.title);
+    // The group rides in the subtitle rather than being dropped: the palette
+    // is a flat list, and "Wallets · stake address or $handle" is what tells
+    // two similarly-named commands apart.
+    option.subtitle = match (c.group, c.hint) {
+        (Some(g), Some(h)) => Some(format!("{g} · {h}")),
+        (Some(g), None) => Some(g),
+        (None, Some(h)) => Some(h),
+        (None, None) => None,
+    };
+    PaletteRow { option, kind }
 }
 
 /// Whether anything currently offers this id — for an affordance that should
@@ -200,12 +280,20 @@ fn pass(ctx: &Context) -> u64 {
     ctx.cumulative_pass_nr()
 }
 
+/// An invocation waiting to be claimed.
+#[derive(Clone)]
+struct Pending {
+    id: String,
+    argument: Option<String>,
+    /// The pass it was made in.
+    at: u64,
+}
+
 #[derive(Clone, Default)]
 struct Registry {
     /// Each command and the pass it was last offered in.
     offers: Vec<(Command, u64)>,
-    /// An invocation waiting to be claimed, and the pass it was made in.
-    pending: Option<(String, u64)>,
+    pending: Option<Pending>,
 }
 
 impl Registry {
@@ -220,7 +308,7 @@ impl Registry {
 
     fn claim(&mut self, id: &str, now: u64) -> bool {
         match &self.pending {
-            Some((pending, _)) if pending == id => {
+            Some(p) if p.id == id => {
                 self.pending = None;
                 true
             }
@@ -231,9 +319,26 @@ impl Registry {
         }
     }
 
+    /// Claim an invocation of `id` that CARRIES a value. One without a value is
+    /// left to expire: the command cannot act on it, and consuming it would
+    /// hide that something asked.
+    fn claim_argument(&mut self, id: &str, now: u64) -> Option<String> {
+        match &self.pending {
+            Some(Pending {
+                id: pending,
+                argument: Some(_),
+                ..
+            }) if pending == id => self.pending.take().and_then(|p| p.argument),
+            _ => {
+                self.expire_pending(now);
+                None
+            }
+        }
+    }
+
     fn expire_pending(&mut self, now: u64) {
-        if let Some((_, at)) = &self.pending
-            && now.saturating_sub(*at) > GRACE
+        if let Some(p) = &self.pending
+            && now.saturating_sub(p.at) > GRACE
         {
             self.pending = None;
         }
@@ -254,12 +359,20 @@ mod tests {
         Command::new(id, id)
     }
 
+    fn pending(id: &str, argument: Option<&str>, at: u64) -> Option<Pending> {
+        Some(Pending {
+            id: id.into(),
+            argument: argument.map(Into::into),
+            at,
+        })
+    }
+
     #[test]
     fn a_command_fires_once_and_only_for_its_own_id() {
         let mut reg = Registry::default();
         reg.record(cmd("wallet.add"), 0);
         reg.record(cmd("wallet.clear"), 0);
-        reg.pending = Some(("wallet.add".into(), 0));
+        reg.pending = pending("wallet.add", None, 0);
 
         assert!(
             !reg.claim("wallet.clear", 0),
@@ -304,7 +417,7 @@ mod tests {
         // Otherwise navigating away and back runs a command the reader asked
         // for minutes ago.
         let mut reg = Registry {
-            pending: Some(("wallet.add".into(), 3)),
+            pending: pending("wallet.add", None, 3),
             ..Default::default()
         };
         reg.expire_pending(4);
@@ -330,13 +443,54 @@ mod tests {
     fn a_group_and_a_hint_both_reach_the_palette_row() {
         // Two commands called "Refresh" are told apart by where they came from,
         // so the group cannot be dropped just because the palette is flat.
-        let c = Command::new("wallet.add", "Add wallet")
-            .group("Wallets")
-            .hint("stake address or $handle");
-        let mut reg = Registry::default();
-        reg.record(c, 0);
-        let listed = &reg.offers[0].0;
-        assert_eq!(listed.group.as_deref(), Some("Wallets"));
-        assert_eq!(listed.hint.as_deref(), Some("stake address or $handle"));
+        let row = row_for(
+            Command::new("wallet.add", "Add wallet")
+                .group("Wallets")
+                .hint("stake address or $handle"),
+        );
+        assert_eq!(
+            row.option.subtitle.as_deref(),
+            Some("Wallets · stake address or $handle")
+        );
+    }
+
+    #[test]
+    fn a_command_that_takes_an_argument_lists_as_a_branch() {
+        let plain = row_for(cmd("wallet.add"));
+        let needs_value = row_for(
+            Command::new("collection.filter", "Filter by trait")
+                .argument("trait value")
+                .0,
+        );
+        assert_eq!(plain.kind, RowKind::Leaf);
+        assert_eq!(
+            needs_value.kind,
+            RowKind::Branch,
+            "choosing it must ask for the value, not fire without one"
+        );
+    }
+
+    #[test]
+    fn an_argument_command_claims_only_an_invocation_that_carries_a_value() {
+        let mut reg = Registry {
+            pending: pending("collection.filter", None, 0),
+            ..Default::default()
+        };
+        assert_eq!(
+            reg.claim_argument("collection.filter", 0),
+            None,
+            "a bare invoke has no value to hand over"
+        );
+        assert!(
+            reg.pending.is_some(),
+            "and is left to expire, not silently consumed"
+        );
+
+        reg.pending = pending("collection.filter", Some("Eyes: Laser"), 0);
+        assert_eq!(
+            reg.claim_argument("collection.filter", 0).as_deref(),
+            Some("Eyes: Laser")
+        );
+        assert!(reg.pending.is_none(), "claiming consumes it");
     }
 }

@@ -49,6 +49,9 @@ pub fn show(ui: &mut egui::Ui) {
     let mut right_open = ui
         .data_mut(|d| d.get_temp::<bool>(id.with("right")))
         .unwrap_or(false);
+    let mut footer_open = ui
+        .data_mut(|d| d.get_temp::<bool>(id.with("footer")))
+        .unwrap_or(false);
 
     ui.horizontal_wrapped(|ui| {
         if ui.button("Open from the left").clicked() {
@@ -57,7 +60,36 @@ pub fn show(ui: &mut egui::Ui) {
         if ui.button("Open from the right").clicked() {
             right_open = true;
         }
+        if ui.button("Open with a pinned footer").clicked() {
+            footer_open = true;
+        }
     });
+
+    // Forty rows: taller than any viewport, so the footer staying put while the
+    // list scrolls is the property on show, not a claim about it.
+    Drawer::new("story_footer")
+        .side(DrawerSide::Right)
+        .width(320.0)
+        .show_with_footer(
+            ui,
+            &mut footer_open,
+            |ui| {
+                ui.separator();
+                ui.label(egui::RichText::new("Pinned footer").strong());
+                ui.label(
+                    egui::RichText::new("Stays on the bottom edge while the list scrolls.")
+                        .color(muted(ui))
+                        .small(),
+                );
+            },
+            |ui| {
+                ui.label(egui::RichText::new("Cart").strong());
+                ui.separator();
+                for n in 1..=40 {
+                    ui.label(format!("Item {n}"));
+                }
+            },
+        );
 
     Drawer::new("story_left")
         .side(DrawerSide::Left)
@@ -88,6 +120,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.data_mut(|d| {
         d.insert_temp(id.with("left"), left_open);
         d.insert_temp(id.with("right"), right_open);
+        d.insert_temp(id.with("footer"), footer_open);
     });
 
     ui.add_space(16.0);

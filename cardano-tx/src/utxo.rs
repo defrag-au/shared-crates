@@ -1,10 +1,17 @@
+use crate::params::TxBuildParams;
 use cardano_assets::AssetId;
-use maestro::{AddressUtxo, ProtocolParameters};
 
 /// Find a UTxO containing a specific asset unit.
 ///
 /// Returns `None` if no UTxO contains the target asset.
-pub fn find_asset<'a>(utxos: &'a [AddressUtxo], target: &str) -> Option<&'a AddressUtxo> {
+///
+/// Shaped around Maestro's UTxO row rather than anything of ours, so it lives
+/// behind that adapter's feature and goes when the adapter does.
+#[cfg(feature = "maestro")]
+pub fn find_asset<'a>(
+    utxos: &'a [maestro::AddressUtxo],
+    target: &str,
+) -> Option<&'a maestro::AddressUtxo> {
     utxos
         .iter()
         .find(|utxo| utxo.assets.iter().any(|asset| asset.unit == target))
@@ -226,7 +233,7 @@ fn cbor_bytes_header_len(len: u64) -> u64 {
 /// # Returns
 ///
 /// Minimum lovelace required for the output
-pub fn calculate_min_ada(protocol_params: &ProtocolParameters, assets: &[AssetAmount]) -> u64 {
+pub fn calculate_min_ada(protocol_params: &TxBuildParams, assets: &[AssetAmount]) -> u64 {
     calculate_min_ada_with_params(protocol_params, assets, &OutputParams::default())
 }
 
@@ -278,11 +285,11 @@ pub fn min_ada_for_assets(coins_per_utxo_byte: u64, assets: &[AssetAmount]) -> u
 /// ```
 /// Total: 370 bytes for this example
 pub fn calculate_min_ada_with_params(
-    protocol_params: &ProtocolParameters,
+    protocol_params: &TxBuildParams,
     assets: &[AssetAmount],
     params: &OutputParams,
 ) -> u64 {
-    min_ada_with_coefficient(protocol_params.min_utxo_deposit_coefficient, assets, params)
+    min_ada_with_coefficient(protocol_params.coins_per_utxo_byte, assets, params)
 }
 
 /// The size formula, keyed on the only protocol parameter it consumes.
@@ -361,16 +368,11 @@ mod tests {
         // - Datum size: 241 bytes
         // - Required min UTxO: 2284300 lovelace
 
-        let protocol_params = ProtocolParameters {
-            min_utxo_deposit_coefficient: 4310,
+        let protocol_params = TxBuildParams {
+            coins_per_utxo_byte: 4310,
             min_fee_coefficient: 44,
-            min_fee_constant: maestro::AdaLovelace {
-                ada: maestro::AdaAmount { lovelace: 155381 },
-            },
-            script_execution_prices: None,
-            max_execution_units_per_transaction: None,
-            max_transaction_size: None,
-            plutus_cost_models: None,
+            min_fee_constant: 155_381,
+            ..Default::default()
         };
 
         // Create asset ID matching the transaction
@@ -742,17 +744,12 @@ mod tests {
         );
     }
 
-    fn params_with_coefficient(coefficient: u64) -> ProtocolParameters {
-        ProtocolParameters {
-            min_utxo_deposit_coefficient: coefficient,
+    fn params_with_coefficient(coefficient: u64) -> TxBuildParams {
+        TxBuildParams {
+            coins_per_utxo_byte: coefficient,
             min_fee_coefficient: 44,
-            min_fee_constant: maestro::AdaLovelace {
-                ada: maestro::AdaAmount { lovelace: 155381 },
-            },
-            script_execution_prices: None,
-            max_execution_units_per_transaction: None,
-            max_transaction_size: None,
-            plutus_cost_models: None,
+            min_fee_constant: 155_381,
+            ..Default::default()
         }
     }
 }

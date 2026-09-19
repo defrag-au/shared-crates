@@ -789,7 +789,7 @@ pub struct SpineCanvas<'c> {
     /// chrome. Beside `visuals` for the same reason: a layer is handed what it
     /// needs to agree with the rest of the frame, instead of reaching for a
     /// literal and drifting.
-    pub series: crate::encoding::SeriesPalette,
+    pub series: crate::theme::SeriesPalette,
     /// The caller's tick formatter, so a layer's tooltip dates match the
     /// ruler's.
     pub format_tick: &'c dyn Fn(i64, i64) -> String,
@@ -1678,7 +1678,7 @@ fn paint_marks(
     ruler: &Rect,
     brush_lane: &Rect,
     marks: &[(i64, MarkKind)],
-    series: &crate::encoding::SeriesPalette,
+    series: &crate::theme::SeriesPalette,
 ) {
     let mid = brush_lane.center().y;
     for &(t, kind) in marks {

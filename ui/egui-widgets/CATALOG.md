@@ -5,34 +5,39 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-147 widgets.
+158 widgets.
 
 | module | what it is |
 |---|---|
 | `about_modal` | `AboutModal` — what a product is, what state it is in, and what a reader should expect from it while it is in that state |
 | `access_gate` | `AccessGate` — the app-level access screen: a "sign in" prompt for anonymous visitors and a "requirements" screen (what to join to gain access) for signed-in-but-unqualified users |
+| `account_bar` | `AccountBar` — the trailing cluster of an app header: the actions a connected user reaches for, and the account itself |
 | `activity_feed` | `ActivityFeed` — a wallet's transactions as day-grouped cards: what it was, who it was with, what moved, and what it cost |
 | `activity_lanes` | `ActivityLanes` — one thin lane per party, showing WHEN it acted, under the shared spine |
 | `agent_config` | `agent_config` — who answers, on whose key, for whom, and how much (feature `gateway`) |
 | `amount_input` | ADA amount input widget with preset buttons and validation |
 | `animated_counter` | AnimatedCounter — smoothly interpolates a numeric value between snapshots |
+| `app_header` | `AppHeader` — the bar across the top of a wallet-connected app: its name, one line on what it is for, anything the app wants beside them, and the account |
 | `arrival_field` | ArrivalField — every asset a dot, every holder a pile, and now they MOVE |
 | `asset_strip` | Asset strip — a horizontal row of square asset thumbnails that overlap progressively as more items are added |
 | `auth` | How an app decides who you are — the strategy the shell drives |
 | `auth_worker` | [`AuthStrategy`] for the `auth.cnft.dev` OAuth worker — an opaque token, validated against a service |
 | `background` | `BackgroundToasts` — declare what work is running; the toasts follow |
+| `block_pulse` | `BlockPulse` — the chain's heartbeat on one line: a dot that pops on each new block, a ring filling towards "a block has probably landed", and the time since the last one |
+| `block_train` | `BlockTrain` — recent blocks spaced by real time, with the wait since the last one growing at the right edge |
 | `bullet_bar` | Bullet bar — a value fill against a track with an **optional target marker** |
 | `button_group` | `ButtonGroup` — a row of related action buttons with shared layout |
 | `buttons` | Button helpers that add consistent UX behavior (pointer cursor, etc.) |
 | `cap_band` | `CapBand` — a notional valuation against what it would actually fetch |
 | `capital_flow` | `CapitalFlow` — a project raised some money; watch where it went |
 | `card_browser` | Composable master-detail card browser widget |
+| `chain_tempo` | `ChainTempo` — the chain's pace as stat tiles plus the epoch clock: blocks in the last hour, the gap between blocks, transactions per minute and how full blocks run |
 | `channel_bands` | `ChannelBands` — where a wallet's money came from, period by period |
 | `chip` | `Chip` — small filled-tag label with optional remove (`×`) affordance |
 | `claim_card` | `ClaimCard` — an assertion, what would refute it, and whether anyone has tried |
 | `collection_composition` | Collection composition — a promotable "how this collection is generated" infographic |
 | `collection_list` | Collection roster — the per-client collections list rendered on the admin portal dashboard |
-| `command_palette` | `CommandPalette` — a modal, keyboard-first action launcher over a caller-supplied command set |
+| `command_palette` | `CommandPalette` — a keyboard-first launcher over a stack of contexts the caller resolves each frame |
 | `commands` | `commands` — widgets declare what they can do; the palette lists it |
 | `conversation_history` | `conversation_history` — what people said to the bot, what it worked out, and what it said back (feature `gateway`) |
 | `corner_action` | `CornerAction` — a small icon button pinned to one corner of a thumbnail or card, for a one-tap action on the thing it sits on (refresh, remove, pin) |
@@ -71,6 +76,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `image_text_editor` | Image text overlay editor — place, style, and drag text on top of an image |
 | `interaction_tip` | `InteractionTip` — a hint about a gesture, shown where the gesture is not |
 | `knob` | `Knob` — a rotary control, as a prototype to riff on |
+| `labelled_progress` | `LabelledProgress` — a busy mark the size of the words beside it |
 | `leaderboard` | `Leaderboard` — ranked standings: podium-tinted ranks, an optional prize thumbnail, one headline metric, supporting stats, and a share bar |
 | `leaderboard_table` | `LeaderboardTable` — a dense, virtual-scrolled ranked table |
 | `listing_composer` | ListingComposer — price a batch of assets for sale by what the BUYER pays |
@@ -96,9 +102,11 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `persona_strip` | Persona strip — italic one-liner describing a wallet (or any tagged entity), with an optional row of small tag chips beneath |
 | `phase_card` | `PhaseCard` — read-only display of one mint phase row |
 | `pip_row` | Horizontal pip row widget — a label on the left and a bar of colored pips (or density heatmap) on the right, each positioned proportionally by value |
+| `pool_inspector` | `PoolInspector` — a liquidity pool's ACTUAL state, including the parts that are easy to read wrongly |
 | `pool_liquidity_indicator` | Pool liquidity indicator — per-pool depth and health context cards |
 | `price_impact_curve` | Price impact curve chart — visualizes why split routing helps |
 | `price_timeline` | Price timeline widget — a time-axis scatter of realized prices (sales, offer fills) with optional reference lines (current floor / listing price) and a reference band (e.g |
+| `pricing_ladder` | `PricingLadder` — a structural price ladder: what each rung is worth, what actually sold there, and how much evidence stands behind that |
 | `printing_timeline` | Printing timeline widget — shows a card's printings across sets over time |
 | `progress_bar` | Themed progress bar widget with optional label, percentage, and countdown |
 | `property_list` | `PropertyList` — compact label/value grid for read-only key data |
@@ -109,6 +117,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `relationship_editor` | relationship_editor — edit a list of directed `source → target` edges over a known option set |
 | `relative_time` | `RelativeTime` — a tiny auto-scaling "time ago" label |
 | `role_picker` | `RolePicker` — choose a Discord role by name instead of pasting a snowflake |
+| `route_quote` | `RouteQuote` — a multi-venue route priced leg by leg, and how many transactions it takes to settle |
 | `route_summary` | Route summary widget — compact display of split routing results |
 | `script_catalogue` | `ScriptCatalogue` — the compiled scripts in a build artifact, each with whether it can go on chain and what is stopping it |
 | `select` | `Select` — a single-select control with the anatomy of a real select |
@@ -141,6 +150,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `tx_cart` | TX Cart widget — displays a list of pending chain actions with batch execution |
 | `tx_estimate` | Per-wallet transaction estimate widget — shows the local user's ADA impact |
 | `tx_flight` | `TxFlight` — one server-built, wallet-signed transaction as a checklist: build, review, sign, submit, land |
+| `tx_watch` | `TxWatch` — several transactions on their way to chain, with the wait made visible |
 | `typeahead_search` | `TypeaheadSearch` — a search box with a keyboard-navigable result dropdown |
 | `user_badge` | `UserBadge` — a compact "logged in as" pill (avatar/icon + name) whose click-to-open popup carries the session's identity block and a sign-out action |
 | `utxo_map` | UTxO terrain map — a Voronoi-based wallet visualization |
@@ -151,6 +161,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `wallet` | Framework-agnostic wallet connector for egui frontends |
 | `wallet_asset_picker` | Wallet asset picker — modal widget for browsing and selecting NFTs from a wallet, grouped by policy in an accordion layout |
 | `wallet_button` | Reusable wallet connection button widget for egui frontends |
+| `wallet_cta` | `WalletCta` — an action that needs a wallet: the button when one is connected, and a way to connect one right there when it is not |
 | `wallet_editor` | `WalletEditor` — the reader's own roster of wallets: add one by handle or address, watch it resolve, drop it again |
 | `wallet_identity_header` | Wallet identity header — the big "this is who we're showing" strip at the top of a wallet-profile view |
 | `wallet_list` | Wallet roster — the per-client list rendered on the admin portal dashboard |

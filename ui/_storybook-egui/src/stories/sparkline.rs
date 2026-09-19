@@ -88,10 +88,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut SparklineState) {
             state.tick = 0;
             state.animating = false;
         }
-        if ui.button("Add Spike").clicked() {
-            if let Some(last) = state.data.last() {
-                state.data.push(last + 50.0);
-            }
+        if ui.button("Add Spike").clicked()
+            && let Some(last) = state.data.last()
+        {
+            state.data.push(last + 50.0);
         }
     });
 

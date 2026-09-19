@@ -36,7 +36,7 @@ use crate::button_group::{ButtonGroup, ButtonGroupButton};
 use crate::error_note::ErrorNote;
 use crate::icons::PhosphorIcon;
 use crate::property_list::PropertyList;
-use crate::theme::{Radius, Space, SpaceExt, TextSize, ThemeExt};
+use crate::theme::{Radius, Space, SpaceExt, ThemeExt};
 
 // ============================================================================
 // Types
@@ -435,7 +435,12 @@ fn draw_stage_row(ui: &mut egui::Ui, stage: FlightStage, status: StageStatus, fo
             PhosphorIcon::Clock.show(ui, 14.0, ui.tokens().color.text_muted);
         }
         StageStatus::Active => {
-            ui.add(egui::Spinner::new().size(ui.text_size(TextSize::Md)));
+            // The same 14pt box the glyphs either side of it get, filled
+            // exactly. `Spinner::new().size(14)` draws `radius = 14/2 - 2`,
+            // a circle of 10 — visibly smaller than the marks it alternates
+            // with as a stage advances.
+            let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(14.0), egui::Sense::hover());
+            crate::labelled_progress::paint_busy(ui, rect, ui.tokens().color.accent_cyan);
         }
         StageStatus::Done => {
             PhosphorIcon::CheckCircle.show(ui, 14.0, ui.tokens().color.accent_green);

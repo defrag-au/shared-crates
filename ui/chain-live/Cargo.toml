@@ -1,0 +1,26 @@
+[package]
+name = "chain-live"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The chain's heartbeat and a frontend's own transactions riding it — a drop-in for egui frontends"
+
+[dependencies]
+# Frames folded into a heartbeat, and the poller that decides when to ask
+# whether a transaction has landed. No follower: browsers never open a relay.
+chain-heartbeat = { path = "../../chain/chain-heartbeat", default-features = false }
+# `BlockPulse` and `BlockTrain`.
+egui-widgets = { path = "../egui-widgets", default-features = false, features = ["chain"] }
+egui = { workspace = true }
+# The socket to a heartbeat host's `/heartbeat/flow`.
+ui-flow = { path = "../ui-flow" }
+
+futures = { workspace = true }
+log = { workspace = true }
+# `Date.now()` for the feed clock, `Math.random()` for poll jitter.
+js-sys = { workspace = true }
+wasm-bindgen-futures = { workspace = true }
+
+[dev-dependencies]
+# Real transaction hashes in the tracker's tests.
+hex = { workspace = true }

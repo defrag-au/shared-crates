@@ -218,17 +218,17 @@ pub fn show(ui: &mut egui::Ui, state: &mut SelectStory) {
         .empty_text("Every role is already a member")
         .width(360.0)
         .show(ui);
-    if let Some(id) = resp.added {
-        if !state.members.contains(&id) {
-            state.members.push(id);
-            state.last = "member added".into();
-        }
+    if let Some(id) = resp.added
+        && !state.members.contains(&id)
+    {
+        state.members.push(id);
+        state.last = "member added".into();
     }
-    if let Some(index) = resp.removed {
-        if index < state.members.len() {
-            state.members.remove(index);
-            state.last = "member removed".into();
-        }
+    if let Some(index) = resp.removed
+        && index < state.members.len()
+    {
+        state.members.remove(index);
+        state.last = "member removed".into();
     }
     if resp.cleared {
         state.members.clear();

@@ -30,7 +30,7 @@ use egui::{Align2, Id, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2, pos2, vec2
 use crate::mint_arrivals::{Arrival, pile_offset};
 use crate::motion::{Easing, tween, tween_bool, tween_from};
 use crate::selection::Selection;
-use crate::theme::{Ink, Radius, Series, Speed, TextSize, ThemeExt};
+use crate::theme::{Ink, InkExt, Radius, Series, Speed, TextSize, ThemeExt};
 use crate::time_spine::SpineState;
 
 pub struct ArrivalFieldResponse {

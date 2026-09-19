@@ -32,7 +32,7 @@ use std::collections::HashMap;
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, Ui, Vec2};
 
-use crate::theme::{Ink, Series, TextSize, ThemeExt};
+use crate::theme::{Ink, InkExt, Series, TextSize, ThemeExt};
 
 /// One asset arriving with a holder.
 #[derive(Clone, Debug)]

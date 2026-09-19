@@ -8,16 +8,19 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p macroquad-widgets --test catalog`
 Note: these are MACROQUAD widgets. They cannot use wasm-bindgen, so they do not
 interchange with `egui-widgets` — see the shared-crates CLAUDE.md on runtime pairs.
 
-9 widgets.
+12 widgets.
 
 | module | what it is |
 |---|---|
 | `assets` | Loading external resources with progress, the way a game boots |
+| `block_pulse` | `BlockPulse` — the chain's heartbeat on one line: a dot that pops on each new block, a ring filling towards "a block has probably landed", and the time since the last one |
+| `block_train` | `BlockTrain` — recent blocks spaced by real time, with the wait since the last one growing at the right edge |
 | `button` | `Button` atom — a rounded, accent button with idle / hover / pressed / disabled states and three weights (filled / tonal / ghost) |
 | `fonts` | Host-owned font loading, for the faces [`crate::Painter`] borrows |
 | `mint_checkout` | `MintCheckout` organism — the mint initiator: phase + eligibility, a [`quantity_stepper`], the live total, and the Mint CTA |
 | `order_fulfilment` | `OrderFulfilment` — the buyer-facing "what's happening to my order" widget |
 | `quantity_stepper` | `QuantityStepper` molecule — `[−] [ n ] [+]`, clamped to `[min, max]` |
+| `slider` | `AmountSlider` — pick an amount from a short ladder of snapping stops, for surfaces with no text input |
 | `squad_picker` | Squad picker — choose N assets from a roster to deploy on a mission |
 | `wallet_connect` | `WalletConnect` organism — the buyer-facing wallet selector + connected state, the front door of the mint flow |
 | `wallet_list` | `WalletList` organism — a user's linked wallets, in their own order |

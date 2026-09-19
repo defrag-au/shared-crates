@@ -60,698 +60,115 @@ use std::sync::Arc;
 // Raw palette values
 // ============================================================================
 
-/// The literal Tokyo Night values.
-///
-/// **Stays private.** It exists so `ColorTokens::tokyo_night` has somewhere to
-/// read its numbers from, not as an escape hatch — a `pub const Color32` is
-/// resolved before any theme is chosen, which is exactly why the public consts
-/// that used to shadow these were removed. Reach a value through a `Theme`.
-mod raw {
-    use egui::Color32;
-
-    pub const BG_PRIMARY: Color32 = Color32::from_rgb(26, 27, 38);
-    pub const BG_SECONDARY: Color32 = Color32::from_rgb(36, 40, 59);
-    pub const BG_HIGHLIGHT: Color32 = Color32::from_rgb(41, 46, 66);
-
-    pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(192, 202, 245);
-    /// Tokyo Night `fg_dark` — ~6.9:1 on the secondary background.
-    pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(169, 177, 214);
-    /// De-emphasis tier, but still AA at small sizes — ~5.0:1 on the secondary
-    /// background. (The previous `#565F89` sat at 2.2-2.8:1 and carried real
-    /// copy.)
-    pub const TEXT_MUTED: Color32 = Color32::from_rgb(139, 149, 196);
-
-    pub const ACCENT_BLUE: Color32 = Color32::from_rgb(122, 162, 247);
-    pub const ACCENT_CYAN: Color32 = Color32::from_rgb(125, 207, 255);
-    pub const ACCENT_GREEN: Color32 = Color32::from_rgb(158, 206, 106);
-    pub const ACCENT_YELLOW: Color32 = Color32::from_rgb(224, 175, 104);
-    pub const ACCENT_ORANGE: Color32 = Color32::from_rgb(255, 158, 100);
-    pub const ACCENT_RED: Color32 = Color32::from_rgb(247, 118, 142);
-    pub const ACCENT_MAGENTA: Color32 = Color32::from_rgb(187, 154, 247);
-
-    /// Default border stroke colour. Deliberately its own value: when this
-    /// aliased the highlight background it sat at 1.24:1 against the primary
-    /// background and panel edges were effectively invisible.
-    pub const BORDER: Color32 = Color32::from_rgb(65, 72, 104);
-
-    // `GOLD` lived here, "for the top rarity band. Not part of the accent ramp."
-    // It is gone because the rarity band is no longer a hand-picked hue — it is
-    // the top of the theme's ordinal ramp (`SeriesPalette::ordinal`), which is
-    // what made the band monotonic. A colour that belongs to exactly one ramp
-    // belongs in that ramp.
-}
+// The literal values moved to `ui_theme::tokens::raw` (2026-09-16), along with
+// the whole colour model. They were maintained twice — `macroquad-widgets` kept
+// its own copy, and the two had already diverged on three colours and on what
+// `success` means. Reach a value through a `Theme`, exactly as before; the
+// numbers simply have one home now.
+//
+// `GOLD` is still gone, for the reason it was removed: the rarity band is the
+// top of the theme's ordinal ramp (`SeriesPalette::ordinal`), not a hand-picked
+// hue. A colour that belongs to exactly one ramp belongs in that ramp.
 
 // ============================================================================
 // Colour tokens
 // ============================================================================
 
-/// The colour axis.
+/// The colour axis, as this renderer sees it.
 ///
-/// The semantic entries (`accent`, `success`, `warning`, `error`) are **fields,
-/// not accessors that alias the ramp**. A theme must be able to say that success
-/// is not green without redefining the ramp it borrows from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ColorTokens {
-    pub bg_primary: Color32,
-    pub bg_secondary: Color32,
-    pub bg_highlight: Color32,
-
-    pub text_primary: Color32,
-    pub text_secondary: Color32,
-    pub text_muted: Color32,
-
-    pub accent_blue: Color32,
-    pub accent_cyan: Color32,
-    pub accent_green: Color32,
-    pub accent_yellow: Color32,
-    pub accent_orange: Color32,
-    pub accent_red: Color32,
-    pub accent_magenta: Color32,
-
-    pub accent: Color32,
-    pub success: Color32,
-    pub warning: Color32,
-    pub error: Color32,
-    pub border: Color32,
-}
-
-impl ColorTokens {
-    /// The Tokyo Night Dark palette — the values this crate has always shipped.
-    pub const fn tokyo_night() -> Self {
-        Self {
-            bg_primary: raw::BG_PRIMARY,
-            bg_secondary: raw::BG_SECONDARY,
-            bg_highlight: raw::BG_HIGHLIGHT,
-            text_primary: raw::TEXT_PRIMARY,
-            text_secondary: raw::TEXT_SECONDARY,
-            text_muted: raw::TEXT_MUTED,
-            accent_blue: raw::ACCENT_BLUE,
-            accent_cyan: raw::ACCENT_CYAN,
-            accent_green: raw::ACCENT_GREEN,
-            accent_yellow: raw::ACCENT_YELLOW,
-            accent_orange: raw::ACCENT_ORANGE,
-            accent_red: raw::ACCENT_RED,
-            accent_magenta: raw::ACCENT_MAGENTA,
-            accent: raw::ACCENT_BLUE,
-            success: raw::ACCENT_GREEN,
-            warning: raw::ACCENT_YELLOW,
-            error: raw::ACCENT_RED,
-            border: raw::BORDER,
-        }
-    }
-
-    /// Every background a text colour can land on.
-    ///
-    /// The contrast floors have to be checked against all three, and listing
-    /// them here means a new theme cannot forget one.
-    pub const fn backgrounds(&self) -> [Color32; 3] {
-        [self.bg_primary, self.bg_secondary, self.bg_highlight]
-    }
-
-    /// Every tier of the text ramp, for the same reason.
-    pub const fn text_ramp(&self) -> [Color32; 3] {
-        [self.text_primary, self.text_secondary, self.text_muted]
-    }
-
-    /// A foreground **from this palette** that reads on `fill`.
-    ///
-    /// For solid semantic fills — a danger chip, a status pill — where the
-    /// caller knows the background and needs text that survives it. Returns
-    /// whichever end of the theme's own ramp contrasts more, so the answer moves
-    /// with the theme instead of being a hardcoded `Color32::WHITE`.
-    ///
-    /// This is what lets `ChipVariant` carry semantics rather than literals: a
-    /// chip says "this is a failure", the theme says what failure looks like, and
-    /// the label stays legible on whatever that turns out to be. Picking by
-    /// measured ratio rather than by a luminance threshold matters for the
-    /// mid-tone fills (a 60%-luminance amber) where the two are close and a
-    /// threshold guesses wrong.
-    pub fn on(&self, fill: Color32) -> Color32 {
-        if contrast_ratio(self.bg_primary, fill) >= contrast_ratio(self.text_primary, fill) {
-            self.bg_primary
-        } else {
-            self.text_primary
-        }
-    }
-}
+/// The model — the eighteen fields, the semantic entries being *fields* rather
+/// than accessors aliasing the ramp, `backgrounds()`, `text_ramp()` and the
+/// measured `on()` — now lives in `ui-theme`, generic over the colour type, so
+/// `macroquad-widgets` speaks the same vocabulary instead of a parallel one.
+/// Aliasing rather than re-declaring is what keeps `c.text_primary` yielding a
+/// `Color32` at every call site in this crate.
+///
+/// ⚠️ `ColorTokens::tokyo_night()` is no longer `const fn`: building through the
+/// `Paint` bridge is a trait call. Verified free — nothing binds a `Theme`,
+/// `ColorTokens` or `SeriesPalette` in a `const`/`static`, and `PRESETS` holds
+/// function pointers.
+pub type ColorTokens = ui_theme::ColorTokens<Color32>;
 
 // ============================================================================
 // Naming a token, and deferring to it
 // ============================================================================
 
-/// A name for one entry in [`ColorTokens`].
-///
-/// Exists so a colour choice can be *written down* somewhere that has no `Ui`
-/// to ask — a `Default` impl, a const config, a consumer's struct literal. The
-/// value is fetched later, from whichever theme is actually active.
-///
-/// [`ALL`](Self::ALL) is exhaustive, and `get` matches without a wildcard, so
-/// adding a token to `ColorTokens` fails to compile until it is named here too.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Token {
-    BgPrimary,
-    BgSecondary,
-    BgHighlight,
-    TextPrimary,
-    TextSecondary,
-    TextMuted,
-    AccentBlue,
-    AccentCyan,
-    AccentGreen,
-    AccentYellow,
-    AccentOrange,
-    AccentRed,
-    AccentMagenta,
-    Accent,
-    Success,
-    Warning,
-    Error,
-    Border,
-}
-
-impl Token {
-    /// Every token, in `ColorTokens` declaration order. Drives the token
-    /// inspector story and the contrast suite.
-    pub const ALL: [Token; 18] = [
-        Token::BgPrimary,
-        Token::BgSecondary,
-        Token::BgHighlight,
-        Token::TextPrimary,
-        Token::TextSecondary,
-        Token::TextMuted,
-        Token::AccentBlue,
-        Token::AccentCyan,
-        Token::AccentGreen,
-        Token::AccentYellow,
-        Token::AccentOrange,
-        Token::AccentRed,
-        Token::AccentMagenta,
-        Token::Accent,
-        Token::Success,
-        Token::Warning,
-        Token::Error,
-        Token::Border,
-    ];
-
-    /// This token's value in `c`.
-    pub const fn get(self, c: &ColorTokens) -> Color32 {
-        match self {
-            Token::BgPrimary => c.bg_primary,
-            Token::BgSecondary => c.bg_secondary,
-            Token::BgHighlight => c.bg_highlight,
-            Token::TextPrimary => c.text_primary,
-            Token::TextSecondary => c.text_secondary,
-            Token::TextMuted => c.text_muted,
-            Token::AccentBlue => c.accent_blue,
-            Token::AccentCyan => c.accent_cyan,
-            Token::AccentGreen => c.accent_green,
-            Token::AccentYellow => c.accent_yellow,
-            Token::AccentOrange => c.accent_orange,
-            Token::AccentRed => c.accent_red,
-            Token::AccentMagenta => c.accent_magenta,
-            Token::Accent => c.accent,
-            Token::Success => c.success,
-            Token::Warning => c.warning,
-            Token::Error => c.error,
-            Token::Border => c.border,
-        }
-    }
-
-    /// The field name, as written in `ColorTokens` — for inspectors and
-    /// assertion messages.
-    pub const fn name(self) -> &'static str {
-        match self {
-            Token::BgPrimary => "bg_primary",
-            Token::BgSecondary => "bg_secondary",
-            Token::BgHighlight => "bg_highlight",
-            Token::TextPrimary => "text_primary",
-            Token::TextSecondary => "text_secondary",
-            Token::TextMuted => "text_muted",
-            Token::AccentBlue => "accent_blue",
-            Token::AccentCyan => "accent_cyan",
-            Token::AccentGreen => "accent_green",
-            Token::AccentYellow => "accent_yellow",
-            Token::AccentOrange => "accent_orange",
-            Token::AccentRed => "accent_red",
-            Token::AccentMagenta => "accent_magenta",
-            Token::Accent => "accent",
-            Token::Success => "success",
-            Token::Warning => "warning",
-            Token::Error => "error",
-            Token::Border => "border",
-        }
-    }
-
-    /// This token at reduced `alpha` — sugar for [`Ink::Wash`].
-    pub const fn wash(self, alpha: u8) -> Ink {
-        Ink::Wash(self, alpha)
-    }
-
-    /// A legible foreground over this token's surface — sugar for [`Ink::On`].
-    pub const fn on(self) -> Ink {
-        Ink::On(self)
-    }
-}
-
-/// A colour drawn from the **encoding** palette rather than the chrome palette.
-///
-/// See [`SeriesPalette`] for why the two are separate. This exists so [`Ink`]
-/// can express every themed colour a widget might want: a dot that means
-/// "arriving" is as much a theme decision as a border, and before this it was
-/// the one category stuck on `Option<Color32>`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Series {
-    /// The `i`th categorical series colour — folds past the last slot, so any
-    /// index is valid. See [`SeriesPalette::nth`].
-    Nth(usize),
-    /// A ring/class tint. See [`SeriesPalette::class`].
-    Class(u8),
-    /// Value arriving — the inbound end of the flow ramp.
-    Inbound,
-    /// Value leaving — the outbound end of the flow ramp.
-    Outbound,
-}
-
-impl Series {
-    /// This entry's value in `s`.
-    pub fn get(self, s: &SeriesPalette) -> Color32 {
-        match self {
-            Series::Nth(i) => s.nth(i),
-            Series::Class(ring) => s.class(ring),
-            Series::Inbound => s.inbound(),
-            Series::Outbound => s.outbound(),
-        }
-    }
-}
+// `Token`, `Series` and `Ink` moved to `ui-theme` (2026-09-16) so that
+// `macroquad-widgets` speaks this vocabulary instead of having none. They carry
+// no colour except `Ink::Fixed`, so they are renderer-free; only `Ink` needs the
+// colour type, and the alias below pins it to `Color32` here.
+//
+// What changed for a caller: nothing. `Token::ALL`, `Token::get`, `Token::name`,
+// `Token::wash`, `Token::on`, `Series::get`, `Ink::resolve`, `Ink::token` and
+// `Ink::is_fixed` all still exist and mean the same thing.
+//
+// ⚠️ TWO exceptions, both deliberate:
+//
+// 1. `Ink::of(ui)` is now [`InkExt::of`] — an inherent method cannot be added to
+//    a type this crate does not define. Same call syntax; the trait has to be in
+//    scope, which is the one import the migration added.
+// 2. `Token::get`/`wash`/`on` are no longer `const fn`, because resolving a
+//    colour goes through the `Paint` bridge. `const OFF: Ink = Ink::Wash(..)`
+//    still works — variant construction carries no colour.
+pub use ui_theme::{Series, Token};
 
 /// How a widget decides a colour: **from the theme, or overridden**.
 ///
-/// This replaced `Option<Color32>`, which was the wrong type for the job in two
-/// ways. `None` says *absent* — but a themed default is the opposite of absent,
-/// it is the considered answer. And because `None` carries nothing, the token it
-/// stood for had to be named at the far-away resolve site (`x.unwrap_or(c.y)`),
-/// so reading a widget's `Default` told you nothing about what it would look
-/// like, and two resolve sites for one field could silently disagree.
+/// The model lives in `ui-theme`; see it for why each arm exists and why this
+/// replaced `Option<Color32>`. Aliased here so every `impl Into<Ink>` setter and
+/// every `Ink::Wash(..)` literal in this crate keeps compiling unchanged.
 ///
-/// Each arm is a resolution *strategy*, evaluated against the active theme:
-///
-/// - [`Token`](Self::Token) — take a named token as-is.
-/// - [`Wash`](Self::Wash) — a token at reduced alpha: tracks, scrims, webs,
-///   hairlines. Goes through [`with_alpha`], so it cannot reintroduce the
-///   premultiplication bug.
-/// - [`On`](Self::On) — whatever reads legibly *on* that token's surface, via
-///   [`ColorTokens::on`](ColorTokens::on). For text over a semantic fill.
-/// - [`Series`](Self::Series) — the encoding palette instead of the chrome one,
-///   for the colours that carry data rather than structure.
-/// - [`Fixed`](Self::Fixed) — a literal, escaping the theme deliberately. This
-///   is the arm a reviewer should be suspicious of, which is the point: it is
-///   now a *named* choice rather than the absence of one.
-///
-/// `From<Token>` and `From<Color32>` mean setters taking `impl Into<Ink>` accept
-/// either, so `.color(Color32::RED)` still compiles while `.color(Token::Error)`
-/// becomes expressible — including from a context with no `Ui` in scope, which
-/// is exactly where `Default` impls and consumer config literals live.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Ink {
-    /// A named theme token, taken as-is.
-    Token(Token),
-    /// A named theme token at reduced alpha (0–255).
-    Wash(Token, u8),
-    /// A legible foreground over the named token's surface.
-    On(Token),
-    /// An entry from the encoding palette.
-    Series(Series),
-    /// A fixed colour, overriding the theme.
-    Fixed(Color32),
-}
-
-impl Ink {
-    /// Resolve against a theme.
-    pub fn resolve(self, theme: &Theme) -> Color32 {
-        let c = &theme.color;
-        match self {
-            Ink::Token(t) => t.get(c),
-            Ink::Wash(t, a) => with_alpha(t.get(c), a),
-            Ink::On(t) => c.on(t.get(c)),
-            Ink::Series(s) => s.get(&theme.series),
-            Ink::Fixed(color) => color,
-        }
-    }
-
-    /// Resolve against the theme active in `ui`.
-    pub fn of(self, ui: &Ui) -> Color32 {
-        self.resolve(&ui.tokens())
-    }
-
-    /// The chrome token this ink defers to — `None` for [`Ink::Series`] and
-    /// [`Ink::Fixed`].
-    ///
-    /// Lets a test assert that a widget's defaults all go through the theme.
-    pub const fn token(self) -> Option<Token> {
-        match self {
-            Ink::Token(t) | Ink::Wash(t, _) | Ink::On(t) => Some(t),
-            Ink::Series(_) | Ink::Fixed(_) => None,
-        }
-    }
-
-    /// Whether this ink escapes the theme entirely.
-    pub const fn is_fixed(self) -> bool {
-        matches!(self, Ink::Fixed(_))
-    }
-}
-
-impl From<Token> for Ink {
-    fn from(t: Token) -> Self {
-        Ink::Token(t)
-    }
-}
-
-impl From<Series> for Ink {
-    fn from(s: Series) -> Self {
-        Ink::Series(s)
-    }
-}
-
-impl From<Color32> for Ink {
-    fn from(c: Color32) -> Self {
-        Ink::Fixed(c)
-    }
-}
+/// `From<Token>` and `From<Series>` come from `ui-theme`; `From<Color32>` lives
+/// there too, behind its `egui` feature — the orphan rule puts it out of reach
+/// from here — so `.color(Color32::RED)` still works.
+pub type Ink = ui_theme::Ink<Color32>;
 
 /// `color` at `alpha` (0–255) — a scrim, a wash, a translucent band.
 ///
-/// Exists because `Color32::from_rgba_premultiplied` is the wrong constructor
-/// for this and reads like the right one: it requires each channel to be
-/// **already** multiplied by alpha, so passing a palette colour straight in
-/// produces an invalid colour that blends additively and comes out far lighter
-/// than intended. That shipped once in this crate's selection wash. Taking a
-/// token and an alpha, and doing the multiply internally, removes the choice.
-pub fn with_alpha(color: Color32, alpha: u8) -> Color32 {
-    Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha)
-}
+/// Re-exported from `ui-theme`, where the premultiplication happens once inside
+/// the `Paint` bridge. It exists because `Color32::from_rgba_premultiplied` is
+/// the wrong constructor for this and reads like the right one: it requires each
+/// channel to be **already** multiplied by alpha, so passing a palette colour
+/// straight in produces an invalid colour that blends additively and comes out
+/// far lighter than intended. That shipped once in this crate's selection wash.
+pub use ui_theme::{contrast_ratio, with_alpha};
 
-/// WCAG relative luminance of an opaque colour.
-fn relative_luminance(c: Color32) -> f32 {
-    fn channel(v: u8) -> f32 {
-        let v = v as f32 / 255.0;
-        if v <= 0.039_28 {
-            v / 12.92
-        } else {
-            ((v + 0.055) / 1.055).powf(2.4)
-        }
-    }
-    0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b())
-}
-
-/// WCAG contrast ratio between two opaque colours, in `1.0..=21.0`.
-///
-/// Public because the palette decisions this crate makes — [`ColorTokens::on`](ColorTokens::on),
-/// the contrast suite, a consumer picking a label colour over a chart series —
-/// should all be measuring the same thing.
-pub fn contrast_ratio(a: Color32, b: Color32) -> f32 {
-    let (x, y) = (relative_luminance(a), relative_luminance(b));
-    let (hi, lo) = if x > y { (x, y) } else { (y, x) };
-    (hi + 0.05) / (lo + 0.05)
-}
+// The WCAG arithmetic moved to `ui-theme` and is re-exported below, so the ten
+// `with_alpha` call sites in this crate and every `contrast_ratio` consumer
+// keep resolving through `crate::theme::…`.
+//
+// 🔑 It had been written FOUR times across three crates — here, in
+// `tests/contrast.rs`, in `tests/series_palette.rs` and in `ui-core` — because
+// an integration test cannot reach a `#[cfg(test)]` module. Two of those copies
+// had drifted apart on the sRGB threshold itself: this one used `0.039_28` (the
+// older WCAG figure) while both test suites used `0.040_45` (the sRGB spec), so
+// the contrast suite was not quite measuring what `ColorTokens::on` computed.
+// The shared implementation uses `0.040_45`; the difference only shows within a
+// hair of a contrast tie.
 
 // ============================================================================
 // Typography
 // ============================================================================
 
-/// What a piece of text *is*, rather than how big it is.
+// 🔑 The ramp itself lives in `ui-theme`, for the same reason the palette does:
+// `macroquad-widgets` had no ramp at all, so every size on that side was a
+// literal no theme switch could reach. Copying this here would have recreated
+// the drift the colour model was just rescued from. Re-exported rather than
+// re-declared, so the ~48 files naming `TextSize::` / `TextRole::` are
+// untouched, and `Theme::font` below is the one genuinely egui-bound part.
+pub use ui_theme::{Family, TextRole, TextScale, TextSize, TypeScale};
+
+/// The `FontId` for a role — family included, so a call site never picks one.
 ///
-/// Pairs with [`TextSize`], which says how big. The suite used to carry ~294
-/// inline `.size(11.0)` / `FontId::proportional(9.0)` literals and no way to
-/// make the whole thing one step larger; both now resolve through
-/// [`TextScale`], so a theme moves headings and tick labels together.
-///
-/// Prefer a role when the call site knows what its text *is* — that is the
-/// information a step cannot carry, and it is what lets `monospace` re-rung the
-/// roles without touching the ramp.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum TextRole {
-    /// 8-9px. Axis ticks, dense table annotations. Use sparingly.
-    Micro,
-    /// 10-11px. Secondary labels, captions.
-    Small,
-    /// The default reading size.
-    Body,
-    /// A field or column label. Same size as body, distinct so a theme can
-    /// letterspace or capitalise it without touching body copy.
-    Label,
-    /// Section and page headings.
-    Heading,
-    /// Money, counts, hashes. **Separate on purpose** — this estate renders a
-    /// great deal of tabular value and wants monospace independent of body text.
-    Numeric,
-}
-
-impl TextRole {
-    pub const ALL: &'static [TextRole] = &[
-        TextRole::Micro,
-        TextRole::Small,
-        TextRole::Body,
-        TextRole::Label,
-        TextRole::Heading,
-        TextRole::Numeric,
-    ];
-}
-
-/// A step on the type ramp.
-///
-/// # Steps AND roles, and why both
-///
-/// [`TextRole`] says what a piece of text *is*; `TextSize` says how big it is.
-/// The suite needs both because it already had 294 `.size(11.0)`-style literals
-/// that carry **no** semantics — and inventing one for each of them would be
-/// 294 judgement calls, which is how a migration mispairs things at scale. The
-/// same argument [`Radius`] makes.
-///
-/// So: a new call site that knows what its text is should take the role and let
-/// the theme size it. A migrated site takes the nearest step. Roles resolve
-/// *through* this ramp ([`TypeScale::size`]), so there is one set of numbers
-/// rather than two that drift.
-///
-/// # Why these eight
-///
-/// They are what the estate uses. The 294 literals land on:
-///
-/// ```text
-/// 11.0 × 89   10.0 × 77   9.0 × 43   12.0 × 41   13.0 × 11   14.0 × 11
-///  8.0 × 6    18.0 × 5   15.0 × 4   16.0 × 4    8.5 × 4    20.0 × 3 …
-/// ```
-///
-/// 270 of them sit exactly on `{9, 10, 11, 12, 14, 16, 20, 24}`, and nothing
-/// moves by more than 2px. Note the body of the ramp is 1px apart: dense
-/// dashboard chrome genuinely distinguishes 10 from 11, and a coarser ramp
-/// would flatten a distinction the suite is already making 166 times.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TextSize {
-    /// 9px. Axis ticks, dense annotations.
-    Xs,
-    /// 10px.
-    Sm,
-    /// 11px. The commonest size in the suite.
-    Base,
-    /// 12px.
-    Md,
-    /// 14px. Comfortable reading.
-    Lg,
-    /// 16px.
-    Xl,
-    /// 20px. Section headings.
-    Xl2,
-    /// 24px. Page titles.
-    Xl3,
-}
-
-impl TextSize {
-    pub const ALL: &'static [TextSize] = &[
-        TextSize::Xs,
-        TextSize::Sm,
-        TextSize::Base,
-        TextSize::Md,
-        TextSize::Lg,
-        TextSize::Xl,
-        TextSize::Xl2,
-        TextSize::Xl3,
-    ];
-
-    /// The nearest step to a raw point size. **Ties round up**, matching
-    /// [`Radius::nearest`] and [`Space::nearest`] — text that comes out a point
-    /// large is legible, text that snaps down may not be.
-    pub fn nearest(px: f32, scale: &TextScale) -> Self {
-        let mut best = TextSize::Xs;
-        let mut best_gap = f32::MAX;
-        for step in Self::ALL {
-            let gap = (scale.get(*step) - px).abs();
-            if gap <= best_gap {
-                best_gap = gap;
-                best = *step;
-            }
-        }
-        best
-    }
-}
-
-/// What each [`TextSize`] step is worth — Tailwind's `theme.fontSize`.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct TextScale {
-    pub xs: f32,
-    pub sm: f32,
-    pub base: f32,
-    pub md: f32,
-    pub lg: f32,
-    pub xl: f32,
-    pub xl2: f32,
-    pub xl3: f32,
-}
-
-impl TextScale {
-    /// The sizes the suite already used, in their observed proportions.
-    pub const fn tokyo_night() -> Self {
-        Self {
-            xs: 9.0,
-            sm: 10.0,
-            base: 11.0,
-            md: 12.0,
-            lg: 14.0,
-            xl: 16.0,
-            xl2: 20.0,
-            xl3: 24.0,
-        }
-    }
-
-    /// Everything a size up, with the ramp opening out at the top rather than
-    /// scaling uniformly — which is what [`TypeScale::scale`] already does, and
-    /// is a different thing. Uniform scaling keeps a dense 9px tick 9/11ths of
-    /// the body size forever; this closes that gap, so the smallest text gains
-    /// proportionally more.
-    pub const fn large() -> Self {
-        Self {
-            xs: 11.0,
-            sm: 12.0,
-            base: 13.0,
-            md: 14.0,
-            lg: 16.0,
-            xl: 18.0,
-            xl2: 22.0,
-            xl3: 26.0,
-        }
-    }
-
-    pub fn get(&self, s: TextSize) -> f32 {
-        match s {
-            TextSize::Xs => self.xs,
-            TextSize::Sm => self.sm,
-            TextSize::Base => self.base,
-            TextSize::Md => self.md,
-            TextSize::Lg => self.lg,
-            TextSize::Xl => self.xl,
-            TextSize::Xl2 => self.xl2,
-            TextSize::Xl3 => self.xl3,
-        }
-    }
-}
-
-/// Which family a role renders in.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Family {
-    Proportional,
-    Monospace,
-}
-
-/// The typography axis: the [`TextScale`] ramp, which role sits on which step,
-/// a global multiplier, and a family per role.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct TypeScale {
-    /// The ramp. Roles resolve through it, so a theme that opens the ramp out
-    /// moves headings and tick labels together instead of one at a time.
-    pub steps: TextScale,
-    /// Which step each role takes. Separate from the ramp because *what a
-    /// heading is worth* and *which rung a heading stands on* are different
-    /// decisions — `monospace` re-rungs the roles without touching the ramp.
-    pub micro: TextSize,
-    pub small: TextSize,
-    pub body: TextSize,
-    pub label: TextSize,
-    pub heading: TextSize,
-    pub numeric: TextSize,
-    /// Multiplies every size. The accessibility and density knob.
-    pub scale: f32,
-    /// Family for prose roles (micro/small/body/label/heading).
-    pub prose: Family,
-}
-
-impl TypeScale {
-    /// Proportional prose — the `FontStrategy::proportional` sizes.
-    pub const fn proportional() -> Self {
-        Self {
-            steps: TextScale::tokyo_night(),
-            micro: TextSize::Xs,    // 9
-            small: TextSize::Md,    // 12
-            body: TextSize::Lg,     // 14
-            label: TextSize::Lg,    // 14
-            heading: TextSize::Xl2, // 20
-            numeric: TextSize::Md,  // 12
-            scale: 1.0,
-            prose: Family::Proportional,
-        }
-    }
-
-    /// Monospace throughout — the dashboard feel, matching
-    /// `FontStrategy::monospace`.
-    ///
-    /// Monospace runs wide at the same point size, so the prose roles drop a
-    /// rung rather than the ramp shrinking: the ramp is the product's, the
-    /// rungs are this variant's.
-    pub const fn monospace() -> Self {
-        Self {
-            micro: TextSize::Xs,   // 9
-            small: TextSize::Base, // 11
-            body: TextSize::Md,    // 12
-            label: TextSize::Md,   // 12
-            heading: TextSize::Xl, // 16
-            numeric: TextSize::Md, // 12
-            prose: Family::Monospace,
-            ..Self::proportional()
-        }
-    }
-
-    /// The step a role stands on.
-    pub fn step(&self, role: TextRole) -> TextSize {
-        match role {
-            TextRole::Micro => self.micro,
-            TextRole::Small => self.small,
-            TextRole::Body => self.body,
-            TextRole::Label => self.label,
-            TextRole::Heading => self.heading,
-            TextRole::Numeric => self.numeric,
-        }
-    }
-
-    /// Point size for a ramp step, with [`Self::scale`] applied.
-    pub fn at(&self, size: TextSize) -> f32 {
-        self.steps.get(size) * self.scale
-    }
-
-    /// Point size for a role, with [`Self::scale`] applied.
-    pub fn size(&self, role: TextRole) -> f32 {
-        self.at(self.step(role))
-    }
-
-    /// The `FontId` for a role — family included, so a call site never picks one.
-    pub fn font(&self, role: TextRole) -> FontId {
-        let size = self.size(role);
-        let family = match role {
-            // Numeric is always monospace: tabular figures are the point.
-            TextRole::Numeric => Family::Monospace,
-            _ => self.prose,
-        };
-        match family {
-            Family::Proportional => FontId::proportional(size),
-            Family::Monospace => FontId::monospace(size),
-        }
+/// The egui-bound half of what used to be `TypeScale::font`. `TypeScale` itself
+/// is renderer-free now and answers [`TypeScale::size`] and
+/// [`TypeScale::family`]; turning that pair into a `FontId` is the only part
+/// that could not move.
+pub fn font_id(scale: &TypeScale, role: TextRole) -> FontId {
+    let size = scale.size(role);
+    match scale.family(role) {
+        Family::Proportional => FontId::proportional(size),
+        Family::Monospace => FontId::monospace(size),
     }
 }
 
@@ -1327,11 +744,17 @@ impl MotionTokens {
 // Series palette
 // ============================================================================
 
-// The encoding axis lives in its own module — it grew five kinds, each with a
-// different invariant, and it is about *data* rather than about chrome.
-// Re-exported here so `theme::SeriesPalette` keeps resolving: a theme still owns
-// it, it is just no longer defined in the same file.
-pub use crate::encoding::{Diverging, IdentityEnvelope, Sequential, SeriesPalette};
+// The encoding axis lives in `ui-theme` — it grew five kinds, each with a
+// different invariant, and it is about *data* rather than about chrome. Aliased
+// here so `theme::SeriesPalette` keeps resolving: a theme still owns it, it is
+// just no longer defined in this crate.
+//
+// `IdentityEnvelope` is not generic — it is two numbers, and only its `color()`
+// produces one — so it re-exports rather than aliases.
+pub use ui_theme::IdentityEnvelope;
+pub type Diverging = ui_theme::Diverging<Color32>;
+pub type Sequential = ui_theme::Sequential<Color32>;
+pub type SeriesPalette = ui_theme::SeriesPalette<Color32>;
 
 // ============================================================================
 // Theme
@@ -1370,7 +793,13 @@ impl Theme {
     }
 
     /// The palette and metrics this crate has always shipped.
-    pub const fn tokyo_night() -> Self {
+    ///
+    /// ⚠️ Not `const fn`: the colour axes come from `ui-theme` through the
+    /// `Paint` bridge, and a trait call cannot run in a const. `PRESETS` holds
+    /// function pointers, so nothing downstream needed constness — but three
+    /// public consts DID extract fields from it (`CHANNEL_PALETTE`,
+    /// `OTHER_COLOR`, `UNOBSERVED`) and are now `LazyLock`.
+    pub fn tokyo_night() -> Self {
         Self {
             name: "tokyo night",
             color: ColorTokens::tokyo_night(),
@@ -1384,7 +813,7 @@ impl Theme {
     }
 
     /// Tokyo Night with monospace prose — the dashboard feel.
-    pub const fn tokyo_night_mono() -> Self {
+    pub fn tokyo_night_mono() -> Self {
         Self {
             name: "tokyo night mono",
             text: TypeScale::monospace(),
@@ -1404,7 +833,7 @@ impl Theme {
     /// Rounder and roomier than the house theme too (radius 8/12/16 against
     /// 3/4/8, spacing on a 4px ramp against 2px): the look is as much shape and
     /// rhythm as it is colour.
-    pub const fn opensea() -> Self {
+    pub fn opensea() -> Self {
         Self {
             name: "opensea",
             color: ColorTokens {
@@ -1458,7 +887,7 @@ impl Theme {
     /// nothing about geometry, density or motion, which is most of what a theme
     /// is. Same palette as the default on purpose: everything that differs here
     /// differs in shape and rhythm.
-    pub const fn industrial() -> Self {
+    pub fn industrial() -> Self {
         Self {
             name: "industrial",
             geometry: Geometry::square(),
@@ -1508,7 +937,7 @@ impl Theme {
 
     /// Shorthand for the font of a text role.
     pub fn font(&self, role: TextRole) -> FontId {
-        self.text.font(role)
+        font_id(&self.text, role)
     }
 
     /// Point size for a step of the type ramp.
@@ -1578,6 +1007,45 @@ impl Theme {
 impl Default for Theme {
     fn default() -> Self {
         Self::tokyo_night()
+    }
+}
+
+// ============================================================================
+// Resolving an ink
+// ============================================================================
+
+/// Lets `ui-theme` resolve an [`Ink`] against this crate's [`Theme`].
+///
+/// The shared crate deliberately knows nothing about typography, spacing,
+/// geometry or motion — it asks only for the two axes that carry colour.
+impl ui_theme::Palette<Color32> for Theme {
+    fn color(&self) -> &ColorTokens {
+        &self.color
+    }
+
+    fn series(&self) -> &SeriesPalette {
+        &self.series
+    }
+}
+
+/// `ink.of(ui)` — resolve against the theme active in `ui`.
+///
+/// An extension trait rather than an inherent method because [`Ink`] is now
+/// defined in `ui-theme`, and a crate cannot add inherent methods to a type it
+/// does not own. The call syntax is unchanged; the only cost is that this trait
+/// has to be in scope, which is the single import the move added to each call
+/// site.
+///
+/// Named `of` and not `resolve` on purpose: `Ink::resolve` still exists and
+/// takes an explicit theme, so the two read as what they are — one asks the
+/// context, the other is told.
+pub trait InkExt {
+    fn of(self, ui: &Ui) -> Color32;
+}
+
+impl InkExt for Ink {
+    fn of(self, ui: &Ui) -> Color32 {
+        self.resolve(&*ui.tokens())
     }
 }
 
@@ -1912,6 +1380,34 @@ pub fn hairline(color: Color32) -> Stroke {
     Stroke::new(1.0_f32, color)
 }
 
+/// The height one line of proportional text at `size` occupies.
+///
+/// What a non-text item in a text row must be allocated, so the two centre
+/// against each other. A `horizontal` aligns on the cross axis against each
+/// item's OWN allocation, so a dot allocated `size × size` beside a label
+/// allocated a full line height rides up against the ascenders — and nothing
+/// warns, it just looks wrong.
+///
+/// Measured from a real galley rather than guessed at a ratio: the answer
+/// depends on the loaded font's metrics. egui caches galleys, so this costs a
+/// hash lookup.
+///
+/// Widgets used to get this alignment for free from `interact_size.y` padding
+/// every item to a touch target. A dense read-only region opts out of that
+/// (see the `dense` helpers in `pool_inspector` / `tx_watch`), which takes the
+/// coincidence with it — hence this.
+pub fn line_height(ui: &egui::Ui, size: f32) -> f32 {
+    ui.painter()
+        .layout_no_wrap(
+            // Ascender and descender, so the measurement is a full line.
+            "Ag".to_string(),
+            egui::FontId::proportional(size),
+            Color32::PLACEHOLDER,
+        )
+        .size()
+        .y
+}
+
 /// A stroke of an explicit weight, for the cases that are deliberately not a
 /// hairline (a card's rarity edge, a chart's series line). Same inference
 /// problem, same one-place fix.
@@ -2088,14 +1584,19 @@ mod tests {
     fn the_default_theme_matches_the_palette_this_crate_shipped() {
         // The migration must be invisible: every deprecated const has to equal
         // its replacement field, or widgets change appearance as they migrate.
+        // The values now live in `ui_theme::tokens::raw` as `Srgb`; this still
+        // pins that the default theme resolves to exactly them, which is what
+        // stops the shared palette drifting out from under this crate.
+        use ui_theme::Paint as _;
+        let raw = |c| Color32::from_srgb(c);
         let t = Theme::tokyo_night();
-        assert_eq!(t.color.bg_primary, raw::BG_PRIMARY);
-        assert_eq!(t.color.text_muted, raw::TEXT_MUTED);
-        assert_eq!(t.color.accent, raw::ACCENT_BLUE);
-        assert_eq!(t.color.success, raw::ACCENT_GREEN);
-        assert_eq!(t.color.warning, raw::ACCENT_YELLOW);
-        assert_eq!(t.color.error, raw::ACCENT_RED);
-        assert_eq!(t.color.border, raw::BORDER);
+        assert_eq!(t.color.bg_primary, raw(ui_theme::tokens::raw::BG_PRIMARY));
+        assert_eq!(t.color.text_muted, raw(ui_theme::tokens::raw::TEXT_MUTED));
+        assert_eq!(t.color.accent, raw(ui_theme::tokens::raw::ACCENT_BLUE));
+        assert_eq!(t.color.success, raw(ui_theme::tokens::raw::ACCENT_GREEN));
+        assert_eq!(t.color.warning, raw(ui_theme::tokens::raw::ACCENT_YELLOW));
+        assert_eq!(t.color.error, raw(ui_theme::tokens::raw::ACCENT_RED));
+        assert_eq!(t.color.border, raw(ui_theme::tokens::raw::BORDER));
     }
 
     #[test]

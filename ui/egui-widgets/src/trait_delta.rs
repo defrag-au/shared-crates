@@ -6,7 +6,7 @@
 
 use egui::{Color32, RichText, Ui, Vec2};
 
-use crate::theme::{Ink, Radius, Space, SpaceExt, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, Radius, Space, SpaceExt, ThemeExt, Token};
 
 // ============================================================================
 // Types

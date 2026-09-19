@@ -48,7 +48,7 @@ use egui::{Align, Layout, RichText, Sense, Ui, vec2};
 
 use crate::commands::Command;
 use crate::icons::PhosphorIcon;
-use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 use crate::viewport::Breakpoint;
 
 // ============================================================================
@@ -552,66 +552,16 @@ pub fn show(
     WalletEditorResponse { action }
 }
 
-/// A busy mark: an arc sweeping once per [`SPIN_SECONDS`], filling `at`.
+/// A busy mark filling `at`.
 ///
-/// Painted rather than `egui::Spinner`, which is not sizeable to match anything.
-/// Twice now its size has been wrong in opposite directions and both were its
-/// arithmetic, not the caller's:
-///
-/// - Unsized it takes `spacing.interact_size.y`, which `apply_touch_sizing`
-///   floors at the minimum TAP TARGET — 44px, about three times its column.
-/// - Sized it draws `radius = height/2 - 2`, so asking for 12 yields a circle
-///   of **8** — visibly smaller than the 12pt glyphs it alternates with.
-///
-/// Compensating that `- 2` at the call site would be hardcoding an egui
-/// internal. Nineteen lines buys exact control over diameter and weight, and
-/// the reduced-motion branch for free.
+/// The arithmetic, the reduced-motion branch and the tests live in
+/// [`labelled_progress`](crate::labelled_progress) now — this roster is not
+/// the only surface that waits for something, and it was the only one drawing
+/// a mark that matched its text. Here it is unlabelled: the row's own name is
+/// the label, so only the mark is wanted.
 fn paint_busy(ui: &Ui, at: egui::Rect, color: egui::Color32) {
-    let (stroke, radius) = busy_geometry(at.width());
-    let weight = egui::Stroke::new(stroke, color);
-
-    if !ui.ctx().travel_allowed() {
-        // A spinner is the one thing on screen that cannot hold still. Same
-        // place, same size, no travel.
-        ui.painter().circle_stroke(at.center(), radius, weight);
-        return;
-    }
-
-    let phase = (ui.input(|i| i.time) / SPIN_SECONDS).fract() as f32;
-    let points: Vec<egui::Pos2> = (0..=SPIN_SEGMENTS)
-        .map(|i| {
-            let t = phase + SPIN_ARC * (i as f32 / SPIN_SEGMENTS as f32);
-            let a = t * std::f32::consts::TAU;
-            egui::pos2(
-                at.center().x + radius * a.sin(),
-                at.center().y - radius * a.cos(),
-            )
-        })
-        .collect();
-    ui.painter().add(egui::Shape::line(points, weight));
-    // Nothing else on the row is animating, so the next pass has to be asked for.
-    ui.ctx().request_repaint();
+    crate::labelled_progress::paint_busy(ui, at, color);
 }
-
-/// `(stroke, radius)` for a busy mark filling a box of `width`.
-///
-/// The stroke sits INSIDE the box — `radius * 2 + stroke == width` — so the
-/// mark's drawn extent is exactly the box it was given, and therefore exactly
-/// the box the dot and the warning glyph are given. That equality is the whole
-/// invariant; egui's `Spinner` breaks it by 4px and that is why it looked wrong
-/// beside the `×`.
-fn busy_geometry(width: f32) -> (f32, f32) {
-    let stroke = (width * 0.12).max(1.5);
-    (stroke, (width - stroke) * 0.5)
-}
-
-/// Seconds per revolution of a busy mark.
-const SPIN_SECONDS: f64 = 1.0;
-/// How much of the circle the arc covers, in turns. A gap is what makes the
-/// rotation legible — a full ring spinning looks like a ring standing still.
-const SPIN_ARC: f32 = 0.7;
-/// Segments in the arc. Enough that the curve does not read as faceted.
-const SPIN_SEGMENTS: usize = 24;
 
 /// The add form, as a modal. `Some` when something was submitted.
 ///
@@ -825,32 +775,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_busy_mark_fills_the_box_the_other_marks_get() {
-        // Broken twice, in opposite directions, both times by `egui::Spinner`'s
-        // own arithmetic rather than by the size asked for. Unsized it inherits
-        // the 44px tap target; sized it draws `radius = height/2 - 2`, so a
-        // request for 12 yields a circle of 8 — smaller than the glyphs beside
-        // it. Painting it makes the extent exactly the box, which is the only
-        // thing that makes it match.
-        for width in [10.0_f32, 12.0, 16.0, 24.0, 44.0] {
-            let (stroke, radius) = busy_geometry(width);
-            let drawn = radius * 2.0 + stroke;
-            assert!(
-                (drawn - width).abs() < 1e-4,
-                "width {width} drew {drawn} — the mark must fill its box exactly"
-            );
-            assert!(stroke >= 1.5, "width {width} gave a hairline of {stroke}");
-            assert!(radius > 0.0, "width {width} gave radius {radius}");
-        }
-    }
-
-    #[test]
-    fn the_arc_leaves_a_gap_so_the_rotation_reads() {
-        // A full ring spinning looks like a ring standing still.
-        const { assert!(SPIN_ARC > 0.0 && SPIN_ARC < 1.0) };
-        const { assert!(SPIN_SECONDS > 0.0) };
-    }
+    // The busy mark's geometry and its arc gap are asserted where they now
+    // live, in `labelled_progress` — this roster draws the mark but no longer
+    // owns its arithmetic.
 
     #[test]
     fn every_status_marks_the_row_in_the_same_place() {

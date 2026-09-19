@@ -167,7 +167,9 @@ impl MintingPolicy {
                     scripts.push(NativeScript::ScriptPubkey(key_array.into()));
                 }
 
-                Ok(NativeScript::ScriptNOfK(*required, scripts))
+                // `ScriptNOfK` carries the ledger's signed threshold (int32 in
+                // Shelley, widened to int64 in Allegra); ours is a count.
+                Ok(NativeScript::ScriptNOfK(i64::from(*required), scripts))
             }
 
             Self::MultiSigTimeLocked {
@@ -207,7 +209,7 @@ impl MintingPolicy {
                 // As with `TimeLocked`, the deadline is an upper validity bound:
                 // mint only before `before_slot`, then the multisig supply is frozen.
                 Ok(NativeScript::ScriptAll(vec![
-                    NativeScript::ScriptNOfK(*required, sig_scripts),
+                    NativeScript::ScriptNOfK(i64::from(*required), sig_scripts),
                     NativeScript::InvalidHereafter(*before_slot),
                 ]))
             }
@@ -419,8 +421,11 @@ mod tests {
     }
 
     fn script_all_clauses(policy: &MintingPolicy) -> Vec<NativeScript> {
-        match policy.to_native_script().unwrap() {
-            NativeScript::ScriptAll(clauses) => clauses,
+        // `NativeScript` implements `Drop` to dismantle deep trees iteratively,
+        // so a child list is consumed by mutable reference, not by move.
+        let mut script = policy.to_native_script().unwrap();
+        match &mut script {
+            NativeScript::ScriptAll(clauses) => std::mem::take(clauses),
             other => panic!("expected ScriptAll, got {other:?}"),
         }
     }

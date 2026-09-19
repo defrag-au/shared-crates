@@ -1,4 +1,4 @@
-use maestro::ProtocolParameters;
+use crate::params::TxBuildParams;
 use pallas_txbuilder::StagingTransaction;
 
 /// Estimate the size of a CBOR-encoded number (lovelace amounts, fees, etc.)
@@ -118,6 +118,32 @@ pub fn estimate_tx_size(tx: &StagingTransaction, num_witnesses: u32) -> u64 {
     size
 }
 
+/// Exact serialised size of `tx` once signed by `num_witnesses` keys, or `None`
+/// when it cannot be serialised at this stage of the build.
+///
+/// This is the number the ledger checks against `maxTxSize`, and it is NOT the
+/// length of the unsigned CBOR a builder returns: every vkey witness adds ~100
+/// bytes that only appear after signing. Measuring by signing with dummy keys
+/// (distinct seeds, so no witness is deduplicated away) is exact — no estimate
+/// and no safety margin.
+///
+/// Shared by the fee calculation and the `maxTxSize` guard so the two can never
+/// disagree about how big a transaction is. Fee and size are the same
+/// measurement used for different purposes: a second, independent estimate is
+/// how a transaction comes to be priced as one size and rejected as another.
+pub fn signed_tx_size(tx: &StagingTransaction, num_witnesses: u32) -> Option<u64> {
+    use pallas_txbuilder::BuildConway;
+
+    let mut signed = tx.clone().build_conway_raw().ok()?;
+    for i in 0..num_witnesses.max(1) {
+        let mut seed = [0u8; 32];
+        seed[..4].copy_from_slice(&i.to_le_bytes());
+        let dummy_secret = pallas_crypto::key::ed25519::SecretKey::from(seed);
+        signed = signed.sign(&dummy_secret).ok()?;
+    }
+    Some(signed.tx_bytes.0.len() as u64)
+}
+
 /// Calculate the exact transaction fee using [`TxBuildParams`].
 ///
 /// This is the isomorphic version — no dependency on Maestro types. Preferred
@@ -147,8 +173,6 @@ pub fn calculate_fee_with_witnesses(
     params: &crate::params::TxBuildParams,
     num_witnesses: u32,
 ) -> u64 {
-    use pallas_txbuilder::BuildConway;
-
     let witnesses = num_witnesses.max(1);
 
     // Charged whichever path we take below. Both fallbacks used to return
@@ -157,38 +181,15 @@ pub fn calculate_fee_with_witnesses(
     // under-estimates stacked, surfacing only as `FeeTooSmallUTxO` at submit.
     let ref_script_fee = params.ref_script_size * params.min_fee_ref_script_cost_per_byte;
 
-    let base_fee = {
-        let built = match tx.clone().build_conway_raw() {
-            Ok(b) => b,
-            Err(_) => {
-                let estimated_size = estimate_tx_size(tx, witnesses);
-                return estimated_size * params.min_fee_coefficient
-                    + params.min_fee_constant
-                    + ref_script_fee;
-            }
-        };
-
-        // Sign with `witnesses` distinct dummy keys so the measured size
-        // includes every vkey witness the node will require. Distinct seeds
-        // yield distinct pubkeys, so no witness is deduplicated away.
-        let mut signed = built;
-        for i in 0..witnesses {
-            let mut seed = [0u8; 32];
-            seed[..4].copy_from_slice(&i.to_le_bytes());
-            let dummy_secret = pallas_crypto::key::ed25519::SecretKey::from(seed);
-            signed = match signed.sign(&dummy_secret) {
-                Ok(s) => s,
-                Err(_) => {
-                    let estimated_size = estimate_tx_size(tx, witnesses);
-                    return estimated_size * params.min_fee_coefficient
-                        + params.min_fee_constant
-                        + ref_script_fee;
-                }
-            };
+    let base_fee = match signed_tx_size(tx, witnesses) {
+        Some(tx_size) => tx_size * params.min_fee_coefficient + params.min_fee_constant,
+        // Unserialisable at this stage — price it off the structural estimate.
+        None => {
+            let estimated_size = estimate_tx_size(tx, witnesses);
+            return estimated_size * params.min_fee_coefficient
+                + params.min_fee_constant
+                + ref_script_fee;
         }
-
-        let tx_size = signed.tx_bytes.0.len() as u64;
-        tx_size * params.min_fee_coefficient + params.min_fee_constant
     };
 
     // +1 to handle any remaining ceiling rounding across all fee components
@@ -237,7 +238,7 @@ fn execution_fee_from_redeemers(
 /// so the CBOR encoding matches the final transaction.
 pub fn calculate_tx_fee(
     tx: &StagingTransaction,
-    protocol_params: &ProtocolParameters,
+    protocol_params: &TxBuildParams,
     _num_witnesses: u32,
 ) -> u64 {
     use pallas_txbuilder::BuildConway;
@@ -249,7 +250,7 @@ pub fn calculate_tx_fee(
             // Fallback to estimation if build fails
             let estimated_size = estimate_tx_size(tx, _num_witnesses);
             return (estimated_size * protocol_params.min_fee_coefficient)
-                + protocol_params.min_fee_constant.ada.lovelace;
+                + protocol_params.min_fee_constant;
         }
     };
 
@@ -261,13 +262,13 @@ pub fn calculate_tx_fee(
         Err(_) => {
             let estimated_size = estimate_tx_size(tx, _num_witnesses);
             return (estimated_size * protocol_params.min_fee_coefficient)
-                + protocol_params.min_fee_constant.ada.lovelace;
+                + protocol_params.min_fee_constant;
         }
     };
 
     // Exact fee from exact signed tx size
     let tx_size = signed.tx_bytes.0.len() as u64;
-    tx_size * protocol_params.min_fee_coefficient + protocol_params.min_fee_constant.ada.lovelace
+    tx_size * protocol_params.min_fee_coefficient + protocol_params.min_fee_constant
 }
 
 #[cfg(test)]

@@ -88,7 +88,12 @@ pub struct BlueprintParameter {
 
 /// The Plutus language a blueprint declares, with the byte the ledger
 /// prefixes to the script when hashing it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Ordered V1 < V2 < V3 so a transaction can keep the SET of languages it
+/// uses in a `BTreeSet` — `pallas_txbuilder::ScriptKind` derives neither
+/// `Ord` nor `Hash`, and it also admits `Native`, which is not a language
+/// view at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PlutusLanguage {
     V1,
     V2,
@@ -123,6 +128,17 @@ impl PlutusLanguage {
             PlutusLanguage::V1 => ScriptKind::PlutusV1,
             PlutusLanguage::V2 => ScriptKind::PlutusV2,
             PlutusLanguage::V3 => ScriptKind::PlutusV3,
+        }
+    }
+
+    /// The language a pallas `ScriptKind` names, or `None` for `Native` —
+    /// which is witnessed by signature check and contributes no language view.
+    pub fn from_script_kind(kind: ScriptKind) -> Option<Self> {
+        match kind {
+            ScriptKind::PlutusV1 => Some(PlutusLanguage::V1),
+            ScriptKind::PlutusV2 => Some(PlutusLanguage::V2),
+            ScriptKind::PlutusV3 => Some(PlutusLanguage::V3),
+            ScriptKind::Native => None,
         }
     }
 

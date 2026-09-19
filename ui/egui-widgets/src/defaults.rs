@@ -72,6 +72,11 @@ pub fn install(ctx: &egui::Context, theme: crate::theme::Theme) {
 ///   own `ImageCrateLoader` decodes synchronously *on* the main thread with the
 ///   `image` crate, which stutters the UI on anything large — the browser
 ///   loader is registered after it and wins.
+/// - [`crate::image_loader::fetch::BrowserHttpLoader`] on wasm, which takes
+///   over `http(s)` from `egui_extras`' loader the same way. It keeps no more
+///   than a budget of fetches in flight, and a pending load that nothing has
+///   painted for a second is cancelled and its download aborted. Its handle is
+///   [`crate::image_loader::fetch::loads`].
 /// - The Phosphor icon family, without which [`crate::PhosphorIcon`] renders
 ///   as tofu.
 ///
@@ -89,9 +94,17 @@ pub fn install_assets(ctx: &egui::Context) {
     egui_extras::install_image_loaders(ctx);
 
     #[cfg(target_arch = "wasm32")]
-    ctx.add_image_loader(std::sync::Arc::new(
-        crate::image_loader::browser::BrowserImageLoader::default(),
-    ));
+    {
+        use crate::image_loader::browser::BrowserImageLoader;
+        use crate::image_loader::fetch::BrowserHttpLoader;
+
+        // Checked, so a second call does not stack a second decoder.
+        if !ctx.is_loader_installed(BrowserImageLoader::ID) {
+            ctx.add_image_loader(std::sync::Arc::new(BrowserImageLoader::default()));
+        }
+        // Idempotent on its own.
+        BrowserHttpLoader::install(ctx, crate::image_loader::schedule::LoadPolicy::default());
+    }
 }
 
 /// Install the loaders and the icon font, but no theme.

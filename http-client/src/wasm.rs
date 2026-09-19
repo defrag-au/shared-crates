@@ -1,8 +1,32 @@
 use crate::{HttpError, HttpMethod, ResponseDetails};
+use futures::future::{Either, select};
 use gloo_net::http::Request;
 use serde::{Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::pin;
+use std::time::Duration;
 use tracing::debug;
+use worker_stack::worker::Delay;
+
+/// Resolve `request`, or fail with [`HttpError::Timeout`] once `timeout` elapses.
+///
+/// The request future covers the body read, so a slow-dripping body is bounded
+/// too. Losing the race stops the await, not the fetch: the runtime lets the
+/// abandoned fetch finish and discards it. A `Delay` that loses clears its own
+/// `setTimeout` on drop.
+pub(crate) async fn bounded<R>(
+    timeout: Option<Duration>,
+    request: impl Future<Output = Result<R, HttpError>>,
+) -> Result<R, HttpError> {
+    let Some(after) = timeout else {
+        return request.await;
+    };
+    match select(pin!(request), pin!(Delay::from(after))).await {
+        Either::Left((result, _)) => result,
+        Either::Right(((), _)) => Err(HttpError::Timeout { after }),
+    }
+}
 
 pub(crate) async fn make_request<T: Serialize, R: DeserializeOwned>(
     default_headers: &HashMap<String, String>,

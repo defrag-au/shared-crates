@@ -49,7 +49,7 @@
 use egui::collapsing_header::CollapsingState;
 use egui::{Id, Rect, Ui, Vec2};
 
-use crate::theme::{Ink, Token};
+use crate::theme::{Ink, InkExt, Token};
 
 /// Width of the rule tying the body to the row above it.
 const RULE_W: f32 = 2.0;
@@ -176,8 +176,24 @@ impl Disclosure {
         // ANCHOR ONLY WHILE OPENING. On a settled panel this would fight a
         // reader who has since scrolled away from it — the scroll would snap
         // back every frame and the list would feel stuck.
+        //
+        // And anchor on the body's TOP EDGE — its junction with the row that
+        // opened it — never on the body itself. `scroll_to_rect` brings the
+        // WHOLE rect into view, so passing the growing body makes the viewport
+        // chase its bottom edge: the row the reader just clicked slides up and
+        // off, which is precisely the "it shoves" failure this widget exists to
+        // prevent, reintroduced by the anchor meant to prevent it. The junction
+        // does not move as the body grows, so the row stays put.
+        //
+        // Nothing scrolls at all while that junction is already on screen,
+        // which is the common case — a reader who can see the row does not
+        // want the page to move under them.
         if self.anchor && self.open && openness < 1.0 {
-            ui.scroll_to_rect(inner.response.rect, None);
+            let body = inner.response.rect;
+            let junction = Rect::from_min_size(body.min, Vec2::new(body.width(), 0.0));
+            if !ui.clip_rect().contains(junction.min) {
+                ui.scroll_to_rect(junction, Some(egui::Align::Min));
+            }
         }
         true
     }

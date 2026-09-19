@@ -72,8 +72,9 @@ fn iiif_url(asset_hex: &str, size: ImageSize) -> String {
     image_core::iiif_asset_url(POLICY_ID, asset_hex, size)
 }
 
-// Real Hodlcroft Pirates assets (50 hex asset names from asset_ids.csv)
-const PIRATE_HEX: &[&str] = &[
+// Real Hodlcroft Pirates assets (50 hex asset names from asset_ids.csv).
+// Shared with the image-loads story.
+pub(crate) const PIRATE_HEX: &[&str] = &[
     "5069726174653834",
     "506972617465323733",
     "50697261746531303430",

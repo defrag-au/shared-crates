@@ -188,11 +188,16 @@ pub fn coverage_tint_emphasis(ui: &Ui, state: Coverage) -> Color32 {
 /// The ground: absence of observation. Grey because colour means somebody
 /// decided — the same call `flow_ring` makes for an unexamined party.
 ///
-/// Derived from the default theme's [`crate::encoding::SeriesPalette`] rather
-/// than restated, so "unobserved" has one definition across the suite. The
-/// render path reads `ui.tokens().series.unobserved`, which follows the active
-/// theme; this const is the value a caller gets outside a `Ui`.
-pub const UNOBSERVED: Color32 = crate::encoding::SeriesPalette::tokyo_night().unobserved;
+/// Derived from the default theme's [`crate::theme::SeriesPalette`] rather than
+/// restated, so "unobserved" has one definition across the suite. The render
+/// path reads `ui.tokens().series.unobserved`, which follows the active theme;
+/// this is the value a caller gets outside a `Ui`.
+///
+/// ⚠️ A `LazyLock`, not a `const`: the palette moved to `ui-theme`, and building
+/// a colour through the `Paint` bridge is a trait call, which cannot run in a
+/// const.
+pub static UNOBSERVED: std::sync::LazyLock<Color32> =
+    std::sync::LazyLock::new(|| crate::theme::SeriesPalette::tokyo_night().unobserved);
 
 pub struct CoverageLanes<'a> {
     lanes: &'a [CoverageLane<'a>],

@@ -1,5 +1,6 @@
 use serde::{Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
+use std::time::Duration;
 use tracing::debug;
 
 mod error;
@@ -75,6 +76,7 @@ pub struct HttpClient {
     #[cfg(not(target_arch = "wasm32"))]
     inner: reqwest::Client,
     default_headers: HashMap<String, String>,
+    timeout: Option<Duration>,
 }
 
 impl HttpClient {
@@ -83,7 +85,18 @@ impl HttpClient {
             #[cfg(not(target_arch = "wasm32"))]
             inner: reqwest::Client::new(),
             default_headers: HashMap::new(),
+            timeout: None,
         }
+    }
+
+    /// Fail a request with [`HttpError::Timeout`] if it has not completed —
+    /// response body included — within `timeout`.
+    ///
+    /// Unbounded by default. A Worker's `fetch` has no timeout of its own, so
+    /// without this a hung upstream holds the caller until the client gives up.
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
     }
 
     pub fn with_bearer_token(token: String) -> Self {
@@ -132,12 +145,25 @@ impl HttpClient {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            native::make_request(&self.inner, &self.default_headers, method, url, body).await
+            native::make_request(
+                &self.inner,
+                &self.default_headers,
+                self.timeout,
+                method,
+                url,
+                body,
+            )
+            .await
+            .map_err(|e| native::name_timeout(e, self.timeout))
         }
 
         #[cfg(target_arch = "wasm32")]
         {
-            wasm::make_request(&self.default_headers, method, url, body).await
+            wasm::bounded(
+                self.timeout,
+                wasm::make_request(&self.default_headers, method, url, body),
+            )
+            .await
         }
     }
 
@@ -190,13 +216,25 @@ impl HttpClient {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            native::make_request_with_details(&self.inner, &self.default_headers, method, url, body)
-                .await
+            native::make_request_with_details(
+                &self.inner,
+                &self.default_headers,
+                self.timeout,
+                method,
+                url,
+                body,
+            )
+            .await
+            .map_err(|e| native::name_timeout(e, self.timeout))
         }
 
         #[cfg(target_arch = "wasm32")]
         {
-            wasm::make_request_with_details(&self.default_headers, method, url, body).await
+            wasm::bounded(
+                self.timeout,
+                wasm::make_request_with_details(&self.default_headers, method, url, body),
+            )
+            .await
         }
     }
 
@@ -234,16 +272,22 @@ impl HttpClient {
             native::make_request_text_with_details(
                 &self.inner,
                 &self.default_headers,
+                self.timeout,
                 method,
                 url,
                 body,
             )
             .await
+            .map_err(|e| native::name_timeout(e, self.timeout))
         }
 
         #[cfg(target_arch = "wasm32")]
         {
-            wasm::make_request_text_with_details(&self.default_headers, method, url, body).await
+            wasm::bounded(
+                self.timeout,
+                wasm::make_request_text_with_details(&self.default_headers, method, url, body),
+            )
+            .await
         }
     }
 }

@@ -6,7 +6,7 @@
 //! ("background: red") and its value alone ("red"), so typing either
 //! a category prefix or a value prefix finds matching entries.
 
-use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
 use egui::{Color32, Rect, RichText, Vec2};
 use std::collections::HashSet;
 

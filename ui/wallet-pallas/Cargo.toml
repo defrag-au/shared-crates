@@ -11,8 +11,14 @@ default = []
 wasm = ["dep:wasm-bindgen", "dep:js-sys"]
 
 [dependencies]
-# Core wallet functionality
-wallet-core = { path = "../wallet-core" }
+# NOTE: `wallet-core` is deliberately NOT a dependency.
+#
+# It was declared here but never used — `wallet_core` appears in this crate only
+# in two doc comments, and nothing in `src/` references it. It is not free to
+# carry: wallet-core depends unconditionally on wasm-bindgen, which can never
+# run under miniquad's runtime, so its presence alone made this crate unusable
+# from a macroquad frontend and from `tx-cart-core`. Dropping it leaves pure
+# pallas + cardano-assets + serde + hex, which every runtime can link.
 
 # Cardano asset utilities
 cardano-assets = { workspace = true }

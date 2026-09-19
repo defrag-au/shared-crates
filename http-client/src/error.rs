@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, time::Duration};
 
 #[derive(Debug)]
 pub enum HttpError {
@@ -15,6 +15,11 @@ pub enum HttpError {
         headers: HashMap<String, String>,
         body: String,
     },
+    /// The request did not complete within the client's
+    /// [`with_timeout`](crate::HttpClient::with_timeout) bound.
+    Timeout {
+        after: Duration,
+    },
 }
 
 impl fmt::Display for HttpError {
@@ -28,6 +33,9 @@ impl fmt::Display for HttpError {
             HttpError::Custom(e) => write!(f, "Custom HTTP error: {e}"),
             HttpError::HttpStatus { status_code, .. } => {
                 write!(f, "HTTP request failed with status: {status_code}")
+            }
+            HttpError::Timeout { after } => {
+                write!(f, "HTTP request timed out after {}ms", after.as_millis())
             }
         }
     }

@@ -34,12 +34,16 @@ members = [
     "chain-ledger",
     "chain-ledger-koios",
     "chain-ledger-case",
+    "chain/*",
     "services/*",
     "indexers/*",
     "ui/scss-macros",
     "ui/ui-core",
+    "ui/ui-theme",
     "ui/ui-flow",
+    "ui/chain-live",
     "ui/ui-flow-protocol",
+    "ui/ui-flow-server",
     "ui/ui-loader",
     "ui/ui-loader-macros",
     "ui/ui-toast",
@@ -138,13 +142,13 @@ web-sys = { version = "0.3", features = [
 ] }
 # Cardano primitives
 hex = "0.4"
-pallas-addresses = "1.1.1"
-pallas-codec = "1.1.1"
-pallas-crypto = "1.1.1"
-pallas-primitives = "1.1.1"
-pallas-traverse = "1.1.1"
-pallas-txbuilder = "1.1.1"
-pallas-utxorpc = "1.1.1"
+pallas-addresses = "1.4.0"
+pallas-codec = "1.4.0"
+pallas-crypto = "1.4.0"
+pallas-primitives = "1.4.0"
+pallas-traverse = "1.4.0"
+pallas-txbuilder = "1.4.0"
+pallas-utxorpc = "1.4.0"
 utxorpc-spec = "0.19"
 
 thiserror = "1"
@@ -195,6 +199,9 @@ asset-rarity = { path = "asset-rarity" }
 # egui and macroquad sides can both read the same numbers.
 perf-probe = { path = "perf-probe" }
 egui-widgets = { path = "ui/egui-widgets" }
+# Renderer-free design tokens + colour science. Consumers pick the `Paint` impl
+# they need: `features = ["egui"]` or `features = ["macroquad"]`.
+ui-theme = { path = "ui/ui-theme" }
 portal-pane = { path = "ui/portal-pane" }
 gateway-wiring = { path = "services/gateway-wiring" }
 gateway-admin-protocol = { path = "services/gateway-admin-protocol" }

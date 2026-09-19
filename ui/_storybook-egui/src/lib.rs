@@ -9,6 +9,20 @@
 #[macro_use]
 mod registry;
 
+// Wasm-only because the palette helpers the stories call (`accent`, `muted`,
+// `secondary`, …) live in `mod app` below, which genuinely needs the browser.
+//
+// That makes the stories invisible to a native `cargo check`/`clippy`, and
+// they ARE the only compile-time check that a widget's public shape still
+// matches what its demo builds — adding a field to a widget config breaks
+// every story and the native build goes on passing. The check that catches it
+// is the same lint run against the target they actually compile for:
+//
+//     cargo clippy -p storybook-egui --target wasm32-unknown-unknown \
+//         --all-features -- -D warnings
+//
+// Run it after touching any widget's public types. It found 22 real lint
+// errors the first time it was pointed here.
 #[cfg(target_arch = "wasm32")]
 mod stories;
 
@@ -46,6 +60,7 @@ mod app {
             ThemeStates => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::theme_states::show(ui);
             BackgroundToasts => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::background::show(ui);
             Skeleton => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::skeleton::show(ui);
+            LabelledProgress => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::labelled_progress::show(ui);
             SliderGroup => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::slider_group::show(ui, &mut a.slider_group_state);
             Chip => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::chip::show(ui);
             PartyBadge => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::party_badge::show(ui);
@@ -53,6 +68,7 @@ mod app {
             ActivityFeed => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::activity_feed::show(ui);
             TxCard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_card::show(ui, &mut a.tx_card_state);
             ImageStack => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::image_stack::show(ui, &mut a.image_stack_state);
+            ImageLoads => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::image_loads::show(ui, &mut a.image_loads_state);
             ChannelBands => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::channel_bands::show(ui);
             CustodyWalk => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::custody_walk::show(ui);
             ClaimCard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::claim_card::show(ui, &mut a.claim_card_state);
@@ -95,6 +111,8 @@ mod app {
             Drawer => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::drawer::show(ui);
             Disclosure => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::disclosure::show(ui, &mut a.disclosure_state);
             UserBadge => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::user_badge::show(ui);
+            AccountBar => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::account_bar::show(ui);
+            WalletCta => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_cta::show(ui);
             TierLadder => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::tier_ladder::show(ui);
             AboutModal => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::about_modal::show(ui);
             ServiceBanner => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::service_banner::show(ui);
@@ -106,6 +124,9 @@ mod app {
             Sparkline => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::sparkline::show(ui, &mut a.sparkline_state);
             MetricCard => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::metric_card::show(ui);
             PerfStrip => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::perf_strip::show(ui, &mut a.perf_strip_state);
+            BlockPulse => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::block_pulse::show(ui, &mut a.block_pulse_state);
+            BlockTrain => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::block_train::show(ui, &mut a.block_train_state);
+            ChainTempo => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::chain_tempo::show(ui, &mut a.chain_tempo_state);
             TokenHistory => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_history::show(ui);
             TokenKinetic => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_kinetic::show(ui);
             TokenParticles => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::token_particles::show(ui);
@@ -122,6 +143,7 @@ mod app {
             RangeBar => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::range_bar::show(ui, &mut a.range_bar_state);
             PipRow => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::pip_row::show(ui, &mut a.pip_row_state);
             PriceTimeline => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::price_timeline::show(ui, &mut a.price_timeline_state);
+            PricingLadder => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::pricing_ladder::show(ui, &mut a.pricing_ladder_state);
             Leaderboard => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::leaderboard::show(ui, &mut a.leaderboard_state);
             FocusList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::focus_list::show(ui, &mut a.focus_list_state);
             CardBrowser => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::card_browser::show(ui, &mut a.card_browser_state);
@@ -178,6 +200,12 @@ mod app {
             RouteSummary => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::route_summary::show(ui);
             PoolLiquidity => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::pool_liquidity::show(ui);
             PriceImpactCurve => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::price_impact_curve::show(ui);
+        }
+
+        group "Composed Routes" {
+            RouteQuote => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::route_quote::show(ui);
+            PoolInspector => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::pool_inspector::show(ui);
+            TxWatch => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_watch::show(ui);
         }
 
         group "Collection CSP" {
@@ -245,6 +273,9 @@ mod app {
                 Self::Sparkline => "Sparkline",
                 Self::MetricCard => "Metric Card",
                 Self::PerfStrip => "Perf Strip",
+                Self::BlockPulse => "Block Pulse",
+                Self::BlockTrain => "Block Train",
+                Self::ChainTempo => "Chain Tempo",
                 Self::TokenHistory => "Token History",
                 Self::TokenKinetic => "Token Kinetic",
                 Self::TokenParticles => "Token Particles",
@@ -261,6 +292,7 @@ mod app {
                 Self::RangeBar => "Range Bar",
                 Self::PipRow => "Pip Row",
                 Self::PriceTimeline => "Price Timeline",
+                Self::PricingLadder => "Pricing Ladder",
                 Self::Leaderboard => "Leaderboard",
                 Self::ListingGrid => "Listing Grid",
                 Self::FocusList => "Focus List",
@@ -292,6 +324,9 @@ mod app {
                 Self::RouteSummary => "Route Summary",
                 Self::PoolLiquidity => "Pool Liquidity",
                 Self::PriceImpactCurve => "Price Impact Curve",
+                Self::RouteQuote => "Route Quote",
+                Self::PoolInspector => "Pool Inspector",
+                Self::TxWatch => "Tx Watch",
                 Self::VariantSplit => "Variant Split",
                 Self::CollectionComposition => "Collection Composition",
                 Self::ExposureBar => "Exposure Bar",
@@ -314,6 +349,7 @@ mod app {
                 Self::ThemeStates => "Theme States",
                 Self::BackgroundToasts => "Background Toasts",
                 Self::Skeleton => "Skeleton",
+                Self::LabelledProgress => "Labelled Progress",
                 Self::SliderGroup => "Slider Group",
                 Self::Chip => "Chip",
                 Self::PartyBadge => "Party Badge",
@@ -321,6 +357,7 @@ mod app {
                 Self::ActivityFeed => "Activity Feed",
                 Self::TxCard => "Tx Card",
                 Self::ImageStack => "Image Stack",
+                Self::ImageLoads => "Image Loads",
                 Self::ChannelBands => "Channel Bands",
                 Self::CustodyWalk => "Custody Walk",
                 Self::ClaimCard => "Claim Card",
@@ -359,6 +396,8 @@ mod app {
                 Self::Drawer => "Drawer",
                 Self::Disclosure => "Disclosure",
                 Self::UserBadge => "User Badge",
+                Self::AccountBar => "Account Bar",
+                Self::WalletCta => "Wallet CTA",
                 Self::TierLadder => "Tier Ladder",
                 Self::AboutModal => "About Modal",
                 Self::ServiceBanner => "Service Banner",
@@ -399,6 +438,12 @@ mod app {
                     "Detail that opens under the row it explains — eased, tied by a rule, anchored so the list does not shove"
                 }
                 Self::UserBadge => "Logged-in-as pill (avatar + name) with a sign-out popup",
+                Self::WalletCta => {
+                    "An action that needs a wallet: the primary button when connected, and in its place a prompt that opens the wallet picker in a modal when not"
+                }
+                Self::AccountBar => {
+                    "An app header's trailing cluster: count-badged action triggers plus the connected account"
+                }
                 Self::TierLadder => {
                     "The access ladder as a modal — what each rung gives, every route to it, and where you stand"
                 }
@@ -424,6 +469,15 @@ mod app {
                 }
                 Self::PerfStrip => {
                     "Live HUD, vertical or horizontal — frame build cost, fps, memory, work in flight"
+                }
+                Self::BlockPulse => {
+                    "The chain's heartbeat on one line — pops on each block, a ring of likelihood (never a countdown), honest about a quiet feed"
+                }
+                Self::BlockTrain => {
+                    "Recent blocks spaced by real time, the wait growing at the right edge, your transaction riding to its block"
+                }
+                Self::ChainTempo => {
+                    "Blocks per hour, gap, tx rate and fullness against what to expect — plus the epoch, the one clock that is a schedule"
                 }
                 Self::TokenParticles => {
                     "Supply as a conserved particle field, playing through warped time"
@@ -466,6 +520,9 @@ mod app {
                 }
                 Self::PriceTimeline => {
                     "Time-axis price scatter with reference lines/bands, log y, and hover inspection"
+                }
+                Self::PricingLadder => {
+                    "Structural rungs, with sales drawn against them rather than fitted to them. A sales chart can only draw the rungs that traded — which is backwards, because the untraded ones are the expensive ones a reader most needs priced. So the ladder is the spine and sales are evidence beside it, carrying the count they rest on: four sales and fifty-five are not the same claim, and a bare median hides that. Note Captain, whose one 1,960 ADA fill sits well above its ladder price on four sales — left to a demand model that single outlier leaked onto a Carpenter and priced a 90 ADA asset at 1,960. Rungs that have never traded draw no bar at all, not an empty one: nothing was observed, which is not the same as nothing was paid"
                 }
                 Self::Leaderboard => {
                     "Ranked standings with medals, a share bar, and supporting stats"
@@ -554,6 +611,15 @@ mod app {
                 Self::PriceImpactCurve => {
                     "AMM price impact curves per pool — visualizes why split routing minimizes slippage"
                 }
+                Self::RouteQuote => {
+                    "Sequential multi-venue route: per-leg fees in mixed assets, where the transaction boundaries fall, and what a partial failure leaves you holding"
+                }
+                Self::PoolInspector => {
+                    "A pool's real state — the curve reserve against the accrued fees sitting beside it, and whether the datum's invariant holds"
+                }
+                Self::TxWatch => {
+                    "Several transactions on their way to chain: sign, submit, confirm, per transaction, with the active stage breathing so a wait for a block does not read as a hung screen"
+                }
                 Self::VariantSplit => {
                     "Derived variant distribution for a variant_flow source — share weighted by downstream asset capacity, with the uniform baseline for contrast"
                 }
@@ -618,6 +684,9 @@ mod app {
                 Self::ThemeStates => {
                     "TEMPLATE for contrast bugs — interaction states (selected / hovered / active / disabled) drawn on every surface, plus the translucent selection wash. Resting-state stories cannot show these; mirrored numerically by tests/contrast.rs"
                 }
+                Self::LabelledProgress => {
+                    "A busy mark the size of the words beside it. Shown against egui's own Spinner, which is wrong in both directions by its own arithmetic: unsized it takes interact_size.y (floored at the 44pt tap target), sized it draws radius = height/2 - 2. The mark here fills its box exactly, and the box is the label's line height"
+                }
                 Self::Skeleton => {
                     "Placeholders for content that is not on screen, and a statement of WHY — Loading pulses because 'wait' is the right instruction, Withheld is static and recedes because waiting produces nothing. The reason is positional so a call site cannot draw one without saying which. Rows or a block; carries no data, so the same shapes appear whether three items are behind the gate or three thousand"
                 }
@@ -635,6 +704,9 @@ mod app {
                 }
                 Self::ActivityFeed => {
                     "The account view of the same history: day-grouped cards, each naming its venue, its counterparty and THE ASSETS THAT MOVED — because \"+2 items\" hides whether a wallet got two junk airdrops or two of the collection it trades"
+                }
+                Self::ImageLoads => {
+                    "The image fetch scheduler, watched. Switch shelves: pending loads for art nobody can see are cancelled and their downloads aborted, instead of spending the budget"
                 }
                 Self::ImageStack => {
                     "The tuning bench for the fanned pile of mounted prints that makes a lot of many READ as a lot of many. Every proportion is a slider — mount, spacing, lift, tilt spread, shadow offset/spread/alpha — and the count runs to the hard cap of five, because the difference between 'prints dropped on a desk' and 'some overlapping squares' is a few percent in two of them, and no amount of reading the code tells you which way to go. The art is a rotated mesh, not an egui::Image: Image::corner_radius silently cancels Image::rotate, which shipped once as upright pictures inside tilted mounts. The shadow is faked: epaint blurs rectangles but not rotated polygons, so fourteen concentric quads on an eased alpha ramp stand in for a blur. Includes a backdrop toggle — the server-rendered card sits on #0b0b10 where paper white pops far harder than it does on the app's own BG_SECONDARY, which may be most of why the rendered version looked stronger"
@@ -948,23 +1020,22 @@ mod app {
                     .map(|(_, v)| v.replace('+', " ").replace("%20", " "))
             };
 
-            if let Some(name) = param("theme") {
-                if let Some(t) = egui_widgets::theme::Theme::by_name(&name) {
-                    out.density = t.density;
-                    out.motion = t.motion.mode;
-                    out.theme = t;
-                }
+            if let Some(name) = param("theme")
+                && let Some(t) = egui_widgets::theme::Theme::by_name(&name)
+            {
+                out.density = t.density;
+                out.motion = t.motion.mode;
+                out.theme = t;
             }
             if let Some(name) = param("vs") {
                 out.compare = egui_widgets::theme::Theme::by_name(&name);
             }
-            if let Some(name) = param("density") {
-                if let Some(d) = egui_widgets::theme::Density::ALL
+            if let Some(name) = param("density")
+                && let Some(d) = egui_widgets::theme::Density::ALL
                     .iter()
                     .find(|d| d.label().eq_ignore_ascii_case(&name))
-                {
-                    out.density = *d;
-                }
+            {
+                out.density = *d;
             }
             if let Some(name) = param("motion") {
                 out.motion = match name.to_ascii_lowercase().as_str() {
@@ -1325,6 +1396,9 @@ mod app {
         slot_table_state: stories::slot_table::SlotTableState,
         sparkline_state: stories::sparkline::SparklineState,
         perf_strip_state: stories::perf_strip::PerfStripStory,
+        block_pulse_state: stories::block_pulse::BlockPulseStory,
+        block_train_state: stories::block_train::BlockTrainStory,
+        chain_tempo_state: stories::chain_tempo::ChainTempoStory,
         seven_segment_state: stories::seven_segment::SevenSegmentState,
         flip_counter_state: stories::flip_counter::FlipCounterState,
         async_data_state: stories::async_data::AsyncDataState,
@@ -1337,6 +1411,7 @@ mod app {
         range_bar_state: stories::range_bar::RangeBarState,
         pip_row_state: stories::pip_row::PipRowState,
         price_timeline_state: stories::price_timeline::PriceTimelineState,
+        pricing_ladder_state: stories::pricing_ladder::PricingLadderState,
         leaderboard_state: stories::leaderboard::LeaderboardState,
         listing_grid_state: stories::listing_grid::ListingGridState,
         focus_list_state: stories::focus_list::FocusListState,
@@ -1396,6 +1471,7 @@ mod app {
         cap_band_state: stories::cap_band::CapBandState,
         tx_card_state: stories::tx_card::TxCardState,
         image_stack_state: stories::image_stack::ImageStackState,
+        image_loads_state: stories::image_loads::ImageLoadsState,
         time_spine_state: stories::time_spine::TimeSpineState,
         time_spine_density_state: stories::time_spine_density::TimeSpineDensityState,
         coverage_lanes_state: stories::coverage_lanes::CoverageLanesState,
@@ -1467,6 +1543,9 @@ mod app {
                 slot_table_state: stories::slot_table::SlotTableState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 perf_strip_state: stories::perf_strip::PerfStripStory::default(),
+                block_pulse_state: stories::block_pulse::BlockPulseStory::default(),
+                block_train_state: stories::block_train::BlockTrainStory::default(),
+                chain_tempo_state: stories::chain_tempo::ChainTempoStory::default(),
                 seven_segment_state: stories::seven_segment::SevenSegmentState::default(),
                 flip_counter_state: stories::flip_counter::FlipCounterState::default(),
                 async_data_state: stories::async_data::AsyncDataState::default(),
@@ -1480,6 +1559,7 @@ mod app {
                 range_bar_state: stories::range_bar::RangeBarState::default(),
                 pip_row_state: stories::pip_row::PipRowState::default(),
                 price_timeline_state: stories::price_timeline::PriceTimelineState::default(),
+                pricing_ladder_state: stories::pricing_ladder::PricingLadderState::default(),
                 leaderboard_state: stories::leaderboard::LeaderboardState::default(),
                 listing_grid_state: stories::listing_grid::ListingGridState::default(),
                 focus_list_state: stories::focus_list::FocusListState::default(),
@@ -1553,6 +1633,7 @@ mod app {
                 cap_band_state: stories::cap_band::CapBandState::default(),
                 tx_card_state: stories::tx_card::TxCardState::default(),
                 image_stack_state: stories::image_stack::ImageStackState::default(),
+                image_loads_state: stories::image_loads::ImageLoadsState::default(),
                 time_spine_state: stories::time_spine::TimeSpineState::default(),
                 time_spine_density_state:
                     stories::time_spine_density::TimeSpineDensityState::default(),
@@ -1572,25 +1653,39 @@ mod app {
         /// belongs to the roster and the shell should not have to know it
         /// exists. Neither list is complete on its own.
         fn draw_palette(&mut self, ui: &mut egui::Ui) {
+            use egui_widgets::command_palette::{PaletteRow, rank_rows};
             use egui_widgets::typeahead_search::TypeaheadOption;
 
-            let mut options: Vec<TypeaheadOption> = Story::all()
+            let mut rows: Vec<PaletteRow> = Story::all()
                 .iter()
                 .filter(|s| **s != self.current_story)
                 .map(|s| {
-                    TypeaheadOption::new(format!("{GOTO}{}", s.label()), s.label())
-                        .subtitle(s.category())
+                    PaletteRow::leaf(
+                        TypeaheadOption::new(format!("{GOTO}{}", s.label()), s.label())
+                            .subtitle(s.category()),
+                    )
                 })
                 .collect();
             // What the story currently on screen can do. Nothing here knows
             // what that is — the widgets said so themselves.
-            options.extend(egui_widgets::commands::offered_options(ui.ctx()));
+            rows.extend(egui_widgets::commands::offered_rows(ui.ctx()));
 
-            match egui_widgets::command_palette::CommandPalette::new("storybook", &options)
+            // The shell resolves no contexts of its own. A story's command
+            // that takes an argument can still be descended into from here,
+            // and then there is nothing to list — so list nothing, rather than
+            // the root rows under a breadcrumb that names a different level.
+            // A story that offers one drives it from its own palette, where
+            // its candidates live.
+            let shown = match self.palette.depth() {
+                0 => rank_rows(&rows, self.palette.query(), 12),
+                _ => Vec::new(),
+            };
+
+            match egui_widgets::command_palette::CommandPalette::new("storybook", &shown)
                 .placeholder("Go to a story, or run something on this one…")
                 .show(ui, &mut self.palette)
             {
-                egui_widgets::command_palette::PaletteAction::Invoke(id) => {
+                egui_widgets::command_palette::PaletteAction::Invoke { id, .. } => {
                     match id.strip_prefix(GOTO) {
                         Some(label) => {
                             if let Some(s) = Story::all().iter().find(|s| s.label() == label) {

@@ -1,16 +1,21 @@
 pub mod about_modal;
 pub mod access_gate;
+pub mod account_bar;
 pub mod activity_feed;
 pub mod agent_config;
 pub mod aliens_fixture;
 pub mod asset_card;
 pub mod async_data;
 pub mod background;
+pub mod block_pulse;
+pub mod block_train;
 pub mod bullet_bar;
 pub mod buttons;
 pub mod cap_band;
 pub mod capital_flow;
 pub mod card_browser;
+pub mod chain_fixture;
+pub mod chain_tempo;
 pub mod collection_list;
 pub mod command_palette;
 pub mod conversation_history;
@@ -50,6 +55,7 @@ pub mod perf_strip;
 pub mod perspective_text;
 pub mod pip_row;
 pub mod price_timeline;
+pub mod pricing_ladder;
 pub mod printing_timeline;
 pub mod progress_bar;
 pub mod radar_chart;
@@ -82,6 +88,7 @@ pub mod trait_filter;
 pub mod typeahead_search;
 #[cfg(target_arch = "wasm32")]
 pub mod wallet;
+pub mod wallet_cta;
 pub mod wallet_editor;
 pub mod wiring_editor;
 pub mod wrt_fixture;
@@ -94,6 +101,11 @@ pub mod route_summary;
 pub mod slippage_selector;
 pub mod split_allocation_bar;
 
+// Composed routes — sequential multi-venue routing
+pub mod pool_inspector;
+pub mod route_quote;
+pub mod tx_watch;
+
 // Loan dashboard widgets
 pub mod custody_walk;
 pub mod data_table;
@@ -105,6 +117,7 @@ pub mod leaderboard_table;
 // Utility widgets
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
+pub mod image_loads;
 pub mod image_stack;
 pub mod image_text_editor;
 
@@ -135,6 +148,7 @@ pub mod channel_bands;
 pub mod chip;
 pub mod claim_card;
 pub mod id_pill;
+pub mod labelled_progress;
 pub mod property_list;
 pub mod theme_states;
 pub mod toast;

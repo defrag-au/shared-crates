@@ -4,6 +4,7 @@
 //! hit-test). Deliberately tiny — a widget toolkit, not a UI framework.
 
 use macroquad::prelude::*;
+use ui_theme::{TextRole, TextSize};
 
 use crate::theme::{self, Theme};
 
@@ -41,6 +42,24 @@ impl<'a> Painter<'a> {
         }
     }
 
+    /// Point size for a step of the type ramp — **the one way a widget gets a
+    /// size**.
+    ///
+    /// `p.text(label, x, y, p.size(TextSize::Base), col)` is the blessed shape;
+    /// `tests/text_sizes.rs` rejects a bare literal in that position. The ramp
+    /// is the theme's, so a host that opens it out
+    /// ([`Theme::with_text_scale`](crate::Theme::with_text_scale)) moves every
+    /// widget at once — which a literal can never do.
+    pub fn size(&self, step: TextSize) -> f32 {
+        self.theme.text_size(step)
+    }
+
+    /// Point size for a text ROLE. Prefer this when the call site knows what
+    /// its text *is* — that is information a step cannot carry.
+    pub fn role(&self, role: TextRole) -> f32 {
+        self.theme.role_size(role)
+    }
+
     pub fn text(&self, s: &str, x: f32, y: f32, size: f32, color: Color) {
         self.draw_in(self.font, s, x, y, size, color);
     }
@@ -75,8 +94,24 @@ impl<'a> Painter<'a> {
         );
     }
 
+    /// Measure in the PROPORTIONAL face — what [`Painter::text`] draws.
+    ///
+    /// Named explicitly because the asymmetry bites: anything drawn with
+    /// [`Painter::mono`] must be measured with [`Painter::measure_mono`], and
+    /// getting it wrong fails SILENTLY. Monospace is wider per character, so
+    /// measuring it here under-reports, and two independently placed strings
+    /// quietly overlap instead of erroring.
     pub fn measure(&self, s: &str, size: f32) -> TextDimensions {
         measure_text(s, self.font, size as u16, 1.0)
+    }
+
+    /// Measure in the MONOSPACE face — what [`Painter::mono`] draws.
+    ///
+    /// Without this a widget can only measure half the text it can draw, which
+    /// makes right-aligning or fitting a hash, a price or any fixed-width
+    /// figure a guess. See [`Painter::measure`] for why the guess is silent.
+    pub fn measure_mono(&self, s: &str, size: f32) -> TextDimensions {
+        measure_text(s, self.mono, size as u16, 1.0)
     }
 
     /// Baseline `y` that vertically centres text (at `size`) within a band of
@@ -125,7 +160,14 @@ impl<'a> Painter<'a> {
     /// over the muted track (rounded).
     pub fn progress(&self, rect: Rect, frac: f32, fill: Color) {
         let r = rect.h * 0.5;
-        draw_rounded_rect(rect.x, rect.y, rect.w, rect.h, r, self.theme.track);
+        draw_rounded_rect(
+            rect.x,
+            rect.y,
+            rect.w,
+            rect.h,
+            r,
+            self.theme.color.bg_highlight,
+        );
         let w = rect.w * frac.clamp(0.0, 1.0);
         if w > r {
             draw_rounded_rect(rect.x, rect.y, w, rect.h, r, fill);

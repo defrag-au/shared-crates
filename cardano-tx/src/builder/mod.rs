@@ -29,6 +29,7 @@ use crate::params::TxBuildParams;
 /// - Workers: convert from `SendParams` (AddressUtxo → UtxoApi, ProtocolParameters → TxBuildParams)
 /// - Browser: from CIP-30 wallet UTxOs + fetched protocol params
 /// - CLI: from any indexer API
+#[derive(Clone)]
 pub struct TxDeps {
     pub utxos: Vec<UtxoApi>,
     pub params: TxBuildParams,
@@ -249,6 +250,26 @@ pub fn converge_fee_with_witnesses(
     // Final build with converged fee
     let staging = build_fn(final_fee)?;
 
+    // `maxTxSize` — the other limit nothing checks before submit. The evaluator
+    // runs the scripts and says nothing about size, so an oversized batch
+    // evaluates clean and the node rejects it with `MaxTxSizeUTxO`.
+    //
+    // Guarded here rather than in any one builder because it is a property of
+    // every transaction, and because this is the one place that holds the FINAL
+    // bytes: a size measured before fee convergence is the wrong size.
+    //
+    // A cap of 0 means "no ceiling", and is a DELIBERATE opt-out: the default
+    // is `CONWAY_MAX_TX_SIZE`, not zero, precisely so that forgetting to set
+    // protocol parameters leaves the guard on rather than off.
+    if params.max_tx_size > 0
+        && let Some(size) = crate::fee::signed_tx_size(&staging, num_witnesses)
+    {
+        let cap = u64::from(params.max_tx_size);
+        if size > cap {
+            return Err(TxBuildError::TxSizeExceeded { size, cap });
+        }
+    }
+
     Ok(UnsignedTx {
         staging,
         fee: final_fee,
@@ -302,5 +323,113 @@ mod tests {
         let unsigned = result.unwrap();
         assert!(unsigned.fee > 0);
         assert!(unsigned.fee < 1_000_000); // Sanity check — simple TX fee shouldn't be huge
+    }
+
+    /// A two-output transfer, built against caps that do and don't admit it.
+    ///
+    /// Shared by the `maxTxSize` guard tests so the only difference between
+    /// them is the cap itself.
+    fn build_with_size_cap(max_tx_size: u32) -> Result<UnsignedTx, TxBuildError> {
+        let params = TxBuildParams {
+            min_fee_coefficient: 44,
+            min_fee_constant: 155381,
+            coins_per_utxo_byte: 4310,
+            max_tx_size,
+            max_value_size: 5000,
+            ..Default::default()
+        };
+        let addr = Address::from_bech32("addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3jcu5d8ps7zex2k2xt3uqxgjqnnj83ws8lhrn648jjxtwq2ytjqp")
+            .unwrap();
+
+        converge_fee(
+            |fee| {
+                Ok(StagingTransaction::new()
+                    .output(crate::helpers::output::create_ada_output(
+                        addr.clone(),
+                        2_000_000,
+                    ))
+                    .output(crate::helpers::output::create_ada_output(
+                        addr.clone(),
+                        3_000_000 - fee,
+                    ))
+                    .fee(fee)
+                    .network_id(0))
+            },
+            200_000,
+            &params,
+        )
+    }
+
+    /// A transaction over `maxTxSize` must fail the BUILD, not the submit.
+    ///
+    /// Nothing downstream catches this: `evaluateTransaction` runs the scripts
+    /// and never looks at size, so without this guard an oversized sweep is
+    /// reported as "EVALUATED OK" and then rejected by the node with
+    /// `MaxTxSizeUTxO`. Measured on mainnet, a 50-listing jpg V2 sweep
+    /// serialises to 21,132 bytes against the 16,384 limit while sitting at
+    /// only 96% of the execution budget — size binds first, so the execution
+    /// guard alone does not cover this.
+    #[test]
+    fn a_transaction_over_max_tx_size_is_refused_at_build() {
+        // Far below anything serialisable, so the cap is unambiguously the
+        // thing that rejects it.
+        match build_with_size_cap(200) {
+            Err(TxBuildError::TxSizeExceeded { size, cap }) => {
+                assert_eq!(cap, 200, "the guard must report the cap it applied");
+                assert!(size > cap, "size {size} should exceed cap {cap}");
+            }
+            other => panic!("expected TxSizeExceeded, got {other:?}"),
+        }
+    }
+
+    /// `max_tx_size: 0` is the explicit opt-out, and must still be honoured.
+    #[test]
+    fn a_zero_max_tx_size_opts_out_of_the_guard() {
+        assert!(
+            build_with_size_cap(0).is_ok(),
+            "an explicit cap of 0 must not reject the transaction"
+        );
+    }
+
+    /// Defaulted params must be BOUNDED.
+    ///
+    /// The size ceiling is the one nothing downstream reports — the evaluator
+    /// never looks at size — so a caller that forgets to supply protocol
+    /// parameters must end up guarded, not unguarded. This is the whole reason
+    /// `Default` is hand-written instead of derived; a future field added to
+    /// the derive would silently reinstate `max_tx_size: 0`.
+    #[test]
+    fn default_params_carry_a_real_size_cap() {
+        assert_eq!(
+            TxBuildParams::default().max_tx_size,
+            crate::params::CONWAY_MAX_TX_SIZE,
+            "defaulted params must not be unbounded"
+        );
+        assert_ne!(TxBuildParams::default().max_tx_size, 0);
+    }
+
+    /// The guard measures the SIGNED size, which is what the ledger checks.
+    ///
+    /// The unsigned CBOR a builder returns omits the vkey witnesses — ~100
+    /// bytes each — so a guard written against it would pass transactions the
+    /// node then rejects.
+    #[test]
+    fn signed_size_exceeds_unsigned_size() {
+        use pallas_txbuilder::BuildConway;
+
+        let unsigned = build_with_size_cap(16384).expect("builds");
+        let unsigned_len = unsigned
+            .staging
+            .clone()
+            .build_conway_raw()
+            .unwrap()
+            .tx_bytes
+            .0
+            .len() as u64;
+        let signed_len = crate::fee::signed_tx_size(&unsigned.staging, 1).expect("measurable");
+        assert!(
+            signed_len > unsigned_len,
+            "signed {signed_len} should exceed unsigned {unsigned_len} by the witness bytes"
+        );
     }
 }

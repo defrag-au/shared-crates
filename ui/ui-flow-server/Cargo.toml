@@ -1,0 +1,23 @@
+[package]
+name = "ui-flow-server"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Server-side ui-flow helpers: per-socket notify-domain subscriptions that survive Durable Object hibernation"
+
+[features]
+default = []
+# Durable Object glue: update a socket's attachment from a client message, and
+# notify only the sockets subscribed to a domain.
+worker = ["dep:worker_stack"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+ui-flow-protocol = { path = "../ui-flow-protocol" }
+worker_stack = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The first payload this carries. Its wasm-safe integers and internally tagged
+# enums have to survive MessagePack, which the JSON tests in its own crate
+# cannot show.
+chain-heartbeat = { path = "../../chain/chain-heartbeat", default-features = false }

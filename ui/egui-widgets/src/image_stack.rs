@@ -460,7 +460,7 @@ mod tests {
             StackImage::new("b"),
             StackImage::new("c"),
         ];
-        let stack = ImageStack::new(&images).size(100.0);
+        let stack = ImageStack::new(&images).size(100.0); // theme-exempt: image edge in pixels, not text
         let d = stack.desired_size();
         assert!(d.y > 100.0, "height {} must exceed the image edge", d.y);
         assert!(d.x > 100.0, "width {} must exceed the image edge", d.x);
@@ -472,7 +472,7 @@ mod tests {
     fn desired_width_grows_with_spacing() {
         let images = [StackImage::new("a"), StackImage::new("b")];
         let tight = ImageStack::new(&images)
-            .size(100.0)
+            .size(100.0) // theme-exempt: image edge in pixels, not text
             .style(ImageStackStyle {
                 spacing: 0.2,
                 ..Default::default()
@@ -480,7 +480,7 @@ mod tests {
             .desired_size()
             .x;
         let spread = ImageStack::new(&images)
-            .size(100.0)
+            .size(100.0) // theme-exempt: image edge in pixels, not text
             .style(ImageStackStyle {
                 spacing: 1.2,
                 ..Default::default()

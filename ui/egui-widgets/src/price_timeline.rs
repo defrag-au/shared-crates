@@ -444,18 +444,26 @@ pub fn show(
     }
     let mut t = now - k * step;
     while t > x_min {
-        let x = x_of(t);
-        painter.line_segment(
-            [Pos2::new(x, plot_rect.min.y), Pos2::new(x, plot_rect.max.y)],
-            Stroke::new(0.5_f32, grid_color),
-        );
-        painter.text(
-            Pos2::new(x, outer_rect.max.y - 2.0),
-            Align2::CENTER_BOTTOM,
-            age_label(now - t),
-            FontId::proportional(ui.text_size(TextSize::Xs)),
-            label_color,
-        );
+        // A gridline landing within half a step of the right edge sits on top
+        // of the "now" label drawn there, and its age rounds down a rung or
+        // two — on a week-scale axis it prints as minutes ("1m"), which reads
+        // as a month beside neighbours like "12w". It carries no information
+        // the edge label doesn't, so drop it. Only the first tick can trip
+        // this; the rest are a full step further back.
+        if x_max - t >= step / 2 {
+            let x = x_of(t);
+            painter.line_segment(
+                [Pos2::new(x, plot_rect.min.y), Pos2::new(x, plot_rect.max.y)],
+                Stroke::new(0.5_f32, grid_color),
+            );
+            painter.text(
+                Pos2::new(x, outer_rect.max.y - 2.0),
+                Align2::CENTER_BOTTOM,
+                age_label(now - t),
+                FontId::proportional(ui.text_size(TextSize::Xs)),
+                label_color,
+            );
+        }
         t -= step;
     }
     painter.text(

@@ -67,16 +67,35 @@ jobs:
           shared-key: "wasm-check"
           cache-on-failure: true
 
+      # The miniquad-linkability guard, named here on purpose.
+      #
+      # It also runs inside `cargo test --workspace` in the other job, so this
+      # is not the only thing executing it — but a reader scanning this file for
+      # "what stops wasm-bindgen reaching the macroquad path" should find it,
+      # and an `--exclude` added to that job later must not be able to kill it
+      # silently. The test itself explains what it checks and why.
+      - name: Guard — cardano-tx stays linkable under miniquad
+        run: cargo test -p cardano-tx --test miniquad_linkable
+
       - name: Check wasm-compatible crates
         # flow-demo and flow-demo-frontend are excluded: they're Cloudflare Workers
         # built by wrangler, and depend on getrandom/rand with wasm_js feature
         # which requires JS glue not available in bare wasm32 target
         #
-        # The macroquad crates (arcade-harness, macroquad-wallet-flow,
-        # macroquad-widgets) are absent on purpose: they need the miniquad JS
-        # plugins to link, so they are checked by the consuming repo's wasm job
-        # rather than here. arcade-core is pure serde and belongs here.
+        # arcade-harness and macroquad-wallet-flow are absent on purpose: they
+        # need the miniquad JS plugins to LINK, so they are checked by the
+        # consuming repo's wasm job rather than here. arcade-core is pure serde
+        # and belongs here.
+        #
+        # macroquad-widgets IS here, because that reason does not apply to it:
+        # `cargo check` does not link, and the crate is a library, so nothing
+        # reaches the miniquad plugin step. What this does catch is a dependency
+        # that cannot build for wasm32 at all — at the crate that introduced it,
+        # rather than in the consuming repo a rev later. `--all-features` so the
+        # `chain` feature (and `chain-heartbeat` behind it) is covered too.
         run: |
+          cargo check --target wasm32-unknown-unknown \
+            -p macroquad-widgets --all-features
           cargo check --target wasm32-unknown-unknown \
             -p arcade-core \
             -p asset-intents \

@@ -44,7 +44,7 @@
 
 use egui::{Align2, Id, Margin, Ui, Vec2};
 
-use crate::theme::ThemeExt;
+use crate::theme::{Space, SpaceExt, ThemeExt};
 use crate::viewport::Breakpoint;
 
 /// Which edge the drawer slides in from.
@@ -129,6 +129,37 @@ impl Drawer {
         open: &mut bool,
         content: impl FnOnce(&mut Ui) -> R,
     ) -> Option<R> {
+        self.present(ui, open, None::<fn(&mut Ui)>, content)
+    }
+
+    /// [`Self::show`], with `footer` pinned to the drawer's bottom edge below
+    /// the scrolling content.
+    ///
+    /// For what must stay in view however long the content grows: a status
+    /// strip, a live chart, a total. Put inside the content it scrolls away the
+    /// moment the content is taller than the drawer, which is exactly when the
+    /// reader most needs it.
+    ///
+    /// The footer's height is measured as it draws and remembered, so the
+    /// scroll region leaves room for it from the next frame on; a footer that
+    /// changes height costs one frame of settling, not a jump every frame.
+    pub fn show_with_footer<R>(
+        self,
+        ui: &mut Ui,
+        open: &mut bool,
+        footer: impl FnOnce(&mut Ui),
+        content: impl FnOnce(&mut Ui) -> R,
+    ) -> Option<R> {
+        self.present(ui, open, Some(footer), content)
+    }
+
+    fn present<R>(
+        self,
+        ui: &mut Ui,
+        open: &mut bool,
+        footer: Option<impl FnOnce(&mut Ui)>,
+        content: impl FnOnce(&mut Ui) -> R,
+    ) -> Option<R> {
         if !*open {
             return None;
         }
@@ -185,10 +216,26 @@ impl Drawer {
                 // than as the side panel it is standing in for.
                 ui.set_min_height(inner_height);
                 ui.set_max_height(inner_height);
-                egui::ScrollArea::vertical()
-                    .id_salt(self.id.with("scroll"))
+                let scroll = egui::ScrollArea::vertical().id_salt(self.id.with("scroll"));
+                let Some(footer) = footer else {
+                    return scroll.show(ui, content).inner;
+                };
+
+                let footer_id = self.id.with("footer_height");
+                let footer_height: f32 = ctx.data(|d| d.get_temp(footer_id)).unwrap_or(0.0);
+                let gap = ui.space(Space::Md);
+                let inner = scroll
+                    .auto_shrink([false, false])
+                    .max_height((inner_height - footer_height - gap).max(0.0))
                     .show(ui, content)
-                    .inner
+                    .inner;
+                ui.add_space(gap);
+                let measured = ui.scope(footer).response.rect.height();
+                if (measured - footer_height).abs() > 0.5 {
+                    ctx.data_mut(|d| d.insert_temp(footer_id, measured));
+                    ctx.request_repaint();
+                }
+                inner
             });
 
         // Tap the scrim or press Escape to dismiss. `should_close` covers the

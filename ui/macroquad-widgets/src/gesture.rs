@@ -44,6 +44,14 @@ pub struct Gesture {
     /// A completed tap, at the release point. Feed to [`crate::Painter::new`].
     pub tap: Option<Vec2>,
     pub swipe: Option<SwipeDir>,
+    /// Where the pointer is RIGHT NOW, while it is still down. `None` once it
+    /// lifts — including on the frame that resolves a tap.
+    ///
+    /// Everything else here reports a FINISHED gesture, which is what makes a
+    /// swipe possible. A continuous control cannot wait for that: a slider has
+    /// to follow the thumb while it drags. This is the only in-progress fact
+    /// the recogniser publishes, alongside [`Gestures::dragging`].
+    pub drag: Option<Vec2>,
 }
 
 /// One in-progress pointer — a finger, or the mouse held down.
@@ -51,6 +59,10 @@ pub struct Gesture {
 struct Active {
     id: u64,
     start: Vec2,
+    /// Where the pointer is now. `start` and `travel` cannot answer this — one
+    /// is where it began and the other is a distance — so a control that
+    /// follows the thumb needs it kept.
+    at: Vec2,
     /// Furthest the pointer has been from `start`. Tracked as a maximum rather
     /// than measured at release, so an out-and-back drag doesn't read as a tap
     /// — the user clearly meant to drag, then changed their mind.
@@ -102,6 +114,7 @@ impl Gestures {
                     self.active = Some(Active {
                         id: t.id,
                         start: t.position,
+                        at: t.position,
                         travel: 0.0,
                     });
                 }
@@ -109,6 +122,7 @@ impl Gestures {
                     if let Some(a) = &mut self.active
                         && a.id == t.id
                     {
+                        a.at = t.position;
                         a.travel = a.travel.max(a.start.distance(t.position));
                     }
                 }
@@ -136,11 +150,13 @@ impl Gestures {
             self.active = Some(Active {
                 id: MOUSE_ID,
                 start: mouse_at,
+                at: mouse_at,
                 travel: 0.0,
             });
         } else if let Some(a) = &mut self.active
             && a.id == MOUSE_ID
         {
+            a.at = mouse_at;
             a.travel = a.travel.max(a.start.distance(mouse_at));
         }
         if mouse_released && let Some(a) = self.active.filter(|a| a.id == MOUSE_ID) {
@@ -148,6 +164,9 @@ impl Gestures {
             out = resolve(a.start, mouse_at, a.travel);
         }
 
+        // Read AFTER both blocks, so the frame that lifts the pointer reports a
+        // tap and no drag rather than both.
+        out.drag = self.active.map(|a| a.at);
         out
     }
 
@@ -160,11 +179,16 @@ impl Gestures {
 }
 
 /// Classify a finished pointer as a tap, a swipe, or neither.
+///
+/// Each arm names ONLY what happened and defaults the rest. A resolved gesture
+/// is a finished one, so "nothing else, and the pointer is already up" is
+/// always the right base — and a new field on [`Gesture`] then costs nothing
+/// here rather than breaking every arm.
 fn resolve(start: Vec2, end: Vec2, travel: f32) -> Gesture {
     if travel <= TAP_SLOP {
         return Gesture {
             tap: Some(end),
-            swipe: None,
+            ..Gesture::default()
         };
     }
 
@@ -172,12 +196,12 @@ fn resolve(start: Vec2, end: Vec2, travel: f32) -> Gesture {
     let horizontal = d.x.abs();
     if horizontal >= SWIPE_MIN && horizontal > d.y.abs() * SWIPE_RATIO {
         return Gesture {
-            tap: None,
             swipe: Some(if d.x < 0.0 {
                 SwipeDir::Left
             } else {
                 SwipeDir::Right
             }),
+            ..Gesture::default()
         };
     }
 
@@ -358,5 +382,64 @@ mod tests {
         g.update_from(&[], true, false, vec2(300.0, 200.0));
         let out = g.update_from(&[], false, true, vec2(302.0, 201.0));
         assert_eq!(out.tap, Some(vec2(302.0, 201.0)));
+    }
+
+    /// A slider has to follow the thumb, which nothing else here reports —
+    /// every other signal describes a gesture that has already finished.
+    #[test]
+    fn a_held_pointer_reports_where_it_is() {
+        let mut g = Gestures::new();
+        let down = g.update_from(
+            &[touch(1, TouchPhase::Started, 100.0, 50.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
+        assert_eq!(
+            down.drag,
+            Some(vec2(100.0, 50.0)),
+            "the press itself is a drag position"
+        );
+
+        let moved = g.update_from(
+            &[touch(1, TouchPhase::Moved, 180.0, 52.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
+        assert_eq!(moved.drag, Some(vec2(180.0, 52.0)));
+        assert!(
+            moved.tap.is_none(),
+            "nothing resolves while the finger is down"
+        );
+    }
+
+    /// The release frame must not report both, or a slider would take the tap
+    /// as one more drag sample and could fight the value it just settled on.
+    #[test]
+    fn lifting_the_pointer_ends_the_drag() {
+        let mut g = Gestures::new();
+        g.update_from(
+            &[touch(1, TouchPhase::Started, 100.0, 50.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
+        let up = g.update_from(
+            &[touch(1, TouchPhase::Ended, 103.0, 51.0)],
+            false,
+            false,
+            Vec2::ZERO,
+        );
+        assert!(up.drag.is_none(), "a lifted pointer is not still dragging");
+        assert_eq!(up.tap, Some(vec2(103.0, 51.0)));
+
+        // And the mouse follows the same rule.
+        let mut g = Gestures::new();
+        g.update_from(&[], true, false, vec2(200.0, 80.0));
+        let held = g.update_from(&[], false, false, vec2(240.0, 80.0));
+        assert_eq!(held.drag, Some(vec2(240.0, 80.0)));
+        let released = g.update_from(&[], false, true, vec2(240.0, 80.0));
+        assert!(released.drag.is_none());
     }
 }

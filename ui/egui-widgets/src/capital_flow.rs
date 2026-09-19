@@ -85,7 +85,7 @@ pub fn bands(events: &[FlowEvent<'_>]) -> Vec<Band> {
         .map(|(i, (name, total))| Band {
             name,
             total,
-            color: CHANNEL_PALETTE.get(i).copied().unwrap_or(OTHER_COLOR),
+            color: CHANNEL_PALETTE.get(i).copied().unwrap_or(*OTHER_COLOR),
         })
         .collect()
 }
@@ -465,8 +465,8 @@ mod tests {
             .collect();
         let b = bands(&events);
         assert_eq!(b[4].color, CHANNEL_PALETTE[4]);
-        assert_eq!(b[5].color, OTHER_COLOR);
-        assert_eq!(b[6].color, OTHER_COLOR);
+        assert_eq!(b[5].color, *OTHER_COLOR);
+        assert_eq!(b[6].color, *OTHER_COLOR);
     }
 
     #[test]

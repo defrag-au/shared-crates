@@ -166,17 +166,17 @@ pub fn show(ui: &mut egui::Ui, state: &mut ListingGridState) {
     });
     let resp = grid.show(ui, &state.cards);
 
-    if let Some(idx) = resp.add_to_cart {
-        if let Some(c) = state.cards.get_mut(idx) {
-            c.buyability = Buyability::InCart;
-            state.cart.push(c.name.clone());
-            state.last_action = Some(format!("Added {} to cart", c.name));
-        }
+    if let Some(idx) = resp.add_to_cart
+        && let Some(c) = state.cards.get_mut(idx)
+    {
+        c.buyability = Buyability::InCart;
+        state.cart.push(c.name.clone());
+        state.last_action = Some(format!("Added {} to cart", c.name));
     }
-    if let Some(idx) = resp.clicked {
-        if let Some(c) = state.cards.get(idx) {
-            state.last_action = Some(format!("Opened {}", c.name));
-        }
+    if let Some(idx) = resp.clicked
+        && let Some(c) = state.cards.get(idx)
+    {
+        state.last_action = Some(format!("Opened {}", c.name));
     }
 
     ui.add_space(8.0);

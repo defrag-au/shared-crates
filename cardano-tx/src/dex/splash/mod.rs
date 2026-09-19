@@ -10,6 +10,9 @@
 pub mod beacon;
 pub mod config;
 pub mod datum;
+/// The analytics endpoints — the one part of this crate that makes network
+/// calls, and so the one part a host without an HTTP stack cannot have.
+#[cfg(feature = "http")]
 pub mod fetch;
 
 use pallas_addresses::{

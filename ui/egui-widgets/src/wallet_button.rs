@@ -76,6 +76,18 @@ pub enum WalletAction {
     Disconnect,
 }
 
+/// Whether the button draws its own surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum PickerChrome {
+    /// A filled, rounded panel with margins — right when the button stands
+    /// alone in a header or sidebar and IS the surface.
+    #[default]
+    Framed,
+    /// The contents only. For a host that is already a surface — a modal, a
+    /// popup — where a second fill reads as a box inside a box.
+    Bare,
+}
+
 /// Reusable wallet connection button widget.
 pub struct WalletButton {
     /// Theme colors.
@@ -84,6 +96,8 @@ pub struct WalletButton {
     /// keeps the extension's own icon and moves the name to the hover text,
     /// for a sidebar that cannot spare a row per wallet.
     pub picker_density: GroupDensity,
+    /// Whether to draw the button's own panel around its contents.
+    pub chrome: PickerChrome,
 }
 
 impl WalletButton {
@@ -91,6 +105,7 @@ impl WalletButton {
         Self {
             theme: WalletButtonTheme::default(),
             picker_density: GroupDensity::Full,
+            chrome: PickerChrome::Framed,
         }
     }
 
@@ -111,35 +126,40 @@ impl WalletButton {
         self
     }
 
+    /// Draw with or without the button's own panel. See [`PickerChrome`].
+    pub fn chrome(mut self, chrome: PickerChrome) -> Self {
+        self.chrome = chrome;
+        self
+    }
+
     /// Render the wallet button. Returns an action the caller must handle.
     pub fn show(&mut self, ui: &mut egui::Ui, connector: &WalletConnector) -> WalletAction {
-        let mut action = WalletAction::None;
-        let theme = self.theme.resolved(&ui.tokens());
+        match self.chrome {
+            PickerChrome::Framed => {
+                let theme = self.theme.resolved(&ui.tokens());
+                egui::Frame::new()
+                    .fill(theme.bg)
+                    .corner_radius(ui.tokens().corner(Radius::Md))
+                    .inner_margin(ui.tokens().margin(Space::Md))
+                    .show(ui, |ui| self.body(ui, connector))
+                    .inner
+            }
+            PickerChrome::Bare => self.body(ui, connector),
+        }
+    }
 
-        egui::Frame::new()
-            .fill(theme.bg)
-            .corner_radius(ui.tokens().corner(Radius::Md))
-            .inner_margin(ui.tokens().margin(Space::Md))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-
-                match &connector.connection_state {
-                    ConnectionState::Disconnected => {
-                        action = self.draw_disconnected(ui, connector);
-                    }
-                    ConnectionState::Connecting => {
-                        self.draw_connecting(ui);
-                    }
-                    ConnectionState::Connected { .. } => {
-                        action = self.draw_connected(ui, connector);
-                    }
-                    ConnectionState::Error(err) => {
-                        action = self.draw_error(ui, err, connector);
-                    }
-                }
-            });
-
-        action
+    /// The button's contents for the current connection state, unframed.
+    fn body(&mut self, ui: &mut egui::Ui, connector: &WalletConnector) -> WalletAction {
+        ui.set_width(ui.available_width());
+        match &connector.connection_state {
+            ConnectionState::Disconnected => self.draw_disconnected(ui, connector),
+            ConnectionState::Connecting => {
+                self.draw_connecting(ui);
+                WalletAction::None
+            }
+            ConnectionState::Connected { .. } => self.draw_connected(ui, connector),
+            ConnectionState::Error(err) => self.draw_error(ui, err, connector),
+        }
     }
 
     fn draw_disconnected(
@@ -218,14 +238,13 @@ impl WalletButton {
 
     fn draw_connecting(&self, ui: &mut egui::Ui) {
         let theme = self.theme.resolved(&ui.tokens());
-        ui.horizontal(|ui| {
-            ui.spinner();
-            ui.label(
-                RichText::new("Connecting...")
-                    .color(theme.text_muted)
-                    .size(ui.text_size(TextSize::Base)),
-            );
-        });
+        // Not a bare `ui.spinner()`: that takes `interact_size.y`, floored at
+        // the 44pt tap target under touch sizing, and dwarfed the word beside
+        // it — now visible in the middle of `WalletCta`'s modal.
+        crate::labelled_progress::LabelledProgress::new("Connecting")
+            .size(TextSize::Base)
+            .colour(theme.text_muted)
+            .show(ui);
     }
 
     fn draw_connected(&mut self, ui: &mut egui::Ui, connector: &WalletConnector) -> WalletAction {

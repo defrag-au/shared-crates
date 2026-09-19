@@ -108,7 +108,7 @@ pub fn build_send_max(deps: &TxDeps, to_addr: &Address) -> Result<UnsignedTx, Tx
                 .map(|a| (a.asset_id.clone(), a.quantity))
                 .collect();
             let min_ada = crate::calculate_min_ada_with_params(
-                &to_maestro_params(&deps.params),
+                &deps.params,
                 &held,
                 &crate::OutputParams::default(),
             );
@@ -202,7 +202,7 @@ pub fn build_send_assets(
     // one unit per listed asset (NFT semantics) — see `build_recipient_output_with_assets`.
     let sent_amounts: Vec<_> = assets.iter().map(|id| (id.clone(), 1u64)).collect();
     let min_ada_for_assets = crate::calculate_min_ada_with_params(
-        &to_maestro_params(&deps.params),
+        &deps.params,
         &sent_amounts,
         &crate::OutputParams::default(),
     );
@@ -216,7 +216,7 @@ pub fn build_send_assets(
         .into_iter()
         .collect();
     let mut min_ada_for_change = crate::calculate_min_ada_with_params(
-        &to_maestro_params(&deps.params),
+        &deps.params,
         &change_assets,
         &crate::OutputParams::default(),
     );
@@ -245,7 +245,7 @@ pub fn build_send_assets(
                 .into_iter()
                 .collect();
         min_ada_for_change = crate::calculate_min_ada_with_params(
-            &to_maestro_params(&deps.params),
+            &deps.params,
             &new_change_assets,
             &crate::OutputParams::default(),
         );
@@ -331,11 +331,7 @@ pub fn build_consolidate(deps: &TxDeps, max_inputs: u32) -> Result<UnsignedTx, T
     // into one output, so the summed quantities are what get encoded there.
     let min_ada_for_assets = if has_native_assets {
         let packed: Vec<_> = all_native_assets.clone().into_iter().collect();
-        crate::calculate_min_ada_with_params(
-            &to_maestro_params(&deps.params),
-            &packed,
-            &crate::OutputParams::default(),
-        )
+        crate::calculate_min_ada_with_params(&deps.params, &packed, &crate::OutputParams::default())
     } else {
         0
     };
@@ -898,26 +894,6 @@ fn build_recipient_output_with_assets(
     }
 
     Ok(output)
-}
-
-/// Convert TxBuildParams back to maestro ProtocolParameters for min_ada calculation.
-/// (Temporary bridge until calculate_min_ada is refactored to accept TxBuildParams)
-pub(crate) fn to_maestro_params(
-    params: &crate::params::TxBuildParams,
-) -> maestro::ProtocolParameters {
-    maestro::ProtocolParameters {
-        min_fee_coefficient: params.min_fee_coefficient,
-        min_fee_constant: maestro::AdaLovelace {
-            ada: maestro::AdaAmount {
-                lovelace: params.min_fee_constant,
-            },
-        },
-        min_utxo_deposit_coefficient: params.coins_per_utxo_byte,
-        script_execution_prices: None,
-        max_execution_units_per_transaction: None,
-        max_transaction_size: None,
-        plutus_cost_models: None,
-    }
 }
 
 #[cfg(test)]

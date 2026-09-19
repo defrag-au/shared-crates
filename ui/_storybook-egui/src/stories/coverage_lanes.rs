@@ -153,7 +153,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut CoverageLanesState) {
         );
         legend_swatch(ui, producing, "hashing");
         legend_swatch(ui, idle, "dark (observed)");
-        legend_swatch(ui, egui_widgets::UNOBSERVED, "unobserved");
+        legend_swatch(ui, *egui_widgets::UNOBSERVED, "unobserved");
     });
     ui.add_space(6.0);
 
@@ -193,10 +193,10 @@ pub fn show(ui: &mut egui::Ui, state: &mut CoverageLanesState) {
     };
 
     // Nested rather than a let-chain: this crate is edition 2021.
-    if let Some(key) = &out.toggled {
-        if let Some(i) = state.machines.iter().position(|(n, _)| n == key) {
-            state.active[i] = !state.active[i];
-        }
+    if let Some(key) = &out.toggled
+        && let Some(i) = state.machines.iter().position(|(n, _)| n == key)
+    {
+        state.active[i] = !state.active[i];
     }
 
     ui.add_space(8.0);

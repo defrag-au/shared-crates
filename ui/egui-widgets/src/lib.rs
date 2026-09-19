@@ -3,22 +3,35 @@ pub use egui_inbox;
 
 pub mod about_modal;
 pub mod access_gate;
+// Gated with `wallet` and `wallet_button`, which it composes — the account
+// half of this bar IS a wallet connection.
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub mod account_bar;
 pub mod activity_feed;
 pub mod activity_lanes;
 #[cfg(feature = "gateway")]
 pub mod agent_config;
 pub mod animated_counter;
+// Composes `account_bar`, so it carries the same gate.
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub mod app_header;
 pub mod arrival_field;
 pub mod asset_card;
 pub mod auth;
 pub mod auth_worker;
 pub mod background;
+#[cfg(feature = "chain")]
+pub mod block_pulse;
+#[cfg(feature = "chain")]
+pub mod block_train;
 pub mod bullet_bar;
 pub mod button_group;
 pub mod buttons;
 pub mod cap_band;
 pub mod capital_flow;
 pub mod card_browser;
+#[cfg(feature = "chain")]
+pub mod chain_tempo;
 pub mod channel_bands;
 pub mod chip;
 pub mod claim_card;
@@ -61,6 +74,7 @@ pub mod image_loader;
 pub mod image_stack;
 pub mod interaction_tip;
 pub mod knob;
+pub mod labelled_progress;
 pub mod leaderboard;
 #[cfg(feature = "cardano")]
 pub mod listing_composer;
@@ -86,6 +100,7 @@ pub mod persona_strip;
 pub mod phase_card;
 pub mod pip_row;
 pub mod price_timeline;
+pub mod pricing_ladder;
 pub mod printing_timeline;
 pub mod progress_bar;
 pub mod property_list;
@@ -132,6 +147,9 @@ pub mod viewport;
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet_button;
+// Gated with `wallet_button`, whose picker it opens.
+#[cfg(all(target_arch = "wasm32", feature = "cardano"))]
+pub mod wallet_cta;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub use stake_session::{
     SignedChallenge, StakeSessionAction, StakeSessionPanel, StakeSessionPhase, StoredStakeSession,
@@ -157,6 +175,13 @@ pub mod price_impact_curve;
 pub mod route_summary;
 pub mod slippage_selector;
 pub mod split_allocation_bar;
+
+// Composed routes — SEQUENTIAL multi-venue routing, as distinct from the
+// split (parallel) routing above. No slippage control belongs on these
+// surfaces: a route names the exact UTxOs it spends.
+pub mod pool_inspector;
+pub mod route_quote;
+pub mod tx_watch;
 
 // Loan dashboard widgets
 pub mod custody_walk;
@@ -231,7 +256,9 @@ pub use collection_list::{
     CollectionControl, CollectionControls, CollectionList, CollectionListAction,
     CollectionListLayout, CollectionListResponse, CollectionRow, CollectionStatus,
 };
-pub use command_palette::{CommandPalette, PaletteAction, PaletteState};
+pub use command_palette::{
+    CommandPalette, ContextId, PaletteAction, PaletteRow, PaletteState, RowKind, rank_rows,
+};
 pub use corner_action::{Corner, CornerAction};
 pub use custody_walk::{
     CustodyStrength, CustodyWalk, CustodyWalkResponse, WalkNode, WalkNodeKind, WalkSummary,

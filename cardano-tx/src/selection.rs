@@ -162,19 +162,7 @@ pub fn select_all_utxos_for_max<'a>(
                 .map(|a| (a.asset_id.clone(), a.quantity))
                 .collect();
             let min_required = crate::calculate_min_ada_with_params(
-                &maestro::ProtocolParameters {
-                    min_fee_coefficient: params.min_fee_coefficient,
-                    min_fee_constant: maestro::AdaLovelace {
-                        ada: maestro::AdaAmount {
-                            lovelace: params.min_fee_constant,
-                        },
-                    },
-                    min_utxo_deposit_coefficient: params.coins_per_utxo_byte,
-                    script_execution_prices: None,
-                    max_execution_units_per_transaction: None,
-                    max_transaction_size: None,
-                    plutus_cost_models: None,
-                },
+                params,
                 &held,
                 &crate::OutputParams::default(),
             );

@@ -42,7 +42,8 @@ use pallas_txbuilder::{ExUnits, Input};
 use crate::builder::fluent::TxBuilder;
 use crate::builder::marketplace::{DatumPayout, ParsedListing};
 use crate::builder::script::{
-    CollateralConfig, ScriptInput, ScriptSource, bytes, constr, encode_plutus_data, int, list,
+    CollateralConfig, RedeemerSource, ScriptInput, ScriptSource, bytes, constr, encode_plutus_data,
+    int, list,
 };
 use crate::builder::{TxDeps, UnsignedTx};
 use crate::error::TxBuildError;
@@ -414,7 +415,7 @@ pub fn add_cancel(
                     language: listing.script_ref.language,
                 },
                 datum_cbor: (!listing.datum_is_inline).then(|| listing.datum_cbor.clone()),
-                redeemer_cbor: redeemer.encode(0),
+                redeemer: RedeemerSource::Fixed(redeemer.encode(0)),
                 ex_units: ExUnits {
                     mem: DELIST_EX_UNITS_MEM,
                     steps: DELIST_EX_UNITS_STEPS,

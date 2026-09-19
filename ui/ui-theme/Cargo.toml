@@ -1,0 +1,40 @@
+# The design vocabulary both renderers speak: named tokens, the override model,
+# the encoding palettes, and the colour science that validates them.
+#
+# ── Why this is its own crate ──────────────────────────────────────────────
+#
+# `egui-widgets` had all of it, and only its RETURN TYPE was egui-bound: `Token`
+# is a plain enum, `Ink::resolve` is five lines, and `ColorTokens::on` is WCAG
+# arithmetic. `macroquad-widgets` had a flat 11-field struct and no override
+# mechanism at all, so the two were drifting — measured 2026-09-16: six colours
+# byte-identical, three already diverged, and `success` resolving to a different
+# hue on each side.
+#
+# The colour maths was worse: luminance is implemented FOUR times across three
+# crates (egui-widgets' theme.rs in f32, its contrast.rs and series_palette.rs
+# in f64, ui-core's color.rs) because integration tests cannot reach a
+# `#[cfg(test)]` module. Here it is public, so tests call it instead of
+# restating it — and the two WCAG thresholds that had drifted apart
+# (0.039_28 vs 0.040_45) become one.
+#
+# Pure by default. No egui, no macroquad, no wasm-bindgen — so a miniquad
+# binary, a Worker or a TUI can all hold it.
+[package]
+name = "ui-theme"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Renderer-free design tokens and colour science shared by egui-widgets and macroquad-widgets"
+
+[features]
+default = []
+# `Paint` impls for each renderer's colour type. They live HERE because the
+# orphan rule forbids them anywhere else: to `egui-widgets`, both the trait and
+# `Color32` are foreign. Mirrors `chain-heartbeat`'s `follow` gate — enabling
+# one never pulls the other.
+egui = ["dep:egui"]
+macroquad = ["dep:macroquad"]
+
+[dependencies]
+egui = { workspace = true, optional = true }
+macroquad = { version = "0.4", optional = true }

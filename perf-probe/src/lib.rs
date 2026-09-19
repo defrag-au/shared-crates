@@ -1,12 +1,15 @@
 //! What a frontend is costing, while it runs.
 //!
-//! Three questions, three shapes:
+//! Four questions, four shapes:
 //!
 //! - **What does a frame cost?** [`Frames`] — a ring of the last
 //!   [`FRAME_WINDOW`] frames, recording *two* numbers per frame that are
 //!   routinely confused. See "build time is not frame interval" below.
 //! - **What work is outstanding?** [`Gauge`] — a named counter with an RAII
 //!   [`Guard`], incremented at the one chokepoint the work passes through.
+//! - **Where did one operation spend its time?** [`Timeline`] — the stages of
+//!   a multi-step flow, so "the cart took four seconds" becomes "the cart
+//!   spent 3.4 of them waiting on the wallet".
 //! - **How much memory are we holding?** [`mem`] — honest on wasm, and honest
 //!   about being unavailable elsewhere.
 //!
@@ -343,6 +346,91 @@ pub fn frame_history() -> Vec<f64> {
     FRAMES.lock().map(|f| f.build_history()).unwrap_or_default()
 }
 
+// ─── Timelines ───────────────────────────────────────────────────────────────
+
+/// One stage of a multi-step operation, and what it cost.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Span {
+    /// What the stage was. Borrowed from the caller's own vocabulary — a cart
+    /// phase, a request leg — because this crate has no idea what the stages
+    /// of anybody's operation are.
+    pub label: String,
+    pub ms: f64,
+}
+
+/// How long each stage of ONE operation took.
+///
+/// The third question after "what does a frame cost" and "what work is
+/// outstanding": **where did a multi-step operation spend its time**. A cart
+/// build that takes four seconds is only actionable once you know which of
+/// gather / build / sign / submit the four seconds were in.
+///
+/// Like [`Frames`], the caller passes the milliseconds in — this crate holds no
+/// clock (see the note in `Cargo.toml` about `Instant` on wasm). A caller that
+/// reads a real clock gets real spans; a test that passes the numbers it chose
+/// gets exactly those, which is the point: a timing assertion should not depend
+/// on how fast the machine running it happens to be.
+///
+/// Monotonic in, monotonic out: [`Timeline::mark`] saturates at zero rather
+/// than recording a negative span, so a clock that jumps backwards produces a
+/// useless-but-harmless `0.0` instead of a duration that cannot exist.
+#[derive(Debug, Clone)]
+pub struct Timeline {
+    started_ms: f64,
+    last_ms: f64,
+    spans: Vec<Span>,
+}
+
+impl Timeline {
+    /// Start a timeline at the caller's current reading.
+    pub fn start(now_ms: f64) -> Self {
+        Self {
+            started_ms: now_ms,
+            last_ms: now_ms,
+            spans: Vec::new(),
+        }
+    }
+
+    /// Close the stage that was running and label it.
+    ///
+    /// The span recorded is from the previous mark (or the start) to `now_ms`.
+    pub fn mark(&mut self, label: impl Into<String>, now_ms: f64) {
+        let ms = (now_ms - self.last_ms).max(0.0);
+        self.last_ms = now_ms;
+        self.spans.push(Span {
+            label: label.into(),
+            ms,
+        });
+    }
+
+    /// The stages closed so far, oldest first.
+    pub fn spans(&self) -> &[Span] {
+        &self.spans
+    }
+
+    /// Start to the last mark. Excludes any stage still running — an operation
+    /// reports what it has finished, not what it hopes to.
+    pub fn total_ms(&self) -> f64 {
+        (self.last_ms - self.started_ms).max(0.0)
+    }
+
+    /// The most expensive stage, when there is one. What to read first.
+    pub fn slowest(&self) -> Option<&Span> {
+        self.spans
+            .iter()
+            .max_by(|a, b| a.ms.partial_cmp(&b.ms).unwrap_or(std::cmp::Ordering::Equal))
+    }
+
+    /// One line for a log: `total=1520.0ms gather=120.0 build=1200.0 sign=200.0`.
+    pub fn summary(&self) -> String {
+        let mut out = format!("total={:.1}ms", self.total_ms());
+        for s in &self.spans {
+            out.push_str(&format!(" {}={:.1}", s.label, s.ms));
+        }
+        out
+    }
+}
+
 // ─── Memory ──────────────────────────────────────────────────────────────────
 
 /// How much memory the process is holding, where that can be answered honestly.
@@ -503,5 +591,60 @@ mod tests {
     #[test]
     fn memory_is_absent_rather_than_wrong_off_wasm() {
         assert_eq!(mem::linear_memory_bytes(), None);
+    }
+
+    /// The whole reason the caller passes the milliseconds in: a timing test
+    /// asserts the numbers it chose, not whatever the machine did.
+    #[test]
+    fn spans_are_the_gaps_between_marks() {
+        let mut t = Timeline::start(1_000.0);
+        t.mark("gather", 1_120.0);
+        t.mark("build", 2_320.0);
+        t.mark("sign", 2_520.0);
+
+        assert_eq!(
+            t.spans(),
+            &[
+                Span {
+                    label: "gather".into(),
+                    ms: 120.0
+                },
+                Span {
+                    label: "build".into(),
+                    ms: 1_200.0
+                },
+                Span {
+                    label: "sign".into(),
+                    ms: 200.0
+                },
+            ]
+        );
+        assert_eq!(t.total_ms(), 1_520.0);
+        assert_eq!(t.slowest().map(|s| s.label.as_str()), Some("build"));
+        assert_eq!(
+            t.summary(),
+            "total=1520.0ms gather=120.0 build=1200.0 sign=200.0"
+        );
+    }
+
+    /// An unfinished stage is not counted. An operation reports what it has
+    /// completed, so a timeline read mid-flight cannot claim time it is still
+    /// spending.
+    #[test]
+    fn a_running_stage_is_not_in_the_total() {
+        let mut t = Timeline::start(0.0);
+        t.mark("gather", 100.0);
+        assert_eq!(t.total_ms(), 100.0, "the open stage contributes nothing");
+        assert_eq!(t.spans().len(), 1);
+    }
+
+    /// `performance.now()` is monotonic; `Date.now()` is not, and a host may
+    /// pass either. A backwards jump must not produce a negative duration.
+    #[test]
+    fn a_backwards_clock_yields_zero_not_a_negative_span() {
+        let mut t = Timeline::start(500.0);
+        t.mark("gather", 400.0);
+        assert_eq!(t.spans()[0].ms, 0.0);
+        assert_eq!(t.total_ms(), 0.0);
     }
 }

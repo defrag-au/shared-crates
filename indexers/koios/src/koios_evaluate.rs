@@ -39,11 +39,64 @@ struct OgmiosRequest<'a> {
 #[derive(Serialize, Debug)]
 struct OgmiosEvalParams<'a> {
     transaction: OgmiosTx<'a>,
+    /// UTxOs to resolve inputs against IN ADDITION to the ledger's own set.
+    ///
+    /// This is how a CHAINED transaction is evaluated: its inputs are the
+    /// outputs of a sibling that has been built but not submitted, so no
+    /// indexer can resolve them. Omitted entirely when empty — an empty array
+    /// is not the same as absent to every Ogmios version.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "additionalUtxo")]
+    additional_utxo: Vec<OgmiosUtxo>,
 }
 
 #[derive(Serialize, Debug)]
 struct OgmiosTx<'a> {
     cbor: &'a str,
+}
+
+/// One entry of Ogmios v6's `additionalUtxo`.
+#[derive(Serialize, Debug)]
+struct OgmiosUtxo {
+    transaction: OgmiosTxId,
+    index: u32,
+    address: String,
+    /// `{ "ada": { "lovelace": n }, "<policy>": { "<name>": n } }` — Ogmios's
+    /// nested value encoding, with ADA under its own reserved key.
+    value: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Serialize, Debug)]
+struct OgmiosTxId {
+    id: String,
+}
+
+// Only the `evaluator` feature knows what a `PendingUtxo` is; the ungated
+// evaluate path sends an empty `additionalUtxo` and needs none of this.
+#[cfg(feature = "evaluator")]
+impl OgmiosUtxo {
+    fn from_pending(pending: &cardano_tx::evaluate::PendingUtxo) -> Self {
+        let mut value = serde_json::Map::new();
+        let mut ada = serde_json::Map::new();
+        ada.insert("lovelace".to_string(), pending.lovelace.into());
+        value.insert("ada".to_string(), serde_json::Value::Object(ada));
+        for (policy, name, quantity) in &pending.assets {
+            let entry = value
+                .entry(policy.clone())
+                .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+            if let Some(map) = entry.as_object_mut() {
+                map.insert(name.clone(), (*quantity).into());
+            }
+        }
+        Self {
+            transaction: OgmiosTxId {
+                id: pending.tx_hash.clone(),
+            },
+            index: pending.index,
+            address: pending.address.clone(),
+            value,
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -92,12 +145,37 @@ impl KoiosApi {
         &self,
         tx_cbor_hex: &str,
     ) -> Result<Vec<KoiosRedeemerBudget>, KoiosError> {
+        self.evaluate_with_additional(tx_cbor_hex, Vec::new()).await
+    }
+
+    /// As [`Self::evaluate_transaction`], but resolving inputs against
+    /// `pending` as well as the ledger — the UTxOs an earlier, unsubmitted
+    /// transaction in a chained plan will create.
+    #[cfg(feature = "evaluator")]
+    pub async fn evaluate_transaction_with(
+        &self,
+        tx_cbor_hex: &str,
+        pending: &[cardano_tx::evaluate::PendingUtxo],
+    ) -> Result<Vec<KoiosRedeemerBudget>, KoiosError> {
+        self.evaluate_with_additional(
+            tx_cbor_hex,
+            pending.iter().map(OgmiosUtxo::from_pending).collect(),
+        )
+        .await
+    }
+
+    async fn evaluate_with_additional(
+        &self,
+        tx_cbor_hex: &str,
+        additional_utxo: Vec<OgmiosUtxo>,
+    ) -> Result<Vec<KoiosRedeemerBudget>, KoiosError> {
         let url = format!("{}/ogmios", self.base_url);
         let request = OgmiosRequest {
             jsonrpc: "2.0",
             method: "evaluateTransaction",
             params: OgmiosEvalParams {
                 transaction: OgmiosTx { cbor: tx_cbor_hex },
+                additional_utxo,
             },
         };
 
@@ -134,9 +212,18 @@ mod params_impl {
     use cardano_tx::params::TxBuildParams;
 
     /// Parse an Ogmios exact-ratio string (`"577/10000"`) into `(num, den)`.
+    ///
+    /// Ogmios states prices as exact rationals rather than floats on purpose: a
+    /// fee derived from a rounded price is a fee the node disagrees with. Keep
+    /// the pair and let the caller do the arithmetic.
     fn parse_ratio(raw: &str) -> Option<(u64, u64)> {
         let (num, den) = raw.split_once('/')?;
-        Some((num.trim().parse().ok()?, den.trim().parse().ok()?))
+        let num = num.trim().parse().ok()?;
+        let den: u64 = den.trim().parse().ok()?;
+        // A zero denominator is not a price, and it would divide by zero at the
+        // point of use rather than here, where it is still obvious what went
+        // wrong.
+        (den != 0).then_some((num, den))
     }
 
     /// Build tx-builder parameters straight from a Koios/Ogmios protocol
@@ -195,7 +282,9 @@ mod params_impl {
 mod evaluator_impl {
     use super::KoiosApi;
     use async_trait::async_trait;
-    use cardano_tx::evaluate::{EvalError, EvalExUnits, RedeemerEvaluation, TxEvaluator};
+    use cardano_tx::evaluate::{
+        EvalError, EvalExUnits, PendingUtxo, RedeemerEvaluation, TxEvaluator,
+    };
 
     #[async_trait(?Send)]
     impl TxEvaluator for KoiosApi {
@@ -204,17 +293,30 @@ mod evaluator_impl {
         }
 
         async fn evaluate(&self, tx_cbor_hex: &str) -> Result<Vec<RedeemerEvaluation>, EvalError> {
-            let budgets = self.evaluate_transaction(tx_cbor_hex).await.map_err(|e| {
-                // A 4xx / JSON-RPC error means the tx itself won't evaluate
-                // (invalid everywhere → stop); a 5xx or transport error means the
-                // provider is unreachable (a fallback may try the next evaluator).
-                match &e {
-                    crate::KoiosError::KoiosResponse { status, .. } if *status < 500 => {
-                        EvalError::Failed(e.to_string())
+            self.evaluate_pending(tx_cbor_hex, &[]).await
+        }
+
+        /// Ogmios resolves a chained transaction's inputs against
+        /// `additionalUtxo`, so this is the evaluator a chained plan needs.
+        async fn evaluate_pending(
+            &self,
+            tx_cbor_hex: &str,
+            pending: &[PendingUtxo],
+        ) -> Result<Vec<RedeemerEvaluation>, EvalError> {
+            let budgets = self
+                .evaluate_transaction_with(tx_cbor_hex, pending)
+                .await
+                .map_err(|e| {
+                    // A 4xx / JSON-RPC error means the tx itself won't evaluate
+                    // (invalid everywhere → stop); a 5xx or transport error means the
+                    // provider is unreachable (a fallback may try the next evaluator).
+                    match &e {
+                        crate::KoiosError::KoiosResponse { status, .. } if *status < 500 => {
+                            EvalError::Failed(e.to_string())
+                        }
+                        _ => EvalError::Unavailable(e.to_string()),
                     }
-                    _ => EvalError::Unavailable(e.to_string()),
-                }
-            })?;
+                })?;
 
             Ok(budgets
                 .into_iter()

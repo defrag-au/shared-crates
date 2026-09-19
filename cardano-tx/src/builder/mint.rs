@@ -85,7 +85,7 @@ pub fn build_cip25_mint(
         .collect();
 
     let min_ada = crate::calculate_min_ada_with_params(
-        &super::send::to_maestro_params(&deps.params),
+        &deps.params,
         &minted_amounts,
         &crate::OutputParams::default(),
     );
@@ -382,8 +382,6 @@ pub fn build_cip25_mint_multi_with_change_and_refunds(
         }
     }
 
-    let maestro_params = super::send::to_maestro_params(&deps.params);
-
     // Per-recipient min-ADA (summed across outputs).
     let mut per_group_min_ada: Vec<u64> = Vec::with_capacity(groups.len());
     for (_key, _addr, items) in &groups {
@@ -396,7 +394,7 @@ pub fn build_cip25_mint_multi_with_change_and_refunds(
             })
             .collect();
         per_group_min_ada.push(crate::calculate_min_ada_with_params(
-            &maestro_params,
+            &deps.params,
             &amounts,
             &crate::OutputParams::default(),
         ));

@@ -10,6 +10,7 @@ pub mod intents;
 pub mod metadata;
 pub mod params;
 pub mod plan;
+pub mod route;
 pub mod select;
 pub mod selection;
 pub mod sign;
@@ -19,6 +20,6 @@ pub mod utxo;
 // Convenience re-exports
 pub use fee::{calculate_fee, calculate_tx_fee, estimate_tx_size};
 pub use submit::{SubmitError, SubmitOk, SubmitProvider, classify_failure, submit_with_fallback};
-pub use utxo::{
-    AssetAmount, OutputParams, calculate_min_ada, calculate_min_ada_with_params, find_asset,
-};
+#[cfg(feature = "maestro")]
+pub use utxo::find_asset;
+pub use utxo::{AssetAmount, OutputParams, calculate_min_ada, calculate_min_ada_with_params};

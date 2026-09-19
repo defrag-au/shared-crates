@@ -14,4 +14,14 @@ path = "src/main.rs"
 
 [dependencies]
 macroquad = "0.4"
-macroquad-widgets = { path = "../macroquad-widgets" }
+# `chain` on, so the chain-tempo widgets have somewhere to be developed. The
+# storybook is where a widget gets built and reviewed before an app consumes it,
+# so it enables every feature the crate has.
+macroquad-widgets = { path = "../macroquad-widgets", features = ["chain"] }
+# The shared vocabulary the stories speak: `Token` to name a palette entry and
+# `TextSize` to name a rung, rather than restating either as a literal.
+ui-theme = { workspace = true, features = ["macroquad"] }
+# The story drives a real `Heartbeat` with simulated events, rather than a
+# hand-built snapshot, so the widgets are shown folding the data they will fold
+# in production. Follower off — the story is the source of events.
+chain-heartbeat = { path = "../../chain/chain-heartbeat", default-features = false }

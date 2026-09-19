@@ -115,6 +115,26 @@ pub enum TxBuildError {
         steps: u64,
         steps_cap: u64,
     },
+    /// The signed transaction is larger than `maxTxSize`.
+    ///
+    /// The sibling of [`Self::ExUnitsExceeded`], and caught for the same
+    /// reason: nothing else catches it before submit. `evaluateTransaction`
+    /// runs the scripts and says nothing about size, so an oversized batch
+    /// evaluates perfectly and the node rejects it with `MaxTxSizeUTxO`.
+    ///
+    /// It binds BEFORE the execution budget on a jpg V2/V3 sweep. Measured on
+    /// mainnet: 50 listings cost 15.8M memory (96% of the 16.5M cap) but
+    /// serialise to 21,132 bytes — 29% over the 16,384-byte limit. Sizing a
+    /// sweep on execution units alone therefore produces transactions that
+    /// cannot be submitted.
+    ///
+    /// `size` is the exact signed length from [`crate::fee::signed_tx_size`],
+    /// not an estimate — witnesses included.
+    #[error(
+        "Transaction too large: {size} bytes, but a transaction may be at most {cap}. \
+         Split the batch into fewer items."
+    )]
+    TxSizeExceeded { size: u64, cap: u64 },
     /// Wallet has no UTxOs at all to select from. Distinct from
     /// `InsufficientFunds` (which means the wallet has UTxOs, just not enough)
     /// so callers can surface a clearer message ("connect a funded wallet").

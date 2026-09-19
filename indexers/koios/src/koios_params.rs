@@ -2,10 +2,14 @@
 //! parameters for transaction fee/size sizing.
 //!
 //! Ogmios surfaces execution prices as exact ratio strings (`"577/10000"`) and
-//! `minFeeConstant` as `{ada:{lovelace}}` — the same shape Maestro used, so this
-//! maps cleanly. Plutus cost models are intentionally **not** surfaced: they're
-//! hardcoded in `cardano-tx` (script-hash correctness lives there), and no
-//! cached-config consumer reads them.
+//! `minFeeConstant` as `{ada:{lovelace}}`.
+//!
+//! Plutus cost models ARE surfaced, and the `evaluator` feature turns this into
+//! `TxBuildParams` directly. An earlier version of this header said the
+//! opposite — that cost models were intentionally omitted because `cardano-tx`
+//! hardcodes them. That stopped being true when `plutusCostModels` was added
+//! below, and hardcoded models are exactly what causes `PPViewHashesDontMatch`
+//! after a protocol update.
 
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +17,7 @@ use crate::{KoiosApi, KoiosError};
 
 /// Protocol parameters from Ogmios `queryLedgerState/protocolParameters`
 /// (fee/size fields only).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct KoiosProtocolParams {
     #[serde(rename = "minFeeCoefficient", with = "wasm_safe_serde::u64_required")]
     pub min_fee_coefficient: u64,
@@ -44,7 +48,7 @@ pub struct KoiosProtocolParams {
 }
 
 /// Ogmios keys these by language name: `plutus:v1`, `plutus:v2`, `plutus:v3`.
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default, Serialize)]
 pub struct OgmiosCostModels {
     #[serde(rename = "plutus:v1", default)]
     pub plutus_v1: Option<Vec<i64>>,
@@ -54,25 +58,25 @@ pub struct OgmiosCostModels {
     pub plutus_v3: Option<Vec<i64>>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OgmiosAda {
     pub ada: OgmiosLovelace,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OgmiosLovelace {
     #[serde(with = "wasm_safe_serde::u64_required")]
     pub lovelace: u64,
 }
 
 /// Execution prices as exact ratio strings, e.g. `"577/10000"`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OgmiosPrices {
     pub memory: String,
     pub cpu: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OgmiosExUnits {
     #[serde(with = "wasm_safe_serde::u64_required")]
     pub memory: u64,
@@ -80,7 +84,7 @@ pub struct OgmiosExUnits {
     pub cpu: u64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OgmiosByteSize {
     #[serde(with = "wasm_safe_serde::u64_required")]
     pub bytes: u64,

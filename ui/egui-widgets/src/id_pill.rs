@@ -26,7 +26,7 @@
 
 use std::borrow::Cow;
 
-use crate::theme::{Ink, Radius, Space, ThemeExt, Token};
+use crate::theme::{Ink, InkExt, Radius, Space, TextSize, ThemeExt, Token};
 
 use egui::{Align, Color32, Layout, RichText, Ui};
 
@@ -75,6 +75,11 @@ pub struct IdPill<'a> {
     /// The only default here that is not a fixed token, which is why it stays an
     /// `Option` while `label_color` is a plain [`Ink`].
     value_color: Option<Ink>,
+    /// The inline value's type step. `None` keeps the historic `.small()`,
+    /// which suits a header bar; set it when the pill sits in a list of
+    /// label/value rows, or the identifier reads a size smaller than every
+    /// value beside it.
+    value_size: Option<TextSize>,
 }
 
 /// Outcome of one `IdPill::show()` call.
@@ -110,6 +115,7 @@ impl<'a> IdPill<'a> {
             layout: IdPillLayout::Stacked,
             label_color: Ink::Token(Token::TextMuted),
             value_color: None,
+            value_size: None,
         }
     }
 
@@ -139,6 +145,7 @@ impl<'a> IdPill<'a> {
             // A UTxO ref is an identifier, not a headline — it sits a tier
             // quieter than the stacked pill's value, which is `text_primary`.
             value_color: None,
+            value_size: None,
         }
     }
 
@@ -163,6 +170,17 @@ impl<'a> IdPill<'a> {
     /// take `(14, 8)`.
     pub fn with_widths(mut self, prefix: usize, suffix: usize) -> Self {
         self.widths = (prefix, suffix);
+        self
+    }
+
+    /// Set the inline value's type step, instead of the default `.small()`.
+    ///
+    /// For a pill that is one value among several in a label/value list: at
+    /// `.small()` the identifier reads as fine print beside the amounts it
+    /// sits between, which says "less important" about the one row a reader
+    /// may actually need to copy.
+    pub fn value_size(mut self, size: TextSize) -> Self {
+        self.value_size = Some(size);
         self
     }
 
@@ -381,6 +399,7 @@ impl<'a> IdPill<'a> {
         // Resolved before the body, because `value_short` is moved out of
         // `self` partway through and the accessors borrow it.
         let (label_col, value_col) = (self.label_col(ui), self.value_col(ui));
+        let value_size = self.value_size;
         ui.horizontal(|ui| {
             if let Some(label) = self.label {
                 let label_widget = egui::Label::new(RichText::new(label).small().color(label_col));
@@ -393,8 +412,12 @@ impl<'a> IdPill<'a> {
             let short = self.value_short.unwrap_or_else(|| {
                 truncate_middle(self.value_full.as_ref(), self.widths.0, self.widths.1)
             });
-            let value_widget =
-                egui::Label::new(RichText::new(short).monospace().small().color(value_col));
+            let value_text = RichText::new(short).monospace().color(value_col);
+            let value_text = match value_size {
+                Some(size) => value_text.size(ui.text_size(size)),
+                None => value_text.small(),
+            };
+            let value_widget = egui::Label::new(value_text);
             let value_resp = if let Some(w) = self.value_min_width {
                 ui.add_sized([w, ui.spacing().interact_size.y], value_widget)
             } else {
@@ -493,7 +516,13 @@ fn pool_pm_url(value: &str) -> Option<String> {
 
 /// Middle-elide a string at `prefix + ellipsis + suffix` width. Returns
 /// the input unchanged when it's already short enough.
-fn truncate_middle(s: &str, prefix: usize, suffix: usize) -> String {
+///
+/// Public because an identifier gets shortened in more places than this
+/// widget, and there are already seven private copies of this function in
+/// this crate that do not entirely agree with each other. New callers use
+/// this one. Character-wise, not byte-wise, so a non-ASCII identifier does
+/// not panic on a split.
+pub fn truncate_middle(s: &str, prefix: usize, suffix: usize) -> String {
     if s.chars().count() <= prefix + suffix + 1 {
         return s.to_string();
     }

@@ -192,22 +192,22 @@ fn demo_square(
         draw_quad(&painter, proj4, Color32::from_rgb(30, 30, 48));
     }
 
-    if rarity >= 2 {
-        if let Some(hover_pos) = response.hover_pos() {
-            let mu = ((hover_pos.x - card_rect.left()) / card_rect.width()).clamp(0.0, 1.0);
-            let mv = ((hover_pos.y - card_rect.top()) / card_rect.height()).clamp(0.0, 1.0);
-            draw_effect_quad(
-                &painter,
-                card_rect,
-                center,
-                ax,
-                ay,
-                perspective,
-                mu,
-                mv,
-                effect,
-            );
-        }
+    if rarity >= 2
+        && let Some(hover_pos) = response.hover_pos()
+    {
+        let mu = ((hover_pos.x - card_rect.left()) / card_rect.width()).clamp(0.0, 1.0);
+        let mv = ((hover_pos.y - card_rect.top()) / card_rect.height()).clamp(0.0, 1.0);
+        draw_effect_quad(
+            &painter,
+            card_rect,
+            center,
+            ax,
+            ay,
+            perspective,
+            mu,
+            mv,
+            effect,
+        );
     }
 
     if spark_enabled && rarity >= 2 {
@@ -300,20 +300,20 @@ fn demo_hex(
     }
 
     let hex_bbox = Rect::from_center_size(center, Vec2::splat(radius * 2.0));
-    if rarity >= 2 {
-        if let Some(hover_pos) = response.hover_pos() {
-            let mu = ((hover_pos.x - hex_bbox.left()) / hex_bbox.width()).clamp(0.0, 1.0);
-            let mv = ((hover_pos.y - hex_bbox.top()) / hex_bbox.height()).clamp(0.0, 1.0);
-            draw_effect_fan(
-                &painter,
-                art_center,
-                &proj_outline,
-                hex_bbox,
-                mu,
-                mv,
-                effect,
-            );
-        }
+    if rarity >= 2
+        && let Some(hover_pos) = response.hover_pos()
+    {
+        let mu = ((hover_pos.x - hex_bbox.left()) / hex_bbox.width()).clamp(0.0, 1.0);
+        let mv = ((hover_pos.y - hex_bbox.top()) / hex_bbox.height()).clamp(0.0, 1.0);
+        draw_effect_fan(
+            &painter,
+            art_center,
+            &proj_outline,
+            hex_bbox,
+            mu,
+            mv,
+            effect,
+        );
     }
 
     if spark_enabled && rarity >= 2 {
@@ -413,12 +413,12 @@ fn demo_rounded_square(
         );
     }
 
-    if rarity >= 2 {
-        if let Some(hover_pos) = response.hover_pos() {
-            let mu = ((hover_pos.x - bbox.left()) / bbox.width()).clamp(0.0, 1.0);
-            let mv = ((hover_pos.y - bbox.top()) / bbox.height()).clamp(0.0, 1.0);
-            draw_effect_fan(&painter, art_center, &art_proj, bbox, mu, mv, effect);
-        }
+    if rarity >= 2
+        && let Some(hover_pos) = response.hover_pos()
+    {
+        let mu = ((hover_pos.x - bbox.left()) / bbox.width()).clamp(0.0, 1.0);
+        let mv = ((hover_pos.y - bbox.top()) / bbox.height()).clamp(0.0, 1.0);
+        draw_effect_fan(&painter, art_center, &art_proj, bbox, mu, mv, effect);
     }
 
     if spark_enabled && rarity >= 2 {
