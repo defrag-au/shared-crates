@@ -10,11 +10,30 @@ use web_sys::{CloseEvent, MessageEvent, WebSocket};
 
 use super::{WebSocketEvent, WebSocketTransport};
 
+/// Told when an event is enqueued. See [`WebSocketTransport::set_wake`].
+///
+/// A cell rather than a plain field because the browser callbacks are built
+/// during `connect`, before a host exists to install anything — they capture
+/// this and read whatever is in it when they fire.
+/// `Rc` rather than `Box` so the callback can be cloned OUT of the cell and the
+/// borrow released before it runs — a host that reacts by draining this
+/// transport would otherwise re-enter an active borrow and panic.
+type Wake = Rc<RefCell<Option<Rc<dyn Fn()>>>>;
+
+/// Ring the host, if one asked to be rung.
+fn wake(cell: &Wake) {
+    let callback = cell.borrow().clone();
+    if let Some(callback) = callback {
+        callback();
+    }
+}
+
 /// WebSocket transport using web-sys (standard browser WebSocket)
 pub struct WebSysTransport {
     ws: WebSocket,
     events: Rc<RefCell<VecDeque<WebSocketEvent>>>,
     connected: Rc<RefCell<bool>>,
+    wake: Wake,
     // Store closures to prevent them from being dropped
     _closures: Vec<Closure<dyn FnMut(JsValue)>>,
 }
@@ -54,15 +73,18 @@ impl WebSocketTransport for WebSysTransport {
 
         let events: Rc<RefCell<VecDeque<WebSocketEvent>>> = Rc::new(RefCell::new(VecDeque::new()));
         let connected = Rc::new(RefCell::new(false));
+        let waker: Wake = Rc::new(RefCell::new(None));
         let mut closures = Vec::new();
 
         // onopen
         {
             let events = events.clone();
             let connected = connected.clone();
+            let waker = waker.clone();
             let onopen = Closure::wrap(Box::new(move |_: JsValue| {
                 *connected.borrow_mut() = true;
                 events.borrow_mut().push_back(WebSocketEvent::Open);
+                wake(&waker);
             }) as Box<dyn FnMut(JsValue)>);
             ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
             closures.push(onopen);
@@ -71,6 +93,7 @@ impl WebSocketTransport for WebSysTransport {
         // onmessage
         {
             let events = events.clone();
+            let waker = waker.clone();
             let onmessage = Closure::wrap(Box::new(move |event: JsValue| {
                 let event: MessageEvent = event.unchecked_into();
                 let data = event.data();
@@ -89,6 +112,7 @@ impl WebSocketTransport for WebSysTransport {
                 events
                     .borrow_mut()
                     .push_back(WebSocketEvent::Message(bytes));
+                wake(&waker);
             }) as Box<dyn FnMut(JsValue)>);
             ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
             closures.push(onmessage);
@@ -98,6 +122,7 @@ impl WebSocketTransport for WebSysTransport {
         {
             let events = events.clone();
             let connected = connected.clone();
+            let waker = waker.clone();
             let onclose = Closure::wrap(Box::new(move |event: JsValue| {
                 *connected.borrow_mut() = false;
                 let event: CloseEvent = event.unchecked_into();
@@ -105,6 +130,7 @@ impl WebSocketTransport for WebSysTransport {
                     code: event.code(),
                     reason: event.reason(),
                 });
+                wake(&waker);
             }) as Box<dyn FnMut(JsValue)>);
             ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
             closures.push(onclose);
@@ -113,10 +139,12 @@ impl WebSocketTransport for WebSysTransport {
         // onerror
         {
             let events = events.clone();
+            let waker = waker.clone();
             let onerror = Closure::wrap(Box::new(move |_: JsValue| {
                 events
                     .borrow_mut()
                     .push_back(WebSocketEvent::Error("WebSocket error".into()));
+                wake(&waker);
             }) as Box<dyn FnMut(JsValue)>);
             ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
             closures.push(onerror);
@@ -126,8 +154,13 @@ impl WebSocketTransport for WebSysTransport {
             ws,
             events,
             connected,
+            wake: waker,
             _closures: closures,
         })
+    }
+
+    fn set_wake(&mut self, wake: Box<dyn Fn()>) {
+        *self.wake.borrow_mut() = Some(Rc::from(wake));
     }
 
     fn send(&self, data: &[u8]) -> Result<(), Self::Error> {

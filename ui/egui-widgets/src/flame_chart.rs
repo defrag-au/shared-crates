@@ -243,10 +243,7 @@ impl<'a> FlameChart<'a> {
                 ),
             );
 
-            let fill = theme
-                .series
-                .identity
-                .color(crate::utxo_map::simple_hash(&span.label) as u64);
+            let fill = theme.series.identity.color(label_hash(&span.label));
             let is_hovered = pointer.is_some_and(|p| bar.contains(p));
             if is_hovered {
                 hovered = Some(index);
@@ -430,6 +427,21 @@ pub fn report(spans: &[Span]) -> String {
         let _ = writeln!(out, "  … {} more", spans.len() - TREE_LINES);
     }
     out
+}
+
+/// Scope name → a stable number for [`ui_theme::IdentityEnvelope`] to hue.
+///
+/// djb2, and its own copy on purpose. The identical function lives in
+/// `utxo_map`, which is `#[cfg(feature = "cardano")]` — borrowing it made a
+/// profiler widget fail to compile for any consumer that had not enabled a
+/// CARDANO feature, which `chain-live` had not. Six lines is cheaper than that
+/// coupling, and nothing about colouring a span is Cardano's business.
+fn label_hash(label: &str) -> u64 {
+    let mut hash: u64 = 5381;
+    for byte in label.bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(u64::from(byte));
+    }
+    hash
 }
 
 /// One scope's aggregate across a whole capture.

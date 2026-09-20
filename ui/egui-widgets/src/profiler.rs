@@ -270,6 +270,7 @@ impl Profiler {
                 }
 
                 Self::vitals_strip(ui);
+                Self::repaint_strip(ui);
 
                 if let Some(picked) = self.history_strip(ui) {
                     self.showing = Showing::Pinned(picked);
@@ -463,8 +464,18 @@ impl Profiler {
     /// images" from "this frame decoded the same images for the fourth time
     /// because they keep being evicted" — and those have opposite fixes.
     fn capture_text(ctx: &egui::Context, spans: &[crate::flame_chart::Span]) -> String {
+        let causes = Self::repaint_causes(ctx);
+        let repaint = if causes.is_empty() {
+            "R none".to_owned()
+        } else {
+            let listed: Vec<String> = causes
+                .iter()
+                .map(|(site, n)| if *n > 1 { format!("{site} x{n}") } else { site.clone() })
+                .collect();
+            format!("R {}", listed.join(" "))
+        };
         format!(
-            "{}{}\n",
+            "{}{}\n{repaint}\n",
             crate::flame_chart::report_compact(spans),
             crate::vitals::Snapshot::now(ctx).compact_line(),
         )
@@ -495,6 +506,65 @@ impl Profiler {
             }
             self.kept.push(frame);
         }
+    }
+
+    /// **Who asked for this frame.**
+    ///
+    /// The question a flame chart cannot answer and that keeps being the
+    /// actual problem. A frame breakdown tells you what a frame cost; it says
+    /// nothing about why there were sixty of them when the app was idle, and
+    /// an egui app only paints when something asks it to. Twice in one
+    /// investigation the answer was found by reading code and grepping for
+    /// `request_repaint` — a widget's animation timer once, a polling
+    /// transport the next time. egui has known all along: every request
+    /// carries the file and line that made it.
+    ///
+    /// Deduplicated by call site with a count, because one cause firing forty
+    /// times is a different bug from forty causes firing once.
+    fn repaint_causes(ctx: &egui::Context) -> Vec<(String, usize)> {
+        let mut counts: Vec<(String, usize)> = Vec::new();
+        for cause in ctx.repaint_causes() {
+            let key = format!("{}:{}", short_path(cause.file), cause.line);
+            match counts.iter_mut().find(|(seen, _)| *seen == key) {
+                Some((_, n)) => *n += 1,
+                None => counts.push((key, 1)),
+            }
+        }
+        // Loudest first — the one firing every frame is the one to chase.
+        counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        counts
+    }
+
+    fn repaint_strip(ui: &mut egui::Ui) {
+        let causes = Self::repaint_causes(ui.ctx());
+        let muted = Ink::Token(Token::TextMuted).of(ui);
+        let size = ui.text_size(crate::theme::TextSize::Xs);
+        let text = if causes.is_empty() {
+            // Genuinely reactive: this frame happened because of input, and
+            // the app will now sleep. The state to aim for when idle.
+            "repaint: none requested (reactive)".to_owned()
+        } else {
+            let listed: Vec<String> = causes
+                .iter()
+                .take(4)
+                .map(|(site, n)| {
+                    if *n > 1 {
+                        format!("{site} ×{n}")
+                    } else {
+                        site.clone()
+                    }
+                })
+                .collect();
+            let more = causes.len().saturating_sub(4);
+            let suffix = if more > 0 {
+                format!(" +{more} more")
+            } else {
+                String::new()
+            };
+            format!("repaint ← {}{suffix}", listed.join(", "))
+        };
+        ui.label(egui::RichText::new(text).color(muted).size(size));
+        ui.add_space(4.0);
     }
 
     /// Memory and frame cost, beside the frame breakdown.
@@ -697,5 +767,45 @@ impl Profiler {
 
         let spans = crate::flame_chart::puffin::spans_of(&unpacked, view.scope_collection());
         self.shown = Some((index, spans));
+    }
+}
+
+/// The last two path components of a source file.
+///
+/// `RepaintCause::file` is whatever `file!()` produced, which for a registry
+/// dependency is an absolute store path long enough to fill the strip on its
+/// own. Two components keep the crate-relative part that identifies the call
+/// site — `image_loader/fetch.rs`, `src/block_train.rs` — and drop the rest.
+fn short_path(file: &str) -> &str {
+    let normalised = file.trim_end_matches('/');
+    match normalised.rmatch_indices('/').nth(1) {
+        Some((index, _)) => &normalised[index + 1..],
+        None => normalised,
+    }
+}
+
+#[cfg(test)]
+mod short_path_tests {
+    use super::short_path;
+
+    #[test]
+    fn a_long_registry_path_keeps_only_what_identifies_the_call_site() {
+        assert_eq!(
+            short_path("/nix/store/abc/registry/egui-0.36.2/src/context.rs"),
+            "src/context.rs"
+        );
+        assert_eq!(
+            short_path("ui/egui-widgets/src/image_loader/fetch.rs"),
+            "image_loader/fetch.rs"
+        );
+    }
+
+    /// Short paths must survive unchanged rather than being truncated to
+    /// nothing — a bare file name is already the answer.
+    #[test]
+    fn a_path_with_too_few_components_is_left_alone() {
+        assert_eq!(short_path("src/lib.rs"), "src/lib.rs");
+        assert_eq!(short_path("lib.rs"), "lib.rs");
+        assert_eq!(short_path(""), "");
     }
 }

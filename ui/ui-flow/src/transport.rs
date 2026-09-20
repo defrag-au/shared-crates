@@ -49,6 +49,24 @@ pub trait WebSocketTransport: Sized {
 
     /// Close the connection
     fn close(&mut self);
+
+    /// Call `wake` whenever an event is enqueued.
+    ///
+    /// For a host that only draws when something asks it to. A browser
+    /// transport is callback-driven — `onmessage` pushes onto a queue — so
+    /// without this a reactive host has no idea a message landed, and the
+    /// only way to find out is to poll every frame forever. That is a timer
+    /// burning frames to check a queue that a callback already filled, and it
+    /// kept an otherwise idle app painting continuously.
+    ///
+    /// Deliberately a bare `Fn()` and not an `egui::Context`: this crate also
+    /// backs a macroquad transport, which cannot link wasm-bindgen at all. The
+    /// egui host passes a closure that calls `request_repaint`; a game loop
+    /// that draws every frame regardless passes nothing.
+    ///
+    /// Default is a no-op, so a transport that drives its own loop need not
+    /// care.
+    fn set_wake(&mut self, _wake: Box<dyn Fn()>) {}
 }
 
 // Conditionally compile the appropriate backend
