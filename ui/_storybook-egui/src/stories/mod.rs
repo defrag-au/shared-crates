@@ -27,6 +27,7 @@ pub mod drawer;
 pub mod effect_editor;
 pub mod error_note;
 pub mod event_wiring;
+pub mod flame_chart;
 pub mod flip_counter;
 pub mod flow_ledger;
 pub mod flow_matrix;

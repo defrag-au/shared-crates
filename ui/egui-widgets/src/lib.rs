@@ -54,6 +54,7 @@ pub mod error_note;
 pub mod event_wiring;
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
+pub mod flame_chart;
 pub mod flip_counter;
 pub mod flow_ledger;
 pub mod flow_matrix;
@@ -102,6 +103,10 @@ pub mod pip_row;
 pub mod price_timeline;
 pub mod pricing_ladder;
 pub mod printing_timeline;
+/// The flame-chart panel. Carries a profiler, so it is behind the same
+/// feature as the `puffin` adapter it reads.
+#[cfg(feature = "puffin")]
+pub mod profiler;
 pub mod progress_bar;
 pub mod property_list;
 pub mod quantity_stepper;
@@ -119,6 +124,9 @@ pub mod seven_segment;
 pub mod skeleton;
 pub mod slider_group;
 pub mod slot_table;
+/// An image that derives its own decode size and knows whether it is being
+/// painted or merely warmed. The one place a size hint is chosen.
+pub mod smart_image;
 pub mod sparkline;
 #[cfg(feature = "cardano")]
 pub mod stake_auth;
@@ -143,6 +151,7 @@ pub mod user_badge;
 pub mod utils;
 pub mod variant_split;
 pub mod viewport;
+pub mod vitals;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod wallet;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]

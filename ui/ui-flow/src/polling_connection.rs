@@ -294,6 +294,47 @@ where
     }
 
     /// Get current connection status
+    /// Call `on_arrival` whenever the socket enqueues something.
+    ///
+    /// **Opt-in, and it changes nothing for a caller that does not use it** —
+    /// [`Self::poll`] behaves exactly as before either way.
+    ///
+    /// It exists for a REACTIVE host. A game loop draws every frame and can
+    /// simply poll; egui draws only when something asks it to, and a pull-only
+    /// API gives it nothing to be asked by. The workaround was a timer — repaint
+    /// every 250ms forever, just in case — which kept an idle page redrawing
+    /// four times a second to check a queue that was usually empty.
+    ///
+    /// The edge was always there: the browser calls `onmessage` the instant a
+    /// frame lands, and that knowledge used to die inside `push_back`. This
+    /// hands it on. The host typically drains straight into whatever channel
+    /// its other async results arrive through, so a socket message wakes
+    /// exactly one frame, like everything else.
+    ///
+    /// ⚠️ Runs INSIDE the browser callback, not on a frame. Do not re-enter
+    /// this connection from it without guarding the borrow — see
+    /// `CollectionLive` in collection-ownership for the pattern.
+    pub fn on_arrival(&mut self, on_arrival: impl Fn() + 'static) {
+        self.transport.set_wake(Box::new(on_arrival));
+    }
+
+    /// How long until this connection needs a [`Self::poll`] of its own, if at
+    /// all.
+    ///
+    /// `Some` only while a reconnect is waiting out its backoff. That wait is
+    /// measured against the clock and acted on inside `poll`, so a reactive
+    /// host that has stopped drawing would never retry — the one thing
+    /// [`Self::on_arrival`] cannot cover, because a socket that is DOWN sends
+    /// no events to wake anybody with.
+    ///
+    /// A host schedules a single frame for this instant (egui:
+    /// `request_repaint_after`) and otherwise sleeps.
+    pub fn reconnect_due_in(&self) -> Option<std::time::Duration> {
+        let due = self.reconnect_delay_until?;
+        let remaining = due - current_time_ms();
+        Some(std::time::Duration::from_millis(remaining.max(0.0) as u64))
+    }
+
     pub fn status(&self) -> ConnectionStatus {
         self.status
     }

@@ -266,6 +266,27 @@ impl TxBuilder {
         self
     }
 
+    /// Reserve `utxo` as collateral, or fall back to auto-selection when the
+    /// caller has none.
+    ///
+    /// The shape every composed builder wants: a cart reserves ONE confirmed
+    /// pure-ADA UTxO for the whole plan and hands the same one to each
+    /// transaction, because a chained transaction's fee input is the predicted
+    /// change of an unsubmitted parent and wallets resolve collateral against
+    /// the chain — phantom collateral makes the batch unsignable. Callers had
+    /// to decode the hash themselves to say that, which meant depending on
+    /// `pallas-crypto` to express "use this UTxO".
+    pub fn with_collateral_utxo(self, utxo: Option<&UtxoApi>) -> Result<Self, TxBuildError> {
+        let config = match utxo {
+            Some(u) => {
+                let tx_hash = decode_tx_hash(&u.tx_hash)?;
+                CollateralConfig::Manual(Input::new(Hash::from(tx_hash), u64::from(u.output_index)))
+            }
+            None => CollateralConfig::Auto,
+        };
+        Ok(self.with_collateral(config))
+    }
+
     // --- Build ---
 
     /// Build the transaction, performing fee convergence.
@@ -388,7 +409,7 @@ impl TxBuilder {
         // build succeeds, the caller sees "evaluated OK", and the node rejects
         // with `ExUnitsTooBigUTxO` — with no indication that the batch was
         // simply too large.
-        let (mem_cap, steps_cap) = prepared.params.max_tx_ex_units;
+        let cap = &prepared.params.max_tx_ex_units;
         let mem: u64 = prepared
             .inputs
             .iter()
@@ -401,12 +422,12 @@ impl TxBuilder {
             .filter_map(|(_, s)| s.as_ref().map(|c| c.ex_units.steps))
             .chain(prepared.mints.iter().map(|m| m.ex_units.steps))
             .sum();
-        if mem > mem_cap || steps > steps_cap {
+        if mem > cap.mem || steps > cap.steps {
             return Err(TxBuildError::ExUnitsExceeded {
                 mem,
-                mem_cap,
+                mem_cap: cap.mem,
                 steps,
-                steps_cap,
+                steps_cap: cap.steps,
             });
         }
 
@@ -582,7 +603,7 @@ impl PreparedTx {
         let output_lovelace = self.output_lovelace;
         let min_change_lovelace = self.min_change_lovelace;
 
-        let mut unsigned = super::converge_fee(
+        let mut unsigned = super::converge_fee_with_witnesses(
             |fee| {
                 let change = total_input
                     .checked_sub(output_lovelace)
@@ -622,6 +643,7 @@ impl PreparedTx {
             },
             300_000,
             &self.params,
+            self.num_witnesses(),
         )?;
         // Report the staged (effective) fee — converge_fee returns its converged
         // base, which under-reports when a leftover was folded in above.
@@ -629,6 +651,33 @@ impl PreparedTx {
             unsigned.fee = staged;
         }
         Ok(unsigned)
+    }
+
+    /// How many vkey signatures the fee must be sized for.
+    ///
+    /// The change address's payment key always signs — it is what funds the
+    /// transaction. A required signer is an ADDITIONAL witness only when it is
+    /// a DIFFERENT key: a jpg.store offer discloses the bidder's payment cred,
+    /// which the payer already covers, while a Wayup offer discloses the
+    /// bidder's STAKE cred, which is a second, distinct signature.
+    ///
+    /// Counted rather than assumed because under-budgeting a witness is
+    /// `FeeTooSmallUTxO` at submit — a rejection nothing earlier catches, since
+    /// `evaluateTransaction` runs the scripts and never checks fees. This used
+    /// to be hardcoded to 1, which was right only for a transaction whose
+    /// signers were all the payer; the hand-rolled cancel builder had to work
+    /// around it by calling `converge_fee_with_witnesses` itself.
+    fn num_witnesses(&self) -> u32 {
+        let payer = match &self.change_address {
+            Address::Shelley(s) => Some(s.payment().as_hash().as_slice().to_vec()),
+            _ => None,
+        };
+        let extra = self
+            .required_signers
+            .iter()
+            .filter(|pkh| payer.as_deref() != Some(pkh.as_slice()))
+            .count();
+        1 + u32::try_from(extra).unwrap_or(u32::MAX - 1)
     }
 }
 

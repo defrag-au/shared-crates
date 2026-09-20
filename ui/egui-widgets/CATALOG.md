@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-158 widgets.
+162 widgets.
 
 | module | what it is |
 |---|---|
@@ -59,6 +59,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `exposure_bar` | Exposure bar — stacked horizontal bar showing total ADA exposure segmented by collateral token, colored by LTV risk |
 | `fee_report` | Fee report widget — displays per-side fee breakdown for a trade |
 | `file_upload` | File upload widget — opens a browser file picker and reads the selected file |
+| `flame_chart` | `FlameChart` — nested spans on a zoomable time axis: what a frame spent its time on |
 | `flip_counter` | FlipCounter — split-flap style animated digit counter |
 | `flow_ledger` | `FlowLedger` — a wallet's movements in time order: what arrived, what left, who was on the other side, and what the balance was after each step |
 | `flow_matrix` | `FlowMatrix` — who paid whom, across MANY wallets at once |
@@ -108,6 +109,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `price_timeline` | Price timeline widget — a time-axis scatter of realized prices (sales, offer fills) with optional reference lines (current floor / listing price) and a reference band (e.g |
 | `pricing_ladder` | `PricingLadder` — a structural price ladder: what each rung is worth, what actually sold there, and how much evidence stands behind that |
 | `printing_timeline` | Printing timeline widget — shows a card's printings across sets over time |
+| `profiler` | `Profiler` — the in-app flame chart panel: which frame, what it cost, and a capture you can paste |
 | `progress_bar` | Themed progress bar widget with optional label, percentage, and countdown |
 | `property_list` | `PropertyList` — compact label/value grid for read-only key data |
 | `quantity_stepper` | `QuantityStepper` — a compact `−  [n]  +` control with min/max clamping |
@@ -128,6 +130,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `slider_group` | `SliderGroup` — a bank of labelled faders on one spine |
 | `slippage_selector` | Reusable slippage selector widget |
 | `slot_table` | slot_table — the trait/slot list with enable / required toggles and an optional z-order field |
+| `smart_image` | `SmartImage` — an image that knows how big it needs to be decoded, and whether it is being drawn or merely warmed |
 | `sparkline` | Sparkline widget — compact inline line chart for trend visualization |
 | `split_allocation_bar` | Split allocation bar — segmented horizontal bar showing ADA allocation across multiple DEXes |
 | `stake_auth` | [`AuthStrategy`] for the stake-key wallet session — the one where the wallet *is* the identity |
@@ -158,6 +161,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `variant_split` | Variant split — explains a `variant_flow` source slot's **derived** variant distribution and *why* it isn't uniform |
 | `verdict_card` | `VerdictCard` — a `tx_verdict::TxVerdict` drawn as a [`TxCard`] (feature `verdict`) |
 | `viewport` | `Breakpoint` — how wide the surface is, as three named sizes rather than a number every call site re-compares |
+| `vitals` | What the frontend is costing right now, as one console line |
 | `wallet` | Framework-agnostic wallet connector for egui frontends |
 | `wallet_asset_picker` | Wallet asset picker — modal widget for browsing and selecting NFTs from a wallet, grouped by policy in an accordion layout |
 | `wallet_button` | Reusable wallet connection button widget for egui frontends |

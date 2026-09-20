@@ -20,6 +20,13 @@ web-sys-transport = [
 macroquad = ["dep:quad-net", "dep:miniquad"]
 
 [dependencies]
+# Scope markers for the socket's receive path. Expands to NOTHING unless a
+# consumer enables a backend, so this is not a profiler and costs nothing to
+# carry. It is here because the receive path is the one significant workload a
+# frontend does OUTSIDE its frame — decoding arrives on a JS callback — and
+# anything not scoped there is invisible to a flame chart that only covers the
+# draw.
+profiling = { version = "1.0", default-features = false }
 # Protocol types (new unified protocol)
 ui-flow-protocol = { path = "../ui-flow-protocol" }
 

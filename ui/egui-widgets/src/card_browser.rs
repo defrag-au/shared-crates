@@ -8,7 +8,8 @@
 //! (e.g. `AssetCard` with 3D tilt) through the [`CardRenderContext::response`] field.
 
 use crate::image_loader::CachedSpinner;
-use crate::theme::{Ink, Radius, Space, SpaceExt, TextSize, ThemeExt, Token};
+use crate::smart_image::{ImagePass, Placeholder, SmartImage};
+use crate::theme::{Ink, Radius, Space, SpaceExt, ThemeExt, Token};
 use egui::{Pos2, Rect, Sense, Stroke, Vec2};
 
 // ============================================================================
@@ -39,6 +40,39 @@ pub struct CardBrowserConfig {
     pub rounding: f32,
     /// Scroll area ID salt (must be unique if multiple browsers on one page).
     pub scroll_id: &'static str,
+    /// Rows drawn beyond the viewport, above and below.
+    ///
+    /// Cards outside this band are allocated but never painted, which is what
+    /// keeps a 580-card grid from laying out thousands of galleys a frame. The
+    /// band is also the image loader's lead time, and that is what sets the
+    /// floor: a card only asks for its thumbnail when it is painted, so with
+    /// too few rows a scroll reveals cards that are still fetching and they
+    /// appear blank for a frame or two before filling in.
+    ///
+    /// It matters more than it looks because retention is LRU over "when was
+    /// this last asked for" (`schedule::Schedule::release_cold`). Painting
+    /// every card kept every image permanently warm; culling is what lets the
+    /// byte cap evict genuinely cold images — correct, but it means a card
+    /// scrolled back to may need a real reload, not just a texture upload.
+    ///
+    /// Two is enough to cover a fast scroll without painting a screenful of
+    /// cards nobody sees. Lead time for the image loader is
+    /// [`Self::warm_rows`], which is a separate and much wider band.
+    pub overscan_rows: usize,
+    /// Rows beyond [`Self::overscan_rows`] whose images are REQUESTED but not
+    /// drawn — see [`ImagePass::Warm`].
+    ///
+    /// This is the loader's lead time, and it can afford to be generous
+    /// because asking for an image costs a cache lookup. An image needs a
+    /// fetch, a decode and a texture upload before it can appear, so the band
+    /// has to be wide enough to cover that at scrolling speed, not merely
+    /// one row.
+    ///
+    /// It matters more than it looks because retention is LRU over "when was
+    /// this last asked for" (`schedule::Schedule::release_cold`): a card in
+    /// the warm band counts as asked-for, so warming also keeps an image from
+    /// being evicted just before it is needed.
+    pub warm_rows: usize,
     /// Lay the grid out at its natural height instead of inside its own scroll
     /// area. For a bounded grid embedded in an already-scrolling page, where a
     /// nested scrollbar is the wrong affordance — the section should simply be
@@ -79,6 +113,77 @@ impl CardBrowserConfig {
         let thumb_h = thumb_w * self.thumb_aspect_ratio;
         CARD_INSET + thumb_h + TEXT_GAP + self.text_lines as f32 * LINE_HEIGHT + BOTTOM_PAD
     }
+
+    /// Vertical slack, in points, painted beyond the viewport each way.
+    ///
+    /// Pure, so the knobs that decide whether a scroll shows blank cards can
+    /// be asserted on without a `Ui`.
+    pub fn overscan_px(&self, gutter: f32) -> f32 {
+        (self.card_height() + gutter) * self.overscan_rows as f32
+    }
+
+    /// Vertical slack, in points, whose images are requested each way.
+    ///
+    /// Measured from the viewport like [`Self::overscan_px`], and always at
+    /// least as far — a card that paints without its image having been asked
+    /// for is the blank-card bug.
+    pub fn warm_px(&self, gutter: f32) -> f32 {
+        let rows = self.warm_rows.max(self.overscan_rows);
+        (self.card_height() + gutter) * rows as f32
+    }
+}
+
+#[cfg(test)]
+mod overscan_tests {
+    use super::CardBrowserConfig;
+
+    /// The warm band must reach FURTHER than the paint band, or a card is
+    /// painted before anything asked for its image — the blank-card bug. This
+    /// is the invariant; the particular row counts are tuning.
+    #[test]
+    fn images_are_asked_for_further_out_than_cards_are_painted() {
+        let config = CardBrowserConfig::default();
+        assert!(
+            config.warm_px(8.0) > config.overscan_px(8.0),
+            "warm {} must exceed paint {}",
+            config.warm_px(8.0),
+            config.overscan_px(8.0),
+        );
+    }
+
+    /// …and it holds even if someone configures the bands the wrong way
+    /// round, because `warm_px` takes the larger of the two rather than
+    /// trusting the number it was given.
+    #[test]
+    fn a_warm_band_narrower_than_the_paint_band_is_widened_to_match() {
+        let config = CardBrowserConfig {
+            overscan_rows: 6,
+            warm_rows: 1,
+            ..Default::default()
+        };
+        assert_eq!(config.warm_px(8.0), config.overscan_px(8.0));
+    }
+
+    #[test]
+    fn the_bands_are_whole_rows_of_card_plus_gutter() {
+        let config = CardBrowserConfig::default();
+        let row = config.card_height() + 8.0;
+        assert!(
+            (config.overscan_px(8.0) - row * config.overscan_rows as f32).abs() < f32::EPSILON
+        );
+        assert!((config.warm_px(8.0) - row * config.warm_rows as f32).abs() < f32::EPSILON);
+    }
+
+    /// Zero is a legitimate setting — cull hard to the viewport — and must
+    /// mean no slack rather than one row by accident.
+    #[test]
+    fn zero_overscan_culls_to_the_viewport() {
+        let config = CardBrowserConfig {
+            overscan_rows: 0,
+            ..Default::default()
+        };
+        assert_eq!(config.overscan_px(8.0), 0.0);
+    }
 }
 
 impl Default for CardBrowserConfig {
@@ -91,6 +196,8 @@ impl Default for CardBrowserConfig {
             spacing: None,
             rounding: 6.0,
             scroll_id: "card_browser",
+            overscan_rows: 2,
+            warm_rows: 8,
             grow_to_content: false,
             bg_card: Ink::Token(Token::BgPrimary),
             bg_card_hover: Ink::Token(Token::BgHighlight),
@@ -121,8 +228,31 @@ pub struct CardBrowserState {
     scroll_anchor: Option<(usize, f32)>,
 }
 
+/// The thumbnail area inside a card rect.
+///
+/// Shared by both passes so a warmed card computes the same thumbnail it will
+/// later paint — a warm pass that asked for a different size would fill the
+/// cache with an image the paint pass then misses.
+fn thumb_rect_of(rect: Rect, config: &CardBrowserConfig) -> Rect {
+    let thumb_w = config.card_width - CARD_INSET * 2.0;
+    let thumb_h = thumb_w * config.thumb_aspect_ratio;
+    Rect::from_min_size(
+        rect.min + Vec2::splat(CARD_INSET),
+        Vec2::new(thumb_w, thumb_h),
+    )
+}
+
 /// Context passed to the card render closure for each card.
 pub struct CardRenderContext {
+    /// Whether this call should draw the card, or only get its images on
+    /// their way.
+    ///
+    /// Hand it straight to [`crate::smart_image::SmartImage::show`] and write
+    /// no branch — that widget does the right thing for either pass, and is
+    /// the single place the decode size is chosen. A closure that ignores
+    /// this and always draws is CORRECT but pays the paint cost across the
+    /// whole warm band.
+    pub pass: ImagePass,
     /// The full card rect (including padding).
     pub rect: Rect,
     /// The thumbnail area rect (centered within the card).
@@ -176,6 +306,7 @@ pub fn show<T>(
     mut render_card: impl FnMut(&mut egui::Ui, &CardRenderContext, &mut T),
     mut render_detail: impl FnMut(&mut egui::Ui, usize, &mut T),
 ) -> CardBrowserResponse {
+    profiling::function_scope!();
     // Ensure Phosphor icon font is available (used for close button etc.)
     crate::icons::ensure_fonts(ui);
 
@@ -241,9 +372,58 @@ pub fn show<T>(
                     let spinner = CachedSpinner::new(ui, 12.0, text_muted);
                     let _ = spinner; // available for draw_thumbnail callers
 
+                    // Two bands, because painting and loading want different
+                    // answers — see `ImagePass`. Inside `paint_rect` the card
+                    // is drawn; between there and `warm_rect` only its image
+                    // is asked for; beyond that the card is allocated and
+                    // nothing else happens to it.
+                    let viewport = ui.clip_rect();
+                    let paint_rect =
+                        viewport.expand2(Vec2::new(0.0, config.overscan_px(gutter)));
+                    let warm_rect = viewport.expand2(Vec2::new(0.0, config.warm_px(gutter)));
+
                     for (idx, item) in items.iter_mut().enumerate() {
                         let card_size = Vec2::new(config.card_width, config.card_height());
                         let (rect, card_resp) = ui.allocate_exact_size(card_size, Sense::click());
+
+                        // Offscreen cards are ALLOCATED but not painted.
+                        //
+                        // The allocation has to happen either way — it is what
+                        // gives the scroll area its extent and keeps the
+                        // wrapping positions stable — but painting one costs a
+                        // background, a border and the caller's whole
+                        // `render_card`, which for a typical card is four or
+                        // five galley layouts. A browse grid of ~580 assets was
+                        // laying out 2,885 galleys per frame, every frame, for
+                        // the thirty-odd cards anyone could actually see.
+                        //
+                        // Nothing below this point can fire for a card the
+                        // reader cannot reach: egui resolves interaction
+                        // against the clip rect, so an offscreen card is never
+                        // hovered and never clicked.
+                        if !warm_rect.intersects(rect) {
+                            continue;
+                        }
+
+                        // In the warm band only: let the caller ask for the
+                        // image and nothing else. No background, no border,
+                        // no response — none of it would be visible, and the
+                        // point is to have the picture ready BEFORE the card
+                        // is worth drawing.
+                        if !paint_rect.intersects(rect) {
+                            let ctx = CardRenderContext {
+                                pass: ImagePass::Warm,
+                                rect,
+                                thumb_rect: thumb_rect_of(rect, config),
+                                text_origin: Pos2::new(rect.min.x + 6.0, rect.min.y),
+                                text_width: config.card_width - 12.0,
+                                is_selected: false,
+                                is_hovered: false,
+                                response: card_resp,
+                            };
+                            render_card(ui, &ctx, item);
+                            continue;
+                        }
 
                         let is_selected = state.selected == Some(idx);
                         let is_hovered = card_resp.hovered();
@@ -280,17 +460,13 @@ pub fn show<T>(
                         }
 
                         // Compute sub-rects — thumbnail fills card width
-                        let thumb_w = config.card_width - CARD_INSET * 2.0;
-                        let thumb_h = thumb_w * config.thumb_aspect_ratio;
-                        let thumb_rect = Rect::from_min_size(
-                            rect.min + Vec2::splat(CARD_INSET),
-                            Vec2::new(thumb_w, thumb_h),
-                        );
+                        let thumb_rect = thumb_rect_of(rect, config);
                         let text_x = rect.min.x + 6.0;
                         let text_w = config.card_width - 12.0;
                         let text_y = thumb_rect.max.y + TEXT_GAP;
 
                         let ctx = CardRenderContext {
+                            pass: ImagePass::Paint,
                             rect,
                             thumb_rect,
                             text_origin: Pos2::new(text_x, text_y),
@@ -399,53 +575,26 @@ pub fn draw_thumbnail(
 ) -> bool {
     let t = ui.tokens();
     let bg_card_hover = config.bg_card_hover.resolve(&t);
-    let text_muted = config.text_muted.resolve(&t);
-    let Some(url) = image_url else {
-        // No URL — placeholder
-        ui.painter().rect_filled(thumb_rect, 4.0, bg_card_hover);
-        ui.painter().text(
-            thumb_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "?",
-            egui::FontId::proportional(ui.text_size(TextSize::Xl2)),
-            text_muted,
-        );
-        return false;
-    };
+    let radius = t.corner(Radius::Base);
 
-    let visible = ui.clip_rect().intersects(thumb_rect);
-    if !visible {
-        ui.painter().rect_filled(thumb_rect, 4.0, bg_card_hover);
+    // A thumbnail entirely outside the clip rect still gets its backdrop —
+    // cheap, and it keeps a partially-scrolled row from showing holes — but
+    // must not ask for an image. That is the warm band's job, and it has a
+    // much better idea of how far ahead to look.
+    if !ui.clip_rect().intersects(thumb_rect) {
+        ui.painter().rect_filled(thumb_rect, radius, bg_card_hover);
         return false;
     }
 
-    let is_loaded = ui
-        .ctx()
-        .try_load_texture(
-            url,
-            egui::TextureOptions::default(),
-            egui::load::SizeHint::default(),
-        )
-        .is_ok_and(|poll| matches!(poll, egui::load::TexturePoll::Ready { .. }));
-
-    if is_loaded {
-        // paint_at, NOT a child ui + `add(Image)`: the widget-form Image takes
-        // an auto-derived id, and because it only exists once loaded, each
-        // newly-loaded card SHIFTS the auto-id of every image after it in the
-        // container. egui's debug builds flag that id instability by flashing
-        // a 2px red outline around the affected rects ("changed id between
-        // passes") — the red border seen on every spinner->image transition.
-        // The card itself owns interaction, so no widget is needed here.
-        egui::Image::new(url)
-            .fit_to_exact_size(thumb_rect.size())
-            .show_loading_spinner(false)
-            .corner_radius(ui.tokens().corner(Radius::Base))
-            .paint_at(ui, thumb_rect);
-        false
-    } else {
-        ui.painter().rect_filled(thumb_rect, 4.0, bg_card_hover);
-        let spinner = CachedSpinner::new(ui, 12.0, text_muted);
-        spinner.paint(ui, thumb_rect);
-        true
-    }
+    // A pulsing skeleton and NO spinner.
+    //
+    // The spinner that used to sit here said "busy"; a grid of forty of them
+    // says "forty separate things have gone wrong". The skeleton is the same
+    // information stated as the shape of the thing that is arriving, and it
+    // is what the rest of this design system uses for content on its way.
+    SmartImage::from_option(image_url)
+        .corner_radius(radius)
+        .placeholder(Placeholder::Skeleton)
+        .show(ui, thumb_rect, ImagePass::Paint)
+        .wants_repaint()
 }

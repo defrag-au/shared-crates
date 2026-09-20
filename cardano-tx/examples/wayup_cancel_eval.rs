@@ -11,6 +11,7 @@
 //! Run: `cargo run -p cardano-tx --example wayup_cancel_eval`
 
 use cardano_assets::utxo::UtxoApi;
+use cardano_tx::ExUnits;
 use cardano_tx::builder::TxDeps;
 use cardano_tx::builder::collection_offer::{
     CancelContract, CancelOfferRequest, build_cancel_offers_tx_with,
@@ -53,7 +54,10 @@ fn main() {
         min_fee_constant: 155_381,
         coins_per_utxo_byte: 4_310,
         max_tx_size: 16_384,
-        max_tx_ex_units: (16_500_000, 10_000_000_000),
+        max_tx_ex_units: ExUnits {
+            mem: 16_500_000,
+            steps: 10_000_000_000,
+        },
         max_value_size: 5_000,
         price_mem: Some((577, 10_000)),
         price_step: Some((721, 10_000_000)),

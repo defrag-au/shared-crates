@@ -517,6 +517,11 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
         &config,
         // Card renderer
         |ui, ctx, item| {
+            // These cards are drawn from local colour, not fetched images, so
+            // there is nothing to warm — the warm band simply draws nothing.
+            if ctx.pass == egui_widgets::smart_image::ImagePass::Warm {
+                return;
+            }
             if preset == 3 {
                 render_asset_card_3d(ui, ctx, item, holo_strength);
             } else {

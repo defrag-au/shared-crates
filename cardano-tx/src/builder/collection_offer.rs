@@ -990,6 +990,112 @@ pub struct CancelOfferRequest {
     pub ex_units_steps: Option<u64>,
 }
 
+/// Stage offer cancels onto `builder`, which may already carry other work.
+///
+/// # Why a cancel composes with anything
+///
+/// The contract asks for three things and no more: the offer UTxO spent with
+/// redeemer `d87a80`, its datum in the witness set when the offer commits one
+/// by hash, and the bidder's disclosed signer. It says NOTHING about outputs —
+/// not their count, not their order, not their addresses. The "return all ADA
+/// to the owner" output that [`build_cancel_offer_tx`] emits is a *builder's*
+/// choice about where the freed lovelace goes, not a validator demand.
+///
+/// So here there is no output at all. The offer's lovelace lands in the
+/// builder's input total and leaves as change, which is the same value going
+/// the same place — and it means a cancel can ride alongside a buy, a mint, or
+/// anything else that stages outputs of its own. Contrast
+/// [`build_cancel_offers_tx_opts`], which hand-rolls a `StagingTransaction`,
+/// selects its own single fee UTxO and computes its own single return output:
+/// correct, but it owns the whole transaction and cannot share one.
+///
+/// # What the caller still owes
+///
+/// Reference-script size (`params.ref_script_size`) and collateral belong to
+/// the transaction rather than to any part of it, so the caller sets both —
+/// exactly as [`super::buy::add_buys`] and [`super::listing::add_cancel`]
+/// require. Ordering is free: a cancel stages no output, so it can go before
+/// or after a part that locates its outputs by index.
+///
+/// Per-request ex-units are the caller's estimate for pass 1 only;
+/// `build_evaluated` replaces every one of them with what the validator
+/// actually charged.
+pub fn add_cancel_offers(
+    builder: super::fluent::TxBuilder,
+    requests: &[CancelOfferRequest],
+    contract: &CancelContract,
+) -> Result<super::fluent::TxBuilder, TxBuildError> {
+    use super::script::{RedeemerSource, ScriptInput, ScriptSource};
+    use crate::helpers::decode::decode_tx_hash;
+    use pallas_txbuilder::{ExUnits, Input, ScriptKind};
+
+    if requests.is_empty() {
+        return Err(TxBuildError::BuildFailed(
+            "No cancel requests to stage".into(),
+        ));
+    }
+
+    let redeemer_bytes =
+        hex::decode(CANCEL_REDEEMER_HEX).map_err(|e| TxBuildError::InvalidHex(format!("{e}")))?;
+    let (ref_tx, ref_index) = contract.script_ref();
+    let script_ref = Input::new(Hash::from(decode_tx_hash(ref_tx)?), ref_index);
+
+    let mut builder = builder;
+    for req in requests {
+        // A hash-datum offer REQUIRES its preimage in the witness set; a
+        // malformed hex would silently drop it and the node would reject the
+        // whole transaction `MissingRequiredDatums` after signing. Fail loudly.
+        let datum_cbor = match &req.datum_cbor_hex {
+            Some(hex_str) => Some(
+                hex::decode(hex_str)
+                    .map_err(|e| TxBuildError::InvalidHex(format!("datum_cbor_hex: {e}")))?,
+            ),
+            None => None,
+        };
+
+        let utxo = UtxoApi {
+            tx_hash: req.co_tx_hash.clone(),
+            output_index: u32::try_from(req.co_output_index).map_err(|_| {
+                TxBuildError::BuildFailed(format!(
+                    "offer output index {} does not fit a u32",
+                    req.co_output_index
+                ))
+            })?,
+            lovelace: req.co_lovelace,
+            assets: Vec::new(),
+            tags: Vec::new(),
+        };
+
+        builder = builder
+            .spend_script_utxo(
+                &utxo,
+                ScriptInput {
+                    script: ScriptSource::Reference {
+                        utxo: script_ref.clone(),
+                        // Both offer contracts are PlutusV2. Stating it is not
+                        // a formality: the language names a view in the
+                        // script-integrity hash, and a wrong one evaluates
+                        // clean and is rejected `ScriptIntegrityHashMismatch`.
+                        language: ScriptKind::PlutusV2,
+                    },
+                    datum_cbor,
+                    redeemer: RedeemerSource::Fixed(redeemer_bytes.clone()),
+                    ex_units: ExUnits {
+                        mem: req.ex_units_mem.unwrap_or(contract.preliminary_ex_mem),
+                        steps: req.ex_units_steps.unwrap_or(contract.preliminary_ex_steps),
+                    },
+                },
+            )?
+            // Idempotent, and deliberately per-request: a batch is normally one
+            // bidder, but nothing here assumes it. jpg.store discloses the
+            // bidder's PAYMENT cred and Wayup its STAKE cred, so the signer is
+            // a property of the offer, not of the wallet paying the fee.
+            .with_signer(Hash::from(hex_to_28_bytes(&req.owner_pkh)?));
+    }
+
+    Ok(builder)
+}
+
 /// Build an unsigned cancel TX for a collection offer.
 ///
 /// This is a Plutus spending TX that:
@@ -1512,6 +1618,217 @@ fn hex_to_28_bytes(hex_str: &str) -> Result<[u8; 28], TxBuildError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A wallet, a funding UTxO and one offer to cancel — the shape the
+    /// composition tests below all need.
+    fn composition_fixture() -> (super::super::TxDeps, UtxoApi, CancelOfferRequest) {
+        use crate::params::TxBuildParams;
+        use pallas_addresses::Address;
+
+        let addr = Address::from_bech32(
+            "addr_test1qz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3jcu5d8ps7zex2k2xt3uqxgjqnnj83ws8lhrn648jjxtwq2ytjqp"
+        ).unwrap();
+        let funding = UtxoApi {
+            tx_hash: "a".repeat(64),
+            output_index: 0,
+            lovelace: 50_000_000,
+            assets: vec![],
+            tags: vec![],
+        };
+        let collateral = UtxoApi {
+            tx_hash: "b".repeat(64),
+            output_index: 3,
+            lovelace: 12_000_000,
+            assets: vec![],
+            tags: vec![],
+        };
+        let deps = super::super::TxDeps {
+            utxos: vec![funding, collateral.clone()],
+            params: TxBuildParams {
+                min_fee_coefficient: 44,
+                min_fee_constant: 155_381,
+                coins_per_utxo_byte: 4310,
+                max_tx_size: 16_384,
+                max_value_size: 5_000,
+                price_mem: Some((577, 10_000)),
+                price_step: Some((721, 10_000_000)),
+                ..Default::default()
+            },
+            from_address: addr,
+            network_id: 0,
+        };
+        let req = CancelOfferRequest {
+            co_tx_hash: "c".repeat(64),
+            co_output_index: 1,
+            co_lovelace: 10_000_000,
+            // A Wayup cancel's signer is the bidder's STAKE cred, which is not
+            // the payer's payment cred — the case that needs a second witness.
+            owner_pkh: "d".repeat(56),
+            datum_cbor_hex: None,
+            ex_units_mem: None,
+            ex_units_steps: None,
+        };
+        (deps, collateral, req)
+    }
+
+    /// The property the whole composition rests on: a cancel stages a script
+    /// input and NO output. If it staged one, it could not ride a buy —
+    /// whose settlement blocks are located by index — without moving them.
+    #[test]
+    fn a_staged_cancel_adds_an_input_and_no_output() {
+        use super::super::fluent::TxBuilder;
+        let (deps, _, req) = composition_fixture();
+
+        let builder = TxBuilder::new(deps);
+        assert_eq!(builder.output_count(), 0);
+        assert_eq!(builder.staged_input_count(), 0);
+
+        let builder =
+            add_cancel_offers(builder, &[req], &CancelContract::wayup()).expect("stage one cancel");
+
+        assert_eq!(builder.staged_input_count(), 1, "the offer is spent");
+        assert_eq!(
+            builder.output_count(),
+            0,
+            "a cancel must stage no output — the freed lovelace leaves as change"
+        );
+        assert!(
+            builder.has_scripts(),
+            "the offer contract is a Plutus spend"
+        );
+    }
+
+    /// Staging onto a builder that already has outputs must not disturb them.
+    /// A buy's redeemers name their payout offsets, so an insertion anywhere
+    /// before them is a phase-2 failure on chain.
+    #[test]
+    fn staging_a_cancel_leaves_existing_outputs_alone() {
+        use super::super::fluent::TxBuilder;
+        let (deps, _, req) = composition_fixture();
+        let address = deps.from_address.clone();
+
+        let builder = TxBuilder::new(deps)
+            .pay_to(&address, 2_000_000)
+            .pay_to(&address, 3_000_000);
+        assert_eq!(builder.output_count(), 2);
+
+        let builder = add_cancel_offers(builder, &[req], &CancelContract::wayup())
+            .expect("stage onto an occupied builder");
+        assert_eq!(
+            builder.output_count(),
+            2,
+            "the outputs a buy already placed must keep their indices"
+        );
+    }
+
+    /// The offer's lovelace is not lost by having no output of its own: it
+    /// joins the input total and comes back as change, so the wallet ends up
+    /// with the same value the standalone cancel builder would have paid it.
+    ///
+    /// Summed over the inputs the builder ACTUALLY selected, not over the
+    /// wallet: a cancel stages no output, so coin selection has nothing to
+    /// fund and takes no funding UTxO at all — the fee comes out of the freed
+    /// offer. (A cancel riding a buy is different; the buy's payouts pull
+    /// funding in. This is the standalone case, and it balances either way.)
+    #[test]
+    fn the_offers_lovelace_returns_as_change() {
+        use super::super::fluent::TxBuilder;
+        let (deps, collateral, req) = composition_fixture();
+        let wallet = deps.utxos.clone();
+        let offer = (req.co_tx_hash.clone(), req.co_output_index, req.co_lovelace);
+
+        let unsigned = add_cancel_offers(TxBuilder::new(deps), &[req], &CancelContract::wayup())
+            .expect("stage")
+            .with_collateral_utxo(Some(&collateral))
+            .expect("collateral")
+            .build()
+            .expect("build");
+
+        let staged_in: u64 = unsigned
+            .staging
+            .inputs
+            .as_ref()
+            .expect("inputs")
+            .iter()
+            .map(|i| {
+                let hash = hex::encode(i.tx_hash.0);
+                if hash == offer.0 && i.txo_index == offer.1 {
+                    return offer.2;
+                }
+                wallet
+                    .iter()
+                    .find(|u| u.tx_hash == hash && u64::from(u.output_index) == i.txo_index)
+                    .map(|u| u.lovelace)
+                    .expect("every input is the offer or a wallet UTxO")
+            })
+            .sum();
+
+        let returned: u64 = unsigned
+            .staging
+            .outputs
+            .as_ref()
+            .expect("outputs")
+            .iter()
+            .map(|o| o.lovelace)
+            .sum();
+        assert_eq!(
+            returned + unsigned.fee,
+            staged_in,
+            "every lovelace in is a lovelace out or a lovelace of fee"
+        );
+        assert!(
+            staged_in >= offer.2,
+            "the offer's own lovelace is among the inputs"
+        );
+    }
+
+    /// A required signer that is NOT the payer is a second vkey witness, and
+    /// the fee has to be sized for it. Under-budgeting is `FeeTooSmallUTxO` at
+    /// submit — which nothing earlier catches, because `evaluateTransaction`
+    /// runs the scripts and never looks at fees.
+    #[test]
+    fn a_foreign_signer_is_priced_as_a_second_witness() {
+        use super::super::fluent::TxBuilder;
+        let (deps, collateral, req) = composition_fixture();
+
+        let with_foreign_signer = add_cancel_offers(
+            TxBuilder::new(deps.clone()),
+            std::slice::from_ref(&req),
+            &CancelContract::wayup(),
+        )
+        .expect("stage")
+        .with_collateral_utxo(Some(&collateral))
+        .expect("collateral")
+        .build()
+        .expect("build")
+        .fee;
+
+        // The same transaction whose disclosed signer IS the payer's payment
+        // key: one witness covers both, so it must cost strictly less.
+        let payer_pkh = match &deps.from_address {
+            pallas_addresses::Address::Shelley(s) => hex::encode(s.payment().as_hash().as_slice()),
+            _ => unreachable!("fixture is a Shelley address"),
+        };
+        let own_signer = add_cancel_offers(
+            TxBuilder::new(deps),
+            &[CancelOfferRequest {
+                owner_pkh: payer_pkh,
+                ..req
+            }],
+            &CancelContract::jpg_store(),
+        )
+        .expect("stage")
+        .with_collateral_utxo(Some(&collateral))
+        .expect("collateral")
+        .build()
+        .expect("build")
+        .fee;
+
+        assert!(
+            with_foreign_signer > own_signer,
+            "a second witness must be paid for: {with_foreign_signer} vs {own_signer}"
+        );
+    }
 
     #[test]
     fn test_marketplace_fee_minimum() {

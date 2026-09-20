@@ -15,13 +15,21 @@
 //! Scrolling the grid shows the same thing at a smaller scale: rows scrolled
 //! past before they load are cancelled too. **Forget all** empties the caches
 //! so you can watch it again.
+//!
+//! **Retain** is the other half, and the one that bounds memory rather than
+//! bandwidth: completed art is kept until the cap, then the coldest is
+//! released — bytes, decoded image and texture together. Wind it below what
+//! fits on screen and the grid eats itself, refetching art as it repaints;
+//! that thrashing is exactly what a cap set too low buys, and why the default
+//! is several screens' worth. At `everything` it grows without limit, which is
+//! what egui's own loaders do and what ran a tab to gigabytes.
 
 use std::time::Duration;
 
 use egui::{RichText, Sense, Vec2};
 use egui_widgets::card_browser::{self, CardBrowserConfig};
 use egui_widgets::image_loader::CachedSpinner;
-use egui_widgets::image_loader::schedule::{Demand, LoadCounts, LoadPolicy};
+use egui_widgets::image_loader::schedule::{Demand, LoadCounts, LoadPolicy, Retain};
 use egui_widgets::theme::ThemeExt as _;
 use image_core::ImageSize;
 
@@ -63,6 +71,15 @@ pub struct ImageLoadsState {
     demand: DemandChoice,
     budget: usize,
     grace_secs: f32,
+    /// Megabytes of DECODED texture kept. Wind it below what is on screen and
+    /// the grid visibly eats itself — released art refetches the moment it is
+    /// painted again, which is what the cap trades against.
+    ///
+    /// Megabytes rather than a count of images because that is the unit the
+    /// memory is actually in: a screen of 128px thumbnails and a screen of
+    /// 2048px art differ by four hundred times per image, so a count caps
+    /// nothing.
+    retain_mb: usize,
 }
 
 impl Default for ImageLoadsState {
@@ -78,6 +95,10 @@ impl Default for ImageLoadsState {
             demand: DemandChoice::Visible,
             budget: policy.budget,
             grace_secs,
+            retain_mb: match policy.retain {
+                Retain::UnderBytes { bytes } => bytes / (1024 * 1024),
+                Retain::Everything => 0,
+            },
         }
     }
 }
@@ -91,6 +112,14 @@ impl ImageLoadsState {
                     grace: Duration::from_secs_f32(self.grace_secs),
                 },
                 DemandChoice::Sticky => Demand::Sticky,
+            },
+            // Zero reads as "keep everything" on the slider — the far end of
+            // the same axis rather than a separate switch to forget about.
+            retain: match self.retain_mb {
+                0 => Retain::Everything,
+                mb => Retain::UnderBytes {
+                    bytes: mb * 1024 * 1024,
+                },
             },
         }
     }
@@ -142,6 +171,17 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageLoadsState) {
             egui::Slider::new(&mut state.grace_secs, 0.0..=5.0).text("grace s"),
         );
         ui.add(egui::Slider::new(&mut state.budget, 1..=32).text("budget"));
+        ui.add(
+            egui::Slider::new(&mut state.retain_mb, 0..=512)
+                .text("retain")
+                .custom_formatter(|n, _| {
+                    if n < 1.0 {
+                        "everything".to_owned()
+                    } else {
+                        format!("{n:.0} MB")
+                    }
+                }),
+        );
         if ui.button("Forget all").clicked() {
             ui.ctx().forget_all_images();
         }

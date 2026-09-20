@@ -254,8 +254,14 @@ mod params_impl {
                 max_tx_ex_units: pp
                     .max_execution_units_per_transaction
                     .as_ref()
-                    .map(|eu| (eu.memory, eu.cpu))
-                    .unwrap_or((16_500_000, 10_000_000_000)),
+                    .map(|eu| cardano_tx::ExUnits {
+                        mem: eu.memory,
+                        steps: eu.cpu,
+                    })
+                    .unwrap_or(cardano_tx::ExUnits {
+                        mem: 16_500_000,
+                        steps: 10_000_000_000,
+                    }),
                 price_mem: pp
                     .script_execution_prices
                     .as_ref()

@@ -1,0 +1,325 @@
+[
+    {
+        "policy_id": "c364930bd612f42e14d156e1c5410511e77f64cab8f2367a9df544d1",
+        "asset_name": "426f7373436174526f636b6574436c756239373137",
+        "asset_name_ascii": "BossCatRocketClub9717",
+        "fingerprint": "asset1f9xs2slta8f2ra9jyx4ptp5drj5pqh5ud5r57j",
+        "minting_tx_hash": "90e202db6914a0cf1e227c1afc0d001e7be0db6910cfae93edfcd4f233092fe6",
+        "total_supply": "1",
+        "mint_cnt": 2,
+        "burn_cnt": 1,
+        "creation_time": 1639931752,
+        "minting_tx_metadata": {
+            "721": {
+                "c364930bd612f42e14d156e1c5410511e77f64cab8f2367a9df544d1": {
+                    "BossCatRocketClub9715": {
+                        "Fur": "Jungle Cat",
+                        "Eyes": "Blue Beams",
+                        "name": "Boss Cat Rocket Club #9715",
+                        "Mouth": "Standard",
+                        "image": "ipfs://QmRb6LZnKkN7dxaznekgTRpnr1c5DiVf1ooTFDBipRwAgV",
+                        "Clothes": "Caveman Pelt",
+                        "Earring": "Gold Stud",
+                        "Background": "Green"
+                    },
+                    "BossCatRocketClub9716": {
+                        "Fur": "Cream Tabby",
+                        "Hat": "Bunny",
+                        "Eyes": "Aviator Yellow",
+                        "name": "Boss Cat Rocket Club #9716",
+                        "Mouth": "Rat",
+                        "image": "ipfs://QmWxMZW3fYG9NSwPVs2MoEi8i4CCo4HhE7yfPMCuHxy6iX",
+                        "Clothes": "Lumberjack Shirt",
+                        "Background": "Sunset"
+                    },
+                    "BossCatRocketClub9717": {
+                        "Fur": "Cyborg",
+                        "Hat": "Brushup Aniki",
+                        "Eyes": "Chilled Pink",
+                        "name": "Boss Cat Rocket Club #9717",
+                        "Mouth": "Tongue Out Left",
+                        "image": "ipfs://QmUdkbDDaeu9dkZ3CGpqCUkdoTFRadhhwYWzLuFvodHhhY",
+                        "Background": "Khaki"
+                    },
+                    "BossCatRocketClub9718": {
+                        "Fur": "Persian",
+                        "Eyes": "Aviator",
+                        "name": "Boss Cat Rocket Club #9718",
+                        "Mouth": "Rat",
+                        "image": "ipfs://QmapxmbhQrTYZPa2AiHUN24nVoBAwNDr4hJvKc17icmzKV",
+                        "Clothes": "Tango",
+                        "Earring": "Silver Stud",
+                        "Background": "Teal Blue"
+                    },
+                    "BossCatRocketClub9719": {
+                        "Fur": "Metallic Gold",
+                        "Hat": "Samurai",
+                        "Eyes": "Cyborg Laser",
+                        "name": "Boss Cat Rocket Club #9719",
+                        "Mouth": "Standard",
+                        "image": "ipfs://QmbNM85FEWhJ84QsUF5jhsyXyuajDaFBGQhppeUKpphuff",
+                        "Clothes": "Lumberjack Shirt",
+                        "Earring": "Silver Hoop",
+                        "Background": "Earth"
+                    },
+                    "BossCatRocketClub9720": {
+                        "Fur": "Light Gray",
+                        "Eyes": "Goggle Gold",
+                        "name": "Boss Cat Rocket Club #9720",
+                        "Mouth": "Dagger",
+                        "image": "ipfs://QmdusXczdSM13kZgLPXDW5GAq9sH6shw1gSZ4NyAJgEGS2",
+                        "Clothes": "Gray Suit",
+                        "Earring": "Gold Hoop",
+                        "Background": "Red"
+                    },
+                    "BossCatRocketClub9721": {
+                        "Fur": "Trippy Zombie",
+                        "Hat": "Laurel Wreath",
+                        "Eyes": "Cyclops",
+                        "name": "Boss Cat Rocket Club #9721",
+                        "Mouth": "Standard",
+                        "image": "ipfs://QmWV52qERinjfWxzi8XwuqJy9WvuoeKMwCAB4AAaH7uem5",
+                        "Clothes": "Prison Jumpsuit",
+                        "Earring": "Gold Hoop",
+                        "Background": "Navy"
+                    },
+                    "BossCatRocketClub9722": {
+                        "Fur": "Robot Patch",
+                        "Hat": "Kabukicho",
+                        "Eyes": "Villain Scar",
+                        "name": "Boss Cat Rocket Club #9722",
+                        "Mouth": "Standard",
+                        "image": "ipfs://QmVerr42X3LoXYYjb2s8EG2oicQtCvDMhy2xvtkLpamkLg",
+                        "Clothes": "BCRC Army",
+                        "Earring": "Gold Stud",
+                        "Background": "Grey"
+                    },
+                    "BossCatRocketClub9723": {
+                        "Fur": "Jungle Cat",
+                        "Hat": "Prussian Helmet",
+                        "Eyes": "Angry",
+                        "name": "Boss Cat Rocket Club #9723",
+                        "Mouth": "Rat",
+                        "image": "ipfs://QmZLsMEmrKaFXrZ8Z9p1mSMPrbAfm3rJJU63jnCCL6cEih",
+                        "Clothes": "Tracksuit",
+                        "Earring": "Silver Hoop",
+                        "Background": "Green"
+                    },
+                    "BossCatRocketClub9724": {
+                        "Fur": "Robot Stripe",
+                        "Eyes": "Chilled Trippy",
+                        "name": "Boss Cat Rocket Club #9724",
+                        "Mouth": "Fish Bone",
+                        "image": "ipfs://QmPRw2gVmLHLfJ3EhVmZZpnXxMyUrJWqKgSbEHrhLsCmNj",
+                        "Clothes": "Bandanna",
+                        "Earring": "Gold Stud",
+                        "Background": "Blue"
+                    },
+                    "BossCatRocketClub9740": {
+                        "Fur": "Cyborg",
+                        "Hat": "Mohawk",
+                        "Eyes": "Villain Scar",
+                        "name": "Boss Cat Rocket Club #9740",
+                        "Mouth": "Kazoo",
+                        "image": "ipfs://QmP6yZr4CAD55CP9o3LmPaNReyPa5mFznmg4jJ8iQTqSXN",
+                        "Earring": "Silver Hoop",
+                        "Background": "Green"
+                    },
+                    "BossCatRocketClub9741": {
+                        "Fur": "Calico",
+                        "Hat": "Mariner_s Cap",
+                        "Eyes": "Aviator Yellow",
+                        "name": "Boss Cat Rocket Club #9741",
+                        "Mouth": "Standard",
+                        "image": "ipfs://QmRwc79XbZhwRAVwcBfpfV5Rcd7y9MLSoQggzDYm8gSsVx",
+                        "Clothes": "Tweed Suit",
+                        "Earring": "Silver Stud",
+                        "Background": "Jungle"
+                    },
+                    "BossCatRocketClub9742": {
+                        "Fur": "Earth",
+                        "Hat": "Party Hat",
+                        "Eyes": "Suspicious",
+                        "name": "Boss Cat Rocket Club #9742",
+                        "Mouth": "Lollipop",
+                        "image": "ipfs://QmXETvKdYyRYRSZLMrHpwZ3kBCCk9jCnU3bfq4BcAqggQr",
+                        "Clothes": "Japanese Bodysuit",
+                        "Earring": "Bling Gold",
+                        "Background": "Sunset"
+                    },
+                    "BossCatRocketClub9743": {
+                        "Fur": "Gray Tabby",
+                        "Eyes": "Eye Patch",
+                        "name": "Boss Cat Rocket Club #9743",
+                        "Mouth": "Rat",
+                        "image": "ipfs://QmYXLeUF2frtRpUtHQyoh3BcjAA59cM856zjDLYovtPqos",
+                        "Clothes": "Leather Punk Jacket",
+                        "Earring": "Silver Stud",
+                        "Background": "Charcoal"
+                    },
+                    "BossCatRocketClub9744": {
+                        "Fur": "Persian",
+                        "Hat": "Fedora",
+                        "Eyes": "Chilled Pink",
+                        "name": "Boss Cat Rocket Club #9744",
+                        "Mouth": "Cigar",
+                        "image": "ipfs://QmTjDqZaFxEFfzbJxG4aCMfXR4JaQyo7qE9kMiZ2SmgFiY",
+                        "Clothes": "Sherlock Holmes",
+                        "Background": "Jungle"
+                    },
+                    "BossCatRocketClub9745": {
+                        "Fur": "Charcoal",
+                        "Hat": "Army Hat",
+                        "Eyes": "Chilled Trippy",
+                        "name": "Boss Cat Rocket Club #9745",
+                        "Mouth": "Kazoo",
+                        "image": "ipfs://QmTkrWvTshmQMnej7pvBsmT5FK4xPbiS7WCrrftfaJHG1X",
+                        "Earring": "Silver Stud",
+                        "Background": "Jungle"
+                    },
+                    "BossCatRocketClub9746": {
+                        "Fur": "Thunder Cat",
+                        "Hat": "Stuntman Helmet",
+                        "Eyes": "Hollow Cardano",
+                        "name": "Boss Cat Rocket Club #9746",
+                        "Mouth": "Standard",
+                        "image": "ipfs://QmbwtZSuU6fknP6BtJB4R7bTscScbYj66NMzaWDChMupNh",
+                        "Clothes": "Caveman Pelt",
+                        "Background": "Teal Blue"
+                    },
+                    "BossCatRocketClub9747": {
+                        "Fur": "Russian Blue",
+                        "Hat": "Brushup Yakuza",
+                        "Eyes": "Goggle Gold",
+                        "name": "Boss Cat Rocket Club #9747",
+                        "Mouth": "Cigar",
+                        "image": "ipfs://QmeyrRV1KUJZw1RFGEXpxJgzrat7N7FUUE2ApU3PwxTyLT",
+                        "Clothes": "Cheetah Coat",
+                        "Background": "Charcoal"
+                    },
+                    "BossCatRocketClub9748": {
+                        "Fur": "Patched Tabby",
+                        "Eyes": "Goggle Gold",
+                        "name": "Boss Cat Rocket Club #9748",
+                        "Mouth": "Standard",
+                        "image": "ipfs://QmXbbPGTzskm9kcPAXiACVqassH4TXjWdYVaARoP9seoea",
+                        "Earring": "Shinny Stud",
+                        "Background": "Jungle"
+                    },
+                    "BossCatRocketClub9749": {
+                        "Fur": "Pink Panther",
+                        "Hat": "Police Hat",
+                        "Eyes": "Villain Scar",
+                        "name": "Boss Cat Rocket Club #9749",
+                        "Mouth": "Standard",
+                        "image": "ipfs://QmUFwsadbDgx5DemFdKFffu2wDFqUKmMv8396xT83D5Fa7",
+                        "Clothes": "Hawaiian",
+                        "Earring": "Gold Hoop",
+                        "Background": "Grey"
+                    },
+                    "BossCatRocketClub9765": {
+                        "Fur": "Fire Red",
+                        "Hat": "Bandanna",
+                        "Eyes": "Angry",
+                        "name": "Boss Cat Rocket Club #9765",
+                        "Mouth": "Tongue Out Left",
+                        "image": "ipfs://QmcdYpCyemVj2wVD7QS53V9xJKTyeHgypYLse4QAjtVuMx",
+                        "Clothes": "Bandanna",
+                        "Earring": "Silver Hoop",
+                        "Background": "Blue"
+                    },
+                    "BossCatRocketClub9766": {
+                        "Fur": "Cyborg",
+                        "Eyes": "Aviator",
+                        "name": "Boss Cat Rocket Club #9766",
+                        "Mouth": "Tongue Out",
+                        "image": "ipfs://QmXt1N9KqXzUtKnfqxPSydEn7Rnon7L734TnCJK9gWfvM7",
+                        "Earring": "Gold Cross",
+                        "Background": "Aqua"
+                    },
+                    "BossCatRocketClub9767": {
+                        "Fur": "Robot Stripe",
+                        "Eyes": "Hollow",
+                        "name": "Boss Cat Rocket Club #9767",
+                        "Mouth": "Cigar",
+                        "image": "ipfs://QmbPuLz19wYrTe9k3mzT51ZSaLiMRXj6vYeWAzQG2Xja2W",
+                        "Earring": "Shinny Stud",
+                        "Background": "Blue"
+                    },
+                    "BossCatRocketClub9768": {
+                        "Fur": "Gray Tabby",
+                        "Hat": "Prussian Helmet",
+                        "Eyes": "Possessed",
+                        "name": "Boss Cat Rocket Club #9768",
+                        "Mouth": "Standard",
+                        "image": "ipfs://QmZ8Gwp8r9rUg3cw3m6bXifJq4sJcMJLVc6G6v6vzvubpU",
+                        "Clothes": "Street Soldier",
+                        "Earring": "Gold Cross",
+                        "Background": "Jungle"
+                    },
+                    "BossCatRocketClub9769": {
+                        "Fur": "Charcoal",
+                        "Eyes": "Chilled Blue",
+                        "name": "Boss Cat Rocket Club #9769",
+                        "Mouth": "Tongue Out Left",
+                        "image": "ipfs://QmcfWEj72qEU6F9646b78ZaQ12mCwNzZNK4DPbLmErxGCK",
+                        "Clothes": "Tweed Suit",
+                        "Background": "Navy"
+                    },
+                    "BossCatRocketClub9770": {
+                        "Fur": "Diamond",
+                        "Hat": "Mohawk",
+                        "Eyes": "Goggle Gold",
+                        "name": "Boss Cat Rocket Club #9770",
+                        "Mouth": "Tongue Out Left",
+                        "image": "ipfs://QmSAatXK5pKYdp2YmBs5Fyhg3SP7ByLVZR5GxhZqPWnuc8",
+                        "Clothes": "Ora Ora Suit",
+                        "Background": "Sunset"
+                    },
+                    "BossCatRocketClub9771": {
+                        "Fur": "Leopard",
+                        "Eyes": "Hollow",
+                        "name": "Boss Cat Rocket Club #9771",
+                        "Mouth": "Grinning",
+                        "image": "ipfs://QmPtmDCcGWinZ19pHwNZNmJvsj625r6jGdyN1Zpjmv3bWH",
+                        "Clothes": "Toga",
+                        "Earring": "Silver Hoop",
+                        "Background": "Teal Blue"
+                    },
+                    "BossCatRocketClub9772": {
+                        "Fur": "Thunder Cat",
+                        "Eyes": "Eye Patch",
+                        "name": "Boss Cat Rocket Club #9772",
+                        "Mouth": "Tongue Out Left",
+                        "image": "ipfs://QmYV2yvAFVfgXpxHQJUSe1rZfnkrLF4FBsnMyAk1nGnFws",
+                        "Clothes": "Biker Jacket",
+                        "Background": "Charcoal"
+                    },
+                    "BossCatRocketClub9773": {
+                        "Fur": "Robot Patch",
+                        "Hat": "BCRC Flipped Brim",
+                        "Eyes": "Serious Gray",
+                        "name": "Boss Cat Rocket Club #9773",
+                        "Mouth": "Fish Bone",
+                        "image": "ipfs://QmZPfMgpUoYkoPjpjxvEH5LLmckCGqWuDRQNRc58qWbAoT",
+                        "Clothes": "Fur Hood Coat",
+                        "Background": "Grey"
+                    },
+                    "BossCatRocketClub9774": {
+                        "Fur": "Tan",
+                        "Hat": "Army Hat Camo",
+                        "Eyes": "Eye Patch",
+                        "name": "Boss Cat Rocket Club #9774",
+                        "Mouth": "Standard",
+                        "image": "ipfs://QmZCGX58t82eigJeLz5gsRmfcDvdq6fdVgzpgvktWiYCfk",
+                        "Clothes": "Pastor",
+                        "Earring": "Silver Hoop",
+                        "Background": "Earth"
+                    }
+                }
+            }
+        },
+        "token_registry_metadata": null,
+        "cip68_metadata": null
+    }
+]

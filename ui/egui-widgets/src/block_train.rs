@@ -288,6 +288,12 @@ impl<'a> BlockTrain<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> BlockTrainResponse {
+        // Drives the repaint cadence — 10 Hz while a block is live — so it is
+        // routinely the suspect when a frontend idles hot. Scoped so the
+        // question of whether it is ALSO expensive to draw can be answered
+        // with a measurement rather than an argument.
+        profiling::function_scope!();
+
         let theme = ui.tokens();
         let c = theme.color;
         let ctx = ui.ctx().clone();

@@ -400,6 +400,20 @@ where
             let inner = inner.clone();
 
             let onmessage = Closure::wrap(Box::new(move |event: JsValue| {
+                // One scope per message ARRIVING, which is work no draw-path
+                // instrumentation can see: this runs on a JS callback, not in
+                // a frame. It still lands in a capture, because a puffin frame
+                // is the wall clock between `finish_frame!()` calls — it just
+                // appears at the top level rather than under the app's own
+                // root, which is itself the tell that it came from off the
+                // draw path.
+                //
+                // The count matters as much as the duration. A frontend that
+                // looks idle while a socket delivers hundreds of messages a
+                // second is spending real CPU with nothing on screen to
+                // explain it.
+                profiling::scope!("ui_flow::ws_message");
+
                 let event: MessageEvent = event.unchecked_into();
                 let data = event.data();
 
@@ -417,8 +431,17 @@ where
                         return;
                     };
 
-                match decode::<ServerMessage<State, Delta, Event>>(&bytes) {
+                // Split from the dispatch below so a capture says WHICH half
+                // costs: MessagePack over a large snapshot is a different
+                // problem from a delta storm that is cheap each but constant.
+                let decoded = {
+                    profiling::scope!("ui_flow::decode");
+                    decode::<ServerMessage<State, Delta, Event>>(&bytes)
+                };
+
+                match decoded {
                     Ok(msg) => {
+                        profiling::scope!("ui_flow::dispatch");
                         handle_server_message(
                             msg,
                             &inner,

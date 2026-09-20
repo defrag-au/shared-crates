@@ -134,6 +134,27 @@ impl Default for OfferTileConfig {
     }
 }
 
+impl OfferTileConfig {
+    /// The space one tile occupies, frame and price included.
+    ///
+    /// Public so a caller laying out a grid of these can work out where a tile
+    /// WOULD land before drawing it, and skip the ones that fall outside the
+    /// viewport. egui has no damage tracking and culls only at tessellation,
+    /// so an off-screen tile is otherwise built in full every frame — its text
+    /// laid out, its image requested. A capture of one such grid showed 175
+    /// image loads and 345 text layouts in a single 33ms frame.
+    ///
+    /// A method rather than a constant because it is derived from two knobs a
+    /// caller may have changed, and the same arithmetic copied into the caller
+    /// is the kind that drifts silently once one of them moves.
+    pub fn outer_size(&self) -> Vec2 {
+        Vec2::new(
+            self.tile_size + 8.0,
+            self.tile_size + self.price_size + 12.0,
+        )
+    }
+}
+
 /// Picker tile widget. Sized fixed at `config.tile_size + price`
 /// so a `horizontal_wrapped` layout with multiple tiles aligns
 /// cleanly across rows.
@@ -225,7 +246,7 @@ impl<'a> OfferTile<'a> {
 
         // Outer container — fixed size so wrapping rows align.
         // Height = tile + price label + a hair of spacing.
-        let outer_size = Vec2::new(cfg.tile_size + 8.0, cfg.tile_size + cfg.price_size + 12.0);
+        let outer_size = cfg.outer_size();
 
         let inner = ui.allocate_ui_with_layout(
             outer_size,

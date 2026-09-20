@@ -203,6 +203,12 @@ impl ListingGrid {
 
     /// Draw the listing grid, reporting what the reader did this frame.
     pub fn show(&self, ui: &mut egui::Ui, listings: &[ListingCard]) -> ListingGridResponse {
+        // The most expensive widget in the estate and the first place to look
+        // when a frame gets slow: cost here scales with how many cards are on
+        // screen, and it sat next to a measured `build p50` climbing from
+        // 0.9ms to 4.7ms as a collection loaded.
+        profiling::function_scope!();
+
         if listings.is_empty() {
             ui.label(
                 RichText::new("No listings found")
@@ -239,6 +245,26 @@ impl ListingGrid {
 
                 let (rect, resp) = ui.allocate_exact_size(card_size, Sense::click());
 
+                // CULL BEFORE BUILDING ANYTHING, not just before the image.
+                //
+                // egui is immediate mode and has no damage tracking: every
+                // frame re-runs this loop in full and re-tessellates the
+                // result. Shapes outside the clip rect are discarded — but
+                // only AFTER being constructed, so a card scrolled far out of
+                // view still cost a background rect, a banner, two text
+                // galleys and a badge pass. With a few hundred listings that
+                // is the whole frame budget, paid ten times a second because
+                // something elsewhere is animating.
+                //
+                // The space is already reserved by `allocate_exact_size`
+                // above, so skipping the rest leaves layout and scroll extent
+                // exactly as they were. Nothing below can matter either: an
+                // off-screen card cannot be hovered or clicked, because the
+                // pointer is on screen.
+                if !ui.clip_rect().intersects(rect) {
+                    continue;
+                }
+
                 // `contains_pointer()`, NOT `hovered()`. This card hosts a
                 // hover-revealed `CornerAction`, which is a later widget
                 // occupying part of this same rect — and `hovered()` respects
@@ -265,39 +291,67 @@ impl ListingGrid {
                 };
                 ui.painter().rect_filled(rect, cfg.rounding, bg);
 
-                // Thumbnail fills entire card
-                let visible = ui.clip_rect().intersects(rect);
-
+                // Thumbnail fills entire card. Visibility is settled above —
+                // reaching here means the card is on screen.
                 if let Some(ref url) = listing.image_url {
-                    if visible {
-                        let is_loaded = ui
-                            .ctx()
-                            .try_load_texture(
-                                url,
-                                egui::TextureOptions::default(),
-                                egui::load::SizeHint::default(),
-                            )
-                            .is_ok_and(|poll| {
-                                matches!(poll, egui::load::TexturePoll::Ready { .. })
-                            });
-
-                        if is_loaded {
-                            let mut child_ui =
-                                ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(
-                                    egui::Layout::centered_and_justified(egui::Direction::TopDown),
-                                ));
-                            let mut image = egui::Image::new(url.as_str())
-                                .fit_to_exact_size(card_size)
-                                .show_loading_spinner(false)
-                                .corner_radius(cfg.rounding as u8);
-                            if is_dimmed {
-                                image =
-                                    image.tint(Color32::from_rgba_unmultiplied(255, 255, 255, 100));
+                    {
+                        // THREE outcomes, not two. `try_load_texture` reports
+                        // a failure and a load in flight identically as "not
+                        // ready" — `Err(..)` for a 404, a CORS refusal or a
+                        // decode failure, `Ok(Pending)` while bytes are on
+                        // their way — but only the second will ever change.
+                        //
+                        // Treating them alike was costing a frame EVERY frame:
+                        // the spinner branch asks for the next repaint, so one
+                        // dead thumbnail anywhere in the grid pinned the whole
+                        // app at full rate indefinitely. The loader caches
+                        // failures on purpose, so nothing retried and nothing
+                        // ever settled.
+                        // ASK FOR THE SIZE WE DRAW. `SizeHint::default()` is
+                        // `Scale(1.0)` — the source's own resolution — so a
+                        // card this size was holding full artwork: a 2048px
+                        // piece is 16 MB of texture to fill 84×84. The hint is
+                        // in PHYSICAL pixels, so it carries the device's pixel
+                        // ratio; a HiDPI screen gets the next rung up and
+                        // stays crisp.
+                        let want_px =
+                            (card_size.max_elem() * ui.ctx().pixels_per_point()).ceil() as u32;
+                        match ui.ctx().try_load_texture(
+                            url,
+                            egui::TextureOptions::default(),
+                            egui::load::SizeHint::Size {
+                                width: want_px,
+                                height: want_px,
+                                maintain_aspect_ratio: true,
+                            },
+                        ) {
+                            Ok(egui::load::TexturePoll::Ready { .. }) => {
+                                let mut child_ui =
+                                    ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(
+                                        egui::Layout::centered_and_justified(
+                                            egui::Direction::TopDown,
+                                        ),
+                                    ));
+                                let mut image = egui::Image::new(url.as_str())
+                                    .fit_to_exact_size(card_size)
+                                    .show_loading_spinner(false)
+                                    .corner_radius(cfg.rounding as u8);
+                                if is_dimmed {
+                                    image = image
+                                        .tint(Color32::from_rgba_unmultiplied(255, 255, 255, 100));
+                                }
+                                child_ui.add(image);
                             }
-                            child_ui.add(image);
-                        } else {
-                            spinner.paint(ui, rect);
-                            any_pending = true;
+                            // Coming. Keep the frames running until it lands.
+                            Ok(egui::load::TexturePoll::Pending { .. }) => {
+                                spinner.paint(ui, rect);
+                                any_pending = true;
+                            }
+                            // Never coming. The same mark a listing with no
+                            // image at all gets, and NO repaint.
+                            Err(_) => {
+                                CachedSpinner::paint_unavailable(ui, rect, text_muted);
+                            }
                         }
                     }
                 } else {

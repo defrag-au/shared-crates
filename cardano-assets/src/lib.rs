@@ -20,6 +20,7 @@ pub mod collection;
 pub mod extract;
 #[cfg(feature = "cip14")]
 pub mod fingerprint;
+pub mod policy_classification;
 pub mod policy_id;
 pub mod resolver;
 pub mod supply;
@@ -52,6 +53,7 @@ pub use extract::{
 };
 #[cfg(feature = "cip14")]
 pub use fingerprint::{Fingerprint, FingerprintError};
+pub use policy_classification::{PolicyAssetSample, PolicyClassification, classify_policy};
 pub use policy_id::{PolicyId, PolicyIdError};
 pub use resolver::*;
 pub use supply::MintSupply;
