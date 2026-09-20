@@ -109,8 +109,9 @@ impl Vitals {
         self.last_report = Some(now);
         self.frames_since = 0;
 
-        let textures = texture_bytes(ctx);
-        let wasm = perf_probe::mem::linear_memory_bytes();
+        let snapshot = Snapshot::now(ctx);
+        let textures = snapshot.textures;
+        let wasm = snapshot.wasm_bytes;
 
         // Frame COST, not just cadence. The two answer different questions and
         // only together say whether there is a problem: 10 fps at 0.4ms a
@@ -118,7 +119,7 @@ impl Vitals {
         // stutter the moment anything else asked for a frame. Fed by
         // [`crate::perf_strip::FrameScope`], so it reads zero unless the host
         // has one at the top of its frame.
-        let frames = perf_probe::frame_stats();
+        let frames = snapshot.frames;
         let build = if frames.samples == 0 {
             " · build n/a (no FrameScope)".to_string()
         } else {
@@ -139,20 +140,85 @@ impl Vitals {
             wasm.map(bytes).unwrap_or_else(|| "n/a".into()),
             bytes(textures.bytes as u64),
             textures.count,
-            // The AVERAGE is what says whether decoding is sized right. 64 KB
-            // is a 128px tile, 640 KB a 400px card, 11 MB a full-resolution
-            // decode that slipped through unhinted — and a total alone cannot
-            // tell those apart.
-            bytes(textures.bytes.checked_div(textures.count).unwrap_or(0) as u64),
-            bytes(image_bytes(ctx) as u64),
+            // See `TextureUse::mean_bytes` for why the average is the figure
+            // that matters here.
+            bytes(textures.mean_bytes() as u64),
+            bytes(snapshot.image_bytes as u64),
         );
     }
 }
 
 /// Decoded texture memory egui is holding.
+#[derive(Debug, Clone, Copy)]
 pub struct TextureUse {
     pub bytes: usize,
     pub count: usize,
+}
+
+impl TextureUse {
+    /// Mean bytes per texture — **the number that says whether decoding is
+    /// sized right**, and the one a total cannot substitute for.
+    ///
+    /// 64KB is a 128px tile, 640KB a 400px card, 11MB a full-resolution decode
+    /// that slipped through unhinted. A grid whose average sits in the
+    /// megabytes is not holding too many images, it is holding the wrong size
+    /// of them — which is a different fix, and the one that was needed when
+    /// `card_browser` was passing `SizeHint::default()`.
+    pub fn mean_bytes(self) -> usize {
+        self.bytes.checked_div(self.count).unwrap_or(0)
+    }
+}
+
+/// Everything [`Vitals`] reports, readable at any instant rather than only on
+/// its logging cadence.
+///
+/// Every figure here is global — egui's texture manager, `perf_probe`'s frame
+/// window, wasm linear memory — so a surface that wants to display them needs
+/// nothing plumbed through from the host. The only thing it cannot see is the
+/// host's named counters, which are the app's own.
+#[derive(Debug, Clone)]
+pub struct Snapshot {
+    pub textures: TextureUse,
+    /// `None` off wasm, where there is no linear memory to measure.
+    pub wasm_bytes: Option<u64>,
+    /// Compressed bytes the fetch loader holds — an order of magnitude below
+    /// the textures they decoded into, which is why a cap on THIS alone never
+    /// controlled memory.
+    pub image_bytes: usize,
+    pub frames: perf_probe::FrameStats,
+}
+
+impl Snapshot {
+    pub fn now(ctx: &egui::Context) -> Self {
+        Self {
+            textures: texture_bytes(ctx),
+            wasm_bytes: perf_probe::mem::linear_memory_bytes(),
+            image_bytes: image_bytes(ctx),
+            frames: perf_probe::frame_stats(),
+        }
+    }
+
+    /// One line, inline-labelled, for a compact capture — see
+    /// [`crate::flame_chart::report_compact`]. Self-describing rather than
+    /// needing the legend, because it is appended after it.
+    pub fn compact_line(&self) -> String {
+        format!(
+            "V tex={} n={} avg={} wasm={} img={} fps={:.1} p50={:.1}ms p95={:.1}ms",
+            bytes(self.textures.bytes as u64),
+            self.textures.count,
+            bytes(self.textures.mean_bytes() as u64),
+            self.wasm_bytes.map(bytes).unwrap_or_else(|| "n/a".into()),
+            bytes(self.image_bytes as u64),
+            self.frames.fps,
+            self.frames.build_p50_ms,
+            self.frames.build_p95_ms,
+        )
+    }
+}
+
+/// Byte counts, formatted the way `Vitals` formats them.
+pub fn format_bytes(n: u64) -> String {
+    bytes(n)
 }
 
 /// What egui's texture manager currently holds.

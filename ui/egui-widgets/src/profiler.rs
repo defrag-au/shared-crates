@@ -269,6 +269,8 @@ impl Profiler {
                     ui.ctx().request_repaint();
                 }
 
+                Self::vitals_strip(ui);
+
                 if let Some(picked) = self.history_strip(ui) {
                     self.showing = Showing::Pinned(picked);
                 }
@@ -309,7 +311,7 @@ impl Profiler {
                                 )
                                 .clicked()
                             {
-                                ui.ctx().copy_text(crate::flame_chart::report_compact(spans));
+                                ui.ctx().copy_text(Self::capture_text(ui.ctx(), spans));
                             }
                             if ui
                                 .button("Keep")
@@ -450,7 +452,22 @@ impl Profiler {
         };
         let view = self.view.lock();
         let spans = crate::flame_chart::puffin::spans_of(&unpacked, view.scope_collection());
-        ctx.copy_text(crate::flame_chart::report_compact(&spans));
+        ctx.copy_text(Self::capture_text(ctx, &spans));
+    }
+
+    /// What either Copy button puts on the clipboard: the compact frame
+    /// encoding, plus one line of what the app was HOLDING at the time.
+    ///
+    /// Together, because they are only conclusive together. A frame breakdown
+    /// with no memory figures cannot distinguish "this frame decoded a lot of
+    /// images" from "this frame decoded the same images for the fourth time
+    /// because they keep being evicted" — and those have opposite fixes.
+    fn capture_text(ctx: &egui::Context, spans: &[crate::flame_chart::Span]) -> String {
+        format!(
+            "{}{}\n",
+            crate::flame_chart::report_compact(spans),
+            crate::vitals::Snapshot::now(ctx).compact_line(),
+        )
     }
 
     /// Hold the frame currently on screen past puffin's ring.
@@ -478,6 +495,76 @@ impl Profiler {
             }
             self.kept.push(frame);
         }
+    }
+
+    /// Memory and frame cost, beside the frame breakdown.
+    ///
+    /// Here because a flame chart answers "where did this frame go" and cannot
+    /// answer "and is the app holding a sane amount of memory while it does
+    /// that" — and the two questions are constantly confused for each other. A
+    /// frame that looks fine while textures climb is a leak in progress; a
+    /// frame full of image work while the average texture sits in the
+    /// megabytes is a SIZING bug, not a volume one.
+    ///
+    /// Reads global state directly, so a host gets this by opening the panel
+    /// and has nothing to wire up. `Vitals` still logs the same figures on its
+    /// own cadence for the case where nobody is watching.
+    fn vitals_strip(ui: &mut egui::Ui) {
+        let vitals = crate::vitals::Snapshot::now(ui.ctx());
+        let muted = Ink::Token(Token::TextMuted).of(ui);
+        let mean = vitals.textures.mean_bytes();
+
+        // The average is the one figure here worth colouring, because it is
+        // the one with a threshold: past a 400px card the decode ladder has
+        // gone wrong, and no amount of eviction fixes a wrong rung.
+        let mean_ink = if mean > 1_000_000 {
+            Ink::Token(Token::AccentRed).of(ui)
+        } else if mean > 640 * 1024 {
+            Ink::Token(Token::AccentYellow).of(ui)
+        } else {
+            muted
+        };
+
+        let size = ui.text_size(crate::theme::TextSize::Xs);
+        ui.horizontal_wrapped(|ui| {
+            let mut chip = |text: String, ink: egui::Color32| {
+                ui.label(egui::RichText::new(text).color(ink).size(size));
+            };
+            chip(
+                format!(
+                    "textures {} ({})",
+                    crate::vitals::format_bytes(vitals.textures.bytes as u64),
+                    vitals.textures.count
+                ),
+                muted,
+            );
+            chip(
+                format!("avg {}", crate::vitals::format_bytes(mean as u64)),
+                mean_ink,
+            );
+            if let Some(wasm) = vitals.wasm_bytes {
+                chip(format!("wasm {}", crate::vitals::format_bytes(wasm)), muted);
+            }
+            chip(
+                format!(
+                    "img {}",
+                    crate::vitals::format_bytes(vitals.image_bytes as u64)
+                ),
+                muted,
+            );
+            if vitals.frames.samples > 0 {
+                chip(
+                    format!(
+                        "{:.0} fps · p50 {:.1}ms · p95 {:.1}ms",
+                        vitals.frames.fps,
+                        vitals.frames.build_p50_ms,
+                        vitals.frames.build_p95_ms
+                    ),
+                    muted,
+                );
+            }
+        });
+        ui.add_space(4.0);
     }
 
     /// The last [`HISTORY`] frames as clickable bars; returns the one picked.

@@ -170,6 +170,14 @@ pub enum Finish {
     Stale,
 }
 
+/// How many passes back still counts as "on screen" for retention.
+///
+/// Two, not one: `release_cold` runs as a BEGIN-pass plugin, so the most
+/// recent completed pass is the one before the current number. One would
+/// protect only a pass nothing has drawn yet and release the set actually on
+/// screen — the cascade it exists to prevent.
+const LIVE_PASSES: u64 = 2;
+
 /// When a pending load was last asked for.
 #[derive(Debug, Clone, Copy)]
 struct Asked {
@@ -377,26 +385,58 @@ impl Schedule {
         let Some(over) = texture_bytes.checked_sub(bytes).filter(|n| *n > 0) else {
             return Vec::new();
         };
-        let mut held: Vec<(f64, &str)> = self
+        let held = self
             .done
-            .iter()
-            .filter(|(_, done)| done.result.is_ok())
-            .map(|(uri, done)| (done.asked.at, uri.as_str()))
-            .collect();
-        if held.is_empty() {
+            .values()
+            .filter(|done| done.result.is_ok())
+            .count();
+        if held == 0 {
             return Vec::new();
         }
+
+        // ⚠️ THE LIVE WORKING SET IS NEVER RELEASED, even over budget.
+        //
+        // An image asked for while the last pass was drawn is on screen. Drop
+        // it and the very next pass asks for it again, which refetches and
+        // redecodes it, which puts memory straight back over the cap, which
+        // drops another — a reload cascade that never converges and never
+        // frees anything, because nothing it releases was releasable.
+        //
+        // It has a shape: zoom a grid out until ~250 thumbnails are visible
+        // at once. Plain LRU degenerates exactly there, because when the whole
+        // working set is on screen every entry is equally warm and the sort
+        // picks a victim that is still being painted.
+        //
+        // So when the live set ALONE exceeds the budget, the budget is not
+        // satisfiable and going over it is the correct answer: the memory is
+        // needed to draw what the reader is looking at. A cap is a limit on
+        // what is HOARDED, not on what is in use.
+        let coldest_live_pass = self.pass.saturating_sub(LIVE_PASSES);
+        let mut evictable: Vec<(f64, &str)> = self
+            .done
+            .iter()
+            .filter(|(_, done)| done.result.is_ok() && done.asked.pass <= coldest_live_pass)
+            .map(|(uri, done)| (done.asked.at, uri.as_str()))
+            .collect();
+        if evictable.is_empty() {
+            return Vec::new();
+        }
+
         // Round UP, so being over budget always releases at least one image.
         // Rounding down stalls exactly when the overage is smaller than one
         // average image, which is the steady state — it would sit permanently
         // just over the cap and never act.
-        let mean = (texture_bytes / held.len()).max(1);
-        let excess = over.div_ceil(mean).min(held.len());
+        //
+        // The mean is over EVERY held image, not just the evictable ones:
+        // `texture_bytes` measures all of them, so dividing by a subset would
+        // understate the mean and over-release.
+        let mean = (texture_bytes / held).max(1);
+        let excess = over.div_ceil(mean).min(evictable.len());
         // `total_cmp` rather than `partial_cmp().unwrap()` — the clock is an
         // `f64` from the host and a sort that panics on an unexpected NaN
         // would take the whole frame with it.
-        held.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
-        let cold: Vec<String> = held
+        evictable.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+        let cold: Vec<String> = evictable
             .into_iter()
             .take(excess)
             .map(|(_, uri)| uri.to_owned())
@@ -709,6 +749,55 @@ mod tests {
         assert!(matches!(s.want("coldest", 3.0), Want::Pending));
         assert!(matches!(s.want("middle", 3.0), Want::Ready(_)));
         assert!(matches!(s.want("newest", 3.0), Want::Ready(_)));
+    }
+
+    /// The reload cascade, reproduced: a working set that is ENTIRELY on
+    /// screen and over budget.
+    ///
+    /// Plain LRU degenerates here — every entry is equally warm, so the sort
+    /// picks a victim that is still being painted, the next pass asks for it
+    /// again, and nothing is ever actually freed. Going over budget is the
+    /// only correct answer, because the memory is needed to draw the screen.
+    #[test]
+    fn an_entirely_visible_working_set_is_never_released_however_far_over_budget() {
+        let mut s = retaining(2);
+        for uri in ["a", "b", "c", "d"] {
+            loaded(&mut s, uri, 0.0);
+        }
+        s.end_pass(0.0);
+
+        // Every one of them painted in the pass just drawn.
+        for uri in ["a", "b", "c", "d"] {
+            assert!(matches!(s.want(uri, 1.0), Want::Ready(_)));
+        }
+        s.end_pass(1.0);
+
+        // Four images against a two-image cap, and not one is releasable.
+        assert!(
+            s.release_cold(4 * TEXTURE).is_empty(),
+            "released part of the live working set — that is the cascade"
+        );
+        assert_eq!(s.counts().ready, 4);
+    }
+
+    /// …and the moment something drops off screen, it is what goes — the cap
+    /// still works, it just cannot be paid out of the live set.
+    #[test]
+    fn once_an_image_stops_being_painted_it_becomes_the_victim() {
+        let mut s = retaining(2);
+        for uri in ["scrolled-away", "on-screen-1", "on-screen-2"] {
+            loaded(&mut s, uri, 0.0);
+        }
+        s.end_pass(0.0);
+
+        // A pass in which only two of the three are painted.
+        assert!(matches!(s.want("on-screen-1", 1.0), Want::Ready(_)));
+        assert!(matches!(s.want("on-screen-2", 1.0), Want::Ready(_)));
+        s.end_pass(1.0);
+
+        assert_eq!(s.release_cold(3 * TEXTURE), ["scrolled-away"]);
+        assert!(matches!(s.want("on-screen-1", 2.0), Want::Ready(_)));
+        assert!(matches!(s.want("on-screen-2", 2.0), Want::Ready(_)));
     }
 
     /// The point of tracking `asked` on completions. An image fetched long ago

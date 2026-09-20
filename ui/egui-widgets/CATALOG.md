@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-161 widgets.
+162 widgets.
 
 | module | what it is |
 |---|---|
@@ -130,6 +130,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `slider_group` | `SliderGroup` — a bank of labelled faders on one spine |
 | `slippage_selector` | Reusable slippage selector widget |
 | `slot_table` | slot_table — the trait/slot list with enable / required toggles and an optional z-order field |
+| `smart_image` | `SmartImage` — an image that knows how big it needs to be decoded, and whether it is being drawn or merely warmed |
 | `sparkline` | Sparkline widget — compact inline line chart for trend visualization |
 | `split_allocation_bar` | Split allocation bar — segmented horizontal bar showing ADA allocation across multiple DEXes |
 | `stake_auth` | [`AuthStrategy`] for the stake-key wallet session — the one where the wallet *is* the identity |

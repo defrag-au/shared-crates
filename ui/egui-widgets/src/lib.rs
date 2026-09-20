@@ -124,6 +124,9 @@ pub mod seven_segment;
 pub mod skeleton;
 pub mod slider_group;
 pub mod slot_table;
+/// An image that derives its own decode size and knows whether it is being
+/// painted or merely warmed. The one place a size hint is chosen.
+pub mod smart_image;
 pub mod sparkline;
 #[cfg(feature = "cardano")]
 pub mod stake_auth;
