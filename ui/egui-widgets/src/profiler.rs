@@ -561,7 +561,10 @@ impl Profiler {
             } else {
                 String::new()
             };
-            format!("repaint ← {}{suffix}", listed.join(", "))
+            // ASCII: the arrow that reads best here is U+2190, which egui's
+            // default font does not carry — `tests/no_broken_glyphs` exists
+            // because it renders as a tofu box.
+            format!("repaint by: {}{suffix}", listed.join(", "))
         };
         ui.label(egui::RichText::new(text).color(muted).size(size));
         ui.add_space(4.0);
