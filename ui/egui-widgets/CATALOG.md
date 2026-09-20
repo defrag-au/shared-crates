@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-159 widgets.
+161 widgets.
 
 | module | what it is |
 |---|---|
@@ -59,6 +59,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `exposure_bar` | Exposure bar — stacked horizontal bar showing total ADA exposure segmented by collateral token, colored by LTV risk |
 | `fee_report` | Fee report widget — displays per-side fee breakdown for a trade |
 | `file_upload` | File upload widget — opens a browser file picker and reads the selected file |
+| `flame_chart` | `FlameChart` — nested spans on a zoomable time axis: what a frame spent its time on |
 | `flip_counter` | FlipCounter — split-flap style animated digit counter |
 | `flow_ledger` | `FlowLedger` — a wallet's movements in time order: what arrived, what left, who was on the other side, and what the balance was after each step |
 | `flow_matrix` | `FlowMatrix` — who paid whom, across MANY wallets at once |
@@ -108,6 +109,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `price_timeline` | Price timeline widget — a time-axis scatter of realized prices (sales, offer fills) with optional reference lines (current floor / listing price) and a reference band (e.g |
 | `pricing_ladder` | `PricingLadder` — a structural price ladder: what each rung is worth, what actually sold there, and how much evidence stands behind that |
 | `printing_timeline` | Printing timeline widget — shows a card's printings across sets over time |
+| `profiler` | `Profiler` — the in-app flame chart panel: which frame, what it cost, and a capture you can paste |
 | `progress_bar` | Themed progress bar widget with optional label, percentage, and countdown |
 | `property_list` | `PropertyList` — compact label/value grid for read-only key data |
 | `quantity_stepper` | `QuantityStepper` — a compact `−  [n]  +` control with min/max clamping |

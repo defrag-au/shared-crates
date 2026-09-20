@@ -16,6 +16,11 @@ cardano = [
 # consumers that only want a widget or two (the portal builds with
 # default-features = false) opt into the gateway coupling explicitly.
 gateway = ["dep:gateway-wiring"]
+# The `puffin` → `flame_chart::Span` adapter, and ONLY that. The widget itself
+# is always built: it takes plain spans and has no idea what produced them,
+# which is what keeps a profiler out of the graph of everyone who merely draws
+# a rectangle.
+puffin = ["dep:puffin"]
 # `VerdictCard` — the one mapping from a `tx_verdict::TxVerdict` to `TxCard`'s
 # domain-free input. Feature-gated for the same reason as `gateway`: the
 # catalogue stays domain-free for consumers that never see a verdict.
@@ -43,6 +48,17 @@ egui_extras = { workspace = true }
 # Frame-cost and in-flight-work counters — see `perf_strip`. Pure std, so this
 # adds nothing to the build and keeps the probes usable from the macroquad side.
 perf-probe = { workspace = true }
+# Scope markers for the heavy widgets. NOT a profiler and not a cost: with no
+# backend feature enabled anywhere in the graph these macros expand to nothing
+# — not a disabled branch, no code at all — so they stay in the shipping build
+# and light up the moment a consumer turns one on. Same crate egui and eframe
+# are instrumented with, so our scopes appear beside theirs and a slow frame
+# can be attributed to our UI code or to the renderer.
+profiling = { version = "1.0", default-features = false }
+# Read only — this crate never STARTS a profiler, it renders one's output.
+# `web` swaps in `web_time::Instant`, without which puffin panics on
+# wasm32-unknown-unknown the moment it touches a clock.
+puffin = { version = "0.19", optional = true, features = ["web", "packing"] }
 ehttp = "0.7"
 image = { workspace = true, features = ["jpeg"] }
 cardano-assets = { workspace = true, optional = true }

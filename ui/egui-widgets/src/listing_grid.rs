@@ -203,6 +203,12 @@ impl ListingGrid {
 
     /// Draw the listing grid, reporting what the reader did this frame.
     pub fn show(&self, ui: &mut egui::Ui, listings: &[ListingCard]) -> ListingGridResponse {
+        // The most expensive widget in the estate and the first place to look
+        // when a frame gets slow: cost here scales with how many cards are on
+        // screen, and it sat next to a measured `build p50` climbing from
+        // 0.9ms to 4.7ms as a collection loaded.
+        profiling::function_scope!();
+
         if listings.is_empty() {
             ui.label(
                 RichText::new("No listings found")

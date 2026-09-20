@@ -71,10 +71,15 @@ pub struct ImageLoadsState {
     demand: DemandChoice,
     budget: usize,
     grace_secs: f32,
-    /// Completed images kept. Wind it below the number on screen and the grid
-    /// visibly eats itself — released art refetches the moment it is painted
-    /// again, which is what the cap is trading against.
-    retain: usize,
+    /// Megabytes of DECODED texture kept. Wind it below what is on screen and
+    /// the grid visibly eats itself — released art refetches the moment it is
+    /// painted again, which is what the cap trades against.
+    ///
+    /// Megabytes rather than a count of images because that is the unit the
+    /// memory is actually in: a screen of 128px thumbnails and a screen of
+    /// 2048px art differ by four hundred times per image, so a count caps
+    /// nothing.
+    retain_mb: usize,
 }
 
 impl Default for ImageLoadsState {
@@ -90,8 +95,8 @@ impl Default for ImageLoadsState {
             demand: DemandChoice::Visible,
             budget: policy.budget,
             grace_secs,
-            retain: match policy.retain {
-                Retain::Coldest { images } => images,
+            retain_mb: match policy.retain {
+                Retain::UnderBytes { bytes } => bytes / (1024 * 1024),
                 Retain::Everything => 0,
             },
         }
@@ -110,9 +115,11 @@ impl ImageLoadsState {
             },
             // Zero reads as "keep everything" on the slider — the far end of
             // the same axis rather than a separate switch to forget about.
-            retain: match self.retain {
+            retain: match self.retain_mb {
                 0 => Retain::Everything,
-                images => Retain::Coldest { images },
+                mb => Retain::UnderBytes {
+                    bytes: mb * 1024 * 1024,
+                },
             },
         }
     }
@@ -165,13 +172,13 @@ pub fn show(ui: &mut egui::Ui, state: &mut ImageLoadsState) {
         );
         ui.add(egui::Slider::new(&mut state.budget, 1..=32).text("budget"));
         ui.add(
-            egui::Slider::new(&mut state.retain, 0..=64)
+            egui::Slider::new(&mut state.retain_mb, 0..=512)
                 .text("retain")
                 .custom_formatter(|n, _| {
                     if n < 1.0 {
                         "everything".to_owned()
                     } else {
-                        format!("{n:.0}")
+                        format!("{n:.0} MB")
                     }
                 }),
         );

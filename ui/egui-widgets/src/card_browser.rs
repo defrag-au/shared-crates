@@ -39,6 +39,25 @@ pub struct CardBrowserConfig {
     pub rounding: f32,
     /// Scroll area ID salt (must be unique if multiple browsers on one page).
     pub scroll_id: &'static str,
+    /// Rows drawn beyond the viewport, above and below.
+    ///
+    /// Cards outside this band are allocated but never painted, which is what
+    /// keeps a 580-card grid from laying out thousands of galleys a frame. The
+    /// band is also the image loader's lead time, and that is what sets the
+    /// floor: a card only asks for its thumbnail when it is painted, so with
+    /// too few rows a scroll reveals cards that are still fetching and they
+    /// appear blank for a frame or two before filling in.
+    ///
+    /// It matters more than it looks because retention is LRU over "when was
+    /// this last asked for" (`schedule::Schedule::release_cold`). Painting
+    /// every card kept every image permanently warm; culling is what lets the
+    /// byte cap evict genuinely cold images — correct, but it means a card
+    /// scrolled back to may need a real reload, not just a texture upload.
+    ///
+    /// Three is a compromise: still ~90% fewer painted cards than no culling
+    /// at all, with enough warning to hide the load. Raise it for a grid whose
+    /// images are slow or large.
+    pub overscan_rows: usize,
     /// Lay the grid out at its natural height instead of inside its own scroll
     /// area. For a bounded grid embedded in an already-scrolling page, where a
     /// nested scrollbar is the wrong affordance — the section should simply be
@@ -79,6 +98,41 @@ impl CardBrowserConfig {
         let thumb_h = thumb_w * self.thumb_aspect_ratio;
         CARD_INSET + thumb_h + TEXT_GAP + self.text_lines as f32 * LINE_HEIGHT + BOTTOM_PAD
     }
+
+    /// Vertical slack, in points, painted beyond the viewport each way.
+    ///
+    /// Pure, so the knob that decides whether a scroll shows blank cards can
+    /// be asserted on without a `Ui`.
+    pub fn overscan_px(&self, gutter: f32) -> f32 {
+        (self.card_height() + gutter) * self.overscan_rows as f32
+    }
+}
+
+#[cfg(test)]
+mod overscan_tests {
+    use super::CardBrowserConfig;
+
+    /// The default has to be enough rows to cover an image load, or culling
+    /// trades a frame-rate win for visible texture pop — which is exactly the
+    /// regression a one-row band caused.
+    #[test]
+    fn the_default_overscan_is_three_rows_of_slack() {
+        let config = CardBrowserConfig::default();
+        let row = config.card_height() + 8.0;
+        assert_eq!(config.overscan_rows, 3);
+        assert!((config.overscan_px(8.0) - row * 3.0).abs() < f32::EPSILON);
+    }
+
+    /// Zero is a legitimate setting — cull hard to the viewport — and must
+    /// mean no slack rather than one row by accident.
+    #[test]
+    fn zero_overscan_culls_to_the_viewport() {
+        let config = CardBrowserConfig {
+            overscan_rows: 0,
+            ..Default::default()
+        };
+        assert_eq!(config.overscan_px(8.0), 0.0);
+    }
 }
 
 impl Default for CardBrowserConfig {
@@ -91,6 +145,7 @@ impl Default for CardBrowserConfig {
             spacing: None,
             rounding: 6.0,
             scroll_id: "card_browser",
+            overscan_rows: 3,
             grow_to_content: false,
             bg_card: Ink::Token(Token::BgPrimary),
             bg_card_hover: Ink::Token(Token::BgHighlight),
@@ -176,6 +231,7 @@ pub fn show<T>(
     mut render_card: impl FnMut(&mut egui::Ui, &CardRenderContext, &mut T),
     mut render_detail: impl FnMut(&mut egui::Ui, usize, &mut T),
 ) -> CardBrowserResponse {
+    profiling::function_scope!();
     // Ensure Phosphor icon font is available (used for close button etc.)
     crate::icons::ensure_fonts(ui);
 
@@ -241,9 +297,37 @@ pub fn show<T>(
                     let spinner = CachedSpinner::new(ui, 12.0, text_muted);
                     let _ = spinner; // available for draw_thumbnail callers
 
+                    // Slack around the viewport, so a card about to be scrolled
+                    // into view has already asked the image loader for its
+                    // thumbnail instead of popping in blank. One row was the
+                    // first guess and it was too tight — see
+                    // `CardBrowserConfig::overscan_rows`.
+                    let cull_rect = ui
+                        .clip_rect()
+                        .expand2(Vec2::new(0.0, config.overscan_px(gutter)));
+
                     for (idx, item) in items.iter_mut().enumerate() {
                         let card_size = Vec2::new(config.card_width, config.card_height());
                         let (rect, card_resp) = ui.allocate_exact_size(card_size, Sense::click());
+
+                        // Offscreen cards are ALLOCATED but not painted.
+                        //
+                        // The allocation has to happen either way — it is what
+                        // gives the scroll area its extent and keeps the
+                        // wrapping positions stable — but painting one costs a
+                        // background, a border and the caller's whole
+                        // `render_card`, which for a typical card is four or
+                        // five galley layouts. A browse grid of ~580 assets was
+                        // laying out 2,885 galleys per frame, every frame, for
+                        // the thirty-odd cards anyone could actually see.
+                        //
+                        // Nothing below this point can fire for a card the
+                        // reader cannot reach: egui resolves interaction
+                        // against the clip rect, so an offscreen card is never
+                        // hovered and never clicked.
+                        if !cull_rect.intersects(rect) {
+                            continue;
+                        }
 
                         let is_selected = state.selected == Some(idx);
                         let is_hovered = card_resp.hovered();

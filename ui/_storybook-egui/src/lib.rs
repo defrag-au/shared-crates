@@ -124,6 +124,7 @@ mod app {
             Sparkline => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::sparkline::show(ui, &mut a.sparkline_state);
             MetricCard => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::metric_card::show(ui);
             PerfStrip => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::perf_strip::show(ui, &mut a.perf_strip_state);
+            FlameChart => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::flame_chart::show(ui, &mut a.flame_chart_state);
             BlockPulse => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::block_pulse::show(ui, &mut a.block_pulse_state);
             BlockTrain => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::block_train::show(ui, &mut a.block_train_state);
             ChainTempo => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::chain_tempo::show(ui, &mut a.chain_tempo_state);
@@ -273,6 +274,7 @@ mod app {
                 Self::Sparkline => "Sparkline",
                 Self::MetricCard => "Metric Card",
                 Self::PerfStrip => "Perf Strip",
+                Self::FlameChart => "Flame Chart",
                 Self::BlockPulse => "Block Pulse",
                 Self::BlockTrain => "Block Train",
                 Self::ChainTempo => "Chain Tempo",
@@ -469,6 +471,9 @@ mod app {
                 }
                 Self::PerfStrip => {
                     "Live HUD, vertical or horizontal — frame build cost, fps, memory, work in flight"
+                }
+                Self::FlameChart => {
+                    "Where a frame's time went — nested spans on a zoomable axis, sub-pixel work culled until you zoom to it"
                 }
                 Self::BlockPulse => {
                     "The chain's heartbeat on one line — pops on each block, a ring of likelihood (never a countdown), honest about a quiet feed"
@@ -1396,6 +1401,7 @@ mod app {
         slot_table_state: stories::slot_table::SlotTableState,
         sparkline_state: stories::sparkline::SparklineState,
         perf_strip_state: stories::perf_strip::PerfStripStory,
+        flame_chart_state: stories::flame_chart::FlameChartState,
         block_pulse_state: stories::block_pulse::BlockPulseStory,
         block_train_state: stories::block_train::BlockTrainStory,
         chain_tempo_state: stories::chain_tempo::ChainTempoStory,
@@ -1543,6 +1549,7 @@ mod app {
                 slot_table_state: stories::slot_table::SlotTableState::default(),
                 sparkline_state: stories::sparkline::SparklineState::default(),
                 perf_strip_state: stories::perf_strip::PerfStripStory::default(),
+                flame_chart_state: stories::flame_chart::FlameChartState::default(),
                 block_pulse_state: stories::block_pulse::BlockPulseStory::default(),
                 block_train_state: stories::block_train::BlockTrainStory::default(),
                 chain_tempo_state: stories::chain_tempo::ChainTempoStory::default(),

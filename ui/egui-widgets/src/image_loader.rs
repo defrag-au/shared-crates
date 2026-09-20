@@ -536,6 +536,24 @@ pub mod browser {
     /// This runs the actual decode off the main thread (browser handles scheduling),
     /// then reads the pixels back via `OffscreenCanvas` + `getImageData()`.
     async fn browser_decode_image(bytes: &[u8], want: DecodeSize) -> Result<ColorImage, String> {
+        // ⚠️ NO function-wide scope here, and there cannot be one.
+        //
+        // A `profiling::scope!` is an RAII guard, and this function awaits the
+        // browser's decode in the middle. puffin records one stream for the
+        // single wasm thread, so a guard held across `.await` stays open while
+        // OTHER decode tasks start their own — and the chart then shows
+        // `image_loader::decode` nested inside itself, once per task in
+        // flight, each "lasting" as long as the browser took to answer.
+        //
+        // A real capture read: 24 levels of self-nesting, 211ms of self time
+        // in a 76ms frame (277% — the tell that it cannot be wall time), and
+        // the egui pass itself recorded INSIDE the 14th decode, because a
+        // frame that began while a guard was open is charged to that guard.
+        //
+        // So the scopes below cover the SYNCHRONOUS segments only. They are
+        // the ones that can actually stall a frame; the await is the browser
+        // decoding off the main thread, which costs us nothing to wait for.
+
         // Create a Blob from the raw bytes
         let uint8_array = js_sys::Uint8Array::from(bytes);
         let blob_parts = js_sys::Array::new();
@@ -606,35 +624,122 @@ pub mod browser {
             return Err("Image has zero dimensions".into());
         }
 
-        // Draw bitmap onto an OffscreenCanvas to extract pixel data
-        let canvas = web_sys::OffscreenCanvas::new(width, height)
-            .map_err(|e| format!("Failed to create OffscreenCanvas: {e:?}"))?;
+        // The readback. THIS is the part worth watching: it is synchronous
+        // from here to the end, it runs on the main thread, and it copies
+        // width × height × 4 bytes out of the canvas and again into a
+        // `ColorImage`. No await inside, so the scope means what it says.
+        profiling::scope!("image_loader::readback");
 
-        let ctx_obj = canvas
-            .get_context("2d")
-            .map_err(|e| format!("Failed to get 2d context: {e:?}"))?
-            .ok_or("get_context returned None")?;
+        SCRATCH.with(|scratch| {
+            let mut scratch = scratch.borrow_mut();
+            // Safe to hold the borrow across the whole readback: there is no
+            // `.await` below, so no second decode task can re-enter.
+            let scratch = scratch.get_or_try_init()?;
+            scratch.resize(width, height);
 
-        let ctx_2d: web_sys::OffscreenCanvasRenderingContext2d = ctx_obj
-            .dyn_into()
-            .map_err(|_| "Context is not OffscreenCanvasRenderingContext2d".to_string())?;
+            // Draw the decoded bitmap onto the canvas
+            scratch
+                .ctx
+                .draw_image_with_image_bitmap(&bitmap, 0.0, 0.0)
+                .map_err(|e| format!("drawImage failed: {e:?}"))?;
 
-        // Draw the decoded bitmap onto the canvas
-        ctx_2d
-            .draw_image_with_image_bitmap(&bitmap, 0.0, 0.0)
-            .map_err(|e| format!("drawImage failed: {e:?}"))?;
+            // Read back the RGBA pixels
+            let image_data = scratch
+                .ctx
+                .get_image_data(0.0, 0.0, width as f64, height as f64)
+                .map_err(|e| format!("getImageData failed: {e:?}"))?;
 
-        // Read back the RGBA pixels
-        let image_data = ctx_2d
-            .get_image_data(0.0, 0.0, width as f64, height as f64)
-            .map_err(|e| format!("getImageData failed: {e:?}"))?;
+            let rgba = image_data.data().0;
 
-        let rgba = image_data.data().0;
+            Ok(ColorImage::from_rgba_unmultiplied(
+                [width as usize, height as usize],
+                &rgba,
+            ))
+        })
+    }
 
-        Ok(ColorImage::from_rgba_unmultiplied(
-            [width as usize, height as usize],
-            &rgba,
-        ))
+    thread_local! {
+        /// One canvas, reused by every decode on the (only) wasm thread.
+        ///
+        /// Built lazily so a frontend that never decodes an image never
+        /// allocates one.
+        static SCRATCH: std::cell::RefCell<ScratchCanvas> =
+            const { std::cell::RefCell::new(ScratchCanvas { inner: None }) };
+    }
+
+    /// The canvas every decode draws through, and the 2D context bound to it.
+    struct ScratchCanvas {
+        inner: Option<(web_sys::OffscreenCanvas, web_sys::OffscreenCanvasRenderingContext2d)>,
+    }
+
+    /// Borrowed view of an initialised [`ScratchCanvas`].
+    struct Scratch<'a> {
+        canvas: &'a web_sys::OffscreenCanvas,
+        ctx: &'a web_sys::OffscreenCanvasRenderingContext2d,
+    }
+
+    impl ScratchCanvas {
+        fn get_or_try_init(&mut self) -> Result<Scratch<'_>, String> {
+            if self.inner.is_none() {
+                // 1×1 to start; `resize` grows it to whatever the first image
+                // needs. The dimensions here are never used for a readback.
+                let canvas = web_sys::OffscreenCanvas::new(1, 1)
+                    .map_err(|e| format!("Failed to create OffscreenCanvas: {e:?}"))?;
+
+                // `willReadFrequently: true` is the reason this function
+                // exists.
+                //
+                // Without it the browser is entitled to keep the 2D canvas on
+                // the GPU, and then EVERY `getImageData` is a synchronous
+                // GPU→CPU readback — it has to flush the pipeline and stall
+                // until the surface comes back. Measured here at ~1.9ms for a
+                // 256×256 thumbnail, which is roughly 250KB of pixels; the
+                // copy is not what costs that. The flag asks for a CPU-backed
+                // surface instead, where `getImageData` is a memcpy.
+                //
+                // Built with `Reflect::set` rather than a serialised literal
+                // because it is a JS options bag, not data we own.
+                let opts = js_sys::Object::new();
+                js_sys::Reflect::set(
+                    &opts,
+                    &wasm_bindgen::JsValue::from_str("willReadFrequently"),
+                    &wasm_bindgen::JsValue::TRUE,
+                )
+                .map_err(|e| format!("Failed to set willReadFrequently: {e:?}"))?;
+
+                let ctx_obj = canvas
+                    .get_context_with_context_options("2d", &opts)
+                    .map_err(|e| format!("Failed to get 2d context: {e:?}"))?
+                    .ok_or("get_context returned None")?;
+
+                let ctx: web_sys::OffscreenCanvasRenderingContext2d = ctx_obj
+                    .dyn_into()
+                    .map_err(|_| "Context is not OffscreenCanvasRenderingContext2d".to_string())?;
+
+                self.inner = Some((canvas, ctx));
+            }
+
+            let (canvas, ctx) = self.inner.as_ref().expect("just initialised");
+            Ok(Scratch { canvas, ctx })
+        }
+    }
+
+    impl Scratch<'_> {
+        /// Size the canvas to this image, if it is not already.
+        ///
+        /// Only ever grows in practice — the rung ladder means a handful of
+        /// distinct sizes — and assigning width/height clears the surface,
+        /// which is what we want: no bleed from the previous image around a
+        /// smaller one. Skipped when the size already matches, because the
+        /// assignment reallocates the backing store even when it is a no-op.
+        fn resize(&self, width: u32, height: u32) {
+            if self.canvas.width() != width {
+                self.canvas.set_width(width);
+            }
+            if self.canvas.height() != height {
+                self.canvas.set_height(height);
+            }
+        }
     }
 }
 

@@ -1,0 +1,267 @@
+[
+    {
+        "policy_id": "f0ff48bbb7bbe9d59a40f1ce90e9e9d0ff5002ec48f232b49ca0fb9a",
+        "asset_name": "000de1407468697961",
+        "asset_name_ascii": "thiya",
+        "fingerprint": "asset1gjjag0p3qydgnmrt879de0f0j63sxrn9mcl352",
+        "minting_tx_hash": "254d4dc99929528ce252f8ff471095640a8a3934bbd2843a5fcbce98247b34ca",
+        "total_supply": "1",
+        "mint_cnt": 1,
+        "burn_cnt": 0,
+        "creation_time": 1774130101,
+        "minting_tx_metadata": {
+            "721": {
+                "f0ff48bbb7bbe9d59a40f1ce90e9e9d0ff5002ec48f232b49ca0fb9a": {
+                    "000de1407468697961": {
+                        "og": 0,
+                        "name": "$thiya",
+                        "image": "ipfs://zb2rhbpf2ov4KQA9S1dW9rGbZzHRoWqucSmgUdLUP77fNVXCu",
+                        "length": 5,
+                        "rarity": "common",
+                        "version": 1,
+                        "mediaType": "image/jpeg",
+                        "og_number": 0,
+                        "characters": "letters",
+                        "handle_type": "handle",
+                        "numeric_modifiers": ""
+                    }
+                }
+            }
+        },
+        "token_registry_metadata": null,
+        "cip68_metadata": {
+            "222": {
+                "fields": [
+                    {
+                        "map": [
+                            {
+                                "k": {
+                                    "bytes": "6e616d65"
+                                },
+                                "v": {
+                                    "bytes": "247468697961"
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "696d616765"
+                                },
+                                "v": {
+                                    "bytes": "697066733a2f2f7a62327268627066326f76344b51413953316457397247625a7a48526f57717563536d6755644c55503737664e56584375"
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "6d6564696154797065"
+                                },
+                                "v": {
+                                    "bytes": "696d6167652f6a706567"
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "6f67"
+                                },
+                                "v": {
+                                    "int": 0
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "6f675f6e756d626572"
+                                },
+                                "v": {
+                                    "int": 0
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "726172697479"
+                                },
+                                "v": {
+                                    "bytes": "636f6d6d6f6e"
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "6c656e677468"
+                                },
+                                "v": {
+                                    "int": 5
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "63686172616374657273"
+                                },
+                                "v": {
+                                    "bytes": "6c657474657273"
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "6e756d657269635f6d6f64696669657273"
+                                },
+                                "v": {
+                                    "bytes": ""
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "68616e646c655f74797065"
+                                },
+                                "v": {
+                                    "bytes": "68616e646c65"
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "76657273696f6e"
+                                },
+                                "v": {
+                                    "int": 1
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        "int": 1
+                    },
+                    {
+                        "map": [
+                            {
+                                "k": {
+                                    "bytes": "7374616e646172645f696d616765"
+                                },
+                                "v": {
+                                    "bytes": "697066733a2f2f7a62327268627066326f76344b51413953316457397247625a7a48526f57717563536d6755644c55503737664e56584375"
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "706f7274616c"
+                                },
+                                "v": {
+                                    "bytes": ""
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "64657369676e6572"
+                                },
+                                "v": {
+                                    "bytes": ""
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "736f6369616c73"
+                                },
+                                "v": {
+                                    "bytes": ""
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "76656e646f72"
+                                },
+                                "v": {
+                                    "bytes": ""
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "64656661756c74"
+                                },
+                                "v": {
+                                    "int": 0
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "6c6173745f7570646174655f61646472657373"
+                                },
+                                "v": {
+                                    "bytes": "01b02d37dbbcf1db9f2d12911d904f2b68c0f9920a0ffcd37ddf2b2681c752ade32ffb274d0834af477c18b6bfff42952719f1c4949d6a43e9"
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "76616c6964617465645f6279"
+                                },
+                                "v": {
+                                    "bytes": "4da965a049dfd15ed1ee19fba6e2974a0b79fc416dd1796a1f97f5e1"
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "696d6167655f68617368"
+                                },
+                                "v": {
+                                    "bytes": "4cf2ef95cd5f55b0a825d71486690cc9d4875862394e2c0bc47a5480c82a05da"
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "7374616e646172645f696d6167655f68617368"
+                                },
+                                "v": {
+                                    "bytes": "4cf2ef95cd5f55b0a825d71486690cc9d4875862394e2c0bc47a5480c82a05da"
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "7376675f76657273696f6e"
+                                },
+                                "v": {
+                                    "bytes": "332e302e3135"
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "6167726565645f7465726d73"
+                                },
+                                "v": {
+                                    "bytes": "68747470733a2f2f68616e646c652e6d652f242f746f75"
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "6d6967726174655f7369675f7265717569726564"
+                                },
+                                "v": {
+                                    "int": 0
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "747269616c"
+                                },
+                                "v": {
+                                    "int": 0
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "6e736677"
+                                },
+                                "v": {
+                                    "int": 0
+                                }
+                            },
+                            {
+                                "k": {
+                                    "bytes": "707a5f656e61626c6564"
+                                },
+                                "v": {
+                                    "int": 1
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "constructor": 0
+            }
+        }
+    }
+]

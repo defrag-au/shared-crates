@@ -9,13 +9,13 @@ pub mod koios_utils;
 pub mod koios_utxos;
 
 use cardano_assets::{
-    Asset, AssetMetadata, AssetMetadata68, ExtractedCid, MetadataKind, asset_from_metadata_value,
+    Asset, AssetMetadata, AssetMetadata68, AssetWithId, ExtractedCid, MetadataKind, NftPurpose,
+    PolicyAssetSample, PolicyClassification, asset_from_metadata_value,
 };
 use http_client::{HttpClient, HttpError};
 use koios_account_utxos::TxRecord;
 pub use koios_evaluate::KoiosRedeemerBudget;
 pub use koios_params::KoiosProtocolParams;
-use koios_serde::as_f64;
 use koios_transaction::KoiosTransaction;
 pub use koios_utxos::{KoiosAccountAsset, KoiosInlineDatum, KoiosUtxo, KoiosUtxoAsset, UtxoAmount};
 use serde::de::DeserializeOwned;
@@ -437,8 +437,12 @@ pub struct KoiosAssetInfo {
     pub asset_name_ascii: Option<String>,
     pub fingerprint: String,
     pub minting_tx_hash: String,
-    #[serde(deserialize_with = "as_f64")]
-    pub total_supply: f64,
+    /// Koios sends this as a decimal STRING (`"10000000000"`), not a number.
+    /// It was previously read through `as_f64`, which silently loses precision
+    /// past 2^53 — invisible on an NFT collection where every supply is 1, and
+    /// wrong the first time a real fungible passes through.
+    #[serde(with = "wasm_safe_serde::u64_required")]
+    pub total_supply: u64,
     pub mint_cnt: u64,
     pub burn_cnt: u64,
     pub creation_time: u64,
@@ -460,18 +464,11 @@ impl KoiosAssetInfo {
     /// CIP-25 v1 keys the name as UTF-8 and v2 as hex; both are tried, hex
     /// first because it is unambiguous.
     pub fn cip25_record(&self) -> Option<&serde_json::Value> {
-        let by_policy = self
-            .minting_tx_metadata
-            .as_ref()?
-            .get("721")?
-            .get(&self.policy_id)?;
-        if let Some(v) = by_policy.get(&self.asset_name) {
-            return Some(v);
-        }
-        let utf8 = hex::decode(&self.asset_name)
-            .ok()
-            .and_then(|b| String::from_utf8(b).ok())?;
-        by_policy.get(&utf8)
+        cip25_record_in(
+            self.minting_tx_metadata.as_ref()?,
+            &self.policy_id,
+            &self.asset_name,
+        )
     }
 
     /// This asset's CIP-68 metadata map, decoded out of the Plutus detailed
@@ -553,6 +550,44 @@ impl KoiosAssetInfo {
     pub fn mint_timestamp(&self) -> u64 {
         self.creation_time
     }
+
+    /// This asset as an importable [`AssetWithId`], or `None` if it does not
+    /// belong in a collection import — a reference token, or an asset with no
+    /// readable metadata.
+    ///
+    /// The extracted CID set is captured here because flattening to [`Asset`]
+    /// keeps only the headline image, and `files[]` media is gone after that.
+    #[must_use]
+    pub fn as_asset_with_id(&self) -> Option<AssetWithId> {
+        if !self.should_import() {
+            return None;
+        }
+        let asset = self.to_asset()?;
+        Some(AssetWithId::new(
+            self.asset_name.clone(),
+            asset,
+            self.extract_cids(),
+        ))
+    }
+
+    /// Whether this asset belongs in a collection import.
+    ///
+    /// CIP-25 assets do; of the CIP-68 pair only the `222` user token does —
+    /// the `100` reference token is the metadata carrier, not a holdable
+    /// item, and importing it double-counts the collection.
+    #[must_use]
+    pub fn should_import(&self) -> bool {
+        if self.cip25_record().is_some() {
+            return true;
+        }
+        matches!(
+            self.cip68_metadata68(),
+            Some(AssetMetadata68 {
+                purpose: NftPurpose::UserNft,
+                ..
+            })
+        )
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -565,9 +600,13 @@ pub struct TokenMetadata {
     pub description: Option<String>,
 }
 
-/// Row from `GET /policy_asset_info` — the lightweight per-policy
-/// asset listing (name + supply), used for "what lives under this
-/// policy" discovery.
+/// Row from `GET /policy_asset_info` — a policy's assets with their mint
+/// metadata attached.
+///
+/// This is the *heavy* per-policy listing: every row carries its full `721`
+/// document. Reach for [`KoiosPolicyAssetName`] when all you need is "what
+/// lives under this policy"; use this when the answer depends on what the
+/// metadata says, as policy classification does.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct KoiosPolicyAssetInfo {
     /// Hex-encoded asset name; null/absent for the empty name.
@@ -576,6 +615,52 @@ pub struct KoiosPolicyAssetInfo {
     /// accepts both string and integer forms.
     #[serde(default, with = "wasm_safe_serde::u64_option")]
     pub total_supply: Option<u64>,
+    /// The minting transaction's label-721 payload. Absent for CIP-68 assets
+    /// and bare fungibles.
+    #[serde(default)]
+    pub minting_tx_metadata: Option<serde_json::Value>,
+}
+
+impl KoiosPolicyAssetInfo {
+    /// Reduce this row to the evidence [`classify_policy`] weighs.
+    ///
+    /// `policy_id` is needed to navigate the `721` envelope, which this
+    /// endpoint's rows do not carry.
+    #[must_use]
+    pub fn as_policy_sample(&self, policy_id: &str) -> PolicyAssetSample {
+        let name_hex = self.asset_name.clone().unwrap_or_default();
+        let has_fungible_signals = self
+            .minting_tx_metadata
+            .as_ref()
+            .and_then(|meta| cip25_record_in(meta, policy_id, &name_hex))
+            .and_then(|record| serde_json::from_value::<AssetMetadata>(record.clone()).ok())
+            .is_some_and(|meta| meta.has_fungible_signals());
+
+        PolicyAssetSample {
+            name_hex,
+            has_fungible_signals,
+            total_supply: self.total_supply,
+        }
+    }
+}
+
+/// One asset's CIP-25 record inside a `721` payload.
+///
+/// CIP-25 v1 keys the asset name as UTF-8 and v2 as hex; both are tried, hex
+/// first because it is unambiguous.
+fn cip25_record_in<'a>(
+    minting_tx_metadata: &'a serde_json::Value,
+    policy_id: &str,
+    asset_name_hex: &str,
+) -> Option<&'a serde_json::Value> {
+    let by_policy = minting_tx_metadata.get("721")?.get(policy_id)?;
+    if let Some(record) = by_policy.get(asset_name_hex) {
+        return Some(record);
+    }
+    let utf8 = hex::decode(asset_name_hex)
+        .ok()
+        .and_then(|b| String::from_utf8(b).ok())?;
+    by_policy.get(&utf8)
 }
 
 /// Row from `GET /policy_asset_addresses` — one (asset, holder) pair for a
@@ -1462,19 +1547,95 @@ impl KoiosApi {
             .await
     }
 
-    /// All assets minted under a policy with name + supply
-    /// (`GET /policy_asset_info`). Returns up to Koios's page cap
-    /// (1000); fungible-token callers wanting the primary asset sort
-    /// by supply and take the head.
+    /// A policy's assets with name, supply and mint metadata
+    /// (`GET /policy_asset_info`), one page.
+    ///
+    /// `limits` of `None` takes Koios's default page (capped at 1000);
+    /// fungible-token callers wanting the primary asset sort by supply and
+    /// take the head.
     pub async fn get_policy_asset_info(
         &self,
         policy_id: &str,
+        limits: Option<KoiosLimits>,
     ) -> Result<Vec<KoiosPolicyAssetInfo>, KoiosError> {
         let url = format!(
             "{}/policy_asset_info?_asset_policy={policy_id}",
             self.base_url
         );
-        self.get_json(&url).await
+        let options = limits.map(QueryOptions::from);
+        self.get_json_with_options(&url, options.as_ref()).await
+    }
+
+    /// Decide whether a policy is an NFT collection, a currency or a set of
+    /// editions, from the first `sample_size` assets minted under it.
+    ///
+    /// One request. The sample is a prefix of the policy's assets, not a
+    /// random draw, so a collection that mints its currency first could in
+    /// principle read as a currency — which is why
+    /// [`cardano_assets::classify_policy`] settles on CIP-67 labels wherever
+    /// they exist and only falls back to supply heuristics when nothing
+    /// declared itself.
+    pub async fn classify_policy(
+        &self,
+        policy_id: &str,
+        sample_size: u32,
+    ) -> Result<PolicyClassification, KoiosError> {
+        let rows = self
+            .get_policy_asset_info(policy_id, Some(KoiosLimits::only(sample_size)))
+            .await?;
+        let samples: Vec<PolicyAssetSample> = rows
+            .iter()
+            .map(|row| row.as_policy_sample(policy_id))
+            .collect();
+        Ok(cardano_assets::classify_policy(&samples))
+    }
+
+    /// Every asset under a policy, with full metadata, walking the pages.
+    ///
+    /// Two requests per page: the asset names in the window, then their
+    /// metadata. Listing and metadata are separate Koios routes and there is
+    /// no single route that pages full `asset_info` rows by policy. The
+    /// policy's own empty-named row (the CIP-27 royalty token) is not an asset
+    /// and is dropped before the metadata request.
+    ///
+    /// ⚠️ Unbounded in the size of the policy, and each row carries its whole
+    /// metadata document — a 10k collection is ten listing requests, ten
+    /// metadata requests and megabytes of JSON. Fine for a one-shot bootstrap;
+    /// page it yourself if you are on a request or wall-clock budget.
+    pub async fn get_all_policy_assets(
+        &self,
+        policy_id: &str,
+    ) -> Result<Vec<KoiosAssetInfo>, KoiosError> {
+        let mut all = Vec::new();
+        let mut offset = 0u32;
+
+        loop {
+            // The listing page size bounds the walk, so ask the listing how
+            // many rows it had rather than inferring from the metadata rows,
+            // which are fewer whenever a page holds the royalty token.
+            let names = self
+                .get_policy_asset_names(policy_id, KoiosLimits::new(KOIOS_PAGE_LIMIT, Some(offset)))
+                .await?;
+            let listed = names.len() as u32;
+
+            let wanted: Vec<(String, String)> = names
+                .into_iter()
+                .filter_map(|row| row.asset_name)
+                .filter(|name| !name.is_empty())
+                .map(|name| (policy_id.to_string(), name))
+                .collect();
+
+            if !wanted.is_empty() {
+                all.extend(self.get_policy_assets(&wanted).await?);
+            }
+
+            if listed < KOIOS_PAGE_LIMIT {
+                break;
+            }
+            offset += KOIOS_PAGE_LIMIT;
+        }
+
+        Ok(all)
     }
 
     /// One page of a policy's asset names (`GET /policy_asset_list`).
@@ -2001,6 +2162,93 @@ mod tests {
                 // This might fail if some fields don't exist, which is fine for exploration
             }
         }
+    }
+
+    /// Live `POST /asset_info` responses, captured 2026-09-20.
+    ///
+    /// `cip25` is Boss Cat Rocket Club #9717 — the asset whose lookup was
+    /// failing when Maestro's gateway went dark, and a policy whose `721`
+    /// payload carries the whole mint batch, so selecting the right record
+    /// out of it is the thing being tested.
+    ///
+    /// `cip68` is the ADA Handle `$thiya` user token: a datum-backed asset
+    /// that *also* carries a `721` payload, which is the one case where the
+    /// two standards disagree about what an asset is.
+    fn asset_info(fixture: &str) -> KoiosAssetInfo {
+        serde_json::from_str::<Vec<KoiosAssetInfo>>(fixture)
+            .expect("fixture decodes")
+            .pop()
+            .expect("fixture has a row")
+    }
+
+    #[test]
+    fn cip25_asset_resolves_its_own_record_out_of_the_mint_payload() {
+        let info = asset_info(test_case!("cip25_asset_info.json"));
+        let asset = info.to_asset().expect("resolves");
+
+        assert_eq!(asset.name, "Boss Cat Rocket Club #9717");
+        assert_eq!(
+            asset.image,
+            "ipfs://QmUdkbDDaeu9dkZ3CGpqCUkdoTFRadhhwYWzLuFvodHhhY"
+        );
+        // The neighbouring assets in the same `721` payload have different
+        // traits; picking a sibling's record would still "resolve".
+        assert_eq!(
+            asset.traits.get("Fur").map(Vec::as_slice),
+            Some(["Cyborg".to_owned()].as_slice())
+        );
+        assert_eq!(info.metadata_kind(), MetadataKind::Cip25);
+        assert!(info.should_import());
+    }
+
+    #[test]
+    fn cip68_asset_resolves_from_its_datum() {
+        let info = asset_info(test_case!("cip68_asset_info.json"));
+        let asset = info.to_asset().expect("resolves");
+
+        assert_eq!(asset.name, "$thiya");
+        assert_eq!(
+            asset.image,
+            "ipfs://zb2rhbpf2ov4KQA9S1dW9rGbZzHRoWqucSmgUdLUP77fNVXCu"
+        );
+        assert_eq!(asset.media_type.as_deref(), Some("image/jpeg"));
+
+        let typed = info.cip68_metadata68().expect("typed metadata");
+        assert_eq!(typed.purpose, NftPurpose::UserNft);
+        assert!(info.should_import());
+    }
+
+    /// This asset carries both standards, and they disagree. CIP-25 wins the
+    /// stored kind — matching the Maestro-era classification the `asset` DB
+    /// rows were written under, so the cutover does not re-key them.
+    #[test]
+    fn a_dual_standard_asset_is_still_classified_cip25() {
+        let info = asset_info(test_case!("cip68_asset_info.json"));
+        assert!(info.cip25_record().is_some());
+        assert!(info.cip68_record().is_some());
+        assert_eq!(info.metadata_kind(), MetadataKind::Cip25);
+    }
+
+    /// A live `GET /policy_asset_addresses` page, captured 2026-09-20: three
+    /// rows at staked addresses and two at a script address with no staking
+    /// part. Both the string-encoded `quantity` and the null `stake_address`
+    /// are wire shapes a typed struct gets wrong by default.
+    #[test]
+    fn test_deserialize_policy_asset_addresses() {
+        let rows: Vec<KoiosPolicyAssetAddress> =
+            serde_json::from_str(test_case!("policy_asset_addresses.json"))
+                .expect("fixture decodes");
+
+        assert_eq!(rows.len(), 5);
+        assert_eq!(rows[0].quantity, 1);
+        assert_eq!(
+            rows[0].stake_address.as_deref(),
+            Some("stake1uxqh9rn76n8nynsnyvf4ulndjv0srcc8jtvumut3989cqmgjt49h6")
+        );
+        // A script address holds these two; there is no stake credential to
+        // key them by.
+        assert!(rows[3].stake_address.is_none());
+        assert!(rows[4].stake_address.is_none());
     }
 
     #[test]
