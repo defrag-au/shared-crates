@@ -151,20 +151,26 @@ impl Default for Profiler {
     fn default() -> Self {
         // Loud, once, at error level. This build can reach a real deployment
         // — `PROFILING=1 wrangler deploy` is the whole point of it — and the
-        // one thing that must not happen is it quietly STAYING there. The
-        // panel is open by default and hard to miss, but a console line
-        // survives someone closing it.
+        // one thing that must not happen is it quietly STAYING there. With the
+        // panel now CLOSED by default, this line and the toolbar button are
+        // the only things that say so, which makes the log the load-bearing
+        // one.
         log::error!(
-            "PROFILING BUILD — puffin is collecting and the app holds a frame open to \
-             feed the flame chart, so it idles hotter than a normal build. Redeploy \
+            "PROFILING BUILD — puffin is collecting, so this build idles hotter than a \
+             normal one. Open the profiler from the toolbar to look at it. Redeploy \
              without PROFILING=1 when finished."
         );
         // Collection starts ON: a profiler you have to remember to switch on
-        // records nothing for the first interesting thing you do.
+        // records nothing for the first interesting thing you do. That is
+        // separate from the panel being SHOWN — the panel is a viewer, and
+        // opening it over the app being measured changes what is measured
+        // (its own `Profiler::ui` ran to 3.1ms of a 13.6ms frame in one
+        // capture). Closed by default so the app is observed as it actually
+        // runs, and opened when there is something to look at.
         puffin::set_scopes_on(true);
         Self {
             view: puffin::GlobalFrameView::default(),
-            open: true,
+            open: false,
             capturing: true,
             driving: false,
             showing: Showing::Busiest,

@@ -874,8 +874,10 @@ mod tests {
             scope_px < 1.0,
             "a 20µs scope is {scope_px}px; dropping that is dropping the capture"
         );
-        // Which is why the floor is a clamp and not a cull.
-        assert!(MIN_SPAN_WIDTH > 0.0);
+        // Which is why the floor is a clamp and not a cull. A `const` block,
+        // so a future edit that zeroes the floor fails to COMPILE rather than
+        // waiting for someone to run the tests.
+        const { assert!(MIN_SPAN_WIDTH > 0.0) };
     }
 
     /// Absolute profiler timestamps are too large for `f64` to hold at

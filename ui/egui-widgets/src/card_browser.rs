@@ -8,7 +8,7 @@
 //! (e.g. `AssetCard` with 3D tilt) through the [`CardRenderContext::response`] field.
 
 use crate::image_loader::CachedSpinner;
-use crate::smart_image::{ImagePass, ImageState, SmartImage};
+use crate::smart_image::{ImagePass, Placeholder, SmartImage};
 use crate::theme::{Ink, Radius, Space, SpaceExt, ThemeExt, Token};
 use egui::{Pos2, Rect, Sense, Stroke, Vec2};
 
@@ -575,7 +575,6 @@ pub fn draw_thumbnail(
 ) -> bool {
     let t = ui.tokens();
     let bg_card_hover = config.bg_card_hover.resolve(&t);
-    let text_muted = config.text_muted.resolve(&t);
     let radius = t.corner(Radius::Base);
 
     // A thumbnail entirely outside the clip rect still gets its backdrop —
@@ -587,16 +586,15 @@ pub fn draw_thumbnail(
         return false;
     }
 
-    let state = SmartImage::from_option(image_url)
+    // A pulsing skeleton and NO spinner.
+    //
+    // The spinner that used to sit here said "busy"; a grid of forty of them
+    // says "forty separate things have gone wrong". The skeleton is the same
+    // information stated as the shape of the thing that is arriving, and it
+    // is what the rest of this design system uses for content on its way.
+    SmartImage::from_option(image_url)
         .corner_radius(radius)
-        .backdrop(config.bg_card_hover)
-        .show(ui, thumb_rect, ImagePass::Paint);
-
-    // The spinner is this widget's own flourish rather than something
-    // `SmartImage` imposes on every caller — a 48pt leaderboard thumbnail
-    // wants a quiet backdrop, not a spinner in it.
-    if state == ImageState::Loading {
-        CachedSpinner::new(ui, 12.0, text_muted).paint(ui, thumb_rect);
-    }
-    state.wants_repaint()
+        .placeholder(Placeholder::Skeleton)
+        .show(ui, thumb_rect, ImagePass::Paint)
+        .wants_repaint()
 }

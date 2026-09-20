@@ -87,13 +87,35 @@ impl ImageState {
     }
 }
 
+/// What stands in for an image that is not there yet.
+///
+/// A named choice rather than an `Option<Ink>`, because the three cases are
+/// genuinely different instructions to the reader — "wait", "this is the
+/// backing", "say nothing" — and the first is the one that is almost always
+/// right for content that is on its way.
+// No `Eq`: `Ink` carries a `Color32` variant and does not implement it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Placeholder {
+    /// A pulsing [`crate::skeleton::Skeleton`] block. Says CONTENT IS COMING,
+    /// which a flat rectangle does not — a grid of empty panels reads as a
+    /// collection of broken assets, not a grid that is loading.
+    ///
+    /// Requests a repaint while it pulses, and stops the moment the last image
+    /// lands.
+    Skeleton,
+    /// A flat fill. For a surface that wants a quiet backing rather than an
+    /// animated one.
+    Fill(Ink),
+    /// Nothing at all. For an image LAYERED over one already drawn, where a
+    /// backdrop would hide what is underneath while the top one loads.
+    None,
+}
+
 /// An image sized to the rect it will occupy.
 pub struct SmartImage<'a> {
     url: Option<&'a str>,
     corner_radius: CornerRadius,
-    /// Painted under a loading or failed image. `None` leaves the rect alone,
-    /// for an overlay drawn on top of something already there.
-    backdrop: Option<Ink>,
+    placeholder: Placeholder,
     /// Drawn centred when the load failed, or when there is no URL.
     fallback_glyph: Option<&'a str>,
 }
@@ -110,7 +132,7 @@ impl<'a> SmartImage<'a> {
         Self {
             url,
             corner_radius: CornerRadius::same(4),
-            backdrop: Some(Ink::Token(Token::BgHighlight)),
+            placeholder: Placeholder::Skeleton,
             fallback_glyph: Some("?"),
         }
     }
@@ -120,17 +142,10 @@ impl<'a> SmartImage<'a> {
         self
     }
 
-    /// Paint nothing behind the image.
-    ///
-    /// For a layered thumbnail — a hero image over a base — where a backdrop
-    /// would hide the layer underneath while the top one loads.
-    pub fn no_backdrop(mut self) -> Self {
-        self.backdrop = None;
-        self
-    }
-
-    pub fn backdrop(mut self, ink: Ink) -> Self {
-        self.backdrop = Some(ink);
+    /// What to show while the image is absent. Defaults to
+    /// [`Placeholder::Skeleton`].
+    pub fn placeholder(mut self, placeholder: Placeholder) -> Self {
+        self.placeholder = placeholder;
         self
     }
 
@@ -174,22 +189,44 @@ impl<'a> SmartImage<'a> {
                     .corner_radius(self.corner_radius)
                     .paint_at(ui, rect);
             }
-            Ok(egui::load::TexturePoll::Pending { .. }) => self.paint_backdrop(ui, rect),
+            Ok(egui::load::TexturePoll::Pending { .. }) => self.paint_placeholder(ui, rect),
             Err(_) => self.paint_fallback(ui, rect),
         }
         state
     }
 
-    fn paint_backdrop(&self, ui: &egui::Ui, rect: Rect) {
-        let Some(ink) = self.backdrop else {
-            return;
-        };
-        let fill = ink.resolve(&ui.tokens());
-        ui.painter().rect_filled(rect, self.corner_radius, fill);
+    fn paint_placeholder(&self, ui: &egui::Ui, rect: Rect) {
+        match self.placeholder {
+            Placeholder::Skeleton => {
+                crate::skeleton::Skeleton::paint_block_at(
+                    ui,
+                    rect,
+                    crate::skeleton::SkeletonReason::Loading,
+                );
+            }
+            Placeholder::Fill(ink) => {
+                let fill = ink.resolve(&ui.tokens());
+                ui.painter().rect_filled(rect, self.corner_radius, fill);
+            }
+            Placeholder::None => {}
+        }
     }
 
     fn paint_fallback(&self, ui: &egui::Ui, rect: Rect) {
-        self.paint_backdrop(ui, rect);
+        // A FAILED image is not a loading one: a pulsing skeleton over a
+        // broken URL promises something that is never coming. It gets the
+        // static backing and the glyph instead.
+        match self.placeholder {
+            Placeholder::None => {}
+            Placeholder::Skeleton | Placeholder::Fill(_) => {
+                let ink = match self.placeholder {
+                    Placeholder::Fill(ink) => ink,
+                    _ => Ink::Token(Token::BgHighlight),
+                };
+                let fill = ink.resolve(&ui.tokens());
+                ui.painter().rect_filled(rect, self.corner_radius, fill);
+            }
+        }
         let Some(glyph) = self.fallback_glyph else {
             return;
         };
@@ -271,6 +308,16 @@ mod tests {
         assert_eq!(DecodeSize::for_hint(SizeHint::default()), DecodeSize::Native);
         // What a real card asks for instead.
         assert_eq!(DecodeSize::for_hint(hint(256)), DecodeSize::Retina);
+    }
+
+    /// The default has to be the skeleton: an image that is ON ITS WAY needs
+    /// to say so. A flat rectangle is indistinguishable from a broken asset,
+    /// which is exactly how a browse grid of forty loading thumbnails read
+    /// after the spinner was removed.
+    #[test]
+    fn an_image_says_it_is_coming_unless_told_otherwise() {
+        let image = SmartImage::new("https://example.test/a.png");
+        assert_eq!(image.placeholder, Placeholder::Skeleton);
     }
 
     /// A failed load must not drive frames, or a broken URL spins forever.
