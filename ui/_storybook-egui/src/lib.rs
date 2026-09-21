@@ -233,6 +233,9 @@ mod app {
         }
 
         group "Media" {
+            ArtViewer => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::art_viewer::show(ui, &mut a.art_viewer_state, stories::art_viewer::Mode::Live);
+            ArtViewerCover => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::art_viewer::show(ui, &mut a.art_viewer_state, stories::art_viewer::Mode::CoverOnly);
+            ArtViewerFailed => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::art_viewer::show(ui, &mut a.art_viewer_state, stories::art_viewer::Mode::Failed);
             HtmlStage => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::html_stage::show(ui, &mut a.html_stage_state);
             ImageTextEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::image_text_editor::show(ui, &mut a.image_text_editor_state);
         }
@@ -338,6 +341,9 @@ mod app {
                 Self::SupplyBar => "Supply Bar",
                 Self::OrderList => "Order List",
                 Self::FileUpload => "File Upload",
+                Self::ArtViewer => "Art Viewer",
+                Self::ArtViewerCover => "Art Viewer (cover only)",
+                Self::ArtViewerFailed => "Art Viewer (failed)",
                 Self::HtmlStage => "HTML Stage",
                 Self::ImageTextEditor => "Image Text Editor",
                 Self::TxCart => "TX Cart",
@@ -655,6 +661,18 @@ mod app {
                 Self::HtmlStage => {
                     "A live on-chain art piece, running: a real chunked data:text/html document mounted \
                      in a sandboxed iframe and kept positioned over an egui rect"
+                }
+                Self::ArtViewer => {
+                    "One asset's art at size — the live on-chain piece where there is one, the cover \
+                     still where there is not, and a caption that says which"
+                }
+                Self::ArtViewerCover => {
+                    "The viewer for an asset with no on-chain art: the cover fills the frame and the \
+                     caption says there is nothing else to look for"
+                }
+                Self::ArtViewerFailed => {
+                    "The viewer when the art lookup fails: the cover is still shown, with the reason, \
+                     because a blank frame reads as a broken asset"
                 }
                 Self::ImageTextEditor => {
                     "Drag-to-position text overlays on images with font size, color, and outline controls. Flattens to final composite."
@@ -1459,6 +1477,7 @@ mod app {
         // Utility
         file_upload_state: stories::file_upload::FileUploadState,
         html_stage_state: stories::html_stage::HtmlStageState,
+        art_viewer_state: stories::art_viewer::ArtViewerStoryState,
         image_text_editor_state: stories::image_text_editor::ImageTextEditorState,
         // Mint dashboard
         order_list_state: stories::order_list::OrderListState,
@@ -1627,6 +1646,7 @@ mod app {
                 data_table_state: stories::data_table::DataTableStoryState::default(),
                 file_upload_state: stories::file_upload::FileUploadState::default(),
                 html_stage_state: stories::html_stage::HtmlStageState::default(),
+                art_viewer_state: stories::art_viewer::ArtViewerStoryState::default(),
                 order_list_state: stories::order_list::OrderListState::default(),
                 quantity_stepper_state:
                     stories::quantity_stepper::QuantityStepperStoryState::default(),

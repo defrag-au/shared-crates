@@ -16,6 +16,10 @@ pub mod animated_counter;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod app_header;
 pub mod arrival_field;
+// The viewer for one asset's art — a live on-chain piece where there is one,
+// the cover still where there is not. Cross-platform: without a DOM the live
+// half degrades to the cover and says so.
+pub mod art_viewer;
 pub mod asset_card;
 pub mod auth;
 pub mod auth_worker;
@@ -248,6 +252,7 @@ pub use activity_feed::{
 pub use activity_lanes::{ActivityLanes, ActivityLanesResponse, Lane};
 pub use animated_counter::AnimatedCounter;
 pub use arrival_field::{ArrivalField, ArrivalFieldResponse};
+pub use art_viewer::{ArtSource, ArtViewerResponse, ArtViewerState, ArtViewerTarget};
 pub use button_group::{ButtonGroup, ButtonGroupButton, ButtonGroupResponse};
 pub use buttons::UiButtonExt;
 pub use capital_flow::{

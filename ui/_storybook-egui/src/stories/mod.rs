@@ -4,6 +4,7 @@ pub mod account_bar;
 pub mod activity_feed;
 pub mod agent_config;
 pub mod aliens_fixture;
+pub mod art_viewer;
 pub mod asset_card;
 pub mod async_data;
 pub mod background;
