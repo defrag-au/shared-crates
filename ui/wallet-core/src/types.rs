@@ -101,100 +101,35 @@ impl WalletProvider {
     }
 }
 
-/// Cardano network
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Network {
-    Mainnet,
-    Preprod,
-    Preview,
-}
-
-impl Network {
-    pub fn network_id(&self) -> u8 {
-        match self {
-            Network::Mainnet => 1,
-            Network::Preprod | Network::Preview => 0,
-        }
-    }
-
-    /// The CAIP-style `chain:network` wire form workers speak.
-    ///
-    /// This enum existed without it, so five places parsed the string by hand
-    /// instead — `expected.contains("mainnet")` in `stake_session`, a
-    /// `strip_prefix("cardano:")` in `collection_list`, a full-string match in
-    /// `image-core`, and two more. Each was right about a different subset.
-    pub fn as_chain_str(&self) -> &'static str {
-        match self {
-            Network::Mainnet => "cardano:mainnet",
-            Network::Preprod => "cardano:preprod",
-            Network::Preview => "cardano:preview",
-        }
-    }
-
-    /// Parse the `chain:network` wire form.
-    ///
-    /// Tolerant of a bare network name (`"preprod"`) because some callers store
-    /// it stripped, and of case because nothing guarantees it. `None` for
-    /// anything unrecognised — **deliberately not a mainnet default**: guessing
-    /// mainnet for an unknown string is how a preprod wallet gets told it is on
-    /// the wrong network, or worse, how a mainnet check silently passes.
-    pub fn from_chain_str(s: &str) -> Option<Self> {
-        // Lowercase BEFORE stripping: the other order fails on `Cardano:PREPROD`
-        // because the prefix no longer matches, and the whole string then fails
-        // the arm too. Caught by `case_does_not_matter`.
-        let lower = s.to_ascii_lowercase();
-        let bare = lower.strip_prefix("cardano:").unwrap_or(&lower);
-        match bare {
-            "mainnet" => Some(Network::Mainnet),
-            "preprod" => Some(Network::Preprod),
-            "preview" => Some(Network::Preview),
-            _ => None,
-        }
-    }
-}
+/// The Cardano networks, re-exported from `chains` under the name this crate
+/// has always used.
+///
+/// The type moved because it was never wasm-specific — a pure enum living in a
+/// wasm-bindgen crate is why `egui-widgets` could not name a chain without
+/// turning on its `cardano` feature. Same shape as `data::ownership_policies`'s
+/// re-export of `SyncSource`, and for the same reason: existing importers keep
+/// working.
+///
+/// `Network` here means a Cardano network and nothing else. For a whole chain,
+/// including EVM, see `chains::ChainRef`.
+pub use chains::CardanoNetwork as Network;
 
 #[cfg(test)]
-mod network_tests {
+mod network_alias_tests {
     use super::Network;
 
+    /// The parsing rules moved to `chains` with the type and are tested there,
+    /// against the implementation. What is pinned here is the compatibility
+    /// surface itself: an importer written against `wallet_core::Network` still
+    /// resolves, and still behaves.
     #[test]
-    fn the_wire_form_round_trips() {
-        for n in [Network::Mainnet, Network::Preprod, Network::Preview] {
-            assert_eq!(Network::from_chain_str(n.as_chain_str()), Some(n));
-        }
-    }
-
-    #[test]
-    fn a_bare_network_name_parses_too() {
-        // Some callers store the stripped form.
-        assert_eq!(Network::from_chain_str("preprod"), Some(Network::Preprod));
-        assert_eq!(Network::from_chain_str("mainnet"), Some(Network::Mainnet));
-    }
-
-    #[test]
-    fn case_does_not_matter() {
+    fn the_re_export_still_resolves_and_parses() {
         assert_eq!(
-            Network::from_chain_str("Cardano:PREPROD"),
+            Network::from_chain_str("cardano:preprod"),
             Some(Network::Preprod)
         );
-    }
-
-    #[test]
-    fn an_unknown_network_is_none_and_never_mainnet() {
-        // The dangerous default. If this ever returns `Mainnet`, a wrong-network
-        // pre-check passes silently and a preprod wallet signs a mainnet
-        // challenge.
-        assert_eq!(Network::from_chain_str(""), None);
-        assert_eq!(Network::from_chain_str("cardano:"), None);
-        assert_eq!(Network::from_chain_str("ethereum:1"), None);
-        assert_eq!(Network::from_chain_str("sanchonet"), None);
-    }
-
-    #[test]
-    fn only_mainnet_has_network_id_one() {
         assert_eq!(Network::Mainnet.network_id(), 1);
-        assert_eq!(Network::Preprod.network_id(), 0);
-        assert_eq!(Network::Preview.network_id(), 0);
+        assert_eq!(Network::Preprod.as_chain_str(), "cardano:preprod");
     }
 }
 

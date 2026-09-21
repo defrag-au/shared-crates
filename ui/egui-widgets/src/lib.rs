@@ -260,7 +260,7 @@ pub use capital_flow::{
     cumulative_at, legend as capital_legend, state_at,
 };
 pub use card_browser::{
-    CardBrowserConfig, CardBrowserResponse, CardBrowserState, CardRenderContext,
+    CardBrowserConfig, CardBrowserResponse, CardBrowserState, CardRenderContext, CardSection,
 };
 pub use channel_bands::{
     CHANNEL_PALETTE, ChannelBands, ChannelBandsResponse, ChannelSeries, OTHER_COLOR, OTHER_LABEL,

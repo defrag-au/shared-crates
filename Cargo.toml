@@ -31,6 +31,7 @@ members = [
     "worker-utils",
     "asset-rarity",
     "arcade-core",
+    "chains",
     "chain-ledger",
     "chain-ledger-koios",
     "chain-ledger-case",
@@ -184,6 +185,10 @@ address-registry = { path = "address-registry" }
 asset-intents = { path = "asset-intents" }
 authorizations = { path = "authorizations" }
 cardano-assets = { path = "cardano-assets" }
+# Chain identity — which chain, and which network on it, as a CAIP-2 string on
+# the wire. Pure serde, no runtime, so a widget, a worker and a macroquad game
+# can all name a chain without any of them dragging the others in.
+chains = { path = "chains" }
 image-hash = { path = "image-hash" }
 discord-auth = { path = "discord-auth" }
 # The serde-only Discord message model, and the client that sends it. Split

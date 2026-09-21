@@ -1,0 +1,12 @@
+[package]
+name = "chains"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "Chain identity — which chain, and which network on it, as a CAIP-2 string on the wire"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
