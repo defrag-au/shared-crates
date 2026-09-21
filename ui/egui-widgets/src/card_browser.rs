@@ -512,6 +512,17 @@ pub fn show_sectioned<T>(
                             // a card. `max_rect` is the whole grid width, while
                             // `available_width` here would be just the rest of
                             // the current row.
+                            //
+                            // `end_row` first, because a wrapped row otherwise
+                            // inherits the height of the row above it — a card
+                            // row — and the header centres in that, which reads
+                            // as a large empty gap under every heading but the
+                            // first. Skipped for the first section, whose row
+                            // is already the header's own height and where it
+                            // would only add a stray gutter.
+                            if idx > 0 {
+                                ui.end_row();
+                            }
                             let (header_rect, _) = ui.allocate_exact_size(
                                 Vec2::new(ui.max_rect().width(), header_height),
                                 Sense::hover(),
@@ -741,12 +752,67 @@ mod section_tests {
     use crate::card_browser;
     use crate::smart_image::ImagePass;
     use crate::test_pass::TestPass as _;
+    use crate::theme::{Space, ThemeExt as _};
 
     fn sections(lens: &[usize]) -> Vec<CardSection> {
         lens.iter()
             .enumerate()
             .map(|(i, &len)| CardSection::new(format!("section {i}"), "", len))
             .collect()
+    }
+
+    fn test_config() -> CardBrowserConfig {
+        CardBrowserConfig {
+            card_width: 100.0,
+            text_lines: 1,
+            scroll_id: "section_layout_test",
+            ..Default::default()
+        }
+    }
+
+    /// Lay the grid out for real and hand back each card's rect.
+    ///
+    /// The viewport fits two card columns and not a third (2 × 108pt of card +
+    /// gutter), so a row can be left with room beside its last card — which is
+    /// where a header that had not claimed a row would land.
+    fn layout(item_count: usize, sections: &[CardSection]) -> Vec<(usize, egui::Rect)> {
+        let ctx = egui::Context::default();
+        let config = test_config();
+        let mut items: Vec<usize> = (0..item_count).collect();
+        let mut state = CardBrowserState::default();
+        let mut cards: Vec<(usize, egui::Rect)> = Vec::new();
+
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(260.0, 600.0),
+            )),
+            ..Default::default()
+        };
+        let _ = ctx.test_pass(input, |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
+                card_browser::show_sectioned(
+                    ui,
+                    &mut state,
+                    &mut items,
+                    &config,
+                    sections,
+                    |_ui, card, item: &mut usize| {
+                        if card.pass == ImagePass::Paint {
+                            cards.push((*item, card.rect));
+                        }
+                    },
+                    |_ui, _idx, _item: &mut usize| {},
+                );
+            });
+        });
+
+        assert_eq!(
+            cards.len(),
+            item_count,
+            "every card is inside this viewport"
+        );
+        cards
     }
 
     fn header_indices(sections: &[CardSection], item_count: usize) -> Vec<usize> {
@@ -807,67 +873,67 @@ mod section_tests {
     fn a_section_starts_a_new_row_for_its_first_card() {
         // Three cards then one, over a two-column viewport: the fourth card
         // fits beside the third, unless a header takes that row.
-        let layout = |sections: &[CardSection]| -> Vec<(usize, f32)> {
-            let ctx = egui::Context::default();
-            let config = CardBrowserConfig {
-                card_width: 100.0,
-                text_lines: 1,
-                scroll_id: "section_row_test",
-                ..Default::default()
-            };
-            let mut items: Vec<usize> = (0..4).collect();
-            let mut state = CardBrowserState::default();
-            let mut card_tops: Vec<(usize, f32)> = Vec::new();
-
-            let input = egui::RawInput {
-                // Two card columns and not a third (2 × 108pt of card +
-                // gutter).
-                screen_rect: Some(egui::Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    egui::vec2(260.0, 600.0),
-                )),
-                ..Default::default()
-            };
-            let _ = ctx.test_pass(input, |ui| {
-                egui::CentralPanel::default().show(ui, |ui| {
-                    card_browser::show_sectioned(
-                        ui,
-                        &mut state,
-                        &mut items,
-                        &config,
-                        sections,
-                        |_ui, card, item: &mut usize| {
-                            if card.pass == ImagePass::Paint {
-                                card_tops.push((*item, card.rect.min.y));
-                            }
-                        },
-                        |_ui, _idx, _item: &mut usize| {},
-                    );
-                });
-            });
-            assert_eq!(card_tops.len(), 4, "every card is inside this viewport");
-            assert_eq!(
-                card_tops[0].1, card_tops[1].1,
-                "two cards should share the first row — otherwise neither run \
-                 says anything about wrapping"
-            );
-            card_tops
-        };
-
-        let ungrouped = layout(&[]);
+        let ungrouped = layout(4, &[]);
         assert_eq!(
-            ungrouped[3].1, ungrouped[2].1,
+            ungrouped[3].1.min.y, ungrouped[2].1.min.y,
             "the fourth card should sit beside the third when nothing is \
              grouped — the viewport has to leave room for it"
         );
 
-        let grouped = layout(&[CardSection::new("A", "3", 3), CardSection::new("B", "1", 1)]);
+        let grouped = layout(
+            4,
+            &[CardSection::new("A", "3", 3), CardSection::new("B", "1", 1)],
+        );
         assert!(
-            grouped[3].1 > grouped[2].1,
+            grouped[3].1.min.y > grouped[2].1.min.y,
             "the second section's only card (y={}) is on the same row as the \
              first section's last card (y={}) — the header did not claim a row",
-            grouped[3].1,
-            grouped[2].1,
+            grouped[3].1.min.y,
+            grouped[2].1.min.y,
+        );
+    }
+
+    /// A heading costs a line, not a card row.
+    ///
+    /// A wrapping layout gives the first item of a new row the height of the row
+    /// above it, so a header allocated straight after a card row was drawn into
+    /// a row as tall as a card with its text centred in that — which is a large
+    /// empty gap under every heading but the first, where there is no card row to
+    /// inherit from.
+    ///
+    /// Measured against the first heading, whose row is the header's own height:
+    /// crossing a section boundary must cost the normal row pitch plus one
+    /// heading.
+    #[test]
+    fn a_heading_costs_a_line_not_a_card_row() {
+        let ctx = egui::Context::default();
+        let config = test_config();
+        let gutter = ctx.tokens().space(config.spacing.unwrap_or(Space::Md));
+        let card_height = config.card_height();
+
+        let ungrouped = layout(5, &[]);
+        let grouped = layout(
+            5,
+            &[CardSection::new("A", "3", 3), CardSection::new("B", "2", 2)],
+        );
+
+        // The first heading's height, read off the offset it pushes the first
+        // card down by against the ungrouped run.
+        let heading_height = grouped[0].1.min.y - ungrouped[0].1.min.y - gutter;
+        assert!(
+            heading_height > 0.0,
+            "the heading should push the first card down, not sit beside it"
+        );
+
+        // Section A's last row to section B's first row: one normal pitch, then
+        // the heading, then the gutter that separates it from its own cards.
+        let boundary = grouped[3].1.min.y - grouped[2].1.min.y;
+        let expected = card_height + gutter + heading_height + gutter;
+        assert!(
+            (boundary - expected).abs() < 1.0,
+            "a section boundary costs {boundary}pt of vertical space, but one \
+             heading ({heading_height}pt) over the normal pitch ({card_height}pt \
+             + {gutter}pt) is {expected}pt — a heading is taking a card row",
         );
     }
 }
