@@ -54,6 +54,12 @@ pub enum ArtSource {
 /// crate has no opinion about where it came from.
 #[derive(Clone, Debug, Default)]
 pub struct ArtViewerTarget {
+    /// Stable identity — the asset's `policy:asset_name_hex`, or whatever else
+    /// the host uses. **Not** the display name: two assets in a collection can
+    /// share one, and this is what decides whether re-opening is the same asset
+    /// or a different one, which in turn decides whether the mounted piece is
+    /// kept or torn down.
+    pub id: String,
     /// The asset's display name.
     pub name: String,
     /// One line under the name — collection, rarity rank, whatever the host
@@ -96,13 +102,14 @@ impl ArtViewerState {
     ///
     /// Re-opening with a *different* target resets the source to
     /// [`ArtSource::Unknown`], so a stale `Live` can never be handed to the next
-    /// asset's stage. Re-opening the same one keeps what was already found —
-    /// a host that calls this every frame must not re-ask every frame.
+    /// asset's stage. Identity is [`ArtViewerTarget::id`], not the display name.
+    /// Re-opening the same one keeps what was already found — a host that calls
+    /// this every frame must not re-ask every frame.
     pub fn open(&mut self, target: ArtViewerTarget) {
         let changed = self
             .target
             .as_ref()
-            .is_none_or(|current| current.name != target.name);
+            .is_none_or(|current| current.id != target.id);
         if changed {
             self.source = ArtSource::Unknown;
             self.teardown();
@@ -453,9 +460,10 @@ fn footer(ui: &mut Ui, interactive: &mut bool, response: &mut ArtViewerResponse)
 mod tests {
     use super::*;
 
-    fn target(name: &str) -> ArtViewerTarget {
+    fn target(id: &str) -> ArtViewerTarget {
         ArtViewerTarget {
-            name: name.to_string(),
+            id: id.to_string(),
+            name: format!("name of {id}"),
             cover_url: Some("https://example.test/cover.jpg".into()),
             ..Default::default()
         }
@@ -468,10 +476,10 @@ mod tests {
     #[test]
     fn opening_a_different_target_drops_the_previous_art() {
         let mut state = ArtViewerState::default();
-        state.open(target("First"));
+        state.open(target("a"));
         state.set_source(live());
 
-        state.open(target("Second"));
+        state.open(target("b"));
         assert_eq!(
             state.source(),
             &ArtSource::Unknown,
@@ -480,19 +488,34 @@ mod tests {
     }
 
     #[test]
+    fn identity_is_the_id_not_the_display_name() {
+        // Two assets can share a display name. Keying on it would treat the
+        // second as "the same one" and leave the first one's piece mounted.
+        let mut state = ArtViewerState::default();
+        state.open(target("first"));
+        state.set_source(live());
+
+        let mut same_name = target("second");
+        same_name.name = state.target().expect("open").name.clone();
+        state.open(same_name);
+
+        assert_eq!(state.source(), &ArtSource::Unknown);
+    }
+
+    #[test]
     fn reopening_the_same_target_keeps_what_was_already_found() {
         // A host may call `open` every frame; resetting would re-ask every frame.
         let mut state = ArtViewerState::default();
-        state.open(target("Same"));
+        state.open(target("same"));
         state.set_source(ArtSource::CoverOnly);
-        state.open(target("Same"));
+        state.open(target("same"));
         assert_eq!(state.source(), &ArtSource::CoverOnly);
     }
 
     #[test]
     fn closing_clears_the_target() {
         let mut state = ArtViewerState::default();
-        state.open(target("Piece"));
+        state.open(target("piece"));
         assert!(state.is_open());
         state.close();
         assert!(!state.is_open());

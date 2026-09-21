@@ -140,7 +140,12 @@ fn live_piece() -> Option<String> {
 }
 
 fn target_for(mode: Mode) -> ArtViewerTarget {
-    ArtViewerTarget {
+    let base = ArtViewerTarget {
+        id: format!(
+            "{}:{}",
+            onchain_fixture::POLICY_ID,
+            onchain_fixture::ASSET_NAME_HEX
+        ),
         name: match mode {
             Mode::Live => onchain_fixture::DISPLAY_NAME.to_string(),
             Mode::CoverOnly => "Toolhead #2274".to_string(),
@@ -151,5 +156,18 @@ fn target_for(mode: Mode) -> ArtViewerTarget {
         // point of it.
         cover_url: Some(onchain_fixture::cover_url()),
         traits: onchain_fixture::traits(),
+    };
+    // Distinct identities per story, or moving between them would read as the
+    // same asset and keep the previous state's source.
+    match mode {
+        Mode::Live => base,
+        Mode::CoverOnly => ArtViewerTarget {
+            id: "cover-only".into(),
+            ..base
+        },
+        Mode::Failed => ArtViewerTarget {
+            id: "failed".into(),
+            ..base
+        },
     }
 }
