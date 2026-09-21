@@ -11,23 +11,24 @@ To change a rule, change the rule — not this block.
 The lead of each rule below, repeated so it is read first. Full text follows in place.
 
 - **Working first — fix problems, don't hide them** — Deliver working functionality before optimising architecture. Fix the cause; never comment out, disable, or route around a problem to get a build green.
-- **Never invent data to satisfy an interface** — Never fabricate a value to make a function, fixture or screen look functional. Find where the data actually comes from — a config file, a table, an API response, a sibling implementation, an env var. A real search turning up nothing → ask, do not invent.
+- **Never invent data to satisfy an interface** — Never fabricate a value to make a function, fixture or screen look functional. Before writing a placeholder, find where the data actually comes from — a config file, a table, an API response, a sibling implementation, an env var. A real search turning up nothing → ask, do not invent.
 - **Tests are the specification — never edit an assertion to make it pass** — **Never modify a test assertion without explicit permission.** When behaviour is reported as wrong, the fix goes in the code; if the fix makes the test fail, the fix is wrong.
-- **Do not report success you have not observed** — Claim only what you ran and saw this session. "Tests pass" = the command ran and its output showed them passing · "it builds" = a build ran (a successful edit is not one) · "it renders" = it was rendered and looked at · "fixed" = the symptom was reproduced, then observed gone.
+- **Do not report success you have not observed** — Claim only what you ran and saw this session. "Tests pass" = the command ran and its output showed them passing · "it builds" = a build ran (a successful edit is not one) · "it renders" = it was rendered and looked at (see `org/defrag/look-at-what-you-built`) · "fixed" = the symptom was reproduced, then observed gone.
 
 ## Do not report success you have not observed
 <!-- rule: rules/core/verify-before-claiming -->
 
 - Claim only what you ran and saw this session. "Tests pass" = the command ran and its
   output showed them passing · "it builds" = a build ran (a successful edit is not one) ·
-  "it renders" = it was rendered and looked at · "fixed" = the symptom was reproduced, then
-  observed gone.
+  "it renders" = it was rendered and looked at (see `org/defrag/look-at-what-you-built`) ·
+  "fixed" = the symptom was reproduced, then observed gone.
 - Validation not run → say so and say why (no toolchain reachable, needs a device, needs
   credentials). An unearned "done" moves the discovery of the failure to me.
 - Also not evidence: a partial result reported as complete (three of four done → say which
   three) · a step silently skipped (name it, do not drop it) · a green exit code from a
   command that did nothing — a `str.replace` matching no anchor, a test filter matching no
-  tests · a narrower run than claimed (a single-crate build is not a workspace build).
+  tests, check the output says what you think it says · a narrower run than claimed (a
+  single-crate build is not a workspace build).
 
 
 ## Tests are the specification — never edit an assertion to make it pass
@@ -67,6 +68,8 @@ sign-off before changing it.
   - comment out code to silence a compilation error
   - fight type/lifetime/async issues before the plain logic is proven
   - rewrite a signature to make an error go away rather than understanding it
+  - say "we'll implement that later" about a core feature rather than an edge
+  - spend longer on the shape of the code than on whether the feature works
 - Deviate only when continuing would break something that works, introduce a security hole,
   or risk data corruption — and then fix it properly, do not disable it.
 
@@ -76,15 +79,16 @@ sign-off before changing it.
 ## Never invent data to satisfy an interface
 <!-- rule: rules/core/never-make-things-up -->
 
-- Never fabricate a value to make a function, fixture or screen look functional. Find where
-  the data actually comes from — a config file, a table, an API response, a sibling
-  implementation, an env var. A real search turning up nothing → ask, do not invent.
+- Never fabricate a value to make a function, fixture or screen look functional. Before
+  writing a placeholder, find where the data actually comes from — a config file, a table, an
+  API response, a sibling implementation, an env var. A real search turning up nothing → ask,
+  do not invent.
 - Same rule for: a plausible address, hash or timestamp invented for a fixture (it hides real
   parsing bugs, because invented data is already in the format the code expects) ·
   `unwrap_or(0)`, `Default::default()` or a hard-coded fallback on a value that should have
-  been sourced · a struct written from memory of what an API "should" return · a test
-  asserting what the code currently does · a confident explanation of a failure you have not
-  verified.
+  been sourced · a struct written from memory of what an API "should" return (cite the actual
+  response or the docs) · a test asserting what the code currently does · a confident
+  explanation of a failure you have not verified.
 - Choosing a sensible default and **stating it** is fine. Inventing a value and presenting it
   as data is not. Test: if someone asks "where does this number come from?", is there an
   answer? "Nowhere yet" → say so and ask.
@@ -94,9 +98,12 @@ sign-off before changing it.
 <!-- rule: rules/core/dont-rush-new-features -->
 
 - Asked for X → build X and stop. Do not add Y and Z because they seem wanted: no config
-  option "for flexibility", no trait "for testability", no abstraction "for later".
-- Three exceptions only: the task cannot be completed without it · not doing it would break
-  something that currently works · I asked you to use your judgement.
+  option "for flexibility", no trait "for testability", no abstraction "for later" — unless
+  the task named it.
+- Plan each logical step of implementation together, one at a time.
+- Three exceptions only: the task cannot be completed without it (a caller that must be
+  updated to keep the workspace compiling, a type the requested feature needs to typecheck) ·
+  not doing it would break something that currently works · I asked you to use your judgement.
 - Everything else → mention it and let me decide. A one-line "this would also allow X if you
   want it next" is welcome. Building X uninvited is not.
 - Applies to cleanup too: renames, import reordering, tidying a neighbouring function, bumping
@@ -150,8 +157,9 @@ or write it ourselves" is not a set of options.
   or a heredoc — not for a big change, and not for "just one small change". This applies to
   every file: source, config, docs, rules, memory.
 - A change that touches ten places is ten edit calls, not one script.
-- The editor tools fail loudly on a stale or ambiguous match and show a reviewable diff. A
-  script's `str.replace` **silently does nothing** when the anchor text has moved.
+- The editor tools verify the file was read first, fail loudly on a stale or ambiguous
+  match, and show a reviewable diff. A script's `str.replace` **silently does nothing** when
+  the anchor text has moved.
 - Still fine: generating a file's *content* with a script when the content is genuinely
   computed (a catalogue from source headers, a table derived from data) — writing it to disk
   still goes through the write tool. And reads through the shell (`cat`, `grep`, `find`) to
@@ -235,7 +243,8 @@ KOIOS_API_KEY=<real value>
 <!-- rule: rules/rust/devshell-first -->
 
 `cargo`, `rustc`, `clippy`, `rustfmt`, `trunk`, `wrangler`, `node` and the wasm targets are
-**not on `PATH`**. Wrap every command:
+**not on `PATH`** — they come only from the devshell defined in `flake.nix`. Wrap every
+command:
 
 ```sh
 nix develop -c cargo build --workspace
@@ -246,9 +255,10 @@ nix develop -c cargo fmt
 
 `nix develop --command <cmd>` is equivalent.
 
-**In a sandboxed shell, `nix develop` cannot reach the daemon socket** —
-`cannot connect to socket … Operation not permitted`. Use direnv instead, which reads the
-already-realised devshell out of `.direnv/` and needs no daemon:
+**In a sandboxed shell, `nix develop` cannot reach the daemon socket**
+(`/nix/var/nix/daemon-socket/socket`) — `cannot connect to socket … Operation not
+permitted`. Use direnv instead, which reads the already-realised devshell out of `.direnv/`
+and needs no daemon:
 
 ```sh
 direnv exec . cargo build -p <crate>
@@ -507,7 +517,8 @@ the row height is already decided.
 <!-- rule: rules/org/defrag/egui-icons-only -->
 
 Never use raw Unicode symbols — `●` `○` `✓` `✕` `→` `★` and friends. Neither the default egui
-font nor the Phosphor font covers those blocks, so they render as broken boxes in the browser.
+font nor the Phosphor font covers the geometric and symbol Unicode blocks, so they render as
+broken boxes in the browser.
 
 Use `PhosphorIcon` from `icons.rs`:
 
@@ -549,7 +560,8 @@ Blocks of text are the wrong tool in egui — reach for an encoding instead:
 <!-- rule: rules/org/defrag/commit-conventions -->
 
 Applies only when asked to prepare a commit or draft a PR — see
-`core/git-is-the-users-domain`.
+`core/git-is-the-users-domain` for the standing rule
+that you do not commit uninvited.
 
 #### Commits
 
