@@ -198,6 +198,115 @@ impl AssetEnvelope {
         }
         None
     }
+
+    /// The asset's **live art**, if its metadata carries any.
+    ///
+    /// A fully on-chain generative piece's artwork is an HTML document: a
+    /// chunked `data:text/html;utf8,…` URI in `files[]` that a browser is
+    /// meant to *run*, not decode into pixels. Nothing downstream of
+    /// `image` can serve it — the IIIF/mirror path resolves one still per
+    /// asset, and a document is not a still — so the read layer has to be
+    /// told the piece is there. This is that answer.
+    ///
+    /// Matched on the declared `mediaType` **or** the `src` prefix, because
+    /// both appear in the corpus: collections that declare `text/html`
+    /// honestly, and collections whose file entry omits or misstates it while
+    /// the payload is plainly a document. `files[].mediaType` is not validated
+    /// by anything on chain, so trusting either alone misses real pieces.
+    ///
+    /// The top-level `image` is checked last — the metadata profile that
+    /// aliases `image` to the on-chain HTML, so a marketplace that follows
+    /// `image` still finds something. It is the profile with no cover, which
+    /// [`LiveArt::cover`] then reports as `None`.
+    #[must_use]
+    pub fn live_art(&self) -> Option<LiveArt> {
+        let src = self.live_art_src()?;
+        // A still only counts as a cover if it is not the piece itself — the
+        // aliased profile above points `image` at the same document, and
+        // labelling that a cover would send a viewer off to render HTML as an
+        // `<img>`.
+        let cover = self
+            .image
+            .as_ref()
+            .map(PrimitiveOrList::dechunked)
+            .filter(|image| {
+                let image = image.trim();
+                !image.is_empty() && image != src && !is_html_uri(image)
+            });
+        Some(LiveArt { src, cover })
+    }
+
+    /// The live-art `src` alone. See [`Self::live_art`] for the matching
+    /// rules.
+    fn live_art_src(&self) -> Option<String> {
+        if let Some(files) = &self.files {
+            for file in files {
+                let src = file.get_src();
+                // An entry can declare `text/html` and carry nothing — a
+                // truncated or hand-edited mint. Falling through to the next
+                // file beats returning an empty document to an iframe.
+                if src.trim().is_empty() {
+                    continue;
+                }
+                if is_html_media_type(file.media_type()) || is_html_uri(&src) {
+                    return Some(src);
+                }
+            }
+        }
+        self.image
+            .as_ref()
+            .map(PrimitiveOrList::dechunked)
+            .filter(|image| is_html_uri(image))
+    }
+}
+
+/// The `data:` prefix that means the payload is an HTML document.
+const HTML_DATA_PREFIX: &str = "data:text/html";
+
+/// A piece whose art is a **document to run** rather than a still to decode.
+///
+/// Returned by [`AssetEnvelope::live_art`]. The distinction is the whole
+/// reason this type exists: a still is fetched, resized and cached once, and
+/// a document is handed to a browser to execute, so the two cannot share a
+/// read path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveArt {
+    /// The piece. Chunking resolved: a `data:` URI to hand to an iframe
+    /// verbatim, or — for the off-chain case — a URL to one.
+    pub src: String,
+    /// The still that stands in for the piece everywhere `<img>`-shaped
+    /// (grid thumbnails, marketplace cards). `None` when the piece has no
+    /// separate still — the strictly non-conformant, no-cover profile the
+    /// import design leaves open.
+    pub cover: Option<String>,
+}
+
+/// `mediaType` declares the file is a document. Compared case-insensitively
+/// and by prefix, so the parameter forms (`text/html; charset=utf-8`) count.
+fn is_html_media_type(media_type: &str) -> bool {
+    media_type
+        .trim()
+        .to_ascii_lowercase()
+        .starts_with("text/html")
+}
+
+/// `src` is an HTML document by its own prefix — the shape a piece ships as
+/// (`data:text/html;utf8,<!doctype%20html>…`).
+///
+/// `str::get` rather than a byte slice so a multi-byte first character yields
+/// `None` instead of panicking, and the trailing separator check keeps a
+/// hypothetical `data:text/html5` from being mistaken for a document.
+fn is_html_uri(src: &str) -> bool {
+    let src = src.trim_start();
+    match src.get(..HTML_DATA_PREFIX.len()) {
+        Some(prefix) if prefix.eq_ignore_ascii_case(HTML_DATA_PREFIX) => {
+            matches!(
+                src.as_bytes().get(HTML_DATA_PREFIX.len()),
+                Some(b';' | b',')
+            )
+        }
+        _ => false,
+    }
 }
 
 /// Parse raw asset metadata JSON into an [`Asset`] via the v2 path.
@@ -453,5 +562,125 @@ fn json_to_strings(value: &serde_json::Value) -> Vec<String> {
             })
             .collect(),
         _ => vec![],
+    }
+}
+
+#[cfg(test)]
+mod live_art_tests {
+    use super::*;
+
+    /// A real on-chain-HTML piece: `files[0]` declares `text/html` and its
+    /// `src` is a chunked `data:text/html;utf8,…` (157 chunks, 10,040 bytes
+    /// joined), with an IPFS still as the top-level `image`. This is the
+    /// shape the whole live-art path exists for.
+    const BLOCKGEN_ARTIST: &str =
+        include_str!("../resources/test/blockgen-artist-charlesmachin.json");
+
+    fn envelope(json: &str) -> AssetEnvelope {
+        serde_json::from_str(json).expect("fixture must deserialize")
+    }
+
+    #[test]
+    fn a_chunked_html_file_is_the_live_art_and_the_image_is_its_cover() {
+        let art = envelope(BLOCKGEN_ARTIST)
+            .live_art()
+            .expect("the fixture ships on-chain art");
+
+        // Every chunk joined in order, not just the first — a viewer handed a
+        // truncated document renders a fragment and looks like a broken piece.
+        assert_eq!(art.src.len(), 10_040);
+        assert!(art.src.starts_with("data:text/html;utf8,<html>"));
+        assert!(art.src.ends_with("</script></canvas></body></html>"));
+
+        assert_eq!(
+            art.cover.as_deref(),
+            Some("ipfs://QmTDNG1jw2dNDF5s6oVESUX22ydCfobZt7sTxtAtJroDkk")
+        );
+    }
+
+    #[test]
+    fn a_still_only_collection_has_no_live_art() {
+        let json = r#"{"name":"Pirate #1","image":"ipfs://QmStill","mediaType":"image/png"}"#;
+        assert_eq!(envelope(json).live_art(), None);
+    }
+
+    #[test]
+    fn the_payload_decides_when_mediatype_lies() {
+        // `mediaType` says PNG, the payload is a document. Nothing validates
+        // the field, so the prefix has to be able to win on its own.
+        let json = r#"{"image":"ipfs://QmStill","files":[{"mediaType":"image/png","src":"data:text/html;utf8,<html></html>"}]}"#;
+        let art = envelope(json).live_art().expect("prefix must match");
+        assert_eq!(art.src, "data:text/html;utf8,<html></html>");
+        assert_eq!(art.cover.as_deref(), Some("ipfs://QmStill"));
+    }
+
+    #[test]
+    fn the_declared_mediatype_decides_when_the_src_is_served() {
+        // Off-chain art: a URL to an HTML document. No `data:` prefix to
+        // match, so the declared type is the only signal there is.
+        let json = r#"{"image":"ipfs://QmStill","files":[{"mediaType":"text/html; charset=utf-8","src":"https://example.test/piece.html"}]}"#;
+        let art = envelope(json).live_art().expect("declared html must match");
+        assert_eq!(art.src, "https://example.test/piece.html");
+    }
+
+    #[test]
+    fn an_image_aliased_to_the_html_is_the_piece_and_there_is_no_cover() {
+        // The no-cover profile: `image` points at the on-chain document so a
+        // marketplace that follows `image` finds something. Reporting that as
+        // a cover would send a viewer to render HTML into an `<img>`.
+        let json = r#"{"image":["data:text/html;utf8,<html>","</html>"],"files":[{"mediaType":"text/html","src":"data:text/html;utf8,<html></html>"}]}"#;
+        let art = envelope(json)
+            .live_art()
+            .expect("the aliased image is the art");
+        assert_eq!(art.src, "data:text/html;utf8,<html></html>");
+        assert_eq!(art.cover, None);
+    }
+
+    #[test]
+    fn the_aliased_image_is_found_when_files_carry_no_document() {
+        // Same profile, but the document lives only in `image` — a piece whose
+        // `files[]` entry was dropped or never minted.
+        let json = r#"{"image":"data:text/html;utf8,<html></html>","files":[{"mediaType":"image/png","src":"ipfs://QmStill"}]}"#;
+        let art = envelope(json)
+            .live_art()
+            .expect("image must be the fallback");
+        assert_eq!(art.src, "data:text/html;utf8,<html></html>");
+        assert_eq!(art.cover, None);
+    }
+
+    #[test]
+    fn an_empty_document_does_not_win_over_a_real_file() {
+        // A `text/html` entry carrying nothing — a truncated or hand-edited
+        // mint. Handing an iframe an empty document is worse than the next
+        // file, which is where the real art is.
+        let json = r#"{"files":[{"mediaType":"text/html","src":""},{"mediaType":"text/html","src":"data:text/html;utf8,<html>real</html>"}]}"#;
+        let art = envelope(json)
+            .live_art()
+            .expect("the second file is the art");
+        assert_eq!(art.src, "data:text/html;utf8,<html>real</html>");
+    }
+
+    #[test]
+    fn a_plain_image_collection_reports_no_live_art() {
+        // The overwhelmingly common case, and the one that must not pay for
+        // this: a piece whose only media is a still.
+        let json = r#"{"name":"Toolhead","image":"ipfs://QmStill","files":[{"mediaType":"image/webp","src":"ipfs://QmHiRes"}]}"#;
+        assert_eq!(envelope(json).live_art(), None);
+    }
+
+    #[test]
+    fn html_uri_matching_is_exact_at_the_separator() {
+        assert!(is_html_uri("data:text/html;utf8,<html>"));
+        assert!(is_html_uri("data:text/html;base64,PGh0bWw+"));
+        assert!(is_html_uri("data:text/html,<html>"));
+        assert!(is_html_uri("DATA:TEXT/HTML;utf8,<html>"));
+        assert!(is_html_uri("  data:text/html;utf8,<html>"));
+
+        assert!(!is_html_uri("data:text/html5;utf8,<html>"));
+        assert!(!is_html_uri("data:image/png;base64,iVBOR"));
+        assert!(!is_html_uri("ipfs://QmStill"));
+        assert!(!is_html_uri(""));
+        // Multi-byte first character: must not panic on a byte slice.
+        assert!(!is_html_uri("日本語 data:text/html"));
     }
 }

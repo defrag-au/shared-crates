@@ -6239,6 +6239,7 @@ dependencies = [
  "js-sys",
  "log",
  "perf-probe",
+ "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

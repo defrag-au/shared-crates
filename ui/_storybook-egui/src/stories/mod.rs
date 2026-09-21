@@ -118,6 +118,8 @@ pub mod leaderboard_table;
 // Utility widgets
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
+#[cfg(target_arch = "wasm32")]
+pub mod html_stage;
 pub mod image_loads;
 pub mod image_stack;
 pub mod image_text_editor;

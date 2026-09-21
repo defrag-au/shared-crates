@@ -69,6 +69,10 @@ pub mod gateway_log;
 pub mod grouped_section;
 pub mod holder_field;
 pub mod holder_formation;
+// `HtmlStage` mounts a live on-chain art document in an iframe — wasm-only,
+// like `file_upload`, because it is DOM work.
+#[cfg(target_arch = "wasm32")]
+pub mod html_stage;
 pub mod icons;
 pub mod id_pill;
 pub mod image_loader;
@@ -303,6 +307,8 @@ pub use holder_field::{AssetMove, Custody, HolderField, HolderFieldResponse};
 pub use holder_formation::{
     Acquisition, Distribution, HolderFormation, distribution_at, distribution_series, holdings_at,
 };
+#[cfg(target_arch = "wasm32")]
+pub use html_stage::{HtmlStage, StageLayer, StageOptions};
 pub use icons::{PhosphorIcon, install_phosphor_font};
 pub use id_pill::{
     IdPill, IdPillLayout, IdPillResponse, stacked_width_for as id_pill_stacked_width_for,

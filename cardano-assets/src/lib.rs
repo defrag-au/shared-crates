@@ -48,7 +48,7 @@ pub use cip25::{cip25_metadata_json, cip25_metadata_value, decode_cip25_metadata
 pub use cip68::{Cip68Error, decode_cip68_datum};
 pub use collection::*;
 pub use extract::{
-    AssetEnvelope, ENVELOPE_KEYS, asset_from_metadata_json, asset_from_metadata_value,
+    AssetEnvelope, ENVELOPE_KEYS, LiveArt, asset_from_metadata_json, asset_from_metadata_value,
     extract_traits,
 };
 #[cfg(feature = "cip14")]

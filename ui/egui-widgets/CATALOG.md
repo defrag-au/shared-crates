@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-162 widgets.
+163 widgets.
 
 | module | what it is |
 |---|---|
@@ -72,6 +72,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `grouped_section` | Grouped section header — hero icon + title + verified badge + subtitle + right-aligned bulk-action button, with caller-rendered body below |
 | `holder_field` | HolderField — the holder graph, reshuffling as assets change hands |
 | `holder_formation` | `HolderFormation` — people arriving, and how evenly the collection lands |
+| `html_stage` | `HtmlStage` — mount a live HTML document over an `egui::Rect` |
 | `id_pill` | `IdPill` — small inline display of a long identifier with a copy affordance |
 | `image_stack` | `ImageStack` — several images as a fanned pile of mounted prints, so a lot of many reads as a lot of many at a glance |
 | `image_text_editor` | Image text overlay editor — place, style, and drag text on top of an image |
