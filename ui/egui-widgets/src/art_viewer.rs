@@ -70,6 +70,13 @@ pub struct ArtViewerTarget {
     pub cover_url: Option<String>,
     /// Trait rows, drawn below the art. Keep it short — the art is the subject.
     pub traits: Vec<(String, String)>,
+    /// The public URL for this piece, when the host has one. Drawn as a copy
+    /// button — a shareable link nobody can reach is not a shareable link, and
+    /// the viewer is where a reader decides they want one.
+    ///
+    /// The host builds it (this crate has no opinion about the URL scheme, and
+    /// the app it serves is the one that knows its own origin).
+    pub share_url: Option<String>,
 }
 
 /// What the host should do about the viewer this frame.
@@ -89,6 +96,10 @@ pub struct ArtViewerState {
     /// Let the piece take pointer input. See [`crate::StageOptions`] for why
     /// this is off by default.
     interactive: bool,
+    /// Frames left to show the copy confirmation. A `Copy link` button with no
+    /// acknowledgement is the classic "did that work?" — and this widget has no
+    /// toast queue to hand the news to.
+    copied_frames: u8,
     /// The mounted piece. Dropping it is the teardown — see
     /// [`crate::html_stage`].
     #[cfg(target_arch = "wasm32")]
@@ -160,6 +171,8 @@ impl ArtViewerState {
             return ArtViewerResponse::default();
         };
 
+        self.copied_frames = self.copied_frames.saturating_sub(1);
+
         let mut response = ArtViewerResponse::default();
         let modal = egui::Modal::new(egui::Id::new("art_viewer")).show(ui.ctx(), |ui| {
             // Clamped to the viewport, not asserted: a flat minimum wider than
@@ -191,7 +204,13 @@ impl ArtViewerState {
 
             ui.gap(Space::Md);
             ui.separator();
-            footer(ui, &mut self.interactive, &mut response);
+            footer(
+                ui,
+                &target,
+                &mut self.interactive,
+                &mut self.copied_frames,
+                &mut response,
+            );
         });
 
         // A click on the scrim is a dismissal — the standard escape hatch, which
@@ -442,12 +461,36 @@ fn trait_rows(ui: &mut Ui, target: &ArtViewerTarget) {
         });
 }
 
-fn footer(ui: &mut Ui, interactive: &mut bool, response: &mut ArtViewerResponse) {
+fn footer(
+    ui: &mut Ui,
+    target: &ArtViewerTarget,
+    interactive: &mut bool,
+    copied_frames: &mut u8,
+    response: &mut ArtViewerResponse,
+) {
     ui.horizontal(|ui| {
         ui.checkbox(interactive, "interactive").on_hover_text(
             "Let the piece take clicks. Off by default: an interactive stage \
              swallows scrolling and hover for its whole area.",
         );
+
+        // The share link, where the host has one. `Copy link` rather than an
+        // icon alone: the reader is deciding to share something, and that is a
+        // decision worth a word.
+        if let Some(url) = &target.share_url {
+            let label = if *copied_frames > 0 {
+                crate::icons::phosphor_label(ui, PhosphorIcon::Check, "Copied")
+            } else {
+                crate::icons::phosphor_label(ui, PhosphorIcon::Copy, "Copy link")
+            };
+            if ui.button(label).on_hover_text(url).clicked() {
+                ui.ctx().copy_text(url.clone());
+                // ~1.5s at 60fps. Long enough to read, short enough not to be
+                // mistaken for the button's resting state.
+                *copied_frames = 90;
+            }
+        }
+
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui.button("Close").clicked() {
                 response.closed = true;

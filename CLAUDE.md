@@ -243,7 +243,7 @@ If validation was not run, say so plainly and say why — no toolchain reachable
 device, needs credentials. That is a useful answer. An unearned "done" is worse than a
 failure report, because it moves the discovery of the failure to me.
 
-## Related failure modes
+### Related failure modes
 
 - **Reporting a partial result as complete.** If three of four things were done, say which
   three.
@@ -253,6 +253,7 @@ failure report, because it moves the discovery of the failure to me.
   a `str.replace` that found no anchor, a test filter that matched no tests — is not
   validation. Check that the output says what you think it says.
 - **Extrapolating from a narrower run.** A single-crate build is not a workspace build.
+
 
 ## Tests are the specification — never edit an assertion to make it pass
 <!-- rule: rules/core/test-preservation -->
@@ -267,7 +268,7 @@ is supposed to do; if the fix makes the test fail, the fix is wrong.
 3. If tests still fail, the fix is still wrong.
 4. Tests are the specification, not an obstacle.
 
-## Never
+### Never
 
 - Change an assertion so it matches the behaviour the code currently has
 - Weaken a test when fixing a bug — loosening a bound, widening a tolerance, adding an early
@@ -278,19 +279,20 @@ is supposed to do; if the fix makes the test fail, the fix is wrong.
 - Optimise for "the suite is green" instead of "the system is correct"
 - Add a test that asserts what the code currently does, then call the behaviour specified
 
-## Permitted without asking
+### Permitted without asking
 
 - **Adding** a test for behaviour that had none
 - Fixing a test that cannot compile because a signature legitimately changed — but the
   assertion it makes must survive the change
 - Renaming a test to describe what it checks
 
-## If the test is genuinely wrong
+### If the test is genuinely wrong
 
 Say so explicitly, explain why the assertion is incorrect, and **get sign-off before
 changing it**. "This test encodes a bug" is a legitimate finding. Silently rewriting the
 assertion to match the bug is not. The difference is whether the change is visible and
 argued.
+
 
 ## Working first — fix problems, don't hide them
 <!-- rule: rules/core/working-first -->
@@ -302,7 +304,7 @@ When facing a compilation error, a lifetime fight, or a design question, the fir
 is **"what is the simplest thing that makes this actually work?"** — not "what is the correct
 architecture for this?". Prove the concept end-to-end, then iterate.
 
-## The two paths
+### The two paths
 
 **Fix and prove.** Identify the root cause. Implement the minimal working solution. Verify it
 end-to-end. *Then* improve it.
@@ -313,7 +315,7 @@ problem before the basic logic is proven. Optimise something that has never run.
 
 The second path is faster for about ten minutes and then costs a session.
 
-## Red flags — stop and reconsider
+### Red flags — stop and reconsider
 
 - Adding a `// TODO:` to disable functionality that was supposed to work
 - Commenting out code to silence a compilation error
@@ -322,7 +324,7 @@ The second path is faster for about ten minutes and then costs a session.
 - Spending longer on the shape of the code than on whether the feature works
 - Rewriting a signature to make an error go away rather than understanding it
 
-## Green lights — keep going
+### Green lights — keep going
 
 - The user can exercise the feature end-to-end right now
 - Core functionality works, even if the implementation is plain
@@ -330,13 +332,14 @@ The second path is faster for about ten minutes and then costs a session.
 - Problems are being solved rather than hidden
 - Value is demonstrable this session, not next session
 
-## Exceptions
+### Exceptions
 
 Deviate only when continuing would break something that currently works, would introduce a
 security hole, or would risk data corruption. Even then: fix it properly. Do not comment it
 out and do not disable it.
 
 **Make it work, make it right, make it fast — in that order.**
+
 
 ## Never invent data to satisfy an interface
 <!-- rule: rules/core/never-make-things-up -->
@@ -364,13 +367,14 @@ This applies to more than literals:
 - **An explanation of why something is broken** — a confident mechanism you have not
   verified. "It's probably a caching issue" is a made-up value in prose form.
 
-## The distinction that matters
+### The distinction that matters
 
 Making things up is not the same as *choosing*. Choosing a sensible default and stating it
 is fine. Inventing a value and presenting it as data is not. The test: if someone later asks
 "where does this number come from?", is there an answer?
 
 If the answer is "nowhere yet", say so plainly and ask.
+
 
 ## Build what was asked, then stop
 <!-- rule: rules/core/dont-rush-new-features -->
@@ -386,7 +390,7 @@ the change I actually asked for, and usually encodes a guess about a requirement
 never stated. When the guess is wrong, the cost of removing it is higher than the cost of
 never adding it.
 
-## The only three exceptions
+### The only three exceptions
 
 - The task cannot be completed without it — a caller that must be updated to keep the
   workspace compiling, a type that must exist for the requested feature to typecheck.
@@ -396,11 +400,12 @@ never adding it.
 Everything else: **mention it and let me decide.** A one-line "this would also allow X if you
 want it next" is welcome. Building X uninvited is not.
 
-## Applies to cleanup too
+### Applies to cleanup too
 
 Renaming things, reordering imports, tidying a neighbouring function, upgrading a dependency
 "while I'm here" — all of it is scope. If a nearby thing is genuinely broken, say so in the
 final message rather than fixing it silently.
+
 
 ## Ask before changing dependencies or architecture
 <!-- rule: rules/core/conservative-package-changes -->
@@ -409,7 +414,7 @@ Before making a change that alters the *approach* rather than the *implementatio
 ask. Present the problem, offer two or three specific options with their trade-offs, and
 wait for an answer.
 
-## Triggers — ask first
+### Triggers — ask first
 
 - Editing `Cargo.toml`, `package.json`, `flake.nix`, or any other manifest
 - Adding, removing or bumping a dependency
@@ -419,13 +424,13 @@ wait for an answer.
   type lives
 - Anything that changes how the project is built, deployed or configured
 
-## Does not trigger
+### Does not trigger
 
 - A bug fix that stays inside the existing approach
 - A direct instruction ("change X to Y") — that is already a decision
 - Formatting, lint fixes, renames local to one function
 
-## Why
+### Why
 
 These are the decisions that are cheap to make and expensive to unmake. A dependency is a
 supply-chain commitment, a build-time cost, and a future upgrade obligation. A framework
@@ -435,6 +440,7 @@ spend one message than one refactor.
 
 The options you offer should be *specific*: name the crates, say what each costs. "We could
 use a library or write it ourselves" is not a set of options.
+
 
 ## Git history is mine — do not commit, push, merge or branch
 <!-- rule: rules/core/git-is-the-users-domain -->
@@ -452,13 +458,14 @@ Use `--no-pager` on all of them.
 Branching for work is fine when it helps. Creating a branch is not rewriting anything I
 have to unpick.
 
-## Also
+### Also
 
 - Do not add `[skip ci]`, `--no-verify`, or bypass hooks without asking
 - Do not amend, force-push, or reset anything
 - Do not commit generated artefacts that `.gitignore` excludes — if `dist/` is ignored, it
   stays uncommitted even when it is up to date
 - Do not write a commit message and leave it staged in a way that suggests it was committed
+
 
 ## Edit files with the editor tools, never with a shell script
 <!-- rule: rules/core/edit-via-editor-tools -->
@@ -472,7 +479,7 @@ This applies to every file: source, config, docs, rules, memory.
 Multi-edit convenience scripts are included. If a change touches ten places, that is ten edit
 calls, not one script.
 
-## Why
+### Why
 
 - The editor tools verify the file was read first and **fail loudly** on an ambiguous or
   stale match.
@@ -484,7 +491,7 @@ the anchor it was matching against — the script found nothing, wrote nothing, 
 and the change was never made. The failure was invisible until much later. Editor tools make
 that class of bug impossible.
 
-## What is still fine
+### What is still fine
 
 Generating a file's *content* with a script is fine when the content is genuinely computed —
 a catalogue built from source headers, a table derived from data. Writing it to disk still
@@ -492,6 +499,7 @@ goes through the write tool.
 
 Reads through the shell are fine too: `cat`, `grep`, `find` to gather information, then edit
 with the editor tools.
+
 
 ## Typed structs only — no serde_json::Value, no json! macro
 <!-- rule: rules/core/typed-json-only -->
@@ -501,13 +509,13 @@ responses, configuration, queue messages, SSE payloads, or anything persisted.
 
 Define concrete types with `#[derive(Serialize, Deserialize)]`.
 
-## Banned
+### Banned
 
 - `serde_json::Value`, `json!()`
 - `Map<String, Value>`, `Vec<Value>`, any composition of `Value`
 - `#[serde(untagged)]` as a way to avoid deciding on a shape
 
-## Required
+### Required
 
 - Concrete structs and enums with serde derives
 - `#[serde(tag = "type")]` for tagged unions rather than a stringly-typed discriminant field
@@ -527,7 +535,7 @@ enum CatchupEvent {
 }
 ```
 
-## Limited exceptions
+### Limited exceptions
 
 Allowed only with a justification written in the code:
 
@@ -535,12 +543,13 @@ Allowed only with a justification written in the code:
 2. Temporary debugging code that will be removed
 3. A low-level JSON utility whose whole purpose is handling arbitrary JSON
 
-## Why
+### Why
 
 Type safety catches the error at compile time instead of in production. Structs document the
 shape. The frontend can deserialise into a matching type instead of indexing into a map.
 Schema generation works. And when the shape changes, the compiler finds every call site
 rather than the runtime finding one.
+
 
 ## Plan in reasoning, not in the response
 <!-- rule: rules/core/planning-stays-in-thinking -->
@@ -551,26 +560,27 @@ Do not narrate what you are about to look up — look it up. Do not open with a 
 what you intend to do and then do it; the summary is only useful if the work fails, and if
 it fails you can explain then.
 
-## What this rules out
+### What this rules out
 
 - "I'll start by reading X, then check Y" as a preamble to reading X and checking Y
 - Restating the request before acting on it
 - Announcing each step as you take it ("Now let me look at the config…")
 - A plan-shaped response where a tool call was the answer
 
-## What it does not rule out
+### What it does not rule out
 
 - A genuine plan when the task is large enough that I should agree to the approach first —
   that is a decision I need to make, not narration
 - One sentence before a group of related tool calls, so I can follow what is happening
 - Explaining reasoning in the final message when it affects whether I trust the result
 
-## On nudges to think first
+### On nudges to think first
 
 Some harnesses inject a reminder to "first privately list what you need next", or similar.
 That means: list it *in your reasoning*, then batch the independent tool calls in one
 response. It is an instruction about batching, not a phrase to emit. Never begin a response
 with "Privately," or any variant of it.
+
 
 ## Never commit a secret
 <!-- rule: rules/core/no-committed-secrets -->
@@ -584,36 +594,36 @@ and the repository holds only the *name* of the variable and an `.env.example` s
 shape with an obvious placeholder.
 
 ```
-# .env.example — committed
+## .env.example — committed
 KOIOS_API_KEY=your-key-here
 
-# .env — gitignored
+## .env — gitignored
 KOIOS_API_KEY=<real value>
 ```
 
-## When you need one to test something
+### When you need one to test something
 
 Say so and stop. Do not invent a placeholder that looks real, and do not reach for a real key
 that is already in the environment — a test that only passes with a live credential is not a
 test, it is a scheduled failure.
 
-## If you find one already committed
+### If you find one already committed
 
 Report it. Do not quietly delete the line and move on: the value is in the history, so deleting
 it from the working tree does not revoke it. **The secret has to be rotated**, and that is a
 decision for me, not a cleanup you perform silently.
 
-## The related failure
+### The related failure
 
 A secret pasted into a code comment or a `// TODO: replace before merge` is the same leak with
 an expiry date that nobody enforces.
+
 
 ## Rust tooling lives behind the Nix devshell
 <!-- rule: rules/rust/devshell-first -->
 
 `cargo`, `rustc`, `clippy`, `rustfmt`, `trunk`, `wrangler`, `node` and the wasm targets are
-**not on the default `PATH`**. They are provided only inside the devshell defined in
-`flake.nix`. Wrap every command:
+**not on `PATH`**. Wrap every command:
 
 ```sh
 nix develop -c cargo build --workspace
@@ -624,17 +634,9 @@ nix develop -c cargo fmt
 
 `nix develop --command <cmd>` is equivalent.
 
-## In a sandboxed agent shell, use direnv instead
-
-`nix develop` needs the nix daemon socket (`/nix/var/nix/daemon-socket/socket`), which a
-sandboxed agent shell refuses:
-
-```
-error: cannot connect to socket … Operation not permitted
-```
-
-`direnv exec . <cmd>` reads the already-realised devshell out of `.direnv/` and needs no
-daemon, so **in a sandbox it is the invocation that works**:
+**In a sandboxed shell, `nix develop` cannot reach the daemon socket** —
+`cannot connect to socket … Operation not permitted`. Use direnv instead, which reads the
+already-realised devshell out of `.direnv/` and needs no daemon:
 
 ```sh
 direnv exec . cargo build -p <crate>
@@ -642,23 +644,9 @@ direnv exec . cargo build -p <crate>
 
 If `.direnv/` is cold, run `direnv allow .` once from an unsandboxed shell.
 
-## The failure reads as a permissions problem
+Never: install a separate toolchain, source `~/.bash_profile` to find cargo, or reach for the
+network. Add `--offline` if cargo tries to fetch a crate the devshell cache already holds.
 
-A bare `cargo …` fails with something that looks like a filesystem or permissions error
-rather than a missing toolchain. Recognise it before debugging it — the answer is never to
-install anything.
-
-## Do not
-
-- **Install a separate Rust toolchain.** The devshell pins the channel so every repo stays in
-  lock-step. `rustup` is not available, so `rustup target add …` is never the answer; targets
-  come from the devshell.
-- **Source `~/.bash_profile` to find cargo.** That was the right move before the devshell
-  existed; it is now a way to pick up a stale, unpinned toolchain.
-- **Reach for the network to fix a build.** Add `--offline` when a build tries to fetch a
-  crate the devshell cache already holds. Note that a sandboxed shell also cannot write the
-  shared registry cache (`~/.cargo/registry`), so a genuine *first* fetch of a new crate can
-  fail with `Operation not permitted` for that reason rather than a missing toolchain.
 
 ## Build often — the compiler is the best information you have
 <!-- rule: rules/rust/build-often -->
@@ -673,7 +661,7 @@ searching the tree for a call site that may not exist.
 So: after a change that could plausibly break a type, **compile it**. Do not read your way to
 confidence through three files when one `cargo check` answers the question in seconds.
 
-## Practically
+### Practically
 
 - `nix develop -c cargo check` while iterating; `cargo build` when you need artefacts
 - Scope it when the workspace is large: `-p <crate>`
@@ -683,11 +671,12 @@ confidence through three files when one `cargo check` answers the question in se
   one is usually the real one and the rest are consequences. Fixing a consequence first
   produces a second round of errors that look new.
 
-## The exception
+### The exception
 
 Do not build when you have already established that the build is expensive and the change
 cannot affect it — editing a markdown file does not need a compile. Use judgement about what
 a change can reach.
+
 
 ## Inline format arguments everywhere
 <!-- rule: rules/rust/inline-format-args -->
@@ -708,17 +697,18 @@ println!("wrote {count} rows to {path}")
 Applies to every formatting macro: `format!`, `println!`, `eprintln!`, `write!`,
 `writeln!`, `panic!`, `assert!`, `assert_eq!`, `debug_assert!`, `tracing` macros.
 
-## When writing new code
+### When writing new code
 
 Use inline args from the first draft. Do not write `{}` and expect a later pass to catch it —
 that pass is the one that costs a round trip.
 
-## When editing existing code
+### When editing existing code
 
 Convert to inline args in the lines you are already touching. Do not sweep the file: an
 unrelated formatting change buries the diff I asked for. If a file is broadly non-compliant,
 let `clippy --fix` handle it as its own change — see
 `rust-tooling-handles-grunt-work`.
+
 
 ## Let fmt and clippy do the mechanical work
 <!-- rule: rules/rust/tooling-handles-grunt-work -->
@@ -735,13 +725,13 @@ Run them, then **read what changed** and check the remaining diagnostics manuall
 ordering matters: `--fix` first, then review, because the automated pass changes the lines
 you were about to read.
 
-## `-D warnings` is not optional
+### `-D warnings` is not optional
 
 The lint command treats warnings as errors. A warning is a failure, not a note. That is
 deliberate — this codebase does not accumulate "known warnings", because a suite with a
 hundred warnings cannot show you the one that matters.
 
-## Where the tooling stops
+### Where the tooling stops
 
 `--fix` only applies suggestions that are mechanically safe. It will not:
 
@@ -752,6 +742,7 @@ hundred warnings cannot show you the one that matters.
 Some rules in this playbook cannot be enforced by clippy at all — a source scan in
 `cargo test` is the tool for those, in the same spirit as `cargo fmt --check`. When you add a
 rule of that kind, add the test with it.
+
 
 ## Where tests live, and what they may touch
 <!-- rule: rules/rust/test-layout -->
@@ -766,16 +757,17 @@ rule of that kind, add the test with it.
 - **Tests are deterministic.** No network calls unless they are feature-gated or mocked. A test
   that depends on a live API is a test that fails for reasons unrelated to the change.
 
-## Why the last two matter most
+### Why the last two matter most
 
 They are the two ways a suite reports success without having checked anything. A `wasm-bindgen`
 test that silently does not run, and a network test that passes because the fixture is cached,
 both look identical to a passing test — and both mean the same thing when a real bug ships.
 
-## Reusable fixtures
+### Reusable fixtures
 
 Capture a fixture in the shared `data/` crate when a second crate needs it, rather than copying
 it. Shared serialization fixtures live in `test_datum_serialization.rs`.
+
 
 ## Read the widget catalogue before building any UI
 <!-- rule: rules/org/defrag/widget-catalogue-first -->
@@ -794,12 +786,12 @@ already existed.
 If you are about to hand-build something widget-shaped — a chip, an id display, a
 label-value grid, a card, a chart, a stat strip — scan first. It probably exists.
 
-## If a new widget is genuinely warranted
+### If a new widget is genuinely warranted
 
 Build it in `egui-widgets` with a `//!` header, add a storybook story, and regenerate the
 catalogue. The three-step checklist is at the bottom of `WIDGETS.md`.
 
-## Both catalogues are generated
+### Both catalogues are generated
 
 From each module's own `//!` header, by `tests/catalog.rs`, and a test asserts the committed
 copy matches — the same contract as `cargo fmt --check`. Adding a widget means giving it a
@@ -812,6 +804,7 @@ UPDATE_CATALOG=1 nix develop -c cargo test -p egui-widgets --test catalog
 
 Keep the first sentence a summary — it is cut at the first full stop, so detail belongs in
 the paragraphs below, where it does not bloat the index.
+
 
 ## Toggle local [patch] blocks as a unit
 <!-- rule: rules/org/defrag/patch-blocks -->
@@ -830,18 +823,19 @@ Toggling the whole `[patch."…"]` table on and off is the only safe shape.
 The same applies in reverse: when re-commenting before commit, re-comment the whole block.
 Never leave a partial active block behind.
 
-## Why it is worth a rule
+### Why it is worth a rule
 
 The failure is never at the patch site. It shows up as a build error in a crate you did not
 touch, or as a duplicate-key error whose line number points at the copy you did not mean to
 edit. Both cost more to diagnose than the block took to toggle.
+
 
 ## Sizes, spacing and colour come from the theme
 <!-- rule: rules/org/defrag/theme-tokens-only -->
 
 No widget writes a point size down. No renderer crate copies a palette or a ramp.
 
-## Sizes resolve through the ramp
+### Sizes resolve through the ramp
 
 ```rust
 // no
@@ -857,7 +851,7 @@ finally exists — `route_quote` and `pool_inspector` are the shapes to copy.
 A genuinely non-textual size (a pixel dimension, e.g. `ImageStack::size(96.0)`) opts out with
 a trailing `// theme-exempt: <reason>`.
 
-## The vocabulary lives in one place
+### The vocabulary lives in one place
 
 `ui/ui-theme` owns colour tokens, `Ink`, the colour science and the type ramp. Each renderer
 aliases it and implements `Palette`, so an `Ink` written on either side resolves on both.
@@ -871,7 +865,7 @@ precisions.
 The same reasoning applies to `Space`, `Radius` and `Breakpoint`: the point of a named step
 is that one place decides what it means.
 
-## Why the tests exist
+### Why the tests exist
 
 `egui-widgets/tests/theme_tokens.rs` and `macroquad-widgets/tests/text_sizes.rs` are source
 scans. Clippy cannot do this: `disallowed_methods` matches a method *path*, not its
@@ -882,12 +876,13 @@ arguments, so it cannot tell `.size(11.0)` from `.size(ui.text_size(…))` — a
 The `f32` config fields are a **ratchet**: the count may only go down. Convert one, lower the
 baseline.
 
-## Changing a ramp is a restyle, not a refactor
+### Changing a ramp is a restyle, not a refactor
 
 `TextScale::canvas` was **derived from the sources**, not chosen — the 73 sizes that crate
 used land on exactly eight values, so those are the eight. Picking a nicer-looking ramp
 during a migration would have restyled every macroquad surface under cover of a rename. If a
 ramp should move, move it as its own change, with the reason written down.
+
 
 ## Keep logic pure — runtime bridges come in pairs
 <!-- rule: rules/org/defrag/runtime-pairs -->
@@ -900,7 +895,7 @@ Runtime-specific bridges therefore come in pairs: `wallet-core` for wasm-bindgen
 `wallet-miniquad` for macroquad games. egui-widgets and macroquad-widgets do not interchange
 for the same reason.
 
-## The consequence for structure
+### The consequence for structure
 
 **Keep logic in small pure crates** — no wasm-bindgen, no I/O, no runtime deps — so the same
 crate can be consumed from a macroquad game, a wasm-bindgen frontend (Leptos) **and** a
@@ -910,14 +905,14 @@ Macroquad targets demand more discipline here than other runtimes: check a depen
 transitive tree for wasm-bindgen before adding it to a macroquad game.
 
 ```sh
-# a native cargo tree is blind to this — the target flag is required
+## a native cargo tree is blind to this — the target flag is required
 nix develop -c cargo tree --target wasm32-unknown-unknown -p <crate>
 ```
 
 `cardano-tx/tests/miniquad_linkable.rs` asserts the default-feature-free build reaches no
 wasm-bindgen, so a macroquad host can still link it.
 
-## For a WASM build, audit the feature flags
+### For a WASM build, audit the feature flags
 
 Minimise the features enabled on a wasm32 target. Default features are chosen for a native
 build, so a wasm consumer inherits capabilities it cannot use — and a feature that pulls in a
@@ -927,6 +922,7 @@ transitive tree rather than the direct dependency:
 ```sh
 nix develop -c cargo tree --target wasm32-unknown-unknown -p <crate>
 ```
+
 
 ## Render it and look at it before reporting it done
 <!-- rule: rules/org/defrag/look-at-what-you-built -->
@@ -943,18 +939,19 @@ This applies to narrow widths too, which is where most of the real failures live
 `widget-screenshot` skill for the exact
 invocation, including why `--window-size` cannot produce a mobile shot.
 
-## Do not report a widget as done on the strength of
+### Do not report a widget as done on the strength of
 
 - It compiles
 - Its tests pass
 - The storybook entry renders without a panic
 - It looks right in the code
 
-## Related trap
+### Related trap
 
 The same reasoning applies to a *deployed* app: the helper points at a real URL, which is the
 only way to check a widget against real data at real width. Real data is wider than fixture
 data — that is how the wrapped stake address shipped.
+
 
 ## egui layout traps that cost an afternoon
 <!-- rule: rules/org/defrag/egui-layout-traps -->
@@ -964,7 +961,7 @@ already covers *finding* them — but these are the ones that look correct, comp
 wrong at runtime. Read this before laying out a panel, sizing a `Ui`, or wiring an async
 result into a widget.
 
-## A detail pane beside content: use `detail_split`, not a right-hand `Panel`
+### A detail pane beside content: use `detail_split`, not a right-hand `Panel`
 
 A right `Panel` reserves its strip by shrinking the parent's `cursor.max.x`, and a **top-down**
 `Ui` never reads `cursor.max.x` (`Layout::available_from_cursor_max_rect` takes only `min.y` in
@@ -974,7 +971,7 @@ and the pane floats over the content's right edge — hiding exactly the column 
 Panels want a `Ui` that is arbitrating a whole region, not one you are laying out yourself
 mid-column.
 
-## `Color32` stores PREMULTIPLIED channels
+### `Color32` stores PREMULTIPLIED channels
 
 Each channel must be `<= alpha`. `from_rgba_premultiplied` with larger channels blends
 additively and renders far lighter than intended.
@@ -982,26 +979,26 @@ additively and renders far lighter than intended.
 `egui-widgets/tests/contrast.rs` asserts this for the theme. The `theme_states` story shows the
 interaction states a resting-state story cannot.
 
-## Images load when the widget is BUILT, not when it is drawn
+### Images load when the widget is BUILT, not when it is drawn
 
 `ui.add(Image::new(url))` in a long list starts a fetch for every row, including those below
 the fold. Reserve the space, then gate on `ui.is_rect_visible` — `activity_feed` is the shape
 to copy.
 
-## `Ui::set_max_width` WIDENS a `Ui` that has less room
+### `Ui::set_max_width` WIDENS a `Ui` that has less room
 
 It assigns `max_rect.max.x` outright rather than taking a minimum, so `set_max_width(520.0)`
 inside a 342pt phone lays out at 520 and overflows off both edges. `AccessGate` shipped like
 this — the one screen whose job is explaining how to get in was clipped on every phone. Use
 `viewport::fit(ui, 520.0)`.
 
-## An overflowing `ui.horizontal` widens the parent
+### An overflowing `ui.horizontal` widens the parent
 
 It does not just clip: everything drawn *after* it inherits the inflated width. A legend row
 running 80pt long took a 180pt-tall scatter plot off-screen with it, and made the wrapping
 paragraphs below stop wrapping. When a row might not fit, it is `horizontal_wrapped`.
 
-## egui repaints ON DEMAND, so an async result can sit unread indefinitely
+### egui repaints ON DEMAND, so an async result can sit unread indefinitely
 
 A fetch that completes on a JS callback and pushes to an `mpsc` wakes nothing; the channel is
 only drained on the next frame. On a desktop the first mouse move hides this completely. On a
@@ -1012,7 +1009,7 @@ Either wake the `Context` at the point of send, or tick `request_repaint_after` 
 outstanding — and key that tick off an explicit *pending* flag, **never** off `data.is_none()`,
 which is also what failure looks like and will spin forever on battery.
 
-## Compact-breakpoint touch sizing inflates non-interactive content too
+### Compact-breakpoint touch sizing inflates non-interactive content too
 
 `spacing.interact_size.y = 44` is a floor on allocated space *and* sets row height in
 `horizontal`/`horizontal_wrapped`, so read-only status chips came out as 34pt squares around
@@ -1020,6 +1017,7 @@ which is also what failure looks like and will spin forever on battery.
 
 Opt a dense region out with `ui.spacing_mut().interact_size = Vec2::ZERO` — on the region, not
 inside the chip, because by then the row height is already decided.
+
 
 ## Never use raw Unicode symbols in egui
 <!-- rule: rules/org/defrag/egui-icons-only -->
@@ -1041,17 +1039,18 @@ Use `PhosphorIcon` from `icons.rs`:
 
 Basic ASCII (`!`, `?`, `#`, `+`, `-`) is fine.
 
-## Adding an icon
+### Adding an icon
 
 Look the codepoint up in the Phosphor CSS
 (`https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css`), then add the variant
 to `PhosphorIcon` in `icons.rs` — enum, `codepoint()`, `ALL`, `name()`.
 
-## Why it is a rule and not a nitpick
+### Why it is a rule and not a nitpick
 
 The failure is invisible in a native build on a machine whose system fonts happen to cover the
 glyph, and visible to every user in a browser. "It looked fine for me" is the default outcome
 of testing it the wrong way.
+
 
 ## Let the marks carry it — egui is weak at prose
 <!-- rule: rules/org/defrag/egui-marks-over-prose -->
@@ -1067,18 +1066,19 @@ copy. Reach for an encoding instead:
 | a number the reader must compare by eye | bar height or width |
 | long-form detail | behind an expand, on hover, or in a side panel |
 
-## The test
+### The test
 
 A list of twenty of these should be **scannable**. If reading twenty means reading twenty
 paragraphs, redesign.
 
 Keep at most one line of irreducible text — a title, a statement — and put the rest on demand.
 
-## Applies to story captions too
+### Applies to story captions too
 
 Storybook captions are held to the same standard: one or two short lines, not an essay. A
 caption that needs a paragraph to explain the widget is a caption describing a widget that
 needs redesigning.
+
 
 ## Commit and PR conventions for this ecosystem
 <!-- rule: rules/org/defrag/commit-conventions -->
@@ -1087,7 +1087,7 @@ Applies when you are asked to prepare a commit or draft a PR — see
 `core/git-is-the-users-domain` for the standing rule
 that you do not commit uninvited.
 
-## Commits
+### Commits
 
 Prefix with a type, then the change, then the PR number:
 
@@ -1105,13 +1105,14 @@ chore: bump pallas to 0.31 (#168)
   makes the behaviour change unreviewable.
 - Imperative, present tense: "wrap the address", not "wrapped the address".
 
-## Pull requests
+### Pull requests
 
 Include a concise summary, the linked issue, test coverage for the change, and example output
 or screenshots where they apply. Note any feature flags involved (`native`, `wasm`).
 
 `[skip ci]` needs a clear justification in the description, and any manual deployment or data
 task has to be named — CI cannot catch what CI did not run.
+
 
 ## Prefer rustls over OpenSSL
 <!-- rule: rules/org/defrag/rustls-over-openssl -->
@@ -1126,7 +1127,7 @@ for `native-tls` or `openssl-sys` and prefer a `rustls` feature where one exists
 reqwest = { version = "0.12", default-features = false, features = `"rustls-tls", "json"] }
 ```
 
-## Why
+### Why
 
 Two reasons, and the second is the one that bites:
 
@@ -1140,6 +1141,7 @@ Two reasons, and the second is the one that bites:
 ```sh
 nix develop -c cargo tree --target wasm32-unknown-unknown -p <crate> | grep -e openssl -e native-tls
 ```
+
 
 ## Subdirectory devshells are entered from the parent flake
 <!-- rule: projects/shared-crates/rules/subdir-devshell -->
@@ -1158,6 +1160,7 @@ before working it out.
 See the `widget-screenshot` skill for the full
 screenshot loop.
 
+
 ## A story has three registration sites plus a module declaration
 <!-- rule: projects/shared-crates/rules/storybook-registration -->
 
@@ -1173,14 +1176,14 @@ plus `pub mod` in `stories/mod.rs`.
 Miss one and it either fails to compile or silently never appears in the sidebar. The silent
 case is the expensive one.
 
-## Why it is not one site
+### Why it is not one site
 
 This said "six" until the `stories!` macro landed; `src/registry.rs` documents what was broken
 before. `label()` and the blurb stay hand-written **on purpose** — they are exhaustive
 matches, so the compiler catches an omission, and moving ~130 prose strings into a macro would
 risk pairing one with the wrong story for no safety gain.
 
-## Also
+### Also
 
 `trunk build` is worth running on its own: the storybook is `crate-type = ["cdylib"]`, so
 `cargo build -p storybook-egui` compiles without proving the wasm target works.
@@ -1194,7 +1197,6 @@ into one response. It is an instruction about batching.
 **Never begin a response with "Privately," or any variant.** The nudge is not a phrase to
 emit. More generally, the plan for getting to an answer is not part of the answer — see
 `core/planning-stays-in-thinking`.
-
 
 ## Tool names
 

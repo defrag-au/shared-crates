@@ -156,6 +156,13 @@ fn target_for(mode: Mode) -> ArtViewerTarget {
         // point of it.
         cover_url: Some(onchain_fixture::cover_url()),
         traits: onchain_fixture::traits(),
+        // The real shareable page for this piece, so the story shows the copy
+        // button the app shows.
+        share_url: Some(format!(
+            "https://ownership.cnft.dev/piece/{}:{}",
+            onchain_fixture::POLICY_ID,
+            onchain_fixture::ASSET_NAME_HEX
+        )),
     };
     // Distinct identities per story, or moving between them would read as the
     // same asset and keep the previous state's source.
