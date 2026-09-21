@@ -261,6 +261,10 @@ impl ArtViewerState {
             }
         }
         if let Some(stage) = &self.stage {
+            // Read every frame, NOT just at mount: `interactive` is a live
+            // control in the footer, and applying it only when the stage is
+            // created is how the checkbox came to do nothing.
+            stage.set_interactive(self.interactive);
             stage.present(stage_rect);
             // The piece animates on its own and egui repaints on demand, so
             // without this the stage would only be repositioned when something

@@ -124,6 +124,11 @@ impl StageOptions {
 /// Dropping the stage removes the iframe from the DOM and stops the piece.
 pub struct HtmlStage {
     iframe: web_sys::HtmlIFrameElement,
+    /// What `pointer-events` was last set to. Toggling interactivity must not
+    /// need a re-mount — it is the same document either way — but writing the
+    /// property every frame is a DOM write every frame, so the last value is
+    /// kept to make [`set_interactive`](Self::set_interactive) idempotent.
+    interactive: std::cell::Cell<bool>,
 }
 
 impl HtmlStage {
@@ -183,7 +188,10 @@ impl HtmlStage {
         }
 
         body.append_child(&iframe)?;
-        Ok(Self { iframe })
+        Ok(Self {
+            iframe,
+            interactive: std::cell::Cell::new(options.interactive),
+        })
     }
 
     /// Move the stage to `rect` — call it every frame the stage should be
@@ -204,6 +212,26 @@ impl HtmlStage {
         let _ = style.set_property("top", &format!("{y}px"));
         let _ = style.set_property("width", &format!("{w}px"));
         let _ = style.set_property("height", &format!("{h}px"));
+    }
+
+    /// Let the piece take pointer input, or stop it.
+    ///
+    /// Safe to call every frame — the property is only written when the value
+    /// actually changes. Toggling does **not** re-mount: the piece keeps
+    /// running and only its ability to receive clicks changes.
+    ///
+    /// This exists because [`StageOptions::interactive`] is read at *mount*
+    /// time, and a control that toggles it later had no effect at all until
+    /// this was applied live.
+    pub fn set_interactive(&self, interactive: bool) {
+        if self.interactive.get() == interactive {
+            return;
+        }
+        self.interactive.set(interactive);
+        let _ = self
+            .iframe
+            .style()
+            .set_property("pointer-events", if interactive { "auto" } else { "none" });
     }
 
     /// Remove the stage from the DOM, stopping the piece.

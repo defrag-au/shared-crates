@@ -1,7 +1,7 @@
-//! `HtmlStage` story — a real on-chain art piece, running.
+//! `HtmlStage` story — a real Eternal Chaos piece, running.
 //!
-//! The piece is not a fixture invented for the storybook: it is a real
-//! BlockGen authority token's CIP-25 metadata, parsed by
+//! The piece is not a fixture invented for the storybook: it is
+//! `EternalChaos000`'s real CIP-25 metadata, parsed by
 //! `cardano_assets::AssetEnvelope::live_art` exactly as a front end would. So
 //! this story exercises the whole path — chunked `files[].src` in, a live
 //! document out — rather than only the mounting half of it.
@@ -15,6 +15,10 @@
 //!   glance rather than in a profiler.
 //! - **The piece animates on its own.** Nothing drives it; the document is
 //!   the artwork.
+//! - **`interactive`.** Toggling it must take effect *immediately*, on the
+//!   running stage — see `HtmlStage::set_interactive`. Whether this particular
+//!   piece does anything with a click is the piece's business; that the iframe
+//!   starts receiving them is this widget's.
 //!
 //! ## Why there is no cutout demo here
 //!
@@ -32,12 +36,7 @@ use egui_widgets::theme::ThemeExt as _;
 use egui_widgets::{HtmlStage, PhosphorIcon, StageOptions};
 
 use crate::accent;
-
-/// A real on-chain piece: `files[0]` is a chunked `data:text/html;utf8,…`
-/// document (10,040 bytes over 157 chunks) with an IPFS still as its cover.
-/// Shared with `cardano-assets`' own corpus tests.
-const PIECE_METADATA: &str =
-    include_str!("../../../../cardano-assets/resources/test/blockgen-artist-charlesmachin.json");
+use crate::stories::onchain_fixture;
 
 pub struct HtmlStageState {
     stage: Option<HtmlStage>,
@@ -54,14 +53,10 @@ pub struct HtmlStageState {
 
 impl Default for HtmlStageState {
     fn default() -> Self {
-        let (live, parse_error) =
-            match serde_json::from_str::<cardano_assets::AssetEnvelope>(PIECE_METADATA) {
-                Ok(envelope) => match envelope.live_art() {
-                    Some(art) => (Some(art), None),
-                    None => (None, Some("fixture parsed but carries no live art".into())),
-                },
-                Err(e) => (None, Some(format!("fixture did not parse: {e}"))),
-            };
+        let (live, parse_error) = match onchain_fixture::live_art() {
+            Some(art) => (Some(art), None),
+            None => (None, Some("the fixture carries no live art".into())),
+        };
 
         Self {
             stage: None,
@@ -102,7 +97,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut HtmlStageState) {
             .strong(),
     );
     ui.label(format!(
-        "live art: {} bytes, {}…",
+        "{} — live art: {} bytes, {}…",
+        onchain_fixture::DISPLAY_NAME,
         live.src.len(),
         &live.src[..48.min(live.src.len())]
     ));
@@ -111,7 +107,8 @@ pub fn show(ui: &mut egui::Ui, state: &mut HtmlStageState) {
             ui.label(format!("cover still: {cover}"));
             ui.label(
                 egui::RichText::new(
-                    "The cover is what a grid thumbnail shows. It is not the piece.",
+                    "The cover is a still captured at mint — what the grid thumbnail shows. \
+                     It is not the piece.",
                 )
                 .color(ui.tokens().color.text_muted),
             );

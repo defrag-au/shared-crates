@@ -4,8 +4,8 @@
 //! different claim about what the reader is looking at, and the point of the
 //! widget is that it says which:
 //!
-//! - **Art Viewer** — the live piece, running. The real BlockGen document,
-//!   parsed from the metadata exactly as a front end would.
+//! - **Art Viewer** — the live piece, running. `EternalChaos000`, parsed from
+//!   the real metadata exactly as a front end would.
 //! - **Art Viewer (cover only)** — an asset with no on-chain art. The cover
 //!   fills the frame and the caption says so.
 //! - **Art Viewer (failed)** — the lookup failed. The cover is still shown,
@@ -23,15 +23,7 @@ use egui_widgets::theme::ThemeExt as _;
 use egui_widgets::{ArtSource, ArtViewerState, ArtViewerTarget};
 
 use crate::accent;
-
-/// A real on-chain piece — the same fixture the `html_stage` story and
-/// `cardano-assets`' own corpus tests use.
-const PIECE_METADATA: &str =
-    include_str!("../../../../cardano-assets/resources/test/blockgen-artist-charlesmachin.json");
-
-/// A real still, at the size a viewer wants (`Full`, 1686px — the largest the
-/// IIIF service warms).
-const COVER_URL: &str = "https://iiif.hodlcroft.com/iiif/3/b3dab69f7e6100849434fb1781e34bd12a916557f6231b8d2629b6f6:506972617465373538/full/1686,/0/default.jpg";
+use crate::stories::onchain_fixture;
 
 /// Which of the viewer's states this story demonstrates.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -144,25 +136,20 @@ pub fn show(ui: &mut egui::Ui, state: &mut ArtViewerStoryState, mode: Mode) {
 
 /// The piece's document, out of the real metadata.
 fn live_piece() -> Option<String> {
-    let envelope: cardano_assets::AssetEnvelope = serde_json::from_str(PIECE_METADATA).ok()?;
-    envelope.live_art().map(|art| art.src)
+    onchain_fixture::live_art().map(|art| art.src)
 }
 
 fn target_for(mode: Mode) -> ArtViewerTarget {
     ArtViewerTarget {
         name: match mode {
-            Mode::Live => "artist.Charles Machin".to_string(),
+            Mode::Live => onchain_fixture::DISPLAY_NAME.to_string(),
             Mode::CoverOnly => "Toolhead #2274".to_string(),
-            Mode::Failed => "EternalChaos000".to_string(),
+            Mode::Failed => "EternalChaos001".to_string(),
         },
-        subtitle: Some("BlockGen.art authority token".to_string()),
+        subtitle: Some(onchain_fixture::COLLECTION.to_string()),
         // The failed state deliberately still carries the cover: that is the
         // point of it.
-        cover_url: Some(COVER_URL.to_string()),
-        traits: vec![
-            ("project".into(), "artist.Charles Machin".into()),
-            ("medium".into(), "on-chain".into()),
-            ("vendor".into(), "BlockGen.art".into()),
-        ],
+        cover_url: Some(onchain_fixture::cover_url()),
+        traits: onchain_fixture::traits(),
     }
 }

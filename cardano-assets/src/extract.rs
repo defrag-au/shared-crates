@@ -598,6 +598,46 @@ mod live_art_tests {
         );
     }
 
+    /// A real Eternal Chaos piece — the collection this path was built for —
+    /// as Koios returns it. Committed as the raw `asset_info` response rather
+    /// than the inner object, so the shape the read path actually receives is
+    /// what the fixture holds.
+    const ETERNAL_CHAOS: &str = include_str!("../resources/test/eternal-chaos-asset-info.json");
+
+    /// The CIP-25 inner object out of a Koios `asset_info` row.
+    fn inner_from_koios(raw: &str) -> serde_json::Value {
+        let rows: serde_json::Value = serde_json::from_str(raw).expect("fixture must parse");
+        let row = &rows[0];
+        let policy = row["policy_id"].as_str().expect("policy_id");
+        let name = row["asset_name_ascii"].as_str().expect("asset_name_ascii");
+        row["minting_tx_metadata"]["721"][policy][name].clone()
+    }
+
+    #[test]
+    fn the_target_collection_ships_base64_html_and_is_seen_through_it() {
+        // The corpus' other pieces use the percent-encoded `utf8,` form. This
+        // collection base64-encodes the document, so the prefix match has to
+        // see through a second encoding — and `PGh0bWw+PGhlYWQ+` is
+        // `base64("<html><head>")`, which pins the payload as the real
+        // document rather than a coincidence of the declared media type.
+        let envelope: AssetEnvelope = serde_json::from_value(inner_from_koios(ETERNAL_CHAOS))
+            .expect("the inner object must deserialize");
+        let art = envelope.live_art().expect("the piece carries on-chain art");
+
+        assert!(
+            art.src
+                .starts_with("data:text/html;base64,PGh0bWw+PGhlYWQ+")
+        );
+        assert_eq!(art.src.len(), 12_190);
+
+        // And it has a real cover, so this collection's grid thumbnails keep
+        // working — the piece is what is missing, not the thumbnail.
+        assert_eq!(
+            art.cover.as_deref(),
+            Some("ipfs://QmQzNJrTwqqRR4hNQ395AFFiDaKAiUb9R7VKymoSsgRuCV")
+        );
+    }
+
     #[test]
     fn a_still_only_collection_has_no_live_art() {
         let json = r#"{"name":"Pirate #1","image":"ipfs://QmStill","mediaType":"image/png"}"#;

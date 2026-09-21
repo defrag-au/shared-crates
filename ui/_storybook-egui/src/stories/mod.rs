@@ -48,6 +48,7 @@ pub mod mesh_playground;
 pub mod metric_card;
 pub mod mnemonic_display;
 pub mod named_group_list;
+pub mod onchain_fixture;
 pub mod option_group;
 pub mod order_list;
 pub mod pane_nav;
