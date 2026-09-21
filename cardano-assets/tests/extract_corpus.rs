@@ -221,6 +221,13 @@ const NON_METADATA_FIXTURES: &[(&str, &str)] = &[
         "ug_mint.json",
         "CIP-25 mint-tx CBOR aux-data (decode_cip25 test input), not asset-metadata JSON",
     ),
+    (
+        "eternal-chaos-asset-info.json",
+        "a raw Koios `asset_info` response — the CIP-25 object is nested under \
+         minting_tx_metadata.721. Its inner object IS per-asset metadata and is covered by \
+         `live_art_tests::the_target_collection_ships_base64_html_and_is_seen_through_it` \
+         in `src/extract.rs`, which unwraps it; this test's corpus wants bare objects.",
+    ),
 ];
 
 #[test]

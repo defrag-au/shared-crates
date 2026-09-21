@@ -6,10 +6,15 @@
 //!
 //! Supports both static thumbnails (via [`draw_thumbnail`]) and interactive cards
 //! (e.g. `AssetCard` with 3D tilt) through the [`CardRenderContext::response`] field.
+//!
+//! [`show_sectioned`] draws the same grid with a full-width header over each run
+//! of cards — one section per trait value, per state, per parent entity — so a
+//! caller with a "group by" control does not have to give up the shared scroll
+//! area, the image warm band or the single detail panel to get one.
 
 use crate::image_loader::CachedSpinner;
 use crate::smart_image::{ImagePass, Placeholder, SmartImage};
-use crate::theme::{Ink, Radius, Space, SpaceExt, ThemeExt, Token};
+use crate::theme::{Ink, Radius, Space, SpaceExt, TextRole, Theme, ThemeExt, Token, line_height};
 use egui::{Pos2, Rect, Sense, Stroke, Vec2};
 
 // ============================================================================
@@ -283,6 +288,94 @@ pub struct CardBrowserResponse {
 }
 
 // ============================================================================
+// Sections
+// ============================================================================
+
+/// A run of consecutive cards drawn under one full-width header inside the
+/// grid.
+///
+/// Sections partition `items` in order: the first heads item 0, the second
+/// heads the item after the first section's cards, and so on. A section with
+/// no items contributes no header, and items past the last section's run
+/// render as they would with no sections at all — so a partial partition is
+/// not a way to hide the tail of the grid.
+///
+/// The header is a title, a muted note (a count, a qualifier) and a rule
+/// across the grid's width. The cards under it are the caller's items, in
+/// their own order — nothing about them is filtered or re-sorted here, which
+/// keeps card indices meaning what they meant before (a click still reports
+/// the index into `items`).
+pub struct CardSection {
+    /// What this run of cards is — a trait value, a state, a parent entity.
+    pub title: String,
+    /// Muted text after the title, usually a count ("12 assets"). Skipped
+    /// when empty.
+    pub note: String,
+    /// How many consecutive items belong to this section.
+    pub len: usize,
+}
+
+impl CardSection {
+    pub fn new(title: impl Into<String>, note: impl Into<String>, len: usize) -> Self {
+        Self {
+            title: title.into(),
+            note: note.into(),
+            len,
+        }
+    }
+}
+
+/// Where each non-empty section's header lands, as `(item index, section)`.
+///
+/// Pure, so the boundary arithmetic — the part that decides whether a header
+/// sits above the right card — is asserted on without a `Ui`.
+fn section_headers(sections: &[CardSection], item_count: usize) -> Vec<(usize, &CardSection)> {
+    let mut headers = Vec::new();
+    let mut start = 0usize;
+    for section in sections {
+        if section.len == 0 {
+            // A heading with nothing under it reads as a rendering fault.
+            continue;
+        }
+        if start >= item_count {
+            // Nothing left for this or any later section to head.
+            break;
+        }
+        headers.push((start, section));
+        start += section.len;
+    }
+    headers
+}
+
+/// Paint one section header across `rect`, which is a full row of the grid.
+fn draw_section_header(ui: &egui::Ui, rect: Rect, section: &CardSection, theme: &Theme) {
+    let painter = ui.painter();
+    painter.text(
+        egui::pos2(rect.min.x, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        &section.title,
+        theme.font(TextRole::Heading),
+        theme.color.text_primary,
+    );
+    if !section.note.is_empty() {
+        painter.text(
+            egui::pos2(rect.max.x, rect.center().y),
+            egui::Align2::RIGHT_CENTER,
+            &section.note,
+            theme.font(TextRole::Small),
+            theme.color.text_muted,
+        );
+    }
+    // The rule is what makes it read as a section rather than as one more
+    // card title — the header's own type size is the only other clue.
+    painter.hline(
+        rect.x_range(),
+        rect.max.y,
+        theme.geometry.border(theme.color.border),
+    );
+}
+
+// ============================================================================
 // Main widget
 // ============================================================================
 
@@ -298,11 +391,30 @@ pub struct CardBrowserResponse {
 /// Items are `&mut` so card render closures can mutate per-item state (e.g.
 /// `TiltState` for interactive cards). For read-only use cases, simply don't
 /// mutate.
+///
+/// For a grid divided into labelled runs of cards, see [`show_sectioned`].
 pub fn show<T>(
     ui: &mut egui::Ui,
     state: &mut CardBrowserState,
     items: &mut [T],
     config: &CardBrowserConfig,
+    render_card: impl FnMut(&mut egui::Ui, &CardRenderContext, &mut T),
+    render_detail: impl FnMut(&mut egui::Ui, usize, &mut T),
+) -> CardBrowserResponse {
+    show_sectioned(ui, state, items, config, &[], render_card, render_detail)
+}
+
+/// [`show`], with a full-width header drawn above each run of cards.
+///
+/// `sections` is a partition of `items`; the count in each header is the
+/// caller's, because only the caller knows whether it counts items, owners or
+/// something else entirely.
+pub fn show_sectioned<T>(
+    ui: &mut egui::Ui,
+    state: &mut CardBrowserState,
+    items: &mut [T],
+    config: &CardBrowserConfig,
+    sections: &[CardSection],
     mut render_card: impl FnMut(&mut egui::Ui, &CardRenderContext, &mut T),
     mut render_detail: impl FnMut(&mut egui::Ui, usize, &mut T),
 ) -> CardBrowserResponse {
@@ -382,7 +494,42 @@ pub fn show<T>(
                         viewport.expand2(Vec2::new(0.0, config.overscan_px(gutter)));
                     let warm_rect = viewport.expand2(Vec2::new(0.0, config.warm_px(gutter)));
 
+                    // Section headers, resolved to the item each one heads.
+                    // Cheap and empty for the ungrouped case.
+                    let mut headers = section_headers(sections, items.len())
+                        .into_iter()
+                        .peekable();
+                    let header_height =
+                        line_height(ui, t.font(TextRole::Heading).size) + t.space(Space::Sm) * 2.0;
+
                     for (idx, item) in items.iter_mut().enumerate() {
+                        if headers.peek().is_some_and(|(at, _)| *at == idx) {
+                            let (_, section) = headers.next().expect("just peeked");
+                            // A header takes a row of its own, and the full
+                            // grid width is what buys that: the wrapping layout
+                            // only wraps an item that cannot fit the row it is
+                            // on, so anything narrower could land inline beside
+                            // a card. `max_rect` is the whole grid width, while
+                            // `available_width` here would be just the rest of
+                            // the current row.
+                            //
+                            // `end_row` first, because a wrapped row otherwise
+                            // inherits the height of the row above it — a card
+                            // row — and the header centres in that, which reads
+                            // as a large empty gap under every heading but the
+                            // first. Skipped for the first section, whose row
+                            // is already the header's own height and where it
+                            // would only add a stray gutter.
+                            if idx > 0 {
+                                ui.end_row();
+                            }
+                            let (header_rect, _) = ui.allocate_exact_size(
+                                Vec2::new(ui.max_rect().width(), header_height),
+                                Sense::hover(),
+                            );
+                            draw_section_header(ui, header_rect, section, &t);
+                        }
+
                         let card_size = Vec2::new(config.card_width, config.card_height());
                         let (rect, card_resp) = ui.allocate_exact_size(card_size, Sense::click());
 
@@ -597,4 +744,196 @@ pub fn draw_thumbnail(
         .placeholder(Placeholder::Skeleton)
         .show(ui, thumb_rect, ImagePass::Paint)
         .wants_repaint()
+}
+
+#[cfg(test)]
+mod section_tests {
+    use super::{CardBrowserConfig, CardBrowserState, CardSection, section_headers};
+    use crate::card_browser;
+    use crate::smart_image::ImagePass;
+    use crate::test_pass::TestPass as _;
+    use crate::theme::{Space, ThemeExt as _};
+
+    fn sections(lens: &[usize]) -> Vec<CardSection> {
+        lens.iter()
+            .enumerate()
+            .map(|(i, &len)| CardSection::new(format!("section {i}"), "", len))
+            .collect()
+    }
+
+    fn test_config() -> CardBrowserConfig {
+        CardBrowserConfig {
+            card_width: 100.0,
+            text_lines: 1,
+            scroll_id: "section_layout_test",
+            ..Default::default()
+        }
+    }
+
+    /// Lay the grid out for real and hand back each card's rect.
+    ///
+    /// The viewport fits two card columns and not a third (2 × 108pt of card +
+    /// gutter), so a row can be left with room beside its last card — which is
+    /// where a header that had not claimed a row would land.
+    fn layout(item_count: usize, sections: &[CardSection]) -> Vec<(usize, egui::Rect)> {
+        let ctx = egui::Context::default();
+        let config = test_config();
+        let mut items: Vec<usize> = (0..item_count).collect();
+        let mut state = CardBrowserState::default();
+        let mut cards: Vec<(usize, egui::Rect)> = Vec::new();
+
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(260.0, 600.0),
+            )),
+            ..Default::default()
+        };
+        let _ = ctx.test_pass(input, |ui| {
+            egui::CentralPanel::default().show(ui, |ui| {
+                card_browser::show_sectioned(
+                    ui,
+                    &mut state,
+                    &mut items,
+                    &config,
+                    sections,
+                    |_ui, card, item: &mut usize| {
+                        if card.pass == ImagePass::Paint {
+                            cards.push((*item, card.rect));
+                        }
+                    },
+                    |_ui, _idx, _item: &mut usize| {},
+                );
+            });
+        });
+
+        assert_eq!(
+            cards.len(),
+            item_count,
+            "every card is inside this viewport"
+        );
+        cards
+    }
+
+    fn header_indices(sections: &[CardSection], item_count: usize) -> Vec<usize> {
+        section_headers(sections, item_count)
+            .iter()
+            .map(|(at, _)| *at)
+            .collect()
+    }
+
+    #[test]
+    fn no_sections_means_no_headers() {
+        assert!(section_headers(&[], 12).is_empty());
+    }
+
+    #[test]
+    fn a_section_heads_the_item_at_its_running_offset() {
+        assert_eq!(header_indices(&sections(&[3, 2, 4]), 9), vec![0, 3, 5]);
+    }
+
+    /// The header is what says "these cards belong together", so a section
+    /// with nothing under it must not draw one — an empty heading is
+    /// indistinguishable from a broken one.
+    #[test]
+    fn an_empty_section_contributes_no_header() {
+        assert_eq!(header_indices(&sections(&[0, 2, 0, 1]), 3), vec![0, 2]);
+    }
+
+    /// A partition shorter than the grid leaves the tail with no heading —
+    /// those cards still render, which is why this must not panic or stop the
+    /// loop.
+    #[test]
+    fn a_short_partition_leaves_the_tail_unheaded() {
+        let sections = sections(&[2]);
+        let headers = section_headers(&sections, 5);
+        assert_eq!(headers.len(), 1);
+        assert_eq!(headers[0].0, 0);
+    }
+
+    /// Sections starting past the end head nothing at all — the guard is what
+    /// keeps a caller who over-counts from producing phantom headings carrying
+    /// the wrong counts.
+    #[test]
+    fn sections_past_the_end_are_dropped() {
+        assert_eq!(header_indices(&sections(&[5, 3]), 5), vec![0]);
+    }
+
+    /// A header has to claim a line of its own. A section whose first card sits
+    /// in the leftover space beside the previous section's last card reads as
+    /// one undivided grid with a stray title floating in the middle of it, and
+    /// the count above it then refers to cards on either side.
+    ///
+    /// Laid out for real through a headless pass rather than asserted on the
+    /// arithmetic: whether the header wraps is egui's decision, and the only
+    /// honest way to know is to run it. The ungrouped run is the control — it
+    /// has to put a card in that leftover space, or the grouped assertion
+    /// would pass for the wrong reason.
+    #[test]
+    fn a_section_starts_a_new_row_for_its_first_card() {
+        // Three cards then one, over a two-column viewport: the fourth card
+        // fits beside the third, unless a header takes that row.
+        let ungrouped = layout(4, &[]);
+        assert_eq!(
+            ungrouped[3].1.min.y, ungrouped[2].1.min.y,
+            "the fourth card should sit beside the third when nothing is \
+             grouped — the viewport has to leave room for it"
+        );
+
+        let grouped = layout(
+            4,
+            &[CardSection::new("A", "3", 3), CardSection::new("B", "1", 1)],
+        );
+        assert!(
+            grouped[3].1.min.y > grouped[2].1.min.y,
+            "the second section's only card (y={}) is on the same row as the \
+             first section's last card (y={}) — the header did not claim a row",
+            grouped[3].1.min.y,
+            grouped[2].1.min.y,
+        );
+    }
+
+    /// A heading costs a line, not a card row.
+    ///
+    /// A wrapping layout gives the first item of a new row the height of the row
+    /// above it, so a header allocated straight after a card row was drawn into
+    /// a row as tall as a card with its text centred in that — which is a large
+    /// empty gap under every heading but the first, where there is no card row to
+    /// inherit from.
+    ///
+    /// Measured against the first heading, whose row is the header's own height:
+    /// crossing a section boundary must cost the normal row pitch plus one
+    /// heading.
+    #[test]
+    fn a_heading_costs_a_line_not_a_card_row() {
+        let ctx = egui::Context::default();
+        let config = test_config();
+        let gutter = ctx.tokens().space(config.spacing.unwrap_or(Space::Md));
+        let card_height = config.card_height();
+
+        let ungrouped = layout(5, &[]);
+        let grouped = layout(
+            5,
+            &[CardSection::new("A", "3", 3), CardSection::new("B", "2", 2)],
+        );
+
+        // The first heading's height, read off the offset it pushes the first
+        // card down by against the ungrouped run.
+        let heading_height = grouped[0].1.min.y - ungrouped[0].1.min.y - gutter;
+        assert!(
+            heading_height > 0.0,
+            "the heading should push the first card down, not sit beside it"
+        );
+
+        // Section A's last row to section B's first row: one normal pitch, then
+        // the heading, then the gutter that separates it from its own cards.
+        let boundary = grouped[3].1.min.y - grouped[2].1.min.y;
+        let expected = card_height + gutter + heading_height + gutter;
+        assert!(
+            (boundary - expected).abs() < 1.0,
+            "a section boundary costs {boundary}pt of vertical space, but one \
+             heading ({heading_height}pt) over the normal pitch ({card_height}pt \
+             + {gutter}pt) is {expected}pt — a heading is taking a card row",
+        );
+    }
 }

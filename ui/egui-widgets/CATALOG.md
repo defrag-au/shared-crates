@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-162 widgets.
+164 widgets.
 
 | module | what it is |
 |---|---|
@@ -19,6 +19,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `animated_counter` | AnimatedCounter — smoothly interpolates a numeric value between snapshots |
 | `app_header` | `AppHeader` — the bar across the top of a wallet-connected app: its name, one line on what it is for, anything the app wants beside them, and the account |
 | `arrival_field` | ArrivalField — every asset a dot, every holder a pile, and now they MOVE |
+| `art_viewer` | `ArtViewer` — one asset's art at size: the live piece where there is one, the cover still where there is not |
 | `asset_strip` | Asset strip — a horizontal row of square asset thumbnails that overlap progressively as more items are added |
 | `auth` | How an app decides who you are — the strategy the shell drives |
 | `auth_worker` | [`AuthStrategy`] for the `auth.cnft.dev` OAuth worker — an opaque token, validated against a service |
@@ -72,6 +73,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `grouped_section` | Grouped section header — hero icon + title + verified badge + subtitle + right-aligned bulk-action button, with caller-rendered body below |
 | `holder_field` | HolderField — the holder graph, reshuffling as assets change hands |
 | `holder_formation` | `HolderFormation` — people arriving, and how evenly the collection lands |
+| `html_stage` | `HtmlStage` — mount a live HTML document over an `egui::Rect` |
 | `id_pill` | `IdPill` — small inline display of a long identifier with a copy affordance |
 | `image_stack` | `ImageStack` — several images as a fanned pile of mounted prints, so a lot of many reads as a lot of many at a glance |
 | `image_text_editor` | Image text overlay editor — place, style, and drag text on top of an image |

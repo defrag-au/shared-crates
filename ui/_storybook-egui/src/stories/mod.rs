@@ -4,6 +4,7 @@ pub mod account_bar;
 pub mod activity_feed;
 pub mod agent_config;
 pub mod aliens_fixture;
+pub mod art_viewer;
 pub mod asset_card;
 pub mod async_data;
 pub mod background;
@@ -47,6 +48,7 @@ pub mod mesh_playground;
 pub mod metric_card;
 pub mod mnemonic_display;
 pub mod named_group_list;
+pub mod onchain_fixture;
 pub mod option_group;
 pub mod order_list;
 pub mod pane_nav;
@@ -118,6 +120,8 @@ pub mod leaderboard_table;
 // Utility widgets
 #[cfg(target_arch = "wasm32")]
 pub mod file_upload;
+#[cfg(target_arch = "wasm32")]
+pub mod html_stage;
 pub mod image_loads;
 pub mod image_stack;
 pub mod image_text_editor;

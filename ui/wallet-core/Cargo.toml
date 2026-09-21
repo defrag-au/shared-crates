@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+# Chain identity lives here now rather than in this crate: it was never
+# wasm-specific, and a pure enum inside a wasm-bindgen crate is why
+# `egui-widgets` could not name a chain without turning on its `cardano`
+# feature. Re-exported below as `Network` so existing importers keep working.
+chains = { workspace = true }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 web-sys = { workspace = true, features = ["Storage"] }

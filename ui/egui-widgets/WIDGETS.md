@@ -105,7 +105,9 @@ shape: builder → `.show(ui) -> Response { actions: Vec<…> }`.
 - **`listing_grid`** → `ListingGrid` — Marketplace card grid with
   thumbnails, prices, hover details. **Listing browsers.**
 - **`card_browser`** → `CardBrowserConfig` — Master-detail card grid
-  with right detail slider. **Browse + drill-in flows.**
+  with right detail slider, or labelled runs of cards via `show_sectioned`.
+  **Browse + drill-in flows, and any grid a reader wants segmented**
+  (by trait value, by state, by parent collection).
 - **`trade_table`** → trade-offer display (split top/bottom) — Two-party
   trade workspace with NFT slots + ADA sweetener + lock mechanics.
   **Trade-desk concurrent dual-side offers.**

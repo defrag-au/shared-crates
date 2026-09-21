@@ -32,8 +32,16 @@ web-sys = { workspace = true, features = [
     "Document",
     "HtmlCanvasElement",
     "Element",
+    # The `html_stage` story counts iframes in the live document — its own
+    # instrument for the teardown trap (a stage left mounted is an animation
+    # loop left running).
+    "NodeList",
 ] }
 image = { workspace = true, features = ["png"] }
+# The `html_stage` story parses a real CIP-25 fixture through
+# `cardano_assets::AssetEnvelope`, so the story exercises the extraction half
+# of the live-art path rather than only the mounting half.
+serde_json = { workspace = true }
 gloo-timers = { workspace = true, features = ["futures"] }
 console_error_panic_hook = "0.1"
 log = { workspace = true }

@@ -16,6 +16,10 @@ pub mod animated_counter;
 #[cfg(all(target_arch = "wasm32", feature = "cardano"))]
 pub mod app_header;
 pub mod arrival_field;
+// The viewer for one asset's art — a live on-chain piece where there is one,
+// the cover still where there is not. Cross-platform: without a DOM the live
+// half degrades to the cover and says so.
+pub mod art_viewer;
 pub mod asset_card;
 pub mod auth;
 pub mod auth_worker;
@@ -69,6 +73,10 @@ pub mod gateway_log;
 pub mod grouped_section;
 pub mod holder_field;
 pub mod holder_formation;
+// `HtmlStage` mounts a live on-chain art document in an iframe — wasm-only,
+// like `file_upload`, because it is DOM work.
+#[cfg(target_arch = "wasm32")]
+pub mod html_stage;
 pub mod icons;
 pub mod id_pill;
 pub mod image_loader;
@@ -244,6 +252,7 @@ pub use activity_feed::{
 pub use activity_lanes::{ActivityLanes, ActivityLanesResponse, Lane};
 pub use animated_counter::AnimatedCounter;
 pub use arrival_field::{ArrivalField, ArrivalFieldResponse};
+pub use art_viewer::{ArtSource, ArtViewerResponse, ArtViewerState, ArtViewerTarget};
 pub use button_group::{ButtonGroup, ButtonGroupButton, ButtonGroupResponse};
 pub use buttons::UiButtonExt;
 pub use capital_flow::{
@@ -251,7 +260,7 @@ pub use capital_flow::{
     cumulative_at, legend as capital_legend, state_at,
 };
 pub use card_browser::{
-    CardBrowserConfig, CardBrowserResponse, CardBrowserState, CardRenderContext,
+    CardBrowserConfig, CardBrowserResponse, CardBrowserState, CardRenderContext, CardSection,
 };
 pub use channel_bands::{
     CHANNEL_PALETTE, ChannelBands, ChannelBandsResponse, ChannelSeries, OTHER_COLOR, OTHER_LABEL,
@@ -303,6 +312,8 @@ pub use holder_field::{AssetMove, Custody, HolderField, HolderFieldResponse};
 pub use holder_formation::{
     Acquisition, Distribution, HolderFormation, distribution_at, distribution_series, holdings_at,
 };
+#[cfg(target_arch = "wasm32")]
+pub use html_stage::{HtmlStage, StageLayer, StageOptions};
 pub use icons::{PhosphorIcon, install_phosphor_font};
 pub use id_pill::{
     IdPill, IdPillLayout, IdPillResponse, stacked_width_for as id_pill_stacked_width_for,

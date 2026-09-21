@@ -117,6 +117,10 @@ web-sys = { workspace = true, features = [
     "ImageData",
     "WorkerGlobalScope",
     "Document", "Element", "HtmlElement", "HtmlInputElement",
+    # `html_stage` mounts an on-chain art piece in an iframe. `HtmlIFrameElement`
+    # is the element; `CssStyleDeclaration` (implied by `HtmlElement`, which
+    # `file_upload` already uses) is how the stage is positioned and stacked.
+    "HtmlIFrameElement",
     "FileList", "File", "FileReader",
     # `stake_session` persists a worker session in localStorage.
     "Storage",

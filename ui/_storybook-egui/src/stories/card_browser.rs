@@ -5,7 +5,7 @@ use egui_widgets::asset_card::{
     AssetCard, AssetCardState, CardEffectKind, CardImage, EFFECT_NAMES, RARITY_NAMES,
     rarity_colors_of,
 };
-use egui_widgets::card_browser::{self, CardBrowserConfig, CardBrowserState};
+use egui_widgets::card_browser::{self, CardBrowserConfig, CardBrowserState, CardSection};
 use egui_widgets::slider_group::SliderGroup;
 use egui_widgets::theme::Space;
 use image_core::ImageSize;
@@ -30,6 +30,10 @@ pub struct CardBrowserStoryState {
     pub spacing: Option<Space>,
     pub holo_strength: f32,
     pub items: Vec<DemoItem>,
+    /// Partition the grid by each item's badge, the way a caller segments by a
+    /// trait value. `sections` is rebuilt with the items — see `rebuild`.
+    pub grouped: bool,
+    pub sections: Vec<CardSection>,
 }
 
 impl Default for CardBrowserStoryState {
@@ -43,7 +47,36 @@ impl Default for CardBrowserStoryState {
             spacing: None,
             holo_strength: 0.7,
             items: build_preset_items(0),
+            grouped: false,
+            sections: Vec::new(),
         }
+    }
+}
+
+/// Items for the current preset, with `sections` describing them when the
+/// grouped toggle is on.
+///
+/// The reorder is the caller's job, not the widget's: sections partition the
+/// items they are given, so a caller with a "group by" control sorts its list
+/// first (here by badge text) and then says where the boundaries are.
+fn rebuild(state: &mut CardBrowserStoryState) {
+    state.items = build_preset_items(state.preset);
+    state.sections = Vec::new();
+    state.browser.selected = None;
+    if !state.grouped {
+        return;
+    }
+
+    state.items.sort_by_key(|item| item.badge.clone());
+    for item in &state.items {
+        let title = item.badge.clone().unwrap_or_else(|| "no badge".to_owned());
+        match state.sections.last_mut() {
+            Some(last) if last.title == title => last.len += 1,
+            _ => state.sections.push(CardSection::new(title, "", 1)),
+        }
+    }
+    for section in &mut state.sections {
+        section.note = format!("{} items", section.len);
     }
 }
 
@@ -455,9 +488,24 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
             };
             if ui.selectable_label(state.preset == i, text).clicked() {
                 state.preset = i;
-                state.items = build_preset_items(i);
-                state.browser.selected = None;
+                rebuild(state);
             }
+        }
+    });
+
+    ui.horizontal(|ui| {
+        if ui
+            .selectable_label(state.grouped, "Grouped sections")
+            .on_hover_text("Partition the grid by badge — the shape a trait grouping produces")
+            .clicked()
+        {
+            state.grouped = !state.grouped;
+            rebuild(state);
+        }
+        if state.grouped {
+            ui.label(
+                egui::RichText::new(format!("{} sections", state.sections.len())).color(muted(ui)),
+            );
         }
     });
 
@@ -509,12 +557,15 @@ pub fn show(ui: &mut egui::Ui, state: &mut CardBrowserStoryState) {
     let preset = state.preset;
     let holo_strength = state.holo_strength;
 
-    // Show the browser
-    card_browser::show(
+    // Show the browser. `show_sectioned` with an empty list is `show`, so the
+    // grouped and ungrouped paths are one call — the three-section demo is
+    // there to be looked at, not to be a separate code path.
+    card_browser::show_sectioned(
         ui,
         &mut state.browser,
         &mut state.items,
         &config,
+        &state.sections,
         // Card renderer
         |ui, ctx, item| {
             // These cards are drawn from local colour, not fetched images, so
