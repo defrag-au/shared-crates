@@ -124,7 +124,7 @@ pub fn show(ui: &mut egui::Ui) {
     ui.add_space(8.0);
     ui.label(
         egui::RichText::new(
-            "Rest: dark chip, accent glyph. Hover: accent chip, dark glyph. \
+            "Rest: dark chip, accent glyph. Hover: accent chip, dark glyph, hand cursor. \
              The chip is 16pt by default, 4pt in from the edges.",
         )
         .color(muted(ui))
