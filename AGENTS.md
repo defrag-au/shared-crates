@@ -1,6 +1,6 @@
 <!-- BEGIN agent-playbook (project: shared-crates, target: zed) — generated, do not edit -->
 
-# Agent rules — shared-crates
+# Agent rules
 
 Generated from agent-playbook (`projects/shared-crates` + `models/zed`).
 Rule sources live under `/Users/damo/code/defrag/agent-playbook` — each heading's HTML comment names its file there.
@@ -213,10 +213,10 @@ removed · a low-level JSON utility whose whole purpose is handling arbitrary JS
   repository holds the variable *name* and an `.env.example` with an obvious placeholder:
 
 ```
-## .env.example — committed
+# .env.example — committed
 KOIOS_API_KEY=your-key-here
 
-## .env — gitignored
+# .env — gitignored
 KOIOS_API_KEY=<real value>
 ```
 
