@@ -12,22 +12,16 @@ pub fn save_last_wallet(provider: WalletProvider) {
 }
 
 /// Load the last connected wallet provider
+///
+/// Goes through [`WalletProvider::from_api_name`] rather than repeating the
+/// name→variant map: this used to be a second hand-written copy, which meant a
+/// newly supported wallet could be saved and never loaded again — an
+/// auto-reconnect that silently does nothing.
 pub fn load_last_wallet() -> Option<WalletProvider> {
     let storage = get_storage()?;
     let name = storage.get_item(STORAGE_KEY).ok()??;
 
-    match name.as_str() {
-        "nami" => Some(WalletProvider::Nami),
-        "eternl" => Some(WalletProvider::Eternl),
-        "lace" => Some(WalletProvider::Lace),
-        "flint" => Some(WalletProvider::Flint),
-        "typhon" => Some(WalletProvider::Typhon),
-        "vespr" => Some(WalletProvider::Vespr),
-        "nufi" => Some(WalletProvider::NuFi),
-        "gerowallet" => Some(WalletProvider::Gero),
-        "yoroi" => Some(WalletProvider::Yoroi),
-        _ => None,
-    }
+    WalletProvider::from_api_name(&name)
 }
 
 /// Clear the saved wallet

@@ -9,11 +9,15 @@ use crate::types::{DataSignature, WalletInfo, WalletProvider};
 
 // JavaScript bindings for wallet detection and connection
 #[wasm_bindgen(inline_js = r#"
+// The namespaces we look for on `window.cardano`. This is the JS half of
+// `WalletProvider` — a name here with no matching Rust variant is dropped
+// silently by `detect_wallets`, so the two must be changed together.
+const KNOWN_WALLETS = ['nami', 'eternl', 'lace', 'flint', 'typhon', 'vespr', 'nufi', 'gerowallet', 'yoroi', 'brave'];
+
 export function detectWallets() {
     const wallets = [];
     if (typeof window !== 'undefined' && window.cardano) {
-        const knownWallets = ['nami', 'eternl', 'lace', 'flint', 'typhon', 'vespr', 'nufi', 'gerowallet', 'yoroi'];
-        for (const name of knownWallets) {
+        for (const name of KNOWN_WALLETS) {
             if (window.cardano[name]) {
                 wallets.push(name);
             }
@@ -37,8 +41,7 @@ export function getWalletInfo(name) {
 export function detectWalletsWithInfo() {
     const wallets = [];
     if (typeof window !== 'undefined' && window.cardano) {
-        const knownWallets = ['nami', 'eternl', 'lace', 'flint', 'typhon', 'vespr', 'nufi', 'gerowallet', 'yoroi'];
-        for (const apiName of knownWallets) {
+        for (const apiName of KNOWN_WALLETS) {
             const wallet = window.cardano[apiName];
             if (wallet) {
                 wallets.push({
@@ -230,6 +233,7 @@ pub fn detect_wallets() -> Vec<WalletProvider> {
             "nufi" => Some(WalletProvider::NuFi),
             "gerowallet" => Some(WalletProvider::Gero),
             "yoroi" => Some(WalletProvider::Yoroi),
+            "brave" => Some(WalletProvider::Brave),
             _ => None,
         })
         .collect()

@@ -476,7 +476,13 @@ impl Profiler {
         } else {
             let listed: Vec<String> = causes
                 .iter()
-                .map(|(site, n)| if *n > 1 { format!("{site} x{n}") } else { site.clone() })
+                .map(|(site, n)| {
+                    if *n > 1 {
+                        format!("{site} x{n}")
+                    } else {
+                        site.clone()
+                    }
+                })
                 .collect();
             format!("R {}", listed.join(" "))
         };
@@ -635,9 +641,7 @@ impl Profiler {
                 chip(
                     format!(
                         "{:.0} fps · p50 {:.1}ms · p95 {:.1}ms",
-                        vitals.frames.fps,
-                        vitals.frames.build_p50_ms,
-                        vitals.frames.build_p95_ms
+                        vitals.frames.fps, vitals.frames.build_p50_ms, vitals.frames.build_p95_ms
                     ),
                     muted,
                 );

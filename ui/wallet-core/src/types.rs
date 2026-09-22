@@ -36,6 +36,10 @@ pub enum WalletProvider {
     NuFi,
     Gero,
     Yoroi,
+    /// Brave Wallet, built into the Brave browser rather than installed as an
+    /// extension — `window.cardano.brave`. Injected only on secure sites and,
+    /// since Brave 1.95, only once the user has created a wallet.
+    Brave,
 }
 
 impl WalletProvider {
@@ -51,6 +55,7 @@ impl WalletProvider {
             WalletProvider::NuFi => "nufi",
             WalletProvider::Gero => "gerowallet",
             WalletProvider::Yoroi => "yoroi",
+            WalletProvider::Brave => "brave",
         }
     }
 
@@ -66,6 +71,10 @@ impl WalletProvider {
             WalletProvider::NuFi => "NuFi",
             WalletProvider::Gero => "Gero",
             WalletProvider::Yoroi => "Yoroi",
+            // Brave's own `name` field is "Brave Wallet", and the macroquad
+            // bridge shows that verbatim (`p.name || key`). Matching it keeps
+            // the picker from renaming the wallet per bridge.
+            WalletProvider::Brave => "Brave Wallet",
         }
     }
 
@@ -81,6 +90,7 @@ impl WalletProvider {
             WalletProvider::NuFi,
             WalletProvider::Gero,
             WalletProvider::Yoroi,
+            WalletProvider::Brave,
         ]
     }
 
@@ -96,7 +106,31 @@ impl WalletProvider {
             "nufi" => Some(WalletProvider::NuFi),
             "gerowallet" => Some(WalletProvider::Gero),
             "yoroi" => Some(WalletProvider::Yoroi),
+            "brave" => Some(WalletProvider::Brave),
             _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod provider_name_tests {
+    use super::WalletProvider;
+
+    /// `api_name` and `from_api_name` are two hand-written halves of one map,
+    /// and a variant missing from either fails silently — an absent variant in
+    /// `api_name` will not build, but an absent arm in `from_api_name` is a
+    /// `_ => None` that drops a detected wallet with no error at all. Walking
+    /// `all()` pins them against each other.
+    #[test]
+    fn every_provider_round_trips_through_its_api_name() {
+        for provider in WalletProvider::all() {
+            let api_name = provider.api_name();
+            assert!(!api_name.is_empty(), "{provider:?} has no api_name");
+            assert_eq!(
+                WalletProvider::from_api_name(api_name),
+                Some(*provider),
+                "{api_name} does not map back to {provider:?}"
+            );
         }
     }
 }

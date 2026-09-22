@@ -6,7 +6,8 @@
 //! widget, registered after the host, so egui's hit test gives *it* the
 //! click and the host card underneath does not also toggle. At rest it is a
 //! muted dark chip with an accent glyph, present but not competing with the
-//! image; on hover the chip fills with the accent so the target is obvious.
+//! image; on hover the chip fills with the accent and the pointer becomes a
+//! hand — the same feedback every other clickable widget in the set gives.
 //!
 //! Corner badges that only *display* (an owned dot, a quantity) are not this
 //! widget — see `offer_tile`. This one is for something the operator does.
@@ -160,6 +161,12 @@ impl CornerAction {
         let id = ui.id().with(("corner-action", id_salt));
         let response = ui.interact(rect, id, Sense::click());
 
+        // A button on a picture, not part of the picture. Without this, hovering
+        // a card and hovering the action on it look the same.
+        if response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+
         let t = ui.tokens();
         let accent = self.accent.resolve(&t);
         let (bg, fg) = if response.hovered() {
@@ -222,5 +229,43 @@ mod tests {
             .shift(14.0)
             .rect(host());
         assert_eq!(left.min.x, 118.0);
+    }
+
+    /// The cursor over the chip, read from the pass's platform output — the
+    /// only place a hand cursor is observable without a browser.
+    ///
+    /// Two passes on one context: a widget's first pass only registers it, and
+    /// hover is resolved from what the pass before established.
+    fn cursor_at(pointer: Pos2) -> egui::CursorIcon {
+        use crate::test_pass::TestPass as _;
+
+        let ctx = egui::Context::default();
+        let input = || egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::splat(400.0))),
+            events: vec![egui::Event::PointerMoved(pointer)],
+            ..Default::default()
+        };
+        let show = |ui: &mut Ui| {
+            CornerAction::new(PhosphorIcon::ArrowsClockwise).show(ui, host(), "cursor");
+        };
+        let _ = ctx.test_pass(input(), show);
+        let output = ctx.test_pass(input(), show);
+        output.platform_output.cursor_icon
+    }
+
+    #[test]
+    fn hovering_the_chip_asks_for_a_hand_cursor() {
+        let chip = CornerAction::new(PhosphorIcon::ArrowsClockwise)
+            .rect(host())
+            .center();
+        assert_eq!(cursor_at(chip), egui::CursorIcon::PointingHand);
+    }
+
+    /// …and only over the chip. The host's own ground stays an arrow, so the
+    /// action reads as the one thing on the card that is clickable.
+    #[test]
+    fn the_host_beside_the_chip_does_not() {
+        let beside = Pos2::new(host().min.x + 4.0, host().max.y - 4.0);
+        assert_ne!(cursor_at(beside), egui::CursorIcon::PointingHand);
     }
 }

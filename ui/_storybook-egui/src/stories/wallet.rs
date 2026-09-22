@@ -1,10 +1,51 @@
 use crate::muted;
+use egui_widgets::egui_inbox::{UiInbox, UiInboxSender};
+
+/// Messages from the async connect task.
+enum WalletMsg {
+    Connected(
+        Result<
+            (
+                egui_widgets::wallet::WalletConnectResult,
+                egui_widgets::wallet::WalletApi,
+            ),
+            String,
+        >,
+    ),
+}
+
+/// This story's async plumbing. The connector itself stays on the app: the
+/// UtxoShelf story draws the same one, so connecting here leaves that story
+/// connected too.
+pub struct WalletButtonStoryState {
+    inbox: UiInbox<WalletMsg>,
+    sender: UiInboxSender<WalletMsg>,
+}
+
+impl Default for WalletButtonStoryState {
+    fn default() -> Self {
+        let (sender, inbox) = UiInbox::channel();
+        Self { inbox, sender }
+    }
+}
 
 pub fn show(
     ui: &mut egui::Ui,
     wallet_btn: &mut egui_widgets::WalletButton,
     connector: &mut egui_widgets::wallet::WalletConnector,
+    state: &mut WalletButtonStoryState,
 ) {
+    // The result lands on a later frame. `UiInbox::send` requests a repaint, so
+    // the picker cannot sit in `Connecting` waiting for a mouse move.
+    for msg in state.inbox.read(ui) {
+        match msg {
+            WalletMsg::Connected(Ok((result, api))) => {
+                connector.apply_connect_result(result);
+                connector.api = Some(api);
+            }
+            WalletMsg::Connected(Err(e)) => connector.set_error(e),
+        }
+    }
     ui.label(format!(
         "Detected wallets: {}",
         connector.available_wallets.len()
@@ -52,6 +93,12 @@ pub fn show(
                 egui_widgets::WalletAction::Connect(provider) => {
                     connector.set_connecting();
                     log::info!("Connect requested for {provider:?}");
+
+                    let sender = state.sender.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        let result = egui_widgets::wallet::connect_wallet(provider).await;
+                        let _ = sender.send(WalletMsg::Connected(result));
+                    });
                 }
                 egui_widgets::WalletAction::Disconnect => {
                     connector.disconnect();

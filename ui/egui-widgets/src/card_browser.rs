@@ -173,9 +173,7 @@ mod overscan_tests {
     fn the_bands_are_whole_rows_of_card_plus_gutter() {
         let config = CardBrowserConfig::default();
         let row = config.card_height() + 8.0;
-        assert!(
-            (config.overscan_px(8.0) - row * config.overscan_rows as f32).abs() < f32::EPSILON
-        );
+        assert!((config.overscan_px(8.0) - row * config.overscan_rows as f32).abs() < f32::EPSILON);
         assert!((config.warm_px(8.0) - row * config.warm_rows as f32).abs() < f32::EPSILON);
     }
 
@@ -490,8 +488,7 @@ pub fn show_sectioned<T>(
                     // is asked for; beyond that the card is allocated and
                     // nothing else happens to it.
                     let viewport = ui.clip_rect();
-                    let paint_rect =
-                        viewport.expand2(Vec2::new(0.0, config.overscan_px(gutter)));
+                    let paint_rect = viewport.expand2(Vec2::new(0.0, config.overscan_px(gutter)));
                     let warm_rect = viewport.expand2(Vec2::new(0.0, config.warm_px(gutter)));
 
                     // Section headers, resolved to the item each one heads.

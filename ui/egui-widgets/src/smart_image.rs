@@ -163,9 +163,9 @@ impl<'a> SmartImage<'a> {
             return ImageState::Absent;
         };
 
-        let poll = ui
-            .ctx()
-            .try_load_texture(url, TextureOptions::default(), size_hint_for(ui, rect));
+        let poll =
+            ui.ctx()
+                .try_load_texture(url, TextureOptions::default(), size_hint_for(ui, rect));
 
         let state = match &poll {
             Ok(egui::load::TexturePoll::Ready { .. }) => ImageState::Ready,
@@ -263,7 +263,11 @@ fn size_hint_for(ui: &egui::Ui, rect: Rect) -> SizeHint {
 /// rung ladder for something it has no answer for.
 fn physical_px(points: f32, pixels_per_point: f32) -> u32 {
     let px = (points * pixels_per_point).ceil();
-    if px.is_finite() { (px as u32).max(1) } else { 1 }
+    if px.is_finite() {
+        (px as u32).max(1)
+    } else {
+        1
+    }
 }
 
 #[cfg(test)]
@@ -305,7 +309,10 @@ mod tests {
     /// decodes at source resolution.
     #[test]
     fn the_default_size_hint_would_decode_natively() {
-        assert_eq!(DecodeSize::for_hint(SizeHint::default()), DecodeSize::Native);
+        assert_eq!(
+            DecodeSize::for_hint(SizeHint::default()),
+            DecodeSize::Native
+        );
         // What a real card asks for instead.
         assert_eq!(DecodeSize::for_hint(hint(256)), DecodeSize::Retina);
     }

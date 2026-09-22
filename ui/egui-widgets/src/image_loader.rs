@@ -669,7 +669,10 @@ pub mod browser {
 
     /// The canvas every decode draws through, and the 2D context bound to it.
     struct ScratchCanvas {
-        inner: Option<(web_sys::OffscreenCanvas, web_sys::OffscreenCanvasRenderingContext2d)>,
+        inner: Option<(
+            web_sys::OffscreenCanvas,
+            web_sys::OffscreenCanvasRenderingContext2d,
+        )>,
     }
 
     /// Borrowed view of an initialised [`ScratchCanvas`].

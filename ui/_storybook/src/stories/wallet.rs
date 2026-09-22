@@ -79,6 +79,7 @@ fn wallet_icon(provider: WalletProvider) -> &'static str {
         WalletProvider::NuFi => "Nu",
         WalletProvider::Gero => "G",
         WalletProvider::Yoroi => "Y",
+        WalletProvider::Brave => "B",
     }
 }
 
