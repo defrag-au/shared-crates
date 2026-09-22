@@ -156,7 +156,7 @@ mod app {
         // Trade Desk run — so the sidebar rendered the heading twice. Merged, with
         // each former block's order preserved.
         group "Wallet" {
-            WalletButton => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet::show(ui, &mut a.wallet_btn, &mut a.wallet_connector);
+            WalletButton => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet::show(ui, &mut a.wallet_btn, &mut a.wallet_connector, &mut a.wallet_button_state);
             WalletEditor => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_editor::show(ui, &mut a.wallet_editor_state);
             TxFlight => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::tx_flight::show(ui, &mut a.tx_flight_state);
             StakeSession => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::stake_session::show(ui, &mut a.stake_session_state);
@@ -1451,6 +1451,7 @@ mod app {
         wallet_editor_state: stories::wallet_editor::WalletEditorStoryState,
         wallet_btn: egui_widgets::WalletButton,
         wallet_connector: egui_widgets::wallet::WalletConnector,
+        wallet_button_state: stories::wallet::WalletButtonStoryState,
         swap_modal: egui_widgets::SwapModal,
         swap_progress: egui_widgets::SwapProgress,
         // Trade desk
@@ -1602,6 +1603,7 @@ mod app {
                 wallet_editor_state: stories::wallet_editor::WalletEditorStoryState::default(),
                 wallet_btn: egui_widgets::WalletButton::new(),
                 wallet_connector: egui_widgets::wallet::WalletConnector::new(),
+                wallet_button_state: stories::wallet::WalletButtonStoryState::default(),
                 swap_modal: egui_widgets::SwapModal::new(egui_widgets::SwapModalConfig {
                     token_name: "TestToken".into(),
                     token_ticker: Some("TST".into()),
