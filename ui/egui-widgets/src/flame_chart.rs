@@ -1025,7 +1025,10 @@ mod tests {
 
         // Overlapping roots (a malformed capture) must not report a thread as
         // busier than the clock allows.
-        let overlapping = [span(0, 0, 5_000_000, "a"), span(0, 1_000_000, 1_000_000, "b")];
+        let overlapping = [
+            span(0, 0, 5_000_000, "a"),
+            span(0, 1_000_000, 1_000_000, "b"),
+        ];
         assert_eq!(busy_ns(&overlapping).0, 5_000_000);
     }
 
@@ -1085,10 +1088,7 @@ mod tests {
     /// the hottest scope is `0` and the tree can reference it in one char.
     #[test]
     fn dictionary_ids_are_positions_ranked_by_self_time() {
-        let spans = [
-            span(0, 0, 10_000_000, "host"),
-            span(1, 0, 9_000_000, "hot"),
-        ];
+        let spans = [span(0, 0, 10_000_000, "host"), span(1, 0, 9_000_000, "hot")];
         let text = report_compact(&spans);
         let dict = text.lines().find(|l| l.starts_with("D|")).expect("dict");
         // `hot` keeps 9ms, `host` keeps 1ms, so `hot` leads and is id 0.
@@ -1112,10 +1112,22 @@ mod tests {
             span(2, 20_000_000, 60_000_000, "decode"),
             span(3, 25_000_000, 150_000_000, "decode"),
         ];
-        assert!(report_compact(&nested).lines().next().unwrap().contains(" a=1"));
+        assert!(
+            report_compact(&nested)
+                .lines()
+                .next()
+                .unwrap()
+                .contains(" a=1")
+        );
 
         let ordinary = [span(0, 0, 10_000_000, "App::ui")];
-        assert!(!report_compact(&ordinary).lines().next().unwrap().contains(" a=1"));
+        assert!(
+            !report_compact(&ordinary)
+                .lines()
+                .next()
+                .unwrap()
+                .contains(" a=1")
+        );
     }
 
     #[test]
