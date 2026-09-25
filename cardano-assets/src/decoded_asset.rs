@@ -83,9 +83,13 @@ pub enum NftMimeType {
     ImageJpeg,
     #[serde(rename = "image/gif", alias = "gif", alias = ".gif")]
     ImageGif,
+    // ⚠️ `text/svg+xml` is a wrong top-level type, not a different format: SVG's
+    // registered type is `image/svg+xml` (IANA, via the W3C), and `text/*` is for
+    // human-readable text. 8,908 assets declare it, and an SVG is the artwork.
     #[serde(
         rename = "image/svg+xml",
         alias = "image/svg",
+        alias = "text/svg+xml",
         alias = "svg",
         alias = ".svg"
     )]
@@ -375,6 +379,7 @@ mod tests {
             ("gif", NftMimeType::ImageGif),
             ("IMAGE/GIF", NftMimeType::ImageGif),
             ("image/svg", NftMimeType::ImageSvg),
+            ("text/svg+xml", NftMimeType::ImageSvg),
             ("svg", NftMimeType::ImageSvg),
             ("video/mp4\t", NftMimeType::VideoMp4),
             ("image/x-ms-bmp", NftMimeType::ImageBmp),
@@ -408,7 +413,6 @@ mod tests {
     #[test]
     fn shaped_but_uncatalogued_is_custom_and_the_rest_is_undefined() {
         for declared in [
-            "text/svg+xml",
             "application/lpf+zip",
             "image/mp4",
             "application/octet-stream",
