@@ -108,7 +108,7 @@ const PROVENANCE_FIELDS: &[&str] = &[
 ];
 
 /// Keys whose value, when structured, holds the asset's traits.
-const SLOT_KEYS: &[&str] = &["traits", "attributes", "properties"];
+pub(crate) const SLOT_KEYS: &[&str] = &["traits", "attributes", "properties"];
 
 /// Registry category for a known field name. See module-level table.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -139,7 +139,7 @@ pub fn classify_field(name: &str) -> Option<FieldClass> {
 
 /// Whether a field should appear in the collection-ownership trait set:
 /// unknown fields (visual traits) and surfaced facets (rarity/tier) only.
-fn trait_eligible(name: &str) -> bool {
+pub(crate) fn trait_eligible(name: &str) -> bool {
     match classify_field(name) {
         None => true,
         Some(FieldClass::Facet { surface }) => surface,
@@ -395,7 +395,10 @@ pub fn asset_from_metadata_value(value: serde_json::Value) -> Result<Asset, serd
 /// treated as a flat multi-value field, matching how v1 surfaced
 /// SpaceBudz-style `traits` arrays (the array under its own key, with
 /// sibling scalars still becoming traits).
-enum SlotShape {
+///
+/// `pub(crate)` for the `Metadatum` walk, which classifies the same shapes
+/// off the CBOR (`metadatum::classify_slot`) and must not drift from this.
+pub(crate) enum SlotShape {
     /// `{ "Background": "Crimson", ... }`
     Map,
     /// `[ { "trait_type"|"name": K, "value": V }, ... ]` (OpenSea / gophers)

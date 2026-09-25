@@ -21,6 +21,8 @@ pub mod decoded_asset;
 pub mod extract;
 #[cfg(feature = "cip14")]
 pub mod fingerprint;
+#[cfg(feature = "cip25")]
+pub mod metadatum;
 pub mod policy_classification;
 pub mod policy_id;
 pub mod resolver;
@@ -55,6 +57,8 @@ pub use extract::{
 };
 #[cfg(feature = "cip14")]
 pub use fingerprint::{Fingerprint, FingerprintError};
+#[cfg(feature = "cip25")]
+pub use metadatum::{DecodedDocument, decode_document};
 pub use policy_classification::{PolicyAssetSample, PolicyClassification, classify_policy};
 pub use policy_id::{PolicyId, PolicyIdError};
 pub use resolver::*;
