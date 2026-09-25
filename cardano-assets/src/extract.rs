@@ -22,7 +22,10 @@
 //! whole fixture corpus before any cutover. See
 //! `tests/extract_corpus.rs`.
 
-use crate::{Asset, AssetFile, PrimitiveOrList, Traits, UnsigData};
+use crate::{
+    Asset, AssetFile, AssetId, DecodedAsset, Media, MediaRole, MediaType, PrimitiveOrList, Traits,
+    UnsigData,
+};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -179,6 +182,68 @@ impl AssetEnvelope {
             traits,
             rarity_rank: None,
             tags: vec![],
+        }
+    }
+
+    /// The same document as a [`DecodedAsset`]: the media list kept, the name
+    /// able to say "no name", and the marketplace fields gone.
+    ///
+    /// **One entry per medium.** The headline is the document's `image`; a
+    /// `files[]` entry whose `src` is that same source is the headline listed a
+    /// second time (it is the entry the media-type fallback finds), so it is
+    /// folded into the headline — its `name` survives, which is what a viewer
+    /// needs — and never emitted twice. A document with `files[]` and no
+    /// `image` has no headline: nothing is promoted behind the document's back.
+    #[must_use]
+    pub fn into_decoded_asset(self, id: AssetId) -> DecodedAsset {
+        let Self {
+            name,
+            image,
+            media_type,
+            files,
+            rest,
+        } = self;
+        let files = files.unwrap_or_default();
+        let image = image.as_ref().map(PrimitiveOrList::dechunked);
+        let resolved = media_type.or_else(|| {
+            let image = image.as_deref().unwrap_or_default();
+            files
+                .iter()
+                .find(|f| f.get_src() == image)
+                .map(|f| f.media_type().to_string())
+        });
+        let consumed = image
+            .as_ref()
+            .and_then(|src| files.iter().position(|f| &f.get_src() == src));
+
+        let mut media = Vec::new();
+        if let Some(src) = image {
+            media.push(Media {
+                src,
+                media_type: MediaType::of(resolved.as_deref().unwrap_or_default()),
+                name: consumed
+                    .and_then(|i| files.get(i))
+                    .and_then(|f| f.name().map(str::to_string)),
+                role: MediaRole::Headline,
+            });
+        }
+        for (i, file) in files.iter().enumerate() {
+            if Some(i) == consumed {
+                continue;
+            }
+            media.push(Media {
+                src: file.get_src(),
+                media_type: MediaType::of(file.media_type()),
+                name: file.name().map(str::to_string),
+                role: MediaRole::File,
+            });
+        }
+
+        DecodedAsset {
+            id,
+            name,
+            media,
+            traits: extract_traits(&rest),
         }
     }
 
