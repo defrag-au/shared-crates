@@ -182,7 +182,9 @@ fn tier_row(
         });
 
         ui.horizontal_wrapped(|ui| {
-            ui.add_space(TIER_INDENT);
+            // Indented past the swatch, so the rewards read as belonging to the
+            // tier above them rather than as a peer row.
+            ui.add_space(ui.space(Space::Xl2));
             for reward in &tier.rewards {
                 Chip::new(&reward_text(reward))
                     .variant(ChipVariant::Muted)
@@ -245,9 +247,6 @@ fn trim_amount(amount: f64) -> String {
         false => format!("{amount:.1}"),
     }
 }
-
-/// How far the reward row is indented under its tier heading.
-const TIER_INDENT: f32 = 18.0;
 
 #[cfg(test)]
 mod tests {
