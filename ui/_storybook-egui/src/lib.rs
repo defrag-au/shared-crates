@@ -257,6 +257,8 @@ mod app {
             MnemonicDisplay => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::mnemonic_display::show(ui, &mut a.mnemonic_display_state);
             WalletList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::wallet_list::show(ui, &mut a.wallet_list_state);
             CollectionList => |a: &mut StorybookApp, ui: &mut egui::Ui| stories::collection_list::show(ui, &mut a.collection_list_state);
+            InstallPanel => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::install_panel::show(ui);
+            RewardTiers => |_a: &mut StorybookApp, ui: &mut egui::Ui| stories::reward_tiers::show(ui);
         }
 
         group "Mint Configuration" {
@@ -418,6 +420,8 @@ mod app {
                 Self::Toast => "Toast",
                 Self::QuantityStepper => "Quantity Stepper",
                 Self::MintCheckout => "Mint Checkout",
+                Self::InstallPanel => "Install Panel",
+                Self::RewardTiers => "Reward Tiers",
             }
         }
 
@@ -853,6 +857,12 @@ mod app {
                 }
                 Self::MintCheckout => {
                     "Buyer mint offer + CTA — phase/eligibility chips, QuantityStepper, price-each/total, fixed-price bundle cards, purchase summary, Mint button, working/submitted/error states; VM-driven, returns QtyChanged/Mint/SelectBundle"
+                }
+                Self::InstallPanel => {
+                    "A bot install link beside the permissions it requests — each with the reason it is there, and the settings an install link cannot carry"
+                }
+                Self::RewardTiers => {
+                    "A tiered rewards config as a read-only list: role, holder count, and what a distribution rolls — an unknown count is not a zero"
                 }
             }
         }

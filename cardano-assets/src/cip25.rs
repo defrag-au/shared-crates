@@ -100,7 +100,11 @@ fn find_in_map<'a>(m: &'a Metadatum, as_str: &str, as_bytes: &[u8]) -> Option<&'
 /// maps become objects (keys string-coerced), arrays become arrays.
 /// CIP-25 chunked strings (>64 bytes split into arrays) are left as
 /// arrays — `AssetMetadata` rejoins them downstream.
-fn metadatum_to_json(m: &Metadatum) -> Value {
+///
+/// `pub(crate)` for the `Metadatum` walk, which renders one subtree with
+/// it — the `unsigs` set, whose `UnsigData` shape is the one thing shape
+/// dispatch cannot recover.
+pub(crate) fn metadatum_to_json(m: &Metadatum) -> Value {
     match m {
         Metadatum::Int(i) => {
             let raw = i128::from(*i);
@@ -123,21 +127,27 @@ fn metadatum_to_json(m: &Metadatum) -> Value {
 }
 
 /// Render bytes as a UTF-8 string, or a `0x…` hex string if invalid.
-fn bytes_to_json(bytes: &[u8]) -> Value {
+///
+/// The crate's one rendering of bytes as text: `metadatum_key`,
+/// `bytes_to_json` and the `Metadatum` walk all read it from here, so a
+/// byte value cannot render one way as a key and another as a value.
+pub(crate) fn bytes_to_string(bytes: &[u8]) -> String {
     match std::str::from_utf8(bytes) {
-        Ok(s) => Value::String(s.to_owned()),
-        Err(_) => Value::String(format!("0x{}", hex::encode(bytes))),
+        Ok(s) => s.to_owned(),
+        Err(_) => format!("0x{}", hex::encode(bytes)),
     }
 }
 
+/// Render bytes as a JSON string value.
+fn bytes_to_json(bytes: &[u8]) -> Value {
+    Value::String(bytes_to_string(bytes))
+}
+
 /// Coerce a `Metadatum` map key to a JSON object key.
-fn metadatum_key(m: &Metadatum) -> String {
+pub(crate) fn metadatum_key(m: &Metadatum) -> String {
     match m {
         Metadatum::Text(s) => s.clone(),
-        Metadatum::Bytes(b) => match std::str::from_utf8(b.as_slice()) {
-            Ok(s) => s.to_owned(),
-            Err(_) => format!("0x{}", hex::encode(b.as_slice())),
-        },
+        Metadatum::Bytes(b) => bytes_to_string(b.as_slice()),
         Metadatum::Int(i) => i128::from(*i).to_string(),
         Metadatum::Array(_) | Metadatum::Map(_) => "<complex-key>".to_owned(),
     }

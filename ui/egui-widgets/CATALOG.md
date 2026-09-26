@@ -5,7 +5,7 @@ from each module's own `//!` header by `tests/catalog.rs` — so it cannot drift
 
 Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 
-164 widgets.
+166 widgets.
 
 | module | what it is |
 |---|---|
@@ -77,6 +77,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `id_pill` | `IdPill` — small inline display of a long identifier with a copy affordance |
 | `image_stack` | `ImageStack` — several images as a fanned pile of mounted prints, so a lot of many reads as a lot of many at a glance |
 | `image_text_editor` | Image text overlay editor — place, style, and drag text on top of an image |
+| `install_panel` | `InstallPanel` — what installing a bot asks for, and why: the link to hand over, the permissions it requests, and the settings the link cannot carry |
 | `interaction_tip` | `InteractionTip` — a hint about a gesture, shown where the gesture is not |
 | `knob` | `Knob` — a rotary control, as a prototype to riff on |
 | `labelled_progress` | `LabelledProgress` — a busy mark the size of the words beside it |
@@ -120,6 +121,7 @@ Regenerate: `UPDATE_CATALOG=1 cargo test -p egui-widgets --test catalog`
 | `rarity_target_editor` | rarity_target_editor — per-trait / per-value 0–100% rarity targets |
 | `relationship_editor` | relationship_editor — edit a list of directed `source → target` edges over a known option set |
 | `relative_time` | `RelativeTime` — a tiny auto-scaling "time ago" label |
+| `reward_tiers` | `RewardTiers` — what each role is paid, as a list: the role, how many hold it, and the rewards its holders receive |
 | `role_picker` | `RolePicker` — choose a Discord role by name instead of pasting a snowflake |
 | `route_quote` | `RouteQuote` — a multi-venue route priced leg by leg, and how many transactions it takes to settle |
 | `route_summary` | Route summary widget — compact display of split routing results |

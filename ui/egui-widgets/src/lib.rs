@@ -78,6 +78,7 @@ pub mod holder_formation;
 #[cfg(target_arch = "wasm32")]
 pub mod html_stage;
 pub mod icons;
+pub mod install_panel;
 pub mod id_pill;
 pub mod image_loader;
 pub mod image_stack;
@@ -123,6 +124,7 @@ pub mod range_bar;
 pub mod rarity_target_editor;
 pub mod relationship_editor;
 pub mod relative_time;
+pub mod reward_tiers;
 pub mod role_picker;
 pub mod screenshot;
 pub mod select;
@@ -318,6 +320,7 @@ pub use icons::{PhosphorIcon, install_phosphor_font};
 pub use id_pill::{
     IdPill, IdPillLayout, IdPillResponse, stacked_width_for as id_pill_stacked_width_for,
 };
+pub use install_panel::{InstallFact, InstallPanel, InstallPanelResponse};
 pub use image_loader::{
     AssetImageSize, iiif_asset_url, iiif_asset_url_on, iiif_base_for_network, iiif_hosts,
 };
@@ -378,6 +381,7 @@ pub use range_bar::{RangeBarConfig, RangePoint};
 pub use rarity_target_editor::{RarityRow, RarityTargetEditor};
 pub use relationship_editor::{RelationshipEditor, RelationshipEditorResponse};
 pub use relative_time::{RelativeTime, relative_label};
+pub use reward_tiers::{RewardTier, RewardTiers, TierReward, TierUpkeep};
 pub use role_picker::{RoleOption, RolePicker, RolePickerResponse, RolePickerState};
 pub use screenshot::ScreenshotButton;
 pub use script_catalogue::{ScriptCatalogue, ScriptCatalogueAction, ScriptRow, ScriptStatus};

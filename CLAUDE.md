@@ -3,7 +3,7 @@
 # Agent rules
 
 Generated from agent-playbook (`projects/shared-crates` + `models/claude-code`).
-Rule sources live under `/Users/damo/code/defrag/agent-playbook` — each heading's HTML comment names its file there.
+Each rule's source file is named in the comment above its heading.
 To change a rule, change the rule — not this block.
 
 ## Non-negotiable
@@ -367,6 +367,53 @@ Read the whole file. **Do not grep instead.**
 ```sh
 UPDATE_CATALOG=1 nix develop -c cargo test -p egui-widgets --test catalog
 ```
+
+
+## Read code and history with the agent tools, not with the shell
+<!-- rule: rules/org/defrag/agent-tools -->
+
+- Reading code with `rg`, `grep`, `sed`, `cat`, `head` or `wc` → use `at-peek`. Reading history or
+  working-tree state with `git status`, `git diff`, `git log` or `git show` → use `at-recall`. Both
+  are read-only, bounded by construction, and say what they did not show.
+
+| Instead of | Use |
+| --- | --- |
+| `rg`, `grep` | `at-peek search <pattern> [path…]` |
+| `sed -n '40,60p' <file>`, `head`, `cat` | `at-peek slice <file>:40-60` |
+| `wc -l`, `ls -l`, `stat` | `at-peek stat <path>…` |
+| `git status`, `git status --porcelain` | `at-recall state` |
+| `git diff`, `git diff --stat` | `at-recall diff [<rev>] [<path>…]` — add `--patch` for the hunks |
+| `git log`, `git log --oneline` | `at-recall log [<rev>] [<path>…]` |
+| the archaeology before a PR description: branch, base, `merge-base`, `log --oneline base..HEAD`, `diff --stat` | `at-recall pr [--base <rev>]` — the branch, its commits and its diffstat in one read |
+| anything not listed | `at-describe` — the catalogue, one screen |
+
+- The exact lines · every mention · how many · which files → `at-peek slice <file>:40-60` ·
+  `at-peek search <pat>` · `at-peek search <pat> --count` · `at-peek search <pat> --files-only`.
+- `which at-peek` empty → `direnv exec . at-peek <verb>`. An agent's spawned shell does not
+  inherit the devshell environment; an interactive one does.
+- Output that was cut says so, and so does anything that would make it wrong. Repeat both when
+  you report the finding: `# 50 of 143` is the difference between a fact and a guess.
+- A `# next:` line is the next question, already spelled as a command. Run it as printed rather
+  than composing your own — it is the read you just made, widened or deepened.
+- Several questions in one turn → ask for the frame (`--summary`: the counts, bounds and exits,
+  without the rows) and put several targets in one invocation (`diff <path> <path>`, `slice
+  <path>:40-60 <path>:1-20`) rather than a loop. Never `| tail -3`: a tail is a bound you did not
+  read, and the bound is the part that makes the answer reportable.
+- The tools are for understanding, not for preparing an edit. Read the file with the editor tools
+  before editing it.
+- `at-peek` runs nothing at all; `at-recall` runs `git` and nothing else. That difference is why
+  they are separate binaries, and why they are separate approvals if I have tiered them.
+- A **recipe** is one verb that composes the reads its sibling verbs use, so a count cannot disagree
+  with the listing beside it: `at-recall pr` answers "write me a PR description" with the base, the
+  branch's commits and the diffstat by kind, and a caveat naming tracked files that have changed
+  since HEAD — those are in no commit, and a description written from the branch alone leaves them
+  out. Ask for the recipe rather than composing the sequence — `pr --with commits,diffstat,areas`
+  selects sections, and its `# next:` lines name the primitives (`log`, `diff`) when you want the
+  detail behind it. It prints the facts a description is written from and does not write the
+  description: why a change exists is not in the repository.
+- `at-recall` answers `state`, `log`, `diff` and the `pr` recipe. `blame`, `show` and `churn`, and the
+  `review` and `release` recipes, are designed and not written — ask for the one you want rather than
+  reaching for `git`, and name the question, because that is what turns it into a verb.
 
 
 ## Toggle local [patch] blocks as a unit

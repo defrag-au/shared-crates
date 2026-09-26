@@ -3,7 +3,7 @@
 # Agent rules
 
 Generated from agent-playbook (`projects/shared-crates` + `models/zed`).
-Rule sources live under `/Users/damo/code/defrag/agent-playbook` — each heading's HTML comment names its file there.
+Each rule's source file is named in the comment above its heading.
 To change a rule, change the rule — not this block.
 
 ## Non-negotiable

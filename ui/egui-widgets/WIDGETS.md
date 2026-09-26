@@ -239,6 +239,14 @@ generalise them into other contexts.
   trait chips for trade swaps.
 - **`printing_timeline`** → `PrintingTimelineConfig` — Horizontal
   timeline of card/asset printings (MtG / TCG context).
+- **`reward_tiers`** → `RewardTier` + `TierReward` / `TierUpkeep` — A
+  tiered rewards config as a read-only list: the role, how many hold it, and
+  what a distribution rolls. An unknown holder count renders as *unknown*,
+  never as `0 members` — see the module docs for why those differ.
+- **`install_panel`** → `InstallPanel` + `InstallFact` — A bot install link
+  beside the permissions it asks for (each with the reason it is there) and
+  the settings an install link cannot carry. Data-only: the caller owns the
+  URL and both lists, so they cannot disagree with the link.
 
 ## Infrastructure (not widgets)
 

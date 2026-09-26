@@ -65,6 +65,7 @@ pub mod radar_chart;
 pub mod range_bar;
 pub mod rarity_target_editor;
 pub mod relationship_editor;
+pub mod reward_tiers;
 pub mod select;
 pub mod service_banner;
 pub mod seven_segment;
@@ -125,6 +126,7 @@ pub mod html_stage;
 pub mod image_loads;
 pub mod image_stack;
 pub mod image_text_editor;
+pub mod install_panel;
 
 // Trade desk widgets
 pub mod asset_strip;

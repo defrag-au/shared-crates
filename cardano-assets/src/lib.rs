@@ -17,9 +17,12 @@ pub mod cip25;
 #[cfg(feature = "cip68")]
 pub mod cip68;
 pub mod collection;
+pub mod decoded_asset;
 pub mod extract;
 #[cfg(feature = "cip14")]
 pub mod fingerprint;
+#[cfg(feature = "cip25")]
+pub mod metadatum;
 pub mod policy_classification;
 pub mod policy_id;
 pub mod resolver;
@@ -47,12 +50,15 @@ pub use cip25::{cip25_metadata_json, cip25_metadata_value, decode_cip25_metadata
 #[cfg(feature = "cip68")]
 pub use cip68::{Cip68Error, decode_cip68_datum};
 pub use collection::*;
+pub use decoded_asset::{DecodedAsset, Media, MediaRole, MediaType};
 pub use extract::{
     AssetEnvelope, ENVELOPE_KEYS, LiveArt, asset_from_metadata_json, asset_from_metadata_value,
     extract_traits,
 };
 #[cfg(feature = "cip14")]
 pub use fingerprint::{Fingerprint, FingerprintError};
+#[cfg(feature = "cip25")]
+pub use metadatum::{DecodedDocument, decode_document, document_fields};
 pub use policy_classification::{PolicyAssetSample, PolicyClassification, classify_policy};
 pub use policy_id::{PolicyId, PolicyIdError};
 pub use resolver::*;

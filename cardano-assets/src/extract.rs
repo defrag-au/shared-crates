@@ -22,7 +22,10 @@
 //! whole fixture corpus before any cutover. See
 //! `tests/extract_corpus.rs`.
 
-use crate::{Asset, AssetFile, PrimitiveOrList, Traits, UnsigData};
+use crate::{
+    Asset, AssetFile, AssetId, DecodedAsset, Media, MediaRole, MediaType, PrimitiveOrList, Traits,
+    UnsigData,
+};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -105,7 +108,7 @@ const PROVENANCE_FIELDS: &[&str] = &[
 ];
 
 /// Keys whose value, when structured, holds the asset's traits.
-const SLOT_KEYS: &[&str] = &["traits", "attributes", "properties"];
+pub(crate) const SLOT_KEYS: &[&str] = &["traits", "attributes", "properties"];
 
 /// Registry category for a known field name. See module-level table.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -136,7 +139,7 @@ pub fn classify_field(name: &str) -> Option<FieldClass> {
 
 /// Whether a field should appear in the collection-ownership trait set:
 /// unknown fields (visual traits) and surfaced facets (rarity/tier) only.
-fn trait_eligible(name: &str) -> bool {
+pub(crate) fn trait_eligible(name: &str) -> bool {
     match classify_field(name) {
         None => true,
         Some(FieldClass::Facet { surface }) => surface,
@@ -179,6 +182,68 @@ impl AssetEnvelope {
             traits,
             rarity_rank: None,
             tags: vec![],
+        }
+    }
+
+    /// The same document as a [`DecodedAsset`]: the media list kept, the name
+    /// able to say "no name", and the marketplace fields gone.
+    ///
+    /// **One entry per medium.** The headline is the document's `image`; a
+    /// `files[]` entry whose `src` is that same source is the headline listed a
+    /// second time (it is the entry the media-type fallback finds), so it is
+    /// folded into the headline — its `name` survives, which is what a viewer
+    /// needs — and never emitted twice. A document with `files[]` and no
+    /// `image` has no headline: nothing is promoted behind the document's back.
+    #[must_use]
+    pub fn into_decoded_asset(self, id: AssetId) -> DecodedAsset {
+        let Self {
+            name,
+            image,
+            media_type,
+            files,
+            rest,
+        } = self;
+        let files = files.unwrap_or_default();
+        let image = image.as_ref().map(PrimitiveOrList::dechunked);
+        let resolved = media_type.or_else(|| {
+            let image = image.as_deref().unwrap_or_default();
+            files
+                .iter()
+                .find(|f| f.get_src() == image)
+                .map(|f| f.media_type().to_string())
+        });
+        let consumed = image
+            .as_ref()
+            .and_then(|src| files.iter().position(|f| &f.get_src() == src));
+
+        let mut media = Vec::new();
+        if let Some(src) = image {
+            media.push(Media {
+                src,
+                media_type: MediaType::of(resolved.as_deref().unwrap_or_default()),
+                name: consumed
+                    .and_then(|i| files.get(i))
+                    .and_then(|f| f.name().map(str::to_string)),
+                role: MediaRole::Headline,
+            });
+        }
+        for (i, file) in files.iter().enumerate() {
+            if Some(i) == consumed {
+                continue;
+            }
+            media.push(Media {
+                src: file.get_src(),
+                media_type: MediaType::of(file.media_type()),
+                name: file.name().map(str::to_string),
+                role: MediaRole::File,
+            });
+        }
+
+        DecodedAsset {
+            id,
+            name,
+            media,
+            traits: extract_traits(&rest),
         }
     }
 
@@ -330,7 +395,10 @@ pub fn asset_from_metadata_value(value: serde_json::Value) -> Result<Asset, serd
 /// treated as a flat multi-value field, matching how v1 surfaced
 /// SpaceBudz-style `traits` arrays (the array under its own key, with
 /// sibling scalars still becoming traits).
-enum SlotShape {
+///
+/// `pub(crate)` for the `Metadatum` walk, which classifies the same shapes
+/// off the CBOR (`metadatum::classify_slot`) and must not drift from this.
+pub(crate) enum SlotShape {
     /// `{ "Background": "Crimson", ... }`
     Map,
     /// `[ { "trait_type"|"name": K, "value": V }, ... ]` (OpenSea / gophers)
