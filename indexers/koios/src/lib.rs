@@ -4,6 +4,7 @@ pub mod koios_cip68;
 pub mod koios_evaluate;
 pub mod koios_params;
 mod koios_serde;
+pub mod koios_tip;
 pub mod koios_transaction;
 pub mod koios_utils;
 pub mod koios_utxos;
@@ -16,6 +17,7 @@ use http_client::{HttpClient, HttpError};
 use koios_account_utxos::TxRecord;
 pub use koios_evaluate::KoiosRedeemerBudget;
 pub use koios_params::KoiosProtocolParams;
+pub use koios_tip::KoiosTip;
 use koios_transaction::KoiosTransaction;
 pub use koios_utxos::{KoiosAccountAsset, KoiosInlineDatum, KoiosUtxo, KoiosUtxoAsset, UtxoAmount};
 use serde::de::DeserializeOwned;
@@ -2249,6 +2251,21 @@ mod tests {
         // key them by.
         assert!(rows[3].stake_address.is_none());
         assert!(rows[4].stake_address.is_none());
+    }
+
+    /// Koios answers `/tip` with a one-row array whose row carries both
+    /// `block_height` and a duplicate `block_no`, plus an `era` label. Ignoring
+    /// unknown fields is what lets this decode at all.
+    #[test]
+    fn test_deserialize_tip() {
+        let rows: Vec<KoiosTip> =
+            serde_json::from_str(test_case!("tip.json")).expect("fixture decodes");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].epoch_no, 657);
+        assert_eq!(rows[0].abs_slot, 198_840_579);
+        assert_eq!(rows[0].block_height, 13_989_702);
+        assert_eq!(rows[0].block_time, 1_790_406_870);
     }
 
     #[test]
