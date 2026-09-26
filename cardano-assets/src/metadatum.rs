@@ -14,7 +14,7 @@
 //! classification is not restated here: it is [`classify_field`], the registry
 //! both paths share, so a field added to the registry moves both.
 //!
-//! Two things the walk has to keep straight that the document path gets for
+//! Three things the walk has to keep straight that the document path gets for
 //! free:
 //!
 //! - **A `files[]` entry must declare its `mediaType`.** [`crate::AssetFile`]
@@ -26,6 +26,14 @@
 //!   `unsigs` subtree goes through the same [`unsig_traits`] the document path
 //!   runs — via [`metadatum_to_json`] on that subtree alone. That is 0.3% of
 //!   declared assets, and the only CBOR-to-JSON step here.
+//! - **A declared type with no medium is dropped from the asset.** Deliberate,
+//!   and the walk's one divergence in what the asset carries: [`DecodedAsset`]
+//!   has no document-level type, so a document that declares one with no `image`
+//!   keeps it only on [`DecodedDocument::declared_media_type`]. A type attached to
+//!   nothing cannot be fetched or verified, and the old `media_type: Some(…)`
+//!   beside `image: ""` was never actionable — 367 assets of 11.16 M, counted in
+//!   the comparison rather than estimated (`mitos/docs/design/ROW_ADDRESSING_AND_SEARCH.md`
+//!   §5.5).
 //!
 //! Behind the `cip25` feature, like the rest of the label-721 decode.
 
@@ -56,7 +64,12 @@ pub struct DecodedDocument {
     /// What `resolve_media_type` returned for the *document*: the top-level
     /// `mediaType`, else the media type of the file whose `src` is the image. A
     /// document with no image still declares one, which is what separates this
-    /// from the headline's own declaration.
+    /// from the headline's own declaration — and this field is where a declaration
+    /// survives when it attaches to no medium at all.
+    ///
+    /// The walk's one deliberate divergence in what an asset carries: see the
+    /// module docs. A consumer that ever needs the declaration of an asset with no
+    /// media asks here rather than expecting it on [`DecodedAsset`].
     pub declared_media_type: Option<String>,
 }
 
@@ -95,6 +108,36 @@ pub fn decode_document(
         declarations,
         declared_media_type,
     })
+}
+
+/// The values a document declares for named fields, in one pass over its keys.
+///
+/// Names are matched the way the registry matches them — trimmed and lowercased,
+/// so `Collection`, `collection` and `collection ` are one field — and every match
+/// is returned rather than the first, because a document may declare a key twice
+/// (see `decode_document`'s note on the one asset in 11.1 M that does).
+///
+/// **This is the only way to reach a field the trait walk does not surface.**
+/// `collection`, `artist`, `project` and the other capture-only facets are
+/// classified as facets, so they are neither envelope nor trait and do not appear
+/// in [`DecodedAsset::traits`] — and they are exactly the fields a catalogue or a
+/// structured-metadata capture wants.
+#[must_use]
+pub fn document_fields<'a>(document: &Metadatum, keys: &'a [&'a str]) -> Vec<(&'a str, String)> {
+    let Metadatum::Map(pairs) = document else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (k, v) in pairs.iter() {
+        let key = metadatum_key(k);
+        let normalised = key.trim().to_lowercase();
+        if let Some(want) = keys.iter().find(|want| **want == normalised)
+            && let Some(value) = json_string_value(v)
+        {
+            out.push((*want, value));
+        }
+    }
+    out
 }
 
 /// The traits a document declares, or `None` where the walk cannot read it at
@@ -737,6 +780,31 @@ mod tests {
         }
     }
 
+    /// The fields the trait walk does not surface are still reachable: a
+    /// capture-only facet (`collection`, `artist`, …) is a facet, not a trait, so
+    /// `document_fields` is the way to read it — case-folded as the registry folds
+    /// it, every declaration returned, and a non-scalar value skipped rather than
+    /// guessed at.
+    #[test]
+    fn document_fields_reads_the_fields_traits_do_not_carry() {
+        let doc = map(vec![
+            ("Collection", text("Black Flag")),
+            ("collection name", text(" Black Flag ")),
+            ("artist", int(7)),
+            ("image", text("ipfs://x")),
+        ]);
+        let keys = ["collection", "collection name", "artist"];
+        assert_eq!(
+            document_fields(&doc, &keys),
+            vec![
+                ("collection", "Black Flag".to_string()),
+                ("collection name", " Black Flag ".to_string()),
+            ],
+            "the integer artist is not a string value, and `image` was not asked for"
+        );
+        assert!(document_fields(&doc, &["name"]).is_empty());
+    }
+
     /// The walk produces the whole `DecodedAsset`: the id the document path has
     /// no way to carry, the media list the old flatten dropped, and the image
     /// chunk-joined the way CIP-25 demands.
@@ -809,15 +877,22 @@ mod tests {
         assert!(decode_document(POLICY, b"", &plain).is_none());
     }
 
-    /// A declared type with no medium to attach it to: the headline is absent, so
-    /// the media list is empty — and the declaration survives only in
-    /// `declared_media_type`, where the corpus reporting reads it.
+    /// The deliberate projection loss: a document that declares a type and
+    /// materialises no medium. `DecodedAsset` has no document-level type, so the
+    /// asset carries none — there is nothing to fetch or verify against — and the
+    /// declaration survives only on `DecodedDocument`, where the corpus reporting
+    /// reads it (367 assets of 11.16 M).
     #[test]
-    fn a_declared_type_with_no_medium_is_still_recorded() {
+    fn a_declared_type_with_no_medium_is_a_deliberate_projection_loss() {
         let doc = map(vec![("mediaType", text("image/png"))]);
         let walked = decode_document(POLICY, b"x", &doc).expect("an asset");
         assert!(walked.asset.media.is_empty());
         assert!(walked.asset.headline().is_none());
+        assert_eq!(
+            walked.asset.media_type().as_str(),
+            None,
+            "the asset carries no document-level type"
+        );
         assert_eq!(walked.declared_media_type.as_deref(), Some("image/png"));
     }
 

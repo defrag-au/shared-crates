@@ -58,7 +58,7 @@ pub use extract::{
 #[cfg(feature = "cip14")]
 pub use fingerprint::{Fingerprint, FingerprintError};
 #[cfg(feature = "cip25")]
-pub use metadatum::{DecodedDocument, decode_document};
+pub use metadatum::{DecodedDocument, decode_document, document_fields};
 pub use policy_classification::{PolicyAssetSample, PolicyClassification, classify_policy};
 pub use policy_id::{PolicyId, PolicyIdError};
 pub use resolver::*;
