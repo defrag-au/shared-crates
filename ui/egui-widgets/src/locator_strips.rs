@@ -128,13 +128,25 @@ impl<'a> LocatorStrips<'a> {
         self
     }
 
+    /// Whether anything would be drawn at all — the test a host uses to decide whether to
+    /// **place** the widget.
+    ///
+    /// ⚠️ Not the same question as [`busy`](Self::busy), which is whether to keep
+    /// **repainting** it, and the one state where they differ is the interesting one: a
+    /// request that has been out for longer than [`WINDOW`] is ink that is not moving. It
+    /// belongs on screen — a run is waiting on it — and it does not need another frame.
+    pub fn has_ink(&self) -> bool {
+        self.reads
+            .iter()
+            .any(|read| weight_of(read, self.now) > 0.0)
+    }
+
     /// Whether anything on screen is still **moving**, so the host knows to keep painting.
     ///
-    /// ⚠️ **Not the same question as "is there ink"**, and the one state where they differ
-    /// is why: a request that has been out longer than [`WINDOW`] keeps its mark (see
-    /// [`weight_of`]) but the mark does not move, so a frame showing it is finished and a
-    /// host that kept painting would paint the same pixels forever. Everything else is
-    /// bounded by the window, which is also this widget's whole reach.
+    /// ⚠️ **A different question from [`has_ink`](Self::has_ink)**, see there: a request out
+    /// longer than [`WINDOW`] keeps its mark but the mark does not change, so a frame
+    /// showing it is finished and a host that kept painting would paint the same pixels
+    /// forever. Everything else is bounded by the window, which is this widget's reach.
     pub fn busy(&self) -> bool {
         self.reads
             .iter()
@@ -473,9 +485,32 @@ mod tests {
             1.0,
             "ten minutes later, still out"
         );
-        // What lapses at the window is the *repaint*, not the mark: see `busy`.
-        assert!(LocatorStrips::new(&[flying], WINDOW - 0.01).busy());
-        assert!(!LocatorStrips::new(&[flying], WINDOW).busy());
+        // What lapses at the window is the *repaint*, not the ink: see `has_ink`/`busy`.
+        let flying = [flying];
+        let strips = LocatorStrips::new(&flying, WINDOW);
+        assert!(strips.has_ink());
+        assert!(!strips.busy());
+    }
+
+    #[test]
+    fn ink_and_movement_are_two_questions() {
+        // The pair a host asks: *place* it while there is ink, *repaint* it while the ink
+        // is moving. They differ in exactly one state — a request out for longer than the
+        // window, which belongs on screen and is not moving.
+        let moving = [body(1, 1.0)];
+        assert!(LocatorStrips::new(&moving, 1.5).has_ink());
+        assert!(LocatorStrips::new(&moving, 1.5).busy());
+        // A landed read, faded out: neither.
+        assert!(!LocatorStrips::new(&moving, 1.0 + HOLD).has_ink());
+        assert!(!LocatorStrips::new(&moving, 1.0 + HOLD).busy());
+        // Out past the window: ink, and not a frame more than it needs.
+        let stuck = [Read {
+            flight: None,
+            ..body(1, 0.0)
+        }];
+        let strips = LocatorStrips::new(&stuck, WINDOW + 30.0);
+        assert!(strips.has_ink(), "a run waiting on a read is worth showing");
+        assert!(!strips.busy(), "and it is not worth repainting");
     }
 
     #[test]
